@@ -1,0 +1,36 @@
+#!/usr/bin/env bash
+# run — launch any app in the shared toolbox container
+#
+# Usage:
+#   ./run <app-name> [args...]
+#
+# Examples:
+#   ./run voice-split --url "https://www.youtube.com/watch?v=XXXX" --clips 5 --length 30
+#   ./run voice-split --help
+#
+# Each app lives in apps/<app-name>/<app-name>.py
+# Output goes to ./work/ by default (mounted as /work inside the container)
+# Cache is shared across all apps in ./cache/ (mounted as /cache)
+
+set -euo pipefail
+
+APP=${1:-}
+if [[ -z "$APP" ]]; then
+  echo "Usage: ./run <app-name> [args...]"
+  echo ""
+  echo "Available apps:"
+  for d in "$(dirname "$0")/apps"/*/; do
+    echo "  $(basename "$d")"
+  done
+  exit 1
+fi
+shift
+
+SCRIPT="apps/${APP}/${APP}.py"
+
+if [[ ! -f "$(dirname "$0")/${SCRIPT}" ]]; then
+  echo "Error: no script found at ${SCRIPT}"
+  exit 1
+fi
+
+exec docker compose run --rm toolbox python "${SCRIPT}" "$@"

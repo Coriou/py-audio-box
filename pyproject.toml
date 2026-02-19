@@ -1,0 +1,31 @@
+[tool.poetry]
+name = "voice-tools"
+version = "0.1.0"
+description = "Reusable python/poetry toolbox container (ffmpeg, audio tooling, etc.)"
+authors = ["you <you@example.com>"]
+package-mode = false
+
+[[tool.poetry.source]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+priority = "explicit"
+
+[tool.poetry.dependencies]
+python = "^3.11"
+demucs = "^4.0.1"
+numpy = "^1.26.4"
+soundfile = "^0.12.1"
+yt-dlp = ">=2025.1.15"
+
+# Pull torch + torchaudio from the CPU index explicitly:
+torch = { version = "^2.3.0", source = "pytorch-cpu" }
+torchaudio = { version = "^2.3.0", source = "pytorch-cpu" }
+# torchaudio >=2.6 requires torchcodec for audio save; available on PyPI
+torchcodec = ">=0.1"
+
+[tool.poetry.group.dev.dependencies]
+ruff = "^0.6.9"
+pytest = "^8.3.3"
+
+[tool.ruff]
+line-length = 100

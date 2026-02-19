@@ -1,0 +1,16 @@
+services:
+  toolbox:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: voice-tools:latest
+    working_dir: /app
+    volumes:
+      - ./:/app
+      - ./work:/work
+      - ./cache:/cache
+    environment:
+      - PYTHONUNBUFFERED=1
+      - PYTHONDONTWRITEBYTECODE=1
+    tty: true
+    stdin_open: true

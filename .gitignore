@@ -1,0 +1,18 @@
+# Runtime outputs — never commit these
+work/
+cache/
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.pytest_cache/
+.ruff_cache/
+
+# Poetry lock is intentionally committed (reproducible builds)
+# poetry.lock — DO commit this
+
+# Editor
+.DS_Store
+.vscode/
+*.swp

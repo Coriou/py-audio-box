@@ -1,0 +1,42 @@
+# Toolbox Makefile — shortcuts for common tasks
+# Usage: make <target> [ARGS="...extra flags..."]
+#
+# Most workflows go through ./run <app> instead, but this is handy for
+# build / shell / one-liner invocations.
+
+.DEFAULT_GOAL := help
+
+# ── infrastructure ─────────────────────────────────────────────────────────────
+
+.PHONY: build
+build:  ## Build (or rebuild) the toolbox Docker image
+	docker compose build
+
+.PHONY: build-no-cache
+build-no-cache:  ## Force a clean rebuild (no layer cache)
+	docker compose build --no-cache
+
+.PHONY: shell
+shell:  ## Open an interactive bash shell inside the toolbox
+	docker compose run --rm toolbox bash
+
+.PHONY: clean-work
+clean-work:  ## Delete all output files in ./work/ (keeps cache)
+	rm -rf work/clip_*.wav
+
+.PHONY: clean-cache
+clean-cache:  ## Wipe the shared cache (forces model re-download on next run)
+	rm -rf cache/
+
+# ── apps ───────────────────────────────────────────────────────────────────────
+
+.PHONY: voice-split
+voice-split:  ## Run voice-split. Usage: make voice-split ARGS='--url "..." --clips 5'
+	./run voice-split $(ARGS)
+
+# ── help ───────────────────────────────────────────────────────────────────────
+
+.PHONY: help
+help:  ## Show this help
+	@grep -E '^[a-zA-Z_-]+:.*##' $(MAKEFILE_LIST) \
+	  | awk 'BEGIN {FS = ":.*## "}; {printf "  \033[36m%-20s\033[0m %s\n", $$1, $$2}'
