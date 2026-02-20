@@ -33,6 +33,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
   ca-certificates \
   curl \
   git \
+  rsync \
   ffmpeg \
   sox \
   coreutils \
@@ -82,13 +83,27 @@ RUN --mount=type=cache,target=/root/.cache/pip \
 # Copy the rest of the source
 COPY . /app
 
-# Point all cache-aware tools (Torch Hub, HuggingFace, etc.) at the shared /cache mount
-ENV XDG_CACHE_HOME=/cache
+# Create persistent-mount targets so they exist even if no volume is attached.
+# vast.ai persistent storage should be mounted at /cache to skip model re-downloads.
+RUN mkdir -p /work /cache
+
+# Runtime environment:
+#   XDG_CACHE_HOME / HF_HOME / TORCH_HOME all point to /cache so model weights
+#   land in the persistent volume when one is attached.
+#   TORCH_DEVICE defaults to cuda; override with -e TORCH_DEVICE=cpu for CPU-only.
+#   HF_HUB_DISABLE_XET_TRANSPORT avoids a slow experimental transfer path.
+ENV XDG_CACHE_HOME=/cache \
+    HF_HOME=/cache/huggingface \
+    TORCH_HOME=/cache/torch \
+    TORCH_DEVICE=cuda \
+    HF_HUB_DISABLE_XET_TRANSPORT=1
 
 # Expose the compute variant so apps and diagnostic tooling can inspect it:
 #   docker run --rm voice-tools:cuda env | grep TORCH_COMPUTE
 # Note: value is baked in at build time; overriding COMPUTE at run-time has no effect.
 ENV TORCH_COMPUTE=${COMPUTE}
+
+WORKDIR /app
 
 # Default entrypoint: tini for clean signal handling
 ENTRYPOINT ["/usr/bin/tini", "--"]
