@@ -27,6 +27,10 @@ make build        # build the shared image (~5 min, cached on rebuild)
 # Clone a voice and synthesise new speech (CPU-only)
 ./run voice-clone synth --ref-audio /work/myclip.wav --text "Hello, world"
 
+# List cached voices, then iterate fast without re-running the full pipeline
+./run voice-synth list-voices
+./run voice-synth speak --voice <id> --text "Take two, different text, same voice."
+
 # Get a shell inside the container (explore, debug, prototype)
 make shell
 
@@ -175,8 +179,9 @@ make clean-cache        Wipe ./cache/ — models and downloads will re-run
 App shortcuts (pass extra flags via `ARGS=`):
 
 ```
-make voice-split ARGS='--url "https://..." --clips 5 --length 30'
-make voice-clone ARGS='synth --ref-audio /work/myclip.wav --text "Hello, world"'
+make voice-split  ARGS='--url "https://..." --clips 5 --length 30'
+make voice-clone  ARGS='synth --ref-audio /work/myclip.wav --text "Hello, world"'
+make voice-synth  ARGS='speak --voice <id> --text "Hello"'
 ```
 
 ---

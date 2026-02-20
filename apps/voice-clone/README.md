@@ -44,32 +44,78 @@ Outputs land in `/work` by default:
 
 ### `synth` — full pipeline
 
-```
+```bash
 ./run voice-clone synth \
-  --ref-audio PATH   # your voice recording (WAV/MP3/etc.)
-  --text TEXT        # what to say  (or --text-file FILE)
-  [--ref-text TEXT]  # transcript of ref audio (skips auto-transcription)
-  [--ref-start SEC]  # manual segment start
-  [--ref-end   SEC]  # manual segment end
-  [--prompt-prefix TEXT]  # prepend to text (style steering)
-  [--prompt-suffix TEXT]  # append  to text (style steering)
-  [--out DIR]        # output directory (default: /work)
-  [--model ID]       # Qwen3-TTS HF repo id or local path
-  [--language LANG]  # English (default), Chinese, French …
-  [--x-vector-only]  # skip transcription; lower quality
-  [--threads N]      # CPU thread count (default: 8)
-  [--seed N]         # reproducible generation
-  [--force]          # ignore all caches
+    --ref-audio /work/myvoice.wav \
+    --text "Hello, this is my cloned voice speaking."
 ```
+
+**Required**
+
+| Flag               | Description                                  |
+| ------------------ | -------------------------------------------- |
+| `--ref-audio PATH` | Reference voice recording (WAV / MP3 / etc.) |
+
+One of `--text` or `--text-file` must be provided.
+
+**Input text**
+
+| Flag               | Type   | Default | Description                                        |
+| ------------------ | ------ | ------- | -------------------------------------------------- |
+| `--text TEXT`      | `str`  | —       | Text to synthesise                                 |
+| `--text-file FILE` | `path` | —       | Read synthesis text from a file                    |
+| `--ref-text TEXT`  | `str`  | —       | Transcript of ref audio — skips auto-transcription |
+
+**Reference segment**
+
+| Flag                  | Type     | Default | Description                                                   |
+| --------------------- | -------- | ------- | ------------------------------------------------------------- |
+| `--ref-start SEC`     | `float`  | —       | Manual segment start (seconds)                                |
+| `--ref-end SEC`       | `float`  | —       | Manual segment end (seconds)                                  |
+| `--ref-language LANG` | `choice` | `Auto`  | Language of the reference audio; `Auto` = whisper auto-detect |
+| `--force-bad-ref`     | flag     | off     | Bypass the transcript quality gate (low avg_logprob warning)  |
+
+**Language & synthesis**
+
+| Flag                   | Type     | Default | Description                                                                     |
+| ---------------------- | -------- | ------- | ------------------------------------------------------------------------------- |
+| `--language LANG`      | `choice` | `Auto`  | Target synthesis language; `Auto` detects from text (langid), then ref language |
+| `--style PRESET`       | `str`    | —       | Style preset from `styles.yaml` (e.g. `serious_doc`, `nature_doc`, `excited`)   |
+| `--prompt-prefix TEXT` | `str`    | —       | Text prepended to synthesis text (after style expansion)                        |
+| `--prompt-suffix TEXT` | `str`    | —       | Text appended to synthesis text (after style expansion)                         |
+
+**Generation knobs** (passed to Transformers `model.generate`)
+
+| Flag                         | Type    | Default | Description              |
+| ---------------------------- | ------- | ------- | ------------------------ |
+| `--temperature FLOAT`        | `float` | —       | Sampling temperature     |
+| `--top-p FLOAT`              | `float` | —       | Top-p nucleus sampling   |
+| `--repetition-penalty FLOAT` | `float` | —       | Repetition penalty       |
+| `--max-new-tokens INT`       | `int`   | —       | Maximum generated tokens |
+
+**Infrastructure**
+
+| Flag              | Type   | Default                         | Description                                                                             |
+| ----------------- | ------ | ------------------------------- | --------------------------------------------------------------------------------------- |
+| `--model ID`      | `str`  | `Qwen/Qwen3-TTS-12Hz-0.6B-Base` | Qwen3-TTS model (HF repo ID or local path)                                              |
+| `--whisper-model` | `str`  | `small`                         | faster-whisper model for ref transcription                                              |
+| `--x-vector-only` | flag   | off                             | Build voice prompt from speaker embedding only — skips ref_text (faster, lower quality) |
+| `--threads N`     | `int`  | `8`                             | CPU threads for torch + whisper                                                         |
+| `--seed N`        | `int`  | —                               | Random seed for reproducible synthesis                                                  |
+| `--force`         | flag   | off                             | Ignore all cached results and recompute from scratch                                    |
+| `--out DIR`       | `path` | `/work`                         | Output directory for WAV + meta.json                                                    |
 
 ### `prepare-ref` — inspect pipeline stages 1–3
 
-Runs normalise → VAD → transcribe and prints the cached paths + transcript.
-Useful for verifying the ref clip before a long synthesis run.
+Runs normalise → VAD → score candidates → transcribe and prints the cached
+paths + transcript. Useful for verifying the ref clip before a long synthesis run.
 
-```
+```bash
 ./run voice-clone prepare-ref --ref-audio /work/myvoice.wav
 ```
+
+Accepts all the same flags as `synth` except `--text*`, `--style`, `--prompt-*`,
+generation knobs, and `--out`.
 
 ### `self-test` — smoke test
 
@@ -83,6 +129,43 @@ peak amplitude).
 
 ---
 
+## Language detection
+
+Two independent language flags exist because the reference and synthesis languages
+may differ (e.g. a Spanish-spoken reference cloning English speech):
+
+- `--ref-language` — language _of the reference recording_. `Auto` means
+  let faster-whisper detect it. Set explicitly if whisper misidentifies your accent.
+
+- `--language` — language _of the synthesis text_. `Auto` (default):
+  1. Run langid on the target text (≥ 3 words)
+  2. Fall back to the detected ref language
+  3. Default to `English`
+
+Supported languages: `Chinese`, `English`, `Japanese`, `Korean`, `German`,
+`French`, `Russian`, `Portuguese`, `Spanish`, `Italian`.
+
+---
+
+## Transcript quality gate
+
+After transcribing the reference segment, the pipeline checks the faster-whisper
+`avg_logprob` confidence score. If it falls below the threshold (`-1.2`), synthesis
+is blocked with a clear diagnostic:
+
+```
+⚠  LOW TRANSCRIPT CONFIDENCE: avg_logprob=-1.45 (threshold -1.2).
+This may result in poor cloning quality. Try:
+  • --ref-start / --ref-end to select a cleaner segment
+  • a higher-quality reference recording
+  • --force-bad-ref to proceed anyway
+```
+
+Use `--force-bad-ref` to bypass the gate and synthesise anyway (useful for
+exploring edge cases or when you know the recording is acceptable).
+
+---
+
 ## Cache layout
 
 All intermediate artefacts are stored under `/cache/voice-clone/`:
@@ -91,16 +174,22 @@ All intermediate artefacts are stored under `/cache/voice-clone/`:
 /cache/voice-clone/
   refs/
     <sha256>/
-      ref_normalized.wav       # 16 kHz mono loudnorm
-      ref_segment.wav          # 24 kHz 3–12 s trimmed clip
-      vad_best_segment.json    # VAD-selected bounds
-      ref_transcript.json      # faster-whisper transcript + confidence
-      pipeline_state.json      # lightweight run summary
+      ref_normalized.wav           # 16 kHz mono loudnorm
+      candidates/
+        candidate_00.wav           # top-N VAD candidates (trimmed)
+        candidate_01.wav
+        scores.json                # per-candidate whisper scores
+      best_segment.json            # winning segment bounds + score
+      ref_segment.wav              # 24 kHz final trimmed clip (ready for Qwen3)
+      ref_transcript.json          # faster-whisper transcript + confidence
+      pipeline_state.json          # lightweight run summary
   prompts/
-    <hash>_<model>_full.pkl    # cached voice clone prompt tensors
-    <hash>_<model>_xvec.pkl    # x-vector-only variant
+    <hash>_<model>_full_v1.pkl     # cached voice clone prompt tensors
+    <hash>_<model>_full_v1.meta.json  # provenance sidecar (readable without unpickling)
+    <hash>_<model>_xvec_v1.pkl     # x-vector-only variant
+    <hash>_<model>_xvec_v1.meta.json
   self-test/
-    self_test_ref.wav          # demo ref clip (downloaded once)
+    self_test_ref.wav              # demo ref clip (downloaded once)
 ```
 
 Re-running `synth` on the same reference is fast: stages 1–4 are all cache
@@ -150,9 +239,11 @@ unknown language) or want to iterate quickly. Quality is typically lower.
 
 ## Expressive synthesis tips
 
-Qwen3-TTS understands punctuation and semantic context:
+Qwen3-TTS is steered by the text itself — punctuation and wording matter:
 
 - Use `...` for natural pauses.
 - Use `!` / `?` for emphasis / questions.
-- Use `--prompt-prefix` for style instructions, e.g.
+- Use `--style` for one-word delivery presets (`serious_doc`, `nature_doc`,
+  `excited`, `whisper`, `audiobook`, …). See `styles.yaml` for the full list.
+- Use `--prompt-prefix` for custom style instructions, e.g.
   `--prompt-prefix "Speak slowly and thoughtfully."`

@@ -38,6 +38,10 @@ voice-split:  ## Run voice-split. Usage: make voice-split ARGS='--url "..." --cl
 voice-clone:  ## Run voice-clone. Usage: make voice-clone ARGS='synth --ref-audio /work/x.wav --text "Hello"'
 	./run voice-clone $(ARGS)
 
+.PHONY: voice-synth
+voice-synth:  ## Run voice-synth. Usage: make voice-synth ARGS='speak --voice <id> --text "Hello"'
+	./run voice-synth $(ARGS)
+
 # ── help ───────────────────────────────────────────────────────────────────────
 
 .PHONY: help

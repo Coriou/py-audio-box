@@ -1,0 +1,789 @@
+#!/usr/bin/env python3
+"""
+voice-synth.py — DevX-first synthesis rig built on cached voice-clone prompts.
+
+Sub-commands:
+  list-voices    List cached voice prompts available for synthesis
+  speak          Synthesise text from a cached voice prompt (with variants, QA, chunking)
+  design-voice   Create a reusable voice from a natural-language description
+                 (VoiceDesign → Clone workflow; needs the 1.7B-VoiceDesign model)
+
+Usage:
+  ./run voice-synth list-voices
+  ./run voice-synth speak --voice <id> --text "Hello, world"
+  ./run voice-synth speak --voice <id> --text-file /work/script.txt --variants 4
+  ./run voice-synth design-voice \\
+        --instruct "Calm male narrator, mid-40s, warm and unhurried" \\
+        --ref-text "The forest was silent except for the distant call of birds."
+"""
+
+import argparse
+import hashlib
+import json
+import os
+import pickle
+import re
+import subprocess
+import sys
+import textwrap
+import time
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Any
+
+import numpy as np
+import soundfile as sf
+import torch
+
+# ── constants ──────────────────────────────────────────────────────────────────
+
+DEFAULT_BASE_MODEL    = "Qwen/Qwen3-TTS-12Hz-0.6B-Base"
+DEFAULT_DESIGN_MODEL  = "Qwen/Qwen3-TTS-12Hz-1.7B-VoiceDesign"
+DEFAULT_WHISPER       = "small"
+PROMPT_SCHEMA_VERSION = 1   # must match voice-clone.py
+
+QWEN3_LANGUAGES = [
+    "Auto", "Chinese", "English", "Japanese", "Korean",
+    "German", "French", "Russian", "Portuguese", "Spanish", "Italian",
+]
+
+_LANGID_TO_QWEN: dict[str, str] = {
+    "zh": "Chinese",  "en": "English",    "ja": "Japanese",
+    "ko": "Korean",   "de": "German",     "fr": "French",
+    "ru": "Russian",  "pt": "Portuguese", "es": "Spanish",
+    "it": "Italian",
+}
+
+# Silence (ms) inserted between auto-chunked sentences when concatenating
+CHUNK_SILENCE_MS = 300
+
+
+# ── tiny timing helper ─────────────────────────────────────────────────────────
+
+class _Timer:
+    def __init__(self, label: str) -> None:
+        self._label = label
+        self.elapsed = 0.0
+
+    def __enter__(self) -> "_Timer":
+        self._start = time.perf_counter()
+        return self
+
+    def __exit__(self, *_) -> None:
+        self.elapsed = time.perf_counter() - self._start
+        print(f"    ↳ {self._label}: {self.elapsed:.2f}s")
+
+
+# ── audio helpers ──────────────────────────────────────────────────────────────
+
+def get_duration_sf(path: Path) -> float:
+    info = sf.info(str(path))
+    return info.duration
+
+
+
+def concat_wavs_simple(wav_paths: list[Path], dest: Path,
+                        silence_ms: int = CHUNK_SILENCE_MS,
+                        sample_rate: int = 24_000) -> None:
+    """
+    Pure-numpy concatenation of WAV files with silence between them.
+    More reliable across ffmpeg versions for simple concat.
+    """
+    import soundfile as sf
+    chunks = []
+    silence = np.zeros(int(sample_rate * silence_ms / 1000.0), dtype=np.float32)
+    for i, p in enumerate(wav_paths):
+        data, sr = sf.read(str(p), dtype="float32")
+        if i > 0:
+            chunks.append(silence)
+        chunks.append(data)
+    combined = np.concatenate(chunks)
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    sf.write(str(dest), combined, sample_rate)
+
+
+# ── text chunking ──────────────────────────────────────────────────────────────
+
+def chunk_text(text: str, max_chars: int = 200) -> list[str]:
+    """
+    Split text into sentence-level chunks for chunked synthesis.
+    Sentences are split at ". ", "! ", "? " boundaries.
+    Chunks longer than max_chars are further split at commas.
+    """
+    # Split on sentence-ending punctuation followed by space or end of string
+    sentences = re.split(r'(?<=[.!?])\s+', text.strip())
+    chunks: list[str] = []
+    for sent in sentences:
+        sent = sent.strip()
+        if not sent:
+            continue
+        if len(sent) <= max_chars:
+            chunks.append(sent)
+        else:
+            # Split long sentences at commas
+            sub = re.split(r',\s+', sent)
+            buf = ""
+            for part in sub:
+                part = part.strip()
+                if buf and len(buf) + len(part) + 2 > max_chars:
+                    chunks.append(buf)
+                    buf = part
+                else:
+                    buf = (buf + ", " + part) if buf else part
+            if buf:
+                chunks.append(buf)
+    return chunks or [text]
+
+
+# ── language detection ─────────────────────────────────────────────────────────
+
+def detect_language_from_text(text: str) -> str:
+    try:
+        import langid  # type: ignore
+        iso, _ = langid.classify(text)
+        return _LANGID_TO_QWEN.get(iso, "English")
+    except Exception:
+        return "English"
+
+
+def resolve_language(flag: str, ref_language: str, text: str) -> str:
+    if flag != "Auto":
+        return flag
+    if len(text.split()) >= 3:
+        detected = detect_language_from_text(text)
+        if detected in QWEN3_LANGUAGES and detected != "Auto":
+            return detected
+    if ref_language and ref_language not in ("Auto", ""):
+        return ref_language
+    return "English"
+
+
+# ── style presets ──────────────────────────────────────────────────────────────
+
+def load_style_presets(styles_path: Path) -> dict[str, dict[str, str]]:
+    if not styles_path.exists():
+        return {}
+    try:
+        import yaml  # type: ignore
+        with open(styles_path) as fh:
+            return yaml.safe_load(fh) or {}
+    except Exception as exc:
+        print(f"  WARNING: could not load styles.yaml: {exc}", file=sys.stderr)
+        return {}
+
+
+def apply_style(
+    text: str,
+    style_name: str | None,
+    styles_path: Path,
+    prompt_prefix: str | None = None,
+    prompt_suffix: str | None = None,
+) -> str:
+    style_prefix = style_suffix = ""
+    if style_name:
+        presets = load_style_presets(styles_path)
+        if style_name not in presets:
+            available = ", ".join(sorted(presets)) or "(none)"
+            print(f"  WARNING: style '{style_name}' not found. Available: {available}",
+                  file=sys.stderr)
+        else:
+            style_prefix = presets[style_name].get("prefix", "")
+            style_suffix = presets[style_name].get("suffix", "")
+
+    parts = []
+    if style_prefix:
+        parts.append(style_prefix.rstrip())
+    if prompt_prefix:
+        parts.append(prompt_prefix.strip())
+    parts.append(text)
+    if prompt_suffix:
+        parts.append(prompt_suffix.strip())
+    if style_suffix:
+        parts.append(style_suffix.strip())
+    return " ".join(p for p in parts if p)
+
+
+# ── model loading ──────────────────────────────────────────────────────────────
+
+def load_tts_model(model_name: str, num_threads: int):
+    from qwen_tts import Qwen3TTSModel
+    torch.set_num_threads(num_threads)
+    print(f"  loading {model_name} (cpu, float32, threads={num_threads}) …")
+    return Qwen3TTSModel.from_pretrained(
+        model_name,
+        device_map="cpu",
+        dtype=torch.float32,
+    )
+
+
+def synthesise(
+    text: str,
+    language: str,
+    model,
+    prompt,
+    seed: int | None,
+    gen_kwargs: dict[str, Any] | None = None,
+) -> tuple[np.ndarray, int]:
+    if seed is not None:
+        torch.manual_seed(seed)
+    with _Timer("generate_voice_clone"):
+        wavs, sr = model.generate_voice_clone(
+            text=text,
+            language=language,
+            voice_clone_prompt=prompt,
+            **(gen_kwargs or {}),
+        )
+    return wavs[0], sr
+
+
+# ── QA: whisper-based intelligibility check ────────────────────────────────────
+
+def _word_overlap_ratio(ref_words: list[str], hyp_words: list[str]) -> float:
+    """Fraction of ref words found in hyp (order-insensitive, lower-cased)."""
+    if not ref_words:
+        return 0.0
+    hyp_set = set(hyp_words)
+    matched = sum(1 for w in ref_words if w in hyp_set)
+    return matched / len(ref_words)
+
+
+def qa_transcribe(wav_path: Path, whisper_model: str, num_threads: int,
+                  target_text: str) -> dict[str, Any]:
+    """
+    Run faster-whisper on *wav_path* and return a QA dict:
+      transcript, intelligibility (word overlap), duration_sec.
+    """
+    try:
+        from faster_whisper import WhisperModel
+        wm = WhisperModel(whisper_model, device="cpu",
+                          compute_type="int8", cpu_threads=num_threads)
+        segs, _info = wm.transcribe(str(wav_path), beam_size=2, vad_filter=True)
+        transcript = " ".join(s.text.strip() for s in segs).strip()
+    except Exception as exc:
+        return {"transcript": "", "intelligibility": 0.0,
+                "duration_sec": 0.0, "error": str(exc)}
+
+    ref_words = re.findall(r'\w+', target_text.lower())
+    hyp_words = re.findall(r'\w+', transcript.lower())
+    overlap   = _word_overlap_ratio(ref_words, hyp_words)
+    duration  = get_duration_sf(wav_path)
+
+    return {
+        "transcript":     transcript,
+        "intelligibility": round(overlap, 4),
+        "duration_sec":   round(duration, 3),
+    }
+
+
+# ── prompts directory helpers ──────────────────────────────────────────────────
+
+def list_prompts(cache: Path) -> list[dict[str, Any]]:
+    """
+    Scan /cache/voice-clone/prompts/ for .meta.json files and return a
+    list of voice dictionaries, sorted by creation date (newest first).
+    """
+    prompts_dir = cache / "voice-clone" / "prompts"
+    if not prompts_dir.exists():
+        return []
+
+    voices = []
+    for meta_file in sorted(prompts_dir.glob("*.meta.json")):
+        stem = meta_file.stem  # e.g. abc123_Qwen_..._full_v1
+        pkl  = meta_file.with_suffix(".pkl")
+        try:
+            with open(meta_file) as fh:
+                m = json.load(fh)
+        except Exception:
+            continue
+        voices.append({
+            "id":          stem,
+            "pkl":         str(pkl) if pkl.exists() else "(missing)",
+            "pkl_exists":  pkl.exists(),
+            "model":       m.get("model", "?"),
+            "mode":        m.get("mode", "?"),
+            "ref_hash":    m.get("ref_hash", "?"),
+            "transcript":  m.get("transcript", ""),
+            "ref_language": m.get("ref_language_detected", "?"),
+            "duration_sec": m.get("segment_duration_sec", 0.0),
+            "created_at":  m.get("created_at", ""),
+            "schema_version": m.get("schema_version", "?"),
+        })
+
+    voices.sort(key=lambda v: v["created_at"], reverse=True)
+    return voices
+
+
+def resolve_voice(voice_arg: str, cache: Path) -> tuple[str, str]:
+    """
+    Given --voice <arg>, return (pkl_path, voice_id).
+    Accepts:
+      - absolute path ending in .pkl
+      - bare ID (stem of a pkl in the prompts dir)
+      - short prefix of an ID (first unambiguous match)
+    """
+    prompts_dir = cache / "voice-clone" / "prompts"
+
+    # Direct path
+    if voice_arg.endswith(".pkl"):
+        p = Path(voice_arg)
+        if p.exists():
+            return str(p), p.stem
+        print(f"ERROR: pkl not found: {voice_arg}", file=sys.stderr)
+        sys.exit(1)
+
+    # Full or prefix match against meta IDs
+    all_ids = [m.stem for m in prompts_dir.glob("*.meta.json")] if prompts_dir.exists() else []
+    matches = [i for i in all_ids if i == voice_arg or i.startswith(voice_arg)]
+    if len(matches) == 1:
+        pkl = prompts_dir / f"{matches[0]}.pkl"
+        if not pkl.exists():
+            print(f"ERROR: pkl missing for voice '{matches[0]}'", file=sys.stderr)
+            sys.exit(1)
+        return str(pkl), matches[0]
+    if len(matches) == 0:
+        print(
+            f"ERROR: no voice found matching '{voice_arg}'.\n"
+            f"  Run `./run voice-synth list-voices` to see available voices.",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+    # Ambiguous
+    print(
+        f"ERROR: ambiguous voice prefix '{voice_arg}' — matches:\n"
+        + "\n".join(f"  {m}" for m in matches),
+        file=sys.stderr,
+    )
+    sys.exit(1)
+
+
+# ── sub-command implementations ────────────────────────────────────────────────
+
+def cmd_list_voices(args) -> None:
+    cache  = Path(args.cache)
+    voices = list_prompts(cache)
+
+    if not voices:
+        print("No cached voice prompts found.")
+        print(f"  Run: ./run voice-clone prepare-ref --ref-audio /work/voice.wav")
+        return
+
+    print(f"\n{'ID':<52}  {'Model':<30}  {'Lang':<10}  {'Dur':>5}  Created")
+    print("-" * 120)
+    for v in voices:
+        short_id = v["id"]
+        # Abbreviate long IDs: first 20 chars + … + last 20 chars
+        if len(short_id) > 50:
+            short_id = short_id[:22] + "…" + short_id[-26:]
+        model_short = v["model"].replace("Qwen_", "").replace("-Base", "")
+        created = v["created_at"][:10] if v["created_at"] else "?"
+        status  = "" if v["pkl_exists"] else " [missing pkl]"
+        print(
+            f"{short_id:<52}  {model_short:<30}  {v['ref_language']:<10}  "
+            f"{v['duration_sec']:>4.1f}s  {created}{status}"
+        )
+        if v["transcript"]:
+            preview = textwrap.shorten(v["transcript"], width=70, placeholder="…")
+            print(f"  {preview}")
+    print(f"\n{len(voices)} voice(s) found in {cache}/voice-clone/prompts/")
+
+
+def cmd_speak(args) -> None:
+    cache   = Path(args.cache)
+    out_dir = Path(args.out)
+
+    # Resolve prompt
+    pkl_path, voice_id = resolve_voice(args.voice, cache)
+    print(f"\n  voice: {voice_id}")
+
+    # Load meta (for ref_language, etc.)
+    meta_path = Path(pkl_path).with_suffix(".meta.json")
+    voice_meta: dict = {}
+    if meta_path.exists():
+        with open(meta_path) as fh:
+            voice_meta = json.load(fh)
+
+    ref_language = voice_meta.get("ref_language_detected", "English")
+
+    # Resolve text
+    if args.text_file:
+        raw_text = Path(args.text_file).read_text(encoding="utf-8").strip()
+    else:
+        raw_text = args.text or ""
+
+    if not raw_text:
+        print("ERROR: no text provided (use --text or --text-file)", file=sys.stderr)
+        sys.exit(1)
+
+    # Apply style
+    styles_path = Path(__file__).parent / "styles.yaml"
+    styled_text = apply_style(
+        raw_text,
+        style_name=args.style,
+        styles_path=styles_path,
+    )
+
+    # Resolve language
+    language = resolve_language(args.language, ref_language, raw_text)
+    print(f"  language: {language}  (ref detected: {ref_language})")
+
+    # Chunk if requested
+    if args.chunk:
+        text_chunks = chunk_text(styled_text)
+        print(f"  auto-chunked into {len(text_chunks)} piece(s)")
+    else:
+        text_chunks = [styled_text]
+
+    # Generation kwargs
+    gen_kwargs: dict[str, Any] = {}
+    if args.temperature is not None:
+        gen_kwargs["temperature"] = args.temperature
+    if args.top_p is not None:
+        gen_kwargs["top_p"] = args.top_p
+    if args.repetition_penalty is not None:
+        gen_kwargs["repetition_penalty"] = args.repetition_penalty
+    if args.max_new_tokens is not None:
+        gen_kwargs["max_new_tokens"] = args.max_new_tokens
+
+    # Load model + prompt
+    t0    = time.perf_counter()
+    model = load_tts_model(args.model, args.threads)
+    with open(pkl_path, "rb") as fh:
+        prompt = pickle.load(fh)
+    load_sec = time.perf_counter() - t0
+
+    # Output directory
+    ts      = datetime.now().strftime("%Y%m%d_%H%M%S")
+    run_dir = out_dir / f"voice_synth_{ts}"
+    run_dir.mkdir(parents=True, exist_ok=True)
+
+    n_variants = max(1, args.variants)
+    all_takes: list[dict] = []
+
+    for variant in range(n_variants):
+        seed = (args.seed + variant) if args.seed is not None else None
+        take_label = f"take_{variant + 1:02d}"
+
+        if len(text_chunks) == 1:
+            # Single chunk — no concat needed
+            t_synth = time.perf_counter()
+            wav, sr = synthesise(text_chunks[0], language, model, prompt, seed, gen_kwargs)
+            synth_sec = time.perf_counter() - t_synth
+
+            wav_path = run_dir / f"{take_label}.wav"
+            sf.write(str(wav_path), wav, sr)
+            duration = len(wav) / sr
+
+        else:
+            # Multi-chunk: synthesise each, concat
+            chunk_wavs: list[Path] = []
+            synth_sec = 0.0
+            sr = 24_000
+            for ci, chunk in enumerate(text_chunks):
+                t_synth = time.perf_counter()
+                w, sr   = synthesise(chunk, language, model, prompt, seed, gen_kwargs)
+                synth_sec += time.perf_counter() - t_synth
+                chunk_path = run_dir / f"{take_label}_chunk{ci:02d}.wav"
+                sf.write(str(chunk_path), w, sr)
+                chunk_wavs.append(chunk_path)
+
+            wav_path = run_dir / f"{take_label}.wav"
+            concat_wavs_simple(chunk_wavs, wav_path, sample_rate=sr)
+
+            # Clean up chunk files
+            for cp in chunk_wavs:
+                cp.unlink(missing_ok=True)
+
+            wav_data, _sr = sf.read(str(wav_path), dtype="float32")
+            duration = len(wav_data) / sr
+
+        rtf = synth_sec / duration if duration > 0 else 0.0
+        take_info: dict[str, Any] = {
+            "take":        take_label,
+            "wav":         str(wav_path),
+            "seed":        seed,
+            "duration_sec": round(duration, 3),
+            "synth_sec":   round(synth_sec, 2),
+            "rtf":         round(rtf, 3),
+        }
+
+        # QA pass
+        if args.qa:
+            print(f"  QA transcribing {take_label} …")
+            qa = qa_transcribe(wav_path, args.whisper_model,
+                               args.threads, raw_text)
+            take_info["qa"] = qa
+            intel = qa.get("intelligibility", 0.0)
+            print(f"    intelligibility: {intel:.0%}  transcript: {qa.get('transcript', '')!r}")
+
+        all_takes.append(take_info)
+        print(
+            f"  {take_label}: {duration:.1f}s  RTF: {rtf:.2f}x  seed={seed}  "
+            f"→ {wav_path.name}"
+        )
+
+    # If QA was run, print ranked scoreboard
+    if args.qa and len(all_takes) > 1:
+        ranked = sorted(all_takes, key=lambda t: t.get("qa", {}).get("intelligibility", 0.0),
+                        reverse=True)
+        print("\n  QA scoreboard (by intelligibility):")
+        for rank, t in enumerate(ranked, 1):
+            intel = t.get("qa", {}).get("intelligibility", 0.0)
+            print(f"    #{rank} {t['take']}  intelligibility={intel:.0%}  "
+                  f"dur={t['duration_sec']:.1f}s")
+
+    # Write takes meta
+    total_sec = time.perf_counter() - t0
+    takes_meta = {
+        "app":            "voice-synth",
+        "created_at":     datetime.now(timezone.utc).isoformat(),
+        "voice_id":       voice_id,
+        "model":          args.model,
+        "language":       language,
+        "ref_language":   ref_language,
+        "original_text":  raw_text,
+        "styled_text":    styled_text,
+        "style":          args.style,
+        "generation_kwargs": gen_kwargs,
+        "chunked":        args.chunk,
+        "n_chunks":       len(text_chunks),
+        "variants":       n_variants,
+        "load_sec":       round(load_sec, 2),
+        "total_sec":      round(total_sec, 2),
+        "takes":          all_takes,
+    }
+    takes_meta_path = run_dir / "takes.meta.json"
+    with open(takes_meta_path, "w") as fh:
+        json.dump(takes_meta, fh, indent=2)
+
+    print(f"\nDone  →  {run_dir}")
+    print(f"  {n_variants} take(s) written   total: {total_sec:.1f}s")
+    print(f"  meta: {takes_meta_path}")
+
+
+def cmd_design_voice(args) -> None:
+    """
+    VoiceDesign → Clone workflow.
+
+    1. Load the VoiceDesign model.
+    2. Synthesise a short ref clip using instruct + ref_text.
+    3. Save the clip to /cache/voice-clone/designed_refs/<hash>/.
+    4. Load the Base clone model and build a reusable voice_clone_prompt.
+    5. Write prompt .pkl + .meta.json alongside existing prompts so
+       voice-synth speak can use it immediately.
+    """
+    cache   = Path(args.cache)
+    out_dir = Path(args.out)
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    ref_text    = args.ref_text.strip()
+    instruct    = args.instruct.strip()
+    language    = args.language if args.language != "Auto" else "English"
+
+    # ── 1. Generate design reference ──────────────────────────────────────────
+    print(f"\n==> [1/3] generate VoiceDesign reference clip")
+    print(f"  design model: {args.design_model}")
+    print(f"  instruct:     {instruct!r}")
+    print(f"  ref_text:     {ref_text!r}")
+    print(f"  language:     {language}")
+    print(f"  NOTE: VoiceDesign model is 1.7B — this may be slow on CPU.")
+
+    t0           = time.perf_counter()
+    design_model = load_tts_model(args.design_model, args.threads)
+    torch.set_num_threads(args.threads)
+
+    with _Timer("generate_voice_design"):
+        wavs, sr = design_model.generate_voice_design(
+            text=ref_text,
+            language=language,
+            instruct=instruct,
+        )
+    design_wav = wavs[0]
+    design_sec = time.perf_counter() - t0
+    duration   = len(design_wav) / sr
+    print(f"  designed ref: {duration:.1f}s  ({design_sec:.1f}s elapsed)")
+
+    # ── 2. Save designed ref to cache ─────────────────────────────────────────
+    print(f"\n==> [2/3] cache designed reference audio")
+    content_hash = hashlib.sha256(
+        (instruct + "|" + ref_text + "|" + language).encode()
+    ).hexdigest()[:16]
+
+    design_dir = cache / "voice-clone" / "designed_refs" / content_hash
+    design_dir.mkdir(parents=True, exist_ok=True)
+
+    design_wav_path = design_dir / "design_ref.wav"
+    sf.write(str(design_wav_path), design_wav, sr)
+    with open(design_dir / "design_meta.json", "w") as fh:
+        json.dump(
+            {
+                "content_hash": content_hash,
+                "instruct":     instruct,
+                "ref_text":     ref_text,
+                "language":     language,
+                "design_model": args.design_model,
+                "duration_sec": round(duration, 3),
+                "created_at":   datetime.now(timezone.utc).isoformat(),
+            },
+            fh, indent=2,
+        )
+    print(f"  saved → {design_wav_path}")
+    del design_model  # free memory before loading clone model
+
+    # ── 3. Build clone prompt ─────────────────────────────────────────────────
+    print(f"\n==> [3/3] build voice-clone prompt from designed ref")
+    print(f"  clone model: {args.clone_model}")
+
+    clone_model = load_tts_model(args.clone_model, args.threads)
+    model_tag   = getattr(clone_model, "name_or_path", args.clone_model).replace("/", "_")
+    stem        = f"{content_hash}_{model_tag}_designed_full_v{PROMPT_SCHEMA_VERSION}"
+    prompts_dir = cache / "voice-clone" / "prompts"
+    prompts_dir.mkdir(parents=True, exist_ok=True)
+    prompt_path = prompts_dir / f"{stem}.pkl"
+    meta_path   = prompts_dir / f"{stem}.meta.json"
+
+    with _Timer("create_voice_clone_prompt"):
+        prompt = clone_model.create_voice_clone_prompt(
+            ref_audio=(design_wav, sr),
+            ref_text=ref_text,
+            x_vector_only_mode=False,
+        )
+
+    with open(prompt_path, "wb") as fh:
+        pickle.dump(prompt, fh)
+
+    with open(meta_path, "w") as fh:
+        json.dump(
+            {
+                "prompt_id":               stem,
+                "schema_version":          PROMPT_SCHEMA_VERSION,
+                "model":                   model_tag,
+                "mode":                    "designed_full",
+                "ref_hash":                content_hash,
+                "transcript":              ref_text,
+                "ref_language_detected":   language,
+                "ref_language_probability": 1.0,
+                "instruct":                instruct,
+                "design_model":            args.design_model,
+                "segment_duration_sec":    round(duration, 3),
+                "created_at":              datetime.now(timezone.utc).isoformat(),
+            },
+            fh, indent=2,
+        )
+
+    total_sec = time.perf_counter() - t0
+    print(f"\nDone  ({total_sec:.1f}s)")
+    print(f"  voice ID:  {stem}")
+    print(f"  prompt:    {prompt_path}")
+    print(f"  use with:  ./run voice-synth speak --voice {stem[:22]} ...")
+
+
+# ── argument parser ────────────────────────────────────────────────────────────
+
+def _add_common(p: argparse.ArgumentParser) -> None:
+    p.add_argument("--model", default=DEFAULT_BASE_MODEL,
+                   help="Qwen3-TTS Base model (HF repo ID or local path)")
+    p.add_argument("--whisper-model", default=DEFAULT_WHISPER,
+                   help="faster-whisper model for QA transcription")
+    p.add_argument("--language", default="Auto", choices=QWEN3_LANGUAGES,
+                   help="Synthesis language; Auto = detect from text then ref")
+    p.add_argument("--threads", type=int, default=8,
+                   help="CPU threads for torch + whisper")
+    p.add_argument("--seed", type=int, default=None,
+                   help="Base random seed (variant i uses seed+i)")
+    p.add_argument("--cache", default="/cache", help="Persistent cache directory")
+
+
+def build_parser() -> argparse.ArgumentParser:
+    ap = argparse.ArgumentParser(
+        description="voice-synth — synthesise from cached voice-clone prompts",
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+    )
+    sub = ap.add_subparsers(dest="command", required=True)
+
+    # ── list-voices ────────────────────────────────────────────────────────────
+    lv = sub.add_parser("list-voices",
+                        help="List cached voice prompts",
+                        formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+    lv.add_argument("--cache", default="/cache")
+
+    # ── speak ──────────────────────────────────────────────────────────────────
+    sp = sub.add_parser(
+        "speak",
+        help="Synthesise text from a cached voice prompt",
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+    )
+    sp.add_argument("--voice", required=True,
+                    help="Voice ID (or path to .pkl) from list-voices")
+    sp.add_argument("--text",      default=None,
+                    help="Text to synthesise")
+    sp.add_argument("--text-file", default=None, metavar="FILE",
+                    help="Read synthesis text from a file")
+    sp.add_argument("--style",     default=None, metavar="PRESET",
+                    help="Style preset from styles.yaml")
+    sp.add_argument("--variants",  type=int, default=1,
+                    help="Number of takes to generate with different seeds")
+    sp.add_argument("--chunk",     action="store_true",
+                    help="Auto-chunk long text into sentences and concatenate output")
+    sp.add_argument("--qa",        action="store_true",
+                    help="Run whisper QA on each take and print intelligibility score")
+    # Generation knobs
+    sp.add_argument("--temperature",        type=float, default=None)
+    sp.add_argument("--top-p",              type=float, default=None, dest="top_p")
+    sp.add_argument("--repetition-penalty", type=float, default=None,
+                    dest="repetition_penalty")
+    sp.add_argument("--max-new-tokens",     type=int,   default=None,
+                    dest="max_new_tokens")
+    sp.add_argument("--out", default="/work",
+                    help="Output directory")
+    _add_common(sp)
+
+    # ── design-voice ───────────────────────────────────────────────────────────
+    dv = sub.add_parser(
+        "design-voice",
+        help="Create a voice from natural language (VoiceDesign → Clone; slow on CPU)",
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+    )
+    dv.add_argument("--instruct",     required=True,
+                    help="Natural language voice description (persona, style, timbre)")
+    dv.add_argument("--ref-text",     required=True,
+                    help="Script text spoken in the designed voice (short, ~1–2 sentences)")
+    dv.add_argument("--design-model", default=DEFAULT_DESIGN_MODEL,
+                    help="Qwen3-TTS VoiceDesign model")
+    dv.add_argument("--clone-model",  default=DEFAULT_BASE_MODEL,
+                    help="Qwen3-TTS Base model for building the clone prompt")
+    dv.add_argument("--out", default="/work",
+                    help="Output directory for the designed ref clip")
+    _add_common(dv)
+
+    return ap
+
+
+# ── entry point ────────────────────────────────────────────────────────────────
+
+def main() -> None:
+    ap   = build_parser()
+    args = ap.parse_args()
+
+    os.environ.setdefault("OMP_NUM_THREADS", str(getattr(args, "threads", 8)))
+
+    cache = Path(getattr(args, "cache", "/cache"))
+    hub_dir = cache / "torch" / "hub"
+    hub_dir.mkdir(parents=True, exist_ok=True)
+    torch.hub.set_dir(str(hub_dir))
+
+    match args.command:
+        case "list-voices":
+            cmd_list_voices(args)
+        case "speak":
+            if not args.text and not args.text_file:
+                ap.error("speak requires --text or --text-file")
+            cmd_speak(args)
+        case "design-voice":
+            cmd_design_voice(args)
+        case _:
+            ap.print_help()
+            sys.exit(1)
+
+
+if __name__ == "__main__":
+    main()

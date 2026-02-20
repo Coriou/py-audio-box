@@ -1,0 +1,47 @@
+# styles.yaml — voice-synth style presets (mirrors voice-clone/styles.yaml)
+#
+# Used by: ./run voice-synth speak --voice <id> --text "..." --style <preset>
+
+# ── Narration / documentary ────────────────────────────────────────────────────
+
+serious_doc:
+  prefix: "[Calm, steady, documentary narration voice]"
+  suffix: ""
+
+nature_doc:
+  prefix: "[Quiet, reverent, David Attenborough-style documentary narration]"
+  suffix: ""
+
+# ── Energy / emotion ───────────────────────────────────────────────────────────
+
+excited:
+  prefix: "[Very excited, energetic, smiling voice]"
+  suffix: ""
+
+energetic:
+  prefix: "[High-energy, upbeat, enthusiastic delivery]"
+  suffix: ""
+
+warm:
+  prefix: "[Warm, friendly, conversational tone]"
+  suffix: ""
+
+# ── Quiet / intimate ──────────────────────────────────────────────────────────
+
+whisper:
+  prefix: "[Soft whisper, intimate tone, close-mic feel]"
+  suffix: ""
+
+calm:
+  prefix: "[Calm, relaxed, measured pace]"
+  suffix: ""
+
+# ── Formal / professional ─────────────────────────────────────────────────────
+
+formal:
+  prefix: "[Clear, professional, authoritative voice]"
+  suffix: ""
+
+audiobook:
+  prefix: "[Clear audiobook narration, expressive but measured]"
+  suffix: ""
