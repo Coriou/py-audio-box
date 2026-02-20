@@ -1,14 +1,16 @@
-# styles.yaml — voice-clone style presets
+# styles.yaml — shared style presets for voice-clone and voice-synth
 #
 # Each preset expands to a prefix and/or suffix prepended/appended to the
 # synthesis text before it is sent to Qwen3-TTS.  Both fields are optional.
 #
 # Usage:
-#   ./run voice-clone synth --ref-audio /work/voice.wav \
-#         --text "Hello there." --style serious_doc
+#   ./run voice-clone synth --voice my-voice --text "Hello." --style serious_doc
+#   ./run voice-synth  speak --voice my-voice --text "Hello." --style serious_doc
 #
 # The final composed text is:
 #   <style prefix> <--prompt-prefix> <text> <--prompt-suffix> <style suffix>
+#
+# Add your own presets below — they are available to both apps immediately.
 
 # ── Narration / documentary ────────────────────────────────────────────────────
 

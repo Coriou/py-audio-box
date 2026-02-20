@@ -23,7 +23,6 @@ import json
 import os
 import pickle
 import re
-import subprocess
 import sys
 import textwrap
 import time
@@ -35,84 +34,28 @@ import numpy as np
 import soundfile as sf
 import torch
 
+# ── shared lib ─────────────────────────────────────────────────────────────────
+# All helpers common to voice-synth and voice-clone live in lib/.
+_LIB = str(Path(__file__).resolve().parent.parent.parent / "lib")
+if _LIB not in sys.path:
+    sys.path.insert(0, _LIB)
+
+from tts import (  # noqa: E402  (import after path setup)
+    DEFAULT_TTS_MODEL, DEFAULT_DESIGN_MODEL, DEFAULT_WHISPER,
+    PROMPT_SCHEMA_VERSION, QWEN3_LANGUAGES,
+    estimate_max_new_tokens,
+    detect_language_from_text, resolve_language,
+    ctranslate2_device, cuda_ctranslate2_compute_type,
+    load_tts_model, synthesise,
+    Timer,
+)
+from audio import get_duration  # noqa: E402
+from voices import VoiceRegistry  # noqa: E402
+
 # ── constants ──────────────────────────────────────────────────────────────────
-
-DEFAULT_BASE_MODEL    = "Qwen/Qwen3-TTS-12Hz-0.6B-Base"
-DEFAULT_DESIGN_MODEL  = "Qwen/Qwen3-TTS-12Hz-1.7B-VoiceDesign"
-DEFAULT_WHISPER       = "small"
-PROMPT_SCHEMA_VERSION = 1   # must match voice-clone.py
-
-# Hard ceiling on generated tokens.  At 12 Hz this allows ~341 s of audio,
-# preventing runaway generation when EOS is unreliable on CPU.
-MAX_NEW_TOKENS_DEFAULT = 4096
-
-# Audio synthesis codec rate — used to estimate a tight per-request token budget
-# so we don't burn CPU time approaching the flat 4096 ceiling for short texts.
-AUDIO_TOKENS_PER_SEC = 12      # Qwen3-TTS codec tokens per second of output
-CHARS_PER_SECOND     = 13.0    # typical speaking rate (characters / second of speech)
-TOKEN_MARGIN         = 3.5     # safety headroom multiplier over the naive estimate
-
-# Empirical CPU-only throughput (tokens / wall-clock second).
-# Used only for ETA display and auto-timeout; does not affect the token budget.
-# Apple M-series Mac Mini (CPU-only): ~0.18 t/s.  Faster CPUs may do 0.3–0.6 t/s.
-CPU_TOKENS_PER_SEC   = 0.18
-
-QWEN3_LANGUAGES = [
-    "Auto", "Chinese", "English", "Japanese", "Korean",
-    "German", "French", "Russian", "Portuguese", "Spanish", "Italian",
-]
-
-_LANGID_TO_QWEN: dict[str, str] = {
-    "zh": "Chinese",  "en": "English",    "ja": "Japanese",
-    "ko": "Korean",   "de": "German",     "fr": "French",
-    "ru": "Russian",  "pt": "Portuguese", "es": "Spanish",
-    "it": "Italian",
-}
 
 # Silence (ms) inserted between auto-chunked sentences when concatenating
 CHUNK_SILENCE_MS = 300
-
-
-def estimate_max_new_tokens(text: str) -> int:
-    """
-    Return a tight token budget derived from text length.
-
-    For a typical short sentence (< 200 chars) this produces a ceiling that is
-    5-10× smaller than MAX_NEW_TOKENS_DEFAULT, cutting worst-case CPU generation
-    time proportionally.  Examples at 13 chars/s, 12 Hz, 3.5× margin:
-
-        100 chars  →  ~323 tokens  (~27 s ceiling)
-        158 chars  →  ~508 tokens  (~42 s ceiling)
-        400 chars  →  ~1 292 tokens (~108 s ceiling)
-
-    The hard ceiling MAX_NEW_TOKENS_DEFAULT still applies as a backstop.
-    """
-    est_seconds = max(3.0, len(text) / CHARS_PER_SECOND)
-    est_tokens  = int(est_seconds * AUDIO_TOKENS_PER_SEC * TOKEN_MARGIN)
-    return min(est_tokens, MAX_NEW_TOKENS_DEFAULT)
-
-
-# ── tiny timing helper ─────────────────────────────────────────────────────────
-
-class _Timer:
-    def __init__(self, label: str) -> None:
-        self._label = label
-        self.elapsed = 0.0
-
-    def __enter__(self) -> "_Timer":
-        self._start = time.perf_counter()
-        return self
-
-    def __exit__(self, *_) -> None:
-        self.elapsed = time.perf_counter() - self._start
-        print(f"    ↳ {self._label}: {self.elapsed:.2f}s")
-
-
-# ── audio helpers ──────────────────────────────────────────────────────────────
-
-def get_duration_sf(path: Path) -> float:
-    info = sf.info(str(path))
-    return info.duration
 
 
 
@@ -123,7 +66,6 @@ def concat_wavs_simple(wav_paths: list[Path], dest: Path,
     Pure-numpy concatenation of WAV files with silence between them.
     More reliable across ffmpeg versions for simple concat.
     """
-    import soundfile as sf
     chunks = []
     silence = np.zeros(int(sample_rate * silence_ms / 1000.0), dtype=np.float32)
     for i, p in enumerate(wav_paths):
@@ -169,265 +111,6 @@ def chunk_text(text: str, max_chars: int = 200) -> list[str]:
     return chunks or [text]
 
 
-# ── language detection ─────────────────────────────────────────────────────────
-
-def detect_language_from_text(text: str) -> str | None:
-    try:
-        import langid  # type: ignore
-        iso, _ = langid.classify(text)
-        return _LANGID_TO_QWEN.get(iso)  # None when unsupported
-    except Exception:
-        return None
-
-
-def resolve_language(flag: str, ref_language: str, text: str) -> str:
-    if flag != "Auto":
-        return flag
-    if len(text.split()) >= 3:
-        detected = detect_language_from_text(text)
-        if detected and detected in QWEN3_LANGUAGES and detected != "Auto":
-            return detected
-    if ref_language and ref_language not in ("Auto", ""):
-        return ref_language
-    return "English"
-
-
-# ── style presets ──────────────────────────────────────────────────────────────
-
-def load_style_presets(styles_path: Path) -> dict[str, dict[str, str]]:
-    if not styles_path.exists():
-        return {}
-    try:
-        import yaml  # type: ignore
-        with open(styles_path) as fh:
-            return yaml.safe_load(fh) or {}
-    except Exception as exc:
-        print(f"  WARNING: could not load styles.yaml: {exc}", file=sys.stderr)
-        return {}
-
-
-def apply_style(
-    text: str,
-    style_name: str | None,
-    styles_path: Path,
-    prompt_prefix: str | None = None,
-    prompt_suffix: str | None = None,
-) -> str:
-    style_prefix = style_suffix = ""
-    if style_name:
-        presets = load_style_presets(styles_path)
-        if style_name not in presets:
-            available = ", ".join(sorted(presets)) or "(none)"
-            print(f"  WARNING: style '{style_name}' not found. Available: {available}",
-                  file=sys.stderr)
-        else:
-            style_prefix = presets[style_name].get("prefix", "")
-            style_suffix = presets[style_name].get("suffix", "")
-
-    parts = []
-    if style_prefix:
-        parts.append(style_prefix.rstrip())
-    if prompt_prefix:
-        parts.append(prompt_prefix.strip())
-    parts.append(text)
-    if prompt_suffix:
-        parts.append(prompt_suffix.strip())
-    if style_suffix:
-        parts.append(style_suffix.strip())
-    return " ".join(p for p in parts if p)
-
-
-# ── dtype helper ──────────────────────────────────────────────────────────────
-
-_DTYPE_MAP: dict[str, torch.dtype] = {
-    "bfloat16": torch.bfloat16,
-    "float32":  torch.float32,
-    "float16":  torch.float16,
-}
-
-
-# ── device & dtype helpers ─────────────────────────────────────────────────────
-
-def _get_device() -> str:
-    """
-    Select the best available compute device.
-
-    Resolution order:
-      1. ``TORCH_DEVICE`` env var  — explicit override (e.g. ``"cpu"``, ``"cuda:0"``).
-                                     Set automatically by docker-compose.gpu.yml.
-      2. CUDA                      — when a GPU is present and torch was built with
-                                     CUDA support (i.e. the CUDA image variant).
-      3. CPU                       — universal fallback.
-    """
-    override = os.getenv("TORCH_DEVICE", "").strip()
-    if override:
-        return override
-    return "cuda" if torch.cuda.is_available() else "cpu"
-
-
-def _best_dtype(device: str, dtype_str: str) -> torch.dtype:
-    """
-    Resolve ``dtype_str`` to a concrete ``torch.dtype``.
-
-    When ``dtype_str == "auto"`` (the default):
-      - CPU              → ``float32``   (native; bfloat16 on CPU upcasts every
-                                          op to float32 internally — same compute
-                                          cost, extra cast overhead, no benefit)
-      - CUDA SM < 7.0    → ``float32``   (Maxwell SM 5.x / Pascal SM 6.0 have no
-                                          native FP16 compute units; FP16 ops run
-                                          in emulation and produce inf/NaN in deep
-                                          models — use float32 for correctness)
-      - CUDA SM 7.0–7.x  → ``float16``   (Volta / Turing, true FP16 tensor cores)
-      - CUDA SM ≥ 8.0    → ``bfloat16``  (Ampere, Ada Lovelace, Hopper …)
-
-    Explicit dtype strings ("bfloat16", "float32", "float16") are returned as-is.
-    """
-    if dtype_str != "auto":
-        return _DTYPE_MAP[dtype_str]
-    if not device.startswith("cuda"):
-        return torch.float32                    # CPU: float32 is fastest (no cast overhead)
-    idx = int(device.split(":")[-1]) if ":" in device else 0
-    major, minor = torch.cuda.get_device_capability(idx)
-    if major >= 8:
-        return torch.bfloat16                   # Ampere+: native bfloat16 tensor cores
-    if (major, minor) >= (7, 0):
-        return torch.float16                    # Volta/Turing: float16 tensor cores
-    return torch.float32                        # pre-Volta: fp16 emulation → NaN/overflow
-
-
-# ── model loading ──────────────────────────────────────────────────────────────
-
-def load_tts_model(model_name: str, num_threads: int, dtype_str: str = "auto"):
-    """
-    Load a Qwen3-TTS model, targeting the best available device.
-
-    dtype_str:
-      "auto" (default)  — float32 on CPU (native, no cast overhead); bfloat16 on
-                          CUDA Ampere+ (SM ≥ 8.0); float16 on older CUDA GPUs
-                          (Maxwell / Pascal / Volta / Turing).
-      "bfloat16"        — for CUDA SM ≥ 8.0 (Ampere+). On CPU this adds cast
-                          overhead without benefit; avoid unless testing.
-      "float32"         — safest and fastest on CPU. Also a useful debug fallback
-                          if you see NaN/quality issues on CUDA.
-      "float16"         — recommended for CUDA GPUs with SM < 8.0.
-
-    attn_implementation="sdpa" uses PyTorch's fused scaled-dot-product attention,
-    which is faster than the default "eager" path on both CPU and CUDA.
-    """
-    from qwen_tts import Qwen3TTSModel
-    device = _get_device()
-    dtype  = _best_dtype(device, dtype_str)
-    torch.set_num_threads(num_threads)
-    print(f"  loading {model_name} ({device}, {dtype}, threads={num_threads}) …")
-    return Qwen3TTSModel.from_pretrained(
-        model_name,
-        device_map=device,
-        dtype=dtype,
-        attn_implementation="sdpa",
-    )
-
-
-def synthesise(
-    text: str,
-    language: str,
-    model,
-    prompt,
-    seed: int | None,
-    gen_kwargs: dict[str, Any] | None = None,
-    timeout_s:  float | None = None,
-) -> tuple[np.ndarray, int]:
-    """
-    Generate speech.
-
-    Runs generation on a background thread so a progress heartbeat is printed
-    every 10 seconds.  Without this the call is completely silent for 30-60 min
-    on CPU-only inference, giving the false impression of a hang.
-
-    timeout_s: raise TimeoutError after this many wall-clock seconds.  Pass 0
-    to disable the timeout entirely.
-    """
-    import threading
-
-    HEARTBEAT_INTERVAL = 10  # seconds between progress lines
-
-    if seed is not None:
-        torch.manual_seed(seed)
-    kw = gen_kwargs or {}
-
-    budget = kw.get("max_new_tokens")
-    if isinstance(budget, int):
-        ceiling_s  = budget / AUDIO_TOKENS_PER_SEC
-        est_wall_s = budget / CPU_TOKENS_PER_SEC
-        est_wall_m = est_wall_s / 60
-        print(
-            f"  token budget : {budget} tokens  "
-            f"(audio ceiling ≈ {ceiling_s:.0f}s)",
-            flush=True,
-        )
-        print(
-            f"  CPU ETA      : ~{est_wall_m:.0f} min  "
-            f"(use GPU for fast inference — see README)",
-            flush=True,
-        )
-        if timeout_s is None:
-            # Auto-timeout: 4× the CPU ETA — generous, but prevents silent all-day hangs
-            timeout_s = est_wall_s * 4.0
-
-    # timeout_s == 0 means "no timeout"
-    effective_timeout = None if (timeout_s is not None and timeout_s <= 0) else timeout_s
-
-    result: list[Any]                  = [None]
-    exc:    list[BaseException | None] = [None]
-
-    def _worker() -> None:
-        try:
-            wavs, sr = model.generate_voice_clone(
-                text=text,
-                language=language,
-                voice_clone_prompt=prompt,
-                **kw,
-            )
-            result[0] = (wavs, sr)
-        except BaseException as e:  # noqa: BLE001
-            exc[0] = e
-
-    t_start = time.perf_counter()
-    thread  = threading.Thread(target=_worker, daemon=True, name="tts-generate")
-    thread.start()
-
-    while thread.is_alive():
-        thread.join(timeout=HEARTBEAT_INTERVAL)
-        if thread.is_alive():
-            elapsed = time.perf_counter() - t_start
-            print(f"  … still generating ({elapsed:.0f}s elapsed) …", flush=True)
-            if effective_timeout is not None and elapsed >= effective_timeout:
-                print(
-                    f"\n  ✗  Timeout: generation exceeded {effective_timeout:.0f}s "
-                    f"(4× CPU ETA).  Kill the container to free resources.",
-                    flush=True,
-                )
-                print(
-                    "     To run longer pass --timeout <seconds>, or 0 to disable.",
-                    flush=True,
-                )
-                print(
-                    "     For practical speeds, run on a CUDA GPU — see README.",
-                    flush=True,
-                )
-                raise TimeoutError(
-                    f"generate_voice_clone exceeded {effective_timeout:.0f}s wall-clock timeout."
-                )
-
-    elapsed = time.perf_counter() - t_start
-    print(f"    ↳ generate_voice_clone: {elapsed:.2f}s")
-
-    if exc[0] is not None:
-        raise exc[0]  # re-raise in the main thread
-
-    wavs, sr = result[0]
-    return wavs[0], sr
-
-
 # ── QA: whisper-based intelligibility check ────────────────────────────────────
 
 def _word_overlap_ratio(ref_words: list[str], hyp_words: list[str]) -> float:
@@ -439,39 +122,6 @@ def _word_overlap_ratio(ref_words: list[str], hyp_words: list[str]) -> float:
     return matched / len(ref_words)
 
 
-def _cuda_ctranslate2_compute_type() -> str:
-    """
-    Return the most efficient CTranslate2 compute_type for the current CUDA GPU.
-
-    CTranslate2 capability requirements:
-      float16  → SM 7.0+ (Volta and newer)
-      int8     → SM 6.1+ (Pascal and newer)
-      float32  → any device
-    """
-    cc = torch.cuda.get_device_capability()
-    if cc >= (7, 0):
-        return "float16"
-    if cc >= (6, 1):
-        return "int8"
-    return "float32"
-
-
-def _ctranslate2_device() -> str:
-    """
-    Return the device to use for CTranslate2 / faster-whisper.
-
-    CTranslate2 compiled with CUDA 12.x (cu124/cu126) only ships CUDA kernels
-    for Volta SM 7.0+.  Older GPUs will hit ``cudaErrorNoKernelImageForDevice``
-    at runtime.  Fall back to CPU for pre-Volta hardware.
-    """
-    device = _get_device()
-    if device.startswith("cuda") and torch.cuda.is_available():
-        cc = torch.cuda.get_device_capability()
-        if cc < (7, 0):
-            return "cpu"
-    return device
-
-
 def qa_transcribe(wav_path: Path, whisper_model: str, num_threads: int,
                   target_text: str) -> dict[str, Any]:
     """
@@ -481,8 +131,8 @@ def qa_transcribe(wav_path: Path, whisper_model: str, num_threads: int,
     """
     try:
         from faster_whisper import WhisperModel
-        device       = _ctranslate2_device()
-        compute_type = _cuda_ctranslate2_compute_type() if device.startswith("cuda") else "int8"
+        device       = ctranslate2_device()
+        compute_type = cuda_ctranslate2_compute_type() if device.startswith("cuda") else "int8"
         wm = WhisperModel(whisper_model, device=device,
                           compute_type=compute_type, cpu_threads=num_threads)
         segs, _info = wm.transcribe(str(wav_path), beam_size=2, vad_filter=True)
@@ -494,24 +144,13 @@ def qa_transcribe(wav_path: Path, whisper_model: str, num_threads: int,
     ref_words = re.findall(r'\w+', target_text.lower())
     hyp_words = re.findall(r'\w+', transcript.lower())
     overlap   = _word_overlap_ratio(ref_words, hyp_words)
-    duration  = get_duration_sf(wav_path)
+    duration  = get_duration(wav_path)
 
     return {
         "transcript":     transcript,
         "intelligibility": round(overlap, 4),
         "duration_sec":   round(duration, 3),
     }
-
-
-# ── voice registry ─────────────────────────────────────────────────────────────
-
-def _voice_registry(cache: Path):
-    """Lazily import VoiceRegistry from the shared lib."""
-    _lib = str(Path(__file__).resolve().parent.parent.parent / "lib")
-    if _lib not in sys.path:
-        sys.path.insert(0, _lib)
-    from voices import VoiceRegistry  # type: ignore
-    return VoiceRegistry(cache)
 
 
 # ── prompts directory helpers ──────────────────────────────────────────────────
@@ -534,7 +173,7 @@ def list_all_voices(cache: Path) -> list[dict[str, Any]]:
     seen_stems: set[str] = set()
 
     # 1. Named voices
-    reg = _voice_registry(cache)
+    reg = VoiceRegistry(cache)
     for v in reg.list_voices():
         slug    = v["slug"]
         ref     = v.get("ref") or {}
@@ -647,7 +286,7 @@ def resolve_voice(voice_arg: str, cache: Path, tone: str | None = None) -> tuple
         print(f"ERROR: pkl not found: {voice_arg}", file=sys.stderr)
         sys.exit(1)
 
-    reg = _voice_registry(cache)
+    reg = VoiceRegistry(cache)
 
     # 2. Exact named-voice slug
     if reg.exists(voice_arg):
@@ -750,7 +389,7 @@ def cmd_list_voices(args) -> None:
         print(f"\n\033[1mNAMED VOICES\033[0m  ({len(named)})")
         print(f"  {'NAME':<28}  {'LANG':<10}  {'DUR':>5}  {'PROMPTS':>7}  STATUS")
         print("  " + "-" * 72)
-        list_reg = _voice_registry(cache)
+        list_reg = VoiceRegistry(cache)
         for v in named:
             status = (
                 "\033[32mready\033[0m" if v["_ready"]
@@ -1001,7 +640,7 @@ def cmd_design_voice(args) -> None:
     t0           = time.perf_counter()
     design_model = load_tts_model(args.design_model, args.threads, args.dtype)
 
-    with _Timer("generate_voice_design"):
+    with Timer("generate_voice_design"):
         wavs, sr = design_model.generate_voice_design(
             text=ref_text,
             language=language,
@@ -1051,7 +690,7 @@ def cmd_design_voice(args) -> None:
     prompt_path = prompts_dir / f"{stem}.pkl"
     meta_path   = prompts_dir / f"{stem}.meta.json"
 
-    with _Timer("create_voice_clone_prompt"):
+    with Timer("create_voice_clone_prompt"):
         prompt = clone_model.create_voice_clone_prompt(
             ref_audio=(design_wav, sr),
             ref_text=ref_text,
@@ -1126,7 +765,7 @@ def cmd_design_voice(args) -> None:
 
 def _voice_reg(args):
     """Return a VoiceRegistry for the current cache."""
-    return _voice_registry(Path(args.cache))
+    return VoiceRegistry(Path(args.cache))
 
 
 def cmd_rename_voice(args) -> None:
@@ -1180,7 +819,7 @@ def cmd_import_voice(args) -> None:
 # ── argument parser ────────────────────────────────────────────────────────────
 
 def _add_common(p: argparse.ArgumentParser) -> None:
-    p.add_argument("--model", default=DEFAULT_BASE_MODEL,
+    p.add_argument("--model", default=DEFAULT_TTS_MODEL,
                    help="Qwen3-TTS Base model (HF repo ID or local path)")
     p.add_argument("--whisper-model", default=DEFAULT_WHISPER,
                    help="faster-whisper model for QA transcription")
@@ -1263,7 +902,7 @@ def build_parser() -> argparse.ArgumentParser:
                     help="Script text spoken in the designed voice (short, ~1–2 sentences)")
     dv.add_argument("--design-model", default=DEFAULT_DESIGN_MODEL,
                     help="Qwen3-TTS VoiceDesign model")
-    dv.add_argument("--clone-model",  default=DEFAULT_BASE_MODEL,
+    dv.add_argument("--clone-model",  default=DEFAULT_TTS_MODEL,
                     help="Qwen3-TTS Base model for building the clone prompt")
     dv.add_argument("--out", default="/work",
                     help="Output directory for the designed ref clip")

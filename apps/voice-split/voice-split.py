@@ -30,16 +30,17 @@ import sys
 from pathlib import Path
 
 import torch
-import torchaudio
 import yt_dlp
 
-# ── constants ─────────────────────────────────────────────────────────────────
+# ── shared lib ─────────────────────────────────────────────────────────────────
+_LIB = str(Path(__file__).resolve().parent.parent.parent / "lib")
+if _LIB not in sys.path:
+    sys.path.insert(0, _LIB)
 
-VOICE_AF = (
-    "highpass=f=80,lowpass=f=8000,"
-    "afftdn=nf=-25,"
-    "compand=attacks=0:decays=0.25:points=-90/-90|-35/-18|-10/-8|0/-6"
+from audio import (  # noqa: E402  (import after path setup)
+    VOICE_AF, get_duration, trim_audio_copy, extract_chunk,
 )
+from vad import load_silero, run_silero  # noqa: E402
 
 # ── yt-dlp helpers ────────────────────────────────────────────────────────────
 
@@ -107,20 +108,7 @@ def download_audio(url: str, dl_cache: Path, video_id: str, cookies: str | None 
     return target
 
 
-# ── audio helpers ─────────────────────────────────────────────────────────────
-
-def get_duration(path: Path) -> float:
-    """Return audio duration in seconds via ffprobe."""
-    r = subprocess.run(
-        [
-            "ffprobe", "-v", "error",
-            "-show_entries", "format=duration",
-            "-of", "json", str(path),
-        ],
-        capture_output=True, text=True, check=True,
-    )
-    return float(json.loads(r.stdout)["format"]["duration"])
-
+# ── timestamp parsing ─────────────────────────────────────────────────────────
 
 def parse_timestamp(s: str) -> float:
     """
@@ -147,111 +135,6 @@ def parse_timestamp(s: str) -> float:
         "Use seconds (90 / 90.5), MM:SS (1:30), or HH:MM:SS (1:02:30)."
     )
 
-
-def trim_audio(audio: Path, start_sec: float, end_sec: float, dest: Path) -> Path:
-    """
-    Trim audio to [start_sec, end_sec] via ffmpeg stream copy (no re-encode).
-    Result is cached — re-runs are instant.
-    """
-    if dest.exists():
-        print(f"  [cache hit] trimmed audio \u2192 {dest.name}")
-        return dest
-    dest.parent.mkdir(parents=True, exist_ok=True)
-    dur = end_sec - start_sec
-    print(f"  trimming {start_sec:.1f}s \u2013 {end_sec:.1f}s  ({dur:.1f}s)  \u2192 {dest.name}")
-    subprocess.run(
-        [
-            "ffmpeg", "-hide_banner", "-loglevel", "error", "-y",
-            "-ss", f"{start_sec:.3f}",
-            "-i", str(audio),
-            "-t", f"{dur:.3f}",
-            "-c", "copy",
-            str(dest),
-        ],
-        check=True,
-    )
-    return dest
-
-
-def extract_chunk(audio: Path, start: float, length: float, dest: Path) -> None:
-    """Extract [start, start+length] from audio, decode to 44.1kHz stereo WAV."""
-    dest.parent.mkdir(parents=True, exist_ok=True)
-    subprocess.run(
-        [
-            "ffmpeg", "-hide_banner", "-loglevel", "error", "-y",
-            "-i", str(audio),
-            "-ss", f"{start:.3f}", "-t", f"{length:.3f}",
-            "-c:a", "pcm_s16le", "-ar", "44100", "-ac", "2",
-            str(dest),
-        ],
-        check=True,
-    )
-
-
-# ── device helper ──────────────────────────────────────────────────────────────
-
-def _get_device() -> str:
-    """
-    Select the best available compute device.
-
-    Resolution order:
-      1. ``TORCH_DEVICE`` env var  — explicit override.
-                                     Set automatically by docker-compose.gpu.yml.
-      2. CUDA                      — when a GPU is present and torch was built with
-                                     CUDA support (i.e. the CUDA image variant).
-      3. CPU                       — universal fallback.
-
-    Silero VAD and its input tensors are moved to this device.
-    Demucs runs as a subprocess and detects CUDA independently.
-    """
-    override = os.getenv("TORCH_DEVICE", "").strip()
-    if override:
-        return override
-    return "cuda" if torch.cuda.is_available() else "cpu"
-
-
-# ── Silero VAD ──────────────────────────────────────────────────────────────
-
-def _load_silero():
-    device = _get_device()
-    model, utils = torch.hub.load(
-        repo_or_dir="snakers4/silero-vad",
-        model="silero_vad",
-        trust_repo=True,
-    )
-    model = model.to(device)
-    (get_speech_timestamps, *_) = utils
-    return model, get_speech_timestamps
-
-
-def _run_silero(wav_path: Path, model, get_speech_timestamps) -> list[list[float]]:
-    """Return merged speech segments [[start_sec, end_sec], ...] for wav_path."""
-    device   = _get_device()
-    waveform, sr = torchaudio.load(str(wav_path))
-    if waveform.shape[0] > 1:
-        waveform = waveform.mean(dim=0, keepdim=True)
-
-    target_sr = 16_000
-    if sr != target_sr:
-        waveform = torchaudio.functional.resample(waveform, sr, target_sr)
-        sr = target_sr
-
-    timestamps = get_speech_timestamps(waveform.squeeze(0).to(device), model, sampling_rate=sr)
-
-    MERGE_GAP = 0.35   # merge segments closer than this (seconds)
-    MIN_LEN   = 0.6    # drop segments shorter than this (seconds)
-
-    segs: list[list[float]] = []
-    for ts in timestamps:
-        s = ts["start"] / sr
-        e = ts["end"]   / sr
-        if e - s < MIN_LEN:
-            continue
-        if segs and s - segs[-1][1] <= MERGE_GAP:
-            segs[-1][1] = max(segs[-1][1], e)
-        else:
-            segs.append([s, e])
-    return segs
 
 
 def raw_vad_scan(audio: Path, cache: Path, video_id: str,
@@ -285,7 +168,7 @@ def raw_vad_scan(audio: Path, cache: Path, video_id: str,
         subprocess.run(ffmpeg_cmd, check=True)
 
     print("  running Silero VAD on raw audio...")
-    segs = _run_silero(tmp_wav, model, get_ts)
+    segs = run_silero(tmp_wav, model, get_ts, merge_gap=0.35, min_len=0.6)
 
     # Clean up the temp wav (large); the JSON is our real cache
     tmp_wav.unlink(missing_ok=True)
@@ -383,7 +266,7 @@ def vad_on_vocals(vocals: Path, cache: Path, model, get_ts) -> list[list[float]]
         print(f"    [cache hit] {len(segs)} vocal segments")
         return segs
 
-    segs = _run_silero(vocals, model, get_ts)
+    segs = run_silero(vocals, model, get_ts, merge_gap=0.35, min_len=0.6)
 
     cache.mkdir(parents=True, exist_ok=True)
     with open(seg_path, "w") as f:
@@ -470,11 +353,17 @@ def _interactive_pick_clip(out: Path) -> Path | None:
     ref_clips = [p for p in clips if p.name.startswith("clip_ref_")]
     default = ref_clips[0] if ref_clips else clips[0]
 
+    # Nothing to choose — skip the prompt.
+    if len(clips) == 1:
+        print(f"  (only one clip — auto-selecting {clips[0].name})")
+        return None  # None means "keep the auto-selected clip" to the caller
+
+    n = len(clips)
     line = "─" * 60
     print(f"\n{line}")
     print("  Interactive clip selection")
     print(f"{line}")
-    print(f"  Clips are in: {out}")
+    print(f"  Clip{'s are' if n > 1 else ' is'} in: {out}")
     print()
     for i, p in enumerate(clips):
         dur = get_duration(p)
@@ -703,7 +592,7 @@ def main() -> None:
         print(f"==> Trimming audio to {t_start:.1f}s \u2013 {t_end:.1f}s...")
         trimmed_id   = f"{source_id}_{int(t_start)}_{int(t_end)}"
         trimmed_path = cache / "downloads" / f"{trimmed_id}{audio.suffix}"
-        audio     = trim_audio(audio, t_start, t_end, trimmed_path)
+        audio     = trim_audio_copy(audio, t_start, t_end, trimmed_path)
         source_id = trimmed_id
         source_meta = {**source_meta, "start_sec": t_start, "end_sec": t_end}
 
@@ -713,7 +602,7 @@ def main() -> None:
 
     # ── 2. Load Silero once for both raw scan and vocal VAD ────────────────────
     print("==> Loading Silero VAD model...")
-    vad_model, get_speech_ts = _load_silero()
+    vad_model, get_speech_ts = load_silero()
 
     # ── 3. Fast VAD on raw audio ───────────────────────────────────────────────
     print("==> Scanning raw audio for speech regions...")
