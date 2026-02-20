@@ -5,6 +5,17 @@ ARG APP_USER=app
 ARG APP_UID=1000
 ARG APP_GID=1000
 
+# COMPUTE selects the PyTorch variant installed during the build.
+# Values:
+#   cpu    (default) — pure-CPU, runs on any host, zero extra requirements
+#   cu121            — CUDA 12.1 wheels, enables GPU on Maxwell SM 5.2 + hosts
+#
+# IMPORTANT: declare this ARG *after* the expensive cached layers (apt, Poetry)
+# so that changing it only invalidates the thin CUDA-swap layer and below —
+# not the full image rebuild.  Override via docker-compose.gpu.yml.
+# The ARG is re-declared just before its first use; this section is only a
+# comment anchor to document the variable's purpose near the top of the file.
+
 ENV \
   PYTHONDONTWRITEBYTECODE=1 \
   PYTHONUNBUFFERED=1 \
@@ -45,6 +56,29 @@ RUN --mount=type=cache,target=/root/.cache/pypoetry \
   --mount=type=cache,target=/root/.cache/pip \
   poetry install --no-root --sync
 
+# ── GPU variant: upgrade torch/torchaudio to CUDA-enabled wheels ───────────────
+# ARG declared here (not at the top) so that the apt + Poetry layers above are
+# NOT invalidated when COMPUTE changes — only this layer and below re-run.
+#
+# For COMPUTE=cpu  this is a no-op (zero cost, zero extra download).
+# For COMPUTE=cu121 the CPU wheels that Poetry just installed are replaced with
+# CUDA-enabled equivalents.  All other packages remain identical across variants.
+#
+# The exact versions are read from the already-installed CPU wheels so that the
+# CUDA and CPU images stay byte-for-byte identical on everything except torch
+# itself.  PyTorch publishes CPU and CUDA wheels for the same versions
+# simultaneously, so version resolution is always exact.
+ARG COMPUTE=cpu
+RUN --mount=type=cache,target=/root/.cache/pip \
+  if [ "${COMPUTE}" != "cpu" ]; then \
+  echo "==> Upgrading torch/torchaudio → CUDA ${COMPUTE} wheels …" \
+  && TORCH_VER=$(python -c 'import importlib.metadata; print(importlib.metadata.version("torch"))') \
+  && TORCHAUDIO_VER=$(python -c 'import importlib.metadata; print(importlib.metadata.version("torchaudio"))') \
+  && pip install --force-reinstall \
+  "torch==${TORCH_VER}" "torchaudio==${TORCHAUDIO_VER}" \
+  --index-url "https://download.pytorch.org/whl/${COMPUTE}"; \
+  fi
+
 # Create non-root user and hand /app over to them
 RUN groupadd -g ${APP_GID} ${APP_USER} \
   && useradd -m -u ${APP_UID} -g ${APP_GID} -s /bin/bash ${APP_USER}
@@ -56,6 +90,11 @@ USER ${APP_USER}
 
 # Point all cache-aware tools (Torch Hub, HuggingFace, etc.) at the shared /cache mount
 ENV XDG_CACHE_HOME=/cache
+
+# Expose the compute variant so apps and diagnostic tooling can inspect it:
+#   docker run --rm voice-tools:cuda env | grep TORCH_COMPUTE
+# Note: value is baked in at build time; overriding COMPUTE at run-time has no effect.
+ENV TORCH_COMPUTE=${COMPUTE}
 
 # Default entrypoint: tini for clean signal handling
 ENTRYPOINT ["/usr/bin/tini", "--"]

@@ -333,10 +333,12 @@ def _score_segment(duration: float, avg_logprob: float) -> float:
 
 def _build_whisper_model(whisper_model: str, num_threads: int):
     from faster_whisper import WhisperModel
+    device       = _get_device()
+    compute_type = "float16" if device.startswith("cuda") else WHISPER_COMPUTE
     return WhisperModel(
         whisper_model,
-        device="cpu",
-        compute_type=WHISPER_COMPUTE,
+        device=device,
+        compute_type=compute_type,
         cpu_threads=num_threads,
     )
 
@@ -381,9 +383,11 @@ def transcribe_ref(
     Load faster-whisper and transcribe the reference clip at full quality.
     Returns (transcript, avg_logprob, detected_language_qwen, language_probability).
     """
+    device       = _get_device()
+    compute_type = "float16" if device.startswith("cuda") else WHISPER_COMPUTE
     print(
         f"  loading faster-whisper/{whisper_model} "
-        f"(int8, cpu, {num_threads} threads)..."
+        f"({compute_type}, {device}, {num_threads} threads)..."
     )
     wm = _build_whisper_model(whisper_model, num_threads)
     transcript, avg_logprob, detected_qwen, lang_prob = transcribe_segment(
@@ -965,30 +969,71 @@ _DTYPE_MAP: dict[str, torch.dtype] = {
 }
 
 
+# ── device & dtype helpers ─────────────────────────────────────────────────────
+
+def _get_device() -> str:
+    """
+    Select the best available compute device.
+
+    Resolution order:
+      1. ``TORCH_DEVICE`` env var  — explicit override (e.g. ``"cpu"``, ``"cuda:0"``).
+                                     Set automatically by docker-compose.gpu.yml.
+      2. CUDA                      — when a GPU is present and torch was built with
+                                     CUDA support (i.e. the CUDA image variant).
+      3. CPU                       — universal fallback.
+    """
+    override = os.getenv("TORCH_DEVICE", "").strip()
+    if override:
+        return override
+    return "cuda" if torch.cuda.is_available() else "cpu"
+
+
+def _best_dtype(device: str, dtype_str: str) -> torch.dtype:
+    """
+    Resolve ``dtype_str`` to a concrete ``torch.dtype``.
+
+    When ``dtype_str == "auto"`` (the default):
+      - CPU              → ``bfloat16``  (Apple Silicon AMX / AVX-512-BF16, ~2× faster)
+      - CUDA SM < 8.0    → ``float16``   (Maxwell / Pascal / Volta / Turing)
+      - CUDA SM ≥ 8.0    → ``bfloat16``  (Ampere, Ada Lovelace, Hopper …)
+
+    Explicit dtype strings ("bfloat16", "float32", "float16") are returned as-is.
+    """
+    if dtype_str != "auto":
+        return _DTYPE_MAP[dtype_str]
+    if not device.startswith("cuda"):
+        return torch.bfloat16                   # CPU default
+    idx = int(device.split(":")[-1]) if ":" in device else 0
+    major, _ = torch.cuda.get_device_capability(idx)
+    return torch.bfloat16 if major >= 8 else torch.float16  # Ampere+ vs older
+
+
 # ── Stage 5: synthesis ─────────────────────────────────────────────────────────
 
-def load_tts_model(model_name: str, num_threads: int, dtype_str: str = "bfloat16"):
+def load_tts_model(model_name: str, num_threads: int, dtype_str: str = "auto"):
     """
-    Load Qwen3-TTS-Base for CPU inference.
+    Load Qwen3-TTS-Base, targeting the best available device.
 
     dtype_str:
-      "bfloat16" (default) — ~2x faster on Apple Silicon (AMX) and modern x86
-                              with AVX-512-BF16; half the memory of float32.
-      "float32"            — compatibility fallback for older hardware.
-      "float16"            — not recommended on CPU (no native support on most CPUs).
+      "auto" (default)  — bfloat16 on CPU and CUDA Ampere+; float16 on older
+                          CUDA GPUs (Maxwell / Pascal / Volta / Turing).
+      "bfloat16"        — ~2× faster on Apple Silicon (AMX) / AVX-512-BF16 CPUs;
+                          also valid on CUDA SM ≥ 8.0 (Ampere+).
+      "float32"         — compatibility fallback for older / non-AVX-512 hardware.
+      "float16"         — recommended for CUDA GPUs with SM < 8.0.
 
     attn_implementation="sdpa" uses PyTorch's fused scaled-dot-product attention
     (torch.nn.functional.scaled_dot_product_attention), which is faster than the
-    default "eager" path on CPU for all dtypes.
+    default "eager" path on both CPU and CUDA.
     """
     from qwen_tts import Qwen3TTSModel
-
-    dtype = _DTYPE_MAP.get(dtype_str, torch.bfloat16)
+    device = _get_device()
+    dtype  = _best_dtype(device, dtype_str)
     torch.set_num_threads(num_threads)
-    print(f"  loading {model_name} (cpu, {dtype_str}, threads={num_threads}) …")
+    print(f"  loading {model_name} ({device}, {dtype}, threads={num_threads}) …")
     model = Qwen3TTSModel.from_pretrained(
         model_name,
-        device_map="cpu",
+        device_map=device,
         dtype=dtype,
         attn_implementation="sdpa",
     )
@@ -1462,11 +1507,11 @@ def _add_common(p: argparse.ArgumentParser) -> None:
         help="CPU threads for torch + faster-whisper (default: all logical cores)",
     )
     p.add_argument(
-        "--dtype", default="bfloat16", choices=["bfloat16", "float32", "float16"],
+        "--dtype", default="auto", choices=["auto", "bfloat16", "float32", "float16"],
         help=(
-            "Model weight dtype.  bfloat16 (default) is ~2x faster on Apple Silicon "
-            "and AVX-512-BF16 CPUs and uses half the memory.  Use float32 if you see "
-            "NaN/quality issues on older hardware."
+            "Model weight dtype.  auto (default): bfloat16 on CPU and CUDA Ampere+, "
+            "float16 on older CUDA GPUs (Maxwell / Pascal / Volta / Turing).  "
+            "Use float32 if you see NaN/quality issues."
         ),
     )
     p.add_argument(

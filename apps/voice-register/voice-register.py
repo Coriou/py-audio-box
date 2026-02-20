@@ -152,8 +152,11 @@ def main() -> None:
     )
     ap.add_argument(
         "--dtype",
-        default="bfloat16", choices=["bfloat16", "float32", "float16"],
-        help="Model weight dtype (bfloat16 is ~2x faster on Apple Silicon / AVX-512-BF16)",
+        default="auto", choices=["auto", "bfloat16", "float32", "float16"],
+        help=(
+            "Model weight dtype passed to voice-clone.  auto (default): bfloat16 on CPU "
+            "and CUDA Ampere+, float16 on older CUDA GPUs (Maxwell / Pascal / Volta / Turing)."
+        ),
     )
     ap.add_argument(
         "--seed",

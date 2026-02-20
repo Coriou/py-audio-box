@@ -1,0 +1,59 @@
+# docker-compose.gpu.yml  —  GPU overlay for the voice-tools toolbox
+#
+# Extends docker-compose.yml to build and run the CUDA-enabled image variant.
+# The base file (docker-compose.yml) stays CPU-only; this overlay is additive.
+#
+# ── Requirements (Windows / Linux host) ──────────────────────────────────────
+#   1. NVIDIA driver ≥ 527  (check with: nvidia-smi)
+#   2. NVIDIA Container Toolkit installed and configured:
+#        https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/install-guide.html
+#      On Windows (Docker Desktop):
+#        Settings → Docker Engine → add "runtimes": {"nvidia": {"path": "nvidia-container-runtime"}}
+#      On Linux / WSL 2:
+#        sudo apt-get install -y nvidia-container-toolkit
+#        sudo nvidia-ctk runtime configure --runtime=docker
+#        sudo systemctl restart docker
+#
+# ── Usage ─────────────────────────────────────────────────────────────────────
+#   # Build the CUDA image (first time, ~same duration as CPU build):
+#   docker compose -f docker-compose.yml -f docker-compose.gpu.yml build
+#   # or:
+#   make build-gpu
+#
+#   # Run any app with GPU passthrough:
+#   TOOLBOX_VARIANT=gpu ./run voice-synth speak --voice my-voice --text "Hello"
+#   # or on Windows PowerShell:
+#   $env:TOOLBOX_VARIANT = "gpu"; .\run.ps1 voice-synth speak --voice my-voice --text "Hello"
+#
+# ── How it works ──────────────────────────────────────────────────────────────
+#   - build.args.COMPUTE=cu121 triggers the CUDA swap step in the Dockerfile
+#   - image tag is voice-tools:cuda (separate from voice-tools:cpu)
+#   - TORCH_DEVICE=cuda tells every app to use the GPU (no --dtype flag needed)
+#   - deploy.resources injects the NVIDIA runtime so the container can see the GPU
+#
+# ── GPU notes (GTX 980 Ti / Maxwell SM 5.2) ──────────────────────────────────
+#   - Compute capability 5.2 → bfloat16 is NOT supported in CUDA ops
+#   - TORCH_DEVICE=cuda + dtype auto → float16 is selected automatically
+#   - ~6 GB VRAM; Qwen3-TTS-0.6B-Base in float16 needs ~1.2 GB
+# ─────────────────────────────────────────────────────────────────────────────
+
+services:
+  toolbox:
+    build:
+      args:
+        # cu121 = CUDA 12.1 wheels — works on Maxwell SM 5.2 (GTX 980 Ti) and newer.
+        # For CUDA 11.8 hosts, change to: cu118
+        # For CUDA 12.4+ hosts, change to: cu124
+        COMPUTE: cu121
+    image: voice-tools:cuda
+    environment:
+      # Tell all apps to target the GPU.  Apps read this via _get_device() and
+      # select float16 automatically on pre-Ampere GPUs (SM < 8.0).
+      - TORCH_DEVICE=cuda
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]

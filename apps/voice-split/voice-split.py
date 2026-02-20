@@ -17,6 +17,7 @@ Usage:
 
 import argparse
 import json
+import os
 import random
 import subprocess
 import sys
@@ -130,20 +131,45 @@ def extract_chunk(audio: Path, start: float, length: float, dest: Path) -> None:
     )
 
 
-# ── Silero VAD ────────────────────────────────────────────────────────────────
+# ── device helper ──────────────────────────────────────────────────────────────
+
+def _get_device() -> str:
+    """
+    Select the best available compute device.
+
+    Resolution order:
+      1. ``TORCH_DEVICE`` env var  — explicit override.
+                                     Set automatically by docker-compose.gpu.yml.
+      2. CUDA                      — when a GPU is present and torch was built with
+                                     CUDA support (i.e. the CUDA image variant).
+      3. CPU                       — universal fallback.
+
+    Silero VAD and its input tensors are moved to this device.
+    Demucs runs as a subprocess and detects CUDA independently.
+    """
+    override = os.getenv("TORCH_DEVICE", "").strip()
+    if override:
+        return override
+    return "cuda" if torch.cuda.is_available() else "cpu"
+
+
+# ── Silero VAD ──────────────────────────────────────────────────────────────
 
 def _load_silero():
+    device = _get_device()
     model, utils = torch.hub.load(
         repo_or_dir="snakers4/silero-vad",
         model="silero_vad",
         trust_repo=True,
     )
+    model = model.to(device)
     (get_speech_timestamps, *_) = utils
     return model, get_speech_timestamps
 
 
 def _run_silero(wav_path: Path, model, get_speech_timestamps) -> list[list[float]]:
     """Return merged speech segments [[start_sec, end_sec], ...] for wav_path."""
+    device   = _get_device()
     waveform, sr = torchaudio.load(str(wav_path))
     if waveform.shape[0] > 1:
         waveform = waveform.mean(dim=0, keepdim=True)
@@ -153,7 +179,7 @@ def _run_silero(wav_path: Path, model, get_speech_timestamps) -> list[list[float
         waveform = torchaudio.functional.resample(waveform, sr, target_sr)
         sr = target_sr
 
-    timestamps = get_speech_timestamps(waveform.squeeze(0), model, sampling_rate=sr)
+    timestamps = get_speech_timestamps(waveform.squeeze(0).to(device), model, sampling_rate=sr)
 
     MERGE_GAP = 0.35   # merge segments closer than this (seconds)
     MIN_LEN   = 0.6    # drop segments shorter than this (seconds)

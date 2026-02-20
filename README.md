@@ -8,15 +8,74 @@ Everything runs in Docker — zero host installs, fast re-runs, shared cache acr
 ## Prerequisites
 
 - **Docker** with Compose v2 (`docker compose` — not the old `docker-compose`)
-- No Python, Poetry, ffmpeg, or GPU drivers needed on the host
+- No Python, Poetry, ffmpeg, or GPU drivers needed on the host for CPU mode
 
 First-time setup:
 
 ```bash
-make build        # build the shared image (~5 min, cached on rebuild)
+make build        # build the shared CPU image (~5 min, cached on rebuild)
 ```
 
 ---
+
+## Platforms
+
+### CPU (default — works everywhere)
+
+No extra requirements. The default image runs purely on CPU and works on
+macOS, Linux, and Windows (Docker Desktop or WSL 2).
+
+```bash
+make build
+./run voice-synth speak --voice my-voice --text "Hello"
+```
+
+### GPU (NVIDIA — faster inference)
+
+Requires an NVIDIA GPU and the [NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/install-guide.html).
+
+```bash
+# 1. Install NVIDIA Container Toolkit on the host (once)
+#    Linux / WSL 2:
+#      sudo apt-get install -y nvidia-container-toolkit
+#      sudo nvidia-ctk runtime configure --runtime=docker && sudo systemctl restart docker
+#    Windows (Docker Desktop):
+#      Settings → Docker Engine → add the nvidia runtime (see docker-compose.gpu.yml)
+
+# 2. Build the CUDA image (once; layers shared with the CPU image)
+make build-gpu
+
+# 3. Run any app with GPU acceleration
+TOOLBOX_VARIANT=gpu ./run voice-synth speak --voice my-voice --text "Hello"
+TOOLBOX_VARIANT=gpu ./run voice-register --url "..." --voice-name my-voice --text "Hello"
+```
+
+Acceleration details:
+
+- `TOOLBOX_VENDOR=gpu` overlays `docker-compose.gpu.yml` — no other flags needed
+- Device is detected at runtime via `torch.cuda.is_available()`
+- `--dtype` defaults to `auto`: `float16` on pre-Ampere GPUs (Maxwell / Pascal /
+  Volta / Turing), `bfloat16` on Ampere+
+- Demucs (voice-split) and Silero VAD run on GPU automatically
+- Whisper (voice-clone / voice-synth QA) switches to `float16` on GPU
+- The Qwen3-TTS model loads onto the GPU; expect ~3–10× speedup over CPU
+
+### Windows
+
+The `./run` bash script works in Git Bash and WSL 2.
+For native PowerShell there is a `run.ps1` equivalent:
+
+```powershell
+# CPU
+.\run.ps1 voice-synth speak --voice my-voice --text "Hello"
+
+# GPU
+$env:TOOLBOX_VARIANT = "gpu"
+.\run.ps1 voice-synth speak --voice my-voice --text "Hello"
+```
+
+Everything else (`make`, `docker compose`) works identically on Windows
+(use Git Bash or enable make via `winget install GnuWin32.Make`).
 
 ## Quick start
 
@@ -259,11 +318,14 @@ To add a system package (ffmpeg, sox, …): edit the `apt-get install` block in 
 ## Makefile reference
 
 ```
-make build              Build (or rebuild) the toolbox image
-make build-no-cache     Force a clean image rebuild (ignores all layer cache)
-make shell              Interactive bash shell inside the container
-make clean-work         Delete output files in ./work/
-make clean-cache        Wipe ./cache/ — models and downloads will re-run
+make build                  Build (or rebuild) the CPU toolbox image
+make build-gpu              Build the CUDA 12.1 GPU image  →  voice-tools:cuda
+make build-no-cache         Force a clean CPU rebuild (no layer cache)
+make build-gpu-no-cache     Force a clean GPU rebuild (no layer cache)
+make shell                  Interactive bash shell inside the CPU container
+make shell-gpu              Interactive bash shell inside the GPU container
+make clean-work             Delete output files in ./work/
+make clean-cache            Wipe ./cache/ — models and downloads will re-run
 ```
 
 App shortcuts (pass extra flags via `ARGS=`):
@@ -282,10 +344,11 @@ make voice-register  ARGS='--url "https://..." --voice-name my-voice --text "Hel
 When an AI agent or script works with this repo:
 
 - **Don't install packages on the host.** All Python work happens inside the container.
-- **The image is already built.** Use `./run <app>` or `docker compose run --rm toolbox …` directly; only run `make build` if `pyproject.toml` or `Dockerfile` changed.
+- **The image is already built.** Use `./run <app>` or `docker compose run --rm toolbox …` directly; only run `make build` if `pyproject.toml` or `Dockerfile` changed. For GPU hosts, use `TOOLBOX_VARIANT=gpu ./run …` and run `make build-gpu` after Dockerfile changes.
 - **Cache is safe to read, never safe to delete mid-run.** The `./cache` directory is the source of truth for all expensive computation. Treat it as append-only during a run.
 - **Adding an app = adding a file.** Drop `apps/<name>/<name>.py` and it's runnable with `./run <name>`. No registration, no config changes.
 - **Check `--help` first.** Every script uses `ArgumentDefaultsHelpFormatter`; `./run <app> --help` is always the authoritative reference for flags and defaults.
 - **Output is always in `./work/`** (mounted at `/work`) unless `--out` is overridden. Look there for results.
 - **Prefer `--voice <slug>` over `--ref-audio <path>`.** Named voice slugs are the canonical way to reference voices across all apps. Run `./run voice-synth list-voices` to enumerate available voices. Register a new voice with `--voice-name <slug>` on `voice-split`, `voice-clone synth`, or `voice-synth design-voice`. When `--voice <slug>` is used with `voice-clone synth`, the built prompt is automatically registered back to that voice — no separate `--voice-name` needed.
 - **Use `voice-register` for one-shot pipeline runs.** `./run voice-register --url "..." --voice-name <slug> --text "..."` chains voice-split → voice-clone synth and leaves a fully synthesis-ready voice in a single command. Re-runs are safe and cached.
+- **GPU mode is opt-in.** Prefix any `./run` command with `TOOLBOX_VARIANT=gpu` to use the GPU image (requires `make build-gpu` once). On Windows PowerShell use `$env:TOOLBOX_VARIANT = "gpu"` then the normal `.\run.ps1` command. No `--dtype` flag needed; dtype is chosen automatically.

@@ -3,22 +3,37 @@
 #
 # Most workflows go through ./run <app> instead, but this is handy for
 # build / shell / one-liner invocations.
+#
+# GPU targets require NVIDIA Container Toolkit and the CUDA image built first.
+# See docker-compose.gpu.yml for full GPU setup instructions.
 
 .DEFAULT_GOAL := help
 
 # ── infrastructure ─────────────────────────────────────────────────────────────
 
 .PHONY: build
-build:  ## Build (or rebuild) the toolbox Docker image
+build:  ## Build (or rebuild) the CPU toolbox image  [default]
 	docker compose build
 
+.PHONY: build-gpu
+build-gpu:  ## Build the GPU (CUDA 12.1) image variant  →  voice-tools:cuda
+	docker compose -f docker-compose.yml -f docker-compose.gpu.yml build
+
 .PHONY: build-no-cache
-build-no-cache:  ## Force a clean rebuild (no layer cache)
+build-no-cache:  ## Force a clean CPU rebuild (no layer cache)
 	docker compose build --no-cache
 
+.PHONY: build-gpu-no-cache
+build-gpu-no-cache:  ## Force a clean GPU rebuild (no layer cache)
+	docker compose -f docker-compose.yml -f docker-compose.gpu.yml build --no-cache
+
 .PHONY: shell
-shell:  ## Open an interactive bash shell inside the toolbox
+shell:  ## Interactive bash shell inside the CPU toolbox
 	docker compose run --rm toolbox bash
+
+.PHONY: shell-gpu
+shell-gpu:  ## Interactive bash shell inside the GPU toolbox
+	docker compose -f docker-compose.yml -f docker-compose.gpu.yml run --rm toolbox bash
 
 .PHONY: clean-work
 clean-work:  ## Delete all output files in ./work/ (keeps cache)
@@ -51,4 +66,4 @@ voice-register:  ## One-shot register. Usage: make voice-register ARGS='--url ".
 .PHONY: help
 help:  ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*##' $(MAKEFILE_LIST) \
-	  | awk 'BEGIN {FS = ":.*## "}; {printf "  \033[36m%-20s\033[0m %s\n", $$1, $$2}'
+	  | awk 'BEGIN {FS = ":.*## "}; {printf "  \033[36m%-24s\033[0m %s\n", $$1, $$2}'

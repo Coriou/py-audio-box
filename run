@@ -3,10 +3,18 @@
 #
 # Usage:
 #   ./run <app-name> [args...]
+#   TOOLBOX_VARIANT=gpu ./run <app-name> [args...]
 #
 # Examples:
 #   ./run voice-split --url "https://www.youtube.com/watch?v=XXXX" --clips 5 --length 30
 #   ./run voice-split --help
+#   TOOLBOX_VARIANT=gpu ./run voice-synth speak --voice my-voice --text "Hello"
+#
+# TOOLBOX_VARIANT:
+#   (unset / "cpu")  — use docker-compose.yml only  (CPU image, default)
+#   "gpu"            — overlay docker-compose.gpu.yml (CUDA image + GPU passthrough)
+#                      Requires:  make build-gpu  +  NVIDIA Container Toolkit
+#                      See docker-compose.gpu.yml for full GPU setup instructions.
 #
 # Each app lives in apps/<app-name>/<app-name>.py
 # Output goes to ./work/ by default (mounted as /work inside the container)
@@ -17,6 +25,8 @@ set -euo pipefail
 APP=${1:-}
 if [[ -z "$APP" ]]; then
   echo "Usage: ./run <app-name> [args...]"
+  echo ""
+  echo "  TOOLBOX_VARIANT=gpu ./run <app-name> [args...]   (GPU mode)"
   echo ""
   echo "Available apps:"
   for d in "$(dirname "$0")/apps"/*/; do
@@ -33,4 +43,11 @@ if [[ ! -f "$(dirname "$0")/${SCRIPT}" ]]; then
   exit 1
 fi
 
-exec docker compose run --rm toolbox python "${SCRIPT}" "$@"
+# ── compose file selection ─────────────────────────────────────────────────────
+# TOOLBOX_VARIANT=gpu adds the GPU overlay; everything else uses CPU-only defaults.
+COMPOSE_FILES="-f docker-compose.yml"
+if [[ "${TOOLBOX_VARIANT:-}" == "gpu" ]]; then
+  COMPOSE_FILES="$COMPOSE_FILES -f docker-compose.gpu.yml"
+fi
+
+exec docker compose $COMPOSE_FILES run --rm toolbox python "${SCRIPT}" "$@"
