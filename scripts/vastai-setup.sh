@@ -14,6 +14,10 @@
 
 set -euo pipefail
 
+# Log everything to a file so you can check it after SSH-ing in:
+#   tail /var/log/vastai-setup.log
+exec > >(tee /var/log/vastai-setup.log) 2>&1
+
 APP_DIR="${APP_DIR:-/app}"
 [[ -d "$APP_DIR/.git" ]] || APP_DIR="${HOME}/py-audio-box"
 
