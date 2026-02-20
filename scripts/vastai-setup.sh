@@ -1,38 +1,24 @@
 #!/usr/bin/env bash
-# scripts/vastai-setup.sh — one-shot setup on a fresh vast.ai instance
+# scripts/vastai-setup.sh — one-shot setup on a vast.ai instance
 #
-# Run this on the vast.ai instance as root after SSHing in:
+# Run this on the instance as root after SSHing in:
 #
 #   bash <(curl -fsSL https://raw.githubusercontent.com/Coriou/py-audio-box/main/scripts/vastai-setup.sh)
 #
-# Or copy & paste the whole file.
+# Designed for the "PyTorch (Vast)" template (vastai/pytorch) which ships
+# Python 3.11, pip, and CUDA. No Docker needed — scripts run directly.
 #
 # What it does:
 #   1. Clones the repo to ~/py-audio-box
-#   2. Pulls ghcr.io/coriou/voice-tools:cuda (skips build entirely)
-#   3. Verifies GPU passthrough + CUDA version
-#   4. Prints a ready-to-run example command
+#   2. Installs Python deps via pip (from poetry.lock)
+#   3. Installs system deps (ffmpeg, sox) if missing
+#   4. Creates /work and /cache symlinks so default paths just work
+#   5. Verifies GPU + prints a ready-to-run example
 
 set -euo pipefail
 
 REPO_URL="https://github.com/Coriou/py-audio-box.git"
 REPO_DIR="${HOME}/py-audio-box"
-REGISTRY="ghcr.io/coriou/voice-tools"
-
-# Auto-select image tag based on host GPU SM version.
-# Run a quick nvidia-smi check (available on vast.ai hosts without Docker).
-detect_image_tag() {
-  local sm
-  sm=$(nvidia-smi --query-gpu=compute_cap --format=csv,noheader 2>/dev/null | head -1 | tr -d '.')
-  if [[ -n "$sm" ]] && [[ "$sm" -ge 100 ]]; then
-    echo "cuda128"   # Blackwell SM 10.0+ → cu128 wheels
-  else
-    echo "cuda"      # everything else (Volta SM 7.0+) → cu124 wheels
-  fi
-}
-
-IMAGE_TAG=$(detect_image_tag)
-IMAGE="${REGISTRY}:${IMAGE_TAG}"
 
 # ── colour helpers ─────────────────────────────────────────────────────────────
 BOLD='\033[1m' RESET='\033[0m'
@@ -43,6 +29,7 @@ ok()   { printf "${GREEN}  ✓${RESET}  %s\n" "$*"; }
 info() { printf "${DIM}     %s${RESET}\n" "$*"; }
 warn() { printf "${YELLOW}  !${RESET}  %s\n" "$*"; }
 die()  { printf "${RED}  ✗  %s${RESET}\n" "$*" >&2; exit 1; }
+hms()  { local s=$(( SECONDS - $1 )); printf "%dm%02ds" $((s/60)) $((s%60)); }
 
 hr
 printf "${BOLD}  py-audio-box · vast.ai setup${RESET}\n"
@@ -58,63 +45,104 @@ else
 fi
 ok "Repo at $REPO_DIR"
 
-# ── 2. ensure docker compose v2 is available ──────────────────────────────────
-log "Checking Docker"
-docker info &>/dev/null || die "Docker daemon not running"
-# vast.ai machines have docker-compose-plugin; fall back to standalone
-if ! docker compose version &>/dev/null; then
-  warn "docker compose plugin missing — installing"
-  apt-get update -qq && apt-get install -y -qq docker-compose-plugin
-fi
-ok "Docker $(docker --version | awk '{print $3}' | tr -d ',')"
-ok "Compose $(docker compose version --short)"
+cd "$REPO_DIR"
 
-# ── 3. pull CUDA image ─────────────────────────────────────────────────────────
-log "Pulling $IMAGE"
-if [[ "$IMAGE_TAG" == "cuda128" ]]; then
-  info "Blackwell detected — using cu128 wheels (:cuda128)"
-  # Fallback: if cuda128 hasn't been published yet, try cuda with a warning
-  if ! docker pull "$IMAGE" 2>/dev/null; then
-    warn ":cuda128 not yet published — falling back to :cuda (PTX JIT on first run)"
-    IMAGE_TAG="cuda"
-    IMAGE="${REGISTRY}:cuda"
-    docker pull "$IMAGE"
-  fi
+# ── 2. python version check ────────────────────────────────────────────────────
+log "Checking Python"
+PYTHON=$(command -v python3.11 || command -v python3 || command -v python)
+PY_VER=$("$PYTHON" -c "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}')")
+ok "Python $PY_VER at $PYTHON"
+[[ "${PY_VER}" < "3.10" ]] && die "Python 3.10+ required (got $PY_VER)"
+
+# ── 3. system deps ─────────────────────────────────────────────────────────────
+log "System deps (ffmpeg, sox)"
+MISSING=()
+command -v ffmpeg &>/dev/null || MISSING+=(ffmpeg)
+command -v sox    &>/dev/null || MISSING+=(sox)
+if [[ ${#MISSING[@]} -gt 0 ]]; then
+  info "Installing: ${MISSING[*]}"
+  apt-get update -qq && apt-get install -y -qq "${MISSING[@]}"
+fi
+ok "ffmpeg $(ffmpeg -version 2>&1 | head -1 | awk '{print $3}')"
+ok "sox    $(sox --version 2>&1 | awk '{print $NF}')"
+
+# ── 4. python deps ─────────────────────────────────────────────────────────────
+log "Python deps"
+T0=$SECONDS
+
+# Install poetry if not present, then export a flat requirements.txt.
+if ! command -v poetry &>/dev/null; then
+  info "Installing poetry …"
+  pip install -q poetry
+fi
+info "Exporting requirements from poetry.lock …"
+poetry export --without-hashes -f requirements.txt -o /tmp/py_audio_box_requirements.txt
+
+# Detect CUDA version to pick the right torch wheel index.
+CUDA_VER=$(nvidia-smi 2>/dev/null \
+  | grep -oP 'CUDA Version: \K[0-9]+\.[0-9]+' | head -1 || echo "")
+if [[ -z "$CUDA_VER" ]]; then
+  warn "nvidia-smi not found or no GPU — using CPU torch"
+  TORCH_INDEX="https://download.pytorch.org/whl/cpu"
+elif "$PYTHON" -c "v='${CUDA_VER}'.split('.'); exit(0 if (int(v[0]),int(v[1])) >= (12,8) else 1)" 2>/dev/null; then
+  info "CUDA $CUDA_VER → cu128 wheels"
+  TORCH_INDEX="https://download.pytorch.org/whl/cu128"
+elif "$PYTHON" -c "v='${CUDA_VER}'.split('.'); exit(0 if (int(v[0]),int(v[1])) >= (12,4) else 1)" 2>/dev/null; then
+  info "CUDA $CUDA_VER → cu124 wheels"
+  TORCH_INDEX="https://download.pytorch.org/whl/cu124"
 else
-  info "Using cu124 wheels (:cuda) — Volta SM 7.0+ optimised"
-  docker pull "$IMAGE"
+  info "CUDA $CUDA_VER → cu121 wheels"
+  TORCH_INDEX="https://download.pytorch.org/whl/cu121"
 fi
-docker pull "$IMAGE"
-ok "Image pulled"
 
-# ── 4. tag as local name so docker-compose.gpu.yml resolves it ────────────────
-docker tag "$IMAGE" voice-tools:cuda 2>/dev/null || true
-info "Tagged as voice-tools:cuda"
+# Install all non-torch packages first, then install torch from the CUDA index.
+info "Installing packages (a few minutes) …"
+grep -vE '^torch' /tmp/py_audio_box_requirements.txt > /tmp/py_audio_box_notorch.txt || true
+pip install -q --no-cache-dir -r /tmp/py_audio_box_notorch.txt
+pip install -q --no-cache-dir torch torchaudio --index-url "$TORCH_INDEX"
 
-# ── 5. GPU sanity check ────────────────────────────────────────────────────────
-log "Verifying GPU passthrough"
-GPU_INFO=$(docker run --rm --gpus all "$IMAGE" python -c "
+ok "Python deps installed  ($(hms $T0))"
+
+# ── 5. work / cache dirs + symlinks ───────────────────────────────────────────
+log "Dirs & symlinks"
+mkdir -p "$REPO_DIR/work" "$REPO_DIR/cache"
+
+# /work and /cache symlinks let the apps use their default paths without flags.
+ln -sfn "$REPO_DIR/work"  /work  2>/dev/null || true
+ln -sfn "$REPO_DIR/cache" /cache 2>/dev/null || true
+chmod +x "$REPO_DIR/run-direct"
+ok "/work  → $REPO_DIR/work"
+ok "/cache → $REPO_DIR/cache"
+
+# ── 6. GPU sanity check ────────────────────────────────────────────────────────
+log "GPU check"
+"$PYTHON" - <<'PYEOF'
 import torch, sys
 if not torch.cuda.is_available():
-    print('ERROR: CUDA not available'); sys.exit(1)
-name = torch.cuda.get_device_name(0)
-sm   = torch.cuda.get_device_capability(0)
-mem  = torch.cuda.get_device_properties(0).total_memory // (1024**3)
-ver  = torch.version.cuda
-print(f'{name}  |  SM {sm[0]}.{sm[1]}  |  {mem} GB  |  CUDA {ver}')
-" 2>/dev/null)
-ok "GPU: $GPU_INFO"
+    print("  WARN: CUDA not available — CPU mode only")
+else:
+    name = torch.cuda.get_device_name(0)
+    sm   = torch.cuda.get_device_capability(0)
+    mem  = torch.cuda.get_device_properties(0).total_memory // (1024**3)
+    ver  = torch.version.cuda
+    print(f"  {name}  |  SM {sm[0]}.{sm[1]}  |  {mem} GB VRAM  |  CUDA {ver}")
+PYEOF
 
-# ── 6. create work / cache dirs ───────────────────────────────────────────────
-mkdir -p "$REPO_DIR/work" "$REPO_DIR/cache"
+# ── 7. persist TORCH_DEVICE=cuda ──────────────────────────────────────────────
+if ! grep -q 'TORCH_DEVICE' ~/.bashrc 2>/dev/null; then
+  echo 'export TORCH_DEVICE=cuda  # set by py-audio-box vastai-setup' >> ~/.bashrc
+fi
+export TORCH_DEVICE=cuda
 
 # ── done ──────────────────────────────────────────────────────────────────────
 hr
-printf "${GREEN}${BOLD}  ✓  Ready!${RESET}\n\n"
-printf "  ${DIM}cd${RESET} ${CYAN}${REPO_DIR}${RESET}\n"
-printf "  ${DIM}then run e.g.:${RESET}\n\n"
-printf "  ${BOLD}TOOLBOX_VARIANT=gpu ./run voice-register \\\\\n"
+printf "${GREEN}${BOLD}  ✓  Ready in $(hms 0)!${RESET}\n\n"
+printf "  ${CYAN}cd ${REPO_DIR}${RESET}\n\n"
+printf "  ${BOLD}# Register a voice from YouTube:${RESET}\n"
+printf "  ${BOLD}./run-direct voice-register \\\\\n"
 printf "    --url \"https://www.youtube.com/watch?v=XXXX\" \\\\\n"
 printf "    --voice-name my-voice \\\\\n"
 printf "    --text \"Hello world.\"\n${RESET}\n"
+printf "  ${BOLD}# Synthesise:${RESET}\n"
+printf "  ${BOLD}./run-direct voice-synth speak --voice my-voice --text \"Hello.\"\n${RESET}\n"
 hr

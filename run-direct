@@ -1,0 +1,43 @@
+#!/usr/bin/env bash
+# run-direct — run any app directly (no Docker), for cloud GPU instances
+#              where the host container already has Python + CUDA
+#
+# Usage:  ./run-direct <app-name> [args...]
+#         TORCH_DEVICE=cuda ./run-direct voice-synth speak --voice x --text "Hello"
+#
+# Creates /work and /cache symlinks (as root) so apps can use their default
+# paths without any extra flags.  Override via WORK_DIR / CACHE_DIR env vars.
+
+set -euo pipefail
+
+APP=${1:-}
+if [[ -z "$APP" ]]; then
+  echo "Usage: ./run-direct <app-name> [args...]"
+  echo ""
+  echo "Available apps:"
+  for d in "$(dirname "$0")/apps"/*/; do echo "  $(basename "$d")"; done
+  exit 1
+fi
+shift
+
+SCRIPT="apps/${APP}/${APP}.py"
+if [[ ! -f "$(dirname "$0")/${SCRIPT}" ]]; then
+  echo "Error: no script found at ${SCRIPT}"; exit 1
+fi
+
+REPO_ROOT="$(cd "$(dirname "$0")" && pwd)"
+WORK_DIR="${WORK_DIR:-${REPO_ROOT}/work}"
+CACHE_DIR="${CACHE_DIR:-${REPO_ROOT}/cache}"
+mkdir -p "$WORK_DIR" "$CACHE_DIR"
+
+# Create /work and /cache symlinks so app defaults (/work, /cache) resolve here.
+# No-op if they already exist (e.g. set up by vastai-setup.sh) or if not root.
+[[ ! -e /work  ]] && ln -sfn "$WORK_DIR"  /work  2>/dev/null  || true
+[[ ! -e /cache ]] && ln -sfn "$CACHE_DIR" /cache 2>/dev/null  || true
+
+export XDG_CACHE_HOME="$CACHE_DIR"
+export HF_HOME="${CACHE_DIR}/huggingface"
+export TORCH_HOME="${CACHE_DIR}/torch"
+export HF_HUB_DISABLE_XET_TRANSPORT=1
+
+exec python "${REPO_ROOT}/${SCRIPT}" "$@"
