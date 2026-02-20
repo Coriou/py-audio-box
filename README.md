@@ -21,8 +21,11 @@ make build        # build the shared image (~5 min, cached on rebuild)
 ## Quick start
 
 ```bash
-# Run an app
+# Extract clean voice clips from a YouTube video
 ./run voice-split --url "https://www.youtube.com/watch?v=XXXX" --clips 5 --length 30
+
+# Clone a voice and synthesise new speech (CPU-only)
+./run voice-clone synth --ref-audio /work/myclip.wav --text "Hello, world"
 
 # Get a shell inside the container (explore, debug, prototype)
 make shell
@@ -58,11 +61,11 @@ Makefile            ← shortcuts for build / shell / clean
 
 ## Mount contract (inside the container)
 
-| Host path  | Container path | What goes there                                      |
-|------------|----------------|------------------------------------------------------|
-| `./`       | `/app`         | All source code (live bind-mount — edits take effect immediately) |
-| `./work`   | `/work`        | Default output directory for all apps                |
-| `./cache`  | `/cache`       | Shared persistent cache: models, downloads, segments |
+| Host path | Container path | What goes there                                                   |
+| --------- | -------------- | ----------------------------------------------------------------- |
+| `./`      | `/app`         | All source code (live bind-mount — edits take effect immediately) |
+| `./work`  | `/work`        | Default output directory for all apps                             |
+| `./cache` | `/cache`       | Shared persistent cache: models, downloads, segments              |
 
 Scripts should default `--cache /cache` and `--out /work`.
 `XDG_CACHE_HOME` is also set to `/cache` inside the container, so tools like HuggingFace
@@ -103,6 +106,7 @@ if __name__ == "__main__":
 ```
 
 Key rules:
+
 - `--cache` defaults to `/cache` (the shared mount)
 - `--out` defaults to `/work`
 - Use `argparse.ArgumentDefaultsHelpFormatter` so `--help` is always informative
@@ -129,6 +133,7 @@ my-tool:  ## Run my-tool. Usage: make my-tool ARGS='--flag value'
 ### 5. App README conventions
 
 Each `apps/<name>/README.md` should cover:
+
 - What the app does (1–3 sentences)
 - Usage examples (copy-paste ready `./run` commands)
 - All CLI flags with types and defaults
@@ -150,7 +155,7 @@ docker compose run --rm toolbox bash -c "poetry lock"
 make build
 ```
 
-To add a system package (ffmpeg, imagemagick, …): edit the `apt-get install` block in `Dockerfile`, then `make build`.
+To add a system package (ffmpeg, sox, …): edit the `apt-get install` block in `Dockerfile`, then `make build`.
 
 `poetry.lock` is committed — it guarantees reproducible builds and makes `make build` faster
 (only the install layer re-runs when deps change).
@@ -171,6 +176,7 @@ App shortcuts (pass extra flags via `ARGS=`):
 
 ```
 make voice-split ARGS='--url "https://..." --clips 5 --length 30'
+make voice-clone ARGS='synth --ref-audio /work/myclip.wav --text "Hello, world"'
 ```
 
 ---

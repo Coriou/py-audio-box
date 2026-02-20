@@ -122,17 +122,21 @@ Model weights are downloaded once by `qwen-tts` and cached under
 
 ## CPU performance expectations
 
-On a 16-core Mac (default `--threads 8`):
+Measured on a 16-core Mac Mini (Apple Silicon, `--threads 8`, 0.6B model):
 
-| Text length    | ~RTF   | Wall clock |
-| -------------- | ------ | ---------- |
-| 10 s of speech | ~8–15× | 1–2 min    |
-| 30 s of speech | ~8–15× | 3–7 min    |
+| Stage           | First run (cold) | Subsequent runs  |
+| --------------- | ---------------- | ---------------- |
+| Model download  | ~5 min (one-off) | skipped          |
+| Model load      | ~5 min           | ~5 min           |
+| Voice prompt    | ~45 s            | **cached → 0 s** |
+| Synthesis (RTF) | ~30–35×          | ~30–35×          |
 
-Use `--threads 12` or higher to speed up. RTF ≈ 8× means 1 min of audio takes
-~8 min to generate. Cache the voice prompt (`create_voice_clone_prompt`) — the
-app does this automatically — so iterating on different texts is as fast as
-possible.
+So synthesising 5 s of speech takes ~2–3 min of synthesis time once the model
+is loaded. On a **warm second run** (same reference audio), stages 1–4 are all
+cache hits — only model load + synthesis run.
+
+Use `--threads 12` or `--threads 14` to speed up; higher thread counts give
+decreasing returns above physical core count. The 1.7B model is ~3× slower.
 
 ---
 

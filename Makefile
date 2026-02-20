@@ -34,6 +34,10 @@ clean-cache:  ## Wipe the shared cache (forces model re-download on next run)
 voice-split:  ## Run voice-split. Usage: make voice-split ARGS='--url "..." --clips 5'
 	./run voice-split $(ARGS)
 
+.PHONY: voice-clone
+voice-clone:  ## Run voice-clone. Usage: make voice-clone ARGS='synth --ref-audio /work/x.wav --text "Hello"'
+	./run voice-clone $(ARGS)
+
 # ── help ───────────────────────────────────────────────────────────────────────
 
 .PHONY: help
