@@ -118,6 +118,12 @@ Each stage is optional — a voice progresses from `source_clip.wav` → `ref.wa
 
 # Inspect all registered voices + their pipeline status
 ./run voice-synth list-voices
+
+# Rename / delete / share voices
+./run voice-synth rename-voice old-slug new-slug
+./run voice-synth delete-voice my-voice --yes
+./run voice-synth export-voice my-voice               # → /work/my-voice.zip
+./run voice-synth import-voice --zip /work/my-voice.zip
 ```
 
 ### Shared library

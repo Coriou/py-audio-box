@@ -649,9 +649,9 @@ def cmd_speak(args) -> None:
         prompt = pickle.load(fh)
     load_sec = time.perf_counter() - t0
 
-    # Output directory
+    # Output directory — one subdir per voice, then a timestamped run dir
     ts      = datetime.now().strftime("%Y%m%d_%H%M%S")
-    run_dir = out_dir / f"voice_synth_{ts}"
+    run_dir = out_dir / voice_id / ts
     run_dir.mkdir(parents=True, exist_ok=True)
 
     n_variants = max(1, args.variants)
@@ -752,6 +752,8 @@ def cmd_speak(args) -> None:
     takes_meta_path = run_dir / "takes.meta.json"
     with open(takes_meta_path, "w") as fh:
         json.dump(takes_meta, fh, indent=2)
+
+    (run_dir / "text.txt").write_text(raw_text, encoding="utf-8")
 
     print(f"\nDone  →  {run_dir}")
     print(f"  {n_variants} take(s) written   total: {total_sec:.1f}s")
@@ -909,6 +911,61 @@ def cmd_design_voice(args) -> None:
     print(f"  use with:  ./run voice-synth speak --voice {voice_label} --text '...'")
 
 
+# ── voice management commands ──────────────────────────────────────────────────
+
+def _voice_reg(args):
+    """Return a VoiceRegistry for the current cache."""
+    return _voice_registry(Path(args.cache))
+
+
+def cmd_rename_voice(args) -> None:
+    reg = _voice_reg(args)
+    try:
+        reg.rename(args.old_name, args.new_name)
+        print(f"  renamed '{args.old_name}'  →  '{args.new_name}'")
+    except (KeyError, ValueError) as e:
+        print(f"ERROR: {e}", file=sys.stderr)
+        sys.exit(1)
+
+
+def cmd_delete_voice(args) -> None:
+    reg = _voice_reg(args)
+    if not reg.exists(args.voice):
+        print(f"ERROR: voice '{args.voice}' not found.", file=sys.stderr)
+        sys.exit(1)
+    if not args.yes:
+        ans = input(f"Delete voice '{args.voice}' and ALL its files? [y/N] ").strip().lower()
+        if ans not in ("y", "yes"):
+            print("  Aborted.")
+            return
+    reg.delete(args.voice)
+    print(f"  deleted '{args.voice}'.")
+
+
+def cmd_export_voice(args) -> None:
+    reg = _voice_reg(args)
+    dest = Path(args.out) / f"{args.voice}.zip" if args.dest is None else Path(args.dest)
+    try:
+        reg.export_zip(args.voice, dest)
+        print(f"  exported '{args.voice}'  →  {dest}")
+        print(f"  Share: copy the zip to another machine, then run:")
+        print(f"    ./run voice-synth import-voice --zip /work/{args.voice}.zip")
+    except KeyError as e:
+        print(f"ERROR: {e}", file=sys.stderr)
+        sys.exit(1)
+
+
+def cmd_import_voice(args) -> None:
+    reg = _voice_reg(args)
+    try:
+        slug = reg.import_zip(Path(args.zip), force=args.force)
+        print(f"  imported voice '{slug}'  from  {args.zip}")
+        print(f"  use with:  ./run voice-synth speak --voice {slug} --text '...'")
+    except (ValueError, KeyError) as e:
+        print(f"ERROR: {e}", file=sys.stderr)
+        sys.exit(1)
+
+
 # ── argument parser ────────────────────────────────────────────────────────────
 
 def _add_common(p: argparse.ArgumentParser) -> None:
@@ -1004,6 +1061,43 @@ def build_parser() -> argparse.ArgumentParser:
                     help="Register the designed voice as a named voice in /cache/voices/")
     _add_common(dv)
 
+    # ── rename-voice ───────────────────────────────────────────────────────────
+    rv = sub.add_parser("rename-voice",
+                        help="Rename a voice in the registry",
+                        formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+    rv.add_argument("old_name", help="Current voice slug")
+    rv.add_argument("new_name", help="New voice slug")
+    rv.add_argument("--cache", default="/cache")
+
+    # ── delete-voice ───────────────────────────────────────────────────────────
+    delv = sub.add_parser("delete-voice",
+                          help="Permanently delete a voice and all its files",
+                          formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+    delv.add_argument("voice", help="Voice slug to delete")
+    delv.add_argument("--yes", action="store_true",
+                      help="Skip confirmation prompt")
+    delv.add_argument("--cache", default="/cache")
+
+    # ── export-voice ───────────────────────────────────────────────────────────
+    ev = sub.add_parser("export-voice",
+                        help="Export a voice to a shareable zip archive",
+                        formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+    ev.add_argument("voice", help="Voice slug to export")
+    ev.add_argument("--dest", default=None, metavar="FILE",
+                    help="Output zip path (default: /work/<voice>.zip)")
+    ev.add_argument("--out", default="/work", help="Output directory (used when --dest omitted)")
+    ev.add_argument("--cache", default="/cache")
+
+    # ── import-voice ───────────────────────────────────────────────────────────
+    iv = sub.add_parser("import-voice",
+                        help="Import a voice from a zip archive (exported by export-voice)",
+                        formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+    iv.add_argument("--zip", required=True, metavar="FILE",
+                    help="Path to the .zip file to import")
+    iv.add_argument("--force", action="store_true",
+                    help="Overwrite if a voice with the same slug already exists")
+    iv.add_argument("--cache", default="/cache")
+
     return ap
 
 
@@ -1029,6 +1123,14 @@ def main() -> None:
             cmd_speak(args)
         case "design-voice":
             cmd_design_voice(args)
+        case "rename-voice":
+            cmd_rename_voice(args)
+        case "delete-voice":
+            cmd_delete_voice(args)
+        case "export-voice":
+            cmd_export_voice(args)
+        case "import-voice":
+            cmd_import_voice(args)
         case _:
             ap.print_help()
             sys.exit(1)

@@ -289,3 +289,76 @@ class VoiceRegistry:
         """Return the ``{tone_name: stem}`` mapping for this voice (may be empty)."""
         data = self.load(slug)
         return dict(data.get("tones") or {})
+
+    # ── management ──────────────────────────────────────────────────────────────
+
+    def rename(self, old_slug: str, new_slug: str) -> dict[str, Any]:
+        """
+        Rename a voice: move its directory and update voice.json's slug field.
+        Returns the updated voice record.
+        """
+        if not self.exists(old_slug):
+            raise KeyError(f"Voice '{old_slug}' not found.")
+        new_slug = validate_slug(new_slug)
+        if self.exists(new_slug):
+            raise ValueError(f"Voice '{new_slug}' already exists.")
+        old_dir = self.voice_dir(old_slug)
+        new_dir = self.voice_dir(new_slug)
+        old_dir.rename(new_dir)
+        # Update slug (and display_name when it mirrored the slug)
+        data = self.load(new_slug)
+        data["slug"] = new_slug
+        if data.get("display_name") == old_slug:
+            data["display_name"] = new_slug
+        self._save(new_slug, data)
+        return data
+
+    def delete(self, slug: str) -> None:
+        """Permanently delete a named voice and all its files."""
+        vd = self.voice_dir(slug)
+        if not vd.exists():
+            raise KeyError(f"Voice '{slug}' not found.")
+        shutil.rmtree(vd)
+
+    def export_zip(self, slug: str, dest: Path) -> Path:
+        """
+        Pack the voice directory into a zip archive at *dest*.
+        The archive preserves paths relative to ``self.root`` so that
+        ``import_zip`` can unpack it correctly on any machine.
+        Returns *dest*.
+        """
+        import zipfile
+        vd = self.voice_dir(slug)
+        if not vd.exists():
+            raise KeyError(f"Voice '{slug}' not found.")
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        with zipfile.ZipFile(dest, "w", zipfile.ZIP_DEFLATED) as zf:
+            for f in sorted(vd.rglob("*")):
+                if f.is_file():
+                    zf.write(f, f.relative_to(self.root))
+        return dest
+
+    def import_zip(self, zip_path: Path, force: bool = False) -> str:
+        """
+        Unpack a voice zip created by ``export_zip``.
+        The root directory name inside the zip is used as the slug.
+        Returns the imported slug.
+        Raises ``ValueError`` if the voice already exists and *force* is False.
+        """
+        import zipfile
+        with zipfile.ZipFile(zip_path, "r") as zf:
+            names = zf.namelist()
+        if not names:
+            raise ValueError("Empty zip file.")
+        slug = Path(names[0]).parts[0]
+        validate_slug(slug)
+        dest = self.voice_dir(slug)
+        if dest.exists():
+            if not force:
+                raise ValueError(
+                    f"Voice '{slug}' already exists. Use --force to overwrite."
+                )
+            shutil.rmtree(dest)
+        with zipfile.ZipFile(zip_path, "r") as zf:
+            zf.extractall(self.root)
+        return slug

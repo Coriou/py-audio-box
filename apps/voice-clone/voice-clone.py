@@ -1012,6 +1012,7 @@ def write_output(
     meta_path = out_dir / f"voice_clone_{ts}.meta.json"
 
     sf.write(str(wav_path), wav, sr)
+    (out_dir / "text.txt").write_text(text, encoding="utf-8")
 
     duration  = len(wav) / sr
     synth_sec = timings.get("synth_sec", 0.0)
@@ -1319,11 +1320,12 @@ def cmd_synth(args) -> None:
     }
 
     # Stage 6: write
+    eff_out_dir = out_dir / voice_name if voice_name else out_dir
     wav_path, meta_path = write_output(
         wav, sr, text, ref,
         args.model, language, ref.ref_language,
         args.x_vector_only, args.seed, args.tone, gen_kwargs,
-        out_dir, timings,
+        eff_out_dir, timings,
     )
 
     print(f"\nDone")

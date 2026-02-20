@@ -261,6 +261,50 @@ way to do instruction-driven tone in Qwen3-TTS).
 
 ---
 
+## Voice management
+
+### `rename-voice`
+
+Rename a voice slug in the registry (moves the directory and updates `voice.json`).
+
+```bash
+./run voice-synth rename-voice <old-slug> <new-slug>
+```
+
+### `delete-voice`
+
+Permanently delete a voice and all its files (source clip, ref, prompts).
+
+```bash
+./run voice-synth delete-voice <slug> [--yes]
+```
+
+Omitting `--yes` shows a confirmation prompt.
+
+### `export-voice`
+
+Pack a voice into a portable zip archive for sharing or backup.
+
+```bash
+./run voice-synth export-voice <slug> [--dest /work/my-voice.zip]
+```
+
+Default output: `/work/<slug>.zip`. The archive contains the full voice directory
+(source clip, ref audio, prompts) and can be imported on any machine running this
+toolbox.
+
+### `import-voice`
+
+Unpack a zip created by `export-voice` into the local registry.
+
+```bash
+./run voice-synth import-voice --zip /work/my-voice.zip [--force]
+```
+
+`--force` overwrites an existing voice with the same slug.
+
+---
+
 ## Cache layout
 
 ```
