@@ -93,10 +93,10 @@ RUN mkdir -p /work /cache
 #   TORCH_DEVICE defaults to cuda; override with -e TORCH_DEVICE=cpu for CPU-only.
 #   HF_HUB_DISABLE_XET_TRANSPORT avoids a slow experimental transfer path.
 ENV XDG_CACHE_HOME=/cache \
-    HF_HOME=/cache/huggingface \
-    TORCH_HOME=/cache/torch \
-    TORCH_DEVICE=cuda \
-    HF_HUB_DISABLE_XET_TRANSPORT=1
+  HF_HOME=/cache/huggingface \
+  TORCH_HOME=/cache/torch \
+  TORCH_DEVICE=cuda \
+  HF_HUB_DISABLE_XET_TRANSPORT=1
 
 # Expose the compute variant so apps and diagnostic tooling can inspect it:
 #   docker run --rm voice-tools:cuda env | grep TORCH_COMPUTE
