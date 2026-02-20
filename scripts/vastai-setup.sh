@@ -33,9 +33,16 @@ hr
 log "Code"
 if [[ -d "$APP_DIR/.git" ]]; then
   git -C "$APP_DIR" pull --ff-only
-  ok "Pulled latest → $APP_DIR"
+  ok "Pulled latest → $APP_DIR (git)"
 else
-  warn "No git repo at $APP_DIR — image code is at the build-time version"
+  # .git is excluded from the Docker image; do a shallow clone into a temp dir
+  # and rsync just the changed source files into /app.
+  info "Shallow clone → rsync into $APP_DIR …"
+  TMPDIR=$(mktemp -d)
+  git clone --depth=1 https://github.com/Coriou/py-audio-box "$TMPDIR" -q
+  rsync -a --exclude='.git' "$TMPDIR/" "$APP_DIR/"
+  rm -rf "$TMPDIR"
+  ok "Synced latest code → $APP_DIR"
 fi
 cd "$APP_DIR"
 
