@@ -1042,7 +1042,11 @@ def _best_dtype(device: str, dtype_str: str) -> torch.dtype:
       - CPU              → ``float32``   (native; bfloat16 on CPU upcasts every
                                           op to float32 internally — same compute
                                           cost, extra cast overhead, no benefit)
-      - CUDA SM < 8.0    → ``float16``   (Maxwell / Pascal / Volta / Turing)
+      - CUDA SM < 7.0    → ``float32``   (Maxwell SM 5.x / Pascal SM 6.0 have no
+                                          native FP16 compute units; FP16 ops run
+                                          in emulation and produce inf/NaN in deep
+                                          models — use float32 for correctness)
+      - CUDA SM 7.0–7.x  → ``float16``   (Volta / Turing, true FP16 tensor cores)
       - CUDA SM ≥ 8.0    → ``bfloat16``  (Ampere, Ada Lovelace, Hopper …)
 
     Explicit dtype strings ("bfloat16", "float32", "float16") are returned as-is.
@@ -1052,8 +1056,12 @@ def _best_dtype(device: str, dtype_str: str) -> torch.dtype:
     if not device.startswith("cuda"):
         return torch.float32                    # CPU: float32 is fastest (no cast overhead)
     idx = int(device.split(":")[-1]) if ":" in device else 0
-    major, _ = torch.cuda.get_device_capability(idx)
-    return torch.bfloat16 if major >= 8 else torch.float16  # Ampere+ vs older
+    major, minor = torch.cuda.get_device_capability(idx)
+    if major >= 8:
+        return torch.bfloat16                   # Ampere+: native bfloat16 tensor cores
+    if (major, minor) >= (7, 0):
+        return torch.float16                    # Volta/Turing: float16 tensor cores
+    return torch.float32                        # pre-Volta: fp16 emulation → NaN/overflow
 
 
 # ── Stage 5: synthesis ─────────────────────────────────────────────────────────
