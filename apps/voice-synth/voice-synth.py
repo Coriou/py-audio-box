@@ -46,6 +46,17 @@ PROMPT_SCHEMA_VERSION = 1   # must match voice-clone.py
 # preventing runaway generation when EOS is unreliable on CPU.
 MAX_NEW_TOKENS_DEFAULT = 4096
 
+# Audio synthesis codec rate — used to estimate a tight per-request token budget
+# so we don't burn CPU time approaching the flat 4096 ceiling for short texts.
+AUDIO_TOKENS_PER_SEC = 12      # Qwen3-TTS codec tokens per second of output
+CHARS_PER_SECOND     = 13.0    # typical speaking rate (characters / second of speech)
+TOKEN_MARGIN         = 3.5     # safety headroom multiplier over the naive estimate
+
+# Empirical CPU-only throughput (tokens / wall-clock second).
+# Used only for ETA display and auto-timeout; does not affect the token budget.
+# Apple M-series Mac Mini (CPU-only): ~0.18 t/s.  Faster CPUs may do 0.3–0.6 t/s.
+CPU_TOKENS_PER_SEC   = 0.18
+
 QWEN3_LANGUAGES = [
     "Auto", "Chinese", "English", "Japanese", "Korean",
     "German", "French", "Russian", "Portuguese", "Spanish", "Italian",
@@ -60,6 +71,25 @@ _LANGID_TO_QWEN: dict[str, str] = {
 
 # Silence (ms) inserted between auto-chunked sentences when concatenating
 CHUNK_SILENCE_MS = 300
+
+
+def estimate_max_new_tokens(text: str) -> int:
+    """
+    Return a tight token budget derived from text length.
+
+    For a typical short sentence (< 200 chars) this produces a ceiling that is
+    5-10× smaller than MAX_NEW_TOKENS_DEFAULT, cutting worst-case CPU generation
+    time proportionally.  Examples at 13 chars/s, 12 Hz, 3.5× margin:
+
+        100 chars  →  ~323 tokens  (~27 s ceiling)
+        158 chars  →  ~508 tokens  (~42 s ceiling)
+        400 chars  →  ~1 292 tokens (~108 s ceiling)
+
+    The hard ceiling MAX_NEW_TOKENS_DEFAULT still applies as a backstop.
+    """
+    est_seconds = max(3.0, len(text) / CHARS_PER_SECOND)
+    est_tokens  = int(est_seconds * AUDIO_TOKENS_PER_SEC * TOKEN_MARGIN)
+    return min(est_tokens, MAX_NEW_TOKENS_DEFAULT)
 
 
 # ── tiny timing helper ─────────────────────────────────────────────────────────
@@ -304,16 +334,97 @@ def synthesise(
     prompt,
     seed: int | None,
     gen_kwargs: dict[str, Any] | None = None,
+    timeout_s:  float | None = None,
 ) -> tuple[np.ndarray, int]:
+    """
+    Generate speech.
+
+    Runs generation on a background thread so a progress heartbeat is printed
+    every 10 seconds.  Without this the call is completely silent for 30-60 min
+    on CPU-only inference, giving the false impression of a hang.
+
+    timeout_s: raise TimeoutError after this many wall-clock seconds.  Pass 0
+    to disable the timeout entirely.
+    """
+    import threading
+
+    HEARTBEAT_INTERVAL = 10  # seconds between progress lines
+
     if seed is not None:
         torch.manual_seed(seed)
-    with _Timer("generate_voice_clone"):
-        wavs, sr = model.generate_voice_clone(
-            text=text,
-            language=language,
-            voice_clone_prompt=prompt,
-            **(gen_kwargs or {}),
+    kw = gen_kwargs or {}
+
+    budget = kw.get("max_new_tokens")
+    if isinstance(budget, int):
+        ceiling_s  = budget / AUDIO_TOKENS_PER_SEC
+        est_wall_s = budget / CPU_TOKENS_PER_SEC
+        est_wall_m = est_wall_s / 60
+        print(
+            f"  token budget : {budget} tokens  "
+            f"(audio ceiling ≈ {ceiling_s:.0f}s)",
+            flush=True,
         )
+        print(
+            f"  CPU ETA      : ~{est_wall_m:.0f} min  "
+            f"(use GPU for fast inference — see README)",
+            flush=True,
+        )
+        if timeout_s is None:
+            # Auto-timeout: 4× the CPU ETA — generous, but prevents silent all-day hangs
+            timeout_s = est_wall_s * 4.0
+
+    # timeout_s == 0 means "no timeout"
+    effective_timeout = None if (timeout_s is not None and timeout_s <= 0) else timeout_s
+
+    result: list[Any]                  = [None]
+    exc:    list[BaseException | None] = [None]
+
+    def _worker() -> None:
+        try:
+            wavs, sr = model.generate_voice_clone(
+                text=text,
+                language=language,
+                voice_clone_prompt=prompt,
+                **kw,
+            )
+            result[0] = (wavs, sr)
+        except BaseException as e:  # noqa: BLE001
+            exc[0] = e
+
+    t_start = time.perf_counter()
+    thread  = threading.Thread(target=_worker, daemon=True, name="tts-generate")
+    thread.start()
+
+    while thread.is_alive():
+        thread.join(timeout=HEARTBEAT_INTERVAL)
+        if thread.is_alive():
+            elapsed = time.perf_counter() - t_start
+            print(f"  … still generating ({elapsed:.0f}s elapsed) …", flush=True)
+            if effective_timeout is not None and elapsed >= effective_timeout:
+                print(
+                    f"\n  ✗  Timeout: generation exceeded {effective_timeout:.0f}s "
+                    f"(4× CPU ETA).  Kill the container to free resources.",
+                    flush=True,
+                )
+                print(
+                    "     To run longer pass --timeout <seconds>, or 0 to disable.",
+                    flush=True,
+                )
+                print(
+                    "     For practical speeds, run on a CUDA GPU — see README.",
+                    flush=True,
+                )
+                raise TimeoutError(
+                    f"generate_voice_clone exceeded {effective_timeout:.0f}s wall-clock timeout."
+                )
+
+    elapsed = time.perf_counter() - t_start
+    print(f"    ↳ generate_voice_clone: {elapsed:.2f}s")
+
+    if exc[0] is not None:
+        raise exc[0]  # re-raise in the main thread
+
+    wavs, sr = result[0]
     return wavs[0], sr
 
 
@@ -735,9 +846,11 @@ def cmd_speak(args) -> None:
         gen_kwargs["repetition_penalty"] = args.repetition_penalty
     # Always set a ceiling: without it the model may run indefinitely on CPU
     # when EOS is unreliable.  User can raise or lower with --max-new-tokens.
+    # Use a text-length-derived estimate when no explicit value is given — this
+    # shrinks the worst-case ceiling for short texts and feeds a sensible timeout.
     gen_kwargs["max_new_tokens"] = (
         args.max_new_tokens if args.max_new_tokens is not None
-        else MAX_NEW_TOKENS_DEFAULT
+        else estimate_max_new_tokens(text)
     )
 
     # Load model + prompt

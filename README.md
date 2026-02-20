@@ -359,13 +359,16 @@ To add a system package (ffmpeg, sox, …): edit the `apt-get install` block in 
 
 ```
 make build                  Build (or rebuild) the CPU toolbox image
-make build-gpu              Build the CUDA 12.1 GPU image  →  voice-tools:cuda
+make build-gpu              Build the CUDA 12.4 GPU image  →  voice-tools:cuda
 make build-no-cache         Force a clean CPU rebuild (no layer cache)
 make build-gpu-no-cache     Force a clean GPU rebuild (no layer cache)
 make shell                  Interactive bash shell inside the CPU container
 make shell-gpu              Interactive bash shell inside the GPU container
 make clean-work             Delete output files in ./work/
 make clean-cache            Wipe ./cache/ — models and downloads will re-run
+make publish                Build + push all images to GHCR (cpu → latest, cuda → cuda)
+make publish-cpu            Build + push CPU image only
+make publish-cuda           Build + push CUDA image only
 ```
 
 App shortcuts (pass extra flags via `ARGS=`):

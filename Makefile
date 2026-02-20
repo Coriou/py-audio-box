@@ -19,6 +19,18 @@ build:  ## Build (or rebuild) the CPU toolbox image  [default]
 build-gpu:  ## Build the GPU (CUDA 12.4) image variant  →  voice-tools:cuda
 	docker compose -f docker-compose.yml -f docker-compose.gpu.yml build
 
+.PHONY: publish
+publish:  ## Build + push all images to GHCR  (cpu → latest, cuda → cuda)
+	./scripts/publish.sh
+
+.PHONY: publish-cpu
+publish-cpu:  ## Build + push CPU image to GHCR  →  voice-tools:latest
+	./scripts/publish.sh cpu
+
+.PHONY: publish-cuda
+publish-cuda:  ## Build + push CUDA image to GHCR  →  voice-tools:cuda
+	./scripts/publish.sh cuda
+
 .PHONY: build-no-cache
 build-no-cache:  ## Force a clean CPU rebuild (no layer cache)
 	docker compose build --no-cache

@@ -12,7 +12,7 @@ ARG APP_GID=1000
 # COMPUTE selects the PyTorch variant installed during the build.
 # Values:
 #   cpu    (default) — pure-CPU, runs on any host, zero extra requirements
-#   cu121            — CUDA 12.1 wheels, enables GPU on Maxwell SM 5.2 + hosts
+#   cu124            — CUDA 12.4 wheels, enables GPU on Volta SM 7.0+ hosts
 #
 # IMPORTANT: declare this ARG *after* the expensive cached layers (apt, Poetry)
 # so that changing it only invalidates the thin CUDA-swap layer and below —
