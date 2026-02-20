@@ -4,7 +4,8 @@
 # Usage:
 #   ./scripts/publish.sh                   build + push: latest (cpu) and cuda
 #   ./scripts/publish.sh cpu               CPU image only
-#   ./scripts/publish.sh cuda              CUDA/GPU image only
+#   ./scripts/publish.sh cuda              CUDA/GPU image only  (cu124, SM 7.0+)
+#   ./scripts/publish.sh cuda128           CUDA/GPU image for Blackwell (cu128, SM 10.0+)
 #   ./scripts/publish.sh --no-cache        force full rebuild (skips layer cache)
 #   ./scripts/publish.sh --tag v1.2.3      also push a version tag
 #   ./scripts/publish.sh --dry-run         print commands without running them
@@ -12,7 +13,8 @@
 #
 # Images pushed:
 #   ghcr.io/coriou/voice-tools:latest     CPU  (runs on any linux/amd64 host)
-#   ghcr.io/coriou/voice-tools:cuda       GPU  (CUDA 12.4 / cu124, SM 7.0+)
+#   ghcr.io/coriou/voice-tools:cuda       GPU  (CUDA 12.4 / cu124, Volta SM 7.0+)
+#   ghcr.io/coriou/voice-tools:cuda128    GPU  (CUDA 12.8 / cu128, Blackwell SM 10.0+)
 #
 # CPU is always built first — its layers are cached on disk, so the CUDA build
 # only needs to push the single CUDA-swap layer delta (~2 GB vs ~6 GB total).
@@ -46,7 +48,7 @@ DRY_RUN=0
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    cpu|cuda|all) VARIANTS+=("$1"); shift ;;
+    cpu|cuda|cuda128|all) VARIANTS+=("$1"); shift ;;
     --no-cache)   NO_CACHE="--no-cache"; shift ;;
     --tag)        EXTRA_TAG="$2"; shift 2 ;;
     --tag=*)      EXTRA_TAG="${1#--tag=}"; shift ;;
@@ -62,12 +64,12 @@ done
 [[ ${#VARIANTS[@]} -eq 0 ]] && VARIANTS=(cpu cuda)
 # Expand "all"
 for i in "${!VARIANTS[@]}"; do
-  [[ "${VARIANTS[$i]}" == "all" ]] && { VARIANTS=(cpu cuda); break; }
+  [[ "${VARIANTS[$i]}" == "all" ]] && { VARIANTS=(cpu cuda cuda128); break; }
 done
 
-# Deduplicate while preserving order; cpu always before cuda (cache efficiency)
+# Deduplicate while preserving order; cpu always before cuda variants (cache efficiency)
 declare -A _seen; ordered=()
-for v in cpu cuda; do
+for v in cpu cuda cuda128; do
   for want in "${VARIANTS[@]}"; do
     if [[ "$want" == "$v" ]] && [[ -z "${_seen[$v]:-}" ]]; then
       ordered+=("$v"); _seen[$v]=1
@@ -113,6 +115,10 @@ build_variant() {
       primary_tag="${REGISTRY}:cuda"
       extra_args+=(--build-arg COMPUTE=cu124)
       ;;
+    cuda128)
+      primary_tag="${REGISTRY}:cuda128"
+      extra_args+=(--build-arg COMPUTE=cu128)
+      ;;
   esac
 
   local -a cmd=(
@@ -121,7 +127,7 @@ build_variant() {
     -t "$primary_tag"
     -t "${REGISTRY}:${variant}-${GIT_SHA}${GIT_DIRTY}"
   )
-  [[ -n "$EXTRA_TAG" ]] && cmd+=(-t "${REGISTRY}:${EXTRA_TAG}$([[ $variant == cuda ]] && echo -cuda || echo "")")
+  [[ -n "$EXTRA_TAG" ]] && cmd+=(-t "${REGISTRY}:${EXTRA_TAG}$([[ $variant == cuda128 ]] && echo -cuda128 || [[ $variant == cuda ]] && echo -cuda || echo "")")
   cmd+=("${extra_args[@]}")
   [[ -n "$NO_CACHE" ]] && cmd+=("$NO_CACHE")
   cmd+=(--push .)

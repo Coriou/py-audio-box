@@ -28,8 +28,12 @@ publish-cpu:  ## Build + push CPU image to GHCR  →  voice-tools:latest
 	./scripts/publish.sh cpu
 
 .PHONY: publish-cuda
-publish-cuda:  ## Build + push CUDA image to GHCR  →  voice-tools:cuda
+publish-cuda:  ## Build + push CUDA 12.4 image to GHCR  →  voice-tools:cuda
 	./scripts/publish.sh cuda
+
+.PHONY: publish-cuda128
+publish-cuda128:  ## Build + push CUDA 12.8 image to GHCR  →  voice-tools:cuda128  (Blackwell)
+	./scripts/publish.sh cuda128
 
 .PHONY: build-no-cache
 build-no-cache:  ## Force a clean CPU rebuild (no layer cache)
