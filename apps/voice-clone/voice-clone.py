@@ -83,6 +83,55 @@ SELF_TEST_REF_TEXT = (
 SELF_TEST_SYNTH_TEXT = "The quick brown fox jumps over the lazy dog."
 
 
+# ── voice registry helper ────────────────────────────────────────────────────
+
+def _voice_registry(cache: Path):
+    """Lazily import VoiceRegistry from the shared lib."""
+    import sys as _sys
+    _lib = str(Path(__file__).resolve().parent.parent.parent / "lib")
+    if _lib not in _sys.path:
+        _sys.path.insert(0, _lib)
+    from voices import VoiceRegistry  # type: ignore
+    return VoiceRegistry(cache)
+
+
+def _resolve_ref_audio(args, cache: Path) -> Path:
+    """
+    Return the reference audio path from either ``--ref-audio`` or ``--voice``.
+
+    When ``--voice SLUG`` is used the registry's **source_clip.wav** is
+    preferred as pipeline input because it produces a deterministic hash —
+    ``ref.wav`` changes every time the segment selection changes, which would
+    rebuild the prompt needlessly.  Falls back to ``ref.wav`` if no
+    source_clip exists yet (e.g. the voice was registered manually).
+    """
+    if getattr(args, "voice", None):
+        reg = _voice_registry(cache)
+        if not reg.exists(args.voice):
+            print(
+                f"ERROR: voice '{args.voice}' not found in registry.\n"
+                f"  Run: ./run voice-synth list-voices",
+                file=sys.stderr,
+            )
+            sys.exit(1)
+        # Prefer source_clip for stable hash; fallback to ref.wav
+        src = reg.source_clip(args.voice)
+        if src.exists():
+            print(f"  [registry] using source_clip from voice '{args.voice}': {src}")
+            return src
+        ref = reg.ref_wav(args.voice)
+        if ref.exists():
+            print(f"  [registry] using ref.wav from voice '{args.voice}': {ref}")
+            return ref
+        print(
+            f"ERROR: voice '{args.voice}' has no reference audio.\n"
+            f"  Run voice-split first, or supply --ref-audio directly.",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+    return Path(args.ref_audio)
+
+
 # ── tiny timing helper ─────────────────────────────────────────────────────────
 
 class _Timer:
@@ -359,24 +408,31 @@ def resolve_language(
     return "English"
 
 
-def validate_language(language: str, model) -> None:
+def validate_language(language: str, model) -> str:
     """
     Verify *language* against the model's supported language list.
+    Returns the normalised (lowercase) language string accepted by the model.
     Raises SystemExit with a helpful message if unsupported.
     """
-    if language == "Auto":
-        return
+    if language in ("Auto", "auto"):
+        return "auto"
     try:
         supported = model.get_supported_languages()
-        if supported and language not in supported:
-            print(
-                f"ERROR: language '{language}' is not supported by the loaded model.\n"
-                f"  Supported: {', '.join(sorted(supported))}",
-                file=sys.stderr,
-            )
-            sys.exit(1)
+        if supported:
+            # supported list is lowercase; our constants are title-cased
+            lang_lower = language.lower()
+            supported_lower = {s.lower() for s in supported}
+            if lang_lower not in supported_lower:
+                print(
+                    f"ERROR: language '{language}' is not supported by the loaded model.\n"
+                    f"  Supported: {', '.join(sorted(supported))}",
+                    file=sys.stderr,
+                )
+                sys.exit(1)
+            return lang_lower  # return lowercase for model call
     except AttributeError:
         pass  # older qwen-tts versions may not expose this method
+    return language.lower()
 
 
 # ── style presets ──────────────────────────────────────────────────────────────
@@ -771,6 +827,18 @@ def prepare_ref(
     )
 
 
+def _model_tag(model) -> str:
+    """
+    Return a short, filesystem-safe model tag used in prompt filenames.
+    Prefers ``model.name_or_path`` (HuggingFace convention); falls back to
+    ``"qwen3tts"`` so that the stem is stable regardless of whether the model
+    was loaded by repo ID, local path, or another name.
+    """
+    raw = getattr(model, "name_or_path", None) or "qwen3tts"
+    # Use only the final component of a repo path (e.g. "Qwen/Foo" → "foo")
+    return raw.split("/")[-1].lower().replace(" ", "-")
+
+
 # ── Stage 4: build / load voice-clone prompt ───────────────────────────────────
 
 def build_voice_clone_prompt(
@@ -789,8 +857,8 @@ def build_voice_clone_prompt(
     automatically invalidates stale pickles.
     """
     mode      = "xvec" if x_vector_only else "full"
-    model_tag = getattr(model, "name_or_path", "qwen3tts").replace("/", "_")
-    stem      = f"{ref.ref_hash}_{model_tag}_{mode}_v{PROMPT_SCHEMA_VERSION}"
+    mtag      = _model_tag(model)
+    stem      = f"{ref.ref_hash}_{mtag}_{mode}_v{PROMPT_SCHEMA_VERSION}"
 
     prompts_dir = cache / "voice-clone" / "prompts"
     prompt_path = prompts_dir / f"{stem}.pkl"
@@ -989,7 +1057,7 @@ def cmd_self_test(args) -> None:
     t_model_done = time.perf_counter()
 
     language = resolve_language(args.language, ref.ref_language, SELF_TEST_SYNTH_TEXT)
-    validate_language(language, model)
+    language = validate_language(language, model)
 
     prompt  = build_voice_clone_prompt(model, ref, cache, args.x_vector_only, force=False)
 
@@ -1027,9 +1095,12 @@ def cmd_self_test(args) -> None:
 # ── CLI commands ───────────────────────────────────────────────────────────────
 
 def cmd_prepare_ref(args) -> None:
+    cache     = Path(args.cache)
+    ref_audio = _resolve_ref_audio(args, cache)
+
     ref = prepare_ref(
-        ref_audio=Path(args.ref_audio),
-        cache=Path(args.cache),
+        ref_audio=ref_audio,
+        cache=cache,
         whisper_model=args.whisper_model,
         num_threads=args.threads,
         ref_start=args.ref_start,
@@ -1046,16 +1117,57 @@ def cmd_prepare_ref(args) -> None:
     print(f"  transcript:   {ref.transcript!r}")
     print(f"  ref language: {ref.ref_language} (p={ref.ref_language_prob:.2f})")
 
+    # Register ref into named voice if requested.
+    # Also auto-registers when --voice was used (not just explicit --voice-name).
+    voice_name = getattr(args, "voice_name", None) or getattr(args, "voice", None)
+    if voice_name:
+        from voices import validate_slug  # type: ignore (lib already on path)
+        slug = validate_slug(voice_name)
+        reg = _voice_registry(cache)
+        if not reg.exists(slug):
+            reg.create(slug, display_name=slug,
+                       source={"type": "file", "path": str(ref_audio)})
+        reg.update_ref(slug, ref.segment, {
+            "hash":            ref.ref_hash,
+            "segment_start":   ref.seg_start,
+            "segment_end":     ref.seg_end,
+            "duration_sec":    round(ref.seg_end - ref.seg_start, 3),
+            "transcript":      ref.transcript,
+            "transcript_conf": round(ref.transcript_conf, 4),
+            "language":        ref.ref_language,
+            "language_prob":   round(ref.ref_language_prob, 4),
+        })
+        print(f"\n  [registry] voice '{slug}' updated")
+        print(f"  Next: ./run voice-clone synth --voice {slug} --text 'Hello'")
+
 
 def cmd_synth(args) -> None:
-    cache   = Path(args.cache)
-    out_dir = Path(args.out)
+    cache     = Path(args.cache)
+    out_dir   = Path(args.out)
+    ref_audio = _resolve_ref_audio(args, cache)
+
+    # Validate + ensure named voice exists in registry before doing any work.
+    # If --voice SLUG was used without an explicit --voice-name, auto-register
+    # back to the same slug so each synth run keeps the prompt up-to-date.
+    voice_name = getattr(args, "voice_name", None) or getattr(args, "voice", None)
+    if voice_name:
+        _lib = str(Path(__file__).resolve().parent.parent.parent / "lib")
+        if _lib not in sys.path:
+            sys.path.insert(0, _lib)
+        from voices import validate_slug  # type: ignore
+        voice_name = validate_slug(voice_name)
+        reg = _voice_registry(cache)
+        if not reg.exists(voice_name):
+            source = ({"type": "file", "path": str(ref_audio)}
+                      if not getattr(args, "voice", None)
+                      else {"type": "file", "path": str(ref_audio)})
+            reg.create(voice_name, display_name=voice_name, source=source)
 
     t0 = time.perf_counter()
 
     # Stages 1–3
     ref = prepare_ref(
-        ref_audio=Path(args.ref_audio),
+        ref_audio=ref_audio,
         cache=cache,
         whisper_model=args.whisper_model,
         num_threads=args.threads,
@@ -1103,9 +1215,39 @@ def cmd_synth(args) -> None:
     # Stage 4: load model + build prompt
     t_model = time.perf_counter()
     model   = load_tts_model(args.model, args.threads)
-    validate_language(language, model)
+    language = validate_language(language, model)
     prompt  = build_voice_clone_prompt(model, ref, cache, args.x_vector_only, args.force)
     model_sec = time.perf_counter() - t_model
+
+    # Register ref + prompt to named voice if requested
+    if voice_name:
+        reg = _voice_registry(cache)
+        reg.update_ref(voice_name, ref.segment, {
+            "hash":            ref.ref_hash,
+            "segment_start":   ref.seg_start,
+            "segment_end":     ref.seg_end,
+            "duration_sec":    round(ref.seg_end - ref.seg_start, 3),
+            "transcript":      ref.transcript,
+            "transcript_conf": round(ref.transcript_conf, 4),
+            "language":        ref.ref_language,
+            "language_prob":   round(ref.ref_language_prob, 4),
+        })
+        mode      = "xvec" if args.x_vector_only else "full"
+        mtag      = _model_tag(model)  # same helper as build_voice_clone_prompt
+        stem      = f"{ref.ref_hash}_{mtag}_{mode}_v{PROMPT_SCHEMA_VERSION}"
+        pkl_path  = cache / "voice-clone" / "prompts" / f"{stem}.pkl"
+        meta_path = pkl_path.with_suffix(".meta.json")
+        if pkl_path.exists() and meta_path.exists():
+            with open(meta_path) as _fh:
+                _meta = json.load(_fh)
+            reg.register_prompt(voice_name, stem, pkl_path, _meta)
+            print(f"  [registry] voice '{voice_name}' \u2192 prompt registered")
+        else:
+            print(
+                f"  WARNING: expected prompt not found — pkl or meta.json missing\n"
+                f"    stem: {stem}",
+                file=sys.stderr,
+            )
 
     # Collect generation kwargs
     gen_kwargs: dict[str, Any] = {}
@@ -1219,8 +1361,13 @@ def build_parser() -> argparse.ArgumentParser:
         help="Clone a voice and synthesise new text (full pipeline)",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
-    sp.add_argument("--ref-audio",  required=True,
-                    help="Reference voice recording (WAV / MP3 / etc.)")
+    _ref_grp = sp.add_mutually_exclusive_group(required=True)
+    _ref_grp.add_argument("--ref-audio", metavar="PATH",
+                          help="Reference voice recording (WAV / MP3 / etc.)")
+    _ref_grp.add_argument("--voice", metavar="SLUG",
+                          help="Named voice from the registry (see voice-synth list-voices)")
+    sp.add_argument("--voice-name", default=None, metavar="SLUG",
+                    help="Register (or update) this result as a named voice in /cache/voices/")
     sp.add_argument("--text",       default=None,
                     help="Text to synthesise")
     sp.add_argument("--text-file",  default=None, metavar="FILE",
@@ -1267,8 +1414,13 @@ def build_parser() -> argparse.ArgumentParser:
         help="Run stages 1–3 only (normalise, VAD score, transcribe)",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
-    pr.add_argument("--ref-audio",  required=True,
-                    help="Reference voice recording")
+    _pr_grp = pr.add_mutually_exclusive_group(required=True)
+    _pr_grp.add_argument("--ref-audio", metavar="PATH",
+                         help="Reference voice recording (WAV / MP3 / etc.)")
+    _pr_grp.add_argument("--voice", metavar="SLUG",
+                         help="Named voice from the registry")
+    pr.add_argument("--voice-name", default=None, metavar="SLUG",
+                    help="Register (or update) result as a named voice in /cache/voices/")
     pr.add_argument("--ref-start",  type=float, default=None, metavar="SEC")
     pr.add_argument("--ref-end",    type=float, default=None, metavar="SEC")
     pr.add_argument("--force-bad-ref", action="store_true",

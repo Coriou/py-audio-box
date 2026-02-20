@@ -275,55 +275,141 @@ def qa_transcribe(wav_path: Path, whisper_model: str, num_threads: int,
     }
 
 
+# ── voice registry ─────────────────────────────────────────────────────────────
+
+def _voice_registry(cache: Path):
+    """Lazily import VoiceRegistry from the shared lib."""
+    _lib = str(Path(__file__).resolve().parent.parent.parent / "lib")
+    if _lib not in sys.path:
+        sys.path.insert(0, _lib)
+    from voices import VoiceRegistry  # type: ignore
+    return VoiceRegistry(cache)
+
+
 # ── prompts directory helpers ──────────────────────────────────────────────────
 
-def list_prompts(cache: Path) -> list[dict[str, Any]]:
+def list_all_voices(cache: Path) -> list[dict[str, Any]]:
     """
-    Scan /cache/voice-clone/prompts/ for .meta.json files and return a
-    list of voice dictionaries, sorted by creation date (newest first).
-    """
-    prompts_dir = cache / "voice-clone" / "prompts"
-    if not prompts_dir.exists():
-        return []
+    Return all available voice prompts from two sources:
+      1.  Named voices  (``/cache/voices/<slug>/``) — kind="named"
+      2.  Legacy prompts (``/cache/voice-clone/prompts/*.meta.json``) — kind="legacy"
 
-    voices = []
-    for meta_file in sorted(prompts_dir.glob("*.meta.json")):
-        stem = meta_file.stem  # e.g. abc123_Qwen_..._full_v1
-        pkl  = meta_file.with_suffix(".pkl")
-        try:
-            with open(meta_file) as fh:
-                m = json.load(fh)
-        except Exception:
-            continue
-        voices.append({
-            "id":          stem,
-            "pkl":         str(pkl) if pkl.exists() else "(missing)",
-            "pkl_exists":  pkl.exists(),
-            "model":       m.get("model", "?"),
-            "mode":        m.get("mode", "?"),
-            "ref_hash":    m.get("ref_hash", "?"),
-            "transcript":  m.get("transcript", ""),
-            "ref_language": m.get("ref_language_detected", "?"),
-            "duration_sec": m.get("segment_duration_sec", 0.0),
-            "created_at":  m.get("created_at", ""),
-            "schema_version": m.get("schema_version", "?"),
+    Named voices that have at least one prompt appear with kind="named".
+    Named voices that exist but have no prompts are still returned so
+    ``list-voices`` can show their status and suggest the next step.
+    """
+    results: list[dict[str, Any]] = []
+    # Deduplicate by PKL *stem* (filename without .pkl) so that prompts registered
+    # under a named voice (in /cache/voices/<slug>/prompts/) are not also shown in
+    # the legacy section (in /cache/voice-clone/prompts/), even though they live in
+    # different directories but share the same filename.
+    seen_stems: set[str] = set()
+
+    # 1. Named voices
+    reg = _voice_registry(cache)
+    for v in reg.list_voices():
+        slug    = v["slug"]
+        ref     = v.get("ref") or {}
+        best    = reg.best_prompt(slug)
+        # Mark all registered prompt stems so legacy scan skips them
+        for pkey in (v.get("prompts") or {}).values():
+            seen_stems.add(Path(pkey).stem)
+        results.append({
+            "kind":        "named",
+            "id":          slug,
+            "slug":        slug,
+            "display_name": v.get("display_name", slug),
+            "description": v.get("description", ""),
+            "pkl":         str(best) if best else None,
+            "pkl_exists":  best is not None and best.exists(),
+            "model":       v.get("prompts") and next(iter(v["prompts"]), "") or "?",
+            "ref_language": ref.get("language", "?"),
+            "duration_sec": ref.get("duration_sec", 0.0),
+            "transcript":  ref.get("transcript", ""),
+            "created_at":  v.get("created_at", ""),
+            "_ready":      v.get("_ready", False),
+            "_prompt_count": v.get("_prompt_count", 0),
+            "_has_ref":    v.get("_has_ref", False),
         })
 
-    voices.sort(key=lambda v: v["created_at"], reverse=True)
-    return voices
+    # 2. Legacy prompts not already covered by named voices
+    prompts_dir = cache / "voice-clone" / "prompts"
+    if prompts_dir.exists():
+        # Load with meta.json when available, fall back to pkl-only entries.
+        # Note: files are named "<stem>.meta.json" so we must strip ".meta.json"
+        # to get the stem — not use Path.stem which would only strip ".json".
+        all_pkl_stems = {p.stem for p in prompts_dir.glob("*.pkl")}
+        for meta_file in sorted(prompts_dir.glob("*.meta.json")):
+            stem = meta_file.name.removesuffix(".meta.json")
+            pkl  = meta_file.parent / f"{stem}.pkl"
+            if stem in seen_stems:
+                continue
+            all_pkl_stems.discard(stem)  # covered by meta
+            try:
+                with open(meta_file) as fh:
+                    m = json.load(fh)
+            except Exception:
+                continue
+            results.append({
+                "kind":        "legacy",
+                "id":          stem,
+                "slug":        None,
+                "display_name": stem,
+                "pkl":         str(pkl) if pkl.exists() else None,
+                "pkl_exists":  pkl.exists(),
+                "model":       m.get("model", "?"),
+                "ref_language": m.get("ref_language_detected", "?"),
+                "duration_sec": m.get("segment_duration_sec", 0.0),
+                "transcript":  m.get("transcript", ""),
+                "created_at":  m.get("created_at", ""),
+                "_ready":      pkl.exists(),
+                "_prompt_count": 1 if pkl.exists() else 0,
+                "_has_ref":    True,
+            })
+            if pkl.exists():
+                seen_stems.add(stem)
+
+        # pkl-only legacy prompts (no meta.json)
+        for stem in sorted(all_pkl_stems):
+            pkl = prompts_dir / f"{stem}.pkl"
+            if stem in seen_stems or not pkl.exists():
+                continue
+            results.append({
+                "kind":        "legacy",
+                "id":          stem,
+                "slug":        None,
+                "display_name": stem,
+                "pkl":         str(pkl),
+                "pkl_exists":  True,
+                "model":       "?",
+                "ref_language": "?",
+                "duration_sec": 0.0,
+                "transcript":  "",
+                "created_at":  "",
+                "_ready":      True,
+                "_prompt_count": 1,
+                "_has_ref":    True,
+            })
+
+    results.sort(key=lambda v: v["created_at"], reverse=True)
+    return results
+
+
+# keep old name as an alias for any callers
+def list_prompts(cache: Path) -> list[dict[str, Any]]:
+    return list_all_voices(cache)
 
 
 def resolve_voice(voice_arg: str, cache: Path) -> tuple[str, str]:
     """
-    Given --voice <arg>, return (pkl_path, voice_id).
-    Accepts:
-      - absolute path ending in .pkl
-      - bare ID (stem of a pkl in the prompts dir)
-      - short prefix of an ID (first unambiguous match)
+    Given --voice <arg>, return (pkl_path_str, voice_id).
+    Resolution order:
+      1. Absolute path ending in ``.pkl`` — used directly
+      2. Exact named-voice slug in ``/cache/voices/<slug>/``
+      3. Unambiguous prefix match against named voices
+      4. Exact stem or unambiguous prefix in legacy ``/cache/voice-clone/prompts/``
     """
-    prompts_dir = cache / "voice-clone" / "prompts"
-
-    # Direct path
+    # 1. Direct path
     if voice_arg.endswith(".pkl"):
         p = Path(voice_arg)
         if p.exists():
@@ -331,8 +417,40 @@ def resolve_voice(voice_arg: str, cache: Path) -> tuple[str, str]:
         print(f"ERROR: pkl not found: {voice_arg}", file=sys.stderr)
         sys.exit(1)
 
-    # Full or prefix match against meta IDs
-    all_ids = [m.stem for m in prompts_dir.glob("*.meta.json")] if prompts_dir.exists() else []
+    reg = _voice_registry(cache)
+
+    # 2. Exact named-voice slug
+    if reg.exists(voice_arg):
+        best = reg.best_prompt(voice_arg)
+        if best is None:
+            print(
+                f"ERROR: voice '{voice_arg}' exists but has no prompts yet.\n"
+                f"  Build one with:\n"
+                f"    ./run voice-clone synth --voice {voice_arg} --text 'Hello'",
+                file=sys.stderr,
+            )
+            sys.exit(1)
+        return str(best), voice_arg
+
+    # 3. Prefix match against named voices
+    named = [v["slug"] for v in reg.list_voices()]
+    name_matches = [s for s in named if s.startswith(voice_arg)]
+    if len(name_matches) == 1:
+        return resolve_voice(name_matches[0], cache)  # tail-recurse with full slug
+    if len(name_matches) > 1:
+        print(
+            f"ERROR: ambiguous voice prefix '{voice_arg}' — matches named voices:\n"
+            + "\n".join(f"  {m}" for m in sorted(name_matches)),
+            file=sys.stderr,
+        )
+        sys.exit(1)
+
+    # 4. Legacy: full or prefix match against prompt stems (*.meta.json OR *.pkl)
+    prompts_dir = cache / "voice-clone" / "prompts"
+    if prompts_dir.exists():
+        all_ids = sorted({p.stem for p in prompts_dir.glob("*.pkl")})
+    else:
+        all_ids = []
     matches = [i for i in all_ids if i == voice_arg or i.startswith(voice_arg)]
     if len(matches) == 1:
         pkl = prompts_dir / f"{matches[0]}.pkl"
@@ -347,10 +465,10 @@ def resolve_voice(voice_arg: str, cache: Path) -> tuple[str, str]:
             file=sys.stderr,
         )
         sys.exit(1)
-    # Ambiguous
+    # Ambiguous legacy
     print(
-        f"ERROR: ambiguous voice prefix '{voice_arg}' — matches:\n"
-        + "\n".join(f"  {m}" for m in matches),
+        f"ERROR: ambiguous voice prefix '{voice_arg}' — legacy matches:\n"
+        + "\n".join(f"  {m}" for m in sorted(matches)),
         file=sys.stderr,
     )
     sys.exit(1)
@@ -360,31 +478,56 @@ def resolve_voice(voice_arg: str, cache: Path) -> tuple[str, str]:
 
 def cmd_list_voices(args) -> None:
     cache  = Path(args.cache)
-    voices = list_prompts(cache)
+    voices = list_all_voices(cache)
+
+    named  = [v for v in voices if v["kind"] == "named"]
+    legacy = [v for v in voices if v["kind"] == "legacy"]
 
     if not voices:
         print("No cached voice prompts found.")
-        print(f"  Run: ./run voice-clone prepare-ref --ref-audio /work/voice.wav")
+        print("  Extract clips:   ./run voice-split --url '...' --voice-name my-voice")
+        print("  Register a file: ./run voice-clone prepare-ref --ref-audio /work/clip.wav"
+              " --voice-name my-voice")
         return
 
-    print(f"\n{'ID':<52}  {'Model':<30}  {'Lang':<10}  {'Dur':>5}  Created")
-    print("-" * 120)
-    for v in voices:
-        short_id = v["id"]
-        # Abbreviate long IDs: first 20 chars + … + last 20 chars
-        if len(short_id) > 50:
-            short_id = short_id[:22] + "…" + short_id[-26:]
-        model_short = v["model"].replace("Qwen_", "").replace("-Base", "")
-        created = v["created_at"][:10] if v["created_at"] else "?"
-        status  = "" if v["pkl_exists"] else " [missing pkl]"
-        print(
-            f"{short_id:<52}  {model_short:<30}  {v['ref_language']:<10}  "
-            f"{v['duration_sec']:>4.1f}s  {created}{status}"
-        )
-        if v["transcript"]:
-            preview = textwrap.shorten(v["transcript"], width=70, placeholder="…")
-            print(f"  {preview}")
-    print(f"\n{len(voices)} voice(s) found in {cache}/voice-clone/prompts/")
+    if named:
+        print(f"\n\033[1mNAMED VOICES\033[0m  ({len(named)})")
+        print(f"  {'NAME':<28}  {'LANG':<10}  {'DUR':>5}  {'PROMPTS':>7}  STATUS")
+        print("  " + "-" * 72)
+        for v in named:
+            status = (
+                "\033[32mready\033[0m" if v["_ready"]
+                else ("\033[33mno prompts\033[0m  run: voice-clone synth --voice " + v["slug"])
+                if v["_has_ref"]
+                else "\033[31mno ref\033[0m  run: voice-clone prepare-ref --voice " + v["slug"]
+            )
+            print(
+                f"  {v['slug']:<28}  {v['ref_language']:<10}"
+                f"  {v['duration_sec']:>4.1f}s  {v['_prompt_count']:>7}  {status}"
+            )
+            if v["transcript"]:
+                preview = textwrap.shorten(v["transcript"], width=68, placeholder="…")
+                print(f"    \033[2m{preview}\033[0m")
+
+    if legacy:
+        print(f"\n\033[1mLEGACY PROMPTS\033[0m  ({len(legacy)})  "
+              "(no name — tip: run voice-clone synth --voice-name <slug> to register)")
+        print(f"  {'ID (truncated)':<50}  {'LANG':<10}  {'DUR':>5}")
+        print("  " + "-" * 72)
+        for v in legacy:
+            short_id = v["id"]
+            if len(short_id) > 48:
+                short_id = short_id[:22] + "…" + short_id[-24:]
+            print(
+                f"  {short_id:<50}  {v['ref_language']:<10}  {v['duration_sec']:>4.1f}s"
+            )
+            if v["transcript"]:
+                preview = textwrap.shorten(v["transcript"], width=68, placeholder="…")
+                print(f"    \033[2m{preview}\033[0m")
+
+    total = len(named) + len(legacy)
+    print(f"\n{total} voice(s): {len(named)} named, {len(legacy)} legacy")
+    print(f"Registry: {cache}/voices/    Legacy: {cache}/voice-clone/prompts/")
 
 
 def cmd_speak(args) -> None:
@@ -422,8 +565,8 @@ def cmd_speak(args) -> None:
         styles_path=styles_path,
     )
 
-    # Resolve language
-    language = resolve_language(args.language, ref_language, raw_text)
+    # Resolve language; normalise to lowercase so the model accepts it
+    language = resolve_language(args.language, ref_language, raw_text).lower()
     print(f"  language: {language}  (ref detected: {ref_language})")
 
     # Chunk if requested
@@ -671,10 +814,45 @@ def cmd_design_voice(args) -> None:
         )
 
     total_sec = time.perf_counter() - t0
+
+    # Register to named voice if requested
+    voice_name = getattr(args, "voice_name", None)
+    if voice_name:
+        _lib = str(Path(__file__).resolve().parent.parent.parent / "lib")
+        if _lib not in sys.path:
+            sys.path.insert(0, _lib)
+        from voices import VoiceRegistry, validate_slug  # type: ignore
+        slug = validate_slug(voice_name)
+        reg  = VoiceRegistry(Path(args.cache))
+        if not reg.exists(slug):
+            reg.create(slug, display_name=slug, source={
+                "type":     "designed",
+                "instruct": instruct,
+                "ref_text": ref_text,
+            })
+        ref_meta = {
+            "hash":            content_hash,
+            "segment_start":   0.0,
+            "segment_end":     round(duration, 3),
+            "duration_sec":    round(duration, 3),
+            "transcript":      ref_text,
+            "transcript_conf": 0.0,
+            "language":        language,
+            "language_prob":   1.0,
+        }
+        reg.update_ref(slug, design_wav_path, ref_meta)
+        if prompt_path.exists():
+            with open(meta_path) as _fh:
+                _meta = json.load(_fh)
+            reg.register_prompt(slug, stem, prompt_path, _meta)
+        voice_label = slug
+    else:
+        voice_label = stem[:22] + "..."
+
     print(f"\nDone  ({total_sec:.1f}s)")
-    print(f"  voice ID:  {stem}")
+    print(f"  voice ID:  {voice_name or stem}")
     print(f"  prompt:    {prompt_path}")
-    print(f"  use with:  ./run voice-synth speak --voice {stem[:22]} ...")
+    print(f"  use with:  ./run voice-synth speak --voice {voice_label} --text '...'")
 
 
 # ── argument parser ────────────────────────────────────────────────────────────
@@ -753,6 +931,8 @@ def build_parser() -> argparse.ArgumentParser:
                     help="Qwen3-TTS Base model for building the clone prompt")
     dv.add_argument("--out", default="/work",
                     help="Output directory for the designed ref clip")
+    dv.add_argument("--voice-name", default=None, metavar="SLUG",
+                    help="Register the designed voice as a named voice in /cache/voices/")
     _add_common(dv)
 
     return ap

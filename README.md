@@ -24,12 +24,25 @@ make build        # build the shared image (~5 min, cached on rebuild)
 # Extract clean voice clips from a YouTube video
 ./run voice-split --url "https://www.youtube.com/watch?v=XXXX" --clips 5 --length 30
 
-# Clone a voice and synthesise new speech (CPU-only)
-./run voice-clone synth --ref-audio /work/myclip.wav --text "Hello, world"
+# ── Named voice workflow (recommended) ──────────────────────────────────────
+# 1. Extract + register a named voice
+./run voice-split --url "https://www.youtube.com/watch?v=XXXX" \
+    --voice-name david-attenborough --clips 5
 
-# List cached voices, then iterate fast without re-running the full pipeline
+# 2. Process ref audio, build clone prompt (only once)
+./run voice-clone synth \
+    --voice david-attenborough \
+    --text "Nature is the greatest artist."
+
+# 3. Fast iteration — no ref processing or prompt building on re-runs
 ./run voice-synth list-voices
-./run voice-synth speak --voice <id> --text "Take two, different text, same voice."
+./run voice-synth speak --voice david-attenborough \
+    --text "Welcome to the natural history of the Earth."
+./run voice-synth speak --voice david-attenborough \
+    --text "..." --variants 4 --qa --style nature_doc
+
+# ── Or with an existing WAV file ─────────────────────────────────────────────
+./run voice-clone synth --ref-audio /work/myclip.wav --text "Hello, world"
 
 # Get a shell inside the container (explore, debug, prototype)
 make shell
@@ -52,7 +65,11 @@ apps/
     <name>.py       ← entry point (required, must match dir name)
     README.md       ← app-level docs: purpose, args, output format
 cache/              ← shared persistent cache — gitignored, never delete unless resetting
+  voices/
+    <slug>/         ← named voice registry; shared across all apps
 work/               ← default output directory — gitignored
+lib/
+  voices.py         ← shared voice-registry library (zero extra deps)
 Dockerfile          ← single shared image: Python 3.11 + Poetry + ffmpeg + torch stack
 docker-compose.yml  ← mounts: ./  → /app, ./work → /work, ./cache → /cache
 pyproject.toml      ← Python dependencies for the shared image
@@ -60,6 +77,57 @@ poetry.lock         ← committed — pins exact versions for reproducible build
 run                 ← launcher: ./run <app> [args…]
 Makefile            ← shortcuts for build / shell / clean
 ```
+
+---
+
+## Voice registry
+
+All apps share a named voice registry at `/cache/voices/<slug>/`.
+A **slug** is lowercase ASCII with hyphens (e.g. `david-attenborough`).
+
+### Directory layout
+
+```
+/cache/voices/
+  david-attenborough/
+    voice.json          ← identity, source info, ref metadata, prompt index
+    source_clip.wav     ← raw clip from voice-split (44.1 kHz)
+    ref.wav             ← processed 24 kHz segment from voice-clone
+    prompts/
+      <hash>_<model>_full_v1.pkl        ← clone prompt (used by voice-synth)
+      <hash>_<model>_full_v1.meta.json
+```
+
+Each stage is optional — a voice progresses from `source_clip.wav` → `ref.wav`
+→ `prompts/*.pkl` as you run the pipeline steps.
+
+### Progressive pipeline
+
+```bash
+# Step 1 — register the voice with a source clip
+./run voice-split --url "..." --voice-name david-attenborough
+
+# Step 2 — process ref + build prompt  (first time: ~45s; cached thereafter)
+./run voice-clone synth --voice david-attenborough --text "..."
+
+# Step 3 — fast synthesis (model load + generate only, no VAD or Whisper)
+./run voice-synth speak --voice david-attenborough --text "..."
+
+# Inspect all registered voices + their pipeline status
+./run voice-synth list-voices
+```
+
+### Shared library
+
+`lib/voices.py` contains `VoiceRegistry` and `validate_slug`, imported by all
+apps via:
+
+```python
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent / "lib"))
+from voices import VoiceRegistry, validate_slug
+```
+
+Zero external dependencies — stdlib only.
 
 ---
 
@@ -196,3 +264,4 @@ When an AI agent or script works with this repo:
 - **Adding an app = adding a file.** Drop `apps/<name>/<name>.py` and it's runnable with `./run <name>`. No registration, no config changes.
 - **Check `--help` first.** Every script uses `ArgumentDefaultsHelpFormatter`; `./run <app> --help` is always the authoritative reference for flags and defaults.
 - **Output is always in `./work/`** (mounted at `/work`) unless `--out` is overridden. Look there for results.
+- **Prefer `--voice <slug>` over `--ref-audio <path>`.** Named voice slugs are the canonical way to reference voices across all apps. Run `./run voice-synth list-voices` to enumerate available voices. Register a new voice with `--voice-name <slug>` on `voice-split`, `voice-clone synth`, or `voice-synth design-voice`. When `--voice <slug>` is used with `voice-clone synth`, the built prompt is automatically registered back to that voice — no separate `--voice-name` needed.

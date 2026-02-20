@@ -48,7 +48,13 @@ Output WAVs land in `./work/` on your host (or whatever `--out` you pass).
 --seed N                Random seed for reproducibility
 --max-scan-seconds N    Limit VAD scan to first N seconds
 --cookies FILE          Netscape cookies.txt for age-gated videos
+--voice-name SLUG       Register best clip to the named voice registry [optional]
 ```
+
+Slugs must be lowercase, alphanumeric with hyphens, e.g. `david-attenborough`.
+
+Note: `--out` is optional. All intermediate work and named clips land under
+`/work` by default.
 
 ## Output format
 
@@ -58,6 +64,42 @@ Output WAVs land in `./work/` on your host (or whatever `--out` you pass).
 - Low-pass at 8 kHz (removes harshness)
 - Noise reduction via afftdn
 - Light compression
+
+## Named voice registry
+
+Pass `--voice-name <slug>` to automatically register the **best** extracted clip
+under `/cache/voices/<slug>/` so the rest of the toolbox can reference it by name.
+
+The slug is lowercase ASCII with hyphens — it becomes the identity of the voice
+across every app.
+
+**Best-clip selection** is deterministic: the pool segment with the longest
+continuous speech run (highest speech density) is chosen, regardless of `--seed`.
+It is written as `clip_ref_from_<start>s.wav` in the output directory and
+registered as `source_clip.wav` in the voice registry.
+
+```bash
+# 1. Extract clips and register the voice
+./run voice-split \
+    --url "https://www.youtube.com/watch?v=XXXX" \
+    --voice-name david-attenborough
+
+# 2. Process ref audio + build clone prompt (done once, cached)
+./run voice-clone synth \
+    --voice david-attenborough \
+    --text "Nature is the greatest artist."
+
+# 3. Fast iteration — no re-processing on subsequent runs
+./run voice-synth speak \
+    --voice david-attenborough \
+    --text "Welcome to the natural history of the Earth."
+```
+
+`voice-split` writes `source_clip.wav` and a `voice.json` manifest.  
+`voice-clone synth` adds `ref.wav` + a `.pkl` prompt.  
+`voice-synth list-voices` shows all named voices with their current pipeline status.
+
+---
 
 ## Dependencies
 

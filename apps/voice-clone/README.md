@@ -14,10 +14,23 @@ running entirely on CPU.
 # End-to-end smoke test (downloads a demo ref clip, runs the full pipeline)
 ./run voice-clone self-test
 
+# ── Named voice (recommended) ───────────────────────────────────────────
+# If you used voice-split with --voice-name, reference the voice by slug:
+./run voice-clone synth \
+  --voice david-attenborough \
+  --text "The diversity of life on Earth is extraordinary."
+
+# To register a result under a new name at the same time:
+./run voice-clone synth \
+  --voice david-attenborough \
+  --voice-name david-attenborough-refined \
+  --text "Nature is the greatest artist."
+
+# ── Direct WAV file ──────────────────────────────────────────────────
 # Stage 1–3 only: normalise → VAD-trim → transcribe a ref clip
 ./run voice-clone prepare-ref --ref-audio /work/myvoice.wav
 
-# Full clone + synthesis
+# Full clone + synthesis from a WAV file
 ./run voice-clone synth \
   --ref-audio /work/myvoice.wav \
   --text "Hello, this is my cloned voice speaking."
@@ -50,13 +63,24 @@ Outputs land in `/work` by default:
     --text "Hello, this is my cloned voice speaking."
 ```
 
-**Required**
+**Required (mutually exclusive)**
 
-| Flag               | Description                                  |
-| ------------------ | -------------------------------------------- |
-| `--ref-audio PATH` | Reference voice recording (WAV / MP3 / etc.) |
+| Flag               | Description                                                    |
+| ------------------ | -------------------------------------------------------------- |
+| `--voice SLUG`     | Named voice slug from the registry (e.g. `david-attenborough`) |
+| `--ref-audio PATH` | Path to a WAV/MP3/etc. reference recording (bypasses registry) |
 
 One of `--text` or `--text-file` must be provided.
+
+**Voice registry**
+
+| Flag                | Type  | Default | Description                                                   |
+| ------------------- | ----- | ------- | ------------------------------------------------------------- |
+| `--voice-name SLUG` | `str` | —       | Register the built prompt under this slug in `/cache/voices/` |
+
+> **Tip:** when you pass `--voice <slug>` without `--voice-name`, the prompt is
+> automatically registered back to the same slug. Use `--voice-name` only when
+> you want to register under a _different_ name.
 
 **Input text**
 
@@ -111,11 +135,17 @@ Runs normalise → VAD → score candidates → transcribe and prints the cached
 paths + transcript. Useful for verifying the ref clip before a long synthesis run.
 
 ```bash
+# From a WAV file
 ./run voice-clone prepare-ref --ref-audio /work/myvoice.wav
+
+# From a named voice (uses source_clip.wav if ref.wav not yet built)
+./run voice-clone prepare-ref --voice david-attenborough --voice-name david-attenborough
 ```
 
-Accepts all the same flags as `synth` except `--text*`, `--style`, `--prompt-*`,
-generation knobs, and `--out`.
+Accepts the same `--voice`/`--ref-audio` mutually exclusive group and `--voice-name`
+as `synth`, plus `--ref-start`, `--ref-end`, `--ref-language`, `--force-bad-ref`,
+`--whisper-model`, `--threads`, `--force`, `--cache`.
+Flags not accepted: `--text*`, `--style`, `--prompt-*`, generation knobs, `--out`.
 
 ### `self-test` — smoke test
 
@@ -168,9 +198,18 @@ exploring edge cases or when you know the recording is acceptable).
 
 ## Cache layout
 
-All intermediate artefacts are stored under `/cache/voice-clone/`:
+All intermediate artefacts are stored under `/cache/`:
 
 ```
+/cache/voices/
+  <slug>/
+    voice.json            # identity, source, ref metadata, prompt index
+    source_clip.wav       # raw clip from voice-split (44.1 kHz)
+    ref.wav               # processed 24 kHz segment (written by voice-clone)
+    prompts/
+      <hash>_<model>_full_v1.pkl
+      <hash>_<model>_full_v1.meta.json
+
 /cache/voice-clone/
   refs/
     <sha256>/
@@ -191,6 +230,9 @@ All intermediate artefacts are stored under `/cache/voice-clone/`:
   self-test/
     self_test_ref.wav              # demo ref clip (downloaded once)
 ```
+
+When `--voice-name` is provided, `ref.wav` and the `.pkl` prompt are also copied
+into `/cache/voices/<slug>/` so `voice-synth` can find them by name.
 
 Re-running `synth` on the same reference is fast: stages 1–4 are all cache
 hits and only synthesis itself runs.
@@ -244,6 +286,10 @@ Qwen3-TTS is steered by the text itself — punctuation and wording matter:
 - Use `...` for natural pauses.
 - Use `!` / `?` for emphasis / questions.
 - Use `--style` for one-word delivery presets (`serious_doc`, `nature_doc`,
-  `excited`, `whisper`, `audiobook`, …). See `styles.yaml` for the full list.
+  `excited`, `sad`, `melancholic`, `whisper`, `audiobook`, …). See `styles.yaml` for the full list.
 - Use `--prompt-prefix` for custom style instructions, e.g.
   `--prompt-prefix "Speak slowly and thoughtfully."`
+
+Style prefixes are prepended verbatim to the synthesis text and interpreted
+inline by Qwen3-TTS. The model is guided by but may vocalise the prefix —
+this is expected behaviour.

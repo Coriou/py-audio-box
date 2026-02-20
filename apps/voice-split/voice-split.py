@@ -359,6 +359,52 @@ def export_clips(plans: list[tuple[Path, float, float]], out: Path) -> None:
         print(f"  wrote {dest}")
 
 
+def export_registry_clip(
+    pool: list[tuple[Path, float, float, float]],
+    target_len: float,
+    out: Path,
+) -> Path | None:
+    """
+    Export a single deterministic best-quality clip for voice registry use.
+
+    Picks the pool segment with the longest contiguous speech run (most likely
+    to have sustained, solo speech) and anchors the clip at the segment start
+    so that voice-clone\'s VAD+scoring gets maximum clean speech to work with.
+
+    Returns the exported path (``out/clip_ref_from_<t>s.wav``) or None.
+    """
+    if not pool:
+        return None
+
+    # Rank by speech segment duration — longer = more sustained solo speech
+    ranked = sorted(pool, key=lambda x: x[3] - x[2], reverse=True)
+
+    for vocals, file_dur, s, e in ranked:
+        clip_len = min(target_len, file_dur - s)
+        if clip_len < 5.0:  # need at least 5s for voice-clone to work well
+            continue
+        dest = out / f"clip_ref_from_{s:.1f}s.wav"
+        if not dest.exists():
+            out.mkdir(parents=True, exist_ok=True)
+            subprocess.run(
+                [
+                    "ffmpeg", "-hide_banner", "-loglevel", "error", "-y",
+                    "-i", str(vocals),
+                    "-ss", f"{s:.3f}", "-t", f"{clip_len:.3f}",
+                    "-vn", "-af", VOICE_AF,
+                    "-c:a", "pcm_s16le", "-ar", "44100", "-ac", "1",
+                    str(dest),
+                ],
+                check=True,
+            )
+            print(f"  wrote registry clip → {dest.name}")
+        else:
+            print(f"  [cache hit] registry clip → {dest.name}")
+        return dest
+
+    return None
+
+
 # ── main ──────────────────────────────────────────────────────────────────────
 
 def main() -> None:
@@ -367,7 +413,7 @@ def main() -> None:
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
     ap.add_argument("--url",    required=True,           help="YouTube (or any yt-dlp) URL")
-    ap.add_argument("--out",    required=True,           help="Output directory for WAV clips")
+    ap.add_argument("--out",    default="/work",         help="Output directory for WAV clips")
     ap.add_argument("--clips",  type=int,   default=10,  help="Number of clips to produce")
     ap.add_argument("--length", type=float, default=30,  help="Target clip length in seconds")
     ap.add_argument(
@@ -391,6 +437,14 @@ def main() -> None:
         "--cookies",
         default=None, metavar="FILE",
         help="Netscape cookies.txt for YouTube downloads (mount into container)",
+    )
+    ap.add_argument(
+        "--voice-name",
+        default=None, metavar="SLUG",
+        help=(
+            "Register best extracted clip as a named voice in /cache/voices/<slug>/. "
+            "Slug must be lowercase with hyphens only (e.g. 'david-attenborough')."
+        ),
     )
     args = ap.parse_args()
 
@@ -486,6 +540,50 @@ def main() -> None:
 
     print(f"\nDone — {len(plans)} clips in {out}")
     print(f"Cache:  {cache}  (re-runs are fully cached)")
+
+    # ── optional: register as named voice ────────────────────────────────────────
+    if args.voice_name:
+        import sys as _sys
+        _lib = str(Path(__file__).resolve().parent.parent.parent / "lib")
+        if _lib not in _sys.path:
+            _sys.path.insert(0, _lib)
+        from voices import VoiceRegistry, validate_slug  # type: ignore
+
+        try:
+            slug = validate_slug(args.voice_name)
+        except ValueError as exc:
+            print(f"  WARNING: {exc} — skipping voice registration.", file=sys.stderr)
+            slug = None
+
+        if slug:
+            # Export a single deterministic best-quality clip for the registry.
+            # Picks the pool segment with the longest contiguous speech run so
+            # voice-clone's VAD+scoring gets the best possible input.
+            print(f"\n==> Selecting best registry clip...")
+            src_clip = export_registry_clip(pool, args.length, out)
+
+            reg = VoiceRegistry(cache)
+            reg.create(
+                slug,
+                display_name=slug,
+                source={
+                    "type":     "youtube",
+                    "url":      args.url,
+                    "video_id": video_id,
+                    "n_clips":  len(plans),
+                },
+            )
+            if src_clip and src_clip.exists():
+                reg.set_source_clip(slug, src_clip)
+                print(f"  [registry] voice '{slug}' created")
+                print(f"  source clip: {src_clip.name} → {cache}/voices/{slug}/source_clip.wav")
+            else:
+                print(f"  [registry] voice '{slug}' created (no suitable clip found—"
+                      f"pool may be too short)", file=sys.stderr)
+            print(f"  Next steps:")
+            print(f"    ./run voice-clone synth --voice {slug} --text 'Hello'")
+            print(f"    ./run voice-synth speak --voice {slug} --text 'Hello'")
+            print(f"    ./run voice-synth list-voices  # see all registered voices")
 
 
 if __name__ == "__main__":

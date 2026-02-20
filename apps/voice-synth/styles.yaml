@@ -26,6 +26,14 @@ warm:
   prefix: "[Warm, friendly, conversational tone]"
   suffix: ""
 
+sad:
+  prefix: "[Sad, heavy-hearted, slow and mournful delivery]"
+  suffix: ""
+
+melancholic:
+  prefix: "[Melancholic, resigned, quietly sorrowful tone]"
+  suffix: ""
+
 # ── Quiet / intimate ──────────────────────────────────────────────────────────
 
 whisper:

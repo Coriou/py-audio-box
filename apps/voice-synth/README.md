@@ -15,31 +15,37 @@ Just load the cached prompt and generate.
 ## Quick start
 
 ```bash
-# See all voices you have cached
+# See all voices you have cached (named + legacy)
 ./run voice-synth list-voices
 
-# Synthesise from a cached voice (voice ID from list-voices)
+# Synthesise using a named voice (created by voice-split/voice-clone --voice-name)
 ./run voice-synth speak \
-    --voice <id> \
+    --voice david-attenborough \
     --text "Hello, this is my cloned voice."
+
+# Also works with a legacy hex ID from list-voices
+./run voice-synth speak \
+    --voice 3fa8c1 \
+    --text "Hello from a legacy prompt."
 
 # Generate 4 takes with different seeds and print an intelligibility scoreboard
 ./run voice-synth speak \
-    --voice <id> \
+    --voice david-attenborough \
     --text "The forest was silent except for the distant call of birds." \
     --variants 4 --qa
 
 # Apply a style preset
 ./run voice-synth speak \
-    --voice <id> \
+    --voice david-attenborough \
     --text "Welcome to the natural history of the Earth." \
     --style nature_doc
 
-# Design a brand-new voice, then use it immediately
+# Design a brand-new voice and register it by name, then use it immediately
 ./run voice-synth design-voice \
     --instruct "Calm male narrator, mid-40s, warm and unhurried" \
-    --ref-text  "The forest was silent except for the distant call of birds."
-./run voice-synth speak --voice <id-printed-above> --text "Hello from a designed voice."
+    --ref-text  "The forest was silent except for the distant call of birds." \
+    --voice-name forest-narrator
+./run voice-synth speak --voice forest-narrator --text "Hello from a designed voice."
 ```
 
 Outputs land in `/work/voice_synth_<timestamp>/`:
@@ -49,19 +55,24 @@ Outputs land in `/work/voice_synth_<timestamp>/`:
 
 ---
 
-## How it connects to `voice-clone`
+## How it connects to the voice registry
 
 ```
-voice-clone synth       ────┐  each run builds and caches a voice prompt
-voice-clone prepare-ref     ┤  (stages 1–4: normalise → VAD → transcribe → prompt)
-voice-synth design-voice    ┘
-               ↓
-  /cache/voice-clone/prompts/<id>.pkl
-               ↓
-voice-synth speak  (fast: load prompt → generate → write)
+voice-split --voice-name <slug>     ───┬─── writes source_clip.wav
+voice-clone synth --voice <slug>    ───┼─── writes ref.wav + .pkl prompt
+voice-synth design-voice --voice-name ──┼─── writes designed .pkl prompt
+                                       │
+               /cache/voices/<slug>/ ──┴───
+                 voice.json
+                 source_clip.wav
+                 ref.wav
+                 prompts/<hash>.pkl
+                       │
+voice-synth speak --voice <slug>  (fast: load prompt → generate → write)
 ```
 
-Any prompt produced by `voice-clone` is immediately usable by `voice-synth speak`.
+Legacy prompts in `/cache/voice-clone/prompts/` are still fully supported —
+`list-voices` and `speak` work with both.
 
 ---
 
@@ -69,12 +80,34 @@ Any prompt produced by `voice-clone` is immediately usable by `voice-synth speak
 
 ### `list-voices`
 
-List every cached voice prompt under `/cache/voice-clone/prompts/`, with model,
-detected language, reference duration, and transcript preview.
+List all cached voice prompts: named voices first (from `/cache/voices/`), then
+legacy prompts (from `/cache/voice-clone/prompts/`).
 
 ```bash
 ./run voice-synth list-voices [--cache DIR]
 ```
+
+Example output:
+
+```
+NAMED VOICES  (2)
+  NAME                          LANG          DUR  PROMPTS  STATUS
+  -----------------------------------------------------------------------
+  david-attenborough            English      9.8s        1  ready
+    Once a year, they must all return to the sea to breed…
+  forest-narrator               English      6.1s        1  ready
+    The forest was silent except for the distant call of birds.
+
+LEGACY PROMPTS  (1)  (no name — tip: run voice-clone synth --voice-name <slug>)
+  ID (truncated)                                      LANG          DUR
+  -----------------------------------------------------------------------
+  3fa8c1b2…_qwen3tts_full                            ?            0.0s
+
+3 voice(s): 2 named, 1 legacy
+```
+
+Named voices are shown first. Prompts already registered under a named voice
+are deduplicated and do not appear in the legacy section.
 
 | Flag      | Type   | Default  | Description           |
 | --------- | ------ | -------- | --------------------- |
@@ -96,9 +129,9 @@ auto-chunking, and whisper-based QA scoring.
 
 **Required**
 
-| Flag         | Description                                                     |
-| ------------ | --------------------------------------------------------------- |
-| `--voice ID` | Voice ID (from `list-voices`) or absolute path to a `.pkl` file |
+| Flag         | Description                                                                        |
+| ------------ | ---------------------------------------------------------------------------------- |
+| `--voice ID` | Named voice slug (e.g. `david-attenborough`), legacy hex prefix, or `/path/to.pkl` |
 
 One of `--text` or `--text-file` must be provided.
 
@@ -180,6 +213,7 @@ The printed voice ID is immediately usable with `speak`.
 | ------------------- | -------- | -------------------------------------- | ------------------------------------------------------------------- |
 | `--instruct TEXT`   | `str`    | _(required)_                           | Natural-language description of the voice persona, style and timbre |
 | `--ref-text TEXT`   | `str`    | _(required)_                           | Short script spoken in the designed voice (1–2 sentences)           |
+| `--voice-name SLUG` | `str`    | —                                      | Register the result as a named voice in `/cache/voices/`            |
 | `--design-model ID` | `str`    | `Qwen/Qwen3-TTS-12Hz-1.7B-VoiceDesign` | VoiceDesign model                                                   |
 | `--clone-model ID`  | `str`    | `Qwen/Qwen3-TTS-12Hz-0.6B-Base`        | Base clone model for prompt extraction                              |
 | `--language LANG`   | `choice` | `Auto` → `English`                     | Language for design synthesis                                       |
@@ -201,6 +235,8 @@ Each wraps the synthesis text with an instructional prefix and/or suffix.
 | `excited`     | High energy, upbeat, smiling       |
 | `energetic`   | Lively and expressive              |
 | `warm`        | Inviting, intimate, friendly       |
+| `sad`         | Heavy-hearted, slow, mournful      |
+| `melancholic` | Resigned, quietly sorrowful        |
 | `whisper`     | Soft, close-mic whisper            |
 | `calm`        | Slow, deliberate, unhurried        |
 | `formal`      | Professional, authoritative        |
@@ -214,17 +250,27 @@ Use `--style` with `speak` to apply any preset. Presets compose with
 ## Cache layout
 
 ```
+/cache/voices/
+  <slug>/
+    voice.json           # identity, source, ref metadata, prompt index
+    source_clip.wav      # raw clip from voice-split (44.1 kHz)
+    ref.wav              # processed 24 kHz segment
+    prompts/
+      <hash>_<model>_full_v1.pkl
+      <hash>_<model>_full_v1.meta.json
+
 /cache/voice-clone/
   prompts/
-    <id>.pkl             # pickled voice-clone prompt tensor dict
-    <id>.meta.json       # model, language, transcript, timestamps
+    <id>.pkl             # legacy: pickled voice-clone prompt tensor dict
+    <id>.meta.json       # legacy: model, language, transcript, timestamps
   designed_refs/
     <hash>/
       design_ref.wav     # VoiceDesign-synthesised reference clip
       design_meta.json   # instruct, ref_text, language, model, timings
 ```
 
-`voice-synth speak` reads `.pkl` files only and never touches the refs directories.
+`voice-synth speak` reads `.pkl` files only. Named voice prompts and legacy
+prompts are both resolved transparently by `--voice`.
 
 ---
 
