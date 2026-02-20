@@ -76,7 +76,7 @@ def download_audio(url: str, dl_cache: Path, video_id: str, cookies: str | None 
         return cached
     opts = _ydl_opts(
         {
-            "format": "bestaudio",
+            "format": "bestaudio/best",
             "postprocessors": [
                 {
                     "key": "FFmpegExtractAudio",
