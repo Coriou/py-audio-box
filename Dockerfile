@@ -5,9 +5,6 @@ LABEL org.opencontainers.image.description="ML/audio toolbox — voice cloning, 
 LABEL org.opencontainers.image.licenses="MIT"
 
 ARG POETRY_VERSION=1.8.3
-ARG APP_USER=app
-ARG APP_UID=1000
-ARG APP_GID=1000
 
 # COMPUTE selects the PyTorch variant installed during the build.
 # Values:
@@ -82,14 +79,8 @@ RUN --mount=type=cache,target=/root/.cache/pip \
   --index-url "https://download.pytorch.org/whl/${COMPUTE}"; \
   fi
 
-# Create non-root user and hand /app over to them
-RUN groupadd -g ${APP_GID} ${APP_USER} \
-  && useradd -m -u ${APP_UID} -g ${APP_GID} -s /bin/bash ${APP_USER}
-
 # Copy the rest of the source
-COPY --chown=${APP_USER}:${APP_USER} . /app
-
-USER ${APP_USER}
+COPY . /app
 
 # Point all cache-aware tools (Torch Hub, HuggingFace, etc.) at the shared /cache mount
 ENV XDG_CACHE_HOME=/cache
