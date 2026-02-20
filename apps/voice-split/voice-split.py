@@ -452,6 +452,63 @@ def export_clips(plans: list[tuple[Path, float, float]], out: Path) -> None:
         print(f"  wrote {dest}")
 
 
+def _interactive_pick_clip(out: Path) -> Path | None:
+    """
+    Present a numbered menu of all clip_*.wav files in *out* and return
+    the user's chosen Path.  Returns None if the user accepts the default
+    (the auto-selected clip_ref_* file) or if the prompt is skipped.
+
+    Intended for interactive runs where the user wants to listen to all
+    clips before deciding which segment to hand to voice-clone.
+    """
+    clips = sorted(out.glob("clip_*.wav"))
+    if not clips:
+        print("  (no clip_*.wav files found — skipping interactive selection)", file=sys.stderr)
+        return None
+
+    # Mark the auto-selected registry clip so the user knows the default.
+    ref_clips = [p for p in clips if p.name.startswith("clip_ref_")]
+    default = ref_clips[0] if ref_clips else clips[0]
+
+    line = "─" * 60
+    print(f"\n{line}")
+    print("  Interactive clip selection")
+    print(f"{line}")
+    print(f"  Clips are in: {out}")
+    print()
+    for i, p in enumerate(clips):
+        dur = get_duration(p)
+        marker = "  ← auto-selected (best score)" if p == default else ""
+        print(f"  [{i}] {p.name}  ({dur:.1f}s){marker}")
+    print()
+    print("  Listen to each clip, then enter the number of the one you")
+    print("  want to use as the reference for voice cloning.")
+    default_idx = clips.index(default)
+    while True:
+        try:
+            raw = input(f"  Your choice [default {default_idx}]: ").strip()
+        except (EOFError, KeyboardInterrupt):
+            print(f"\n  (no tty / interrupted — keeping auto-selected clip)")
+            return None
+        if raw == "":
+            print(f"  ✓ keeping auto-selected: {default.name}")
+            return None
+        try:
+            idx = int(raw)
+        except ValueError:
+            print(f"  Please enter a number between 0 and {len(clips) - 1}.")
+            continue
+        if not 0 <= idx < len(clips):
+            print(f"  Please enter a number between 0 and {len(clips) - 1}.")
+            continue
+        chosen = clips[idx]
+        if chosen == default:
+            print(f"  ✓ keeping auto-selected: {chosen.name}")
+            return None
+        print(f"  ✓ selected: {chosen.name}")
+        return chosen
+
+
 def export_registry_clip(
     pool: list[tuple[Path, float, float, float]],
     target_len: float,
@@ -574,6 +631,15 @@ def main() -> None:
         help=(
             "Register best extracted clip as a named voice in /cache/voices/<slug>/. "
             "Slug must be lowercase with hyphens only (e.g. 'david-attenborough')."
+        ),
+    )
+    ap.add_argument(
+        "--interactive", "-i",
+        action="store_true",
+        help=(
+            "After exporting clips, show a numbered menu so you can listen to each"
+            " one and pick which clip to register as the voice reference."
+            " Requires --voice-name."
         ),
     )
     args = ap.parse_args()
@@ -757,6 +823,12 @@ def main() -> None:
                     file=sys.stderr,
                 )
             else:
+                # Optional: let the user listen to all clips and pick a better ref.
+                if args.interactive:
+                    chosen = _interactive_pick_clip(out)
+                    if chosen is not None:
+                        src_clip = chosen
+
                 reg = VoiceRegistry(cache)
                 reg.create(
                     slug,

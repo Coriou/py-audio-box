@@ -326,6 +326,70 @@ def _pick_top_candidates(
     return result
 
 
+# ── candidate scoring (stage 2 helper) ────────────────────────────────────────
+
+def _interactive_pick_candidate(
+    scored: list[dict],
+    cand_dir: Path,
+) -> dict:
+    """
+    Present a numbered menu of scored VAD candidates and return the one the
+    user picks.  Falls back to the auto-selected best on EOF / Ctrl-C.
+
+    ``scored`` must be sorted best-first (as produced by
+    ``_score_and_select_best_candidate``).
+    """
+    line = "─" * 60
+    print(f"\n{line}")
+    print("  Interactive segment selection")
+    print(f"{line}")
+    print(f"  Candidate WAVs are in: {cand_dir}")
+    print()
+    for entry in scored:
+        i = entry["index"]
+        marker = "  ← auto-selected (best score)" if entry is scored[0] else ""
+        print(
+            f"  [{i}] candidate_{i:02d}.wav  "
+            f"{entry['seg_start']:.1f}s–{entry['seg_end']:.1f}s  "
+            f"({entry['duration']:.1f}s)  "
+            f"[{entry['ref_language']} p={entry['ref_language_prob']:.2f}]  "
+            f"score={entry['score']:.3f}"
+            f"{marker}"
+        )
+        if entry["transcript"]:
+            print(f"       transcript: {entry['transcript']!r}")
+    print()
+    print("  Listen to each candidate, then enter the number of the segment")
+    print("  you want to use as the voice reference.")
+    default_idx = scored[0]["index"]
+    idx_map = {e["index"]: e for e in scored}
+    while True:
+        try:
+            raw = input(f"  Your choice [default {default_idx}]: ").strip()
+        except (EOFError, KeyboardInterrupt):
+            print(f"\n  (no tty / interrupted — keeping auto-selected candidate)")
+            return scored[0]
+        if raw == "":
+            print(f"  ✓ keeping auto-selected: candidate_{default_idx:02d}.wav")
+            return scored[0]
+        try:
+            idx = int(raw)
+        except ValueError:
+            valid = sorted(idx_map)
+            print(f"  Please enter one of: {valid}")
+            continue
+        if idx not in idx_map:
+            valid = sorted(idx_map)
+            print(f"  Please enter one of: {valid}")
+            continue
+        chosen = idx_map[idx]
+        if chosen is scored[0]:
+            print(f"  ✓ keeping auto-selected: candidate_{idx:02d}.wav")
+        else:
+            print(f"  ✓ selected: candidate_{idx:02d}.wav")
+        return chosen
+
+
 def _score_segment(duration: float, avg_logprob: float) -> float:
     """
     Combined quality score for a candidate segment.
@@ -600,6 +664,7 @@ def _score_and_select_best_candidate(
     whisper_model: str,
     num_threads: int,
     force: bool,
+    interactive: bool = False,
 ) -> tuple[tuple[float, float], str, float, str, float]:
     """
     Score each candidate segment via fast whisper (beam_size=2), pick the best.
@@ -607,12 +672,15 @@ def _score_and_select_best_candidate(
     Returns (best_seg, transcript, avg_logprob, detected_language, lang_prob).
     Caches individual candidate clips under ref_dir/candidates/.
     Writes ref_dir/best_segment.json for future cache hits.
+
+    When *interactive* is True the cache is bypassed so the user can always
+    choose even if a previous automatic selection was cached.
     """
     cand_dir = ref_dir / "candidates"
     cand_dir.mkdir(parents=True, exist_ok=True)
 
     best_json = ref_dir / "best_segment.json"
-    if best_json.exists() and not force:
+    if best_json.exists() and not force and not interactive:
         with open(best_json) as fh:
             d = json.load(fh)
         print(
@@ -628,7 +696,7 @@ def _score_and_select_best_candidate(
             d.get("ref_language_prob", 1.0),
         )
 
-    if len(candidates) == 1:
+    if len(candidates) == 1 and not interactive:
         # Single candidate — skip scoring; full transcription handled in stage 3
         s, e = candidates[0]
         return (s, e), "", 0.0, "English", 1.0
@@ -662,7 +730,12 @@ def _score_and_select_best_candidate(
         )
 
     scored.sort(key=lambda x: x["score"], reverse=True)
-    best = scored[0]
+
+    if interactive:
+        best = _interactive_pick_candidate(scored, cand_dir)
+    else:
+        best = scored[0]
+
     print(
         f"  ✓ best candidate: {best['seg_start']:.2f}s – {best['seg_end']:.2f}s  "
         f"score={best['score']:.3f}"
@@ -709,6 +782,7 @@ def prepare_ref(
     x_vector_only: bool,
     force:         bool,
     force_bad_ref: bool = False,
+    interactive:   bool = False,
 ) -> RefResult:
     """
     Run stages 1–3 of the pipeline (normalise → VAD trim → transcribe).
@@ -748,7 +822,7 @@ def prepare_ref(
         legacy_json = ref_dir / "vad_best_segment.json"
         best_json   = ref_dir / "best_segment.json"
 
-        if (best_json.exists() or legacy_json.exists()) and not force:
+        if (best_json.exists() or legacy_json.exists()) and not force and not interactive:
             src = best_json if best_json.exists() else legacy_json
             with open(src) as fh:
                 d = json.load(fh)
@@ -788,6 +862,7 @@ def prepare_ref(
                     _score_and_select_best_candidate(
                         candidates, normalized, ref_dir,
                         whisper_model, num_threads, force,
+                        interactive=interactive,
                     )
 
             print(
@@ -796,7 +871,7 @@ def prepare_ref(
             )
 
     segment_wav = ref_dir / "ref_segment.wav"
-    if segment_wav.exists() and not force:
+    if segment_wav.exists() and not force and not interactive:
         print(f"  [cache hit] segment wav → {segment_wav}")
     else:
         print("  trimming segment …")
@@ -815,7 +890,7 @@ def prepare_ref(
         detected_lang = "English"
         lang_prob     = 1.0
 
-    elif transcript_json.exists() and not force:
+    elif transcript_json.exists() and not force and not interactive:
         with open(transcript_json) as fh:
             td = json.load(fh)
         transcript    = td["transcript"]
@@ -1369,6 +1444,7 @@ def cmd_prepare_ref(args) -> None:
         x_vector_only=args.x_vector_only,
         force=args.force,
         force_bad_ref=getattr(args, "force_bad_ref", False),
+        interactive=getattr(args, "interactive", False),
     )
     print(f"\n  ref_dir:      {ref.ref_dir}")
     print(f"  segment:      {ref.seg_start:.2f}s – {ref.seg_end:.2f}s"
@@ -1435,6 +1511,7 @@ def cmd_synth(args) -> None:
         x_vector_only=args.x_vector_only,
         force=args.force,
         force_bad_ref=args.force_bad_ref,
+        interactive=getattr(args, "interactive", False),
     )
     prep_sec = time.perf_counter() - t0
 
@@ -1617,6 +1694,15 @@ def _add_common(p: argparse.ArgumentParser) -> None:
     p.add_argument(
         "--force", action="store_true",
         help="Ignore all cached results and recompute from scratch",
+    )
+    p.add_argument(
+        "--interactive", "-i",
+        action="store_true",
+        help=(
+            "After scoring VAD candidates, show a numbered menu so you can listen"
+            " to each candidate WAV and pick the best reference segment manually."
+            " Bypasses the cached segment selection."
+        ),
     )
 
 

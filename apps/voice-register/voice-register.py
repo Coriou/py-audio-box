@@ -253,6 +253,17 @@ def main() -> None:
             "plan to synthesise with voice-synth speak separately."
         ),
     )
+    ap.add_argument(
+        "--interactive", "-i",
+        action="store_true",
+        help=(
+            "Enable interactive selection at both pipeline steps:\n"
+            "  1. voice-split: pick the best extracted clip before registering.\n"
+            "  2. voice-clone: pick the best VAD sub-segment before building the prompt.\n"
+            "Run from a real terminal (not a batch script) so you can listen to the\n"
+            "candidate files and type a number at each prompt."
+        ),
+    )
 
     args = ap.parse_args()
 
@@ -278,6 +289,8 @@ def main() -> None:
         split_args += ["--cookies", args.cookies]
     if args.max_scan_seconds is not None:
         split_args += ["--max-scan-seconds", str(args.max_scan_seconds)]
+    if args.interactive:
+        split_args.append("--interactive")
 
     step1_source = "download + Demucs" if args.url else "Demucs"
     _run_step(
@@ -313,6 +326,8 @@ def main() -> None:
         clone_args.append("--force")
     if args.force_bad_ref:
         clone_args.append("--force-bad-ref")
+    if args.interactive:
+        clone_args.append("--interactive")
 
     step2_label = "STEP 2/2 — voice-clone synth (ref processing + prompt build + synthesis)"
     if args.skip_synth:
@@ -332,6 +347,8 @@ def main() -> None:
             clone_args_no_synth.append("--force")
         if args.force_bad_ref:
             clone_args_no_synth.append("--force-bad-ref")
+        if args.interactive:
+            clone_args_no_synth.append("--interactive")
         step2_label = "STEP 2/2 — voice-clone prepare-ref (ref processing only; --skip-synth)"
         clone_args = clone_args_no_synth
 

@@ -139,7 +139,57 @@ Timestamp formats: `90` (seconds), `1:30` (MM:SS), `1:30.5`, `1:02:30` (HH:MM:SS
 ./run voice-clone synth --ref-audio /work/myclip.wav --text "Hello, world"
 ```
 
-### Voice management
+### Interactive reference selection (optional)
+
+Add `--interactive` (or `-i`) to any pipeline command to manually pick the best clip / segment
+instead of relying on automatic scoring:
+
+```bash
+# Full pipeline — prompts at both stages (clip selection + segment selection)
+./run voice-register \
+    --url "https://www.youtube.com/watch?v=XXXX" \
+    --voice-name my-voice \
+    --text "Hello." \
+    --interactive
+
+# Clip selection only (voice-split step)
+./run voice-split \
+    --url "..." --voice-name my-voice \
+    --interactive
+
+# Segment selection only (voice-clone step)
+./run voice-clone synth \
+    --voice my-voice --text "Hello." \
+    --interactive
+```
+
+**How it works — two sequential prompts:**
+
+1. **Clip selection** (voice-split): after Demucs extracts all clips to
+   `./work/<voice-name>/`, a numbered menu is printed:
+
+   ```
+   [0] clip_ref_from_0.0s.wav   (30.0s)  ← auto-selected (best score)
+   [1] clip_01_from_3.1s.wav    (30.0s)
+   [2] clip_02_from_14.7s.wav   (30.0s)
+   ```
+
+   Listen to the files (they're already in `./work/<voice-name>/` on your host),
+   then enter a number — or press Enter to keep the auto-selected clip.
+
+2. **Segment selection** (voice-clone): after Whisper scores all VAD candidates,
+   a second menu is printed:
+   ```
+   [0] candidate_00.wav  3.1s–11.6s (8.5s) [English p=0.98] score=0.891  ← auto-selected
+   [1] candidate_01.wav  0.0s–9.2s  (9.2s) [English p=0.97] score=0.723
+       transcript: "Welcome back everybody..."
+   ```
+   Candidate WAVs are in `/cache/voice-clone/refs/<hash>/candidates/` inside the
+   container (or `./cache/voice-clone/refs/*/candidates/` on your host). Enter a
+   number or press Enter to keep the auto-selected candidate.
+
+The chosen segment is written back to the cache as `best_segment.json`, so after you make your
+selection subsequent non-interactive runs (e.g. `voice-synth speak`) reuse your choice.
 
 ```bash
 ./run voice-synth rename-voice old-slug new-slug
