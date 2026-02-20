@@ -220,7 +220,7 @@ class VoiceRegistry:
         dest = self.source_clip(slug)
         dest.parent.mkdir(parents=True, exist_ok=True)
         if str(wav_src.resolve()) != str(dest.resolve()):
-            shutil.copy2(wav_src, dest)
+            shutil.copy(wav_src, dest)
         return dest
 
     def update_ref(self, slug: str, segment_wav: Path, ref_meta: dict[str, Any]) -> Path:
@@ -232,7 +232,7 @@ class VoiceRegistry:
         dest = self.ref_wav(slug)
         dest.parent.mkdir(parents=True, exist_ok=True)
         if str(segment_wav.resolve()) != str(dest.resolve()):
-            shutil.copy2(segment_wav, dest)
+            shutil.copy(segment_wav, dest)
         data = self.load(slug)
         data["ref"] = {**ref_meta, "wav": "ref.wav"}
         self._save(slug, data)
@@ -261,7 +261,7 @@ class VoiceRegistry:
         dest_pkl  = pd / f"{stem}.pkl"
         dest_meta = pd / f"{stem}.meta.json"
 
-        shutil.copy2(pkl_src, dest_pkl)
+        shutil.copy(pkl_src, dest_pkl)
         with open(dest_meta, "w") as fh:
             json.dump(meta, fh, indent=2)
 
