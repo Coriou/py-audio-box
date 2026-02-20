@@ -40,6 +40,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
   tini \
   jq \
   nodejs \
+  vim \
+  htop \
   && rm -rf /var/lib/apt/lists/*
 
 # Install Poetry as root (pinned)
@@ -66,18 +68,39 @@ RUN --mount=type=cache,target=/root/.cache/pypoetry \
 # For COMPUTE=cu121 the CPU wheels that Poetry just installed are replaced with
 # CUDA-enabled equivalents.  All other packages remain identical across variants.
 #
-# We install the latest torch/torchaudio available on the requested CUDA index
-# rather than trying to match the exact CPU-installed version.  The CPU wheels
-# are published more frequently than the CUDA wheels, so an exact-version match
-# would break whenever the CPU index races ahead (e.g. torch 2.10.0 on CPU but
-# only 2.6.0+cu124 on the CUDA index).  Any version satisfying ^2.3.0 is fine.
+# torch / flash-attn install strategy per COMPUTE variant:
+#
+#   cpu    — no-op; CPU wheels already installed by Poetry above.
+#
+#   cu124  — pin torch==2.6.0 (latest available on the cu124 index) so the
+#            flash-attn prebuilt wheel can be installed.  flash-attn 2.8.3
+#            ships a pre-compiled cp311 wheel for exactly cu12+torch2.6 —
+#            this is the primary reason we cannot just grab "latest" torch.
+#            Without flash-attn, qwen_tts's custom attention layers skip GPU
+#            kernels entirely and run on CPU (0% GPU utilisation, RTF ~1×).
+#
+#   cu128+ — install latest torch from the given index.  No flash-attn wheel
+#            exists for these variants (SM 12.0 / Blackwell consumer GPUs have
+#            separate kernel-dispatch issues regardless).
 ARG COMPUTE=cpu
+# FLASH_ATTN_WHEEL is the exact prebuilt binary wheel URL for cu124+torch2.6+py311.
+# It must be updated in lockstep whenever TORCH_CU124_VERSION changes.
+ARG TORCH_CU124_VERSION=2.6.0
+ARG FLASH_ATTN_WHEEL=https://github.com/Dao-AILab/flash-attention/releases/download/v2.8.3/flash_attn-2.8.3+cu12torch2.6cxx11abiFALSE-cp311-cp311-linux_x86_64.whl
+
 RUN --mount=type=cache,target=/root/.cache/pip \
-  if [ "${COMPUTE}" != "cpu" ]; then \
-  echo "==> Upgrading torch/torchaudio → CUDA ${COMPUTE} wheels …" \
-  && pip install --force-reinstall \
-  "torch" "torchaudio" \
-  --index-url "https://download.pytorch.org/whl/${COMPUTE}"; \
+  if [ "${COMPUTE}" = "cu124" ]; then \
+    echo "==> Upgrading torch/torchaudio → CUDA cu124 (pinned ${TORCH_CU124_VERSION}) …" \
+    && pip install --force-reinstall \
+      "torch==${TORCH_CU124_VERSION}" "torchaudio==${TORCH_CU124_VERSION}" \
+      --index-url "https://download.pytorch.org/whl/cu124" \
+    && echo "==> Installing flash-attn (prebuilt wheel for cu12+torch${TORCH_CU124_VERSION}+cp311) …" \
+    && pip install --no-build-isolation "${FLASH_ATTN_WHEEL}"; \
+  elif [ "${COMPUTE}" != "cpu" ]; then \
+    echo "==> Upgrading torch/torchaudio → CUDA ${COMPUTE} wheels (latest) …" \
+    && pip install --force-reinstall \
+      "torch" "torchaudio" \
+      --index-url "https://download.pytorch.org/whl/${COMPUTE}"; \
   fi
 
 # Copy the rest of the source

@@ -4,10 +4,10 @@ lib/tts.py — shared Qwen3-TTS helpers used by voice-clone and voice-synth.
 Provides
 --------
 Constants
-    PROMPT_SCHEMA_VERSION, DEFAULT_TTS_MODEL, DEFAULT_DESIGN_MODEL,
+    PROMPT_SCHEMA_VERSION, DEFAULT_TTS_MODEL, DEFAULT_CUSTOM_MODEL, DEFAULT_DESIGN_MODEL,
     DEFAULT_WHISPER, WHISPER_COMPUTE, MAX_NEW_TOKENS_DEFAULT,
     AUDIO_TOKENS_PER_SEC, CHARS_PER_SECOND, TOKEN_MARGIN, CPU_TOKENS_PER_SEC,
-    QWEN3_LANGUAGES, _LANGID_TO_QWEN
+    QWEN3_LANGUAGES, QWEN3_CUSTOM_SPEAKERS, _LANGID_TO_QWEN
 
 Token budget
     estimate_max_new_tokens(text) → int
@@ -16,6 +16,8 @@ Language helpers
     detect_language_from_text(text) → str | None
     resolve_language(flag, ref_language, text) → str
     validate_language(language, model) → str
+    supported_speakers(model) → list[str]
+    validate_speaker(speaker, model) → str
 
 Device / dtype
     get_device() → str
@@ -30,6 +32,9 @@ Whisper (faster-whisper) helpers
 
 Model / synthesis
     load_tts_model(model_name, num_threads, dtype_str) → Qwen3TTSModel
+    synthesise_clone(text, language, model, prompt, seed, gen_kwargs, timeout_s) → (wav, sr)
+    synthesise_custom_voice(text, language, model, speaker, instruct, seed, gen_kwargs, timeout_s)
+        → (wav, sr)
     synthesise(text, language, model, prompt, seed, gen_kwargs, timeout_s) → (wav, sr)
 
 Style presets
@@ -58,6 +63,7 @@ import torch
 PROMPT_SCHEMA_VERSION = 1
 
 DEFAULT_TTS_MODEL    = "Qwen/Qwen3-TTS-12Hz-0.6B-Base"
+DEFAULT_CUSTOM_MODEL = "Qwen/Qwen3-TTS-12Hz-0.6B-CustomVoice"
 DEFAULT_DESIGN_MODEL = "Qwen/Qwen3-TTS-12Hz-1.7B-VoiceDesign"
 DEFAULT_WHISPER      = "small"
 WHISPER_COMPUTE      = "int8"   # CTranslate2 compute type for CPU whisper
@@ -88,6 +94,13 @@ _LANGID_TO_QWEN: dict[str, str] = {
     "ru": "Russian",  "pt": "Portuguese", "es": "Spanish",
     "it": "Italian",
 }
+
+# Built-in speakers published for Qwen3 CustomVoice.
+# Used as a fallback if the runtime API does not expose get_supported_speakers().
+QWEN3_CUSTOM_SPEAKERS = [
+    "Vivian", "Serena", "Uncle_Fu", "Dylan", "Eric",
+    "Ryan", "Aiden", "Ono_Anna", "Sohee",
+]
 
 _DTYPE_MAP: dict[str, torch.dtype] = {
     "bfloat16": torch.bfloat16,
@@ -179,6 +192,59 @@ def validate_language(language: str, model) -> str:
     return language.lower()
 
 
+def supported_speakers(model) -> list[str]:
+    """
+    Return the model's supported speaker list (CustomVoice), if available.
+
+    Resolution order:
+      1. Runtime API ``model.get_supported_speakers()``
+      2. Known Qwen3 CustomVoice built-in speakers (fallback)
+      3. Empty list when speakers are not supported by this model
+    """
+    try:
+        speakers = model.get_supported_speakers()
+        if speakers:
+            known_by_lower = {s.lower(): s for s in QWEN3_CUSTOM_SPEAKERS}
+            normalized = [known_by_lower.get(str(s).strip().lower(), str(s).strip())
+                          for s in speakers]
+            return sorted(set(normalized), key=str.lower)
+    except AttributeError:
+        pass
+
+    name = str(getattr(model, "name_or_path", "")).lower()
+    if "customvoice" in name:
+        return list(QWEN3_CUSTOM_SPEAKERS)
+    return []
+
+
+def validate_speaker(speaker: str, model) -> str:
+    """
+    Validate *speaker* against this model's supported CustomVoice speakers.
+    Returns the canonical speaker label accepted by the model.
+    Exits with a helpful message when speakers are unsupported / unknown.
+    """
+    supported = supported_speakers(model)
+    if not supported:
+        print(
+            "ERROR: this model does not expose CustomVoice speakers.\n"
+            "  Use a Qwen3 CustomVoice model, e.g.\n"
+            f"    {DEFAULT_CUSTOM_MODEL}",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+
+    normalized = speaker.strip().lower()
+    by_lower = {s.lower(): s for s in supported}
+    if normalized not in by_lower:
+        print(
+            f"ERROR: speaker '{speaker}' is not supported by the loaded model.\n"
+            f"  Supported: {', '.join(supported)}",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+    return by_lower[normalized]
+
+
 # ── device & dtype ─────────────────────────────────────────────────────────────
 
 def get_device() -> str:
@@ -192,6 +258,13 @@ def get_device() -> str:
     """
     override = os.getenv("TORCH_DEVICE", "").strip()
     if override:
+        if override.startswith("cuda") and not torch.cuda.is_available():
+            print(
+                "  WARNING: TORCH_DEVICE is set to CUDA but this torch build "
+                "has no CUDA support; falling back to CPU.",
+                file=sys.stderr,
+            )
+            return "cpu"
         return override
     return "cuda" if torch.cuda.is_available() else "cpu"
 
@@ -216,7 +289,7 @@ def best_dtype(device: str, dtype_str: str) -> torch.dtype:
     """
     if dtype_str != "auto":
         return _DTYPE_MAP[dtype_str]
-    if not device.startswith("cuda"):
+    if not device.startswith("cuda") or not torch.cuda.is_available():
         return torch.float32
     idx = int(device.split(":")[-1]) if ":" in device else 0
     major, minor = torch.cuda.get_device_capability(idx)
@@ -334,46 +407,69 @@ def transcribe_ref(
 
 # ── model loading ──────────────────────────────────────────────────────────────
 
+def _has_flash_attn() -> bool:
+    """Return True when the flash-attn package is importable (i.e. installed)."""
+    try:
+        import flash_attn  # noqa: F401
+        return True
+    except ImportError:
+        return False
+
+
 def load_tts_model(model_name: str, num_threads: int, dtype_str: str = "auto"):
     """
     Load a Qwen3-TTS model targeting the best available device.
 
     dtype_str:
-      "auto"     — float32 on CPU (native; bfloat16 adds cast overhead with no
-                   benefit); bfloat16 on CUDA Ampere+; float16 on older CUDA GPUs.
+      "auto"     — float32 on CPU; bfloat16 on CUDA Ampere+ (SM ≥ 8.0);
+                   float16 on older CUDA GPUs (Volta / Turing SM 7.x).
       "bfloat16" — CUDA SM ≥ 8.0 only.
-      "float32"  — safest/fastest on CPU; debug fallback if NaN/quality issues arise.
-      "float16"  — for CUDA GPUs with SM < 8.0 (Volta / Turing).
+      "float32"  — safest/fastest on CPU; debug fallback.
+      "float16"  — for CUDA SM < 8.0.
 
-    Uses ``attn_implementation="sdpa"`` (PyTorch fused SDPA) which is faster
-    than the default "eager" path on both CPU and CUDA.
+    attn_implementation selection:
+      CUDA + flash-attn installed → "flash_attention_2"
+        qwen_tts's custom attention layers require flash-attn to dispatch GPU
+        kernels.  Without it they fall back to a Python loop that runs on CPU
+        regardless of where the model weights are — producing ~1× RTF instead
+        of the expected 30–100× on modern GPUs.
+      Otherwise → "sdpa"  (PyTorch fused SDPA, faster than "eager" on both CPU
+        and CUDA, no extra dependencies).
     """
     from qwen_tts import Qwen3TTSModel  # type: ignore
     device = get_device()
     dtype  = best_dtype(device, dtype_str)
     torch.set_num_threads(num_threads)
-    print(f"  loading {model_name} ({device}, {dtype}, threads={num_threads}) …")
+
+    on_cuda = device.startswith("cuda")
+    if on_cuda and _has_flash_attn():
+        attn_impl = "flash_attention_2"
+    else:
+        attn_impl = "sdpa"
+
+    # qwen_tts demo always uses "cuda:0" explicitly for single-GPU; match that.
+    device_map = "cuda:0" if on_cuda else device
+
+    print(f"  loading {model_name} ({device_map}, {dtype}, attn={attn_impl}, threads={num_threads}) …")
     return Qwen3TTSModel.from_pretrained(
         model_name,
-        device_map=device,
+        device_map=device_map,
         dtype=dtype,
-        attn_implementation="sdpa",
+        attn_implementation=attn_impl,
     )
 
 
 # ── synthesis ──────────────────────────────────────────────────────────────────
 
-def synthesise(
-    text: str,
-    language: str,
-    model,
-    prompt,
-    seed: int | None,
-    gen_kwargs: dict[str, Any] | None = None,
-    timeout_s: float | None = None,
+def _run_generation(
+    generate_fn,
+    *,
+    op_name: str,
+    gen_kwargs: dict[str, Any],
+    timeout_s: float | None,
 ) -> tuple[np.ndarray, int]:
     """
-    Generate speech from a voice-clone prompt with heartbeat + optional timeout.
+    Run a TTS generation callable with heartbeat logging and optional timeout.
 
     Runs generation on a background thread so a progress line is printed every
     10 s.  Without this the call is silent for 30-60 min on CPU-only inference.
@@ -389,11 +485,7 @@ def synthesise(
     """
     HEARTBEAT_INTERVAL = 10   # seconds between progress lines
 
-    if seed is not None:
-        torch.manual_seed(seed)
-    kw = gen_kwargs or {}
-
-    budget = kw.get("max_new_tokens")
+    budget = gen_kwargs.get("max_new_tokens")
     if isinstance(budget, int):
         ceiling_s  = budget / AUDIO_TOKENS_PER_SEC
         est_wall_s = budget / CPU_TOKENS_PER_SEC
@@ -418,13 +510,7 @@ def synthesise(
 
     def _worker() -> None:
         try:
-            wavs, sr = model.generate_voice_clone(
-                text=text,
-                language=language,
-                voice_clone_prompt=prompt,
-                **kw,
-            )
-            result[0] = (wavs, sr)
+            result[0] = generate_fn()
         except BaseException as e:  # noqa: BLE001
             exc[0] = e
 
@@ -452,18 +538,94 @@ def synthesise(
                     flush=True,
                 )
                 raise TimeoutError(
-                    f"generate_voice_clone exceeded {effective_timeout:.0f}s "
+                    f"{op_name} exceeded {effective_timeout:.0f}s "
                     "wall-clock timeout."
                 )
 
     elapsed = time.perf_counter() - t_start
-    print(f"    ↳ generate_voice_clone: {elapsed:.2f}s")
+    print(f"    ↳ {op_name}: {elapsed:.2f}s")
 
     if exc[0] is not None:
         raise exc[0]   # re-raise worker exception in the main thread
 
     wavs, sr = result[0]
     return wavs[0], sr
+
+
+def synthesise_clone(
+    text: str,
+    language: str,
+    model,
+    prompt,
+    seed: int | None,
+    gen_kwargs: dict[str, Any] | None = None,
+    timeout_s: float | None = None,
+) -> tuple[np.ndarray, int]:
+    """Generate speech from a voice-clone prompt."""
+    if seed is not None:
+        torch.manual_seed(seed)
+    kw = gen_kwargs or {}
+    return _run_generation(
+        lambda: model.generate_voice_clone(
+            text=text,
+            language=language,
+            voice_clone_prompt=prompt,
+            **kw,
+        ),
+        op_name="generate_voice_clone",
+        gen_kwargs=kw,
+        timeout_s=timeout_s,
+    )
+
+
+def synthesise_custom_voice(
+    text: str,
+    language: str,
+    model,
+    speaker: str,
+    instruct: str | None,
+    seed: int | None,
+    gen_kwargs: dict[str, Any] | None = None,
+    timeout_s: float | None = None,
+) -> tuple[np.ndarray, int]:
+    """Generate speech using Qwen3 CustomVoice built-in speakers."""
+    if seed is not None:
+        torch.manual_seed(seed)
+    kw = gen_kwargs or {}
+
+    params: dict[str, Any] = {
+        "text": text,
+        "language": language,
+        "speaker": speaker,
+        **kw,
+    }
+    if instruct and instruct.strip():
+        params["instruct"] = instruct.strip()
+
+    return _run_generation(
+        lambda: model.generate_custom_voice(**params),
+        op_name="generate_custom_voice",
+        gen_kwargs=kw,
+        timeout_s=timeout_s,
+    )
+
+
+def synthesise(
+    text: str,
+    language: str,
+    model,
+    prompt,
+    seed: int | None,
+    gen_kwargs: dict[str, Any] | None = None,
+    timeout_s: float | None = None,
+) -> tuple[np.ndarray, int]:
+    """
+    Backward-compatible alias for clone-prompt synthesis.
+
+    New code should prefer ``synthesise_clone`` / ``synthesise_custom_voice``
+    to make the generation mode explicit.
+    """
+    return synthesise_clone(text, language, model, prompt, seed, gen_kwargs, timeout_s)
 
 
 # ── style presets ──────────────────────────────────────────────────────────────
