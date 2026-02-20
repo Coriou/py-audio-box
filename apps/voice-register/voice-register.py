@@ -1,19 +1,40 @@
 #!/usr/bin/env python3
 """
-voice-register.py — One-shot pipeline: download → split → clone → register.
+voice-register.py — One-shot pipeline: source audio → split → clone → register.
 
 Chains voice-split and voice-clone synth so that a voice is fully ready for
 fast synthesis (./run voice-synth speak) after a single command.
 
 Pipeline steps:
-  1. voice-split  — download audio, run Demucs, extract best clip, register to /cache/voices/<slug>/
+  1. voice-split  — obtain audio (download or local file), run Demucs, extract
+                    best clip, register to /cache/voices/<slug>/
   2. voice-clone  — normalise ref, VAD-select best segment, transcribe, build clone prompt
 
-Usage:
+Usage — YouTube source:
     ./run voice-register \\
         --url "https://www.youtube.com/watch?v=XXXX" \\
         --voice-name david-attenborough \\
         --text "Nature is the greatest artist."
+
+    # Target a specific segment of a long video
+    ./run voice-register \\
+        --url "https://www.youtube.com/watch?v=XXXX" \\
+        --start 1:23 --end 3:45 \\
+        --voice-name david-attenborough \\
+        --text "Nature is the greatest artist."
+
+Usage — local audio file:
+    ./run voice-register \\
+        --audio /work/my-recording.wav \\
+        --voice-name my-voice \\
+        --text "Hello, this is a test."
+
+    # Trim to a specific segment
+    ./run voice-register \\
+        --audio /work/interview.mp3 \\
+        --start 0:45 --end 2:10 \\
+        --voice-name interviewee \\
+        --text "Hello, this is a test."
 
     # Re-run is safe — all heavy steps are cached; only missing stages are re-run.
     # Use --force to recompute everything from scratch.
@@ -60,18 +81,47 @@ def _run_step(label: str, script: str, args: list[str]) -> None:
 def main() -> None:
     ap = argparse.ArgumentParser(
         description=(
-            "One-shot voice registration: download → Demucs split → "
+            "One-shot voice registration: source audio → Demucs split → "
             "clone-prompt build → synthesis test."
         ),
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
 
-    # ── required ──────────────────────────────────────────────────────────────
-    ap.add_argument(
+    # ── audio source (exactly one required) ──────────────────────────────────
+    src_grp = ap.add_mutually_exclusive_group(required=True)
+    src_grp.add_argument(
         "--url",
-        required=True,
-        help="YouTube (or any yt-dlp) URL to extract the voice from",
+        metavar="URL",
+        help="YouTube (or any yt-dlp-supported) URL to extract the voice from",
     )
+    src_grp.add_argument(
+        "--audio",
+        metavar="PATH",
+        help=(
+            "Path to a local audio file (WAV, MP3, M4A, FLAC, \u2026). "
+            "Skips the download step. "
+            "Mount the file into the container with -v /host/path:/container/path."
+        ),
+    )
+    # ── optional timestamp trim ───────────────────────────────────────────────
+    ap.add_argument(
+        "--start",
+        default=None, metavar="TIMESTAMP",
+        help=(
+            "Trim start time in the source audio. "
+            "Accepts: seconds (90 / 1:30.5), MM:SS (1:30), HH:MM:SS (1:02:30). "
+            "Only audio from this point onwards is processed."
+        ),
+    )
+    ap.add_argument(
+        "--end",
+        default=None, metavar="TIMESTAMP",
+        help=(
+            "Trim end time in the source audio. Same formats as --start. "
+            "Only audio up to this point is processed."
+        ),
+    )
+    # ── required identity ────────────────────────────────────────────────────
     ap.add_argument(
         "--voice-name",
         required=True,
@@ -210,19 +260,31 @@ def main() -> None:
 
     # ── Step 1: voice-split ───────────────────────────────────────────────────
     split_args: list[str] = [
-        "--url",        args.url,
         "--voice-name", args.voice_name,
         "--clips",      str(args.clips),
         "--length",     str(args.length),
         "--out",        args.out,
         "--cache",      args.cache,
     ]
+    if args.url:
+        split_args += ["--url", args.url]
+    else:
+        split_args += ["--audio", args.audio]
+    if args.start is not None:
+        split_args += ["--start", args.start]
+    if args.end is not None:
+        split_args += ["--end", args.end]
     if args.cookies:
         split_args += ["--cookies", args.cookies]
     if args.max_scan_seconds is not None:
         split_args += ["--max-scan-seconds", str(args.max_scan_seconds)]
 
-    _run_step("STEP 1/2 — voice-split (download + Demucs + extract + register)", "voice-split/voice-split.py", split_args)
+    step1_source = "download + Demucs" if args.url else "Demucs"
+    _run_step(
+        f"STEP 1/2 — voice-split ({step1_source} + extract + register)",
+        "voice-split/voice-split.py",
+        split_args,
+    )
 
     # ── Step 2: voice-clone synth ─────────────────────────────────────────────
     clone_args: list[str] = [

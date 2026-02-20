@@ -77,47 +77,85 @@ $env:TOOLBOX_VARIANT = "gpu"
 Everything else (`make`, `docker compose`) works identically on Windows
 (use Git Bash or enable make via `winget install GnuWin32.Make`).
 
-## Quick start
+## Cheat sheet
+
+### Register a voice (one command, fully cached)
 
 ```bash
-# Extract clean voice clips from a YouTube video
-./run voice-split --url "https://www.youtube.com/watch?v=XXXX" --clips 5 --length 30
-
-# ── One-shot voice registration (recommended) ─────────────────────────────────
-# Download → Demucs split → clone prompt → test synthesis in a single command
+# From a YouTube URL
 ./run voice-register \
     --url "https://www.youtube.com/watch?v=XXXX" \
     --voice-name david-attenborough \
     --text "Nature is the greatest artist."
 
-# ── Named voice workflow (step by step) ──────────────────────────────────────
-# 1. Extract + register a named voice
-./run voice-split --url "https://www.youtube.com/watch?v=XXXX" \
-    --voice-name david-attenborough --clips 5
+# From a local audio file  (put the file in ./work/ first)
+./run voice-register \
+    --audio /work/my-recording.wav \
+    --voice-name my-voice \
+    --text "Hello, this is a test."
 
-# 2. Process ref audio, build clone prompt (only once)
-./run voice-clone synth \
-    --voice david-attenborough \
-    --text "Nature is the greatest artist."
+# With a timestamp range (skip the rest of the audio)
+./run voice-register \
+    --url "https://www.youtube.com/watch?v=XXXX" \
+    --start 1:23 --end 5:00 \
+    --voice-name speaker \
+    --text "Hello world."
 
-# 3. Fast iteration — no ref processing or prompt building on re-runs
+# Same, from a local file
+./run voice-register \
+    --audio /work/interview.mp3 \
+    --start 0:45 --end 3:30 \
+    --voice-name interviewee \
+    --text "Hello world."
+```
+
+Timestamp formats: `90` (seconds), `1:30` (MM:SS), `1:30.5`, `1:02:30` (HH:MM:SS).
+
+### Synthesise with a registered voice
+
+```bash
+./run voice-synth speak --voice david-attenborough --text "Welcome."
+./run voice-synth speak --voice david-attenborough --text "..." --variants 4 --qa
+./run voice-synth speak --voice david-attenborough --tone excited --text "..."
 ./run voice-synth list-voices
-./run voice-synth speak --voice david-attenborough \
-    --text "Welcome to the natural history of the Earth."
-./run voice-synth speak --voice david-attenborough \
-    --text "..." --variants 4 --qa
-# If you built a tone-labelled prompt (--tone sad during voice-clone synth):
-./run voice-synth speak --voice david-attenborough --tone sad \
-    --text "..."
+```
 
-# ── Or with an existing WAV file ─────────────────────────────────────────────
+### Extract voice clips only (no synthesis)
+
+```bash
+# YouTube
+./run voice-split --url "https://www.youtube.com/watch?v=XXXX" --clips 5 --length 30
+./run voice-split --url "..." --start 10:00 --end 15:00 --clips 5 --voice-name my-voice
+
+# Local file
+./run voice-split --audio /work/recording.wav --clips 5 --length 30
+./run voice-split --audio /work/recording.wav --start 0:30 --end 4:00 --voice-name my-voice
+```
+
+### Build clone prompt from an existing clip
+
+```bash
+./run voice-clone synth --voice david-attenborough --text "Nature is the greatest artist."
 ./run voice-clone synth --ref-audio /work/myclip.wav --text "Hello, world"
+```
 
-# Get a shell inside the container (explore, debug, prototype)
-make shell
+### Voice management
 
-# See all available apps
-./run
+```bash
+./run voice-synth rename-voice old-slug new-slug
+./run voice-synth delete-voice my-voice --yes
+./run voice-synth export-voice my-voice          # → /work/my-voice.zip
+./run voice-synth import-voice --zip /work/my-voice.zip
+```
+
+### Utilities
+
+```bash
+make shell            # interactive bash shell inside the container
+make shell-gpu        # same, GPU image
+make clean-work       # delete ./work/ outputs
+make clean-cache      # wipe ./cache/ (models + downloads re-run)
+./run                 # list all available apps
 ```
 
 Outputs land in `./work/` on your host.
@@ -174,7 +212,9 @@ Each stage is optional — a voice progresses from `source_clip.wav` → `ref.wa
 
 ```bash
 # Step 1 — register the voice with a source clip
-./run voice-split --url "..." --voice-name david-attenborough
+./run voice-split --url "..." --voice-name david-attenborough           # YouTube
+./run voice-split --audio /work/clip.wav --voice-name my-voice          # local file
+./run voice-split --url "..." --start 1:30 --end 4:00 --voice-name speaker  # trimmed
 
 # Step 2 — process ref + build prompt  (first time: ~45s; cached thereafter)
 ./run voice-clone synth --voice david-attenborough --text "..."
@@ -332,9 +372,11 @@ App shortcuts (pass extra flags via `ARGS=`):
 
 ```
 make voice-split     ARGS='--url "https://..." --clips 5 --length 30'
+make voice-split     ARGS='--audio /work/file.wav --clips 5'
 make voice-clone     ARGS='synth --ref-audio /work/myclip.wav --text "Hello, world"'
-make voice-synth     ARGS='speak --voice <id> --text "Hello"'
+make voice-synth     ARGS='speak --voice <slug> --text "Hello"'
 make voice-register  ARGS='--url "https://..." --voice-name my-voice --text "Hello"'
+make voice-register  ARGS='--audio /work/file.wav --voice-name my-voice --text "Hello"'
 ```
 
 ---
@@ -350,5 +392,5 @@ When an AI agent or script works with this repo:
 - **Check `--help` first.** Every script uses `ArgumentDefaultsHelpFormatter`; `./run <app> --help` is always the authoritative reference for flags and defaults.
 - **Output is always in `./work/`** (mounted at `/work`) unless `--out` is overridden. Look there for results.
 - **Prefer `--voice <slug>` over `--ref-audio <path>`.** Named voice slugs are the canonical way to reference voices across all apps. Run `./run voice-synth list-voices` to enumerate available voices. Register a new voice with `--voice-name <slug>` on `voice-split`, `voice-clone synth`, or `voice-synth design-voice`. When `--voice <slug>` is used with `voice-clone synth`, the built prompt is automatically registered back to that voice — no separate `--voice-name` needed.
-- **Use `voice-register` for one-shot pipeline runs.** `./run voice-register --url "..." --voice-name <slug> --text "..."` chains voice-split → voice-clone synth and leaves a fully synthesis-ready voice in a single command. Re-runs are safe and cached.
+- **Use `voice-register` for one-shot pipeline runs.** `./run voice-register --url "..." --voice-name <slug> --text "..."` (YouTube) or `./run voice-register --audio /work/file.wav --voice-name <slug> --text "..."` (local file) chain voice-split → voice-clone synth and leave a fully synthesis-ready voice in a single command. Pass `--start`/`--end` (e.g. `--start 1:30 --end 5:00`) to trim the source before processing. Re-runs are safe and cached.
 - **GPU mode is opt-in.** Prefix any `./run` command with `TOOLBOX_VARIANT=gpu` to use the GPU image (requires `make build-gpu` once). On Windows PowerShell use `$env:TOOLBOX_VARIANT = "gpu"` then the normal `.\run.ps1` command. No `--dtype` flag needed; dtype is chosen automatically.

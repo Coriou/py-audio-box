@@ -116,6 +116,57 @@ def get_duration(path: Path) -> float:
     return float(json.loads(r.stdout)["format"]["duration"])
 
 
+def parse_timestamp(s: str) -> float:
+    """
+    Parse a timestamp string to seconds.
+
+    Accepted formats:
+      - Raw seconds:          "90"  or "90.5"
+      - Minutes:seconds:      "1:30"  or "1:30.5"
+      - Hours:minutes:seconds "1:02:30"
+    """
+    parts = s.strip().split(":")
+    try:
+        if len(parts) == 1:
+            return float(parts[0])
+        elif len(parts) == 2:
+            return int(parts[0]) * 60 + float(parts[1])
+        elif len(parts) == 3:
+            return int(parts[0]) * 3600 + int(parts[1]) * 60 + float(parts[2])
+    except ValueError:
+        pass
+    import argparse as _ap
+    raise _ap.ArgumentTypeError(
+        f"Cannot parse timestamp {s!r}. "
+        "Use seconds (90 / 90.5), MM:SS (1:30), or HH:MM:SS (1:02:30)."
+    )
+
+
+def trim_audio(audio: Path, start_sec: float, end_sec: float, dest: Path) -> Path:
+    """
+    Trim audio to [start_sec, end_sec] via ffmpeg stream copy (no re-encode).
+    Result is cached — re-runs are instant.
+    """
+    if dest.exists():
+        print(f"  [cache hit] trimmed audio \u2192 {dest.name}")
+        return dest
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    dur = end_sec - start_sec
+    print(f"  trimming {start_sec:.1f}s \u2013 {end_sec:.1f}s  ({dur:.1f}s)  \u2192 {dest.name}")
+    subprocess.run(
+        [
+            "ffmpeg", "-hide_banner", "-loglevel", "error", "-y",
+            "-ss", f"{start_sec:.3f}",
+            "-i", str(audio),
+            "-t", f"{dur:.3f}",
+            "-c", "copy",
+            str(dest),
+        ],
+        check=True,
+    )
+    return dest
+
+
 def extract_chunk(audio: Path, start: float, length: float, dest: Path) -> None:
     """Extract [start, start+length] from audio, decode to 44.1kHz stereo WAV."""
     dest.parent.mkdir(parents=True, exist_ok=True)
@@ -445,10 +496,46 @@ def export_registry_clip(
 
 def main() -> None:
     ap = argparse.ArgumentParser(
-        description="Download a YouTube video and produce voice-optimised WAV clips.",
+        description=(
+            "Extract clean, voice-only WAV clips from a YouTube video or a local audio file. "
+            "Use --url for any yt-dlp source, or --audio for a local file."
+        ),
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
-    ap.add_argument("--url",    required=True,           help="YouTube (or any yt-dlp) URL")
+    # ── audio source (exactly one required) ──────────────────────────────────
+    src_grp = ap.add_mutually_exclusive_group(required=True)
+    src_grp.add_argument(
+        "--url",
+        metavar="URL",
+        help="YouTube (or any yt-dlp-supported) URL to extract audio from",
+    )
+    src_grp.add_argument(
+        "--audio",
+        metavar="PATH",
+        help=(
+            "Path to a local audio file (WAV, MP3, M4A, FLAC, \u2026). "
+            "Skips the download step. "
+            "Mount the file into the container with -v /host/path:/container/path."
+        ),
+    )
+    # ── optional timestamp trim ───────────────────────────────────────────────
+    ap.add_argument(
+        "--start",
+        default=None, metavar="TIMESTAMP", type=parse_timestamp,
+        help=(
+            "Trim start time in the source audio. "
+            "Accepts: seconds (90 / 1:30.5), MM:SS (1:30), HH:MM:SS (1:02:30). "
+            "Only audio from this point onwards is processed."
+        ),
+    )
+    ap.add_argument(
+        "--end",
+        default=None, metavar="TIMESTAMP", type=parse_timestamp,
+        help=(
+            "Trim end time in the source audio. Same formats as --start. "
+            "Only audio up to this point is processed."
+        ),
+    )
     ap.add_argument("--out",    default="/work",         help="Output directory for WAV clips")
     ap.add_argument("--clips",  type=int,   default=10,  help="Number of clips to produce")
     ap.add_argument("--length", type=float, default=30,  help="Target clip length in seconds")
@@ -498,16 +585,57 @@ def main() -> None:
     torch_hub_dir.mkdir(parents=True, exist_ok=True)
     torch.hub.set_dir(str(torch_hub_dir))
 
-    # ── 1. Download ────────────────────────────────────────────────────────────
-    print("==> Resolving video ID...")
-    video_id = get_video_id(args.url, cookies=args.cookies)
-    print(f"    {video_id}")
+    # ── 1. Resolve audio source ────────────────────────────────────────────────
+    if args.audio:
+        # Local file — skip download entirely.
+        audio = Path(args.audio)
+        if not audio.exists():
+            print(f"ERROR: Audio file not found: {audio}", file=sys.stderr)
+            sys.exit(1)
+        source_id   = audio.stem
+        source_meta: dict = {"type": "file", "path": str(audio.resolve())}
+        print(f"==> Using local audio file...")
+        print(f"    {audio.name}")
+    else:
+        print("==> Resolving video ID...")
+        video_id = get_video_id(args.url, cookies=args.cookies)
+        print(f"    {video_id}")
 
-    print("==> Downloading audio...")
-    audio = download_audio(args.url, cache / "downloads", video_id, cookies=args.cookies)
+        print("==> Downloading audio...")
+        audio = download_audio(args.url, cache / "downloads", video_id, cookies=args.cookies)
+        source_id   = video_id
+        source_meta = {"type": "youtube", "url": args.url, "video_id": video_id}
+
+    # ── 1b. Optional timestamp trim ────────────────────────────────────────────
+    raw_duration = get_duration(audio)
+    t_start = args.start if args.start is not None else 0.0
+    t_end   = args.end   if args.end   is not None else raw_duration
+
+    if t_start != 0.0 or t_end != raw_duration:
+        if t_start < 0:
+            print(f"ERROR: --start {t_start:.1f}s is negative.", file=sys.stderr)
+            sys.exit(1)
+        if t_end > raw_duration + 0.5:
+            print(
+                f"ERROR: --end {t_end:.1f}s exceeds audio duration {raw_duration:.1f}s.",
+                file=sys.stderr,
+            )
+            sys.exit(1)
+        if t_start >= t_end:
+            print(
+                f"ERROR: --start ({t_start:.1f}s) must be less than --end ({t_end:.1f}s).",
+                file=sys.stderr,
+            )
+            sys.exit(1)
+        print(f"==> Trimming audio to {t_start:.1f}s \u2013 {t_end:.1f}s...")
+        trimmed_id   = f"{source_id}_{int(t_start)}_{int(t_end)}"
+        trimmed_path = cache / "downloads" / f"{trimmed_id}{audio.suffix}"
+        audio     = trim_audio(audio, t_start, t_end, trimmed_path)
+        source_id = trimmed_id
+        source_meta = {**source_meta, "start_sec": t_start, "end_sec": t_end}
 
     duration = get_duration(audio)
-    scan_end = min(duration, args.max_scan_seconds) if args.max_scan_seconds else duration
+    scan_end  = min(duration, args.max_scan_seconds) if args.max_scan_seconds else duration
     print(f"    duration: {duration/60:.1f} min  |  scanning first {scan_end/60:.1f} min")
 
     # ── 2. Load Silero once for both raw scan and vocal VAD ────────────────────
@@ -516,7 +644,7 @@ def main() -> None:
 
     # ── 3. Fast VAD on raw audio ───────────────────────────────────────────────
     print("==> Scanning raw audio for speech regions...")
-    raw_segs = raw_vad_scan(audio, cache, video_id, args.max_scan_seconds, vad_model, get_speech_ts)
+    raw_segs = raw_vad_scan(audio, cache, source_id, args.max_scan_seconds, vad_model, get_speech_ts)
     if not raw_segs:
         print("ERROR: No speech detected in raw audio.", file=sys.stderr)
         sys.exit(1)
@@ -540,7 +668,7 @@ def main() -> None:
     pool: list[tuple[Path, float, float, float]] = []  # (vocals_path, file_dur, seg_start, seg_end)
 
     for i, (ws, we) in enumerate(windows, 1):
-        chunk_id  = f"{video_id}_{ws:.0f}_{we:.0f}"
+        chunk_id  = f"{source_id}_{ws:.0f}_{we:.0f}"
         chunk_wav = chunks_dir / f"{chunk_id}.wav"
 
         print(f"\n  window {i}/{len(windows)}: {ws/60:.1f}–{we/60:.1f} min")
@@ -615,12 +743,7 @@ def main() -> None:
                 reg.create(
                     slug,
                     display_name=slug,
-                    source={
-                        "type":     "youtube",
-                        "url":      args.url,
-                        "video_id": video_id,
-                        "n_clips":  len(plans),
-                    },
+                    source={**source_meta, "n_clips": len(plans)},
                 )
                 reg.set_source_clip(slug, src_clip)
                 print(f"  [registry] voice '{slug}' created")

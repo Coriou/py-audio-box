@@ -16,7 +16,7 @@ build:  ## Build (or rebuild) the CPU toolbox image  [default]
 	docker compose build
 
 .PHONY: build-gpu
-build-gpu:  ## Build the GPU (CUDA 12.1) image variant  →  voice-tools:cuda
+build-gpu:  ## Build the GPU (CUDA 12.4) image variant  →  voice-tools:cuda
 	docker compose -f docker-compose.yml -f docker-compose.gpu.yml build
 
 .PHONY: build-no-cache

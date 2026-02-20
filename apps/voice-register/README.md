@@ -1,8 +1,8 @@
 # voice-register
 
-One-shot "launch and forget" pipeline that takes a YouTube URL and produces a
-fully-registered, synthesis-ready named voice in a single command.
+One-shot pipeline to register a new voice: obtain audio → Demucs split → clone-prompt build → synthesis test.
 
+Works with a **YouTube URL** or a **local audio file** — both are first-class sources.
 Internally chains **voice-split** → **voice-clone synth** so you never have to
 copy-paste the two-step boilerplate again. Each step is fully cached — re-runs
 skip every stage that has already been computed.
@@ -11,10 +11,10 @@ skip every stage that has already been computed.
 
 ## What it does
 
-| Step | App         | What runs                                                                                                                                                  |
-| ---- | ----------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 1/2  | voice-split | Download audio, run Demucs on speech-dense windows, VoAD-select clean segments, export clips, register best clip to `/cache/voices/<slug>/source_clip.wav` |
-| 2/2  | voice-clone | Normalise ref, VAD + whisper-score best segment, build Qwen3-TTS clone prompt, run a test synthesis to confirm quality                                     |
+| Step | App         | What runs                                                                                                                                                                                             |
+| ---- | ----------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1/2  | voice-split | Download (URL) or load (local file) audio, optionally trim, run Demucs on speech-dense windows, VAD-select clean segments, export clips, register best clip to `/cache/voices/<slug>/source_clip.wav` |
+| 2/2  | voice-clone | Normalise ref, VAD + whisper-score best segment, build Qwen3-TTS clone prompt, run a test synthesis to confirm quality                                                                                |
 
 After both steps the voice is immediately usable with `voice-synth speak`.
 
@@ -22,14 +22,41 @@ After both steps the voice is immediately usable with `voice-synth speak`.
 
 ## Quick start
 
+### From a YouTube URL
+
 ```bash
 ./run voice-register \
     --url "https://www.youtube.com/watch?v=XXXX" \
     --voice-name david-attenborough \
     --text "Nature is the greatest artist of all."
+
+# Target a specific segment
+./run voice-register \
+    --url "https://www.youtube.com/watch?v=XXXX" \
+    --start 1:23 --end 5:00 \
+    --voice-name david-attenborough \
+    --text "Nature is the greatest artist of all."
 ```
 
-Then use it:
+### From a local audio file
+
+Files in `./work/` on your host are available inside the container as `/work/<file>`.
+
+```bash
+./run voice-register \
+    --audio /work/my-recording.wav \
+    --voice-name my-voice \
+    --text "Hello, this is a test."
+
+# Trim before processing
+./run voice-register \
+    --audio /work/interview.mp3 \
+    --start 0:45 --end 3:30 \
+    --voice-name interviewee \
+    --text "Hello, this is a test."
+```
+
+Then use the registered voice:
 
 ```bash
 ./run voice-synth speak \
@@ -41,11 +68,24 @@ Then use it:
 
 ## CLI flags
 
+### Audio source (exactly one required)
+
+| Flag           | Description                                         |
+| -------------- | --------------------------------------------------- |
+| `--url URL`    | YouTube (or any yt-dlp-supported) URL               |
+| `--audio PATH` | Path to a local audio file (WAV, MP3, M4A, FLAC, …) |
+
+### Timestamp trim (optional — works with both `--url` and `--audio`)
+
+| Flag                | Description                                                     |
+| ------------------- | --------------------------------------------------------------- |
+| `--start TIMESTAMP` | Start time: raw seconds (`90`), `MM:SS` (`1:30`), or `HH:MM:SS` |
+| `--end TIMESTAMP`   | End time: same formats as `--start`                             |
+
 ### Required
 
 | Flag                | Description                                                      |
 | ------------------- | ---------------------------------------------------------------- |
-| `--url URL`         | YouTube (or any yt-dlp) URL                                      |
 | `--voice-name SLUG` | Voice slug — lowercase, hyphens only (e.g. `david-attenborough`) |
 | `--text TEXT`       | Text for the test synthesis that confirms the voice is working   |
 
@@ -67,7 +107,7 @@ Then use it:
 | `--tone NAME`          | —                               | Tone label (e.g. `neutral`, `warm`). Stored in the voice registry for `voice-synth speak --tone NAME` |
 | `--whisper-model SIZE` | `small`                         | faster-whisper model for ref transcription (`tiny` / `small` / `medium`)                              |
 | `--model REPO`         | `Qwen/Qwen3-TTS-12Hz-0.6B-Base` | Qwen3-TTS model                                                                                       |
-| `--dtype TYPE`         | `bfloat16`                      | Weight dtype (`bfloat16` is ~2× faster on Apple Silicon)                                              |
+| `--dtype TYPE`         | `auto`                          | Weight dtype: `auto` picks `float32` on CPU, `float16` on CUDA, `bfloat16` on Apple Silicon           |
 | `--seed N`             | —                               | Random seed for reproducible synthesis                                                                |
 | `--force-bad-ref`      | off                             | Bypass transcript quality gate (low avg_logprob warning)                                              |
 

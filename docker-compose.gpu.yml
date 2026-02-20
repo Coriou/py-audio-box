@@ -31,7 +31,7 @@
 #   - TORCH_DEVICE=cuda tells every app to use the GPU (no --dtype flag needed)
 #   - deploy.resources injects the NVIDIA runtime so the container can see the GPU
 #
-# ── GPU notes (GTX 980 Ti / Maxwell SM 5.2) ──────────────────────────────────
+# ── GPU notes (GTX 980 / Maxwell SM 5.2) ─────────────────────────────────────
 #   - Compute capability 5.2 → bfloat16 is NOT supported in CUDA ops
 #   - TORCH_DEVICE=cuda + dtype auto → float16 is selected automatically
 #   - ~6 GB VRAM; Qwen3-TTS-0.6B-Base in float16 needs ~1.2 GB
@@ -41,10 +41,10 @@ services:
   toolbox:
     build:
       args:
-        # cu121 = CUDA 12.1 wheels — works on Maxwell SM 5.2 (GTX 980 Ti) and newer.
+        # cu124 = CUDA 12.4 wheels — works on Maxwell SM 5.2 (GTX 980) and newer.
         # For CUDA 11.8 hosts, change to: cu118
-        # For CUDA 12.4+ hosts, change to: cu124
-        COMPUTE: cu121
+        # For CUDA 12.1 hosts, change to: cu121
+        COMPUTE: cu124
     image: voice-tools:cuda
     environment:
       # Tell all apps to target the GPU.  Apps read this via _get_device() and

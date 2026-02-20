@@ -64,18 +64,17 @@ RUN --mount=type=cache,target=/root/.cache/pypoetry \
 # For COMPUTE=cu121 the CPU wheels that Poetry just installed are replaced with
 # CUDA-enabled equivalents.  All other packages remain identical across variants.
 #
-# The exact versions are read from the already-installed CPU wheels so that the
-# CUDA and CPU images stay byte-for-byte identical on everything except torch
-# itself.  PyTorch publishes CPU and CUDA wheels for the same versions
-# simultaneously, so version resolution is always exact.
+# We install the latest torch/torchaudio available on the requested CUDA index
+# rather than trying to match the exact CPU-installed version.  The CPU wheels
+# are published more frequently than the CUDA wheels, so an exact-version match
+# would break whenever the CPU index races ahead (e.g. torch 2.10.0 on CPU but
+# only 2.6.0+cu124 on the CUDA index).  Any version satisfying ^2.3.0 is fine.
 ARG COMPUTE=cpu
 RUN --mount=type=cache,target=/root/.cache/pip \
   if [ "${COMPUTE}" != "cpu" ]; then \
   echo "==> Upgrading torch/torchaudio → CUDA ${COMPUTE} wheels …" \
-  && TORCH_VER=$(python -c 'import importlib.metadata; print(importlib.metadata.version("torch"))') \
-  && TORCHAUDIO_VER=$(python -c 'import importlib.metadata; print(importlib.metadata.version("torchaudio"))') \
   && pip install --force-reinstall \
-  "torch==${TORCH_VER}" "torchaudio==${TORCHAUDIO_VER}" \
+  "torch" "torchaudio" \
   --index-url "https://download.pytorch.org/whl/${COMPUTE}"; \
   fi
 
