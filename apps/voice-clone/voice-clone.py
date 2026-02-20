@@ -53,6 +53,13 @@ MIN_REF_SECONDS      = 3.0
 # output) this allows up to ~341 s of audio — far beyond any realistic input —
 # while preventing a true runaway when the model fails to emit EOS on CPU.
 MAX_NEW_TOKENS_DEFAULT = 4096
+
+# Audio synthesis codec rate — used to estimate a tight per-request token budget
+# so we don't burn CPU time approaching the flat 4096 ceiling for short texts.
+AUDIO_TOKENS_PER_SEC = 12      # Qwen3-TTS codec tokens per second of output
+CHARS_PER_SECOND     = 13.0    # typical speaking rate (characters / second of speech)
+TOKEN_MARGIN         = 3.5     # safety headroom multiplier over the naive estimate
+
 MAX_REF_SECONDS      = 12.0
 SWEET_SPOT_SECONDS   = 8.5     # ideal duration for ref clip
 CANDIDATE_COUNT      = 3       # top-N VAD candidates to whisper-score
@@ -62,6 +69,25 @@ QUALITY_GATE_LOGPROB = -1.2
 
 # Bump to invalidate all cached prompt pickles (e.g. after model-format change)
 PROMPT_SCHEMA_VERSION = 1
+
+
+def estimate_max_new_tokens(text: str) -> int:
+    """
+    Return a tight token budget derived from text length.
+
+    For a typical short sentence (< 200 chars) this produces a ceiling that is
+    5-10× smaller than MAX_NEW_TOKENS_DEFAULT, cutting worst-case CPU generation
+    time proportionally.  Examples at 13 chars/s, 12 Hz, 3.5× margin:
+
+        100 chars  →  ~323 tokens  (~27 s ceiling)
+        158 chars  →  ~508 tokens  (~42 s ceiling)   ← typical voice-register call
+        400 chars  →  ~1 292 tokens (~108 s ceiling)
+
+    The hard ceiling MAX_NEW_TOKENS_DEFAULT still applies as a backstop.
+    """
+    est_seconds = max(3.0, len(text) / CHARS_PER_SECOND)
+    est_tokens  = int(est_seconds * AUDIO_TOKENS_PER_SEC * TOKEN_MARGIN)
+    return min(est_tokens, MAX_NEW_TOKENS_DEFAULT)
 
 # All languages the Qwen3-TTS Base model supports
 QWEN3_LANGUAGES = [
@@ -982,17 +1008,60 @@ def synthesise(
 
     Extra Transformers model.generate kwargs (temperature, top_p,
     repetition_penalty, max_new_tokens, …) can be passed via gen_kwargs.
+
+    Runs generation on a background thread so a progress heartbeat is printed
+    every HEARTBEAT_INTERVAL seconds.  Without this the call is completely silent
+    for 30-60 min on CPU-only inference, giving the false impression of a hang.
     """
+    import threading
+
+    HEARTBEAT_INTERVAL = 10  # seconds between progress lines
+
     if seed is not None:
         torch.manual_seed(seed)
     kw = gen_kwargs or {}
-    with _Timer("generate_voice_clone"):
-        wavs, sr = model.generate_voice_clone(
-            text=text,
-            language=language,
-            voice_clone_prompt=prompt,
-            **kw,
+
+    budget = kw.get("max_new_tokens")
+    if isinstance(budget, int):
+        ceiling_s = budget / AUDIO_TOKENS_PER_SEC
+        print(
+            f"  token budget : {budget} tokens  "
+            f"(audio ceiling ≈ {ceiling_s:.0f}s)",
+            flush=True,
         )
+
+    result: list[Any]                = [None]
+    exc:    list[BaseException | None] = [None]
+
+    def _worker() -> None:
+        try:
+            wavs, sr = model.generate_voice_clone(
+                text=text,
+                language=language,
+                voice_clone_prompt=prompt,
+                **kw,
+            )
+            result[0] = (wavs, sr)
+        except BaseException as e:  # noqa: BLE001
+            exc[0] = e
+
+    t_start = time.perf_counter()
+    thread  = threading.Thread(target=_worker, daemon=True, name="tts-generate")
+    thread.start()
+
+    while thread.is_alive():
+        thread.join(timeout=HEARTBEAT_INTERVAL)
+        if thread.is_alive():
+            elapsed = time.perf_counter() - t_start
+            print(f"  … still generating ({elapsed:.0f}s elapsed) …", flush=True)
+
+    elapsed = time.perf_counter() - t_start
+    print(f"    ↳ generate_voice_clone: {elapsed:.2f}s")
+
+    if exc[0] is not None:
+        raise exc[0]  # re-raise in the main thread
+
+    wavs, sr = result[0]
     return wavs[0], sr
 
 
@@ -1112,7 +1181,10 @@ def cmd_self_test(args) -> None:
     prompt, _pkl = build_voice_clone_prompt(model, ref, cache, args.x_vector_only, force=False)
 
     t_synth   = time.perf_counter()
-    wav, sr   = synthesise(SELF_TEST_SYNTH_TEXT, language, model, prompt, args.seed)
+    wav, sr   = synthesise(
+        SELF_TEST_SYNTH_TEXT, language, model, prompt, args.seed,
+        gen_kwargs={"max_new_tokens": estimate_max_new_tokens(SELF_TEST_SYNTH_TEXT)},
+    )
     synth_sec = time.perf_counter() - t_synth
 
     total_sec = time.perf_counter() - t0
@@ -1307,9 +1379,11 @@ def cmd_synth(args) -> None:
         gen_kwargs["repetition_penalty"] = args.repetition_penalty
     # Always set a ceiling: without it the model may run indefinitely on CPU
     # when EOS is unreliable.  User can raise or lower with --max-new-tokens.
+    # When no explicit ceiling is given, derive a tight estimate from text length
+    # so we don't silently burn hours approaching the worst-case 4096 ceiling.
     gen_kwargs["max_new_tokens"] = (
         args.max_new_tokens if args.max_new_tokens is not None
-        else MAX_NEW_TOKENS_DEFAULT
+        else estimate_max_new_tokens(text)
     )
 
     # Stage 5: generate

@@ -16,3 +16,6 @@ __pycache__/
 .DS_Store
 .vscode/
 *.swp
+
+# Local-only notes (infrastructure, credentials, personal setup)
+*.local.md
