@@ -164,6 +164,23 @@ def main() -> None:
         help="Random seed for reproducible synthesis",
     )
     ap.add_argument(
+        "--max-new-tokens",
+        type=int, default=None, dest="max_new_tokens",
+        help=(
+            "Hard cap on generated audio tokens (passed to voice-clone synth). "
+            "Defaults to an estimate based on --text length."
+        ),
+    )
+    ap.add_argument(
+        "--timeout",
+        type=float, default=None,
+        help=(
+            "Wall-clock timeout in seconds for the synthesis step "
+            "(passed to voice-clone synth). "
+            "Defaults to 4× the CPU ETA estimate. Pass 0 to disable."
+        ),
+    )
+    ap.add_argument(
         "--force-bad-ref",
         action="store_true",
         help="Bypass the transcript quality gate (proceed even on low-confidence ref)",
@@ -226,6 +243,10 @@ def main() -> None:
         clone_args += ["--tone", args.tone]
     if args.seed is not None:
         clone_args += ["--seed", str(args.seed)]
+    if args.max_new_tokens is not None:
+        clone_args += ["--max-new-tokens", str(args.max_new_tokens)]
+    if args.timeout is not None:
+        clone_args += ["--timeout", str(args.timeout)]
     if args.force:
         clone_args.append("--force")
     if args.force_bad_ref:

@@ -60,6 +60,16 @@ AUDIO_TOKENS_PER_SEC = 12      # Qwen3-TTS codec tokens per second of output
 CHARS_PER_SECOND     = 13.0    # typical speaking rate (characters / second of speech)
 TOKEN_MARGIN         = 3.5     # safety headroom multiplier over the naive estimate
 
+# Empirical CPU-only throughput (tokens / wall-clock second).
+# Used only for ETA display and auto-timeout; does not affect the token budget.
+# Apple M-series Mac Mini (CPU-only): ~0.18 t/s.  Faster CPUs may do 0.3–0.6 t/s.
+CPU_TOKENS_PER_SEC   = 0.18
+
+# Empirical CPU-only throughput (tokens / wall-clock second) on a low-end CPU.
+# Used only for ETA display and auto-timeout; does not affect token budget.
+# Apple M-series Mac Mini observed: ~0.18 t/s.  Faster CPUs may do 0.3-0.6 t/s.
+CPU_TOKENS_PER_SEC   = 0.18
+
 MAX_REF_SECONDS      = 12.0
 SWEET_SPOT_SECONDS   = 8.5     # ideal duration for ref clip
 CANDIDATE_COUNT      = 3       # top-N VAD candidates to whisper-score
@@ -1047,6 +1057,7 @@ def synthesise(
     prompt,
     seed: int | None,
     gen_kwargs: dict[str, Any] | None = None,
+    timeout_s:  float | None = None,
 ) -> tuple[np.ndarray, int]:
     """
     Generate speech.
@@ -1057,6 +1068,10 @@ def synthesise(
     Runs generation on a background thread so a progress heartbeat is printed
     every HEARTBEAT_INTERVAL seconds.  Without this the call is completely silent
     for 30-60 min on CPU-only inference, giving the false impression of a hang.
+
+    timeout_s: raise TimeoutError after this many wall-clock seconds.  The
+    background thread is a daemon and will die when the process exits.
+    Pass 0 to disable the timeout entirely.
     """
     import threading
 
@@ -1068,12 +1083,25 @@ def synthesise(
 
     budget = kw.get("max_new_tokens")
     if isinstance(budget, int):
-        ceiling_s = budget / AUDIO_TOKENS_PER_SEC
+        ceiling_s  = budget / AUDIO_TOKENS_PER_SEC
+        est_wall_s = budget / CPU_TOKENS_PER_SEC
+        est_wall_m = est_wall_s / 60
         print(
             f"  token budget : {budget} tokens  "
             f"(audio ceiling ≈ {ceiling_s:.0f}s)",
             flush=True,
         )
+        print(
+            f"  CPU ETA      : ~{est_wall_m:.0f} min  "
+            f"(use GPU for fast inference — see README)",
+            flush=True,
+        )
+        if timeout_s is None:
+            # Auto-timeout: 4× the CPU ETA — generous, but prevents silent all-day hangs
+            timeout_s = est_wall_s * 4.0
+
+    # timeout_s == 0 means "no timeout"
+    effective_timeout = None if (timeout_s is not None and timeout_s <= 0) else timeout_s
 
     result: list[Any]                = [None]
     exc:    list[BaseException | None] = [None]
@@ -1099,6 +1127,23 @@ def synthesise(
         if thread.is_alive():
             elapsed = time.perf_counter() - t_start
             print(f"  … still generating ({elapsed:.0f}s elapsed) …", flush=True)
+            if effective_timeout is not None and elapsed >= effective_timeout:
+                print(
+                    f"\n  ✗  Timeout: generation exceeded {effective_timeout:.0f}s "
+                    f"(4× CPU ETA).  Kill the container to free resources.",
+                    flush=True,
+                )
+                print(
+                    "     To run longer pass --timeout <seconds>, or 0 to disable.",
+                    flush=True,
+                )
+                print(
+                    "     For practical speeds, run on a CUDA GPU — see README.",
+                    flush=True,
+                )
+                raise TimeoutError(
+                    f"generate_voice_clone exceeded {effective_timeout:.0f}s wall-clock timeout."
+                )
 
     elapsed = time.perf_counter() - t_start
     print(f"    ↳ generate_voice_clone: {elapsed:.2f}s")
@@ -1433,7 +1478,10 @@ def cmd_synth(args) -> None:
 
     # Stage 5: generate
     t_synth   = time.perf_counter()
-    wav, sr   = synthesise(text, language, model, prompt, args.seed, gen_kwargs)
+    wav, sr   = synthesise(
+        text, language, model, prompt, args.seed, gen_kwargs,
+        timeout_s=args.timeout,
+    )
     synth_sec = time.perf_counter() - t_synth
 
     total_sec = time.perf_counter() - t0
@@ -1583,6 +1631,13 @@ def build_parser() -> argparse.ArgumentParser:
     sp.add_argument("--max-new-tokens",     type=int,   default=None,
                     dest="max_new_tokens",
                     help="Maximum generated tokens")
+    sp.add_argument("--timeout",             type=float, default=None,
+                    dest="timeout",
+                    help=(
+                        "Wall-clock timeout in seconds for the synthesis step. "
+                        "Defaults to 4× the CPU ETA estimate. "
+                        "Pass 0 to disable entirely."
+                    ))
     sp.add_argument(
         "--force-bad-ref", action="store_true",
         help="Bypass the transcript quality gate (low avg_logprob warning)",
