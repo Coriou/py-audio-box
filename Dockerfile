@@ -1,5 +1,9 @@
 FROM python:3.11-slim-bookworm
 
+LABEL org.opencontainers.image.source="https://github.com/Coriou/py-audio-box"
+LABEL org.opencontainers.image.description="ML/audio toolbox — voice cloning, synthesis, separation"
+LABEL org.opencontainers.image.licenses="MIT"
+
 ARG POETRY_VERSION=1.8.3
 ARG APP_USER=app
 ARG APP_UID=1000
