@@ -32,10 +32,10 @@
 #   - deploy.resources injects the NVIDIA runtime so the container can see the GPU
 #
 # ── GPU notes (GTX 980 / Maxwell SM 5.2) ─────────────────────────────────────
-#   - Compute capability 5.2 → no FP16 tensor cores, no bfloat16
-#   - TORCH_DEVICE=cuda + dtype auto → float16 (halves per-token VRAM reads;
-#     autoregressive inference is memory-bandwidth bound, not compute bound)
-#   - 4 GB VRAM; Qwen3-TTS-0.6B-Base in float16 ≈ 1.2 GB
+#   - Compute capability 5.2 → no native FP16 arithmetic; float16 forward
+#     passes overflow to NaN. dtype auto correctly falls back to float32.
+#   - 4 GB VRAM; Qwen3-TTS-0.6B-Base in float32 ≈ 2.4 GB — fits fine
+#   - Expected speedup over CPU: ~4–8× for TTS, ~2–3× for Demucs
 # ─────────────────────────────────────────────────────────────────────────────
 
 services:

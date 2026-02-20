@@ -202,13 +202,15 @@ def best_dtype(device: str, dtype_str: str) -> torch.dtype:
 
     When ``dtype_str == "auto"`` (the default):
       CPU                → float32  (native; bfloat16 would add cast overhead)
-      CUDA SM < 5.0      → float32  (Maxwell+ covers all realistic GPUs)
-      CUDA SM 5.x–7.x    → float16  (Maxwell / Pascal / Volta / Turing)
+      CUDA SM < 7.0      → float32  (Maxwell / Pascal lack native FP16 arithmetic;
+                                     ops overflow to NaN during LLM sampling)
+      CUDA SM 7.0–7.x    → float16  (Volta / Turing — first desktop FP16 that works)
       CUDA SM ≥ 8.0      → bfloat16 (Ampere, Ada Lovelace, Hopper)
 
-    Maxwell (SM 5.x) has no FP16 tensor cores, but autoregressive LLM
-    inference is memory-bandwidth bound — float16 halves per-token VRAM
-    reads vs float32, which is the dominant cost at batch size 1.
+    Note: Maxwell SM 5.x has no native FP16 compute units. Even though
+    float16 halves memory bandwidth (attractive for memory-bound autoregressive
+    inference), the forward pass produces NaN/inf logits on these chips.
+    float32 is required for numerical stability.
 
     Explicit strings ("bfloat16", "float32", "float16") are returned as-is.
     """
@@ -220,7 +222,7 @@ def best_dtype(device: str, dtype_str: str) -> torch.dtype:
     major, minor = torch.cuda.get_device_capability(idx)
     if major >= 8:
         return torch.bfloat16
-    if major >= 5:
+    if (major, minor) >= (7, 0):
         return torch.float16
     return torch.float32
 
