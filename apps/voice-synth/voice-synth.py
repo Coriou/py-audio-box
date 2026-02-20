@@ -42,6 +42,10 @@ DEFAULT_DESIGN_MODEL  = "Qwen/Qwen3-TTS-12Hz-1.7B-VoiceDesign"
 DEFAULT_WHISPER       = "small"
 PROMPT_SCHEMA_VERSION = 1   # must match voice-clone.py
 
+# Hard ceiling on generated tokens.  At 12 Hz this allows ~341 s of audio,
+# preventing runaway generation when EOS is unreliable on CPU.
+MAX_NEW_TOKENS_DEFAULT = 4096
+
 QWEN3_LANGUAGES = [
     "Auto", "Chinese", "English", "Japanese", "Korean",
     "German", "French", "Russian", "Portuguese", "Spanish", "Italian",
@@ -639,8 +643,12 @@ def cmd_speak(args) -> None:
         gen_kwargs["top_p"] = args.top_p
     if args.repetition_penalty is not None:
         gen_kwargs["repetition_penalty"] = args.repetition_penalty
-    if args.max_new_tokens is not None:
-        gen_kwargs["max_new_tokens"] = args.max_new_tokens
+    # Always set a ceiling: without it the model may run indefinitely on CPU
+    # when EOS is unreliable.  User can raise or lower with --max-new-tokens.
+    gen_kwargs["max_new_tokens"] = (
+        args.max_new_tokens if args.max_new_tokens is not None
+        else MAX_NEW_TOKENS_DEFAULT
+    )
 
     # Load model + prompt
     t0    = time.perf_counter()

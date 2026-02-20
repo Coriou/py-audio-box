@@ -48,6 +48,11 @@ DEFAULT_TTS_MODEL    = "Qwen/Qwen3-TTS-12Hz-0.6B-Base"
 DEFAULT_WHISPER      = "small"
 WHISPER_COMPUTE      = "int8"
 MIN_REF_SECONDS      = 3.0
+
+# Hard ceiling on generated tokens.  At 12 Hz (12 audio tokens / second of
+# output) this allows up to ~341 s of audio — far beyond any realistic input —
+# while preventing a true runaway when the model fails to emit EOS on CPU.
+MAX_NEW_TOKENS_DEFAULT = 4096
 MAX_REF_SECONDS      = 12.0
 SWEET_SPOT_SECONDS   = 8.5     # ideal duration for ref clip
 CANDIDATE_COUNT      = 3       # top-N VAD candidates to whisper-score
@@ -1300,8 +1305,12 @@ def cmd_synth(args) -> None:
         gen_kwargs["top_p"] = args.top_p
     if args.repetition_penalty is not None:
         gen_kwargs["repetition_penalty"] = args.repetition_penalty
-    if args.max_new_tokens is not None:
-        gen_kwargs["max_new_tokens"] = args.max_new_tokens
+    # Always set a ceiling: without it the model may run indefinitely on CPU
+    # when EOS is unreliable.  User can raise or lower with --max-new-tokens.
+    gen_kwargs["max_new_tokens"] = (
+        args.max_new_tokens if args.max_new_tokens is not None
+        else MAX_NEW_TOKENS_DEFAULT
+    )
 
     # Stage 5: generate
     t_synth   = time.perf_counter()
