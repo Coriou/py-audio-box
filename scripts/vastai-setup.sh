@@ -70,36 +70,38 @@ ok "sox    $(sox --version 2>&1 | awk '{print $NF}')"
 log "Python deps"
 T0=$SECONDS
 
-# Install poetry if not present, then export a flat requirements.txt.
+# Install poetry if not present.
 if ! command -v poetry &>/dev/null; then
   info "Installing poetry …"
   pip install -q poetry
 fi
-info "Exporting requirements from poetry.lock …"
-poetry export --without-hashes -f requirements.txt -o /tmp/py_audio_box_requirements.txt
+
+# Install all deps into the system Python (no virtualenv).
+info "Running poetry install --no-root …"
+poetry config virtualenvs.create false
+poetry install --no-root --no-interaction -q
 
 # Detect CUDA version to pick the right torch wheel index.
 CUDA_VER=$(nvidia-smi 2>/dev/null \
   | grep -oP 'CUDA Version: \K[0-9]+\.[0-9]+' | head -1 || echo "")
 if [[ -z "$CUDA_VER" ]]; then
-  warn "nvidia-smi not found or no GPU — using CPU torch"
-  TORCH_INDEX="https://download.pytorch.org/whl/cpu"
+  warn "nvidia-smi not found or no GPU — skipping CUDA torch reinstall"
+  TORCH_INDEX=""
 elif "$PYTHON" -c "v='${CUDA_VER}'.split('.'); exit(0 if (int(v[0]),int(v[1])) >= (12,8) else 1)" 2>/dev/null; then
-  info "CUDA $CUDA_VER → cu128 wheels"
+  info "CUDA $CUDA_VER → reinstalling torch with cu128 wheels"
   TORCH_INDEX="https://download.pytorch.org/whl/cu128"
 elif "$PYTHON" -c "v='${CUDA_VER}'.split('.'); exit(0 if (int(v[0]),int(v[1])) >= (12,4) else 1)" 2>/dev/null; then
-  info "CUDA $CUDA_VER → cu124 wheels"
+  info "CUDA $CUDA_VER → reinstalling torch with cu124 wheels"
   TORCH_INDEX="https://download.pytorch.org/whl/cu124"
 else
-  info "CUDA $CUDA_VER → cu121 wheels"
+  info "CUDA $CUDA_VER → reinstalling torch with cu121 wheels"
   TORCH_INDEX="https://download.pytorch.org/whl/cu121"
 fi
 
-# Install all non-torch packages first, then install torch from the CUDA index.
-info "Installing packages (a few minutes) …"
-grep -vE '^torch' /tmp/py_audio_box_requirements.txt > /tmp/py_audio_box_notorch.txt || true
-pip install -q --no-cache-dir -r /tmp/py_audio_box_notorch.txt
-pip install -q --no-cache-dir torch torchaudio --index-url "$TORCH_INDEX"
+# Reinstall torch + torchaudio from the CUDA index (poetry installed CPU ones).
+if [[ -n "$TORCH_INDEX" ]]; then
+  pip install -q --no-cache-dir torch torchaudio --index-url "$TORCH_INDEX"
+fi
 
 ok "Python deps installed  ($(hms $T0))"
 
