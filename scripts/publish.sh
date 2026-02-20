@@ -68,11 +68,13 @@ for i in "${!VARIANTS[@]}"; do
 done
 
 # Deduplicate while preserving order; cpu always before cuda variants (cache efficiency)
-declare -A _seen; ordered=()
+# (bash 3 compatible — no associative arrays)
+ordered=()
+_contains() { local needle="$1"; shift; for el in "$@"; do [[ "$el" == "$needle" ]] && return 0; done; return 1; }
 for v in cpu cuda cuda128; do
   for want in "${VARIANTS[@]}"; do
-    if [[ "$want" == "$v" ]] && [[ -z "${_seen[$v]:-}" ]]; then
-      ordered+=("$v"); _seen[$v]=1
+    if [[ "$want" == "$v" ]] && ! _contains "$v" "${ordered[@]+"${ordered[@]}"}"; then
+      ordered+=("$v")
     fi
   done
 done
