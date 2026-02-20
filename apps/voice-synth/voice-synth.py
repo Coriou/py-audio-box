@@ -320,17 +320,34 @@ def _word_overlap_ratio(ref_words: list[str], hyp_words: list[str]) -> float:
     return matched / len(ref_words)
 
 
+def _cuda_ctranslate2_compute_type() -> str:
+    """
+    Return the most efficient CTranslate2 compute_type for the current CUDA GPU.
+
+    CTranslate2 capability requirements:
+      float16  → SM 7.0+ (Volta and newer)
+      int8     → SM 6.1+ (Pascal and newer)
+      float32  → any device
+    """
+    cc = torch.cuda.get_device_capability()
+    if cc >= (7, 0):
+        return "float16"
+    if cc >= (6, 1):
+        return "int8"
+    return "float32"
+
+
 def qa_transcribe(wav_path: Path, whisper_model: str, num_threads: int,
                   target_text: str) -> dict[str, Any]:
     """
     Run faster-whisper on *wav_path* and return a QA dict:
       transcript, intelligibility (word overlap), duration_sec.
-    Uses GPU (float16) when available, CPU int8 otherwise.
+    Uses the best compute type for the current device.
     """
     try:
         from faster_whisper import WhisperModel
         device       = _get_device()
-        compute_type = "float16" if device.startswith("cuda") else "int8"
+        compute_type = _cuda_ctranslate2_compute_type() if device.startswith("cuda") else "int8"
         wm = WhisperModel(whisper_model, device=device,
                           compute_type=compute_type, cpu_threads=num_threads)
         segs, _info = wm.transcribe(str(wav_path), beam_size=2, vad_filter=True)

@@ -341,10 +341,29 @@ def _score_segment(duration: float, avg_logprob: float) -> float:
 
 # ── faster-whisper transcription ───────────────────────────────────────────────
 
+def _cuda_ctranslate2_compute_type() -> str:
+    """
+    Return the most efficient CTranslate2 compute_type for the current CUDA GPU.
+
+    CTranslate2 capability requirements (as of v4.x):
+      float16        → SM 7.0+ (Volta and newer)
+      int8           → SM 6.1+ (Pascal and newer)
+      float32        → any device
+
+    Maxwell (SM 5.x) only supports float32.
+    """
+    cc = torch.cuda.get_device_capability()
+    if cc >= (7, 0):
+        return "float16"
+    if cc >= (6, 1):
+        return "int8"
+    return "float32"
+
+
 def _build_whisper_model(whisper_model: str, num_threads: int):
     from faster_whisper import WhisperModel
     device       = _get_device()
-    compute_type = "float16" if device.startswith("cuda") else WHISPER_COMPUTE
+    compute_type = _cuda_ctranslate2_compute_type() if device.startswith("cuda") else WHISPER_COMPUTE
     return WhisperModel(
         whisper_model,
         device=device,
@@ -394,7 +413,7 @@ def transcribe_ref(
     Returns (transcript, avg_logprob, detected_language_qwen, language_probability).
     """
     device       = _get_device()
-    compute_type = "float16" if device.startswith("cuda") else WHISPER_COMPUTE
+    compute_type = _cuda_ctranslate2_compute_type() if device.startswith("cuda") else WHISPER_COMPUTE
     print(
         f"  loading faster-whisper/{whisper_model} "
         f"({compute_type}, {device}, {num_threads} threads)..."
