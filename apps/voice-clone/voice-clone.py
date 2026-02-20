@@ -360,9 +360,26 @@ def _cuda_ctranslate2_compute_type() -> str:
     return "float32"
 
 
+def _ctranslate2_device() -> str:
+    """
+    Return the device to use for CTranslate2 / faster-whisper.
+
+    CTranslate2 compiled with CUDA 12.x (cu124/cu126) only ships CUDA kernels
+    for Volta SM 7.0+.  Older GPUs (Maxwell SM 5.x, Pascal SM 6.0) hit
+    ``cudaErrorNoKernelImageForDevice`` at runtime.  Fall back to CPU so
+    transcription still works; PyTorch-based models (Demucs, Qwen) still use GPU.
+    """
+    device = _get_device()
+    if device.startswith("cuda") and torch.cuda.is_available():
+        cc = torch.cuda.get_device_capability()
+        if cc < (7, 0):
+            return "cpu"
+    return device
+
+
 def _build_whisper_model(whisper_model: str, num_threads: int):
     from faster_whisper import WhisperModel
-    device       = _get_device()
+    device       = _ctranslate2_device()
     compute_type = _cuda_ctranslate2_compute_type() if device.startswith("cuda") else WHISPER_COMPUTE
     return WhisperModel(
         whisper_model,
@@ -412,7 +429,7 @@ def transcribe_ref(
     Load faster-whisper and transcribe the reference clip at full quality.
     Returns (transcript, avg_logprob, detected_language_qwen, language_probability).
     """
-    device       = _get_device()
+    device       = _ctranslate2_device()
     compute_type = _cuda_ctranslate2_compute_type() if device.startswith("cuda") else WHISPER_COMPUTE
     print(
         f"  loading faster-whisper/{whisper_model} "

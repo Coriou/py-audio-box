@@ -337,6 +337,22 @@ def _cuda_ctranslate2_compute_type() -> str:
     return "float32"
 
 
+def _ctranslate2_device() -> str:
+    """
+    Return the device to use for CTranslate2 / faster-whisper.
+
+    CTranslate2 compiled with CUDA 12.x (cu124/cu126) only ships CUDA kernels
+    for Volta SM 7.0+.  Older GPUs will hit ``cudaErrorNoKernelImageForDevice``
+    at runtime.  Fall back to CPU for pre-Volta hardware.
+    """
+    device = _get_device()
+    if device.startswith("cuda") and torch.cuda.is_available():
+        cc = torch.cuda.get_device_capability()
+        if cc < (7, 0):
+            return "cpu"
+    return device
+
+
 def qa_transcribe(wav_path: Path, whisper_model: str, num_threads: int,
                   target_text: str) -> dict[str, Any]:
     """
@@ -346,7 +362,7 @@ def qa_transcribe(wav_path: Path, whisper_model: str, num_threads: int,
     """
     try:
         from faster_whisper import WhisperModel
-        device       = _get_device()
+        device       = _ctranslate2_device()
         compute_type = _cuda_ctranslate2_compute_type() if device.startswith("cuda") else "int8"
         wm = WhisperModel(whisper_model, device=device,
                           compute_type=compute_type, cpu_threads=num_threads)
