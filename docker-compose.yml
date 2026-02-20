@@ -12,5 +12,9 @@ services:
     environment:
       - PYTHONUNBUFFERED=1
       - PYTHONDONTWRITEBYTECODE=1
+      # Force HuggingFace to use the standard downloader (writes directly into
+      # /cache mount) rather than the xet/XetHub protocol which writes large
+      # temp files into the container's /tmp overlay and can exhaust its space.
+      - HF_HUB_DISABLE_XET_TRANSPORT=1
     tty: true
     stdin_open: true

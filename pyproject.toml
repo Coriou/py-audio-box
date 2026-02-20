@@ -23,6 +23,12 @@ torchaudio = { version = "^2.3.0", source = "pytorch-cpu" }
 # torchaudio >=2.6 requires torchcodec for audio save; available on PyPI
 torchcodec = ">=0.1"
 
+# voice-clone: ref transcription (CPU int8, 4× faster than openai-whisper)
+faster-whisper = ">=1.0.0"
+
+# voice-clone: Qwen3-TTS voice cloning engine
+qwen-tts = ">=0.1.0"
+
 [tool.poetry.group.dev.dependencies]
 ruff = "^0.6.9"
 pytest = "^8.3.3"

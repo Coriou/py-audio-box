@@ -1,0 +1,21 @@
+# Large runtime data — never needed inside the image
+cache/
+work/
+
+# Python bytecode
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+
+# Virtual envs
+.venv/
+venv/
+
+# Dev/IDE artefacts
+.git/
+.DS_Store
+*.egg-info/
+dist/
+build/
