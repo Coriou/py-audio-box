@@ -42,6 +42,10 @@ voice-clone:  ## Run voice-clone. Usage: make voice-clone ARGS='synth --ref-audi
 voice-synth:  ## Run voice-synth. Usage: make voice-synth ARGS='speak --voice <id> --text "Hello"'
 	./run voice-synth $(ARGS)
 
+.PHONY: voice-register
+voice-register:  ## One-shot register. Usage: make voice-register ARGS='--url "..." --voice-name slug --text "Hello"'
+	./run voice-register $(ARGS)
+
 # ── help ───────────────────────────────────────────────────────────────────────
 
 .PHONY: help

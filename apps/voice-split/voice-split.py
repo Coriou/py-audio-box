@@ -65,7 +65,14 @@ def download_audio(url: str, dl_cache: Path, video_id: str, cookies: str | None 
         print(f"  [cache hit] audio → {target}")
         return target
 
+    # yt-dlp may produce a different extension (e.g. .webm) on some videos;
+    # accept any cached file for this video_id to avoid a wasted re-download.
     dl_cache.mkdir(parents=True, exist_ok=True)
+    existing = [p for p in dl_cache.glob(f"{video_id}.*") if p.suffix != ".part"]
+    if existing:
+        cached = existing[0]
+        print(f"  [cache hit] audio → {cached}")
+        return cached
     opts = _ydl_opts(
         {
             "format": "bestaudio",
@@ -565,28 +572,37 @@ def main() -> None:
             print(f"\n==> Selecting best registry clip...")
             src_clip = export_registry_clip(pool, args.length, out)
 
-            reg = VoiceRegistry(cache)
-            reg.create(
-                slug,
-                display_name=slug,
-                source={
-                    "type":     "youtube",
-                    "url":      args.url,
-                    "video_id": video_id,
-                    "n_clips":  len(plans),
-                },
-            )
-            if src_clip and src_clip.exists():
+            if not src_clip:
+                # All pool segments were too short (< 5s); do NOT create a
+                # partial registry entry that would confuse voice-clone later.
+                print(
+                    f"  WARNING: voice '{slug}' was NOT registered — no pool segment "
+                    f"was long enough (need ≥ 5s of clean solo speech).\n"
+                    f"  Suggestions:\n"
+                    f"    • try a video with longer continuous speech\n"
+                    f"    • increase --window-len or widen --max-scan-seconds\n"
+                    f"    • lower --length so the 5s minimum is easier to satisfy",
+                    file=sys.stderr,
+                )
+            else:
+                reg = VoiceRegistry(cache)
+                reg.create(
+                    slug,
+                    display_name=slug,
+                    source={
+                        "type":     "youtube",
+                        "url":      args.url,
+                        "video_id": video_id,
+                        "n_clips":  len(plans),
+                    },
+                )
                 reg.set_source_clip(slug, src_clip)
                 print(f"  [registry] voice '{slug}' created")
                 print(f"  source clip: {src_clip.name} → {cache}/voices/{slug}/source_clip.wav")
-            else:
-                print(f"  [registry] voice '{slug}' created (no suitable clip found—"
-                      f"pool may be too short)", file=sys.stderr)
-            print(f"  Next steps:")
-            print(f"    ./run voice-clone synth --voice {slug} --text 'Hello'")
-            print(f"    ./run voice-synth speak --voice {slug} --text 'Hello'")
-            print(f"    ./run voice-synth list-voices  # see all registered voices")
+                print(f"  Next steps:")
+                print(f"    ./run voice-clone synth --voice {slug} --text 'Hello'")
+                print(f"    ./run voice-synth speak --voice {slug} --text 'Hello'")
+                print(f"    ./run voice-synth list-voices  # see all registered voices")
 
 
 if __name__ == "__main__":

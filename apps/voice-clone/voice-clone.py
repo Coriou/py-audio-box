@@ -888,7 +888,7 @@ def build_voice_clone_prompt(
                 )
             print(f"  [repaired] meta.json → {meta_path.name}")
         with open(prompt_path, "rb") as fh:
-            return pickle.load(fh)
+            return pickle.load(fh), prompt_path
 
     print(f"  building voice-clone prompt (mode={mode}) …")
     with _Timer("create_voice_clone_prompt"):
@@ -922,7 +922,7 @@ def build_voice_clone_prompt(
         )
 
     print(f"  cached → {prompt_path.name}")
-    return prompt
+    return prompt, prompt_path
 
 
 # ── dtype helper ──────────────────────────────────────────────────────────────
@@ -1104,7 +1104,7 @@ def cmd_self_test(args) -> None:
     language = resolve_language(args.language, ref.ref_language, SELF_TEST_SYNTH_TEXT)
     language = validate_language(language, model)
 
-    prompt  = build_voice_clone_prompt(model, ref, cache, args.x_vector_only, force=False)
+    prompt, _pkl = build_voice_clone_prompt(model, ref, cache, args.x_vector_only, force=False)
 
     t_synth   = time.perf_counter()
     wav, sr   = synthesise(SELF_TEST_SYNTH_TEXT, language, model, prompt, args.seed)
@@ -1260,11 +1260,14 @@ def cmd_synth(args) -> None:
     t_model = time.perf_counter()
     model   = load_tts_model(args.model, args.threads, args.dtype)
     language = validate_language(language, model)
-    prompt  = build_voice_clone_prompt(model, ref, cache, args.x_vector_only, args.force)
+    prompt, pkl_path = build_voice_clone_prompt(
+        model, ref, cache, args.x_vector_only, args.force
+    )
     model_sec = time.perf_counter() - t_model
 
     # Register ref + prompt to named voice if requested
     if voice_name:
+        meta_path = pkl_path.parent / (pkl_path.stem + ".meta.json")
         reg = _voice_registry(cache)
         reg.update_ref(voice_name, ref.segment, {
             "hash":            ref.ref_hash,
@@ -1276,21 +1279,16 @@ def cmd_synth(args) -> None:
             "language":        ref.ref_language,
             "language_prob":   round(ref.ref_language_prob, 4),
         })
-        mode      = "xvec" if args.x_vector_only else "full"
-        mtag      = _model_tag(model)  # same helper as build_voice_clone_prompt
-        stem      = f"{ref.ref_hash}_{mtag}_{mode}_v{PROMPT_SCHEMA_VERSION}"
-        pkl_path  = cache / "voice-clone" / "prompts" / f"{stem}.pkl"
-        meta_path = pkl_path.with_suffix(".meta.json")
-        if pkl_path.exists() and meta_path.exists() and meta_path.stat().st_size > 0:
+        if meta_path.exists() and meta_path.stat().st_size > 0:
             with open(meta_path) as _fh:
                 _meta = json.load(_fh)
-            reg.register_prompt(voice_name, stem, pkl_path, _meta, tone=args.tone)
+            reg.register_prompt(voice_name, pkl_path.stem, pkl_path, _meta, tone=args.tone)
             tone_note = f"  (tone={args.tone!r})" if args.tone else ""
             print(f"  [registry] voice '{voice_name}' \u2192 prompt registered{tone_note}")
         else:
             print(
-                f"  WARNING: expected prompt not found — pkl or meta.json missing\n"
-                f"    stem: {stem}",
+                f"  WARNING: meta.json not found or empty — prompt not registered\n"
+                f"    expected: {meta_path}",
                 file=sys.stderr,
             )
 

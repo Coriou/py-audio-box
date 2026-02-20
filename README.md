@@ -24,7 +24,14 @@ make build        # build the shared image (~5 min, cached on rebuild)
 # Extract clean voice clips from a YouTube video
 ./run voice-split --url "https://www.youtube.com/watch?v=XXXX" --clips 5 --length 30
 
-# ── Named voice workflow (recommended) ──────────────────────────────────────
+# ── One-shot voice registration (recommended) ─────────────────────────────────
+# Download → Demucs split → clone prompt → test synthesis in a single command
+./run voice-register \
+    --url "https://www.youtube.com/watch?v=XXXX" \
+    --voice-name david-attenborough \
+    --text "Nature is the greatest artist."
+
+# ── Named voice workflow (step by step) ──────────────────────────────────────
 # 1. Extract + register a named voice
 ./run voice-split --url "https://www.youtube.com/watch?v=XXXX" \
     --voice-name david-attenborough --clips 5
@@ -115,6 +122,12 @@ Each stage is optional — a voice progresses from `source_clip.wav` → `ref.wa
 
 # Step 3 — fast synthesis (model load + generate only, no VAD or Whisper)
 ./run voice-synth speak --voice david-attenborough --text "..."
+
+# ── Or do all three steps with one command ────────────────────────────────────
+./run voice-register \
+    --url "..." \
+    --voice-name david-attenborough \
+    --text "Nature is the greatest artist."
 
 # Inspect all registered voices + their pipeline status
 ./run voice-synth list-voices
@@ -256,9 +269,10 @@ make clean-cache        Wipe ./cache/ — models and downloads will re-run
 App shortcuts (pass extra flags via `ARGS=`):
 
 ```
-make voice-split  ARGS='--url "https://..." --clips 5 --length 30'
-make voice-clone  ARGS='synth --ref-audio /work/myclip.wav --text "Hello, world"'
-make voice-synth  ARGS='speak --voice <id> --text "Hello"'
+make voice-split     ARGS='--url "https://..." --clips 5 --length 30'
+make voice-clone     ARGS='synth --ref-audio /work/myclip.wav --text "Hello, world"'
+make voice-synth     ARGS='speak --voice <id> --text "Hello"'
+make voice-register  ARGS='--url "https://..." --voice-name my-voice --text "Hello"'
 ```
 
 ---
@@ -274,3 +288,4 @@ When an AI agent or script works with this repo:
 - **Check `--help` first.** Every script uses `ArgumentDefaultsHelpFormatter`; `./run <app> --help` is always the authoritative reference for flags and defaults.
 - **Output is always in `./work/`** (mounted at `/work`) unless `--out` is overridden. Look there for results.
 - **Prefer `--voice <slug>` over `--ref-audio <path>`.** Named voice slugs are the canonical way to reference voices across all apps. Run `./run voice-synth list-voices` to enumerate available voices. Register a new voice with `--voice-name <slug>` on `voice-split`, `voice-clone synth`, or `voice-synth design-voice`. When `--voice <slug>` is used with `voice-clone synth`, the built prompt is automatically registered back to that voice — no separate `--voice-name` needed.
+- **Use `voice-register` for one-shot pipeline runs.** `./run voice-register --url "..." --voice-name <slug> --text "..."` chains voice-split → voice-clone synth and leaves a fully synthesis-ready voice in a single command. Re-runs are safe and cached.
