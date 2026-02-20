@@ -655,7 +655,6 @@ def prepare_ref(
     segment_logprob      = 0.0
     segment_lang         = "English"
     segment_lang_prob    = 1.0
-    used_scoring_pass    = False
 
     if ref_start is not None and ref_end is not None:
         seg_start, seg_end = ref_start, ref_end
@@ -708,8 +707,6 @@ def prepare_ref(
                         whisper_model, num_threads, force,
                     )
 
-            # Note: if >1 candidate, scoring already trimmed the wav; reuse it
-            used_scoring_pass = len(candidates) > 1
             print(
                 f"  best segment: {seg_start:.2f}s – {seg_end:.2f}s  "
                 f"({seg_end - seg_start:.1f}s)"
@@ -866,6 +863,28 @@ def build_voice_clone_prompt(
 
     if prompt_path.exists() and not force:
         print(f"  [cache hit] voice prompt → {prompt_path.name}")
+        # Repair missing or empty meta.json (can happen after an interrupted write)
+        if not meta_path.exists() or meta_path.stat().st_size == 0:
+            prompts_dir.mkdir(parents=True, exist_ok=True)
+            with open(meta_path, "w") as fh:
+                json.dump(
+                    {
+                        "prompt_id":               stem,
+                        "schema_version":          PROMPT_SCHEMA_VERSION,
+                        "model":                   mtag,
+                        "mode":                    mode,
+                        "ref_hash":                ref.ref_hash,
+                        "transcript":              ref.transcript,
+                        "ref_language_detected":   ref.ref_language,
+                        "ref_language_probability": round(ref.ref_language_prob, 4),
+                        "seg_start":               ref.seg_start,
+                        "seg_end":                 ref.seg_end,
+                        "segment_duration_sec":    round(ref.seg_end - ref.seg_start, 3),
+                        "created_at":              datetime.now(timezone.utc).isoformat(),
+                    },
+                    fh, indent=2,
+                )
+            print(f"  [repaired] meta.json → {meta_path.name}")
         with open(prompt_path, "rb") as fh:
             return pickle.load(fh)
 
@@ -886,7 +905,7 @@ def build_voice_clone_prompt(
             {
                 "prompt_id":               stem,
                 "schema_version":          PROMPT_SCHEMA_VERSION,
-                "model":                   model_tag,
+                "model":                   mtag,
                 "mode":                    mode,
                 "ref_hash":                ref.ref_hash,
                 "transcript":              ref.transcript,
@@ -904,18 +923,41 @@ def build_voice_clone_prompt(
     return prompt
 
 
+# ── dtype helper ──────────────────────────────────────────────────────────────
+
+_DTYPE_MAP: dict[str, torch.dtype] = {
+    "bfloat16": torch.bfloat16,
+    "float32":  torch.float32,
+    "float16":  torch.float16,
+}
+
+
 # ── Stage 5: synthesis ─────────────────────────────────────────────────────────
 
-def load_tts_model(model_name: str, num_threads: int):
-    """Load Qwen3-TTS-Base for CPU inference (float32)."""
+def load_tts_model(model_name: str, num_threads: int, dtype_str: str = "bfloat16"):
+    """
+    Load Qwen3-TTS-Base for CPU inference.
+
+    dtype_str:
+      "bfloat16" (default) — ~2x faster on Apple Silicon (AMX) and modern x86
+                              with AVX-512-BF16; half the memory of float32.
+      "float32"            — compatibility fallback for older hardware.
+      "float16"            — not recommended on CPU (no native support on most CPUs).
+
+    attn_implementation="sdpa" uses PyTorch's fused scaled-dot-product attention
+    (torch.nn.functional.scaled_dot_product_attention), which is faster than the
+    default "eager" path on CPU for all dtypes.
+    """
     from qwen_tts import Qwen3TTSModel
 
+    dtype = _DTYPE_MAP.get(dtype_str, torch.bfloat16)
     torch.set_num_threads(num_threads)
-    print(f"  loading {model_name} (cpu, float32, threads={num_threads}) …")
+    print(f"  loading {model_name} (cpu, {dtype_str}, threads={num_threads}) …")
     model = Qwen3TTSModel.from_pretrained(
         model_name,
         device_map="cpu",
-        dtype=torch.float32,
+        dtype=dtype,
+        attn_implementation="sdpa",
     )
     return model
 
@@ -1053,7 +1095,7 @@ def cmd_self_test(args) -> None:
 
     print("\n--- synth ---")
     t0    = time.perf_counter()
-    model = load_tts_model(args.model, args.threads)
+    model = load_tts_model(args.model, args.threads, args.dtype)
     t_model_done = time.perf_counter()
 
     language = resolve_language(args.language, ref.ref_language, SELF_TEST_SYNTH_TEXT)
@@ -1158,10 +1200,8 @@ def cmd_synth(args) -> None:
         voice_name = validate_slug(voice_name)
         reg = _voice_registry(cache)
         if not reg.exists(voice_name):
-            source = ({"type": "file", "path": str(ref_audio)}
-                      if not getattr(args, "voice", None)
-                      else {"type": "file", "path": str(ref_audio)})
-            reg.create(voice_name, display_name=voice_name, source=source)
+            reg.create(voice_name, display_name=voice_name,
+                       source={"type": "file", "path": str(ref_audio)})
 
     t0 = time.perf_counter()
 
@@ -1215,7 +1255,7 @@ def cmd_synth(args) -> None:
 
     # Stage 4: load model + build prompt
     t_model = time.perf_counter()
-    model   = load_tts_model(args.model, args.threads)
+    model   = load_tts_model(args.model, args.threads, args.dtype)
     language = validate_language(language, model)
     prompt  = build_voice_clone_prompt(model, ref, cache, args.x_vector_only, args.force)
     model_sec = time.perf_counter() - t_model
@@ -1238,7 +1278,7 @@ def cmd_synth(args) -> None:
         stem      = f"{ref.ref_hash}_{mtag}_{mode}_v{PROMPT_SCHEMA_VERSION}"
         pkl_path  = cache / "voice-clone" / "prompts" / f"{stem}.pkl"
         meta_path = pkl_path.with_suffix(".meta.json")
-        if pkl_path.exists() and meta_path.exists():
+        if pkl_path.exists() and meta_path.exists() and meta_path.stat().st_size > 0:
             with open(meta_path) as _fh:
                 _meta = json.load(_fh)
             reg.register_prompt(voice_name, stem, pkl_path, _meta, tone=args.tone)
@@ -1333,8 +1373,16 @@ def _add_common(p: argparse.ArgumentParser) -> None:
         ),
     )
     p.add_argument(
-        "--threads", type=int, default=8,
-        help="Number of CPU threads for torch + faster-whisper (default: 8)",
+        "--threads", type=int, default=os.cpu_count() or 8,
+        help="CPU threads for torch + faster-whisper (default: all logical cores)",
+    )
+    p.add_argument(
+        "--dtype", default="bfloat16", choices=["bfloat16", "float32", "float16"],
+        help=(
+            "Model weight dtype.  bfloat16 (default) is ~2x faster on Apple Silicon "
+            "and AVX-512-BF16 CPUs and uses half the memory.  Use float32 if you see "
+            "NaN/quality issues on older hardware."
+        ),
     )
     p.add_argument(
         "--seed", type=int, default=None,

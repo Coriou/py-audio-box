@@ -203,16 +203,39 @@ def apply_style(
     return " ".join(p for p in parts if p)
 
 
+# ── dtype helper ──────────────────────────────────────────────────────────────
+
+_DTYPE_MAP: dict[str, torch.dtype] = {
+    "bfloat16": torch.bfloat16,
+    "float32":  torch.float32,
+    "float16":  torch.float16,
+}
+
+
 # ── model loading ──────────────────────────────────────────────────────────────
 
-def load_tts_model(model_name: str, num_threads: int):
+def load_tts_model(model_name: str, num_threads: int, dtype_str: str = "bfloat16"):
+    """
+    Load a Qwen3-TTS model for CPU inference.
+
+    dtype_str:
+      "bfloat16" (default) — ~2x faster on Apple Silicon (AMX) and modern x86
+                              with AVX-512-BF16; half the memory of float32.
+      "float32"            — compatibility fallback for older hardware.
+      "float16"            — not recommended on CPU (no native support on most CPUs).
+
+    attn_implementation="sdpa" uses PyTorch's fused scaled-dot-product attention,
+    faster than the default "eager" path on CPU for all dtypes.
+    """
     from qwen_tts import Qwen3TTSModel
+    dtype = _DTYPE_MAP.get(dtype_str, torch.bfloat16)
     torch.set_num_threads(num_threads)
-    print(f"  loading {model_name} (cpu, float32, threads={num_threads}) …")
+    print(f"  loading {model_name} (cpu, {dtype_str}, threads={num_threads}) …")
     return Qwen3TTSModel.from_pretrained(
         model_name,
         device_map="cpu",
-        dtype=torch.float32,
+        dtype=dtype,
+        attn_implementation="sdpa",
     )
 
 
@@ -522,6 +545,7 @@ def cmd_list_voices(args) -> None:
         print(f"\n\033[1mNAMED VOICES\033[0m  ({len(named)})")
         print(f"  {'NAME':<28}  {'LANG':<10}  {'DUR':>5}  {'PROMPTS':>7}  STATUS")
         print("  " + "-" * 72)
+        list_reg = _voice_registry(cache)
         for v in named:
             status = (
                 "\033[32mready\033[0m" if v["_ready"]
@@ -537,8 +561,7 @@ def cmd_list_voices(args) -> None:
                 preview = textwrap.shorten(v["transcript"], width=68, placeholder="…")
                 print(f"    \033[2m{preview}\033[0m")
             # Show registered tones if any
-            reg = _voice_registry(cache)
-            tones = reg.list_tones(v["slug"])
+            tones = list_reg.list_tones(v["slug"])
             if tones:
                 tone_list = "  ".join(f"{t}" for t in sorted(tones))
                 print(f"    \033[2mtones: {tone_list}\033[0m")
@@ -621,7 +644,7 @@ def cmd_speak(args) -> None:
 
     # Load model + prompt
     t0    = time.perf_counter()
-    model = load_tts_model(args.model, args.threads)
+    model = load_tts_model(args.model, args.threads, args.dtype)
     with open(pkl_path, "rb") as fh:
         prompt = pickle.load(fh)
     load_sec = time.perf_counter() - t0
@@ -763,8 +786,7 @@ def cmd_design_voice(args) -> None:
     print(f"  NOTE: VoiceDesign model is 1.7B — this may be slow on CPU.")
 
     t0           = time.perf_counter()
-    design_model = load_tts_model(args.design_model, args.threads)
-    torch.set_num_threads(args.threads)
+    design_model = load_tts_model(args.design_model, args.threads, args.dtype)
 
     with _Timer("generate_voice_design"):
         wavs, sr = design_model.generate_voice_design(
@@ -808,7 +830,7 @@ def cmd_design_voice(args) -> None:
     print(f"\n==> [3/3] build voice-clone prompt from designed ref")
     print(f"  clone model: {args.clone_model}")
 
-    clone_model = load_tts_model(args.clone_model, args.threads)
+    clone_model = load_tts_model(args.clone_model, args.threads, args.dtype)
     model_tag   = getattr(clone_model, "name_or_path", args.clone_model).replace("/", "_")
     stem        = f"{content_hash}_{model_tag}_designed_full_v{PROMPT_SCHEMA_VERSION}"
     prompts_dir = cache / "voice-clone" / "prompts"
@@ -896,8 +918,16 @@ def _add_common(p: argparse.ArgumentParser) -> None:
                    help="faster-whisper model for QA transcription")
     p.add_argument("--language", default="Auto", choices=QWEN3_LANGUAGES,
                    help="Synthesis language; Auto = detect from text then ref")
-    p.add_argument("--threads", type=int, default=8,
-                   help="CPU threads for torch + whisper")
+    p.add_argument("--threads", type=int, default=os.cpu_count() or 8,
+                   help="CPU threads for torch + whisper (default: all logical cores)")
+    p.add_argument(
+        "--dtype", default="bfloat16", choices=["bfloat16", "float32", "float16"],
+        help=(
+            "Model weight dtype.  bfloat16 (default) is ~2x faster on Apple Silicon "
+            "and AVX-512-BF16 CPUs and uses half the memory.  Use float32 if you see "
+            "NaN/quality issues on older hardware."
+        ),
+    )
     p.add_argument("--seed", type=int, default=None,
                    help="Base random seed (variant i uses seed+i)")
     p.add_argument("--cache", default="/cache", help="Persistent cache directory")
