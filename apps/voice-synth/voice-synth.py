@@ -400,12 +400,14 @@ def list_prompts(cache: Path) -> list[dict[str, Any]]:
     return list_all_voices(cache)
 
 
-def resolve_voice(voice_arg: str, cache: Path) -> tuple[str, str]:
+def resolve_voice(voice_arg: str, cache: Path, tone: str | None = None) -> tuple[str, str]:
     """
     Given --voice <arg>, return (pkl_path_str, voice_id).
     Resolution order:
-      1. Absolute path ending in ``.pkl`` — used directly
+      1. Absolute path ending in ``.pkl`` — used directly (tone ignored)
       2. Exact named-voice slug in ``/cache/voices/<slug>/``
+         - If *tone* given: looks up the tone-labelled prompt via voice.json["tones"]
+         - Otherwise: returns the most recently written prompt (best_prompt)
       3. Unambiguous prefix match against named voices
       4. Exact stem or unambiguous prefix in legacy ``/cache/voice-clone/prompts/``
     """
@@ -421,6 +423,32 @@ def resolve_voice(voice_arg: str, cache: Path) -> tuple[str, str]:
 
     # 2. Exact named-voice slug
     if reg.exists(voice_arg):
+        if tone:
+            pkl = reg.prompt_for_tone(voice_arg, tone)
+            if pkl is None:
+                available = reg.list_tones(voice_arg)
+                if available:
+                    print(
+                        f"ERROR: voice '{voice_arg}' has no prompt for tone '{tone}'.\n"
+                        f"  Available tones: {', '.join(sorted(available))}\n"
+                        f"  Build one with:\n"
+                        f"    ./run voice-clone synth --voice {voice_arg} "
+                        f"--tone {tone} --text '...' "
+                        f"  (use a reference clip that already sounds {tone!r})",
+                        file=sys.stderr,
+                    )
+                else:
+                    print(
+                        f"ERROR: voice '{voice_arg}' has no tone-labelled prompts.\n"
+                        f"  Build one with:\n"
+                        f"    ./run voice-clone synth --voice {voice_arg} "
+                        f"--tone {tone} --text '...'\n"
+                        f"  Note: tone comes from the reference audio, not from text.\n"
+                        f"  Record/extract a clip that already sounds {tone!r}.",
+                        file=sys.stderr,
+                    )
+                sys.exit(1)
+            return str(pkl), voice_arg
         best = reg.best_prompt(voice_arg)
         if best is None:
             print(
@@ -436,7 +464,7 @@ def resolve_voice(voice_arg: str, cache: Path) -> tuple[str, str]:
     named = [v["slug"] for v in reg.list_voices()]
     name_matches = [s for s in named if s.startswith(voice_arg)]
     if len(name_matches) == 1:
-        return resolve_voice(name_matches[0], cache)  # tail-recurse with full slug
+        return resolve_voice(name_matches[0], cache, tone=tone)  # tail-recurse with full slug
     if len(name_matches) > 1:
         print(
             f"ERROR: ambiguous voice prefix '{voice_arg}' — matches named voices:\n"
@@ -508,6 +536,12 @@ def cmd_list_voices(args) -> None:
             if v["transcript"]:
                 preview = textwrap.shorten(v["transcript"], width=68, placeholder="…")
                 print(f"    \033[2m{preview}\033[0m")
+            # Show registered tones if any
+            reg = _voice_registry(cache)
+            tones = reg.list_tones(v["slug"])
+            if tones:
+                tone_list = "  ".join(f"{t}" for t in sorted(tones))
+                print(f"    \033[2mtones: {tone_list}\033[0m")
 
     if legacy:
         print(f"\n\033[1mLEGACY PROMPTS\033[0m  ({len(legacy)})  "
@@ -535,8 +569,9 @@ def cmd_speak(args) -> None:
     out_dir = Path(args.out)
 
     # Resolve prompt
-    pkl_path, voice_id = resolve_voice(args.voice, cache)
-    print(f"\n  voice: {voice_id}")
+    tone = getattr(args, "tone", None)
+    pkl_path, voice_id = resolve_voice(args.voice, cache, tone=tone)
+    print(f"\n  voice: {voice_id}" + (f"  tone: {tone}" if tone else ""))
 
     # Load meta (for ref_language, etc.)
     meta_path = Path(pkl_path).with_suffix(".meta.json")
@@ -557,24 +592,21 @@ def cmd_speak(args) -> None:
         print("ERROR: no text provided (use --text or --text-file)", file=sys.stderr)
         sys.exit(1)
 
-    # Apply style
-    styles_path = Path(__file__).parent / "styles.yaml"
-    styled_text = apply_style(
-        raw_text,
-        style_name=args.style,
-        styles_path=styles_path,
-    )
-
     # Resolve language; normalise to lowercase so the model accepts it
     language = resolve_language(args.language, ref_language, raw_text).lower()
     print(f"  language: {language}  (ref detected: {ref_language})")
 
+    # Synthesis text — no style-prefix injection for voice clone.
+    # Tone/delivery comes from the reference audio used to build the prompt.
+    # Select the right prompt via --tone; use --prompt-prefix for explicit text inserts.
+    text = raw_text
+
     # Chunk if requested
     if args.chunk:
-        text_chunks = chunk_text(styled_text)
+        text_chunks = chunk_text(text)
         print(f"  auto-chunked into {len(text_chunks)} piece(s)")
     else:
-        text_chunks = [styled_text]
+        text_chunks = [text]
 
     # Generation kwargs
     gen_kwargs: dict[str, Any] = {}
@@ -684,8 +716,8 @@ def cmd_speak(args) -> None:
         "language":       language,
         "ref_language":   ref_language,
         "original_text":  raw_text,
-        "styled_text":    styled_text,
-        "style":          args.style,
+        "text":           text,
+        "tone":           tone,
         "generation_kwargs": gen_kwargs,
         "chunked":        args.chunk,
         "n_chunks":       len(text_chunks),
@@ -896,8 +928,15 @@ def build_parser() -> argparse.ArgumentParser:
                     help="Text to synthesise")
     sp.add_argument("--text-file", default=None, metavar="FILE",
                     help="Read synthesis text from a file")
-    sp.add_argument("--style",     default=None, metavar="PRESET",
-                    help="Style preset from styles.yaml")
+    sp.add_argument(
+        "--tone", default=None, metavar="NAME",
+        help=(
+            "Tone label to select (e.g. 'neutral', 'sad', 'excited'). "
+            "Picks the prompt built from a reference clip labelled with that tone. "
+            "Register tones with: voice-clone synth --tone NAME. "
+            "If omitted, uses the most recently built prompt."
+        ),
+    )
     sp.add_argument("--variants",  type=int, default=1,
                     help="Number of takes to generate with different seeds")
     sp.add_argument("--chunk",     action="store_true",

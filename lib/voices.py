@@ -39,6 +39,10 @@ Each named voice lives at:
         },
         "prompts": {                   // stem -> relative path; index only
             "<stem>": "prompts/<stem>.pkl"
+        },
+        "tones": {                     // tone label -> stem; set by --tone on voice-clone synth
+            "neutral": "<stem1>",        // e.g. "neutral", "sad", "excited"
+            "sad":     "<stem2>"
         }
     }
 
@@ -240,10 +244,15 @@ class VoiceRegistry:
         stem: str,
         pkl_src: Path,
         meta: dict[str, Any],
+        tone: str | None = None,
     ) -> Path:
         """
         Copy *pkl_src* (and its ``.meta.json`` sibling) into the voice's
         ``prompts/`` directory and update ``voice.json``.
+
+        If *tone* is given (e.g. ``"neutral"``, ``"sad"``), it is indexed in
+        the ``"tones"`` mapping so ``prompt_for_tone`` can retrieve it later.
+
         Returns the destination ``.pkl`` path.
         """
         pd = self.prompts_dir(slug)
@@ -258,5 +267,25 @@ class VoiceRegistry:
 
         data = self.load(slug)
         data["prompts"][stem] = f"prompts/{stem}.pkl"
+        if tone:
+            data.setdefault("tones", {})[tone] = stem
         self._save(slug, data)
         return dest_pkl
+
+    def prompt_for_tone(self, slug: str, tone: str) -> Path | None:
+        """
+        Return the ``.pkl`` path for *tone* (e.g. ``"sad"``), or ``None``
+        if that tone has not been registered for this voice.
+        """
+        data  = self.load(slug)
+        tones = data.get("tones") or {}
+        stem  = tones.get(tone)
+        if not stem:
+            return None
+        pkl = self.prompts_dir(slug) / f"{stem}.pkl"
+        return pkl if pkl.exists() else None
+
+    def list_tones(self, slug: str) -> dict[str, str]:
+        """Return the ``{tone_name: stem}`` mapping for this voice (may be empty)."""
+        data = self.load(slug)
+        return dict(data.get("tones") or {})

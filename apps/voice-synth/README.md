@@ -34,11 +34,11 @@ Just load the cached prompt and generate.
     --text "The forest was silent except for the distant call of birds." \
     --variants 4 --qa
 
-# Apply a style preset
+# Select a tone (speaks with the delivery of whichever ref clip was used for that tone)
 ./run voice-synth speak \
     --voice david-attenborough \
-    --text "Welcome to the natural history of the Earth." \
-    --style nature_doc
+    --tone sad \
+    --text "Hey, Max, I've been captured."
 
 # Design a brand-new voice and register it by name, then use it immediately
 ./run voice-synth design-voice \
@@ -142,12 +142,12 @@ One of `--text` or `--text-file` must be provided.
 | `--text TEXT`      | `str`  | —       | Text to synthesise              |
 | `--text-file FILE` | `path` | —       | Read synthesis text from a file |
 
-**Style & language**
+**Tone & language**
 
-| Flag              | Type     | Default | Description                                                                      |
-| ----------------- | -------- | ------- | -------------------------------------------------------------------------------- |
-| `--style PRESET`  | `str`    | —       | Style preset from `styles.yaml` (see below)                                      |
-| `--language LANG` | `choice` | `Auto`  | Synthesis language; `Auto` detects from text then falls back to the ref language |
+| Flag              | Type     | Default | Description                                                                                                                                                                                                                                                 |
+| ----------------- | -------- | ------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `--tone NAME`     | `str`    | —       | Select the prompt built for this tone label (e.g. `neutral`, `sad`). The delivery style comes from the reference clip used when building that prompt. Register tones with `voice-clone synth --tone NAME`. If omitted, uses the most recently built prompt. |
+| `--language LANG` | `choice` | `Auto`  | Synthesis language; `Auto` detects from text then falls back to the ref language                                                                                                                                                                            |
 
 **Multiple takes**
 
@@ -223,27 +223,41 @@ The printed voice ID is immediately usable with `speak`.
 
 ---
 
-## Style presets
+## Tones
 
-Presets are defined in `styles.yaml` alongside `voice-synth.py`.
-Each wraps the synthesis text with an instructional prefix and/or suffix.
+For voice cloning, **delivery style comes from the reference audio** used to build
+the prompt, not from text instructions. `generate_voice_clone` has no `instruct=`
+parameter — prepending `[Sad]` or similar text cues causes the model to _speak
+them aloud_, not to adopt that style.
 
-| Preset        | Effect                             |
-| ------------- | ---------------------------------- |
-| `serious_doc` | Calm, steady documentary narration |
-| `nature_doc`  | Quiet, reverent, measured delivery |
-| `excited`     | High energy, upbeat, smiling       |
-| `energetic`   | Lively and expressive              |
-| `warm`        | Inviting, intimate, friendly       |
-| `sad`         | Heavy-hearted, slow, mournful      |
-| `melancholic` | Resigned, quietly sorrowful        |
-| `whisper`     | Soft, close-mic whisper            |
-| `calm`        | Slow, deliberate, unhurried        |
-| `formal`      | Professional, authoritative        |
-| `audiobook`   | Clear, expressive but measured     |
+The tone system maps a short label (e.g. `neutral`, `sad`, `excited`) to a
+specific `.pkl` prompt built from a reference clip that already sounds that way:
 
-Use `--style` with `speak` to apply any preset. Presets compose with
-`--prompt-prefix` / `--prompt-suffix` on `voice-clone synth`.
+```bash
+# Build and label a tone (use a ref clip that already sounds "sad")
+./run voice-clone synth \
+    --voice david-attenborough-sad-ref \
+    --voice-name david-attenborough \
+    --tone sad \
+    --text "A sample sentence."
+
+# Select the tone when speaking
+./run voice-synth speak --voice david-attenborough --tone sad --text "..."
+
+# See available tones per voice
+./run voice-synth list-voices
+```
+
+If `--tone` is omitted, the most recently built prompt is used.
+
+Text punctuation and rhythm still influence delivery:
+
+- `...` for natural pauses
+- `!` / `?` for emphasis / questions
+
+For **designed voices** (`design-voice`), style is controlled via `--instruct`
+(uses the VoiceDesign model's `instruct=` parameter, which is the only supported
+way to do instruction-driven tone in Qwen3-TTS).
 
 ---
 

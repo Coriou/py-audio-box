@@ -39,7 +39,10 @@ make build        # build the shared image (~5 min, cached on rebuild)
 ./run voice-synth speak --voice david-attenborough \
     --text "Welcome to the natural history of the Earth."
 ./run voice-synth speak --voice david-attenborough \
-    --text "..." --variants 4 --qa --style nature_doc
+    --text "..." --variants 4 --qa
+# If you built a tone-labelled prompt (--tone sad during voice-clone synth):
+./run voice-synth speak --voice david-attenborough --tone sad \
+    --text "..."
 
 # ── Or with an existing WAV file ─────────────────────────────────────────────
 ./run voice-clone synth --ref-audio /work/myclip.wav --text "Hello, world"

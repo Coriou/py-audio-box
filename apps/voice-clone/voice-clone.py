@@ -959,7 +959,7 @@ def write_output(
     ref_language: str,
     x_vector_only: bool,
     seed: int | None,
-    style: str | None,
+    tone: str | None,
     gen_kwargs: dict[str, Any] | None,
     out_dir: Path,
     timings: dict[str, float],
@@ -984,7 +984,7 @@ def write_output(
         "ref_language_probability": round(ref.ref_language_prob, 4),
         "x_vector_only":            x_vector_only,
         "seed":                     seed,
-        "style":                    style,
+        "tone":                     tone,
         "generation_kwargs":        gen_kwargs or {},
         "text":                     text,
         "output": {
@@ -1196,15 +1196,16 @@ def cmd_synth(args) -> None:
               file=sys.stderr)
         sys.exit(1)
 
-    # Apply style + prefix/suffix
-    styles_path = Path(__file__).parent / "styles.yaml"
-    text = apply_style(
-        raw_text,
-        style_name=args.style,
-        styles_path=styles_path,
-        prompt_prefix=args.prompt_prefix,
-        prompt_suffix=args.prompt_suffix,
-    )
+    # Build synthesis text: prompt-prefix/suffix are explicit text insertions
+    # (they will be spoken) — no style-prefix injection for voice clone.
+    # Tone/style comes from the reference audio, not from text instructions.
+    text_parts: list[str] = []
+    if args.prompt_prefix:
+        text_parts.append(args.prompt_prefix.strip())
+    text_parts.append(raw_text)
+    if args.prompt_suffix:
+        text_parts.append(args.prompt_suffix.strip())
+    text = " ".join(text_parts)
 
     # Resolve + validate synthesis language
     language = resolve_language(args.language, ref.ref_language, raw_text)
@@ -1240,8 +1241,9 @@ def cmd_synth(args) -> None:
         if pkl_path.exists() and meta_path.exists():
             with open(meta_path) as _fh:
                 _meta = json.load(_fh)
-            reg.register_prompt(voice_name, stem, pkl_path, _meta)
-            print(f"  [registry] voice '{voice_name}' \u2192 prompt registered")
+            reg.register_prompt(voice_name, stem, pkl_path, _meta, tone=args.tone)
+            tone_note = f"  (tone={args.tone!r})" if args.tone else ""
+            print(f"  [registry] voice '{voice_name}' \u2192 prompt registered{tone_note}")
         else:
             print(
                 f"  WARNING: expected prompt not found — pkl or meta.json missing\n"
@@ -1280,7 +1282,7 @@ def cmd_synth(args) -> None:
     wav_path, meta_path = write_output(
         wav, sr, text, ref,
         args.model, language, ref.ref_language,
-        args.x_vector_only, args.seed, args.style, gen_kwargs,
+        args.x_vector_only, args.seed, args.tone, gen_kwargs,
         out_dir, timings,
     )
 
@@ -1379,16 +1381,19 @@ def build_parser() -> argparse.ArgumentParser:
     sp.add_argument("--ref-end",    type=float, default=None, metavar="SEC",
                     help="Manual reference segment end (seconds)")
     sp.add_argument(
-        "--style", default=None, metavar="PRESET",
+        "--tone", default=None, metavar="NAME",
         help=(
-            "Style preset from styles.yaml "
-            "(e.g. serious_doc, excited, whisper, energetic)"
+            "Tone label for this reference clip, e.g. 'neutral', 'sad', 'excited'. "
+            "Stored in the prompt meta and indexed in the voice registry so "
+            "'voice-synth speak --tone NAME' can select it. "
+            "Tone/style comes from the reference audio itself — record or extract "
+            "a clip that already sounds the way you want."
         ),
     )
     sp.add_argument("--prompt-prefix", default=None,
-                    help="Text prepended to synthesis text (after style expansion)")
+                    help="Text prepended verbatim to the synthesis text (will be spoken)")
     sp.add_argument("--prompt-suffix", default=None,
-                    help="Text appended to synthesis text (after style expansion)")
+                    help="Text appended verbatim to the synthesis text (will be spoken)")
     # Generation tuning knobs
     sp.add_argument("--temperature",        type=float, default=None,
                     help="Sampling temperature (Transformers generate kwarg)")

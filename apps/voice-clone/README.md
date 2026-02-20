@@ -101,12 +101,12 @@ One of `--text` or `--text-file` must be provided.
 
 **Language & synthesis**
 
-| Flag                   | Type     | Default | Description                                                                     |
-| ---------------------- | -------- | ------- | ------------------------------------------------------------------------------- |
-| `--language LANG`      | `choice` | `Auto`  | Target synthesis language; `Auto` detects from text (langid), then ref language |
-| `--style PRESET`       | `str`    | —       | Style preset from `styles.yaml` (e.g. `serious_doc`, `nature_doc`, `excited`)   |
-| `--prompt-prefix TEXT` | `str`    | —       | Text prepended to synthesis text (after style expansion)                        |
-| `--prompt-suffix TEXT` | `str`    | —       | Text appended to synthesis text (after style expansion)                         |
+| Flag                   | Type     | Default | Description                                                                                                                                                                                       |
+| ---------------------- | -------- | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `--language LANG`      | `choice` | `Auto`  | Target synthesis language; `Auto` detects from text (langid), then ref language                                                                                                                   |
+| `--tone NAME`          | `str`    | —       | Label for this reference clip's delivery style (e.g. `neutral`, `sad`). Stored in the prompt's `meta.json` and indexed in `voice.json["tones"]` so `voice-synth speak --tone NAME` can select it. |
+| `--prompt-prefix TEXT` | `str`    | —       | Text prepended verbatim to the synthesis text (will be spoken aloud)                                                                                                                              |
+| `--prompt-suffix TEXT` | `str`    | —       | Text appended verbatim to the synthesis text (will be spoken aloud)                                                                                                                               |
 
 **Generation knobs** (passed to Transformers `model.generate`)
 
@@ -145,7 +145,7 @@ paths + transcript. Useful for verifying the ref clip before a long synthesis ru
 Accepts the same `--voice`/`--ref-audio` mutually exclusive group and `--voice-name`
 as `synth`, plus `--ref-start`, `--ref-end`, `--ref-language`, `--force-bad-ref`,
 `--whisper-model`, `--threads`, `--force`, `--cache`.
-Flags not accepted: `--text*`, `--style`, `--prompt-*`, generation knobs, `--out`.
+Flags not accepted: `--text*`, `--tone`, `--prompt-*`, generation knobs, `--out`.
 
 ### `self-test` — smoke test
 
@@ -279,17 +279,41 @@ unknown language) or want to iterate quickly. Quality is typically lower.
 
 ---
 
-## Expressive synthesis tips
+## Tone presets
 
-Qwen3-TTS is steered by the text itself — punctuation and wording matter:
+`generate_voice_clone` has no `instruct=` parameter — **tone and delivery style
+come entirely from the reference audio**, not from text instructions. Prepending
+bracket cues like `[Sad]` to the synthesis text causes the model to _speak them
+aloud_, not to adopt that style.
 
-- Use `...` for natural pauses.
-- Use `!` / `?` for emphasis / questions.
-- Use `--style` for one-word delivery presets (`serious_doc`, `nature_doc`,
-  `excited`, `sad`, `melancholic`, `whisper`, `audiobook`, …). See `styles.yaml` for the full list.
-- Use `--prompt-prefix` for custom style instructions, e.g.
-  `--prompt-prefix "Speak slowly and thoughtfully."`
+The correct approach is to build a separate `.pkl` prompt for each desired tone
+using a reference clip that already sounds that way:
 
-Style prefixes are prepended verbatim to the synthesis text and interpreted
-inline by Qwen3-TTS. The model is guided by but may vocalise the prefix —
-this is expected behaviour.
+```bash
+# 1. Extract a sad-sounding reference clip from a different video or segment
+./run voice-split \
+    --url "https://youtube.com/watch?v=<sad-video>" \
+    --voice-name david-attenborough-sad-ref
+
+# 2. Build a tone-labelled prompt and register it to the main voice
+./run voice-clone synth \
+    --voice david-attenborough-sad-ref \
+    --voice-name david-attenborough \
+    --tone sad \
+    --text "A short sample sentence."
+
+# 3. Select the tone at synthesis time
+./run voice-synth speak \
+    --voice david-attenborough \
+    --tone sad \
+    --text "Hey, Max..."
+```
+
+If no `--tone` is passed to `speak`, the most recently built prompt is used.
+List all registered tones with `./run voice-synth list-voices`.
+
+Qwen3-TTS is still steered by text punctuation and rhythm:
+
+- `...` for natural pauses
+- `!` / `?` for emphasis / questions
+- `--prompt-prefix` for any explicit text you want prepended (it will be spoken)
