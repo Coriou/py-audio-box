@@ -220,6 +220,9 @@ def select_windows(
     Slides with stride=window_len/4, scores each position by total speech
     duration inside the window, then greedily picks top-n non-overlapping.
     """
+    # If the audio is shorter than the requested window, clamp so we always
+    # get at least one candidate window covering the full audio.
+    window_len = min(window_len, audio_duration)
     stride = max(1.0, window_len / 4)
     candidates: list[tuple[float, float, float]] = []  # (coverage, start, end)
 
