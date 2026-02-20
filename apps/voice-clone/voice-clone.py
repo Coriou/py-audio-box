@@ -1003,7 +1003,9 @@ def _best_dtype(device: str, dtype_str: str) -> torch.dtype:
     Resolve ``dtype_str`` to a concrete ``torch.dtype``.
 
     When ``dtype_str == "auto"`` (the default):
-      - CPU              → ``bfloat16``  (Apple Silicon AMX / AVX-512-BF16, ~2× faster)
+      - CPU              → ``float32``   (native; bfloat16 on CPU upcasts every
+                                          op to float32 internally — same compute
+                                          cost, extra cast overhead, no benefit)
       - CUDA SM < 8.0    → ``float16``   (Maxwell / Pascal / Volta / Turing)
       - CUDA SM ≥ 8.0    → ``bfloat16``  (Ampere, Ada Lovelace, Hopper …)
 
@@ -1012,7 +1014,7 @@ def _best_dtype(device: str, dtype_str: str) -> torch.dtype:
     if dtype_str != "auto":
         return _DTYPE_MAP[dtype_str]
     if not device.startswith("cuda"):
-        return torch.bfloat16                   # CPU default
+        return torch.float32                    # CPU: float32 is fastest (no cast overhead)
     idx = int(device.split(":")[-1]) if ":" in device else 0
     major, _ = torch.cuda.get_device_capability(idx)
     return torch.bfloat16 if major >= 8 else torch.float16  # Ampere+ vs older
@@ -1025,11 +1027,13 @@ def load_tts_model(model_name: str, num_threads: int, dtype_str: str = "auto"):
     Load Qwen3-TTS-Base, targeting the best available device.
 
     dtype_str:
-      "auto" (default)  — bfloat16 on CPU and CUDA Ampere+; float16 on older
-                          CUDA GPUs (Maxwell / Pascal / Volta / Turing).
-      "bfloat16"        — ~2× faster on Apple Silicon (AMX) / AVX-512-BF16 CPUs;
-                          also valid on CUDA SM ≥ 8.0 (Ampere+).
-      "float32"         — compatibility fallback for older / non-AVX-512 hardware.
+      "auto" (default)  — float32 on CPU (native, no cast overhead); bfloat16 on
+                          CUDA Ampere+ (SM ≥ 8.0); float16 on older CUDA GPUs
+                          (Maxwell / Pascal / Volta / Turing).
+      "bfloat16"        — for CUDA SM ≥ 8.0 (Ampere+). On CPU this adds cast
+                          overhead without benefit; avoid unless testing.
+      "float32"         — safest and fastest on CPU. Also a useful debug fallback
+                          if you see NaN/quality issues on CUDA.
       "float16"         — recommended for CUDA GPUs with SM < 8.0.
 
     attn_implementation="sdpa" uses PyTorch's fused scaled-dot-product attention
@@ -1557,9 +1561,8 @@ def _add_common(p: argparse.ArgumentParser) -> None:
     p.add_argument(
         "--dtype", default="auto", choices=["auto", "bfloat16", "float32", "float16"],
         help=(
-            "Model weight dtype.  auto (default): bfloat16 on CPU and CUDA Ampere+, "
-            "float16 on older CUDA GPUs (Maxwell / Pascal / Volta / Turing).  "
-            "Use float32 if you see NaN/quality issues."
+            "Model weight dtype.  auto (default): float32 on CPU; bfloat16 on CUDA Ampere+; "
+            "float16 on older CUDA GPUs (Maxwell / Pascal / Volta / Turing)."
         ),
     )
     p.add_argument(
