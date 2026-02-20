@@ -59,6 +59,23 @@ clean-work:  ## Delete all output files in ./work/ (keeps cache)
 clean-cache:  ## Wipe the shared cache (forces model re-download on next run)
 	rm -rf cache/
 
+# ── remote (vast.ai) ──────────────────────────────────────────────────────────
+# Override at the command line:  make pull REMOTE_HOST=root@1.2.3.4 REMOTE_PORT=22222
+
+REMOTE_HOST ?= root@31.13.237.164
+REMOTE_PORT ?= 42901
+
+.PHONY: pull
+pull:  ## Pull /work/ from remote instance → work_remote/  [REMOTE_HOST=... REMOTE_PORT=...]
+	mkdir -p work_remote
+	rsync -avz --progress -e "ssh -p $(REMOTE_PORT)" $(REMOTE_HOST):/work/ work_remote/
+
+.PHONY: push-code
+push-code:  ## Push local code changes to remote /app/  [REMOTE_HOST=... REMOTE_PORT=...]
+	rsync -avz --progress \
+	  --exclude='.git' --exclude='work/' --exclude='work_remote/' --exclude='cache/' \
+	  -e "ssh -p $(REMOTE_PORT)" ./ $(REMOTE_HOST):/app/
+
 # ── apps ───────────────────────────────────────────────────────────────────────
 
 .PHONY: voice-split

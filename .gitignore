@@ -1,5 +1,6 @@
 # Runtime outputs — never commit these
 work/
+work_remote/
 cache/
 
 # Python
