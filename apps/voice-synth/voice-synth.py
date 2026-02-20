@@ -137,13 +137,13 @@ def chunk_text(text: str, max_chars: int = 200) -> list[str]:
 
 # ── language detection ─────────────────────────────────────────────────────────
 
-def detect_language_from_text(text: str) -> str:
+def detect_language_from_text(text: str) -> str | None:
     try:
         import langid  # type: ignore
         iso, _ = langid.classify(text)
-        return _LANGID_TO_QWEN.get(iso, "English")
+        return _LANGID_TO_QWEN.get(iso)  # None when unsupported
     except Exception:
-        return "English"
+        return None
 
 
 def resolve_language(flag: str, ref_language: str, text: str) -> str:
@@ -151,7 +151,7 @@ def resolve_language(flag: str, ref_language: str, text: str) -> str:
         return flag
     if len(text.split()) >= 3:
         detected = detect_language_from_text(text)
-        if detected in QWEN3_LANGUAGES and detected != "Auto":
+        if detected and detected in QWEN3_LANGUAGES and detected != "Auto":
             return detected
     if ref_language and ref_language not in ("Auto", ""):
         return ref_language

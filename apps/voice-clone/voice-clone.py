@@ -367,17 +367,19 @@ def transcribe_ref(
 
 # ── language helpers ───────────────────────────────────────────────────────────
 
-def detect_language_from_text(text: str) -> str:
+def detect_language_from_text(text: str) -> str | None:
     """
     Auto-detect the language of *text* using langid.
-    Returns a Qwen3 language name, or "English" if detection fails.
+    Returns a Qwen3 language name, or None if detection fails or the ISO code
+    is not in the supported language map (so callers can fall through to other
+    signals such as the whisper-detected ref language).
     """
     try:
         import langid  # type: ignore
         iso, _conf = langid.classify(text)
-        return _LANGID_TO_QWEN.get(iso, "English")
+        return _LANGID_TO_QWEN.get(iso)  # None when unsupported
     except Exception:
-        return "English"
+        return None
 
 
 def resolve_language(
@@ -399,7 +401,7 @@ def resolve_language(
 
     if len(text.split()) >= 3:
         detected = detect_language_from_text(text)
-        if detected in QWEN3_LANGUAGES and detected != "Auto":
+        if detected and detected in QWEN3_LANGUAGES and detected != "Auto":
             return detected
 
     if ref_language and ref_language not in ("Auto", ""):
