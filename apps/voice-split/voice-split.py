@@ -11,8 +11,14 @@ Smart pipeline (avoids running Demucs on the full file):
   6. Precise VAD on vocals     (cached per window)
   7. Pick & export clips
 
+Output structure (clips are always scoped so multiple voices never collide):
+    --voice-name given  →  <out>/<slug>/clip_NN_from_Xs.wav
+                           <out>/<slug>/clip_ref_from_Xs.wav
+    standalone (no --voice-name)  →  <out>/<source-id>/clip_NN_from_Xs.wav
+
 Usage:
-    python apps/voice-split/voice-split.py --url "https://www.youtube.com/watch?v=..." --out /work
+    python apps/voice-split/voice-split.py --url "https://www.youtube.com/watch?v=..." --voice-name my-voice --out /work
+    # → clips land in /work/my-voice/
 """
 
 import argparse
@@ -536,7 +542,8 @@ def main() -> None:
             "Only audio up to this point is processed."
         ),
     )
-    ap.add_argument("--out",    default="/work",         help="Output directory for WAV clips")
+    ap.add_argument("--out",    default="/work",
+        help="Root output directory. Clips are written to <out>/<voice-name>/ (or <out>/<source-id>/ when --voice-name is omitted) so multiple voices never collide.")
     ap.add_argument("--clips",  type=int,   default=10,  help="Number of clips to produce")
     ap.add_argument("--length", type=float, default=30,  help="Target clip length in seconds")
     ap.add_argument(
@@ -698,6 +705,17 @@ def main() -> None:
     # ── 7. Pick and export ─────────────────────────────────────────────────────
     print(f"==> Picking {args.clips} clips (≤ {args.length}s each)...")
     plans = pick_clips(pool, args.clips, args.length)
+
+    # Scope output directory so clips from different voices / sources never
+    # collide inside the same --out root.
+    #   --voice-name given  →  <out>/<slug>/
+    #   standalone run       →  <out>/<source_id>/
+    # voice-clone already does the same scoping (out_dir / voice_name), so
+    # both steps land in the same per-voice subdirectory.
+    if args.voice_name:
+        out = out / args.voice_name.strip().lower()
+    else:
+        out = out / source_id
 
     print(f"==> Exporting to {out} ...")
     export_clips(plans, out)
