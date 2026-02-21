@@ -2,15 +2,16 @@
 # scripts/vastai-setup.sh — first-SSH init when running ghcr.io/coriou/voice-tools:cuda
 #                           as the vast.ai Docker image.
 #
-# HOW TO USE:
-#   1. On vast.ai "Edit instance" / template, set:
-#        Docker Image:  ghcr.io/coriou/voice-tools:cuda
-#        On-start cmd:  cd /app && git pull --ff-only && mkdir -p /work /cache
-#   2. SSH in — deps are already installed (baked into the image)
-#   3. Run:  TORCH_DEVICE=cuda ./run-direct voice-register ...
+# NOTE: For automated use, this script is NOT needed.  The deploy script
+# (scripts/vast-deploy.sh / make vast-shell / make vast-run) handles
+# everything: it clones the repo via SSH right after the instance boots.
 #
-# This script is only needed if you want a one-shot interactive check / first-run
-# setup after SSH-ing in.  For automated starts, use the "On-start cmd" field above.
+# HOW TO USE for manual / one-shot interactive setup:
+#   1. On vast.ai, set Docker Image: ghcr.io/coriou/voice-tools:cuda
+#   2. SSH in — deps are already installed (baked into the image)
+#   3. Run this script once to clone the repo and verify CUDA:
+#        bash /app/scripts/vastai-setup.sh
+#   4. Then: TORCH_DEVICE=cuda ./run-direct voice-register ...
 
 set -euo pipefail
 

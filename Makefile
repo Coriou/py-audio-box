@@ -108,10 +108,10 @@ push-code:  ## Push local code changes to remote /app/  [REMOTE_HOST=... REMOTE_
 #   VAST_QUERY   custom GPU search query (default: reliable Volta+ ≥20 GB VRAM)
 #   VAST_IMAGE   Docker image to deploy  (default: ghcr.io/coriou/voice-tools:cuda)
 #   VAST_DISK    disk size in GB         (default: 60)
-#   GHCR_TOKEN   GitHub PAT for private image pull
+#   VAST_REPO    Git repo to clone       (default: https://github.com/Coriou/py-audio-box)
 #
 # Pass extra flags to vast-deploy.sh via ARGS:
-#   make vast-run ARGS='--no-sync --keep' TASKS=my-jobs.txt
+#   make vast-run ARGS='--no-clone --keep' TASKS=my-jobs.txt
 
 VAST_CLI    := ./scripts/vast
 DEPLOY_SCRIPT := ./scripts/vast-deploy.sh
@@ -177,6 +177,10 @@ voice-synth:  ## Run voice-synth. Usage: make voice-synth ARGS='speak --voice <i
 .PHONY: voice-register
 voice-register:  ## One-shot register. Usage: make voice-register ARGS='--url "..." --voice-name slug --text "Hello"'
 	./run voice-register $(ARGS)
+
+.PHONY: smoke-matrix
+smoke-matrix:  ## Phase-5 smoke matrix (capabilities + clone + built-in + designed). Set SMOKE_SKIP_DESIGN=1 to skip design.
+	./scripts/smoke-matrix.sh
 
 # ── help ───────────────────────────────────────────────────────────────────────
 

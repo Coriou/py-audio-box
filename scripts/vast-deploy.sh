@@ -24,13 +24,14 @@
 #   VAST_QUERY     override the GPU search query string (see: vastai search offers --help)
 #   VAST_IMAGE     override the Docker image to deploy  (default: ghcr.io/coriou/voice-tools:cuda)
 #   VAST_DISK      override disk size in GB             (default: 60)
+#   VAST_REPO      Git repo to clone into /app          (default: https://github.com/Coriou/py-audio-box)
 #
 # Options:
 #   --tasks FILE     tasks file (one "./run-direct app [args]" per non-comment line)
 #   --shell          provision and drop into an interactive SSH session
 #   --job NAME       label / job name (default: py-audio-box-YYYYMMDD_HHMMSS)
 #   --ssh-key PATH   path to SSH private key (default: auto-detect ~/.ssh/id_{ed25519,rsa,ecdsa})
-#   --no-sync        skip rsync of local code to /app on the instance
+#   --no-clone       skip git clone/pull of repo into /app on the instance
 #   --no-pull        skip rsyncing /work back to work_remote/ after tasks
 #   --keep           don't destroy the instance when done (useful for debugging)
 #   --dry-run        print commands, touch nothing
@@ -72,12 +73,13 @@ REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 VAST_CLI="${REPO_ROOT}/scripts/vast"
 DEPLOY_IMAGE="${VAST_IMAGE:-ghcr.io/coriou/voice-tools:cuda}"
 DISK_GB="${VAST_DISK:-60}"
+REPO_URL="${VAST_REPO:-https://github.com/Coriou/py-audio-box}"
 JOB_NAME=""
 TASKS_FILE=""
 TASKS=()
 SSH_KEY=""
 SHELL_MODE=0
-NO_SYNC=0
+NO_CLONE=0
 NO_PULL=0
 KEEP=0
 DRY_RUN=0
@@ -94,7 +96,8 @@ while [[ $# -gt 0 ]]; do
     --shell)          SHELL_MODE=1; shift ;;
     --job)            JOB_NAME="$2"; shift 2 ;;
     --ssh-key)        SSH_KEY="$2"; shift 2 ;;
-    --no-sync)        NO_SYNC=1; shift ;;
+    --no-clone)       NO_CLONE=1; shift ;;
+    --no-sync)        NO_CLONE=1; shift ;;  # backwards compat alias
     --no-pull)        NO_PULL=1; shift ;;
     --keep)           KEEP=1; shift ;;
     --dry-run)        DRY_RUN=1; shift ;;
@@ -111,7 +114,7 @@ done
 # ── prerequisites ──────────────────────────────────────────────────────────────
 command -v docker >/dev/null 2>&1 || die "Docker not running or not in PATH."
 command -v ssh    >/dev/null 2>&1 || die "ssh not found."
-command -v rsync  >/dev/null 2>&1 || die "rsync not found."
+command -v rsync  >/dev/null 2>&1 || die "rsync not found (used to pull /work results).  Install with: brew install rsync"
 command -v jq     >/dev/null 2>&1 || die "jq not found.  Install with: brew install jq"
 
 [[ -x "$VAST_CLI" ]] || die "scripts/vast not found or not executable. Run: chmod +x scripts/vast"
@@ -150,7 +153,8 @@ fi
 [[ -z "$JOB_NAME" ]] && JOB_NAME="py-audio-box-$(date +%Y%m%d_%H%M%S)"
 
 # ── dry-run wrapper ────────────────────────────────────────────────────────────
-# vast_cmd / ssh_cmd / rsync_cmd print the command instead of running it in dry-run.
+# vast_cmd / ssh_cmd print the command instead of running it in dry-run.
+# rsync_cmd is used only for pulling /work results back to the host.
 vast_cmd()  {
   if [[ $DRY_RUN -eq 1 ]]; then
     printf "${DIM}  [dry] vast %s${RESET}\n" "$*"
@@ -343,8 +347,8 @@ printf "     price     : \$%s/hr\n" "$OFFER_DPH"
 # ── 2. create instance ────────────────────────────────────────────────────────
 log "Provisioning instance"
 
-# Build onstart command: update code from git if .git exists, else skip
-ONSTART_CMD="mkdir -p /work /cache; cd /app 2>/dev/null; git pull --ff-only 2>/dev/null || true; chmod +x run-direct 2>/dev/null || true"
+# On-start: clone the public repo into /app (or pull if already there from a previous run)
+ONSTART_CMD="git clone --depth=1 ${REPO_URL} /app 2>/dev/null; git -C /app pull --ff-only 2>/dev/null || true; mkdir -p /work /cache; chmod +x /app/run-direct 2>/dev/null || true"
 
 # Build create-instance args.
 # --cancel-unavail: if the offer was rented between search and create, return an
@@ -403,25 +407,15 @@ if [[ $DRY_RUN -eq 0 ]]; then
   ok "SSH is ready"
 fi
 
-# ── 5. sync code ───────────────────────────────────────────────────────────────
-if [[ $NO_SYNC -eq 0 ]]; then
-  log "Syncing code → /app"
-  rsync_cmd -az --progress \
-    --exclude='.git' \
-    --exclude='.env' \
-    --exclude='.DS_Store' \
-    --exclude='.vscode/' \
-    --exclude='.ruff_cache/' \
-    --exclude='.pytest_cache/' \
-    --exclude='work/' \
-    --exclude='work_remote/' \
-    --exclude='cache/' \
-    --exclude='__pycache__/' \
-    --exclude='*.pyc' \
-    -e "ssh -p ${INSTANCE_PORT} -i ${SSH_KEY} -o StrictHostKeyChecking=no -o UserKnownHostsFile=${SSH_KNOWN_HOSTS_FILE}" \
-    "${REPO_ROOT}/" \
-    "root@${INSTANCE_HOST}:/app/"
-  ok "Code synced"
+# ── 5. clone / pull code ──────────────────────────────────────────────────────
+if [[ $NO_CLONE -eq 0 ]]; then
+  log "Cloning ${REPO_URL} → /app"
+  if [[ $DRY_RUN -eq 0 ]]; then
+    run_ssh "git clone --depth=1 ${REPO_URL} /app 2>/dev/null; git -C /app pull --ff-only 2>/dev/null || true; mkdir -p /work /cache; chmod +x /app/run-direct 2>/dev/null || true"
+  else
+    printf "${DIM}  [dry] ssh git clone/pull %s → /app${RESET}\n" "$REPO_URL"
+  fi
+  ok "Code ready"
 fi
 
 # ── 6. run tasks ───────────────────────────────────────────────────────────────
