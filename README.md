@@ -20,24 +20,24 @@ make build        # build the shared CPU image (~5 min, cached on rebuild)
 
 ## Published images (`ghcr.io/coriou/voice-tools`)
 
-| Tag | PyTorch | CUDA toolkit | flash-attn | GPU support | Notes |
-|---|---|---|---|---|---|
-| `latest` | 2.10.0+cpu | — | — | None (CPU only) | Default; runs on any linux/amd64 host |
-| `cuda` | 2.6.0+cu124 | CUDA 12.4 | ✅ 2.8.3 | **SM 7.0 – SM 9.0** (Volta → Hopper) | **Recommended for GPU inference.** flash-attn active on SM 8.0+ (Ampere/Ada/Hopper); SM 7.x falls back to sdpa |
-| `cuda128` | 2.10.0+cu128 | CUDA 12.8 | ❌ | SM 8.0+ (intended: SM 10.0 data-centre Blackwell) | No flash-attn wheel exists for torch 2.10+cu128. Consumer Blackwell (SM 12.0 — RTX 50-series) has additional kernel dispatch issues and is not recommended |
+| Tag       | PyTorch      | CUDA toolkit | flash-attn | GPU support                                       | Notes                                                                                                                                                      |
+| --------- | ------------ | ------------ | ---------- | ------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `latest`  | 2.10.0+cpu   | —            | —          | None (CPU only)                                   | Default; runs on any linux/amd64 host                                                                                                                      |
+| `cuda`    | 2.6.0+cu124  | CUDA 12.4    | ✅ 2.8.3   | **SM 7.0 – SM 9.0** (Volta → Hopper)              | **Recommended for GPU inference.** flash-attn active on SM 8.0+ (Ampere/Ada/Hopper); SM 7.x falls back to sdpa                                             |
+| `cuda128` | 2.10.0+cu128 | CUDA 12.8    | ❌         | SM 8.0+ (intended: SM 10.0 data-centre Blackwell) | No flash-attn wheel exists for torch 2.10+cu128. Consumer Blackwell (SM 12.0 — RTX 50-series) has additional kernel dispatch issues and is not recommended |
 
 **GPU architecture quick-reference:**
 
-| SM | Architecture | Example cards | `:cuda` | `:cuda128` |
-|---|---|---|---|---|
-| 7.0 | Volta | V100 | ✅ (sdpa) | — |
-| 7.5 | Turing | RTX 2080, T4 | ✅ (sdpa) | — |
-| 8.0 | Ampere | A100 | ✅ **flash-attn** | ✅ (sdpa) |
-| 8.6 | Ampere | RTX 3090 | ✅ **flash-attn** | ✅ (sdpa) |
-| 8.9 | Ada Lovelace | RTX 4090, L40 | ✅ **flash-attn** | ✅ (sdpa) |
-| 9.0 | Hopper | H100, H200 | ✅ **flash-attn** | ✅ (sdpa) |
-| 10.0 | Blackwell DC | B200, GB200 | — | ✅ (sdpa) |
-| 12.0 | Blackwell consumer | RTX 5070 Ti / 5080 / 5090 | — | ⚠️ broken |
+| SM   | Architecture       | Example cards             | `:cuda`           | `:cuda128` |
+| ---- | ------------------ | ------------------------- | ----------------- | ---------- |
+| 7.0  | Volta              | V100                      | ✅ (sdpa)         | —          |
+| 7.5  | Turing             | RTX 2080, T4              | ✅ (sdpa)         | —          |
+| 8.0  | Ampere             | A100                      | ✅ **flash-attn** | ✅ (sdpa)  |
+| 8.6  | Ampere             | RTX 3090                  | ✅ **flash-attn** | ✅ (sdpa)  |
+| 8.9  | Ada Lovelace       | RTX 4090, L40             | ✅ **flash-attn** | ✅ (sdpa)  |
+| 9.0  | Hopper             | H100, H200                | ✅ **flash-attn** | ✅ (sdpa)  |
+| 10.0 | Blackwell DC       | B200, GB200               | —                 | ✅ (sdpa)  |
+| 12.0 | Blackwell consumer | RTX 5070 Ti / 5080 / 5090 | —                 | ⚠️ broken  |
 
 > **Why does flash-attn matter?** Qwen3-TTS has custom attention layers that bypass PyTorch's
 > normal attention dispatch. Without flash-attn installed, those layers fall back to a Python
