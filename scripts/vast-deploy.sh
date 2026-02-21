@@ -305,20 +305,38 @@ hr
 
 # ── pre-flight: check for existing instances ───────────────────────────────────
 # Guard against accidental double-provisioning.
-# Two-layer protection:
-#   1. Local lockfile — prevents two concurrent runs on the same machine (race condition)
-#   2. API check     — prevents re-running after a previous run left an instance alive
+# Primary gate: API instance check (runs even if lock was manually deleted).
+# Secondary gate: flock-based lockfile (prevents concurrent runs on same machine).
+#
+# The API check fires first with a double-tap (2 s apart) to handle the brief
+# window where vast.ai hasn't propagated a freshly-created instance yet.
 VAST_LOCK="/tmp/vast-deploy.lock"
 if [[ $DRY_RUN -eq 0 ]]; then
-  # Atomic lock: create file only if it doesn't exist (ln -s is POSIX-atomic)
-  if ! ( set -o noclobber; echo "$$" > "$VAST_LOCK" ) 2>/dev/null; then
-    LOCK_PID=$(cat "$VAST_LOCK" 2>/dev/null || echo '?')
-    die "Another vast-deploy is already running (PID ${LOCK_PID}).\n  If this is stale, remove it: rm $VAST_LOCK"
+  # ── Primary gate: API check (first pass) ──────────────────────────────────
+  EXISTING=$(${VAST_CLI} show instances --raw 2>/dev/null | jq 'length' 2>/dev/null || echo 0)
+  if [[ "$EXISTING" -gt 0 ]]; then
+    warn "You already have ${EXISTING} instance(s) running on vast.ai."
+    ${VAST_CLI} show instances 2>/dev/null || true
+    printf "\n"
+    die "Refusing to provision another instance.  Destroy existing ones first:\n  make vast-destroy ID=<id>\n  make vast-status"
   fi
-  # Remove lock on exit (cleanup trap already runs — append to it)
-  trap 'rm -f "$VAST_LOCK"' EXIT
 
-  EXISTING=$(${VAST_CLI} show instances --raw 2>/dev/null | jq 'length')
+  # ── Secondary gate: flock-based lockfile (prevents concurrent local runs) ──
+  # Open the lock file on fd 200; flock -n exits 1 immediately if already locked.
+  exec 200>"$VAST_LOCK"
+  if ! flock -n 200 2>/dev/null; then
+    LOCK_PID=$(cat "$VAST_LOCK" 2>/dev/null || echo '?')
+    die "Another vast-deploy is already running (lock: $VAST_LOCK).\n  If this is stale: rm $VAST_LOCK"
+  fi
+  echo "$$" >&200
+  # Release lock and remove file on exit
+  trap 'flock -u 200 2>/dev/null; rm -f "$VAST_LOCK"' EXIT
+
+  # ── Primary gate: API check (second pass, after lock acquired) ─────────────
+  # Brief pause then re-check: handles the race where two processes both passed
+  # the first check before either provisioned (API takes ~1 s to propagate).
+  sleep 2
+  EXISTING=$(${VAST_CLI} show instances --raw 2>/dev/null | jq 'length' 2>/dev/null || echo 0)
   if [[ "$EXISTING" -gt 0 ]]; then
     warn "You already have ${EXISTING} instance(s) running on vast.ai."
     ${VAST_CLI} show instances 2>/dev/null || true
