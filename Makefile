@@ -102,7 +102,7 @@ push-code:  ## Push local code changes to remote /app/  [REMOTE_HOST=... REMOTE_
 #   make vast-shell                   # provision + interactive SSH shell
 #   make vast-status                  # list your running instances
 #   make vast-destroy ID=12345        # destroy a specific instance
-#   make vast-search                  # show cheapest qualifying offers
+#   make vast-search                  # show best-value qualifying offers
 #
 # Env overrides (all optional):
 #   VAST_QUERY   custom GPU search query (default: reliable Volta+ ≥20 GB VRAM)
@@ -119,10 +119,10 @@ TASKS       ?=
 ID          ?=
 
 .PHONY: vast-search
-vast-search:  ## Show cheapest qualifying GPU offers on vast.ai
+vast-search:  ## Show best-value qualifying GPU offers on vast.ai (sorted by DLPerf/$)
 	$(VAST_CLI) search offers \
 	  'reliability > 0.98 gpu_ram >= 20 compute_cap >= 700 inet_down >= 200 disk_space >= 50 rented=False' \
-	  --order 'dph+'
+	  --order 'dlperf_per_dphtotal-'
 
 .PHONY: vast-status
 vast-status:  ## Show your currently running vast.ai instances

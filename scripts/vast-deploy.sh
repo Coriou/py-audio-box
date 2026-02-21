@@ -304,9 +304,20 @@ fi
 hr
 
 # ── pre-flight: check for existing instances ───────────────────────────────────
-# Guard against accidental double-provisioning (e.g. re-running while a previous
-# instance is still up).  `show instances --raw` returns a plain JSON array.
+# Guard against accidental double-provisioning.
+# Two-layer protection:
+#   1. Local lockfile — prevents two concurrent runs on the same machine (race condition)
+#   2. API check     — prevents re-running after a previous run left an instance alive
+VAST_LOCK="/tmp/vast-deploy.lock"
 if [[ $DRY_RUN -eq 0 ]]; then
+  # Atomic lock: create file only if it doesn't exist (ln -s is POSIX-atomic)
+  if ! ( set -o noclobber; echo "$$" > "$VAST_LOCK" ) 2>/dev/null; then
+    LOCK_PID=$(cat "$VAST_LOCK" 2>/dev/null || echo '?')
+    die "Another vast-deploy is already running (PID ${LOCK_PID}).\n  If this is stale, remove it: rm $VAST_LOCK"
+  fi
+  # Remove lock on exit (cleanup trap already runs — append to it)
+  trap 'rm -f "$VAST_LOCK"' EXIT
+
   EXISTING=$(${VAST_CLI} show instances --raw 2>/dev/null | jq 'length')
   if [[ "$EXISTING" -gt 0 ]]; then
     warn "You already have ${EXISTING} instance(s) running on vast.ai."
@@ -320,11 +331,13 @@ fi
 log "Searching for GPU offers"
 QUERY="${VAST_QUERY:-$DEFAULT_QUERY}"
 info "query: $QUERY"
-info "order: cheapest first (dph+)"
+info "order: best value first (dlperf_per_dphtotal desc)"
 
+# Order by best value: highest DLPerf per dollar (dlperf_per_dphtotal descending).
+# This picks the GPU with the most compute per $ spent, not just the cheapest.
 OFFER_JSON=$(
   "$VAST_CLI" search offers "$QUERY" \
-    --order 'dph_total_adj+' \
+    --order 'dlperf_per_dphtotal-' \
     --raw 2>/dev/null
 )
 
@@ -338,18 +351,19 @@ else
   OFFER_COUNT=$(echo "$OFFER_JSON" | jq 'length')
   [[ "$OFFER_COUNT" -gt 0 ]] || die "No offers match the query.  Try relaxing VAST_QUERY."
 
-  OFFER_ID=$(  echo "$OFFER_JSON" | jq -r '.[0].id')
-  OFFER_GPU=$( echo "$OFFER_JSON" | jq -r '.[0].gpu_name // "unknown"')
+  OFFER_ID=$(    echo "$OFFER_JSON" | jq -r '.[0].id')
+  OFFER_GPU=$(   echo "$OFFER_JSON" | jq -r '.[0].gpu_name // "unknown"')
   # dph_total_adj includes estimated bandwidth costs — matches what the UI shows
-  OFFER_DPH=$( echo "$OFFER_JSON" | jq -r '.[0].dph_total_adj // .[0].dph_total // 0' | xargs printf "%.4f")
+  OFFER_DPH=$(   echo "$OFFER_JSON" | jq -r '.[0].dph_total_adj // .[0].dph_total // 0' | xargs printf "%.4f")
   # gpu_ram is in MB — convert to GB for display
-  OFFER_RAM=$( echo "$OFFER_JSON" | jq -r '(.[0].gpu_ram // 0) / 1024 | round')
-  OFFER_VCPU=$(echo "$OFFER_JSON" | jq -r '.[0].cpu_cores_effective // 0' | xargs printf "%.0f")
+  OFFER_RAM=$(   echo "$OFFER_JSON" | jq -r '(.[0].gpu_ram // 0) / 1024 | round')
+  OFFER_VCPU=$(  echo "$OFFER_JSON" | jq -r '.[0].cpu_cores_effective // 0' | xargs printf "%.0f")
+  OFFER_VALUE=$( echo "$OFFER_JSON" | jq -r '.[0].dlperf_per_dphtotal // 0' | xargs printf "%.1f")
 fi
 
 ok "Found offer ${OFFER_ID}"
 printf "     GPU       : ${CYAN}%s${RESET}  (%s GB VRAM)\n" "$OFFER_GPU" "$OFFER_RAM"
-printf "     price     : \$%s/hr\n" "$OFFER_DPH"
+printf "     price     : \$%s/hr   value: %s DLPerf/\$\n" "$OFFER_DPH" "$OFFER_VALUE"
 
 # ── 2. create instance ────────────────────────────────────────────────────────
 log "Provisioning instance"
