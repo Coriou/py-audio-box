@@ -55,21 +55,24 @@ COPY pyproject.toml poetry.lock* /app/
 WORKDIR /app
 
 # Install Python deps into conda site-packages.
-# torch + torchaudio are already provided by the pytorch/pytorch base at their
-# CUDA build; exporting them from poetry would reinstall the CPU-wheel variant
-# and break GPU support.  Filter them out and install torchaudio separately.
+# torch, torchaudio, torchcodec are all torch-version-coupled and installed
+# explicitly below.  Filter them here so pip does not pull in the CPU wheel
+# variants when resolving transitive dependencies.
 RUN --mount=type=cache,target=/root/.cache/pypoetry \
   --mount=type=cache,target=/root/.cache/pip \
   poetry export --without-hashes -f requirements.txt \
-    | grep -Ev "^(torch|torchaudio)[^a-zA-Z]" \
+    | grep -Ev "^(torch|torchaudio|torchcodec)[^a-zA-Z]" \
     > /tmp/reqs.txt \
   && pip install -r /tmp/reqs.txt
 
-# Install torchaudio from the CUDA 12.4 wheel index to match the pytorch base.
+# Install torch-coupled packages from the CUDA 12.4 wheel index / PyPI.
+# torchcodec version must match the major.minor of torch (0.6.x ↔ torch 2.6.x).
 ARG TORCH_VERSION=2.6.0
+ARG TORCHCODEC_VERSION=0.6.0
 RUN --mount=type=cache,target=/root/.cache/pip \
   pip install "torchaudio==${TORCH_VERSION}" \
-  --index-url "https://download.pytorch.org/whl/cu124"
+  --index-url "https://download.pytorch.org/whl/cu124" \
+  && pip install "torchcodec==${TORCHCODEC_VERSION}"
 
 # ── flash-attn pre-built wheel (avoids ~20 min compile, must match torch + CUDA) ──
 ARG FLASH_ATTN_WHEEL=https://github.com/Dao-AILab/flash-attention/releases/download/v2.8.3/flash_attn-2.8.3+cu12torch2.6cxx11abiTRUE-cp311-cp311-linux_x86_64.whl
