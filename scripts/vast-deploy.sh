@@ -32,7 +32,7 @@
 #   VAST_IMAGE              override the Docker image to deploy  (default: ghcr.io/coriou/voice-tools:cuda)
 #   VAST_DISK               override disk size in GB             (default: 60)
 #   VAST_REPO               Git repo to clone into /app          (default: https://github.com/Coriou/py-audio-box)
-#   VAST_MAX_MONTHLY_PRICE  price ceiling in $/month (default: 20).  Prompts for confirmation
+#   VAST_MAX_MONTHLY_PRICE  price ceiling in $/month (default: 40).  Prompts for confirmation
 #                           when the selected offer exceeds this.  Set to 0 to disable.
 #
 # Options:
@@ -102,7 +102,7 @@ ASKED_CONFIRM=0  # 1 once the user has already said yes to a price prompt
 # Maximum price guard: prompt (or abort) when the selected offer costs more than
 # this many dollars per month.  Set to 0 to disable the guard entirely.
 # Override via VAST_MAX_MONTHLY_PRICE env var (e.g. in .env).
-MAX_MONTHLY_PRICE="${VAST_MAX_MONTHLY_PRICE:-20}"
+MAX_MONTHLY_PRICE="${VAST_MAX_MONTHLY_PRICE:-40}"
 
 # GHCR credentials: when set, passed as --login so the remote host authenticates
 # against ghcr.io instead of pulling anonymously (removes rate-limiting / slow CDN).
