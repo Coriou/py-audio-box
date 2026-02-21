@@ -35,6 +35,10 @@ langid = ">=1.1.6"
 # voice-clone / voice-synth: YAML style presets
 pyyaml = ">=6.0"
 
+# vast.ai CLI — provision/destroy cloud GPU instances from inside the container
+# (keeps the host clean; invoked via scripts/vast docker wrapper)
+vastai = ">=0.5.0"
+
 [tool.poetry.group.dev.dependencies]
 ruff = "^0.6.9"
 pytest = "^8.3.3"

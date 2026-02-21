@@ -60,21 +60,101 @@ clean-cache:  ## Wipe the shared cache (forces model re-download on next run)
 	rm -rf cache/
 
 # ── remote (vast.ai) ──────────────────────────────────────────────────────────
-# Override at the command line:  make pull REMOTE_HOST=root@1.2.3.4 REMOTE_PORT=22222
+# Remote sync targets are intentionally opt-in:
+#   make pull REMOTE_HOST=root@1.2.3.4 REMOTE_PORT=22222
+#   make push-code REMOTE_HOST=root@1.2.3.4 REMOTE_PORT=22222
 
-REMOTE_HOST ?= root@31.13.237.164
-REMOTE_PORT ?= 42901
+REMOTE_HOST ?=
+REMOTE_PORT ?= 22
+
+define _require_remote_host
+	@if [ -z "$(REMOTE_HOST)" ]; then \
+		echo "ERROR: REMOTE_HOST is not set."; \
+		echo "  Example: make pull REMOTE_HOST=root@1.2.3.4 REMOTE_PORT=22222"; \
+		exit 1; \
+	fi
+endef
 
 .PHONY: pull
 pull:  ## Pull /work/ from remote instance → work_remote/  [REMOTE_HOST=... REMOTE_PORT=...]
+	$(_require_remote_host)
 	mkdir -p work_remote
 	rsync -avz --progress -e "ssh -p $(REMOTE_PORT)" $(REMOTE_HOST):/work/ work_remote/
 
 .PHONY: push-code
 push-code:  ## Push local code changes to remote /app/  [REMOTE_HOST=... REMOTE_PORT=...]
+	$(_require_remote_host)
 	rsync -avz --progress \
 	  --exclude='.git' --exclude='work/' --exclude='work_remote/' --exclude='cache/' \
 	  -e "ssh -p $(REMOTE_PORT)" ./ $(REMOTE_HOST):/app/
+
+# ── vast.ai automation ─────────────────────────────────────────────────────────
+# Provision a cloud GPU, run tasks, pull results, then auto-destroy.
+#
+# Quick start:
+#   export VAST_API_KEY=xxxx          # one-time — get from cloud.vast.ai/console/cli
+#   make vast-run TASKS=my-jobs.txt   # run tasks from a file
+#   make vast-run ARGS='-- voice-synth speak --voice myvoice --text "Hello"'
+#   make vast-shell                   # provision + interactive SSH shell
+#   make vast-status                  # list your running instances
+#   make vast-destroy ID=12345        # destroy a specific instance
+#   make vast-search                  # show cheapest qualifying offers
+#
+# Env overrides (all optional):
+#   VAST_QUERY   custom GPU search query (default: reliable Volta+ ≥20 GB VRAM)
+#   VAST_IMAGE   Docker image to deploy  (default: ghcr.io/coriou/voice-tools:cuda)
+#   VAST_DISK    disk size in GB         (default: 60)
+#   GHCR_TOKEN   GitHub PAT for private image pull
+#
+# Pass extra flags to vast-deploy.sh via ARGS:
+#   make vast-run ARGS='--no-sync --keep' TASKS=my-jobs.txt
+
+VAST_CLI    := ./scripts/vast
+DEPLOY_SCRIPT := ./scripts/vast-deploy.sh
+TASKS       ?=
+ID          ?=
+
+.PHONY: vast-search
+vast-search:  ## Show cheapest qualifying GPU offers on vast.ai
+	$(VAST_CLI) search offers \
+	  'reliability > 0.98 gpu_ram >= 20 compute_cap >= 700 inet_down >= 200 disk_space >= 50 rented=False' \
+	  --order 'dph+'
+
+.PHONY: vast-status
+vast-status:  ## Show your currently running vast.ai instances
+	$(VAST_CLI) show instances
+
+.PHONY: vast-run
+vast-run:  ## Provision GPU → run tasks → pull results → destroy  [TASKS=file | ARGS='-- cmd']
+	@if [ -n "$(TASKS)" ]; then \
+	  $(DEPLOY_SCRIPT) --tasks "$(TASKS)" $(ARGS); \
+	else \
+	  $(DEPLOY_SCRIPT) $(ARGS); \
+	fi
+
+.PHONY: vast-shell
+vast-shell:  ## Provision a GPU instance and open an interactive SSH shell
+	$(DEPLOY_SCRIPT) --shell $(ARGS)
+
+.PHONY: vast-destroy
+vast-destroy:  ## Destroy a specific instance by ID  [ID=12345]
+	@if [ -z "$(ID)" ]; then \
+	  echo "ERROR: ID is not set.  Example: make vast-destroy ID=12345"; exit 1; \
+	fi
+	$(VAST_CLI) destroy instance $(ID)
+
+.PHONY: vast-pull
+vast-pull:  ## Pull /work from a running instance  [ID=12345 JOB=name]
+	@if [ -z "$(ID)" ]; then \
+	  echo "ERROR: ID is not set.  Example: make vast-pull ID=12345 JOB=myjob"; exit 1; \
+	fi
+	$(eval _CONN := $(shell $(VAST_CLI) ssh-url $(ID) 2>/dev/null))
+	$(eval _HOST := $(shell echo "$(_CONN)" | sed 's|ssh://[^@]*@||' | cut -d: -f1))
+	$(eval _PORT := $(shell echo "$(_CONN)" | sed 's|.*:||'))
+	mkdir -p work_remote/$(JOB)
+	rsync -avz --progress \
+	  -e "ssh -p $(_PORT) -o StrictHostKeyChecking=no" \
+	  root@$(_HOST):/work/ work_remote/$(JOB)/
 
 # ── apps ───────────────────────────────────────────────────────────────────────
 

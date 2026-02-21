@@ -76,11 +76,8 @@ fi
 hr
 printf "${GREEN}${BOLD}  ✓  Ready!${RESET}\n\n"
 printf "  ${CYAN}cd ${APP_DIR}${RESET}\n\n"
-printf "  ${BOLD}TORCH_DEVICE=cuda ./run-direct voice-register \\\\\n"
-printf "    --url \"https://www.youtube.com/watch?v=XXXX\" \\\\\n"
-printf "    --voice-name my-voice \\\\\n"
-printf "    --text \"Hello world.\"\n${RESET}\n"
-hr
+printf "  ${BOLD}# Register a voice:${RESET}\n"
+printf "  ${BOLD}./run-direct voice-register \\\\\n"
 printf "    --url \"https://www.youtube.com/watch?v=XXXX\" \\\\\n"
 printf "    --voice-name my-voice \\\\\n"
 printf "    --text \"Hello world.\"\n${RESET}\n"

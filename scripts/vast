@@ -1,0 +1,55 @@
+#!/usr/bin/env bash
+# scripts/vast — run the vastai CLI inside the CPU container (zero host-side pip install)
+#
+# Drop-in replacement for the `vastai` command.  Any vastai sub-command and
+# flag works exactly as documented at https://docs.vast.ai/cli/commands
+#
+# Requirements (host-side only — no installs needed):
+#   • Docker running
+#   • VAST_API_KEY env var  OR  ~/.config/vastai/vast_api_key file
+#
+# Examples:
+#   ./scripts/vast search offers 'gpu_ram >= 20 reliability > 0.98' --raw
+#   ./scripts/vast show instances --raw
+#   ./scripts/vast create instance 12345 --image ... --ssh --direct --raw
+#   ./scripts/vast destroy instance 12345
+
+set -euo pipefail
+
+REGISTRY="${VAST_IMAGE:-ghcr.io/coriou/voice-tools:latest}"
+KEY_FILE="${HOME}/.config/vastai/vast_api_key"
+KEY="${VAST_API_KEY:-}"
+
+# ── resolve API key ────────────────────────────────────────────────────────────
+if [[ -z "$KEY" && -f "$KEY_FILE" ]]; then
+  KEY="$(cat "$KEY_FILE")"
+fi
+
+if [[ -z "$KEY" ]]; then
+  printf >&2 "\033[0;31mERROR\033[0m  VAST_API_KEY env var not set and %s not found.\n" "$KEY_FILE"
+  printf >&2 "  Get your key at: https://cloud.vast.ai/console/cli/\n"
+  printf >&2 "  Then:  export VAST_API_KEY=yourkey\n"
+  exit 1
+fi
+
+# ── build docker run args ──────────────────────────────────────────────────────
+
+DOCKER_ARGS=(
+  --rm
+  --network host
+  -e "VAST_API_KEY=${KEY}"
+)
+
+# TTY passthrough (needed for --raw piped output AND coloured tables)
+[[ -t 0 ]] && DOCKER_ARGS+=(-i)
+[[ -t 1 ]] && DOCKER_ARGS+=(-t)
+
+# ── run vastai inside the container ───────────────────────────────────────────
+# Write the API key to the path vastai expects, then exec the command.
+# Using bash -c so arg quoting survives intact via "$@".
+exec docker run "${DOCKER_ARGS[@]}" "$REGISTRY" \
+  bash -c '
+    mkdir -p /root/.config/vastai
+    printf "%s" "$VAST_API_KEY" > /root/.config/vastai/vast_api_key
+    exec vastai "$@"
+  ' -- "$@"
