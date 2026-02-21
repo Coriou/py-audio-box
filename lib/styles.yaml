@@ -1,65 +1,54 @@
-# styles.yaml — shared style presets for voice-clone and voice-synth
+# styles.yaml — shared instruction templates (Phase 4)
 #
-# Each preset expands to a prefix and/or suffix prepended/appended to the
-# synthesis text before it is sent to Qwen3-TTS.  Both fields are optional.
+# These templates are intended for CustomVoice/VoiceDesign `instruct=` flows.
+# Clone mode does not support runtime instruction control; instruction-like text
+# cues are typically spoken literally.
 #
-# Usage:
-#   ./run voice-clone synth --voice my-voice --text "Hello." --style serious_doc
-#   ./run voice-synth  speak --voice my-voice --text "Hello." --style serious_doc
+# Schema:
+#   <name>:
+#     instruct: "Natural-language instruction text"
 #
-# The final composed text is:
-#   <style prefix> <--prompt-prefix> <text> <--prompt-suffix> <style suffix>
-#
-# Add your own presets below — they are available to both apps immediately.
+# Backward compatibility:
+#   Older `prefix`/`suffix` entries are still parsed by lib/tts.py, but new
+#   entries should use `instruct`.
 
 # ── Narration / documentary ────────────────────────────────────────────────────
 
 serious_doc:
-  prefix: "[Calm, steady, documentary narration voice]"
-  suffix: ""
+  instruct: "Calm, steady, documentary narration delivery."
 
 nature_doc:
-  prefix: "[Quiet, reverent, David Attenborough-style documentary narration]"
-  suffix: ""
+  instruct: "Quiet, reverent nature-documentary narration."
 
 # ── Energy / emotion ───────────────────────────────────────────────────────────
 
 excited:
-  prefix: "[Very excited, energetic, smiling voice]"
-  suffix: ""
+  instruct: "Very excited, energetic, smiling delivery."
 
 energetic:
-  prefix: "[High-energy, upbeat, enthusiastic delivery]"
-  suffix: ""
+  instruct: "High-energy, upbeat, enthusiastic delivery."
 
 warm:
-  prefix: "[Warm, friendly, conversational tone]"
-  suffix: ""
+  instruct: "Warm, friendly, conversational tone."
 
 sad:
-  prefix: "[Sad, heavy-hearted, slow and mournful delivery]"
-  suffix: ""
+  instruct: "Sad, heavy-hearted, slow and mournful delivery."
 
 melancholic:
-  prefix: "[Melancholic, resigned, quietly sorrowful tone]"
-  suffix: ""
+  instruct: "Melancholic, resigned, quietly sorrowful tone."
 
 # ── Quiet / intimate ──────────────────────────────────────────────────────────
 
 whisper:
-  prefix: "[Soft whisper, intimate tone, close-mic feel]"
-  suffix: ""
+  instruct: "Soft whisper, intimate tone, close-mic feel."
 
 calm:
-  prefix: "[Calm, relaxed, measured pace]"
-  suffix: ""
+  instruct: "Calm, relaxed, measured pace."
 
 # ── Formal / professional ─────────────────────────────────────────────────────
 
 formal:
-  prefix: "[Clear, professional, authoritative voice]"
-  suffix: ""
+  instruct: "Clear, professional, authoritative voice."
 
 audiobook:
-  prefix: "[Clear audiobook narration, expressive but measured]"
-  suffix: ""
+  instruct: "Clear audiobook narration, expressive but measured."

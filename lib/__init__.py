@@ -5,7 +5,7 @@ Modules
 -------
 voices  — named voice registry (VoiceRegistry, validate_slug)
 tts     — TTS constants, device/dtype selection, model loading, synthesis,
-          language helpers, whisper helpers, Timer, style presets
+          language helpers, whisper helpers, Timer, instruction templates
 audio   — audio file operations: normalise, trim, sha256, get_duration
 vad     — Silero VAD: load, run, segment helpers
 

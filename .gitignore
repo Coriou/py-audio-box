@@ -20,3 +20,5 @@ __pycache__/
 
 # Local-only notes (infrastructure, credentials, personal setup)
 *.local.md
+
+.env

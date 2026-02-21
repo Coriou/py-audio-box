@@ -153,24 +153,35 @@ Timestamp formats: `90` (seconds), `1:30` (MM:SS), `1:30.5`, `1:02:30` (HH:MM:SS
 ```bash
 ./run voice-synth speak --voice david-attenborough --text "Welcome."
 ./run voice-synth speak --voice david-attenborough --text "..." --variants 4 --qa
+./run voice-synth speak --voice david-attenborough --text "..." --variants 4 --select-best --seed 7
 ./run voice-synth speak --voice david-attenborough --tone excited --text "..."
+./run voice-synth speak --voice david-attenborough --profile stable --save-profile-default --text "..."
 ./run voice-synth list-voices
 
 # Qwen3 built-in CustomVoice speakers
 ./run voice-synth list-speakers
 ./run voice-synth speak --speaker Ryan --text "Welcome." --instruct "Warm, confident newsreader delivery"
+./run voice-synth speak --speaker Ryan --text "Welcome." --instruct-style warm
 
 # Register built-in speaker profiles as named voices (Phase 2)
 ./run voice-synth register-builtin --voice-name newsroom --speaker Ryan \
   --instruct-default "Calm, clear and warm delivery"
 ./run voice-synth register-builtin --voice-name newsroom --speaker Ryan \
+  --instruct-default-style serious_doc
+./run voice-synth register-builtin --voice-name newsroom --speaker Ryan \
   --tone promo --tone-instruct "Energetic, upbeat promo read"
+./run voice-synth register-builtin --voice-name newsroom --speaker Ryan \
+  --tone promo --tone-instruct-style energetic
 ./run voice-synth speak --voice newsroom --text "Top story tonight."
 ./run voice-synth speak --voice newsroom --tone promo --text "Breaking update."
 
 # JSON output for agents / APIs
 ./run voice-synth list-voices --json
 ./run voice-synth list-speakers --json
+./run voice-synth capabilities --json --strict
+
+# Rollout guard for new CustomVoice flows (default is enabled)
+QWEN3_ENABLE_CUSTOMVOICE=0 ./run voice-synth capabilities --json
 ```
 
 ### Extract voice clips only (no synthesis)
@@ -190,6 +201,7 @@ Timestamp formats: `90` (seconds), `1:30` (MM:SS), `1:30.5`, `1:02:30` (HH:MM:SS
 ```bash
 ./run voice-clone synth --voice david-attenborough --text "Nature is the greatest artist."
 ./run voice-clone synth --ref-audio /work/myclip.wav --text "Hello, world"
+./run voice-clone synth --voice david-attenborough --text "..." --variants 4 --select-best --profile stable
 ```
 
 ### Interactive reference selection (optional)
@@ -230,7 +242,7 @@ instead of relying on automatic scoring:
    Listen to the files (they're already in `./work/<voice-name>/` on your host),
    then enter a number — or press Enter to keep the auto-selected clip.
 
-2. **Segment selection** (voice-clone): after Whisper scores all VAD candidates,
+2. **Segment selection** (voice-clone): after Whisper + acoustic heuristics score all VAD candidates,
    a second menu is printed:
    ```
    [0] candidate_00.wav  3.1s–11.6s (8.5s) [English p=0.98] score=0.891  ← auto-selected
@@ -300,7 +312,7 @@ A **slug** is lowercase ASCII with hyphens (e.g. `david-attenborough`).
 ```
 /cache/voices/
   david-attenborough/
-    voice.json          ← identity + engine profile (clone/designed/custom_voice)
+    voice.json          ← identity + engine profile (+ optional generation defaults)
     source_clip.wav     ← raw clip from voice-split (44.1 kHz)
     ref.wav             ← processed 24 kHz segment from voice-clone
     prompts/
@@ -329,6 +341,7 @@ Each stage is optional — a voice progresses from `source_clip.wav` → `ref.wa
 ./run voice-synth register-builtin --voice-name newsroom --speaker Ryan \
   --instruct-default "Calm, clear and warm delivery"
 ./run voice-synth speak --voice newsroom --text "Top story tonight."
+./run voice-synth speak --voice newsroom --instruct-style serious_doc --text "Top story tonight."
 
 # ── Or do all three steps with one command ────────────────────────────────────
 ./run voice-register \
@@ -497,6 +510,8 @@ make voice-clone     ARGS='synth --ref-audio /work/myclip.wav --text "Hello, wor
 make voice-synth     ARGS='speak --voice <slug> --text "Hello"'
 make voice-register  ARGS='--url "https://..." --voice-name my-voice --text "Hello"'
 make voice-register  ARGS='--audio /work/file.wav --voice-name my-voice --text "Hello"'
+make smoke-matrix    # full capability + clone + built-in + designed smoke matrix
+SMOKE_ENABLE_CUSTOMVOICE=1 make smoke-matrix
 ```
 
 ---
@@ -513,5 +528,8 @@ When an AI agent or script works with this repo:
 - **Output is always in `./work/`** (mounted at `/work`) unless `--out` is overridden. Look there for results.
 - **Prefer `--voice <slug>` over `--ref-audio <path>`.** Named voice slugs are the canonical way to reference voices across all apps. Run `./run voice-synth list-voices` to enumerate available voices. Register a new voice with `--voice-name <slug>` on `voice-split`, `voice-clone synth`, or `voice-synth design-voice`. When `--voice <slug>` is used with `voice-clone synth`, the built prompt is automatically registered back to that voice — no separate `--voice-name` needed.
 - **Built-in voices can also be named voices.** Use `./run voice-synth register-builtin --voice-name <slug> --speaker <name>` to store CustomVoice profiles in the same registry, then call them with `./run voice-synth speak --voice <slug> ...`.
+- **CustomVoice rollout is feature-flagged.** `QWEN3_ENABLE_CUSTOMVOICE` defaults to `1`. Set `QWEN3_ENABLE_CUSTOMVOICE=0` to disable `list-speakers`, `register-builtin`, `speak --speaker`, and named voices with `engine=custom_voice`.
+- **Use deterministic profiles for repeatability.** `--profile stable|balanced|expressive` is available in both `voice-clone synth` and `voice-synth speak`. For multi-take ranking use `--variants N --select-best --seed <N>`, and persist preferred defaults per named voice with `--save-profile-default`.
+- **Probe capabilities before autonomous runs.** `./run voice-synth capabilities --json --strict --require-runtime-speakers` provides a fail-fast API/device/speaker check.
 - **Use `voice-register` for one-shot pipeline runs.** `./run voice-register --url "..." --voice-name <slug> --text "..."` (YouTube) or `./run voice-register --audio /work/file.wav --voice-name <slug> --text "..."` (local file) chain voice-split → voice-clone synth and leave a fully synthesis-ready voice in a single command. Pass `--start`/`--end` (e.g. `--start 1:30 --end 5:00`) to trim the source before processing. Re-runs are safe and cached.
 - **GPU mode is opt-in.** Prefix any `./run` command with `TOOLBOX_VARIANT=gpu` to use the GPU image (requires `make build-gpu` once). On Windows PowerShell use `$env:TOOLBOX_VARIANT = "gpu"` then the normal `.\run.ps1` command. No `--dtype` flag needed; dtype is chosen automatically.

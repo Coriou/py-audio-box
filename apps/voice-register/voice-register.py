@@ -186,6 +186,15 @@ def main() -> None:
         ),
     )
     ap.add_argument(
+        "--ref-text",
+        default=None, metavar="TEXT",
+        help=(
+            "Exact transcript of the reference audio clip. "
+            "When supplied, the final Whisper transcript+quality gate step is skipped "
+            "and this text is used for prompt build."
+        ),
+    )
+    ap.add_argument(
         "--ref-language",
         default="Auto",
         help="Language of the reference audio for whisper transcription",
@@ -310,6 +319,8 @@ def main() -> None:
         "--model",  args.model,
         "--dtype",  args.dtype,
     ]
+    if args.ref_text:
+        clone_args += ["--ref-text", args.ref_text]
     if args.language != "Auto":
         clone_args += ["--language", args.language]
     if args.ref_language != "Auto":
@@ -341,6 +352,8 @@ def main() -> None:
             "--cache",  args.cache,
             "--whisper-model", args.whisper_model,
         ]
+        if args.ref_text:
+            clone_args_no_synth += ["--ref-text", args.ref_text]
         if args.ref_language != "Auto":
             clone_args_no_synth += ["--ref-language", args.ref_language]
         if args.force:
@@ -357,15 +370,15 @@ def main() -> None:
     # ── Summary ───────────────────────────────────────────────────────────────
     total_sec = time.perf_counter() - t_total
     _banner(f"✓  Voice '{args.voice_name}' is ready to use  ({total_sec:.0f}s total)")
-    print(f"  Synthesise now:")
-    print(f"    ./run voice-synth speak \\")
+    print("  Synthesise now:")
+    print("    ./run voice-synth speak \\")
     print(f"        --voice {args.voice_name} \\")
-    print(f"        --text \"Your text here.\"")
+    print("        --text \"Your text here.\"")
     if args.tone:
-        print(f"    # or with tone:")
+        print("    # or with tone:")
         print(f"    ./run voice-synth speak --voice {args.voice_name} --tone {args.tone} --text \"...\"")
-    print(f"\n  Inspect all voices:")
-    print(f"    ./run voice-synth list-voices")
+    print("\n  Inspect all voices:")
+    print("    ./run voice-synth list-voices")
     print()
 
 

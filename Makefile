@@ -178,9 +178,17 @@ voice-synth:  ## Run voice-synth. Usage: make voice-synth ARGS='speak --voice <i
 voice-register:  ## One-shot register. Usage: make voice-register ARGS='--url "..." --voice-name slug --text "Hello"'
 	./run voice-register $(ARGS)
 
+.PHONY: test
+test:  ## Run the unit/integration test suite inside the toolbox container
+	docker compose run --rm toolbox python -m pytest tests/ -v $(ARGS)
+
 .PHONY: smoke-matrix
 smoke-matrix:  ## Phase-5 smoke matrix (capabilities + clone + built-in + designed). Set SMOKE_SKIP_DESIGN=1 to skip design.
 	./scripts/smoke-matrix.sh
+
+.PHONY: synth-test
+synth-test:  ## Local CPU synthesis test matrix (12 tests, all registered voices). Pass ARGS=--skip-slow to skip variants tests.
+	./scripts/local-synth-test.sh $(ARGS)
 
 # ── help ───────────────────────────────────────────────────────────────────────
 

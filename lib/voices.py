@@ -43,6 +43,23 @@ Each named voice lives at:
         "tones": {                     // tone label -> stem; set by --tone on voice-clone synth
             "neutral": "<stem1>",        // e.g. "neutral", "sad", "excited"
             "sad":     "<stem2>"
+        },
+        "engine": "clone_prompt" | "custom_voice" | "designed_clone",
+        "custom_voice": {             // present when engine=custom_voice
+            "model": "Qwen/Qwen3-TTS-12Hz-0.6B-CustomVoice",
+            "speaker": "Ryan",
+            "instruct_default": "Warm, calm delivery",
+            "language_default": "English",
+            "tones": {                // tone label -> instruction preset
+                "neutral": "Calm, clear, broadcast tone",
+                "excited": "Energetic, upbeat promo read"
+            }
+        },
+        "generation_defaults": {      // optional per-voice sampling defaults
+            "temperature": 0.7,
+            "top_p": 0.9,
+            "repetition_penalty": 1.05,
+            "max_new_tokens_policy": "balanced"
         }
     }
 
@@ -64,6 +81,32 @@ from typing import Any
 # Slug rules: lowercase letters, digits, hyphens; must start and end with alnum;
 # min 1 char, max 64 chars.
 SLUG_RE = re.compile(r"^[a-z0-9]([a-z0-9-]{0,62}[a-z0-9])?$")
+VALID_ENGINES = {"clone_prompt", "custom_voice", "designed_clone"}
+
+
+def infer_engine(data: dict[str, Any]) -> str:
+    """
+    Infer synthesis engine mode for a voice record.
+
+    Backward-compatibility rules:
+      - explicit ``engine`` wins when valid
+      - ``custom_voice.speaker`` implies ``custom_voice``
+      - source.type == "designed" implies ``designed_clone``
+      - otherwise default to ``clone_prompt``
+    """
+    explicit = str(data.get("engine", "")).strip()
+    if explicit in VALID_ENGINES:
+        return explicit
+
+    profile = data.get("custom_voice")
+    if isinstance(profile, dict) and str(profile.get("speaker", "")).strip():
+        return "custom_voice"
+
+    source = data.get("source") or {}
+    if isinstance(source, dict) and source.get("type") == "designed":
+        return "designed_clone"
+
+    return "clone_prompt"
 
 
 def validate_slug(slug: str) -> str:
@@ -115,6 +158,39 @@ class VoiceRegistry:
     def exists(self, slug: str) -> bool:
         return self.voice_json(slug).exists()
 
+    def _normalise_record(self, data: dict[str, Any]) -> dict[str, Any]:
+        """
+        Normalise optional/additive fields for backward compatibility.
+
+        Does not write to disk; callers may persist explicitly after mutation.
+        """
+        if not isinstance(data.get("prompts"), dict):
+            data["prompts"] = {}
+
+        if "tones" in data and not isinstance(data.get("tones"), dict):
+            data["tones"] = {}
+        data.setdefault("tones", {})
+
+        source = data.get("source")
+        if source is None or not isinstance(source, dict):
+            data["source"] = {}
+
+        engine = infer_engine(data)
+        data["engine"] = engine
+
+        custom = data.get("custom_voice")
+        if custom is None or not isinstance(custom, dict):
+            custom = {}
+        tones = custom.get("tones")
+        if tones is None or not isinstance(tones, dict):
+            custom["tones"] = {}
+        data["custom_voice"] = custom
+
+        if "generation_defaults" in data and not isinstance(data.get("generation_defaults"), dict):
+            data["generation_defaults"] = {}
+
+        return data
+
     def load(self, slug: str) -> dict[str, Any]:
         vj = self.voice_json(slug)
         if not vj.exists():
@@ -123,7 +199,8 @@ class VoiceRegistry:
                 f"Looked in: {vj}"
             )
         with open(vj) as fh:
-            return json.load(fh)
+            data = json.load(fh)
+        return self._normalise_record(data)
 
     def get_ref(self, slug: str) -> Path | None:
         """
@@ -164,13 +241,23 @@ class VoiceRegistry:
         for vj in sorted(self.root.glob("*/voice.json")):
             try:
                 with open(vj) as fh:
-                    d = json.load(fh)
+                    d = self._normalise_record(json.load(fh))
             except Exception:
                 continue
             pd = vj.parent / "prompts"
             count = len(list(pd.glob("*.pkl"))) if pd.exists() else 0
             d["_prompt_count"] = count
-            d["_ready"] = count > 0
+            d["_engine"] = infer_engine(d)
+            if d["_engine"] == "custom_voice":
+                profile = d.get("custom_voice") if isinstance(d.get("custom_voice"), dict) else {}
+                source = d.get("source") if isinstance(d.get("source"), dict) else {}
+                speaker = str(profile.get("speaker", "")).strip()
+                # Model may be stored in either custom_voice.model (new schema)
+                # or source.model (older/mixed records).
+                model = str(profile.get("model", "")).strip() or str(source.get("model", "")).strip()
+                d["_ready"] = bool(speaker and model)
+            else:
+                d["_ready"] = count > 0
             d["_has_ref"] = (vj.parent / "ref.wav").exists()
             d["_has_source"] = (vj.parent / "source_clip.wav").exists()
             voices.append(d)
@@ -208,6 +295,8 @@ class VoiceRegistry:
             "source":       source,
             "ref":          None,
             "prompts":      {},
+            "tones":        {},
+            "engine":       "designed_clone" if source.get("type") == "designed" else "clone_prompt",
         }
         self._save(slug, data)
         return data
@@ -272,6 +361,116 @@ class VoiceRegistry:
         self._save(slug, data)
         return dest_pkl
 
+    def custom_voice_profile(self, slug: str) -> dict[str, Any] | None:
+        """
+        Return normalised custom-voice profile for *slug*, or ``None``
+        when this voice is not configured for ``engine=custom_voice``.
+        """
+        data = self.load(slug)
+        if infer_engine(data) != "custom_voice":
+            return None
+        profile = data.get("custom_voice") or {}
+        if not isinstance(profile, dict):
+            return None
+        speaker = str(profile.get("speaker", "")).strip()
+        if not speaker:
+            return None
+        tones = profile.get("tones") or {}
+        if not isinstance(tones, dict):
+            tones = {}
+        return {
+            "model": profile.get("model"),
+            "speaker": speaker,
+            "instruct_default": profile.get("instruct_default"),
+            "language_default": profile.get("language_default"),
+            "tones": dict(tones),
+        }
+
+    def register_custom_voice(
+        self,
+        slug: str,
+        *,
+        model: str,
+        speaker: str,
+        instruct_default: str | None = None,
+        language_default: str | None = None,
+        tone: str | None = None,
+        tone_instruct: str | None = None,
+        display_name: str | None = None,
+        description: str | None = None,
+    ) -> dict[str, Any]:
+        """
+        Create or update a named built-in CustomVoice profile.
+
+        Safety policy:
+          - Existing clone/designed voices are not overwritten.
+          - Existing custom_voice entries are updated in place.
+        """
+        if tone and (tone_instruct is None or not tone_instruct.strip()):
+            raise ValueError("Tone preset requires non-empty tone instruction.")
+        if tone_instruct and not tone:
+            raise ValueError("Tone instruction requires --tone.")
+
+        if self.exists(slug):
+            data = self.load(slug)
+            engine = infer_engine(data)
+            if engine != "custom_voice":
+                has_clone_data = bool(data.get("prompts")) or data.get("ref") is not None
+                source_type = str((data.get("source") or {}).get("type", "")).strip()
+                if has_clone_data or source_type not in ("", "builtin"):
+                    raise ValueError(
+                        f"Voice '{slug}' already exists as a non-CustomVoice profile. "
+                        "Use a different --voice-name."
+                    )
+        else:
+            now = datetime.now(timezone.utc).isoformat()
+            data = {
+                "slug": slug,
+                "display_name": display_name or slug,
+                "description": description or "",
+                "created_at": now,
+                "source": {"type": "builtin"},
+                "ref": None,
+                "prompts": {},
+                "tones": {},
+                "engine": "custom_voice",
+                "custom_voice": {},
+            }
+
+        data = self._normalise_record(data)
+        data["engine"] = "custom_voice"
+
+        if display_name is not None:
+            data["display_name"] = display_name
+        elif not data.get("display_name"):
+            data["display_name"] = slug
+        if description is not None:
+            data["description"] = description
+
+        source = data.setdefault("source", {})
+        source["type"] = "builtin"
+        source["speaker"] = speaker
+        source["model"] = model
+
+        profile = data.setdefault("custom_voice", {})
+        profile["model"] = model
+        profile["speaker"] = speaker
+        if instruct_default is not None:
+            profile["instruct_default"] = instruct_default
+        elif "instruct_default" not in profile:
+            profile["instruct_default"] = None
+        if language_default is not None:
+            profile["language_default"] = language_default
+        elif "language_default" not in profile:
+            profile["language_default"] = "English"
+
+        tone_map = profile.setdefault("tones", {})
+        if tone is not None:
+            tone_map[tone] = (tone_instruct or "").strip()
+
+        self._save(slug, data)
+        return self.load(slug)
+
     def prompt_for_tone(self, slug: str, tone: str) -> Path | None:
         """
         Return the ``.pkl`` path for *tone* (e.g. ``"sad"``), or ``None``
@@ -289,6 +488,65 @@ class VoiceRegistry:
         """Return the ``{tone_name: stem}`` mapping for this voice (may be empty)."""
         data = self.load(slug)
         return dict(data.get("tones") or {})
+
+    def list_custom_tones(self, slug: str) -> dict[str, str]:
+        """
+        Return ``{tone_name: instruct}`` for custom-voice profiles.
+        Returns an empty dict for non-custom voices.
+        """
+        profile = self.custom_voice_profile(slug)
+        if not profile:
+            return {}
+        tones = profile.get("tones") or {}
+        if not isinstance(tones, dict):
+            return {}
+        return {
+            str(name): str(instruct)
+            for name, instruct in tones.items()
+        }
+
+    def generation_defaults(self, slug: str) -> dict[str, Any]:
+        """
+        Return optional per-voice generation defaults.
+        """
+        data = self.load(slug)
+        defaults = data.get("generation_defaults")
+        if not isinstance(defaults, dict):
+            return {}
+        return dict(defaults)
+
+    def update_generation_defaults(
+        self,
+        slug: str,
+        *,
+        profile: str | None = None,
+        temperature: float | None = None,
+        top_p: float | None = None,
+        repetition_penalty: float | None = None,
+        max_new_tokens_policy: str | None = None,
+    ) -> dict[str, Any]:
+        """
+        Upsert per-voice generation defaults in ``voice.json``.
+        """
+        data = self.load(slug)
+        defaults = data.setdefault("generation_defaults", {})
+        if not isinstance(defaults, dict):
+            defaults = {}
+            data["generation_defaults"] = defaults
+
+        if profile is not None:
+            defaults["profile"] = str(profile)
+        if temperature is not None:
+            defaults["temperature"] = float(temperature)
+        if top_p is not None:
+            defaults["top_p"] = float(top_p)
+        if repetition_penalty is not None:
+            defaults["repetition_penalty"] = float(repetition_penalty)
+        if max_new_tokens_policy is not None:
+            defaults["max_new_tokens_policy"] = str(max_new_tokens_policy)
+
+        self._save(slug, data)
+        return self.generation_defaults(slug)
 
     # ── management ──────────────────────────────────────────────────────────────
 

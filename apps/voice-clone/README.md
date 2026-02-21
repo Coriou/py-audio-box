@@ -34,12 +34,26 @@ running entirely on CPU.
 ./run voice-clone synth \
   --ref-audio /work/myvoice.wav \
   --text "Hello, this is my cloned voice speaking."
+
+# Deterministic best-take mode (writes take_*.wav + best.wav)
+./run voice-clone synth \
+  --voice david-attenborough \
+  --text "The forest was silent except for the distant call of birds." \
+  --variants 4 --select-best --seed 7 --profile stable
+
+# Persist per-voice generation defaults in voice.json
+./run voice-clone synth \
+  --voice david-attenborough \
+  --profile stable --save-profile-default \
+  --text "Welcome back."
 ```
 
 Outputs land in `/work` by default:
 
 - `voice_clone_YYYYMMDD_HHMMSS.wav` — synthesised audio
 - `voice_clone_YYYYMMDD_HHMMSS.meta.json` — full provenance (timings, RTF, transcript, model)
+- `/<voice>/<timestamp>/take_01.wav ... take_N.wav` — multi-take output (`--variants > 1`)
+- `/<voice>/<timestamp>/best.wav` + `takes.meta.json` — deterministic ranking output (`--select-best`)
 
 ---
 
@@ -47,7 +61,8 @@ Outputs land in `/work` by default:
 
 - **Best cloning quality:** a **clean, noise-free, 5–10 s** mono recording of your
   voice with no music or background noise.
-- The pipeline auto-selects the best 3–12 s segment using Silero VAD.
+- The pipeline auto-selects the best 3–12 s segment using Silero VAD + Whisper +
+  non-ML acoustic heuristics (clipping, RMS/noise floor, speech continuity).
 - Override with `--ref-start / --ref-end` if the auto-selection is wrong.
 - A reference clip produced by `voice-split` is ideal input.
 
@@ -88,7 +103,7 @@ One of `--text` or `--text-file` must be provided.
 | ------------------ | ------ | ------- | -------------------------------------------------- |
 | `--text TEXT`      | `str`  | —       | Text to synthesise                                 |
 | `--text-file FILE` | `path` | —       | Read synthesis text from a file                    |
-| `--ref-text TEXT`  | `str`  | —       | Transcript of ref audio — skips auto-transcription |
+| `--ref-text TEXT`  | `str`  | —       | Transcript of ref audio — uses this for prompt build and skips final Whisper transcript + quality gate |
 
 **Reference segment**
 
@@ -107,6 +122,15 @@ One of `--text` or `--text-file` must be provided.
 | `--tone NAME`          | `str`    | —       | Label for this reference clip's delivery style (e.g. `neutral`, `sad`). Stored in the prompt's `meta.json` and indexed in `voice.json["tones"]` so `voice-synth speak --tone NAME` can select it. |
 | `--prompt-prefix TEXT` | `str`    | —       | Text prepended verbatim to the synthesis text (will be spoken aloud)                                                                                                                              |
 | `--prompt-suffix TEXT` | `str`    | —       | Text appended verbatim to the synthesis text (will be spoken aloud)                                                                                                                               |
+| `--variants N`         | `int`    | `1`     | Generate N takes with seeds `base_seed + i`                                                                                                                |
+| `--select-best`        | `flag`   | off     | Deterministically rank takes and copy the winner to `best.wav`                                                                                           |
+
+**Generation profiles**
+
+| Flag                     | Type     | Default | Description |
+| ------------------------ | -------- | ------- | ----------- |
+| `--profile NAME`         | `choice` | voice default or `balanced` | Generation profile: `stable`, `balanced`, `expressive` |
+| `--save-profile-default` | `flag`   | off     | Persist resolved profile + sampling defaults to `voice.json["generation_defaults"]` (requires `--voice` or `--voice-name`) |
 
 **Generation knobs** (passed to Transformers `model.generate`)
 
@@ -145,13 +169,13 @@ paths + transcript. Useful for verifying the ref clip before a long synthesis ru
 Accepts the same `--voice`/`--ref-audio` mutually exclusive group and `--voice-name`
 as `synth`, plus `--ref-start`, `--ref-end`, `--ref-language`, `--force-bad-ref`,
 `--whisper-model`, `--threads`, `--force`, `--cache`.
-Flags not accepted: `--text*`, `--tone`, `--prompt-*`, generation knobs, `--out`.
+Flags not accepted: `--text*`, `--tone`, `--prompt-*`, generation knobs, profile flags, `--out`.
 
 ### `self-test` — smoke test
 
-Downloads the Qwen3-TTS demo reference clip (once, cached), runs the full
-pipeline on a short sentence, and asserts basic sanity (duration, no NaNs,
-peak amplitude).
+Downloads a cached public demo reference clip (Qwen source first, then fallback
+mirrors), runs the full pipeline on a short sentence, and asserts basic sanity
+(duration, no NaNs, peak amplitude).
 
 ```
 ./run voice-clone self-test
@@ -203,7 +227,7 @@ All intermediate artefacts are stored under `/cache/`:
 ```
 /cache/voices/
   <slug>/
-    voice.json            # identity, source, ref metadata, prompt index
+    voice.json            # identity, source, prompts (+ optional generation defaults)
     source_clip.wav       # raw clip from voice-split (44.1 kHz)
     ref.wav               # processed 24 kHz segment (written by voice-clone)
     prompts/

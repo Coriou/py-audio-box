@@ -7,10 +7,15 @@ Constants
     PROMPT_SCHEMA_VERSION, DEFAULT_TTS_MODEL, DEFAULT_CUSTOM_MODEL, DEFAULT_DESIGN_MODEL,
     DEFAULT_WHISPER, WHISPER_COMPUTE, MAX_NEW_TOKENS_DEFAULT,
     AUDIO_TOKENS_PER_SEC, CHARS_PER_SECOND, TOKEN_MARGIN, CPU_TOKENS_PER_SEC,
-    QWEN3_LANGUAGES, QWEN3_CUSTOM_SPEAKERS, _LANGID_TO_QWEN
+    QWEN3_LANGUAGES, QWEN3_CUSTOM_SPEAKERS, _LANGID_TO_QWEN,
+    QWEN3_CUSTOMVOICE_FLAG_ENV,
+    GENERATION_PROFILE_DEFAULT, GENERATION_PROFILE_PRESETS,
+    GENERATION_PROFILE_CHOICES
 
 Token budget
     estimate_max_new_tokens(text) → int
+    resolve_generation_profile(profile, voice_defaults) -> (profile, source)
+    build_generation_kwargs(...) -> (kwargs, metadata)
 
 Language helpers
     detect_language_from_text(text) → str | None
@@ -37,11 +42,15 @@ Model / synthesis
         → (wav, sr)
     synthesise(text, language, model, prompt, seed, gen_kwargs, timeout_s) → (wav, sr)
 
-Style presets
-    load_style_presets(styles_path) → dict
-    apply_style(text, style_name, styles_path, prompt_prefix, prompt_suffix) → str
+Instruction templates
+    load_instruction_templates(styles_path) → dict
+    resolve_instruction_template(name, styles_path) → str | None
+    load_style_presets(...) / apply_style(...) remain compatibility helpers
 
 Utilities
+    env_flag_enabled(name, default=True) -> bool
+    custom_voice_feature_enabled() -> bool
+    custom_voice_feature_env_value() -> str | None
     Timer — context-manager that prints elapsed time
 """
 
@@ -49,6 +58,7 @@ import os
 import sys
 import time
 import threading
+from importlib import metadata as importlib_metadata
 from pathlib import Path
 from typing import Any
 
@@ -81,6 +91,38 @@ TOKEN_MARGIN         = 3.5     # safety headroom multiplier over the naive estim
 # Apple M-series Mac Mini observed: ~0.18 t/s.  Faster CPUs: 0.3–0.6 t/s.
 CPU_TOKENS_PER_SEC   = 0.18
 
+# Deterministic generation profiles for clone/custom-voice synthesis.
+# Profiles define stochasticity, while max_new_tokens_policy controls
+# budget scaling derived from text length.
+GENERATION_PROFILE_DEFAULT = "balanced"
+GENERATION_PROFILE_PRESETS: dict[str, dict[str, Any]] = {
+    "stable": {
+        "temperature": 0.45,
+        "top_p": 0.78,
+        "repetition_penalty": 1.12,
+        "max_new_tokens_policy": "stable",
+    },
+    "balanced": {
+        "temperature": 0.70,
+        "top_p": 0.90,
+        "repetition_penalty": 1.05,
+        "max_new_tokens_policy": "balanced",
+    },
+    "expressive": {
+        "temperature": 0.92,
+        "top_p": 0.96,
+        "repetition_penalty": 1.00,
+        "max_new_tokens_policy": "expressive",
+    },
+}
+GENERATION_PROFILE_CHOICES = tuple(sorted(GENERATION_PROFILE_PRESETS.keys()))
+
+_MAX_NEW_TOKENS_POLICY_SCALE = {
+    "stable": 0.90,
+    "balanced": 1.00,
+    "expressive": 1.20,
+}
+
 # All languages supported by the Qwen3-TTS Base model.
 QWEN3_LANGUAGES = [
     "Auto", "Chinese", "English", "Japanese", "Korean",
@@ -102,11 +144,65 @@ QWEN3_CUSTOM_SPEAKERS = [
     "Ryan", "Aiden", "Ono_Anna", "Sohee",
 ]
 
+# Minimum method surface required by this project across Qwen3 modes.
+QWEN3_REQUIRED_MODEL_METHODS: dict[str, tuple[str, ...]] = {
+    "clone": ("create_voice_clone_prompt", "generate_voice_clone"),
+    "custom_voice": ("generate_custom_voice", "get_supported_speakers"),
+    "voice_design": ("generate_voice_design",),
+}
+QWEN3_CUSTOMVOICE_FLAG_ENV = "QWEN3_ENABLE_CUSTOMVOICE"
+
 _DTYPE_MAP: dict[str, torch.dtype] = {
     "bfloat16": torch.bfloat16,
     "float32":  torch.float32,
     "float16":  torch.float16,
 }
+_TRUE_ENV_VALUES = {"1", "true", "yes", "on", "enabled"}
+_FALSE_ENV_VALUES = {"0", "false", "no", "off", "disabled"}
+
+
+def env_flag_enabled(name: str, default: bool = True) -> bool:
+    """
+    Parse a boolean feature flag from the environment.
+
+    Accepted truthy values:  1, true, yes, on, enabled
+    Accepted falsy values:   0, false, no, off, disabled
+    Empty/unset or invalid values fall back to *default*.
+    """
+    raw = os.getenv(name)
+    if raw is None:
+        return default
+    val = raw.strip().lower()
+    if not val:
+        return default
+    if val in _TRUE_ENV_VALUES:
+        return True
+    if val in _FALSE_ENV_VALUES:
+        return False
+    print(
+        f"  WARNING: invalid boolean env value {name}={raw!r}; "
+        f"using default {int(default)}.",
+        file=sys.stderr,
+    )
+    return default
+
+
+def custom_voice_feature_enabled() -> bool:
+    """
+    Return whether CustomVoice features are enabled for rollout control.
+    """
+    return env_flag_enabled(QWEN3_CUSTOMVOICE_FLAG_ENV, default=True)
+
+
+def custom_voice_feature_env_value() -> str | None:
+    """
+    Return the raw feature-flag env value (trimmed), or None when unset.
+    """
+    raw = os.getenv(QWEN3_CUSTOMVOICE_FLAG_ENV)
+    if raw is None:
+        return None
+    trimmed = raw.strip()
+    return trimmed or None
 
 
 # ── token budget ───────────────────────────────────────────────────────────────
@@ -128,6 +224,133 @@ def estimate_max_new_tokens(text: str) -> int:
     est_seconds = max(3.0, len(text) / CHARS_PER_SECOND)
     est_tokens  = int(est_seconds * AUDIO_TOKENS_PER_SEC * TOKEN_MARGIN)
     return min(est_tokens, MAX_NEW_TOKENS_DEFAULT)
+
+
+def _coerce_float(value: Any) -> float | None:
+    if value is None:
+        return None
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _coerce_policy(value: Any) -> str | None:
+    if value is None:
+        return None
+    policy = str(value).strip().lower()
+    if policy in _MAX_NEW_TOKENS_POLICY_SCALE:
+        return policy
+    return None
+
+
+def _max_new_tokens_for_policy(text: str, policy: str) -> int:
+    base = estimate_max_new_tokens(text)
+    scale = _MAX_NEW_TOKENS_POLICY_SCALE.get(policy, 1.0)
+    proposed = max(64, int(round(base * scale)))
+    return min(proposed, MAX_NEW_TOKENS_DEFAULT)
+
+
+def resolve_generation_profile(
+    requested_profile: str | None,
+    voice_defaults: dict[str, Any] | None = None,
+) -> tuple[str, str]:
+    """
+    Resolve generation profile and source.
+
+    Source values:
+      explicit      --profile flag
+      voice_default voice.json generation_defaults.profile
+      default       fallback (balanced)
+    """
+    if requested_profile is not None:
+        profile = requested_profile.strip().lower()
+        if profile not in GENERATION_PROFILE_PRESETS:
+            options = ", ".join(GENERATION_PROFILE_CHOICES)
+            print(
+                f"ERROR: unknown generation profile '{requested_profile}'. "
+                f"Choose one of: {options}",
+                file=sys.stderr,
+            )
+            sys.exit(1)
+        return profile, "explicit"
+
+    if isinstance(voice_defaults, dict):
+        profile = str(voice_defaults.get("profile", "")).strip().lower()
+        if profile in GENERATION_PROFILE_PRESETS:
+            return profile, "voice_default"
+
+    return GENERATION_PROFILE_DEFAULT, "default"
+
+
+def build_generation_kwargs(
+    *,
+    text: str,
+    profile: str,
+    voice_defaults: dict[str, Any] | None = None,
+    temperature: float | None = None,
+    top_p: float | None = None,
+    repetition_penalty: float | None = None,
+    max_new_tokens: int | None = None,
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    """
+    Merge generation controls with precedence:
+      1. profile preset
+      2. optional voice defaults from registry
+      3. explicit CLI overrides
+    """
+    if profile not in GENERATION_PROFILE_PRESETS:
+        options = ", ".join(GENERATION_PROFILE_CHOICES)
+        raise ValueError(
+            f"Unknown generation profile '{profile}'. Valid: {options}"
+        )
+
+    preset = GENERATION_PROFILE_PRESETS[profile]
+    kwargs: dict[str, Any] = {
+        "temperature": float(preset["temperature"]),
+        "top_p": float(preset["top_p"]),
+        "repetition_penalty": float(preset["repetition_penalty"]),
+    }
+    max_tokens_policy = str(preset["max_new_tokens_policy"])
+
+    voice_overrides: list[str] = []
+    explicit_overrides: list[str] = []
+
+    if isinstance(voice_defaults, dict):
+        for key in ("temperature", "top_p", "repetition_penalty"):
+            v = _coerce_float(voice_defaults.get(key))
+            if v is not None:
+                kwargs[key] = v
+                voice_overrides.append(key)
+        voice_policy = _coerce_policy(voice_defaults.get("max_new_tokens_policy"))
+        if voice_policy is not None:
+            max_tokens_policy = voice_policy
+            voice_overrides.append("max_new_tokens_policy")
+
+    if temperature is not None:
+        kwargs["temperature"] = float(temperature)
+        explicit_overrides.append("temperature")
+    if top_p is not None:
+        kwargs["top_p"] = float(top_p)
+        explicit_overrides.append("top_p")
+    if repetition_penalty is not None:
+        kwargs["repetition_penalty"] = float(repetition_penalty)
+        explicit_overrides.append("repetition_penalty")
+
+    if max_new_tokens is not None:
+        kwargs["max_new_tokens"] = int(max_new_tokens)
+        explicit_overrides.append("max_new_tokens")
+        max_tokens_policy = "explicit"
+    else:
+        kwargs["max_new_tokens"] = _max_new_tokens_for_policy(text, max_tokens_policy)
+
+    metadata = {
+        "profile": profile,
+        "max_new_tokens_policy": max_tokens_policy,
+        "voice_overrides": voice_overrides,
+        "explicit_overrides": explicit_overrides,
+    }
+    return kwargs, metadata
 
 
 # ── language helpers ───────────────────────────────────────────────────────────
@@ -459,6 +682,64 @@ def load_tts_model(model_name: str, num_threads: int, dtype_str: str = "auto"):
     )
 
 
+def qwen_tts_package_version() -> str:
+    """
+    Return the installed qwen-tts package version.
+    """
+    try:
+        return importlib_metadata.version("qwen-tts")
+    except importlib_metadata.PackageNotFoundError:
+        return "not-installed"
+    except Exception:
+        return "unknown"
+
+
+def probe_qwen_tts_api(
+    required_methods: dict[str, tuple[str, ...]] | None = None,
+) -> dict[str, Any]:
+    """
+    Inspect the qwen-tts model class for required method compatibility.
+
+    Returns a machine-friendly payload with a per-method availability matrix.
+    """
+    required = required_methods or QWEN3_REQUIRED_MODEL_METHODS
+    payload: dict[str, Any] = {
+        "package_version": qwen_tts_package_version(),
+        "class_name": "qwen_tts.Qwen3TTSModel",
+        "required_methods": {k: list(v) for k, v in required.items()},
+        "present": {},
+        "missing": {},
+        "compatible": False,
+        "error": None,
+    }
+
+    try:
+        from qwen_tts import Qwen3TTSModel  # type: ignore
+    except Exception as exc:  # noqa: BLE001
+        payload["error"] = str(exc)
+        for mode, methods in required.items():
+            payload["present"][mode] = []
+            payload["missing"][mode] = list(methods)
+        return payload
+
+    all_missing: list[str] = []
+    for mode, methods in required.items():
+        present: list[str] = []
+        missing: list[str] = []
+        for name in methods:
+            attr = getattr(Qwen3TTSModel, name, None)
+            if callable(attr):
+                present.append(name)
+            else:
+                missing.append(name)
+                all_missing.append(f"{mode}:{name}")
+        payload["present"][mode] = present
+        payload["missing"][mode] = missing
+
+    payload["compatible"] = not all_missing
+    return payload
+
+
 # ── synthesis ──────────────────────────────────────────────────────────────────
 
 def _run_generation(
@@ -628,18 +909,21 @@ def synthesise(
     return synthesise_clone(text, language, model, prompt, seed, gen_kwargs, timeout_s)
 
 
-# ── style presets ──────────────────────────────────────────────────────────────
+# ── instruction templates ──────────────────────────────────────────────────────
 
 # Canonical styles.yaml location inside the project.
 # Individual apps may still pass a different path if needed.
 STYLES_YAML = Path(__file__).resolve().parent / "styles.yaml"
 
 
-def load_style_presets(styles_path: Path | None = None) -> dict[str, dict[str, str]]:
+def load_instruction_templates(styles_path: Path | None = None) -> dict[str, str]:
     """
-    Load YAML style presets.
+    Load YAML instruction templates.
 
-    Defaults to ``lib/styles.yaml`` (the single canonical source).
+    Defaults to ``lib/styles.yaml`` (the single canonical source). Supports both:
+      - ``name: {instruct: "..."} `` (preferred)
+      - legacy ``name: {prefix: "...", suffix: "..."} `` (fallback)
+
     Returns ``{}`` if the file is missing or cannot be parsed.
     """
     path = styles_path or STYLES_YAML
@@ -648,10 +932,61 @@ def load_style_presets(styles_path: Path | None = None) -> dict[str, dict[str, s
     try:
         import yaml  # type: ignore
         with open(path) as fh:
-            return yaml.safe_load(fh) or {}
+            raw = yaml.safe_load(fh) or {}
     except Exception as exc:
         print(f"  WARNING: could not load styles.yaml ({path}): {exc}", file=sys.stderr)
         return {}
+
+    if not isinstance(raw, dict):
+        return {}
+
+    templates: dict[str, str] = {}
+    for key, value in raw.items():
+        name = str(key).strip()
+        if not name:
+            continue
+        if isinstance(value, str):
+            instruct = value.strip()
+        elif isinstance(value, dict):
+            instruct = str(value.get("instruct") or value.get("instruction") or "").strip()
+            if not instruct:
+                # Backward-compat fallback for older prefix/suffix entries.
+                prefix = str(value.get("prefix") or "").strip()
+                suffix = str(value.get("suffix") or "").strip()
+                instruct = " ".join(x for x in (prefix, suffix) if x)
+        else:
+            continue
+        if instruct:
+            templates[name] = instruct
+    return templates
+
+
+def resolve_instruction_template(
+    name: str | None,
+    styles_path: Path | None = None,
+) -> str | None:
+    """
+    Resolve a named instruction template to a concrete instruction string.
+    """
+    if not name:
+        return None
+    templates = load_instruction_templates(styles_path)
+    if name not in templates:
+        available = ", ".join(sorted(templates)) or "(none)"
+        print(
+            f"  WARNING: instruction template '{name}' not found. Available: {available}",
+            file=sys.stderr,
+        )
+        return None
+    return templates[name]
+
+
+def load_style_presets(styles_path: Path | None = None) -> dict[str, dict[str, str]]:
+    """
+    Backward-compatible alias for older imports.
+    """
+    templates = load_instruction_templates(styles_path)
+    return {name: {"instruct": instruct} for name, instruct in templates.items()}
 
 
 def apply_style(
@@ -662,35 +997,26 @@ def apply_style(
     prompt_suffix: str | None = None,
 ) -> str:
     """
-    Compose the final synthesis text:
-        style_prefix + prompt_prefix + text + prompt_suffix + style_suffix
+    Backward-compatible text compositor.
 
-    Both the style and manual prefix/suffix are optional.
+    Deprecated behavior: style_name is no longer injected into clone text.
+    Clone mode style should come from reference audio; instruction templates are
+    intended for CustomVoice/VoiceDesign instruct fields.
     """
-    style_prefix = style_suffix = ""
     if style_name:
-        presets = load_style_presets(styles_path)
-        if style_name not in presets:
-            available = ", ".join(sorted(presets)) or "(none)"
-            print(
-                f"  WARNING: style '{style_name}' not found. "
-                f"Available: {available}",
-                file=sys.stderr,
-            )
-        else:
-            style_prefix = presets[style_name].get("prefix", "")
-            style_suffix = presets[style_name].get("suffix", "")
+        _ = styles_path  # keep arg for compatibility
+        print(
+            "  WARNING: style text injection is deprecated and ignored; "
+            "use CustomVoice/VoiceDesign instruction templates instead.",
+            file=sys.stderr,
+        )
 
     parts = []
-    if style_prefix:
-        parts.append(style_prefix.rstrip())
     if prompt_prefix:
         parts.append(prompt_prefix.strip())
     parts.append(text)
     if prompt_suffix:
         parts.append(prompt_suffix.strip())
-    if style_suffix:
-        parts.append(style_suffix.strip())
     return " ".join(p for p in parts if p)
 
 
