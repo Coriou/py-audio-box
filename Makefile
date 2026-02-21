@@ -20,8 +20,12 @@ build-gpu:  ## Build the GPU (CUDA 12.4) image variant  →  voice-tools:cuda
 	docker compose -f docker-compose.yml -f docker-compose.gpu.yml build
 
 .PHONY: publish
-publish:  ## Build + push all images to GHCR  (cpu → latest, cuda → cuda)
+publish:  ## Build + push cpu (latest) and cuda images to GHCR
 	./scripts/publish.sh
+
+.PHONY: publish-all
+publish-all:  ## Build + push all three variants: latest, cuda, cuda128
+	./scripts/publish.sh all
 
 .PHONY: publish-cpu
 publish-cpu:  ## Build + push CPU image to GHCR  →  voice-tools:latest
