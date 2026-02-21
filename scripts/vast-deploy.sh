@@ -28,10 +28,12 @@
 #   GHCR_USER      GHCR username to authenticate as (default: Coriou)
 #
 # Search customisation:
-#   VAST_QUERY     override the GPU search query string (see: vastai search offers --help)
-#   VAST_IMAGE     override the Docker image to deploy  (default: ghcr.io/coriou/voice-tools:cuda)
-#   VAST_DISK      override disk size in GB             (default: 60)
-#   VAST_REPO      Git repo to clone into /app          (default: https://github.com/Coriou/py-audio-box)
+#   VAST_QUERY              override the GPU search query string (see: vastai search offers --help)
+#   VAST_IMAGE              override the Docker image to deploy  (default: ghcr.io/coriou/voice-tools:cuda)
+#   VAST_DISK               override disk size in GB             (default: 60)
+#   VAST_REPO               Git repo to clone into /app          (default: https://github.com/Coriou/py-audio-box)
+#   VAST_MAX_MONTHLY_PRICE  price ceiling in $/month (default: 20).  Prompts for confirmation
+#                           when the selected offer exceeds this.  Set to 0 to disable.
 #
 # Options:
 #   --tasks FILE     tasks file (one "./run-direct app [args]" per non-comment line)
@@ -42,14 +44,17 @@
 #   --no-pull        skip rsyncing /work back to work_remote/ after tasks
 #   --keep           don't destroy the instance when done (useful for debugging)
 #   --dry-run        print commands, touch nothing
+#   --yes            skip all interactive prompts (useful in CI / scripted pipelines)
 #   -h, --help       show this help
 #
 # Task file format (--tasks FILE):
 #   # comment lines are ignored
 #   voice-register --url "https://youtu.be/XXXX" --voice-name myvoice --text "Hello."
 #   voice-synth speak --voice myvoice --text "Generated on vast.ai"
+#   !bash /app/tests/remote/run-all.sh       # raw shell command (! prefix bypasses run-direct)
 #
-# Each line becomes:  ./run-direct <line>  executed on the remote instance.
+# Each line becomes:  ./run-direct <line>  on the remote instance,
+# UNLESS the line starts with '!' — then it is run as a raw shell command.
 
 set -euo pipefail
 
@@ -92,6 +97,12 @@ PUSH_CACHE_SRC=""
 PUSH_WORK_SRC=""
 KEEP=0
 DRY_RUN=0
+ASKED_CONFIRM=0  # 1 once the user has already said yes to a price prompt
+
+# Maximum price guard: prompt (or abort) when the selected offer costs more than
+# this many dollars per month.  Set to 0 to disable the guard entirely.
+# Override via VAST_MAX_MONTHLY_PRICE env var (e.g. in .env).
+MAX_MONTHLY_PRICE="${VAST_MAX_MONTHLY_PRICE:-20}"
 
 # GHCR credentials: when set, passed as --login so the remote host authenticates
 # against ghcr.io instead of pulling anonymously (removes rate-limiting / slow CDN).
@@ -120,6 +131,7 @@ while [[ $# -gt 0 ]]; do
     --push-work)      PUSH_WORK_SRC="$2"; shift 2 ;;
     --keep)           KEEP=1; shift ;;
     --dry-run)        DRY_RUN=1; shift ;;
+    --yes|-y)         ASKED_CONFIRM=1; shift ;;
     -h|--help)
       sed -n '/^# Usage:/,/^[^#]/p' "$0" | head -n -1 | sed 's/^# \?//'
       exit 0
@@ -410,6 +422,36 @@ ok "Found offer ${OFFER_ID}"
 printf "     GPU       : ${CYAN}%s${RESET}  (%s GB VRAM)\n" "$OFFER_GPU" "$OFFER_RAM"
 printf "     price     : \$%s/hr   value: %s DLPerf/\$\n" "$OFFER_DPH" "$OFFER_VALUE"
 
+# ── price guard ────────────────────────────────────────────────────────────────
+# Compare the offer's hourly rate against the monthly ceiling.
+# $X/mo ÷ 730 h/mo = hourly equivalent threshold.
+if [[ $DRY_RUN -eq 0 && "$MAX_MONTHLY_PRICE" != "0" ]]; then
+  # bc may not be installed everywhere; use awk for portable float arithmetic.
+  MAX_DPH=$(awk -v mo="$MAX_MONTHLY_PRICE" 'BEGIN { printf "%.6f", mo / 730 }')
+  OFFER_MO=$(awk -v h="$OFFER_DPH" 'BEGIN { printf "%.2f", h * 730 }')
+  EXCEEDS=$(awk -v a="$OFFER_DPH" -v b="$MAX_DPH" 'BEGIN { print (a > b) ? 1 : 0 }')
+  if [[ "$EXCEEDS" -eq 1 ]]; then
+    printf "\n"
+    printf "  ${YELLOW}${BOLD}⚠  Price warning${RESET}\n"
+    printf "     Selected offer costs ${RED}\$%s/hr${RESET} (~${RED}\$%s/mo${RESET}).\n" "$OFFER_DPH" "$OFFER_MO"
+    printf "     Your ceiling is ${YELLOW}\$%s/mo${RESET} (\$%s/hr)  [VAST_MAX_MONTHLY_PRICE=%s].\n" \
+      "$MAX_MONTHLY_PRICE" "$MAX_DPH" "$MAX_MONTHLY_PRICE"
+    printf "\n"
+    if [[ $ASKED_CONFIRM -eq 0 ]]; then
+      printf "  Proceed anyway? [y/N] "
+      read -r CONFIRM </dev/tty
+      case "$CONFIRM" in
+        [yY]|[yY][eE][sS]) ok "Confirmed — continuing."; printf "\n" ;;
+        *) die "Aborted by user (price \$${OFFER_MO}/mo exceeds ceiling \$${MAX_MONTHLY_PRICE}/mo).\n  Raise the ceiling: VAST_MAX_MONTHLY_PRICE=${OFFER_MO} or relax VAST_QUERY."
+        ;;
+      esac
+    else
+      warn "Price exceeds ceiling but --yes was set — continuing."
+      printf "\n"
+    fi
+  fi
+fi
+
 # ── 2. create instance ────────────────────────────────────────────────────────
 log "Provisioning instance"
 
@@ -566,12 +608,24 @@ else
     printf "\n${BOLD}  [%d/%d]${RESET}  %s\n" "$TASK_NUM" "${#TASKS[@]}" "$task"
     hr
     if [[ $DRY_RUN -eq 1 ]]; then
-      printf "${DIM}  [dry] ssh … ./run-direct %s${RESET}\n" "$task"
+      if [[ "$task" == '!'* ]]; then
+        printf "${DIM}  [dry] ssh … %s${RESET}\n" "${task#!}"
+      else
+        printf "${DIM}  [dry] ssh … ./run-direct %s${RESET}\n" "$task"
+      fi
     else
-      # run_ssh executes the task; output streams directly to the caller's terminal
-      run_ssh "cd /app && ./run-direct ${task}" || {
-        warn "Task ${TASK_NUM} exited non-zero — continuing with remaining tasks."
-      }
+      # Tasks prefixed with '!' bypass ./run-direct and run as raw shell commands.
+      # Example task entry:  '!bash /app/tests/remote/run-all.sh'
+      if [[ "$task" == '!'* ]]; then
+        run_ssh "cd /app && ${task#!}" || {
+          warn "Task ${TASK_NUM} exited non-zero — continuing with remaining tasks."
+        }
+      else
+        # run_ssh executes the task; output streams directly to the caller's terminal
+        run_ssh "cd /app && ./run-direct ${task}" || {
+          warn "Task ${TASK_NUM} exited non-zero — continuing with remaining tasks."
+        }
+      fi
     fi
   done
   hr
