@@ -139,15 +139,22 @@ if [[ ${#TASKS[@]} -eq 0 && $SHELL_MODE -eq 0 ]]; then
 fi
 
 # ── resolve SSH key ────────────────────────────────────────────────────────────
+# VAST_SSH_KEY env var (set in .env) takes precedence over --ssh-key and auto-detect.
+# It must match the public key registered in your vast.ai account settings.
+if [[ -z "$SSH_KEY" && -n "${VAST_SSH_KEY:-}" ]]; then
+  SSH_KEY="${VAST_SSH_KEY}"
+  # expand tilde manually (env vars loaded via `source` don't get tilde expansion)
+  SSH_KEY="${SSH_KEY/#\~/$HOME}"
+fi
 if [[ -z "$SSH_KEY" ]]; then
-  for candidate in ~/.ssh/id_ed25519 ~/.ssh/id_rsa ~/.ssh/id_ecdsa ~/.ssh/id_dsa; do
+  for candidate in ~/.ssh/ssh_key ~/.ssh/id_rsa ~/.ssh/id_ed25519 ~/.ssh/id_ecdsa ~/.ssh/id_dsa; do
     if [[ -f "$candidate" ]]; then
       SSH_KEY="$candidate"
       break
     fi
   done
 fi
-[[ -n "$SSH_KEY" && -f "$SSH_KEY" ]] || die "No SSH private key found.  Use --ssh-key PATH."
+[[ -n "$SSH_KEY" && -f "$SSH_KEY" ]] || die "No SSH private key found.  Set VAST_SSH_KEY in .env or use --ssh-key PATH."
 
 # ── job name ───────────────────────────────────────────────────────────────────
 [[ -z "$JOB_NAME" ]] && JOB_NAME="py-audio-box-$(date +%Y%m%d_%H%M%S)"
@@ -348,7 +355,7 @@ printf "     price     : \$%s/hr\n" "$OFFER_DPH"
 log "Provisioning instance"
 
 # On-start: clone the public repo into /app (or pull if already there from a previous run)
-ONSTART_CMD="git clone --depth=1 ${REPO_URL} /app 2>/dev/null; git -C /app pull --ff-only 2>/dev/null || true; mkdir -p /work /cache; chmod +x /app/run-direct 2>/dev/null || true"
+ONSTART_CMD="chmod 700 /root/.ssh 2>/dev/null; chmod 600 /root/.ssh/authorized_keys 2>/dev/null; git clone --depth=1 ${REPO_URL} /app 2>/dev/null; git -C /app pull --ff-only 2>/dev/null || true; mkdir -p /work /cache; chmod +x /app/run-direct 2>/dev/null || true"
 
 # Build create-instance args.
 # --cancel-unavail: if the offer was rented between search and create, return an
