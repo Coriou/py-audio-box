@@ -77,35 +77,46 @@ RUN --mount=type=cache,target=/root/.cache/pip \
 #
 #   cpu    — no-op; CPU wheels already installed by Poetry above.
 #
-#   cu124  — pin torch==2.6.0 (latest available on the cu124 index) so the
-#            flash-attn prebuilt wheel can be installed.  flash-attn 2.8.3
-#            ships a pre-compiled cp311 wheel for exactly cu12+torch2.6 —
-#            this is the primary reason we cannot just grab "latest" torch.
-#            Without flash-attn, qwen_tts's custom attention layers skip GPU
-#            kernels entirely and run on CPU (0% GPU utilisation, RTF ~1×).
+#   cu124  — pin torch==2.6.0 then build flash-attn from source with
+#            --no-build-isolation.  Building from source (rather than using
+#            a pre-built wheel) guarantees the C++ ABI of flash_attn's CUDA
+#            extension matches the torch it is compiled against.  Pre-built
+#            wheels with cxx11abiFALSE/TRUE suffixes are unreliable: a
+# torch / flash-attn install strategy per COMPUTE variant:
+#
+#   cpu    — no-op; CPU wheels already installed by Poetry above.
+#
+#   cu124  — pin torch==2.6.0, then install flash-attn from the pre-built wheel.
+#            The wheel variant to try is cxx11abiTRUE.  Counterintuitively,
+#            pip-distributed torch 2.6.0+cu124 on Linux reports
+#            _GLIBCXX_USE_CXX11_ABI=False via Python, but its shared libraries
+#            (libc10.so, etc.) export the cxx11 ABI variants of c10::Error and
+#            similar symbols.  The "cxx11abiFALSE" wheel references non-cxx11
+#            symbol names which are absent, causing "undefined symbol" at import.
+#            Using cxx11abiTRUE resolves this.
+#            If the pre-built wheel still fails on a new instance, fall back to
+#            building from source (see comments in vast-deploy.sh).
 #
 #   cu128+ — install latest torch from the given index.  No flash-attn wheel
 #            exists for these variants (SM 12.0 / Blackwell consumer GPUs have
 #            separate kernel-dispatch issues regardless).
 ARG COMPUTE=cpu
-# FLASH_ATTN_WHEEL is the exact prebuilt binary wheel URL for cu124+torch2.6+py311.
-# It must be updated in lockstep whenever TORCH_CU124_VERSION changes.
 ARG TORCH_CU124_VERSION=2.6.0
-ARG FLASH_ATTN_WHEEL=https://github.com/Dao-AILab/flash-attention/releases/download/v2.8.3/flash_attn-2.8.3+cu12torch2.6cxx11abiFALSE-cp311-cp311-linux_x86_64.whl
+ARG FLASH_ATTN_WHEEL=https://github.com/Dao-AILab/flash-attention/releases/download/v2.8.3/flash_attn-2.8.3+cu12torch2.6cxx11abiTRUE-cp311-cp311-linux_x86_64.whl
 
 RUN --mount=type=cache,target=/root/.cache/pip \
   if [ "${COMPUTE}" = "cu124" ]; then \
-    echo "==> Upgrading torch/torchaudio → CUDA cu124 (pinned ${TORCH_CU124_VERSION}) …" \
-    && pip install --force-reinstall \
-      "torch==${TORCH_CU124_VERSION}" "torchaudio==${TORCH_CU124_VERSION}" \
-      --index-url "https://download.pytorch.org/whl/cu124" \
-    && echo "==> Installing flash-attn (prebuilt wheel for cu12+torch${TORCH_CU124_VERSION}+cp311) …" \
-    && pip install --no-build-isolation "${FLASH_ATTN_WHEEL}"; \
+  echo "==> Upgrading torch/torchaudio → CUDA cu124 (pinned ${TORCH_CU124_VERSION}) …" \
+  && pip install --force-reinstall \
+  "torch==${TORCH_CU124_VERSION}" "torchaudio==${TORCH_CU124_VERSION}" \
+  --index-url "https://download.pytorch.org/whl/cu124" \
+  && echo "==> Installing flash-attn (cxx11abiTRUE wheel for cu12+torch${TORCH_CU124_VERSION}+cp311) …" \
+  && pip install --no-build-isolation "${FLASH_ATTN_WHEEL}"; \
   elif [ "${COMPUTE}" != "cpu" ]; then \
-    echo "==> Upgrading torch/torchaudio → CUDA ${COMPUTE} wheels (latest) …" \
-    && pip install --force-reinstall \
-      "torch" "torchaudio" \
-      --index-url "https://download.pytorch.org/whl/${COMPUTE}"; \
+  echo "==> Upgrading torch/torchaudio → CUDA ${COMPUTE} wheels (latest) …" \
+  && pip install --force-reinstall \
+  "torch" "torchaudio" \
+  --index-url "https://download.pytorch.org/whl/${COMPUTE}"; \
   fi
 
 # Copy the rest of the source
