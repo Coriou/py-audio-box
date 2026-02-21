@@ -467,7 +467,11 @@ fi
 log "Provisioning instance"
 
 # On-start: clone the public repo into /app (or pull if already there from a previous run)
-ONSTART_CMD="chmod 700 /root/.ssh 2>/dev/null; chmod 600 /root/.ssh/authorized_keys 2>/dev/null; git clone --depth=1 ${REPO_URL} /app 2>/dev/null; git -C /app pull --ff-only 2>/dev/null || true; mkdir -p /work /cache; chmod +x /app/run-direct 2>/dev/null || true"
+# The Docker image bakes /app from COPY . /app, including .git with a local SSH remote.
+# On the instance that SSH alias doesn't resolve, so plain 'git pull' fails silently.
+# Fix: force the remote URL to HTTPS, then fetch+reset so we always have the latest commit.
+_GIT_SYNC="git -C /app remote set-url origin ${REPO_URL} 2>/dev/null; git -C /app fetch --depth=1 origin main 2>/dev/null && git -C /app reset --hard FETCH_HEAD 2>/dev/null || (rm -rf /app 2>/dev/null; git clone --depth=1 ${REPO_URL} /app 2>/dev/null) || true"
+ONSTART_CMD="chmod 700 /root/.ssh 2>/dev/null; chmod 600 /root/.ssh/authorized_keys 2>/dev/null; ${_GIT_SYNC}; mkdir -p /work /cache; chmod +x /app/run-direct 2>/dev/null || true"
 
 # Build create-instance args.
 # --cancel-unavail: if the offer was rented between search and create, return an
@@ -539,7 +543,8 @@ fi
 if [[ $NO_CLONE -eq 0 ]]; then
   log "Cloning ${REPO_URL} → /app"
   if [[ $DRY_RUN -eq 0 ]]; then
-    run_ssh "git clone --depth=1 ${REPO_URL} /app 2>/dev/null; git -C /app pull --ff-only 2>/dev/null || true; mkdir -p /work /cache; chmod +x /app/run-direct 2>/dev/null || true"
+    # Force HTTPS remote URL (the baked-in .git may have a local SSH alias) then fetch+reset.
+    run_ssh "git -C /app remote set-url origin ${REPO_URL} 2>/dev/null || true; git -C /app fetch --depth=1 origin main && git -C /app reset --hard FETCH_HEAD || (rm -rf /app && git clone --depth=1 ${REPO_URL} /app); mkdir -p /work /cache; chmod +x /app/run-direct 2>/dev/null || true"
   else
     printf "${DIM}  [dry] ssh git clone/pull %s → /app${RESET}\n" "$REPO_URL"
   fi
