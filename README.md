@@ -18,6 +18,43 @@ make build        # build the shared CPU image (~5 min, cached on rebuild)
 
 ---
 
+## Published images (`ghcr.io/coriou/voice-tools`)
+
+| Tag | PyTorch | CUDA toolkit | flash-attn | GPU support | Notes |
+|---|---|---|---|---|---|
+| `latest` | 2.10.0+cpu | — | — | None (CPU only) | Default; runs on any linux/amd64 host |
+| `cuda` | 2.6.0+cu124 | CUDA 12.4 | ✅ 2.8.3 | **SM 7.0 – SM 9.0** (Volta → Hopper) | **Recommended for GPU inference.** flash-attn active on SM 8.0+ (Ampere/Ada/Hopper); SM 7.x falls back to sdpa |
+| `cuda128` | 2.10.0+cu128 | CUDA 12.8 | ❌ | SM 8.0+ (intended: SM 10.0 data-centre Blackwell) | No flash-attn wheel exists for torch 2.10+cu128. Consumer Blackwell (SM 12.0 — RTX 50-series) has additional kernel dispatch issues and is not recommended |
+
+**GPU architecture quick-reference:**
+
+| SM | Architecture | Example cards | `:cuda` | `:cuda128` |
+|---|---|---|---|---|
+| 7.0 | Volta | V100 | ✅ (sdpa) | — |
+| 7.5 | Turing | RTX 2080, T4 | ✅ (sdpa) | — |
+| 8.0 | Ampere | A100 | ✅ **flash-attn** | ✅ (sdpa) |
+| 8.6 | Ampere | RTX 3090 | ✅ **flash-attn** | ✅ (sdpa) |
+| 8.9 | Ada Lovelace | RTX 4090, L40 | ✅ **flash-attn** | ✅ (sdpa) |
+| 9.0 | Hopper | H100, H200 | ✅ **flash-attn** | ✅ (sdpa) |
+| 10.0 | Blackwell DC | B200, GB200 | — | ✅ (sdpa) |
+| 12.0 | Blackwell consumer | RTX 5070 Ti / 5080 / 5090 | — | ⚠️ broken |
+
+> **Why does flash-attn matter?** Qwen3-TTS has custom attention layers that bypass PyTorch's
+> normal attention dispatch. Without flash-attn installed, those layers fall back to a Python
+> CPU loop — yielding ~0% GPU utilisation and ~1× RTF regardless of how powerful the GPU is.
+> With flash-attn on an RTX 4090 (SM 8.9) expect **30–100× RTF** on typical TTS workloads.
+>
+> flash-attn requires **SM 8.0+ (Ampere or newer)**. On older cards (SM 7.x) the `:cuda` image
+> still works but uses sdpa attention, which is slower.
+
+```bash
+docker pull ghcr.io/coriou/voice-tools:latest    # CPU
+docker pull ghcr.io/coriou/voice-tools:cuda       # GPU — Volta through Hopper (recommended)
+docker pull ghcr.io/coriou/voice-tools:cuda128    # GPU — data-centre Blackwell
+```
+
+---
+
 ## Platforms
 
 ### CPU (default — works everywhere)
@@ -118,6 +155,22 @@ Timestamp formats: `90` (seconds), `1:30` (MM:SS), `1:30.5`, `1:02:30` (HH:MM:SS
 ./run voice-synth speak --voice david-attenborough --text "..." --variants 4 --qa
 ./run voice-synth speak --voice david-attenborough --tone excited --text "..."
 ./run voice-synth list-voices
+
+# Qwen3 built-in CustomVoice speakers
+./run voice-synth list-speakers
+./run voice-synth speak --speaker Ryan --text "Welcome." --instruct "Warm, confident newsreader delivery"
+
+# Register built-in speaker profiles as named voices (Phase 2)
+./run voice-synth register-builtin --voice-name newsroom --speaker Ryan \
+  --instruct-default "Calm, clear and warm delivery"
+./run voice-synth register-builtin --voice-name newsroom --speaker Ryan \
+  --tone promo --tone-instruct "Energetic, upbeat promo read"
+./run voice-synth speak --voice newsroom --text "Top story tonight."
+./run voice-synth speak --voice newsroom --tone promo --text "Breaking update."
+
+# JSON output for agents / APIs
+./run voice-synth list-voices --json
+./run voice-synth list-speakers --json
 ```
 
 ### Extract voice clips only (no synthesis)
@@ -247,7 +300,7 @@ A **slug** is lowercase ASCII with hyphens (e.g. `david-attenborough`).
 ```
 /cache/voices/
   david-attenborough/
-    voice.json          ← identity, source info, ref metadata, prompt index
+    voice.json          ← identity + engine profile (clone/designed/custom_voice)
     source_clip.wav     ← raw clip from voice-split (44.1 kHz)
     ref.wav             ← processed 24 kHz segment from voice-clone
     prompts/
@@ -271,6 +324,11 @@ Each stage is optional — a voice progresses from `source_clip.wav` → `ref.wa
 
 # Step 3 — fast synthesis (model load + generate only, no VAD or Whisper)
 ./run voice-synth speak --voice david-attenborough --text "..."
+
+# Alternate Step 3 — register/use a built-in profile under the same named-voice UX
+./run voice-synth register-builtin --voice-name newsroom --speaker Ryan \
+  --instruct-default "Calm, clear and warm delivery"
+./run voice-synth speak --voice newsroom --text "Top story tonight."
 
 # ── Or do all three steps with one command ────────────────────────────────────
 ./run voice-register \
@@ -419,6 +477,15 @@ make clean-cache            Wipe ./cache/ — models and downloads will re-run
 make publish                Build + push all images to GHCR (cpu → latest, cuda → cuda)
 make publish-cpu            Build + push CPU image only
 make publish-cuda           Build + push CUDA image only
+make pull                   Pull /work/ from remote host into ./work_remote/  (requires REMOTE_HOST=...)
+make push-code              Push local repo to remote /app/  (requires REMOTE_HOST=...)
+```
+
+Remote sync examples:
+
+```
+make pull REMOTE_HOST=root@1.2.3.4 REMOTE_PORT=22222
+make push-code REMOTE_HOST=root@1.2.3.4 REMOTE_PORT=22222
 ```
 
 App shortcuts (pass extra flags via `ARGS=`):
@@ -445,5 +512,6 @@ When an AI agent or script works with this repo:
 - **Check `--help` first.** Every script uses `ArgumentDefaultsHelpFormatter`; `./run <app> --help` is always the authoritative reference for flags and defaults.
 - **Output is always in `./work/`** (mounted at `/work`) unless `--out` is overridden. Look there for results.
 - **Prefer `--voice <slug>` over `--ref-audio <path>`.** Named voice slugs are the canonical way to reference voices across all apps. Run `./run voice-synth list-voices` to enumerate available voices. Register a new voice with `--voice-name <slug>` on `voice-split`, `voice-clone synth`, or `voice-synth design-voice`. When `--voice <slug>` is used with `voice-clone synth`, the built prompt is automatically registered back to that voice — no separate `--voice-name` needed.
+- **Built-in voices can also be named voices.** Use `./run voice-synth register-builtin --voice-name <slug> --speaker <name>` to store CustomVoice profiles in the same registry, then call them with `./run voice-synth speak --voice <slug> ...`.
 - **Use `voice-register` for one-shot pipeline runs.** `./run voice-register --url "..." --voice-name <slug> --text "..."` (YouTube) or `./run voice-register --audio /work/file.wav --voice-name <slug> --text "..."` (local file) chain voice-split → voice-clone synth and leave a fully synthesis-ready voice in a single command. Pass `--start`/`--end` (e.g. `--start 1:30 --end 5:00`) to trim the source before processing. Re-runs are safe and cached.
 - **GPU mode is opt-in.** Prefix any `./run` command with `TOOLBOX_VARIANT=gpu` to use the GPU image (requires `make build-gpu` once). On Windows PowerShell use `$env:TOOLBOX_VARIANT = "gpu"` then the normal `.\run.ps1` command. No `--dtype` flag needed; dtype is chosen automatically.
