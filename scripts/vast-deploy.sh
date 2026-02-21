@@ -197,14 +197,14 @@ trap 'exit 130' INT TERM
 # ── helpers ────────────────────────────────────────────────────────────────────
 instance_status() {
   # `vastai show instance <ID> --raw` returns a single JSON object (not an array).
-  # Returns empty/null right after creation — treat that as 'scheduling'.
+  # The `status` field is ALWAYS null — the real field is `actual_status`.
   local raw
   raw=$("$VAST_CLI" show instance "$1" --raw 2>/dev/null) || { echo "unknown"; return; }
-  echo "$raw" | jq -r '.status // "unknown"'
+  echo "$raw" | jq -r '.actual_status // "unknown"'
 }
 
 instance_json() {
-  # Returns the instance object directly.
+  # `vastai show instance <ID> --raw` returns a plain JSON object directly.
   "$VAST_CLI" show instance "$1" --raw 2>/dev/null
 }
 
@@ -308,7 +308,7 @@ info "order: cheapest first (dph+)"
 
 OFFER_JSON=$(
   "$VAST_CLI" search offers "$QUERY" \
-    --order 'dph+' \
+    --order 'dph_total_adj+' \
     --raw 2>/dev/null
 )
 
@@ -324,9 +324,10 @@ else
 
   OFFER_ID=$(  echo "$OFFER_JSON" | jq -r '.[0].id')
   OFFER_GPU=$( echo "$OFFER_JSON" | jq -r '.[0].gpu_name // "unknown"')
-  OFFER_DPH=$( echo "$OFFER_JSON" | jq -r '.[0].dph_total // .[0].dph // 0' | xargs printf "%.4f")
+  # dph_total_adj includes estimated bandwidth costs — matches what the UI shows
+  OFFER_DPH=$( echo "$OFFER_JSON" | jq -r '.[0].dph_total_adj // .[0].dph_total // 0' | xargs printf "%.4f")
   # gpu_ram is in MB — convert to GB for display
-  OFFER_RAM=$( echo "$OFFER_JSON" | jq -r '.[0].gpu_ram // 0 | . / 1024 | floor')
+  OFFER_RAM=$( echo "$OFFER_JSON" | jq -r '(.[0].gpu_ram // 0) / 1024 | round')
   OFFER_VCPU=$(echo "$OFFER_JSON" | jq -r '.[0].cpu_cores_effective // 0' | xargs printf "%.0f")
 fi
 
