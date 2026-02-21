@@ -60,6 +60,11 @@ RUN --mount=type=cache,target=/root/.cache/pypoetry \
   --mount=type=cache,target=/root/.cache/pip \
   poetry install --no-root --sync
 
+# Install vastai CLI via pip (kept outside Poetry to avoid ancient pandas
+# transitive dep — pip resolves modern pre-built wheels automatically).
+RUN --mount=type=cache,target=/root/.cache/pip \
+  pip install vastai
+
 # ── GPU variant: upgrade torch/torchaudio to CUDA-enabled wheels ───────────────
 # ARG declared here (not at the top) so that the apt + Poetry layers above are
 # NOT invalidated when COMPUTE changes — only this layer and below re-run.
