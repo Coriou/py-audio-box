@@ -19,6 +19,13 @@
 #
 # Environment:
 #   VAST_API_KEY   required — your vast.ai API key (console.vast.ai → CLI)
+#   GHCR_TOKEN     recommended — GitHub PAT with read:packages scope so the remote host
+#                  pulls ghcr.io as YOU rather than anonymously. Anonymous GHCR pulls are
+#                  rate-limited and slow (~3 MB/s); authenticated pulls are full-speed.
+#                  To create: github.com → Settings → Developer settings → Personal access
+#                  tokens → Tokens (classic) → read:packages. Add to .env:
+#                    GHCR_TOKEN=ghp_xxxxxxxxxxxx
+#   GHCR_USER      GHCR username to authenticate as (default: Coriou)
 #
 # Search customisation:
 #   VAST_QUERY     override the GPU search query string (see: vastai search offers --help)
@@ -85,6 +92,11 @@ PUSH_CACHE_SRC=""
 PUSH_WORK_SRC=""
 KEEP=0
 DRY_RUN=0
+
+# GHCR credentials: when set, passed as --login so the remote host authenticates
+# against ghcr.io instead of pulling anonymously (removes rate-limiting / slow CDN).
+GHCR_USER="${GHCR_USER:-Coriou}"
+GHCR_TOKEN="${GHCR_TOKEN:-}"
 
 # Default GPU search query: reliable Ampere/Ada GPU with enough VRAM for Qwen-TTS,
 # fast inet, and enough disk; ordered cheapest-first.
@@ -418,6 +430,15 @@ CREATE_ARGS=(
   --onstart-cmd "$ONSTART_CMD"
   --raw
 )
+
+# Pass GHCR credentials so the host pulls as an authenticated user, not anonymous.
+# Anonymous GHCR pulls hit rate limits and are served by a slower CDN tier.
+if [[ -n "$GHCR_TOKEN" && "$DEPLOY_IMAGE" == ghcr.io/* ]]; then
+  CREATE_ARGS+=(--login "-u ${GHCR_USER} -p ${GHCR_TOKEN} ghcr.io")
+  info "Using authenticated GHCR pull (user: ${GHCR_USER})"
+else
+  warn "GHCR_TOKEN not set — image will be pulled anonymously (may be slow). Add GHCR_TOKEN to .env"
+fi
 
 if [[ $DRY_RUN -eq 1 ]]; then
   printf "${DIM}  [dry] vast %s${RESET}\n" "${CREATE_ARGS[*]}"
