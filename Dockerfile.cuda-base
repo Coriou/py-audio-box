@@ -1,0 +1,90 @@
+# Dockerfile.cuda-base — CUDA 12.4 base image (heavy layer, rarely rebuilt)
+#
+# Contains all Python + CUDA + ML dependencies but NO app source code.
+# This image is published as ghcr.io/coriou/voice-tools:cuda-base and changes
+# only when pyproject.toml / poetry.lock / torch version / flash-attn change.
+#
+# Build & push:
+#   make publish-cuda-base               (first time, or on dep upgrades)
+#
+# Then build the thin app image on top:
+#   make publish-cuda                    (every code change — pulls ~50 MB)
+
+FROM python:3.11-slim-bookworm
+
+LABEL org.opencontainers.image.source="https://github.com/Coriou/py-audio-box"
+LABEL org.opencontainers.image.description="ML/audio toolbox — CUDA 12.4 base (deps only, no app src)"
+LABEL org.opencontainers.image.licenses="MIT"
+
+ARG POETRY_VERSION=1.8.3
+
+ENV \
+  PYTHONDONTWRITEBYTECODE=1 \
+  PYTHONUNBUFFERED=1 \
+  PIP_DISABLE_PIP_VERSION_CHECK=1 \
+  PIP_NO_CACHE_DIR=1 \
+  POETRY_NO_INTERACTION=1 \
+  POETRY_VIRTUALENVS_CREATE=false \
+  POETRY_CACHE_DIR=/root/.cache/pypoetry
+
+# --- OS deps ---
+RUN apt-get update && apt-get install -y --no-install-recommends \
+  ca-certificates \
+  curl \
+  git \
+  rsync \
+  ffmpeg \
+  sox \
+  coreutils \
+  tini \
+  jq \
+  nodejs \
+  vim \
+  htop \
+  && rm -rf /var/lib/apt/lists/*
+
+# Install Poetry (pinned)
+RUN curl -sSL https://install.python-poetry.org | python3 - --version ${POETRY_VERSION} \
+  && /root/.local/bin/poetry --version
+
+ENV PATH="/root/.local/bin:${PATH}"
+
+# Copy only dependency manifests (for layer caching)
+COPY pyproject.toml poetry.lock* /app/
+WORKDIR /app
+
+# Install Python deps into system site-packages
+RUN --mount=type=cache,target=/root/.cache/pypoetry \
+  --mount=type=cache,target=/root/.cache/pip \
+  poetry install --no-root --sync
+
+# Install vastai CLI
+RUN --mount=type=cache,target=/root/.cache/pip \
+  pip install vastai
+
+# ── CUDA 12.4: torch + flash-attn ─────────────────────────────────────────────
+# Pinned to known-good versions. Update poetry.lock + bump these ARGs together.
+ARG TORCH_VERSION=2.6.0
+ARG FLASH_ATTN_WHEEL=https://github.com/Dao-AILab/flash-attention/releases/download/v2.8.3/flash_attn-2.8.3+cu12torch2.6cxx11abiTRUE-cp311-cp311-linux_x86_64.whl
+
+RUN --mount=type=cache,target=/root/.cache/pip \
+  pip install --force-reinstall \
+  "torch==${TORCH_VERSION}" "torchaudio==${TORCH_VERSION}" \
+  --index-url "https://download.pytorch.org/whl/cu124" \
+  && pip install --no-build-isolation "${FLASH_ATTN_WHEEL}"
+
+# Persistent-volume mount targets + disable vast.ai auto-tmux
+RUN mkdir -p /work /cache && touch /root/.no_auto_tmux
+
+# Runtime environment — all paths point to /cache so model weights land in the
+# persistent volume when one is attached at /cache.
+ENV XDG_CACHE_HOME=/cache \
+  HF_HOME=/cache/huggingface \
+  TORCH_HOME=/cache/torch \
+  TORCH_DEVICE=cuda \
+  HF_HUB_DISABLE_XET_TRANSPORT=1 \
+  TORCH_COMPUTE=cu124
+
+WORKDIR /app
+ENTRYPOINT ["/usr/bin/tini", "--"]
+CMD ["bash"]

@@ -18,17 +18,20 @@
 #   Use --allow-dirty to override (no immutable SHA tag will be pushed).
 #
 # Images pushed:
-#   ghcr.io/coriou/voice-tools:latest     CPU  (any linux/amd64 host)
-#   ghcr.io/coriou/voice-tools:cuda       GPU  (CUDA 12.4, Volta SM 7.0+)
-#   ghcr.io/coriou/voice-tools:cuda128    GPU  (CUDA 12.8, Blackwell SM 10.0+)
+#   ghcr.io/coriou/voice-tools:latest      CPU  (any linux/amd64 host)
+#   ghcr.io/coriou/voice-tools:cuda-base   GPU base — torch+flash-attn, no app src (~4 GB, rarely rebuilt)
+#   ghcr.io/coriou/voice-tools:cuda        GPU app  — FROM cuda-base + COPY app (~50 MB, rebuilt on code change)
+#   ghcr.io/coriou/voice-tools:cuda128     GPU  (CUDA 12.8, Blackwell SM 10.0+)
+#
+# Two-step CUDA workflow:
+#   make publish-cuda-base   ← run once (or when deps/torch/flash-attn change)
+#   make publish-cuda        ← run on every code change (fast: only 50 MB layer)
 #
 # Each clean build also pushes an immutable SHA tag for pinning:
 #   ghcr.io/coriou/voice-tools:latest-<sha>
+#   ghcr.io/coriou/voice-tools:cuda-base-<sha>
 #   ghcr.io/coriou/voice-tools:cuda-<sha>
 #   ghcr.io/coriou/voice-tools:cuda128-<sha>
-#
-# CPU is always built first — its layers are cached so the CUDA builds only
-# need to push the thin CUDA-swap delta (~2 GB vs ~6 GB total).
 
 set -euo pipefail
 
@@ -60,7 +63,7 @@ ALLOW_DIRTY=0
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    cpu|cuda|cuda128|all) VARIANTS+=("$1"); shift ;;
+    cpu|cuda-base|cuda|cuda128|all) VARIANTS+=("$1"); shift ;;
     --no-cache)    NO_CACHE="--no-cache"; shift ;;
     --tag)         EXTRA_TAG="$2"; shift 2 ;;
     --tag=*)       EXTRA_TAG="${1#--tag=}"; shift ;;
@@ -78,14 +81,14 @@ done
 
 # Expand "all"
 for i in "${!VARIANTS[@]}"; do
-  [[ "${VARIANTS[$i]}" == "all" ]] && { VARIANTS=(cpu cuda cuda128); break; }
+  [[ "${VARIANTS[$i]}" == "all" ]] && { VARIANTS=(cpu cuda-base cuda cuda128); break; }
 done
 
 # Deduplicate while preserving order: cpu always before cuda variants (cache efficiency)
 # (bash 3 compatible — no associative arrays)
 _contains() { local needle="$1"; shift; for el in "$@"; do [[ "$el" == "$needle" ]] && return 0; done; return 1; }
 ordered=()
-for v in cpu cuda cuda128; do
+for v in cpu cuda-base cuda cuda128; do
   for want in "${VARIANTS[@]}"; do
     if [[ "$want" == "$v" ]] && ! _contains "$v" "${ordered[@]+"${ordered[@]}"}"; then
       ordered+=("$v")
@@ -138,13 +141,19 @@ build_variant() {
   local stable_tag
   local -a extra_args=()
 
+  local dockerfile="Dockerfile"
   case "$variant" in
     cpu)
       stable_tag="${REGISTRY}:latest"
       ;;
+    cuda-base)
+      stable_tag="${REGISTRY}:cuda-base"
+      dockerfile="Dockerfile.cuda-base"
+      ;;
     cuda)
       stable_tag="${REGISTRY}:cuda"
-      extra_args+=(--build-arg COMPUTE=cu124)
+      # Thin app layer — FROM cuda-base + COPY . /app (~50 MB)
+      dockerfile="Dockerfile.cuda"
       ;;
     cuda128)
       stable_tag="${REGISTRY}:cuda128"
@@ -159,6 +168,7 @@ build_variant() {
   local -a cmd=(
     docker buildx build
     --platform "$PLATFORM"
+    -f "$dockerfile"
     -t "$stable_tag"
   )
 
@@ -211,9 +221,10 @@ else
   printf "${DIM}  Pull the latest:${RESET}\n"
   for v in "${VARIANTS[@]}"; do
     case "$v" in
-      cpu)     printf "    docker pull ${CYAN}${REGISTRY}:latest${RESET}\n" ;;
-      cuda)    printf "    docker pull ${CYAN}${REGISTRY}:cuda${RESET}\n" ;;
-      cuda128) printf "    docker pull ${CYAN}${REGISTRY}:cuda128${RESET}\n" ;;
+      cpu)       printf "    docker pull ${CYAN}${REGISTRY}:latest${RESET}\n" ;;
+      cuda-base) printf "    docker pull ${CYAN}${REGISTRY}:cuda-base${RESET}  ${DIM}(heavy base, ~4 GB)${RESET}\n" ;;
+      cuda)      printf "    docker pull ${CYAN}${REGISTRY}:cuda${RESET}  ${DIM}(thin app layer on cuda-base, ~50 MB)${RESET}\n" ;;
+      cuda128)   printf "    docker pull ${CYAN}${REGISTRY}:cuda128${RESET}\n" ;;
     esac
   done
   if [[ -z "$GIT_DIRTY" ]]; then
@@ -224,6 +235,9 @@ else
       [[ "$v" != "cpu" ]] && local_prefix="$v"
       printf "    docker pull ${DIM}${REGISTRY}:${local_prefix}-${GIT_SHA}${RESET}\n"
     done
+    echo
+    printf "${DIM}  Tip: run 'make publish-cuda-base' only when deps change,${RESET}\n"
+    printf "${DIM}       then 'make publish-cuda' for code-only updates (~50 MB push).${RESET}\n"
   fi
 fi
 hr

@@ -31,8 +31,12 @@ publish-all:  ## Build + push all three variants: latest, cuda, cuda128
 publish-cpu:  ## Build + push CPU image to GHCR  →  voice-tools:latest
 	./scripts/publish.sh cpu
 
+.PHONY: publish-cuda-base
+publish-cuda-base:  ## Build + push CUDA base image (heavy layer: torch+flash-attn)  →  voice-tools:cuda-base
+	./scripts/publish.sh cuda-base
+
 .PHONY: publish-cuda
-publish-cuda:  ## Build + push CUDA 12.4 image to GHCR  →  voice-tools:cuda
+publish-cuda:  ## Build + push thin CUDA app image (FROM cuda-base + app src, ~50 MB)  →  voice-tools:cuda
 	./scripts/publish.sh cuda
 
 .PHONY: publish-cuda128
@@ -187,7 +191,7 @@ smoke-matrix:  ## Phase-5 smoke matrix (capabilities + clone + built-in + design
 	./scripts/smoke-matrix.sh
 
 .PHONY: synth-test
-synth-test:  ## Local CPU synthesis test matrix (12 tests, all registered voices). Pass ARGS=--skip-slow to skip variants tests.
+synth-test:  ## Comprehensive local CPU test matrix: CLI, voice-clone, clone_prompt, designed_clone, chunking, text-file, CustomVoice, tones, register-builtin, export/import, design-voice. Set SKIP_SLOW=1 or SKIP_DESIGN=1 to gate slow sections.
 	./scripts/local-synth-test.sh $(ARGS)
 
 # ── help ───────────────────────────────────────────────────────────────────────

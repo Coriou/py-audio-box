@@ -1,0 +1,22 @@
+# Dockerfile.cuda — thin CUDA 12.4 app image (code layer only)
+#
+# Builds on top of ghcr.io/coriou/voice-tools:cuda-base which holds all the
+# heavy deps (torch 2.6+cu124, flash-attn, poetry packages — ~4 GB).
+# This layer is just the app source: ~50 MB pulled on every code-change deploy.
+#
+# Workflow:
+#   First time (or when deps change):   make publish-cuda-base
+#   Every code change:                  make publish-cuda
+#
+# The vast.ai default image is ghcr.io/coriou/voice-tools:cuda (this file).
+# Vast hosts that have previously run a job cache all base layers, so redeploys
+# after a code push take under a minute instead of 5-10 minutes.
+
+FROM ghcr.io/coriou/voice-tools:cuda-base
+
+# This is the only layer that changes when app source changes.
+COPY . /app
+
+WORKDIR /app
+ENTRYPOINT ["/usr/bin/tini", "--"]
+CMD ["bash"]

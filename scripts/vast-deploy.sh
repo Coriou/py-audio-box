@@ -90,7 +90,9 @@ DRY_RUN=0
 # fast inet, and enough disk; ordered cheapest-first.
 # compute_cap >= 800 (Ampere) and < 1200 (excludes Blackwell sm_120 which needs cu128+).
 # Override via VAST_QUERY env var.
-DEFAULT_QUERY='reliability > 0.98 gpu_ram >= 20 compute_cap >= 800 compute_cap < 1200 inet_down >= 200 disk_space >= 50 rented=False'
+# inet_down >= 500 ensures at least 500 Mb/s downlink — pulls our ~4 GB CUDA
+# image in ~60s instead of 5+ minutes on slower hosts.
+DEFAULT_QUERY='reliability > 0.98 gpu_ram >= 20 compute_cap >= 800 compute_cap < 1200 inet_down >= 500 disk_space >= 50 rented=False'
 
 # ── parse args ─────────────────────────────────────────────────────────────────
 while [[ $# -gt 0 ]]; do
