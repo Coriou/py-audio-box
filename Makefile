@@ -164,6 +164,26 @@ vast-pull:  ## Pull /work from a running instance  [ID=12345 JOB=name]
 	  -e "ssh -p $(_PORT) -o StrictHostKeyChecking=no" \
 	  root@$(_HOST):/work/ work_remote/$(JOB)/
 
+.PHONY: vast-remote-test
+vast-remote-test:  ## Provision GPU → run full remote test suite (tests/remote/) → rsync results → destroy
+	# Runs tests/remote/run-all.sh on a fresh GPU instance.
+	# Override test behaviour:
+	#   ONLY="01 03"     run only specific suites
+	#   SKIP="05"        skip specific suites
+	#   SKIP_SLOW=1      skip slow sections inside suites
+	#   PARALLEL_N=4     parallel jobs in the stress test (default 6)
+	# Extra deploy flags via ARGS:
+	#   make vast-remote-test ARGS="--keep"
+	$(DEPLOY_SCRIPT) \
+	  --push-cache ./cache/voices \
+	  $(ARGS) \
+	  -- '!ONLY="$(ONLY)" SKIP="$(SKIP)" SKIP_SLOW="$(SKIP_SLOW)" PARALLEL_N="$(PARALLEL_N)" bash /app/tests/remote/run-all.sh'
+
+ONLY        ?=
+SKIP        ?=
+SKIP_SLOW   ?= 0
+PARALLEL_N  ?= 6
+
 # ── apps ───────────────────────────────────────────────────────────────────────
 
 .PHONY: voice-split
