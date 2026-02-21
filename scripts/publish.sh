@@ -131,7 +131,7 @@ build_variant() {
     -t "${REGISTRY}:${variant}-${GIT_SHA}${GIT_DIRTY}"
   )
   [[ -n "$EXTRA_TAG" ]] && cmd+=(-t "${REGISTRY}:${EXTRA_TAG}$([[ $variant == cuda128 ]] && echo -cuda128 || [[ $variant == cuda ]] && echo -cuda || echo "")")
-  cmd+=("${extra_args[@]}")
+  [[ ${#extra_args[@]} -gt 0 ]] && cmd+=("${extra_args[@]}")
   [[ -n "$NO_CACHE" ]] && cmd+=("$NO_CACHE")
   cmd+=(--push .)
 
