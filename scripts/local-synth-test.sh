@@ -1,47 +1,61 @@
 #!/usr/bin/env bash
 # scripts/local-synth-test.sh
-# Local CPU synthesis test matrix — exercises a broad range of voices,
-# profiles, languages and selection features.
+# Comprehensive local CPU test matrix — exercises every feature of the project.
 #
 # Run from repo root:
 #   ./scripts/local-synth-test.sh
-#   ./scripts/local-synth-test.sh --skip-slow
+#   SKIP_SLOW=1    ./scripts/local-synth-test.sh   # skip Q + O variant tests
+#   SKIP_DESIGN=1  ./scripts/local-synth-test.sh   # skip design-voice
 
 set -euo pipefail
 
-SKIP_SLOW="${1:-}"
 CACHE="/cache"
 OUT="/work/synth-test"
 THREADS="$(nproc 2>/dev/null || echo 8)"
 DTYPE="float32"
+SKIP_SLOW="${SKIP_SLOW:-0}"
+SKIP_DESIGN="${SKIP_DESIGN:-0}"
 
 pass=0; fail=0; skip=0
 results=()
 
-run_test() {
+run_cmd() {
   local label="$1"; shift
   echo ""
-  echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+  echo "================================================"
   echo "  TEST: $label"
-  echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+  echo "  CMD:  $*"
+  echo "================================================"
+  local t0 t1
   t0=$(date +%s)
-  if ./run voice-synth speak "$@" \
-       --cache "$CACHE" \
-       --threads "$THREADS" \
-       --dtype "$DTYPE" \
-       --out "$OUT" 2>&1; then
+  if "$@" 2>&1; then
     t1=$(date +%s)
-    elapsed=$(( t1 - t0 ))
-    echo "  ✓ PASS  (${elapsed}s)"
-    results+=("PASS  ${elapsed}s    $label")
+    echo "  PASS  ($(( t1 - t0 ))s)"
+    results+=("PASS  $(( t1 - t0 ))s    $label")
     (( pass++ )) || true
   else
     t1=$(date +%s)
-    elapsed=$(( t1 - t0 ))
-    echo "  ✗ FAIL  (${elapsed}s)"
-    results+=("FAIL  ${elapsed}s    $label")
+    echo "  FAIL  ($(( t1 - t0 ))s)"
+    results+=("FAIL  $(( t1 - t0 ))s    $label")
     (( fail++ )) || true
   fi
+}
+
+speak() {
+  local label="$1"; shift
+  run_cmd "$label" \
+    ./run voice-synth speak \
+      --cache "$CACHE" \
+      --threads "$THREADS" \
+      --dtype  "$DTYPE" \
+      --out    "$OUT" \
+      "$@"
+}
+
+skip_test() {
+  echo ""; echo "  SKIP  $1"
+  results+=("SKIP         $1")
+  (( skip++ )) || true
 }
 
 echo "=== Local CPU Synthesis Test Matrix ==="

@@ -194,6 +194,26 @@ smoke-matrix:  ## Phase-5 smoke matrix (capabilities + clone + built-in + design
 synth-test:  ## Comprehensive local CPU test matrix: CLI, voice-clone, clone_prompt, designed_clone, chunking, text-file, CustomVoice, tones, register-builtin, export/import, design-voice. Set SKIP_SLOW=1 or SKIP_DESIGN=1 to gate slow sections.
 	./scripts/local-synth-test.sh $(ARGS)
 
+.PHONY: test-local
+test-local:  ## Full modular local test suite (tests/local/run-all.sh). Env: SKIP_SLOW=1, SKIP_DESIGN=1, ONLY="01 02", SKIP="18 19", TEST_AUDIO=/work/file.wav
+	./tests/local/run-all.sh $(ARGS)
+
+.PHONY: test-local-fast
+test-local-fast:  ## Fast local suite: SKIP_SLOW=1 SKIP_DESIGN=1 (no variants, no design-voice, no slow FR clones)
+	SKIP_SLOW=1 SKIP_DESIGN=1 ./tests/local/run-all.sh $(ARGS)
+
+.PHONY: test-local-cli
+test-local-cli:  ## CLI utilities only: list-voices, list-speakers, capabilities (01)
+	bash tests/local/01-cli-utils.sh $(ARGS)
+
+.PHONY: test-local-synth
+test-local-synth:  ## Synthesis suites: clone profiles, designed, variants, chunking, text-file, save-profile, export/import (03-09)
+	ONLY="03 04 05 06 07 08 09" ./tests/local/run-all.sh $(ARGS)
+
+.PHONY: test-local-cv
+test-local-cv:  ## CustomVoice suites: direct speaker, instruct, styles, register-builtin, tones, variants (10-15)
+	ONLY="10 11 12 13 14 15" ./tests/local/run-all.sh $(ARGS)
+
 # ── help ───────────────────────────────────────────────────────────────────────
 
 .PHONY: help
