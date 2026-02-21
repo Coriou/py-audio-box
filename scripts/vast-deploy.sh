@@ -81,6 +81,8 @@ SSH_KEY=""
 SHELL_MODE=0
 NO_CLONE=0
 NO_PULL=0
+PUSH_CACHE_SRC=""
+PUSH_WORK_SRC=""
 KEEP=0
 DRY_RUN=0
 
@@ -99,6 +101,8 @@ while [[ $# -gt 0 ]]; do
     --no-clone)       NO_CLONE=1; shift ;;
     --no-sync)        NO_CLONE=1; shift ;;  # backwards compat alias
     --no-pull)        NO_PULL=1; shift ;;
+    --push-cache)     PUSH_CACHE_SRC="${2:-./cache/voices}"; shift 2 ;;
+    --push-work)      PUSH_WORK_SRC="$2"; shift 2 ;;
     --keep)           KEEP=1; shift ;;
     --dry-run)        DRY_RUN=1; shift ;;
     -h|--help)
@@ -455,6 +459,55 @@ if [[ $NO_CLONE -eq 0 ]]; then
     printf "${DIM}  [dry] ssh git clone/pull %s → /app${RESET}\n" "$REPO_URL"
   fi
   ok "Code ready"
+fi
+
+# ── 5.5 upload local cache (voices, etc.) to /cache on the instance ─────────
+if [[ -n "$PUSH_CACHE_SRC" ]]; then
+  PUSH_CACHE_SRC="${PUSH_CACHE_SRC/#\~/$HOME}"
+  PUSH_CACHE_SRC="$(cd "$PUSH_CACHE_SRC" 2>/dev/null && pwd || echo "$PUSH_CACHE_SRC")"
+  [[ -d "$PUSH_CACHE_SRC" ]] || die "--push-cache: directory not found: $PUSH_CACHE_SRC"
+  # Destination is always /cache/ on the instance; interior structure is preserved.
+  # e.g. ./cache/voices → /cache/voices/   OR   ./cache → /cache/
+  # We strip the local path up to (but not including) the last component.
+  REMOTE_CACHE_PARENT="/$(basename "$PUSH_CACHE_SRC")"
+  log "Uploading cache → ${INSTANCE_HOST}:${REMOTE_CACHE_PARENT}/"
+  info "src: $PUSH_CACHE_SRC"
+  if [[ $DRY_RUN -eq 1 ]]; then
+    printf "${DIM}  [dry] rsync %s → root@instance:%s/${RESET}\n" "$PUSH_CACHE_SRC" "$REMOTE_CACHE_PARENT"
+  else
+    run_ssh "mkdir -p ${REMOTE_CACHE_PARENT}"
+    rsync_cmd -az --info=progress2 \
+      -e "ssh -p ${INSTANCE_PORT} -i ${SSH_KEY} -o StrictHostKeyChecking=no -o UserKnownHostsFile=${SSH_KNOWN_HOSTS_FILE}" \
+      "${PUSH_CACHE_SRC}/" \
+      "root@${INSTANCE_HOST}:${REMOTE_CACHE_PARENT}/"
+    ok "Cache uploaded → ${REMOTE_CACHE_PARENT}/"
+  fi
+fi
+
+# ── 5.6 upload local work files to /work on the instance ─────────────────────
+if [[ -n "$PUSH_WORK_SRC" ]]; then
+  PUSH_WORK_SRC="${PUSH_WORK_SRC/#\~/$HOME}"
+  if [[ -d "$PUSH_WORK_SRC" ]]; then
+    log "Uploading work dir → ${INSTANCE_HOST}:/work/"
+    info "src: $PUSH_WORK_SRC"
+    [[ $DRY_RUN -eq 1 ]] || {
+      rsync_cmd -az --info=progress2 \
+        -e "ssh -p ${INSTANCE_PORT} -i ${SSH_KEY} -o StrictHostKeyChecking=no -o UserKnownHostsFile=${SSH_KNOWN_HOSTS_FILE}" \
+        "${PUSH_WORK_SRC}/" "root@${INSTANCE_HOST}:/work/"
+      ok "Work dir uploaded → /work/"
+    }
+  elif [[ -f "$PUSH_WORK_SRC" ]]; then
+    REMOTE_FILE="/work/$(basename "$PUSH_WORK_SRC")"
+    log "Uploading $(basename "$PUSH_WORK_SRC") → ${INSTANCE_HOST}:${REMOTE_FILE}"
+    [[ $DRY_RUN -eq 1 ]] || {
+      rsync_cmd -az --info=progress2 \
+        -e "ssh -p ${INSTANCE_PORT} -i ${SSH_KEY} -o StrictHostKeyChecking=no -o UserKnownHostsFile=${SSH_KNOWN_HOSTS_FILE}" \
+        "${PUSH_WORK_SRC}" "root@${INSTANCE_HOST}:${REMOTE_FILE}"
+      ok "File uploaded → ${REMOTE_FILE}"
+    }
+  else
+    die "--push-work: path not found: $PUSH_WORK_SRC"
+  fi
 fi
 
 # ── 6. run tasks ───────────────────────────────────────────────────────────────
