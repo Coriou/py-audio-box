@@ -108,7 +108,10 @@ COPY . /app
 
 # Create persistent-mount targets so they exist even if no volume is attached.
 # vast.ai persistent storage should be mounted at /cache to skip model re-downloads.
-RUN mkdir -p /work /cache
+# Disable vast.ai's auto-tmux wrapper (it intercepts SSH sessions and breaks
+# non-interactive commands).  The file must exist in root's home at image build
+# time so it is present before the first SSH login.
+RUN mkdir -p /work /cache && touch /root/.no_auto_tmux
 
 # Runtime environment:
 #   XDG_CACHE_HOME / HF_HOME / TORCH_HOME all point to /cache so model weights
