@@ -45,6 +45,11 @@
 
 set -euo pipefail
 
+# Load .env from repo root so VAST_API_KEY (and other vars) can live there
+_DEPLOY_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+[[ -f "${_DEPLOY_DIR}/../.env" ]] && { set -o allexport; source "${_DEPLOY_DIR}/../.env"; set +o allexport; }
+unset _DEPLOY_DIR
+
 # ── colour helpers (same palette as publish.sh) ────────────────────────────────
 if [[ -t 1 ]]; then
   BOLD='\033[1m' RESET='\033[0m'
