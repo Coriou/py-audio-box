@@ -20,11 +20,12 @@ make build        # build the shared CPU image (~5 min, cached on rebuild)
 
 ## Published images (`ghcr.io/coriou/voice-tools`)
 
-| Tag       | PyTorch      | CUDA toolkit | flash-attn | GPU support                                       | Notes                                                                                                                                                      |
-| --------- | ------------ | ------------ | ---------- | ------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `latest`  | 2.10.0+cpu   | —            | —          | None (CPU only)                                   | Default; runs on any linux/amd64 host                                                                                                                      |
-| `cuda`    | 2.6.0+cu124  | CUDA 12.4    | ✅ 2.8.3   | **SM 7.0 – SM 9.0** (Volta → Hopper)              | **Recommended for GPU inference.** flash-attn active on SM 8.0+ (Ampere/Ada/Hopper); SM 7.x falls back to sdpa                                             |
-| `cuda128` | 2.10.0+cu128 | CUDA 12.8    | ❌         | SM 8.0+ (intended: SM 10.0 data-centre Blackwell) | No flash-attn wheel exists for torch 2.10+cu128. Consumer Blackwell (SM 12.0 — RTX 50-series) has additional kernel dispatch issues and is not recommended |
+| Tag          | PyTorch      | CUDA toolkit | flash-attn | GPU support                                       | Notes                                                                                                                                                      |
+| ------------ | ------------ | ------------ | ---------- | ------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `latest`     | 2.10.0+cpu   | —            | —          | None (CPU only)                                   | Default; runs on any linux/amd64 host                                                                                                                      |
+| `cuda-base`  | 2.6.0+cu124  | CUDA 12.4    | ✅ 2.8.3   | **SM 7.0 – SM 9.0** (Volta → Hopper)              | **Heavy base layer** (~4 GB). All Python/Poetry deps + torch + flash-attn. Rarely rebuilt. Used as `FROM` for `:cuda`.                                    |
+| `cuda`       | 2.6.0+cu124  | CUDA 12.4    | ✅ 2.8.3   | **SM 7.0 – SM 9.0** (Volta → Hopper)              | **Recommended for GPU inference.** Thin app layer (~74 MB) on top of `:cuda-base`. Rebuilt on every code change in seconds.                               |
+| `cuda128`    | 2.10.0+cu128 | CUDA 12.8    | ❌         | SM 8.0+ (intended: SM 10.0 data-centre Blackwell) | No flash-attn wheel exists for torch 2.10+cu128. Consumer Blackwell (SM 12.0 — RTX 50-series) has additional kernel dispatch issues and is not recommended |
 
 **GPU architecture quick-reference:**
 
@@ -48,10 +49,17 @@ make build        # build the shared CPU image (~5 min, cached on rebuild)
 > still works but uses sdpa attention, which is slower.
 
 ```bash
-docker pull ghcr.io/coriou/voice-tools:latest    # CPU
-docker pull ghcr.io/coriou/voice-tools:cuda       # GPU — Volta through Hopper (recommended)
-docker pull ghcr.io/coriou/voice-tools:cuda128    # GPU — data-centre Blackwell
+docker pull ghcr.io/coriou/voice-tools:latest      # CPU
+docker pull ghcr.io/coriou/voice-tools:cuda-base   # GPU base layer (torch+flash-attn) — rebuild rarely
+docker pull ghcr.io/coriou/voice-tools:cuda        # GPU thin app layer — rebuild after code changes
+docker pull ghcr.io/coriou/voice-tools:cuda128     # GPU — data-centre Blackwell
 ```
+
+> **Image split strategy:** `:cuda` is a ~74 MB layer on top of `:cuda-base` (~4 GB).
+> On a cold host, pulling `:cuda-base` once is the slow step; all subsequent `:cuda` deploys
+> only transfer the thin app layer and complete in seconds. Run `make publish-cuda-base` only
+> when Python deps or torch/flash-attn versions change. Run `make publish-cuda` (or just
+> `make publish`) after every code change.
 
 ---
 
@@ -489,7 +497,8 @@ make clean-work             Delete output files in ./work/
 make clean-cache            Wipe ./cache/ — models and downloads will re-run
 make publish                Build + push all images to GHCR (cpu → latest, cuda → cuda)
 make publish-cpu            Build + push CPU image only
-make publish-cuda           Build + push CUDA image only
+make publish-cuda-base      Build + push CUDA base image (torch+flash-attn heavy layer — rarely needed)
+make publish-cuda           Build + push CUDA thin app image (fast; do this after code changes)
 make pull                   Pull /work/ from remote host into ./work_remote/  (requires REMOTE_HOST=...)
 make push-code              Push local repo to remote /app/  (requires REMOTE_HOST=...)
 ```
@@ -500,6 +509,32 @@ Remote sync examples:
 make pull REMOTE_HOST=root@1.2.3.4 REMOTE_PORT=22222
 make push-code REMOTE_HOST=root@1.2.3.4 REMOTE_PORT=22222
 ```
+
+Vast.ai cloud deployment:
+
+```
+make vast-search            Show best-value qualifying GPU offers on vast.ai
+make vast-status            Show your currently running vast.ai instances
+make vast-shell             Provision a GPU instance and drop into an interactive SSH shell
+make vast-run               Full pipeline: provision → push cache/work → run task → pull results → destroy
+make vast-destroy           Destroy a specific instance  [ID=12345]
+make vast-pull              Pull /work from a running instance  [ID=12345 JOB=name]
+```
+
+Full pipeline example (provision → synthesise → pull results → destroy):
+
+```bash
+./scripts/vast-deploy.sh \
+  --push-cache ./cache/voices \
+  --push-work /tmp/my_text.txt \
+  -- "voice-synth speak --voice my-voice --text-file /work/my_text.txt --language French"
+```
+
+The `:cuda` image is a ~74 MB app layer on top of `:cuda-base`. On a host that already has
+`:cuda-base` cached, cold-start time is under 60 s. The default query targets Ampere/Ada/Hopper
+GPUs (SM 8.0–11.9) with ≥ 500 Mb/s download and ≥ 20 GB VRAM.
+
+See `scripts/vast-deploy.sh --help` for the full flag reference.
 
 App shortcuts (pass extra flags via `ARGS=`):
 
