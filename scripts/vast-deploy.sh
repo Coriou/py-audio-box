@@ -325,16 +325,24 @@ if [[ $DRY_RUN -eq 0 ]]; then
     die "Refusing to provision another instance.  Destroy existing ones first:\n  make vast-destroy ID=<id>\n  make vast-status"
   fi
 
-  # ── Secondary gate: flock-based lockfile (prevents concurrent local runs) ──
-  # Open the lock file on fd 200; flock -n exits 1 immediately if already locked.
-  exec 200>"$VAST_LOCK"
-  if ! flock -n 200 2>/dev/null; then
-    LOCK_PID=$(cat "$VAST_LOCK" 2>/dev/null || echo '?')
-    die "Another vast-deploy is already running (lock: $VAST_LOCK).\n  If this is stale: rm $VAST_LOCK"
+  # ── Secondary gate: lockfile (prevents concurrent local runs) ──────────────
+  # flock(1) is Linux-only; macOS ships without it.  Use it when available,
+  # fall back to bash noclobber (still race-resistant for interactive use).
+  if command -v flock >/dev/null 2>&1; then
+    exec 200>"$VAST_LOCK"
+    if ! flock -n 200 2>/dev/null; then
+      die "Another vast-deploy is already running (lock: $VAST_LOCK).\n  If this is stale: rm $VAST_LOCK"
+    fi
+    echo "$$" >&200
+    trap 'flock -u 200 2>/dev/null; rm -f "$VAST_LOCK"' EXIT
+  else
+    # noclobber: fails if lock file already exists
+    if ! ( set -o noclobber; echo "$$" > "$VAST_LOCK" ) 2>/dev/null; then
+      LOCK_PID=$(cat "$VAST_LOCK" 2>/dev/null || echo '?')
+      die "Another vast-deploy is already running (PID ${LOCK_PID}, lock: $VAST_LOCK).\n  If this is stale: rm $VAST_LOCK"
+    fi
+    trap 'rm -f "$VAST_LOCK"' EXIT
   fi
-  echo "$$" >&200
-  # Release lock and remove file on exit
-  trap 'flock -u 200 2>/dev/null; rm -f "$VAST_LOCK"' EXIT
 
   # ── Primary gate: API check (second pass, after lock acquired) ─────────────
   # Brief pause then re-check: handles the race where two processes both passed
@@ -466,10 +474,9 @@ if [[ -n "$PUSH_CACHE_SRC" ]]; then
   PUSH_CACHE_SRC="${PUSH_CACHE_SRC/#\~/$HOME}"
   PUSH_CACHE_SRC="$(cd "$PUSH_CACHE_SRC" 2>/dev/null && pwd || echo "$PUSH_CACHE_SRC")"
   [[ -d "$PUSH_CACHE_SRC" ]] || die "--push-cache: directory not found: $PUSH_CACHE_SRC"
-  # Destination is always /cache/ on the instance; interior structure is preserved.
-  # e.g. ./cache/voices → /cache/voices/   OR   ./cache → /cache/
-  # We strip the local path up to (but not including) the last component.
-  REMOTE_CACHE_PARENT="/$(basename "$PUSH_CACHE_SRC")"
+  # Destination is always under /cache/ on the instance; interior structure is preserved.
+  # e.g. ./cache/voices → /cache/voices/   OR   ./cache/voices/rascar-capac → /cache/voices/rascar-capac/
+  REMOTE_CACHE_PARENT="/cache/$(basename "$PUSH_CACHE_SRC")"
   log "Uploading cache → ${INSTANCE_HOST}:${REMOTE_CACHE_PARENT}/"
   info "src: $PUSH_CACHE_SRC"
   if [[ $DRY_RUN -eq 1 ]]; then
