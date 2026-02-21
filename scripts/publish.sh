@@ -106,7 +106,8 @@ fi
 # ── build function ─────────────────────────────────────────────────────────────
 build_variant() {
   local variant="$1"       # cpu | cuda
-  local primary_tag extra_args=()
+  local primary_tag
+  local -a extra_args=()
 
   case "$variant" in
     cpu)
