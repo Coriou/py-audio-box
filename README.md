@@ -20,12 +20,12 @@ make build        # build the shared CPU image (~5 min, cached on rebuild)
 
 ## Published images (`ghcr.io/coriou/voice-tools`)
 
-| Tag          | PyTorch      | CUDA toolkit | flash-attn | GPU support                                       | Notes                                                                                                                                                      |
-| ------------ | ------------ | ------------ | ---------- | ------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `latest`     | 2.10.0+cpu   | —            | —          | None (CPU only)                                   | Default; runs on any linux/amd64 host                                                                                                                      |
-| `cuda-base`  | 2.6.0+cu124  | CUDA 12.4    | ✅ 2.8.3   | **SM 7.0 – SM 9.0** (Volta → Hopper)              | **Heavy base layer** (~4 GB). All Python/Poetry deps + torch + flash-attn. Rarely rebuilt. Used as `FROM` for `:cuda`.                                    |
-| `cuda`       | 2.6.0+cu124  | CUDA 12.4    | ✅ 2.8.3   | **SM 7.0 – SM 9.0** (Volta → Hopper)              | **Recommended for GPU inference.** Thin app layer (~74 MB) on top of `:cuda-base`. Rebuilt on every code change in seconds.                               |
-| `cuda128`    | 2.10.0+cu128 | CUDA 12.8    | ❌         | SM 8.0+ (intended: SM 10.0 data-centre Blackwell) | No flash-attn wheel exists for torch 2.10+cu128. Consumer Blackwell (SM 12.0 — RTX 50-series) has additional kernel dispatch issues and is not recommended |
+| Tag         | PyTorch      | CUDA toolkit | flash-attn | GPU support                                       | Notes                                                                                                                                                      |
+| ----------- | ------------ | ------------ | ---------- | ------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `latest`    | 2.10.0+cpu   | —            | —          | None (CPU only)                                   | Default; runs on any linux/amd64 host                                                                                                                      |
+| `cuda-base` | 2.6.0+cu124  | CUDA 12.4    | ✅ 2.8.3   | **SM 7.0 – SM 9.0** (Volta → Hopper)              | **Heavy base layer** (~4 GB). All Python/Poetry deps + torch + flash-attn. Rarely rebuilt. Used as `FROM` for `:cuda`.                                     |
+| `cuda`      | 2.6.0+cu124  | CUDA 12.4    | ✅ 2.8.3   | **SM 7.0 – SM 9.0** (Volta → Hopper)              | **Recommended for GPU inference.** Thin app layer (~74 MB) on top of `:cuda-base`. Rebuilt on every code change in seconds.                                |
+| `cuda128`   | 2.10.0+cu128 | CUDA 12.8    | ❌         | SM 8.0+ (intended: SM 10.0 data-centre Blackwell) | No flash-attn wheel exists for torch 2.10+cu128. Consumer Blackwell (SM 12.0 — RTX 50-series) has additional kernel dispatch issues and is not recommended |
 
 **GPU architecture quick-reference:**
 
