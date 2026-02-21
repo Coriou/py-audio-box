@@ -86,10 +86,11 @@ PUSH_WORK_SRC=""
 KEEP=0
 DRY_RUN=0
 
-# Default GPU search query: reliable Volta+ GPU with enough VRAM for Qwen-TTS,
+# Default GPU search query: reliable Ampere/Ada GPU with enough VRAM for Qwen-TTS,
 # fast inet, and enough disk; ordered cheapest-first.
+# compute_cap >= 800 (Ampere) and < 1200 (excludes Blackwell sm_120 which needs cu128+).
 # Override via VAST_QUERY env var.
-DEFAULT_QUERY='reliability > 0.98 gpu_ram >= 20 compute_cap >= 700 inet_down >= 200 disk_space >= 50 rented=False'
+DEFAULT_QUERY='reliability > 0.98 gpu_ram >= 20 compute_cap >= 800 compute_cap < 1200 inet_down >= 200 disk_space >= 50 rented=False'
 
 # ── parse args ─────────────────────────────────────────────────────────────────
 while [[ $# -gt 0 ]]; do
@@ -230,7 +231,7 @@ instance_json() {
 
 wait_for_status() {
   local id="$1" target="$2"
-  local attempt=0 max=120  # 10 min max (image pull can be slow)
+  local attempt=0 max=300  # 25 min max (large CUDA image pull can take 15-20 min)
   printf "     waiting for status='${CYAN}%s${RESET}'" "$target"
   while (( attempt < max )); do
     local status
