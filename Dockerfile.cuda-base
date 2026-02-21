@@ -23,29 +23,29 @@ LABEL org.opencontainers.image.licenses="MIT"
 ARG POETRY_VERSION=1.8.3
 
 ENV \
-  PYTHONDONTWRITEBYTECODE=1 \
-  PYTHONUNBUFFERED=1 \
-  PIP_DISABLE_PIP_VERSION_CHECK=1 \
-  PIP_NO_CACHE_DIR=1 \
-  POETRY_NO_INTERACTION=1 \
-  POETRY_VIRTUALENVS_CREATE=false \
-  POETRY_CACHE_DIR=/root/.cache/pypoetry
+    PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1 \
+    PIP_NO_CACHE_DIR=1 \
+    POETRY_NO_INTERACTION=1 \
+    POETRY_VIRTUALENVS_CREATE=false \
+    POETRY_CACHE_DIR=/root/.cache/pypoetry
 
 # --- OS deps ---
 RUN apt-get update && apt-get install -y --no-install-recommends \
-  ca-certificates \
-  curl \
-  git \
-  rsync \
-  ffmpeg \
-  sox \
-  coreutils \
-  tini \
-  jq \
-  nodejs \
-  vim \
-  htop \
-  && rm -rf /var/lib/apt/lists/*
+    ca-certificates \
+    curl \
+    git \
+    rsync \
+    ffmpeg \
+    sox \
+    coreutils \
+    tini \
+    jq \
+    nodejs \
+    vim \
+    htop \
+    && rm -rf /var/lib/apt/lists/*
 
 # Install Poetry into conda Python (already on PATH as /opt/conda/bin/poetry)
 RUN pip install "poetry==${POETRY_VERSION}" && poetry --version
@@ -60,11 +60,11 @@ WORKDIR /app
 # resolves/installs a CPU-variant torch while satisfying transitive deps.
 # This is safe because poetry.lock is a complete, already-resolved closure.
 RUN --mount=type=cache,target=/root/.cache/pypoetry \
-  --mount=type=cache,target=/root/.cache/pip \
-  poetry export --without-hashes -f requirements.txt \
+    --mount=type=cache,target=/root/.cache/pip \
+    poetry export --without-hashes -f requirements.txt \
     | grep -Ev "^(torch|torchaudio|torchcodec)[^a-zA-Z]" \
     > /tmp/reqs.txt \
-  && pip install --no-deps -r /tmp/reqs.txt
+    && pip install --no-deps -r /tmp/reqs.txt
 
 # ── Replace conda-torch with pip-torch to get a consistent cxx11 ABI ──────────
 #
@@ -89,22 +89,22 @@ RUN --mount=type=cache,target=/root/.cache/pypoetry \
 ARG TORCH_VERSION=2.6.0
 ARG TORCHCODEC_VERSION=0.6.0
 RUN --mount=type=cache,target=/root/.cache/pip \
-  pip install --force-reinstall \
+    pip install --force-reinstall \
     "torch==${TORCH_VERSION}" \
     "torchaudio==${TORCH_VERSION}" \
     --index-url "https://download.pytorch.org/whl/cu124" \
-  && pip install "torchcodec==${TORCHCODEC_VERSION}"
+    && pip install "torchcodec==${TORCHCODEC_VERSION}"
 
 # ── flash-attn pre-built wheel (avoids ~20 min compile, must match torch + CUDA) ──
 # Uses cxx11abiTRUE because we just installed pip-torch above (new ABI).
 # If you ever switch back to conda-torch, use the cxx11abiFALSE variant instead.
 ARG FLASH_ATTN_WHEEL=https://github.com/Dao-AILab/flash-attention/releases/download/v2.8.3/flash_attn-2.8.3+cu12torch2.6cxx11abiTRUE-cp311-cp311-linux_x86_64.whl
 RUN --mount=type=cache,target=/root/.cache/pip \
-  pip install --no-build-isolation "${FLASH_ATTN_WHEEL}"
+    pip install --no-build-isolation "${FLASH_ATTN_WHEEL}"
 
 # Install vastai CLI
 RUN --mount=type=cache,target=/root/.cache/pip \
-  pip install vastai
+    pip install vastai
 
 # Persistent-volume mount targets + disable vast.ai auto-tmux
 RUN mkdir -p /work /cache && touch /root/.no_auto_tmux
@@ -112,11 +112,11 @@ RUN mkdir -p /work /cache && touch /root/.no_auto_tmux
 # Runtime environment — all paths point to /cache so model weights land in the
 # persistent volume when one is attached at /cache.
 ENV XDG_CACHE_HOME=/cache \
-  HF_HOME=/cache/huggingface \
-  TORCH_HOME=/cache/torch \
-  TORCH_DEVICE=cuda \
-  HF_HUB_DISABLE_XET_TRANSPORT=1 \
-  TORCH_COMPUTE=cu124
+    HF_HOME=/cache/huggingface \
+    TORCH_HOME=/cache/torch \
+    TORCH_DEVICE=cuda \
+    HF_HUB_DISABLE_XET_TRANSPORT=1 \
+    TORCH_COMPUTE=cu124
 
 WORKDIR /app
 ENTRYPOINT ["/usr/bin/tini", "--"]
