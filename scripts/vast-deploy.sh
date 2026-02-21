@@ -19,7 +19,6 @@
 #
 # Environment:
 #   VAST_API_KEY   required — your vast.ai API key (console.vast.ai → CLI)
-#   GHCR_TOKEN     optional — GitHub PAT with read:packages to pull private image
 #
 # Search customisation:
 #   VAST_QUERY     override the GPU search query string (see: vastai search offers --help)
@@ -197,40 +196,44 @@ trap 'exit 130' INT TERM
 
 # ── helpers ────────────────────────────────────────────────────────────────────
 instance_status() {
-  # Parse .status from `vastai show instance ID --raw`
-  # The CLI may return the instance directly or wrapped in {"instances":[...]}
+  # `vastai show instance <ID> --raw` returns a single JSON object (not an array).
+  # Returns empty/null right after creation — treat that as 'scheduling'.
   local raw
-  raw=$("$VAST_CLI" show instance "$1" --raw 2>/dev/null) || { echo "error"; return; }
-  echo "$raw" | jq -r 'if .instances then .instances[0].status else .status end // "unknown"'
+  raw=$("$VAST_CLI" show instance "$1" --raw 2>/dev/null) || { echo "unknown"; return; }
+  echo "$raw" | jq -r '.status // "unknown"'
 }
 
 instance_json() {
-  "$VAST_CLI" show instance "$1" --raw 2>/dev/null | \
-    jq 'if .instances then .instances[0] else . end'
+  # Returns the instance object directly.
+  "$VAST_CLI" show instance "$1" --raw 2>/dev/null
 }
 
 wait_for_status() {
   local id="$1" target="$2"
-  local attempt=0
+  local attempt=0 max=120  # 10 min max (image pull can be slow)
   printf "     waiting for status='${CYAN}%s${RESET}'" "$target"
-  while true; do
+  while (( attempt < max )); do
     local status
     status=$(instance_status "$id")
     if [[ "$status" == "$target" ]]; then
       echo
       return 0
     fi
-    if [[ "$status" == "error" || "$status" == "unknown" || "$status" == "exited" ]]; then
+    # Hard failures — don't keep polling
+    if [[ "$status" == "error" || "$status" == "exited" || "$status" == "deleted" ]]; then
       echo
       die "Instance $id entered unexpected status: $status"
     fi
-    ((attempt++))
+    # 'unknown' often means the API returned an empty array right after creation — keep polling
+    ((attempt++)) || true
     if (( attempt % 6 == 0 )); then
       printf " ${DIM}%s${RESET}" "$status"
     fi
     printf "."
     sleep 5
   done
+  echo
+  die "Instance $id did not reach '$target' within $(( max * 5 / 60 )) minutes."
 }
 
 wait_for_ssh() {
@@ -284,6 +287,19 @@ fi
 [[ $KEEP -eq 1 ]]      && printf "     ${YELLOW}--keep — instance will NOT be destroyed${RESET}\n"
 hr
 
+# ── pre-flight: check for existing instances ───────────────────────────────────
+# Guard against accidental double-provisioning (e.g. re-running while a previous
+# instance is still up).  `show instances --raw` returns a plain JSON array.
+if [[ $DRY_RUN -eq 0 ]]; then
+  EXISTING=$(${VAST_CLI} show instances --raw 2>/dev/null | jq 'length')
+  if [[ "$EXISTING" -gt 0 ]]; then
+    warn "You already have ${EXISTING} instance(s) running on vast.ai."
+    ${VAST_CLI} show instances 2>/dev/null || true
+    printf "\n"
+    die "Refusing to provision another instance.  Destroy existing ones first:\n  make vast-destroy ID=<id>\n  make vast-status"
+  fi
+fi
+
 # ── 1. search offers ───────────────────────────────────────────────────────────
 log "Searching for GPU offers"
 QUERY="${VAST_QUERY:-$DEFAULT_QUERY}"
@@ -302,14 +318,16 @@ if [[ $DRY_RUN -eq 1 ]]; then
   OFFER_DPH="0.00"
   OFFER_RAM="0"
 else
-  OFFER_COUNT=$(echo "$OFFER_JSON" | jq '.offers | length')
+  # `vastai search offers --raw` returns a plain JSON array (not {"offers":[...]})
+  OFFER_COUNT=$(echo "$OFFER_JSON" | jq 'length')
   [[ "$OFFER_COUNT" -gt 0 ]] || die "No offers match the query.  Try relaxing VAST_QUERY."
 
-  OFFER_ID=$(  echo "$OFFER_JSON" | jq -r '.offers[0].id')
-  OFFER_GPU=$( echo "$OFFER_JSON" | jq -r '.offers[0].gpu_name // "unknown"')
-  OFFER_DPH=$( echo "$OFFER_JSON" | jq -r '.offers[0].dph_total // .offers[0].dph // 0' | xargs printf "%.4f")
-  OFFER_RAM=$( echo "$OFFER_JSON" | jq -r '.offers[0].gpu_ram // 0')
-  OFFER_VCPU=$(echo "$OFFER_JSON" | jq -r '.offers[0].cpu_cores_effective // 0' | xargs printf "%.0f")
+  OFFER_ID=$(  echo "$OFFER_JSON" | jq -r '.[0].id')
+  OFFER_GPU=$( echo "$OFFER_JSON" | jq -r '.[0].gpu_name // "unknown"')
+  OFFER_DPH=$( echo "$OFFER_JSON" | jq -r '.[0].dph_total // .[0].dph // 0' | xargs printf "%.4f")
+  # gpu_ram is in MB — convert to GB for display
+  OFFER_RAM=$( echo "$OFFER_JSON" | jq -r '.[0].gpu_ram // 0 | . / 1024 | floor')
+  OFFER_VCPU=$(echo "$OFFER_JSON" | jq -r '.[0].cpu_cores_effective // 0' | xargs printf "%.0f")
 fi
 
 ok "Found offer ${OFFER_ID}"
@@ -322,23 +340,20 @@ log "Provisioning instance"
 # Build onstart command: update code from git if .git exists, else skip
 ONSTART_CMD="mkdir -p /work /cache; cd /app 2>/dev/null; git pull --ff-only 2>/dev/null || true; chmod +x run-direct 2>/dev/null || true"
 
-# Build create-instance args
+# Build create-instance args.
+# --cancel-unavail: if the offer was rented between search and create, return an
+# error immediately instead of silently creating a stopped/broken instance.
 CREATE_ARGS=(
   create instance "$OFFER_ID"
   --image "$DEPLOY_IMAGE"
   --disk  "$DISK_GB"
   --ssh
   --direct
+  --cancel-unavail
   --label "$JOB_NAME"
   --onstart-cmd "$ONSTART_CMD"
   --raw
 )
-
-# Private image login: optional, only if GHCR_TOKEN is set
-if [[ -n "${GHCR_TOKEN:-}" ]]; then
-  CREATE_ARGS+=(--login "-u Coriou -p ${GHCR_TOKEN} ghcr.io")
-  info "using GHCR_TOKEN for image pull authentication"
-fi
 
 if [[ $DRY_RUN -eq 1 ]]; then
   printf "${DIM}  [dry] vast %s${RESET}\n" "${CREATE_ARGS[*]}"
@@ -354,15 +369,24 @@ ok "Instance ${INSTANCE_ID} created (label: ${JOB_NAME})"
 # ── 3. wait for running ────────────────────────────────────────────────────────
 if [[ $DRY_RUN -eq 0 ]]; then
   log "Waiting for instance to become ready"
-  wait_for_status "$INSTANCE_ID" "loading"
+  # Instances go through: scheduling → loading → running (some skip 'loading').
+  # wait_for_status tolerates 'unknown' (API returns empty array right after creation).
   wait_for_status "$INSTANCE_ID" "running"
   ok "Instance is running"
 
-  # Extract SSH connection details
-  INST=$(instance_json "$INSTANCE_ID")
-  INSTANCE_HOST=$(echo "$INST" | jq -r '.ssh_host // .public_ipaddr // empty')
-  INSTANCE_PORT=$(echo "$INST" | jq -r '.ssh_port // .ssh_idx // 22')
-  [[ -n "$INSTANCE_HOST" ]] || die "Could not determine SSH host from instance JSON."
+  # Extract SSH connection details via dedicated ssh-url command.
+  # Returns:  ssh://root@<host>:<port>
+  SSH_URL=$("$VAST_CLI" ssh-url "$INSTANCE_ID" 2>/dev/null)
+  INSTANCE_HOST=$(echo "$SSH_URL" | sed 's|ssh://[^@]*@||;s|:.*||')
+  INSTANCE_PORT=$(echo "$SSH_URL" | sed 's|.*:||')
+  if [[ -z "$INSTANCE_HOST" || -z "$INSTANCE_PORT" ]]; then
+    warn "ssh-url returned: '${SSH_URL}'"
+    warn "Falling back to show instance JSON…"
+    INST=$(instance_json "$INSTANCE_ID")
+    INSTANCE_HOST=$(echo "$INST" | jq -r '.ssh_host // .public_ipaddr // empty')
+    INSTANCE_PORT=$(echo "$INST" | jq -r '.ssh_port // 22')
+    [[ -n "$INSTANCE_HOST" ]] || die "Could not determine SSH host. Instance JSON:\n$(echo "$INST" | jq '{id,status,ssh_host,public_ipaddr,ssh_port}')"
+  fi
 fi
 
 info "SSH: root@${INSTANCE_HOST:-?}:${INSTANCE_PORT:-?}"
@@ -396,13 +420,15 @@ if [[ $SHELL_MODE -eq 1 ]]; then
   log "Opening interactive SSH shell"
   info "Instance will NOT be automatically destroyed."
   info "When done, run:  make vast-destroy ID=${INSTANCE_ID}"
-  ssh \
-    -t \
-    -o StrictHostKeyChecking=no \
-    -o UserKnownHostsFile="$SSH_KNOWN_HOSTS_FILE" \
-    -i "$SSH_KEY" \
-    -p "$INSTANCE_PORT" \
-    "root@$INSTANCE_HOST"
+  if [[ $DRY_RUN -eq 0 ]]; then
+    ssh \
+      -t \
+      -o StrictHostKeyChecking=no \
+      -o UserKnownHostsFile="$SSH_KNOWN_HOSTS_FILE" \
+      -i "$SSH_KEY" \
+      -p "$INSTANCE_PORT" \
+      "root@$INSTANCE_HOST"
+  fi
 else
   log "Running ${#TASKS[@]} task(s)"
   T0=$SECONDS
