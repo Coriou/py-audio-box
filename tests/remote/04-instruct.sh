@@ -84,9 +84,9 @@ speak "Ryan / stable / --instruct-style audiobook / EN" \
   --profile stable \
   --seed 38
 
-# Non-Ryan voice with instruct
-speak "chalamet-en / expressive / --instruct dramatic / EN" \
-  --voice chalamet-en \
+# Non-Ryan speaker with explicit instruct (voice-clone mode — --instruct unsupported, use --speaker)
+speak "Ryan / expressive / --instruct dramatic / EN" \
+  --speaker Ryan \
   --text "This is the moment everything changes. Are you ready?" \
   --instruct "Intense dramatic delivery. Slow, measured, with weight on every word." \
   --language English \
