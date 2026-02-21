@@ -403,6 +403,11 @@ if [[ $NO_SYNC -eq 0 ]]; then
   log "Syncing code → /app"
   rsync_cmd -az --progress \
     --exclude='.git' \
+    --exclude='.env' \
+    --exclude='.DS_Store' \
+    --exclude='.vscode/' \
+    --exclude='.ruff_cache/' \
+    --exclude='.pytest_cache/' \
     --exclude='work/' \
     --exclude='work_remote/' \
     --exclude='cache/' \
