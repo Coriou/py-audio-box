@@ -66,16 +66,38 @@ RUN --mount=type=cache,target=/root/.cache/pypoetry \
     > /tmp/reqs.txt \
   && pip install --no-deps -r /tmp/reqs.txt
 
-# Install torch-coupled packages from the CUDA 12.4 wheel index / PyPI.
-# torchcodec version must match the major.minor of torch (0.6.x ↔ torch 2.6.x).
+# ── Replace conda-torch with pip-torch to get a consistent cxx11 ABI ──────────
+#
+# pytorch/pytorch:* Docker images ship torch installed via conda.  Conda-built
+# torch uses _GLIBCXX_USE_CXX11_ABI=0 ("cxx11abiFALSE" / old ABI), while all
+# pip-distributed wheels from download.pytorch.org use the NEW ABI
+# (_GLIBCXX_USE_CXX11_ABI=1, "cxx11abiTRUE").
+#
+# flash-attn pre-built wheels on GitHub come in two variants:
+#   cxx11abiFALSE → links against old-ABI torch symbols (conda)
+#   cxx11abiTRUE  → links against new-ABI torch symbols (pip)
+#
+# If the ABI doesn't match, flash_attn.so fails on import with
+# "undefined symbol: _ZN3c10..." → ImportError → silent fallback to SDPA →
+# 0 % GPU utilisation and ~1× real-time factor on any GPU.
+#
+# FIX: force-reinstall torch AND torchaudio from the pip cu124 index in the
+# same layer.  This overwrites the conda-installed torch.so files in
+# /opt/conda/lib/python3.11/site-packages/torch/ with pip variants, making
+# every C++ extension in this image use the same (new) ABI.
+# The cxx11abiTRUE flash-attn wheel then loads cleanly.
 ARG TORCH_VERSION=2.6.0
 ARG TORCHCODEC_VERSION=0.6.0
 RUN --mount=type=cache,target=/root/.cache/pip \
-  pip install "torchaudio==${TORCH_VERSION}" \
-  --index-url "https://download.pytorch.org/whl/cu124" \
+  pip install --force-reinstall \
+    "torch==${TORCH_VERSION}" \
+    "torchaudio==${TORCH_VERSION}" \
+    --index-url "https://download.pytorch.org/whl/cu124" \
   && pip install "torchcodec==${TORCHCODEC_VERSION}"
 
 # ── flash-attn pre-built wheel (avoids ~20 min compile, must match torch + CUDA) ──
+# Uses cxx11abiTRUE because we just installed pip-torch above (new ABI).
+# If you ever switch back to conda-torch, use the cxx11abiFALSE variant instead.
 ARG FLASH_ATTN_WHEEL=https://github.com/Dao-AILab/flash-attention/releases/download/v2.8.3/flash_attn-2.8.3+cu12torch2.6cxx11abiTRUE-cp311-cp311-linux_x86_64.whl
 RUN --mount=type=cache,target=/root/.cache/pip \
   pip install --no-build-isolation "${FLASH_ATTN_WHEEL}"

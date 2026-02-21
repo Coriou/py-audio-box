@@ -631,11 +631,26 @@ def transcribe_ref(
 # ── model loading ──────────────────────────────────────────────────────────────
 
 def _has_flash_attn() -> bool:
-    """Return True when the flash-attn package is importable (i.e. installed)."""
+    """
+    Return True when flash-attn is importable and its CUDA extension loads.
+
+    Failure modes that set this to False:
+    • ImportError / ModuleNotFoundError — package not installed at all.
+    • OSError / undefined symbol        — ABI mismatch between the flash-attn
+      .so and the torch it was compiled against.  Most common cause: conda-
+      pytorch in the image (cxx11abiFALSE) paired with a cxx11abiTRUE wheel
+      (or vice-versa).  Python wraps the dlopen failure as ImportError, so it
+      is caught here.  Check the warning message for the exact symbol.
+    """
     try:
         import flash_attn  # noqa: F401
         return True
-    except ImportError:
+    except Exception as exc:  # ImportError, OSError, or any dlopen failure
+        import warnings
+        warnings.warn(
+            f"flash-attn not available — falling back to SDPA.  Reason: {exc}",
+            stacklevel=2,
+        )
         return False
 
 
