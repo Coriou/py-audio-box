@@ -419,23 +419,34 @@ else
 fi
 
 ok "Found offer ${OFFER_ID}"
-printf "     GPU       : ${CYAN}%s${RESET}  (%s GB VRAM)\n" "$OFFER_GPU" "$OFFER_RAM"
-printf "     price     : \$%s/hr   value: %s DLPerf/\$\n" "$OFFER_DPH" "$OFFER_VALUE"
+printf "     GPU       : ${CYAN}%s${RESET}  (%s GB VRAM)   value: %s DLPerf/\$\n" "$OFFER_GPU" "$OFFER_RAM" "$OFFER_VALUE"
+
+# ── price breakdown table (always shown) ─────────────────────────────────────
+if [[ $DRY_RUN -eq 0 ]]; then
+  _p12h=$( awk -v h="$OFFER_DPH" 'BEGIN { printf "%.2f", h * 12  }')
+  _pday=$( awk -v h="$OFFER_DPH" 'BEGIN { printf "%.2f", h * 24  }')
+  _pwk=$(  awk -v h="$OFFER_DPH" 'BEGIN { printf "%.2f", h * 168 }')
+  _pmo=$(  awk -v h="$OFFER_DPH" 'BEGIN { printf "%.2f", h * 730 }')
+  printf "     price     :  ${BOLD}\$%s${RESET}/hr" "$OFFER_DPH"
+  printf "  ·  \$%s / 12 h" "$_p12h"
+  printf "  ·  \$%s / day"  "$_pday"
+  printf "  ·  \$%s / week" "$_pwk"
+  printf "  ·  \$%s / mo\n" "$_pmo"
+else
+  printf "     price     :  \$%s/hr\n" "$OFFER_DPH"
+fi
 
 # ── price guard ────────────────────────────────────────────────────────────────
 # Compare the offer's hourly rate against the monthly ceiling.
 # $X/mo ÷ 730 h/mo = hourly equivalent threshold.
 if [[ $DRY_RUN -eq 0 && "$MAX_MONTHLY_PRICE" != "0" ]]; then
-  # bc may not be installed everywhere; use awk for portable float arithmetic.
   MAX_DPH=$(awk -v mo="$MAX_MONTHLY_PRICE" 'BEGIN { printf "%.6f", mo / 730 }')
   OFFER_MO=$(awk -v h="$OFFER_DPH" 'BEGIN { printf "%.2f", h * 730 }')
   EXCEEDS=$(awk -v a="$OFFER_DPH" -v b="$MAX_DPH" 'BEGIN { print (a > b) ? 1 : 0 }')
   if [[ "$EXCEEDS" -eq 1 ]]; then
     printf "\n"
-    printf "  ${YELLOW}${BOLD}⚠  Price warning${RESET}\n"
-    printf "     Selected offer costs ${RED}\$%s/hr${RESET} (~${RED}\$%s/mo${RESET}).\n" "$OFFER_DPH" "$OFFER_MO"
-    printf "     Your ceiling is ${YELLOW}\$%s/mo${RESET} (\$%s/hr)  [VAST_MAX_MONTHLY_PRICE=%s].\n" \
-      "$MAX_MONTHLY_PRICE" "$MAX_DPH" "$MAX_MONTHLY_PRICE"
+    printf "  ${YELLOW}${BOLD}⚠  Price warning${RESET}  —  \$%s/mo exceeds your ceiling of \$%s/mo  [VAST_MAX_MONTHLY_PRICE=%s]\n" \
+      "$OFFER_MO" "$MAX_MONTHLY_PRICE" "$MAX_MONTHLY_PRICE"
     printf "\n"
     if [[ $ASKED_CONFIRM -eq 0 ]]; then
       printf "  Proceed anyway? [y/N] "
@@ -446,7 +457,7 @@ if [[ $DRY_RUN -eq 0 && "$MAX_MONTHLY_PRICE" != "0" ]]; then
         ;;
       esac
     else
-      warn "Price exceeds ceiling but --yes was set — continuing."
+      warn "Price exceeds ceiling (\$${OFFER_MO}/mo > \$${MAX_MONTHLY_PRICE}/mo) but --yes was set — continuing."
       printf "\n"
     fi
   fi
