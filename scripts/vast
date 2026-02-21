@@ -16,6 +16,14 @@
 
 set -euo pipefail
 
+# Load .env from repo root (if present) so VAST_API_KEY can live there
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ENV_FILE="${SCRIPT_DIR}/../.env"
+if [[ -f "$ENV_FILE" ]]; then
+  # shellcheck source=/dev/null
+  set -o allexport; source "$ENV_FILE"; set +o allexport
+fi
+
 REGISTRY="${VAST_IMAGE:-ghcr.io/coriou/voice-tools:latest}"
 KEY_FILE="${HOME}/.config/vastai/vast_api_key"
 KEY="${VAST_API_KEY:-}"
