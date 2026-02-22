@@ -17,8 +17,19 @@ cd /app
 source tests/remote/lib/common.sh
 
 PARALLEL_N="${PARALLEL_N:-6}"
+
+# Cap OpenMP threads per job to avoid exhausting the host thread limit.
+# Default: floor(nproc / N), minimum 4, max 32.
+_ncpu=$(nproc 2>/dev/null || echo 8)
+_threads_per_job=$(( _ncpu / PARALLEL_N ))
+[[ $_threads_per_job -lt 4  ]] && _threads_per_job=4
+[[ $_threads_per_job -gt 32 ]] && _threads_per_job=32
+export OMP_NUM_THREADS=$_threads_per_job
+export MKL_NUM_THREADS=$_threads_per_job
+
 echo "=== 05: parallel stress test (N=${PARALLEL_N}) ==="
 echo "     Launching ${PARALLEL_N} synthesis jobs simultaneously…"
+echo "     OMP_NUM_THREADS=${OMP_NUM_THREADS}  (nproc=${_ncpu})"
 echo ""
 
 # ── Job definitions ────────────────────────────────────────────────────────────
