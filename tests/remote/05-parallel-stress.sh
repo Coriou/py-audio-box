@@ -101,6 +101,42 @@ if [[ "${SKIP_SLOW:-0}" != "1" ]]; then
       --seed 55
   fi
 
+  if [[ $PARALLEL_N -ge 7 ]]; then
+    _qlaunch "david-attenborough/expressive/EN/stress7" \
+      --voice david-attenborough \
+      --text "In moments of great pressure, the most eloquent voices are those that remain composed, precise, and utterly certain of what they must say." \
+      --language English \
+      --profile expressive \
+      --seed 56
+  fi
+
+  if [[ $PARALLEL_N -ge 8 ]]; then
+    _qlaunch "hikaru-nakamura/balanced/EN/stress8" \
+      --voice hikaru-nakamura \
+      --text "Every parallel calculation is a gambit: you gain speed but you risk collision. Managing that risk is what separates good players from great ones." \
+      --language English \
+      --profile balanced \
+      --seed 57
+  fi
+
+  if [[ $PARALLEL_N -ge 9 ]]; then
+    _qlaunch "rascar-capac/stable/FR/stress9" \
+      --voice rascar-capac \
+      --text "Neuf voix simultanées sur un seul processeur graphique — c'est là que les limites de la mémoire vidéo commencent à se faire sentir." \
+      --language French \
+      --profile stable \
+      --seed 58
+  fi
+
+  if [[ $PARALLEL_N -ge 10 ]]; then
+    _qlaunch "chalamet-en/expressive/EN/stress10" \
+      --voice chalamet-en \
+      --text "Ten simultaneous synthesis jobs. If this works cleanly, we have found the upper bound of what this GPU can sustain without degradation." \
+      --language English \
+      --profile expressive \
+      --seed 59
+  fi
+
 fi  # SKIP_SLOW
 
 # ── Wait for all jobs + collect results ───────────────────────────────────────
