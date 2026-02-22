@@ -3,7 +3,7 @@
 # CustomVoice: --instruct and --instruct-style delivery control.
 # Mirrors tests/local/11-instruct.sh + tests/local/12-instruct-style.sh
 set -euo pipefail
-cd /app
+cd /app 2>/dev/null || true
 source tests/remote/lib/common.sh
 
 echo "=== 04: CustomVoice instruct + instruct-style ==="

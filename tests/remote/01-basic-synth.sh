@@ -3,26 +3,26 @@
 # Smoke tests: CLI utilities + single-voice basic synthesis.
 # Mirrors tests/local/01-cli-utils.sh + first speaks from 02-voice-clone.sh
 set -euo pipefail
-cd /app
+cd /app 2>/dev/null || true
 source tests/remote/lib/common.sh
 
-echo "=== 01: basic-synth (remote GPU) ==="
+echo "=== 01: basic-synth (${TARGET}) ==="
 
 run_cmd "list-voices" \
-  ./run-direct voice-synth list-voices \
+  $RUNNER voice-synth list-voices \
     --cache "$CACHE"
 
 run_cmd "list-voices --json" \
-  ./run-direct voice-synth list-voices \
+  $RUNNER voice-synth list-voices \
     --cache "$CACHE" --json
 
 run_cmd "capabilities --json --skip-speaker-probe" \
-  ./run-direct voice-synth capabilities \
+  $RUNNER voice-synth capabilities \
     --dtype "$DTYPE" \
     --skip-speaker-probe --json
 
 run_cmd "list-speakers --json" \
-  ./run-direct voice-synth list-speakers \
+  $RUNNER voice-synth list-speakers \
     --cache "$CACHE" \
     --dtype "$DTYPE" \
     --json

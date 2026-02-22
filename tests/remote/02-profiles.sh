@@ -3,7 +3,7 @@
 # Generation profiles: stable / balanced / expressive across multiple voices + languages.
 # Mirrors tests/local/03-clone-profiles.sh + parts of 05-variants.sh
 set -euo pipefail
-cd /app
+cd /app 2>/dev/null || true
 source tests/remote/lib/common.sh
 
 echo "=== 02: profiles (stable · balanced · expressive) ==="

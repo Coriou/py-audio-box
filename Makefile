@@ -168,21 +168,74 @@ vast-pull:  ## Pull /work from a running instance  [ID=12345 JOB=name]
 vast-remote-test:  ## Provision GPU → run full remote test suite (tests/remote/) → rsync results → destroy
 	# Runs tests/remote/run-all.sh on a fresh GPU instance.
 	# Override test behaviour:
-	#   ONLY="01 03"     run only specific suites
+	#   ONLY="01 03"     run only specific suites (01-06)
 	#   SKIP="05"        skip specific suites
 	#   SKIP_SLOW=1      skip slow sections inside suites
 	#   PARALLEL_N=4     parallel jobs in the stress test (default 6)
-	# Extra deploy flags via ARGS:
-	#   make vast-remote-test ARGS="--keep"
+	#   TARGET=gpu       benchmark label (default: gpu)
+	# Extra deploy flags via ARGS:   make vast-remote-test ARGS="--keep"
 	$(DEPLOY_SCRIPT) \
 	  --push-cache ./cache/voices \
 	  $(ARGS) \
-	  -- '!ONLY="$(ONLY)" SKIP="$(SKIP)" SKIP_SLOW="$(SKIP_SLOW)" PARALLEL_N="$(PARALLEL_N)" bash /app/tests/remote/run-all.sh'
+	  -- '!ONLY="$(ONLY)" SKIP="$(SKIP)" SKIP_SLOW="$(SKIP_SLOW)" PARALLEL_N="$(PARALLEL_N)" TARGET="$(TARGET)" RUN_ID="$(RUN_ID)" bash /app/tests/remote/run-all.sh'
+
+# Bring up a synonym
+.PHONY: synth-bench-gpu
+synth-bench-gpu: vast-remote-test  ## Alias for vast-remote-test
 
 ONLY        ?=
 SKIP        ?=
 SKIP_SLOW   ?= 0
 PARALLEL_N  ?= 6
+TARGET      ?= gpu
+RUN_ID      ?= $(shell date +%Y%m%d_%H%M%S)
+
+.PHONY: synth-bench-cpu
+synth-bench-cpu:  ## Run the synthesis benchmark suite on the LOCAL CPU Docker container
+	# Runs TARGET=cpu (float32) inside the local CPU toolbox Docker container.
+	# Results saved to ./work/bench-tests/ on the host.
+	# Override: make synth-bench-cpu ONLY="01 02" SKIP_SLOW=1
+	docker compose run --rm \
+	  -e TARGET=cpu \
+	  -e DTYPE=float32 \
+	  -e SKIP_SLOW="$(SKIP_SLOW)" \
+	  -e ONLY="$(ONLY)" \
+	  -e SKIP="$(SKIP)" \
+	  -e PARALLEL_N="$(PARALLEL_N)" \
+	  -e RUN_ID="$(RUN_ID)" \
+	  toolbox bash /app/tests/remote/run-all.sh
+
+# ROG GPU machine: Windows + WSL2 + Docker (CUDA 12.8 image)
+ROG_HOST    ?= 100.81.65.12
+ROG_PORT    ?= 1337
+ROG_USER    ?= Benjamin
+ROG_WSL     ?= ubuntu
+ROG_REPO    ?= /mnt/c/Users/Benjamin/py-audio-box
+
+.PHONY: synth-bench-rog
+synth-bench-rog:  ## Run benchmark on the ROG GPU machine via SSH + WSL  [ROG_HOST=... ROG_PORT=...]
+	# 1. Push latest voices to ROG
+	@echo "==> Syncing voices to ROG ($(ROG_USER)@$(ROG_HOST):$(ROG_PORT))..."
+	rsync -avz --progress \
+	  -e "ssh -p $(ROG_PORT)" \
+	  ./cache/voices/ $(ROG_USER)@$(ROG_HOST):$(ROG_REPO)/cache/voices/
+	# 2. Run the benchmark inside the GPU docker on ROG
+	@echo "==> Running benchmark on ROG..."
+	ssh -p $(ROG_PORT) $(ROG_USER)@$(ROG_HOST) \
+	  "wsl -d $(ROG_WSL) -u root bash -c \
+	    'cd $(ROG_REPO) && \
+	     docker compose -f docker-compose.yml -f docker-compose.gpu.yml run --rm \
+	       -e TARGET=rog -e DTYPE=bfloat16 \
+	       -e SKIP_SLOW=\"$(SKIP_SLOW)\" -e ONLY=\"$(ONLY)\" -e SKIP=\"$(SKIP)\" \
+	       -e PARALLEL_N=\"$(PARALLEL_N)\" -e RUN_ID=\"$(RUN_ID)\" \
+	       toolbox bash /app/tests/remote/run-all.sh'"
+	# 3. Pull results back
+	@echo "==> Pulling results from ROG..."
+	mkdir -p work_remote/rog-$(RUN_ID)
+	rsync -avz --progress \
+	  -e "ssh -p $(ROG_PORT)" \
+	  $(ROG_USER)@$(ROG_HOST):$(ROG_REPO)/work/remote-tests/ \
+	  work_remote/rog-$(RUN_ID)/
 
 # ── apps ───────────────────────────────────────────────────────────────────────
 

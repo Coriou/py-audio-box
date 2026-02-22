@@ -3,17 +3,17 @@
 # Long-text chunking: --chunk flag + --text-file input with multi-chunk content.
 # Mirrors tests/local/06-chunking.sh + tests/local/07-text-file.sh
 set -euo pipefail
-cd /app
+cd /app 2>/dev/null || true
 source tests/remote/lib/common.sh
 
-echo "=== 03: chunking + text-file (remote GPU) ==="
+echo "=== 03: chunking + text-file (${TARGET}) ==="
 
-# ── Write text files to /work ──────────────────────────────────────────────────
-_tf_en="/work/remote_chunk_en_$$.txt"
-_tf_fr="/work/remote_chunk_fr_$$.txt"
-_tf_attn="/work/remote_chunk_attn_$$.txt"
+# ── Write text files to $OUT ──────────────────────────────────────────────────
+_tf_en="${OUT}/remote_chunk_en_$$.txt"
+_tf_fr="${OUT}/remote_chunk_fr_$$.txt"
+_tf_attn="${OUT}/remote_chunk_attn_$$.txt"
 
-mkdir -p /work
+mkdir -p "${OUT}"
 
 cat > "$_tf_en" << 'EOF'
 Voice synthesis at scale requires careful attention to latency, throughput, and naturalness. When generating long-form content, a chunking strategy splits the input into manageable segments while preserving prosodic continuity. Each chunk is synthesised independently and the resulting audio is concatenated. This approach enables arbitrarily long outputs without exceeding the model context window. The result should sound seamless to a human listener.
