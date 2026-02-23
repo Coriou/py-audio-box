@@ -37,7 +37,7 @@ _LIB = str(Path(__file__).resolve().parent.parent.parent / "lib")
 if _LIB not in sys.path:
     sys.path.insert(0, _LIB)
 
-from jobqueue import JobQueue, JobSpec, normalize_job_spec  # noqa: E402
+from jobqueue import JobQueue, JobSpec, build_speak_argv, normalize_job_spec  # noqa: E402
 from voices import VoiceRegistry  # noqa: E402
 
 
@@ -252,45 +252,6 @@ def _voice_presence_errors(jobs: Sequence[RenderedJob], *, cache_dir: Path) -> l
     return [f"voice '{slug}' does not exist in {registry.voice_dir(slug).parent}" for slug in missing]
 
 
-def _speak_argv_for_job(spec: JobSpec, *, text_file: Path, out_exact: Path, json_result: Path) -> list[str]:
-    argv = ["voice-synth", "speak"]
-    if spec.voice:
-        argv.extend(["--voice", spec.voice])
-    elif spec.speaker:
-        argv.extend(["--speaker", spec.speaker])
-
-    argv.extend(["--text-file", str(text_file)])
-
-    if spec.language:
-        argv.extend(["--language", spec.language])
-    if spec.tone:
-        argv.extend(["--tone", spec.tone])
-    if spec.instruct:
-        argv.extend(["--instruct", spec.instruct])
-    if spec.instruct_style:
-        argv.extend(["--instruct-style", spec.instruct_style])
-    if spec.profile:
-        argv.extend(["--profile", spec.profile])
-
-    argv.extend(["--variants", str(spec.variants)])
-    if spec.select_best:
-        argv.append("--select-best")
-    if spec.chunk:
-        argv.append("--chunk")
-
-    if spec.temperature is not None:
-        argv.extend(["--temperature", str(spec.temperature)])
-    if spec.top_p is not None:
-        argv.extend(["--top-p", str(spec.top_p)])
-    if spec.repetition_penalty is not None:
-        argv.extend(["--repetition-penalty", str(spec.repetition_penalty)])
-    if spec.max_new_tokens is not None:
-        argv.extend(["--max-new-tokens", str(spec.max_new_tokens)])
-
-    argv.extend(["--out-exact", str(out_exact), "--json-result", str(json_result)])
-    return argv
-
-
 def build_manifest(
     jobs: Sequence[RenderedJob],
     *,
@@ -318,11 +279,11 @@ def build_manifest(
         json_result = out_exact / "result.json"
         text_file.write_text(spec.text, encoding="utf-8")
 
-        argv = _speak_argv_for_job(
+        argv = build_speak_argv(
             spec,
-            text_file=text_file,
-            out_exact=out_exact,
-            json_result=json_result,
+            text_file=str(text_file),
+            out_exact=str(out_exact),
+            json_result=str(json_result),
         )
 
         manifest_jobs.append(
@@ -1076,19 +1037,30 @@ def _handle_retry(args: argparse.Namespace) -> int:
 
     failed_record_json = _to_text(failed_raw)
 
-    pipe = redis_client.pipeline(transaction=True)
-    pipe.hdel(queue.keys.failed, args.request_id)
-    pipe.hdel(queue.keys.request_index, args.request_id)
-    pipe.execute()
+    # Safe retry sequence — never delete the failure tombstone until the job is
+    # confirmed in the stream, so a crash between steps leaves the failed record
+    # intact and the job retryable again:
+    #
+    #  Step 1: clear req:index so the enqueue Lua script won't see "duplicate_request".
+    #  Step 2: call enqueue — job lands in stream and req:index is re-set atomically.
+    #  Step 3: only now remove the failed tombstone (job is safe in stream).
+    #  On exception in step 2: restore req:index so the job remains findable.
+
+    redis_client.hdel(queue.keys.request_index, args.request_id)
 
     try:
         result = queue.enqueue(retry_job)
     except Exception:
-        redis_client.hset(queue.keys.failed, args.request_id, failed_record_json)
+        # Best-effort restore so status/report still see the job.
+        redis_client.hset(queue.keys.request_index, args.request_id, "queued")
         raise
 
-    if result.status != "queued":
-        # Preserve historical failure context if requeue did not succeed.
+    if result.status in {"queued", "already_done"}:
+        # Job is safely in stream (or already completed) — clear the failure tombstone.
+        redis_client.hdel(queue.keys.failed, args.request_id)
+    else:
+        # Unexpected status — restore both keys and let the caller retry manually.
+        redis_client.hset(queue.keys.request_index, args.request_id, "queued")
         redis_client.hset(queue.keys.failed, args.request_id, failed_record_json)
 
     payload = {
@@ -1104,7 +1076,7 @@ def _handle_retry(args: argparse.Namespace) -> int:
         print(f"status:     {payload['status']}")
         print(f"stream_id:  {payload['stream_id'] or '-'}")
 
-    return 0 if result.status == "queued" else 1
+    return 0 if result.status in {"queued", "already_done"} else 1
 
 
 def _collect_flush_keys(redis_client: Any, queue: JobQueue, *, hard: bool) -> list[str]:

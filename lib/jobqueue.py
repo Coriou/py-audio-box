@@ -535,6 +535,60 @@ __all__ = [
     "REDIS_WATCHER_LOCK_KEY",
     "STREAM_JOB_FIELD",
     "WATCHER_CONSUMER_GROUP",
+    "build_speak_argv",
     "make_content_hash",
     "normalize_job_spec",
 ]
+
+
+def build_speak_argv(
+    spec: JobSpec,
+    *,
+    text_file: str,
+    out_exact: str,
+    json_result: str,
+) -> list[str]:
+    """
+    Build the canonical `voice-synth speak` argv list for a JobSpec.
+
+    All path arguments are accepted as plain strings so the function works for
+    both local paths (job-runner) and remote paths (job-watcher).
+    Callers with ``pathlib.Path`` objects should pass ``str(path)``.
+    """
+    argv = ["voice-synth", "speak"]
+
+    if spec.voice:
+        argv.extend(["--voice", spec.voice])
+    elif spec.speaker:
+        argv.extend(["--speaker", spec.speaker])
+
+    argv.extend(["--text-file", text_file])
+
+    if spec.language:
+        argv.extend(["--language", spec.language])
+    if spec.tone:
+        argv.extend(["--tone", spec.tone])
+    if spec.instruct:
+        argv.extend(["--instruct", spec.instruct])
+    if spec.instruct_style:
+        argv.extend(["--instruct-style", spec.instruct_style])
+    if spec.profile:
+        argv.extend(["--profile", spec.profile])
+
+    argv.extend(["--variants", str(spec.variants)])
+    if spec.select_best:
+        argv.append("--select-best")
+    if spec.chunk:
+        argv.append("--chunk")
+
+    if spec.temperature is not None:
+        argv.extend(["--temperature", str(spec.temperature)])
+    if spec.top_p is not None:
+        argv.extend(["--top-p", str(spec.top_p)])
+    if spec.repetition_penalty is not None:
+        argv.extend(["--repetition-penalty", str(spec.repetition_penalty)])
+    if spec.max_new_tokens is not None:
+        argv.extend(["--max-new-tokens", str(spec.max_new_tokens)])
+
+    argv.extend(["--out-exact", out_exact, "--json-result", json_result])
+    return argv

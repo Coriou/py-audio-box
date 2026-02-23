@@ -41,7 +41,7 @@ _LIB = str(Path(__file__).resolve().parent.parent.parent / "lib")
 if _LIB not in sys.path:
     sys.path.insert(0, _LIB)
 
-from jobqueue import JobQueue, JobSpec, StreamLease, normalize_job_spec  # noqa: E402
+from jobqueue import JobQueue, JobSpec, StreamLease, build_speak_argv, normalize_job_spec  # noqa: E402
 
 
 RETRY_BACKOFF_SECONDS = (30, 120, 600)
@@ -515,47 +515,11 @@ class RemoteExecutor:
         _run_subprocess(cmd, check=True)
 
 
-def _build_speak_argv(spec: JobSpec, *, text_file: str, out_exact: str, json_result: str) -> list[str]:
-    argv = ["voice-synth", "speak"]
-
-    if spec.voice:
-        argv.extend(["--voice", spec.voice])
-    elif spec.speaker:
-        argv.extend(["--speaker", spec.speaker])
-
-    argv.extend(["--text-file", text_file])
-
-    if spec.language:
-        argv.extend(["--language", spec.language])
-    if spec.tone:
-        argv.extend(["--tone", spec.tone])
-    if spec.instruct:
-        argv.extend(["--instruct", spec.instruct])
-    if spec.instruct_style:
-        argv.extend(["--instruct-style", spec.instruct_style])
-    if spec.profile:
-        argv.extend(["--profile", spec.profile])
-
-    argv.extend(["--variants", str(spec.variants)])
-    if spec.select_best:
-        argv.append("--select-best")
-    if spec.chunk:
-        argv.append("--chunk")
-
-    if spec.temperature is not None:
-        argv.extend(["--temperature", str(spec.temperature)])
-    if spec.top_p is not None:
-        argv.extend(["--top-p", str(spec.top_p)])
-    if spec.repetition_penalty is not None:
-        argv.extend(["--repetition-penalty", str(spec.repetition_penalty)])
-    if spec.max_new_tokens is not None:
-        argv.extend(["--max-new-tokens", str(spec.max_new_tokens)])
-
-    argv.extend(["--out-exact", out_exact, "--json-result", json_result])
-    return argv
-
-
 def _estimate_outstanding(redis_client: Any, queue: JobQueue) -> int:
+    # Counts jobs that are neither done nor terminally failed.
+    # req:index grows monotonically (set on enqueue, cleared only by retry).
+    # result and failed grow monotonically too, so the difference correctly
+    # reflects jobs still in-flight or queued — including PEL entries.
     requested = int(redis_client.hlen(queue.keys.request_index))
     done = int(redis_client.hlen(queue.keys.result))
     failed = int(redis_client.hlen(queue.keys.failed))
@@ -912,7 +876,7 @@ class JobWatcher:
             remote_text = remote_out / "text.txt"
             remote_result = remote_out / "result.json"
 
-            argv = _build_speak_argv(
+            argv = build_speak_argv(
                 spec,
                 text_file=str(remote_text),
                 out_exact=str(remote_out),
@@ -1086,7 +1050,11 @@ class JobWatcher:
 
                 if not pending:
                     outstanding = _estimate_outstanding(self.redis, self.queue)
-                    if outstanding == 0:
+                    retry_count = int(self.redis.zcard(self.queue.keys.retry_zset))
+                    if outstanding == 0 and retry_count == 0:
+                        # Queue is fully drained — clear the age hint so a stale
+                        # first_queued timestamp doesn't trigger batch_max_wait on
+                        # the next poll cycle.
                         self.redis.delete(self.queue.keys.first_queued)
 
                     if instance is None:
@@ -1246,11 +1214,22 @@ def build_parser() -> argparse.ArgumentParser:
     )
     ap.add_argument("--once", action="store_true", help="Run at most one scheduling cycle and exit.")
     ap.add_argument("--consumer-name", default=_default_consumer_name())
+    ap.add_argument(
+        "--ping",
+        action="store_true",
+        help="Print 'ok' and exit 0 without connecting to Redis. Used by healthchecks.",
+    )
     return ap
 
 
 def main() -> None:
     args = build_parser().parse_args()
+
+    # Lightweight liveness probe: no Redis, no env validation required.
+    if args.ping:
+        print("ok")
+        raise SystemExit(0)
+
     try:
         config = WatcherConfig.from_env()
     except ValueError as exc:

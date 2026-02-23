@@ -279,6 +279,34 @@ jobs-enqueue:  ## Enqueue jobs YAML. Usage: make jobs-enqueue FILE=/app/jobs.exa
 jobs-status:  ## Queue status from Redis. Usage: make jobs-status ARGS='--json'
 	./run job-runner status $(ARGS)
 
+.PHONY: jobs-result
+jobs-result:  ## Get result for a request_id. Usage: make jobs-result ID=topic:beat-001
+	@if [ -z "$(ID)" ]; then \
+		echo "ERROR: ID is not set. Example: make jobs-result ID=topic:beat-001"; \
+		exit 1; \
+	fi
+	./run job-runner result "$(ID)" $(ARGS)
+
+.PHONY: jobs-report
+jobs-report:  ## Status of all jobs in YAML. Usage: make jobs-report FILE=/app/jobs.example.yaml
+	@if [ -z "$(FILE)" ]; then \
+		echo "ERROR: FILE is not set. Example: make jobs-report FILE=/app/jobs.example.yaml"; \
+		exit 1; \
+	fi
+	./run job-runner report "$(FILE)" $(ARGS)
+
+.PHONY: jobs-retry
+jobs-retry:  ## Requeue a failed job. Usage: make jobs-retry ID=topic:beat-001 ARGS='--yes'
+	@if [ -z "$(ID)" ]; then \
+		echo "ERROR: ID is not set. Example: make jobs-retry ID=topic:beat-001"; \
+		exit 1; \
+	fi
+	./run job-runner retry "$(ID)" $(ARGS)
+
+.PHONY: jobs-flush
+jobs-flush:  ## Flush transient queue keys. Add ARGS='--hard --yes' to also clear results.
+	./run job-runner flush $(ARGS)
+
 .PHONY: watcher-once
 watcher-once:  ## Run one watcher scheduling cycle in the watcher compose service
 	docker compose -f docker-compose.watcher.yml run --rm watcher python3 apps/job-watcher/job-watcher.py --once $(ARGS)

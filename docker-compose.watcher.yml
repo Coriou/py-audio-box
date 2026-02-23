@@ -34,8 +34,11 @@ services:
       - ${HOME}/.ssh:/root/.ssh:ro
       - ${HOME}/.config/rclone:/root/.config/rclone:ro
     healthcheck:
-      test: ["CMD-SHELL", "python3 apps/job-runner/job-runner.py status --json >/dev/null"]
+      # --ping exits 0 immediately without touching Redis; it's a pure liveness
+      # probe that verifies the Python process and imports are healthy.
+      # Use `make jobs-status` for readiness (Redis connectivity).
+      test: ["CMD", "python3", "apps/job-watcher/job-watcher.py", "--ping"]
       interval: 30s
-      timeout: 10s
+      timeout: 5s
       retries: 3
-      start_period: 20s
+      start_period: 10s
