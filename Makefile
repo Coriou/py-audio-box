@@ -307,6 +307,10 @@ jobs-retry:  ## Requeue a failed job. Usage: make jobs-retry ID=topic:beat-001 A
 jobs-flush:  ## Flush transient queue keys. Add ARGS='--hard --yes' to also clear results.
 	./run job-runner flush $(ARGS)
 
+.PHONY: jobs-history
+jobs-history:  ## Recent done/failed job history. Usage: make jobs-history ARGS='--limit 20 --status all'
+	./run job-runner history $(ARGS)
+
 .PHONY: watcher-once
 watcher-once:  ## Run one watcher scheduling cycle in the watcher compose service
 	docker compose -f docker-compose.watcher.yml run --rm watcher python3 apps/job-watcher/job-watcher.py --once $(ARGS)
@@ -322,6 +326,10 @@ watcher-down:  ## Stop the watcher daemon
 .PHONY: watcher-logs
 watcher-logs:  ## Tail watcher daemon logs
 	docker compose -f docker-compose.watcher.yml logs -f watcher
+
+.PHONY: watcher-restart
+watcher-restart:  ## Restart the watcher daemon (applies config/env changes)
+	docker compose -f docker-compose.watcher.yml restart watcher
 
 .PHONY: test
 test:  ## Run the unit/integration test suite inside the toolbox container

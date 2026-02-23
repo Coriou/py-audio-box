@@ -22,6 +22,8 @@ Core commands:
 
 # Queue and result inspection
 ./run job-runner status --json
+./run job-runner history                         # last 20 done/failed (most recent first)
+./run job-runner history --status failed --limit 50
 ./run job-runner result topic:beat-001 --json
 ./run job-runner report /app/jobs.example.yaml --json
 

@@ -627,6 +627,23 @@ def _collect_status(redis_client: Any, queue: JobQueue, *, lease_idle_ms: int) -
         if dt is not None:
             first_queued_age_sec = round((datetime.now(timezone.utc) - dt).total_seconds(), 3)
 
+    # Watcher heartbeat (written by job-watcher on every poll cycle).
+    heartbeat_raw = redis_client.get(queue.keys.watcher_heartbeat)
+    heartbeat_data = _parse_json_hash_value(heartbeat_raw)
+    watcher_heartbeat: dict[str, Any] | None = heartbeat_data if isinstance(heartbeat_data, dict) else None
+    heartbeat_age_sec: float | None = None
+    if watcher_heartbeat is not None:
+        hb_ts = watcher_heartbeat.get("ts")
+        if hb_ts:
+            hb_dt = _parse_iso8601(str(hb_ts))
+            if hb_dt is not None:
+                heartbeat_age_sec = round((datetime.now(timezone.utc) - hb_dt).total_seconds(), 3)
+
+    # Totals from request index and result/failed hashes.
+    total_submitted = int(redis_client.hlen(queue.keys.request_index))
+    total_done = int(redis_client.hlen(queue.keys.result))
+    total_failed = int(redis_client.hlen(queue.keys.failed))
+
     return {
         "timestamp": _utc_now_iso(),
         "stream": {
@@ -645,7 +662,68 @@ def _collect_status(redis_client: Any, queue: JobQueue, *, lease_idle_ms: int) -
             "ttl_ms": lock_ttl_ms,
         },
         "active_instance": _to_text(active_instance) if active_instance is not None else None,
+        "watcher": {
+            "heartbeat": watcher_heartbeat,
+            "heartbeat_age_sec": heartbeat_age_sec,
+        },
+        "totals": {
+            "submitted": total_submitted,
+            "done": total_done,
+            "failed": total_failed,
+            "outstanding": max(0, total_submitted - total_done - total_failed),
+        },
     }
+
+
+def _handle_history(args: argparse.Namespace) -> int:
+    try:
+        redis_client = _redis_client(args.redis_url)
+    except RuntimeError as exc:
+        print(f"ERROR: {exc}", file=sys.stderr)
+        return 1
+
+    queue = JobQueue(redis_client)
+    limit = int(args.limit)
+    show_done = args.status in ("done", "all")
+    show_failed = args.status in ("failed", "all")
+
+    records: list[dict[str, Any]] = []
+
+    if show_done:
+        for req_raw, val_raw in redis_client.hgetall(queue.keys.result).items():
+            rec = _parse_json_hash_value(val_raw)
+            if isinstance(rec, dict):
+                records.append({"kind": "done", "request_id": _to_text(req_raw), "record": rec})
+
+    if show_failed:
+        for req_raw, val_raw in redis_client.hgetall(queue.keys.failed).items():
+            rec = _parse_json_hash_value(val_raw)
+            if isinstance(rec, dict):
+                records.append({"kind": "failed", "request_id": _to_text(req_raw), "record": rec})
+
+    def _ts(item: dict[str, Any]) -> str:
+        rec = item["record"]
+        return str(rec.get("completed_at") or rec.get("failed_at") or "")
+
+    records.sort(key=_ts, reverse=True)
+    if limit > 0:
+        records = records[:limit]
+
+    if args.json:
+        print(json.dumps({"count": len(records), "records": records}, indent=2, sort_keys=True))
+    else:
+        if not records:
+            print("No history found.")
+            return 0
+        print(f"{'KIND':<8}  {'TIMESTAMP':<20}  {'ATT':<4}  REQUEST_ID")
+        print("-" * 72)
+        for item in records:
+            rec = item["record"]
+            ts = _ts(item)[:19]
+            attempt = str(rec.get("attempt", "-"))
+            print(f"{item['kind']:<8}  {ts:<20}  {attempt:<4}  {item['request_id']}")
+
+    return 0
 
 
 def _confirm(prompt: str) -> bool:
@@ -913,15 +991,34 @@ def _handle_status(args: argparse.Namespace) -> int:
     else:
         stream = status_payload["stream"]
         lock = status_payload["lock"]
+        watcher = status_payload["watcher"]
+        totals = status_payload["totals"]
+        hb = watcher.get("heartbeat") or {}
+        hb_age = watcher.get("heartbeat_age_sec")
+        hb_age_str = f"{hb_age}s ago" if hb_age is not None else "-"
+        hb_consumer = hb.get("consumer") or "-"
+        hb_ts = hb.get("ts") or "-"
+
+        print(f"timestamp:            {status_payload['timestamp']}")
+        print()
         print(f"stream_length:        {stream['length']}")
         print(f"pending:              {stream['pending']}")
         print(f"stale_pel:            {stream['stale_pel']}")
         print(f"retry_queue_size:     {status_payload['retry_queue_size']}")
+        print(f"first_queued:         {stream['first_queued'] or '-'}")
+        print(f"first_queued_age_sec: {stream['first_queued_age_sec']}")
+        print()
+        print(f"submitted:            {totals['submitted']}")
+        print(f"done:                 {totals['done']}")
+        print(f"failed:               {totals['failed']}")
+        print(f"outstanding:          {totals['outstanding']}")
+        print()
         print(f"lock_owner:           {lock['owner'] or '-'}")
         print(f"lock_ttl_ms:          {lock['ttl_ms']}")
         print(f"active_instance:      {status_payload['active_instance'] or '-'}")
-        print(f"first_queued:         {stream['first_queued'] or '-'}")
-        print(f"first_queued_age_sec: {stream['first_queued_age_sec']}")
+        print()
+        print(f"watcher_last_seen:    {hb_ts}  ({hb_age_str})")
+        print(f"watcher_consumer:     {hb_consumer}")
     return 0
 
 
@@ -1222,6 +1319,21 @@ def build_parser() -> argparse.ArgumentParser:
     report.add_argument("--redis-url", default=None)
     report.add_argument("--json", action="store_true")
 
+    history = sub.add_parser(
+        "history",
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+        help="Show recent job history (done/failed) from Redis.",
+    )
+    history.add_argument("--redis-url", default=None)
+    history.add_argument("--limit", type=int, default=20, help="Max records to show (0 = all).")
+    history.add_argument(
+        "--status",
+        choices=["done", "failed", "all"],
+        default="all",
+        help="Filter by outcome.",
+    )
+    history.add_argument("--json", action="store_true")
+
     retry = sub.add_parser("retry", formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     retry.add_argument("request_id")
     retry.add_argument("--redis-url", default=None)
@@ -1256,6 +1368,8 @@ def main() -> None:
             raise SystemExit(_handle_execute_manifest(args))
         if args.command == "status":
             raise SystemExit(_handle_status(args))
+        if args.command == "history":
+            raise SystemExit(_handle_history(args))
         if args.command == "result":
             raise SystemExit(_handle_result(args))
         if args.command == "report":

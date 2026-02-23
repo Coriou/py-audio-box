@@ -206,7 +206,7 @@ class WatcherConfig:
             batch_max_wait=_env_int("WATCHER_BATCH_MAX_WAIT", 300),
             batch_max_jobs=_env_int("WATCHER_BATCH_MAX_JOBS", 128),
             idle_grace=_env_int("WATCHER_IDLE_GRACE", 75),
-            max_runtime=_env_int("WATCHER_MAX_RUNTIME", 240),
+            max_runtime=_env_int("WATCHER_MAX_RUNTIME", 7200),
             max_attempts=_env_int("WATCHER_MAX_ATTEMPTS", 3),
             lock_ttl=_env_int("WATCHER_LOCK_TTL", 120),
             lock_renew_every=_env_int("WATCHER_LOCK_RENEW_EVERY", 40),

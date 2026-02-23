@@ -86,7 +86,7 @@ def test_should_start_run_thresholds() -> None:
 
 def test_build_speak_argv_includes_out_exact_and_json_result() -> None:
     spec = _job_spec()
-    argv = job_watcher._build_speak_argv(
+    argv = job_watcher.build_speak_argv(
         spec,
         text_file="/work/topic/beat-001/text.txt",
         out_exact="/work/topic/beat-001",
