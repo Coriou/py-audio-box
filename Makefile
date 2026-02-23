@@ -255,9 +255,81 @@ voice-synth:  ## Run voice-synth. Usage: make voice-synth ARGS='speak --voice <i
 voice-register:  ## One-shot register. Usage: make voice-register ARGS='--url "..." --voice-name slug --text "Hello"'
 	./run voice-register $(ARGS)
 
+.PHONY: job-runner
+job-runner:  ## Run job-runner. Usage: make job-runner ARGS='plan /app/jobs.example.yaml'
+	./run job-runner $(ARGS)
+
+.PHONY: jobs-plan
+jobs-plan:  ## Validate and preview jobs YAML. Usage: make jobs-plan FILE=/app/jobs.example.yaml
+	@if [ -z "$(FILE)" ]; then \
+		echo "ERROR: FILE is not set. Example: make jobs-plan FILE=/app/jobs.example.yaml"; \
+		exit 1; \
+	fi
+	./run job-runner plan "$(FILE)" $(ARGS)
+
+.PHONY: jobs-enqueue
+jobs-enqueue:  ## Enqueue jobs YAML. Usage: make jobs-enqueue FILE=/app/jobs.example.yaml
+	@if [ -z "$(FILE)" ]; then \
+		echo "ERROR: FILE is not set. Example: make jobs-enqueue FILE=/app/jobs.example.yaml"; \
+		exit 1; \
+	fi
+	./run job-runner enqueue "$(FILE)" $(ARGS)
+
+.PHONY: jobs-status
+jobs-status:  ## Queue status from Redis. Usage: make jobs-status ARGS='--json'
+	./run job-runner status $(ARGS)
+
+.PHONY: watcher-once
+watcher-once:  ## Run one watcher scheduling cycle in the watcher compose service
+	docker compose -f docker-compose.watcher.yml run --rm watcher python3 apps/job-watcher/job-watcher.py --once $(ARGS)
+
+.PHONY: watcher-up
+watcher-up:  ## Start the watcher daemon (docker-compose.watcher.yml)
+	docker compose -f docker-compose.watcher.yml up -d watcher
+
+.PHONY: watcher-down
+watcher-down:  ## Stop the watcher daemon
+	docker compose -f docker-compose.watcher.yml down
+
+.PHONY: watcher-logs
+watcher-logs:  ## Tail watcher daemon logs
+	docker compose -f docker-compose.watcher.yml logs -f watcher
+
 .PHONY: test
 test:  ## Run the unit/integration test suite inside the toolbox container
 	docker compose run --rm toolbox python -m pytest tests/ -v $(ARGS)
+
+.PHONY: test-jobqueue-redis
+test-jobqueue-redis:  ## Run opt-in Redis integration tests for lib/jobqueue.py (spins temporary redis)
+	@docker compose run --rm toolbox python -c "import redis" >/dev/null 2>&1 || { \
+		echo "ERROR: redis package is missing in toolbox image. Rebuild first: make build"; \
+		exit 1; \
+	}
+	@set -eu; \
+	REDIS_CONTAINER="$${REDIS_CONTAINER:-pab-redis-integration}"; \
+	REDIS_IMAGE="$${REDIS_IMAGE:-redis:7-alpine}"; \
+	REDIS_PORT="$${REDIS_PORT:-6380}"; \
+	docker rm -f "$$REDIS_CONTAINER" >/dev/null 2>&1 || true; \
+	trap 'docker rm -f "$$REDIS_CONTAINER" >/dev/null 2>&1 || true' EXIT; \
+	docker run -d --name "$$REDIS_CONTAINER" -p "$$REDIS_PORT:6379" "$$REDIS_IMAGE" >/dev/null; \
+	i=0; \
+	while [ $$i -lt 40 ]; do \
+		if docker exec "$$REDIS_CONTAINER" redis-cli ping >/dev/null 2>&1; then \
+			break; \
+		fi; \
+		i=$$((i + 1)); \
+		sleep 0.25; \
+	done; \
+	if ! docker exec "$$REDIS_CONTAINER" redis-cli ping >/dev/null 2>&1; then \
+		echo "ERROR: Redis container did not become ready."; \
+		exit 1; \
+	fi; \
+	REDIS_URL="$${PAB_TEST_REDIS_URL:-redis://host.docker.internal:$$REDIS_PORT/15}"; \
+	echo "Running Redis integration tests against $$REDIS_URL"; \
+	docker compose run --rm \
+		-e PAB_RUN_REDIS_INTEGRATION=1 \
+		-e PAB_TEST_REDIS_URL="$$REDIS_URL" \
+		toolbox python -m pytest -q tests/integration/test_jobqueue_redis_integration.py
 
 .PHONY: smoke-matrix
 smoke-matrix:  ## Phase-5 smoke matrix (capabilities + clone + built-in + designed). Set SMOKE_SKIP_DESIGN=1 to skip design.

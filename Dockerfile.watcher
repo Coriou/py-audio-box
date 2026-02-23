@@ -1,0 +1,36 @@
+FROM python:3.11-slim-bookworm
+
+LABEL org.opencontainers.image.source="https://github.com/Coriou/py-audio-box"
+LABEL org.opencontainers.image.description="py-audio-box job watcher daemon"
+LABEL org.opencontainers.image.licenses="MIT"
+
+ENV \
+  PYTHONDONTWRITEBYTECODE=1 \
+  PYTHONUNBUFFERED=1 \
+  PIP_DISABLE_PIP_VERSION_CHECK=1 \
+  PIP_NO_CACHE_DIR=1
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+  bash \
+  ca-certificates \
+  curl \
+  git \
+  jq \
+  openssh-client \
+  rsync \
+  rclone \
+  tini \
+  && rm -rf /var/lib/apt/lists/*
+
+RUN pip install --no-cache-dir \
+  vastai \
+  redis \
+  pyyaml
+
+WORKDIR /app
+COPY . /app
+
+RUN mkdir -p /cache /work_remote
+
+ENTRYPOINT ["/usr/bin/tini", "--"]
+CMD ["python3", "apps/job-watcher/job-watcher.py"]

@@ -32,6 +32,7 @@
 #   VAST_IMAGE              override the Docker image to deploy  (default: ghcr.io/coriou/voice-tools:cuda)
 #   VAST_DISK               override disk size in GB             (default: 60)
 #   VAST_REPO               Git repo to clone into /app          (default: https://github.com/Coriou/py-audio-box)
+#   VAST_MAX_DURATION       optional cap passed to vast create as --max-dph-duration
 #   VAST_MAX_MONTHLY_PRICE  price ceiling in $/month (default: 40).  Prompts for confirmation
 #                           when the selected offer exceeds this.  Set to 0 to disable.
 #
@@ -44,6 +45,8 @@
 #   --no-pull        skip rsyncing /work back to work_remote/ after tasks
 #   --keep           don't destroy the instance when done (useful for debugging)
 #   --dry-run        print commands, touch nothing
+#   --fail-fast      abort immediately if any task exits non-zero
+#   --summary-json   write machine-readable run summary JSON to PATH
 #   --yes            skip all interactive prompts (useful in CI / scripted pipelines)
 #   -h, --help       show this help
 #
@@ -98,6 +101,11 @@ PUSH_WORK_SRC=""
 KEEP=0
 DRY_RUN=0
 ASKED_CONFIRM=0  # 1 once the user has already said yes to a price prompt
+FAIL_FAST=0
+SUMMARY_JSON=""
+TASK_FAILURE_COUNT=0
+INSTANCE_DESTROYED=0
+TASK_RESULTS_FILE=""
 
 # Maximum price guard: prompt (or abort) when the selected offer costs more than
 # this many dollars per month.  Set to 0 to disable the guard entirely.
@@ -131,9 +139,11 @@ while [[ $# -gt 0 ]]; do
     --push-work)      PUSH_WORK_SRC="$2"; shift 2 ;;
     --keep)           KEEP=1; shift ;;
     --dry-run)        DRY_RUN=1; shift ;;
+    --fail-fast)      FAIL_FAST=1; shift ;;
+    --summary-json)   SUMMARY_JSON="$2"; shift 2 ;;
     --yes|-y)         ASKED_CONFIRM=1; shift ;;
     -h|--help)
-      sed -n '/^# Usage:/,/^[^#]/p' "$0" | head -n -1 | sed 's/^# \?//'
+      sed -n '/^# Usage:/,/^[^#]/p' "$0" | sed '$d' | sed -e 's/^# //' -e 's/^#//'
       exit 0
       ;;
     --)               shift; TASKS+=("$@"); break ;;
@@ -141,6 +151,13 @@ while [[ $# -gt 0 ]]; do
     *)  TASKS+=("$1"); shift ;;
   esac
 done
+
+if [[ -n "$SUMMARY_JSON" ]]; then
+  SUMMARY_JSON="${SUMMARY_JSON/#\~/$HOME}"
+fi
+
+TASK_RESULTS_FILE="$(mktemp /tmp/vast-task-results.XXXXXX)"
+touch "$TASK_RESULTS_FILE"
 
 # ── prerequisites ──────────────────────────────────────────────────────────────
 command -v docker >/dev/null 2>&1 || die "Docker not running or not in PATH."
@@ -222,20 +239,92 @@ INSTANCE_HOST=""
 INSTANCE_PORT=""
 SSH_KNOWN_HOSTS_FILE="/tmp/vast_known_hosts_${JOB_NAME}"
 
-# ── cleanup / trap ─────────────────────────────────────────────────────────────
+# ── summary / cleanup ──────────────────────────────────────────────────────────
+append_task_result() {
+  local index="$1" task="$2" mode="$3" rc="$4"
+  jq -cn \
+    --argjson index "$index" \
+    --arg task "$task" \
+    --arg mode "$mode" \
+    --argjson rc "$rc" \
+    '{
+      index: $index,
+      task: $task,
+      mode: $mode,
+      exit_code: $rc,
+      status: (if $rc == 0 then "ok" else "failed" end)
+    }' >> "$TASK_RESULTS_FILE"
+}
+
+write_summary_json() {
+  local exit_code="$1"
+  [[ -n "$SUMMARY_JSON" ]] || return 0
+
+  local tasks_json='[]'
+  if [[ -s "$TASK_RESULTS_FILE" ]]; then
+    tasks_json="$(jq -s '.' "$TASK_RESULTS_FILE")"
+  fi
+
+  local work_remote_dir=""
+  if [[ $SHELL_MODE -eq 0 ]]; then
+    work_remote_dir="work_remote/${JOB_NAME}"
+  fi
+
+  mkdir -p "$(dirname "$SUMMARY_JSON")"
+  jq -n \
+    --arg generated_at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+    --arg job_name "$JOB_NAME" \
+    --arg instance_id "${INSTANCE_ID:-}" \
+    --arg instance_host "${INSTANCE_HOST:-}" \
+    --arg instance_port "${INSTANCE_PORT:-}" \
+    --arg work_remote_dir "$work_remote_dir" \
+    --argjson task_count "${#TASKS[@]}" \
+    --argjson task_failures "$TASK_FAILURE_COUNT" \
+    --argjson fail_fast "$FAIL_FAST" \
+    --argjson keep "$KEEP" \
+    --argjson shell_mode "$SHELL_MODE" \
+    --argjson dry_run "$DRY_RUN" \
+    --argjson instance_destroyed "$INSTANCE_DESTROYED" \
+    --argjson exit_code "$exit_code" \
+    --argjson tasks "$tasks_json" \
+    '{
+      generated_at: $generated_at,
+      job_name: $job_name,
+      instance_id: ($instance_id | select(length > 0)),
+      instance_host: ($instance_host | select(length > 0)),
+      instance_port: ($instance_port | select(length > 0)),
+      work_remote_dir: ($work_remote_dir | select(length > 0)),
+      exit_code: $exit_code,
+      fail_fast: ($fail_fast == 1),
+      keep: ($keep == 1),
+      shell_mode: ($shell_mode == 1),
+      dry_run: ($dry_run == 1),
+      instance_destroyed: ($instance_destroyed == 1),
+      task_count: $task_count,
+      task_failures: $task_failures,
+      tasks: $tasks
+    }' > "$SUMMARY_JSON"
+}
+
 cleanup() {
   local code=$?
   rm -f "$SSH_KNOWN_HOSTS_FILE"
   if [[ -n "$INSTANCE_ID" && $KEEP -eq 0 && $SHELL_MODE -eq 0 ]]; then
     echo
     warn "Cleaning up: destroying instance ${INSTANCE_ID} …"
-    "$VAST_CLI" destroy instance "$INSTANCE_ID" 2>/dev/null || true
-    ok "Instance ${INSTANCE_ID} destroyed."
+    if "$VAST_CLI" destroy instance "$INSTANCE_ID" 2>/dev/null; then
+      INSTANCE_DESTROYED=1
+      ok "Instance ${INSTANCE_ID} destroyed."
+    else
+      warn "Destroy call failed for instance ${INSTANCE_ID}."
+    fi
   elif [[ -n "$INSTANCE_ID" && $KEEP -eq 1 ]]; then
     warn "Instance ${INSTANCE_ID} kept alive (--keep).  Destroy with:"
     info "  ./scripts/vast destroy instance ${INSTANCE_ID}"
     info "  make vast-destroy ID=${INSTANCE_ID}"
   fi
+  write_summary_json "$code" || true
+  rm -f "$TASK_RESULTS_FILE"
   exit "$code"
 }
 trap cleanup EXIT
@@ -332,6 +421,8 @@ if [[ ${#TASKS[@]} -gt 0 ]]; then
 fi
 [[ $DRY_RUN -eq 1 ]]   && printf "     ${YELLOW}DRY RUN — no changes will be made${RESET}\n"
 [[ $KEEP -eq 1 ]]      && printf "     ${YELLOW}--keep — instance will NOT be destroyed${RESET}\n"
+[[ $FAIL_FAST -eq 1 ]] && printf "     strict    : fail-fast on first task error\n"
+[[ -n "$SUMMARY_JSON" ]] && printf "     summary   : %s\n" "$SUMMARY_JSON"
 hr
 
 # ── pre-flight: check for existing instances ───────────────────────────────────
@@ -488,6 +579,10 @@ CREATE_ARGS=(
   --raw
 )
 
+if [[ -n "${VAST_MAX_DURATION:-}" ]]; then
+  CREATE_ARGS+=(--max-dph-duration "$VAST_MAX_DURATION")
+fi
+
 # Pass GHCR credentials so the host pulls as an authenticated user, not anonymous.
 # Anonymous GHCR pulls hit rate limits and are served by a slower CDN tier.
 if [[ -n "$GHCR_TOKEN" && "$DEPLOY_IMAGE" == ghcr.io/* ]]; then
@@ -623,9 +718,12 @@ else
     ((TASK_NUM++)) || true
     printf "\n${BOLD}  [%d/%d]${RESET}  %s\n" "$TASK_NUM" "${#TASKS[@]}" "$task"
     hr
+    TASK_MODE="run-direct"
+    TASK_RC=0
     if [[ $DRY_RUN -eq 1 ]]; then
       if [[ "$task" == '!'* ]]; then
         printf "${DIM}  [dry] ssh … %s${RESET}\n" "${task#!}"
+        TASK_MODE="raw-shell"
       else
         printf "${DIM}  [dry] ssh … ./run-direct %s${RESET}\n" "$task"
       fi
@@ -633,15 +731,21 @@ else
       # Tasks prefixed with '!' bypass ./run-direct and run as raw shell commands.
       # Example task entry:  '!bash /app/tests/remote/run-all.sh'
       if [[ "$task" == '!'* ]]; then
-        run_ssh "cd /app && ${task#!}" || {
-          warn "Task ${TASK_NUM} exited non-zero — continuing with remaining tasks."
-        }
+        TASK_MODE="raw-shell"
+        run_ssh "cd /app && ${task#!}" || TASK_RC=$?
       else
         # run_ssh executes the task; output streams directly to the caller's terminal
-        run_ssh "cd /app && ./run-direct ${task}" || {
-          warn "Task ${TASK_NUM} exited non-zero — continuing with remaining tasks."
-        }
+        run_ssh "cd /app && ./run-direct ${task}" || TASK_RC=$?
       fi
+    fi
+
+    append_task_result "$TASK_NUM" "$task" "$TASK_MODE" "$TASK_RC"
+    if [[ "$TASK_RC" -ne 0 ]]; then
+      TASK_FAILURE_COUNT=$((TASK_FAILURE_COUNT + 1))
+      if [[ $FAIL_FAST -eq 1 ]]; then
+        die "Task ${TASK_NUM} exited non-zero (${TASK_RC}) with --fail-fast enabled."
+      fi
+      warn "Task ${TASK_NUM} exited non-zero — continuing with remaining tasks."
     fi
   done
   hr

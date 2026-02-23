@@ -78,6 +78,7 @@ from voices import VoiceRegistry, validate_slug  # noqa: E402
 CHUNK_SILENCE_MS = 300
 TAKES_META_SCHEMA_VERSION = 1
 CAPABILITIES_SCHEMA_VERSION = 1
+SPEAK_JSON_RESULT_SCHEMA_VERSION = 1
 
 KNOWN_QWEN3_MODELS: dict[str, list[str]] = {
     "clone": [
@@ -127,6 +128,11 @@ def _slugify_id(raw: str) -> str:
     """Return a filesystem-safe slug from arbitrary user/model labels."""
     slug = re.sub(r"[^a-z0-9]+", "-", raw.strip().lower()).strip("-")
     return slug or "item"
+
+
+def _utc_now_iso() -> str:
+    return datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+
 
 def concat_wavs_simple(wav_paths: list[Path], dest: Path,
                         silence_ms: int = CHUNK_SILENCE_MS,
@@ -1110,6 +1116,90 @@ def build_speak_takes_metadata(
     }
 
 
+def _resolve_speak_run_dir(
+    *,
+    out_dir: Path,
+    out_exact: str | None,
+    use_direct_speaker_mode: bool,
+    speaker: str | None,
+    voice_id: str,
+) -> Path:
+    """
+    Resolve destination directory for speak output.
+
+    `--out-exact` writes artifacts directly in the provided directory.
+    Otherwise keep legacy timestamped layout under --out.
+    """
+    if out_exact is not None:
+        target = Path(out_exact)
+        if target.exists() and not target.is_dir():
+            raise ValueError(f"--out-exact must be a directory path: {target}")
+        target.mkdir(parents=True, exist_ok=True)
+        return target
+
+    ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+    if use_direct_speaker_mode:
+        run_dir = out_dir / "customvoice" / _slugify_id(speaker or "") / ts
+    else:
+        run_dir = out_dir / voice_id / ts
+    run_dir.mkdir(parents=True, exist_ok=True)
+    return run_dir
+
+
+def build_speak_json_result(
+    *,
+    run_dir: Path,
+    takes_meta_path: Path,
+    voice_id: str,
+    model_name: str,
+    engine_mode: str,
+    source_type: str,
+    speaker: str | None,
+    language: str,
+    raw_text: str,
+    n_variants: int,
+    selected_take: str | None,
+    selected_wav: str | None,
+    load_sec: float,
+    total_sec: float,
+    takes: list[dict[str, Any]],
+) -> dict[str, Any]:
+    takes_files = [str(take.get("wav")) for take in takes if isinstance(take.get("wav"), str)]
+    return {
+        "schema_version": SPEAK_JSON_RESULT_SCHEMA_VERSION,
+        "app": "voice-synth",
+        "created_at": _utc_now_iso(),
+        "run_dir": str(run_dir),
+        "request": {
+            "voice_id": voice_id,
+            "engine_mode": engine_mode,
+            "source_type": source_type,
+            "speaker": speaker,
+            "language": language,
+            "text_chars": len(raw_text),
+            "variants": n_variants,
+        },
+        "model": {
+            "name": model_name,
+        },
+        "selection": {
+            "selected_take": selected_take,
+            "selected_wav": selected_wav,
+            "enabled": selected_take is not None,
+        },
+        "timings": {
+            "load_sec": round(load_sec, 2),
+            "total_sec": round(total_sec, 2),
+        },
+        "files": {
+            "text": str(run_dir / "text.txt"),
+            "meta": str(takes_meta_path),
+            "takes": takes_files,
+            "best": selected_wav,
+        },
+    }
+
+
 def cmd_speak(args) -> None:
     cache = Path(args.cache)
     out_dir = Path(args.out)
@@ -1307,13 +1397,20 @@ def cmd_speak(args) -> None:
             prompt = pickle.load(fh)
     load_sec = time.perf_counter() - t0
 
-    # Output directory — for custom speakers we scope under /customvoice/<speaker>/.
-    ts = datetime.now().strftime("%Y%m%d_%H%M%S")
-    if use_direct_speaker_mode:
-        run_dir = out_dir / "customvoice" / _slugify_id(speaker or "") / ts
-    else:
-        run_dir = out_dir / voice_id / ts
-    run_dir.mkdir(parents=True, exist_ok=True)
+    try:
+        run_dir = _resolve_speak_run_dir(
+            out_dir=out_dir,
+            out_exact=getattr(args, "out_exact", None),
+            use_direct_speaker_mode=use_direct_speaker_mode,
+            speaker=speaker,
+            voice_id=voice_id,
+        )
+    except ValueError as exc:
+        print(f"ERROR: {exc}", file=sys.stderr)
+        sys.exit(1)
+
+    if getattr(args, "out_exact", None):
+        print(f"  out-exact: {run_dir}")
 
     n_variants = max(1, args.variants)
     if args.select_best and args.seed is None:
@@ -1521,6 +1618,31 @@ def cmd_speak(args) -> None:
         json.dump(takes_meta, fh, indent=2)
 
     (run_dir / "text.txt").write_text(raw_text, encoding="utf-8")
+
+    json_result_path_raw = getattr(args, "json_result", None)
+    if json_result_path_raw:
+        json_result_path = Path(json_result_path_raw)
+        json_result_path.parent.mkdir(parents=True, exist_ok=True)
+        json_result = build_speak_json_result(
+            run_dir=run_dir,
+            takes_meta_path=takes_meta_path,
+            voice_id=voice_id,
+            model_name=model_name,
+            engine_mode=engine_mode,
+            source_type=source_type,
+            speaker=speaker,
+            language=language,
+            raw_text=raw_text,
+            n_variants=n_variants,
+            selected_take=selected_take,
+            selected_wav=selected_wav,
+            load_sec=load_sec,
+            total_sec=total_sec,
+            takes=all_takes,
+        )
+        with open(json_result_path, "w", encoding="utf-8") as fh:
+            json.dump(json_result, fh, indent=2)
+        print(f"  json result: {json_result_path}")
 
     print(f"\nDone  →  {run_dir}")
     print(f"  {n_variants} take(s) written   total: {total_sec:.1f}s")
@@ -2001,8 +2123,26 @@ def build_parser() -> argparse.ArgumentParser:
                     dest="repetition_penalty")
     sp.add_argument("--max-new-tokens",     type=int,   default=None,
                     dest="max_new_tokens")
-    sp.add_argument("--out", default="/work",
-                    help="Output directory")
+    sp.add_argument(
+        "--out",
+        default="/work",
+        help="Output root directory (used when --out-exact is not set)",
+    )
+    sp.add_argument(
+        "--out-exact",
+        default=None,
+        metavar="DIR",
+        help=(
+            "Write take_XX.wav, best.wav, takes.meta.json, and text.txt directly "
+            "inside DIR (no timestamped subfolder)."
+        ),
+    )
+    sp.add_argument(
+        "--json-result",
+        default=None,
+        metavar="FILE",
+        help="Write compact machine-readable speak result summary to FILE.",
+    )
     _add_common(
         sp,
         model_default=None,

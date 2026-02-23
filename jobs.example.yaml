@@ -1,0 +1,37 @@
+# Example job batch for apps/job-runner/job-runner.py
+#
+# Validate + preview:
+#   ./run job-runner plan /app/jobs.example.yaml
+#
+# Enqueue:
+#   ./run job-runner enqueue /app/jobs.example.yaml
+
+defaults:
+  language: English
+  profile: balanced
+  variants: 1
+  select_best: false
+  chunk: false
+  temperature: 0.7
+  top_p: 0.9
+  repetition_penalty: 1.05
+  max_new_tokens: 480
+
+jobs:
+  - output_name: demo-topic/beat-001
+    request_id: demo-topic:beat-001
+    voice: newsroom
+    speaker: null
+    text: "Pineapple burns because bromelain breaks down proteins in your mouth."
+    callback_data:
+      topic_id: demo-topic
+      beat_id: 1
+
+  - output_name: demo-topic/beat-002
+    request_id: demo-topic:beat-002
+    voice: newsroom
+    speaker: null
+    text: "Heat denatures bromelain, which is why canned pineapple usually stings less."
+    callback_data:
+      topic_id: demo-topic
+      beat_id: 2

@@ -1,0 +1,41 @@
+services:
+  watcher:
+    build:
+      context: .
+      dockerfile: Dockerfile.watcher
+    image: voice-tools:watcher
+    working_dir: /app
+    command: ["python3", "apps/job-watcher/job-watcher.py"]
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      - PYTHONUNBUFFERED=1
+      - PYTHONDONTWRITEBYTECODE=1
+      - REDIS_URL=${REDIS_URL:-redis://host.docker.internal:6379/0}
+      - S3_PREFIX=${S3_PREFIX:-voice-results}
+      - WATCHER_POLL_INTERVAL=${WATCHER_POLL_INTERVAL:-10}
+      - WATCHER_BATCH_MIN=${WATCHER_BATCH_MIN:-1}
+      - WATCHER_BATCH_MAX_WAIT=${WATCHER_BATCH_MAX_WAIT:-300}
+      - WATCHER_BATCH_MAX_JOBS=${WATCHER_BATCH_MAX_JOBS:-128}
+      - WATCHER_IDLE_GRACE=${WATCHER_IDLE_GRACE:-75}
+      - WATCHER_MAX_RUNTIME=${WATCHER_MAX_RUNTIME:-240}
+      - WATCHER_MAX_ATTEMPTS=${WATCHER_MAX_ATTEMPTS:-3}
+      - WATCHER_LOCK_TTL=${WATCHER_LOCK_TTL:-120}
+      - WATCHER_LOCK_RENEW_EVERY=${WATCHER_LOCK_RENEW_EVERY:-40}
+      - WATCHER_LEASE_IDLE_MS=${WATCHER_LEASE_IDLE_MS:-180000}
+      - WATCHER_VOICES_DIR=/cache/voices
+      - WATCHER_WORK_DIR=/work_remote
+      - WATCHER_SYNTH_CONCURRENCY=${WATCHER_SYNTH_CONCURRENCY:-1}
+    volumes:
+      - ./:/app
+      - ./cache:/cache
+      - ./work_remote:/work_remote
+      - ${HOME}/.ssh:/root/.ssh:ro
+      - ${HOME}/.config/rclone:/root/.config/rclone:ro
+    healthcheck:
+      test: ["CMD-SHELL", "python3 apps/job-runner/job-runner.py status --json >/dev/null"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s

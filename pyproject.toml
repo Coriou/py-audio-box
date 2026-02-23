@@ -35,9 +35,18 @@ langid = ">=1.1.6"
 # voice-clone / voice-synth: YAML style presets
 pyyaml = ">=6.0"
 
+# job-runner / watcher: Redis Streams queue + lock coordination
+redis = ">=5.0"
+
 [tool.poetry.group.dev.dependencies]
 ruff = "^0.6.9"
 pytest = "^8.3.3"
 
 [tool.ruff]
 line-length = 100
+
+[tool.pytest.ini_options]
+markers = [
+    "integration: tests that require external services and are opt-in",
+    "redis_integration: tests that exercise real Redis stream/lock behavior",
+]

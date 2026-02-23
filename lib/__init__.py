@@ -8,6 +8,7 @@ tts     — TTS constants, device/dtype selection, model loading, synthesis,
           language helpers, whisper helpers, Timer, instruction templates
 audio   — audio file operations: normalise, trim, sha256, get_duration
 vad     — Silero VAD: load, run, segment helpers
+jobqueue — Redis stream queue schema/client helpers for job-runner + watcher
 
 Import pattern (works from any app script):
     import sys

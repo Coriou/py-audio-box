@@ -271,6 +271,40 @@ selection subsequent non-interactive runs (e.g. `voice-synth speak`) reuse your 
 ./run voice-synth import-voice --zip /work/my-voice.zip
 ```
 
+### Job runner (Redis stream producer tooling)
+
+```bash
+# Validate jobs + estimate per-source text load
+./run job-runner plan /app/jobs.example.yaml
+
+# Enqueue YAML jobs (idempotent by request_id)
+./run job-runner enqueue /app/jobs.example.yaml
+
+# Enqueue directly from beatsheet.json
+./run job-runner enqueue-beatsheet /work/beatsheet.json --voice newsroom
+
+# Compile deterministic execution manifest + staged text files
+./run job-runner compile /app/jobs.example.yaml --out /work/job-batch
+
+# Queue health + per-request result lookup
+./run job-runner status --json
+./run job-runner result topic:beat-001 --json
+```
+
+### Job watcher (daemon)
+
+```bash
+# One scheduling cycle (safe for validation)
+make watcher-once
+
+# Long-running daemon
+make watcher-up
+make watcher-logs
+make watcher-down
+```
+
+Environment contract and runtime details: `apps/job-watcher/README.md`.
+
 ### Utilities
 
 ```bash
@@ -501,6 +535,7 @@ make publish-cuda-base      Build + push CUDA base image (torch+flash-attn heavy
 make publish-cuda           Build + push CUDA thin app image (fast; do this after code changes)
 make pull                   Pull /work/ from remote host into ./work_remote/  (requires REMOTE_HOST=...)
 make push-code              Push local repo to remote /app/  (requires REMOTE_HOST=...)
+make test-jobqueue-redis    Run real Redis integration tests for jobqueue (spins temporary redis)
 ```
 
 Remote sync examples:
@@ -519,6 +554,14 @@ make vast-shell             Provision a GPU instance and drop into an interactiv
 make vast-run               Full pipeline: provision → push cache/work → run task → pull results → destroy
 make vast-destroy           Destroy a specific instance  [ID=12345]
 make vast-pull              Pull /work from a running instance  [ID=12345 JOB=name]
+make job-runner             Run the job-runner app through ./run
+make jobs-plan              Validate and preview a jobs YAML file [FILE=/app/jobs.example.yaml]
+make jobs-enqueue           Enqueue a jobs YAML file idempotently [FILE=/app/jobs.example.yaml]
+make jobs-status            Print queue status from Redis
+make watcher-once           Run one watcher scheduling cycle
+make watcher-up             Start watcher daemon (docker-compose.watcher.yml)
+make watcher-logs           Tail watcher daemon logs
+make watcher-down           Stop watcher daemon
 ```
 
 Full pipeline example (provision → synthesise → pull results → destroy):
