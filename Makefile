@@ -311,6 +311,25 @@ jobs-flush:  ## Flush transient queue keys. Add ARGS='--hard --yes' to also clea
 jobs-history:  ## Recent done/failed job history. Usage: make jobs-history ARGS='--limit 20 --status all'
 	./run job-runner history $(ARGS)
 
+.PHONY: jobs-dashboard
+jobs-dashboard:  ## Quick queue dashboard: status + recent history in one shot
+	@echo "── Queue Status ──────────────────────────────────────────────"
+	@./run job-runner status 2>/dev/null || echo "(Redis not reachable)"
+	@echo ""
+	@echo "── Recent History (last 10) ──────────────────────────────────"
+	@./run job-runner history --limit 10 2>/dev/null || echo "(Redis not reachable)"
+
+.PHONY: jobs-logs
+jobs-logs:  ## Tail the most recent execution logs. Usage: make jobs-logs [DIR=/work/job-batch]
+	@DIR="$${DIR:-/work}"; \
+	LATEST=$$(find "$$DIR" -name "execution.json" -type f 2>/dev/null | head -1); \
+	if [ -z "$$LATEST" ]; then \
+		echo "No execution.json found under $$DIR"; \
+		exit 1; \
+	fi; \
+	echo "Latest execution: $$LATEST"; \
+	cat "$$LATEST" | python3 -m json.tool 2>/dev/null || cat "$$LATEST"
+
 .PHONY: watcher-once
 watcher-once:  ## Run one watcher scheduling cycle in the watcher compose service
 	docker compose -f docker-compose.watcher.yml run --rm watcher python3 apps/job-watcher/job-watcher.py --once $(ARGS)

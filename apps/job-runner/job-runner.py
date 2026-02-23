@@ -37,7 +37,13 @@ _LIB = str(Path(__file__).resolve().parent.parent.parent / "lib")
 if _LIB not in sys.path:
     sys.path.insert(0, _LIB)
 
-from jobqueue import JobQueue, JobSpec, build_speak_argv, normalize_job_spec  # noqa: E402
+from jobqueue import (  # noqa: E402
+    JobQueue,
+    JobSpec,
+    build_speak_argv,
+    normalize_job_spec,
+)
+from jobqueue import _utc_now_iso, _to_text  # noqa: E402  # shared helpers
 from voices import VoiceRegistry  # noqa: E402
 
 
@@ -47,14 +53,7 @@ EXECUTION_SCHEMA_VERSION = 1
 VOICE_SYNTH_SCRIPT = Path(__file__).resolve().parent.parent / "voice-synth" / "voice-synth.py"
 
 
-def _utc_now_iso() -> str:
-    return datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
-
-
-def _to_text(value: Any) -> str:
-    if isinstance(value, bytes):
-        return value.decode("utf-8")
-    return str(value)
+# _utc_now_iso and _to_text are imported from lib/jobqueue.py (single source of truth).
 
 
 def _require_redis() -> None:
@@ -212,6 +211,7 @@ def _source_key(spec: JobSpec) -> str:
 
 
 def render_jobs(rows: Sequence[Mapping[str, Any]], *, defaults: Mapping[str, Any] | None = None) -> list[RenderedJob]:
+    """Validate, merge defaults, normalize, and return RenderedJob list from raw row dicts."""
     merged_defaults = dict(defaults or {})
     rendered: list[RenderedJob] = []
 
@@ -235,6 +235,7 @@ def render_jobs(rows: Sequence[Mapping[str, Any]], *, defaults: Mapping[str, Any
 
 
 def render_jobs_from_yaml(yaml_file: Path) -> list[RenderedJob]:
+    """Load a YAML job file and return the rendered job list."""
     doc = _yaml_load_path(yaml_file)
     defaults, rows = _extract_job_rows(doc, source=yaml_file)
     return render_jobs(rows, defaults=defaults)
@@ -258,6 +259,7 @@ def build_manifest(
     out_dir: Path,
     run_id: str | None = None,
 ) -> dict[str, Any]:
+    """Build a deterministic execution manifest with staged text files and argv lists."""
     out_dir = Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
 
@@ -337,6 +339,7 @@ def execute_manifest_data(
     fail_fast: bool,
     dry_run: bool,
 ) -> dict[str, Any]:
+    """Execute all jobs in a manifest sequentially and return an execution report."""
     jobs_raw = manifest.get("jobs")
     if not isinstance(jobs_raw, list):
         raise ValueError("Manifest must contain a jobs list")
@@ -1243,81 +1246,115 @@ def build_parser() -> argparse.ArgumentParser:
     )
     sub = ap.add_subparsers(dest="command", required=True)
 
-    plan = sub.add_parser("plan", formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-    plan.add_argument("yaml_file")
-    plan.add_argument("--cache", default="/cache")
-    plan.add_argument("--json", action="store_true")
+    plan = sub.add_parser(
+        "plan",
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+        help="Validate YAML + voice availability and preview jobs.",
+    )
+    plan.add_argument("yaml_file", help="Path to the jobs YAML file.")
+    plan.add_argument("--cache", default="/cache", help="Voice cache directory.")
+    plan.add_argument("--json", action="store_true", help="Output as JSON.")
 
-    enqueue = sub.add_parser("enqueue", formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-    enqueue.add_argument("yaml_file")
-    enqueue.add_argument("--cache", default="/cache")
-    enqueue.add_argument("--redis-url", default=None)
-    enqueue.add_argument("--json", action="store_true")
+    enqueue = sub.add_parser(
+        "enqueue",
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+        help="Idempotent enqueue from YAML to Redis stream.",
+    )
+    enqueue.add_argument("yaml_file", help="Path to the jobs YAML file.")
+    enqueue.add_argument("--cache", default="/cache", help="Voice cache directory.")
+    enqueue.add_argument("--redis-url", default=None, help="Redis connection URL.")
+    enqueue.add_argument("--json", action="store_true", help="Output as JSON.")
 
-    eb = sub.add_parser("enqueue-beatsheet", formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-    eb.add_argument("beatsheet_json")
+    eb = sub.add_parser(
+        "enqueue-beatsheet",
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+        help="Enqueue jobs from a beatsheet JSON file.",
+    )
+    eb.add_argument("beatsheet_json", help="Path to beatsheet JSON file.")
     eb_mode = eb.add_mutually_exclusive_group(required=True)
-    eb_mode.add_argument("--voice", default=None)
-    eb_mode.add_argument("--speaker", default=None)
-    eb.add_argument("--language", default="English")
-    eb.add_argument("--tone", default=None)
-    eb.add_argument("--instruct", default=None)
-    eb.add_argument("--instruct-style", default=None, dest="instruct_style")
-    eb.add_argument("--profile", default=None)
-    eb.add_argument("--variants", type=int, default=1)
-    eb.add_argument("--select-best", action="store_true")
-    eb.add_argument("--chunk", action="store_true")
-    eb.add_argument("--temperature", type=float, default=None)
-    eb.add_argument("--top-p", type=float, default=None, dest="top_p")
-    eb.add_argument("--repetition-penalty", type=float, default=None, dest="repetition_penalty")
-    eb.add_argument("--max-new-tokens", type=int, default=None, dest="max_new_tokens")
-    eb.add_argument("--cache", default="/cache")
-    eb.add_argument("--redis-url", default=None)
-    eb.add_argument("--json", action="store_true")
+    eb_mode.add_argument("--voice", default=None, help="Named voice slug.")
+    eb_mode.add_argument("--speaker", default=None, help="Built-in speaker name.")
+    eb.add_argument("--language", default="English", help="Synthesis language.")
+    eb.add_argument("--tone", default=None, help="Tone modifier.")
+    eb.add_argument("--instruct", default=None, help="Instruct prompt.")
+    eb.add_argument("--instruct-style", default=None, dest="instruct_style", help="Instruct style.")
+    eb.add_argument("--profile", default=None, help="Generation profile.")
+    eb.add_argument("--variants", type=int, default=1, help="Number of take variants.")
+    eb.add_argument("--select-best", action="store_true", help="Auto-select best take.")
+    eb.add_argument("--chunk", action="store_true", help="Enable text chunking.")
+    eb.add_argument("--temperature", type=float, default=None, help="Sampling temperature.")
+    eb.add_argument("--top-p", type=float, default=None, dest="top_p", help="Nucleus sampling top-p.")
+    eb.add_argument("--repetition-penalty", type=float, default=None, dest="repetition_penalty", help="Repetition penalty.")
+    eb.add_argument("--max-new-tokens", type=int, default=None, dest="max_new_tokens", help="Max new tokens.")
+    eb.add_argument("--cache", default="/cache", help="Voice cache directory.")
+    eb.add_argument("--redis-url", default=None, help="Redis connection URL.")
+    eb.add_argument("--json", action="store_true", help="Output as JSON.")
 
-    compile_cmd = sub.add_parser("compile", formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-    compile_cmd.add_argument("yaml_file")
-    compile_cmd.add_argument("--out", required=True)
-    compile_cmd.add_argument("--run-id", default=None)
-    compile_cmd.add_argument("--cache", default="/cache")
-    compile_cmd.add_argument("--json", action="store_true")
+    compile_cmd = sub.add_parser(
+        "compile",
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+        help="Compile deterministic manifest and staged text files.",
+    )
+    compile_cmd.add_argument("yaml_file", help="Path to the jobs YAML file.")
+    compile_cmd.add_argument("--out", required=True, help="Output directory for manifest and staged files.")
+    compile_cmd.add_argument("--run-id", default=None, help="Explicit run ID (auto-generated if omitted).")
+    compile_cmd.add_argument("--cache", default="/cache", help="Voice cache directory.")
+    compile_cmd.add_argument("--json", action="store_true", help="Output as JSON.")
 
-    run_cmd = sub.add_parser("run", formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-    run_cmd.add_argument("yaml_file")
-    run_cmd.add_argument("--out", default=None)
-    run_cmd.add_argument("--run-id", default=None)
-    run_cmd.add_argument("--cache", default="/cache")
-    run_cmd.add_argument("--dry-run", action="store_true")
-    run_cmd.add_argument("--fail-fast", action="store_true")
-    run_cmd.add_argument("--json", action="store_true")
+    run_cmd = sub.add_parser(
+        "run",
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+        help="Compile and execute jobs locally (validation / dry-run).",
+    )
+    run_cmd.add_argument("yaml_file", help="Path to the jobs YAML file.")
+    run_cmd.add_argument("--out", default=None, help="Output directory (temp dir if omitted).")
+    run_cmd.add_argument("--run-id", default=None, help="Explicit run ID.")
+    run_cmd.add_argument("--cache", default="/cache", help="Voice cache directory.")
+    run_cmd.add_argument("--dry-run", action="store_true", help="Skip actual synthesis.")
+    run_cmd.add_argument("--fail-fast", action="store_true", help="Abort on first failure.")
+    run_cmd.add_argument("--json", action="store_true", help="Output as JSON.")
 
     em = sub.add_parser(
         "execute-manifest",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+        help="Execute a pre-compiled manifest.json.",
     )
-    em.add_argument("manifest_json")
-    em.add_argument("--dry-run", action="store_true")
-    em.add_argument("--fail-fast", action="store_true")
-    em.add_argument("--json", action="store_true")
+    em.add_argument("manifest_json", help="Path to the manifest JSON file.")
+    em.add_argument("--dry-run", action="store_true", help="Skip actual synthesis.")
+    em.add_argument("--fail-fast", action="store_true", help="Abort on first failure.")
+    em.add_argument("--json", action="store_true", help="Output as JSON.")
 
-    status = sub.add_parser("status", formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-    status.add_argument("--redis-url", default=None)
+    status = sub.add_parser(
+        "status",
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+        help="Show queue status, pending counts, lock state, and watcher health.",
+    )
+    status.add_argument("--redis-url", default=None, help="Redis connection URL.")
     status.add_argument(
         "--lease-idle-ms",
         type=int,
         default=int(os.getenv("WATCHER_LEASE_IDLE_MS", "180000")),
+        help="PEL idle threshold for stale detection (ms).",
     )
-    status.add_argument("--json", action="store_true")
+    status.add_argument("--json", action="store_true", help="Output as JSON.")
 
-    result = sub.add_parser("result", formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-    result.add_argument("request_id")
-    result.add_argument("--redis-url", default=None)
-    result.add_argument("--json", action="store_true")
+    result = sub.add_parser(
+        "result",
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+        help="Fetch the result or failure record for a request_id.",
+    )
+    result.add_argument("request_id", help="The request ID to look up.")
+    result.add_argument("--redis-url", default=None, help="Redis connection URL.")
+    result.add_argument("--json", action="store_true", help="Output as JSON.")
 
-    report = sub.add_parser("report", formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-    report.add_argument("yaml_file")
-    report.add_argument("--redis-url", default=None)
-    report.add_argument("--json", action="store_true")
+    report = sub.add_parser(
+        "report",
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+        help="Status of all jobs in a YAML file (cross-references Redis).",
+    )
+    report.add_argument("yaml_file", help="Path to the jobs YAML file.")
+    report.add_argument("--redis-url", default=None, help="Redis connection URL.")
+    report.add_argument("--json", action="store_true", help="Output as JSON.")
 
     history = sub.add_parser(
         "history",
@@ -1334,53 +1371,56 @@ def build_parser() -> argparse.ArgumentParser:
     )
     history.add_argument("--json", action="store_true")
 
-    retry = sub.add_parser("retry", formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-    retry.add_argument("request_id")
-    retry.add_argument("--redis-url", default=None)
-    retry.add_argument("--yes", action="store_true")
-    retry.add_argument("--json", action="store_true")
+    retry = sub.add_parser(
+        "retry",
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+        help="Requeue a terminal-failed job for another attempt.",
+    )
+    retry.add_argument("request_id", help="The request ID to retry.")
+    retry.add_argument("--redis-url", default=None, help="Redis connection URL.")
+    retry.add_argument("--yes", action="store_true", help="Skip confirmation prompt.")
+    retry.add_argument("--json", action="store_true", help="Output as JSON.")
 
-    flush = sub.add_parser("flush", formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-    flush.add_argument("--redis-url", default=None)
-    flush.add_argument("--hard", action="store_true")
-    flush.add_argument("--yes", action="store_true")
-    flush.add_argument("--json", action="store_true")
+    flush = sub.add_parser(
+        "flush",
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+        help="Delete transient queue keys. --hard also clears result/failed hashes.",
+    )
+    flush.add_argument("--redis-url", default=None, help="Redis connection URL.")
+    flush.add_argument("--hard", action="store_true", help="Also delete result and failed hashes.")
+    flush.add_argument("--yes", action="store_true", help="Skip confirmation prompt.")
+    flush.add_argument("--json", action="store_true", help="Output as JSON.")
 
     return ap
+
+
+_COMMAND_DISPATCH: dict[str, Any] = {
+    "plan": _handle_plan,
+    "enqueue": _handle_enqueue,
+    "enqueue-beatsheet": _handle_enqueue_beatsheet,
+    "compile": _handle_compile,
+    "run": _handle_run,
+    "execute-manifest": _handle_execute_manifest,
+    "status": _handle_status,
+    "history": _handle_history,
+    "result": _handle_result,
+    "report": _handle_report,
+    "retry": _handle_retry,
+    "flush": _handle_flush,
+}
 
 
 def main() -> None:
     parser = build_parser()
     args = parser.parse_args()
 
-    try:
-        if args.command == "plan":
-            raise SystemExit(_handle_plan(args))
-        if args.command == "enqueue":
-            raise SystemExit(_handle_enqueue(args))
-        if args.command == "enqueue-beatsheet":
-            raise SystemExit(_handle_enqueue_beatsheet(args))
-        if args.command == "compile":
-            raise SystemExit(_handle_compile(args))
-        if args.command == "run":
-            raise SystemExit(_handle_run(args))
-        if args.command == "execute-manifest":
-            raise SystemExit(_handle_execute_manifest(args))
-        if args.command == "status":
-            raise SystemExit(_handle_status(args))
-        if args.command == "history":
-            raise SystemExit(_handle_history(args))
-        if args.command == "result":
-            raise SystemExit(_handle_result(args))
-        if args.command == "report":
-            raise SystemExit(_handle_report(args))
-        if args.command == "retry":
-            raise SystemExit(_handle_retry(args))
-        if args.command == "flush":
-            raise SystemExit(_handle_flush(args))
-
+    handler = _COMMAND_DISPATCH.get(args.command)
+    if handler is None:
         parser.print_help()
         raise SystemExit(1)
+
+    try:
+        raise SystemExit(handler(args))
     except ValueError as exc:
         print(f"ERROR: {exc}", file=sys.stderr)
         raise SystemExit(1) from exc
