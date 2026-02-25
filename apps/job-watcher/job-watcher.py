@@ -187,6 +187,8 @@ class WatcherConfig:
     ghcr_user: str
     ghcr_token: str | None
 
+    rsync_timeout: int
+
     @classmethod
     def from_env(cls) -> "WatcherConfig":
         required_names = ["REDIS_URL", "VAST_API_KEY", "VAST_SSH_KEY", "S3_BUCKET", "RCLONE_REMOTE"]
@@ -221,6 +223,7 @@ class WatcherConfig:
             vast_max_duration=os.getenv("VAST_MAX_DURATION"),
             ghcr_user=str(os.getenv("GHCR_USER", "Coriou")),
             ghcr_token=os.getenv("GHCR_TOKEN"),
+            rsync_timeout=_env_int("WATCHER_RSYNC_TIMEOUT", 300),
         )
 
         if cfg.poll_interval <= 0:
@@ -342,8 +345,9 @@ class VastController:
     def _vast(self, *args: str, check: bool = True) -> subprocess.CompletedProcess[str]:
         return _run_subprocess(["vastai", *args], env=self._vast_env(), check=check)
 
-    def _wait_for_status(self, instance_id: str, target: str, *, timeout_sec: int = 1500) -> None:
+    def _wait_for_status(self, instance_id: str, target: str, *, timeout_sec: int = 600) -> None:
         deadline = _now_epoch() + float(timeout_sec)
+        last_status = "unknown"
         while _now_epoch() < deadline:
             raw = self._vast("show", "instance", instance_id, "--raw", check=False)
             if raw.returncode == 0 and raw.stdout.strip():
@@ -352,6 +356,9 @@ class VastController:
                 except json.JSONDecodeError:
                     data = {}
                 status = str(data.get("actual_status") or "unknown")
+                if status != last_status:
+                    _log("info", "instance_status", instance_id=instance_id, status=status, target=target)
+                    last_status = status
                 if status == target:
                     return
                 if status in {"error", "deleted", "exited"}:
@@ -388,15 +395,95 @@ class VastController:
             raise RuntimeError("vast offer payload missing id")
         return str(offer_id)
 
+    def _wait_for_ssh(
+        self,
+        host: str,
+        port: int,
+        *,
+        ssh_key: Path,
+        timeout_sec: int = 120,
+        poll_sec: int = 5,
+    ) -> None:
+        """Poll until SSH accepts connections or timeout_sec elapses."""
+        deadline = _now_epoch() + float(timeout_sec)
+        last_err = ""
+        while _now_epoch() < deadline:
+            result = _run_subprocess(
+                [
+                    "ssh",
+                    "-p", str(port),
+                    "-i", str(ssh_key),
+                    "-o", "StrictHostKeyChecking=no",
+                    "-o", "UserKnownHostsFile=/dev/null",
+                    "-o", "ConnectTimeout=5",
+                    "-o", "BatchMode=yes",
+                    f"root@{host}",
+                    "true",
+                ],
+                check=False,
+            )
+            if result.returncode == 0:
+                return
+            last_err = (result.stderr or "").strip()
+            time.sleep(poll_sec)
+        raise RuntimeError(
+            f"SSH on {host}:{port} did not become ready within {timeout_sec}s. "
+            f"Last error: {last_err}"
+        )
+
+    def _wait_for_onstart(
+        self,
+        host: str,
+        port: int,
+        *,
+        ssh_key: Path,
+        sentinel: str = "/app/apps/job-runner/job-runner.py",
+        timeout_sec: int = 180,
+        poll_sec: int = 10,
+    ) -> None:
+        """Poll until the onstart-cmd git sync has completed on the remote instance.
+
+        The sentinel file is created by the git clone in the onstart script.
+        If it's not present within timeout_sec, the instance is unusable.
+        """
+        deadline = _now_epoch() + float(timeout_sec)
+        while _now_epoch() < deadline:
+            result = _run_subprocess(
+                [
+                    "ssh",
+                    "-p", str(port),
+                    "-i", str(ssh_key),
+                    "-o", "StrictHostKeyChecking=no",
+                    "-o", "UserKnownHostsFile=/dev/null",
+                    "-o", "ConnectTimeout=5",
+                    "-o", "BatchMode=yes",
+                    f"root@{host}",
+                    f"test -f {sentinel}",
+                ],
+                check=False,
+            )
+            if result.returncode == 0:
+                return
+            time.sleep(poll_sec)
+        raise RuntimeError(
+            f"Onstart sentinel {sentinel!r} not found on {host}:{port} "
+            f"within {timeout_sec}s — git sync may have failed"
+        )
+
     def provision(self, *, run_id: str) -> VastInstance:
         offer_id = self._best_offer_id()
 
         git_sync = (
+            # The image already has all source files via COPY .  We initialise
+            # git in-place so we can pull the latest main, but we never delete
+            # /app — the pre-installed code is always the safe fallback.
+            "git -C /app init -q 2>/dev/null; "
+            "git -C /app remote add origin "
+            f"{shlex.quote(self.config.vast_repo)} 2>/dev/null || "
             "git -C /app remote set-url origin "
             f"{shlex.quote(self.config.vast_repo)} 2>/dev/null; "
             "git -C /app fetch --depth=1 origin main 2>/dev/null && "
-            "git -C /app reset --hard FETCH_HEAD 2>/dev/null || "
-            f"(rm -rf /app 2>/dev/null; git clone --depth=1 {shlex.quote(self.config.vast_repo)} /app 2>/dev/null) || true"
+            "git -C /app reset --hard FETCH_HEAD 2>/dev/null || true"
         )
         onstart = (
             "chmod 700 /root/.ssh 2>/dev/null; "
@@ -438,11 +525,26 @@ class VastController:
         if not instance_id:
             raise RuntimeError("failed to parse instance id from create response")
 
-        self._wait_for_status(instance_id, "running")
+        try:
+            self._wait_for_status(instance_id, "running")
+        except Exception:
+            # Instance was created but failed to reach 'running' — destroy it
+            # immediately so we don't leave a billing ghost behind.
+            self.destroy(instance_id)
+            raise
         host, port = self._resolve_ssh(instance_id)
 
         known_hosts = Path(tempfile.gettempdir()) / f"watcher_known_hosts_{run_id}"
         known_hosts.touch(exist_ok=True)
+
+        try:
+            self._wait_for_ssh(host, port, ssh_key=self.config.vast_ssh_key)
+            _log("info", "instance_ssh_ready", instance_id=instance_id, host=host, port=port)
+            self._wait_for_onstart(host, port, ssh_key=self.config.vast_ssh_key)
+            _log("info", "instance_onstart_done", instance_id=instance_id)
+        except Exception:
+            self.destroy(instance_id)
+            raise
 
         return VastInstance(
             instance_id=instance_id,
@@ -480,7 +582,30 @@ class RemoteExecutor:
     def run(self, command: str, *, check: bool, timeout: float | None = None) -> subprocess.CompletedProcess[str]:
         return _run_subprocess(self._ssh_cmd(command), check=check, timeout=timeout)
 
-    def rsync_to_dir(self, local_dir: Path, remote_dir: str) -> None:
+    # rsync exit codes that are clearly transient network failures — worth retrying.
+    _RSYNC_TRANSIENT_CODES = {12, 23, 255}
+
+    def _rsync(self, cmd: list[str], *, timeout: int | None, max_attempts: int = 3, retry_delay: int = 15) -> None:
+        for attempt in range(1, max_attempts + 1):
+            result = _run_subprocess(cmd, check=False, timeout=timeout)
+            if result.returncode == 0:
+                return
+            if attempt < max_attempts and result.returncode in self._RSYNC_TRANSIENT_CODES:
+                _log(
+                    "warning",
+                    "rsync_retry",
+                    attempt=attempt,
+                    returncode=result.returncode,
+                    stderr=_short_error(result.stderr or ""),
+                    delay_sec=retry_delay,
+                )
+                time.sleep(retry_delay)
+                continue
+            raise RuntimeError(
+                f"command failed ({result.returncode}): {' '.join(cmd)}\nstderr: {result.stderr or ''}"
+            )
+
+    def rsync_to_dir(self, local_dir: Path, remote_dir: str, *, timeout: int | None = None) -> None:
         local = Path(local_dir)
         if not local.is_dir():
             raise RuntimeError(f"local rsync source is not a directory: {local}")
@@ -488,17 +613,19 @@ class RemoteExecutor:
             "rsync",
             "-az",
             "--delete",
+            "--mkpath",
             "-e",
             (
                 f"ssh -p {self.instance.port} -i {self.ssh_key} "
-                f"-o StrictHostKeyChecking=no -o UserKnownHostsFile={self.instance.known_hosts_file}"
+                f"-o StrictHostKeyChecking=no -o UserKnownHostsFile={self.instance.known_hosts_file} "
+                f"-o ServerAliveInterval=10 -o ServerAliveCountMax=3"
             ),
             f"{local}/",
             f"root@{self.instance.host}:{remote_dir}/",
         ]
-        _run_subprocess(cmd, check=True)
+        self._rsync(cmd, timeout=timeout)
 
-    def rsync_from_dir(self, remote_dir: str, local_dir: Path) -> None:
+    def rsync_from_dir(self, remote_dir: str, local_dir: Path, *, timeout: int | None = None) -> None:
         local = Path(local_dir)
         local.mkdir(parents=True, exist_ok=True)
         cmd = [
@@ -507,12 +634,13 @@ class RemoteExecutor:
             "-e",
             (
                 f"ssh -p {self.instance.port} -i {self.ssh_key} "
-                f"-o StrictHostKeyChecking=no -o UserKnownHostsFile={self.instance.known_hosts_file}"
+                f"-o StrictHostKeyChecking=no -o UserKnownHostsFile={self.instance.known_hosts_file} "
+                f"-o ServerAliveInterval=10 -o ServerAliveCountMax=3"
             ),
             f"root@{self.instance.host}:{remote_dir}/",
             f"{local}/",
         ]
-        _run_subprocess(cmd, check=True)
+        self._rsync(cmd, timeout=timeout)
 
 
 def _estimate_outstanding(redis_client: Any, queue: JobQueue) -> int:
@@ -947,10 +1075,10 @@ class JobWatcher:
         required_voices = sorted({lease.job.voice for lease in leases if lease.job.voice})
         for slug in required_voices:
             assert slug is not None
-            executor.rsync_to_dir(self.config.voices_dir / slug, f"/cache/voices/{slug}")
+            executor.rsync_to_dir(self.config.voices_dir / slug, f"/cache/voices/{slug}", timeout=self.config.rsync_timeout)
 
         t_sync_start = _now_epoch()
-        executor.rsync_to_dir(batch_dir, str(remote_batch_dir))
+        executor.rsync_to_dir(batch_dir, str(remote_batch_dir), timeout=self.config.rsync_timeout)
         sync_sec = _now_epoch() - t_sync_start
         self._metric_timing("sync_duration_sec", sync_sec)
 
@@ -961,9 +1089,17 @@ class JobWatcher:
             f"execute-manifest {shlex.quote(str(remote_manifest))} --fail-fast --json"
         )
         exec_result = executor.run(exec_cmd, check=False)
+        _log(
+            "info" if exec_result.returncode == 0 else "warning",
+            "remote_execution_result",
+            run_id=run_id,
+            returncode=exec_result.returncode,
+            stderr=_short_error(exec_result.stderr or ""),
+            stdout=_short_error(exec_result.stdout or ""),
+        )
 
         t_pull_start = _now_epoch()
-        executor.rsync_from_dir(str(remote_batch_dir), batch_dir)
+        executor.rsync_from_dir(str(remote_batch_dir), batch_dir, timeout=self.config.rsync_timeout)
         pull_sec = _now_epoch() - t_pull_start
         self._metric_timing("pull_duration_sec", pull_sec)
 
@@ -1041,10 +1177,13 @@ class JobWatcher:
 
                 if len(pending) < self.config.batch_max_jobs:
                     needed = max(1, self.config.batch_max_jobs - len(pending))
+                    # Use non-blocking fetch when we already have work, or cap at
+                    # 4 000 ms so we stay safely under socket_timeout (5 s).
+                    block_ms = 0 if pending else min(4000, self.config.poll_interval * 1000)
                     leased = self.queue.lease_jobs(
                         consumer_name=self.consumer_name,
                         count=needed,
-                        block_ms=self.config.poll_interval * 1000,
+                        block_ms=block_ms,
                     )
                     pending.extend(leased)
 
