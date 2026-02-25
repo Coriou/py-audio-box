@@ -2,6 +2,7 @@
 work/
 work_remote/
 cache/
+beatsheets/
 
 # Python
 __pycache__/

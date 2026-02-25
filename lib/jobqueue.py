@@ -47,6 +47,7 @@ CONTENT_HASH_FIELDS = (
     "variants",
     "select_best",
     "chunk",
+    "align_words",
     "temperature",
     "top_p",
     "repetition_penalty",
@@ -214,6 +215,7 @@ class JobSpec:
     variants: int
     select_best: bool
     chunk: bool
+    align_words: bool
 
     temperature: float | None
     top_p: float | None
@@ -303,6 +305,7 @@ def normalize_job_spec(job: JobSpec | Mapping[str, Any]) -> JobSpec:
         variants=variants,
         select_best=_coerce_bool("select_best", data.get("select_best"), default=False),
         chunk=_coerce_bool("chunk", data.get("chunk"), default=False),
+        align_words=_coerce_bool("align_words", data.get("align_words"), default=True),
         temperature=temperature,
         top_p=top_p,
         repetition_penalty=repetition_penalty,
@@ -582,6 +585,8 @@ def build_speak_argv(
         argv.append("--select-best")
     if spec.chunk:
         argv.append("--chunk")
+    if spec.align_words:
+        argv.append("--align-words")
 
     if spec.temperature is not None:
         argv.extend(["--temperature", str(spec.temperature)])

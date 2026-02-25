@@ -275,6 +275,14 @@ jobs-enqueue:  ## Enqueue jobs YAML. Usage: make jobs-enqueue FILE=/app/jobs.exa
 	fi
 	./run job-runner enqueue "$(FILE)" $(ARGS)
 
+.PHONY: jobs-enqueue-beatsheet
+jobs-enqueue-beatsheet:  ## Enqueue from a beatsheet JSON/YAML (v1/v2). Usage: make jobs-enqueue-beatsheet FILE=/app/beatsheets/my.json [ARGS='--voice slug']
+	@if [ -z "$(FILE)" ]; then \
+		echo "ERROR: FILE is not set. Example: make jobs-enqueue-beatsheet FILE=/app/beatsheets/why-pineapple.json"; \
+		exit 1; \
+	fi
+	./run job-runner enqueue-beatsheet "$(FILE)" $(ARGS)
+
 .PHONY: jobs-status
 jobs-status:  ## Queue status from Redis. Usage: make jobs-status ARGS='--json'
 	./run job-runner status $(ARGS)
@@ -310,6 +318,50 @@ jobs-flush:  ## Flush transient queue keys. Add ARGS='--hard --yes' to also clea
 .PHONY: jobs-history
 jobs-history:  ## Recent done/failed job history. Usage: make jobs-history ARGS='--limit 20 --status all'
 	./run job-runner history $(ARGS)
+
+.PHONY: jobs-e2e-local
+jobs-e2e-local:  ## End-to-end local test: enqueue beatsheet → run watcher (local executor + local sink) → package-status. Usage: make jobs-e2e-local FILE=/app/beatsheets/why-pineapple.json ARGS='--voice slug' [TOPIC_ID=why-pineapple]
+	@if [ -z "$(FILE)" ]; then \
+		echo "ERROR: FILE is not set."; \
+		echo "  Example: make jobs-e2e-local FILE=/app/beatsheets/why-pineapple.json ARGS='--voice my-voice'"; \
+		exit 1; \
+	fi
+	@echo "==> [1/4] Enqueuing beatsheet: $(FILE)"
+	./run job-runner enqueue-beatsheet "$(FILE)" $(ARGS)
+	@echo ""
+	@echo "==> [2/4] Running watcher (local executor + local sink, --once)"
+	docker compose -f docker-compose.watcher.yml run --rm \
+		-e WATCHER_EXECUTOR_MODE=local \
+		-e WATCHER_SINK_MODE=local \
+		-e WATCHER_BATCH_MIN=1 \
+		watcher python3 apps/job-watcher/job-watcher.py --once
+	@echo ""
+	@echo "==> [3/4] Queue status"
+	./run job-runner status
+	@echo ""
+	@echo "==> [4/4] Package status"
+	@if [ -n "$(TOPIC_ID)" ]; then \
+		./run job-runner package-status "$(TOPIC_ID)" --beats && \
+		echo "" && \
+		EXPECTED_BEATS=$$(./run job-runner package-status "$(TOPIC_ID)" --json 2>/dev/null | python3 -c "import sys,json; d=json.load(sys.stdin); print(d['total_beats'])") && \
+		DONE_BEATS=$$(./run job-runner package-status "$(TOPIC_ID)" --json 2>/dev/null | python3 -c "import sys,json; d=json.load(sys.stdin); print(d['completed_beats'])") && \
+		STATUS_VAL=$$(./run job-runner package-status "$(TOPIC_ID)" --json 2>/dev/null | python3 -c "import sys,json; d=json.load(sys.stdin); print(d['status'])") && \
+		echo "==> E2E assertion: completed=$$DONE_BEATS / total=$$EXPECTED_BEATS status=$$STATUS_VAL" && \
+		if [ "$$STATUS_VAL" = "complete" ]; then echo "✓ Package complete"; else echo "✗ Package NOT complete (check failures above)"; exit 1; fi; \
+	else \
+		echo "  (Set TOPIC_ID=<slug> to run completeness assertion)"; \
+		echo "  Example: make jobs-e2e-local FILE=... ARGS=... TOPIC_ID=why-pineapple"; \
+	fi
+
+.PHONY: jobs-package-status
+jobs-package-status:  ## Show local package status (job.json summary). Usage: make jobs-package-status TOPIC_ID=my-topic [BEATS=1]
+	@if [ -z "$(TOPIC_ID)" ]; then \
+		echo "ERROR: TOPIC_ID is not set."; \
+		echo "  Example: make jobs-package-status TOPIC_ID=why-pineapple"; \
+		exit 1; \
+	fi
+	@BEATS_FLAG=""; if [ -n "$(BEATS)" ]; then BEATS_FLAG="--beats"; fi; \
+	./run job-runner package-status "$(TOPIC_ID)" $$BEATS_FLAG
 
 .PHONY: jobs-dashboard
 jobs-dashboard:  ## Quick queue dashboard: status + recent history in one shot

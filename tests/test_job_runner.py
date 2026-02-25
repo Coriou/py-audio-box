@@ -116,17 +116,9 @@ def test_build_manifest_writes_text_files_and_out_exact_contract(tmp_path: Path)
         assert argv[argv.index("--json-result") + 1] == str(json_result)
 
 
-def test_beatsheet_mapping_to_request_and_output_names() -> None:
-    beatsheet: dict[str, Any] = {
-        "topicId": "pineapple",
-        "beats": [
-            {"id": 1, "narration": "One"},
-            {"id": 7, "narration": "Seven"},
-        ],
-    }
-
-    jobs = job_runner._build_beatsheet_jobs(
-        beatsheet,
+def _build_bs_jobs(beatsheet: Any, **overrides: Any):
+    """Helper: call _build_beatsheet_jobs with safe defaults."""
+    defaults: dict[str, Any] = dict(
         voice="newsroom",
         speaker=None,
         language="English",
@@ -137,15 +129,113 @@ def test_beatsheet_mapping_to_request_and_output_names() -> None:
         variants=1,
         select_best=False,
         chunk=False,
+        align_words=True,
         temperature=0.7,
         top_p=0.9,
         repetition_penalty=1.05,
         max_new_tokens=300,
     )
+    defaults.update(overrides)
+    return job_runner._build_beatsheet_jobs(beatsheet, **defaults)
+
+
+def test_beatsheet_mapping_to_request_and_output_names() -> None:
+    beatsheet: dict[str, Any] = {
+        "topicId": "pineapple",
+        "beats": [
+            {"id": 1, "narration": "One"},
+            {"id": 7, "narration": "Seven"},
+        ],
+    }
+
+    jobs = _build_bs_jobs(beatsheet)
 
     assert [j.spec.request_id for j in jobs] == ["pineapple:beat-001", "pineapple:beat-007"]
     assert [j.spec.output_name for j in jobs] == ["pineapple/beat-001", "pineapple/beat-007"]
-    assert jobs[0].spec.callback_data == {"topic_id": "pineapple", "beat_id": 1}
+    # total_beats defaults to len(beats) when totalBeats is absent
+    assert jobs[0].spec.callback_data == {"topic_id": "pineapple", "beat_id": 1, "total_beats": 2}
+
+
+def test_beatsheet_v2_tts_defaults_applied_to_all_beats() -> None:
+    beatsheet: dict[str, Any] = {
+        "topicId": "scikit",
+        "title": "Scikit Topic",
+        "totalBeats": 2,
+        "ttsDefaults": {
+            "voice": "david-attenborough",
+            "variants": 3,
+            "temperature": 0.5,
+        },
+        "beats": [
+            {"id": 1, "narration": "Alpha"},
+            {"id": 2, "narration": "Beta"},
+        ],
+    }
+
+    # CLI voice is None — ttsDefaults must satisfy the voice requirement
+    jobs = _build_bs_jobs(beatsheet, voice=None, temperature=None)
+
+    assert jobs[0].spec.voice == "david-attenborough"
+    assert jobs[1].spec.voice == "david-attenborough"
+    assert jobs[0].spec.variants == 3
+    assert jobs[0].spec.temperature == 0.5
+    assert jobs[0].spec.callback_data["total_beats"] == 2
+    assert jobs[0].spec.callback_data["topic_title"] == "Scikit Topic"
+
+
+def test_beatsheet_v2_per_beat_tts_overrides_tts_defaults() -> None:
+    beatsheet: dict[str, Any] = {
+        "topicId": "overrides",
+        "ttsDefaults": {"voice": "newsroom", "variants": 2, "select_best": False},
+        "beats": [
+            {"id": 1, "narration": "Plain"},
+            {"id": 2, "narration": "Special", "tts": {"variants": 5, "select_best": True}},
+        ],
+    }
+
+    jobs = _build_bs_jobs(beatsheet, voice=None)
+
+    assert jobs[0].spec.variants == 2
+    assert jobs[0].spec.select_best is False
+    assert jobs[1].spec.variants == 5  # per-beat override
+    assert jobs[1].spec.select_best is True  # per-beat override
+    # Both use ttsDefaults voice
+    assert jobs[0].spec.voice == "newsroom"
+    assert jobs[1].spec.voice == "newsroom"
+
+
+def test_beatsheet_v2_total_beats_explicit() -> None:
+    beatsheet: dict[str, Any] = {
+        "topicId": "explicit-total",
+        "totalBeats": 10,
+        "ttsDefaults": {"voice": "newsroom"},
+        "beats": [{"id": 1, "narration": "One"}],
+    }
+
+    jobs = _build_bs_jobs(beatsheet, voice=None)
+
+    assert jobs[0].spec.callback_data["total_beats"] == 10
+
+
+def test_beatsheet_v2_no_voice_raises() -> None:
+    beatsheet: dict[str, Any] = {
+        "topicId": "no-voice",
+        "beats": [{"id": 1, "narration": "One"}],
+    }
+
+    with pytest.raises(ValueError, match="voice or speaker"):
+        _build_bs_jobs(beatsheet, voice=None, speaker=None)
+
+
+def test_beatsheet_v2_cli_voice_fallback_when_no_tts_defaults() -> None:
+    """CLI voice is used when beatsheet has no ttsDefaults."""
+    beatsheet: dict[str, Any] = {
+        "topicId": "cli-voice",
+        "beats": [{"id": 1, "narration": "Hello"}],
+    }
+
+    jobs = _build_bs_jobs(beatsheet, voice="my-voice", speaker=None)
+    assert jobs[0].spec.voice == "my-voice"
 
 
 def test_voice_presence_errors_detect_missing_voice(tmp_path: Path) -> None:

@@ -228,6 +228,41 @@ def qa_transcribe(wav_path: Path, whisper_model: str, num_threads: int,
     }
 
 
+def align_words(wav_path: Path, whisper_model: str, num_threads: int) -> dict[str, Any] | None:
+    """
+    Run faster-whisper on *wav_path* to extract word-level timestamps.
+    Returns a dictionary suitable for result.json under the 'alignment' key,
+    or None if generation failed.
+    """
+    try:
+        from faster_whisper import WhisperModel
+        device       = ctranslate2_device()
+        compute_type = cuda_ctranslate2_compute_type() if device.startswith("cuda") else "int8"
+        wm = WhisperModel(whisper_model, device=device,
+                          compute_type=compute_type, cpu_threads=num_threads)
+        segs, _info = wm.transcribe(str(wav_path), beam_size=2, vad_filter=True, word_timestamps=True)
+        
+        words_out = []
+        for s in segs:
+            for w in s.words:
+                words_out.append({
+                    "word": w.word.strip(),
+                    "start": round(w.start, 3),
+                    "end": round(w.end, 3)
+                })
+        
+        if not words_out:
+            return None
+            
+        return {
+            "model": f"faster-whisper-{whisper_model}",
+            "words": words_out
+        }
+    except Exception as exc:
+        print(f"  WARNING: align_words failed: {exc}", file=sys.stderr)
+        return None
+
+
 def assert_selection_qa_ok(qa: dict[str, Any], take_label: str) -> None:
     """
     Raise when selection-time QA failed.
@@ -1160,12 +1195,13 @@ def build_speak_json_result(
     n_variants: int,
     selected_take: str | None,
     selected_wav: str | None,
+    alignment: dict[str, Any] | None,
     load_sec: float,
     total_sec: float,
     takes: list[dict[str, Any]],
 ) -> dict[str, Any]:
     takes_files = [str(take.get("wav")) for take in takes if isinstance(take.get("wav"), str)]
-    return {
+    result = {
         "schema_version": SPEAK_JSON_RESULT_SCHEMA_VERSION,
         "app": "voice-synth",
         "created_at": _utc_now_iso(),
@@ -1198,6 +1234,11 @@ def build_speak_json_result(
             "best": selected_wav,
         },
     }
+    
+    if alignment is not None:
+        result["alignment"] = alignment
+        
+    return result
 
 
 def cmd_speak(args) -> None:
@@ -1618,6 +1659,15 @@ def cmd_speak(args) -> None:
         json.dump(takes_meta, fh, indent=2)
 
     (run_dir / "text.txt").write_text(raw_text, encoding="utf-8")
+    
+    alignment_data = None
+    if getattr(args, "align_words", False) and selected_wav:
+        print(f"  aligning words (whisper) …")
+        alignment_data = align_words(Path(selected_wav), args.whisper_model, args.threads)
+    elif getattr(args, "align_words", False) and all_takes:
+        wav_path = all_takes[0]["wav"]
+        print(f"  aligning words (whisper) …")
+        alignment_data = align_words(Path(wav_path), args.whisper_model, args.threads)
 
     json_result_path_raw = getattr(args, "json_result", None)
     if json_result_path_raw:
@@ -1636,6 +1686,7 @@ def cmd_speak(args) -> None:
             n_variants=n_variants,
             selected_take=selected_take,
             selected_wav=selected_wav,
+            alignment=alignment_data,
             load_sec=load_sec,
             total_sec=total_sec,
             takes=all_takes,
@@ -2099,6 +2150,8 @@ def build_parser() -> argparse.ArgumentParser:
                     help="Auto-chunk long text into sentences and concatenate output")
     sp.add_argument("--qa",        action="store_true",
                     help="Run whisper QA on each take and print intelligibility score")
+    sp.add_argument("--align-words", action="store_true",
+                    help="Run faster-whisper on generated audio to extract word-level timestamps")
     sp.add_argument(
         "--profile",
         default=None,

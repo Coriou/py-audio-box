@@ -13,10 +13,12 @@ This daemon:
 from __future__ import annotations
 
 import argparse
+import fcntl
 import json
 import os
 import re
 import shlex
+import shutil
 import signal
 import socket
 import subprocess
@@ -160,9 +162,15 @@ def should_start_run(*, outstanding: int, oldest_age_sec: float | None, batch_mi
 class WatcherConfig:
     redis_url: str
     vast_api_key: str
-    vast_ssh_key: Path
+    vast_ssh_key: Path | None
     s3_bucket: str
     rclone_remote: str
+
+    # Execution and sink backends
+    executor_mode: str          # "vast" | "local"
+    sink_mode: str              # "local" | "rclone"
+    output_root: Path           # local sink: base dir for jobs_out/<topic_id>/
+    stream_retention_days: int  # stream XTRIM horizon in days (0 = disabled)
 
     s3_prefix: str
     poll_interval: int
@@ -191,17 +199,37 @@ class WatcherConfig:
 
     @classmethod
     def from_env(cls) -> "WatcherConfig":
-        required_names = ["REDIS_URL", "VAST_API_KEY", "VAST_SSH_KEY", "S3_BUCKET", "RCLONE_REMOTE"]
+        executor_mode = str(os.getenv("WATCHER_EXECUTOR_MODE", "vast")).lower()
+        sink_mode = str(os.getenv("WATCHER_SINK_MODE", "local")).lower()
+
+        if executor_mode not in ("vast", "local"):
+            raise ValueError(f"WATCHER_EXECUTOR_MODE must be 'vast' or 'local', got: {executor_mode!r}")
+        if sink_mode not in ("local", "rclone"):
+            raise ValueError(f"WATCHER_SINK_MODE must be 'local' or 'rclone', got: {sink_mode!r}")
+
+        # Required vars differ by mode.
+        always_required = ["REDIS_URL"]
+        vast_required = ["VAST_API_KEY", "VAST_SSH_KEY"] if executor_mode == "vast" else []
+        rclone_required = ["S3_BUCKET", "RCLONE_REMOTE"] if sink_mode == "rclone" else []
+        required_names = always_required + vast_required + rclone_required
         missing = [name for name in required_names if not os.getenv(name)]
         if missing:
             raise ValueError(f"Missing required environment variable(s): {', '.join(missing)}")
 
+        vast_ssh_key: Path | None = None
+        if os.getenv("VAST_SSH_KEY"):
+            vast_ssh_key = Path(str(os.getenv("VAST_SSH_KEY"))).expanduser()
+
         cfg = cls(
             redis_url=str(os.getenv("REDIS_URL")),
-            vast_api_key=str(os.getenv("VAST_API_KEY")),
-            vast_ssh_key=Path(str(os.getenv("VAST_SSH_KEY"))).expanduser(),
-            s3_bucket=str(os.getenv("S3_BUCKET")),
-            rclone_remote=str(os.getenv("RCLONE_REMOTE")),
+            vast_api_key=str(os.getenv("VAST_API_KEY", "")),
+            vast_ssh_key=vast_ssh_key,
+            s3_bucket=str(os.getenv("S3_BUCKET", "")),
+            rclone_remote=str(os.getenv("RCLONE_REMOTE", "")),
+            executor_mode=executor_mode,
+            sink_mode=sink_mode,
+            output_root=Path(str(os.getenv("WATCHER_OUTPUT_ROOT", "/work_remote/jobs_out"))),
+            stream_retention_days=_env_int("WATCHER_STREAM_RETENTION_DAYS", 7),
             s3_prefix=str(os.getenv("S3_PREFIX", "voice-results")),
             poll_interval=_env_int("WATCHER_POLL_INTERVAL", 10),
             batch_min=_env_int("WATCHER_BATCH_MIN", 1),
@@ -246,10 +274,12 @@ class WatcherConfig:
             raise ValueError(
                 "WATCHER_SYNTH_CONCURRENCY > 1 is not enabled in v1 (OOM safety policy)."
             )
-        if not cfg.vast_ssh_key.exists():
-            raise ValueError(f"VAST_SSH_KEY file does not exist: {cfg.vast_ssh_key}")
+        if executor_mode == "vast":
+            if cfg.vast_ssh_key is None or not cfg.vast_ssh_key.exists():
+                raise ValueError(f"VAST_SSH_KEY file does not exist: {cfg.vast_ssh_key}")
 
         cfg.work_dir.mkdir(parents=True, exist_ok=True)
+        cfg.output_root.mkdir(parents=True, exist_ok=True)
         return cfg
 
 
@@ -437,15 +467,18 @@ class VastController:
         port: int,
         *,
         ssh_key: Path,
-        sentinel: str = "/app/apps/job-runner/job-runner.py",
+        marker: str = "/tmp/pab_onstart_done",
         timeout_sec: int = 180,
         poll_sec: int = 10,
     ) -> None:
-        """Poll until the onstart-cmd git sync has completed on the remote instance.
+        """Poll until the onstart-cmd has completed and written its marker file.
 
-        The sentinel file is created by the git clone in the onstart script.
-        If it's not present within timeout_sec, the instance is unusable.
+        The marker /tmp/pab_onstart_done is the last thing written by the
+        onstart script, so its presence proves both code availability and
+        git sync completion.  Falls back to checking the legacy sentinel path
+        so older images still work.
         """
+        legacy_sentinel = "/app/apps/job-runner/job-runner.py"
         deadline = _now_epoch() + float(timeout_sec)
         while _now_epoch() < deadline:
             result = _run_subprocess(
@@ -458,7 +491,7 @@ class VastController:
                     "-o", "ConnectTimeout=5",
                     "-o", "BatchMode=yes",
                     f"root@{host}",
-                    f"test -f {sentinel}",
+                    f"test -f {marker} || test -f {legacy_sentinel}",
                 ],
                 check=False,
             )
@@ -466,8 +499,8 @@ class VastController:
                 return
             time.sleep(poll_sec)
         raise RuntimeError(
-            f"Onstart sentinel {sentinel!r} not found on {host}:{port} "
-            f"within {timeout_sec}s — git sync may have failed"
+            f"Onstart marker {marker!r} not found on {host}:{port} "
+            f"within {timeout_sec}s — onstart script may have failed"
         )
 
     def provision(self, *, run_id: str) -> VastInstance:
@@ -490,7 +523,9 @@ class VastController:
             "chmod 600 /root/.ssh/authorized_keys 2>/dev/null; "
             f"{git_sync}; "
             "mkdir -p /work /cache; "
-            "chmod +x /app/run-direct 2>/dev/null || true"
+            "chmod +x /app/run-direct 2>/dev/null || true; "
+            # Write marker file last so _wait_for_onstart() proves sync is done.
+            "touch /tmp/pab_onstart_done"
         )
 
         args = [
@@ -832,6 +867,7 @@ class JobWatcher:
             error_type="permanent",
             error=f"invalid voice: '{spec.voice}' not found in {self.config.voices_dir}",
             run_id=run_id,
+            stage="validate",
         )
         self.queue.ack(lease.stream_id)
         self._metric_incr("jobs_failed")
@@ -844,7 +880,7 @@ class JobWatcher:
         )
         return False
 
-    def _schedule_retry(self, lease: StreamLease, *, error: str, run_id: str | None) -> None:
+    def _schedule_retry(self, lease: StreamLease, *, error: str, run_id: str | None, stage: str | None = None) -> None:
         next_attempt = lease.job.attempt + 1
         delay_sec = retry_delay_seconds(next_attempt)
         due_ts = _now_epoch() + float(delay_sec)
@@ -853,7 +889,7 @@ class JobWatcher:
         payload["attempt"] = next_attempt
         payload["queued_at"] = _utc_now_iso()
 
-        member_payload = {
+        member_payload: dict[str, Any] = {
             "schema_version": 1,
             "request_id": lease.job.request_id,
             "stream_id": lease.stream_id,
@@ -863,6 +899,8 @@ class JobWatcher:
             "job": payload,
             "error": _short_error(error),
         }
+        if stage:
+            member_payload["stage"] = stage
         member = json.dumps(member_payload, sort_keys=True, separators=(",", ":"), ensure_ascii=True)
 
         pipe = self.redis.pipeline(transaction=True)
@@ -890,8 +928,9 @@ class JobWatcher:
         error_type: str,
         error: str,
         run_id: str | None,
+        stage: str | None = None,
     ) -> None:
-        record = {
+        record: dict[str, Any] = {
             "request_id": request_id,
             "status": "failed",
             "attempt": attempt,
@@ -901,32 +940,101 @@ class JobWatcher:
             "run_id": run_id,
             "job": dict(job),
         }
+        if stage:
+            record["stage"] = stage
         self.redis.hset(
             self.queue.keys.failed,
             request_id,
             json.dumps(record, sort_keys=True, separators=(",", ":"), ensure_ascii=True),
         )
+        self._record_package_failure(
+            request_id=request_id,
+            job=job,
+            error_type=error_type,
+            error=error,
+            run_id=run_id,
+            stage=stage,
+        )
+
+    def _upload_output_dir(self, out_dir: Path, output_name: str) -> dict[str, Any]:
+        """Upload/copy beat output files; return a sink-mode-specific artifact descriptor."""
+        if self.config.sink_mode == "local":
+            return self._copy_to_local_package(out_dir, output_name)
+        return self._upload_via_rclone(out_dir, output_name)
+
+    def _copy_to_local_package(self, out_dir: Path, output_name: str) -> dict[str, Any]:
+        """Copy validated outputs into the deterministic local package tree.
+
+        Layout: <output_root>/<topic_id>/beats/<beat_tag>/<files>
+        output_name is "<topic_id>/<beat_tag>" (e.g. "why-pineapple/beat-001").
+        """
+        parts = Path(output_name).parts  # ("why-pineapple", "beat-001")
+        if len(parts) != 2:
+            raise RuntimeError(f"unexpected output_name format for local sink: {output_name!r}")
+        topic_id, beat_tag = parts
+        pkg_beat_dir = self.config.output_root / topic_id / "beats" / beat_tag
+        pkg_beat_dir.mkdir(parents=True, exist_ok=True)
+
+        artifacts: dict[str, str] = {}
+        for src in sorted(out_dir.iterdir()):
+            dst = pkg_beat_dir / src.name
+            shutil.copy2(src, dst)
+            rel = f"beats/{beat_tag}/{src.name}"
+            artifacts[src.name] = rel
+
+        takes = sorted(k for k in artifacts if k.startswith("take_") and k.endswith(".wav"))
+        meta_rel = artifacts.get("takes.meta.json")
+        best_rel = artifacts.get("best.wav")
+        result_rel = artifacts.get("result.json")
+
+        return {
+            "sink": "local",
+            "package_root": str(self.config.output_root / topic_id),
+            "takes": [artifacts[t] for t in takes],
+            "meta": meta_rel,
+            "best": best_rel,
+            "result": result_rel,
+        }
+
+    def _upload_via_rclone(self, out_dir: Path, output_name: str) -> dict[str, Any]:
+        """Upload to rclone remote and return s3:// artifact descriptors."""
+        dst = f"{self.config.rclone_remote}:{self.config.s3_bucket}/{self.config.s3_prefix}/{output_name}/"
+        cmd = [
+            "rclone",
+            "copy",
+            "--checkers",
+            "8",
+            "--transfers",
+            "4",
+            "--fast-list",
+            f"{out_dir}/",
+            dst,
+        ]
+        _run_subprocess(cmd, check=True)
+
+        takes = sorted(out_dir.glob("take_*.wav"))
+        meta = out_dir / "takes.meta.json"
+        best = out_dir / "best.wav"
+        return {
+            "sink": "rclone",
+            "takes": [
+                _s3_uri(self.config.s3_bucket, self.config.s3_prefix, output_name, t.name)
+                for t in takes
+            ],
+            "meta": _s3_uri(self.config.s3_bucket, self.config.s3_prefix, output_name, meta.name),
+            "best": (
+                _s3_uri(self.config.s3_bucket, self.config.s3_prefix, output_name, best.name)
+                if best.exists() else None
+            ),
+        }
 
     def _write_done_and_ack(
         self,
         *,
         lease: StreamLease,
         run_id: str,
-        takes: list[Path],
-        best: Path | None,
-        meta: Path,
+        artifacts: dict[str, Any],
     ) -> None:
-        output_name = lease.job.output_name
-        outputs: dict[str, Any] = {
-            "takes": [
-                _s3_uri(self.config.s3_bucket, self.config.s3_prefix, output_name, take.name)
-                for take in takes
-            ],
-            "meta": _s3_uri(self.config.s3_bucket, self.config.s3_prefix, output_name, meta.name),
-        }
-        if best is not None:
-            outputs["best"] = _s3_uri(self.config.s3_bucket, self.config.s3_prefix, output_name, best.name)
-
         record = {
             "request_id": lease.job.request_id,
             "content_hash": lease.job.content_hash,
@@ -934,8 +1042,8 @@ class JobWatcher:
             "attempt": lease.job.attempt,
             "run_id": run_id,
             "completed_at": _utc_now_iso(),
-            "output_name": output_name,
-            "outputs": outputs,
+            "output_name": lease.job.output_name,
+            "outputs": artifacts,
             "callback_data": lease.job.callback_data,
         }
 
@@ -951,26 +1059,267 @@ class JobWatcher:
 
         self._metric_incr("jobs_done")
 
-    def _upload_output_dir(self, out_dir: Path, output_name: str) -> None:
-        dst = f"{self.config.rclone_remote}:{self.config.s3_bucket}/{self.config.s3_prefix}/{output_name}/"
-        cmd = [
-            "rclone",
-            "copy",
-            "--checkers",
-            "8",
-            "--transfers",
-            "4",
-            "--fast-list",
-            f"{out_dir}/",
-            dst,
-        ]
-        _run_subprocess(cmd, check=True)
+        if self.config.sink_mode == "local":
+            self._assemble_package(lease=lease, artifacts=artifacts, run_id=run_id)
 
-    def _handle_execution_failure(self, lease: StreamLease, *, error: str, run_id: str) -> None:
+    def _assemble_package(
+        self,
+        *,
+        lease: StreamLease,
+        artifacts: dict[str, Any],
+        run_id: str,
+    ) -> None:
+        """Upsert the topic-level job.json package manifest after each successful beat.
+
+        The package manifest aggregates all beat results into a single machine-readable
+        file at <output_root>/<topic_id>/job.json.  Paths are relative to the topic root
+        for portability.
+        """
+        cb = lease.job.callback_data or {}
+        topic_id = str(cb.get("topic_id") or lease.job.output_name.split("/")[0])
+        beat_id = cb.get("beat_id")
+        total_beats = int(cb.get("total_beats") or 0)
+        request_id = lease.job.request_id
+        output_name = lease.job.output_name
+        beat_tag = Path(output_name).name  # "beat-001"
+
+        pkg_dir = self.config.output_root / topic_id
+        pkg_dir.mkdir(parents=True, exist_ok=True)
+        job_json_path = pkg_dir / "job.json"
+
+        # Serialize new beat entry.
+        beat_entry: dict[str, Any] = {
+            "beat_id": beat_id,
+            "request_id": request_id,
+            "output_name": output_name,
+            "status": "done",
+            "audio": {
+                "takes": artifacts.get("takes", []),
+                "best": artifacts.get("best"),
+                "selected": (artifacts.get("best") or (artifacts.get("takes") or [None])[0]),
+            },
+            "meta": {
+                "result_json": artifacts.get("result"),
+                "takes_meta_json": artifacts.get("meta"),
+            },
+            "callback_data": dict(cb),
+        }
+
+        # Atomic read-modify-write under an advisory flock so concurrent watcher
+        # processes (or future parallel sinks) do not clobber each other.
+        lock_path = pkg_dir / "job.json.lock"
+        with open(lock_path, "w") as lock_fh:
+            try:
+                fcntl.flock(lock_fh, fcntl.LOCK_EX)
+            except Exception:
+                pass  # Non-fatal if locking unsupported (e.g. Docker tmpfs)
+
+            now = _utc_now_iso()
+            if job_json_path.exists():
+                try:
+                    doc = json.loads(job_json_path.read_text(encoding="utf-8"))
+                except Exception:
+                    doc = {}
+            else:
+                doc = {}
+
+            beats_list: list[dict[str, Any]] = doc.get("beats") or []
+            # Replace existing entry for this beat or append.
+            beats_list = [b for b in beats_list if b.get("request_id") != request_id]
+            beats_list.append(beat_entry)
+            beats_list.sort(key=lambda b: b.get("beat_id") or 0)
+
+            failures: list[dict[str, Any]] = doc.get("failures") or []
+            # Remove this request from failures if it previously failed.
+            failures = [f for f in failures if f.get("request_id") != request_id]
+
+            done_ids = {b["request_id"] for b in beats_list if b.get("status") == "done"}
+            completed_beats = len(done_ids)
+            status = "complete" if (total_beats > 0 and completed_beats >= total_beats) else "partial"
+
+            updated_doc: dict[str, Any] = {
+                "schema_version": 1,
+                "topic_id": topic_id,
+                "status": status,
+                "created_at": doc.get("created_at") or now,
+                "updated_at": now,
+                "total_beats": total_beats,
+                "completed_beats": completed_beats,
+                "run_id": run_id,
+                "beats": beats_list,
+                "failures": failures,
+            }
+            # Preserve topic_title if present in any beat's callback_data.
+            if not updated_doc.get("topic_title"):
+                for b in beats_list:
+                    title = (b.get("callback_data") or {}).get("topic_title")
+                    if title:
+                        updated_doc["topic_title"] = title
+                        break
+
+            job_json_path.write_text(
+                json.dumps(updated_doc, indent=2, sort_keys=True, ensure_ascii=False) + "\n",
+                encoding="utf-8",
+            )
+
+            try:
+                fcntl.flock(lock_fh, fcntl.LOCK_UN)
+            except Exception:
+                pass
+
+        _log(
+            "info",
+            "package_updated",
+            topic_id=topic_id,
+            beat_id=beat_id,
+            completed_beats=completed_beats,
+            total_beats=total_beats,
+            status=status,
+        )
+
+    def _record_package_failure(
+        self,
+        *,
+        request_id: str,
+        job: Mapping[str, Any],
+        error_type: str,
+        error: str,
+        run_id: str | None,
+        stage: str | None = None,
+    ) -> None:
+        """Upsert a failure entry in the topic-level job.json when sink_mode=local.
+
+        Called from _write_failed_terminal so that terminal failures are visible
+        in the package manifest alongside successful beats.
+        """
+        if self.config.sink_mode != "local":
+            return
+        cb = job.get("callback_data") or {}
+        topic_id = str(cb.get("topic_id") or "")
+        if not topic_id:
+            return  # cannot locate the package without topic_id
+
+        beat_id = cb.get("beat_id")
+        total_beats = int(cb.get("total_beats") or 0)
+        output_name = str(job.get("output_name") or "")
+
+        failure_entry: dict[str, Any] = {
+            "beat_id": beat_id,
+            "request_id": request_id,
+            "output_name": output_name,
+            "status": "failed",
+            "error_type": error_type,
+            "error": _short_error(error),
+            "failed_at": _utc_now_iso(),
+            "run_id": run_id,
+            "callback_data": dict(cb),
+        }
+        if stage:
+            failure_entry["stage"] = stage
+
+        pkg_dir = self.config.output_root / topic_id
+        try:
+            pkg_dir.mkdir(parents=True, exist_ok=True)
+        except Exception as exc:
+            _log("warning", "package_failure_mkdir_error", topic_id=topic_id, error=str(exc))
+            return
+
+        job_json_path = pkg_dir / "job.json"
+        lock_path = pkg_dir / "job.json.lock"
+        with open(lock_path, "w") as lock_fh:
+            try:
+                fcntl.flock(lock_fh, fcntl.LOCK_EX)
+            except Exception:
+                pass  # Non-fatal if locking unsupported
+
+            now = _utc_now_iso()
+            if job_json_path.exists():
+                try:
+                    doc = json.loads(job_json_path.read_text(encoding="utf-8"))
+                except Exception:
+                    doc = {}
+            else:
+                doc = {}
+
+            beats_list: list[dict[str, Any]] = doc.get("beats") or []
+            failures: list[dict[str, Any]] = doc.get("failures") or []
+            failures = [f for f in failures if f.get("request_id") != request_id]
+            failures.append(failure_entry)
+
+            done_ids = {b["request_id"] for b in beats_list if b.get("status") == "done"}
+            completed_beats = len(done_ids)
+            status = "complete" if (total_beats > 0 and completed_beats >= total_beats) else "partial"
+
+            updated_doc: dict[str, Any] = {
+                "schema_version": 1,
+                "topic_id": topic_id,
+                "status": status,
+                "created_at": doc.get("created_at") or now,
+                "updated_at": now,
+                "total_beats": total_beats,
+                "completed_beats": completed_beats,
+                "run_id": run_id,
+                "beats": beats_list,
+                "failures": failures,
+            }
+            # Preserve topic_title from existing doc, beat callback data, or this beat.
+            topic_title = doc.get("topic_title") or cb.get("topic_title")
+            if not topic_title:
+                for b in beats_list:
+                    topic_title = (b.get("callback_data") or {}).get("topic_title")
+                    if topic_title:
+                        break
+            if topic_title:
+                updated_doc["topic_title"] = topic_title
+
+            job_json_path.write_text(
+                json.dumps(updated_doc, indent=2, sort_keys=True, ensure_ascii=False) + "\n",
+                encoding="utf-8",
+            )
+
+            try:
+                fcntl.flock(lock_fh, fcntl.LOCK_UN)
+            except Exception:
+                pass
+
+        _log(
+            "info",
+            "package_failure_recorded",
+            topic_id=topic_id,
+            beat_id=beat_id,
+            request_id=request_id,
+            error_type=error_type,
+            stage=stage,
+        )
+
+    def _trim_stream(self) -> None:
+        """Trim acknowledged (old) stream entries based on retention window.
+
+        Uses XTRIM MINID to remove entries older than stream_retention_days.
+        Only runs when stream_retention_days > 0.
+        """
+        if self.config.stream_retention_days <= 0:
+            return
+        horizon_ms = int(
+            (time.time() - self.config.stream_retention_days * 86400) * 1000
+        )
+        if horizon_ms <= 0:
+            return
+        # MINID: entries with IDs less than <ts>-0 are trimmed.
+        minid = f"{horizon_ms}-0"
+        try:
+            trimmed = self.redis.xtrim(self.queue.keys.stream, minid=minid, approximate=True)
+            if trimmed:
+                self._metric_incr("stream_trimmed", trimmed)
+                _log("info", "stream_trimmed", count=trimmed, minid=minid)
+        except Exception as exc:
+            _log("warning", "stream_trim_error", error=str(exc))
+
+    def _handle_execution_failure(self, lease: StreamLease, *, error: str, run_id: str, stage: str | None = None) -> None:
         classification = classify_failure(error)
 
         if classification == "transient" and (lease.job.attempt + 1) < self.config.max_attempts:
-            self._schedule_retry(lease, error=error, run_id=run_id)
+            self._schedule_retry(lease, error=error, run_id=run_id, stage=stage)
             return
 
         terminal_type = "transient_exhausted" if classification == "transient" else "permanent"
@@ -981,6 +1330,7 @@ class JobWatcher:
             error_type=terminal_type,
             error=error,
             run_id=run_id,
+            stage=stage,
         )
         self.queue.ack(lease.stream_id)
         self._metric_incr("jobs_failed")
@@ -1056,52 +1406,83 @@ class JobWatcher:
         run_id: str,
         batch_index: int,
         leases: Sequence[StreamLease],
-        instance: VastInstance,
+        instance: VastInstance | None,
     ) -> None:
+        """Execute a single batch of jobs.
+
+        When instance is None the executor_mode is "local": the manifest runs
+        in-process without any Vast or SSH involvement.  When instance is a
+        VastInstance the manifest is rsynced + executed remotely over SSH.
+        """
         batch_run_id = f"{run_id}-b{batch_index:04d}"
         batch_dir = self.config.work_dir / batch_run_id
         batch_dir.mkdir(parents=True, exist_ok=True)
 
-        remote_batch_dir = PurePosixPath("/work") / batch_run_id
+        if self.config.executor_mode == "local":
+            # Local paths are used for both staging and execution.
+            exec_batch_dir = PurePosixPath(str(batch_dir))
+        else:
+            exec_batch_dir = PurePosixPath("/work") / batch_run_id
+
         self._manifest_for_batch(
             run_id=batch_run_id,
             batch_dir=batch_dir,
-            remote_batch_dir=remote_batch_dir,
+            remote_batch_dir=exec_batch_dir,
             leases=leases,
         )
 
-        executor = RemoteExecutor(instance, self.config.vast_ssh_key)
+        if self.config.executor_mode == "local":
+            # ── Local executor ──────────────────────────────────────────────
+            local_manifest = batch_dir / "manifest.json"
+            job_runner_py = Path(__file__).resolve().parent.parent / "job-runner" / "job-runner.py"
+            exec_result = _run_subprocess(
+                [
+                    sys.executable,
+                    str(job_runner_py),
+                    "execute-manifest",
+                    str(local_manifest),
+                    "--fail-fast",
+                    "--json",
+                ],
+                check=False,
+            )
+        else:
+            # ── Vast / remote executor ──────────────────────────────────────
+            assert instance is not None, "VastInstance required for vast executor mode"
+            executor = RemoteExecutor(instance, self.config.vast_ssh_key)  # type: ignore[arg-type]
 
-        required_voices = sorted({lease.job.voice for lease in leases if lease.job.voice})
-        for slug in required_voices:
-            assert slug is not None
-            executor.rsync_to_dir(self.config.voices_dir / slug, f"/cache/voices/{slug}", timeout=self.config.rsync_timeout)
+            required_voices = sorted({lease.job.voice for lease in leases if lease.job.voice})
+            for slug in required_voices:
+                assert slug is not None
+                executor.rsync_to_dir(self.config.voices_dir / slug, f"/cache/voices/{slug}", timeout=self.config.rsync_timeout)
 
-        t_sync_start = _now_epoch()
-        executor.rsync_to_dir(batch_dir, str(remote_batch_dir), timeout=self.config.rsync_timeout)
-        sync_sec = _now_epoch() - t_sync_start
-        self._metric_timing("sync_duration_sec", sync_sec)
+            t_sync_start = _now_epoch()
+            executor.rsync_to_dir(batch_dir, str(exec_batch_dir), timeout=self.config.rsync_timeout)
+            sync_sec = _now_epoch() - t_sync_start
+            self._metric_timing("sync_duration_sec", sync_sec)
 
-        remote_manifest = remote_batch_dir / "manifest.json"
-        exec_cmd = (
-            "cd /app && "
-            "python apps/job-runner/job-runner.py "
-            f"execute-manifest {shlex.quote(str(remote_manifest))} --fail-fast --json"
-        )
-        exec_result = executor.run(exec_cmd, check=False)
+            remote_manifest = exec_batch_dir / "manifest.json"
+            exec_cmd = (
+                "cd /app && "
+                "python apps/job-runner/job-runner.py "
+                f"execute-manifest {shlex.quote(str(remote_manifest))} --fail-fast --json"
+            )
+            exec_result = executor.run(exec_cmd, check=False)
+
+            t_pull_start = _now_epoch()
+            executor.rsync_from_dir(str(exec_batch_dir), batch_dir, timeout=self.config.rsync_timeout)
+            pull_sec = _now_epoch() - t_pull_start
+            self._metric_timing("pull_duration_sec", pull_sec)
+
         _log(
             "info" if exec_result.returncode == 0 else "warning",
-            "remote_execution_result",
+            "execution_result",
             run_id=run_id,
+            executor=self.config.executor_mode,
             returncode=exec_result.returncode,
             stderr=_short_error(exec_result.stderr or ""),
             stdout=_short_error(exec_result.stdout or ""),
         )
-
-        t_pull_start = _now_epoch()
-        executor.rsync_from_dir(str(remote_batch_dir), batch_dir, timeout=self.config.rsync_timeout)
-        pull_sec = _now_epoch() - t_pull_start
-        self._metric_timing("pull_duration_sec", pull_sec)
 
         execution_map = self._load_execution_map(batch_dir)
 
@@ -1112,9 +1493,9 @@ class JobWatcher:
             if exec_entry is None:
                 err = (
                     "missing execution entry"
-                    f" (remote exit={exec_result.returncode}, stderr={_short_error(exec_result.stderr or '')})"
+                    f" (exit={exec_result.returncode}, stderr={_short_error(exec_result.stderr or '')})"
                 )
-                self._handle_execution_failure(lease, error=err, run_id=run_id)
+                self._handle_execution_failure(lease, error=err, run_id=run_id, stage="execute")
                 continue
 
             status = str(exec_entry.get("status") or "failed")
@@ -1129,38 +1510,43 @@ class JobWatcher:
                             matches[0].read_text(encoding="utf-8", errors="ignore")
                         )
                 err = (
-                    f"remote execution failed (request_id={req_id}, return_code={exec_entry.get('return_code')}, "
+                    f"execution failed (request_id={req_id}, return_code={exec_entry.get('return_code')}, "
                     f"stderr={stderr_text or _short_error(exec_result.stderr or '')})"
                 )
-                self._handle_execution_failure(lease, error=err, run_id=run_id)
+                self._handle_execution_failure(lease, error=err, run_id=run_id, stage="execute")
                 continue
 
             out_dir = batch_dir / lease.job.output_name
             try:
-                takes, best, meta = _required_output_files(lease.job, out_dir)
+                _required_output_files(lease.job, out_dir)
                 t_upload_start = _now_epoch()
-                self._upload_output_dir(out_dir, lease.job.output_name)
+                artifacts = self._upload_output_dir(out_dir, lease.job.output_name)
                 upload_sec = _now_epoch() - t_upload_start
                 self._metric_timing("upload_duration_sec", upload_sec)
                 self._write_done_and_ack(
                     lease=lease,
                     run_id=run_id,
-                    takes=takes,
-                    best=best,
-                    meta=meta,
+                    artifacts=artifacts,
                 )
             except Exception as exc:
                 self._metric_incr("upload_failures")
-                self._handle_execution_failure(lease, error=str(exc), run_id=run_id)
+                self._handle_execution_failure(lease, error=str(exc), run_id=run_id, stage="upload")
 
     def _run_locked_session(self, *, run_id: str, reclaimed: Sequence[StreamLease]) -> None:
         start_ts = _now_epoch()
         self._set_heartbeat(run_id)
-        _log("info", "session_start", run_id=run_id, reclaimed=len(reclaimed))
+        _log(
+            "info",
+            "session_start",
+            run_id=run_id,
+            reclaimed=len(reclaimed),
+            executor=self.config.executor_mode,
+            sink=self.config.sink_mode,
+        )
 
         pending: list[StreamLease] = list(reclaimed)
         instance: VastInstance | None = None
-        vast = VastController(self.config)
+        vast = VastController(self.config) if self.config.executor_mode == "vast" else None
 
         idle_start: float | None = None
         batch_index = 0
@@ -1172,6 +1558,8 @@ class JobWatcher:
                     break
 
                 self._set_heartbeat(run_id)
+                # Move due retries and claim stale entries inside the lock —
+                # no other consumer should mutate stream ownership concurrently.
                 self._move_due_retries(limit=max(10, self.config.batch_max_jobs))
                 pending.extend(self._claim_stale(max_count=self.config.batch_max_jobs))
 
@@ -1196,7 +1584,7 @@ class JobWatcher:
                         # the next poll cycle.
                         self.redis.delete(self.queue.keys.first_queued)
 
-                    if instance is None:
+                    if self.config.executor_mode == "local" or instance is None:
                         break
 
                     if idle_start is None:
@@ -1218,7 +1606,8 @@ class JobWatcher:
                 if not valid:
                     continue
 
-                if instance is None:
+                if self.config.executor_mode == "vast" and instance is None:
+                    assert vast is not None
                     t0 = _now_epoch()
                     instance = vast.provision(run_id=run_id)
                     self.redis.set(self.queue.keys.watcher_instance, instance.instance_id)
@@ -1238,9 +1627,13 @@ class JobWatcher:
                 self._run_batch(run_id=run_id, batch_index=batch_index, leases=valid, instance=instance)
                 self._metric_timing("batch_duration_sec", _now_epoch() - t_batch)
 
+            # Trim old stream entries once per session to keep Redis bounded.
+            self._trim_stream()
+
         finally:
             if instance is not None:
                 try:
+                    assert vast is not None
                     vast.destroy(instance.instance_id)
                     _log("info", "instance_destroyed", run_id=run_id, instance_id=instance.instance_id)
                 except Exception as exc:
@@ -1260,21 +1653,38 @@ class JobWatcher:
             self._set_heartbeat(None)
             _log("info", "session_end", run_id=run_id)
 
-    def _acquire_and_run(self) -> bool:
-        reclaimed = self._claim_stale(max_count=self.config.batch_max_jobs)
+    def _has_stale_pel_entries(self) -> bool:
+        """Read-only check: are there any PEL entries idle longer than lease_idle_ms?"""
+        try:
+            entries = self.redis.xpending_range(
+                self.queue.keys.stream,
+                self.queue.consumer_group,
+                "-",
+                "+",
+                1,
+                idle=max(1, self.config.lease_idle_ms),
+            )
+            return bool(entries)
+        except Exception:
+            return False
 
+    def _acquire_and_run(self) -> bool:
+        # Phase 1: read-only trigger evaluation — no stream mutations.
         outstanding = _estimate_outstanding(self.redis, self.queue)
         oldest_age = _first_queued_age_sec(self.redis, self.queue)
+        has_stale = self._has_stale_pel_entries()
+
         trigger = should_start_run(
             outstanding=outstanding,
             oldest_age_sec=oldest_age,
             batch_min=self.config.batch_min,
             batch_max_wait=self.config.batch_max_wait,
-        ) or bool(reclaimed)
+        ) or has_stale
 
         if not trigger:
             return False
 
+        # Phase 2: acquire distributed lock.
         run_id = f"watcher-{datetime.now(timezone.utc).strftime('%Y%m%d-%H%M%S')}"
         if not self.queue.acquire_lock(run_id, ttl_seconds=self.config.lock_ttl):
             _log("info", "lock_busy", run_id=run_id)
@@ -1286,7 +1696,7 @@ class JobWatcher:
             run_id=run_id,
             outstanding=outstanding,
             oldest_age_sec=oldest_age,
-            reclaimed=len(reclaimed),
+            has_stale=has_stale,
         )
 
         renew_stop = threading.Event()
@@ -1302,7 +1712,9 @@ class JobWatcher:
         renewer.start()
 
         try:
-            self._run_locked_session(run_id=run_id, reclaimed=reclaimed)
+            # Phase 3: inside lock — stale claim + retry moves happen inside
+            # _run_locked_session on its first iteration.
+            self._run_locked_session(run_id=run_id, reclaimed=[])
             return True
         finally:
             renew_stop.set()
@@ -1325,7 +1737,9 @@ class JobWatcher:
         while not self.stop_event.is_set():
             try:
                 self._set_heartbeat(None)
-                self._move_due_retries(limit=max(10, self.config.batch_max_jobs))
+                # _move_due_retries and _claim_stale are both called inside the
+                # locked session, so we do not call them here to avoid the
+                # lock/claim race (non-owner mutating stream state).
                 ran = self._acquire_and_run()
                 if self.once:
                     break

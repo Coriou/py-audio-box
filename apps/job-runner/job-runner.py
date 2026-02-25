@@ -112,6 +112,7 @@ _JOB_SPEC_KEYS = {
     "variants",
     "select_best",
     "chunk",
+    "align_words",
     "temperature",
     "top_p",
     "repetition_penalty",
@@ -490,6 +491,33 @@ def _print_plan(jobs: Sequence[RenderedJob]) -> None:
         print(f"  {source_key:<22}  {by_source[source_key]:>7}")
 
 
+# TTS field names that can appear in beatsheet.ttsDefaults or beat.tts objects.
+_TTS_FIELDS = (
+    "voice",
+    "speaker",
+    "language",
+    "tone",
+    "instruct",
+    "instruct_style",
+    "profile",
+    "variants",
+    "select_best",
+    "chunk",
+    "align_words",
+    "temperature",
+    "top_p",
+    "repetition_penalty",
+    "max_new_tokens",
+)
+
+
+def _load_beatsheet_file(path: Path) -> Any:
+    """Load a beatsheet from JSON or YAML depending on file extension."""
+    if path.suffix.lower() in (".yaml", ".yml"):
+        return _yaml_load_path(path)
+    return _json_load_path(path)
+
+
 def _build_beatsheet_jobs(
     beatsheet: Mapping[str, Any],
     *,
@@ -503,6 +531,7 @@ def _build_beatsheet_jobs(
     variants: int,
     select_best: bool,
     chunk: bool,
+    align_words: bool = True,
     temperature: float | None,
     top_p: float | None,
     repetition_penalty: float | None,
@@ -513,9 +542,45 @@ def _build_beatsheet_jobs(
         raise ValueError("beatsheet.topicId is required")
     topic_id = topic_id.strip()
 
+    topic_title: str | None = beatsheet.get("title") or None
+
     beats = beatsheet.get("beats")
     if not isinstance(beats, list):
         raise ValueError("beatsheet.beats must be a list")
+
+    # totalBeats is optional but strongly recommended; default to len(beats).
+    total_beats_raw = beatsheet.get("totalBeats")
+    if total_beats_raw is not None:
+        try:
+            total_beats = int(total_beats_raw)
+        except (TypeError, ValueError) as exc:
+            raise ValueError("beatsheet.totalBeats must be an integer") from exc
+    else:
+        total_beats = len(beats)
+
+    # CLI args are the lowest-precedence defaults.
+    cli_defaults: dict[str, Any] = {
+        "voice": voice,
+        "speaker": speaker,
+        "language": language,
+        "tone": tone,
+        "instruct": instruct,
+        "instruct_style": instruct_style,
+        "profile": profile,
+        "variants": variants,
+        "select_best": select_best,
+        "chunk": chunk,
+        "align_words": align_words,
+        "temperature": temperature,
+        "top_p": top_p,
+        "repetition_penalty": repetition_penalty,
+        "max_new_tokens": max_new_tokens,
+    }
+
+    # ttsDefaults (middle precedence) — override CLI defaults for all beats.
+    tts_defaults_raw = beatsheet.get("ttsDefaults") or {}
+    if not isinstance(tts_defaults_raw, Mapping):
+        raise ValueError("beatsheet.ttsDefaults must be an object if provided")
 
     rows: list[dict[str, Any]] = []
     for i, beat in enumerate(beats, start=1):
@@ -532,29 +597,61 @@ def _build_beatsheet_jobs(
         if not isinstance(narration, str) or not narration.strip():
             raise ValueError(f"beats[{i}].narration must be a non-empty string")
 
+        # Per-beat tts overrides (highest precedence).
+        beat_tts_raw = beat.get("tts") or {}
+        if not isinstance(beat_tts_raw, Mapping):
+            raise ValueError(f"beats[{i}].tts must be an object if provided")
+
+        # Merge: cli_defaults < ttsDefaults < per-beat tts (None values don't override).
+        merged: dict[str, Any] = dict(cli_defaults)
+        for key in _TTS_FIELDS:
+            if tts_defaults_raw.get(key) is not None:
+                merged[key] = tts_defaults_raw[key]
+        for key in _TTS_FIELDS:
+            if beat_tts_raw.get(key) is not None:
+                merged[key] = beat_tts_raw[key]
+
+        # Validate: exactly one of voice/speaker must be non-empty after merge.
+        if not merged.get("voice") and not merged.get("speaker"):
+            raise ValueError(
+                f"beats[{i}]: no voice or speaker after merging CLI args, "
+                "beatsheet.ttsDefaults, and beat.tts. "
+                "Set --voice/--speaker on the CLI or add ttsDefaults.voice to the beatsheet."
+            )
+
         beat_tag = f"beat-{beat_id:03d}"
+        callback_data: dict[str, Any] = {
+            "topic_id": topic_id,
+            "beat_id": beat_id,
+            "total_beats": total_beats,
+        }
+        if topic_title:
+            callback_data["topic_title"] = topic_title
+        # Pass through an optional source_ref from beat metadata.
+        source_ref = beat.get("source_ref") or (beat.get("metadata") or {}).get("source_ref")
+        if source_ref:
+            callback_data["source_ref"] = str(source_ref)
+
         row: dict[str, Any] = {
             "request_id": f"{topic_id}:{beat_tag}",
             "output_name": f"{topic_id}/{beat_tag}",
-            "voice": voice,
-            "speaker": speaker,
+            "voice": merged.get("voice"),
+            "speaker": merged.get("speaker"),
             "text": narration.strip(),
-            "language": language,
-            "tone": tone,
-            "instruct": instruct,
-            "instruct_style": instruct_style,
-            "profile": profile,
-            "variants": variants,
-            "select_best": select_best,
-            "chunk": chunk,
-            "temperature": temperature,
-            "top_p": top_p,
-            "repetition_penalty": repetition_penalty,
-            "max_new_tokens": max_new_tokens,
-            "callback_data": {
-                "topic_id": topic_id,
-                "beat_id": beat_id,
-            },
+            "language": merged.get("language") or language,
+            "tone": merged.get("tone"),
+            "instruct": merged.get("instruct"),
+            "instruct_style": merged.get("instruct_style"),
+            "profile": merged.get("profile"),
+            "variants": merged.get("variants", variants),
+            "select_best": merged.get("select_best", select_best),
+            "chunk": merged.get("chunk", chunk),
+            "align_words": bool(merged.get("align_words", True)),
+            "temperature": merged.get("temperature"),
+            "top_p": merged.get("top_p"),
+            "repetition_penalty": merged.get("repetition_penalty"),
+            "max_new_tokens": merged.get("max_new_tokens"),
+            "callback_data": callback_data,
         }
         rows.append(row)
 
@@ -813,9 +910,14 @@ def _handle_enqueue(args: argparse.Namespace) -> int:
 
 
 def _handle_enqueue_beatsheet(args: argparse.Namespace) -> int:
-    beatsheet = _json_load_path(Path(args.beatsheet_json))
+    beatsheet_path = Path(args.beatsheet_path)
+    try:
+        beatsheet = _load_beatsheet_file(beatsheet_path)
+    except ValueError as exc:
+        print(f"ERROR: {exc}", file=sys.stderr)
+        return 1
     if not isinstance(beatsheet, Mapping):
-        print("ERROR: beatsheet JSON root must be an object", file=sys.stderr)
+        print("ERROR: beatsheet root must be an object", file=sys.stderr)
         return 1
 
     try:
@@ -831,6 +933,7 @@ def _handle_enqueue_beatsheet(args: argparse.Namespace) -> int:
             variants=args.variants,
             select_best=args.select_best,
             chunk=args.chunk,
+            align_words=args.align_words,
             temperature=args.temperature,
             top_p=args.top_p,
             repetition_penalty=args.repetition_penalty,
@@ -1239,6 +1342,75 @@ def _handle_flush(args: argparse.Namespace) -> int:
     return 0
 
 
+DEFAULT_OUTPUT_ROOT = os.getenv("WATCHER_OUTPUT_ROOT", "/work_remote/jobs_out")
+
+
+def _handle_package_status(args: argparse.Namespace) -> int:
+    """Print a summary of the local topic package assembled by job-watcher."""
+    output_root = Path(str(args.output_root or DEFAULT_OUTPUT_ROOT))
+    topic_id = str(args.topic_id).strip()
+    job_json = output_root / topic_id / "job.json"
+
+    if not job_json.exists():
+        msg = f"Package not found: {job_json}"
+        if args.json:
+            print(json.dumps({"error": msg, "topic_id": topic_id}, indent=2))
+        else:
+            print(f"ERROR: {msg}", file=sys.stderr)
+        return 1
+
+    try:
+        doc = json.loads(job_json.read_text(encoding="utf-8"))
+    except Exception as exc:
+        msg = f"Cannot read {job_json}: {exc}"
+        if args.json:
+            print(json.dumps({"error": msg, "topic_id": topic_id}, indent=2))
+        else:
+            print(f"ERROR: {msg}", file=sys.stderr)
+        return 1
+
+    if args.json:
+        print(json.dumps(doc, indent=2, sort_keys=True))
+        return 0
+
+    status = doc.get("status", "?")
+    total = doc.get("total_beats", "?")
+    completed = doc.get("completed_beats", "?")
+    failures = doc.get("failures") or []
+    updated = doc.get("updated_at", "?")
+    run_id = doc.get("run_id", "?")
+    title = doc.get("topic_title") or ""
+
+    header = f"Package: {topic_id}"
+    if title:
+        header += f" ({title})"
+    print(header)
+    print(f"  status:          {status}")
+    print(f"  total_beats:     {total}")
+    print(f"  completed_beats: {completed}")
+    print(f"  failures:        {len(failures)}")
+    print(f"  updated_at:      {updated}")
+    print(f"  run_id:          {run_id}")
+    print(f"  package_root:    {output_root / topic_id}")
+
+    if failures:
+        print("  ── Failures ──")
+        for f in failures:
+            stage = f.get("stage", "") or ""
+            stage_str = f"  [{stage}]" if stage else ""
+            print(f"    beat {f.get('beat_id'):>3}  {f.get('error_type')}{stage_str}: {f.get('error', '')}")
+
+    if args.beats:
+        beats = doc.get("beats") or []
+        if beats:
+            print("  ── Done beats ──")
+            for b in beats:
+                sel = (b.get("audio") or {}).get("selected") or ""
+                print(f"    beat {b.get('beat_id'):>3}  {sel}")
+
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     ap = argparse.ArgumentParser(
         description="job-runner — Redis stream producer/validation tooling",
@@ -1268,20 +1440,34 @@ def build_parser() -> argparse.ArgumentParser:
     eb = sub.add_parser(
         "enqueue-beatsheet",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
-        help="Enqueue jobs from a beatsheet JSON file.",
+        help="Enqueue jobs from a beatsheet JSON or YAML file (v1/v2 format).",
     )
-    eb.add_argument("beatsheet_json", help="Path to beatsheet JSON file.")
-    eb_mode = eb.add_mutually_exclusive_group(required=True)
-    eb_mode.add_argument("--voice", default=None, help="Named voice slug.")
-    eb_mode.add_argument("--speaker", default=None, help="Built-in speaker name.")
+    eb.add_argument(
+        "beatsheet_path",
+        help="Path to beatsheet file (.json or .yaml). v2 beatsheets may omit --voice/--speaker if ttsDefaults is set.",
+    )
+    eb_mode = eb.add_mutually_exclusive_group(required=False)
+    eb_mode.add_argument(
+        "--voice",
+        default=None,
+        help="CLI-level default voice slug. Overridden by beatsheet.ttsDefaults.voice and beat.tts.voice.",
+    )
+    eb_mode.add_argument(
+        "--speaker",
+        default=None,
+        help="CLI-level default built-in speaker. Overridden by beatsheet.ttsDefaults.speaker and beat.tts.speaker.",
+    )
     eb.add_argument("--language", default="English", help="Synthesis language.")
     eb.add_argument("--tone", default=None, help="Tone modifier.")
     eb.add_argument("--instruct", default=None, help="Instruct prompt.")
     eb.add_argument("--instruct-style", default=None, dest="instruct_style", help="Instruct style.")
     eb.add_argument("--profile", default=None, help="Generation profile.")
     eb.add_argument("--variants", type=int, default=1, help="Number of take variants.")
-    eb.add_argument("--select-best", action="store_true", help="Auto-select best take.")
+    eb.add_argument("--select-best", action="store_true", dest="select_best", help="Auto-select best take.")
     eb.add_argument("--chunk", action="store_true", help="Enable text chunking.")
+    eb_align = eb.add_mutually_exclusive_group(required=False)
+    eb_align.add_argument("--align-words", action="store_true", default=True, dest="align_words", help="Run whisper QA on generated audio to extract word-level timestamps (default).")
+    eb_align.add_argument("--no-align-words", action="store_false", dest="align_words", help="Disable word-level timestamp alignment.")
     eb.add_argument("--temperature", type=float, default=None, help="Sampling temperature.")
     eb.add_argument("--top-p", type=float, default=None, dest="top_p", help="Nucleus sampling top-p.")
     eb.add_argument("--repetition-penalty", type=float, default=None, dest="repetition_penalty", help="Repetition penalty.")
@@ -1391,6 +1577,20 @@ def build_parser() -> argparse.ArgumentParser:
     flush.add_argument("--yes", action="store_true", help="Skip confirmation prompt.")
     flush.add_argument("--json", action="store_true", help="Output as JSON.")
 
+    pkg_status = sub.add_parser(
+        "package-status",
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+        help="Show the status of a local topic package (job.json summary).",
+    )
+    pkg_status.add_argument("topic_id", help="Topic ID (slug used as package directory name).")
+    pkg_status.add_argument(
+        "--output-root",
+        default=None,
+        help=f"Base directory for packages (default: $WATCHER_OUTPUT_ROOT or {DEFAULT_OUTPUT_ROOT}).",
+    )
+    pkg_status.add_argument("--beats", action="store_true", help="Also list done beat audio paths.")
+    pkg_status.add_argument("--json", action="store_true", help="Output the raw job.json as JSON.")
+
     return ap
 
 
@@ -1407,6 +1607,7 @@ _COMMAND_DISPATCH: dict[str, Any] = {
     "report": _handle_report,
     "retry": _handle_retry,
     "flush": _handle_flush,
+    "package-status": _handle_package_status,
 }
 
 
