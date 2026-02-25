@@ -329,10 +329,16 @@ make vast-pull ID=12345 JOB=my-session-name
 
 ### Custom GPU query
 
-The default search query is:
+The default search query is (manual `vast-deploy.sh` path):
 
 ```
 reliability > 0.98 gpu_ram >= 20 compute_cap >= 700 inet_down >= 200 disk_space >= 50 rented=False
+```
+
+The job-watcher daemon uses a stricter default (see `job-watcher.py` `DEFAULT_VAST_QUERY`):
+
+```
+reliability > 0.98 gpu_ram >= 20 compute_cap >= 800 compute_cap < 1200 inet_down >= 500 disk_space >= 50 rented=False
 ```
 
 Override it for a specific run:
@@ -504,4 +510,88 @@ Or destroy directly:
 
 ```bash
 ./scripts/vast destroy instance 12345
+```
+
+---
+
+## Job-Watcher Troubleshooting
+
+The automated `job-watcher` daemon (`make watcher-up`) provisions instances fully autonomously.
+These issues were discovered and fixed during a production run on 2026-02-23.
+
+### Instance stays in `loading` for too long (CDI / GPU error)
+
+**Symptom:** `instance_status: {"status":"created","target":"running"}` with `status_msg` containing `"CDI devices"` or `"OCI runtime"`.
+
+**Cause:** The Vast.ai host has a broken GPU driver. The container can never start.
+
+**Recovery:** The watcher automatically destroys the instance after 600 s (`_wait_for_status` timeout) and provisions a fresh one.
+
+**Prevention:** none — Vast.ai schedules the offer; the watcher just retries.
+
+---
+
+### SSH probe fails / `kex_exchange_identification`
+
+**Symptom:** `watcher_loop_error` containing `kex_exchange_identification: Connection closed by remote host` in the provisioning phase.
+
+**Cause:** Vast marks the instance `running` before the SSH daemon has finished starting (~30-100 s gap on cold boot).
+
+**Recovery:** The `_wait_for_ssh` probe (120 s timeout, 5 s poll) handles this automatically. If it times out, the instance is destroyed and a new one provisioned.
+
+---
+
+### All jobs fail with `missing execution entry` / `remote exit=2`
+
+**Symptom:** 100% of jobs fail immediately after execution, `execute-manifest` exits 2, stderr says "No such file or directory".
+
+**Cause (historical, fixed 2026-02-23):** The `onstart-cmd` used `rm -rf /app` as a git-clone fallback, which deleted the code baked into the image via `COPY . /app`.
+
+**Current behaviour:** `git init -q /app` initialises git in-place; the sentinel `/app/apps/job-runner/job-runner.py` is present the moment the container starts. The `_wait_for_onstart` probe passes on the first poll.
+
+If you ever see this error again, SSH into the instance and check:
+```bash
+ssh -p <PORT> root@<HOST> "ls /app/apps/job-runner/"
+```
+
+---
+
+### rsync Broken Pipe (exit code 12)
+
+**Symptom:** `watcher_loop_error` or `rsync_retry` log with `returncode=12`.
+
+**Cause:** TCP connection to the Vast instance drops mid-transfer (common on overloaded hosts).
+
+**Recovery:** The `_rsync()` helper retries up to 3 times (15 s delay) for codes 12, 23, 255. SSH keepalives (`ServerAliveInterval=10`, `ServerAliveCountMax=3`) detect dead connections faster.
+
+---
+
+### rclone upload fails — `didn't find section in config file`
+
+**Symptom:** Jobs are synthesised successfully but all fail at the upload step with rclone exit 1.
+
+**Cause:** `RCLONE_REMOTE=local` requires a `[local]` entry in `~/.config/rclone/rclone.conf`. The file may not exist.
+
+**Fix:**
+```bash
+mkdir -p ~/.config/rclone
+printf "[local]\ntype = local\n" >> ~/.config/rclone/rclone.conf
+mkdir -p work_remote/uploads   # rclone won't create the root dir automatically
+```
+
+Then restart the watcher: `make watcher-restart`.
+
+The synthesised `.wav` files are already in `work_remote/<run_id>-b0001/<output_name>/take_01.wav` and are safe — just retry the failed jobs:
+```bash
+make jobs-flush ARGS='--hard --yes'
+make jobs-enqueue FILE=/app/beatsheets/your-beatsheet.yaml
+```
+
+---
+
+### Checking which instance the watcher is using
+
+```bash
+docker compose -f docker-compose.watcher.yml exec watcher \
+  python3 -c "import subprocess, json; r=subprocess.run(['vastai','show','instance','<ID>','--raw'],capture_output=True,text=True); d=json.loads(r.stdout); print(d.get('actual_status'), d.get('status_msg','')[:120])"
 ```
