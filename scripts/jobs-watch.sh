@@ -290,8 +290,11 @@ while true; do
         printf "  Container  "; _red "$CONTAINER_STATUS"; echo ""
     fi
 
-    # Lock TTL (only query Redis if container is still up, to save time)
-    if [[ "$CONTAINER_STATUS" == "running" ]]; then
+    # Lock TTL — only meaningful for the remote job-watcher (vast.ai) path.
+    # In local manifest execution there is no Redis distributed lock, so we
+    # skip the row entirely to avoid a misleading "—" for local runs.
+    # Heuristic: if BATCH_DIR is under work_remote/ this is a local run.
+    if [[ "$CONTAINER_STATUS" == "running" && "$BATCH_DIR" != work_remote/* ]]; then
         LOCK_TTL=$(_lock_ttl)
         if [[ "$LOCK_TTL" =~ ^[0-9]+$ ]]; then
             LOCK_SEC=$(( LOCK_TTL / 1000 ))
@@ -299,8 +302,6 @@ while true; do
             elif (( LOCK_SEC > 0  )); then printf "  Lock TTL   "; _yellow "${LOCK_SEC}s ⚠"; echo ""
             else                           printf "  Lock TTL   "; _red "expired!"; echo ""
             fi
-        else
-            printf "  Lock TTL   "; _grey "—"; echo ""
         fi
     fi
 
