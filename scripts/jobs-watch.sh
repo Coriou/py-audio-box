@@ -95,6 +95,60 @@ _current_beat() {
         2>/dev/null || echo ""
 }
 
+# Parse the manifest entry for the given beat and return: voice / language /
+# profile / variants / temperature and the first 120 chars of its text.
+# Output is newline-separated key=value pairs for easy consumption in bash.
+_current_job_details() {
+    local batch_dir=$1 beat=$2
+    [[ -z "$batch_dir" || -z "$beat" ]] && return
+    python3 - "$batch_dir" "$beat" 2>/dev/null <<'PYEOF'
+import json, sys, pathlib, textwrap
+batch_dir, beat = pathlib.Path(sys.argv[1]), sys.argv[2]
+
+# Load manifest
+try:
+    manifest = json.loads((batch_dir / 'manifest.json').read_text())
+except Exception:
+    sys.exit(0)
+
+# Find matching job
+job = next((j for j in manifest.get('jobs', []) if beat in j.get('output_name', '')), None)
+if not job:
+    sys.exit(0)
+
+# Parse argv key→value pairs
+argv = job.get('argv', [])
+params: dict[str, str] = {}
+i = 0
+while i < len(argv):
+    if argv[i].startswith('--') and i + 1 < len(argv) and not argv[i+1].startswith('--'):
+        params[argv[i][2:]] = argv[i+1]
+        i += 2
+    else:
+        i += 1
+
+print(f"voice={params.get('voice', '?')}")
+print(f"language={params.get('language', '?')}")
+print(f"profile={params.get('profile', '?')}")
+print(f"variants={params.get('variants', '?')}")
+print(f"temperature={params.get('temperature', '?')}")
+
+# Resolve text: try local text.txt (container /work → local work_remote)
+text_file_container = params.get('text-file', '')
+if text_file_container:
+    # strip leading /work/ and prepend batch_dir
+    rel = text_file_container.lstrip('/').split('/', 1)[-1]  # remove 'work/BATCH_NAME/'
+    # just search under batch_dir for the beat text.txt
+    candidates = list(batch_dir.rglob(f'*/{beat}/text.txt'))
+    if not candidates:
+        candidates = list(batch_dir.rglob('text.txt'))
+    if candidates:
+        text = candidates[0].read_text(encoding='utf-8').strip()
+        snippet = textwrap.shorten(text, width=120, placeholder='…')
+        print(f"text={snippet}")
+PYEOF
+}
+
 # Redis lock TTL via job-runner status (run inside toolbox)
 _lock_ttl() {
     ./run job-runner status --json 2>/dev/null \
@@ -195,9 +249,29 @@ while true; do
 
     echo ""
 
-    # Current beat
+    # Current beat + job details
     if [[ -n "$CURRENT" ]]; then
         printf "  Synth now  "; _cyan "$CURRENT"; echo ""
+        if [[ -n "$BATCH_DIR" ]]; then
+            JOB_DETAILS=$(_current_job_details "$BATCH_DIR" "$CURRENT")
+            if [[ -n "$JOB_DETAILS" ]]; then
+                VOICE=$(echo "$JOB_DETAILS"    | grep '^voice='       | cut -d= -f2-)
+                LANG=$(echo "$JOB_DETAILS"     | grep '^language='    | cut -d= -f2-)
+                PROFILE=$(echo "$JOB_DETAILS"  | grep '^profile='     | cut -d= -f2-)
+                VARIANTS=$(echo "$JOB_DETAILS" | grep '^variants='    | cut -d= -f2-)
+                TEMP=$(echo "$JOB_DETAILS"     | grep '^temperature=' | cut -d= -f2-)
+                JOB_TEXT=$(echo "$JOB_DETAILS" | grep '^text='        | cut -d= -f2-)
+                # Params line
+                printf "  Voice      "; _bold "${VOICE:-?}"
+                [[ -n "$LANG"     ]] && printf "  •  %s" "$LANG"
+                [[ -n "$PROFILE" ]] && printf "  •  profile:%s" "$PROFILE"
+                [[ -n "$VARIANTS" && "$VARIANTS" != "1" ]] && printf "  •  %s variants" "$VARIANTS"
+                [[ -n "$TEMP"    ]] && printf "  •  temp:%s" "$TEMP"
+                echo ""
+                # Text snippet
+                [[ -n "$JOB_TEXT" ]] && { printf "  Text       "; _grey "\"${JOB_TEXT}\""; echo ""; }
+            fi
+        fi
     elif [[ "$CONTAINER_STATUS" == "running" ]]; then
         printf "  Synth now  "; _yellow "model loading…"; echo ""
     else
