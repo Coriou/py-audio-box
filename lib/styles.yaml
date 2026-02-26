@@ -28,8 +28,14 @@ excited:
 energetic:
   instruct: "High-energy, upbeat, enthusiastic delivery."
 
+punchy:
+  instruct: "Short, punchy, high-impact delivery. Stop-the-scroll energy — sharp and direct."
+
 warm:
   instruct: "Warm, friendly, conversational tone."
+
+conversational:
+  instruct: "Natural, relaxed, conversational delivery. Engaging and approachable, like talking to a friend."
 
 sad:
   instruct: "Sad, heavy-hearted, slow and mournful delivery."
@@ -41,6 +47,9 @@ melancholic:
 
 whisper:
   instruct: "Soft whisper, intimate tone, close-mic feel."
+
+hushed:
+  instruct: "Lowered, hushed voice — quiet and conspiratorial, like sharing a secret."
 
 calm:
   instruct: "Calm, relaxed, measured pace."

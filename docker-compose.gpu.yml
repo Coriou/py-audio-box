@@ -39,7 +39,7 @@
 # ─────────────────────────────────────────────────────────────────────────────
 
 services:
-  toolbox:
+  pab:
     build:
       args:
         # cu124 = CUDA 12.4 wheels — works on Maxwell SM 5.2 (GTX 980) and newer.

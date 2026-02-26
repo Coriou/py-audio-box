@@ -571,12 +571,16 @@ def build_speak_argv(
 
     if spec.language:
         argv.extend(["--language", spec.language])
-    if spec.tone:
+    # --tone requires --voice mode; silently drop it in --speaker mode so that
+    # beatsheets can set tone overrides without knowing the voice type.
+    if spec.tone and not spec.speaker:
         argv.extend(["--tone", spec.tone])
-    if spec.instruct:
-        argv.extend(["--instruct", spec.instruct])
+    # --instruct and --instruct-style are mutually exclusive in voice-synth.
+    # instruct_style takes precedence (per-beat override wins over default instruct).
     if spec.instruct_style:
         argv.extend(["--instruct-style", spec.instruct_style])
+    elif spec.instruct:
+        argv.extend(["--instruct", spec.instruct])
     if spec.profile:
         argv.extend(["--profile", spec.profile])
 

@@ -52,12 +52,12 @@ build-gpu-no-cache:  ## Force a clean GPU rebuild (no layer cache)
 	docker compose -f docker-compose.yml -f docker-compose.gpu.yml build --no-cache
 
 .PHONY: shell
-shell:  ## Interactive bash shell inside the CPU toolbox
-	docker compose run --rm toolbox bash
+shell:  ## Interactive bash shell inside the CPU image
+	docker compose run --rm pab bash
 
 .PHONY: shell-gpu
-shell-gpu:  ## Interactive bash shell inside the GPU toolbox
-	docker compose -f docker-compose.yml -f docker-compose.gpu.yml run --rm toolbox bash
+shell-gpu:  ## Interactive bash shell inside the GPU image
+	docker compose -f docker-compose.yml -f docker-compose.gpu.yml run --rm pab bash
 
 .PHONY: clean-work
 clean-work:  ## Delete all output files in ./work/ (keeps cache)
@@ -203,7 +203,7 @@ synth-bench-cpu:  ## Run the synthesis benchmark suite on the LOCAL CPU Docker c
 	  -e SKIP="$(SKIP)" \
 	  -e PARALLEL_N="$(PARALLEL_N)" \
 	  -e RUN_ID="$(RUN_ID)" \
-	  toolbox bash /app/tests/remote/run-all.sh
+	  pab bash /app/tests/remote/run-all.sh
 
 # ROG GPU machine: Windows + WSL2 + Docker (CUDA 12.8 image)
 ROG_HOST    ?= 100.81.65.12
@@ -228,7 +228,7 @@ synth-bench-rog:  ## Run benchmark on the ROG GPU machine via SSH + WSL  [ROG_HO
 	       -e TARGET=rog -e DTYPE=bfloat16 \
 	       -e SKIP_SLOW=\"$(SKIP_SLOW)\" -e ONLY=\"$(ONLY)\" -e SKIP=\"$(SKIP)\" \
 	       -e PARALLEL_N=\"$(PARALLEL_N)\" -e RUN_ID=\"$(RUN_ID)\" \
-	       toolbox bash /app/tests/remote/run-all.sh'"
+	       pab bash /app/tests/remote/run-all.sh'"
 	# 3. Pull results back
 	@echo "==> Pulling results from ROG..."
 	mkdir -p work_remote/rog-$(RUN_ID)
@@ -286,6 +286,10 @@ jobs-enqueue-beatsheet:  ## Enqueue from a beatsheet JSON/YAML (v1/v2). Usage: m
 .PHONY: jobs-status
 jobs-status:  ## Queue status from Redis. Usage: make jobs-status ARGS='--json'
 	./run job-runner status $(ARGS)
+
+.PHONY: jobs-watch
+jobs-watch:  ## Live beat-by-beat progress. Usage: make jobs-watch [CONTAINER=pab-synth-local] [INTERVAL=10]
+	@bash scripts/jobs-watch.sh $(if $(CONTAINER),$(CONTAINER),) $(if $(INTERVAL),$(INTERVAL),)
 
 .PHONY: jobs-result
 jobs-result:  ## Get result for a request_id. Usage: make jobs-result ID=topic:beat-001
@@ -403,13 +407,13 @@ watcher-restart:  ## Restart the watcher daemon (applies config/env changes)
 	docker compose -f docker-compose.watcher.yml restart watcher
 
 .PHONY: test
-test:  ## Run the unit/integration test suite inside the toolbox container
-	docker compose run --rm toolbox python -m pytest tests/ -v $(ARGS)
+test:  ## Run the unit/integration test suite inside the pab container
+	docker compose run --rm pab python -m pytest tests/ -v $(ARGS)
 
 .PHONY: test-jobqueue-redis
 test-jobqueue-redis:  ## Run opt-in Redis integration tests for lib/jobqueue.py (spins temporary redis)
-	@docker compose run --rm toolbox python -c "import redis" >/dev/null 2>&1 || { \
-		echo "ERROR: redis package is missing in toolbox image. Rebuild first: make build"; \
+	@docker compose run --rm pab python -c "import redis" >/dev/null 2>&1 || { \
+		echo "ERROR: redis package is missing in pab image. Rebuild first: make build"; \
 		exit 1; \
 	}
 	@set -eu; \
@@ -436,7 +440,7 @@ test-jobqueue-redis:  ## Run opt-in Redis integration tests for lib/jobqueue.py 
 	docker compose run --rm \
 		-e PAB_RUN_REDIS_INTEGRATION=1 \
 		-e PAB_TEST_REDIS_URL="$$REDIS_URL" \
-		toolbox python -m pytest -q tests/integration/test_jobqueue_redis_integration.py
+		pab python -m pytest -q tests/integration/test_jobqueue_redis_integration.py
 
 .PHONY: smoke-matrix
 smoke-matrix:  ## Phase-5 smoke matrix (capabilities + clone + built-in + designed). Set SMOKE_SKIP_DESIGN=1 to skip design.

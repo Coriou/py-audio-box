@@ -59,4 +59,4 @@ if ($env:TOOLBOX_VARIANT -eq "gpu") {
 
 # Build the argument list for docker compose
 # Using the call operator (&) with splatting keeps spaces in args intact.
-& docker compose @ComposeFiles run --rm toolbox python $Script @AppArgs
+& docker compose @ComposeFiles run --rm pab python $Script @AppArgs

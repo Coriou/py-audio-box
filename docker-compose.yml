@@ -1,5 +1,5 @@
 services:
-  toolbox:
+  pab:
     build:
       context: .
       dockerfile: Dockerfile

@@ -505,7 +505,7 @@ All apps share one image. To add a Python package:
 ```bash
 # 1. Add it to pyproject.toml
 # 2. Regenerate the lock file (no local Poetry needed)
-docker compose run --rm toolbox bash -c "poetry lock"
+docker compose run --rm pab bash -c "poetry lock"
 
 # 3. Rebuild
 make build
@@ -599,7 +599,7 @@ SMOKE_ENABLE_CUSTOMVOICE=1 make smoke-matrix
 When an AI agent or script works with this repo:
 
 - **Don't install packages on the host.** All Python work happens inside the container.
-- **The image is already built.** Use `./run <app>` or `docker compose run --rm toolbox …` directly; only run `make build` if `pyproject.toml` or `Dockerfile` changed. For GPU hosts, use `TOOLBOX_VARIANT=gpu ./run …` and run `make build-gpu` after Dockerfile changes.
+- **The image is already built.** Use `./run <app>` or `docker compose run --rm pab …` directly; only run `make build` if `pyproject.toml` or `Dockerfile` changed. For GPU hosts, use `TOOLBOX_VARIANT=gpu ./run …` and run `make build-gpu` after Dockerfile changes.
 - **Cache is safe to read, never safe to delete mid-run.** The `./cache` directory is the source of truth for all expensive computation. Treat it as append-only during a run.
 - **Adding an app = adding a file.** Drop `apps/<name>/<name>.py` and it's runnable with `./run <name>`. No registration, no config changes.
 - **Check `--help` first.** Every script uses `ArgumentDefaultsHelpFormatter`; `./run <app> --help` is always the authoritative reference for flags and defaults.
