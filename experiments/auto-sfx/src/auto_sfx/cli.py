@@ -443,6 +443,33 @@ class AnalyzeOutcome:
     gt_summary: dict | None = None
 
 
+def write_contact_trace(
+    result: Any,
+    run_dir_meta: dict,
+    path: str | Path,
+) -> Path | None:
+    """Persist per-frame detector internals as ``contact-trace.jsonl``.
+
+    Line 1 is a header (exact active config, body scale, backend/method);
+    following lines are frame / segment / guard / candidate records in
+    detection order.  Written only when the detector produced a trace
+    (``record_trace=True``); absent file == no persisted machine
+    internals, and consumers must say so instead of reconstructing.
+    """
+
+    rows = getattr(result, "frame_trace", None)
+    if not rows:
+        return None
+    header = dict(rows[0])
+    header.setdefault("video", run_dir_meta)
+    path = Path(path)
+    with open(path, "w", encoding="utf-8") as fh:
+        fh.write(json.dumps(header, sort_keys=True) + "\n")
+        for row in rows[1:]:
+            fh.write(json.dumps(row, sort_keys=True) + "\n")
+    return path
+
+
 def _write_core_artifacts(
     out_dir: Path,
     *,
@@ -475,7 +502,17 @@ def _write_core_artifacts(
         },
     )
     write_pose_jsonl(trace, cache_key, out_dir / "pose.jsonl")
-
+    if write_contact_trace(
+        result, meta.to_dict(), out_dir / "contact-trace.jsonl"
+    ) is not None:
+        header = result.trace_header or {}
+        write_json(out_dir / "detector-config.json", {
+            "method": contact_method,
+            "backend": backend,
+            "config": header.get("config"),
+            "scale_px": header.get("scale_px"),
+            "source": "contact-trace.jsonl#header",
+        })
 
 
 def _render_videos(
@@ -601,9 +638,8 @@ def analyze_pipeline(
                     "config overrides: "
                     + ", ".join(f"{k}={v!r}" for k, v in sorted(overrides.items()))
                 )
-            config = build_contact_config(contact, shot_boundaries, overrides)
-            result = detect_contacts(trace, contact, config=config)
-
+            result = detect_contacts(trace, contact, config=config,
+                                     record_trace=True)
         pose_lost = ensure_pose_lost_diagnostic(result, trace, meta)
         if pose_lost:
             notes.append(

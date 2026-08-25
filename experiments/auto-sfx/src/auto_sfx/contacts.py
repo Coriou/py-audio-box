@@ -208,10 +208,19 @@ class ContactMethodResult:
     ``events`` is sorted by ``time_s`` ascending.  Each diagnostics entry is
     ``{"code": DiagReason.*, "t0_s": float|None, "t1_s": float|None,
     "detail": str}`` sorted by ``(t0_s, t1_s, code)``.
+
+    ``frame_trace`` carries per-frame/per-foot machine internals and
+    ``trace_header`` the run-level context (config, body scale); both are
+    ``None`` unless ``record_trace=True`` was passed to
+    :func:`detect_contacts`.  Recording is strictly append-only -- events
+    and diagnostics are bit-identical with tracing on or off (enforced by
+    tests/test_tracing.py).
     """
 
     events: list[ContactEvent]
     diagnostics: list[dict]
+    frame_trace: list[dict] | None = None
+    trace_header: dict | None = None
 
 
 @dataclass
@@ -553,6 +562,54 @@ def _visibility_at(arr: dict, gi: int, key: str) -> float | None:
     v = arr[key][gi]
     return round(float(v), 3) if np.isfinite(v) else None
 
+def _rec_frame(rec: list[dict], fd: dict, seg: np.ndarray, side: str,
+               p: int, sp: float | None, vx: float | None,
+               vy: float | None, thr: float | None, peak: float,
+               heights, run_start: int, relaxed_run: bool,
+               st_before: str, st_after: str) -> None:
+    """Append one per-frame machine-internals row (velocity machine).
+
+    Pure recording: reads only already-computed values, never feeds back
+    into the detector's control flow.
+    """
+    gi = int(seg[p])
+    arr = fd["feet"][side]
+    t = float(fd["times"][gi])
+    rec.append({
+        "kind": "frame", "side": side, "frame": gi,
+        "t_s": round(t, 6), "pts_us": s_to_pts_us(t),
+        "state_before": st_before, "state_after": st_after,
+        "transition": (
+            {"from": st_before, "to": st_after}
+            if st_before != st_after else None
+        ),
+        "spd_bs_s": _r(sp), "vx_bs_s": _r(vx), "vy_bs_s": _r(vy),
+        "thr_bs_s": _r(thr),
+        "swing_peak_bs_s": _r(peak),
+        "band_h_px": (_r(float(heights[p]))
+                      if heights is not None and np.isfinite(heights[p])
+                      else None),
+        "ref_x_px": _r(float(arr["rx"][gi])),
+        "ref_y_px": _r(float(arr["ry"][gi])),
+        "heel_vis": _visibility_at(arr, gi, "heel_vis"),
+        "ankle_vis": _visibility_at(arr, gi, "ankle_vis"),
+        "toe_vis": _visibility_at(arr, gi, "toe_vis"),
+        "run_start_frame": (int(seg[run_start]) if run_start >= 0 else None),
+        "relaxed_run": bool(relaxed_run),
+    })
+
+
+def _r(v):
+    """Round for trace output; NaN -> None."""
+    if v is None:
+        return None
+    try:
+        finite = np.isfinite(v)
+    except TypeError:
+        return v
+    return round(float(v), 4) if finite else None
+
+
 
 def _velocity_candidates(
     fd: dict,
@@ -561,8 +618,15 @@ def _velocity_candidates(
     cfg: dict,
     scale: float,
     method: str,
+    rec: list[dict] | None = None,
 ) -> list[_Cand]:
-    """Run the per-foot offline state machine over one segment."""
+    """Run the per-foot offline state machine over one segment.
+
+    When ``rec`` is a list, per-frame machine internals (state, speed,
+    thresholds, run provenance) and every guard decision are appended to
+    it as plain dicts.  Recording never feeds back into the control
+    flow -- events and diagnostics are identical with and without it.
+    """
 
     arr = fd["feet"][side]
     times = fd["times"]
@@ -574,13 +638,18 @@ def _velocity_candidates(
     # Pairwise speed stamped at the later frame of each pair (body-scale/s);
     # dt comes from the actual timestamps -- never from an fps assumption.
     spd = np.full(m, np.nan)
+    vx = np.full(m, np.nan)
+    vy = np.full(m, np.nan)
     for p in range(1, m):
         if usable[p] and usable[p - 1]:
             dt = times[seg[p]] - times[seg[p - 1]]
             if dt > 0:
-                moved = math.hypot(rx[p] - rx[p - 1], ry[p] - ry[p - 1])
+                dx = rx[p] - rx[p - 1]
+                dy = ry[p] - ry[p - 1]
+                moved = math.hypot(dx, dy)
                 spd[p] = moved / dt / scale
-
+                vx[p] = dx / dt / scale
+                vy[p] = dy / dt / scale
     heights = _env_heights(fd, seg, side) if method == "hybrid" else None
     env_tol = _ENV_TOL_FRAC * scale
     min_stance_s = _MIN_STANCE_FRAC * cfg["min_step_interval_s"]
@@ -610,8 +679,21 @@ def _velocity_candidates(
         # rejected run can only cost us a miss, never a wrong-time event.
         state = _UNKNOWN
 
+        def _rec_guard(decision: str, reasons: list[str]) -> None:
+            if rec is None:
+                return
+            rec.append({
+                "kind": "guard", "side": side,
+                "frame": int(seg[min(max(p_end, 0), m - 1)]),
+                "decision": decision, "reasons": reasons,
+                "run_start_frame": int(seg[p0]) if p0 >= 0 else None,
+                "n_frames": int(n_frames),
+                "relaxed_run": bool(was_relaxed),
+            })
+
         n_frames = p_end - p0 + 1
         if n_frames < confirm:
+            _rec_guard("reject", ["below_confirm_frames"])
             return
         gi = int(seg[p0])
         # Observed stationarity spans from the first frame of the opening
@@ -624,21 +706,28 @@ def _velocity_candidates(
             dur = float(times[seg[p_end]]) - float(times[supp]) + _local_dt(fd, gi)
         if not was_relaxed:
             if dur < min_stance_s:
+                _rec_guard("reject", [
+                    f"short_duration {dur:.4f}s < {min_stance_s:.4f}s"])
                 return
             # Ascent veto: rising into the slowdown means swing apex, not a
             # plant.  Needs the last pre-run sample; without it, abstain.
             if p0 < 1 or not np.isfinite(ry[p0 - 1]):
+                _rec_guard("reject", ["no_pre_run_sample_for_ascent_veto"])
                 return
             if (ry[p0 - 1] - ry[p0]) > _ASCENT_FRAC * scale:
+                _rec_guard("reject", ["ascent_veto"])
                 return
         h = None
         if heights is not None:
             window = heights[p0:p_end + 1]
             window = window[_finite(window)]
             if not window.size:
+                _rec_guard("reject", ["empty_envelope_window"])
                 return
             h = float(np.min(window))
             if h > env_tol:
+                _rec_guard("reject", [
+                    f"envelope_height {h:.1f}px > tol {env_tol:.1f}px"])
                 return
 
         thr = cfg["speed_drop_frac"] * max(peak_holder[0], _MIN_PEAK_BS_S)
@@ -684,15 +773,34 @@ def _velocity_candidates(
         cands.append(_Cand(side=side, idx=gi, t=float(times[gi]),
                            score=min(1.0, max(0.0, score)),
                            observable=observable, evidence=evidence))
+        if rec is not None:
+            rec.append({
+                "kind": "candidate", "side": side, "frame": gi,
+                "t_s": float(times[gi]), "score": min(1.0, max(0.0, score)),
+                "relaxed_run": bool(was_relaxed),
+                "evidence": dict(evidence),
+                "provenance": {
+                    "run_start_frame": int(seg[p0]),
+                    "n_frames": int(n_frames),
+                    "closed_by": ("break" if p_break is not None
+                                  else "end_of_data"),
+                },
+            })
         stance_confirmed[0] = True
         state = _STANCE
 
     stance_confirmed = [False]  # True once a contact was actually confirmed
     prev_valid = -1
     for p in range(m):
+        st_before = state
         if not np.isfinite(spd[p]):
             if state == _CAND and prev_valid >= 0:
                 close_run(prev_valid, p)
+            if rec is not None:
+                _rec_frame(rec, fd, seg, side, p, None, None, None,
+                           None, peak_holder[0], heights,
+                           run_start, relaxed_run,
+                           st_before, state)
             continue
         sp = float(spd[p])
         if state == _UNKNOWN:
@@ -730,6 +838,11 @@ def _velocity_candidates(
                 state = _SWING
                 peak_holder[0] = sp
         prev_valid = p
+        if rec is not None:
+            _rec_frame(rec, fd, seg, side, p, float(sp),
+                       float(vx[p]), float(vy[p]), thr_now(),
+                       peak_holder[0], heights, run_start, relaxed_run,
+                       st_before, state)
 
     if state == _CAND and prev_valid >= 0:
         close_run(prev_valid)
@@ -789,8 +902,14 @@ def _pelvis_candidates(
     cfg: dict,
     scale: float,
     diags: list[dict],
+    rec: list[dict] | None = None,
 ) -> list[_Cand]:
-    """Zeni-style candidates per segment; abstains on degenerate geometry."""
+    """Zeni-style candidates per segment; abstains on degenerate geometry.
+
+    ``rec`` collects per-frame anterior-offset rows (raw + sway-nulled)
+    and peak accept/reject decisions when tracing is enabled; purely
+    append-only, never read back.
+    """
 
     times = fd["times"]
     med = _median_dt(fd)
@@ -850,7 +969,16 @@ def _pelvis_candidates(
         k = max(3, int(round(window / med)))
         half = max(1, (k - 1) // 2)
         sm = _centered_ma(f_raw, half)
-
+        if rec is not None:
+            for q in range(len(sel)):
+                rec.append({
+                    "kind": "frame", "side": side,
+                    "frame": int(sel[q]), "t_s": round(float(times[sel[q]]), 6),
+                    "method": "pelvis",
+                    "rel_offset_raw_px": _r(float(f_raw[q])),
+                    "rel_offset_smoothed_px": _r(float(sm[q])),
+                    "smooth_window_s": round(window, 4),
+                })
         # Local maxima = deceleration turning points of the offset.
         peaks = [p for p in range(1, len(sm) - 1)
                  if sm[p] >= sm[p - 1] and sm[p] >= sm[p + 1]
@@ -873,13 +1001,32 @@ def _pelvis_candidates(
             right_valley = float(np.min(sm[p:right_hi]))
             prom = float(sm[p]) - max(left_valley, right_valley)
             if prom < prom_floor:
+                if rec is not None:
+                    rec.append({
+                        "kind": "guard", "side": side,
+                        "frame": int(sel[p]), "decision": "reject",
+                        "reasons": [f"prominence {prom:.1f}px < floor "
+                                    f"{prom_floor:.1f}px"],
+                    })
                 continue
             # Confirmation: the offset must keep declining (body progressing
             # over a planted foot) for confirm_frames further samples; a
             # trace ending too soon for that abstains.
             if p + confirm >= len(sm):
+                if rec is not None:
+                    rec.append({
+                        "kind": "guard", "side": side,
+                        "frame": int(sel[p]), "decision": "reject",
+                        "reasons": ["trace_ended_before_decline_confirmation"],
+                    })
                 continue
             if not all(sm[p + k] < sm[p] for k in range(1, confirm + 1)):
+                if rec is not None:
+                    rec.append({
+                        "kind": "guard", "side": side,
+                        "frame": int(sel[p]), "decision": "reject",
+                        "reasons": ["no_post_peak_decline"],
+                    })
                 continue
 
             gi = int(sel[p])
@@ -962,13 +1109,19 @@ def _cadence_and_alternation(events: list[_Cand], cfg: dict, diags: list[dict]) 
 
 
 def detect_contacts(
-    trace: PoseTrace, method: str = "hybrid", *, config: dict | None = None
+    trace: PoseTrace, method: str = "hybrid", *, config: dict | None = None,
+    record_trace: bool = False,
 ) -> ContactMethodResult:
     """Detect individual foot contacts in ``trace`` with the given method.
 
     See the module docstring for the per-method algorithms and the
     abstention/observability policies.  Unknown methods and unknown config
     keys raise ``ValueError``.  ``trace`` is treated as read-only.
+
+    With ``record_trace=True`` the result carries per-frame machine
+    internals (``frame_trace``) plus a run header (``trace_header``)
+    holding the exact active config and body scale.  Tracing is strictly
+    observational: events and diagnostics are identical with it off.
     """
 
     if method not in CONTACT_METHODS:
@@ -977,15 +1130,22 @@ def detect_contacts(
         )
     cfg = _validated_config(method, config)
     diags: list[dict] = []
+    rec: list[dict] | None = [{"kind": "header", "method": method,
+                               "config": dict(cfg)}] if record_trace else None
 
     if not trace.frames:
-        return ContactMethodResult(events=[], diagnostics=diags)
+        return ContactMethodResult(events=[], diagnostics=diags,
+                                   frame_trace=rec or None,
+                                   trace_header=dict(rec[0]) if rec else None)
 
     fd = _extract(trace, cfg["min_landmark_visibility"])
     diags.extend(_shot_boundary_diagnostics(fd, cfg))
 
     scale = _body_scale(fd, cfg["min_landmark_visibility"])
     diags.extend(_observability_diagnostics(fd, cfg, scale))
+    if rec is not None:
+        rec[0]["scale_px"] = _r(scale)
+        rec[0]["backend"] = trace.backend
     if scale is None or not np.isfinite(scale) or scale <= 0:
         # No body-scale reference anywhere in the trace: emit nothing.
         diags.append(
@@ -993,16 +1153,24 @@ def detect_contacts(
                   float(fd["times"][-1]),
                   "no body-scale reference measurable; no contacts inferred")
         )
-        return ContactMethodResult(events=[], diagnostics=_sort_diags(diags))
+        return ContactMethodResult(events=[], diagnostics=_sort_diags(diags),
+                                   frame_trace=rec,
+                                   trace_header=dict(rec[0]) if rec else None)
 
     seg_bounds = _segments(fd, cfg)
     all_cands: list[_Cand] = []
-    for seg in seg_bounds:
+    for seg_i, seg in enumerate(seg_bounds):
+        if rec is not None:
+            rec.append({"kind": "segment", "index": seg_i,
+                        "start_frame": int(seg[0]),
+                        "end_frame": int(seg[-1])})
         if method in ("velocity", "hybrid"):
             for side in SIDES:
-                all_cands.extend(_velocity_candidates(fd, seg, side, cfg, scale, method))
+                all_cands.extend(_velocity_candidates(
+                    fd, seg, side, cfg, scale, method, rec=rec))
         else:  # pelvis
-            all_cands.extend(_pelvis_candidates(fd, seg, cfg, scale, diags))
+            all_cands.extend(_pelvis_candidates(
+                fd, seg, cfg, scale, diags, rec=rec))
 
     final_cands: list[_Cand] = []
     for seg in seg_bounds:
@@ -1039,7 +1207,11 @@ def detect_contacts(
             )
         )
 
-    return ContactMethodResult(events=events, diagnostics=_sort_diags(diags))
+    return ContactMethodResult(
+        events=events, diagnostics=_sort_diags(diags),
+        frame_trace=rec,
+        trace_header=dict(rec[0]) if rec else None,
+    )
 
 
 def _in_too_small_span(fd: dict, cand: _Cand, cfg: dict) -> bool:
