@@ -125,11 +125,6 @@ class TestTraceStructure:
         result = detect_contacts(walk_trace, "hybrid", record_trace=True)
         cands = [r for r in result.frame_trace if r["kind"] == "candidate"]
         assert len(cands) == len(result.events)
-        by_frame = {c["frame"]: c for c in cands}
-        for e in result.events:
-            row = by_frame[e.source_pts_us // 1_000_000 * 1_000_000
-                           ] if False else None
-        # Event provenance: relaxed-run flag present on candidate rows.
         assert all("relaxed_run" in c for c in cands)
 
     def test_guard_rejections_carry_reasons(self, walk_trace):
