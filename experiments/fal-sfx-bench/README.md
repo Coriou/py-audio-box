@@ -89,6 +89,28 @@ work/sfx-bench/<run_id>/
 Open `review/index.html` in a browser to judge quality; `report/summary.md`
 for latency/cost; `report/reconciliation.md` once the billing CSV exists.
 
+## First run — 20260825-165347 (cost audit vs real Fal billing)
+
+30/30 cases succeeded. Real billed (credential `bfe2a3a9…`): **$2.6615** vs
+$1.7582 estimated. The export is an aggregated daily rollup per endpoint +
+credential — no request ids — so reconciliation joins per endpoint and
+filters rows by credential. A foreign-credential hunyuan row ($0.6586,
+`92cc21dc…`) is excluded automatically.
+
+| model | billed | estimated | delta | billing behavior (verified) |
+|---|---:|---:|---:|---|
+| cassette-v2s | $1.0000 | $0.1588 | +$0.8412 | video time **ceiled to whole minutes per request** — a 10 s clip costs $0.20 |
+| sonilo11 | $0.4500 | $0.4289 | +$0.0211 | output seconds ceiled per request (9.4 s → 10 s) |
+| mirelo16 | $0.5100 | $0.5100 | 0 | billed seconds = ceil per request (matches our `duration=ceil` arg) |
+| hunyuan | $0.4765 | $0.4766 | ~0 | fractional units (seconds/10), no rounding |
+| kling-v2a | $0.1750 | $0.1750 | 0 | flat per video, exact |
+| cassette-t2s | $0.0500 | $0.0500 | 0 | flat per generation, exact |
+
+Takeaway: per-second list prices mislead at short clip lengths. For ≤10 s
+clips the true cost order is cassette-t2s ($0.01, text-only) < Kling
+($0.035) < cassette-v2s ($0.20!) < sonilo ($0.045–0.09) ≤ mirelo/hunyuan
+($0.10). Rounding rules are recorded per model in `models.py` notes.
+
 ## Adding a model
 
 1. Verify the endpoint on fal.ai (model page + `…/openapi.json?endpoint_id=<id>`).

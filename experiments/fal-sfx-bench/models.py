@@ -252,7 +252,9 @@ MODELS: dict[str, ModelSpec] = {
             "Prompt key is text_prompt (not prompt). duration=ceil(input "
             "seconds), schema 1-60 (default 10; inputs >10 s use sliding "
             "window). num_samples schema default is 2 — forced to 1. Returns "
-            '{"video": [entry, ...]} with the soundtrack baked into the mp4.'
+            '{"video": [entry, ...]} with the soundtrack baked into the mp4. '
+            "Billing verified 2026-08-25 export: billed seconds = ceil per "
+            "request (a 10.01 s clip is billed as 11 s)."
         ),
     ),
     "kling-v2a": ModelSpec(
@@ -277,7 +279,9 @@ MODELS: dict[str, ModelSpec] = {
             'background_music_prompt schema default is "intense car race" — '
             "overridden to empty string; asmr_mode=false. Input "
             "constraints: .mp4/.mov only, <=100 MB, duration 3.0-20.0 s. "
-            'Returns {"video": dubbed mp4, "audio": mp3}; flat price per video.'
+            'Returns {"video": dubbed mp4, "audio": mp3}; flat price per '
+            "video. Billing verified 2026-08-25 export: exact flat per "
+            "video, no extras."
         ),
     ),
     "sonilo11": ModelSpec(
@@ -300,7 +304,9 @@ MODELS: dict[str, ModelSpec] = {
         notes=(
             "Prompt key is prompt; audio_format forced to wav. Returns "
             '{"audio": entry, "audios": [entries]} (audio files only); '
-            "duplicate URLs are deduplicated on extraction."
+            "duplicate URLs are deduplicated on extraction. Billing verified "
+            "2026-08-25 export: output seconds are ceiled per request (a "
+            "9.4 s clip is billed as 10 s)."
         ),
     ),
     "hunyuan": ModelSpec(
@@ -325,7 +331,8 @@ MODELS: dict[str, ModelSpec] = {
             "input as video_url plus text_prompt; negative_prompt/guidance_"
             "scale/num_inference_steps pinned to speech-free defaults "
             '(4.5 / 50 steps / negative "speech, voices, music, noisy, '
-            'harsh"). Returns {"video": muxed mp4}.'
+            'harsh"). Returns {"video": muxed mp4}. Billing verified '
+            "2026-08-25 export: fractional units (seconds/10), no rounding."
         ),
     ),
     "cassette-v2s": ModelSpec(
@@ -348,7 +355,10 @@ MODELS: dict[str, ModelSpec] = {
         notes=(
             "Schema has NO prompt field — video_url is the only argument; "
             "Gemma3 auto-analyzes the video and overlays generated SFX. "
-            'Returns {"video": mp4 with baked-in SFX track}.'
+            'Returns {"video": mp4 with baked-in SFX track}. Billing '
+            "verified 2026-08-25 export: video time is ceiled to whole "
+            "minutes per request — a 10 s clip costs $0.20 (6.3x the naive "
+            "per-second estimate), the priciest option at short clip lengths."
         ),
     ),
     "cassette-t2s": ModelSpec(
@@ -372,7 +382,8 @@ MODELS: dict[str, ModelSpec] = {
             "Text-only control: takes prompt plus integer duration (schema "
             "1-30), NO video conditioning — the manifest input exists for "
             "duration and the review mux only (media_key=None). Returns "
-            '{"audio_file": wav}.'
+            '{"audio_file": wav}. Billing verified 2026-08-25 export: exact '
+            "flat per generation."
         ),
         media_key=None,
     ),

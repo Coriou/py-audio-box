@@ -7,6 +7,11 @@ then writes ``report/reconciliation.md`` with per-case billed-vs-estimated
 deltas, per-model totals, unmatched CSV rows, ledger requests missing from
 the CSV, and grand totals. Ambiguous column mappings degrade gracefully
 unless ``--strict`` aborts.
+
+Aggregated exports (daily per-endpoint rollups with no usable request-id
+column) take a separate path automatically: rows are filtered to the
+FAL_KEY credential, grouped by endpoint/app id, and compared against
+ledger estimates summed per model.
 """
 
 from __future__ import annotations
@@ -14,20 +19,28 @@ from __future__ import annotations
 import argparse
 import csv
 import json
+import os
 import re
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+COST_CANDIDATES: tuple[str, ...] = ("cost", "amount", "price", "total",
+                                    "usd", "gross_amount", "net_amount")
+AGGREGATE_COST_CANDIDATES: tuple[str, ...] = (("gross_amount", "net_amount")
+                                              + COST_CANDIDATES)
+
 FIELD_CANDIDATES: dict[str, tuple[str, ...]] = {
     "request_id": ("request_id", "request id", "requestid"),
-    "model": ("model", "endpoint", "endpoint_id", "app"),
-    "cost": ("cost", "amount", "price", "total", "usd"),
+    "model": ("model", "endpoint", "endpoint_id", "app_id", "app"),
+    "cost": COST_CANDIDATES,
     "currency": ("currency",),
 }
 
 REQUIRED_FIELDS = ("request_id", "cost")
+AGGREGATE_REQUIRED_FIELDS = ("cost", "model")
+REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 
 
 def utc_now() -> str:
@@ -40,6 +53,7 @@ def normalize_header(header: str) -> str:
 
 def detect_columns(
     headers: list[str],
+    cost_candidates: tuple[str, ...] | None = None,
 ) -> tuple[dict[str, str], dict[str, list[str]]]:
     """Map logical fields to CSV headers; returns (mapping, ambiguous)."""
     normalized = {header: normalize_header(header) for header in headers}
@@ -48,6 +62,8 @@ def detect_columns(
     claimed: set[str] = set()
 
     for field, candidates in FIELD_CANDIDATES.items():
+        if field == "cost" and cost_candidates is not None:
+            candidates = cost_candidates
         ranked: list[tuple[int, str]] = []
         # Exact normalized matches first, in candidate priority order.
         for rank, candidate in enumerate(candidates):
@@ -102,6 +118,69 @@ def parse_amount(raw: Any) -> float | None:
     except ValueError:
         return None
     return -value if negative else value
+
+
+def find_header(headers: list[str], *names: str) -> str | None:
+    """Return the first header whose normalized form equals a name."""
+    normalized = {normalize_header(header): header for header in headers}
+    for name in names:
+        header = normalized.get(normalize_header(name))
+        if header is not None:
+            return header
+    return None
+
+
+def request_column_all_empty(csv_path: Path, header: str) -> bool:
+    """True when the request-id column exists but no data row fills it."""
+    with csv_path.open(newline="", encoding="utf-8-sig") as handle:
+        for row in csv.DictReader(handle):
+            if str(row.get(header) or "").strip():
+                return False
+    return True
+
+
+def load_fal_key() -> str | None:
+    """FAL_KEY from the environment, else a naive repo-root .env parse."""
+    key = os.environ.get("FAL_KEY")
+    if key:
+        return key.strip()
+    env_path = REPO_ROOT / ".env"
+    if not env_path.is_file():
+        return None
+    for raw_line in env_path.read_text(encoding="utf-8").splitlines():
+        line = raw_line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        name, _, value = line.partition("=")
+        if name.strip() != "FAL_KEY":
+            continue
+        value = value.strip()
+        if len(value) >= 2 and value[0] == value[-1] and value[0] in {'"', "'"}:
+            value = value[1:-1]
+        if value:
+            return value
+    return None
+
+
+EMAIL_PATTERN = re.compile(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+")
+
+
+def redact_label(label: str) -> str:
+    """Mask everything after '@' in email-looking substrings.
+
+    Applied before any auth_method_label reaches the markdown report;
+    ``user@…`` keeps the local part but never the domain.
+    """
+    return EMAIL_PATTERN.sub(lambda match: match.group(0).split("@")[0]
+                             + "@…", label)
+
+
+def fmt_number(value: float | None) -> str:
+    """Compact fixed-point rendering ("5", "4.765273"); em dash when None."""
+    if value is None:
+        return "—"
+    text = f"{value:.6f}".rstrip("0").rstrip(".")
+    return text or "0"
 
 
 def resolve_run_layout(run_dir: Path) -> tuple[str, Path]:
@@ -219,6 +298,99 @@ def read_billing_rows(csv_path: Path, mapping: dict[str, str]) -> list[
     return rows
 
 
+def read_aggregate_rows(csv_path: Path, app_header: str | None,
+                        cost_header: str | None,
+                        fallback_header: str | None,
+                        aux: dict[str, str | None]) -> list[
+        dict[str, Any]]:
+    """Read aggregated rows; labels are redacted before they are stored."""
+
+    def cell(raw_row: dict[str, Any], header: str | None) -> Any:
+        return raw_row.get(header) if header is not None else None
+
+    rows: list[dict[str, Any]] = []
+    with csv_path.open(newline="", encoding="utf-8-sig") as handle:
+        reader = csv.DictReader(handle)
+        for row_number, raw_row in enumerate(reader, start=2):
+            cost = parse_amount(cell(raw_row, cost_header))
+            if cost is None:
+                cost = parse_amount(cell(raw_row, fallback_header))
+            label = str(cell(raw_row, aux["auth_method_label"]) or "").strip()
+            rows.append({
+                "row_number": row_number,
+                "app": str(cell(raw_row, app_header) or "").strip(),
+                "cost": cost,
+                "quantity": parse_amount(cell(raw_row, aux["quantity"])),
+                "unit": str(cell(raw_row, aux["unit"]) or "").strip(),
+                "unit_price": parse_amount(cell(raw_row, aux["unit_price"])),
+                "auth_method": str(
+                    cell(raw_row, aux["auth_method"]) or "").strip(),
+                "label": redact_label(label),
+            })
+    return rows
+
+
+def ledger_endpoint_totals(path: Path) -> dict[str, dict[str, Any]]:
+    """Sum per-endpoint ledger estimates; the first estimate per request wins.
+
+    Ledger lines arrive chronologically per request, so keeping the first
+    ``estimated_cost_usd`` preserves the submission-time advisory price
+    instead of the output-duration-corrected value on the completed event.
+    """
+    estimates: dict[str, float] = {}
+    request_endpoint: dict[str, str] = {}
+    endpoint_models: dict[str, str] = {}
+    if not path.is_file():
+        return {}
+    for line in path.read_text().splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            entry = json.loads(line)
+        except ValueError:
+            continue
+        request_id = str(entry.get("request_id") or "")
+        endpoint = str(entry.get("endpoint_id") or "")
+        if request_id and endpoint:
+            request_endpoint.setdefault(request_id, endpoint)
+        estimated = entry.get("estimated_cost_usd")
+        numeric = isinstance(estimated, (int, float)) and not isinstance(
+            estimated, bool)
+        if request_id and numeric:
+            estimates.setdefault(request_id, float(estimated))
+        if endpoint and endpoint not in endpoint_models:
+            endpoint_models[endpoint] = str(entry.get("model") or "")
+    totals: dict[str, dict[str, Any]] = {}
+    for request_id, endpoint in request_endpoint.items():
+        bucket = totals.setdefault(endpoint, {
+            "endpoint": endpoint,
+            "model": endpoint_models.get(endpoint) or "",
+            "requests": 0,
+            "estimated": 0.0,
+        })
+        bucket["requests"] += 1
+        bucket["estimated"] += estimates.get(request_id, 0.0)
+    return totals
+
+
+def match_endpoint(app_id: str,
+                   endpoints: dict[str, dict[str, Any]]) -> str | None:
+    """Match a CSV app id to a ledger endpoint id.
+
+    Exact first, then a one-directional suffix fallback: the ledger
+    endpoint id may carry an owner prefix that the exported app id omits.
+    """
+    if not app_id:
+        return None
+    if app_id in endpoints:
+        return app_id
+    for endpoint in sorted(endpoints):
+        if endpoint.endswith(app_id):
+            return endpoint
+    return None
+
+
 def md_cell(value: Any) -> str:
     return str(value).replace("|", "\\|").replace("\n", " ")
 
@@ -232,7 +404,8 @@ def delta_usd(value: float | None) -> str:
 
 
 def describe_mapping(mapping: dict[str, str], ambiguous: dict[str, list[str]],
-                     headers: list[str]) -> list[str]:
+                     headers: list[str],
+                     aggregate_mode: bool = False) -> list[str]:
     lines = ["| field | header | status |", "|---|---|---|"]
     for field in FIELD_CANDIDATES:
         if field in mapping:
@@ -242,8 +415,12 @@ def describe_mapping(mapping: dict[str, str], ambiguous: dict[str, list[str]],
             status = "ambiguous"
             header = ", ".join(md_cell(item) for item in ambiguous[field])
         else:
-            status = ("not required" if field not in REQUIRED_FIELDS
-                      else "**missing**")
+            if aggregate_mode:
+                status = ("**missing**" if field in AGGREGATE_REQUIRED_FIELDS
+                          else "not detected")
+            else:
+                status = ("not required" if field not in REQUIRED_FIELDS
+                          else "**missing**")
             header = "—"
         lines.append(f"| {field} | {md_cell(header)} | {status} |")
     lines.append("")
@@ -389,6 +566,282 @@ def render_reconciliation(run_id: str, csv_path: Path,
     return "\n".join(lines) + "\n"
 
 
+def render_aggregate_reconciliation(run_id: str, csv_path: Path,
+                                    mapping: dict[str, str],
+                                    ambiguous: dict[str, list[str]],
+                                    headers: list[str],
+                                    structure_rows: list[dict[str, Any]],
+                                    model_totals: list[dict[str, Any]],
+                                    excluded_rows: list[dict[str, Any]],
+                                    totals: dict[str, Any],
+                                    notes: list[str]) -> str:
+    lines = [
+        f"# Billing reconciliation — {md_cell(run_id)}",
+        "",
+        f"Generated: {utc_now()}",
+        f"Billing CSV: `{md_cell(str(csv_path))}` "
+        f"({totals['csv_row_count']} data rows)",
+        "",
+        "> **aggregated billing export** — request-level join impossible; "
+        "per-endpoint totals.",
+        "",
+        "## Column mapping",
+        "",
+    ]
+    lines += describe_mapping(mapping, ambiguous, headers, aggregate_mode=True)
+    if ambiguous:
+        lines.append("")
+        lines.append("WARNING: ambiguous column mapping — best guesses used; "
+                     "rerun with --strict to abort instead.")
+
+    lines += [
+        "",
+        "## Billing structure",
+        "",
+        "| endpoint (app id) | quantity | unit | unit price | billed |",
+        "|---|---:|---|---:|---:|",
+    ]
+    for row in structure_rows:
+        lines.append(
+            f"| {md_cell(row['app'])} | {row['quantity']} "
+            f"| {md_cell(row['unit'])} | {row['unit_price']} "
+            f"| {row['billed']} |"
+        )
+
+    lines += [
+        "",
+        "## Per-model billed vs estimated",
+        "",
+        "| model | billed | estimated | delta | delta % |",
+        "|---|---:|---:|---:|---:|",
+    ]
+    for bucket in model_totals:
+        lines.append(
+            f"| {md_cell(bucket['model'])} | {bucket['billed']} "
+            f"| {bucket['estimated']} | {bucket['delta']} "
+            f"| {bucket['delta_pct']} |"
+        )
+
+    lines += [
+        "",
+        f"## Rows from other credentials ({len(excluded_rows)})",
+        "",
+    ]
+    if excluded_rows:
+        lines += [
+            "| CSV row | app id | billed | credential label |",
+            "|---:|---|---:|---|",
+        ]
+        for row in excluded_rows:
+            lines.append(
+                f"| {row['row_number']} | {md_cell(row['app'])} "
+                f"| {row['billed']} | {md_cell(row['label'])} |"
+            )
+    else:
+        lines.append("None — every row was billed to this run's credential.")
+
+    lines += [
+        "",
+        "## Grand totals",
+        "",
+        "| metric | value |",
+        "|---|---:|",
+        f"| billed total, kept rows ({totals['kept_row_count']}) | "
+        f"{usd(totals['kept_billed'])} |",
+        f"| billed total, excluded rows "
+        f"({totals['excluded_row_count']}) | "
+        f"{usd(totals['excluded_billed'])} |",
+        f"| estimated total (matched endpoints) | "
+        f"{usd(totals['estimated_total'])} |",
+        f"| delta (billed kept − estimated) | "
+        f"{delta_usd(totals['grand_delta'])} |",
+    ]
+
+    lines += ["", "## Notes", ""]
+    for note in notes:
+        lines.append(f"- {note}")
+    return "\n".join(lines) + "\n"
+
+
+def run_aggregate(args: argparse.Namespace, run_id: str, records_dir: Path,
+                  csv_path: Path, headers: list[str]) -> int:
+    """Reconcile an aggregated (per-endpoint rollup) Fal billing export."""
+    mapping, ambiguous = detect_columns(
+        headers, cost_candidates=AGGREGATE_COST_CANDIDATES)
+    if args.strict and "cost" not in mapping and "model" not in mapping:
+        print("reconcile: aggregated export has neither a cost nor a model "
+              "column; headers found: " + ", ".join(headers),
+              file=sys.stderr)
+        print("reconcile: aborting (--strict)", file=sys.stderr)
+        return 1
+
+    fallback_header = find_header(headers, "amount")
+    if fallback_header == mapping.get("cost"):
+        fallback_header = None
+    aux = {
+        "quantity": find_header(headers, "quantity"),
+        "unit": find_header(headers, "unit"),
+        "unit_price": find_header(headers, "unit_price"),
+        "auth_method": find_header(headers, "auth_method"),
+        "auth_method_label": find_header(headers, "auth_method_label"),
+    }
+    rows = read_aggregate_rows(csv_path, mapping.get("model"),
+                               mapping.get("cost"), fallback_header, aux)
+
+    warnings: list[str] = []
+    fal_key = load_fal_key()
+    key_id = fal_key.partition(":")[0].strip() if fal_key else ""
+    filter_active = bool(key_id) and aux["auth_method"] is not None
+    if not fal_key:
+        warning = ("FAL_KEY unavailable (env and repo-root .env) — no "
+                   "credential filter applied; every row is treated as ours.")
+        print(f"reconcile: WARNING {warning}", file=sys.stderr)
+        warnings.append(warning)
+    elif aux["auth_method"] is None:
+        warnings.append("No auth_method column detected — rows cannot be "
+                        "filtered by credential; every row is treated as "
+                        "ours.")
+
+    groups: dict[str, dict[str, Any]] = {}
+    excluded_rows: list[dict[str, Any]] = []
+    kept_billed = excluded_billed = 0.0
+    unparseable_kept = 0
+    kept_row_count = 0
+    for row in rows:
+        if filter_active and key_id not in row["auth_method"]:
+            excluded_rows.append(row)
+            if row["cost"] is not None:
+                excluded_billed += row["cost"]
+            continue
+        kept_row_count += 1
+        bucket = groups.setdefault(row["app"], {
+            "app": row["app"], "billed": 0.0, "billed_any": False,
+            "quantity": None, "units": [], "unit_prices": []})
+        if row["cost"] is not None:
+            bucket["billed"] += row["cost"]
+            bucket["billed_any"] = True
+            kept_billed += row["cost"]
+        else:
+            unparseable_kept += 1
+        if row["quantity"] is not None:
+            bucket["quantity"] = (bucket["quantity"] or 0.0) + row["quantity"]
+        if row["unit"] and row["unit"] not in bucket["units"]:
+            bucket["units"].append(row["unit"])
+        price_seen = row["unit_price"] not in bucket["unit_prices"]
+        if row["unit_price"] is not None and price_seen:
+            bucket["unit_prices"].append(row["unit_price"])
+
+    if filter_active and rows and kept_row_count == 0:
+        warning = ("credential filter matched no rows — the FAL_KEY id does "
+                   "not appear in any auth_method value")
+        print(f"reconcile: WARNING {warning}", file=sys.stderr)
+        warnings.append(f"WARNING: {warning}")
+
+    endpoint_totals = ledger_endpoint_totals(records_dir.parent
+                                             / "ledger.jsonl")
+
+    structure_rows: list[dict[str, Any]] = []
+    model_buckets: dict[str, dict[str, Any]] = {}
+    for app in sorted(groups):
+        group = groups[app]
+        structure_rows.append({
+            "app": app or "(no app id)",
+            "quantity": fmt_number(group["quantity"]),
+            "unit": ", ".join(group["units"]) or "—",
+            "unit_price": (", ".join("$" + fmt_number(price)
+                                     for price in group["unit_prices"])
+                           or "—"),
+            "billed": (usd(group["billed"]) if group["billed_any"]
+                       else "unparseable"),
+        })
+        endpoint = match_endpoint(app, endpoint_totals)
+        info = endpoint_totals.get(endpoint) if endpoint else None
+        model = info["model"] or info["endpoint"] if info else "(unmatched)"
+        bucket = model_buckets.setdefault(model, {
+            "model": model, "billed": 0.0, "billed_any": False,
+            "estimated": 0.0, "estimated_any": False})
+        if group["billed_any"]:
+            bucket["billed"] += group["billed"]
+            bucket["billed_any"] = True
+        if info:
+            bucket["estimated"] += info["estimated"]
+            bucket["estimated_any"] = True
+
+    model_totals: list[dict[str, Any]] = []
+    ordered_models = sorted(model_buckets,
+                            key=lambda name: (name == "(unmatched)", name))
+    for model in ordered_models:
+        bucket = model_buckets[model]
+        delta = bucket["billed"] - bucket["estimated"]
+        delta_pct = (delta / bucket["estimated"] * 100.0
+                     if bucket["estimated"] else None)
+        model_totals.append({
+            "model": model,
+            "billed": usd(bucket["billed"]) if bucket["billed_any"] else "—",
+            "estimated": (usd(bucket["estimated"])
+                          if bucket["estimated_any"] else "—"),
+            "delta": (delta_usd(delta)
+                      if bucket["billed_any"] and bucket["estimated_any"]
+                      else "—"),
+            "delta_pct": (f"{delta_pct:+.2f}%" if delta_pct is not None
+                          else "—"),
+        })
+
+    excluded_display = [{
+        "row_number": row["row_number"],
+        "app": row["app"] or "(no app id)",
+        "billed": (usd(row["cost"]) if row["cost"] is not None
+                   else "unparseable"),
+        "label": row["label"] or "—",
+    } for row in excluded_rows]
+
+    estimated_total = sum(bucket["estimated"]
+                          for bucket in model_buckets.values())
+    totals = {
+        "csv_row_count": len(rows),
+        "kept_row_count": kept_row_count,
+        "kept_billed": kept_billed,
+        "excluded_row_count": len(excluded_rows),
+        "excluded_billed": excluded_billed,
+        "unparseable_kept": unparseable_kept,
+        "estimated_total": estimated_total,
+        "grand_delta": kept_billed - estimated_total,
+    }
+
+    notes: list[str] = []
+    if filter_active:
+        notes.append("Credential filter: kept rows whose auth_method contains"
+                     f" key id `{key_id[:8]}…`; other credentials appear"
+                     " under 'Rows from other credentials'.")
+    notes.extend(warnings)
+    notes.append("Estimated amounts sum submission-time ledger entries per "
+                 "matched endpoint; they are advisory — billed amounts are "
+                 "the source of truth.")
+    if unparseable_kept:
+        notes.append(f"{unparseable_kept} kept rows had no parseable billed "
+                     "amount.")
+
+    report_path = args.report
+    if report_path is None:
+        report_path = records_dir.parent / "report" / "reconciliation.md"
+    else:
+        report_path = report_path.expanduser().resolve()
+    report_path.parent.mkdir(parents=True, exist_ok=True)
+
+    markdown = render_aggregate_reconciliation(
+        run_id, csv_path, mapping, ambiguous, headers, structure_rows,
+        model_totals, excluded_display, totals, notes)
+    report_path.write_text(markdown, encoding="utf-8")
+    print(
+        f"reconcile: wrote {report_path} — aggregated export: "
+        f"{kept_row_count} kept rows ({usd(kept_billed)}), "
+        f"{len(excluded_rows)} other-credential rows "
+        f"({usd(excluded_billed)}), estimated {usd(estimated_total)}",
+        flush=True,
+    )
+    return 0
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--run-dir", required=True, type=Path,
@@ -428,6 +881,14 @@ def main() -> int:
         headers = [header for header in (reader.fieldnames or [])
                    if header is not None]
     mapping, ambiguous = detect_columns(headers)
+
+    # Aggregated Fal exports roll up to one row per endpoint/credential
+    # without request ids; reconcile per endpoint instead of per request.
+    if "model" in mapping and (
+            "request_id" not in mapping
+            or request_column_all_empty(csv_path, mapping["request_id"])):
+        return run_aggregate(args, run_id, records_dir, csv_path, headers)
+
     usable = all(field in mapping for field in REQUIRED_FIELDS)
     if ambiguous or not usable:
         print("reconcile: column mapping "
