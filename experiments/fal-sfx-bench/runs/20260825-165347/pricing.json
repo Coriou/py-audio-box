@@ -1,0 +1,97 @@
+{
+  "generated_at": "2026-08-25T17:20:27.806241+00:00",
+  "models": {
+    "cassette-t2s": {
+      "docs_urls": [
+        "https://fal.ai/models/cassetteai/sound-effects-generator"
+      ],
+      "endpoint_id": "cassetteai/sound-effects-generator",
+      "flat": 0.01,
+      "label": "CassetteAI Text-SFX (no video cond.)",
+      "per_sample_multiplier": false,
+      "per_second": null,
+      "published_text": "$0.01 per generation",
+      "schema_checked_at": "2026-08-25",
+      "source_url": "https://fal.ai/models/cassetteai/sound-effects-generator",
+      "unit": "flat_per_request",
+      "vendor": "cassetteai"
+    },
+    "cassette-v2s": {
+      "docs_urls": [
+        "https://fal.ai/models/cassetteai/video-sound-effects-generator"
+      ],
+      "endpoint_id": "cassetteai/video-sound-effects-generator",
+      "flat": null,
+      "label": "CassetteAI Video SFX",
+      "per_sample_multiplier": false,
+      "per_second": 0.0033333333333333335,
+      "published_text": "$0.2 per minute of video processed",
+      "schema_checked_at": "2026-08-25",
+      "source_url": "https://fal.ai/models/cassetteai/video-sound-effects-generator",
+      "unit": "per_second_of_output",
+      "vendor": "cassetteai"
+    },
+    "hunyuan": {
+      "docs_urls": [
+        "https://fal.ai/models/fal-ai/hunyuan-video-foley"
+      ],
+      "endpoint_id": "fal-ai/hunyuan-video-foley",
+      "flat": null,
+      "label": "HunyuanVideo-Foley (baseline)",
+      "per_sample_multiplier": false,
+      "per_second": 0.01,
+      "published_text": "$0.1 per 10 seconds",
+      "schema_checked_at": "2026-08-25",
+      "source_url": "https://fal.ai/models/fal-ai/hunyuan-video-foley",
+      "unit": "per_second_of_output",
+      "vendor": "fal-ai"
+    },
+    "kling-v2a": {
+      "docs_urls": [
+        "https://fal.ai/models/fal-ai/kling-video/video-to-audio"
+      ],
+      "endpoint_id": "fal-ai/kling-video/video-to-audio",
+      "flat": 0.035,
+      "label": "Kling Video-to-Audio",
+      "per_sample_multiplier": false,
+      "per_second": null,
+      "published_text": "$0.035 per video",
+      "schema_checked_at": "2026-08-25",
+      "source_url": "https://fal.ai/models/fal-ai/kling-video/video-to-audio",
+      "unit": "flat_per_request",
+      "vendor": "fal-ai"
+    },
+    "mirelo16": {
+      "docs_urls": [
+        "https://fal.ai/models/mirelo-ai/sfx1.6/video-to-video"
+      ],
+      "endpoint_id": "mirelo-ai/sfx1.6/video-to-video",
+      "flat": null,
+      "label": "Mirelo SFX 1.6",
+      "per_sample_multiplier": true,
+      "per_second": 0.01,
+      "published_text": "$0.01 per second x duration x num_samples",
+      "schema_checked_at": "2026-08-25",
+      "source_url": "https://fal.ai/models/mirelo-ai/sfx1.6/video-to-video",
+      "unit": "per_second_of_output",
+      "vendor": "mirelo-ai"
+    },
+    "sonilo11": {
+      "docs_urls": [
+        "https://fal.ai/models/sonilo/v1.1/video-to-sound-effects"
+      ],
+      "endpoint_id": "sonilo/v1.1/video-to-sound-effects",
+      "flat": null,
+      "label": "Sonilo v1.1",
+      "per_sample_multiplier": false,
+      "per_second": 0.009,
+      "published_text": "$0.009 per second of output and per sample",
+      "schema_checked_at": "2026-08-25",
+      "source_url": "https://fal.ai/models/sonilo/v1.1/video-to-sound-effects",
+      "unit": "per_second_of_output",
+      "vendor": "sonilo"
+    }
+  },
+  "schema_version": 1,
+  "source": "models.py"
+}
