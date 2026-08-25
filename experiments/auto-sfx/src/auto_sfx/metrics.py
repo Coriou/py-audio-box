@@ -399,6 +399,7 @@ def load_gt_any(path):
                 "earliest_pts_us": pts, "latest_pts_us": pts,
                 "visibility": None, "viewpoint": None,
                 "notes": "legacy v1 record (no window/metadata)",
+                "evaluation_range_s": None,
             })
         return records
     gt = load_ground_truth(path)
@@ -415,6 +416,7 @@ def load_gt_any(path):
             "visibility": getattr(c, "visibility", None),
             "viewpoint": getattr(c, "viewpoint", None),
             "notes": getattr(c, "notes", "") or "",
+            "evaluation_range_s": [gt.range_start_s, gt.range_end_s],
         }
         for i, c in enumerate(gt.contacts)
     ]
@@ -528,6 +530,23 @@ def evaluate_v2(events, gt_records, displayed_fps, tol_ms=None,
     """
 
     fps = float(displayed_fps) if displayed_fps else None
+
+    # A v2 GT file explicitly declares the portion that was exhaustively
+    # annotated.  Predictions outside it are neither false positives nor
+    # evidence of correctness.  Earlier Metrics v2 ignored this contract and
+    # therefore made subset precision depend on unannotated full-clip output.
+    ranges = sorted({
+        tuple(float(v) for v in r["evaluation_range_s"])
+        for r in gt_records if r.get("evaluation_range_s") is not None
+    })
+    input_event_count = len(events)
+    if ranges:
+        events = [
+            e for e in events
+            if any(lo <= float(
+                e.get("time_s", 0.0) if isinstance(e, dict) else e.time_s
+            ) <= hi for lo, hi in ranges)
+        ]
 
     # -- existence (strict) -------------------------------------------------
     anns = [
@@ -718,6 +737,9 @@ def evaluate_v2(events, gt_records, displayed_fps, tol_ms=None,
             "viewpoints": sorted({
                 str(r.get("viewpoint")) for r in gt_records
             }),
+            "evaluation_ranges_s": [list(r) for r in ranges],
+            "input_event_count": input_event_count,
+            "evaluated_event_count": len(events),
         },
         "existence": existence,
         "side": side,

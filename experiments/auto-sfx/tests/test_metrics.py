@@ -607,6 +607,21 @@ class TestV2UnmatchedEvents:
         assert [u["pred_id"] for u in unmatched] == ["wild"]
         assert [m["gt_id"] for m in missed] == ["missed"]
 
+    def test_v2_declared_range_excludes_unannotated_predictions(self):
+        mark = gt_rec(10.0, ident="inside")
+        mark["evaluation_range_s"] = [9.0, 11.0]
+        events = [
+            ev(1.0, ident="before-unannotated"),
+            ev(10.0, ident="inside"),
+            ev(20.0, ident="after-unannotated"),
+        ]
+        report = metrics.evaluate_v2(events, [mark], 30.0)
+        assert report["existence"]["n_pred"] == 1
+        assert report["existence"]["precision"] == 1.0
+        assert report["identification"]["input_event_count"] == 3
+        assert report["identification"]["evaluated_event_count"] == 1
+        assert report["identification"]["evaluation_ranges_s"] == [[9.0, 11.0]]
+
 
 class TestV1Compatibility:
     def test_v1_array_input_still_produces_v1_report(self, tmp_path):

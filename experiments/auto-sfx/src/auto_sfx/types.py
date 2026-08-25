@@ -28,7 +28,9 @@ SIDES = (LEFT, RIGHT)
 EVENT_FAMILY_FOOT_CONTACT = "locomotion.foot_contact"
 DOMINANT_ACTOR_ID = "person_01"
 
-CONTACT_METHODS = ("velocity", "pelvis", "hybrid")
+CONTACT_METHODS = (
+    "velocity", "pelvis", "hybrid", "contact-state-v1", "contact-roi-v1",
+)
 POSE_BACKENDS = (
     "mediapipe-lite",
     "mediapipe-full",

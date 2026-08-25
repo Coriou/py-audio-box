@@ -84,6 +84,8 @@ _STATE_COLORS = {
     "SWING": "#1f77b4",      # blue
     "EXIT": "#9467bd",       # purple
     "UNKNOWN": "#7f7f7f",    # gray
+    "GROUNDED": "#2ca02c",   # state-v1 grounded
+    "UNCERTAIN": "#ffbf00",  # state-v1 honest abstention
 }
 
 
@@ -105,13 +107,18 @@ def load_run_trace(run_dir: str | Path) -> tuple[PoseTrace, dict, dict]:
     diag_doc = (
         json.loads(diag_path.read_text("utf-8")) if diag_path.is_file() else {}
     )
-    lines = (run_dir / "pose.jsonl").read_text("utf-8").splitlines()
+    pose_path = run_dir / "pose.jsonl"
+    if (events_doc.get("contact_method") in {
+            "contact-state-v1", "contact-roi-v1"}
+            and (run_dir / "tracked-pose.jsonl").is_file()):
+        pose_path = run_dir / "tracked-pose.jsonl"
+    lines = pose_path.read_text("utf-8").splitlines()
     if not lines:
-        raise ValueError(f"{run_dir}/pose.jsonl: empty file")
+        raise ValueError(f"{pose_path}: empty file")
     header = json.loads(lines[0])
     if header.get("format") != TRACE_FORMAT:
         raise ValueError(
-            f"{run_dir}/pose.jsonl: unexpected format {header.get('format')!r}"
+            f"{pose_path}: unexpected format {header.get('format')!r}"
         )
     meta = VideoMeta(**header["meta"])
     rows = [json.loads(line) for line in lines[1:]]
@@ -159,6 +166,7 @@ class ContactTraceIndex:
         self.header = header
         cfg = (header or {}).get("config") or {}
         self.config: dict = dict(cfg)
+        self.method: str | None = (header or {}).get("method")
         scale = (header or {}).get("scale_px")
         try:
             self.scale_px: float | None = (
@@ -195,12 +203,35 @@ class ContactTraceIndex:
                         "pts_us": r.get("pts_us"),
                         "from": tr["from"], "to": tr["to"],
                     })
+                elif (self.method in {"contact-state-v1", "contact-roi-v1"}
+                      and r.get("state_before") is not None
+                      and r.get("state_after") is not None
+                      and r["state_before"] != r["state_after"]):
+                    self.transitions.append({
+                        "side": side, "frame": fi,
+                        "pts_us": r.get("pts_us"),
+                        "from": str(r["state_before"]),
+                        "to": str(r["state_after"]),
+                    })
             for key, sink in (("thr_bs_s", self.thr_bs_s),
                               ("spd_bs_s", self.spd_bs_s),
                               ("band_h_px", self.band_h_px)):
                 val = r.get(key)
                 if isinstance(val, (int, float)) and math.isfinite(val):
                     sink[side][fi] = float(val)
+            if fi not in self.spd_bs_s[side]:
+                val = r.get("speed_bs_s")
+                if isinstance(val, (int, float)) and math.isfinite(val):
+                    self.spd_bs_s[side][fi] = float(val)
+            if fi not in self.thr_bs_s[side]:
+                vals = [
+                    r.get("heel_threshold_bs_s"),
+                    r.get("toe_threshold_bs_s"),
+                ]
+                vals = [float(v) for v in vals
+                        if isinstance(v, (int, float)) and math.isfinite(v)]
+                if vals:
+                    self.thr_bs_s[side][fi] = max(vals)
         self.transitions.sort(key=lambda t: (t["frame"], t["side"]))
 
     @classmethod
@@ -214,7 +245,7 @@ class ContactTraceIndex:
         return cls(rows, header)
 
     def has_states(self) -> bool:
-        """True when at least one velocity/hybrid machine state was traced."""
+        """True when at least one detector machine state was traced."""
 
         return any(self.state[s] for s in SIDES)
 

@@ -173,6 +173,16 @@ def default_config(method: str) -> dict:
         raise ValueError(
             f"unknown contact method {method!r}; expected one of {CONTACT_METHODS}"
         )
+    if method in {"contact-state-v1", "contact-roi-v1"}:
+        # Lazy import keeps hybrid-v0 independent and avoids a module cycle.
+        from .state_contacts import default_state_config
+
+        cfg = default_state_config()
+        if method == "contact-roi-v1":
+            from .roi_refiner import roi_config
+
+            cfg.update(roi_config())
+        return cfg
     return dict(_BASE_CONFIG)
 
 
@@ -221,6 +231,12 @@ class ContactMethodResult:
     diagnostics: list[dict]
     frame_trace: list[dict] | None = None
     trace_header: dict | None = None
+    # State-v1 keeps pose.jsonl as immutable backend evidence and exposes a
+    # separately tracked trace for diagnostics/rendering.
+    diagnostic_trace: PoseTrace | None = None
+    # Optional pre-refinement physical evidence layer.  CLI persists it
+    # separately so ROI/sequence processing can never hide raw detections.
+    raw_events: list[ContactEvent] | None = None
 
 
 @dataclass
@@ -1128,6 +1144,40 @@ def detect_contacts(
         raise ValueError(
             f"unknown contact method {method!r}; expected one of {CONTACT_METHODS}"
         )
+    if method == "contact-state-v1":
+        from .state_contacts import detect_state_contacts
+
+        return detect_state_contacts(
+            trace, config=config, record_trace=record_trace
+        )
+    if method == "contact-roi-v1":
+        from .roi_refiner import ROI_CONFIG, refine_contacts
+        from .state_contacts import STATE_CONFIG, detect_state_contacts
+
+        supplied = dict(config or {})
+        state_cfg = {k: v for k, v in supplied.items() if k in STATE_CONFIG}
+        roi_cfg = {k: v for k, v in supplied.items() if k in ROI_CONFIG}
+        unknown = sorted(set(supplied) - set(state_cfg) - set(roi_cfg))
+        if unknown:
+            raise ValueError(f"unknown contact-config keys: {unknown}")
+        base = detect_state_contacts(
+            trace, config=state_cfg, record_trace=record_trace
+        )
+        refined, roi_diags, roi_summary = refine_contacts(
+            trace.meta.path,
+            base.diagnostic_trace or trace,
+            base.events,
+            roi_cfg,
+        )
+        base.raw_events = list(base.events)
+        base.events = refined
+        base.diagnostics = _sort_diags([*base.diagnostics, *roi_diags])
+        if base.trace_header is not None:
+            base.trace_header["method"] = "contact-roi-v1"
+            base.trace_header["roi_refiner"] = roi_summary
+        if base.frame_trace:
+            base.frame_trace[0] = dict(base.trace_header or base.frame_trace[0])
+        return base
     cfg = _validated_config(method, config)
     diags: list[dict] = []
     rec: list[dict] | None = [{"kind": "header", "method": method,

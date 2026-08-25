@@ -493,6 +493,16 @@ def _write_core_artifacts(
         ),
     )
     write_events_csv(result.events, out_dir / "events.csv")
+    raw_events = getattr(result, "raw_events", None)
+    if raw_events is not None:
+        write_json(
+            out_dir / "raw-events.json",
+            events_document(
+                meta, backend, mode, "contact-state-v1", raw_events,
+                ground_truth=ground_truth,
+            ),
+        )
+        write_events_csv(raw_events, out_dir / "raw-events.csv")
     write_json(
         out_dir / "diagnostics.json",
         {
@@ -502,6 +512,13 @@ def _write_core_artifacts(
         },
     )
     write_pose_jsonl(trace, cache_key, out_dir / "pose.jsonl")
+    diagnostic_trace = getattr(result, "diagnostic_trace", None)
+    if diagnostic_trace is not None:
+        write_pose_jsonl(
+            diagnostic_trace,
+            f"{cache_key}:continuity-tracked",
+            out_dir / "tracked-pose.jsonl",
+        )
     if write_contact_trace(
         result, meta.to_dict(), out_dir / "contact-trace.jsonl"
     ) is not None:
@@ -692,7 +709,8 @@ def analyze_pipeline(
         if not no_video:
             with tracker.stage("render"):
                 _render_videos(
-                    video, trace, result.events, out_dir, meta,
+                    video, getattr(result, "diagnostic_trace", None) or trace,
+                    result.events, out_dir, meta,
                     ground_truth=ground_truth,
                 )
 
@@ -906,7 +924,7 @@ def cmd_compare(args: argparse.Namespace) -> int:
                 with sub.stage("render"):
                     _render_videos(
                         args.video,
-                        source.trace,
+                        getattr(result, "diagnostic_trace", None) or source.trace,
                         result.events,
                         method_dir,
                         meta,
