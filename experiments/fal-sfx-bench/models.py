@@ -230,6 +230,28 @@ def get_model(key: str) -> ModelSpec:
         ) from None
 
 
+
+def _controlfoley_build_arguments(case: dict[str, Any]) -> dict[str, Any]:
+    # Schema verified live 2026-08-25: {video_url, prompt, seed}; seed is
+    # honored and prompt changes the output. Output capped at ~8 s.
+    return {
+        "prompt": case["prompt"],
+        "seed": _seed(case),
+    }
+
+def _controlfoley_extract_outputs(result: dict[str, Any]) -> list[OutputArtifact]:
+    # Schema unknown: accept any File-object under the common keys.
+    artifacts = [
+        _entry_artifact(kind, result.get(key))
+        for key, kind in (
+            ("audio", "audio"),
+            ("audio_file", "audio"),
+            ("video", "video"),
+        )
+    ]
+    return _dedupe([artifact for artifact in artifacts if artifact])
+
+
 MODELS: dict[str, ModelSpec] = {
     "mirelo16": ModelSpec(
         key="mirelo16",
@@ -387,4 +409,38 @@ MODELS: dict[str, ModelSpec] = {
         ),
         media_key=None,
     ),
+    "controlfoley": ModelSpec(
+        key="controlfoley",
+        endpoint_id="fal-ai/controlfoley",
+        label="ControlFoley (fal listing; Xiaomi attribution unverified)",
+        vendor="fal-ai",
+        build_arguments=_controlfoley_build_arguments,
+        extract_outputs=_controlfoley_extract_outputs,
+        price=PriceSpec(
+            unit="per_second_of_output",
+            per_second=0.002,
+            flat=None,
+            per_sample_multiplier=False,
+            published_text="$0.002 per second of generated audio",
+            source_url="https://fal.ai/api/models?keywords=controlfoley",
+        ),
+        docs_urls=[
+            "https://fal.ai/api/models?keywords=controlfoley",
+            "https://huggingface.co/YJX-Xiaomi/ControlFoley",
+            "https://github.com/xiaomi-research/controlfoley",
+        ],
+        schema_checked_at=SCHEMA_CHECKED_AT,
+        notes=(
+            "UNLISTED on fal: catalog API records it public ($0.002/s "
+            "generated audio, published 2026-05-05) but the playground page "
+            "and per-endpoint OpenAPI schema both 404. Schema verified live "
+            "2026-08-25: input {video_url, prompt, seed} (seed honored, "
+            "prompt consumed — A/B verified), output {audio: wav, video: "
+            "dubbed mp4, seed}. Output capped at ~8 s regardless of input "
+            "length. Name/task/timing match Xiaomi's ControlFoley (ACM MM "
+            "2026, weights CC-BY-NC-4.0 on HF) but fal's record carries no "
+            "vendor attribution — treat as unverified until fal confirms."
+        ),
+    ),
 }
+

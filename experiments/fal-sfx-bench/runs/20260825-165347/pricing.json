@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-08-25T17:20:27.806241+00:00",
+  "generated_at": "2026-08-25T20:42:22.570422+00:00",
   "models": {
     "cassette-t2s": {
       "docs_urls": [
@@ -30,6 +30,23 @@
       "source_url": "https://fal.ai/models/cassetteai/video-sound-effects-generator",
       "unit": "per_second_of_output",
       "vendor": "cassetteai"
+    },
+    "controlfoley": {
+      "docs_urls": [
+        "https://fal.ai/api/models?keywords=controlfoley",
+        "https://huggingface.co/YJX-Xiaomi/ControlFoley",
+        "https://github.com/xiaomi-research/controlfoley"
+      ],
+      "endpoint_id": "fal-ai/controlfoley",
+      "flat": null,
+      "label": "ControlFoley (fal listing; Xiaomi attribution unverified)",
+      "per_sample_multiplier": false,
+      "per_second": 0.002,
+      "published_text": "$0.002 per second of generated audio",
+      "schema_checked_at": "2026-08-25",
+      "source_url": "https://fal.ai/api/models?keywords=controlfoley",
+      "unit": "per_second_of_output",
+      "vendor": "fal-ai"
     },
     "hunyuan": {
       "docs_urls": [

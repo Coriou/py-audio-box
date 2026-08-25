@@ -16,12 +16,15 @@ reconciliation against the Fal dashboard CSV export.
 | `hunyuan` | `fal-ai/hunyuan-video-foley` | video + `text_prompt` | muxed mp4 | $0.1 / 10 s |
 | `cassette-v2s` | `cassetteai/video-sound-effects-generator` | video only (no prompt — auto-SFX) | mp4 with SFX track | $0.2 / min of video |
 | `cassette-t2s` | `cassetteai/sound-effects-generator` | text + duration (no video) | wav | $0.01 flat / generation |
+| `controlfoley` | `fal-ai/controlfoley` | video + `prompt`, seed | dubbed mp4 + wav, ~8 s cap | $0.002 / s generated audio |
 
 Quirks encoded in `models.py` (see each entry's `notes`): Kling's schema default
 `background_music_prompt="intense car race"` is overridden to `""`; Mirelo's
 `num_samples` default 2 is forced to 1; prompt key differs per model
 (`text_prompt` vs `prompt` vs `sound_effect_prompt`); Kling accepts only
-.mp4/.mov, 3–20 s, ≤100 MB.
+.mp4/.mov, 3–20 s, ≤100 MB. `controlfoley` is UNLISTED on fal (catalog API
+public, playground 404): schema verified live — seed honored, prompt consumed,
+output truncated to ~8 s; Xiaomi attribution unconfirmed by fal.
 
 ## Methodology
 
@@ -73,7 +76,7 @@ request_ids in the ledger are skipped on re-run.
 
 ```
 work/sfx-bench/<run_id>/
-  manifest.json               30 cases (6 models × 5 clips), prompts + args + est cost
+  manifest.json               35 cases (7 models × 5 clips), prompts + args + est cost
   inputs/                     standardized silent clips + inputs-index.json (argv audit)
   runs/<run_id>/
     ledger.jsonl              append-only request audit (request_id per submission)
@@ -91,7 +94,9 @@ for latency/cost; `report/reconciliation.md` once the billing CSV exists.
 
 ## First run — 20260825-165347 (cost audit vs real Fal billing)
 
-30/30 cases succeeded. Real billed (credential `bfe2a3a9…`): **$2.6615** vs
+30/30 cases succeeded in the first sweep; `controlfoley` was added later
+(5 cases, seed-pinned, ~$0.08 est) for 35 total. Real billed (credential
+`bfe2a3a9…`): **$2.6615** vs
 $1.7582 estimated. The export is an aggregated daily rollup per endpoint +
 credential — no request ids — so reconciliation joins per endpoint and
 filters rows by credential. A foreign-credential hunyuan row ($0.6586,

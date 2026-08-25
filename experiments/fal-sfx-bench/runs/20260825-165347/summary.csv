@@ -9,6 +9,11 @@ cassette-v2s__ocean-long,cassette-v2s,ocean-long,ok,303.958152,215.945701,12.192
 cassette-v2s__ocean-short,cassette-v2s,ocean-short,ok,69.354143,1.049961,12.164716,9.066667,0.030222
 cassette-v2s__walk1,cassette-v2s,walk1,ok,291.576198,256.032027,22.935816,9.066667,0.030222
 cassette-v2s__walk2,cassette-v2s,walk2,ok,329.948725,269.483222,10.590586,9.066667,0.030222
+controlfoley__man,controlfoley,man,ok,34.119011,12.062817,9.87855,8.034104,0.016068
+controlfoley__ocean-long,controlfoley,ocean-long,ok,67.607745,10.819889,13.150182,8.034104,0.016068
+controlfoley__ocean-short,controlfoley,ocean-short,ok,47.029563,0.550966,15.170838,8.034104,0.016068
+controlfoley__walk1,controlfoley,walk1,ok,41.670545,0.197068,12.118848,8.034104,0.016068
+controlfoley__walk2,controlfoley,walk2,ok,71.818594,17.679713,12.469312,8.034104,0.016068
 hunyuan__man,hunyuan,man,ok,204.843581,186.873926,13.853691,9.4094,0.094094
 hunyuan__ocean-long,hunyuan,ocean-long,ok,190.461881,124.606332,16.485416,10.01,0.1001
 hunyuan__ocean-short,hunyuan,ocean-short,ok,63.602368,17.479058,15.128894,9.44,0.0944

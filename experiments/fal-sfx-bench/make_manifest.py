@@ -31,6 +31,7 @@ MODEL_KEYS = [
     "hunyuan",
     "cassette-v2s",
     "cassette-t2s",
+    "controlfoley",
 ]
 
 CLIP_KEYS = ["walk1", "walk2", "man", "ocean-long", "ocean-short"]
@@ -76,6 +77,7 @@ PRICE_TABLE: dict[str, dict[str, Any]] = {
     "hunyuan": {"unit": "per_second_of_input", "per_second": 0.01},
     "cassette-v2s": {"unit": "per_minute_of_input", "per_minute": 0.2},
     "cassette-t2s": {"unit": "flat_per_request", "flat": 0.01},
+    "controlfoley": {"unit": "per_second_of_output", "per_second": 0.002},
 }
 
 
@@ -131,6 +133,12 @@ def build_arguments(
         # Text-only: duration schema 1-30.
         duration = max(1, min(30, math.ceil(input_duration_s)))
         return {"prompt": prompt, "duration": duration}
+    if model_key == "controlfoley":
+        # Schema verified live 2026-08-25: {video_url, prompt, seed} — seed
+        # is honored (same seed → byte-identical audio) and prompt changes
+        # output. Output audio/video capped at ~8 s regardless of input
+        # length (upstream default duration).
+        return {"prompt": prompt, "seed": seed}
     raise KeyError(f"unknown model key: {model_key}")
 
 
@@ -149,6 +157,9 @@ def estimate_cost_usd(
         samples = arguments.get("num_samples", 1) if price["per_sample_multiplier"] else 1
         return price["per_second"] * seconds * samples
     if price["unit"] == "per_second_of_input":
+        return price["per_second"] * input_duration_s
+    if price["unit"] == "per_second_of_output":
+        # advisory: assume output audio tracks input duration
         return price["per_second"] * input_duration_s
     if price["unit"] == "per_minute_of_input":
         return price["per_minute"] / 60.0 * input_duration_s
