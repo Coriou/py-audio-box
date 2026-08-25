@@ -34,13 +34,20 @@ from .types import (
     LEFT,
     RIGHT,
     SIDES,
-    RTMPOSE_LICENSE_NOTICE,
     ContactEvent,
     PersonFrame,
     Point,
     PoseTrace,
     point_dist,
 )
+
+# Phase-2 repair: the truth strip pairs predictions against GT through the
+# shared one-to-one diagnostic association (never a private nearest-match),
+# and predicted phase chips come from persisted detector state.
+try:  # package-relative when imported as auto_sfx.render
+    from .association import associate_diagnostic
+except ImportError:  # pragma: no cover - direct module import
+    from association import associate_diagnostic  # type: ignore[no-redef]
 
 # ---------------------------------------------------------------------------
 # Visual constants (BGR)
@@ -378,25 +385,129 @@ def gt_state_at(gt_contacts: list, foot: str, t_s: float) -> str:
 def nearest_gt_diff_frames(
     gt_contacts: list, foot: str, t_s: float, fps_display: float
 ) -> int | None:
-    """Signed frame error of a prediction vs the nearest same-foot GT mark."""
+    """Signed frame error of a prediction vs its diagnostic GT partner.
 
-    diffs = [
-        round((t_s - c.preferred_s) * fps_display)
-        for c in gt_contacts
-        if c.foot == foot
-        and abs(t_s - c.preferred_s) <= TRUTH_MATCH_HORIZON_S
+    Thin wrapper over the shared one-to-one diagnostic association
+    (auto_sfx.association): side-agnostic, monotone, at most one partner.
+    ``foot`` filters to same-foot partners only (kept for the strip's
+    per-row labelling); returns None when no partner within the horizon.
+    """
+
+    records = [
+        {
+            "gt_id": str(i),
+            "foot": c.foot,
+            "preferred_s": c.preferred_s,
+            "earliest_s": c.earliest_s,
+            "latest_s": c.latest_s,
+        }
+        for i, c in enumerate(gt_contacts)
     ]
-    return min(diffs, key=abs) if diffs else None
+    res = associate_diagnostic(
+        [{"id": "probe", "time_s": t_s, "foot": foot}],
+        records,
+        horizon_s=TRUTH_MATCH_HORIZON_S,
+        fps=fps_display,
+    )
+    for p in res.pairs:
+        if records[p["gt_idx"]]["foot"] == foot:
+            return p["err_frames"]
+    return None
+
+
+def strip_pair_labels(gt_contacts: list, events: list[ContactEvent],
+                      fps_display: float) -> tuple[dict, set]:
+    """Shared-association pairing for the truth strip (computed once).
+
+    Returns ``(labels, matched_gt_ids)``:
+    ``labels`` maps ``(pred_foot, pred_time)`` -> signed frame error vs
+    the prediction's diagnostic partner; ``matched_gt_ids`` is the set of
+    GT indices (position in gt_contacts) that have a partner -- used to
+    fill vs hollow the TRUE triangles.
+    """
+
+    records = [
+        {
+            "gt_id": str(i),
+            "foot": c.foot,
+            "preferred_s": c.preferred_s,
+            "earliest_s": c.earliest_s,
+            "latest_s": c.latest_s,
+        }
+        for i, c in enumerate(gt_contacts)
+    ]
+    res = associate_diagnostic(
+        events or [], records,
+        horizon_s=TRUTH_MATCH_HORIZON_S,
+        fps=fps_display,
+    )
+    labels: dict = {}
+    matched: set = set()
+    for p in res.pairs:
+        pred = (events or [])[p["pred_idx"]]
+        labels[(getattr(pred, "foot", None), pred.time_s)] = p["err_frames"]
+        matched.add(p["gt_idx"])
+    return labels, matched
+
+
+def states_to_timeline(rows) -> dict:
+    """Per-side step timelines [(t_s, state)] from contact-trace rows.
+
+    Rows without machine-state fields (e.g. pelvis method traces) are
+    skipped; ``None`` input yields an empty dict.
+    """
+
+    timeline: dict = {}
+    for r in rows or []:
+        if not isinstance(r, dict) or "state_after" not in r:
+            continue
+        timeline.setdefault(r.get("side"), []).append(
+            (float(r["t_s"]), r["state_after"]))
+    for side in timeline:
+        timeline[side].sort(key=lambda x: x[0])
+    return timeline
+
+
+def state_at(timeline: dict, side: str, t_s: float,
+             max_age_s: float = 1.0) -> str:
+    """Machine state word for ``side`` at ``t_s`` ("--" when unknown).
+
+    Rightmost sample at/before ``t_s`` within ``max_age_s``; anything
+    else is honestly unknown rather than extrapolated.
+    """
+
+    series = timeline.get(side) or []
+    best = None
+    for ts, st in series:
+        if ts <= t_s + 1e-9 and (best is None or ts >= best[0]):
+            best = (ts, st)
+    if best is None or t_s - best[0] > max_age_s:
+        return "--"
+    return best[1]
+
+
+def _pred_chip_word(timeline: dict, side: str, t_now: float) -> str:
+    """Chip word from persisted detector state (never event windows)."""
+
+    st = state_at(timeline, side, t_now)
+    return {"STANCE": "ST", "CANDIDATE": "ST",
+            "SWING": "SW", "EXIT": "SW"}.get(st, "--")
+
+
 
 
 def draw_truth_strip(img, gt_contacts: list, all_events: list[ContactEvent],
-                     t_now: float, *, fps_display: float = 30.0) -> None:
-    """GT-vs-prediction timeline strip per foot (Phase-2 T15).
+                     t_now: float, *, fps_display: float = 30.0,
+                     pred_states: dict | None = None) -> None:
+    """GT-vs-prediction timeline strip per foot (Phase-2 T15, repaired).
 
     Four rows — TRUE/PRED × LEFT/RIGHT over the last TRUTH_WINDOW_S.
-    GT marks are filled triangles (hollow when no prediction matched within
-    TRUTH_MATCH_HORIZON_S); predictions carry their signed frame error vs
-    the nearest GT mark. A chip row shows current GT vs predicted phase.
+    Pairing runs through the shared diagnostic association:
+    GT marks are filled when their partner exists (hollow red otherwise)
+    and predictions carry the signed frame error of THEIR pair.
+    The predicted phase chip comes from ``pred_states`` -- the persisted
+    detector state timeline (contact-trace.jsonl); without it the chip is
+    honestly "--", never derived from event windows.
     Skipped on frames too small to be readable.
     """
 
@@ -422,20 +533,19 @@ def draw_truth_strip(img, gt_contacts: list, all_events: list[ContactEvent],
         fx = (t_s - t_lo) / TRUTH_WINDOW_S
         return int(x1 + label_w + fx * (x2 - x1 - label_w - 30))
 
-    # Current-phase chips, top-right of the strip.
+    # Current-phase chips. The PREDICTED word comes ONLY from the
+    # persisted machine-state timeline; without a trace it is "--".
     chips = []
     for side in SIDES:
-        pred_active = any(
-            e.foot == side and e.earliest_s <= t_now <= e.latest_s
-            for e in all_events or []
-        )
         chips.append(
             f"{side[0].upper()} {gt_state_at(gt_contacts, side, t_now)}(GT)/"
-            + ("ST" if pred_active else "SW") + "(PRED)"
+            + _pred_chip_word(pred_states or {}, side, t_now) + "(PRED)"
         )
     put_text(img, "  ".join(chips), (x1 + 150, y1 + 11),
              scale=0.34, color=COL_TEXT)
 
+    labels, matched_gts = strip_pair_labels(
+        gt_contacts, all_events, fps_display)
     for row, (side, truth) in enumerate(
         [(LEFT, True), (LEFT, False), (RIGHT, True), (RIGHT, False)]
     ):
@@ -451,19 +561,12 @@ def draw_truth_strip(img, gt_contacts: list, all_events: list[ContactEvent],
                  (60, 60, 60), 1)
 
         if truth:
-            marks = [c.preferred_s for c in gt_contacts if c.foot == side]
-            preds = [
-                e.time_s for e in all_events or []
-                if e.foot == side
-            ]
-            for mt in marks:
-                if not (t_lo <= mt <= t_now):
+            for gi, c in enumerate(gt_contacts):
+                if c.foot != side or not (t_lo <= c.preferred_s <= t_now):
                     continue
+                mt = c.preferred_s
                 x = max(x1 + label_w + 1, min(tx(mt), x2 - 27))
-                matched = nearest_gt_diff_frames(
-                    gt_contacts, side, mt, fps_display
-                ) is not None and any(abs(pt - mt) <= TRUTH_MATCH_HORIZON_S
-                                      for pt in preds)
+                matched = gi in matched_gts
                 tri = np.array(
                     [[x, ry - 5], [x - 4, ry + 1], [x + 4, ry + 1]], np.int32
                 )
@@ -477,9 +580,20 @@ def draw_truth_strip(img, gt_contacts: list, all_events: list[ContactEvent],
                 if e.foot != side or not (t_lo <= e.time_s <= t_now):
                     continue
                 x = max(x1 + label_w + 1, min(tx(e.time_s), x2 - 27))
-                diff = nearest_gt_diff_frames(
-                    gt_contacts, side, e.time_s, fps_display
-                )
+                diff = labels.get((e.foot, e.time_s))
+                if diff is None and fps_display:
+                    # Side-flipped pairings: label with the signed error
+                    # of the prediction's actual diagnostic partner.
+                    res = associate_diagnostic(
+                        [e],
+                        [{"gt_id": str(i), "foot": c.foot,
+                          "preferred_s": c.preferred_s,
+                          "earliest_s": c.earliest_s,
+                          "latest_s": c.latest_s}
+                         for i, c in enumerate(gt_contacts)],
+                        horizon_s=TRUTH_MATCH_HORIZON_S, fps=fps_display)
+                    if res.pairs:
+                        diff = res.pairs[0]["err_frames"]
                 cv2.drawMarker(img, (x, ry + 1), color,
                                cv2.MARKER_TRIANGLE_UP, 7,
                                1 if e.kind != "initial_contact" else 2)
@@ -506,6 +620,7 @@ def annotate_frame(
     all_events: list[ContactEvent] | None = None,
     gt_contacts: list | None = None,
     fps_display: float = 30.0,
+    pred_states: dict | None = None,
 ) -> dict:
     """Annotate one BGR frame in place; returns {side: state_word}.
 
@@ -534,7 +649,7 @@ def annotate_frame(
     if gt_contacts:
         draw_truth_strip(
             img, gt_contacts, all_events if all_events is not None else events,
-            t_s, fps_display=fps_display,
+            t_s, fps_display=fps_display, pred_states=pred_states,
         )
     return states
 
@@ -628,6 +743,7 @@ def render_annotated(
     scroll_window_s: float = 2.0,
     gt_contacts: list | None = None,
     fps_display: float | None = None,
+    pred_states: dict | None = None,
 ) -> RenderResult:
     """Render annotated diagnostic video; optionally mux marker-click audio.
 
@@ -670,7 +786,8 @@ def render_annotated(
             annotate_frame(canvas, pf, t_s, active, state,
                            backend=trace.backend, mode=trace.mode, edges=edges,
                            all_events=events_sorted, gt_contacts=gt_contacts,
-                           fps_display=fps_display or fps_eff)
+                           fps_display=fps_display or fps_eff,
+                           pred_states=pred_states)
             writer.write(canvas)
             n += 1
         if writer is None:

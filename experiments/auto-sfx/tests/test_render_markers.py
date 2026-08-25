@@ -497,3 +497,88 @@ class TestDrawTruthStrip:
             all_events=events, gt_contacts=[_gt_contact(0, "left")],
         )
         assert not np.array_equal(with_gt, without)
+
+
+# ---------------------------------------------------------------------------
+# Phase-2 repair: persisted-state chips + shared-association strip labels
+# ---------------------------------------------------------------------------
+
+
+class TestStatesToTimeline:
+    def test_builds_sorted_per_side_timelines(self):
+        rows = [
+            {"kind": "frame", "side": "left", "t_s": 0.2, "state_after": "SWING"},
+            {"kind": "frame", "side": "left", "t_s": 0.1, "state_after": "UNKNOWN"},
+            {"kind": "frame", "side": "right", "t_s": 0.15, "state_after": "STANCE"},
+        ]
+        tl = render.states_to_timeline(rows)
+        assert [t for t, _ in tl["left"]] == [0.1, 0.2]
+        assert tl["right"] == [(0.15, "STANCE")]
+
+    def test_skips_pelvis_rows_and_none(self):
+        rows = [
+            {"kind": "frame", "side": "left", "t_s": 0.1,
+             "method": "pelvis", "rel_offset_raw_px": 3.0},
+            None,
+        ]
+        assert render.states_to_timeline(rows) == {}
+        assert render.states_to_timeline(None) == {}
+
+
+class TestStateAt:
+    TIMELINE = {"left": [(1.0, "SWING"), (1.5, "CANDIDATE"),
+                         (1.7, "STANCE")]}
+
+    def test_rightmost_sample_at_or_before(self):
+        assert render.state_at(self.TIMELINE, "left", 1.8) == "STANCE"
+        assert render.state_at(self.TIMELINE, "left", 1.6) == "CANDIDATE"
+
+    def test_before_first_or_stale_is_unknown(self):
+        assert render.state_at(self.TIMELINE, "left", 0.5) == "--"
+        assert render.state_at(self.TIMELINE, "left", 2.9,
+                               max_age_s=1.0) == "--"
+
+    def test_missing_side_is_unknown(self):
+        assert render.state_at(self.TIMELINE, "right", 1.5) == "--"
+
+
+class TestStripPairLabels:
+    def test_labels_come_from_shared_association(self):
+        # _gt_contact(i) -> preferred_s = i + 1/30.
+        gt = [_gt_contact(0, "left"), _gt_contact(1, "right")]
+        events = sorted([
+            make_event("left", 1 / 30 + 4 / 30),    # +4f vs its partner
+            make_event("right", 1 + 2 / 30),        # +1f vs pref(=i+1/30)
+        ], key=lambda e: e.time_s)
+        labels, matched = render.strip_pair_labels(gt, events, 30.0)
+        assert set(labels.values()) == {4, 1}
+        assert matched == {0, 1}
+
+    def test_one_gt_two_predictions_matches_once(self):
+        gt = [_gt_contact(5.0, "left")]
+        events = sorted([
+            make_event("left", 5.0),
+            make_event("left", 5.05),
+        ], key=lambda e: e.time_s)
+        labels, matched = render.strip_pair_labels(gt, events, 30.0)
+        assert len(labels) == 1      # only ONE pred got a label
+        assert matched == {0}
+
+
+class TestChipsFromPersistedState:
+    def test_chip_uses_pred_states_not_event_windows(self):
+        img = np.zeros((360, 640, 3), np.uint8)
+        trace = make_trace(n=2)
+        events = sorted([make_event(LEFT, 0.05)], key=lambda e: e.time_s)
+        pf = trace.frames[0] if trace.frames else None
+        states = {(1.0, "left"): None}  # unused; structure check below
+        tl = {"left": [(0.04, "STANCE")]}
+        # With a persisted STANCE at t: chip shows ST even though no
+        # event window covers t.
+        render.draw_truth_strip(img, [_gt_contact(0.0, "left")], events,
+                                0.08, fps_display=30.0, pred_states=tl)
+        # Without persisted state: chip shows -- (no window heuristic).
+        img2 = np.zeros((360, 640, 3), np.uint8)
+        render.draw_truth_strip(img2, [_gt_contact(0.0, "left")], events,
+                                0.08, fps_display=30.0, pred_states=None)
+        assert not np.array_equal(img, img2)

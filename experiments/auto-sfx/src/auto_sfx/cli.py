@@ -515,6 +515,24 @@ def _write_core_artifacts(
         })
 
 
+def _load_trace_rows(path: str | Path) -> list[dict]:
+    """Read contact-trace.jsonl rows (header dropped); [] when absent."""
+
+    path = Path(path)
+    if not path.is_file():
+        return []
+    rows = []
+    with open(path, encoding="utf-8") as fh:
+        for line in fh:
+            try:
+                row = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            if isinstance(row, dict) and row.get("kind") != "header":
+                rows.append(row)
+    return rows
+
+
 def _render_videos(
     video: str,
     trace: PoseTrace,
@@ -549,6 +567,12 @@ def _render_videos(
     wav = synthesize_marker_wav(
         events, track_len, out_dir / "markers.wav", gt_marks=gt_times
     )
+    # Persisted detector states drive the truth-strip phase chips (T2/T15
+    # repair); absent trace -> empty timeline -> chips read "--".
+    from auto_sfx.render import states_to_timeline
+
+    pred_states = states_to_timeline(
+        _load_trace_rows(Path(out_dir) / "contact-trace.jsonl"))
     with FrameReader(video) as reader:
         render_annotated(
             trace,
@@ -559,6 +583,7 @@ def _render_videos(
             click_wav=wav,
             gt_contacts=list(ground_truth.contacts) if ground_truth else None,
             fps_display=fps_hint,
+            pred_states=pred_states,
         )
     if preview:
         with FrameReader(video) as reader:
@@ -1135,6 +1160,50 @@ def cmd_forensics(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_classify(args: argparse.Namespace) -> int:
+    if not Path(args.run_dir).is_dir():
+        print(f"auto-sfx: run directory not found: {args.run_dir}",
+              file=sys.stderr)
+        return 2
+    if not Path(args.gt_json).is_file():
+        print(f"auto-sfx: ground truth file not found: {args.gt_json}",
+              file=sys.stderr)
+        return 2
+
+    from auto_sfx.classify import classify_run, write_outputs
+    from auto_sfx.metrics import load_gt_any
+
+    events_path = Path(args.run_dir) / "events.json"
+    if not events_path.is_file():
+        print(f"auto-sfx: {events_path} not found", file=sys.stderr)
+        return 2
+    events_doc = json.loads(events_path.read_text(encoding="utf-8"))
+    diagnostics_path = Path(args.run_dir) / "diagnostics.json"
+    diagnostics_doc = (
+        json.loads(diagnostics_path.read_text(encoding="utf-8"))
+        if diagnostics_path.is_file() else None
+    )
+    try:
+        report = classify_run(
+            events_doc, load_gt_any(args.gt_json), diagnostics_doc)
+    except ValueError as exc:
+        print(f"auto-sfx: {exc}", file=sys.stderr)
+        return 2
+
+    base = Path(args.out) if args.out else Path(args.run_dir) / "classify"
+    json_path = base.with_suffix(".json") if str(base).endswith(
+        ".json") else Path(str(base) + ".json")
+    csv_path = json_path.with_suffix(".csv")
+    write_outputs(report, json_path, csv_path)
+
+    print(f"== classify: {args.run_dir} ==")
+    for cls, n in report["class_counts"].items():
+        print(f"{cls:<28} {n}")
+    print(f"written     {json_path}")
+    print(f"written     {csv_path}")
+    return 0
+
+
 def load_gt_entries(path: str | Path) -> list[dict]:
     """Load and validate a ground-truth array for the annotate command."""
 
@@ -1481,6 +1550,24 @@ def add_subparsers(parser: argparse.ArgumentParser) -> None:
     )
     p.set_defaults(handler=cmd_forensics)
 
+
+    p = sub.add_parser(
+        "classify",
+        help="T3 per-event error table: mechanically defensible classes "
+        "only, UNKNOWN + evidence otherwise (Phase-2)",
+    )
+    p.add_argument(
+        "run_dir", help="run directory containing events.json"
+    )
+    p.add_argument(
+        "gt_json", help="ground-truth JSON (v2 canonical, v1 readable)"
+    )
+    p.add_argument(
+        "--out",
+        default=None,
+        help="output path base (default: <run-dir>/classify)",
+    )
+    p.set_defaults(handler=cmd_classify)
     p = sub.add_parser(
         "selftest",
         help="end-to-end run over the synthetic fixtures; raw values, no gates",
