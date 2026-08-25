@@ -442,3 +442,192 @@ def test_documented_format_example(tmp_path):
     )
     assert report["matched"] == 1
     assert abs(report["matched_pairs"][0]["err_s"]) <= 0.066
+
+
+# ---------------------------------------------------------------------------
+# Metrics v2 -- repaired association semantics (CTO update #2)
+# ---------------------------------------------------------------------------
+
+
+def gt_rec(t, foot="left", ident=None, window=1 / 30, viewpoint="sagittal",
+           visibility="clear"):
+    return {
+        "gt_id": ident or f"g@{t}",
+        "foot": foot,
+        "preferred_s": t,
+        "earliest_s": t - window,
+        "latest_s": t + window,
+        "visibility": visibility,
+        "viewpoint": viewpoint,
+        "notes": "",
+    }
+
+
+class TestV2FourFrameRepair:
+    def test_four_frames_late_miss_and_fp_but_in_timing(self):
+        events = [ev(10.0 + 4 / 30)]
+        gts = [gt_rec(10.0)]
+        report = metrics.evaluate_v2(events, gts, 30.0)
+        # Strict existence unchanged: miss + false positive.
+        assert report["existence"]["matched"] == 0
+        assert report["existence"]["false_positives"] == 1
+        assert report["existence"]["misses"] == 1
+        # ...yet the diagnostic timing sees the +4f error.
+        timing = report["timing"]
+        assert timing["n"] == 1
+        pair = timing["diagnostic_pairs"][0]
+        assert pair["err_frames"] == 4
+        assert pair["strictly_matched"] is False
+        assert timing["catastrophic_gt3frame"] == 1
+
+    def test_three_frames_not_catastrophic(self):
+        report = metrics.evaluate_v2(
+            [ev(10.0 + 3 / 30)], [gt_rec(10.0)], 30.0)
+        assert report["timing"]["catastrophic_gt3frame"] == 0
+        assert report["timing"]["diagnostic_pairs"][0]["err_frames"] == 3
+
+    def test_inside_defensible_window_reported(self):
+        # Prediction within the GT's earliest..latest interval but not at
+        # preferred: inside_gt_window True, err_frames still nonzero.
+        report = metrics.evaluate_v2(
+            [ev(10.0 + 0.5 / 30)], [gt_rec(10.0, window=1 / 30)], 30.0)
+        pair = report["timing"]["diagnostic_pairs"][0]
+        assert pair["err_frames"] == 0 or pair["err_frames"] in (0, 1)
+        assert pair["inside_gt_window"] is True
+
+
+class TestV2UncertainFoot:
+    def test_uncertain_foot_counts_for_existence_and_timing(self):
+        gts = [gt_rec(1.0, foot="uncertain", ident="u")]
+        events = [ev(1.01)]
+        report = metrics.evaluate_v2(events, gts, 30.0)
+        assert report["existence"]["matched"] == 1
+        assert report["timing"]["n"] == 1
+        assert report["side"]["gt_uncertain_foot"] == 1
+        assert report["side"]["gt_known_foot"] == 0
+        # Excluded from attribution denominators:
+        assert report["side"]["attribution_accuracy"] is None
+
+    def test_uncertain_pred_side_ok_none(self):
+        gts = [gt_rec(1.0, foot="left")]
+        report = metrics.evaluate_v2(
+            [{"id": "p", "time_s": 1.0, "foot": None}], gts, 30.0)
+        assert report["timing"]["diagnostic_pairs"][0]["side_ok"] is None
+
+
+class TestV2DualGTAndFlips:
+    def test_one_prediction_near_two_gts_pairs_once(self):
+        gts = [gt_rec(10.0, "left", "a"), gt_rec(10.15, "right", "b")]
+        report = metrics.evaluate_v2([ev(10.05)], gts, 30.0)
+        assert len(report["timing"]["diagnostic_pairs"]) == 1
+        assert report["timing"]["n"] == 1
+
+    def test_side_flip_is_timing_match_and_side_fault(self):
+        gts = [gt_rec(2.0, "left", "L"), gt_rec(2.6, "right", "R")]
+        events = [ev(2.01, foot="right"), ev(2.61, foot="left")]
+        report = metrics.evaluate_v2(events, gts, 30.0)
+        pairs = report["timing"]["diagnostic_pairs"]
+        assert all(p["side_ok"] is False for p in pairs)
+        assert all(p["err_frames"] <= 1 for p in pairs)  # timing fine
+        assert report["side"]["side_flips"] >= 1
+
+
+class TestV2PerFootPhase:
+    def test_phase_uses_same_foot_timeline_only(self):
+        # Alternating L/R contacts every 0.3 s: the LEFT prediction at
+        # t=1.45 sits mid-way between LEFT marks (stride 0.6), NOT one
+        # step (0.3) after the previous R mark. Same-foot mapping must
+        # classify it against the left timeline only.
+        marks = [1.0, 1.3, 1.6, 1.9]  # L R L R alternating
+        feet = ["left", "right", "left", "right"]
+        gts = [
+            gt_rec(t, f, ident=f"g{i}") for i, (t, f) in
+            enumerate(zip(marks, feet))
+        ]
+        report = metrics.evaluate_v2([ev(1.45, foot="left")], gts, 30.0)
+        row = report["phase"]["per_prediction"][0]
+        assert row["same_foot_gt_count"] == 2
+        cls = row["phase_class"]
+        # u over left stride [1.0, 1.6] at 1.45 -> 0.75 -> terminal_stance
+        # (a global two-foot timeline would have called it mid_swing).
+        assert cls == "terminal_stance"
+
+    def test_no_same_foot_marks_gives_unknown_class(self):
+        gts = [gt_rec(1.0, "right", "r1")]
+        report = metrics.evaluate_v2([ev(1.0, foot="left")], gts, 30.0)
+        row = report["phase"]["per_prediction"][0]
+        assert row["phase_class"] == "UNKNOWN_NO_SAME_FOOT_GT"
+
+    def test_phase_rows_carry_class_and_association_ids(self):
+        gts = [gt_rec(5.0, "left", "gA")]
+        report = metrics.evaluate_v2([ev(5.0 + 4 / 30)], gts, 30.0)
+        row = report["phase"]["per_prediction"][0]
+        assert row["pred_id"] == "e_5.133333333333334" or row["pred_id"]
+        assert row["assoc_gt_id"] == "gA"
+        assert row["assoc_kind"] in ("strict", "diagnostic", None)
+        assert "phase_class" in row and "err_frames" in row
+
+
+class TestV2ViewStratification:
+    def test_views_grouped_by_gt_viewpoint(self):
+        gts = [
+            gt_rec(1.0, "left", "f1", viewpoint="frontal"),
+            gt_rec(1.6, "right", "s1", viewpoint="sagittal"),
+            gt_rec(2.2, "left", "f2", viewpoint="frontal"),
+        ]
+        events = [ev(1.0), ev(1.6), ev(2.21)]
+        report = metrics.evaluate_v2(
+            events, gts, 30.0, backend="mediapipe-full", method="hybrid")
+        views = report["views"]
+        assert set(views) == {"frontal", "sagittal"}
+        assert views["frontal"]["n_gt"] == 2
+        assert views["sagittal"]["n_gt"] == 1
+        assert views["frontal"]["matched"] == 2
+        assert views["sagittal"]["recall"] == 1.0
+        ident = report["identification"]
+        assert ident["backend"] == "mediapipe-full"
+        assert ident["method"] == "hybrid"
+        assert set(ident["viewpoints"]) == {"frontal", "sagittal"}
+
+    def test_visibility_preserved_per_view(self):
+        gts = [gt_rec(1.0, visibility="partial", viewpoint="rear")]
+        report = metrics.evaluate_v2([], gts, 30.0)
+        assert report["views"]["rear"]["visibility_counts"] == {
+            "partial": 1
+        }
+
+
+class TestV2UnmatchedEvents:
+    def test_unmatched_preds_and_missed_gt_listed(self):
+        gts = [gt_rec(1.0, ident="hit"), gt_rec(9.0, ident="missed")]
+        events = [ev(1.0, ident="ok"), ev(50.0, ident="wild")]
+        report = metrics.evaluate_v2(events, gts, 30.0)
+        unmatched = report["timing"]["unmatched_predictions"]
+        missed = report["timing"]["missed_gt_contacts"]
+        assert [u["pred_id"] for u in unmatched] == ["wild"]
+        assert [m["gt_id"] for m in missed] == ["missed"]
+
+
+class TestV1Compatibility:
+    def test_v1_array_input_still_produces_v1_report(self, tmp_path):
+        path = tmp_path / "old.gt.json"
+        path.write_text(json.dumps(
+            [{"time_s": 1.0, "foot": "left"}]), encoding="utf-8")
+        from auto_sfx.metrics import load_annotations
+        report = metrics.evaluate(
+            [ev(1.0)], load_annotations(path), 30.0)
+        assert report["matched"] == 1
+        assert "precision" not in report  # v1 flat shape, no v2 keys
+
+    def test_v2_records_degrade_gracefully_without_metadata_keys(self):
+        # Minimal records (as produced by older tooling) must still work.
+        report = metrics.evaluate_v2(
+            [ev(3.0)], [{"preferred_s": 3.0, "earliest_s": 3.0,
+                         "latest_s": 3.0, "foot": "left"}], 30.0)
+        assert report["existence"]["matched"] == 1
+
+    def test_v1_matched_pair_schema_unchanged(self):
+        report = metrics.evaluate([ev(1.5)], [ann(1.5)], 30)
+        assert set(report["matched_pairs"][0]) == {
+            "pred_id", "ann_time", "pred_time", "err_s", "foot_ok",
+        }

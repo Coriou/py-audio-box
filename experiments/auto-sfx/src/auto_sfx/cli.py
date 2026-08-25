@@ -964,6 +964,8 @@ def evaluate_run_document(
             displayed_fps,
             tol_ms=None if tolerance_s is None else float(tolerance_s) * 1000.0,
             resources=resources,
+            backend=events_doc.get("backend"),
+            method=events_doc.get("contact_method"),
         )
         return report
 
