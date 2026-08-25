@@ -293,7 +293,7 @@ class TestAnalyzeHappyPath:
             seen["n_consumed"] = len(consumed or [])
             return fake_trace
 
-        def fake_detect(trace, method="hybrid", config=None):
+        def fake_detect(trace, method="hybrid", config=None, **kw):
             seen["method"] = method
             seen["config"] = config
             return ContactMethodResult(
@@ -387,7 +387,7 @@ class TestAnalyzeWithGroundTruth:
         )
         monkeypatch.setattr(
             cli, "detect_contacts",
-            lambda trace, method="hybrid", config=None:
+            lambda trace, method="hybrid", config=None, **kw:
                 ContactMethodResult(
                     events=[make_event(0.1, LEFT), make_event(0.25, RIGHT)],
                     diagnostics=[],
@@ -482,7 +482,7 @@ class TestAnalyzeEmptyTrace:
         # Contacts abstains silently -> the CLI must append its own interval.
         monkeypatch.setattr(
             cli, "detect_contacts",
-            lambda trace, method="hybrid", config=None: ContactMethodResult([], []),
+            lambda trace, method="hybrid", config=None, **kw: ContactMethodResult([], []),
         )
         monkeypatch.setattr(cli, "resolve_model_sha256", lambda backend: "f" * 64)
         monkeypatch.setattr(cli, "render_annotated", self._fake_render)
@@ -529,7 +529,7 @@ class TestCompareCommand:
 
         calls = []
 
-        def fake_detect(tr, method="hybrid", config=None):
+        def fake_detect(tr, method="hybrid", config=None, **kw):
             calls.append(method)
             events = ([make_event(0.1, LEFT)] if method != "pelvis"
                       else [make_event(0.1, LEFT), make_event(0.35, RIGHT)])

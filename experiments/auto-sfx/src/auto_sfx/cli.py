@@ -638,6 +638,7 @@ def analyze_pipeline(
                     "config overrides: "
                     + ", ".join(f"{k}={v!r}" for k, v in sorted(overrides.items()))
                 )
+            config = build_contact_config(contact, shot_boundaries, overrides)
             result = detect_contacts(trace, contact, config=config,
                                      record_trace=True)
         pose_lost = ensure_pose_lost_diagnostic(result, trace, meta)
