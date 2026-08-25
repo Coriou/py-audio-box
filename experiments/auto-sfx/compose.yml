@@ -1,0 +1,17 @@
+services:
+  auto-sfx:
+    build:
+      context: .
+    image: pab-auto-sfx:latest
+    init: true
+    working_dir: /app
+    environment:
+      PYTHONPATH: /app/src
+      OMP_NUM_THREADS: "6"
+      AUTO_SFX_THREADS: "6"
+      # MediaPipe/ONNX thread hygiene; avoid 12-way oversubscription on the
+      # 6-core host during multi-stage runs.
+      ORT_NUM_THREADS: "6"
+    volumes:
+      - ../../work:/work
+      - ../../cache:/cache

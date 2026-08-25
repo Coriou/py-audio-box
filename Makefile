@@ -476,3 +476,19 @@ test-local-cv:  ## CustomVoice suites: direct speaker, instruct, styles, registe
 help:  ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*##' $(MAKEFILE_LIST) \
 	  | awk 'BEGIN {FS = ":.*## "}; {printf "  \033[36m%-24s\033[0m %s\n", $$1, $$2}'
+
+# ── auto-sfx POC (experiments/auto-sfx) ───────────────────────────────────────
+
+.PHONY: auto-sfx-build
+auto-sfx-build:  ## Build the auto-sfx POC image
+	cd experiments/auto-sfx && docker build -t pab-auto-sfx:latest .
+
+.PHONY: auto-sfx-test
+auto-sfx-test:  ## Run auto-sfx POC pytest suite inside the container (src/tests mounted read-only; tests/ is dockerignored)
+	cd experiments/auto-sfx && docker compose run --rm \
+		-v "$$PWD/src:/app/src:ro" -v "$$PWD/tests:/app/tests:ro" \
+		--entrypoint "python -m pytest" auto-sfx tests -q
+
+.PHONY: auto-sfx-selftest
+auto-sfx-selftest:  ## Environment/resource selftest for the POC image
+	./experiments/auto-sfx/run selftest

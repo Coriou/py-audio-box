@@ -1,0 +1,17 @@
+#!/usr/bin/env bash
+# auto-sfx POC runner: builds the image on demand, then execs the CLI.
+#
+#   experiments/auto-sfx/run analyze /work/auto-sfx/walk.mp4 --pose mediapipe-full --contact hybrid
+#   experiments/auto-sfx/run compare /work/auto-sfx/walk.mp4
+#   experiments/auto-sfx/run selftest
+set -euo pipefail
+cd "$(dirname "$0")"
+
+IMAGE="${AUTO_SFX_IMAGE:-pab-auto-sfx:latest}"
+if ! docker image inspect "$IMAGE" >/dev/null 2>&1; then
+  echo "[auto-sfx] building ${IMAGE} ..." >&2
+  docker build -t "$IMAGE" .
+fi
+
+mkdir -p ../work/auto-sfx ../cache/auto-sfx
+exec docker compose run --rm auto-sfx "$@"
