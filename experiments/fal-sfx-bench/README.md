@@ -30,6 +30,9 @@ byte-identical output at the same seed) — no AC-V2A via fal; upstream
 ControlFoley's reference-audio conditioning (AC-V2A) requires the local
 weights or the official HF Space.
 
+Next architecture step (timing-oracle × SFX-bank retrieval pipeline): see
+`docs/sfx-bank-foley-pipeline-poc.md`.
+
 ## Methodology
 
 - **Identical bytes per case.** `prepare_inputs.py` builds five silent h264
