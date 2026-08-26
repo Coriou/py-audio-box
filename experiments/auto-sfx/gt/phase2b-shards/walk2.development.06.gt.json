@@ -1,0 +1,93 @@
+{
+  "schema_version": 2,
+  "clip": "walk2.webm",
+  "range_s": {
+    "start": 37.06666666666667,
+    "end": 40.86666666666667
+  },
+  "annotator": "agent-draft adjudication from independent raw-only passes A/B; NOT operator verified; frozen-development-shard",
+  "fps_display": 30.0,
+  "contacts": [
+    {
+      "foot": "left",
+      "earliest_pts_us": 37400000,
+      "preferred_pts_us": 37500000,
+      "latest_pts_us": 37533333,
+      "visibility": "clear",
+      "viewpoint": "sagittal",
+      "notes": "agent-draft only; pass A/B raw union"
+    },
+    {
+      "foot": "right",
+      "earliest_pts_us": 37866667,
+      "preferred_pts_us": 37900000,
+      "latest_pts_us": 37966667,
+      "visibility": "clear",
+      "viewpoint": "sagittal",
+      "notes": "agent-draft only; pass A/B agree within one frame"
+    },
+    {
+      "foot": "left",
+      "earliest_pts_us": 38300000,
+      "preferred_pts_us": 38333333,
+      "latest_pts_us": 38466667,
+      "visibility": "clear",
+      "viewpoint": "sagittal",
+      "notes": "agent-draft only; pass A/B raw union"
+    },
+    {
+      "foot": "right",
+      "earliest_pts_us": 38700000,
+      "preferred_pts_us": 38733333,
+      "latest_pts_us": 38866667,
+      "visibility": "clear",
+      "viewpoint": "sagittal",
+      "notes": "agent-draft only; pass A/B raw union"
+    },
+    {
+      "foot": "left",
+      "earliest_pts_us": 39133333,
+      "preferred_pts_us": 39166667,
+      "latest_pts_us": 39200000,
+      "visibility": "clear",
+      "viewpoint": "sagittal",
+      "notes": "agent-draft only; pass A walk/jog IC; pass B omitted this phase"
+    },
+    {
+      "foot": "right",
+      "earliest_pts_us": 39533333,
+      "preferred_pts_us": 39600000,
+      "latest_pts_us": 39633333,
+      "visibility": "clear",
+      "viewpoint": "sagittal",
+      "notes": "agent-draft only; pass A/B agree within one frame"
+    },
+    {
+      "foot": "left",
+      "earliest_pts_us": 39900000,
+      "preferred_pts_us": 39966667,
+      "latest_pts_us": 40000000,
+      "visibility": "clear",
+      "viewpoint": "sagittal",
+      "notes": "agent-draft only; pass A/B agree within one frame"
+    },
+    {
+      "foot": "right",
+      "earliest_pts_us": 40233333,
+      "preferred_pts_us": 40333333,
+      "latest_pts_us": 40366667,
+      "visibility": "clear",
+      "viewpoint": "sagittal",
+      "notes": "agent-draft only; pass A/B raw union"
+    },
+    {
+      "foot": "left",
+      "earliest_pts_us": 40633333,
+      "preferred_pts_us": 40666667,
+      "latest_pts_us": 40800000,
+      "visibility": "clear",
+      "viewpoint": "sagittal",
+      "notes": "agent-draft only; pass A/B raw union"
+    }
+  ]
+}

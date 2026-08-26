@@ -1,0 +1,39 @@
+{
+  "schema_version": 2,
+  "clip": "walk2.webm",
+  "range_s": {
+    "start": 17.566666666666666,
+    "end": 20.4
+  },
+  "annotator": "agent-draft adjudication from independent raw-only passes A/B; NOT operator verified; frozen-validation-shard",
+  "fps_display": 30.0,
+  "contacts": [
+    {
+      "foot": "uncertain",
+      "earliest_pts_us": 18000000,
+      "preferred_pts_us": 18033333,
+      "latest_pts_us": 18066667,
+      "visibility": "clear",
+      "viewpoint": "sagittal",
+      "notes": "agent-draft only; pass B raw IC; pass A inspected but omitted this redundant sequence"
+    },
+    {
+      "foot": "uncertain",
+      "earliest_pts_us": 18766667,
+      "preferred_pts_us": 18800000,
+      "latest_pts_us": 18833333,
+      "visibility": "clear",
+      "viewpoint": "sagittal",
+      "notes": "agent-draft only; pass B raw IC; anatomical depth not anchored"
+    },
+    {
+      "foot": "uncertain",
+      "earliest_pts_us": 19600000,
+      "preferred_pts_us": 19633333,
+      "latest_pts_us": 19666667,
+      "visibility": "clear",
+      "viewpoint": "sagittal",
+      "notes": "agent-draft only; pass B raw IC; anatomical depth not anchored"
+    }
+  ]
+}

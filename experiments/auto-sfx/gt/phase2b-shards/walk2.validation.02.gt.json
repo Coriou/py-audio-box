@@ -1,0 +1,66 @@
+{
+  "schema_version": 2,
+  "clip": "walk2.webm",
+  "range_s": {
+    "start": 10.6,
+    "end": 13.433333333333334
+  },
+  "annotator": "agent-draft adjudication from independent raw-only passes A/B; NOT operator verified; frozen-validation-shard",
+  "fps_display": 30.0,
+  "contacts": [
+    {
+      "foot": "right",
+      "earliest_pts_us": 10733333,
+      "preferred_pts_us": 10866667,
+      "latest_pts_us": 10900000,
+      "visibility": "clear",
+      "viewpoint": "frontal",
+      "notes": "agent-draft only; pass A/B raw disagreement union 322-327"
+    },
+    {
+      "foot": "left",
+      "earliest_pts_us": 11233333,
+      "preferred_pts_us": 11366667,
+      "latest_pts_us": 11400000,
+      "visibility": "clear",
+      "viewpoint": "frontal",
+      "notes": "agent-draft only; pass A/B raw disagreement union 337-342"
+    },
+    {
+      "foot": "right",
+      "earliest_pts_us": 11766667,
+      "preferred_pts_us": 11900000,
+      "latest_pts_us": 11933333,
+      "visibility": "clear",
+      "viewpoint": "frontal",
+      "notes": "agent-draft only; pass A/B raw disagreement union 353-358"
+    },
+    {
+      "foot": "left",
+      "earliest_pts_us": 12200000,
+      "preferred_pts_us": 12400000,
+      "latest_pts_us": 12433333,
+      "visibility": "partial",
+      "viewpoint": "frontal",
+      "notes": "agent-draft only; pass A/B differ by four frames; full raw uncertainty retained"
+    },
+    {
+      "foot": "right",
+      "earliest_pts_us": 12766667,
+      "preferred_pts_us": 12866667,
+      "latest_pts_us": 12900000,
+      "visibility": "clear",
+      "viewpoint": "frontal",
+      "notes": "agent-draft only; pass A/B agree within one frame"
+    },
+    {
+      "foot": "left",
+      "earliest_pts_us": 13333333,
+      "preferred_pts_us": 13433333,
+      "latest_pts_us": 13466667,
+      "visibility": "clear",
+      "viewpoint": "frontal",
+      "notes": "agent-draft only; pass A/B agree within one frame"
+    }
+  ]
+}

@@ -505,6 +505,7 @@ class TestV2UncertainFoot:
         assert report["timing"]["n"] == 1
         assert report["side"]["gt_uncertain_foot"] == 1
         assert report["side"]["gt_known_foot"] == 0
+        assert report["side"]["strict_known_side_matches"] == 0
         # Excluded from attribution denominators:
         assert report["side"]["attribution_accuracy"] is None
 
@@ -530,6 +531,7 @@ class TestV2DualGTAndFlips:
         assert all(p["side_ok"] is False for p in pairs)
         assert all(p["err_frames"] <= 1 for p in pairs)  # timing fine
         assert report["side"]["side_flips"] >= 1
+        assert report["side"]["strict_known_side_matches"] == 2
 
 
 class TestV2PerFootPhase:

@@ -1,0 +1,21 @@
+{
+  "schema_version": 2,
+  "clip": "walk2.webm",
+  "range_s": {
+    "start": 6.633333333333334,
+    "end": 8.433333333333334
+  },
+  "annotator": "agent-draft adjudication from independent raw-only passes A/B; NOT operator verified; frozen-validation-shard",
+  "fps_display": 30.0,
+  "contacts": [
+    {
+      "foot": "right",
+      "earliest_pts_us": 7133333,
+      "preferred_pts_us": 7200000,
+      "latest_pts_us": 7333333,
+      "visibility": "clear",
+      "viewpoint": "sagittal",
+      "notes": "agent-draft only; pass A preferred 215, pass B preferred 218; slow-motion turf compression union window"
+    }
+  ]
+}

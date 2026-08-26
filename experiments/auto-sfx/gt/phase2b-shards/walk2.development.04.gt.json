@@ -1,0 +1,21 @@
+{
+  "schema_version": 2,
+  "clip": "walk2.webm",
+  "range_s": {
+    "start": 23.566666666666666,
+    "end": 26.433333333333334
+  },
+  "annotator": "agent-draft adjudication from independent raw-only passes A/B; NOT operator verified; frozen-development-shard",
+  "fps_display": 30.0,
+  "contacts": [
+    {
+      "foot": "uncertain",
+      "earliest_pts_us": 26133333,
+      "preferred_pts_us": 26200000,
+      "latest_pts_us": 26266667,
+      "visibility": "clear",
+      "viewpoint": "sagittal",
+      "notes": "agent-draft only; pass B slow-motion IC; pass A omitted sequence as redundant"
+    }
+  ]
+}

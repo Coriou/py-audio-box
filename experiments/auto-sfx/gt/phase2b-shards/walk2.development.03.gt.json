@@ -1,0 +1,39 @@
+{
+  "schema_version": 2,
+  "clip": "walk2.webm",
+  "range_s": {
+    "start": 13.6,
+    "end": 15.4
+  },
+  "annotator": "agent-draft adjudication from independent raw-only passes A/B; NOT operator verified; frozen-development-shard",
+  "fps_display": 30.0,
+  "contacts": [
+    {
+      "foot": "right",
+      "earliest_pts_us": 13900000,
+      "preferred_pts_us": 13933333,
+      "latest_pts_us": 14066667,
+      "visibility": "partial",
+      "viewpoint": "rear",
+      "notes": "agent-draft only; pass A/B raw union; self-occlusion"
+    },
+    {
+      "foot": "left",
+      "earliest_pts_us": 14466667,
+      "preferred_pts_us": 14500000,
+      "latest_pts_us": 14600000,
+      "visibility": "partial",
+      "viewpoint": "rear",
+      "notes": "agent-draft only; pass A/B raw union; departing depth uncertainty"
+    },
+    {
+      "foot": "right",
+      "earliest_pts_us": 15000000,
+      "preferred_pts_us": 15033333,
+      "latest_pts_us": 15200000,
+      "visibility": "partial",
+      "viewpoint": "rear",
+      "notes": "agent-draft only; pass A/B raw union; departing depth uncertainty"
+    }
+  ]
+}

@@ -1,0 +1,39 @@
+{
+  "schema_version": 2,
+  "clip": "walk2.webm",
+  "range_s": {
+    "start": 20.566666666666666,
+    "end": 23.4
+  },
+  "annotator": "agent-draft adjudication from independent raw-only passes A/B; NOT operator verified; frozen-validation-shard",
+  "fps_display": 30.0,
+  "contacts": [
+    {
+      "foot": "uncertain",
+      "earliest_pts_us": 21366667,
+      "preferred_pts_us": 21433333,
+      "latest_pts_us": 21500000,
+      "visibility": "partial",
+      "viewpoint": "rear",
+      "notes": "agent-draft only; pass B raw IC; pass A omitted sequence; departing depth window"
+    },
+    {
+      "foot": "uncertain",
+      "earliest_pts_us": 22266667,
+      "preferred_pts_us": 22333333,
+      "latest_pts_us": 22400000,
+      "visibility": "partial",
+      "viewpoint": "rear",
+      "notes": "agent-draft only; pass B raw IC; pass A omitted sequence; departing depth window"
+    },
+    {
+      "foot": "uncertain",
+      "earliest_pts_us": 23166667,
+      "preferred_pts_us": 23233333,
+      "latest_pts_us": 23300000,
+      "visibility": "partial",
+      "viewpoint": "rear",
+      "notes": "agent-draft only; pass B raw IC; pass A omitted sequence; departing depth window"
+    }
+  ]
+}

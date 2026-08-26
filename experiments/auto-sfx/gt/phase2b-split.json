@@ -1,0 +1,39 @@
+{
+  "schema_version": 1,
+  "created": "2026-08-25",
+  "provenance": "Frozen from raw-video shot/range inspection before either independent contact-mark table was available and before GT-guided tuning.",
+  "fps_display": 30.0,
+  "boundary_guard_frames": 2,
+  "boundary_guard_policy": "Symmetrically censor two displayed frames at every shard edge, matching the maximum agent-draft uncertainty radius. The development/validation assignments remain frozen; contacts whose preferred frame falls in the censored band are not acceptance evidence.",
+  "policy": "Alternating temporal blocks for walk1 and alternating useful shot/viewpoint sequences for walk2. Ranges are half-open [start_frame,end_frame).",
+  "clips": {
+    "walk1.mp4": {
+      "development": [
+        {"start_frame": 0, "end_frame": 267},
+        {"start_frame": 534, "end_frame": 801}
+      ],
+      "validation": [
+        {"start_frame": 267, "end_frame": 534},
+        {"start_frame": 801, "end_frame": 1067}
+      ]
+    },
+    "walk2.webm": {
+      "development": [
+        {"start_frame": 0, "end_frame": 61, "viewpoint": "frontal"},
+        {"start_frame": 136, "end_frame": 196, "viewpoint": "sagittal"},
+        {"start_frame": 406, "end_frame": 465, "viewpoint": "rear"},
+        {"start_frame": 705, "end_frame": 796, "viewpoint": "sagittal"},
+        {"start_frame": 1048, "end_frame": 1110, "viewpoint": "frontal"},
+        {"start_frame": 1110, "end_frame": 1229, "viewpoint": "sagittal"}
+      ],
+      "validation": [
+        {"start_frame": 197, "end_frame": 256, "viewpoint": "sagittal"},
+        {"start_frame": 316, "end_frame": 406, "viewpoint": "frontal"},
+        {"start_frame": 525, "end_frame": 615, "viewpoint": "sagittal"},
+        {"start_frame": 615, "end_frame": 705, "viewpoint": "rear"},
+        {"start_frame": 958, "end_frame": 1048, "viewpoint": "uncertain"},
+        {"start_frame": 1229, "end_frame": 1348, "viewpoint": "sagittal"}
+      ]
+    }
+  }
+}

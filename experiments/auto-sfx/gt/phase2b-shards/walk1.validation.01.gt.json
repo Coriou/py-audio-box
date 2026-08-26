@@ -1,0 +1,102 @@
+{
+  "schema_version": 2,
+  "clip": "walk1.mp4",
+  "range_s": {
+    "start": 8.966666666666667,
+    "end": 17.7
+  },
+  "annotator": "agent-draft adjudication from raw-only recovery semantic audit; NOT operator verified; frozen-validation-shard",
+  "fps_display": 30.0,
+  "contacts": [
+    {
+      "foot": "uncertain",
+      "earliest_pts_us": 9466667,
+      "preferred_pts_us": 9500000,
+      "latest_pts_us": 9533333,
+      "visibility": "partial",
+      "viewpoint": "sagittal",
+      "notes": "raw semantic audit moved preferred from 280 to first defensible forward-foot ground touch at 285"
+    },
+    {
+      "foot": "uncertain",
+      "earliest_pts_us": 10366667,
+      "preferred_pts_us": 10400000,
+      "latest_pts_us": 10433333,
+      "visibility": "clear",
+      "viewpoint": "sagittal",
+      "notes": "raw semantic audit moved preferred from 310 to first defensible forward-foot ground touch at 312"
+    },
+    {
+      "foot": "uncertain",
+      "earliest_pts_us": 11266667,
+      "preferred_pts_us": 11300000,
+      "latest_pts_us": 11333333,
+      "visibility": "clear",
+      "viewpoint": "sagittal",
+      "notes": "raw semantic audit moved preferred from 338 to first defensible forward-foot ground touch at 339"
+    },
+    {
+      "foot": "uncertain",
+      "earliest_pts_us": 12100000,
+      "preferred_pts_us": 12133333,
+      "latest_pts_us": 12166667,
+      "visibility": "clear",
+      "viewpoint": "sagittal",
+      "notes": "raw semantic audit moved preferred from 362 to first defensible forward-foot ground touch at 364"
+    },
+    {
+      "foot": "uncertain",
+      "earliest_pts_us": 12933333,
+      "preferred_pts_us": 12966667,
+      "latest_pts_us": 13000000,
+      "visibility": "clear",
+      "viewpoint": "sagittal",
+      "notes": "raw semantic audit moved preferred from 388 to first defensible forward-foot ground touch at 389"
+    },
+    {
+      "foot": "uncertain",
+      "earliest_pts_us": 13666667,
+      "preferred_pts_us": 13700000,
+      "latest_pts_us": 13733333,
+      "visibility": "clear",
+      "viewpoint": "sagittal",
+      "notes": "raw semantic audit moved preferred from 412 to first defensible forward-foot ground touch at 411"
+    },
+    {
+      "foot": "uncertain",
+      "earliest_pts_us": 14666667,
+      "preferred_pts_us": 14700000,
+      "latest_pts_us": 14733333,
+      "visibility": "clear",
+      "viewpoint": "sagittal",
+      "notes": "raw semantic audit moved preferred from 440 to first defensible forward-foot ground touch at 441"
+    },
+    {
+      "foot": "uncertain",
+      "earliest_pts_us": 15566667,
+      "preferred_pts_us": 15600000,
+      "latest_pts_us": 15633333,
+      "visibility": "clear",
+      "viewpoint": "sagittal",
+      "notes": "raw semantic audit retained preferred as first defensible forward-foot ground touch"
+    },
+    {
+      "foot": "uncertain",
+      "earliest_pts_us": 16400000,
+      "preferred_pts_us": 16433333,
+      "latest_pts_us": 16466667,
+      "visibility": "clear",
+      "viewpoint": "sagittal",
+      "notes": "raw semantic audit moved preferred from 492 to first defensible forward-foot ground touch at 493"
+    },
+    {
+      "foot": "uncertain",
+      "earliest_pts_us": 17266667,
+      "preferred_pts_us": 17300000,
+      "latest_pts_us": 17333333,
+      "visibility": "clear",
+      "viewpoint": "sagittal",
+      "notes": "raw semantic audit moved preferred from 518 to first defensible forward-foot ground touch at 519"
+    }
+  ]
+}

@@ -1,0 +1,111 @@
+{
+  "schema_version": 2,
+  "clip": "walk2.webm",
+  "range_s": {
+    "start": 41.03333333333333,
+    "end": 44.833333333333336
+  },
+  "annotator": "agent-draft adjudication from independent raw-only passes A/B; NOT operator verified; frozen-validation-shard",
+  "fps_display": 30.0,
+  "contacts": [
+    {
+      "foot": "left",
+      "earliest_pts_us": 41266667,
+      "preferred_pts_us": 41366667,
+      "latest_pts_us": 41400000,
+      "visibility": "clear",
+      "viewpoint": "sagittal",
+      "notes": "agent-draft only; pass A/B raw union"
+    },
+    {
+      "foot": "right",
+      "earliest_pts_us": 41666667,
+      "preferred_pts_us": 41700000,
+      "latest_pts_us": 41733333,
+      "visibility": "clear",
+      "viewpoint": "sagittal",
+      "notes": "agent-draft only; independent passes agree"
+    },
+    {
+      "foot": "left",
+      "earliest_pts_us": 42033333,
+      "preferred_pts_us": 42066667,
+      "latest_pts_us": 42133333,
+      "visibility": "clear",
+      "viewpoint": "sagittal",
+      "notes": "agent-draft only; pass A/B agree within one frame"
+    },
+    {
+      "foot": "right",
+      "earliest_pts_us": 42366667,
+      "preferred_pts_us": 42400000,
+      "latest_pts_us": 42533333,
+      "visibility": "clear",
+      "viewpoint": "sagittal",
+      "notes": "agent-draft only; pass A/B raw union"
+    },
+    {
+      "foot": "left",
+      "earliest_pts_us": 42700000,
+      "preferred_pts_us": 42733333,
+      "latest_pts_us": 42766667,
+      "visibility": "partial",
+      "viewpoint": "sagittal",
+      "notes": "agent-draft only; pass A running IC; pass B omitted amid blur"
+    },
+    {
+      "foot": "right",
+      "earliest_pts_us": 43133333,
+      "preferred_pts_us": 43166667,
+      "latest_pts_us": 43200000,
+      "visibility": "clear",
+      "viewpoint": "sagittal",
+      "notes": "agent-draft only; independent passes agree"
+    },
+    {
+      "foot": "left",
+      "earliest_pts_us": 43466667,
+      "preferred_pts_us": 43500000,
+      "latest_pts_us": 43533333,
+      "visibility": "clear",
+      "viewpoint": "sagittal",
+      "notes": "agent-draft only; independent passes agree"
+    },
+    {
+      "foot": "right",
+      "earliest_pts_us": 43800000,
+      "preferred_pts_us": 43833333,
+      "latest_pts_us": 43900000,
+      "visibility": "clear",
+      "viewpoint": "sagittal",
+      "notes": "agent-draft only; pass A/B agree within one frame"
+    },
+    {
+      "foot": "left",
+      "earliest_pts_us": 44133333,
+      "preferred_pts_us": 44166667,
+      "latest_pts_us": 44266667,
+      "visibility": "clear",
+      "viewpoint": "sagittal",
+      "notes": "agent-draft only; pass A/B raw union"
+    },
+    {
+      "foot": "right",
+      "earliest_pts_us": 44466667,
+      "preferred_pts_us": 44500000,
+      "latest_pts_us": 44633333,
+      "visibility": "clear",
+      "viewpoint": "sagittal",
+      "notes": "agent-draft only; pass A/B raw union"
+    },
+    {
+      "foot": "left",
+      "earliest_pts_us": 44800000,
+      "preferred_pts_us": 44833333,
+      "latest_pts_us": 44866667,
+      "visibility": "partial",
+      "viewpoint": "sagittal",
+      "notes": "agent-draft only; pass A final complete IC; pass B omitted terminal event"
+    }
+  ]
+}

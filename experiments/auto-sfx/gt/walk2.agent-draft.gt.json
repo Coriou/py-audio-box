@@ -1,0 +1,498 @@
+{
+  "schema_version": 2,
+  "clip": "walk2.webm",
+  "range_s": {
+    "start": 0.0,
+    "end": 44.93333333333333
+  },
+  "annotator": "agent-draft adjudication from independent raw-only passes A/B; NOT operator verified",
+  "fps_display": 30.0,
+  "contacts": [
+    {
+      "foot": "right",
+      "earliest_pts_us": 433333,
+      "preferred_pts_us": 566667,
+      "latest_pts_us": 600000,
+      "visibility": "clear",
+      "viewpoint": "frontal",
+      "notes": "agent-draft only; pass A preferred 17, pass B preferred 14; raw union window retained"
+    },
+    {
+      "foot": "left",
+      "earliest_pts_us": 1000000,
+      "preferred_pts_us": 1133333,
+      "latest_pts_us": 1166667,
+      "visibility": "clear",
+      "viewpoint": "frontal",
+      "notes": "agent-draft only; pass A preferred 34, pass B preferred 31; raw union window retained"
+    },
+    {
+      "foot": "right",
+      "earliest_pts_us": 1533333,
+      "preferred_pts_us": 1733333,
+      "latest_pts_us": 1766667,
+      "visibility": "partial",
+      "viewpoint": "frontal",
+      "notes": "agent-draft only; pass A preferred 52, pass B preferred 48; foreshortened raw disagreement retained"
+    },
+    {
+      "foot": "right",
+      "earliest_pts_us": 4533333,
+      "preferred_pts_us": 4566667,
+      "latest_pts_us": 4633333,
+      "visibility": "clear",
+      "viewpoint": "sagittal",
+      "notes": "agent-draft only; root raw adjudication: shot-opening heel contact from pass B, not pass A's frame-152 toe-off-phase mark"
+    },
+    {
+      "foot": "left",
+      "earliest_pts_us": 6000000,
+      "preferred_pts_us": 6033333,
+      "latest_pts_us": 6066667,
+      "visibility": "clear",
+      "viewpoint": "sagittal",
+      "notes": "agent-draft only; pass A IC retained; pass B frame-164 row is swing-phase, not ground contact"
+    },
+    {
+      "foot": "right",
+      "earliest_pts_us": 7133333,
+      "preferred_pts_us": 7200000,
+      "latest_pts_us": 7333333,
+      "visibility": "clear",
+      "viewpoint": "sagittal",
+      "notes": "agent-draft only; pass A preferred 215, pass B preferred 218; slow-motion turf compression union window"
+    },
+    {
+      "foot": "right",
+      "earliest_pts_us": 10733333,
+      "preferred_pts_us": 10866667,
+      "latest_pts_us": 10900000,
+      "visibility": "clear",
+      "viewpoint": "frontal",
+      "notes": "agent-draft only; pass A/B raw disagreement union 322-327"
+    },
+    {
+      "foot": "left",
+      "earliest_pts_us": 11233333,
+      "preferred_pts_us": 11366667,
+      "latest_pts_us": 11400000,
+      "visibility": "clear",
+      "viewpoint": "frontal",
+      "notes": "agent-draft only; pass A/B raw disagreement union 337-342"
+    },
+    {
+      "foot": "right",
+      "earliest_pts_us": 11766667,
+      "preferred_pts_us": 11900000,
+      "latest_pts_us": 11933333,
+      "visibility": "clear",
+      "viewpoint": "frontal",
+      "notes": "agent-draft only; pass A/B raw disagreement union 353-358"
+    },
+    {
+      "foot": "left",
+      "earliest_pts_us": 12200000,
+      "preferred_pts_us": 12400000,
+      "latest_pts_us": 12433333,
+      "visibility": "partial",
+      "viewpoint": "frontal",
+      "notes": "agent-draft only; pass A/B differ by four frames; full raw uncertainty retained"
+    },
+    {
+      "foot": "right",
+      "earliest_pts_us": 12766667,
+      "preferred_pts_us": 12866667,
+      "latest_pts_us": 12900000,
+      "visibility": "clear",
+      "viewpoint": "frontal",
+      "notes": "agent-draft only; pass A/B agree within one frame"
+    },
+    {
+      "foot": "left",
+      "earliest_pts_us": 13333333,
+      "preferred_pts_us": 13433333,
+      "latest_pts_us": 13466667,
+      "visibility": "clear",
+      "viewpoint": "frontal",
+      "notes": "agent-draft only; pass A/B agree within one frame"
+    },
+    {
+      "foot": "right",
+      "earliest_pts_us": 13900000,
+      "preferred_pts_us": 13933333,
+      "latest_pts_us": 14066667,
+      "visibility": "partial",
+      "viewpoint": "rear",
+      "notes": "agent-draft only; pass A/B raw union; self-occlusion"
+    },
+    {
+      "foot": "left",
+      "earliest_pts_us": 14466667,
+      "preferred_pts_us": 14500000,
+      "latest_pts_us": 14600000,
+      "visibility": "partial",
+      "viewpoint": "rear",
+      "notes": "agent-draft only; pass A/B raw union; departing depth uncertainty"
+    },
+    {
+      "foot": "right",
+      "earliest_pts_us": 15000000,
+      "preferred_pts_us": 15033333,
+      "latest_pts_us": 15200000,
+      "visibility": "partial",
+      "viewpoint": "rear",
+      "notes": "agent-draft only; pass A/B raw union; departing depth uncertainty"
+    },
+    {
+      "foot": "uncertain",
+      "earliest_pts_us": 18000000,
+      "preferred_pts_us": 18033333,
+      "latest_pts_us": 18066667,
+      "visibility": "clear",
+      "viewpoint": "sagittal",
+      "notes": "agent-draft only; pass B raw IC; pass A inspected but omitted this redundant sequence"
+    },
+    {
+      "foot": "uncertain",
+      "earliest_pts_us": 18766667,
+      "preferred_pts_us": 18800000,
+      "latest_pts_us": 18833333,
+      "visibility": "clear",
+      "viewpoint": "sagittal",
+      "notes": "agent-draft only; pass B raw IC; anatomical depth not anchored"
+    },
+    {
+      "foot": "uncertain",
+      "earliest_pts_us": 19600000,
+      "preferred_pts_us": 19633333,
+      "latest_pts_us": 19666667,
+      "visibility": "clear",
+      "viewpoint": "sagittal",
+      "notes": "agent-draft only; pass B raw IC; anatomical depth not anchored"
+    },
+    {
+      "foot": "uncertain",
+      "earliest_pts_us": 21366667,
+      "preferred_pts_us": 21433333,
+      "latest_pts_us": 21500000,
+      "visibility": "partial",
+      "viewpoint": "rear",
+      "notes": "agent-draft only; pass B raw IC; pass A omitted sequence; departing depth window"
+    },
+    {
+      "foot": "uncertain",
+      "earliest_pts_us": 22266667,
+      "preferred_pts_us": 22333333,
+      "latest_pts_us": 22400000,
+      "visibility": "partial",
+      "viewpoint": "rear",
+      "notes": "agent-draft only; pass B raw IC; pass A omitted sequence; departing depth window"
+    },
+    {
+      "foot": "uncertain",
+      "earliest_pts_us": 23166667,
+      "preferred_pts_us": 23233333,
+      "latest_pts_us": 23300000,
+      "visibility": "partial",
+      "viewpoint": "rear",
+      "notes": "agent-draft only; pass B raw IC; pass A omitted sequence; departing depth window"
+    },
+    {
+      "foot": "uncertain",
+      "earliest_pts_us": 26133333,
+      "preferred_pts_us": 26200000,
+      "latest_pts_us": 26266667,
+      "visibility": "clear",
+      "viewpoint": "sagittal",
+      "notes": "agent-draft only; pass B slow-motion IC; pass A omitted sequence as redundant"
+    },
+    {
+      "foot": "uncertain",
+      "earliest_pts_us": 32100000,
+      "preferred_pts_us": 32166667,
+      "latest_pts_us": 32233333,
+      "visibility": "partial",
+      "viewpoint": "uncertain",
+      "notes": "agent-draft only; pass B inferred settling; pass A found contact weakly defensible; raw-viewpoint-label=overhead"
+    },
+    {
+      "foot": "uncertain",
+      "earliest_pts_us": 32666667,
+      "preferred_pts_us": 32733333,
+      "latest_pts_us": 32800000,
+      "visibility": "partial",
+      "viewpoint": "uncertain",
+      "notes": "agent-draft only; pass B inferred settling; weak height evidence; raw-viewpoint-label=overhead"
+    },
+    {
+      "foot": "uncertain",
+      "earliest_pts_us": 33266667,
+      "preferred_pts_us": 33333333,
+      "latest_pts_us": 33400000,
+      "visibility": "partial",
+      "viewpoint": "uncertain",
+      "notes": "agent-draft only; pass B inferred settling; weak height evidence; raw-viewpoint-label=overhead"
+    },
+    {
+      "foot": "uncertain",
+      "earliest_pts_us": 33733333,
+      "preferred_pts_us": 33800000,
+      "latest_pts_us": 33866667,
+      "visibility": "partial",
+      "viewpoint": "uncertain",
+      "notes": "agent-draft only; pass B inferred settling; weak height evidence; raw-viewpoint-label=overhead"
+    },
+    {
+      "foot": "uncertain",
+      "earliest_pts_us": 34366667,
+      "preferred_pts_us": 34433333,
+      "latest_pts_us": 34500000,
+      "visibility": "partial",
+      "viewpoint": "uncertain",
+      "notes": "agent-draft only; pass B inferred settling; weak height evidence; raw-viewpoint-label=overhead"
+    },
+    {
+      "foot": "uncertain",
+      "earliest_pts_us": 34766667,
+      "preferred_pts_us": 34833333,
+      "latest_pts_us": 34900000,
+      "visibility": "partial",
+      "viewpoint": "uncertain",
+      "notes": "agent-draft only; pass B inferred settling at range boundary; weak height evidence; raw-viewpoint-label=overhead"
+    },
+    {
+      "foot": "left",
+      "earliest_pts_us": 34966667,
+      "preferred_pts_us": 35000000,
+      "latest_pts_us": 35033333,
+      "visibility": "clear",
+      "viewpoint": "frontal",
+      "notes": "agent-draft only; pass A shot-opening terminal-swing IC; pass B omitted"
+    },
+    {
+      "foot": "right",
+      "earliest_pts_us": 35200000,
+      "preferred_pts_us": 35333333,
+      "latest_pts_us": 35366667,
+      "visibility": "clear",
+      "viewpoint": "frontal",
+      "notes": "agent-draft only; pass A/B raw union"
+    },
+    {
+      "foot": "left",
+      "earliest_pts_us": 35800000,
+      "preferred_pts_us": 35833333,
+      "latest_pts_us": 35933333,
+      "visibility": "clear",
+      "viewpoint": "frontal",
+      "notes": "agent-draft only; pass A/B agree within one frame"
+    },
+    {
+      "foot": "right",
+      "earliest_pts_us": 36333333,
+      "preferred_pts_us": 36366667,
+      "latest_pts_us": 36566667,
+      "visibility": "partial",
+      "viewpoint": "frontal",
+      "notes": "agent-draft only; pass A/B differ by four frames; union uncertainty"
+    },
+    {
+      "foot": "left",
+      "earliest_pts_us": 36833333,
+      "preferred_pts_us": 36866667,
+      "latest_pts_us": 36900000,
+      "visibility": "clear",
+      "viewpoint": "frontal",
+      "notes": "agent-draft only; pass A IC before cut; pass B omitted"
+    },
+    {
+      "foot": "left",
+      "earliest_pts_us": 37400000,
+      "preferred_pts_us": 37500000,
+      "latest_pts_us": 37533333,
+      "visibility": "clear",
+      "viewpoint": "sagittal",
+      "notes": "agent-draft only; pass A/B raw union"
+    },
+    {
+      "foot": "right",
+      "earliest_pts_us": 37866667,
+      "preferred_pts_us": 37900000,
+      "latest_pts_us": 37966667,
+      "visibility": "clear",
+      "viewpoint": "sagittal",
+      "notes": "agent-draft only; pass A/B agree within one frame"
+    },
+    {
+      "foot": "left",
+      "earliest_pts_us": 38300000,
+      "preferred_pts_us": 38333333,
+      "latest_pts_us": 38466667,
+      "visibility": "clear",
+      "viewpoint": "sagittal",
+      "notes": "agent-draft only; pass A/B raw union"
+    },
+    {
+      "foot": "right",
+      "earliest_pts_us": 38700000,
+      "preferred_pts_us": 38733333,
+      "latest_pts_us": 38866667,
+      "visibility": "clear",
+      "viewpoint": "sagittal",
+      "notes": "agent-draft only; pass A/B raw union"
+    },
+    {
+      "foot": "left",
+      "earliest_pts_us": 39133333,
+      "preferred_pts_us": 39166667,
+      "latest_pts_us": 39200000,
+      "visibility": "clear",
+      "viewpoint": "sagittal",
+      "notes": "agent-draft only; pass A walk/jog IC; pass B omitted this phase"
+    },
+    {
+      "foot": "right",
+      "earliest_pts_us": 39533333,
+      "preferred_pts_us": 39600000,
+      "latest_pts_us": 39633333,
+      "visibility": "clear",
+      "viewpoint": "sagittal",
+      "notes": "agent-draft only; pass A/B agree within one frame"
+    },
+    {
+      "foot": "left",
+      "earliest_pts_us": 39900000,
+      "preferred_pts_us": 39966667,
+      "latest_pts_us": 40000000,
+      "visibility": "clear",
+      "viewpoint": "sagittal",
+      "notes": "agent-draft only; pass A/B agree within one frame"
+    },
+    {
+      "foot": "right",
+      "earliest_pts_us": 40233333,
+      "preferred_pts_us": 40333333,
+      "latest_pts_us": 40366667,
+      "visibility": "clear",
+      "viewpoint": "sagittal",
+      "notes": "agent-draft only; pass A/B raw union"
+    },
+    {
+      "foot": "left",
+      "earliest_pts_us": 40633333,
+      "preferred_pts_us": 40666667,
+      "latest_pts_us": 40800000,
+      "visibility": "clear",
+      "viewpoint": "sagittal",
+      "notes": "agent-draft only; pass A/B raw union"
+    },
+    {
+      "foot": "right",
+      "earliest_pts_us": 40966667,
+      "preferred_pts_us": 41000000,
+      "latest_pts_us": 41033333,
+      "visibility": "clear",
+      "viewpoint": "sagittal",
+      "notes": "agent-draft only; pass A jog IC at frozen boundary; pass B omitted"
+    },
+    {
+      "foot": "left",
+      "earliest_pts_us": 41266667,
+      "preferred_pts_us": 41366667,
+      "latest_pts_us": 41400000,
+      "visibility": "clear",
+      "viewpoint": "sagittal",
+      "notes": "agent-draft only; pass A/B raw union"
+    },
+    {
+      "foot": "right",
+      "earliest_pts_us": 41666667,
+      "preferred_pts_us": 41700000,
+      "latest_pts_us": 41733333,
+      "visibility": "clear",
+      "viewpoint": "sagittal",
+      "notes": "agent-draft only; independent passes agree"
+    },
+    {
+      "foot": "left",
+      "earliest_pts_us": 42033333,
+      "preferred_pts_us": 42066667,
+      "latest_pts_us": 42133333,
+      "visibility": "clear",
+      "viewpoint": "sagittal",
+      "notes": "agent-draft only; pass A/B agree within one frame"
+    },
+    {
+      "foot": "right",
+      "earliest_pts_us": 42366667,
+      "preferred_pts_us": 42400000,
+      "latest_pts_us": 42533333,
+      "visibility": "clear",
+      "viewpoint": "sagittal",
+      "notes": "agent-draft only; pass A/B raw union"
+    },
+    {
+      "foot": "left",
+      "earliest_pts_us": 42700000,
+      "preferred_pts_us": 42733333,
+      "latest_pts_us": 42766667,
+      "visibility": "partial",
+      "viewpoint": "sagittal",
+      "notes": "agent-draft only; pass A running IC; pass B omitted amid blur"
+    },
+    {
+      "foot": "right",
+      "earliest_pts_us": 43133333,
+      "preferred_pts_us": 43166667,
+      "latest_pts_us": 43200000,
+      "visibility": "clear",
+      "viewpoint": "sagittal",
+      "notes": "agent-draft only; independent passes agree"
+    },
+    {
+      "foot": "left",
+      "earliest_pts_us": 43466667,
+      "preferred_pts_us": 43500000,
+      "latest_pts_us": 43533333,
+      "visibility": "clear",
+      "viewpoint": "sagittal",
+      "notes": "agent-draft only; independent passes agree"
+    },
+    {
+      "foot": "right",
+      "earliest_pts_us": 43800000,
+      "preferred_pts_us": 43833333,
+      "latest_pts_us": 43900000,
+      "visibility": "clear",
+      "viewpoint": "sagittal",
+      "notes": "agent-draft only; pass A/B agree within one frame"
+    },
+    {
+      "foot": "left",
+      "earliest_pts_us": 44133333,
+      "preferred_pts_us": 44166667,
+      "latest_pts_us": 44266667,
+      "visibility": "clear",
+      "viewpoint": "sagittal",
+      "notes": "agent-draft only; pass A/B raw union"
+    },
+    {
+      "foot": "right",
+      "earliest_pts_us": 44466667,
+      "preferred_pts_us": 44500000,
+      "latest_pts_us": 44633333,
+      "visibility": "clear",
+      "viewpoint": "sagittal",
+      "notes": "agent-draft only; pass A/B raw union"
+    },
+    {
+      "foot": "left",
+      "earliest_pts_us": 44800000,
+      "preferred_pts_us": 44833333,
+      "latest_pts_us": 44866667,
+      "visibility": "partial",
+      "viewpoint": "sagittal",
+      "notes": "agent-draft only; pass A final complete IC; pass B omitted terminal event"
+    }
+  ]
+}

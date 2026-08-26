@@ -1,0 +1,21 @@
+{
+  "schema_version": 2,
+  "clip": "walk2.webm",
+  "range_s": {
+    "start": 4.6,
+    "end": 6.433333333333334
+  },
+  "annotator": "agent-draft adjudication from independent raw-only passes A/B; NOT operator verified; frozen-development-shard",
+  "fps_display": 30.0,
+  "contacts": [
+    {
+      "foot": "left",
+      "earliest_pts_us": 6000000,
+      "preferred_pts_us": 6033333,
+      "latest_pts_us": 6066667,
+      "visibility": "clear",
+      "viewpoint": "sagittal",
+      "notes": "agent-draft only; pass A IC retained; pass B frame-164 row is swing-phase, not ground contact"
+    }
+  ]
+}

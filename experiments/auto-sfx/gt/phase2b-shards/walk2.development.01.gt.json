@@ -1,0 +1,39 @@
+{
+  "schema_version": 2,
+  "clip": "walk2.webm",
+  "range_s": {
+    "start": 0.06666666666666667,
+    "end": 1.9333333333333333
+  },
+  "annotator": "agent-draft adjudication from independent raw-only passes A/B; NOT operator verified; frozen-development-shard",
+  "fps_display": 30.0,
+  "contacts": [
+    {
+      "foot": "right",
+      "earliest_pts_us": 433333,
+      "preferred_pts_us": 566667,
+      "latest_pts_us": 600000,
+      "visibility": "clear",
+      "viewpoint": "frontal",
+      "notes": "agent-draft only; pass A preferred 17, pass B preferred 14; raw union window retained"
+    },
+    {
+      "foot": "left",
+      "earliest_pts_us": 1000000,
+      "preferred_pts_us": 1133333,
+      "latest_pts_us": 1166667,
+      "visibility": "clear",
+      "viewpoint": "frontal",
+      "notes": "agent-draft only; pass A preferred 34, pass B preferred 31; raw union window retained"
+    },
+    {
+      "foot": "right",
+      "earliest_pts_us": 1533333,
+      "preferred_pts_us": 1733333,
+      "latest_pts_us": 1766667,
+      "visibility": "partial",
+      "viewpoint": "frontal",
+      "notes": "agent-draft only; pass A preferred 52, pass B preferred 48; foreshortened raw disagreement retained"
+    }
+  ]
+}

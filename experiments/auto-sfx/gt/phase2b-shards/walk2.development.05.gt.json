@@ -1,0 +1,57 @@
+{
+  "schema_version": 2,
+  "clip": "walk2.webm",
+  "range_s": {
+    "start": 35.0,
+    "end": 36.9
+  },
+  "annotator": "agent-draft adjudication from independent raw-only passes A/B; NOT operator verified; frozen-development-shard",
+  "fps_display": 30.0,
+  "contacts": [
+    {
+      "foot": "left",
+      "earliest_pts_us": 34966667,
+      "preferred_pts_us": 35000000,
+      "latest_pts_us": 35033333,
+      "visibility": "clear",
+      "viewpoint": "frontal",
+      "notes": "agent-draft only; pass A shot-opening terminal-swing IC; pass B omitted"
+    },
+    {
+      "foot": "right",
+      "earliest_pts_us": 35200000,
+      "preferred_pts_us": 35333333,
+      "latest_pts_us": 35366667,
+      "visibility": "clear",
+      "viewpoint": "frontal",
+      "notes": "agent-draft only; pass A/B raw union"
+    },
+    {
+      "foot": "left",
+      "earliest_pts_us": 35800000,
+      "preferred_pts_us": 35833333,
+      "latest_pts_us": 35933333,
+      "visibility": "clear",
+      "viewpoint": "frontal",
+      "notes": "agent-draft only; pass A/B agree within one frame"
+    },
+    {
+      "foot": "right",
+      "earliest_pts_us": 36333333,
+      "preferred_pts_us": 36366667,
+      "latest_pts_us": 36566667,
+      "visibility": "partial",
+      "viewpoint": "frontal",
+      "notes": "agent-draft only; pass A/B differ by four frames; union uncertainty"
+    },
+    {
+      "foot": "left",
+      "earliest_pts_us": 36833333,
+      "preferred_pts_us": 36866667,
+      "latest_pts_us": 36900000,
+      "visibility": "clear",
+      "viewpoint": "frontal",
+      "notes": "agent-draft only; pass A IC before cut; pass B omitted"
+    }
+  ]
+}

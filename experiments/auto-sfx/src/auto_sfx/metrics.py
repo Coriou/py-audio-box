@@ -581,6 +581,7 @@ def evaluate_v2(events, gt_records, displayed_fps, tol_ms=None,
     )
     side = {
         "side_agnostic_matched": n_matched,
+        "strict_known_side_matches": side_eval["matched"],
         "attribution_accuracy": attribution_accuracy,
         "side_flips": side_eval["wrong_side"],
         "side_flip_pairs": side_eval["wrong_side_pairs"],

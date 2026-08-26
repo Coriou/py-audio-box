@@ -1,0 +1,66 @@
+{
+  "schema_version": 2,
+  "clip": "walk2.webm",
+  "range_s": {
+    "start": 32.0,
+    "end": 34.833333333333336
+  },
+  "annotator": "agent-draft adjudication from independent raw-only passes A/B; NOT operator verified; frozen-validation-shard",
+  "fps_display": 30.0,
+  "contacts": [
+    {
+      "foot": "uncertain",
+      "earliest_pts_us": 32100000,
+      "preferred_pts_us": 32166667,
+      "latest_pts_us": 32233333,
+      "visibility": "partial",
+      "viewpoint": "uncertain",
+      "notes": "agent-draft only; pass B inferred settling; pass A found contact weakly defensible; raw-viewpoint-label=overhead"
+    },
+    {
+      "foot": "uncertain",
+      "earliest_pts_us": 32666667,
+      "preferred_pts_us": 32733333,
+      "latest_pts_us": 32800000,
+      "visibility": "partial",
+      "viewpoint": "uncertain",
+      "notes": "agent-draft only; pass B inferred settling; weak height evidence; raw-viewpoint-label=overhead"
+    },
+    {
+      "foot": "uncertain",
+      "earliest_pts_us": 33266667,
+      "preferred_pts_us": 33333333,
+      "latest_pts_us": 33400000,
+      "visibility": "partial",
+      "viewpoint": "uncertain",
+      "notes": "agent-draft only; pass B inferred settling; weak height evidence; raw-viewpoint-label=overhead"
+    },
+    {
+      "foot": "uncertain",
+      "earliest_pts_us": 33733333,
+      "preferred_pts_us": 33800000,
+      "latest_pts_us": 33866667,
+      "visibility": "partial",
+      "viewpoint": "uncertain",
+      "notes": "agent-draft only; pass B inferred settling; weak height evidence; raw-viewpoint-label=overhead"
+    },
+    {
+      "foot": "uncertain",
+      "earliest_pts_us": 34366667,
+      "preferred_pts_us": 34433333,
+      "latest_pts_us": 34500000,
+      "visibility": "partial",
+      "viewpoint": "uncertain",
+      "notes": "agent-draft only; pass B inferred settling; weak height evidence; raw-viewpoint-label=overhead"
+    },
+    {
+      "foot": "uncertain",
+      "earliest_pts_us": 34766667,
+      "preferred_pts_us": 34833333,
+      "latest_pts_us": 34900000,
+      "visibility": "partial",
+      "viewpoint": "uncertain",
+      "notes": "agent-draft only; pass B inferred settling at range boundary; weak height evidence; raw-viewpoint-label=overhead"
+    }
+  ]
+}
