@@ -12,22 +12,29 @@ from __future__ import annotations
 
 import argparse
 import csv
+import importlib.util
 import json
 import re
 import sys
+from pathlib import Path
 
-BENCH_DIR = Path(__file__).resolve().parents[1] / "fal-sfx-bench"
-sys.path.insert(0, str(BENCH_DIR))
-from reconcile import (  # noqa: E402  (bench parsing helpers, reused verbatim)
-    AGGREGATE_COST_CANDIDATES,
-    parse_amount,
-    redact_label,
-)
+# Load the benchmark's parsers by path: a plain ``from reconcile import …``
+# would resolve to THIS module (same basename) once our directory is on
+# sys.path.
+_BENCH_RECONCILE_PATH = Path(__file__).resolve().parents[1] / "fal-sfx-bench" / "reconcile.py"
+_spec = importlib.util.spec_from_file_location("sfx_bench_reconcile", _BENCH_RECONCILE_PATH)
+_bench_reconcile = importlib.util.module_from_spec(_spec)
+sys.modules.setdefault("sfx_bench_reconcile", _bench_reconcile)
+_spec.loader.exec_module(_bench_reconcile)
+
+AGGREGATE_COST_CANDIDATES = _bench_reconcile.AGGREGATE_COST_CANDIDATES
+parse_amount = _bench_reconcile.parse_amount
+redact_label = _bench_reconcile.redact_label
 
 from common import utc_now  # noqa: E402
 
-ENDPOINT_CANDIDATES = ("app", "endpoint", "endpoint_id", "model")
-CREDENTIAL_CANDIDATES = ("credential", "credentials", "key_name")
+ENDPOINT_CANDIDATES = ("app_id", "app", "endpoint", "endpoint_id", "model")
+CREDENTIAL_CANDIDATES = ("auth_method", "credential", "credentials", "key_name")
 
 
 def load_fal_key() -> str | None:
@@ -45,10 +52,13 @@ def load_fal_key() -> str | None:
 
 
 def pick_column(headers: list[str], candidates: tuple[str, ...]) -> str | None:
-    normalized = {re.sub(r"[^a-z0-9]", "", header.lower()): header for header in headers}
+    def norm(value: str) -> str:
+        return re.sub(r"[^a-z0-9]", "", value.lower())
+
+    normalized = {norm(header): header for header in headers}
     for candidate in candidates:
-        if candidate in normalized:
-            return normalized[candidate]
+        if norm(candidate) in normalized:
+            return normalized[norm(candidate)]
     return None
 
 
