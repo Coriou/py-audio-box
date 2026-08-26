@@ -42,6 +42,7 @@ from common import (
 )
 from index_bank import DEFAULT_LABELS
 from oracle_events import ANALYSIS_SR, measure_event, superflux_envelope
+from events_v2 import infer_temporal_type, upgrade_event_v1
 
 SNIPPET_PRE_S = 0.02
 SNIPPET_POST_S = 0.90
@@ -56,6 +57,10 @@ EVENT_GUARD_S = 0.02          # silence kept before the next event
 TAIL_SLACK_S = 0.70           # last event may decay past clip end
 TOP_K = 5
 MAX_SA3_INTENTS = 4           # hard cap ≈ $0.096 within the $5 budget
+
+#: Multiplicative rank penalty per prior use of the same bank entry within one
+#: repetitive sequence (event model v2 diversity pressure; CTO §4C).
+SEQUENCE_REUSE_PENALTY = 0.85
 
 #: Fallback preference for clips without contact ground truth.
 V2A_PREFERENCE: tuple[str, ...] = ("controlfoley", "kling-v2a", "mirelo16", "sonilo11")
@@ -177,6 +182,22 @@ def decide_tier(event: dict[str, Any], candidates: list[dict[str, Any]],
     gap = max(gap, 0.15)
 
     decision: dict[str, Any] = {"available_gap_s": round(gap, 3)}
+    if event.get("kind") == "ambience-bed":
+        decision.update(tier="direct", ops=["gain"], reason="ambience bed loop-fill")
+        if candidates:
+            best = candidates[0]
+            meta = bank_by_id[best["entry_id"]]
+            decision.update({
+                "candidate": best,
+                "first_onset_s": round(meta["onsets_s"][0], 4) if meta["onsets_s"] else 0.0,
+                "tail_s": round(max(0.05, meta["duration_s"]), 3),
+                "gain_db": round(max(-DSP_GAIN_DB, min(DSP_GAIN_DB,
+                                  event.get("intensity_db", -20.0) - meta["rms_db"])), 2),
+                "raw_gain_db": round(event.get("intensity_db", -20.0) - meta["rms_db"], 2),
+            })
+        else:
+            decision.update(tier="mirelo-fallback", reason="no bank candidates")
+        return decision
     if not candidates:
         decision.update(tier="mirelo-fallback", reason="no bank candidates")
         return decision
@@ -237,7 +258,7 @@ def plan_clip(run_dir: Path, clip: str, clip_duration: float,
                                   contacts_payload)
     event_times = [event["time_s"] for event in events]
     bank_by_id = {entry["id"]: entry for entry in bank_entries}
-
+    chosen_by_label: dict[str, list[str]] = {}
     plans = []
     for event in events:
         snippet = load_audio_48k(
@@ -247,19 +268,36 @@ def plan_clip(run_dir: Path, clip: str, clip_duration: float,
         )
         label, label_score = classify_snippet(snippet, labels)
         candidates = score_candidates(snippet, label, bank_entries, embeddings)
+
+        # Repetitive-sequence diversity (event model v2): previously-used
+        # candidates inside one sequence lose a little rank each reuse.
+        sequence_id = f"{label}" if infer_temporal_type(label) == "repetitive" else None
+        if sequence_id and chosen_by_label.get(label):
+            usage: dict[str, int] = {}
+            for entry_id in chosen_by_label[label]:
+                usage[entry_id] = usage.get(entry_id, 0) + 1
+            penalized = [
+                {**c, "score": round(c["score"] * SEQUENCE_REUSE_PENALTY ** usage.get(c["entry_id"], 0), 4)}
+                for c in candidates
+            ]
+            penalized.sort(key=lambda item: (-item["score"], item["rel_path"]))
         decision = decide_tier(event, candidates, bank_by_id, clip_duration,
                                event_times, allow_sa3)
-        plans.append({
+        entry_id = (decision.get("candidate") or {}).get("entry_id")
+        if sequence_id and decision.get("tier") not in (None, "mirelo-fallback") and entry_id:
+            chosen_by_label.setdefault(label, []).append(entry_id)
+        plans.append(upgrade_event_v1({
             **{key: event[key] for key in
                ("id", "time_s", "duration_s", "intensity_db") if key in event},
+            **({"kind": event["kind"]} if "kind" in event else {}),
             "label": label,
             "label_score": round(label_score, 4),
             "candidates": candidates,
             **decision,
-        })
+        }, label=label, clip=clip, sequence_id=sequence_id))
 
     return {
-        "schema_version": 1,
+        "schema_version": 2,
         "generated_at": utc_now(),
         "clip": clip,
         "oracle_model": model,

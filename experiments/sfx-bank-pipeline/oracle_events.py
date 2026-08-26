@@ -25,6 +25,7 @@ from typing import Any
 import numpy as np
 from scipy import ndimage
 from scipy.io import wavfile
+from events_v2 import upgrade_event_v1
 
 from common import (
     BENCH_RUN_DIR,
@@ -240,7 +241,7 @@ def analyse_clip(clip: str, model: str, oracle_dir: Path, bench_run_dir: Path) -
     onset_frames, effective_delta = detect_onsets(envelope, audio)
     events = []
     for index, frame in enumerate(onset_frames, start=1):
-        events.append({"id": f"ev_{index:03d}", **measure_event(audio, int(frame), logmel)})
+        events.append(upgrade_event_v1({"id": f"ev_{index:03d}", **measure_event(audio, int(frame), logmel)}))
 
     record = {
         "schema_version": 1,

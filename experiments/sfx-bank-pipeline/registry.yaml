@@ -1,0 +1,91 @@
+# Provider & license registry — QUALITY vs COMMERCIAL status as data.
+# Seeded from CTO report §25 (2026-08-26) + watchlist rows (§12/§15/§16/§10).
+# commercial_status / production_allowed are the ONLY shipping gates;
+# quality_role records where a provider sits in evaluation regardless of license.
+
+mirelo_16:
+  provider: fal
+  endpoint: mirelo-ai/sfx1.6/video-to-video
+  price_model: per_second
+  price_usd: 0.01
+  reference_audio: false
+  commercial_status: provider_claimed
+  territory: global
+  production_allowed: pending_contract_review
+  quality_role: baseline + missing-event fallback + semantic/intensity sketch
+
+mirelo_v1:
+  provider: fal
+  endpoint: mirelo-ai/sfx-v1/video-to-audio
+  price_model: per_second
+  price_usd: 0.007
+  reference_audio: false
+  commercial_status: provider_claimed
+  production_allowed: pending_contract_review
+  quality_role: cheap baseline
+
+stable_audio_3_sfx_a2a:
+  provider: fal
+  endpoint: fal-ai/stable-audio-3/small/sfx/audio-to-audio
+  price_model: per_generation
+  price_usd: 0.024
+  reference_audio: true
+  commercial_status: provider_claimed
+  production_allowed: pending_contract_review
+  quality_role: bank-sound adaptation / variation tier
+
+controlfoley:
+  provider: local
+  weights_license: CC-BY-NC-4.0
+  reference_audio: true
+  commercial_status: non_commercial_weights
+  production_allowed: false
+  quality_role: research benchmark — "how much does joint timing+timbre buy?"
+
+ac_foley:
+  provider: local
+  weights_license: CC-BY-NC-4.0
+  reference_audio: true
+  commercial_status: non_commercial_weights
+  production_allowed: false
+  quality_role: research benchmark
+
+thinksound:
+  provider: fal
+  price_model: per_compute_second
+  price_usd: 0.001
+  commercial_status: provider_claimed_but_upstream_research_only
+  weights_license: upstream-research-only
+  production_allowed: false_pending_written_clearance
+  quality_role: pure-V2A quality benchmark
+
+synchformer:
+  provider: local
+  code_license: MIT
+  weights_license: UNVERIFIED_checkpoint_rights
+  production_allowed: verify_before_use
+  quality_role: QC/global A-V offset only — never the contact clock
+
+foleycrafter_videoonsetnet:
+  provider: local
+  repo_license: Apache-2.0
+  weights_license: UNVERIFIED_verify_separately_from_repo
+  note: Auffusion dependency in the full pipeline is NC; isolate detector first
+  production_allowed: verify_before_use
+  quality_role: candidate visual-onset specialist for timing bake-off
+
+greatest_hits_dataset:
+  kind: dataset
+  license: CC-BY-4.0
+  production_allowed: data_ok
+  quality_role: future training corpus for owned timing model — do NOT train yet
+
+multifoley:
+  commercial_status: no_usable_public_release
+  production_allowed: false
+  quality_role: architectural reference only
+
+foleygenex:
+  commercial_status: not_deployable_today
+  production_allowed: false
+  quality_role: watchlist

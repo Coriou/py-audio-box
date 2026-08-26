@@ -131,3 +131,23 @@ work/sfx-pipeline/<run_id>/
   oracle inputs here; loudnorm/mux/ledger/reconcile conventions reused.
 - `experiments/auto-sfx/` — pose-based foot-contact detector supplying vision
   timing ground truth (`runs/real-walk*/events.json`).
+
+## Phase-2 additions (2026-08-26)
+
+- **Event model v2** (`events_v2.py`): every plan/oracle event now carries an
+  additive `temporal_type` (`impulse|continuous|repetitive|bed|hybrid`, `None`
+  for unclassified detector output), optional `subclass`, `sequence_id`,
+  `source`/`physical`/`visual` placeholders and a `schema_event_v2` marker.
+  Type inference is a documented keyword heuristic; refine later, not here.
+- **Repetitive diversity**: inside one clip, events classified as a repetitive
+  sequence share a `sequence_id`; re-picking the same bank entry costs
+  ×0.85 per prior use in ranking (CTO §4C). Tier logic unchanged.
+- **Per-event stems**: `render_mix.py --run-dir …` writes
+  `stems/<clip>/evt_<event_id>.wav` (post-gain/post-fade placed audio) and
+  `stems/<clip>/ambience.wav` (bed contribution incl. its gain) at 48 kHz,
+  alongside the existing mix. Peak-guard stays on the summed bed only.
+- **Loudness policy** (unchanged but now explicit): per-event RMS→intensity
+  gain is the local match; global −16 LUFS happens ONLY on the review m4a/mp4
+  encode path; internal renders are lossless 48 kHz WAV end-to-end.
+- **registry.yaml**: provider/license rows as data — quality status is kept
+  separate from commercial status. Consult it before wiring any new provider.

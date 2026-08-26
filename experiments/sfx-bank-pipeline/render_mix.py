@@ -175,9 +175,17 @@ def materialize(event: dict[str, Any], plan: dict[str, Any], run_dir: Path,
 
 
 def render_bed(plan: dict[str, Any], run_dir: Path, ledger: Ledger,
-               allow_sa3: bool, sa3_state: dict[str, int]) -> Path:
+               allow_sa3: bool, sa3_state: dict[str, int],
+               stems_dir: Path | None = None) -> Path:
     clip_duration = int(plan["clip_duration_s"] * SR)
     bed = np.zeros(clip_duration + int(1.0 * SR), dtype=np.float32)
+
+    def stem(name: str, audio: np.ndarray) -> None:
+        if stems_dir is None:
+            return
+        target = stems_dir / name
+        target.parent.mkdir(parents=True, exist_ok=True)
+        wavfile.write(target, SR, audio.astype(np.float32))
 
     for event in plan["events"]:
         if event.get("kind") == "ambience-bed":
@@ -192,7 +200,9 @@ def render_bed(plan: dict[str, Any], run_dir: Path, ledger: Ledger,
                 np.linspace(1.0, 0.0, edge, dtype=np.float32),
             ])
             linear = 10.0 ** (float(event.get("gain_db") or 0.0) / 20.0)
-            bed += (filled * linear).astype(np.float32)
+            contribution = (filled * linear).astype(np.float32)
+            stem(f"{plan['clip']}/ambience.wav", contribution)
+            bed += contribution
             continue
 
         placed, onset_idx = materialize(event, plan, run_dir, ledger,
@@ -202,6 +212,7 @@ def render_bed(plan: dict[str, Any], run_dir: Path, ledger: Ledger,
         stop = min(bed.size, anchor + placed.size)
         if stop > start:
             bed[start:stop] += placed[start - anchor:stop - anchor]
+        stem(f"{plan['clip']}/evt_{event['id']}.wav", placed)
 
     peak = float(np.max(np.abs(bed))) if bed.size else 0.0
     if peak > PEAK_GUARD:
@@ -256,7 +267,7 @@ def main() -> int:
                 plan = json.loads(plan_path.read_text())
                 attach_candidate_meta(args.run_dir, plan)
                 bed_path = render_bed(plan, args.run_dir, ledger, not args.no_sa3,
-                                      sa3_state)
+                                      sa3_state, stems_dir=args.run_dir / "stems")
                 measured = measure_loudness(bed_path)
                 norm_path = review_dir / f"{clip}.bank.norm.m4a"
                 linear = normalize_audio(bed_path, norm_path, measured)
