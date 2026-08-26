@@ -110,21 +110,44 @@ function updateReadout(){
 function lsKey(){ return `gold:${sessionUrl}:${CLIP?CLIP.clip_id:""}:${annotator}`; }
 function persist(){ localStorage.setItem(lsKey(), JSON.stringify(EVENTS)); refreshTable(); }
 function restore(){ try{ EVENTS=JSON.parse(localStorage.getItem(lsKey())||"[]"); }catch(e){ EVENTS=[]; } }
+function nextEventId(){
+  return EVENTS.reduce((m,e)=>Math.max(m,parseInt((e.event_id||"").slice(1),10)||0),0)+1;
+}
 
-annotator = localStorage.getItem("gold-annotator") || "";
-while(!annotator) annotator = prompt("Annotator name:")||"";
-localStorage.setItem("gold-annotator", annotator);
-
-if(!sessionUrl){ noSession.style.display="block"; } else {
-fetch(sessionUrl).then(r=>r.json()).then(s=>{
-  SESSION=s; const ul=document.createElement("ul"); ul.style.listStyle="none"; ul.style.padding=0;
+function showSetupError(html){
+  noSession.innerHTML = html;
+  noSession.style.display = "block";
+  document.getElementById("workspace").style.display = "none";
+}
+function bootSession(s){
+  SESSION=s;
+  annotator = localStorage.getItem("gold-annotator") || "";
+  while(!annotator) annotator = prompt("Annotator name (saved locally; use A and B for your two passes):")||"";
+  localStorage.setItem("gold-annotator", annotator);
   s.clips.forEach((c,i)=>{
     const li=document.createElement("li");
     li.textContent=`${c.clip_id} (${c.fps} fps)`;
     li.onclick=()=>selectClip(i);
     document.getElementById("clipList").appendChild(li);
   });
-});
+  workspace.style.display="block";
+}
+if(location.protocol==="file:"){
+  showSetupError(`<strong>file:// cannot load session.json or the clip videos
+    (browsers treat file: pages as unique origins — this is the “Unsafe attempt
+    to load URL” error).</strong> Serve instead, from the <em>repo root</em>:<br>
+    <code>cd &lt;repo-root&gt; &amp;&amp; python3 -m http.server 8765</code><br>then open:
+    <code>http://localhost:8765${location.pathname}?session=&lt;path/to/session.json&gt;</code>`);
+} else if(!sessionUrl){
+  showSetupError(`Missing <code>?session=&lt;path/to/session.json&gt;</code>.
+    Serve via <code>python3 -m http.server</code> from the repo root; the full
+    URL is in your session README (${location.protocol}).`);
+} else {
+  fetch(sessionUrl)
+    .then(r=>{ if(!r.ok) throw new Error(`HTTP ${r.status}`); return r.json(); })
+    .then(bootSession)
+    .catch(err=>showSetupError(`Could not load session <code>${sessionUrl}</code>: ${err}.<br>
+      Confirm the server runs from the REPO ROOT (so <code>/work/...</code> clips resolve) and the path is correct.`));
 }
 
 function selectClip(i){
@@ -146,7 +169,6 @@ document.querySelectorAll("[data-step]").forEach(b=>b.addEventListener("click",(
   if(s===0){ vid.paused?vid.play():vid.pause(); return; }
   seekFrame(currentFrame()+s);
 }));
-["comma","period"].forEach(()=>{}); // key mapping below
 document.addEventListener("keydown",(e)=>{
   if(["INPUT","TEXTAREA","SELECT"].includes(document.activeElement.tagName)) return;
   if(e.key===","){ seekFrame(currentFrame()-1); e.preventDefault(); }
@@ -161,8 +183,7 @@ document.addEventListener("keydown",(e)=>{
   }
 });
 vid.addEventListener("seeked",updateReadout);
-vid.addEventListener("timeupdate",()=>{ if(Math.abs(Math.round(vid.currentTime*fps)-lastShown)>0)updateReadout(); });
-let lastShown=-1;
+vid.addEventListener("timeupdate",updateReadout);
 
 document.querySelectorAll("[data-capture]").forEach(b=>b.addEventListener("click",()=>{
   const fr=currentFrame(), k=b.dataset.capture;
@@ -181,7 +202,7 @@ ttype.addEventListener("change",()=>{
 
 addEv.onclick=()=>{
   const ev={
-    event_id:`e${String(EVENTS.length+1).padStart(3,"0")}`,
+    event_id:`e${String(nextEventId()).padStart(3,"0")}`,
     temporal_type:ttype.value,
     family:family.value,
     klass:klass.value.trim(),
@@ -190,7 +211,7 @@ addEv.onclick=()=>{
     contact_frame:fContact.value===""?null:Number(fContact.value),
     end_frame:fEnd.value===""?null:Number(fEnd.value),
     acceptable_frames:(wLo.value!==""&&wHi.value!=="")?[Number(wLo.value),Number(wHi.value)]:null,
-    sequence:ttype.value==="repetitive"?{name:seqName.value||`seq-${EVENTS.length+1}`,contacts:[...seqContacts]}:null,
+    sequence:ttype.value==="repetitive"?{name:seqName.value||`seq-${nextEventId()}`,contacts:[...seqContacts]}:null,
     confidence:Number(conf.value),
     notes:evNotes.value.trim()
   };
