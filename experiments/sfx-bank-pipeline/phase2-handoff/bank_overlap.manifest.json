@@ -1,0 +1,128 @@
+{
+  "schema_version": 1,
+  "kind": "bank-overlap-manifest",
+  "note": "expected_bank_entry must be an indexed bank id (suffix-hashed). Owner expands bank toward 10\u201320 variants per important class before statistics.",
+  "rows": [
+    {
+      "clip": "man",
+      "status": "seeded",
+      "expected_bank_entry": "",
+      "events": [
+        {
+          "id": "ev_001",
+          "label": "footsteps on gravel"
+        },
+        {
+          "id": "ev_002",
+          "label": "a single footstep"
+        },
+        {
+          "id": "ev_003",
+          "label": "footsteps on gravel"
+        },
+        {
+          "id": "ev_004",
+          "label": "footsteps on grass"
+        }
+      ]
+    },
+    {
+      "clip": "ocean-long",
+      "status": "seeded",
+      "expected_bank_entry": "surf_bed_01_6ace93b1",
+      "events": [
+        {
+          "id": "ev_bed",
+          "label": "rain falling"
+        }
+      ]
+    },
+    {
+      "clip": "ocean-short",
+      "status": "seeded",
+      "expected_bank_entry": "surf_bed_01_6ace93b1",
+      "events": [
+        {
+          "id": "ev_bed",
+          "label": "rain falling"
+        }
+      ]
+    },
+    {
+      "clip": "walk1",
+      "status": "seeded",
+      "expected_bank_entry": "",
+      "events": [
+        {
+          "id": "gt_001",
+          "label": "footsteps on gravel"
+        },
+        {
+          "id": "gt_002",
+          "label": "footsteps on gravel"
+        },
+        {
+          "id": "gt_003",
+          "label": "a punch impact thud"
+        },
+        {
+          "id": "gt_004",
+          "label": "footsteps on gravel"
+        }
+      ]
+    },
+    {
+      "clip": "walk2",
+      "status": "seeded",
+      "expected_bank_entry": "",
+      "events": [
+        {
+          "id": "gt_001",
+          "label": "a sword swing whoosh"
+        },
+        {
+          "id": "gt_002",
+          "label": "a sword swing whoosh"
+        },
+        {
+          "id": "gt_003",
+          "label": "a sword swing whoosh"
+        },
+        {
+          "id": "gt_004",
+          "label": "a metal clang"
+        }
+      ]
+    },
+    {
+      "clip": "camera-shutter-closeup",
+      "status": "needs_clip",
+      "expected_bank_entry": "",
+      "hint": "shoot/close-up exercising COMCam analog shutter + focus beep"
+    },
+    {
+      "clip": "wipers-daylight",
+      "status": "needs_clip",
+      "expected_bank_entry": "",
+      "hint": "car windshield wipers start/run/stop"
+    },
+    {
+      "clip": "gear-shift-interior",
+      "status": "needs_clip",
+      "expected_bank_entry": "",
+      "hint": "manual gear shift with clanks (ICE cabin)"
+    },
+    {
+      "clip": "whoosh-passby",
+      "status": "needs_clip",
+      "expected_bank_entry": "",
+      "hint": "fast object pass-by for DSGNWhsh whoosh"
+    },
+    {
+      "clip": "bass-dive-moment",
+      "status": "needs_clip",
+      "expected_bank_entry": "",
+      "hint": "designed bass dive cue scene (owner judgment)"
+    }
+  ]
+}
