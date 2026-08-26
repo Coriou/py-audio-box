@@ -1,0 +1,267 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Human-gold Foley annotator</title>
+<style>
+:root { color-scheme: dark; }
+body { font-family: -apple-system, sans-serif; background:#101418; color:#d8dee5; margin:0; display:flex; height:100vh; }
+aside { width:230px; background:#141a20; border-right:1px solid #232b33; padding:14px; overflow:auto; flex-shrink:0;}
+main { flex:1; overflow:auto; padding:16px 22px; }
+h1 { font-size:1.05rem; margin:0 0 12px; } h2 { font-size:.95rem; margin:18px 0 6px; }
+button { background:#2f6fed; color:#fff; border:0; border-radius:5px; padding:6px 10px; cursor:pointer; font-size:.85rem; }
+button.ghost { background:#2a323b; }
+button.small { padding:3px 7px; font-size:.75rem; }
+video { width:100%; max-width:720px; background:#000; border-radius:6px; display:block; }
+#readout { font-family: ui-monospace, monospace; font-size:1.5rem; margin:8px 0; letter-spacing:1px; }
+table { border-collapse:collapse; width:100%; font-size:.82rem; margin-top:8px;}
+td,th { border-bottom:1px solid #222a32; padding:5px 7px; text-align:left; vertical-align:top;}
+.kv input, .kv select { background:#171d24; color:#d8dee5; border:1px solid #2a3340; border-radius:4px; padding:3px 6px; }
+li { margin:4px 0; cursor:pointer; padding:3px 6px; border-radius:4px; }
+li:hover { background:#1c242c; } li.active { background:#24406e; }
+.note { color:#8a96a3; font-size:.78rem; }
+.eventblock td:first-child { white-space:nowrap; }
+.framefield { width:80px; }
+</style>
+</head>
+<body>
+<aside id="sidebar">
+<h1>Gold annotator</h1>
+<div id="clipList">loading…</div>
+<hr style="border-color:#232b33">
+<button class="ghost" id="dlBtn" disabled>Download GT JSON</button>
+<p class="note">Autosaves to localStorage per clip+annotator.</p>
+</aside>
+<main>
+<div id="noSession" style="display:none">
+Pass <code>?session=&lt;path/to/session.json&gt;</code> (see the session README). Serve via
+<code>python3 -m http.server</code> from the repo root.
+</div>
+<div id="workspace" style="display:none">
+<video id="vid" controls preload="auto"></video>
+<div id="readout">frame — · t=— · fps —</div>
+<div>
+<button class="small ghost" data-step="-10">&laquo;10f</button>
+<button class="small ghost" data-step="-1">&lsaquo;1f (,)</button>
+<button class="small ghost" data-step="0">pause/play (space)</button>
+<button class="small ghost" data-step="1">1f&rsaquo; (.)</button>
+<button class="small ghost" data-step="10">10f&raquo;</button>
+</div>
+<h2>New / edit event</h2>
+<div class="kv">
+<select id="ttype">
+ <option value="impulse">impulse (contact + optional span)</option>
+ <option value="continuous">continuous (start/end + envelope)</option>
+ <option value="repetitive">repetitive sequence</option>
+ <option value="bed">bed / ambience interval</option>
+ <option value="hybrid">hybrid structured object</option>
+</select>
+<select id="family"></select>
+<input id="klass" placeholder="class e.g. gravel / door / wipers" size="28">
+<input id="subclass" placeholder="subclass (optional)" size="20">
+<input id="seqName" placeholder="sequence name (repetitive)" size="18">
+</div>
+<table><tr>
+<th>start frame</th><th>contact frame</th><th>end frame</th><th>acceptable [lo,&nbsp;hi]</th><th>confidence</th></tr>
+<tr><td><input id="fStart" class="framefield"></td><td><input id="fContact" class="framefield"></td>
+<td><input id="fEnd" class="framefield"></td><td>
+<input id="wLo" class="framefield" style="width:60px"><input id="wHi" class="framefield" style="width:60px"></td>
+<td><select id="conf"><option value="0.9">high</option><option value="0.7" selected>medium</option><option value="0.5">low</option></select></td></tr></table>
+<div style="margin-top:6px">
+<button data-capture="start">Set start ⇠current</button>
+<button data-capture="contact">Set contact ⇠current</button>
+<button data-capture="end">Set end ⇠current</button>
+<button data-capture="seq" id="seqBtn" style="display:none">Append sequence contact</button>
+<span id="seqList" class="note"></span>
+</div>
+<textarea id="evNotes" rows="1" placeholder="notes" style="width:100%;margin-top:6px;background:#151b21;color:#d8dee5;border:1px solid #2a3340"></textarea>
+<div style="margin-top:6px">
+<button id="addEv">Save event</button>
+<button id="resetForm" class="ghost">Clear form</button>
+<input type="hidden" id="editIdx">
+</div>
+<h2>Annotated events <span class="note" id="evCount"></span></h2>
+<table id="eventsTable"></table>
+</div>
+</main>
+<script>
+"use strict";
+const qs = new URLSearchParams(location.search);
+const sessionUrl = qs.get("session");
+const FAMILIES = {
+ "Footsteps": ["hard floor","gravel","grass","stairs","running"],
+ "Impacts": ["hand/table","dropped object","tool/metal"],
+ "Mechanisms": ["door","drawer","camera shutter","switches"],
+ "Vehicles": ["wipers","gear/action","engine"],
+ "Cloth/body": ["jacket movement","bag/fabric handling"],
+ "Continuous": ["scrape","drag","pour/flow"],
+ "Natural": ["water/surf","wind"],
+ "Multi-event": ["overlapping"]
+};
+const CONTRACT_VERSION = 1;
+let SESSION=null, CLIP=null, EVENTS=[], annotator="", fps=30, seqContacts=[];
+
+function currentFrame(){ return Math.round(vid.currentTime * fps); }
+function seekFrame(f){ f=Math.max(0,f); vid.currentTime = f / fps; updateReadout(); }
+function updateReadout(){
+  const fr=currentFrame(), t=vid.currentTime;
+  readout.textContent = `frame ${fr} · t=${t.toFixed(3)}s · fps ${fps}`;
+}
+function lsKey(){ return `gold:${sessionUrl}:${CLIP?CLIP.clip_id:""}:${annotator}`; }
+function persist(){ localStorage.setItem(lsKey(), JSON.stringify(EVENTS)); refreshTable(); }
+function restore(){ try{ EVENTS=JSON.parse(localStorage.getItem(lsKey())||"[]"); }catch(e){ EVENTS=[]; } }
+
+annotator = localStorage.getItem("gold-annotator") || "";
+while(!annotator) annotator = prompt("Annotator name:")||"";
+localStorage.setItem("gold-annotator", annotator);
+
+if(!sessionUrl){ noSession.style.display="block"; } else {
+fetch(sessionUrl).then(r=>r.json()).then(s=>{
+  SESSION=s; const ul=document.createElement("ul"); ul.style.listStyle="none"; ul.style.padding=0;
+  s.clips.forEach((c,i)=>{
+    const li=document.createElement("li");
+    li.textContent=`${c.clip_id} (${c.fps} fps)`;
+    li.onclick=()=>selectClip(i);
+    document.getElementById("clipList").appendChild(li);
+  });
+});
+}
+
+function selectClip(i){
+  CLIP=SESSION.clips[i]; fps=CLIP.fps||30;
+  [...document.querySelectorAll("#clipList li")].forEach((li,j)=>li.classList.toggle("active", j===i));
+  vid.src="/"+CLIP.file.replace(/^\/+/,"");
+  restore(); fillFamily(CLIP.family_hint); refreshTable(); updateReadout();
+  dlBtn.disabled=false;
+}
+function fillFamily(hint){
+  family.innerHTML="";
+  Object.entries(FAMILIES).forEach(([f,kids])=>{
+    const o=document.createElement("option"); o.value=f; o.textContent=f+(kids.length?"":" "); family.appendChild(o);
+  });
+  if(hint && FAMILIES[hint]) family.value=hint;
+}
+document.querySelectorAll("[data-step]").forEach(b=>b.addEventListener("click",()=>{
+  const s=Number(b.dataset.step);
+  if(s===0){ vid.paused?vid.play():vid.pause(); return; }
+  seekFrame(currentFrame()+s);
+}));
+["comma","period"].forEach(()=>{}); // key mapping below
+document.addEventListener("keydown",(e)=>{
+  if(["INPUT","TEXTAREA","SELECT"].includes(document.activeElement.tagName)) return;
+  if(e.key===","){ seekFrame(currentFrame()-1); e.preventDefault(); }
+  else if(e.key==="."){ seekFrame(currentFrame()+1); e.preventDefault(); }
+  else if(e.key==="ArrowLeft"){ seekFrame(currentFrame()-(e.shiftKey?10:1)); e.preventDefault(); }
+  else if(e.key==="ArrowRight"){ seekFrame(currentFrame()+(e.shiftKey?10:1)); e.preventDefault(); }
+  else if(e.key===" "){ vid.paused?vid.play():vid.pause(); e.preventDefault(); }
+  else if(["j","k","l"].includes(e.key.toLowerCase())){
+    const r={j:0.5,k:1,l:2}[e.key.toLowerCase()];
+    vid.playbackRate=r; if(vid.paused) vid.play();
+    e.preventDefault();
+  }
+});
+vid.addEventListener("seeked",updateReadout);
+vid.addEventListener("timeupdate",()=>{ if(Math.abs(Math.round(vid.currentTime*fps)-lastShown)>0)updateReadout(); });
+let lastShown=-1;
+
+document.querySelectorAll("[data-capture]").forEach(b=>b.addEventListener("click",()=>{
+  const fr=currentFrame(), k=b.dataset.capture;
+  if(k==="start"){ fStart.value=fr; }
+  else if(k==="contact"){ fContact.value=fr; wLo.value=Math.max(0,fr-1); wHi.value=fr+1; }
+  else if(k==="end"){ fEnd.value=fr; }
+  else if(k==="seq"){ seqContacts.push(fr); renderSeq(); }
+}));
+function renderSeq(){ seqList.textContent = seqContacts.length?`contacts: ${seqContacts.join(", ")}`:""; }
+
+ttype.addEventListener("change",()=>{
+  const t=ttype.value;
+  fContact.parentElement.parentElement.style.display = (t==="impulse"||t==="hybrid")?"":"none";
+  seqBtn.style.display = t==="repetitive"?"inline-block":"none";
+});
+
+addEv.onclick=()=>{
+  const ev={
+    event_id:`e${String(EVENTS.length+1).padStart(3,"0")}`,
+    temporal_type:ttype.value,
+    family:family.value,
+    klass:klass.value.trim(),
+    subclass:subclass.value.trim(),
+    start_frame:fStart.value===""?null:Number(fStart.value),
+    contact_frame:fContact.value===""?null:Number(fContact.value),
+    end_frame:fEnd.value===""?null:Number(fEnd.value),
+    acceptable_frames:(wLo.value!==""&&wHi.value!=="")?[Number(wLo.value),Number(wHi.value)]:null,
+    sequence:ttype.value==="repetitive"?{name:seqName.value||`seq-${EVENTS.length+1}`,contacts:[...seqContacts]}:null,
+    confidence:Number(conf.value),
+    notes:evNotes.value.trim()
+  };
+  if(ev.temporal_type==="impulse"&&ev.contact_frame===null){ alert("impulse needs a contact frame"); return; }
+  if((ev.temporal_type==="continuous"||ev.temporal_type==="bed")&&(ev.start_frame===null||ev.end_frame===null)){ alert("continuous/bed need start and end frames"); return; }
+  if(ev.temporal_type==="repetitive"&&(!ev.sequence||!ev.sequence.contacts.length)){ alert("repetitive needs ≥1 sequence contact"); return; }
+  const idx=editIdx.value;
+  if(idx!==""){ ev.event_id=EVENTS[Number(idx)].event_id; EVENTS[Number(idx)]=ev; }
+  else EVENTS.push(ev);
+  persist(); resetFormFn();
+};
+resetForm.onclick=resetFormFn;
+function resetFormFn(){
+  ["fStart","fContact","fEnd","wLo","wHi","evNotes","seqName","klass","subclass"].forEach(id=>{document.getElementById(id).value="";});
+  editIdx.value=""; seqContacts=[]; renderSeq(); conf.value="0.7";
+}
+function refreshTable(){
+  evCount.textContent=`(${EVENTS.length})`;
+  const rows=EVENTS.map((ev,i)=>`<tr>
+   <td class="eventblock">${ev.event_id}<br><span class="note">${ev.family}/${ev.klass}${ev.subclass?" /"+ev.subclass:""}<br>${ev.temporal_type}</span></td>
+   <td>s${ev.start_frame??"—"} c${ev.contact_frame??"—"} e${ev.end_frame??"—"}</td>
+   <td>${ev.acceptable_frames?`[${ev.acceptable_frames[0]},${ev.acceptable_frames[1]}]`:"—"}</td>
+   <td>${ev.sequence?`${ev.sequence.name}: ${ev.sequence.contacts.join(", ")}`:"—"}</td>
+   <td>${ev.confidence}<br>${ev.notes||""}</td>
+   <td><button class="small" onclick='loadEvent(${i})'>edit</button>
+       <button class="small ghost" onclick='delEvent(${i})'>del</button></td></tr>`);
+  eventsTable.innerHTML="<tr><th>event</th><th>frames s/c/e</th><th>window</th><th>sequence</th><th>conf/notes</th><th></th></tr>"+rows.join("");
+}
+window.loadEvent=i=>{
+  const ev=EVENTS[i]; editIdx.value=i;
+  ttype.value=ev.temporal_type; family.value=ev.family; klass.value=ev.klass||"";
+  subclass.value=ev.subclass||""; fStart.value=ev.start_frame??""; fContact.value=ev.contact_frame??"";
+  fEnd.value=ev.end_frame??""; wLo.value=ev.acceptable_frames?ev.acceptable_frames[0]:"";
+  wHi.value=ev.acceptable_frames?ev.acceptable_frames[1]:""; conf.value=String(ev.confidence);
+  evNotes.value=ev.notes||""; seqName.value=ev.sequence?ev.sequence.name:"";
+  seqContacts=ev.sequence?[...ev.sequence.contacts]:[]; renderSeq();
+};
+window.delEvent=i=>{ EVENTS.splice(i,1); persist(); };
+
+dlBtn.onclick=()=>{
+  const out={
+    schema_version:CONTRACT_VERSION,
+    kind:"human-gold-timing",
+    clip:CLIP.clip_id,
+    fps:fps,
+    annotator:annotator,
+    tool:"gold_annotator",
+    exported_utc:new Date().toISOString(),
+    events:EVENTS.map(ev=>({
+      event_id:ev.event_id,
+      temporal_type:ev.temporal_type,
+      family:ev.family,
+      class:ev.klass||"",
+      subclass:ev.subclass||"",
+      start_frame:ev.start_frame,
+      contact_frame:ev.contact_frame,
+      end_frame:ev.end_frame,
+      acceptable_frames:ev.acceptable_frames,
+      sequence:ev.sequence,
+      confidence:ev.confidence,
+      notes:ev.notes||""
+    }))
+  };
+  const blob=new Blob([JSON.stringify(out,null,2)],{type:"application/json"});
+  const a=document.createElement("a");
+  a.href=URL.createObjectURL(blob);
+  a.download=`${CLIP.clip_id}.${annotator}.gt.json`;
+  a.click(); URL.revokeObjectURL(a.href);
+};
+fillFamily();
+setInterval(updateReadout,120);
+</script>
+</body>
+</html>
