@@ -29,7 +29,7 @@
     {
       "clip": "ocean-long",
       "status": "seeded",
-      "expected_bank_entry": "surf_bed_01_6ace93b1",
+      "expected_bank_entry": "",
       "events": [
         {
           "id": "ev_bed",
@@ -40,7 +40,7 @@
     {
       "clip": "ocean-short",
       "status": "seeded",
-      "expected_bank_entry": "surf_bed_01_6ace93b1",
+      "expected_bank_entry": "",
       "events": [
         {
           "id": "ev_bed",

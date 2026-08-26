@@ -29,6 +29,7 @@ import base64
 import json
 import os
 import random
+import re
 import secrets
 import sys
 from datetime import datetime, timezone
@@ -232,6 +233,7 @@ function build(){
       html += `</table></div>`;
     }
   }
+  root.innerHTML = html;
 }
 function cellHtml(clip, scope, id, label, field, kind){
   const val = (getRating(clip, scope, id, label))[field];
@@ -357,16 +359,39 @@ class SaveHandler(BaseHTTPRequestHandler):
         if path in ("/", "/index.html"):
             self._serve_static("review/blind/index.html")
         elif path.endswith(".mp4"):
-            target = (self.run_dir / path.lstrip("/")).resolve()
-            if target.is_file() and str(target).startswith(str(self.run_dir.resolve())):
-                body = target.read_bytes()
-                self.send_response(200)
-                self.send_header("Content-Type", "video/mp4")
-                self.send_header("Content-Length", str(len(body)))
-                self.end_headers()
-                self.wfile.write(body)
-            else:
+            # Media lives under review/; cfg uses "../name.mp4" which browsers
+            # normalize against "/" to "/name.mp4". Accept either form.
+            rel = Path(path.lstrip("/"))
+            candidates = [rel, Path("review") / rel]
+            target = next((c for c in (self.run_dir / p for p in candidates)
+                           if c.is_file()
+                           and str(c.resolve()).startswith(str(self.run_dir.resolve()))), None)
+            if target is None:
                 self.send_error(404)
+                return
+            body = target.read_bytes()
+            size = len(body)
+            start, end, status = 0, size - 1, 200
+            rng = self.headers.get("Range")
+            m = re.fullmatch(r"bytes=(\d*)-(\d*)", rng.strip()) if rng else None
+            if m and (m.group(1) or m.group(2)):
+                if m.group(1):
+                    s = int(m.group(1))
+                    e = int(m.group(2)) if m.group(2) else size - 1
+                else:  # bytes=-N suffix range
+                    s, e = max(0, size - int(m.group(2))), size - 1
+                s, e = min(s, size - 1), min(e, size - 1)
+                if s <= e:
+                    start, end, status = s, e, 206
+            chunk = body[start:end + 1]
+            self.send_response(status)
+            self.send_header("Content-Type", "video/mp4")
+            self.send_header("Accept-Ranges", "bytes")
+            if status == 206:
+                self.send_header("Content-Range", f"bytes {start}-{end}/{size}")
+            self.send_header("Content-Length", str(len(chunk)))
+            self.end_headers()
+            self.wfile.write(chunk)
         else:
             self.send_error(404)
 

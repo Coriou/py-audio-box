@@ -137,13 +137,15 @@ if(location.protocol==="file:"){
     (browsers treat file: pages as unique origins — this is the “Unsafe attempt
     to load URL” error).</strong> Serve instead, from the <em>repo root</em>:<br>
     <code>cd &lt;repo-root&gt; &amp;&amp; python3 -m http.server 8765</code><br>then open:
-    <code>http://localhost:8765${location.pathname}?session=&lt;path/to/session.json&gt;</code>`);
+    <code>http://localhost:8765${location.pathname}?session=work/sfx-gold/sessions/&lt;name&gt;/session.json</code>`);
 } else if(!sessionUrl){
-  showSetupError(`Missing <code>?session=&lt;path/to/session.json&gt;</code>.
-    Serve via <code>python3 -m http.server</code> from the repo root; the full
-    URL is in your session README (${location.protocol}).`);
+  showSetupError(`Missing <code>?session=&lt;repo-root-relative/path/to/session.json&gt;</code>.
+    Serve via <code>python3 -m http.server</code> from the repo root, e.g.
+    <code>?session=work/sfx-gold/sessions/20260826-demo/session.json</code>.`);
 } else {
-  fetch(sessionUrl)
+  // Session paths are repo-root-relative (same convention as clip.file).
+  // Resolve against the origin root, NOT this page's directory.
+  fetch(new URL(sessionUrl, location.origin))
     .then(r=>{ if(!r.ok) throw new Error(`HTTP ${r.status}`); return r.json(); })
     .then(bootSession)
     .catch(err=>showSetupError(`Could not load session <code>${sessionUrl}</code>: ${err}.<br>
