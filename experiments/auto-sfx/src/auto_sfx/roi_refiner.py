@@ -19,11 +19,12 @@ from .types import ContactEvent, DiagReason
 
 
 ROI_CONFIG = {
-    "roi_half_window_frames": 4,
+    "roi_half_window_frames": 7,
     "roi_max_global_motion_px": 24.0,
     "roi_min_phase_response": 0.02,
     "roi_static_flow_px": 0.75,
     "roi_min_edge_pixels": 8,
+    "roi_min_change_score": 0.34,
 }
 
 
@@ -116,24 +117,47 @@ def _region_evidence(prev: np.ndarray, curr: np.ndarray,
         return None
     fy, fx = foot
     gy, gx = ground
-    foot_flow = flow[fy, fx].reshape(-1, 2)
+    foot_flow_plane = flow[fy, fx]
     ground_flow = flow[gy, gx].reshape(-1, 2)
-    if len(foot_flow) < 20 or len(ground_flow) < 20:
+    if foot_flow_plane.size < 40 or len(ground_flow) < 20:
         return None
     # Ground median is a local camera/support estimate. Fall back toward the
     # global translation when the ground patch is texture-poor/noisy.
     ground_med = np.median(ground_flow, axis=0)
     if not np.all(np.isfinite(ground_med)):
         ground_med = global_shift
-    rel = foot_flow - ground_med
-    rel_mag = np.linalg.norm(rel, axis=1)
-    static_frac = float(np.mean(rel_mag <= cfg["roi_static_flow_px"]))
-    rel_speed = float(np.median(rel_mag))
-
+    # Dense-flow medians over the rectangular ROI are dominated by static
+    # background pixels around a narrow shoe.  Restrict timing evidence to a
+    # central ellipse and textured foot-edge neighbourhood, then use a robust
+    # upper quantile so a moving shoe cannot be averaged away by turf pixels.
     prev_roi = prev[fy, fx]
     curr_roi = curr[fy, fx]
     edges_prev = cv2.Canny(prev_roi, 60, 140)
     edges_curr = cv2.Canny(curr_roi, 60, 140)
+    edge_band = cv2.dilate(
+        edges_prev | edges_curr, np.ones((3, 3), np.uint8), iterations=1
+    ) > 0
+    rh, rw = curr_roi.shape
+    yy, xx = np.ogrid[:rh, :rw]
+    ellipse = (
+        ((xx - (rw - 1) / 2) / max(1.0, 0.48 * rw)) ** 2
+        + ((yy - (rh - 1) / 2) / max(1.0, 0.48 * rh)) ** 2
+    ) <= 1.0
+    foot_mask = ellipse & edge_band
+    if int(np.count_nonzero(foot_mask)) < 12:
+        foot_mask = ellipse
+    foot_flow = foot_flow_plane[foot_mask].reshape(-1, 2)
+    rel = foot_flow - ground_med
+    rel_mag = np.linalg.norm(rel, axis=1)
+    moving_order = np.argsort(rel_mag)
+    moving_count = max(12, int(math.ceil(0.25 * len(rel_mag))))
+    moving_subset = moving_order[-moving_count:]
+    rel_xy = np.median(rel[moving_subset], axis=0)
+    static_frac = float(np.mean(rel_mag <= cfg["roi_static_flow_px"]))
+    # The completed development ablation used q75.  A stricter q90 variant
+    # amplified isolated texture noise and exceeded the local CPU budget
+    # before completing, so keep the last fully measured prototype here.
+    rel_speed = float(np.quantile(rel_mag, 0.75))
     edge_count = int(np.count_nonzero(edges_curr))
     persistence = None
     if edge_count >= cfg["roi_min_edge_pixels"]:
@@ -144,14 +168,16 @@ def _region_evidence(prev: np.ndarray, curr: np.ndarray,
         warped = cv2.warpAffine(
             edges_prev, matrix, (edges_prev.shape[1], edges_prev.shape[0])
         )
-        a, b = warped > 0, edges_curr > 0
+        a, b = (warped > 0) & foot_mask, (edges_curr > 0) & foot_mask
         union = int(np.count_nonzero(a | b))
         persistence = float(np.count_nonzero(a & b) / union) if union else 0.0
     return {
         "relative_flow_px": rel_speed,
+        "relative_flow_xy": [round(float(v), 5) for v in rel_xy],
         "static_pixel_fraction": static_frac,
         "edge_persistence": persistence,
         "edge_pixels": edge_count,
+        "flow_support_pixels": int(len(rel_mag)),
         "ground_flow_xy": [round(float(v), 4) for v in ground_med],
     }
 
@@ -238,7 +264,7 @@ def refine_contacts(video_path: str, trace, events: list[ContactEvent],
         cfg[key] = int(cfg[key])
     for key in (
         "roi_max_global_motion_px", "roi_min_phase_response",
-        "roi_static_flow_px",
+        "roi_static_flow_px", "roi_min_change_score",
     ):
         cfg[key] = float(cfg[key])
 
@@ -276,29 +302,88 @@ def refine_contacts(video_path: str, trace, events: list[ContactEvent],
         hi = min(n - 2, coarse + cfg["roi_half_window_frames"])
         evidence_rows: list[_PixelEvidence] = []
         for i in range(lo, hi + 1):
-            before, after = pair(i, event.foot), pair(i + 1, event.foot)
-            if not before or not after or before.get("abstain") or after.get("abstain"):
+            pairs = {
+                j: pair(j, event.foot)
+                for j in range(max(1, i - 3), min(n, i + 4))
+            }
+            if any(
+                not row or row.get("abstain")
+                for row in pairs.values()
+            ):
                 continue
             region_scores = []
             per_region = {}
             for name in ("heel", "toe"):
-                pre, post = before.get(name), after.get(name)
-                if not pre or not post:
+                pre = [
+                    pairs[j].get(name) for j in range(i - 2, i + 1)
+                    if j in pairs and pairs[j].get(name)
+                ]
+                post = [
+                    pairs[j].get(name) for j in range(i + 1, i + 4)
+                    if j in pairs and pairs[j].get(name)
+                ]
+                if len(pre) < 2 or len(post) < 2:
                     per_region[name] = None
                     continue
-                decel = max(0.0, pre["relative_flow_px"] - post["relative_flow_px"])
-                # Relative, scale-free evidence. Static/persistent pixels must
-                # corroborate deceleration; camera translation is absent.
-                decel_score = decel / (decel + 1.0)
-                persistence = post["edge_persistence"] or 0.0
-                score = (
-                    0.50 * decel_score
-                    + 0.30 * post["static_pixel_fraction"]
-                    + 0.20 * persistence
+                pre_speed = float(np.quantile(
+                    [r["relative_flow_px"] for r in pre], 0.75
+                ))
+                post_speed = float(np.median(
+                    [r["relative_flow_px"] for r in post]
+                ))
+                decel = max(0.0, pre_speed - post_speed)
+                # Camera-compensated foot motion must visibly change from a
+                # moving pre-contact run into a persistent locally static run.
+                # A high static score by itself merely describes stance and
+                # cannot choose an arbitrary frame from the window.
+                decel_score = decel / max(pre_speed, 0.25)
+                static_fraction = float(np.median(
+                    [r["static_pixel_fraction"] for r in post]
+                ))
+                persistence_vals = [
+                    r["edge_persistence"] for r in post
+                    if r["edge_persistence"] is not None
+                ]
+                persistence = (
+                    float(np.median(persistence_vals))
+                    if persistence_vals else 0.0
                 )
+                pre_down = float(np.quantile([
+                    r.get("relative_flow_xy", [0.0, 0.0])[1]
+                    for r in pre
+                ], 0.75))
+                descending_pairs = sum(
+                    r.get("relative_flow_xy", [0.0, 0.0])[1] > 0.08
+                    for r in pre
+                )
+                moving = (
+                    pre_speed >= max(0.40, 1.30 * post_speed)
+                    and decel >= 0.18
+                    and descending_pairs >= 1
+                )
+                post_vertical = float(np.median([
+                    abs(r.get("relative_flow_xy", [0.0, 0.0])[1])
+                    for r in post
+                ]))
+                vertical_stop = max(0.0, pre_down - post_vertical)
+                vertical_score = vertical_stop / (vertical_stop + 0.5)
+                score = (
+                    0.42 * min(1.0, decel_score)
+                    + 0.28 * static_fraction
+                    + 0.18 * persistence
+                    + 0.12 * vertical_score
+                )
+                if not moving:
+                    score *= 0.35
                 per_region[name] = {
-                    **post,
+                    **post[0],
+                    "pre_relative_flow_px": round(pre_speed, 5),
+                    "post_relative_flow_px": round(post_speed, 5),
                     "deceleration_px": round(decel, 5),
+                    "vertical_deceleration_px": round(vertical_stop, 5),
+                    "post_static_pixel_fraction": round(static_fraction, 5),
+                    "post_edge_persistence": round(persistence, 5),
+                    "moving_to_static": moving,
                     "contact_score": round(score, 5),
                 }
                 region_scores.append(score)
@@ -307,10 +392,10 @@ def refine_contacts(video_path: str, trace, events: list[ContactEvent],
             evidence_rows.append(_PixelEvidence(
                 frame=i, score=max(region_scores),
                 global_motion_px=max(
-                    before["global_motion_px"], after["global_motion_px"]
+                    row["global_motion_px"] for row in pairs.values()
                 ),
                 global_response=min(
-                    before["global_response"], after["global_response"]
+                    row["global_response"] for row in pairs.values()
                 ),
                 heel=per_region.get("heel"), toe=per_region.get("toe"),
             ))
@@ -322,18 +407,29 @@ def refine_contacts(video_path: str, trace, events: list[ContactEvent],
                 "detail": "contact-roi-v1 abstained: no camera-compensated textured foot ROI",
             })
             continue
-        evidence_rows.sort(key=lambda r: (-r.score, abs(r.frame - coarse), r.frame))
-        best = evidence_rows[0]
+        evidence_rows.sort(key=lambda r: (-r.score, r.frame))
+        peak = evidence_rows[0].score
         # Very weak evidence is an abstention, never a pose-timestamp fallback.
-        if best.score < 0.18:
+        if peak < cfg["roi_min_change_score"]:
             abstained += 1
             diagnostics.append({
                 "code": DiagReason.AMBIGUOUS_SUPPORT_PHASE,
                 "t0_s": event.earliest_s, "t1_s": event.latest_s,
-                "detail": f"contact-roi-v1 abstained: weak relative-motion score {best.score:.3f}",
+                "detail": f"contact-roi-v1 abstained: weak moving-to-static score {peak:.3f}",
             })
             continue
-        near = [r.frame for r in evidence_rows if r.score >= 0.90 * best.score]
+        # Prefer the first defensible physical change point among essentially
+        # tied peaks.  The old prototype picked window boundaries because a
+        # late stance frame could have a slightly cleaner edge map.
+        tied = [r for r in evidence_rows if r.score >= peak - 0.025]
+        best = min(tied, key=lambda r: r.frame)
+        by_frame = {r.frame: r for r in evidence_rows}
+        near = {best.frame}
+        for direction in (-1, 1):
+            j = best.frame + direction
+            while j in by_frame and by_frame[j].score >= 0.90 * peak:
+                near.add(j)
+                j += direction
         out = copy.deepcopy(event)
         out.time_s = round(trace.frames[best.frame].t_s, 6)
         out.source_pts_us = trace.frames[best.frame].source_pts_us

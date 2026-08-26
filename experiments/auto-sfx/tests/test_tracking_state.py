@@ -15,6 +15,7 @@ if str(SRC) not in sys.path:
 
 from auto_sfx.contacts import detect_contacts  # noqa: E402
 from auto_sfx.tracking import track_feet  # noqa: E402
+from auto_sfx.types import DiagReason  # noqa: E402
 
 # Reuse the established analytic walker; importing a test helper keeps the
 # regression's gait geometry identical to the hybrid-v0 tests.
@@ -150,3 +151,39 @@ def test_interpolated_discontinuity_frame_cannot_be_contact_evidence():
                    for e in result.events)
     assert any(r.get("frame") == frame and r.get("decision") == "interpolate"
                for r in result.frame_trace)
+
+
+def test_contact_state_is_invariant_to_smooth_tracking_camera_translation():
+    original = build_walk(uniform_times(5.4))
+    translated = copy.deepcopy(original)
+    for frame in translated.frames:
+        dx = 6.0 * frame.frame_index
+        frame.hips.x += dx
+        for side in ("left", "right"):
+            obs = frame.feet[side]
+            for point in (obs.heel, obs.ankle, obs.toe):
+                point.x += dx
+
+    baseline = detect_contacts(original, "contact-state-v1")
+    moving_camera = detect_contacts(translated, "contact-state-v1")
+
+    assert [(e.foot, e.source_pts_us) for e in moving_camera.events] == [
+        (e.foot, e.source_pts_us) for e in baseline.events
+    ]
+
+
+def test_unobservable_phase_is_an_explicit_abstention():
+    trace = build_walk(uniform_times(2.0))
+    seed = copy.deepcopy(trace.frames[0])
+    for frame in trace.frames:
+        frame.hips = copy.deepcopy(seed.hips)
+        frame.feet = copy.deepcopy(seed.feet)
+
+    result = detect_contacts(trace, "contact-state-v1", record_trace=True)
+
+    assert result.events == []
+    assert any(
+        d["code"] == DiagReason.AMBIGUOUS_SUPPORT_PHASE
+        and "abstained" in d["detail"]
+        for d in result.diagnostics
+    )

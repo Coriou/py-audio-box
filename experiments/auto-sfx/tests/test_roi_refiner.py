@@ -44,6 +44,7 @@ def test_common_camera_flow_is_not_contact_motion():
     )
     assert got is not None
     assert got["relative_flow_px"] == 0.0
+    assert got["relative_flow_xy"] == [0.0, 0.0]
     assert got["static_pixel_fraction"] == 1.0
 
 
@@ -56,12 +57,13 @@ def test_refiner_selects_relative_deceleration_change_point(monkeypatch):
     )
 
     def fake_pair(_prev, _curr, _trace, frame, _side, _scale, _cfg):
-        speed = 4.0 if frame == 6 else 0.1 if frame == 7 else 1.0
-        static = 0.9 if frame == 7 else 0.1
+        speed = 4.0 if frame == 6 else 0.1 if 7 <= frame <= 9 else 1.0
+        static = 0.9 if 7 <= frame <= 9 else 0.1
         region = {
             "relative_flow_px": speed,
+            "relative_flow_xy": [0.0, speed],
             "static_pixel_fraction": static,
-            "edge_persistence": 0.8 if frame == 7 else 0.1,
+            "edge_persistence": 0.8 if 7 <= frame <= 9 else 0.1,
             "edge_pixels": 20,
             "ground_flow_xy": [5.0, 1.0],
         }
@@ -72,7 +74,10 @@ def test_refiner_selects_relative_deceleration_change_point(monkeypatch):
 
     monkeypatch.setattr(roi_refiner, "_pair_metrics", fake_pair)
     events, diagnostics, summary = roi_refiner.refine_contacts(
-        "unused.mp4", trace, [raw], {"roi_half_window_frames": 3}
+        "unused.mp4", trace, [raw], {
+            "roi_half_window_frames": 3,
+            "roi_min_change_score": 0.25,
+        }
     )
     assert diagnostics == []
     assert len(events) == 1
