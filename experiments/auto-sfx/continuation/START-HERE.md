@@ -6,17 +6,19 @@ another substantial, audited accuracy marker—not another tooling checkpoint.
 ## Resume contract
 
 Work locally in `/Users/ben/Projects/py-audio-box`. Begin from the current local
-HEAD; this handoff was drafted at `a470db9`, after the Phase 2B commits. Preserve
-all operator files and unrelated work. Do not push, open a PR, release, upload
-media, or mutate remote state without explicit authorization.
+HEAD. Phase 2C Batch 0 was built from
+`76dc2843b507b18531e795cb0efebde91d54252e`, after the Phase 2B commits.
+Preserve all operator files and unrelated work. Do not push, open a PR, release,
+upload media, or mutate remote state without explicit authorization.
 
 Read, in order:
 
 1. this file;
 2. `state.json` beside it;
 3. `plans/2026-08-26-auto-sfx-step-sync-continuation.md`;
-4. `../reports/CTO-UPDATE-phase2-3-timing-repair.md`;
-5. `../reports/phase2b-experiment-log.md`.
+4. `../reports/CTO-UPDATE-phase2-4-operator-gold-control-plane.md`;
+5. `../reports/CTO-UPDATE-phase2-3-timing-repair.md`;
+6. `../reports/phase2b-experiment-log.md`.
 
 Do not load every old report or runtime trace into context. Read source and
 tests only for the current batch.
@@ -35,8 +37,9 @@ make auto-sfx-test
 find work -type f -path '*/annotations/*.gt.json' -print
 ```
 
-The last verified suite was 284 passed. Newer unrelated commits exist after
-the Phase 2B report; do not reset or rewrite them.
+The last verified suite was 332 passed in the rebuilt Docker/Linux CPU
+reference image. Newer unrelated commits exist after the Phase 2B report; do
+not reset or rewrite them.
 
 ## Current verdict
 
@@ -59,15 +62,22 @@ The existing Phase 2B GT is agent-draft and the old validation has been opened.
 It may be used for regression and failure analysis, never as the next final
 holdout.
 
-No operator foot-contact exports existed when this handoff was written. Check
-again first. `gold_annotator.html` and `build_gold_session.py` were added by a
-later parallel effort, but their generic Foley schema is not automatically
-auto-sfx schema v2. Do not convert generic marks into anatomical side,
-visibility, viewpoint, or source-PTS claims without an explicit lossless
-foot-contact mode and tests.
+The dedicated, prediction-blind foot-contact path now exists at
+`../foot_contact_annotator.html`, with its operating procedure in
+`../FOOT-CONTACT-ANNOTATION-GUIDE.md`. It records genuine source PTS, contact
+windows, side/uncertainty, visibility, viewpoint, actor, observability,
+cropping, pass/session/tool/source provenance, and separate optional audible
+onset. Its lossless/schema behavior is tested. Generic Foley marks remain
+insufficient and must not be converted into missing anatomical or timing
+claims.
 
-The first durable task is an operator-gold foot-contact path plus a new
-source-group split reserved before predictions.
+No operator foot-contact exports existed at the Phase 2C Batch 0 closeout.
+Check again first. The rights/source manifest and blind source-group reservation
+mechanism also exist, but the checked-in manifest is deliberately empty and no
+real split has been fabricated. A private rights-cleared corpus, deterministic
+reservation before predictions, two immutable prediction-blind passes, and
+append-only adjudication are still required before evaluation can become
+operator-gold.
 
 ## Next substantial marker
 
@@ -85,24 +95,29 @@ clips, 200 clear contacts, multiple views, and ≥25% hard-negative duration:
 The ultimate exit gate remains 0.90/0.90, median ≤1, p90 ≤3, ≤5% beyond 3,
 and known-side ≥0.95. Do not relax it or make a new default early.
 
-## Immediate batch
+## Phase 2C Batch 0 closeout
 
 Answer one question: can the project replace agent-draft/opened evaluation with
 a durable operator-gold and resumable experiment path?
 
-1. Build a foot-contact-specific annotation mode or converter with source PTS,
-   earliest/preferred/latest, side/uncertain, visibility, viewpoint, actor,
-   observability, annotator/pass provenance, and optional separate audible
-   onset.
-2. Add round-trip/schema tests and a prediction-free two-pass guide.
-3. Create a rights/source manifest and reserve a new source-level holdout before
-   running any predictions on it.
-4. Add a small atomic experiment manifest runner (`queued/running/complete/
-   failed`) that records HEAD, dirty state, hashes, command/config, metrics,
-   resources, and decision.
-5. While operator marking is pending, work only on development: full-leg-chain
-   identity/anatomical attribution and a sparse stabilized heel/toe pixel
-   change-point refiner. Do not retune a global offset on old validation.
+The audited answer is **yes for the mechanism, not yet for the evidence**:
+
+1. The foot-contact-specific source-PTS annotator, strict schema, two-pass guide,
+   and round-trip tests are complete.
+2. The rights/source manifest, transitive leakage grouping, deterministic blind
+   reservation, private locked map, and public receipt are complete. A real
+   private corpus and split are still pending.
+3. The atomic experiment runner now records queued/running/complete/failed/
+   cancelled lifecycle, provenance and artifact hashes, resources, decisions,
+   hard-kill reconciliation, and privacy-safe public reports.
+4. Zero operator exports and zero real reserved sources existed at closeout, so
+   operator-gold accuracy has not been measured and no default changed.
+
+The next engineering batch, while operator work is pending, is development-only:
+full-leg-chain temporal identity with separately calibrated anatomical
+attribution, plus a new sparse stabilized heel/toe pixel change-point refiner.
+Use the manifest runner for experiments. Do not retune a global offset on old
+validation, repeat dense Farneback, or inspect a future locked holdout.
 
 ## Orchestrated batch shape
 
@@ -142,6 +157,7 @@ Read first:
   experiments/auto-sfx/continuation/START-HERE.md
   experiments/auto-sfx/continuation/state.json
   plans/2026-08-26-auto-sfx-step-sync-continuation.md
+  experiments/auto-sfx/reports/CTO-UPDATE-phase2-4-operator-gold-control-plane.md
   experiments/auto-sfx/reports/CTO-UPDATE-phase2-3-timing-repair.md
   experiments/auto-sfx/reports/phase2b-experiment-log.md
 

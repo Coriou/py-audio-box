@@ -1,0 +1,47 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://py-audio-box.local/auto-sfx/split-receipt-v1.schema.json",
+  "title": "Auto-SFX public blind split receipt v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version", "corpus_id", "reservation_id", "reserved_at_utc",
+    "source_manifest_sha256", "algorithm", "counts",
+    "assignment_commitment_hmac_sha256", "locked_membership_commitment_hmac_sha256",
+    "leakage_audit", "corpus_gate", "locked_holdout_policy"
+  ],
+  "properties": {
+    "schema_version": {"const": "auto-sfx-split-receipt/v1"},
+    "corpus_id": {"type": "string"},
+    "reservation_id": {"type": "string"},
+    "reserved_at_utc": {"type": "string"},
+    "source_manifest_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "algorithm": {"type": "string"},
+    "counts": {
+      "type": "object",
+      "required": ["development", "challenge", "locked_holdout"],
+      "additionalProperties": false,
+      "properties": {
+        "development": {"$ref": "#/$defs/counts"},
+        "challenge": {"$ref": "#/$defs/counts"},
+        "locked_holdout": {"$ref": "#/$defs/counts"}
+      }
+    },
+    "assignment_commitment_hmac_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "locked_membership_commitment_hmac_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "leakage_audit": {"type": "object"},
+    "corpus_gate": {"type": "object"},
+    "locked_holdout_policy": {"type": "string"}
+  },
+  "$defs": {
+    "counts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["source_groups", "clips"],
+      "properties": {
+        "source_groups": {"type": "integer", "minimum": 0},
+        "clips": {"type": "integer", "minimum": 0}
+      }
+    }
+  }
+}

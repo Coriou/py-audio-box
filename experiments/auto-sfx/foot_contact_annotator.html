@@ -1,0 +1,687 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Foot-contact operator annotator</title>
+<style>
+:root {
+  color-scheme: dark;
+  --canvas: #0d1115;
+  --surface: #151b21;
+  --surface-raised: #1b232b;
+  --line: #303b45;
+  --text: #eef3f6;
+  --muted: #aab7c2;
+  --accent: #67d4a4;
+  --accent-strong: #187453;
+  --danger: #f48f8f;
+  --focus: #98dfbf;
+  --radius: 12px;
+  font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+}
+* { box-sizing: border-box; }
+::selection { background: #276d52; color: #fff; }
+body { margin: 0; min-height: 100vh; background: var(--canvas); color: var(--text); }
+button, input, select, textarea { font: inherit; }
+button, input, select, textarea {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--text);
+}
+button { min-height: 38px; padding: 8px 12px; cursor: pointer; }
+button:hover { border-color: #60707d; background: var(--surface-raised); }
+button:disabled { cursor: not-allowed; opacity: .42; }
+button.primary { background: var(--accent-strong); border-color: var(--accent-strong); font-weight: 700; }
+button.primary:hover { background: #126347; }
+button.danger { color: var(--danger); }
+button.compact { min-height: 32px; padding: 5px 9px; font-size: .8125rem; }
+button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible {
+  outline: 3px solid color-mix(in srgb, var(--focus) 55%, transparent);
+  outline-offset: 2px;
+}
+input, select, textarea { padding: 8px 10px; }
+textarea { width: 100%; resize: vertical; min-height: 70px; }
+label { display: grid; gap: 5px; color: var(--muted); font-size: .8125rem; font-weight: 650; }
+code, .measure { font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace; }
+.app { display: grid; grid-template-columns: 280px minmax(0, 1fr); min-height: 100vh; }
+aside {
+  border-right: 1px solid var(--line);
+  background: #11171c;
+  padding: 20px 16px;
+  overflow: auto;
+}
+main { padding: 22px clamp(18px, 3vw, 42px) 64px; overflow: auto; }
+h1 { margin: 0; font-size: 1.5rem; letter-spacing: -.015em; }
+h2 { margin: 34px 0 12px; font-size: 1.125rem; }
+p { line-height: 1.5; }
+.subtitle, .hint { color: var(--muted); font-size: .8125rem; }
+.identity { display: grid; gap: 8px; margin: 20px 0; }
+.identity input { width: 100%; }
+.pass-badge {
+  display: inline-flex;
+  align-items: center;
+  width: fit-content;
+  margin-top: 12px;
+  padding: 5px 8px;
+  border-radius: 6px;
+  background: #183328;
+  color: #bff1d8;
+  font-size: .75rem;
+  font-weight: 750;
+}
+.clip-list { list-style: none; margin: 10px 0 24px; padding: 0; display: grid; gap: 5px; }
+.clip-list button { width: 100%; text-align: left; }
+.clip-list button.active { border-color: var(--accent); background: #173429; }
+.side-actions { display: grid; gap: 8px; }
+.side-actions button { width: 100%; }
+.truth-note { border-top: 1px solid var(--line); margin-top: 22px; padding-top: 16px; }
+.truth-note strong { color: var(--accent); }
+.setup-error {
+  max-width: 72ch;
+  padding: 18px;
+  border: 1px solid #754646;
+  border-radius: var(--radius);
+  background: #28191b;
+  color: #ffd8d8;
+}
+.workspace { display: none; }
+.topline { display: flex; justify-content: space-between; gap: 16px; align-items: flex-start; }
+.status { color: var(--muted); font-size: .8125rem; min-height: 1.3em; text-align: right; }
+.status.error { color: #ffb4b4; }
+.video-shell { max-width: 960px; margin-top: 14px; }
+video { width: 100%; max-height: 58vh; display: block; background: #000; border-radius: var(--radius); }
+.readout {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 18px;
+  margin: 10px 0;
+  color: #cfe6dc;
+  font-size: 1rem;
+  font-variant-numeric: tabular-nums;
+}
+.transport { display: flex; flex-wrap: wrap; gap: 7px; }
+.annotation-form { max-width: 1080px; }
+.form-grid { display: grid; grid-template-columns: repeat(3, minmax(150px, 1fr)); gap: 12px; }
+.time-grid { display: grid; grid-template-columns: repeat(4, minmax(150px, 1fr)); gap: 10px; margin-top: 14px; }
+.time-field { padding: 12px; border: 1px solid var(--line); border-radius: var(--radius); }
+.time-field label { margin-bottom: 8px; }
+.time-field input { width: 100%; font-variant-numeric: tabular-nums; }
+.time-field button { width: 100%; margin-top: 8px; }
+.audible { border-style: dashed; }
+.form-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
+.events { width: 100%; border-collapse: collapse; font-size: .8125rem; font-variant-numeric: tabular-nums; }
+.events th, .events td { padding: 9px 8px; text-align: left; vertical-align: top; border-bottom: 1px solid #27313a; }
+.events th { color: var(--muted); font-size: .72rem; text-transform: uppercase; letter-spacing: .04em; }
+.events .empty { color: var(--muted); padding: 22px 8px; }
+.event-actions { display: flex; gap: 6px; }
+.nowrap { white-space: nowrap; }
+@media (max-width: 860px) {
+  .app { grid-template-columns: 1fr; }
+  aside { position: static; border-right: 0; border-bottom: 1px solid var(--line); }
+  .clip-list { grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); }
+  main { padding-top: 18px; }
+  .form-grid, .time-grid { grid-template-columns: repeat(2, minmax(140px, 1fr)); }
+}
+@media (max-width: 520px) {
+  .topline { display: block; }
+  .status { text-align: left; margin-top: 8px; }
+  .form-grid, .time-grid { grid-template-columns: 1fr; }
+  .events { display: block; overflow-x: auto; }
+}
+</style>
+</head>
+<body>
+<div class="app">
+<aside>
+  <h1>Foot-contact truth</h1>
+  <p class="subtitle">Visible physical contact, source timestamps, independent passes.</p>
+  <div id="passBadge" class="pass-badge">session not loaded</div>
+  <div class="identity">
+    <label>Annotator ID
+      <input id="annotatorInput" autocomplete="username" placeholder="e.g. operator-ben">
+    </label>
+    <button id="identityBtn">Use annotator ID</button>
+  </div>
+  <strong class="hint">Clips</strong>
+  <ul id="clipList" class="clip-list"><li class="hint">Loading session…</li></ul>
+  <div class="side-actions">
+    <button id="importBtn" disabled>Import this clip’s JSON</button>
+    <input id="importFile" type="file" accept="application/json,.json" hidden>
+    <button id="downloadBtn" class="primary" disabled>Download canonical JSON</button>
+  </div>
+  <p class="hint">Autosaves by session, pass, clip, and annotator. Import replaces only that isolated local draft.</p>
+  <p class="truth-note hint"><strong>Prediction-free marking.</strong> This page loads only the source video, its probed source-PTS map, and your own marks. Audible onset is optional and never substitutes for physical contact.</p>
+</aside>
+<main>
+  <div id="setupError" class="setup-error" hidden></div>
+  <section id="workspace" class="workspace" aria-label="Foot-contact annotation workspace">
+    <div class="topline">
+      <div>
+        <h1 id="clipTitle">Choose a clip</h1>
+        <div id="clipMeta" class="hint"></div>
+      </div>
+      <div id="status" class="status" aria-live="polite"></div>
+    </div>
+    <div class="video-shell">
+      <video id="video" controls preload="auto"></video>
+      <div id="readout" class="readout measure">
+        <span>displayed frame —</span><span>source PTS —</span><span>media t —</span>
+      </div>
+      <div class="transport" aria-label="Frame transport">
+        <button class="compact" data-step="-10">Back 10 frames</button>
+        <button class="compact" data-step="-1">Back 1 frame (,)</button>
+        <button class="compact" id="playPause">Play / pause (Space)</button>
+        <button class="compact" data-step="1">Forward 1 frame (.)</button>
+        <button class="compact" data-step="10">Forward 10 frames</button>
+      </div>
+    </div>
+
+    <section class="annotation-form">
+      <h2>Physical-contact mark</h2>
+      <div class="form-grid">
+        <label>Anatomical side
+          <select id="foot">
+            <option value="uncertain">uncertain</option>
+            <option value="left">left</option>
+            <option value="right">right</option>
+          </select>
+        </label>
+        <label>Visibility
+          <select id="visibility">
+            <option value="clear">clear</option>
+            <option value="partial">partial</option>
+            <option value="occluded">occluded</option>
+          </select>
+        </label>
+        <label>Viewpoint
+          <select id="viewpoint">
+            <option value="uncertain">uncertain</option>
+            <option value="sagittal">sagittal</option>
+            <option value="diagonal">diagonal</option>
+            <option value="frontal">frontal</option>
+            <option value="rear">rear</option>
+          </select>
+        </label>
+        <label>Actor ID
+          <select id="actor"></select>
+        </label>
+        <label>Contact observability
+          <select id="observability">
+            <option value="observable">observable</option>
+            <option value="partial">partial</option>
+            <option value="unobservable">unobservable</option>
+          </select>
+        </label>
+        <label>Foot cropping
+          <select id="cropping">
+            <option value="none">none</option>
+            <option value="partial">partial</option>
+            <option value="complete">complete</option>
+            <option value="uncertain">uncertain</option>
+          </select>
+        </label>
+      </div>
+
+      <div class="time-grid">
+        <div class="time-field">
+          <label for="earliestFrame">Earliest defensible frame</label>
+          <input id="earliestFrame" type="number" min="0" step="1" inputmode="numeric">
+          <button data-capture="earliest">Set from current</button>
+        </div>
+        <div class="time-field">
+          <label for="preferredFrame">Preferred contact frame</label>
+          <input id="preferredFrame" type="number" min="0" step="1" inputmode="numeric">
+          <button data-capture="preferred" class="primary">Set from current</button>
+        </div>
+        <div class="time-field">
+          <label for="latestFrame">Latest defensible frame</label>
+          <input id="latestFrame" type="number" min="0" step="1" inputmode="numeric">
+          <button data-capture="latest">Set from current</button>
+        </div>
+        <div class="time-field audible">
+          <label for="audibleFrame">Audible onset (optional)</label>
+          <input id="audibleFrame" type="number" min="0" step="1" inputmode="numeric">
+          <button data-capture="audible">Set from current</button>
+          <button id="clearAudible" class="compact">Clear audible onset</button>
+        </div>
+      </div>
+      <label style="margin-top: 12px">Operator notes
+        <textarea id="notes" placeholder="Only what you observed; retain uncertainty and occlusion details."></textarea>
+      </label>
+      <input id="editContactId" type="hidden">
+      <div class="form-actions">
+        <button id="saveContact" class="primary">Save contact</button>
+        <button id="clearForm">Clear form</button>
+      </div>
+    </section>
+
+    <h2>Saved contacts <span id="contactCount" class="hint"></span></h2>
+    <table class="events">
+      <thead><tr><th>ID / actor</th><th>physical window</th><th>side / view</th><th>observability</th><th>audible</th><th>notes</th><th>actions</th></tr></thead>
+      <tbody id="contactRows"><tr><td class="empty" colspan="7">No contacts saved for this clip and pass.</td></tr></tbody>
+    </table>
+  </section>
+</main>
+</div>
+
+<script>
+"use strict";
+const SCHEMA_VERSION = 2;
+const KIND = "auto-sfx-foot-contact-operator-gold";
+const SESSION_KIND = "auto-sfx-foot-contact-session";
+const PTS_KIND = "auto-sfx-source-pts-map";
+const TOOL = "foot_contact_annotator";
+const TOOL_VERSION = "1.0.0";
+const ENUMS = {
+  foot: ["left", "right", "uncertain"],
+  visibility: ["clear", "partial", "occluded"],
+  viewpoint: ["sagittal", "diagonal", "frontal", "rear", "uncertain"],
+  observability: ["observable", "partial", "unobservable"],
+  cropping: ["none", "partial", "complete", "uncertain"]
+};
+const $ = id => document.getElementById(id);
+const sessionUrl = new URLSearchParams(location.search).get("session");
+let session = null;
+let clip = null;
+let ptsMap = null;
+let sourcePts = [];
+let contacts = [];
+let annotator = localStorage.getItem("foot-contact-annotator-id") || "";
+let selectionToken = 0;
+
+function showError(message) {
+  $("setupError").hidden = false;
+  $("setupError").textContent = message;
+  $("workspace").style.display = "none";
+}
+function setStatus(message, error=false) {
+  $("status").textContent = message;
+  $("status").classList.toggle("error", error);
+}
+function requireValue(condition, message) {
+  if (!condition) throw new Error(message);
+}
+function storageKey() {
+  return `foot-contact:${session.session_id}:${session.pass_id}:${clip.clip_id}:${annotator}`;
+}
+function mediaTimeForFrame(frame) {
+  return (sourcePts[frame] - sourcePts[0]) / 1e6;
+}
+function nearestDisplayedFrame(mediaTimeSeconds) {
+  const target = sourcePts[0] + Math.round(mediaTimeSeconds * 1e6);
+  let low = 0, high = sourcePts.length - 1;
+  while (low < high) {
+    const middle = Math.floor((low + high) / 2);
+    if (sourcePts[middle] < target) low = middle + 1;
+    else high = middle;
+  }
+  if (low === 0) return 0;
+  return target - sourcePts[low - 1] <= sourcePts[low] - target ? low - 1 : low;
+}
+function currentFrame() {
+  return sourcePts.length ? nearestDisplayedFrame($("video").currentTime) : 0;
+}
+function seekFrame(requested) {
+  const frame = Math.max(0, Math.min(sourcePts.length - 1, Number(requested)));
+  $("video").pause();
+  $("video").currentTime = mediaTimeForFrame(frame);
+  updateReadout(frame);
+}
+function updateReadout(frame=currentFrame()) {
+  if (!sourcePts.length) return;
+  $("readout").innerHTML = "";
+  const values = [
+    `displayed frame ${frame}`,
+    `source PTS ${sourcePts[frame]} µs`,
+    `media t ${mediaTimeForFrame(frame).toFixed(6)} s`
+  ];
+  values.forEach(value => {
+    const span = document.createElement("span"); span.textContent = value; $("readout").appendChild(span);
+  });
+}
+async function sha256Text(text) {
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(text));
+  return [...new Uint8Array(digest)].map(value => value.toString(16).padStart(2, "0")).join("");
+}
+function safeFrame(value, label, optional=false) {
+  if (value === "" && optional) return null;
+  requireValue(/^\d+$/.test(String(value)), `${label} must be a displayed-frame integer.`);
+  const frame = Number(value);
+  requireValue(frame >= 0 && frame < sourcePts.length, `${label} is outside this clip’s PTS map.`);
+  return frame;
+}
+function nextContactId() {
+  const maximum = contacts.reduce((value, contact) => {
+    const match = /^c(\d+)$/.exec(contact.contact_id || "");
+    return Math.max(value, match ? Number(match[1]) : 0);
+  }, 0);
+  return `c${String(maximum + 1).padStart(4, "0")}`;
+}
+function hasExactKeys(value, expected) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const actual = Object.keys(value);
+  return actual.length === expected.length && actual.every(key => expected.includes(key));
+}
+function canonicalContact(contact) {
+  return {
+    contact_id: contact.contact_id,
+    foot: contact.foot,
+    earliest_pts_us: contact.earliest_pts_us,
+    preferred_pts_us: contact.preferred_pts_us,
+    latest_pts_us: contact.latest_pts_us,
+    display_frames: {
+      earliest: contact.display_frames.earliest,
+      preferred: contact.display_frames.preferred,
+      latest: contact.display_frames.latest
+    },
+    visibility: contact.visibility,
+    viewpoint: contact.viewpoint,
+    actor_id: contact.actor_id,
+    observability: contact.observability,
+    cropping: contact.cropping,
+    audible_onset: contact.audible_onset ? {
+      source_pts_us: contact.audible_onset.source_pts_us,
+      displayed_frame: contact.audible_onset.displayed_frame
+    } : null,
+    notes: contact.notes
+  };
+}
+function makeDocument() {
+  return {
+    schema_version: SCHEMA_VERSION,
+    kind: KIND,
+    clip: clip.clip_id,
+    range_s: {start: clip.range_s.start, end: clip.range_s.end},
+    fps_display: clip.nominal_fps,
+    annotator,
+    pass_id: session.pass_id,
+    tool: TOOL,
+    tool_version: TOOL_VERSION,
+    session_id: session.session_id,
+    source: {
+      file: clip.source.file,
+      sha256: clip.source.sha256,
+      pts_map_sha256: clip.source.pts_map_sha256,
+      frame_count: clip.source.frame_count
+    },
+    contacts: contacts.map(canonicalContact)
+  };
+}
+function validateDocument(document) {
+  requireValue(document && typeof document === "object" && !Array.isArray(document), "Annotation must be a JSON object.");
+  const expectedTop = ["schema_version","kind","clip","range_s","fps_display","annotator","pass_id","tool","tool_version","session_id","source","contacts"];
+  requireValue(hasExactKeys(document, expectedTop), "Annotation fields do not match the operator schema.");
+  requireValue(document.schema_version === SCHEMA_VERSION && document.kind === KIND, "Wrong annotation schema or kind.");
+  requireValue(document.clip === clip.clip_id, "Annotation belongs to a different clip.");
+  requireValue(hasExactKeys(document.range_s, ["start","end"]) && document.range_s.start === clip.range_s.start && document.range_s.end === clip.range_s.end, "Annotation range does not match this clip.");
+  requireValue(document.fps_display === clip.nominal_fps, "Annotation nominal display FPS does not match this clip.");
+  requireValue(document.annotator === annotator, "Annotation belongs to a different annotator ID.");
+  requireValue(document.pass_id === session.pass_id && document.session_id === session.session_id, "Annotation belongs to a different session or pass.");
+  requireValue(document.tool === TOOL && document.tool_version === TOOL_VERSION, "Annotation tool provenance is not supported.");
+  requireValue(hasExactKeys(document.source, ["file","sha256","pts_map_sha256","frame_count"]) && document.source.file === clip.source.file && document.source.sha256 === clip.source.sha256 && document.source.pts_map_sha256 === clip.source.pts_map_sha256 && document.source.frame_count === clip.source.frame_count, "Annotation source provenance does not match this clip.");
+  requireValue(Array.isArray(document.contacts), "contacts must be an array.");
+  let previous = null;
+  const ids = new Set();
+  document.contacts.forEach((contact, index) => {
+    const here = `contact ${index + 1}`;
+    const expected = ["contact_id","foot","earliest_pts_us","preferred_pts_us","latest_pts_us","display_frames","visibility","viewpoint","actor_id","observability","cropping","audible_onset","notes"];
+    requireValue(hasExactKeys(contact, expected), `${here} fields do not match the canonical schema.`);
+    requireValue(typeof contact.contact_id === "string" && contact.contact_id && !ids.has(contact.contact_id), `${here} has an invalid or duplicate ID.`);
+    ids.add(contact.contact_id);
+    ["foot","visibility","viewpoint","observability","cropping"].forEach(field => requireValue(ENUMS[field].includes(contact[field]), `${here} has invalid ${field}.`));
+    requireValue(typeof contact.actor_id === "string" && contact.actor_id && clip.actor_ids.includes(contact.actor_id), `${here} has an actor outside this session.`);
+    requireValue(typeof contact.notes === "string", `${here} notes must be text.`);
+    const frameKeys = ["earliest","preferred","latest"];
+    requireValue(hasExactKeys(contact.display_frames, frameKeys), `${here} display-frame fields are invalid.`);
+    frameKeys.forEach(point => {
+      const frame = safeFrame(contact.display_frames[point], `${here} ${point}`);
+      requireValue(contact[`${point}_pts_us`] === sourcePts[frame], `${here} ${point} source PTS does not match displayed frame.`);
+    });
+    requireValue(contact.display_frames.earliest <= contact.display_frames.preferred && contact.display_frames.preferred <= contact.display_frames.latest, `${here} physical window is inverted.`);
+    requireValue(previous === null || contact.preferred_pts_us >= previous, "Contacts are not sorted by preferred source PTS.");
+    previous = contact.preferred_pts_us;
+    if (contact.audible_onset !== null) {
+      requireValue(hasExactKeys(contact.audible_onset, ["source_pts_us","displayed_frame"]), `${here} audible onset fields are invalid.`);
+      const frame = safeFrame(contact.audible_onset.displayed_frame, `${here} audible onset`);
+      requireValue(contact.audible_onset.source_pts_us === sourcePts[frame], `${here} audible onset PTS does not match displayed frame.`);
+    }
+    requireValue(!(contact.visibility === "clear" && contact.observability !== "observable"), `${here}: clear visibility requires observable contact.`);
+    requireValue(!(contact.cropping === "complete" && (contact.visibility !== "occluded" || contact.observability !== "unobservable")), `${here}: complete crop requires occluded/unobservable.`);
+  });
+  return {
+    schema_version: SCHEMA_VERSION,
+    kind: KIND,
+    clip: document.clip,
+    range_s: {start: document.range_s.start, end: document.range_s.end},
+    fps_display: document.fps_display,
+    annotator: document.annotator,
+    pass_id: document.pass_id,
+    tool: TOOL,
+    tool_version: TOOL_VERSION,
+    session_id: document.session_id,
+    source: {
+      file: document.source.file,
+      sha256: document.source.sha256,
+      pts_map_sha256: document.source.pts_map_sha256,
+      frame_count: document.source.frame_count
+    },
+    contacts: document.contacts.map(canonicalContact)
+  };
+}
+function persist() {
+  const document = validateDocument(makeDocument());
+  localStorage.setItem(storageKey(), JSON.stringify(document));
+  renderContacts();
+}
+function restore() {
+  try {
+    const raw = localStorage.getItem(storageKey());
+    contacts = raw ? validateDocument(JSON.parse(raw)).contacts : [];
+  } catch (error) {
+    contacts = [];
+    setStatus(`Ignored invalid local draft: ${error.message}`, true);
+  }
+}
+function clearForm() {
+  ["earliestFrame","preferredFrame","latestFrame","audibleFrame","notes","editContactId"].forEach(id => $(id).value = "");
+  $("foot").value = "uncertain";
+  $("visibility").value = "clear";
+  $("viewpoint").value = "uncertain";
+  $("observability").value = "observable";
+  $("cropping").value = "none";
+  if (clip && clip.actor_ids.length) $("actor").value = clip.actor_ids[0];
+}
+function renderContacts() {
+  $("contactCount").textContent = `(${contacts.length})`;
+  $("contactRows").innerHTML = "";
+  if (!contacts.length) {
+    const row = $("contactRows").insertRow();
+    const cell = row.insertCell(); cell.colSpan = 7; cell.className = "empty"; cell.textContent = "No contacts saved for this clip and pass.";
+    return;
+  }
+  contacts.forEach(contact => {
+    const row = $("contactRows").insertRow();
+    const values = [
+      `${contact.contact_id}\n${contact.actor_id}`,
+      `${contact.display_frames.earliest} / ${contact.display_frames.preferred} / ${contact.display_frames.latest}\nPTS ${contact.preferred_pts_us}`,
+      `${contact.foot}\n${contact.visibility} · ${contact.viewpoint}`,
+      `${contact.observability}\ncrop ${contact.cropping}`,
+      contact.audible_onset ? `${contact.audible_onset.displayed_frame}\nPTS ${contact.audible_onset.source_pts_us}` : "—",
+      contact.notes || "—"
+    ];
+    values.forEach(value => { const cell = row.insertCell(); cell.textContent = value; cell.style.whiteSpace = "pre-line"; });
+    const actionCell = row.insertCell(); actionCell.className = "event-actions";
+    const edit = document.createElement("button"); edit.className = "compact"; edit.textContent = "Edit"; edit.onclick = () => loadContact(contact.contact_id);
+    const remove = document.createElement("button"); remove.className = "compact danger"; remove.textContent = "Delete"; remove.onclick = () => deleteContact(contact.contact_id);
+    actionCell.append(edit, remove);
+  });
+}
+function loadContact(contactId) {
+  const contact = contacts.find(item => item.contact_id === contactId);
+  if (!contact) return;
+  $("editContactId").value = contactId;
+  $("foot").value = contact.foot; $("visibility").value = contact.visibility; $("viewpoint").value = contact.viewpoint;
+  $("actor").value = contact.actor_id; $("observability").value = contact.observability; $("cropping").value = contact.cropping;
+  $("earliestFrame").value = contact.display_frames.earliest; $("preferredFrame").value = contact.display_frames.preferred; $("latestFrame").value = contact.display_frames.latest;
+  $("audibleFrame").value = contact.audible_onset ? contact.audible_onset.displayed_frame : "";
+  $("notes").value = contact.notes;
+  seekFrame(contact.display_frames.preferred);
+  setStatus(`Editing ${contactId}`);
+}
+function deleteContact(contactId) {
+  if (!confirm(`Delete ${contactId} from this local pass draft?`)) return;
+  contacts = contacts.filter(item => item.contact_id !== contactId);
+  persist(); clearForm(); setStatus(`Deleted ${contactId}`);
+}
+async function selectClip(index) {
+  if (!annotator) { setStatus("Enter and confirm an annotator ID first.", true); $("annotatorInput").focus(); return; }
+  const requestedClip = session.clips[index];
+  const requestedToken = ++selectionToken;
+  clip = null; ptsMap = null; contacts = []; sourcePts = [];
+  $("importBtn").disabled = true; $("downloadBtn").disabled = true; $("saveContact").disabled = true;
+  [...document.querySelectorAll("#clipList button")].forEach((button, i) => button.classList.toggle("active", i === index));
+  setStatus(`Loading ${requestedClip.clip_id} source PTS map…`);
+  try {
+    const response = await fetch(new URL(requestedClip.pts_map_file, location.origin));
+    requireValue(response.ok, `PTS map HTTP ${response.status}`);
+    const text = await response.text();
+    requireValue(await sha256Text(text) === requestedClip.source.pts_map_sha256, "PTS map digest does not match the session.");
+    const requestedPtsMap = JSON.parse(text);
+    requireValue(requestedPtsMap.kind === PTS_KIND && requestedPtsMap.clip === requestedClip.clip_id, "PTS map identity is invalid.");
+    requireValue(requestedPtsMap.source_file === requestedClip.source.file && requestedPtsMap.source_sha256 === requestedClip.source.sha256, "PTS map source provenance is invalid.");
+    requireValue(Array.isArray(requestedPtsMap.source_pts_us) && requestedPtsMap.source_pts_us.length === requestedClip.source.frame_count, "PTS map frame count is invalid.");
+    const requestedSourcePts = [...requestedPtsMap.source_pts_us];
+    requestedSourcePts.forEach((value, i) => requireValue(Number.isInteger(value) && (i === 0 || value > requestedSourcePts[i - 1]), `PTS map is not strictly increasing at frame ${i}.`));
+    if (requestedToken !== selectionToken) return;
+    clip = requestedClip; ptsMap = requestedPtsMap; sourcePts = requestedSourcePts;
+    $("actor").innerHTML = "";
+    clip.actor_ids.forEach(actorId => { const option = document.createElement("option"); option.value = actorId; option.textContent = actorId; $("actor").appendChild(option); });
+    $("video").src = "/" + clip.file.replace(/^\/+/, "");
+    $("clipTitle").textContent = clip.clip_id;
+    $("clipMeta").textContent = `${sourcePts.length} displayed frames · nominal ${clip.nominal_fps.toFixed(4)} fps · source PTS ${sourcePts[0]}…${sourcePts[sourcePts.length - 1]} µs`;
+    restore(); clearForm(); renderContacts(); updateReadout(0);
+    $("workspace").style.display = "block";
+    $("importBtn").disabled = false; $("downloadBtn").disabled = false; $("saveContact").disabled = false;
+    setStatus("Source video and verified PTS map loaded.");
+  } catch (error) {
+    if (requestedToken !== selectionToken) return;
+    setStatus(`Cannot open clip: ${error.message}`, true);
+    $("importBtn").disabled = true; $("downloadBtn").disabled = true; $("saveContact").disabled = true;
+  }
+}
+function bootSession(document) {
+  requireValue(document && document.kind === SESSION_KIND, "Session kind is not foot-contact operator truth.");
+  requireValue(document.tool === TOOL && document.tool_version === TOOL_VERSION, "Session tool version is unsupported.");
+  requireValue(Array.isArray(document.clips) && document.clips.length, "Session has no clips.");
+  session = document;
+  $("passBadge").textContent = `${session.session_id} · ${session.pass_id}`;
+  $("annotatorInput").value = annotator;
+  $("clipList").innerHTML = "";
+  session.clips.forEach((item, index) => {
+    const li = document.createElement("li"); const button = document.createElement("button");
+    button.textContent = `${item.clip_id} · ${item.source.frame_count}f`; button.onclick = () => selectClip(index);
+    li.appendChild(button); $("clipList").appendChild(li);
+  });
+}
+
+$("identityBtn").onclick = () => {
+  const value = $("annotatorInput").value.trim();
+  if (!value) { setStatus("Annotator ID cannot be empty.", true); return; }
+  const selectedClipId = clip ? clip.clip_id : null;
+  const identityChanged = value !== annotator;
+  annotator = value; localStorage.setItem("foot-contact-annotator-id", annotator);
+  if (identityChanged && selectedClipId) {
+    const index = session.clips.findIndex(item => item.clip_id === selectedClipId);
+    contacts = [];
+    selectClip(index);
+  } else {
+    setStatus(`Using annotator ${annotator}. Choose a clip.`);
+  }
+};
+document.querySelectorAll("[data-step]").forEach(button => button.onclick = () => seekFrame(currentFrame() + Number(button.dataset.step)));
+$("playPause").onclick = () => $("video").paused ? $("video").play() : $("video").pause();
+document.querySelectorAll("[data-capture]").forEach(button => button.onclick = () => {
+  const frame = currentFrame(); const point = button.dataset.capture;
+  $(point === "audible" ? "audibleFrame" : `${point}Frame`).value = frame;
+  if (point === "preferred") {
+    if ($("earliestFrame").value === "") $("earliestFrame").value = frame;
+    if ($("latestFrame").value === "") $("latestFrame").value = frame;
+  }
+});
+$("clearAudible").onclick = () => $("audibleFrame").value = "";
+$("clearForm").onclick = clearForm;
+$("saveContact").onclick = () => {
+  try {
+    const earliest = safeFrame($("earliestFrame").value, "Earliest frame");
+    const preferred = safeFrame($("preferredFrame").value, "Preferred frame");
+    const latest = safeFrame($("latestFrame").value, "Latest frame");
+    const audible = safeFrame($("audibleFrame").value, "Audible onset", true);
+    requireValue(earliest <= preferred && preferred <= latest, "Physical window must satisfy earliest ≤ preferred ≤ latest.");
+    requireValue(!($("visibility").value === "clear" && $("observability").value !== "observable"), "Clear visibility requires observable contact.");
+    requireValue(!($("cropping").value === "complete" && ($("visibility").value !== "occluded" || $("observability").value !== "unobservable")), "Complete crop requires occluded visibility and unobservable contact.");
+    const contactId = $("editContactId").value || nextContactId();
+    const contact = {
+      contact_id: contactId,
+      foot: $("foot").value,
+      earliest_pts_us: sourcePts[earliest],
+      preferred_pts_us: sourcePts[preferred],
+      latest_pts_us: sourcePts[latest],
+      display_frames: {earliest, preferred, latest},
+      visibility: $("visibility").value,
+      viewpoint: $("viewpoint").value,
+      actor_id: $("actor").value,
+      observability: $("observability").value,
+      cropping: $("cropping").value,
+      audible_onset: audible === null ? null : {source_pts_us: sourcePts[audible], displayed_frame: audible},
+      notes: $("notes").value.trim()
+    };
+    const existing = contacts.findIndex(item => item.contact_id === contactId);
+    if (existing >= 0) contacts[existing] = contact; else contacts.push(contact);
+    contacts.sort((a, b) => a.preferred_pts_us - b.preferred_pts_us || a.contact_id.localeCompare(b.contact_id));
+    persist(); clearForm(); setStatus(`Saved ${contactId}.`);
+  } catch (error) { setStatus(error.message, true); }
+};
+$("downloadBtn").onclick = () => {
+  try {
+    const canonical = JSON.stringify(validateDocument(makeDocument()), null, 2) + "\n";
+    const blob = new Blob([canonical], {type: "application/json"});
+    const link = document.createElement("a"); link.href = URL.createObjectURL(blob);
+    const safe = value => value.replace(/[^A-Za-z0-9._-]+/g, "-");
+    link.download = `${safe(clip.clip_id)}.${safe(annotator)}.${safe(session.pass_id)}.foot-contact.gt.json`;
+    link.click(); URL.revokeObjectURL(link.href); setStatus("Canonical JSON downloaded.");
+  } catch (error) { setStatus(error.message, true); }
+};
+$("importBtn").onclick = () => $("importFile").click();
+$("importFile").onchange = async event => {
+  const file = event.target.files[0]; if (!file) return;
+  try {
+    const document = validateDocument(JSON.parse(await file.text()));
+    if (contacts.length && !confirm(`Replace ${contacts.length} local contacts with this imported export?`)) return;
+    contacts = document.contacts; persist(); clearForm(); setStatus(`Imported ${contacts.length} canonical contacts.`);
+  } catch (error) { setStatus(`Import rejected: ${error.message}`, true); }
+  finally { event.target.value = ""; }
+};
+$("video").addEventListener("timeupdate", () => updateReadout());
+$("video").addEventListener("seeked", () => updateReadout());
+document.addEventListener("keydown", event => {
+  if (["INPUT","TEXTAREA","SELECT"].includes(document.activeElement.tagName)) return;
+  if (event.key === "," || event.key === "ArrowLeft") { seekFrame(currentFrame() - (event.shiftKey ? 10 : 1)); event.preventDefault(); }
+  else if (event.key === "." || event.key === "ArrowRight") { seekFrame(currentFrame() + (event.shiftKey ? 10 : 1)); event.preventDefault(); }
+  else if (event.key === " ") { $("video").paused ? $("video").play() : $("video").pause(); event.preventDefault(); }
+});
+
+if (location.protocol === "file:") {
+  showError("This tool must run over HTTP from the repository root. Start: python3 -m http.server 8765");
+} else if (!sessionUrl) {
+  showError("Missing ?session=<repo-root-relative session.json>. Build a foot-contact session first.");
+} else {
+  fetch(new URL(sessionUrl, location.origin))
+    .then(response => { if (!response.ok) throw new Error(`session HTTP ${response.status}`); return response.json(); })
+    .then(bootSession)
+    .catch(error => showError(`Could not load foot-contact session: ${error.message}`));
+}
+</script>
+</body>
+</html>

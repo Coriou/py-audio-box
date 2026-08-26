@@ -1,0 +1,40 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://py-audio-box.local/auto-sfx/engineering-corpus-v1.schema.json",
+  "title": "Auto-SFX development/challenge engineering corpus v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "corpus_id", "reservation_id", "source_manifest_sha256", "warning", "sources"],
+  "properties": {
+    "schema_version": {"const": "auto-sfx-engineering-corpus/v1"},
+    "corpus_id": {"type": "string"},
+    "reservation_id": {"type": "string"},
+    "source_manifest_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "warning": {"type": "string"},
+    "sources": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "clip_id", "media", "rights", "provenance", "leakage_keys",
+          "viewpoints", "actor_ids", "camera_ids", "gold_evidence",
+          "source_group_id", "reserved_role"
+        ],
+        "properties": {
+          "clip_id": {"type": "string"},
+          "media": {"type": "object"},
+          "rights": {"type": "object"},
+          "provenance": {"type": "object"},
+          "leakage_keys": {"type": "array"},
+          "viewpoints": {"type": "array"},
+          "actor_ids": {"type": "array"},
+          "camera_ids": {"type": "array"},
+          "gold_evidence": {"type": ["object", "null"]},
+          "source_group_id": {"type": "string", "pattern": "^sg-[0-9a-f]{20}$"},
+          "reserved_role": {"enum": ["development", "challenge"]}
+        }
+      }
+    }
+  }
+}
