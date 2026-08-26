@@ -439,7 +439,13 @@ MODELS: dict[str, ModelSpec] = {
             "dubbed mp4, seed}. Output capped at ~8 s regardless of input "
             "length. Name/task/timing match Xiaomi's ControlFoley (ACM MM "
             "2026, weights CC-BY-NC-4.0 on HF) but fal's record carries no "
-            "vendor attribution — treat as unverified until fal confirms."
+            "vendor attribution — treat as unverified until fal confirms. "
+            "audio_url probe 2026-08-26: the field is accepted and its "
+            "presence deterministically changes the output vs the no-audio "
+            "baseline, but the reference CONTENT is ignored (footsteps vs "
+            "ocean refs → byte-identical audio at the same seed) — the fal "
+            "lane has NO AC-V2A/reference-audio conditioning; upstream "
+            "ControlFoley's AC-V2A needs the local weights or HF Space."
         ),
     ),
 }

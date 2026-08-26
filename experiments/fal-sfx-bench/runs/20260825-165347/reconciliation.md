@@ -1,7 +1,7 @@
 # Billing reconciliation — 20260825-165347
 
-Generated: 2026-08-25T18:38:03.727101+00:00
-Billing CSV: `/Users/ben/Projects/py-audio-box/work/sfx-bench/20260825-165347/fal-usage-20260825.csv` (7 data rows)
+Generated: 2026-08-26T07:10:48.169760+00:00
+Billing CSV: `/Users/ben/Projects/py-audio-box/work/sfx-bench/20260825-165347/fal-usage-20260825-v2.csv` (8 data rows)
 
 > **aggregated billing export** — request-level join impossible; per-endpoint totals.
 
@@ -22,6 +22,7 @@ Headers found: `timestamp`, `app_id`, `amount`, `quantity`, `unit`, `auth_method
 |---|---:|---|---:|---:|
 | cassetteai/sound-effects-generator | 5 | generations | $0.01 | $0.0500 |
 | cassetteai/video-sound-effects-generator | 5 | minutes | $0.2 | $1.0000 |
+| fal-ai/controlfoley | 72 | seconds | $0.002 | $0.1440 |
 | fal-ai/hunyuan-video-foley | 4.765273 | 10 seconds | $0.1 | $0.4765 |
 | fal-ai/kling-video/video-to-audio | 5 | videos | $0.035 | $0.1750 |
 | mirelo-ai/sfx1.6/video-to-video | 51 | seconds | $0.01 | $0.5100 |
@@ -33,6 +34,7 @@ Headers found: `timestamp`, `app_id`, `amount`, `quantity`, `unit`, `auth_method
 |---|---:|---:|---:|---:|
 | cassette-t2s | $0.0500 | $0.0500 | +0.0000 USD | +0.00% |
 | cassette-v2s | $1.0000 | $0.1588 | +0.8412 USD | +529.56% |
+| controlfoley | $0.1440 | $0.1141 | +0.0299 USD | +26.20% |
 | hunyuan | $0.4765 | $0.4765 | +0.0000 USD | +0.00% |
 | kling-v2a | $0.1750 | $0.1750 | -0.0000 USD | -0.00% |
 | mirelo16 | $0.5100 | $0.5100 | +0.0000 USD | +0.00% |
@@ -42,16 +44,16 @@ Headers found: `timestamp`, `app_id`, `amount`, `quantity`, `unit`, `auth_method
 
 | CSV row | app id | billed | credential label |
 |---:|---|---:|---|
-| 8 | fal-ai/hunyuan-video-foley | $0.6586 | API: 92cc21dc... |
+| 2 | fal-ai/hunyuan-video-foley | $0.6586 | API: 92cc21dc... |
 
 ## Grand totals
 
 | metric | value |
 |---|---:|
-| billed total, kept rows (6) | $2.6615 |
+| billed total, kept rows (7) | $2.8055 |
 | billed total, excluded rows (1) | $0.6586 |
-| estimated total (matched endpoints) | $1.7992 |
-| delta (billed kept − estimated) | +0.8623 USD |
+| estimated total (matched endpoints) | $1.9133 |
+| delta (billed kept − estimated) | +0.8922 USD |
 
 ## Notes
 

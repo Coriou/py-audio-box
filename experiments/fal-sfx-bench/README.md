@@ -24,7 +24,11 @@ Quirks encoded in `models.py` (see each entry's `notes`): Kling's schema default
 (`text_prompt` vs `prompt` vs `sound_effect_prompt`); Kling accepts only
 .mp4/.mov, 3–20 s, ≤100 MB. `controlfoley` is UNLISTED on fal (catalog API
 public, playground 404): schema verified live — seed honored, prompt consumed,
-output truncated to ~8 s; Xiaomi attribution unconfirmed by fal.
+output truncated to ~8 s; Xiaomi attribution unconfirmed by fal. `audio_url`
+is accepted but its content is ignored (verified: two different refs →
+byte-identical output at the same seed) — no AC-V2A via fal; upstream
+ControlFoley's reference-audio conditioning (AC-V2A) requires the local
+weights or the official HF Space.
 
 ## Methodology
 
