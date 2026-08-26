@@ -42,6 +42,22 @@ def main() -> int:
     known_matched = sum(
         int(d["side"].get("strict_known_side_matches") or 0) for d in docs
     )
+    clear_true = sum(
+        int((view.get("visibility_counts") or {}).get("clear") or 0)
+        for d in docs for view in d.get("views", {}).values()
+    )
+    clear_matched = sum(
+        1 for d in docs for pair in d["timing"].get("diagnostic_pairs", [])
+        if pair.get("strictly_matched") and pair.get("visibility") == "clear"
+    )
+    # Unmatched predictions do not have a defensible visibility label.  For
+    # the requested clear-feet acceptance view, keep every prediction in the
+    # denominator.  This is an explicit conservative lower bound; it never
+    # turns a prediction near a partial/occluded contact into clear evidence.
+    clear_precision_lower_bound = (
+        clear_matched / ex["n_pred"] if ex["n_pred"] else None
+    )
+    clear_recall = clear_matched / clear_true if clear_true else None
     simultaneous = sum(
         int(d["sequence"].get("impossible_simultaneous_ic") or 0) for d in docs
     )
@@ -51,6 +67,18 @@ def main() -> int:
         "n_shards": len(docs),
         "sources": [str(p) for p in args.metrics],
         "existence": ex,
+        "clear_visible": {
+            "n_true": clear_true,
+            "strict_matches": clear_matched,
+            "all_prediction_denominator": ex["n_pred"],
+            "precision_lower_bound": clear_precision_lower_bound,
+            "recall": clear_recall,
+            "precision_policy": (
+                "conservative: all predictions in exhaustively marked ranges "
+                "remain in the denominator because unmatched predictions have "
+                "no defensible visibility label"
+            ),
+        },
         "timing_frames": {
             "n": len(abs_frames),
             "bias": sum(signed_frames) / len(signed_frames) if signed_frames else None,
@@ -73,8 +101,13 @@ def main() -> int:
         },
         "sequence": {"impossible_simultaneous_ic": simultaneous},
         "acceptance": {
-            "precision_ge_0_90": ex["precision"] is not None and ex["precision"] >= 0.90,
-            "recall_ge_0_90": ex["recall"] is not None and ex["recall"] >= 0.90,
+            "clear_precision_lower_bound_ge_0_90": (
+                clear_precision_lower_bound is not None
+                and clear_precision_lower_bound >= 0.90
+            ),
+            "clear_recall_ge_0_90": (
+                clear_recall is not None and clear_recall >= 0.90
+            ),
             "median_abs_le_1f": bool(abs_frames) and percentile(abs_frames, 0.5) <= 1.0,
             "p90_abs_le_3f": bool(abs_frames) and percentile(abs_frames, 0.9) <= 3.0,
             "worse_than_3_le_5pct": bool(abs_frames) and worse / len(abs_frames) <= 0.05,
