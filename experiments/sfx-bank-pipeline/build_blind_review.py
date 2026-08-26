@@ -17,7 +17,6 @@ Ratings persistence is dual-mode:
     - always: "Download ratings JSON" button in the page;
     - when served via `build_blind_review.py --serve`, submit also POSTs to
       /save which writes incoming/blind-ratings-<annotator>-<ts>.json (fsynced).
-
 No system names appear in the served DOM before reveal: everything is encoded
 in one base64 configuration blob decoded client-side.
 """
@@ -142,6 +141,8 @@ button:disabled { background:#39414a; cursor:not-allowed; }
 .progress { position:sticky; top:0; background:#111418ee; padding:10px 0; z-index:5; }
 .eventblock { margin:14px 0 22px; padding:10px; background:#151a20; border-radius:8px; }
 .note { color:#8794a1; font-size:.78rem; }
+.gnote-h { color:#8794a1; font-size:.75rem; margin-bottom:5px; }
+textarea.gnote { margin-top:2px; }
 </style></head><body>
 <h1>Blinded Foley Review</h1>
 <p class="note">Rate each anonymous system honestly. System identities are revealed only after every
@@ -210,6 +211,7 @@ function build(){
     for (const label of CFG.labels.slice(0, Object.keys(info.map).length)){
       html += `<h3>System ${label}</h3>
         <video controls preload="metadata" src="${info.videos[label]}"></video>`;
+      html += `<div class="eventblock"><div class="gnote-h">General media notes &mdash; anything ratings can't capture (noise, wind/ambience leaks, dropouts). Prefix timestamps like <code>0:47</code> when a problem is location-specific.</div>` + gnoteHtml(clip, label) + `</div>`;
       if (info.events.length){
         html += `<div class="eventblock"><table>
           <tr><th class="dim">Event</th><th>System ${label}: overall preference</th><th>Keep without replacing?</th><th>Notes</th></tr>`;
@@ -249,6 +251,26 @@ function cellHtml(clip, scope, id, label, field, kind){
   }
   return `<td><textarea rows="1" ${ds}>${val==null?"":String(val).replace(/</g,"&lt;")}</textarea></td>`;
 }
+function gnoteHtml(clip, label){
+  const ds = `data-clip="${clip}" data-scope="clip" data-id="general" data-label="${label}" data-field="text"`;
+  const val = (getRating(clip,"clip","general",label)).text ?? "";
+  return `<textarea rows="2" class="gnote" ${ds}>${String(val).replace(/</g,"&lt;")}</textarea>`;
+}
+// Delegated persistence wiring: radios + textareas -> setRating (localStorage).
+const coerce = (t) => t.type === "radio"
+  ? (t.dataset.value === "keep" || t.dataset.value === "replace" ? t.dataset.value : Number(t.value))
+  : t.value.trim();
+const persistInput = (t) => {
+  const {clip, scope, id, label, field} = t.dataset;
+  if (!field) return;
+  if (t.type === "radio"){ // no name= groups in generated HTML; clear siblings manually
+    for (const sib of document.querySelectorAll(`input[type=radio][data-clip="${clip}"][data-scope="${scope}"][data-id="${id}"][data-label="${label}"][data-field="${field}"]`))
+      if (sib !== t) sib.checked = false;
+  }
+  setRating(clip, scope, id, label, field, coerce(t));
+};
+document.addEventListener("change", e => { if (e.target.matches("input[type=radio],textarea[data-field]")) persistInput(e.target); });
+document.addEventListener("input", e => { if (e.target.matches("textarea.gnote")) persistInput(e.target); });
 document.getElementById("download").addEventListener("click", () => {
   const blob = new Blob([JSON.stringify(collectRatings(), null, 2)], {type:"application/json"});
   const a = document.createElement("a");
