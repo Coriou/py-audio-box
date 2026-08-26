@@ -198,8 +198,25 @@ $PY experiments/sfx-bank-pipeline/render_mix.py    --run-dir $RUN
 $PY experiments/sfx-bank-pipeline/build_ab_page.py --run-dir $RUN
 $PY experiments/sfx-bank-pipeline/report.py        --run-dir $RUN
 $PY experiments/sfx-bank-pipeline/reconcile.py     --run-dir $RUN --csv <Fal-usage.csv>
+
 ```
 
 Key artifacts: `work/sfx-pipeline/20260826-poc/review/index.html` (open in
 browser) · `validation/timing.md` · `report/summary.md` ·
 `report/reconciliation.md` · `docs/sfx-bank-pipeline-verdict.md`.
+
+---
+
+## Addendum (2026-08-26, post-report — pre-handoff)
+
+Seven additional studio WAVs were imported (swisstransfer drop): camera ×2,
+designed ×2, vehicle ×3, joining the initial gear-shift clank → **bank = 8
+files** under `work/sfx-bank/template/{camera,designed,vehicle}/` (original
+filename taxonomy preserved; spaces sanitized). All decode cleanly and are
+indexed with embeddings (`bank/index.json`, 8/8 rows). Note the new content
+(camera shutters, whooshes, bass dives, wipers, F1) sits outside the current
+footstep-centric clips — it widens what the *next* test set can exercise
+(impacts/UI/vehicle scenes), while today's 5-clip run would still correctly
+reject most of it. Zero-shot label vocabulary is intentionally minimal;
+extend via `--labels-file` as categories grow. Retrieval-quality verdict on a
+real library remains the open ask (#1 in §7).

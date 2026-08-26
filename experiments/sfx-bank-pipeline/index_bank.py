@@ -164,13 +164,19 @@ def main() -> int:
         embeddings = {key: archive[key] for key in archive.files}
 
     entries: list[dict[str, Any]] = []
+    failures: dict[str, str] = {}
     for path in files:
         rel = str(path.relative_to(args.bank_dir))
         if rel in existing:
             entries.append(existing[rel])
             print(f"{rel}: cached")
             continue
-        entry, embedding = index_file(path, args.bank_dir, work_dir, labels)
+        try:
+            entry, embedding = index_file(path, args.bank_dir, work_dir, labels)
+        except Exception as error:  # noqa: BLE001 — one bad file must not kill an import
+            failures[rel] = f"{type(error).__name__}: {error}"
+            print(f"{rel}: FAILED — {failures[rel]}")
+            continue
         entries.append(entry)
         embeddings[entry["id"]] = embedding
         print(f"{rel}: indexed ({len(entry['onsets_s'])} onsets, top label "
@@ -190,7 +196,8 @@ def main() -> int:
         "labels": list(labels),
         "entries": entries,
     })
-    print(f"indexed {len(entries)} files → {index_path}")
+    print(f"indexed {len(entries)} files → {index_path}"
+          + (f" · {len(failures)} FAILED: {sorted(failures)}" if failures else ""))
     return 0
 
 
