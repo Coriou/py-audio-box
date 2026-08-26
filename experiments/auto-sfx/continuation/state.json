@@ -1,0 +1,94 @@
+{
+  "schema_version": 1,
+  "project": "auto-sfx-step-sync",
+  "updated": "2026-08-26",
+  "created_at_head": "a470db9",
+  "objective": "Reach extremely accurate, honest initial-foot-contact timing on a declared supported subset of creator footage, with operator-verified truth and explicit abstention outside it.",
+  "status": "phase2b_complete_gate_failed_continue_research",
+  "required_ancestor_commits": [
+    "728b6a5",
+    "f517c0a",
+    "e624e8d",
+    "71c0e10"
+  ],
+  "methods": {
+    "default": "hybrid-v0",
+    "research_candidate": "contact-state-v1",
+    "pixel_experiment": "contact-roi-v1",
+    "candidate_backend": "mediapipe-lite",
+    "candidate_mode": "video",
+    "candidate_smoothing": "raw",
+    "candidate_track_policy": "interpolate"
+  },
+  "last_verified_tests": {
+    "command": "make auto-sfx-test",
+    "passed": 284,
+    "date": "2026-08-26"
+  },
+  "truth": {
+    "operator_verified_available": false,
+    "current_provenance": "agent-draft; NOT operator verified",
+    "old_frozen_is_now_opened": true,
+    "old_frozen_policy": "May be used for diagnosis and regression only. It must never be reused as the next final validation set.",
+    "split_path": "experiments/auto-sfx/gt/phase2b-split.json",
+    "split_sha256": "20829632c0e854336537397839468eec6e2a287a8d74b419a4831432071a297e",
+    "walk1_gt_sha256": "f3aecccd351c8fb0c8706bb214a1b2fe04ec8582ee6cf6127280595da7159e5f",
+    "walk2_gt_sha256": "8011efb50fb6d0201ee3dfacc6e3be013f4f8c3f3ccf7f228913f958314f40c3"
+  },
+  "phase2b_frozen_result": {
+    "n_true": 51,
+    "n_pred": 33,
+    "strict_precision": 0.2727272727,
+    "strict_recall": 0.1764705882,
+    "clear_true": 36,
+    "clear_strict_matches": 8,
+    "clear_recall": 0.2222222222,
+    "clear_precision_lower_bound": 0.2424242424,
+    "median_abs_frames": 3.0,
+    "p90_abs_frames": 6.0,
+    "worse_than_3_fraction": 0.3548387097,
+    "known_side_accuracy": 0.0,
+    "frozen_simultaneous_lr": 0,
+    "aggregate_artifact_sha256": "96bd1fe3fd000f916f3b6ba6ab11ebe7f0ee779641cf5df701227148a7c8411a"
+  },
+  "next_substantial_progress_gate": {
+    "name": "operator-gold challenge gate",
+    "minimum_corpus": "At least 12 source-group-distinct clips, 200 clear contacts, multiple actors/cameras, side/diagonal/frontal/rear views, and at least 25% hard-negative duration; reserve a source-level locked holdout before predictions.",
+    "clear_precision": 0.75,
+    "clear_recall": 0.75,
+    "median_abs_frames": 2.0,
+    "p90_abs_frames": 4.0,
+    "worse_than_3_fraction": 0.15,
+    "known_side_accuracy": 0.9,
+    "simultaneous_lr": 0,
+    "required": [
+      "No material regression in any supported viewpoint",
+      "Explicit abstention on cropping, pose loss, and unsupported viewpoints",
+      "Behavioral tests for every fixed mechanism",
+      "CPU and memory costs recorded",
+      "Operator truth provenance and source-group split audit clean"
+    ]
+  },
+  "ultimate_exit_gate": {
+    "clear_precision": 0.9,
+    "clear_recall": 0.9,
+    "median_abs_frames": 1.0,
+    "p90_abs_frames": 3.0,
+    "worse_than_3_fraction": 0.05,
+    "known_side_accuracy": 0.95
+  },
+  "next_batch": [
+    "Build a foot-contact-specific operator annotation session and schema-v2 converter; do not treat the generic Foley annotator as sufficient without side/visibility/viewpoint and source-PTS semantics.",
+    "Create a source-group corpus manifest and reserve a new unseen holdout before running predictions.",
+    "Implement resumable experiment manifests/status so rate-limited orchestrators can rotate without losing commands, hashes, or decisions.",
+    "Build full-leg-chain temporal identity plus separately calibrated anatomical attribution.",
+    "Compare a sparse stabilized heel/toe pixel change-point refiner and a small supervised temporal classifier using development truth only."
+  ],
+  "authoritative_files": [
+    "experiments/auto-sfx/continuation/START-HERE.md",
+    "experiments/auto-sfx/continuation/experiment-ledger.md",
+    "plans/2026-08-26-auto-sfx-step-sync-continuation.md",
+    "experiments/auto-sfx/reports/CTO-UPDATE-phase2-3-timing-repair.md",
+    "experiments/auto-sfx/reports/phase2b-experiment-log.md"
+  ]
+}
