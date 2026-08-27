@@ -4,7 +4,7 @@
   "updated": "2026-08-27",
   "created_at_head": "a470db9",
   "objective": "Reach extremely accurate, honest initial-foot-contact timing on a declared supported subset of creator footage, with operator-verified truth and explicit abstention outside it.",
-  "status": "phase2c_batch2_groundplane_rejected_operator_corpus_pending",
+  "status": "phase2c_batch3_interval_rejected_operator_corpus_pending",
   "required_ancestor_commits": [
     "728b6a5",
     "f517c0a",
@@ -18,6 +18,7 @@
     "leg_chain_experiment": "full-leg-chain-v1-opt-in (rejected Phase 2C Batch 1)",
     "sparse_pixel_experiment": "sparse-stabilized-roi-v1 (rejected Phase 2C Batch 1)",
     "groundplane_experiment": "contact-groundplane-v1 (rejected Phase 2C Batch 2)",
+    "interval_experiment": "contact-interval-v1 (rejected Phase 2C Batch 3)",
     "candidate_backend": "mediapipe-lite",
     "candidate_mode": "video",
     "candidate_smoothing": "raw",
@@ -25,8 +26,8 @@
   },
   "last_verified_tests": {
     "command": "make auto-sfx-test",
-    "passed": 391,
-    "duration_s": 18.65,
+    "passed": 409,
+    "duration_s": 19.85,
     "date": "2026-08-27",
     "docker_image_id": "sha256:1df6b36c57fbbe82a4402700c7db65175f1d5be5ddd0c03e8bf87e5aeb3ef874",
     "docker_image_size_bytes": 2182408336
@@ -169,6 +170,40 @@
       "unrelated_experiments_touched": false
     }
   },
+  "phase2c_batch3": {
+    "question": "Does a bounded post-apex support-height crossing reduce signed early bias without dropping existence?",
+    "created_at_head": "8cfc87e",
+    "result": "No. Existence preserved (33=33) but opened-development timing is identical to contact-state-v1. 72/77 full-clip events already in-band at the apex. Rejected.",
+    "complete_attempt": {
+      "experiment_id": "phase2c-b3-interval-opened-dev-v1-a1",
+      "attempt_id": "f7c3e0a3-ca30-48d0-9fbb-629307abebf0",
+      "decision": "rejected",
+      "offset_like": false,
+      "existence_preserved": true,
+      "candidate_strict_recall": 0.333333,
+      "baseline_strict_recall": 0.333333,
+      "candidate_signed_median_frames": -1.5,
+      "baseline_signed_median_frames": -1.5,
+      "candidate_n_pred": 33,
+      "baseline_n_pred": 33,
+      "candidate_wall_seconds": 4.120489,
+      "candidate_peak_rss_mib": 133.078125,
+      "artifact_commitment": "a0bd85ca29f0bd4bc11624bbd1ac2b632e178ab56f30fde14f3d3b275939b021"
+    },
+    "artifacts": {
+      "state_interval_sha256": "0eaf48aa929bae134d3f5e488651e772c6a364af1fd9f50efad283b7b15c513d",
+      "driver_sha256": "101f176b299475ea0475de714da15f8565a819367d450fbb01e4d99164bad6ee",
+      "config_sha256": "da5d0b17df23b1a9d67b1b194977e2fbef265feb2874d5d14b3c56359f054ec1",
+      "public_run_report_sha256": "c5a030f54b468a353622417ce557fb47d0c255dc6e86211c69a4e19fbdbf0598"
+    },
+    "constraints": {
+      "pose_inference_run": false,
+      "validation_fold_scored": false,
+      "accuracy_claimed": false,
+      "default_changed": false,
+      "unrelated_experiments_touched": false
+    }
+  },
   "phase2b_frozen_result": {
     "n_true": 51,
     "n_pred": 33,
@@ -213,7 +248,7 @@
   },
   "next_batch": [
     "Operator: prepare a private rights-cleared source manifest, reserve the source-group split before predictions, and complete two prediction-blind passes plus append-only adjudication.",
-    "Run phase2c-interval-calibrate on opened development only: keep contact-state-v1 existence and choose preferred IC inside the existing heel/toe window using shot-local support crossing. Do not replace the apex detector with semi-Markov.",
+    "Run phase2c-post-apex-settle on opened development only: keep contact-state-v1 existence and shift preferred IC to the first frame in (apex, +4] where downward heel/toe vy settles, even if height is already in-band.",
     "Do not rerun full-leg identity, sparse LK, or groundplane semi-Markov by lowering thresholds; each requires a materially new mechanism.",
     "Consider a small supervised temporal classifier only after rights-cleared operator-labelled development windows exist."
   ],
@@ -221,6 +256,8 @@
     "experiments/auto-sfx/continuation/START-HERE.md",
     "experiments/auto-sfx/continuation/experiment-ledger.md",
     "plans/2026-08-26-auto-sfx-step-sync-continuation.md",
+    "experiments/auto-sfx/reports/CTO-UPDATE-phase2-7-interval-calibrate-negative.md",
+    "experiments/auto-sfx/reports/phase2c-batch3-run-report.json",
     "experiments/auto-sfx/reports/CTO-UPDATE-phase2-6-state-groundplane-negative.md",
     "experiments/auto-sfx/reports/phase2c-batch2-run-report.json",
     "experiments/auto-sfx/reports/CTO-UPDATE-phase2-5-identity-sparse-negative.md",

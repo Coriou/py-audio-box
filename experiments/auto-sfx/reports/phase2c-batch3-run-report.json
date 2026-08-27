@@ -1,0 +1,52 @@
+{
+  "completed_attempts": [
+    {
+      "artifact_hashes": {
+        "analysis": "a0bd85ca29f0bd4bc11624bbd1ac2b632e178ab56f30fde14f3d3b275939b021"
+      },
+      "attempt_id": "f7c3e0a3-ca30-48d0-9fbb-629307abebf0",
+      "completed_at": "2026-08-27T10:51:16.843081Z",
+      "decision": {
+        "reason": "Existence preserved (33=33) but signed median unchanged at -1.5; candidate metrics identical to contact-state-v1 on opened development. Only 5/77 full-clip events shift (2-3 frames); 72 already in-band at the apex. Not offset_like. Support-height after apex is not a new timing signal on these pose traces.",
+        "superseded_by": [],
+        "supersedes": [],
+        "value": "rejected"
+      },
+      "exit_code": 0,
+      "experiment_id": "phase2c-b3-interval-opened-dev-v1-a1",
+      "metrics": {
+        "accuracy_claim": false,
+        "baseline_n_pred": 33,
+        "baseline_signed_median_frames": -1.5,
+        "baseline_strict_recall": 0.333333,
+        "baseline_wall_seconds": 3.949452,
+        "candidate_n_pred": 33,
+        "candidate_peak_rss_mib": 133.078125,
+        "candidate_signed_median_frames": -1.5,
+        "candidate_strict_recall": 0.333333,
+        "candidate_wall_seconds": 4.120489,
+        "deterministic_failures": 0,
+        "existence_preserved": true,
+        "fold": "development",
+        "offset_like": false,
+        "recommended_decision": "reject",
+        "source_pts_membership_failures": 0,
+        "validation_shards_loaded": 0
+      },
+      "repository": {
+        "dirty": true,
+        "dirty_status_sha256": "c0e657de7bad89ee0ae051c6ec49da872e6ef800f2c2be977d5044ffac01fe83",
+        "head": "8cfc87e2016bb9ef9743e44a950c68ecad4c5661"
+      },
+      "resources": {
+        "block_inputs": 0,
+        "block_outputs": 0,
+        "max_rss_kib": 31020,
+        "system_cpu_seconds": 0.03309,
+        "user_cpu_seconds": 0.042063,
+        "wall_seconds": 18.638191
+      }
+    }
+  ],
+  "schema": "auto-sfx-experiment-report/v1"
+}

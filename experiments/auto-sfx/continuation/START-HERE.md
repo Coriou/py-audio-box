@@ -17,11 +17,10 @@ Read, in order:
 1. this file;
 2. `state.json` beside it;
 3. `plans/2026-08-26-auto-sfx-step-sync-continuation.md`;
-4. `../reports/CTO-UPDATE-phase2-6-state-groundplane-negative.md`;
-5. `../reports/phase2c-batch2-run-report.json`;
-6. `../reports/CTO-UPDATE-phase2-5-identity-sparse-negative.md`;
-7. `../reports/CTO-UPDATE-phase2-4-operator-gold-control-plane.md`;
-8. `../reports/CTO-UPDATE-phase2-3-timing-repair.md`.
+4. `../reports/CTO-UPDATE-phase2-7-interval-calibrate-negative.md`;
+5. `../reports/phase2c-batch3-run-report.json`;
+6. `../reports/CTO-UPDATE-phase2-6-state-groundplane-negative.md`;
+7. `../reports/phase2c-batch2-run-report.json`.
 
 Do not load every old report or runtime trace into context. Read source and
 tests only for the current batch.
@@ -40,7 +39,7 @@ make auto-sfx-test
 find work -type f -path '*/annotations/*.gt.json' -print
 ```
 
-The last verified suite was 391 passed in the pinned Docker/Linux CPU
+The last verified suite was 409 passed in the pinned Docker/Linux CPU
 reference image with live src/tests/scripts/configs/gt mounts. Newer
 unrelated commits exist after the Phase 2B report; do not reset or rewrite
 them.
@@ -58,6 +57,9 @@ them.
 - `contact-groundplane-v1` is an opt-in rejected state/geometry prototype:
   shot-local geometry did not move apex events; semi-Markov collision
   scored 0/42 opened-development strict matches.
+- `contact-interval-v1` is an opt-in rejected calibrator: it preserves
+  existence but 72/77 events are already in-band at the apex, so opened-
+  development timing is identical to `contact-state-v1`.
 - Candidate stack: MediaPipe lite VIDEO, raw smoothing, bounded continuity
   tracking with interpolation used only for trajectories and never as contact
   evidence.
@@ -83,7 +85,7 @@ onset. Its lossless/schema behavior is tested. Generic Foley marks remain
 insufficient and must not be converted into missing anatomical or timing
 claims.
 
-No operator foot-contact exports existed at the Phase 2C Batch 2 closeout.
+No operator foot-contact exports existed at the Phase 2C Batch 3 closeout.
 Check again first. The rights/source manifest and blind source-group reservation
 mechanism also exist, but the checked-in manifest is deliberately empty and no
 real split has been fabricated. A private rights-cleared corpus, deterministic
@@ -146,13 +148,14 @@ The answer is **no for both current mechanisms**:
    and artifact commitments are retained as negative evidence.
 
 Do not integrate or threshold-retune these prototypes. The next engineering
-batch, while operator work is pending, is `phase2c-interval-calibrate`: keep
-`contact-state-v1` existence and choose preferred IC inside the already-
-emitted heel/toe window using shot-local support crossing. Do not replace
-the apex detector with semi-Markov, do not register a global timing offset,
-and do not inspect a future locked holdout. A learned foot-patch model
-remains blocked until rights-cleared operator-labelled development windows
-exist.
+batch, while operator work is pending, is `phase2c-post-apex-settle`: keep
+`contact-state-v1` existence and shift preferred IC to the first frame in
+`(apex, apex+4]` where downward heel/toe `vy` settles, even if support
+height is already in-band. Do not lengthen Batch 3's height window, do not
+revive semi-Markov, do not register a global offset, and do not inspect a
+future locked holdout. If that also no-ops, treat 2D pose height/apex as a
+measured ceiling on these clips. A learned foot-patch model remains blocked
+until rights-cleared operator-labelled development windows exist.
 
 ## Phase 2C Batch 2 closeout
 
@@ -175,6 +178,23 @@ The answer is **no for the current mechanisms**:
    artifact commitment are retained as negative evidence.
 
 Do not threshold-retune collision duration or support height on this fold.
+
+## Phase 2C Batch 3 closeout
+
+Answer one question: does a bounded post-apex support-height crossing
+reduce signed early bias without dropping existence?
+
+The answer is **no on opened development**:
+
+1. Existence is preserved (33=33). Strict P/R, signed median (−1.5), and
+   diagnostic 2/4.1 frames are identical to `contact-state-v1`.
+2. Only 5/77 full-clip events shift; 72 are already in-band at the apex.
+   Landmark height does not separate apex from contact on this pose.
+3. Synthetic early-apex (foot still in the air at the apex) still shifts.
+   That fixture does not match real MediaPipe feet.
+4. Opt-in source/tests/driver retained. No default change.
+
+Do not lengthen `max_forward_frames` on this fold.
 
 ## Orchestrated batch shape
 
@@ -214,13 +234,10 @@ Read first:
   experiments/auto-sfx/continuation/START-HERE.md
   experiments/auto-sfx/continuation/state.json
   plans/2026-08-26-auto-sfx-step-sync-continuation.md
+  experiments/auto-sfx/reports/CTO-UPDATE-phase2-7-interval-calibrate-negative.md
+  experiments/auto-sfx/reports/phase2c-batch3-run-report.json
   experiments/auto-sfx/reports/CTO-UPDATE-phase2-6-state-groundplane-negative.md
   experiments/auto-sfx/reports/phase2c-batch2-run-report.json
-  experiments/auto-sfx/reports/CTO-UPDATE-phase2-5-identity-sparse-negative.md
-  experiments/auto-sfx/reports/phase2c-batch1-run-report.json
-  experiments/auto-sfx/reports/CTO-UPDATE-phase2-4-operator-gold-control-plane.md
-  experiments/auto-sfx/reports/CTO-UPDATE-phase2-3-timing-repair.md
-  experiments/auto-sfx/reports/phase2b-experiment-log.md
 
 Follow the resume contract, truth boundaries, orchestration/rotation protocol,
 and next substantial progress gate exactly. Preserve unrelated/operator files.

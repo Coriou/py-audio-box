@@ -1,0 +1,52 @@
+{
+  "schema_version": 1,
+  "experiment_id": "phase2c-b3-interval-opened-dev-v1-a1",
+  "evidence_boundary": "All Phase 2B shards are opened diagnostics with agent-draft truth. No challenge/locked corpus exists, and no contact accuracy is claimed. Development-only comparison diagnoses mechanism bias; it is not the operator-gold gate.",
+  "fold": "development",
+  "maximum_candidate_wall_seconds": 8.0,
+  "maximum_candidate_peak_rss_mib": 256.0,
+  "candidate_config": {
+    "geometry_mode": "shot_local",
+    "max_forward_frames": 4,
+    "support_height_frac": 0.09,
+    "min_support_points": 8,
+    "max_support_residual_rms_bs": 0.08
+  },
+  "baseline_config": {},
+  "variants": {
+    "baseline": {
+      "kind": "contact-state-v1"
+    },
+    "rolling_control": {
+      "kind": "contact-interval-v1",
+      "geometry_mode": "rolling_quantile_control"
+    },
+    "candidate": {
+      "kind": "contact-interval-v1",
+      "geometry_mode": "shot_local"
+    }
+  },
+  "decision_gates": {
+    "recall_slack": 0.02,
+    "offset_like_mode_fraction": 0.8,
+    "accept_requires": [
+      "candidate_n_pred_eq_baseline",
+      "candidate_signed_median_closer_to_zero_than_baseline",
+      "candidate_signed_median_greater_than_baseline",
+      "not_offset_like",
+      "candidate_diagnostic_median_abs_le_baseline",
+      "candidate_strict_recall_ge_baseline_minus_slack",
+      "candidate_simultaneous_lr_eq_0",
+      "wall_and_rss_within_budget"
+    ],
+    "reject_if_any": [
+      "offset_like",
+      "signed_bias_not_improved",
+      "recall_drop_gt_slack",
+      "existence_not_preserved",
+      "tests_fail",
+      "global_offset_key_exists"
+    ],
+    "inconclusive_if": "mixed_and_not_offset_like"
+  }
+}

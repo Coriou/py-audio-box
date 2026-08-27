@@ -20,7 +20,8 @@ versioned CTO report.
 | 0 | `phase2c-corpus-split` | Can a source-group split prevent near-duplicate/actor/session leakage and keep a new holdout prediction-blind? | rights manifest, split audit, hashes | mechanism complete; real private corpus/split pending |
 | 1 | `phase2c-track-legchain` | Does full-leg-chain temporal assignment fix multi-view identity without latching legitimate crossings? | fixtures, dev/challenge Metrics v2, ID-switch-conditioned table | rejected — f364 fixed, but 1,172/2,416 opened frames unsafe |
 | 1 | `phase2c-state-groundplane` | Does shot-local support geometry plus retrospective semi-Markov state reduce the pose-apex early bias without a global offset? | identical-fold ablation, calibration coverage, resources | rejected — geometry did not move apex; semi-Markov 0/42 strict |
-| 1 | `phase2c-interval-calibrate` | Does choosing preferred IC inside the existing heel/toe window via shot-local support crossing reduce signed early bias without changing existence? | identical-fold ablation vs contact-state-v1, offset_like, resources | next development-only mechanism |
+| 1 | `phase2c-interval-calibrate` | Does a bounded post-apex support-height crossing reduce signed early bias without dropping existence? | identical-fold ablation vs contact-state-v1, offset_like, resources | rejected — 72/77 already in-band at apex; development metrics identical |
+| 1 | `phase2c-post-apex-settle` | Does first post-apex downward-vy settling in (apex, +4] reduce signed early bias without dropping existence or becoming offset_like? | identical-fold ablation, offset_like, resources | next development-only mechanism |
 | 1 | `phase2c-roi-sparse` | Does sparse foot-vs-ground tracking with robust stabilization localise IC better than pose-only at compatible CPU cost? | counterfactuals, identical-fold ablation, resources | rejected — 0/19 evidence-bearing opened suggestions |
 | 2 | `phase2c-footpatch-model` | If classical pixels fail, does a tiny rights-cleared temporal foot-patch classifier add challenge accuracy at calibrated abstention? | source-group CV, ONNX CPU report, license/data manifest | conditional |
 | 3 | `phase2c-decoder` | Does bounded sequence reasoning add value without fabricating/deleting unsupported raw contacts? | raw/decoded parallel metrics and contradictions | blocked until raw physical gate is strong |
@@ -97,6 +98,24 @@ versioned CTO report.
 | Artifact commitments | Complete analysis `8a6f7690ce9ddf44415796a1dcc5e163175f86ca083f664a2eb6e3c47a20f054`; compact public report file SHA-256 `3b853e6be2249e9be4c52cf73ed5a2397eb83c533d0d0c91777868b8b3a7da0f`. |
 | Exact next command | `make auto-sfx-test`; next experiment is `phase2c-interval-calibrate` on opened development only. |
 | Detailed evidence | `reports/CTO-UPDATE-phase2-6-state-groundplane-negative.md`; `reports/phase2c-batch2-run-report.json` |
+
+## Phase 2C Batch 3 — bounded post-apex support-height interval
+
+| Field | Value |
+|---|---|
+| Date / orchestrator | 2026-08-27 / root with two disjoint workers |
+| Experiment IDs / run IDs | `phase2c-b3-interval-opened-dev-v1-a1` / `f7c3e0a3-ca30-48d0-9fbb-629307abebf0` |
+| Question | Does a bounded post-apex support-height crossing reduce signed early bias without dropping existence? |
+| Created-at HEAD / dirty state | `8cfc87e`; Batch 3 files declared dirty; unrelated foley/sfx-bank preserved |
+| Input manifest and split hash | Same opened traces + development shards; split `20829632c0e854336537397839468eec6e2a287a8d74b419a4831432071a297e`. Validation loaded: 0. |
+| GT provenance | Agent-draft/opened development only. No operator exports. |
+| Isolated change | Opt-in `contact-interval-v1` wraps `contact-state-v1` and may delay `time_s` to the first in-band crossing in `(apex, apex+4]`. No events added/dropped. |
+| Development metrics | Candidate identical to baseline: n_pred 33, P/R 0.424/0.333, signed −1.5, median/p90 2/4.1. Existence preserved. offset_like false. Full-clip shifts 5/77. Wall 4.120 s, 133.078 MiB. |
+| Decision | **Rejected**. Height-after-apex is not a timing signal on these pose traces. |
+| Reason | Real feet are already in-band at the kinematic apex. Lengthening the window would not fix in-band-at-t0. |
+| Artifact commitments | Analysis `a0bd85ca29f0bd4bc11624bbd1ac2b632e178ab56f30fde14f3d3b275939b021`; public report `c5a030f54b468a353622417ce557fb47d0c255dc6e86211c69a4e19fbdbf0598`. |
+| Exact next command | `make auto-sfx-test`; next experiment is `phase2c-post-apex-settle`. |
+| Detailed evidence | `reports/CTO-UPDATE-phase2-7-interval-calibrate-negative.md`; `reports/phase2c-batch3-run-report.json` |
 
 ## Append-row template
 
