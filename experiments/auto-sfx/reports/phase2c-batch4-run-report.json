@@ -1,0 +1,52 @@
+{
+  "completed_attempts": [
+    {
+      "artifact_hashes": {
+        "analysis": "86b0775e9cc762e1368aaf0c90e81ca29af5f1c37a6183fd1928dae429a7b204"
+      },
+      "attempt_id": "4db22081-d136-4342-a35b-5ffbaf1b3e92",
+      "completed_at": "2026-08-27T11:50:57.612844Z",
+      "decision": {
+        "reason": "Existence preserved (33=33). Signed median improved -1.5 to -1.0 (later, closer to zero). Not offset_like (mode 0; 65/77 unshifted). Strict P/R unchanged 0.424/0.333. Diagnostic median 2.0, p90 4.1 to 4.0. Speed-control identical to baseline. Known-side matches 7 to 6 (not a frozen gate). No default change; no accuracy claim.",
+        "superseded_by": [],
+        "supersedes": [],
+        "value": "accepted"
+      },
+      "exit_code": 0,
+      "experiment_id": "phase2c-b4-settle-opened-dev-v1-a1",
+      "metrics": {
+        "accuracy_claim": false,
+        "baseline_n_pred": 33,
+        "baseline_signed_median_frames": -1.5,
+        "baseline_strict_recall": 0.333333,
+        "baseline_wall_seconds": 3.344936,
+        "candidate_n_pred": 33,
+        "candidate_peak_rss_mib": 131.484375,
+        "candidate_signed_median_frames": -1.0,
+        "candidate_strict_recall": 0.333333,
+        "candidate_wall_seconds": 3.286202,
+        "deterministic_failures": 0,
+        "existence_preserved": true,
+        "fold": "development",
+        "offset_like": false,
+        "recommended_decision": "accept",
+        "source_pts_membership_failures": 0,
+        "validation_shards_loaded": 0
+      },
+      "repository": {
+        "dirty": true,
+        "dirty_status_sha256": "51acff03ea9c99b330a5602d30e737980ebb45e44f3bd1fdd76374dc3c37b340",
+        "head": "6b6d58a684e695e68cb96e4c25c845e3e947f9bd"
+      },
+      "resources": {
+        "block_inputs": 0,
+        "block_outputs": 0,
+        "max_rss_kib": 30852,
+        "system_cpu_seconds": 0.022554,
+        "user_cpu_seconds": 0.030002,
+        "wall_seconds": 14.836629
+      }
+    }
+  ],
+  "schema": "auto-sfx-experiment-report/v1"
+}

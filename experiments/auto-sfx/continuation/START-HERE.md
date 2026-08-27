@@ -17,10 +17,10 @@ Read, in order:
 1. this file;
 2. `state.json` beside it;
 3. `plans/2026-08-26-auto-sfx-step-sync-continuation.md`;
-4. `../reports/CTO-UPDATE-phase2-7-interval-calibrate-negative.md`;
-5. `../reports/phase2c-batch3-run-report.json`;
-6. `../reports/CTO-UPDATE-phase2-6-state-groundplane-negative.md`;
-7. `../reports/phase2c-batch2-run-report.json`.
+4. `../reports/CTO-UPDATE-phase2-8-post-apex-settle.md`;
+5. `../reports/phase2c-batch4-run-report.json`;
+6. `../reports/CTO-UPDATE-phase2-7-interval-calibrate-negative.md`;
+7. `../reports/phase2c-batch3-run-report.json`.
 
 Do not load every old report or runtime trace into context. Read source and
 tests only for the current batch.
@@ -39,7 +39,7 @@ make auto-sfx-test
 find work -type f -path '*/annotations/*.gt.json' -print
 ```
 
-The last verified suite was 409 passed in the pinned Docker/Linux CPU
+The last verified suite was 428 passed in the pinned Docker/Linux CPU
 reference image with live src/tests/scripts/configs/gt mounts. Newer
 unrelated commits exist after the Phase 2B report; do not reset or rewrite
 them.
@@ -47,7 +47,12 @@ them.
 ## Current verdict
 
 - `hybrid-v0` is still the default.
-- `contact-state-v1` is the opt-in research candidate.
+- `contact-settle-v1` is the opt-in research candidate: it keeps
+  `contact-state-v1` existence and delays preferred IC to the first
+  post-apex downward-vy settle. Opened-development signed median
+  −1.5 → −1.0; strict P/R unchanged; not default.
+- `contact-state-v1` remains the existence layer and the previous
+  research candidate.
 - `contact-roi-v1` is an opt-in rejected pixel prototype, retained for evidence.
 - `full-leg-chain-v1-opt-in` is rejected: it repairs the opened f364 mixed
   chain, but 1,172/2,416 opened frames are unsafe and both trace-level
@@ -85,8 +90,8 @@ onset. Its lossless/schema behavior is tested. Generic Foley marks remain
 insufficient and must not be converted into missing anatomical or timing
 claims.
 
-No operator foot-contact exports existed at the Phase 2C Batch 3 closeout.
-Check again first. The rights/source manifest and blind source-group reservation
+No operator foot-contact exports existed at the Phase 2C Batch 4 closeout
+(`work/**/annotations/*.gt.json` empty). Check again first. The rights/source manifest and blind source-group reservation
 mechanism also exist, but the checked-in manifest is deliberately empty and no
 real split has been fabricated. A private rights-cleared corpus, deterministic
 reservation before predictions, two immutable prediction-blind passes, and
@@ -196,6 +201,26 @@ The answer is **no on opened development**:
 
 Do not lengthen `max_forward_frames` on this fold.
 
+## Phase 2C Batch 4 closeout
+
+Answer one question: does first post-apex downward-vy settling in
+`(apex, +4]` reduce signed early bias without dropping existence or
+becoming `offset_like`?
+
+The answer is **yes on opened development, as an opt-in wrapper**:
+
+1. Existence is preserved (33=33). Strict P/R stays 0.424/0.333.
+2. Signed median −1.5 → −1.0 (later, closer to zero). Diagnostic
+   median/p90 2/4.1 → 2/4.0. Not `offset_like` (mode 0, 65/77 unshifted).
+3. Speed-control is identical to `contact-state-v1`. Height-in-band no
+   longer blocks a vy settle, which is why Batch 3 no-oped and this did
+   not. Known-side matches 7→6 (not a frozen gate).
+4. Opt-in source/tests/driver retained. No default change. No accuracy
+   claim. No CLI wiring.
+
+Do not retune `settle_vy_bs_s` or `max_forward_frames` on this fold.
+Remaining signed bias (−1.0) is not a new pose-height mechanism.
+
 ## Orchestrated batch shape
 
 With four total slots, the root may assign at most three disjoint workers:
@@ -234,10 +259,10 @@ Read first:
   experiments/auto-sfx/continuation/START-HERE.md
   experiments/auto-sfx/continuation/state.json
   plans/2026-08-26-auto-sfx-step-sync-continuation.md
+  experiments/auto-sfx/reports/CTO-UPDATE-phase2-8-post-apex-settle.md
+  experiments/auto-sfx/reports/phase2c-batch4-run-report.json
   experiments/auto-sfx/reports/CTO-UPDATE-phase2-7-interval-calibrate-negative.md
   experiments/auto-sfx/reports/phase2c-batch3-run-report.json
-  experiments/auto-sfx/reports/CTO-UPDATE-phase2-6-state-groundplane-negative.md
-  experiments/auto-sfx/reports/phase2c-batch2-run-report.json
 
 Follow the resume contract, truth boundaries, orchestration/rotation protocol,
 and next substantial progress gate exactly. Preserve unrelated/operator files.

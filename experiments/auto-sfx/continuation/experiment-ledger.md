@@ -21,7 +21,7 @@ versioned CTO report.
 | 1 | `phase2c-track-legchain` | Does full-leg-chain temporal assignment fix multi-view identity without latching legitimate crossings? | fixtures, dev/challenge Metrics v2, ID-switch-conditioned table | rejected — f364 fixed, but 1,172/2,416 opened frames unsafe |
 | 1 | `phase2c-state-groundplane` | Does shot-local support geometry plus retrospective semi-Markov state reduce the pose-apex early bias without a global offset? | identical-fold ablation, calibration coverage, resources | rejected — geometry did not move apex; semi-Markov 0/42 strict |
 | 1 | `phase2c-interval-calibrate` | Does a bounded post-apex support-height crossing reduce signed early bias without dropping existence? | identical-fold ablation vs contact-state-v1, offset_like, resources | rejected — 72/77 already in-band at apex; development metrics identical |
-| 1 | `phase2c-post-apex-settle` | Does first post-apex downward-vy settling in (apex, +4] reduce signed early bias without dropping existence or becoming offset_like? | identical-fold ablation, offset_like, resources | next development-only mechanism |
+| 1 | `phase2c-post-apex-settle` | Does first post-apex downward-vy settling in (apex, +4] reduce signed early bias without dropping existence or becoming offset_like? | identical-fold ablation, offset_like, resources | accepted — signed −1.5→−1.0; 65/77 unshifted; not default |
 | 1 | `phase2c-roi-sparse` | Does sparse foot-vs-ground tracking with robust stabilization localise IC better than pose-only at compatible CPU cost? | counterfactuals, identical-fold ablation, resources | rejected — 0/19 evidence-bearing opened suggestions |
 | 2 | `phase2c-footpatch-model` | If classical pixels fail, does a tiny rights-cleared temporal foot-patch classifier add challenge accuracy at calibrated abstention? | source-group CV, ONNX CPU report, license/data manifest | conditional |
 | 3 | `phase2c-decoder` | Does bounded sequence reasoning add value without fabricating/deleting unsupported raw contacts? | raw/decoded parallel metrics and contradictions | blocked until raw physical gate is strong |
@@ -116,6 +116,27 @@ versioned CTO report.
 | Artifact commitments | Analysis `a0bd85ca29f0bd4bc11624bbd1ac2b632e178ab56f30fde14f3d3b275939b021`; public report `c5a030f54b468a353622417ce557fb47d0c255dc6e86211c69a4e19fbdbf0598`. |
 | Exact next command | `make auto-sfx-test`; next experiment is `phase2c-post-apex-settle`. |
 | Detailed evidence | `reports/CTO-UPDATE-phase2-7-interval-calibrate-negative.md`; `reports/phase2c-batch3-run-report.json` |
+
+## Phase 2C Batch 4 — post-apex downward-vy settle
+
+| Field | Value |
+|---|---|
+| Date / orchestrator | 2026-08-27 / root with two disjoint workers |
+| Experiment IDs / run IDs | `phase2c-b4-settle-opened-dev-v1-a1` / `4db22081-d136-4342-a35b-5ffbaf1b3e92` |
+| Question | Does first post-apex downward-vy settling in (apex, +4] reduce signed early bias without dropping existence or becoming offset_like? |
+| Created-at HEAD / dirty state | `6b6d58a`; Batch 4 files declared dirty; unrelated foley/sfx-bank/classification preserved |
+| Input manifest and split hash | Same opened traces + development shards; split `20829632c0e854336537397839468eec6e2a287a8d74b419a4831432071a297e`. Validation loaded: 0. |
+| GT provenance | Agent-draft/opened development only. No operator exports. |
+| Isolated change | Opt-in `contact-settle-v1` wraps `contact-state-v1` and may delay `time_s` to the first settled downward-vy frame in `(apex, apex+4]`, even if height is already in-band. Already-settled apexes keep `shift_frames=0`. No events added/dropped. |
+| Development metrics | Candidate n_pred 33=33, P/R 0.424/0.333, signed −1.0 vs baseline −1.5, median/p90 2/4.0 vs 2/4.1. Speed-control identical to baseline. offset_like false (mode 0, 65/77). Known-side 6/7. Wall 3.286 s, 131.484 MiB. |
+| Challenge metrics | Not opened; no real challenge/locked split exists. |
+| Counterfactuals and resources | Height-in-band late-settle, already-settled apex, max_forward=0, interpolated/quarantined skip, VFR PTS, no offset keys, tracing-neutral. Docker 6 CPU / 1 GiB / no network. |
+| Behavioral/full tests | Focused host 19 passed; `make auto-sfx-test` 428 passed in 19.70 s. |
+| Decision | **Accepted** as opt-in research candidate. No default change. No accuracy claim. |
+| Reason | Frozen gates all passed. Height-in-band no longer blocks a vy settle. Isotropic speed does not move events. Remaining −1.0 signed bias is not a new pose-height mechanism. |
+| Artifact commitments | Analysis `86b0775e9cc762e1368aaf0c90e81ca29af5f1c37a6183fd1928dae429a7b204`; public report `5d32615a1b7dc657f780a352491af394ba08e9760704f430f467dd17f0c10003`. |
+| Exact next command | `make auto-sfx-test`; operator gold remains first; do not retune `settle_vy_bs_s`. |
+| Detailed evidence | `reports/CTO-UPDATE-phase2-8-post-apex-settle.md`; `reports/phase2c-batch4-run-report.json` |
 
 ## Append-row template
 
