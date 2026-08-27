@@ -167,7 +167,7 @@ body {
 }
 .progress-inner {
   max-width: 1280px; margin: 0 auto; padding: 10px 24px;
-  display: flex; align-items: center; gap: 14px; flex-wrap: nowrap;
+  display: flex; align-items: center; gap: 8px 14px; flex-wrap: wrap;
 }
 .progress-inner h1 { font-size: 1rem; font-weight: 650; margin: 0; letter-spacing: -0.02em; }
 #prog { font-variant-numeric: tabular-nums; color: var(--muted); font-size: 0.875rem; }
@@ -181,8 +181,7 @@ body {
   border-right: 2px solid #8fbf93; border-bottom: 2px solid #8fbf93;
   transform: rotate(40deg) translate(-1px, -1px); margin-right: 6px;
 }
-#missing { font-size: 0.8rem; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-#missing .note { color: var(--muted); }
+#missing { font-size: 0.8rem; color: var(--muted); display: flex; flex-wrap: wrap; align-items: center; gap: 4px 6px; flex: 1 1 320px; min-width: 0; }
 .missing-link {
   background: transparent; color: #8fb4ff; border: 1px solid #2f6fed55;
   border-radius: 999px; padding: 2px 9px; font-size: 0.72rem; font-weight: 500;
@@ -410,12 +409,10 @@ function missingItems(){
       if (getRating(clip,"clip","overall",lbl)["pref"] == null)
         out.push({clip, scope:"clip", id:"overall", label:lbl, field:"pref", short:`${clip} · ${lbl} · whole clip · Preference`});
       for (const ev of info.events){
-        for (let j=0;j<nSys;j++){ const l2 = CFG.labels[j];
-          if (getRating(clip,"event",ev.id,l2)["pref"] == null)
-            out.push({clip, scope:"event", id:ev.id, label:l2, field:"pref", short:`${clip} · ${l2} · ${ev.id} · Preference`});
-          if (getRating(clip,"event",ev.id,l2)["keep"] == null)
-            out.push({clip, scope:"event", id:ev.id, label:l2, field:"keep", short:`${clip} · ${l2} · ${ev.id} · Ship it?`});
-        }
+        if (getRating(clip,"event",ev.id,lbl)["pref"] == null)
+          out.push({clip, scope:"event", id:ev.id, label:lbl, field:"pref", short:`${clip} · ${lbl} · ${ev.id} · Preference`});
+        if (getRating(clip,"event",ev.id,lbl)["keep"] == null)
+          out.push({clip, scope:"event", id:ev.id, label:lbl, field:"keep", short:`${clip} · ${lbl} · ${ev.id} · Ship it?`});
       }
     }
   }
@@ -428,8 +425,8 @@ function refreshProgress(){
   const miss = missingItems();
   const box = document.getElementById("missing");
   box.innerHTML = miss.length
-    ? " · missing: " + miss.slice(0,6).map((m,i) => `<button type="button" class="missing-link" data-mi="${i}">${esc(m.short)}</button>`).join(" ")
-      + (miss.length > 6 ? ` <span class="note">+${miss.length - 6} more</span>` : "")
+    ? " · missing: " + miss.slice(0,16).map((m,i) => `<button type="button" class="missing-link" data-mi="${i}">${esc(m.short)}</button>`).join(" ")
+      + (miss.length > 16 ? ` <span class="note">+${miss.length - 16} more</span>` : "")
     : "";
   document.querySelectorAll("[data-clip-progress]").forEach(el => {
     const c = completenessFor(el.getAttribute("data-clip-progress"));
