@@ -4,7 +4,7 @@
   "updated": "2026-08-27",
   "created_at_head": "a470db9",
   "objective": "Reach extremely accurate, honest initial-foot-contact timing on a declared supported subset of creator footage, with operator-verified truth and explicit abstention outside it.",
-  "status": "phase2c_truth_control_plane_ready_operator_corpus_pending",
+  "status": "phase2c_batch1_identity_and_sparse_rejected_operator_corpus_pending",
   "required_ancestor_commits": [
     "728b6a5",
     "f517c0a",
@@ -14,7 +14,9 @@
   "methods": {
     "default": "hybrid-v0",
     "research_candidate": "contact-state-v1",
-    "pixel_experiment": "contact-roi-v1",
+    "pixel_experiment": "contact-roi-v1 (rejected Phase 2B)",
+    "leg_chain_experiment": "full-leg-chain-v1-opt-in (rejected Phase 2C Batch 1)",
+    "sparse_pixel_experiment": "sparse-stabilized-roi-v1 (rejected Phase 2C Batch 1)",
     "candidate_backend": "mediapipe-lite",
     "candidate_mode": "video",
     "candidate_smoothing": "raw",
@@ -22,11 +24,11 @@
   },
   "last_verified_tests": {
     "command": "make auto-sfx-test",
-    "passed": 332,
-    "duration_s": 39.64,
+    "passed": 370,
+    "duration_s": 14.80,
     "date": "2026-08-27",
-    "docker_image_id": "sha256:3bd74c1618aebbf7c923898be3ed8e4dc2808fee050363c41b86cdcf90982efd",
-    "docker_image_size_bytes": 2182088721
+    "docker_image_id": "sha256:1df6b36c57fbbe82a4402700c7db65175f1d5be5ddd0c03e8bf87e5aeb3ef874",
+    "docker_image_size_bytes": 2182408336
   },
   "truth": {
     "operator_verified_available": false,
@@ -69,6 +71,58 @@
     "constraints": {
       "predictions_run": false,
       "remote_state_mutated": false,
+      "default_changed": false,
+      "unrelated_experiments_touched": false
+    }
+  },
+  "phase2c_batch1": {
+    "question": "Do full-leg temporal assignment and sparse stabilized foot/ground pixels pass mechanism counterfactuals and provide usable opened-development evidence without global retuning?",
+    "created_at_head": "c8505c07c9653cc294eb03bf5de31681b1129ce7",
+    "result": "No. Both opt-in mechanisms pass focused counterfactuals but fail real opened-data coverage gates and are rejected for integration.",
+    "evidence_boundary": "All Phase 2B shards are opened diagnostics with agent-draft truth. No challenge/locked corpus exists, and no identity/contact accuracy is claimed.",
+    "identity": {
+      "experiment_id": "phase2c-b1-identity-paired-opened-v2-a1",
+      "attempt_id": "7288c198-6544-404b-8bf3-b8949d57a26e",
+      "decision": "rejected",
+      "known_exchange_failures": 0,
+      "neighbour_regression_failures": 0,
+      "source_pts_membership_failures": 0,
+      "deterministic_failures": 0,
+      "total_frames": 2416,
+      "unsafe_whole_chain_frames": 1172,
+      "whole_chain_rejections": 2,
+      "candidate_wall_seconds": 2.20363,
+      "candidate_peak_rss_mib": 88.042969,
+      "artifact_commitment": "4374beda9a96489461bf6a76544feaed1cf4cfa34122f1f1bdecd385a985f75f"
+    },
+    "sparse_pixels": {
+      "experiment_id": "phase2c-b1-sparse-paired-walk1-opened-v1-a1",
+      "attempt_id": "4970cce4-71d9-482a-a925-9c6326250981",
+      "decision": "rejected",
+      "candidate_count": 19,
+      "suggested_count": 0,
+      "suggestion_coverage": 0.0,
+      "abstention_reasons": {
+        "weak_ground_tracks": 18,
+        "weak_foot_tracks": 1
+      },
+      "source_pts_membership_failures": 0,
+      "candidate_wall_seconds": 15.090877,
+      "candidate_peak_rss_mib": 199.210938,
+      "artifact_commitment": "d73e1ebc562a6d2df1d83bfdc3d31231d2862e8d7048aceea00989f97044d60b"
+    },
+    "artifacts": {
+      "leg_tracking_sha256": "c9fa7902f1961b2c483e5aab54ae67c8fbfd753df71b51a36cc1396b109be48e",
+      "sparse_roi_refiner_sha256": "953a0ee26bd7bcd54428cfffabb3b7cd8bba94a92be000036d0668f5ed0ec871",
+      "identity_driver_sha256": "58028e80db326bac62ff4927567d6bdb32b114fcf013e65b52f4d0d8831533fe",
+      "pixel_driver_sha256": "316b2062be341ddf982c5cedfbcdb531fda2a4d729164e1227a259211d05790e",
+      "public_run_report_sha256": "2894dcb29846cfc5f862415428627c01616319ce6af52f29e2f07b1d9ceda542"
+    },
+    "constraints": {
+      "pose_inference_run": false,
+      "dense_flow_rerun": false,
+      "future_holdout_opened": false,
+      "accuracy_claimed": false,
       "default_changed": false,
       "unrelated_experiments_touched": false
     }
@@ -117,14 +171,16 @@
   },
   "next_batch": [
     "Operator: prepare a private rights-cleared source manifest, reserve the source-group split before predictions, and complete two prediction-blind passes plus append-only adjudication.",
-    "Build full-leg-chain temporal identity plus separately calibrated anatomical attribution.",
-    "Compare a sparse stabilized heel/toe pixel change-point refiner using development truth only; do not repeat dense Farneback.",
+    "Run phase2c-state-groundplane on opened development only: shot-local support geometry plus retrospective bounded-duration physical state, with no global timing offset.",
+    "Do not rerun full-leg identity or sparse LK by lowering thresholds; either requires a materially new observability/support mechanism.",
     "Consider a small supervised temporal classifier only after rights-cleared operator-labelled development windows exist."
   ],
   "authoritative_files": [
     "experiments/auto-sfx/continuation/START-HERE.md",
     "experiments/auto-sfx/continuation/experiment-ledger.md",
     "plans/2026-08-26-auto-sfx-step-sync-continuation.md",
+    "experiments/auto-sfx/reports/CTO-UPDATE-phase2-5-identity-sparse-negative.md",
+    "experiments/auto-sfx/reports/phase2c-batch1-run-report.json",
     "experiments/auto-sfx/reports/CTO-UPDATE-phase2-4-operator-gold-control-plane.md",
     "experiments/auto-sfx/reports/CTO-UPDATE-phase2-3-timing-repair.md",
     "experiments/auto-sfx/reports/phase2b-experiment-log.md"

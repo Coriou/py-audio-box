@@ -1,0 +1,13 @@
+{
+  "schema_version": 1,
+  "experiment_id": "phase2c-b1-sparse-paired-walk1-opened-v1-a1",
+  "evidence_boundary": "opened Phase 2B diagnostic data; agent-draft truth is not acceptance evidence",
+  "clip_key": "walk1.mp4",
+  "fold": "development",
+  "require_cfr": true,
+  "window_half_frames": 5,
+  "minimum_suggestion_coverage": 0.25,
+  "maximum_candidate_wall_seconds": 35.57,
+  "maximum_candidate_peak_rss_mib": 320.0,
+  "sparse_config": {}
+}

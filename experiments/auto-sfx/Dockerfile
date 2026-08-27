@@ -20,6 +20,7 @@ RUN pip install --no-cache-dir --force-reinstall --no-deps \
 COPY src/ ./src/
 COPY scripts/ ./scripts/
 COPY corpus/ ./corpus/
+COPY configs/ ./configs/
 COPY foot_contact_annotator.html ./foot_contact_annotator.html
 
 ENV PYTHONUNBUFFERED=1 \

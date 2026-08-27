@@ -1,0 +1,17 @@
+{
+  "schema_version": 1,
+  "experiment_id": "phase2c-b1-identity-paired-opened-v2-a1",
+  "evidence_boundary": "all Phase 2B shards are opened diagnostics; no operator truth or accuracy claim",
+  "known_opened_exchange": {
+    "trace_name": "walk1",
+    "frame": 364,
+    "required_candidate_state": "distal_swapped",
+    "required_neighbour_state": "direct"
+  },
+  "maximum_candidate_wall_seconds": 5.0,
+  "maximum_candidate_peak_rss_mib": 256.0,
+  "candidate_config": {},
+  "baseline_config": {
+    "policy": "interpolate"
+  }
+}

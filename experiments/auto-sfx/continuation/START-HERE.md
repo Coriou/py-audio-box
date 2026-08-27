@@ -7,18 +7,21 @@ another substantial, audited accuracy marker—not another tooling checkpoint.
 
 Work locally in `/Users/ben/Projects/py-audio-box`. Begin from the current local
 HEAD. Phase 2C Batch 0 was built from
-`76dc2843b507b18531e795cb0efebde91d54252e`, after the Phase 2B commits.
-Preserve all operator files and unrelated work. Do not push, open a PR, release,
-upload media, or mutate remote state without explicit authorization.
+`76dc2843b507b18531e795cb0efebde91d54252e`; Batch 1 was built from
+`c8505c07c9653cc294eb03bf5de31681b1129ce7`. Preserve all operator files and
+unrelated work. Do not push, open a PR, release, upload media, or mutate remote
+state without explicit authorization.
 
 Read, in order:
 
 1. this file;
 2. `state.json` beside it;
 3. `plans/2026-08-26-auto-sfx-step-sync-continuation.md`;
-4. `../reports/CTO-UPDATE-phase2-4-operator-gold-control-plane.md`;
-5. `../reports/CTO-UPDATE-phase2-3-timing-repair.md`;
-6. `../reports/phase2b-experiment-log.md`.
+4. `../reports/CTO-UPDATE-phase2-5-identity-sparse-negative.md`;
+5. `../reports/phase2c-batch1-run-report.json`;
+6. `../reports/CTO-UPDATE-phase2-4-operator-gold-control-plane.md`;
+7. `../reports/CTO-UPDATE-phase2-3-timing-repair.md`;
+8. `../reports/phase2b-experiment-log.md`.
 
 Do not load every old report or runtime trace into context. Read source and
 tests only for the current batch.
@@ -37,7 +40,7 @@ make auto-sfx-test
 find work -type f -path '*/annotations/*.gt.json' -print
 ```
 
-The last verified suite was 332 passed in the rebuilt Docker/Linux CPU
+The last verified suite was 370 passed in the rebuilt Docker/Linux CPU
 reference image. Newer unrelated commits exist after the Phase 2B report; do
 not reset or rewrite them.
 
@@ -46,6 +49,11 @@ not reset or rewrite them.
 - `hybrid-v0` is still the default.
 - `contact-state-v1` is the opt-in research candidate.
 - `contact-roi-v1` is an opt-in rejected pixel prototype, retained for evidence.
+- `full-leg-chain-v1-opt-in` is rejected: it repairs the opened f364 mixed
+  chain, but 1,172/2,416 opened frames are unsafe and both trace-level
+  whole-chain claims reject.
+- `sparse-stabilized-roi-v1` is rejected: exact-PTS real `walk1` development
+  coverage was 0/19, dominated by weak adjacent-ground tracks.
 - Candidate stack: MediaPipe lite VIDEO, raw smoothing, bounded continuity
   tracking with interpolation used only for trajectories and never as contact
   evidence.
@@ -71,7 +79,7 @@ onset. Its lossless/schema behavior is tested. Generic Foley marks remain
 insufficient and must not be converted into missing anatomical or timing
 claims.
 
-No operator foot-contact exports existed at the Phase 2C Batch 0 closeout.
+No operator foot-contact exports existed at the Phase 2C Batch 1 closeout.
 Check again first. The rights/source manifest and blind source-group reservation
 mechanism also exist, but the checked-in manifest is deliberately empty and no
 real split has been fabricated. A private rights-cleared corpus, deterministic
@@ -113,11 +121,32 @@ The audited answer is **yes for the mechanism, not yet for the evidence**:
 4. Zero operator exports and zero real reserved sources existed at closeout, so
    operator-gold accuracy has not been measured and no default changed.
 
-The next engineering batch, while operator work is pending, is development-only:
-full-leg-chain temporal identity with separately calibrated anatomical
-attribution, plus a new sparse stabilized heel/toe pixel change-point refiner.
-Use the manifest runner for experiments. Do not retune a global offset on old
-validation, repeat dense Farneback, or inspect a future locked holdout.
+## Phase 2C Batch 1 closeout
+
+Answer one question: do full-leg temporal identity and sparse stabilized
+foot/ground pixels pass mechanism counterfactuals and produce usable opened-
+development evidence without global retuning?
+
+The answer is **no for both current mechanisms**:
+
+1. Full-leg second-order component tracking fixes the opened f364 distal label
+   exchange while keeping its neighbours direct, but marks 1,172/2,416 frames
+   unsafe and rejects a general whole-chain claim on `walk1` and `walk2`.
+2. Sparse LK/affine pixels pass synthetic camera/edit/texture/VFR tests and
+   exact PyAV decoded-PTS binding, but suggest 0/19 opened `walk1` candidates;
+   18 abstain on ground support and one on foot texture.
+3. Both atomic attempts are complete and explicitly `rejected`. No GT-distance
+   metric, future holdout, pose inference, dense-flow rerun, or default change
+   occurred.
+4. Their opt-in source, tests, drivers, configs, public run report, resources,
+   and artifact commitments are retained as negative evidence.
+
+Do not integrate or threshold-retune these prototypes. The next engineering
+batch, while operator work is pending, is `phase2c-state-groundplane`: shot-
+local support geometry plus retrospective bounded-duration physical state on
+opened development only. Do not register a global timing offset or inspect a
+future locked holdout. A learned foot-patch model remains blocked until
+rights-cleared operator-labelled development windows exist.
 
 ## Orchestrated batch shape
 
@@ -157,6 +186,8 @@ Read first:
   experiments/auto-sfx/continuation/START-HERE.md
   experiments/auto-sfx/continuation/state.json
   plans/2026-08-26-auto-sfx-step-sync-continuation.md
+  experiments/auto-sfx/reports/CTO-UPDATE-phase2-5-identity-sparse-negative.md
+  experiments/auto-sfx/reports/phase2c-batch1-run-report.json
   experiments/auto-sfx/reports/CTO-UPDATE-phase2-4-operator-gold-control-plane.md
   experiments/auto-sfx/reports/CTO-UPDATE-phase2-3-timing-repair.md
   experiments/auto-sfx/reports/phase2b-experiment-log.md

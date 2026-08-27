@@ -1,0 +1,83 @@
+{
+  "completed_attempts": [
+    {
+      "artifact_hashes": {
+        "analysis": "4374beda9a96489461bf6a76544feaed1cf4cfa34122f1f1bdecd385a985f75f"
+      },
+      "attempt_id": "7288c198-6544-404b-8bf3-b8949d57a26e",
+      "completed_at": "2026-08-27T07:47:46.044220Z",
+      "decision": {
+        "reason": "Opened mechanical gate failed: both traces reject a general whole-chain claim, with 1,172/2,416 unsafe frames. The repaired f364 state, neighbours, PTS, determinism, wall, and memory gates passed; no identity accuracy claim.",
+        "superseded_by": [],
+        "supersedes": [],
+        "value": "rejected"
+      },
+      "exit_code": 0,
+      "experiment_id": "phase2c-b1-identity-paired-opened-v2-a1",
+      "metrics": {
+        "baseline_wall_seconds": 0.978443,
+        "candidate_peak_rss_mib": 88.042969,
+        "candidate_wall_seconds": 2.20363,
+        "deterministic_failures": 0,
+        "known_exchange_failures": 0,
+        "mechanical_gate_failures": 1,
+        "neighbour_regression_failures": 0,
+        "source_pts_membership_failures": 0,
+        "total_frames": 2416,
+        "unsafe_whole_chain_frames": 1172,
+        "whole_chain_rejections": 2
+      },
+      "repository": {
+        "dirty": true,
+        "dirty_status_sha256": "bf71c691f14dd93e44aed93465fe2c4e05c77f840c0f5f37111e09a837658099",
+        "head": "c8505c07c9653cc294eb03bf5de31681b1129ce7"
+      },
+      "resources": {
+        "block_inputs": 0,
+        "block_outputs": 0,
+        "max_rss_kib": 30336,
+        "system_cpu_seconds": 0.025975,
+        "user_cpu_seconds": 0.027886,
+        "wall_seconds": 6.397758
+      }
+    },
+    {
+      "artifact_hashes": {
+        "analysis": "d73e1ebc562a6d2df1d83bfdc3d31231d2862e8d7048aceea00989f97044d60b"
+      },
+      "attempt_id": "4970cce4-71d9-482a-a925-9c6326250981",
+      "completed_at": "2026-08-27T07:44:15.840005Z",
+      "decision": {
+        "reason": "Opened mechanical gate failed: 0/19 evidence-bearing suggestions; 18 weak-ground-track and 1 weak-foot-track abstentions. PTS, wall, memory, and explicit-disposition gates passed; no accuracy claim.",
+        "superseded_by": [],
+        "supersedes": [],
+        "value": "rejected"
+      },
+      "exit_code": 0,
+      "experiment_id": "phase2c-b1-sparse-paired-walk1-opened-v1-a1",
+      "metrics": {
+        "candidate_count": 19,
+        "candidate_peak_rss_mib": 199.210938,
+        "candidate_wall_seconds": 15.090877,
+        "mechanical_gate_failures": 1,
+        "source_pts_membership_failures": 0,
+        "suggested_count": 0,
+        "suggestion_coverage": 0.0
+      },
+      "repository": {
+        "dirty": true,
+        "dirty_status_sha256": "14c5f081639803462288904f30ed0e46b2cc496f1106332ef10b87cbfa712659",
+        "head": "c8505c07c9653cc294eb03bf5de31681b1129ce7"
+      },
+      "resources": {
+        "block_inputs": 0,
+        "block_outputs": 0,
+        "max_rss_kib": 30964,
+        "system_cpu_seconds": 0.117167,
+        "user_cpu_seconds": 0.038573,
+        "wall_seconds": 23.196016
+      }
+    }
+  ],
+  "schema": "auto-sfx-experiment-report/v1"
+}
