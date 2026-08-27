@@ -69,6 +69,11 @@ walk1 A=bank/B=mirelo16 · walk2 A=mirelo16/B=bank.
     `python3 -m http.server` will happily serve the page and silently drop
     submissions. A server is running right now via hub process `blind-serve`;
     if it is gone, restart with the command above (repo root as cwd).
+    Ratings recovery: the owner's ratings live in browser localStorage under the
+    OLD origin (`:8899`); `review/blind/import-ratings.html` (served at
+    `http://127.0.0.1:8898/import-ratings.html`) one-click-imports the
+    140/160 export into the current origin. Regenerate it from the export JSON
+    if missing. Delete once Q1 is archived.
 - Rebuild blind page after template edits:
   `python3 experiments/sfx-bank-pipeline/build_blind_review.py --run-dir work/sfx-pipeline/20260826-poc`
   (rewrites `review/blind/index.html`; keeps existing `assignment.json` so
