@@ -181,7 +181,8 @@ body {
   border-right: 2px solid #8fbf93; border-bottom: 2px solid #8fbf93;
   transform: rotate(40deg) translate(-1px, -1px); margin-right: 6px;
 }
-#missing { font-size: 0.8rem; color: var(--muted); display: flex; flex-wrap: wrap; align-items: center; gap: 4px 6px; flex: 1 1 320px; min-width: 0; }
+#missing { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 6px; margin: 10px 0 0; font-size: 0.8rem; color: var(--muted); }
+#missing[hidden] { display: none; }
 .missing-link {
   background: transparent; color: #8fb4ff; border: 1px solid #2f6fed55;
   border-radius: 999px; padding: 2px 9px; font-size: 0.72rem; font-weight: 500;
@@ -302,7 +303,6 @@ table.clip-dims th:first-child, table.clip-dims td:first-child { width: 28%; }
 <div class="progress"><div class="progress-inner">
   <h1>Blinded Foley Review</h1>
   <span id="prog">...</span>
-  <span id="missing"></span>
   <span id="saved">Saved</span>
   <span class="sp"></span>
   <span class="progress-actions">
@@ -314,6 +314,7 @@ table.clip-dims th:first-child, table.clip-dims td:first-child { width: 28%; }
 <p class="lede">Rate each anonymous system honestly. Identities appear only after every required rating is submitted.
 Per clip: six dimensions and keep/replace per system. Per visible event: preference (1&ndash;5) and keep/replace per system.
 Click an event (or <strong>Play both</strong>) to cue both videos 0.75s before the moment and hear System A, then System B, for about 2.5s each.</p>
+<div id="missing" hidden></div>
 <div id="root"></div>
 <div id="reveal"></div>
 </div>
@@ -424,8 +425,9 @@ function refreshProgress(){
   document.getElementById("submit").disabled = done !== total;
   const miss = missingItems();
   const box = document.getElementById("missing");
+  box.hidden = miss.length === 0;
   box.innerHTML = miss.length
-    ? " · missing: " + miss.slice(0,16).map((m,i) => `<button type="button" class="missing-link" data-mi="${i}">${esc(m.short)}</button>`).join(" ")
+    ? "Missing (tap to jump): " + miss.slice(0,16).map((m,i) => `<button type="button" class="missing-link" data-mi="${i}">${esc(m.short)}</button>`).join(" ")
       + (miss.length > 16 ? ` <span class="note">+${miss.length - 16} more</span>` : "")
     : "";
   document.querySelectorAll("[data-clip-progress]").forEach(el => {
