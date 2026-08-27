@@ -5,20 +5,15 @@ This file records where THAT session ended and exactly what is left.
 
 ## TL;DR for the next orchestrator
 
-1. **Q1 (blind listening)** — CORRECTED this session: the owner's real state is
-   **140/160 required fields**, not 150/160 (the "150of160" export name and the
-   prior count were wrong — see `blind-ratings-Ben-partial-150of160.json`,
-   which contains 140). 20 fields remain:
-   **10 whole-clip "Overall preference" scales** (the page template never
-   rendered this row — fixed this session — so those ratings were previously
-   impossible and their missing-pills jump-clicked to nothing; that was the
-   reported "click to jump doesn't work") **plus 10 event `keep` radios**:
-   walk1 `gt_002/gt_003/gt_004` for System A AND B; walk2 `gt_006/gt_008` (A)
-   and `gt_003/gt_008` (B). The in-page missing-pill strip lists exactly these
-   and jump-clicks to each control (verified in headed Chrome, all 20 targets
-   resolve). When the owner clicks **Submit and reveal**, the payload POSTs to
-   `work/sfx-pipeline/20260826-poc/review/blind/incoming/`. Then validate
-   160/160 and archive.
+1. **Q1 (blind listening)** — **COMPLETE (2026-08-27, this session).** Owner
+   imported his ratings onto the new origin and submitted **160/160** (payload
+   validated: 0 missing fields). Archived as
+   `review/blind/blind-ratings-Ben-final-160of160.json`; `incoming/` is empty;
+   the one-time `import-ratings.html` page was removed per plan. For history:
+   the real pre-import state was **140/160**, not 150/160 — the template never
+   rendered the whole-clip "Overall preference" row (fixed this session), so
+   those 10 ratings were impossible and their missing-pills jumped to nothing
+   (the reported "click to jump doesn't work").
 2. **Q2 (human-gold timing)** — NOT started. `annotations/` is empty. Owner
    must annotate pass `A` on walk1 → man → ocean-short via the gold
    annotator (steps in HANDOFF.md §0; fps 30/29.97/30; save files as
@@ -33,11 +28,11 @@ This file records where THAT session ended and exactly what is left.
    `surf_bed_01_6ace93b1` anchor blanked (no surf class exists in any run's
    bank). The five `needs_clip` rows await physical shooting by the owner.
 
-## Q1 verdict so far (from the 140/160 export — stable on all counted fields)
+## Q1 FINAL verdict (complete 160/160 archive; only Event keep/replace changed vs the 140/160 preview)
 | | bank | mirelo16 |
 |---|---|---|
 | Whole-clip keep/replace | 2 / 3 | 0 / 5 |
-| Event keep/replace | 2 / 13 | 4 / 11 |
+| Event keep/replace | 2 / 18 | 4 / 16 |
 | Dims mean (1–5) | sync 2.4 · sem 2.0 · bel 2.2 · aq 1.8 · pal 2.0 · art 2.0 | sync 2.2 · sem 2.0 · bel 2.0 · aq 1.8 · pal 2.6 · art 2.0 |
 | Event pref by clip | man 1.2 · oceans 5.0/4.0 · walks 1.0 | man 2.6 · oceans 2.0/2.0 · walks 1.0 |
 
