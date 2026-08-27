@@ -101,11 +101,11 @@ new final holdout only for a candidate that first passes the challenge marker.
 
 ## Workstream A — operator truth and corpus integrity (first priority)
 
-### A1. Foot-contact-specific annotation path
+### A1. Foot-contact-specific annotation path — mechanism complete
 
-The current `gold_annotator.html` is useful infrastructure but its generic
-Foley schema is not automatically auto-sfx schema v2. Build a foot-contact
-mode or lossless converter that requires:
+The dedicated prediction-blind path is now
+`experiments/auto-sfx/foot_contact_annotator.html`; the generic Foley annotator
+is not auto-sfx truth. The dedicated schema requires:
 
 - source PTS plus derived displayed frame;
 - earliest/preferred/latest physical-contact window;
@@ -117,10 +117,10 @@ mode or lossless converter that requires:
 - optional audible onset stored separately;
 - annotator, pass ID, notes, and tool version.
 
-Add schema and round-trip tests. The UI must work over HTTP from repo root and
-must never show predictions during marking.
+Schema/round-trip tests and repo-root HTTP session building are complete. The
+UI never accepts or shows predictions during marking.
 
-### A2. Independent passes and adjudication
+### A2. Independent passes and adjudication — mechanism complete, execution pending
 
 - Two human passes per marked sequence; randomize clip order between passes.
 - Neither pass sees the other, predictions, traces, or overlays.
@@ -129,10 +129,15 @@ must never show predictions during marking.
   `uncertain` side/visibility.
 - Keep the raw exports and an append-only adjudication table.
 
+Batch 5 added no-overwrite pass finalization, byte-drift verification,
+source-only comparison, a superseding append-only decision chain, and
+schema-valid sealing. Actual two-pass exports and human decisions do not yet
+exist; see `FOOT-CONTACT-ANNOTATION-GUIDE.md`.
+
 If only one operator is available, two separated passes by that operator are
 still useful but must not be described as independent annotators.
 
-### A3. New corpus and split
+### A3. New corpus and split — reservation mechanism complete, corpus pending
 
 Create a rights/provenance manifest. Start with 12–20 clips for the next marker,
 then grow toward the 40–50-clip diagnostic corpus in the research brief.

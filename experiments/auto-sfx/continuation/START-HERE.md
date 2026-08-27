@@ -17,10 +17,9 @@ Read, in order:
 1. this file;
 2. `state.json` beside it;
 3. `plans/2026-08-26-auto-sfx-step-sync-continuation.md`;
-4. `../reports/CTO-UPDATE-phase2-8-post-apex-settle.md`;
-5. `../reports/phase2c-batch4-run-report.json`;
-6. `../reports/CTO-UPDATE-phase2-7-interval-calibrate-negative.md`;
-7. `../reports/phase2c-batch3-run-report.json`.
+4. `../reports/CTO-UPDATE-phase2-9-operator-reconciliation.md`;
+5. `../reports/CTO-UPDATE-phase2-8-post-apex-settle.md`;
+6. `../reports/phase2c-batch4-run-report.json`.
 
 Do not load every old report or runtime trace into context. Read source and
 tests only for the current batch.
@@ -39,7 +38,7 @@ make auto-sfx-test
 find work -type f -path '*/annotations/*.gt.json' -print
 ```
 
-The last verified suite was 428 passed in the pinned Docker/Linux CPU
+The last verified suite was 437 passed in the pinned Docker/Linux CPU
 reference image with live src/tests/scripts/configs/gt mounts. Newer
 unrelated commits exist after the Phase 2B report; do not reset or rewrite
 them.
@@ -53,6 +52,10 @@ them.
   −1.5 → −1.0; strict P/R unchanged; not default.
 - `contact-state-v1` remains the existence layer and the previous
   research candidate.
+- The operator-truth path now includes no-overwrite pass finalization, drift
+  verification, source-only two-pass comparison, append-only superseding
+  adjudication, and canonical sealing. This is accepted infrastructure, not
+  operator evidence; zero real exports exist.
 - `contact-roi-v1` is an opt-in rejected pixel prototype, retained for evidence.
 - `full-leg-chain-v1-opt-in` is rejected: it repairs the opened f364 mixed
   chain, but 1,172/2,416 opened frames are unsafe and both trace-level
@@ -82,15 +85,18 @@ It may be used for regression and failure analysis, never as the next final
 holdout.
 
 The dedicated, prediction-blind foot-contact path now exists at
-`../foot_contact_annotator.html`, with its operating procedure in
-`../FOOT-CONTACT-ANNOTATION-GUIDE.md`. It records genuine source PTS, contact
-windows, side/uncertainty, visibility, viewpoint, actor, observability,
-cropping, pass/session/tool/source provenance, and separate optional audible
-onset. Its lossless/schema behavior is tested. Generic Foley marks remain
+`../foot_contact_annotator.html`, with its full marking/finalization/comparison/
+adjudication procedure in `../FOOT-CONTACT-ANNOTATION-GUIDE.md`. It records
+genuine source PTS, contact windows, side/uncertainty, visibility, viewpoint,
+actor, observability, cropping, pass/session/tool/source provenance, and
+separate optional audible onset. `scripts/reconcile_foot_contact_passes.py`
+hash-locks complete passes, compares only frozen operator exports, maintains a
+superseding append-only decision chain, and seals canonical gold. Its
+lossless/schema/integrity behavior is tested. Generic Foley marks remain
 insufficient and must not be converted into missing anatomical or timing
 claims.
 
-No operator foot-contact exports existed at the Phase 2C Batch 4 closeout
+No operator foot-contact exports existed at the Phase 2C Batch 5 closeout
 (`work/**/annotations/*.gt.json` empty). Check again first. The rights/source manifest and blind source-group reservation
 mechanism also exist, but the checked-in manifest is deliberately empty and no
 real split has been fabricated. A private rights-cleared corpus, deterministic
@@ -152,15 +158,12 @@ The answer is **no for both current mechanisms**:
 4. Their opt-in source, tests, drivers, configs, public run report, resources,
    and artifact commitments are retained as negative evidence.
 
-Do not integrate or threshold-retune these prototypes. The next engineering
-batch, while operator work is pending, is `phase2c-post-apex-settle`: keep
-`contact-state-v1` existence and shift preferred IC to the first frame in
-`(apex, apex+4]` where downward heel/toe `vy` settles, even if support
-height is already in-band. Do not lengthen Batch 3's height window, do not
-revive semi-Markov, do not register a global offset, and do not inspect a
-future locked holdout. If that also no-ops, treat 2D pose height/apex as a
-measured ceiling on these clips. A learned foot-patch model remains blocked
-until rights-cleared operator-labelled development windows exist.
+Do not integrate or threshold-retune these prototypes. The post-apex-settle
+branch queued at this closeout was subsequently accepted as the opt-in Batch 4
+wrapper. Do not lengthen Batch 3's height window, revive semi-Markov, register
+a global offset, or inspect a future locked holdout. A learned foot-patch model
+remains blocked until rights-cleared operator-labelled development windows
+exist.
 
 ## Phase 2C Batch 2 closeout
 
@@ -221,6 +224,30 @@ The answer is **yes on opened development, as an opt-in wrapper**:
 Do not retune `settle_vy_bs_s` or `max_forward_frames` on this fold.
 Remaining signed bias (−1.0) is not a new pose-height mechanism.
 
+## Phase 2C Batch 5 closeout
+
+Answer one question: can two prediction-blind operator passes become
+hash-locked, disagreement-auditable, append-only adjudicated truth without
+loading predictions or silently changing source PTS/windows?
+
+The answer is **yes for the mechanism; operator execution is pending**:
+
+1. Finalization requires one canonical export per session clip, verifies
+   source/PTS/session/pass/actor provenance, and creates a no-overwrite hash
+   lock. Later drift fails verification.
+2. Comparison requires distinct pass IDs and different realized multi-clip
+   orders, then recomputes an actor-scoped, monotonic source-only worklist from
+   both frozen passes. It never loads detector artifacts.
+3. Adjudication decisions contain complete final windows, append in a
+   superseding SHA-256 chain, and cannot seal while any row is unresolved or
+   the combined schema-v2 document is invalid.
+4. Focused tests 9 passed; full Docker suite 437 passed in 25.24 s. No media,
+   operator marks, predictions, metrics, or defaults changed.
+
+Use `../FOOT-CONTACT-ANNOTATION-GUIDE.md` for the exact operator commands.
+The next substantial marker remains the real rights-cleared corpus, two passes,
+adjudication, and challenge scoring—not another opened-fold timing retune.
+
 ## Orchestrated batch shape
 
 With four total slots, the root may assign at most three disjoint workers:
@@ -259,10 +286,9 @@ Read first:
   experiments/auto-sfx/continuation/START-HERE.md
   experiments/auto-sfx/continuation/state.json
   plans/2026-08-26-auto-sfx-step-sync-continuation.md
+  experiments/auto-sfx/reports/CTO-UPDATE-phase2-9-operator-reconciliation.md
   experiments/auto-sfx/reports/CTO-UPDATE-phase2-8-post-apex-settle.md
   experiments/auto-sfx/reports/phase2c-batch4-run-report.json
-  experiments/auto-sfx/reports/CTO-UPDATE-phase2-7-interval-calibrate-negative.md
-  experiments/auto-sfx/reports/phase2c-batch3-run-report.json
 
 Follow the resume contract, truth boundaries, orchestration/rotation protocol,
 and next substantial progress gate exactly. Preserve unrelated/operator files.

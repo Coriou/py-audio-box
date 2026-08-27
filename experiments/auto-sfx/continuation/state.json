@@ -4,7 +4,7 @@
   "updated": "2026-08-27",
   "created_at_head": "a470db9",
   "objective": "Reach extremely accurate, honest initial-foot-contact timing on a declared supported subset of creator footage, with operator-verified truth and explicit abstention outside it.",
-  "status": "phase2c_batch4_settle_accepted_operator_corpus_pending",
+  "status": "phase2c_batch5_operator_reconciliation_accepted_operator_corpus_pending",
   "required_ancestor_commits": [
     "728b6a5",
     "f517c0a",
@@ -28,8 +28,8 @@
   },
   "last_verified_tests": {
     "command": "make auto-sfx-test",
-    "passed": 428,
-    "duration_s": 19.70,
+    "passed": 437,
+    "duration_s": 25.24,
     "date": "2026-08-27",
     "docker_image_id": "sha256:1df6b36c57fbbe82a4402700c7db65175f1d5be5ddd0c03e8bf87e5aeb3ef874",
     "docker_image_size_bytes": 2182408336
@@ -37,10 +37,15 @@
   "truth": {
     "operator_verified_available": false,
     "current_provenance": "agent-draft; NOT operator verified",
-    "operator_path_status": "implemented_and_tested; no operator exports or adjudication yet",
+    "operator_path_status": "annotation, pass finalization, prediction-free comparison, append-only adjudication, and sealing implemented and tested; no operator exports or adjudication executed yet",
     "operator_annotator_path": "experiments/auto-sfx/foot_contact_annotator.html",
     "operator_annotator_sha256": "0fa91846a100adc67e068e20839510eeeffd19cb21ef3f2b9a45d15e3d725085",
     "operator_guide_path": "experiments/auto-sfx/FOOT-CONTACT-ANNOTATION-GUIDE.md",
+    "operator_guide_sha256": "6878290c2d94609837592e081db6a732a2b51940d8b419223d645af586168a42",
+    "operator_reconciliation_path": "experiments/auto-sfx/src/auto_sfx/foot_contact_reconcile.py",
+    "operator_reconciliation_sha256": "5ae44fe30e403b83d13bfeef5c799f3ba5c13441abf31e7df6e49a98e2bfcf60",
+    "operator_reconciliation_cli_path": "experiments/auto-sfx/scripts/reconcile_foot_contact_passes.py",
+    "operator_reconciliation_cli_sha256": "415f8566d0bb283455aa1fe5bd1ec618aeb9869ad9623d5aacf1436e12c52f73",
     "operator_exports_found_at_closeout": 0,
     "old_frozen_is_now_opened": true,
     "old_frozen_policy": "May be used for diagnosis and regression only. It must never be reused as the next final validation set.",
@@ -242,6 +247,31 @@
       "unrelated_experiments_touched": false
     }
   },
+  "phase2c_batch5": {
+    "question": "Can two prediction-blind operator passes become hash-locked, disagreement-auditable, append-only adjudicated truth without loading predictions or silently changing source PTS/windows?",
+    "created_at_head": "0b93a42",
+    "result": "Yes for the mechanism. Complete passes can be frozen and drift-verified, comparisons are recomputed from both source-only pass locks, decisions are append-only/superseding, and only complete schema-valid adjudication can seal. Operator execution and accuracy evidence remain pending.",
+    "decision": "accepted mechanism; no operator-gold corpus or accuracy claim",
+    "operator_exports_found_at_closeout": 0,
+    "behavioral_tests_passed": 9,
+    "full_tests_passed": 437,
+    "full_test_duration_s": 25.24,
+    "artifacts": {
+      "reconciliation_module_sha256": "5ae44fe30e403b83d13bfeef5c799f3ba5c13441abf31e7df6e49a98e2bfcf60",
+      "reconciliation_cli_sha256": "415f8566d0bb283455aa1fe5bd1ec618aeb9869ad9623d5aacf1436e12c52f73",
+      "behavioral_tests_sha256": "e19ae5f39487cc37d2d737c6eeef2b728d4a3a47d54232e934fc65f878ff9766",
+      "closeout_report_sha256": "74ed19837a804c711a6864c088a6cd6fb986ae90d1f1c1019cd3c74a79e9fc59"
+    },
+    "constraints": {
+      "operator_marks_created": false,
+      "predictions_loaded_by_truth_tools": false,
+      "pose_or_detector_run": false,
+      "validation_fold_scored": false,
+      "accuracy_claimed": false,
+      "default_changed": false,
+      "unrelated_experiments_touched": false
+    }
+  },
   "phase2b_frozen_result": {
     "n_true": 51,
     "n_pred": 33,
@@ -285,7 +315,7 @@
     "known_side_accuracy": 0.95
   },
   "next_batch": [
-    "Operator: prepare a private rights-cleared source manifest, reserve the source-group split before predictions, and complete two prediction-blind passes plus append-only adjudication.",
+    "Operator: prepare a private rights-cleared source manifest, reserve the source-group split before predictions, build two isolated pass sessions with different realized clip orders, then finalize, compare, append decisions, and seal them with reconcile_foot_contact_passes.py.",
     "Keep contact-settle-v1 opt-in. Do not retune settle_vy_bs_s or max_forward_frames on this fold. Do not wire it into the CLI or make it default.",
     "Do not rerun full-leg identity, sparse LK, groundplane semi-Markov, or support-height interval by lowering thresholds; each requires a materially new mechanism.",
     "Remaining opened-development signed bias is -1.0 frames; further pose-height/apex retunes are not a new mechanism. Consider a small supervised temporal classifier only after rights-cleared operator-labelled development windows exist."
@@ -294,6 +324,7 @@
     "experiments/auto-sfx/continuation/START-HERE.md",
     "experiments/auto-sfx/continuation/experiment-ledger.md",
     "plans/2026-08-26-auto-sfx-step-sync-continuation.md",
+    "experiments/auto-sfx/reports/CTO-UPDATE-phase2-9-operator-reconciliation.md",
     "experiments/auto-sfx/reports/CTO-UPDATE-phase2-8-post-apex-settle.md",
     "experiments/auto-sfx/reports/phase2c-batch4-run-report.json",
     "experiments/auto-sfx/reports/CTO-UPDATE-phase2-7-interval-calibrate-negative.md",

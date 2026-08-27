@@ -44,6 +44,15 @@ hard-negative durations, and pass IDs. The readiness gate is then computed
 from actual supplied evidence. Missing evidence is `pending`; it is never
 silently treated as zero or a pass.
 
+Use `scripts/reconcile_foot_contact_passes.py` and the procedure in
+`../FOOT-CONTACT-ANNOTATION-GUIDE.md` to freeze the two raw passes, create the
+prediction-free disagreement package, append adjudication decisions, and seal
+canonical per-clip annotations. The resulting `adjudication-receipt.json`
+supplies the annotation SHA-256, clear-contact count, and both source pass IDs.
+It deliberately does **not** invent annotated or hard-negative duration: the
+operator must record those from the declared reviewed spans before populating
+`gold_evidence`.
+
 ## Deterministic operator procedure
 
 Run from `experiments/auto-sfx` with its container image, or with a Python

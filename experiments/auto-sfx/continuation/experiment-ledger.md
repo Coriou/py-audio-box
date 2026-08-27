@@ -15,7 +15,8 @@ versioned CTO report.
 
 | Priority | ID | Falsifiable question | Required output | Status |
 |---:|---|---|---|---|
-| 0 | `phase2c-gold-contract` | Can two prediction-blind human passes round-trip into auto-sfx schema v2 without losing source PTS, windows, side, visibility, viewpoint, actor, or provenance? | UI/converter, guide, fixtures/tests, sample session | mechanism complete; two operator passes pending |
+| 0 | `phase2c-gold-contract` | Can two prediction-blind human passes round-trip into auto-sfx schema v2 without losing source PTS, windows, side, visibility, viewpoint, actor, or provenance? | UI/converter, guide, fixtures/tests, sample session | annotation and reconciliation mechanisms complete; two operator passes pending |
+| 0 | `phase2c-gold-reconcile` | Can complete raw passes be hash-locked, compared without predictions, append-only adjudicated, and sealed without source/window drift? | finalization locks, comparison, decision chain, canonical sealed receipt | mechanism complete — accepted; operator execution pending |
 | 0 | `phase2c-run-manifest` | Can an interrupted/rate-limited run resume without ambiguity about command, hashes, status, outputs, or decision? | atomic manifest runner and tests | complete — accepted |
 | 0 | `phase2c-corpus-split` | Can a source-group split prevent near-duplicate/actor/session leakage and keep a new holdout prediction-blind? | rights manifest, split audit, hashes | mechanism complete; real private corpus/split pending |
 | 1 | `phase2c-track-legchain` | Does full-leg-chain temporal assignment fix multi-view identity without latching legitimate crossings? | fixtures, dev/challenge Metrics v2, ID-switch-conditioned table | rejected — f364 fixed, but 1,172/2,416 opened frames unsafe |
@@ -137,6 +138,31 @@ versioned CTO report.
 | Artifact commitments | Analysis `86b0775e9cc762e1368aaf0c90e81ca29af5f1c37a6183fd1928dae429a7b204`; public report `5d32615a1b7dc657f780a352491af394ba08e9760704f430f467dd17f0c10003`. |
 | Exact next command | `make auto-sfx-test`; operator gold remains first; do not retune `settle_vy_bs_s`. |
 | Detailed evidence | `reports/CTO-UPDATE-phase2-8-post-apex-settle.md`; `reports/phase2c-batch4-run-report.json` |
+
+## Phase 2C Batch 5 — operator-pass reconciliation control plane
+
+| Field | Value |
+|---|---|
+| Date / orchestrator | 2026-08-27 / root |
+| Experiment ID / run IDs | `phase2c-gold-reconcile`; no scientific detector run |
+| Question | Can two prediction-blind operator passes become hash-locked, disagreement-auditable, append-only adjudicated truth without loading predictions or silently changing source PTS/windows? |
+| Created-at HEAD / dirty state | `0b93a42`; unrelated Foley/sfx-bank files declared and preserved |
+| Input manifest and split hash | No real corpus/split or operator export exists. Checked-in empty template remains unreservable. |
+| GT provenance | No truth created. Mechanism-only synthetic fixtures; zero `work/**/annotations/*.gt.json` exports at closeout. |
+| Backend/model/artifact/license | No backend/model/media run. Strict operator annotations are the only accepted comparison inputs; prediction fields remain forbidden. |
+| Isolated change | No-overwrite pass finalization; byte-drift verification; recomputed source-only two-pass comparison; append-only superseding decision chain; canonical sealed annotations and receipt. Detector/default/CLI detection path untouched. |
+| Development metrics | Not run; opened fold untouched. |
+| Challenge metrics | Not run; no operator challenge corpus exists. |
+| Counterfactuals and resources | VFR/nonuniform PTS, missing clip, undeclared actor, mutation, different seed/same realized order, canonical comparison tamper, unresolved→resolved supersession, log-chain tamper, exact physical agreement. Filesystem-only control plane; pinned Docker image unchanged. |
+| Representative correction | A recorded different seed is insufficient isolation when it produces the same shuffle; multi-clip comparison now requires a different realized order. |
+| Representative remaining blocker | Rights-cleared clips, private source-group reservation, two actual passes, reviewed hard-negative spans, and human adjudication remain external operator work. |
+| Behavioral/full tests | Focused 9 passed; related truth/session/reconciliation 24 passed; `make auto-sfx-test` 437 passed in 25.24 s. |
+| Decision | **Accepted mechanism**. No operator-gold or accuracy claim; no default change. |
+| Reason | The path now proves completeness, source/PTS integrity, pass separation, comparison derivation, append-only corrections, and schema-valid sealing. It cannot manufacture human observations or rights. |
+| Supersedes / superseded by | Completes the missing freeze/compare/adjudicate stage after Batch 0's annotation mechanism. No detector experiment superseded. |
+| Artifact commitments | Module `5ae44fe30e403b83d13bfeef5c799f3ba5c13441abf31e7df6e49a98e2bfcf60`; CLI `415f8566d0bb283455aa1fe5bd1ec618aeb9869ad9623d5aacf1436e12c52f73`; tests `e19ae5f39487cc37d2d737c6eeef2b728d4a3a47d54232e934fc65f878ff9766`. |
+| Exact next command | `make auto-sfx-test`; operator sequence is in `FOOT-CONTACT-ANNOTATION-GUIDE.md`. |
+| Detailed evidence | `reports/CTO-UPDATE-phase2-9-operator-reconciliation.md` |
 
 ## Append-row template
 
