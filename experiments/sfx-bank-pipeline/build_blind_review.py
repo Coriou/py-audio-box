@@ -53,6 +53,14 @@ DIMENSION_LABELS = {
     "palette": "Palette consistency",
     "artifacts": "Artifacts",
 }
+DIMENSION_HELP = {
+    "sync": "Would a viewer notice timing errors?",
+    "semantic": "Right kind of sound for the action.",
+    "believability": "Physically plausible for the scene.",
+    "audio_quality": "Fidelity / artifact-free in isolation.",
+    "palette": "Consistent sonic identity across events.",
+    "artifacts": "Glitches, truncation, pumping.",
+}
 
 
 def utc_now() -> str:
@@ -122,54 +130,234 @@ def build_assignment(clips: dict[str, list[str]], events: dict[str, list[dict[st
 
 PAGE_TEMPLATE = """<!doctype html>
 <html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=1280">
 <title>Blinded Foley Review</title>
 <style>
-:root { color-scheme: dark; }
-body { font-family: -apple-system, sans-serif; background:#111418; color:#d7dce2; margin:0 auto; max-width:900px; padding:24px; }
-h1 { font-size:1.25rem; } h2 { font-size:1.05rem; border-bottom:1px solid #2c333b; padding-bottom:4px; margin-top:36px; }
-h3 { font-size:.92rem; color:#9fb0c0; margin-bottom:4px; }
-video { width:100%; max-width:640px; background:#000; border-radius:6px; }
-table { border-collapse:collapse; width:100%; font-size:.85rem; }
-td, th { padding:4px 8px; text-align:left; vertical-align:top; border-bottom:1px solid #232a31; }
-.dim { min-width:11rem; }
-.opt { white-space:nowrap; }
-label.opt { margin-right:10px; cursor:pointer; }
-textarea { width:100%; background:#171c22; color:#d7dce2; border:1px solid #2c333b; border-radius:4px; }
-button { background:#2f6fed; color:#fff; border:none; border-radius:6px; padding:8px 14px; font-size:.9rem; cursor:pointer; }
-button:disabled { background:#39414a; cursor:not-allowed; }
-#reveal { margin-top:18px; padding:14px; background:#18202a; border:1px solid #2f6fed44; border-radius:8px; display:none; }
-.progress { position:sticky; top:0; background:#111418ee; padding:10px 0; z-index:5; }
-.eventblock { margin:14px 0 22px; padding:10px; background:#151a20; border-radius:8px; }
-.note { color:#8794a1; font-size:.78rem; }
-.gnote-h { color:#8794a1; font-size:.75rem; margin-bottom:5px; }
-textarea.gnote { margin-top:2px; }
+:root {
+  color-scheme: dark;
+  --bg: #101418;
+  --bg-bar: #0c1014f2;
+  --bg-clip: #151b21;
+  --bg-inset: #1b2229;
+  --line: #2a333c;
+  --text: #d8dee6;
+  --muted: #8b97a4;
+  --faint: #6a7682;
+  --accent: #5b93f5;
+  --accent-dim: #5b93f526;
+  --focus: #9cc0ff;
+  --btn: #3d7ef0;
+  --btn-off: #3a434c;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; background: var(--bg); color: var(--text); }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-size: 14px;
+  line-height: 1.45;
+  padding: 0 0 64px;
+}
+::selection { background: #2d4d80; color: #fff; }
+:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+.progress {
+  position: sticky; top: 0; z-index: 8;
+  background: var(--bg-bar);
+  border-bottom: 1px solid var(--line);
+  backdrop-filter: blur(8px);
+}
+.progress-inner {
+  max-width: 1280px; margin: 0 auto; padding: 10px 24px;
+  display: flex; align-items: center; gap: 14px; flex-wrap: nowrap;
+}
+.progress-inner h1 { font-size: 1rem; font-weight: 650; margin: 0; letter-spacing: -0.02em; }
+#prog { font-variant-numeric: tabular-nums; color: var(--muted); font-size: 0.875rem; }
+#saved {
+  font-size: 0.75rem; letter-spacing: 0.04em; text-transform: uppercase;
+  color: #8fbf93; min-height: 1em;
+}
+#saved:not(.show) { visibility: hidden; }
+#saved.show::before {
+  content: ""; display: inline-block; width: 0.45em; height: 0.7em;
+  border-right: 2px solid #8fbf93; border-bottom: 2px solid #8fbf93;
+  transform: rotate(40deg) translate(-1px, -1px); margin-right: 6px;
+}
+#missing { font-size: 0.8rem; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#missing .note { color: var(--muted); }
+.missing-link {
+  background: transparent; color: #8fb4ff; border: 1px solid #2f6fed55;
+  border-radius: 999px; padding: 2px 9px; font-size: 0.72rem; font-weight: 500;
+  margin-left: 4px; white-space: nowrap;
+}
+.missing-link:hover { background: #2f6fed22; filter: none; }
+.progress-inner .sp { flex: 1; min-width: 8px; }
+.progress-actions { display: flex; gap: 8px; flex-shrink: 0; }
+button {
+  background: var(--btn); color: #fff; border: 0; border-radius: 6px;
+  padding: 8px 14px; font-size: 0.875rem; font-weight: 600; cursor: pointer;
+  font-family: inherit;
+}
+button:hover { filter: brightness(1.08); }
+button:disabled { background: var(--btn-off); color: #9aa3ab; cursor: not-allowed; filter: none; }
+button.secondary { background: transparent; color: var(--text); border: 1px solid var(--line); }
+button.play-ev {
+  background: var(--bg-inset); color: var(--text); border: 1px solid var(--line);
+  padding: 4px 8px; font-size: 0.75rem; font-weight: 600; letter-spacing: 0.02em;
+  white-space: nowrap; display: inline-block; margin-bottom: 6px;
+}
+.wrap { max-width: 1280px; margin: 0 auto; padding: 18px 24px 0; min-width: 1100px; }
+.lede { color: var(--muted); font-size: 0.875rem; max-width: 78ch; margin: 0 0 8px; }
+.lede code { font-size: 0.8em; }
+.clip {
+  margin-top: 28px; padding: 18px 18px 8px;
+  background: var(--bg-clip); border: 1px solid var(--line); border-radius: 12px;
+}
+.clip-h {
+  display: flex; align-items: baseline; gap: 12px; margin: 0 0 14px;
+  border-bottom: 1px solid var(--line); padding-bottom: 10px;
+}
+.clip-h h2 {
+  margin: 0; font-size: 1.125rem; font-weight: 650; letter-spacing: -0.02em;
+}
+.clip-progress {
+  margin-left: auto; font-variant-numeric: tabular-nums;
+  font-size: 0.75rem; color: var(--muted); letter-spacing: 0.02em;
+}
+.ab-videos {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px;
+}
+figure { margin: 0; }
+figcaption {
+  font-size: 0.8rem; font-weight: 650; color: var(--accent);
+  margin: 0 0 6px; letter-spacing: 0.02em;
+}
+video {
+  width: 100%; background: #000; border-radius: 8px; display: block;
+  border: 1px solid #000;
+}
+video.seek-flash { outline: 2px solid var(--accent); outline-offset: 1px; }
+.gnote-block { margin-top: 8px; }
+.gnote-block label {
+  display: block; font-size: 0.8rem; font-weight: 650; margin-bottom: 2px;
+}
+.gnote-block .hint { color: var(--muted); font-size: 0.75rem; margin: 0 0 6px; }
+textarea {
+  width: 100%; background: var(--bg-inset); color: var(--text);
+  border: 1px solid var(--line); border-radius: 6px; padding: 6px 8px;
+  font-family: inherit; font-size: 0.8125rem; resize: vertical;
+}
+.block { margin: 0 0 16px; }
+.block h3 {
+  margin: 0 0 8px; font-size: 0.8rem; font-weight: 650;
+  letter-spacing: 0.04em; text-transform: uppercase; color: var(--muted);
+}
+.tier-legend { color: var(--muted); font-size: 0.75rem; margin: 0 0 8px; max-width: 90ch; }
+table { border-collapse: collapse; width: 100%; font-size: 0.8125rem; }
+table.events, table.clip-dims { table-layout: fixed; }
+th, td { padding: 8px 8px; text-align: left; vertical-align: top; border-bottom: 1px solid var(--line); }
+thead th { font-size: 0.72rem; letter-spacing: 0.04em; text-transform: uppercase; color: var(--muted); font-weight: 650; }
+thead tr.sys th { text-transform: none; letter-spacing: 0; font-size: 0.8rem; color: var(--accent); padding-bottom: 2px; }
+.ev-col { width: 18%; }
+table.events col.pref { width: 16%; }
+table.events col.keepc { width: 9%; }
+table.events col.notesc { width: 16%; }
+table.clip-dims th:first-child, table.clip-dims td:first-child { width: 28%; }
+.event-row { cursor: pointer; }
+.event-row:hover td { background: #1c242c; }
+.event-row.inspecting td { background: var(--accent-dim); }
+.ev-label { font-weight: 600; font-size: 0.875rem; }
+.ev-meta { margin-top: 2px; color: var(--faint); font-size: 0.75rem; font-variant-numeric: tabular-nums; }
+.ev-id { color: var(--faint); }
+.ev-time { color: var(--muted); font-weight: 550; margin-right: 8px; }
+.ev-tier { border-bottom: 1px dotted var(--faint); }
+.dim-name { display: block; font-weight: 600; color: var(--text); text-transform: none; letter-spacing: 0; font-size: 0.875rem; }
+.dim-help { display: block; font-weight: 400; color: var(--muted); font-size: 0.75rem; letter-spacing: 0; text-transform: none; margin-top: 2px; }
+.scale { width: max-content; max-width: 100%; }
+.scale-caps {
+  display: flex; justify-content: space-between; font-size: 0.68rem;
+  color: var(--muted); margin-bottom: 4px; gap: 8px;
+}
+.scale-opts { display: flex; gap: 4px; }
+.scale-opt {
+  position: relative; width: 32px; height: 32px; margin: 0; cursor: pointer;
+  display: inline-flex; align-items: center; justify-content: center;
+}
+.scale-opt input { position: absolute; inset: 0; opacity: 0; margin: 0; cursor: pointer; }
+.scale-opt span {
+  width: 28px; height: 28px; border-radius: 6px; border: 1px solid var(--line);
+  display: flex; align-items: center; justify-content: center;
+  font-variant-numeric: tabular-nums; font-weight: 600; font-size: 0.8rem;
+  background: var(--bg-inset); color: var(--text);
+}
+.scale-opt:hover span { border-color: var(--accent); }
+.scale-opt input:checked + span { background: var(--accent); color: #fff; border-color: var(--accent); }
+.scale-opt input:focus-visible + span { outline: 2px solid var(--focus); outline-offset: 2px; }
+.keep { display: flex; flex-direction: column; gap: 4px; }
+.keep-opt { display: flex; align-items: center; gap: 6px; cursor: pointer; white-space: nowrap; font-size: 0.8125rem; }
+.keep-opt input { width: 16px; height: 16px; accent-color: var(--accent); }
+.keep-hint { font-size: 0.75rem; font-weight: 400; text-transform: none; letter-spacing: 0; margin-top: 4px; color: var(--muted); }
+#reveal {
+  display: none; max-width: 1280px; margin: 24px auto 0; padding: 16px 24px;
+  background: #18202a; border: 1px solid #2f6fed44; border-radius: 8px;
+}
 </style></head><body>
-<h1>Blinded Foley Review</h1>
-<p class="note">Rate each anonymous system honestly. System identities are revealed only after every
-required rating is submitted. Per clip: rate all six dimensions and answer keep/replace per system.
-Per visible event: give overall preference (1&ndash;5) and keep/replace per system.</p>
-<div class="progress"><span id="prog">…</span>
-<button id="submit" disabled>Submit &amp; reveal</button>
-<button id="download" type="button">Download ratings JSON</button></div>
+<div class="progress"><div class="progress-inner">
+  <h1>Blinded Foley Review</h1>
+  <span id="prog">...</span>
+  <span id="missing"></span>
+  <span id="saved">Saved</span>
+  <span class="sp"></span>
+  <span class="progress-actions">
+    <button id="submit" disabled>Submit and reveal</button>
+    <button id="download" type="button" class="secondary">Download ratings JSON</button>
+  </span>
+</div></div>
+<div class="wrap">
+<p class="lede">Rate each anonymous system honestly. Identities appear only after every required rating is submitted.
+Per clip: six dimensions and keep/replace per system. Per visible event: preference (1&ndash;5) and keep/replace per system.
+Click an event (or <strong>Play both</strong>) to cue both videos 0.75s before the moment and hear System A, then System B, for about 2.5s each.</p>
 <div id="root"></div>
 <div id="reveal"></div>
+</div>
 <script id="cfg" type="application/json">__CFG_B64__</script>
 <script>
 "use strict";
 const CFG = JSON.parse(atob(document.getElementById("cfg").textContent));
 const DIMS = __DIMS__;
 const DIM_LABELS = __DIM_LABELS__;
+const DIM_HELP = __DIM_HELP__;
 const LS_KEY = "blind-ratings:" + CFG.run_id;
+const PREROLL = 0.75;
+const PLAY_WINDOW = 2.5;
+const TIER_HELP = {
+  "mirelo-fallback": "Auto-proposed by the Mirelo fallback detector, not hand-curated.",
+  "direct": "Direct match from the SFX bank.",
+  "dsp": "Bank match adapted with local DSP.",
+  "sa3": "Regenerated when a bank match could not be timed."
+};
+const TIER_PHRASE = {
+  "mirelo-fallback": "auto-proposed",
+  "direct": "bank match",
+  "dsp": "DSP-adapted",
+  "sa3": "regenerated"
+};
 let annotator = localStorage.getItem("blind-annotator") || "";
 while (!annotator) { annotator = prompt("Your name (stored locally, saved into the ratings file):") || ""; }
 localStorage.setItem("blind-annotator", annotator);
 const ratingsKey = (clip, scope, id, label) => clip+"\\u0000"+scope+"\\u0000"+id+"\\u0000"+label;
 let R = JSON.parse(localStorage.getItem(LS_KEY) || "{}");
 function getRating(clip, scope, id, label){ return R[ratingsKey(clip,scope,id,label)] || {}; }
+let savedTimer = 0;
+function markSaved(){
+  const el = document.getElementById("saved");
+  if (!el) return;
+  el.classList.add("show");
+  clearTimeout(savedTimer);
+  savedTimer = setTimeout(() => el.classList.remove("show"), 1200);
+}
 function setRating(clip, scope, id, label, field, value){
   const k = ratingsKey(clip,scope,id,label);
   const cur = R[k] || {}; cur[field] = value; R[k] = cur;
-  localStorage.setItem(LS_KEY, JSON.stringify(R)); refreshProgress();
+  localStorage.setItem(LS_KEY, JSON.stringify(R)); refreshProgress(); markSaved();
 }
 function completeness(){
   let total = 0, done = 0;
@@ -191,11 +379,70 @@ function completeness(){
   }
   return {done, total};
 }
+function completenessFor(clip){
+  const info = CFG.clips[clip];
+  const nSys = Object.keys(info.map).length;
+  let total = DIMS.length * nSys + 2 * nSys, done = 0;
+  for (let i=0;i<nSys;i++){ const lbl = CFG.labels[i];
+    for (const dim of DIMS){ if (getRating(clip,"clip",dim,lbl)[dim] != null) done++; }
+    if (getRating(clip,"clip","overall",lbl)["keep"]) done++;
+    if (getRating(clip,"clip","overall",lbl)["pref"] != null) done++;
+  }
+  for (const ev of info.events){
+    total += 2 * nSys;
+    for (let i=0;i<nSys;i++){ const lbl = CFG.labels[i];
+      if (getRating(clip,"event",ev.id,lbl)["pref"] != null) done++;
+      if (getRating(clip,"event",ev.id,lbl)["keep"]) done++;
+    }
+  }
+  return {done, total};
+}
+function missingItems(){
+  const out = [];
+  const fieldLabel = (f) => f === "keep" ? "Ship it?" : f === "pref" ? "Preference" : DIM_LABELS[f] || f;
+  for (const [clip, info] of Object.entries(CFG.clips)){
+    const nSys = Object.keys(info.map).length;
+    for (let i=0;i<nSys;i++){ const lbl = CFG.labels[i];
+      for (const dim of DIMS){ if (getRating(clip,"clip",dim,lbl)[dim] == null)
+        out.push({clip, scope:"clip", id:dim, label:lbl, field:dim, short:`${clip} · ${lbl} · ${fieldLabel(dim)}`}); }
+      if (getRating(clip,"clip","overall",lbl)["keep"] == null)
+        out.push({clip, scope:"clip", id:"overall", label:lbl, field:"keep", short:`${clip} · ${lbl} · whole clip · Ship it?`});
+      if (getRating(clip,"clip","overall",lbl)["pref"] == null)
+        out.push({clip, scope:"clip", id:"overall", label:lbl, field:"pref", short:`${clip} · ${lbl} · whole clip · Preference`});
+      for (const ev of info.events){
+        for (let j=0;j<nSys;j++){ const l2 = CFG.labels[j];
+          if (getRating(clip,"event",ev.id,l2)["pref"] == null)
+            out.push({clip, scope:"event", id:ev.id, label:l2, field:"pref", short:`${clip} · ${l2} · ${ev.id} · Preference`});
+          if (getRating(clip,"event",ev.id,l2)["keep"] == null)
+            out.push({clip, scope:"event", id:ev.id, label:l2, field:"keep", short:`${clip} · ${l2} · ${ev.id} · Ship it?`});
+        }
+      }
+    }
+  }
+  return out;
+}
 function refreshProgress(){
   const {done,total} = completeness();
-  document.getElementById("prog").textContent = `${done}/${total} required ratings recorded`;
+  document.getElementById("prog").textContent = done + "/" + total + " required ratings recorded";
   document.getElementById("submit").disabled = done !== total;
+  const miss = missingItems();
+  const box = document.getElementById("missing");
+  box.innerHTML = miss.length
+    ? " · missing: " + miss.slice(0,6).map((m,i) => `<button type="button" class="missing-link" data-mi="${i}">${esc(m.short)}</button>`).join(" ")
+      + (miss.length > 6 ? ` <span class="note">+${miss.length - 6} more</span>` : "")
+    : "";
+  document.querySelectorAll("[data-clip-progress]").forEach(el => {
+    const c = completenessFor(el.getAttribute("data-clip-progress"));
+    el.textContent = c.done + "/" + c.total;
+  });
 }
+document.addEventListener("click", e => {
+  const b = e.target.closest(".missing-link");
+  if (!b) return;
+  const m = missingItems()[Number(b.dataset.mi)];
+  const el = document.querySelector(`input[type=radio][data-clip="${m.clip}"][data-scope="${m.scope}"][data-id="${m.id}"][data-label="${m.label}"][data-field="${m.field}"]`);
+  if (el){ el.scrollIntoView({block:"center", behavior:"smooth"}); el.focus({preventScroll:true}); }
+});
 function collectRatings(){
   const out = { annotator, exported_utc: new Date().toISOString(), run_id: CFG.run_id,
     tool: "build_blind_review",
@@ -203,74 +450,223 @@ function collectRatings(){
   for (const [k,v] of Object.entries(R)){ out.ratings[k.replace(/\\u0000/g,"|")] = v; }
   return out;
 }
+function esc(s){
+  return String(s).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+}
+function formatTime(s){
+  s = Math.max(0, Number(s) || 0);
+  const m = Math.floor(s / 60);
+  let tenth = Math.round((s - m * 60) * 10);
+  if (tenth === 600) { return (m + 1) + ":00.0"; }
+  const sec = Math.floor(tenth / 10);
+  const t = tenth % 10;
+  return m + ":" + String(sec).padStart(2, "0") + "." + t;
+}
+function inspectWindow(timeS){
+  const start = Math.max(0, Number(timeS) - PREROLL);
+  return { start, end: start + PLAY_WINDOW };
+}
+function tierPhrase(tier){ return TIER_PHRASE[tier] || (tier || "unspecified"); }
+function tierTitle(tier){ return TIER_HELP[tier] || ("Event source: " + (tier || "unspecified")); }
+function radioName(clip, scope, id, label, field){
+  return clip + "|" + scope + "|" + id + "|" + label + "|" + field;
+}
+function dsAttrs(clip, scope, id, label, field){
+  return `data-clip="${esc(clip)}" data-scope="${esc(scope)}" data-id="${esc(id)}" data-label="${esc(label)}" data-field="${esc(field)}"`;
+}
+function scaleHtml(clip, scope, id, label, field, lo, hi, aria){
+  const val = getRating(clip, scope, id, label)[field];
+  const name = radioName(clip, scope, id, label, field);
+  const ds = dsAttrs(clip, scope, id, label, field);
+  let h = `<div class="scale" role="radiogroup" aria-label="${esc(aria)}">`;
+  h += `<div class="scale-caps"><span>${esc(lo)}</span><span>${esc(hi)}</span></div><div class="scale-opts">`;
+  for (let v = 1; v <= 5; v++){
+    const checked = Number(val) === v ? "checked" : "";
+    h += `<label class="scale-opt"><input type="radio" name="${esc(name)}" ${ds} value="${v}" ${checked}><span>${v}</span></label>`;
+  }
+  return h + `</div></div>`;
+}
+function keepHtml(clip, scope, id, label){
+  const val = getRating(clip, scope, id, label)["keep"];
+  const name = radioName(clip, scope, id, label, "keep");
+  const ds = dsAttrs(clip, scope, id, label, "keep");
+  return `<div class="keep" role="radiogroup" aria-label="Would you ship this sound without swapping it out?">` +
+    `<label class="keep-opt"><input type="radio" name="${esc(name)}" ${ds} data-value="keep" ${val==="keep"?"checked":""}>keep</label>` +
+    `<label class="keep-opt"><input type="radio" name="${esc(name)}" ${ds} data-value="replace" ${val==="replace"?"checked":""}>replace</label></div>`;
+}
+function notesHtml(clip, scope, id, label, field){
+  const val = getRating(clip, scope, id, label)[field];
+  const ds = dsAttrs(clip, scope, id, label, field);
+  return `<textarea rows="2" ${ds}>${val==null?"":esc(val)}</textarea>`;
+}
+function gnoteHtml(clip, label){
+  const ds = dsAttrs(clip, "clip", "general", label, "text");
+  const val = (getRating(clip,"clip","general",label)).text ?? "";
+  return `<textarea rows="2" class="gnote" ${ds}>${esc(val)}</textarea>`;
+}
+function labelsFor(info){
+  return CFG.labels.slice(0, Object.keys(info.map).length);
+}
 function build(){
   const root = document.getElementById("root");
   let html = "";
   for (const [clip, info] of Object.entries(CFG.clips)){
-    html += `<h2>${clip}</h2>`;
-    for (const label of CFG.labels.slice(0, Object.keys(info.map).length)){
-      html += `<h3>System ${label}</h3>
-        <video controls preload="metadata" src="${info.videos[label]}"></video>`;
-      html += `<div class="eventblock"><div class="gnote-h">General media notes &mdash; anything ratings can't capture (noise, wind/ambience leaks, dropouts). Prefix timestamps like <code>0:47</code> when a problem is location-specific.</div>` + gnoteHtml(clip, label) + `</div>`;
-      if (info.events.length){
-        html += `<div class="eventblock"><table>
-          <tr><th class="dim">Event</th><th>System ${label}: overall preference</th><th>Keep without replacing?</th><th>Notes</th></tr>`;
-        for (const ev of info.events){
-          html += `<tr data-ev="${ev.id}"><td class="dim">${ev.label}<br><span class="note">${ev.id} @ ${ev.time_s.toFixed(2)}s &middot; tier ${ev.tier}</span></td>`
-            + cellHtml(clip,"event",ev.id,label,"pref","scale")
-            + cellHtml(clip,"event",ev.id,label,"keep","keep")
-            + cellHtml(clip,"event",ev.id,label,"notes","notes") + `</tr>`;
-        }
-        html += `</table></div>`;
-      }
-      html += `<div class="eventblock"><table>
-        <tr><th class="dim">Whole clip</th><th>System ${label}: six dimensions 1-5</th><th>Keep without replacing?</th><th>Notes</th></tr>`;
-      for (const dim of DIMS){
-        html += `<tr><td class="dim">${DIM_LABELS[dim]}</td>`
-          + cellHtml(clip,"clip",dim,label,dim,"scale")
-          + (dim===DIMS[0] ? cellHtml(clip,"clip","overall",label,"keep","keep") +
-             cellHtml(clip,"clip","overall",label,"notes","notes") :
-             `<td></td><td></td>`) + `</tr>`;
-      }
-      html += `</table></div>`;
+    const labels = labelsFor(info);
+    html += `<section class="clip" data-clip="${esc(clip)}">`;
+    html += `<header class="clip-h"><h2>${esc(clip)}</h2><span class="clip-progress" data-clip-progress="${esc(clip)}">0/0</span></header>`;
+    html += `<div class="ab-videos">`;
+    for (const label of labels){
+      html += `<figure><figcaption>System ${esc(label)}</figcaption>` +
+        `<video controls preload="metadata" data-clip="${esc(clip)}" data-label="${esc(label)}" src="${esc(info.videos[label])}"></video>` +
+        `<div class="gnote-block"><label>General media notes</label>` +
+        `<p class="hint">Anything ratings cannot capture (noise, wind/ambience leaks, dropouts). Prefix timestamps like <code>0:47</code> when a problem is location-specific.</p>` +
+        gnoteHtml(clip, label) + `</div></figure>`;
     }
+    html += `</div>`;
+    if (info.events.length){
+      html += `<div class="block"><h3>Visible events</h3>`;
+      html += `<p class="tier-legend">Each row is one sound-worthy moment. Click the row or <strong>Play both</strong> to hear both systems at that timestamp (0.75s preroll, ~2.5s each, A then B). ` +
+        `<strong>auto-proposed</strong> = Mirelo fallback detector, not hand-curated. ` +
+        `<strong>bank match</strong> / <strong>DSP-adapted</strong> / <strong>regenerated</strong> = how the moment was sourced.</p>`;
+      html += `<p id="inspect-status-${esc(clip)}" class="tier-legend"></p>`;
+      html += `<table class="events"><colgroup><col class="ev-col">`;
+      for (const _l of labels) html += `<col class="pref"><col class="keepc"><col class="notesc">`;
+      html += `</colgroup><thead>`;
+      html += `<tr class="sys"><th class="ev-col">Event</th>`;
+      for (const label of labels) html += `<th colspan="3">System ${esc(label)}</th>`;
+      html += `</tr><tr><th class="ev-col"></th>`;
+      for (const _l of labels) html += `<th>Preference</th><th>Ship it?</th><th>Notes</th>`;
+      html += `</tr></thead><tbody>`;
+      for (const ev of info.events){
+        html += `<tr class="event-row" tabindex="0" data-clip="${esc(clip)}" data-ev="${esc(ev.id)}" data-time="${ev.time_s}">`;
+        html += `<td class="ev-col"><button type="button" class="play-ev" data-action="inspect">Play both</button>` +
+          `<div class="ev-label">${esc(ev.label)}</div>` +
+          `<div class="ev-meta"><span class="ev-time">${formatTime(ev.time_s)}</span>` +
+          `<span class="ev-id">${esc(ev.id)}</span> · ` +
+          `<span class="ev-tier" title="${esc(tierTitle(ev.tier))}">${esc(tierPhrase(ev.tier))}</span>` +
+          ` <span class="ev-id">(${esc(ev.tier)})</span></div></td>`;
+        for (const label of labels){
+          html += `<td>` + scaleHtml(clip,"event",ev.id,label,"pref","unusable","strongly prefer",
+              `Preference for System ${label}, ${ev.label}. 1 unusable to 5 strongly prefer`) + `</td>`;
+          html += `<td>` + keepHtml(clip,"event",ev.id,label) + `</td>`;
+          html += `<td>` + notesHtml(clip,"event",ev.id,label,"notes") + `</td>`;
+        }
+        html += `</tr>`;
+      }
+      html += `</tbody></table></div>`;
+    }
+    html += `<div class="block"><h3>Whole-clip ratings</h3>`;
+    html += `<table class="clip-dims"><thead><tr><th>Dimension</th>`;
+    for (const label of labels) html += `<th>System ${esc(label)}</th>`;
+    html += `</tr></thead><tbody>`;
+    for (const dim of DIMS){
+      html += `<tr><th><span class="dim-name">${esc(DIM_LABELS[dim])}</span>` +
+        `<span class="dim-help">${esc(DIM_HELP[dim] || "")}</span></th>`;
+      for (const label of labels){
+        html += `<td>` + scaleHtml(clip,"clip",dim,label,dim,"poor","excellent",
+            `${DIM_LABELS[dim]} for System ${label}. 1 poor to 5 excellent`) + `</td>`;
+      }
+      html += `</tr>`;
+    }
+    html += `<tr class="clip-keep" data-row="clip-keep"><th><span class="dim-name">Would you ship this sound without swapping it out?</span>` +
+      `<span class="keep-hint dim-help">keep = ship as-is; replace = you would manually swap it.</span></th>`;
+    for (const label of labels) html += `<td>` + keepHtml(clip,"clip","overall",label) + `</td>`;
+    html += `</tr>`;
+    html += `<tr class="clip-notes" data-row="clip-notes"><th><span class="dim-name">Clip notes</span></th>`;
+    for (const label of labels) html += `<td>` + notesHtml(clip,"clip","overall",label,"notes") + `</td>`;
+    html += `</tr></tbody></table></div></section>`;
   }
   root.innerHTML = html;
 }
 function cellHtml(clip, scope, id, label, field, kind){
-  const val = (getRating(clip, scope, id, label))[field];
-  const ds = `data-clip="${clip}" data-scope="${scope}" data-id="${id}" data-label="${label}" data-field="${field}"`;
   if (kind === "scale"){
-    let h = `<td>`;
-    for (let v=1; v<=5; v++) h += `<label class="opt"><input type="radio" ${ds} value="${v}" ${val===v?"checked":""}></label>`;
-    return h + `</td>`;
+    const lohi = field === "pref" ? ["unusable","strongly prefer"] : ["poor","excellent"];
+    return `<td>` + scaleHtml(clip, scope, id, label, field, lohi[0], lohi[1], field) + `</td>`;
   }
-  if (kind === "keep"){
-    return `<td><label class="opt"><input type="radio" ${ds} data-value="keep" ${val==="keep"?"checked":""}>keep</label>` +
-      `<label class="opt"><input type="radio" ${ds} data-value="replace" ${val==="replace"?"checked":""}>replace</label></td>`;
-  }
-  return `<td><textarea rows="1" ${ds}>${val==null?"":String(val).replace(/</g,"&lt;")}</textarea></td>`;
+  if (kind === "keep") return `<td>` + keepHtml(clip, scope, id, label) + `</td>`;
+  return `<td>` + notesHtml(clip, scope, id, label, field) + `</td>`;
 }
-function gnoteHtml(clip, label){
-  const ds = `data-clip="${clip}" data-scope="clip" data-id="general" data-label="${label}" data-field="text"`;
-  const val = (getRating(clip,"clip","general",label)).text ?? "";
-  return `<textarea rows="2" class="gnote" ${ds}>${String(val).replace(/</g,"&lt;")}</textarea>`;
+let inspectGen = 0;
+function setInspectStatus(clip, msg){
+  const el = document.getElementById("inspect-status-" + clip);
+  if (el) el.textContent = msg || "";
 }
-// Delegated persistence wiring: radios + textareas -> setRating (localStorage).
+function inspectEvent(row){
+  const clip = row.dataset.clip;
+  const timeS = Number(row.dataset.time);
+  const { start, end } = inspectWindow(timeS);
+  document.querySelectorAll(".event-row.inspecting").forEach(r => r.classList.remove("inspecting"));
+  row.classList.add("inspecting");
+  const videos = [...document.querySelectorAll(`video[data-clip="${clip}"]`)];
+  const gen = ++inspectGen;
+  videos.forEach(v => {
+    v.classList.add("seek-flash");
+    setTimeout(() => v.classList.remove("seek-flash"), 280);
+    const cue = () => { try { v.currentTime = start; } catch (e) {} };
+    if (v.readyState >= 1) cue();
+    else v.addEventListener("loadedmetadata", cue, { once: true });
+    v.pause();
+  });
+  const playOne = (i) => {
+    if (gen !== inspectGen) return;
+    if (i >= videos.length) { setInspectStatus(clip, ""); return; }
+    const v = videos[i];
+    const label = v.getAttribute("data-label") || String(i);
+    setInspectStatus(clip, "Playing System " + label + " at " + formatTime(timeS));
+    videos.forEach((other, j) => { if (j !== i) other.pause(); });
+    const startPlay = () => {
+      if (gen !== inspectGen) return;
+      try { v.currentTime = start; } catch (e) {}
+      const p = v.play();
+      if (p && p.catch) p.catch(() => {});
+      const tick = () => {
+        if (gen !== inspectGen) { v.removeEventListener("timeupdate", tick); return; }
+        if (v.currentTime >= end - 0.04) {
+          v.pause();
+          v.removeEventListener("timeupdate", tick);
+          playOne(i + 1);
+        }
+      };
+      v.addEventListener("timeupdate", tick);
+    };
+    if (v.readyState >= 1) startPlay();
+    else v.addEventListener("loadedmetadata", startPlay, { once: true });
+  };
+  playOne(0);
+}
 const coerce = (t) => t.type === "radio"
   ? (t.dataset.value === "keep" || t.dataset.value === "replace" ? t.dataset.value : Number(t.value))
   : t.value.trim();
 const persistInput = (t) => {
   const {clip, scope, id, label, field} = t.dataset;
   if (!field) return;
-  if (t.type === "radio"){ // no name= groups in generated HTML; clear siblings manually
+  if (t.type === "radio"){
     for (const sib of document.querySelectorAll(`input[type=radio][data-clip="${clip}"][data-scope="${scope}"][data-id="${id}"][data-label="${label}"][data-field="${field}"]`))
       if (sib !== t) sib.checked = false;
   }
   setRating(clip, scope, id, label, field, coerce(t));
 };
 document.addEventListener("change", e => { if (e.target.matches("input[type=radio],textarea[data-field]")) persistInput(e.target); });
-document.addEventListener("input", e => { if (e.target.matches("textarea.gnote")) persistInput(e.target); });
+document.addEventListener("input", e => { if (e.target.matches("textarea[data-field]")) persistInput(e.target); });
+document.addEventListener("click", e => {
+  const ignore = e.target.closest("input, textarea, label.scale-opt, label.keep-opt");
+  if (ignore) return;
+  const row = e.target.closest(".event-row");
+  if (row) inspectEvent(row);
+});
+document.addEventListener("keydown", e => {
+  if (/^[1-5]$/.test(e.key)) {
+    const scale = e.target.closest(".scale");
+    if (scale) {
+      const radio = scale.querySelector(`input[type="radio"][value="${e.key}"]`);
+      if (radio) { radio.checked = true; persistInput(radio); e.preventDefault(); }
+    }
+  }
+  if ((e.key === "Enter" || e.key === " ") && e.target.classList.contains("event-row")) {
+    e.preventDefault();
+    inspectEvent(e.target);
+  }
+});
 document.getElementById("download").addEventListener("click", () => {
   const blob = new Blob([JSON.stringify(collectRatings(), null, 2)], {type:"application/json"});
   const a = document.createElement("a");
@@ -287,9 +683,9 @@ document.getElementById("submit").addEventListener("click", async () => {
   let rows = "<table><tr><th>Label</th><th>Actual system</th></tr>";
   const tally = {};
   for (const [clip, info] of Object.entries(CFG.clips)){
-    rows += `<tr><td colspan="2"><strong>${clip}</strong></td></tr>`;
+    rows += `<tr><td colspan="2"><strong>${esc(clip)}</strong></td></tr>`;
     for (const [lbl, sys] of Object.entries(info.map)){
-      rows += `<tr><td>System ${lbl}</td><td>${sys}</td></tr>`;
+      rows += `<tr><td>System ${esc(lbl)}</td><td>${esc(sys)}</td></tr>`;
       const r = getRating(clip,"clip","overall",lbl);
       if (r.keep){
         tally[sys] = tally[sys] || {keep:0, replace:0};
@@ -297,7 +693,7 @@ document.getElementById("submit").addEventListener("click", async () => {
       }
     }
   }
-  rows += "</table><p>Keep-replace tallies: <code>" + JSON.stringify(tally) + "</code></p>" +
+  rows += "</table><p>Keep-replace tallies: <code>" + esc(JSON.stringify(tally)) + "</code></p>" +
           "<p>Ratings are already captured via localStorage — please still download/send the JSON.</p>";
   rev.innerHTML = rows; rev.style.display = "block";
   window.scrollTo({top: rev.offsetTop - 80, behavior: "smooth"});
@@ -341,8 +737,9 @@ Open the page, rate, send back the JSON. Takes minutes per clip.
    Chrome; if blocked, use serve mode.)
 2. Enter your name once (persisted locally).
 3. Per clip, per anonymous system: six 1–5 dimensions + keep/replace + notes.
-4. Per visible event: overall preference 1–5 + keep/replace. Disagreement with
-   your own taste is data — record what you hear.
+4. Per visible event: overall preference 1–5 + keep/replace. Click the event
+   (or Play both) to hear System A then System B at that moment. Disagreement
+   with your own taste is data — record what you hear.
 5. The keep/replace question means exactly: *would you ship this sound without
    manually swapping it out?*
 6. Submit when every required control is filled; identity reveal appears.
@@ -480,6 +877,7 @@ def main() -> int:
     page = PAGE_TEMPLATE.replace("__CFG_B64__", blob)
     page = page.replace("__DIMS__", json.dumps(CLIP_RATING_DIMENSIONS))
     page = page.replace("__DIM_LABELS__", json.dumps(DIMENSION_LABELS))
+    page = page.replace("__DIM_HELP__", json.dumps(DIMENSION_HELP))
     (out_dir / "index.html").write_text(page)
     (out_dir / "RATING_GUIDE.md").write_text(GUIDE.format(run_dir=run_dir))
     write_assignment = assignment_path.exists() and not args.force
