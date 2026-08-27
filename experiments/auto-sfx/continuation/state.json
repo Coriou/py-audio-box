@@ -4,7 +4,7 @@
   "updated": "2026-08-27",
   "created_at_head": "a470db9",
   "objective": "Reach extremely accurate, honest initial-foot-contact timing on a declared supported subset of creator footage, with operator-verified truth and explicit abstention outside it.",
-  "status": "phase2c_batch1_identity_and_sparse_rejected_operator_corpus_pending",
+  "status": "phase2c_batch2_groundplane_rejected_operator_corpus_pending",
   "required_ancestor_commits": [
     "728b6a5",
     "f517c0a",
@@ -17,6 +17,7 @@
     "pixel_experiment": "contact-roi-v1 (rejected Phase 2B)",
     "leg_chain_experiment": "full-leg-chain-v1-opt-in (rejected Phase 2C Batch 1)",
     "sparse_pixel_experiment": "sparse-stabilized-roi-v1 (rejected Phase 2C Batch 1)",
+    "groundplane_experiment": "contact-groundplane-v1 (rejected Phase 2C Batch 2)",
     "candidate_backend": "mediapipe-lite",
     "candidate_mode": "video",
     "candidate_smoothing": "raw",
@@ -24,8 +25,8 @@
   },
   "last_verified_tests": {
     "command": "make auto-sfx-test",
-    "passed": 370,
-    "duration_s": 14.80,
+    "passed": 391,
+    "duration_s": 18.65,
     "date": "2026-08-27",
     "docker_image_id": "sha256:1df6b36c57fbbe82a4402700c7db65175f1d5be5ddd0c03e8bf87e5aeb3ef874",
     "docker_image_size_bytes": 2182408336
@@ -127,6 +128,47 @@
       "unrelated_experiments_touched": false
     }
   },
+  "phase2c_batch2": {
+    "question": "Does shot-local support geometry plus retrospective semi-Markov state reduce pose-apex early bias without a global offset?",
+    "created_at_head": "167e1706e469d757a52aed41a9c3a8dfe5fdbd86",
+    "result": "No. Geometry-only is event-identical to contact-state-v1; semi-Markov collapses opened-development existence (0/42 strict matches) and is late, not closer to zero. Rejected for integration.",
+    "evidence_boundary": "All Phase 2B shards are opened diagnostics with agent-draft truth. Development fold only. No operator truth or accuracy claim.",
+    "complete_attempt": {
+      "experiment_id": "phase2c-b2-state-groundplane-opened-dev-v1-a1",
+      "attempt_id": "212cb12b-1342-4292-829e-e09e0a1cfd92",
+      "decision": "rejected",
+      "offset_like": false,
+      "candidate_strict_recall": 0.0,
+      "baseline_strict_recall": 0.333333,
+      "candidate_signed_median_frames": 3.0,
+      "baseline_signed_median_frames": -1.5,
+      "candidate_n_pred": 14,
+      "n_true": 42,
+      "candidate_wall_seconds": 4.670428,
+      "candidate_peak_rss_mib": 216.621094,
+      "source_pts_membership_failures": 0,
+      "deterministic_failures": 0,
+      "validation_shards_loaded": 0,
+      "artifact_commitment": "8a6f7690ce9ddf44415796a1dcc5e163175f86ca083f664a2eb6e3c47a20f054"
+    },
+    "failed_finalization_attempt_id": "0b53ad08-2577-42a9-b005-bd0ebb091043",
+    "artifacts": {
+      "support_geometry_sha256": "5f111b8026625d308a7c86a575ae197fd3c725525c7e82d646725d3c90264eac",
+      "state_groundplane_sha256": "62d6f5c01246a67b10b44134e8298813a16ef8374001e86fe52ab6c89066c17e",
+      "driver_sha256": "df4669b11d78aff75becf8d025a61d61174506f8601660623dd62875232a0c78",
+      "config_sha256": "d0535f618f77fa927d94e036a266a2d964b7c225460c62441ea20186bdb37ac6",
+      "public_run_report_sha256": "3b853e6be2249e9be4c52cf73ed5a2397eb83c533d0d0c91777868b8b3a7da0f"
+    },
+    "constraints": {
+      "pose_inference_run": false,
+      "dense_flow_rerun": false,
+      "future_holdout_opened": false,
+      "validation_fold_scored": false,
+      "accuracy_claimed": false,
+      "default_changed": false,
+      "unrelated_experiments_touched": false
+    }
+  },
   "phase2b_frozen_result": {
     "n_true": 51,
     "n_pred": 33,
@@ -171,14 +213,16 @@
   },
   "next_batch": [
     "Operator: prepare a private rights-cleared source manifest, reserve the source-group split before predictions, and complete two prediction-blind passes plus append-only adjudication.",
-    "Run phase2c-state-groundplane on opened development only: shot-local support geometry plus retrospective bounded-duration physical state, with no global timing offset.",
-    "Do not rerun full-leg identity or sparse LK by lowering thresholds; either requires a materially new observability/support mechanism.",
+    "Run phase2c-interval-calibrate on opened development only: keep contact-state-v1 existence and choose preferred IC inside the existing heel/toe window using shot-local support crossing. Do not replace the apex detector with semi-Markov.",
+    "Do not rerun full-leg identity, sparse LK, or groundplane semi-Markov by lowering thresholds; each requires a materially new mechanism.",
     "Consider a small supervised temporal classifier only after rights-cleared operator-labelled development windows exist."
   ],
   "authoritative_files": [
     "experiments/auto-sfx/continuation/START-HERE.md",
     "experiments/auto-sfx/continuation/experiment-ledger.md",
     "plans/2026-08-26-auto-sfx-step-sync-continuation.md",
+    "experiments/auto-sfx/reports/CTO-UPDATE-phase2-6-state-groundplane-negative.md",
+    "experiments/auto-sfx/reports/phase2c-batch2-run-report.json",
     "experiments/auto-sfx/reports/CTO-UPDATE-phase2-5-identity-sparse-negative.md",
     "experiments/auto-sfx/reports/phase2c-batch1-run-report.json",
     "experiments/auto-sfx/reports/CTO-UPDATE-phase2-4-operator-gold-control-plane.md",

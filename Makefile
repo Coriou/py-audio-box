@@ -484,9 +484,11 @@ auto-sfx-build:  ## Build the auto-sfx POC image
 	cd experiments/auto-sfx && docker build -t pab-auto-sfx:latest .
 
 .PHONY: auto-sfx-test
-auto-sfx-test:  ## Run auto-sfx POC pytest suite inside the container (src/tests mounted read-only; tests/ is dockerignored)
+auto-sfx-test:  ## Run auto-sfx POC pytest suite inside the container (src/tests/scripts/configs/gt mounted read-only; tests/ is dockerignored)
 	cd experiments/auto-sfx && docker compose run --rm \
 		-v "$$PWD/src:/app/src:ro" -v "$$PWD/tests:/app/tests:ro" \
+		-v "$$PWD/scripts:/app/scripts:ro" -v "$$PWD/configs:/app/configs:ro" \
+		-v "$$PWD/gt:/app/gt:ro" \
 		--entrypoint "python -m pytest" auto-sfx tests -q
 
 .PHONY: auto-sfx-selftest

@@ -1,0 +1,49 @@
+{
+  "completed_attempts": [
+    {
+      "artifact_hashes": {
+        "analysis": "8a6f7690ce9ddf44415796a1dcc5e163175f86ca083f664a2eb6e3c47a20f054"
+      },
+      "attempt_id": "212cb12b-1342-4292-829e-e09e0a1cfd92",
+      "completed_at": "2026-08-27T10:30:06.419950Z",
+      "decision": {
+        "reason": "Opened-development gates failed: candidate strict recall 0.0 vs baseline 0.333, diagnostic median 6 vs 2 frames, signed median +3 vs -1.5 (not closer to zero). Not offset_like (mode fraction 0.219). Geometry-only matched baseline exactly; semi-Markov is the existence collapse. No accuracy claim, no default change.",
+        "superseded_by": [],
+        "supersedes": [
+          "0b53ad08-2577-42a9-b005-bd0ebb091043"
+        ],
+        "value": "rejected"
+      },
+      "exit_code": 0,
+      "experiment_id": "phase2c-b2-state-groundplane-opened-dev-v1-a1",
+      "metrics": {
+        "accuracy_claim": false,
+        "baseline_wall_seconds": 4.416774,
+        "candidate_peak_rss_mib": 216.621094,
+        "candidate_wall_seconds": 4.670428,
+        "deterministic_failures": 0,
+        "fold": "development",
+        "offset_like": false,
+        "offset_like_mode": -5,
+        "offset_like_n": 32,
+        "recommended_decision": "reject",
+        "source_pts_membership_failures": 0,
+        "validation_shards_loaded": 0
+      },
+      "repository": {
+        "dirty": true,
+        "dirty_status_sha256": "fa8e87bf97efe0c2cb9dfff9c4481e3f6a978aeee3caed8008ddd9408a948f68",
+        "head": "167e1706e469d757a52aed41a9c3a8dfe5fdbd86"
+      },
+      "resources": {
+        "block_inputs": 0,
+        "block_outputs": 0,
+        "max_rss_kib": 31324,
+        "system_cpu_seconds": 0.032309,
+        "user_cpu_seconds": 0.036969,
+        "wall_seconds": 35.831688
+      }
+    }
+  ],
+  "schema": "auto-sfx-experiment-report/v1"
+}

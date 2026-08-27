@@ -19,7 +19,8 @@ versioned CTO report.
 | 0 | `phase2c-run-manifest` | Can an interrupted/rate-limited run resume without ambiguity about command, hashes, status, outputs, or decision? | atomic manifest runner and tests | complete — accepted |
 | 0 | `phase2c-corpus-split` | Can a source-group split prevent near-duplicate/actor/session leakage and keep a new holdout prediction-blind? | rights manifest, split audit, hashes | mechanism complete; real private corpus/split pending |
 | 1 | `phase2c-track-legchain` | Does full-leg-chain temporal assignment fix multi-view identity without latching legitimate crossings? | fixtures, dev/challenge Metrics v2, ID-switch-conditioned table | rejected — f364 fixed, but 1,172/2,416 opened frames unsafe |
-| 1 | `phase2c-state-groundplane` | Does shot-local support geometry plus retrospective semi-Markov state reduce the pose-apex early bias without a global offset? | identical-fold ablation, calibration coverage, resources | next development-only mechanism |
+| 1 | `phase2c-state-groundplane` | Does shot-local support geometry plus retrospective semi-Markov state reduce the pose-apex early bias without a global offset? | identical-fold ablation, calibration coverage, resources | rejected — geometry did not move apex; semi-Markov 0/42 strict |
+| 1 | `phase2c-interval-calibrate` | Does choosing preferred IC inside the existing heel/toe window via shot-local support crossing reduce signed early bias without changing existence? | identical-fold ablation vs contact-state-v1, offset_like, resources | next development-only mechanism |
 | 1 | `phase2c-roi-sparse` | Does sparse foot-vs-ground tracking with robust stabilization localise IC better than pose-only at compatible CPU cost? | counterfactuals, identical-fold ablation, resources | rejected — 0/19 evidence-bearing opened suggestions |
 | 2 | `phase2c-footpatch-model` | If classical pixels fail, does a tiny rights-cleared temporal foot-patch classifier add challenge accuracy at calibrated abstention? | source-group CV, ONNX CPU report, license/data manifest | conditional |
 | 3 | `phase2c-decoder` | Does bounded sequence reasoning add value without fabricating/deleting unsupported raw contacts? | raw/decoded parallel metrics and contradictions | blocked until raw physical gate is strong |
@@ -71,6 +72,31 @@ versioned CTO report.
 | Artifact commitments | Identity `4374beda9a96489461bf6a76544feaed1cf4cfa34122f1f1bdecd385a985f75f`; sparse `d73e1ebc562a6d2df1d83bfdc3d31231d2862e8d7048aceea00989f97044d60b`; compact public report file SHA-256 `2894dcb29846cfc5f862415428627c01616319ce6af52f29e2f07b1d9ceda542`. |
 | Exact next command | `make auto-sfx-test`; next experiment is `phase2c-state-groundplane` on opened development only. |
 | Detailed evidence | `reports/CTO-UPDATE-phase2-5-identity-sparse-negative.md`; `reports/phase2c-batch1-run-report.json` |
+
+## Phase 2C Batch 2 — shot-local geometry and semi-Markov state
+
+| Field | Value |
+|---|---|
+| Date / orchestrator | 2026-08-27 / root with two disjoint workers (state engineer, eval steward) |
+| Experiment IDs / run IDs | `phase2c-b2-state-groundplane-opened-dev-v1-a1` / complete attempt `212cb12b-1342-4292-829e-e09e0a1cfd92` (supersedes failed-finalization `0b53ad08-2577-42a9-b005-bd0ebb091043`) |
+| Question | Does shot-local support geometry plus retrospective semi-Markov state reduce the pose-apex early bias without a global offset? |
+| Created-at HEAD / dirty state | `167e1706e469d757a52aed41a9c3a8dfe5fdbd86`; Batch 2 files declared dirty; unrelated untracked foley/sfx-bank docs preserved |
+| Input manifest and split hash | Opened Phase 2B traces + development shards only; split SHA-256 `20829632c0e854336537397839468eec6e2a287a8d74b419a4831432071a297e`. Validation shards loaded: 0. |
+| GT provenance | Agent-draft/opened development only. No operator exports. No accuracy claim. |
+| Backend/model/artifact/license | Cached MediaPipe-lite VIDEO traces; no inference. Repository code. Image `sha256:1df6b36c57fbbe82a4402700c7db65175f1d5be5ddd0c03e8bf87e5aeb3ef874`. |
+| Isolated change | Opt-in `support_geometry` + `state_groundplane` (`contact-groundplane-v1`); opened-dev driver with frozen ablation variants and decision gates. No detector/CLI/default wiring. |
+| Development metrics | Baseline P/R 0.424/0.333, signed −1.5 f, median/p90 2/4.1. Geometry-only identical. Candidate P/R 0.000/0.000, signed +3.0 f, median/p90 6/10.8; 14 predictions; `offset_like` false. Candidate wall 4.670 s, 216.621 MiB. |
+| Challenge metrics | Not opened; no real challenge/locked split exists. |
+| Counterfactuals and resources | Synthetic early-apex (candidate after apex), tilt/vertical/sparse abstain, VFR PTS, no offset keys, tracing-neutral, Docker 6 CPU / 1 GiB / no network. |
+| Representative correction | Synthetic fixture timestamps collision two frames after the relative-x apex. |
+| Representative new failure | Semi-Markov under-fires on real opened development (0 strict matches) and is late; shot-local geometry does not shift apex events. |
+| Behavioral/full tests | Focused host 43 passed; `make auto-sfx-test` 391 passed in 18.65 s. |
+| Decision | Combined mechanism **rejected** for integration. Preserve as opt-in evidence only; no default change. |
+| Reason | Local synthetic success and non-offset shifts do not overcome failed real opened existence/timing gates. Retuning collision/support after seeing the fold is not a new mechanism. |
+| Supersedes / superseded by | Complete a2 supersedes failed-finalization a1. Neither supersedes `contact-state-v1`. |
+| Artifact commitments | Complete analysis `8a6f7690ce9ddf44415796a1dcc5e163175f86ca083f664a2eb6e3c47a20f054`; compact public report file SHA-256 `3b853e6be2249e9be4c52cf73ed5a2397eb83c533d0d0c91777868b8b3a7da0f`. |
+| Exact next command | `make auto-sfx-test`; next experiment is `phase2c-interval-calibrate` on opened development only. |
+| Detailed evidence | `reports/CTO-UPDATE-phase2-6-state-groundplane-negative.md`; `reports/phase2c-batch2-run-report.json` |
 
 ## Append-row template
 
