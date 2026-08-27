@@ -781,6 +781,8 @@ class SaveHandler(BaseHTTPRequestHandler):
         path = urlparse(self.path).path
         if path in ("/", "/index.html"):
             self._serve_static("review/blind/index.html")
+        elif path.endswith(".html") and "/" not in path.lstrip("/"):
+            self._serve_static("review/blind" + path)
         elif path.endswith(".mp4"):
             # Media lives under review/; cfg uses "../name.mp4" which browsers
             # normalize against "/" to "/name.mp4". Accept either form.
