@@ -567,6 +567,11 @@ function build(){
       }
       html += `</tr>`;
     }
+    html += `<tr class="clip-pref" data-row="clip-pref"><th><span class="dim-name">Overall preference</span>` +
+      `<span class="dim-help">For this clip as a whole, how good is this system's sound? Rate each system separately (not pairwise).</span></th>`;
+    for (const label of labels) html += `<td>` + scaleHtml(clip,"clip","overall",label,"pref","unusable","strongly prefer",
+        `Overall preference for System ${label}, whole clip. 1 unusable to 5 strongly prefer`) + `</td>`;
+    html += `</tr>`;
     html += `<tr class="clip-keep" data-row="clip-keep"><th><span class="dim-name">Would you ship this sound without swapping it out?</span>` +
       `<span class="keep-hint dim-help">keep = ship as-is; replace = you would manually swap it.</span></th>`;
     for (const label of labels) html += `<td>` + keepHtml(clip,"clip","overall",label) + `</td>`;

@@ -5,16 +5,20 @@ This file records where THAT session ended and exactly what is left.
 
 ## TL;DR for the next orchestrator
 
-1. **Q1 (blind listening)** — owner ratings are at **150/160 required fields**.
-   Ten `keep` ("Ship it?") radios remain: walk1 `gt_002/gt_003/gt_004` for
-   System A AND B; walk2 `gt_006/gt_008` (A) and `gt_003/gt_008` (B). The
-   in-page missing-pill strip (below the lede, above the clip list) lists
-   exactly these and jump-clicks to each control. When the owner clicks
-   **Submit and reveal**, the payload POSTs to
+1. **Q1 (blind listening)** — CORRECTED this session: the owner's real state is
+   **140/160 required fields**, not 150/160 (the "150of160" export name and the
+   prior count were wrong — see `blind-ratings-Ben-partial-150of160.json`,
+   which contains 140). 20 fields remain:
+   **10 whole-clip "Overall preference" scales** (the page template never
+   rendered this row — fixed this session — so those ratings were previously
+   impossible and their missing-pills jump-clicked to nothing; that was the
+   reported "click to jump doesn't work") **plus 10 event `keep` radios**:
+   walk1 `gt_002/gt_003/gt_004` for System A AND B; walk2 `gt_006/gt_008` (A)
+   and `gt_003/gt_008` (B). The in-page missing-pill strip lists exactly these
+   and jump-clicks to each control (verified in headed Chrome, all 20 targets
+   resolve). When the owner clicks **Submit and reveal**, the payload POSTs to
    `work/sfx-pipeline/20260826-poc/review/blind/incoming/`. Then validate
-   160/160 and archive. Partial exports also exist:
-   `review/blind/blind-ratings-Ben-partial-150of160.json` (and a 135/160 one
-   from earlier the same day).
+   160/160 and archive.
 2. **Q2 (human-gold timing)** — NOT started. `annotations/` is empty. Owner
    must annotate pass `A` on walk1 → man → ocean-short via the gold
    annotator (steps in HANDOFF.md §0; fps 30/29.97/30; save files as
@@ -29,8 +33,7 @@ This file records where THAT session ended and exactly what is left.
    `surf_bed_01_6ace93b1` anchor blanked (no surf class exists in any run's
    bank). The five `needs_clip` rows await physical shooting by the owner.
 
-## Q1 verdict so far (from the 150/160 export — stable on all counted fields)
-
+## Q1 verdict so far (from the 140/160 export — stable on all counted fields)
 | | bank | mirelo16 |
 |---|---|---|
 | Whole-clip keep/replace | 2 / 3 | 0 / 5 |
@@ -59,10 +62,13 @@ walk1 A=bank/B=mirelo16 · walk2 A=mirelo16/B=bank.
   - Gold annotator: `python3 -m http.server 8765` →
     `http://127.0.0.1:8765/experiments/auto-sfx/gold_annotator.html?session=work/sfx-gold/sessions/20260826-demo/session.json`
     (session paths resolve against origin root — fixed this session).
-  - Blind review: `python3 experiments/sfx-bank-pipeline/build_blind_review.py --run-dir work/sfx-pipeline/20260826-poc --serve --port 8899` →
-    `http://127.0.0.1:8899/`. NOTE: the server running right now is a
-    background job of the PREVIOUS orchestrator session and dies with it —
-    restart with the command above.
+  - Blind review: `python3 experiments/sfx-bank-pipeline/build_blind_review.py --run-dir work/sfx-pipeline/20260826-poc --serve --port 8898` →
+    `http://127.0.0.1:8898/`. **Port 8899 is permanently taken** by an unrelated
+    node service (`pfi-sniper-residential-host`, returns 401) — do NOT use it.
+    The `--serve` variant is required: only it implements `POST /save`; a plain
+    `python3 -m http.server` will happily serve the page and silently drop
+    submissions. A server is running right now via hub process `blind-serve`;
+    if it is gone, restart with the command above (repo root as cwd).
 - Rebuild blind page after template edits:
   `python3 experiments/sfx-bank-pipeline/build_blind_review.py --run-dir work/sfx-pipeline/20260826-poc`
   (rewrites `review/blind/index.html`; keeps existing `assignment.json` so
