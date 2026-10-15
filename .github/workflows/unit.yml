@@ -1,0 +1,14 @@
+name: Unit contracts
+on:
+  push:
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  unit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build CPU test image and run contracts without network
+        run: scripts/run-unit-tests.sh

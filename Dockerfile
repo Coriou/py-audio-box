@@ -2,7 +2,7 @@ FROM python:3.11-slim-bookworm
 
 LABEL org.opencontainers.image.source="https://github.com/Coriou/py-audio-box"
 LABEL org.opencontainers.image.description="ML/audio toolbox — voice cloning, synthesis, separation"
-LABEL org.opencontainers.image.licenses="MIT"
+# Project redistribution license is not declared; dependency licenses are separate.
 
 ARG POETRY_VERSION=1.8.3
 
@@ -135,12 +135,12 @@ RUN mkdir -p /work /cache && touch /root/.no_auto_tmux
 # Runtime environment:
 #   XDG_CACHE_HOME / HF_HOME / TORCH_HOME all point to /cache so model weights
 #   land in the persistent volume when one is attached.
-#   TORCH_DEVICE defaults to cuda; override with -e TORCH_DEVICE=cpu for CPU-only.
+#   TORCH_DEVICE defaults to auto; CPU/GPU selection follows actual availability.
 #   HF_HUB_DISABLE_XET_TRANSPORT avoids a slow experimental transfer path.
 ENV XDG_CACHE_HOME=/cache \
   HF_HOME=/cache/huggingface \
   TORCH_HOME=/cache/torch \
-  TORCH_DEVICE=cuda \
+  TORCH_DEVICE=auto \
   HF_HUB_DISABLE_XET_TRANSPORT=1
 
 # Expose the compute variant so apps and diagnostic tooling can inspect it:

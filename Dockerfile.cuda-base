@@ -18,7 +18,7 @@ FROM pytorch/pytorch:2.6.0-cuda12.4-cudnn9-runtime
 
 LABEL org.opencontainers.image.source="https://github.com/Coriou/py-audio-box"
 LABEL org.opencontainers.image.description="ML/audio toolbox — CUDA 12.4 base (deps only, no app src)"
-LABEL org.opencontainers.image.licenses="MIT"
+# Project redistribution license remains to be declared by the owner.
 
 ARG POETRY_VERSION=1.8.3
 

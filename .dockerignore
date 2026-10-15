@@ -1,6 +1,9 @@
 # Large runtime data — never needed inside the image
 cache/
 work/
+work_remote/
+.env
+SETUP.local.md
 
 # Python bytecode
 __pycache__/

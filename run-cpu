@@ -1,0 +1,38 @@
+#!/usr/bin/env bash
+# Dedicated optional CPU engines; only provisioning has network access.
+set -euo pipefail
+cd "$(dirname "$0")"
+backend=${1:-}
+action=${2:-}
+if [[ $# -lt 2 ]]; then
+  echo 'Usage: ./run-cpu kokoro|pocket-tts build|provision|speak|batch|benchmark|export [args...]' >&2
+  exit 2
+fi
+case "$backend" in
+  kokoro) lock=kokoro ;;
+  pocket-tts) lock=pocket ;;
+  *) echo 'Usage: ./run-cpu kokoro|pocket-tts build|provision|speak|batch|benchmark|export [args...]' >&2; exit 2 ;;
+esac
+shift 2
+image="py-audio-box:${lock}-cpu"
+if [[ "$action" == build ]]; then
+  exec docker build -f Dockerfile.cpu --build-arg "BACKEND=$lock" -t "$image" .
+fi
+mkdir -p work cache
+launch=(docker run --rm)
+cache_mode=ro
+case "$action" in
+  provision)
+    cache_mode=rw
+    if [[ -n "${HF_TOKEN:-}" ]]; then launch+=(-e HF_TOKEN); fi
+    command=(python scripts/provision-tts.py --backend "$backend") ;;
+  batch) command=(python apps/voice-cpu/voice-cpu.py batch --backend "$backend") ;;
+  speak) command=(python apps/voice-cpu/voice-cpu.py speak --backend "$backend") ;;
+  benchmark) command=(python benchmarks/tts/run.py --backend "$backend") ;;
+  export) command=(python apps/audio-export/audio-export.py) ;;
+  *) echo 'Unknown CPU action' >&2; exit 2 ;;
+esac
+if [[ "$action" != provision ]]; then launch+=(--network none); fi
+exec "${launch[@]}" \
+  -v "$PWD/work:/work" -v "$PWD/cache:/cache:$cache_mode" \
+  "$image" "${command[@]}" "$@"

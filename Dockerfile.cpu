@@ -1,0 +1,15 @@
+FROM python:3.11-slim-bookworm@sha256:0a310eeecf4e1f5a0743f9a6520c90c88d089c903ca5fd283f501e3a805f5f89
+ARG BACKEND=kokoro
+ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 TORCH_DEVICE=cpu HF_HOME=/cache/huggingface
+RUN apt-get update && apt-get install -y --no-install-recommends libsndfile1 espeak-ng ffmpeg tini && rm -rf /var/lib/apt/lists/*
+WORKDIR /app
+COPY requirements /requirements
+COPY requirements/tts-assets.json /app/requirements/tts-assets.json
+RUN pip install --no-cache-dir --require-hashes -r /requirements/${BACKEND}.lock --extra-index-url https://download.pytorch.org/whl/cpu
+COPY lib /app/lib
+COPY apps/voice-cpu /app/apps/voice-cpu
+COPY apps/audio-export /app/apps/audio-export
+COPY scripts/provision-tts.py /app/scripts/provision-tts.py
+COPY benchmarks/tts /app/benchmarks/tts
+ENTRYPOINT ["/usr/bin/tini", "--"]
+CMD ["python", "apps/voice-cpu/voice-cpu.py", "--help"]

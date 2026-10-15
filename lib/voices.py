@@ -72,6 +72,15 @@ Import from an app::
 """
 
 import json
+import os
+import tempfile
+import threading
+import fcntl
+import stat
+import zipfile
+from functools import wraps
+from contextlib import contextmanager
+from pathlib import PurePosixPath
 import re
 import shutil
 from datetime import datetime, timezone
@@ -114,6 +123,8 @@ def validate_slug(slug: str) -> str:
     Normalise *slug* to lowercase and validate it.
     Returns the normalised slug or raises ``ValueError``.
     """
+    if not isinstance(slug, str):
+        raise ValueError("Voice name must be a string")
     slug = slug.strip().lower()
     if not SLUG_RE.match(slug):
         raise ValueError(
@@ -124,34 +135,73 @@ def validate_slug(slug: str) -> str:
     return slug
 
 
+def _locked(method):
+    @wraps(method)
+    def wrapped(self, *args, **kwargs):
+        with self._lock():
+            return method(self, *args, **kwargs)
+    return wrapped
+
+
+def atomic_json(path: Path, data: dict) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fd, name = tempfile.mkstemp(prefix=".json-", dir=path.parent)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as fh:
+            json.dump(data, fh, indent=2, allow_nan=False)
+            fh.flush()
+            os.fsync(fh.fileno())
+        os.replace(name, path)
+    finally:
+        if os.path.exists(name):
+            os.unlink(name)
+
+
 class VoiceRegistry:
     """
     Thin wrapper around ``/cache/voices/`` that provides create/read/update
     operations for named voices.
 
-    All operations are single-file atomic (json.dump over the full voice.json),
-    which is safe for our single-writer / multi-reader use pattern.
+    Mutations hold a process lock across read/modify/write and replace JSON atomically.
     """
 
     def __init__(self, cache: Path) -> None:
         self.root = Path(cache) / "voices"
+        self._mutex = threading.RLock()
+        self._lock_depth = 0
+
+    @contextmanager
+    def _lock(self):
+        with self._mutex:
+            self.root.mkdir(parents=True, exist_ok=True)
+            if self._lock_depth:
+                yield
+                return
+            with open(self.root / ".registry.lock", "a") as fh:
+                fcntl.flock(fh, fcntl.LOCK_EX)
+                self._lock_depth += 1
+                try:
+                    yield
+                finally:
+                    self._lock_depth -= 1
+                    fcntl.flock(fh, fcntl.LOCK_UN)
 
     # ── path helpers ────────────────────────────────────────────────────────────
 
     def voice_dir(self, slug: str) -> Path:
-        return self.root / slug
+        return self.root / validate_slug(slug)
 
     def voice_json(self, slug: str) -> Path:
-        return self.root / slug / "voice.json"
+        return self.root / validate_slug(slug) / "voice.json"
 
     def source_clip(self, slug: str) -> Path:
-        return self.root / slug / "source_clip.wav"
+        return self.root / validate_slug(slug) / "source_clip.wav"
 
     def ref_wav(self, slug: str) -> Path:
-        return self.root / slug / "ref.wav"
+        return self.root / validate_slug(slug) / "ref.wav"
 
     def prompts_dir(self, slug: str) -> Path:
-        return self.root / slug / "prompts"
+        return self.root / validate_slug(slug) / "prompts"
 
     # ── read ────────────────────────────────────────────────────────────────────
 
@@ -164,6 +214,10 @@ class VoiceRegistry:
 
         Does not write to disk; callers may persist explicitly after mutation.
         """
+        if not isinstance(data, dict):
+            raise ValueError("Voice metadata must be a JSON object")
+        if data.get("schema_version", 1) not in (1, 2):
+            raise ValueError("Unsupported voice registry schema")
         if not isinstance(data.get("prompts"), dict):
             data["prompts"] = {}
 
@@ -217,7 +271,7 @@ class VoiceRegistry:
             return src
         return None
 
-    def best_prompt(self, slug: str) -> Path | None:
+    def best_prompt(self, slug: str, **compatibility) -> Path | None:
         """
         Return the most recently written ``.pkl`` in this voice's prompts/,
         or ``None`` if no prompts exist yet.
@@ -226,7 +280,50 @@ class VoiceRegistry:
         if not pd.exists():
             return None
         pkls = sorted(pd.glob("*.pkl"), key=lambda p: p.stat().st_mtime, reverse=True)
-        return pkls[0] if pkls else None
+        return next((p for p in pkls if not compatibility or self.compatible_prompt(p, **compatibility)), None)
+
+    def prompt_reference(self, path: Path) -> Path | None:
+        """Return the immutable per-prompt reference, confined to its cache directory."""
+        path = Path(path)
+        try:
+            meta = json.loads(path.with_suffix(".meta.json").read_text())
+            name = meta.get("reference_wav")
+            if name != path.stem + ".ref.wav":
+                return None
+            reference = path.parent / name
+            if reference.is_symlink() or not reference.is_file():
+                return None
+            return reference
+        except (OSError, ValueError, TypeError):
+            return None
+
+    def compatible_prompt(self, path: Path, *, checkpoint: str, revision: str | None = None,
+                          reference_hash: str | None = None, schema_version: int | None = None,
+                          mode: str | None = None) -> bool:
+        """Check identity without deserialising executable local cache bytes."""
+        import hashlib
+        path = Path(path)
+        try:
+            if path.is_symlink() or not path.is_file():
+                return False
+            meta = json.loads(path.with_suffix(".meta.json").read_text())
+            if not isinstance(meta, dict) or meta.get("engine") != "qwen3":
+                return False
+            if revision is None or meta.get("checkpoint") != checkpoint or meta.get("revision") != revision:
+                return False
+            if not isinstance(meta.get("schema_version"), int) or meta.get("mode") not in ("full", "xvec"):
+                return False
+            if schema_version is not None and meta["schema_version"] != schema_version:
+                return False
+            if mode is not None and meta["mode"] != mode:
+                return False
+            if meta.get("cache_identity_version") != 1 or not meta.get("reference_sha256"):
+                return False
+            if reference_hash is not None and meta.get("reference_sha256") != reference_hash:
+                return False
+            return meta.get("pickle_sha256") == hashlib.sha256(path.read_bytes()).hexdigest()
+        except (OSError, ValueError, TypeError):
+            return False
 
     def list_voices(self) -> list[dict[str, Any]]:
         """
@@ -270,9 +367,11 @@ class VoiceRegistry:
         vd = self.voice_dir(slug)
         vd.mkdir(parents=True, exist_ok=True)
         data["updated_at"] = datetime.now(timezone.utc).isoformat()
-        with open(vd / "voice.json", "w") as fh:
-            json.dump(data, fh, indent=2)
+        data["schema_version"] = 2
+        data["slug"] = validate_slug(slug)
+        atomic_json(vd / "voice.json", data)
 
+    @_locked
     def create(
         self,
         slug: str,
@@ -301,6 +400,7 @@ class VoiceRegistry:
         self._save(slug, data)
         return data
 
+    @_locked
     def set_source_clip(self, slug: str, wav_src: Path) -> Path:
         """
         Copy *wav_src* into the voice dir as ``source_clip.wav``.
@@ -312,6 +412,7 @@ class VoiceRegistry:
             shutil.copyfile(wav_src, dest)
         return dest
 
+    @_locked
     def update_ref(self, slug: str, segment_wav: Path, ref_meta: dict[str, Any]) -> Path:
         """
         Record reference-segment metadata and copy *segment_wav* into the
@@ -327,6 +428,7 @@ class VoiceRegistry:
         self._save(slug, data)
         return dest
 
+    @_locked
     def register_prompt(
         self,
         slug: str,
@@ -344,15 +446,28 @@ class VoiceRegistry:
 
         Returns the destination ``.pkl`` path.
         """
+        if not re.fullmatch(r"[A-Za-z0-9_.-]+", stem) or stem in (".", ".."):
+            raise ValueError("Invalid prompt stem")
         pd = self.prompts_dir(slug)
         pd.mkdir(parents=True, exist_ok=True)
 
         dest_pkl  = pd / f"{stem}.pkl"
         dest_meta = pd / f"{stem}.meta.json"
 
-        shutil.copyfile(pkl_src, dest_pkl)
-        with open(dest_meta, "w") as fh:
-            json.dump(meta, fh, indent=2)
+        if Path(pkl_src).resolve() != dest_pkl.resolve():
+            shutil.copyfile(pkl_src, dest_pkl)
+        meta = dict(meta)
+        reference = self.ref_wav(slug)
+        if reference.is_file():
+            import hashlib
+            with open(reference, "rb") as fh:
+                actual_hash = hashlib.file_digest(fh, "sha256").hexdigest()
+            if meta.get("reference_sha256") != actual_hash:
+                raise ValueError("Prompt reference does not match current voice reference")
+            prompt_reference = pd / f"{stem}.ref.wav"
+            shutil.copyfile(reference, prompt_reference)
+            meta["reference_wav"] = prompt_reference.name
+        atomic_json(dest_meta, meta)
 
         data = self.load(slug)
         data["prompts"][stem] = f"prompts/{stem}.pkl"
@@ -386,6 +501,7 @@ class VoiceRegistry:
             "tones": dict(tones),
         }
 
+    @_locked
     def register_custom_voice(
         self,
         slug: str,
@@ -471,7 +587,7 @@ class VoiceRegistry:
         self._save(slug, data)
         return self.load(slug)
 
-    def prompt_for_tone(self, slug: str, tone: str) -> Path | None:
+    def prompt_for_tone(self, slug: str, tone: str, **compatibility) -> Path | None:
         """
         Return the ``.pkl`` path for *tone* (e.g. ``"sad"``), or ``None``
         if that tone has not been registered for this voice.
@@ -482,7 +598,7 @@ class VoiceRegistry:
         if not stem:
             return None
         pkl = self.prompts_dir(slug) / f"{stem}.pkl"
-        return pkl if pkl.exists() else None
+        return pkl if pkl.exists() and (not compatibility or self.compatible_prompt(pkl, **compatibility)) else None
 
     def list_tones(self, slug: str) -> dict[str, str]:
         """Return the ``{tone_name: stem}`` mapping for this voice (may be empty)."""
@@ -515,6 +631,7 @@ class VoiceRegistry:
             return {}
         return dict(defaults)
 
+    @_locked
     def update_generation_defaults(
         self,
         slug: str,
@@ -550,6 +667,7 @@ class VoiceRegistry:
 
     # ── management ──────────────────────────────────────────────────────────────
 
+    @_locked
     def rename(self, old_slug: str, new_slug: str) -> dict[str, Any]:
         """
         Rename a voice: move its directory and update voice.json's slug field.
@@ -571,6 +689,7 @@ class VoiceRegistry:
         self._save(new_slug, data)
         return data
 
+    @_locked
     def delete(self, slug: str) -> None:
         """Permanently delete a named voice and all its files."""
         vd = self.voice_dir(slug)
@@ -578,6 +697,7 @@ class VoiceRegistry:
             raise KeyError(f"Voice '{slug}' not found.")
         shutil.rmtree(vd)
 
+    @_locked
     def export_zip(self, slug: str, dest: Path) -> Path:
         """
         Pack the voice directory into a zip archive at *dest*.
@@ -585,38 +705,131 @@ class VoiceRegistry:
         ``import_zip`` can unpack it correctly on any machine.
         Returns *dest*.
         """
-        import zipfile
+        slug = validate_slug(slug)
         vd = self.voice_dir(slug)
-        if not vd.exists():
-            raise KeyError(f"Voice '{slug}' not found.")
+        data = self.load(slug)
+        data["prompts"] = {}
+        data["tones"] = {}
+        data["schema_version"] = 2
+        data["exchange_format"] = "wav-json-v1"
+        source = data.get("source", {})
+        data["source"] = {k: v for k, v in source.items() if k not in ("path", "url", "video_id")}
+        dest = Path(dest)
         dest.parent.mkdir(parents=True, exist_ok=True)
-        with zipfile.ZipFile(dest, "w", zipfile.ZIP_DEFLATED) as zf:
-            for f in sorted(vd.rglob("*")):
-                if f.is_file():
-                    zf.write(f, f.relative_to(self.root))
+        fd, name = tempfile.mkstemp(prefix=".voice-export-", dir=dest.parent)
+        os.close(fd)
+        try:
+            with zipfile.ZipFile(name, "w", zipfile.ZIP_DEFLATED) as zf:
+                zf.writestr(f"{slug}/voice.json", json.dumps(data, indent=2, allow_nan=False))
+                for filename in ("ref.wav", "source_clip.wav"):
+                    path = vd / filename
+                    if path.is_symlink():
+                        raise ValueError("Cannot export symlinked voice files")
+                    if path.is_file():
+                        zf.write(path, f"{slug}/{filename}")
+            os.replace(name, dest)
+        finally:
+            if os.path.exists(name):
+                os.unlink(name)
         return dest
 
+    @_locked
     def import_zip(self, zip_path: Path, force: bool = False) -> str:
+        """Validate a bounded WAV/JSON exchange, stage it, then promote.
+
+        Pickle caches are never exchange assets. Forced replacement retains the
+        original directory under .backups, including its trusted local caches.
         """
-        Unpack a voice zip created by ``export_zip``.
-        The root directory name inside the zip is used as the slug.
-        Returns the imported slug.
-        Raises ``ValueError`` if the voice already exists and *force* is False.
-        """
-        import zipfile
-        with zipfile.ZipFile(zip_path, "r") as zf:
-            names = zf.namelist()
-        if not names:
-            raise ValueError("Empty zip file.")
-        slug = Path(names[0]).parts[0]
-        validate_slug(slug)
-        dest = self.voice_dir(slug)
-        if dest.exists():
-            if not force:
-                raise ValueError(
-                    f"Voice '{slug}' already exists. Use --force to overwrite."
-                )
-            shutil.rmtree(dest)
-        with zipfile.ZipFile(zip_path, "r") as zf:
-            zf.extractall(self.root)
+        with zipfile.ZipFile(zip_path) as zf:
+            entries = zf.infolist()
+            if not entries or len(entries) > 64:
+                raise ValueError("Empty archive or too many entries")
+            seen = set()
+            slug = None
+            total = 0
+            files = {}
+            for entry in entries:
+                name = entry.filename
+                parts = PurePosixPath(name).parts
+                if ("\\" in name or name.startswith("/") or not parts
+                        or name.rstrip("/") != "/".join(parts)
+                        or any(p in (".", "..") for p in name.rstrip("/").split("/"))):
+                    raise ValueError("Unsafe archive path")
+                root = validate_slug(parts[0])
+                if root != parts[0] or (slug is not None and root != slug):
+                    raise ValueError("Archive must contain exactly one voice root")
+                slug = root
+                if name in seen:
+                    raise ValueError("Duplicate archive path")
+                seen.add(name)
+                mode = entry.external_attr >> 16
+                if stat.S_ISLNK(mode) or (stat.S_IFMT(mode) and not (stat.S_ISREG(mode) or stat.S_ISDIR(mode))):
+                    raise ValueError("Archive links and special files are forbidden")
+                if entry.flag_bits & 1:
+                    raise ValueError("Encrypted archive entries are forbidden")
+                if entry.is_dir():
+                    if len(parts) != 1:
+                        raise ValueError("Unexpected archive directory")
+                    continue
+                if len(parts) != 2 or parts[1] not in ("voice.json", "ref.wav", "source_clip.wav"):
+                    raise ValueError("Only portable WAV/JSON assets may be imported; pickle caches forbidden")
+                total += entry.file_size
+                if total > 256 * 1024 * 1024 or entry.file_size > 128 * 1024 * 1024:
+                    raise ValueError("Archive exceeds decompressed size limit")
+                if parts[1] == "voice.json" and entry.file_size > 1024 * 1024:
+                    raise ValueError("Voice metadata too large")
+                files[parts[1]] = entry
+            if "voice.json" not in files:
+                raise ValueError("Archive requires voice.json")
+            data = json.loads(zf.read(files["voice.json"]))
+            if not isinstance(data, dict) or data.get("slug") != slug:
+                raise ValueError("Archive metadata slug mismatch")
+            data = self._normalise_record(data)
+            data["prompts"] = {}
+            data["tones"] = {}
+            data["schema_version"] = 2
+            dest = self.voice_dir(slug)
+            if dest.exists() and not force:
+                raise ValueError(f"Voice '{slug}' already exists. Use --force to overwrite.")
+            stage = Path(tempfile.mkdtemp(prefix=".import-", dir=self.root))
+            backup = None
+            try:
+                for filename, entry in files.items():
+                    if filename == "voice.json":
+                        continue
+                    with zf.open(entry) as src, open(stage / filename, "wb") as out:
+                        shutil.copyfileobj(src, out, length=1024 * 1024)
+                    import wave
+                    with wave.open(str(stage / filename), "rb") as wav:
+                        if wav.getnchannels() not in (1, 2) or wav.getframerate() <= 0:
+                            raise ValueError("Invalid reference WAV")
+                atomic_json(stage / "voice.json", data)
+                if dest.exists():
+                    backups = self.root / ".backups"
+                    backups.mkdir(exist_ok=True)
+                    backup = backups / (slug + "-" + datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%f"))
+                    os.replace(dest, backup)
+                try:
+                    os.replace(stage, dest)
+                except BaseException:
+                    if backup is not None:
+                        os.replace(backup, dest)
+                    raise
+            finally:
+                if stage.exists():
+                    shutil.rmtree(stage)
         return slug
+
+    @_locked
+    def migrate(self, slug: str, *, dry_run: bool = True) -> dict[str, Any]:
+        """Explicit additive v2 migration; preserve original bytes before writing."""
+        path = self.voice_json(slug)
+        data = self.load(slug)
+        previous = data.get("schema_version", 1)
+        if previous == 2:
+            return {"slug": slug, "changed": False, "dry_run": dry_run}
+        if not dry_run:
+            backup = path.with_name("voice.v1." + datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%f") + ".backup.json")
+            shutil.copyfile(path, backup)
+            self._save(slug, data)
+        return {"slug": slug, "changed": True, "dry_run": dry_run, "from": previous, "to": 2}

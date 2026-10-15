@@ -575,22 +575,30 @@ Unpack a zip created by `export-voice` into the local registry.
 
 ---
 
-## CPU performance expectations
+## CPU performance measurement
 
-Measured on a 16-core Mac Mini (Apple Silicon, `--threads 8`, 0.6 B model):
+No reproducible target-machine benchmark is bundled for Qwen3. Older timing estimates
+were informal and do not establish Linux Docker CPU throughput. Report the exact
+checkpoint/revision, image digest, CPU quota, RAM, threads, script and generated duration.
+RTF means synthesis seconds / audio seconds (lower is faster); wall RTF additionally
+includes process startup and model load. Keep those measurements separate.
 
-| Stage           | Duration         | Notes                          |
-| --------------- | ---------------- | ------------------------------ |
-| Model download  | ~5 min (one-off) | Cached in `/cache/huggingface` |
-| Model load      | ~5 min           | Every run — not skippable      |
-| Prompt load     | < 1 s            | Pickle load only — fast        |
-| Synthesis (RTF) | ~30–35×          | ~2–3 min for 5 s of audio      |
+The optional CPU candidate benchmark and listening protocol are in
+[docs/TTS_BENCHMARK.md](../../docs/TTS_BENCHMARK.md). Every CLI attempt is a new process;
+a repeat is not a warm-model run. Thread counts and model sizes must be measured on
+the target environment. Model caches require provisioning before an offline test.
 
-The key advantage over `voice-clone synth` is that VAD, Whisper and prompt
-extraction are **never paid again** on re-runs — only model load + generation.
+QA reports raw ASR text, sequence WER/CER and edit counts. `intelligibility` remains a
+compatibility field equal to bounded `1 - WER`; it is an ASR fidelity score, not a
+naturalness or studio-quality rating. Numbers and accents are retained; punctuation
+and case are ignored. ASR timestamps are transcription timestamps, not forced alignment.
 
-Use `--threads 12` or `--threads 14` for modest speed gains; returns diminish
-above physical core count. The 1.7 B clone model is ~3× slower.
+`--chunk-max-chars` enforces a hard original-text span limit. Chunk metadata preserves
+character offsets and configured pauses: `--sentence-pause-ms` (300),
+`--paragraph-pause-ms` (600), `--continuation-pause-ms` (100). Concatenation rejects
+mixed sample rates or channel counts; resample or convert explicitly before assembly.
+Legacy clone prompt caches lacking checkpoint/revision/reference identity require
+rebuilding from a trusted local reference. Imported archives carry WAV/JSON only.
 
 ---
 

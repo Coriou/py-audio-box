@@ -3,6 +3,10 @@
 A portable, cacheable Python runtime for ML/audio scripts.
 Everything runs in Docker — zero host installs, fast re-runs, shared cache across all apps.
 
+Optional isolated CPU engines: [Kokoro presets and Pocket clone setup](apps/voice-cpu/README.md).
+Qwen remains the default. [Benchmark and listening protocol](docs/TTS_BENCHMARK.md)
+separates runtime measurements from human acoustic acceptance.
+
 ---
 
 ## Prerequisites
@@ -40,13 +44,11 @@ make build        # build the shared CPU image (~5 min, cached on rebuild)
 | 10.0 | Blackwell DC       | B200, GB200               | —                 | ✅ (sdpa)  |
 | 12.0 | Blackwell consumer | RTX 5070 Ti / 5080 / 5090 | —                 | ⚠️ broken  |
 
-> **Why does flash-attn matter?** Qwen3-TTS has custom attention layers that bypass PyTorch's
-> normal attention dispatch. Without flash-attn installed, those layers fall back to a Python
-> CPU loop — yielding ~0% GPU utilisation and ~1× RTF regardless of how powerful the GPU is.
-> With flash-attn on an RTX 4090 (SM 8.9) expect **30–100× RTF** on typical TTS workloads.
->
-> flash-attn requires **SM 8.0+ (Ampere or newer)**. On older cards (SM 7.x) the `:cuda` image
-> still works but uses sdpa attention, which is slower.
+> Qwen3-TTS can use flash-attn or PyTorch SDPA depending on the image and device.
+> Missing flash-attn does not by itself establish CPU execution; confirm the selected
+> device and profile the workload. Performance depends on checkpoint, script, runtime
+> and hardware. RTF is synthesis seconds divided by generated audio seconds: lower
+> is faster; RTF 0.1 means ten times faster than real time. No GPU speedup is guaranteed.
 
 ```bash
 docker pull ghcr.io/coriou/voice-tools:latest      # CPU
@@ -103,7 +105,7 @@ Acceleration details:
   Volta / Turing), `bfloat16` on Ampere+
 - Demucs (voice-split) and Silero VAD run on GPU automatically
 - Whisper (voice-clone / voice-synth QA) switches to `float16` on GPU
-- The Qwen3-TTS model loads onto the GPU; expect ~3–10× speedup over CPU
+- Qwen3-TTS uses the detected device; measure GPU/CPU speed on the same script and checkpoint.
 
 ### Windows
 

@@ -57,7 +57,11 @@ Utilities
 import os
 import sys
 import time
-import threading
+import multiprocessing as mp
+import contextlib
+from functools import partial
+from tts_backends.qwen import QwenBackend, checkpoint_capabilities, validate_checkpoint_request
+from tts_backends.contract import AudioResult, BackendError
 from importlib import metadata as importlib_metadata
 from pathlib import Path
 from typing import Any
@@ -480,6 +484,8 @@ def get_device() -> str:
       3. CPU                       — universal fallback.
     """
     override = os.getenv("TORCH_DEVICE", "").strip()
+    if override.lower() == "auto":
+        override = ""
     if override:
         if override.startswith("cuda") and not torch.cuda.is_available():
             print(
@@ -654,7 +660,7 @@ def _has_flash_attn() -> bool:
         return False
 
 
-def load_tts_model(model_name: str, num_threads: int, dtype_str: str = "auto"):
+def _load_tts_model_local(model_name: str, num_threads: int, dtype_str: str = "auto", revision: str | None = None, offline: bool = False):
     """
     Load a Qwen3-TTS model targeting the best available device.
 
@@ -667,10 +673,8 @@ def load_tts_model(model_name: str, num_threads: int, dtype_str: str = "auto"):
 
     attn_implementation selection:
       CUDA + flash-attn installed → "flash_attention_2"
-        qwen_tts's custom attention layers require flash-attn to dispatch GPU
-        kernels.  Without it they fall back to a Python loop that runs on CPU
-        regardless of where the model weights are — producing ~1× RTF instead
-        of the expected 30–100× on modern GPUs.
+        SDPA can also dispatch CUDA kernels. Actual performance requires
+        profiling the specific hardware and runtime.
       Otherwise → "sdpa"  (PyTorch fused SDPA, faster than "eager" on both CPU
         and CUDA, no extra dependencies).
     """
@@ -686,15 +690,34 @@ def load_tts_model(model_name: str, num_threads: int, dtype_str: str = "auto"):
         attn_impl = "sdpa"
 
     # qwen_tts demo always uses "cuda:0" explicitly for single-GPU; match that.
-    device_map = "cuda:0" if on_cuda else device
+    device_map = "cuda:0" if device == "cuda" else device
 
     print(f"  loading {model_name} ({device_map}, {dtype}, attn={attn_impl}, threads={num_threads}) …")
-    return Qwen3TTSModel.from_pretrained(
-        model_name,
-        device_map=device_map,
-        dtype=dtype,
-        attn_implementation=attn_impl,
+    # qwen-tts 0.1.1 does not forward revision/local_files_only to its
+    # AutoProcessor. Resolve one complete snapshot first, then pass local bytes
+    # to every loader so model, processor and speech tokenizer cannot diverge.
+    from huggingface_hub import snapshot_download
+    source = model_name
+    resolved_revision = revision
+    if not Path(model_name).is_dir():
+        source = snapshot_download(model_name, revision=revision, local_files_only=offline)
+        resolved_revision = Path(source).name
+    model = Qwen3TTSModel.from_pretrained(
+        source, device_map=device_map, dtype=dtype,
+        attn_implementation=attn_impl, local_files_only=offline,
     )
+    model._audio_box_checkpoint = model_name
+    model._audio_box_revision = resolved_revision
+    return model
+
+
+
+def load_tts_model(model_name: str, num_threads: int, dtype_str: str = "auto", *, revision: str | None = None, offline: bool | None = None):
+    """Lazy supervised model; set explicit revision for reproducible runs."""
+    revision = revision or os.getenv("TTS_MODEL_REVISION") or None
+    if offline is None:
+        offline = env_flag_enabled("TTS_OFFLINE", False) or env_flag_enabled("HF_HUB_OFFLINE", False)
+    return QwenBackend(model_name=model_name, num_threads=num_threads, dtype_str=dtype_str, revision=revision, offline=offline)
 
 
 def qwen_tts_package_version() -> str:
@@ -729,7 +752,10 @@ def probe_qwen_tts_api(
     }
 
     try:
-        from qwen_tts import Qwen3TTSModel  # type: ignore
+        # qwen-tts emits optional dependency diagnostics during import.
+        # Capability JSON must reserve stdout exclusively for its payload.
+        with contextlib.redirect_stdout(sys.stderr):
+            from qwen_tts import Qwen3TTSModel  # type: ignore
     except Exception as exc:  # noqa: BLE001
         payload["error"] = str(exc)
         for mode, methods in required.items():
@@ -757,95 +783,67 @@ def probe_qwen_tts_api(
 
 # ── synthesis ──────────────────────────────────────────────────────────────────
 
-def _run_generation(
-    generate_fn,
-    *,
-    op_name: str,
-    gen_kwargs: dict[str, Any],
-    timeout_s: float | None,
-) -> tuple[np.ndarray, int]:
-    """
-    Run a TTS generation callable with heartbeat logging and optional timeout.
+def _callable_worker(connection, fn):
+    try:
+        connection.send((True, fn()))
+    except BaseException as exc:
+        connection.send((False, (type(exc).__name__, str(exc))))
+    finally:
+        connection.close()
 
-    Runs generation on a background thread so a progress line is printed every
-    10 s.  Without this the call is silent for 30-60 min on CPU-only inference.
 
-    Parameters
-    ----------
-    timeout_s:
-        Raise ``TimeoutError`` after this many wall-clock seconds.
-        ``None`` → auto-set to 4× the CPU ETA estimate.
-        ``0``    → no timeout.
+def _run_generation(generate_fn, *, op_name, gen_kwargs, timeout_s):
+    """Spawn-safe supervisor. Generic callables must be pickleable, not closures."""
+    budget = gen_kwargs.get("max_new_tokens", MAX_NEW_TOKENS_DEFAULT)
+    timeout = budget / CPU_TOKENS_PER_SEC * 4 if timeout_s is None else timeout_s
+    if timeout < 0:
+        raise ValueError("timeout must be non-negative")
+    ctx = mp.get_context("spawn")
+    parent, child = ctx.Pipe()
+    worker = ctx.Process(target=_callable_worker, args=(child, generate_fn), daemon=True)
+    started = False
+    try:
+        worker.start()
+        started = True
+        child.close()
+        deadline = None if timeout == 0 else time.monotonic() + timeout
+        while True:
+            remaining = None if deadline is None else deadline - time.monotonic()
+            if remaining is not None and remaining <= 0:
+                raise TimeoutError(f"{op_name} exceeded {timeout}s wall-clock timeout")
+            if parent.poll(min(1, remaining) if remaining is not None else 1):
+                ok, value = parent.recv()
+                if not ok:
+                    raise RuntimeError(f"{op_name}: {value[0]}: {value[1]}")
+                wavs, sr = value
+                result = AudioResult(wavs[0], sr)
+                return result.samples, result.sample_rate
+            if not worker.is_alive():
+                raise RuntimeError(f"{op_name} worker exited ({worker.exitcode})")
+    finally:
+        child.close()
+        parent.close()
+        if started:
+            if worker.is_alive():
+                worker.terminate()
+            worker.join(2)
+            if worker.is_alive():
+                worker.kill()
+                worker.join(2)
+            if worker.is_alive():
+                raise RuntimeError("Inference worker could not be reaped")
+            worker.close()
 
-    Returns ``(wav_array, sample_rate)``.
-    """
-    HEARTBEAT_INTERVAL = 10   # seconds between progress lines
 
-    budget = gen_kwargs.get("max_new_tokens")
-    if isinstance(budget, int):
-        ceiling_s  = budget / AUDIO_TOKENS_PER_SEC
-        est_wall_s = budget / CPU_TOKENS_PER_SEC
-        print(
-            f"  token budget : {budget} tokens  "
-            f"(audio ceiling ≈ {ceiling_s:.0f}s)",
-            flush=True,
-        )
-        print(
-            f"  CPU ETA      : ~{est_wall_s / 60:.0f} min  "
-            f"(use GPU for fast inference — see README)",
-            flush=True,
-        )
-        if timeout_s is None:
-            timeout_s = est_wall_s * 4.0   # 4× CPU ETA — generous but bounded
-
-    # timeout_s == 0 means "no timeout"
-    effective_timeout = None if (timeout_s is not None and timeout_s <= 0) else timeout_s
-
-    result: list[Any]                  = [None]
-    exc:    list[BaseException | None] = [None]
-
-    def _worker() -> None:
-        try:
-            result[0] = generate_fn()
-        except BaseException as e:  # noqa: BLE001
-            exc[0] = e
-
-    t_start = time.perf_counter()
-    thread  = threading.Thread(target=_worker, daemon=True, name="tts-generate")
-    thread.start()
-
-    while thread.is_alive():
-        thread.join(timeout=HEARTBEAT_INTERVAL)
-        if thread.is_alive():
-            elapsed = time.perf_counter() - t_start
-            print(f"  … still generating ({elapsed:.0f}s elapsed) …", flush=True)
-            if effective_timeout is not None and elapsed >= effective_timeout:
-                print(
-                    f"\n  ✗  Timeout: generation exceeded {effective_timeout:.0f}s "
-                    f"(4× CPU ETA).  Kill the container to free resources.",
-                    flush=True,
-                )
-                print(
-                    "     To run longer pass --timeout <seconds>, or 0 to disable.",
-                    flush=True,
-                )
-                print(
-                    "     For practical speeds, run on a CUDA GPU — see README.",
-                    flush=True,
-                )
-                raise TimeoutError(
-                    f"{op_name} exceeded {effective_timeout:.0f}s "
-                    "wall-clock timeout."
-                )
-
-    elapsed = time.perf_counter() - t_start
-    print(f"    ↳ {op_name}: {elapsed:.2f}s")
-
-    if exc[0] is not None:
-        raise exc[0]   # re-raise worker exception in the main thread
-
-    wavs, sr = result[0]
-    return wavs[0], sr
+def _generate(model, method, params, kw, timeout_s, seed=None):
+    budget = kw.get("max_new_tokens", MAX_NEW_TOKENS_DEFAULT)
+    timeout = budget / CPU_TOKENS_PER_SEC * 4 if timeout_s is None else timeout_s
+    if timeout < 0:
+        raise ValueError("timeout must be non-negative")
+    if isinstance(model, QwenBackend):
+        audio = model.generate_audio(method, {**params, "_audio_box_seed": seed}, timeout)
+        return audio.samples, audio.sample_rate
+    return _run_generation(partial(getattr(model, method), **params), op_name=method, gen_kwargs=kw, timeout_s=timeout)
 
 
 def synthesise_clone(
@@ -858,20 +856,10 @@ def synthesise_clone(
     timeout_s: float | None = None,
 ) -> tuple[np.ndarray, int]:
     """Generate speech from a voice-clone prompt."""
-    if seed is not None:
-        torch.manual_seed(seed)
     kw = gen_kwargs or {}
-    return _run_generation(
-        lambda: model.generate_voice_clone(
-            text=text,
-            language=language,
-            voice_clone_prompt=prompt,
-            **kw,
-        ),
-        op_name="generate_voice_clone",
-        gen_kwargs=kw,
-        timeout_s=timeout_s,
-    )
+    validate_checkpoint_request(getattr(model, "name_or_path", DEFAULT_TTS_MODEL), "clone", kw.get("instruct"))
+    return _generate(model, "generate_voice_clone", {"text": text, "language": language, "voice_clone_prompt": prompt, **kw}, kw, timeout_s, seed)
+
 
 
 def synthesise_custom_voice(
@@ -885,8 +873,6 @@ def synthesise_custom_voice(
     timeout_s: float | None = None,
 ) -> tuple[np.ndarray, int]:
     """Generate speech using Qwen3 CustomVoice built-in speakers."""
-    if seed is not None:
-        torch.manual_seed(seed)
     kw = gen_kwargs or {}
 
     params: dict[str, Any] = {
@@ -898,12 +884,9 @@ def synthesise_custom_voice(
     if instruct and instruct.strip():
         params["instruct"] = instruct.strip()
 
-    return _run_generation(
-        lambda: model.generate_custom_voice(**params),
-        op_name="generate_custom_voice",
-        gen_kwargs=kw,
-        timeout_s=timeout_s,
-    )
+    validate_checkpoint_request(getattr(model, "name_or_path", DEFAULT_CUSTOM_MODEL), "custom_voice", params.get("instruct"))
+    return _generate(model, "generate_custom_voice", params, kw, timeout_s, seed)
+
 
 
 def synthesise(

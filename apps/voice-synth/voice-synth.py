@@ -27,6 +27,8 @@ Usage:
 
 import argparse
 import hashlib
+from functools import lru_cache, wraps
+from contextvars import ContextVar
 import json
 import os
 import pickle
@@ -60,6 +62,7 @@ from tts import (  # noqa: E402  (import after path setup)
     ctranslate2_device, cuda_ctranslate2_compute_type, get_device, best_dtype,
     qwen_tts_package_version, probe_qwen_tts_api,
     custom_voice_feature_enabled, custom_voice_feature_env_value,
+    checkpoint_capabilities, validate_checkpoint_request,
     load_tts_model, synthesise, synthesise_custom_voice,
     Timer,
 )
@@ -71,6 +74,7 @@ from audio import (  # noqa: E402
     rank_take_selection,
 )
 from voices import VoiceRegistry, validate_slug  # noqa: E402
+from fidelity import concatenate_wavs, plan_chunks, sequence_errors, transcript_metrics  # noqa: E402
 
 # ── constants ──────────────────────────────────────────────────────────────────
 
@@ -134,130 +138,132 @@ def _utc_now_iso() -> str:
     return datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
 
 
+_OWNED_MODELS = ContextVar('voice_synth_owned_models', default=None)
+
+
+def _owns_models(function):
+    """Every CLI operation closes all model owners on success, error or SystemExit."""
+    @wraps(function)
+    def wrapped(*args, **kwargs):
+        owners = []
+        token = _OWNED_MODELS.set(owners)
+        try:
+            return function(*args, **kwargs)
+        finally:
+            try:
+                close_errors = []
+                for model in reversed(owners):
+                    try:
+                        close = getattr(model, 'close', None)
+                        if close:
+                            close()
+                    except Exception as exc:
+                        close_errors.append(exc)
+                if close_errors:
+                    raise close_errors[0]
+            finally:
+                _OWNED_MODELS.reset(token)
+    return wrapped
+
+
+def _load_owned_model(*args, **kwargs):
+    owners = _OWNED_MODELS.get()
+    if owners is None:
+        raise RuntimeError('TTS model load requires an explicit operation owner')
+    model = load_tts_model(*args, **kwargs)
+    owners.append(model)
+    return model
+
+
+def _validate_prompt_cache(reg, pkl_path, model, model_name):
+    if getattr(model, '_audio_box_revision', None) is None:
+        model.get_supported_languages()  # Resolve actual cached checkpoint identity.
+    reference_path = reg.prompt_reference(Path(pkl_path))
+    reference_hash = hashlib.sha256(reference_path.read_bytes()).hexdigest() if reference_path else None
+    if reference_path is None:
+        raise ValueError('Clone prompt lacks its own trusted reference WAV; rebuild the local cache.')
+    if not reg.compatible_prompt(Path(pkl_path), checkpoint=model_name,
+            revision=getattr(model, '_audio_box_revision', os.environ.get('TTS_MODEL_REVISION')),
+            reference_hash=reference_hash, schema_version=PROMPT_SCHEMA_VERSION):
+        raise ValueError('Clone prompt cache identity is missing or incompatible; '
+                         'rebuild from the trusted local WAV with voice-clone synth --voice.')
+
+
 def concat_wavs_simple(wav_paths: list[Path], dest: Path,
                         silence_ms: int = CHUNK_SILENCE_MS,
-                        sample_rate: int = 24_000) -> None:
-    """
-    Pure-numpy concatenation of WAV files with silence between them.
-    More reliable across ffmpeg versions for simple concat.
-    """
-    chunks = []
-    silence = np.zeros(int(sample_rate * silence_ms / 1000.0), dtype=np.float32)
-    for i, p in enumerate(wav_paths):
-        data, sr = sf.read(str(p), dtype="float32")
-        if i > 0:
-            chunks.append(silence)
-        chunks.append(data)
-    combined = np.concatenate(chunks)
-    dest.parent.mkdir(parents=True, exist_ok=True)
-    sf.write(str(dest), combined, sample_rate)
+                        sample_rate: int = 24_000, pauses_ms=None) -> None:
+    concatenate_wavs(wav_paths, dest, sample_rate, silence_ms, pauses_ms)
 
-
-# ── text chunking ──────────────────────────────────────────────────────────────
 
 def chunk_text(text: str, max_chars: int = 200) -> list[str]:
-    """
-    Split text into sentence-level chunks for chunked synthesis.
-    Sentences are split at ". ", "! ", "? " boundaries.
-    Chunks longer than max_chars are further split at commas.
-    """
-    # Split on sentence-ending punctuation followed by space or end of string
-    sentences = re.split(r'(?<=[.!?])\s+', text.strip())
-    chunks: list[str] = []
-    for sent in sentences:
-        sent = sent.strip()
-        if not sent:
-            continue
-        if len(sent) <= max_chars:
-            chunks.append(sent)
-        else:
-            # Split long sentences at commas
-            sub = re.split(r',\s+', sent)
-            buf = ""
-            for part in sub:
-                part = part.strip()
-                if buf and len(buf) + len(part) + 2 > max_chars:
-                    chunks.append(buf)
-                    buf = part
-                else:
-                    buf = (buf + ", " + part) if buf else part
-            if buf:
-                chunks.append(buf)
-    return chunks or [text]
+    return [chunk['text'] for chunk in plan_chunks(text, max_chars)]
 
-
-# ── QA: whisper-based intelligibility check ────────────────────────────────────
 
 def _word_overlap_ratio(ref_words: list[str], hyp_words: list[str]) -> float:
-    """Fraction of ref words found in hyp (order-insensitive, lower-cased)."""
+    """Compatibility score: bounded 1-WER; order and insertions affect the score."""
     if not ref_words:
         return 0.0
-    hyp_set = set(hyp_words)
-    matched = sum(1 for w in ref_words if w in hyp_set)
-    return matched / len(ref_words)
+    return max(0.0, 1.0 - sequence_errors(ref_words, hyp_words)['rate'])
+
+
+_ASR_LANGUAGE_CODES = dict(zip(QWEN3_LANGUAGES,
+    ['auto'] * len(QWEN3_LANGUAGES)))
+_ASR_LANGUAGE_CODES.update(English='en', French='fr', German='de', Spanish='es',
+    Italian='it', Portuguese='pt', Chinese='zh', Japanese='ja', Korean='ko', Russian='ru')
+
+
+@lru_cache(maxsize=1)
+def _asr_model(whisper_model, num_threads):
+    from faster_whisper import WhisperModel
+    device = ctranslate2_device()
+    compute_type = cuda_ctranslate2_compute_type() if device.startswith('cuda') else 'int8'
+    return WhisperModel(whisper_model, device=device, compute_type=compute_type,
+                        cpu_threads=num_threads)
+
+
+@lru_cache(maxsize=16)
+def _asr_result(path, mtime_ns, size, whisper_model, num_threads, language):
+    """Share transcript and transcription timestamps for each unchanged take."""
+    wm = _asr_model(whisper_model, num_threads)
+    language_code = _ASR_LANGUAGE_CODES.get(str(language).capitalize(), language)
+    if language_code in ('Auto', 'auto', None):
+        language_code = None
+    segments, _info = wm.transcribe(path, beam_size=2, vad_filter=True,
+                                   word_timestamps=True, language=language_code)
+    segments = list(segments)
+    transcript = ''.join(s.text for s in segments)
+    words = [dict(word=w.word.strip(), start=round(w.start, 3), end=round(w.end, 3))
+             for segment in segments for w in (segment.words or [])]
+    return transcript, words
+
+
+def _transcription(wav_path, whisper_model, num_threads, language=None):
+    path = Path(wav_path).resolve()
+    stat = path.stat()
+    return _asr_result(str(path), stat.st_mtime_ns, stat.st_size,
+                       whisper_model, num_threads, language)
 
 
 def qa_transcribe(wav_path: Path, whisper_model: str, num_threads: int,
-                  target_text: str) -> dict[str, Any]:
-    """
-    Run faster-whisper on *wav_path* and return a QA dict:
-      transcript, intelligibility (word overlap), duration_sec.
-    Uses the best compute type for the current device.
-    """
+                  target_text: str, language=None) -> dict[str, Any]:
     try:
-        from faster_whisper import WhisperModel
-        device       = ctranslate2_device()
-        compute_type = cuda_ctranslate2_compute_type() if device.startswith("cuda") else "int8"
-        wm = WhisperModel(whisper_model, device=device,
-                          compute_type=compute_type, cpu_threads=num_threads)
-        segs, _info = wm.transcribe(str(wav_path), beam_size=2, vad_filter=True)
-        transcript = " ".join(s.text.strip() for s in segs).strip()
+        transcript, _words = _transcription(wav_path, whisper_model, num_threads, language)
+        metrics = transcript_metrics(target_text, transcript)
+        metrics['duration_sec'] = round(get_duration(wav_path), 3)
+        return metrics
     except Exception as exc:
-        return {"transcript": "", "intelligibility": 0.0,
-                "duration_sec": 0.0, "error": str(exc)}
-
-    ref_words = re.findall(r'\w+', target_text.lower())
-    hyp_words = re.findall(r'\w+', transcript.lower())
-    overlap   = _word_overlap_ratio(ref_words, hyp_words)
-    duration  = get_duration(wav_path)
-
-    return {
-        "transcript":     transcript,
-        "intelligibility": round(overlap, 4),
-        "duration_sec":   round(duration, 3),
-    }
+        metrics = transcript_metrics(target_text, '')
+        metrics.update(duration_sec=0.0, error=str(exc))
+        return metrics
 
 
-def align_words(wav_path: Path, whisper_model: str, num_threads: int) -> dict[str, Any] | None:
-    """
-    Run faster-whisper on *wav_path* to extract word-level timestamps.
-    Returns a dictionary suitable for result.json under the 'alignment' key,
-    or None if generation failed.
-    """
+def align_words(wav_path: Path, whisper_model: str, num_threads: int,
+                language=None) -> dict[str, Any] | None:
+    """ASR transcription timestamps, not forced alignment of the approved script."""
     try:
-        from faster_whisper import WhisperModel
-        device       = ctranslate2_device()
-        compute_type = cuda_ctranslate2_compute_type() if device.startswith("cuda") else "int8"
-        wm = WhisperModel(whisper_model, device=device,
-                          compute_type=compute_type, cpu_threads=num_threads)
-        segs, _info = wm.transcribe(str(wav_path), beam_size=2, vad_filter=True, word_timestamps=True)
-        
-        words_out = []
-        for s in segs:
-            for w in s.words:
-                words_out.append({
-                    "word": w.word.strip(),
-                    "start": round(w.start, 3),
-                    "end": round(w.end, 3)
-                })
-        
-        if not words_out:
-            return None
-            
-        return {
-            "model": f"faster-whisper-{whisper_model}",
-            "words": words_out
-        }
+        _transcript, words = _transcription(wav_path, whisper_model, num_threads, language)
+        return dict(model=f'faster-whisper-{whisper_model}',
+                    kind='transcription_timestamps', words=words) if words else None
     except Exception as exc:
         print(f"  WARNING: align_words failed: {exc}", file=sys.stderr)
         return None
@@ -524,8 +530,15 @@ def resolve_voice(voice_arg: str, cache: Path, tone: str | None = None) -> dict[
 
     reg = VoiceRegistry(cache)
 
-    # 2. Exact named-voice slug
-    if reg.exists(voice_arg):
+    # 2. Exact named-voice slug. Legacy IDs contain checkpoint dots/underscores;
+    # they are cache identifiers, not registry directory names.
+    try:
+        validate_slug(voice_arg)
+    except ValueError:
+        named_voice_exists = False
+    else:
+        named_voice_exists = reg.exists(voice_arg)
+    if named_voice_exists:
         data = reg.load(voice_arg)
         engine = str(data.get("engine") or "clone_prompt")
 
@@ -660,7 +673,7 @@ def resolve_voice(voice_arg: str, cache: Path, tone: str | None = None) -> dict[
         all_ids = sorted({p.stem for p in prompts_dir.glob("*.pkl")})
     else:
         all_ids = []
-    matches = [i for i in all_ids if i == voice_arg or i.startswith(voice_arg)]
+    matches = [voice_arg] if voice_arg in all_ids else [i for i in all_ids if i.startswith(voice_arg)]
     if len(matches) == 1:
         pkl = prompts_dir / f"{matches[0]}.pkl"
         if not pkl.exists():
@@ -697,6 +710,7 @@ def _dtype_name(dtype: torch.dtype) -> str:
     return str(dtype).replace("torch.", "")
 
 
+@_owns_models
 def build_capabilities_payload(args) -> tuple[dict[str, Any], list[str]]:
     """
     Build a machine-readable capability report for agent/CI introspection.
@@ -753,7 +767,7 @@ def build_capabilities_payload(args) -> tuple[dict[str, Any], list[str]]:
             speaker_probe_mode = "static_fallback"
         else:
             try:
-                model = load_tts_model(probe_model, args.threads, args.dtype)
+                model = _load_owned_model(probe_model, args.threads, args.dtype)
                 speakers = supported_speakers(model)
                 if not speakers:
                     speaker_probe_mode = "runtime_empty_static_fallback"
@@ -802,6 +816,8 @@ def build_capabilities_payload(args) -> tuple[dict[str, Any], list[str]]:
             "qwen_tts_version": qwen_tts_package_version(),
         },
         "available_models": KNOWN_QWEN3_MODELS,
+        "checkpoint_capabilities": {name: checkpoint_capabilities(name).as_dict()
+            for models in KNOWN_QWEN3_MODELS.values() for name in models},
         "default_models": {
             "clone": DEFAULT_TTS_MODEL,
             "custom_voice": DEFAULT_CUSTOM_MODEL,
@@ -977,11 +993,12 @@ def cmd_list_voices(args) -> None:
     print(f"Registry: {cache}/voices/    Legacy: {cache}/voice-clone/prompts/")
 
 
+@_owns_models
 def cmd_list_speakers(args) -> None:
     require_custom_voice_enabled("list-speakers")
     model_name = args.model or DEFAULT_CUSTOM_MODEL
 
-    model = load_tts_model(model_name, args.threads, args.dtype)
+    model = _load_owned_model(model_name, args.threads, args.dtype)
     speakers = supported_speakers(model)
     if not speakers:
         print(
@@ -1008,6 +1025,7 @@ def cmd_list_speakers(args) -> None:
         print(f"  - {spk}")
 
 
+@_owns_models
 def cmd_register_builtin(args) -> None:
     require_custom_voice_enabled("register-builtin")
     cache = Path(args.cache)
@@ -1043,7 +1061,9 @@ def cmd_register_builtin(args) -> None:
     slug = validate_slug(args.voice_name)
     model_name = args.model or DEFAULT_CUSTOM_MODEL
 
-    model = load_tts_model(model_name, args.threads, args.dtype)
+    validate_checkpoint_request(model_name, 'custom_voice', instruct_default)
+    validate_checkpoint_request(model_name, 'custom_voice', tone_instruct)
+    model = _load_owned_model(model_name, args.threads, args.dtype)
     speaker = validate_speaker(args.speaker, model)
 
     try:
@@ -1241,6 +1261,7 @@ def build_speak_json_result(
     return result
 
 
+@_owns_models
 def cmd_speak(args) -> None:
     cache = Path(args.cache)
     out_dir = Path(args.out)
@@ -1361,11 +1382,11 @@ def cmd_speak(args) -> None:
 
     # Resolve text
     if args.text_file:
-        raw_text = Path(args.text_file).read_text(encoding="utf-8").strip()
+        raw_text = Path(args.text_file).read_text(encoding="utf-8")
     else:
         raw_text = args.text or ""
 
-    if not raw_text:
+    if not raw_text.strip():
         print("ERROR: no text provided (use --text or --text-file)", file=sys.stderr)
         sys.exit(1)
 
@@ -1394,7 +1415,12 @@ def cmd_speak(args) -> None:
         getattr(args, "save_profile_default", False)
         and not use_direct_speaker_mode
     ):
-        if reg.exists(voice_id):
+        try:
+            validate_slug(voice_id)
+            named_voice_exists = reg.exists(voice_id)
+        except ValueError:
+            named_voice_exists = False
+        if named_voice_exists:
             policy = str(generation_meta.get("max_new_tokens_policy") or profile_name)
             if policy not in ("stable", "balanced", "expressive"):
                 policy = profile_name
@@ -1416,15 +1442,20 @@ def cmd_speak(args) -> None:
 
     # Chunk if requested
     if args.chunk:
-        text_chunks = chunk_text(text)
+        chunk_plan = plan_chunks(text, getattr(args, 'chunk_max_chars', 200),
+            getattr(args, 'sentence_pause_ms', 300), getattr(args, 'paragraph_pause_ms', 600),
+            getattr(args, 'continuation_pause_ms', 100))
+        text_chunks = [c['text'] for c in chunk_plan]
         print(f"  auto-chunked into {len(text_chunks)} piece(s)")
     else:
         text_chunks = [text]
 
     # Load model
     assert model_name is not None
+    validate_checkpoint_request(model_name,
+        'custom_voice' if engine_mode == 'custom_voice' else 'clone', instruct=instruct)
     t0 = time.perf_counter()
-    model = load_tts_model(model_name, args.threads, args.dtype)
+    model = _load_owned_model(model_name, args.threads, args.dtype)
     language = validate_language(resolve_language(args.language, ref_language, raw_text), model)
     print(f"  language: {language}  (ref detected: {ref_language})")
 
@@ -1434,6 +1465,7 @@ def cmd_speak(args) -> None:
         print(f"  speaker: {speaker}")
     else:
         assert pkl_path is not None
+        _validate_prompt_cache(reg, pkl_path, model, model_name)
         with open(pkl_path, "rb") as fh:
             prompt = pickle.load(fh)
     load_sec = time.perf_counter() - t0
@@ -1507,7 +1539,8 @@ def cmd_speak(args) -> None:
                 chunk_wavs.append(chunk_path)
 
             wav_path = run_dir / f"{take_label}.wav"
-            concat_wavs_simple(chunk_wavs, wav_path, sample_rate=sr)
+            concat_wavs_simple(chunk_wavs, wav_path, sample_rate=sr,
+                pauses_ms=[c['pause_after_ms'] for c in chunk_plan[:-1]])
 
             # Clean up chunk files
             for cp in chunk_wavs:
@@ -1518,6 +1551,7 @@ def cmd_speak(args) -> None:
 
         rtf = synth_sec / duration if duration > 0 else 0.0
         take_info: dict[str, Any] = {
+            "chunk_plan": chunk_plan if args.chunk else None,
             "take":        take_label,
             "wav":         str(wav_path),
             "seed":        seed,
@@ -1531,7 +1565,7 @@ def cmd_speak(args) -> None:
         qa: dict[str, Any] | None = None
         if qa_enabled:
             print(f"  QA transcribing {take_label} …")
-            qa = qa_transcribe(wav_path, args.whisper_model, args.threads, raw_text)
+            qa = qa_transcribe(wav_path, args.whisper_model, args.threads, raw_text, language=language)
             if args.select_best:
                 try:
                     assert_selection_qa_ok(qa, take_label)
@@ -1663,11 +1697,12 @@ def cmd_speak(args) -> None:
     alignment_data = None
     if getattr(args, "align_words", False) and selected_wav:
         print(f"  aligning words (whisper) …")
-        alignment_data = align_words(Path(selected_wav), args.whisper_model, args.threads)
+        alignment_source = next((t['wav'] for t in all_takes if t['take'] == selected_take), selected_wav)
+        alignment_data = align_words(Path(alignment_source), args.whisper_model, args.threads, language=language)
     elif getattr(args, "align_words", False) and all_takes:
         wav_path = all_takes[0]["wav"]
         print(f"  aligning words (whisper) …")
-        alignment_data = align_words(Path(wav_path), args.whisper_model, args.threads)
+        alignment_data = align_words(Path(wav_path), args.whisper_model, args.threads, language=language)
 
     json_result_path_raw = getattr(args, "json_result", None)
     if json_result_path_raw:
@@ -1702,6 +1737,7 @@ def cmd_speak(args) -> None:
     print(f"  meta: {takes_meta_path}")
 
 
+@_owns_models
 def cmd_design_voice(args) -> None:
     """
     VoiceDesign → Clone workflow.
@@ -1742,14 +1778,18 @@ def cmd_design_voice(args) -> None:
     print("  NOTE: VoiceDesign model is 1.7B — this may be slow on CPU.")
 
     t0           = time.perf_counter()
-    design_model = load_tts_model(args.design_model, args.threads, args.dtype)
+    design_model = _load_owned_model(args.design_model, args.threads, args.dtype)
 
-    with Timer("generate_voice_design"):
-        wavs, sr = design_model.generate_voice_design(
-            text=ref_text,
-            language=language,
-            instruct=instruct,
-        )
+    try:
+        with Timer("generate_voice_design"):
+            wavs, sr = design_model.generate_voice_design(
+                text=ref_text,
+                language=language,
+                instruct=instruct,
+            )
+    finally:
+        design_model.close()
+        _OWNED_MODELS.get().remove(design_model)
     design_wav = wavs[0]
     design_sec = time.perf_counter() - t0
     duration   = len(design_wav) / sr
@@ -1782,13 +1822,13 @@ def cmd_design_voice(args) -> None:
             fh, indent=2,
         )
     print(f"  saved → {design_wav_path}")
-    del design_model  # free memory before loading clone model
+    # The design worker has already closed before loading the clone worker.
 
     # ── 3. Build clone prompt ─────────────────────────────────────────────────
     print("\n==> [3/3] build voice-clone prompt from designed ref")
     print(f"  clone model: {args.clone_model}")
 
-    clone_model = load_tts_model(args.clone_model, args.threads, args.dtype)
+    clone_model = _load_owned_model(args.clone_model, args.threads, args.dtype)
     model_tag   = getattr(clone_model, "name_or_path", args.clone_model).replace("/", "_")
     stem        = f"{content_hash}_{model_tag}_designed_full_v{PROMPT_SCHEMA_VERSION}"
     prompts_dir = cache / "voice-clone" / "prompts"
@@ -1806,13 +1846,22 @@ def cmd_design_voice(args) -> None:
     with open(prompt_path, "wb") as fh:
         pickle.dump(prompt, fh)
 
+    prompt_reference_path = prompt_path.with_suffix(".ref.wav")
+    shutil.copyfile(design_wav_path, prompt_reference_path)
     with open(meta_path, "w") as fh:
         json.dump(
             {
+                "reference_wav": prompt_reference_path.name,
                 "prompt_id":               stem,
+                "engine":                  "qwen3",
+                "checkpoint":              getattr(clone_model, "_audio_box_checkpoint", args.clone_model),
+                "revision":                getattr(clone_model, "_audio_box_revision", os.environ.get('TTS_MODEL_REVISION')),
+                "cache_identity_version":  1,
+                "reference_sha256":        hashlib.sha256(design_wav_path.read_bytes()).hexdigest(),
+                "pickle_sha256":           hashlib.sha256(prompt_path.read_bytes()).hexdigest(),
                 "schema_version":          PROMPT_SCHEMA_VERSION,
                 "model":                   model_tag,
-                "mode":                    "designed_full",
+                "mode":                    "full",
                 "ref_hash":                content_hash,
                 "transcript":              ref_text,
                 "ref_language_detected":   language,
@@ -2148,6 +2197,10 @@ def build_parser() -> argparse.ArgumentParser:
     )
     sp.add_argument("--chunk",     action="store_true",
                     help="Auto-chunk long text into sentences and concatenate output")
+    sp.add_argument('--chunk-max-chars', type=int, default=200)
+    sp.add_argument('--sentence-pause-ms', type=int, default=300)
+    sp.add_argument('--paragraph-pause-ms', type=int, default=600)
+    sp.add_argument('--continuation-pause-ms', type=int, default=100)
     sp.add_argument("--qa",        action="store_true",
                     help="Run whisper QA on each take and print intelligibility score")
     sp.add_argument("--align-words", action="store_true",

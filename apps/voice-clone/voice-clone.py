@@ -64,7 +64,7 @@ from audio import (  # noqa: E402
     analyse_acoustics, score_take_selection, rank_take_selection,
 )
 from vad import load_silero, run_silero  # noqa: E402
-from voices import VoiceRegistry  # noqa: E402
+from voices import VoiceRegistry, atomic_json  # noqa: E402
 
 # ── voice-clone-specific constants ─────────────────────────────────────────────
 
@@ -784,49 +784,47 @@ def build_voice_clone_prompt(
     prompt_path = prompts_dir / f"{stem}.pkl"
     meta_path   = prompts_dir / f"{stem}.meta.json"
 
+    import hashlib
+    if getattr(model, "_audio_box_revision", None) is None:
+        # Lazy supervised models resolve an HF snapshot only when first loaded.
+        resolve_model = getattr(model, "get_supported_languages", None)
+        if callable(resolve_model):
+            resolve_model()
+    with open(ref.segment, "rb") as reference_file:
+        reference_sha256 = hashlib.file_digest(reference_file, "sha256").hexdigest()
+    identity = {
+        "engine": "qwen3",
+        "checkpoint": getattr(model, "_audio_box_checkpoint", None) or getattr(model, "name_or_path", None) or "qwen3tts",
+        "revision": getattr(model, "_audio_box_revision", None),
+        "cache_identity_version": 1,
+        "reference_sha256": reference_sha256,
+        "schema_version": PROMPT_SCHEMA_VERSION,
+        "mode": mode,
+        "transcript": ref.transcript,
+    }
+    identity_tag = hashlib.sha256(json.dumps(identity, sort_keys=True).encode()).hexdigest()[:20]
+    stem = f"{stem}_{identity_tag}"
+    prompt_path = prompts_dir / f"{stem}.pkl"
+    meta_path = prompts_dir / f"{stem}.meta.json"
+    prompt_reference = prompts_dir / f"{stem}.ref.wav"
+    identity["reference_wav"] = prompt_reference.name
     if prompt_path.exists() and not force:
-        prompt_cache_valid = True
-        if not x_vector_only:
-            try:
-                if meta_path.exists() and meta_path.stat().st_size > 0:
-                    with open(meta_path) as fh:
-                        meta = json.load(fh)
-                    if str(meta.get("transcript", "")) != ref.transcript:
-                        prompt_cache_valid = False
-                        print("  [cache stale] prompt transcript changed; rebuilding cached prompt …")
-                else:
-                    prompt_cache_valid = False
-                    print("  [cache stale] prompt meta missing/empty; rebuilding cached prompt …")
-            except Exception:
-                prompt_cache_valid = False
-                print("  [cache stale] prompt meta unreadable; rebuilding cached prompt …")
-
-        if prompt_cache_valid:
+        try:
+            meta = json.loads(meta_path.read_text())
+            valid = identity["revision"] is not None and all(meta.get(k) == v for k, v in identity.items())
+            valid = valid and not prompt_path.is_symlink()
+            valid = valid and prompt_reference.is_file() and not prompt_reference.is_symlink()
+            if valid:
+                with open(prompt_reference, "rb") as reference_file:
+                    valid = hashlib.file_digest(reference_file, "sha256").hexdigest() == reference_sha256
+            valid = valid and meta.get("pickle_sha256") == hashlib.sha256(prompt_path.read_bytes()).hexdigest()
+        except (OSError, ValueError, TypeError):
+            valid = False
+        if valid:
             print(f"  [cache hit] voice prompt → {prompt_path.name}")
-            # Repair missing or empty meta.json (can happen after an interrupted write)
-            if not meta_path.exists() or meta_path.stat().st_size == 0:
-                prompts_dir.mkdir(parents=True, exist_ok=True)
-                with open(meta_path, "w") as fh:
-                    json.dump(
-                        {
-                            "prompt_id":               stem,
-                            "schema_version":          PROMPT_SCHEMA_VERSION,
-                            "model":                   mtag,
-                            "mode":                    mode,
-                            "ref_hash":                ref.ref_hash,
-                            "transcript":              ref.transcript,
-                            "ref_language_detected":   ref.ref_language,
-                            "ref_language_probability": round(ref.ref_language_prob, 4),
-                            "seg_start":               ref.seg_start,
-                            "seg_end":                 ref.seg_end,
-                            "segment_duration_sec":    round(ref.seg_end - ref.seg_start, 3),
-                            "created_at":              datetime.now(timezone.utc).isoformat(),
-                        },
-                        fh, indent=2,
-                    )
-                print(f"  [repaired] meta.json → {meta_path.name}")
             with open(prompt_path, "rb") as fh:
                 return pickle.load(fh), prompt_path
+        print("  [cache stale] prompt identity mismatch; rebuilding …")
 
     print(f"  building voice-clone prompt (mode={mode}) …")
     with Timer("create_voice_clone_prompt"):
@@ -837,12 +835,30 @@ def build_voice_clone_prompt(
         )
 
     prompts_dir.mkdir(parents=True, exist_ok=True)
-    with open(prompt_path, "wb") as fh:
-        pickle.dump(prompt, fh)
+    import tempfile
+    fd, temporary = tempfile.mkstemp(prefix=".prompt-", dir=prompts_dir)
+    try:
+        with os.fdopen(fd, "wb") as fh:
+            pickle.dump(prompt, fh)
+            fh.flush()
+            os.fsync(fh.fileno())
+        os.replace(temporary, prompt_path)
+    finally:
+        if os.path.exists(temporary):
+            os.unlink(temporary)
+    identity["pickle_sha256"] = hashlib.sha256(prompt_path.read_bytes()).hexdigest()
+    fd, temporary_reference = tempfile.mkstemp(prefix=".prompt-ref-", dir=prompts_dir)
+    os.close(fd)
+    try:
+        shutil.copyfile(ref.segment, temporary_reference)
+        os.replace(temporary_reference, prompt_reference)
+    finally:
+        if os.path.exists(temporary_reference):
+            os.unlink(temporary_reference)
 
-    with open(meta_path, "w") as fh:
-        json.dump(
+    atomic_json(meta_path,
             {
+                **identity,
                 "prompt_id":               stem,
                 "schema_version":          PROMPT_SCHEMA_VERSION,
                 "model":                   mtag,
@@ -856,8 +872,7 @@ def build_voice_clone_prompt(
                 "segment_duration_sec":    round(ref.seg_end - ref.seg_start, 3),
                 "created_at":              datetime.now(timezone.utc).isoformat(),
             },
-            fh, indent=2,
-        )
+    )
 
     print(f"  cached → {prompt_path.name}")
     return prompt, prompt_path
@@ -1602,6 +1617,11 @@ def build_parser() -> argparse.ArgumentParser:
     )
     sub = ap.add_subparsers(dest="command", required=True)
 
+    migration = sub.add_parser("migrate-registry", help="Preview additive registry schema migration")
+    migration.add_argument("--voice", required=True, metavar="SLUG")
+    migration.add_argument("--cache", default="/cache")
+    migration.add_argument("--apply", action="store_true", help="Apply migration after preserving original JSON backup")
+
     # ── synth ──────────────────────────────────────────────────────────────────
     sp = sub.add_parser(
         "synth",
@@ -1743,6 +1763,10 @@ def build_parser() -> argparse.ArgumentParser:
 def main() -> None:
     ap   = build_parser()
     args = ap.parse_args()
+
+    if args.command == "migrate-registry":
+        print(json.dumps(VoiceRegistry(Path(args.cache)).migrate(args.voice, dry_run=not args.apply), indent=2))
+        return
 
     os.environ.setdefault("OMP_NUM_THREADS", str(args.threads))
 

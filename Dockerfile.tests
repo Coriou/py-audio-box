@@ -1,0 +1,15 @@
+FROM python:3.11-slim-bookworm
+ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1
+RUN apt-get update && apt-get install -y --no-install-recommends ffmpeg libsndfile1 && rm -rf /var/lib/apt/lists/*
+# Match the repository lock's CPU torch/torchaudio pair. No model packages or weights.
+RUN pip install --no-cache-dir torch==2.10.0+cpu torchaudio==2.10.0+cpu --index-url https://download.pytorch.org/whl/cpu
+RUN pip install --no-cache-dir numpy==1.26.4 soundfile==0.12.1 pytest==8.4.2 pyyaml==6.0.3 redis==7.2.0 langid==1.1.6
+WORKDIR /app
+COPY lib /app/lib
+COPY apps /app/apps
+COPY tests /app/tests
+COPY benchmarks /app/benchmarks
+COPY scripts /app/scripts
+COPY run-cpu /app/run-cpu
+COPY pyproject.toml /app/pyproject.toml
+CMD ["python", "-m", "pytest", "tests", "-m", "not integration and not redis_integration", "-q"]

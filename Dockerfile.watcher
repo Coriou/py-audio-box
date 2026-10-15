@@ -2,7 +2,7 @@ FROM python:3.11-slim-bookworm
 
 LABEL org.opencontainers.image.source="https://github.com/Coriou/py-audio-box"
 LABEL org.opencontainers.image.description="py-audio-box job watcher daemon"
-LABEL org.opencontainers.image.licenses="MIT"
+# Project redistribution license remains to be declared by the owner.
 
 ENV \
   PYTHONDONTWRITEBYTECODE=1 \

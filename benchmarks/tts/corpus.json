@@ -1,0 +1,554 @@
+{
+  "schema_version": 1,
+  "purpose": "original synthetic evaluation scripts; no private references",
+  "items": [
+    {
+      "id": "fr-01",
+      "language": "fr",
+      "kind": "sentence",
+      "text": "Bonjour, je vous présente le projet de rénovation du quartier.",
+      "critical_literals": []
+    },
+    {
+      "id": "fr-02",
+      "language": "fr",
+      "kind": "sentence",
+      "text": "Le diagnostic commence lundi et se termine vendredi.",
+      "critical_literals": []
+    },
+    {
+      "id": "fr-03",
+      "language": "fr",
+      "kind": "sentence",
+      "text": "Le budget est de 1 250,50 euros, sans dépasser ce montant.",
+      "critical_literals": [
+        "1 250,50"
+      ]
+    },
+    {
+      "id": "fr-04",
+      "language": "fr",
+      "kind": "sentence",
+      "text": "La réunion aura lieu le 14 octobre 2026 à 9 h 30.",
+      "critical_literals": [
+        "14 octobre 2026",
+        "9 h 30"
+      ]
+    },
+    {
+      "id": "fr-05",
+      "language": "fr",
+      "kind": "sentence",
+      "text": "Une réduction de 12,5 % est appliquée au prix initial.",
+      "critical_literals": [
+        "12,5 %"
+      ]
+    },
+    {
+      "id": "fr-06",
+      "language": "fr",
+      "kind": "sentence",
+      "text": "Le bâtiment mesure 24 mètres de hauteur et 18 mètres de largeur.",
+      "critical_literals": [
+        "24",
+        "18"
+      ]
+    },
+    {
+      "id": "fr-07",
+      "language": "fr",
+      "kind": "sentence",
+      "text": "Énéal accompagne les équipes d’Édifice dans cette mission.",
+      "critical_literals": [
+        "Énéal",
+        "Édifice"
+      ]
+    },
+    {
+      "id": "fr-08",
+      "language": "fr",
+      "kind": "sentence",
+      "text": "Les logements HLM accueillent des familles de toutes générations.",
+      "critical_literals": [
+        "HLM"
+      ]
+    },
+    {
+      "id": "fr-09",
+      "language": "fr",
+      "kind": "sentence",
+      "text": "La SAS emploie une équipe dédiée à l’IA et à la recherche.",
+      "critical_literals": [
+        "SAS",
+        "IA"
+      ]
+    },
+    {
+      "id": "fr-10",
+      "language": "fr",
+      "kind": "sentence",
+      "text": "Je ne souhaite pas annuler le rendez-vous.",
+      "critical_literals": [
+        "ne",
+        "pas"
+      ]
+    },
+    {
+      "id": "fr-11",
+      "language": "fr",
+      "kind": "sentence",
+      "text": "Il reste exactement trois dossiers, et non trente.",
+      "critical_literals": [
+        "trois",
+        "trente"
+      ]
+    },
+    {
+      "id": "fr-12",
+      "language": "fr",
+      "kind": "sentence",
+      "text": "Le numéro de dossier est A-2047, version B.",
+      "critical_literals": [
+        "A-2047"
+      ]
+    },
+    {
+      "id": "fr-13",
+      "language": "fr",
+      "kind": "sentence",
+      "text": "Madame Dupont retrouve Jean-Baptiste à Saint-Étienne.",
+      "critical_literals": [
+        "Dupont",
+        "Jean-Baptiste",
+        "Saint-Étienne"
+      ]
+    },
+    {
+      "id": "fr-14",
+      "language": "fr",
+      "kind": "sentence",
+      "text": "Le débit est de 2,4 litres par seconde.",
+      "critical_literals": [
+        "2,4"
+      ]
+    },
+    {
+      "id": "fr-15",
+      "language": "fr",
+      "kind": "sentence",
+      "text": "Cette offre coûte 89 euros par mois, pendant douze mois.",
+      "critical_literals": [
+        "89",
+        "douze"
+      ]
+    },
+    {
+      "id": "fr-16",
+      "language": "fr",
+      "kind": "sentence",
+      "text": "Le docteur Martin habite avenue Victor-Hugo.",
+      "critical_literals": [
+        "Martin",
+        "Victor-Hugo"
+      ]
+    },
+    {
+      "id": "fr-17",
+      "language": "fr",
+      "kind": "sentence",
+      "text": "« Vous êtes prêts ? » demande-t-elle. « Oui, allons-y ! »",
+      "critical_literals": []
+    },
+    {
+      "id": "fr-18",
+      "language": "fr",
+      "kind": "sentence",
+      "text": "Le rapport, préparé depuis plusieurs semaines, sera présenté demain.",
+      "critical_literals": []
+    },
+    {
+      "id": "fr-19",
+      "language": "fr",
+      "kind": "sentence",
+      "text": "Nous devons vérifier la donnée avant de prendre une décision.",
+      "critical_literals": []
+    },
+    {
+      "id": "fr-20",
+      "language": "fr",
+      "kind": "sentence",
+      "text": "Il fait beau aujourd’hui ; pourtant, la pluie reviendra ce soir.",
+      "critical_literals": []
+    },
+    {
+      "id": "fr-21",
+      "language": "fr",
+      "kind": "sentence",
+      "text": "L’accès est ouvert aux visiteurs, sauf le dimanche.",
+      "critical_literals": [
+        "sauf"
+      ]
+    },
+    {
+      "id": "fr-22",
+      "language": "fr",
+      "kind": "sentence",
+      "text": "Les dépenses passent de 200 à 180 euros.",
+      "critical_literals": [
+        "200",
+        "180"
+      ]
+    },
+    {
+      "id": "fr-23",
+      "language": "fr",
+      "kind": "sentence",
+      "text": "Le rendez-vous est fixé au 1er janvier, puis au 2 février.",
+      "critical_literals": [
+        "1er janvier",
+        "2 février"
+      ]
+    },
+    {
+      "id": "fr-24",
+      "language": "fr",
+      "kind": "sentence",
+      "text": "Téléphonez au zéro un, quarante-deux, trente-six, cinquante, quatre-vingts.",
+      "critical_literals": []
+    },
+    {
+      "id": "fr-25",
+      "language": "fr",
+      "kind": "sentence",
+      "text": "Le fichier PDF présente les résultats du test API.",
+      "critical_literals": [
+        "PDF",
+        "API"
+      ]
+    },
+    {
+      "id": "fr-26",
+      "language": "fr",
+      "kind": "sentence",
+      "text": "Le site affiche un bouton « Télécharger » et un lien « En savoir plus ».",
+      "critical_literals": []
+    },
+    {
+      "id": "fr-27",
+      "language": "fr",
+      "kind": "sentence",
+      "text": "La façade est beige, le toit rouge et les volets bleus.",
+      "critical_literals": []
+    },
+    {
+      "id": "fr-28",
+      "language": "fr",
+      "kind": "sentence",
+      "text": "Le financement n’est ni confirmé ni garanti.",
+      "critical_literals": [
+        "ni",
+        "ni"
+      ]
+    },
+    {
+      "id": "fr-29",
+      "language": "fr",
+      "kind": "sentence",
+      "text": "À Bordeaux, Maëlys et Loïc rencontrent François.",
+      "critical_literals": [
+        "Bordeaux",
+        "Maëlys",
+        "Loïc",
+        "François"
+      ]
+    },
+    {
+      "id": "fr-30",
+      "language": "fr",
+      "kind": "sentence",
+      "text": "Fin de la présentation. Merci pour votre attention.",
+      "critical_literals": []
+    },
+    {
+      "id": "en-01",
+      "language": "en",
+      "kind": "sentence",
+      "text": "Welcome to the neighbourhood renovation project.",
+      "critical_literals": []
+    },
+    {
+      "id": "en-02",
+      "language": "en",
+      "kind": "sentence",
+      "text": "The total budget is 1,250.50 euros, with no additional charge.",
+      "critical_literals": [
+        "1,250.50"
+      ]
+    },
+    {
+      "id": "en-03",
+      "language": "en",
+      "kind": "sentence",
+      "text": "The meeting is on October 14, 2026 at 9:30 a.m.",
+      "critical_literals": [
+        "October 14, 2026",
+        "9:30"
+      ]
+    },
+    {
+      "id": "en-04",
+      "language": "en",
+      "kind": "sentence",
+      "text": "A discount of 12.5 percent applies to the initial price.",
+      "critical_literals": [
+        "12.5"
+      ]
+    },
+    {
+      "id": "en-05",
+      "language": "en",
+      "kind": "sentence",
+      "text": "The building is 24 metres high and 18 metres wide.",
+      "critical_literals": [
+        "24",
+        "18"
+      ]
+    },
+    {
+      "id": "en-06",
+      "language": "en",
+      "kind": "sentence",
+      "text": "Please contact Eleanor Smith and Jean-Baptiste Dupont.",
+      "critical_literals": [
+        "Eleanor Smith",
+        "Jean-Baptiste Dupont"
+      ]
+    },
+    {
+      "id": "en-07",
+      "language": "en",
+      "kind": "sentence",
+      "text": "I do not want to cancel the appointment.",
+      "critical_literals": [
+        "not"
+      ]
+    },
+    {
+      "id": "en-08",
+      "language": "en",
+      "kind": "sentence",
+      "text": "There are three files left, not thirty.",
+      "critical_literals": [
+        "three",
+        "thirty"
+      ]
+    },
+    {
+      "id": "en-09",
+      "language": "en",
+      "kind": "sentence",
+      "text": "The PDF report describes the API test results.",
+      "critical_literals": [
+        "PDF",
+        "API"
+      ]
+    },
+    {
+      "id": "en-10",
+      "language": "en",
+      "kind": "sentence",
+      "text": "“Are you ready?” she asks. “Yes, let’s go!”",
+      "critical_literals": []
+    },
+    {
+      "id": "en-11",
+      "language": "en",
+      "kind": "sentence",
+      "text": "The report, prepared over several weeks, will be presented tomorrow.",
+      "critical_literals": []
+    },
+    {
+      "id": "en-12",
+      "language": "en",
+      "kind": "sentence",
+      "text": "Monthly costs decrease from 200 to 180 euros.",
+      "critical_literals": [
+        "200",
+        "180"
+      ]
+    },
+    {
+      "id": "en-13",
+      "language": "en",
+      "kind": "sentence",
+      "text": "Access is available every day except Sunday.",
+      "critical_literals": [
+        "except"
+      ]
+    },
+    {
+      "id": "en-14",
+      "language": "en",
+      "kind": "sentence",
+      "text": "The reference number is A-2047, revision B.",
+      "critical_literals": [
+        "A-2047"
+      ]
+    },
+    {
+      "id": "en-15",
+      "language": "en",
+      "kind": "sentence",
+      "text": "Thank you for listening. This concludes the presentation.",
+      "critical_literals": []
+    },
+    {
+      "id": "fr-paragraph-1",
+      "language": "fr",
+      "kind": "paragraph",
+      "text": "Bonjour, je vous présente le projet de rénovation du quartier. Le diagnostic commence lundi et se termine vendredi. Le budget est de 1 250,50 euros, sans dépasser ce montant. La réunion aura lieu le 14 octobre 2026 à 9 h 30.",
+      "critical_literals": [
+        "1 250,50",
+        "14 octobre 2026",
+        "9 h 30"
+      ]
+    },
+    {
+      "id": "fr-paragraph-2",
+      "language": "fr",
+      "kind": "paragraph",
+      "text": "Une réduction de 12,5 % est appliquée au prix initial. Le bâtiment mesure 24 mètres de hauteur et 18 mètres de largeur. Énéal accompagne les équipes d’Édifice dans cette mission. Les logements HLM accueillent des familles de toutes générations.",
+      "critical_literals": [
+        "12,5 %",
+        "24",
+        "18",
+        "Énéal",
+        "Édifice",
+        "HLM"
+      ]
+    },
+    {
+      "id": "fr-paragraph-3",
+      "language": "fr",
+      "kind": "paragraph",
+      "text": "La SAS emploie une équipe dédiée à l’IA et à la recherche. Je ne souhaite pas annuler le rendez-vous. Il reste exactement trois dossiers, et non trente. Le numéro de dossier est A-2047, version B.",
+      "critical_literals": [
+        "SAS",
+        "IA",
+        "ne",
+        "pas",
+        "trois",
+        "trente",
+        "A-2047"
+      ]
+    },
+    {
+      "id": "en-paragraph-1",
+      "language": "en",
+      "kind": "paragraph",
+      "text": "Welcome to the neighbourhood renovation project. The total budget is 1,250.50 euros, with no additional charge. The meeting is on October 14, 2026 at 9:30 a.m. A discount of 12.5 percent applies to the initial price.",
+      "critical_literals": [
+        "1,250.50",
+        "October 14, 2026",
+        "9:30",
+        "12.5"
+      ]
+    },
+    {
+      "id": "en-paragraph-2",
+      "language": "en",
+      "kind": "paragraph",
+      "text": "The building is 24 metres high and 18 metres wide. Please contact Eleanor Smith and Jean-Baptiste Dupont. I do not want to cancel the appointment. There are three files left, not thirty.",
+      "critical_literals": [
+        "24",
+        "18",
+        "Eleanor Smith",
+        "Jean-Baptiste Dupont",
+        "not",
+        "three",
+        "thirty"
+      ]
+    },
+    {
+      "id": "en-paragraph-3",
+      "language": "en",
+      "kind": "paragraph",
+      "text": "The PDF report describes the API test results. “Are you ready?” she asks. “Yes, let’s go!” The report, prepared over several weeks, will be presented tomorrow. Monthly costs decrease from 200 to 180 euros.",
+      "critical_literals": [
+        "PDF",
+        "API",
+        "200",
+        "180"
+      ]
+    },
+    {
+      "id": "fr-long-1",
+      "language": "fr",
+      "kind": "long_script",
+      "text": "Bonjour, je vous présente le projet de rénovation du quartier. Le diagnostic commence lundi et se termine vendredi. Le budget est de 1 250,50 euros, sans dépasser ce montant. La réunion aura lieu le 14 octobre 2026 à 9 h 30. Une réduction de 12,5 % est appliquée au prix initial.\n\nLe bâtiment mesure 24 mètres de hauteur et 18 mètres de largeur. Énéal accompagne les équipes d’Édifice dans cette mission. Les logements HLM accueillent des familles de toutes générations. La SAS emploie une équipe dédiée à l’IA et à la recherche. Je ne souhaite pas annuler le rendez-vous.\n\nIl reste exactement trois dossiers, et non trente. Le numéro de dossier est A-2047, version B. Madame Dupont retrouve Jean-Baptiste à Saint-Étienne. Le débit est de 2,4 litres par seconde. Cette offre coûte 89 euros par mois, pendant douze mois.\n\nLe docteur Martin habite avenue Victor-Hugo. « Vous êtes prêts ? » demande-t-elle. « Oui, allons-y ! » Le rapport, préparé depuis plusieurs semaines, sera présenté demain. Nous devons vérifier la donnée avant de prendre une décision. Il fait beau aujourd’hui ; pourtant, la pluie reviendra ce soir.\n\nL’accès est ouvert aux visiteurs, sauf le dimanche. Les dépenses passent de 200 à 180 euros. Le rendez-vous est fixé au 1er janvier, puis au 2 février. Téléphonez au zéro un, quarante-deux, trente-six, cinquante, quatre-vingts. Le fichier PDF présente les résultats du test API.\n\nLe site affiche un bouton « Télécharger » et un lien « En savoir plus ». La façade est beige, le toit rouge et les volets bleus. Le financement n’est ni confirmé ni garanti. À Bordeaux, Maëlys et Loïc rencontrent François. Fin de la présentation. Merci pour votre attention.\n\nBonjour, je vous présente le projet de rénovation du quartier. Le diagnostic commence lundi et se termine vendredi. Le budget est de 1 250,50 euros, sans dépasser ce montant. La réunion aura lieu le 14 octobre 2026 à 9 h 30. Une réduction de 12,5 % est appliquée au prix initial.\n\nLe bâtiment mesure 24 mètres de hauteur et 18 mètres de largeur. Énéal accompagne les équipes d’Édifice dans cette mission. Les logements HLM accueillent des familles de toutes générations. La SAS emploie une équipe dédiée à l’IA et à la recherche. Je ne souhaite pas annuler le rendez-vous.\n\nIl reste exactement trois dossiers, et non trente. Le numéro de dossier est A-2047, version B. Madame Dupont retrouve Jean-Baptiste à Saint-Étienne. Le débit est de 2,4 litres par seconde. Cette offre coûte 89 euros par mois, pendant douze mois.\n\nLe docteur Martin habite avenue Victor-Hugo. « Vous êtes prêts ? » demande-t-elle. « Oui, allons-y ! » Le rapport, préparé depuis plusieurs semaines, sera présenté demain. Nous devons vérifier la donnée avant de prendre une décision. Il fait beau aujourd’hui ; pourtant, la pluie reviendra ce soir.\n\nL’accès est ouvert aux visiteurs, sauf le dimanche. Les dépenses passent de 200 à 180 euros. Le rendez-vous est fixé au 1er janvier, puis au 2 février. Téléphonez au zéro un, quarante-deux, trente-six, cinquante, quatre-vingts. Le fichier PDF présente les résultats du test API.\n\nLe site affiche un bouton « Télécharger » et un lien « En savoir plus ». La façade est beige, le toit rouge et les volets bleus. Le financement n’est ni confirmé ni garanti. À Bordeaux, Maëlys et Loïc rencontrent François. Fin de la présentation. Merci pour votre attention.\n\nBonjour, je vous présente le projet de rénovation du quartier. Le diagnostic commence lundi et se termine vendredi. Le budget est de 1 250,50 euros, sans dépasser ce montant. La réunion aura lieu le 14 octobre 2026 à 9 h 30. Une réduction de 12,5 % est appliquée au prix initial.\n\nLe bâtiment mesure 24 mètres de hauteur et 18 mètres de largeur. Énéal accompagne les équipes d’Édifice dans cette mission. Les logements HLM accueillent des familles de toutes générations. La SAS emploie une équipe dédiée à l’IA et à la recherche. Je ne souhaite pas annuler le rendez-vous.\n\nIl reste exactement trois dossiers, et non trente. Le numéro de dossier est A-2047, version B. Madame Dupont retrouve Jean-Baptiste à Saint-Étienne. Le débit est de 2,4 litres par seconde. Cette offre coûte 89 euros par mois, pendant douze mois.\n\nLe docteur Martin habite avenue Victor-Hugo. « Vous êtes prêts ? » demande-t-elle. « Oui, allons-y ! » Le rapport, préparé depuis plusieurs semaines, sera présenté demain. Nous devons vérifier la donnée avant de prendre une décision. Il fait beau aujourd’hui ; pourtant, la pluie reviendra ce soir.\n\nL’accès est ouvert aux visiteurs, sauf le dimanche. Les dépenses passent de 200 à 180 euros. Le rendez-vous est fixé au 1er janvier, puis au 2 février. Téléphonez au zéro un, quarante-deux, trente-six, cinquante, quatre-vingts. Le fichier PDF présente les résultats du test API.\n\nLe site affiche un bouton « Télécharger » et un lien « En savoir plus ». La façade est beige, le toit rouge et les volets bleus. Le financement n’est ni confirmé ni garanti. À Bordeaux, Maëlys et Loïc rencontrent François. Fin de la présentation. Merci pour votre attention.\n\nBonjour, je vous présente le projet de rénovation du quartier. Le diagnostic commence lundi et se termine vendredi. Le budget est de 1 250,50 euros, sans dépasser ce montant. La réunion aura lieu le 14 octobre 2026 à 9 h 30. Une réduction de 12,5 % est appliquée au prix initial.\n\nLe bâtiment mesure 24 mètres de hauteur et 18 mètres de largeur. Énéal accompagne les équipes d’Édifice dans cette mission. Les logements HLM accueillent des familles de toutes générations. La SAS emploie une équipe dédiée à l’IA et à la recherche. Je ne souhaite pas annuler le rendez-vous.\n\nIl reste exactement trois dossiers, et non trente. Le numéro de dossier est A-2047, version B. Madame Dupont retrouve Jean-Baptiste à Saint-Étienne. Le débit est de 2,4 litres par seconde. Cette offre coûte 89 euros par mois, pendant douze mois.\n\nLe docteur Martin habite avenue Victor-Hugo. « Vous êtes prêts ? » demande-t-elle. « Oui, allons-y ! » Le rapport, préparé depuis plusieurs semaines, sera présenté demain. Nous devons vérifier la donnée avant de prendre une décision. Il fait beau aujourd’hui ; pourtant, la pluie reviendra ce soir.\n\nL’accès est ouvert aux visiteurs, sauf le dimanche. Les dépenses passent de 200 à 180 euros. Le rendez-vous est fixé au 1er janvier, puis au 2 février. Téléphonez au zéro un, quarante-deux, trente-six, cinquante, quatre-vingts. Le fichier PDF présente les résultats du test API.\n\nLe site affiche un bouton « Télécharger » et un lien « En savoir plus ». La façade est beige, le toit rouge et les volets bleus. Le financement n’est ni confirmé ni garanti. À Bordeaux, Maëlys et Loïc rencontrent François. Fin de la présentation. Merci pour votre attention.",
+      "critical_literals": [
+        "1 250,50",
+        "12,5 %",
+        "14 octobre 2026",
+        "18",
+        "180",
+        "1er janvier",
+        "2 février",
+        "2,4",
+        "200",
+        "24",
+        "89",
+        "9 h 30",
+        "A-2047",
+        "API",
+        "Bordeaux",
+        "Dupont",
+        "François",
+        "HLM",
+        "IA",
+        "Jean-Baptiste",
+        "Loïc",
+        "Martin",
+        "Maëlys",
+        "PDF",
+        "SAS",
+        "Saint-Étienne",
+        "Victor-Hugo",
+        "douze",
+        "ne",
+        "ni",
+        "pas",
+        "sauf",
+        "trente",
+        "trois",
+        "Édifice",
+        "Énéal"
+      ]
+    },
+    {
+      "id": "en-long-1",
+      "language": "en",
+      "kind": "long_script",
+      "text": "Welcome to the neighbourhood renovation project. The total budget is 1,250.50 euros, with no additional charge. The meeting is on October 14, 2026 at 9:30 a.m. A discount of 12.5 percent applies to the initial price. The building is 24 metres high and 18 metres wide.\n\nPlease contact Eleanor Smith and Jean-Baptiste Dupont. I do not want to cancel the appointment. There are three files left, not thirty. The PDF report describes the API test results. “Are you ready?” she asks. “Yes, let’s go!”\n\nThe report, prepared over several weeks, will be presented tomorrow. Monthly costs decrease from 200 to 180 euros. Access is available every day except Sunday. The reference number is A-2047, revision B. Thank you for listening. This concludes the presentation.\n\nWelcome to the neighbourhood renovation project. The total budget is 1,250.50 euros, with no additional charge. The meeting is on October 14, 2026 at 9:30 a.m. A discount of 12.5 percent applies to the initial price. The building is 24 metres high and 18 metres wide.\n\nPlease contact Eleanor Smith and Jean-Baptiste Dupont. I do not want to cancel the appointment. There are three files left, not thirty. The PDF report describes the API test results. “Are you ready?” she asks. “Yes, let’s go!”\n\nThe report, prepared over several weeks, will be presented tomorrow. Monthly costs decrease from 200 to 180 euros. Access is available every day except Sunday. The reference number is A-2047, revision B. Thank you for listening. This concludes the presentation.\n\nWelcome to the neighbourhood renovation project. The total budget is 1,250.50 euros, with no additional charge. The meeting is on October 14, 2026 at 9:30 a.m. A discount of 12.5 percent applies to the initial price. The building is 24 metres high and 18 metres wide.\n\nPlease contact Eleanor Smith and Jean-Baptiste Dupont. I do not want to cancel the appointment. There are three files left, not thirty. The PDF report describes the API test results. “Are you ready?” she asks. “Yes, let’s go!”\n\nThe report, prepared over several weeks, will be presented tomorrow. Monthly costs decrease from 200 to 180 euros. Access is available every day except Sunday. The reference number is A-2047, revision B. Thank you for listening. This concludes the presentation.\n\nWelcome to the neighbourhood renovation project. The total budget is 1,250.50 euros, with no additional charge. The meeting is on October 14, 2026 at 9:30 a.m. A discount of 12.5 percent applies to the initial price. The building is 24 metres high and 18 metres wide.\n\nPlease contact Eleanor Smith and Jean-Baptiste Dupont. I do not want to cancel the appointment. There are three files left, not thirty. The PDF report describes the API test results. “Are you ready?” she asks. “Yes, let’s go!”\n\nThe report, prepared over several weeks, will be presented tomorrow. Monthly costs decrease from 200 to 180 euros. Access is available every day except Sunday. The reference number is A-2047, revision B. Thank you for listening. This concludes the presentation.",
+      "critical_literals": [
+        "1,250.50",
+        "12.5",
+        "18",
+        "180",
+        "200",
+        "24",
+        "9:30",
+        "A-2047",
+        "API",
+        "Eleanor Smith",
+        "Jean-Baptiste Dupont",
+        "October 14, 2026",
+        "PDF",
+        "except",
+        "not",
+        "thirty",
+        "three"
+      ]
+    }
+  ]
+}
