@@ -59,6 +59,7 @@ import sys
 import time
 import multiprocessing as mp
 import contextlib
+from dataclasses import dataclass
 from functools import partial
 from tts_backends.qwen import QwenBackend, checkpoint_capabilities, validate_checkpoint_request
 from tts_backends.contract import AudioResult, BackendError
@@ -846,6 +847,98 @@ def _generate(model, method, params, kw, timeout_s, seed=None):
     return _run_generation(partial(getattr(model, method), **params), op_name=method, gen_kwargs=kw, timeout_s=timeout)
 
 
+@dataclass(frozen=True)
+class ClonePrompt:
+    """Trusted local prompt plus its producing checkpoint identity.
+
+    This is provenance, not an authentication mechanism. Only attach cache
+    metadata after the existing trusted-cache validation; never load arbitrary
+    pickle files to obtain a prompt.
+    """
+    payload: Any
+    checkpoint: str
+    revision: str | None = None
+
+
+def _clone_checkpoint_identity(checkpoint, revision=None):
+    """Compare exact repo identities and resolved local aliases, never sizes."""
+    if not isinstance(checkpoint, (str, Path)) or not str(checkpoint).strip():
+        raise BackendError("clone_prompt_identity_missing", "Clone prompt checkpoint identity is missing. Recreate the prompt from the authorized reference with the target checkpoint.")
+    name = str(checkpoint).strip().rstrip("/")
+    path = Path(name).expanduser()
+    if path.exists() or path.is_absolute() or name.startswith(("./", "../", "~")):
+        path = path.resolve()
+        # A Hugging Face snapshot carries both the repository and immutable
+        # revision in its canonical location, including through symlink aliases.
+        if path.parent.name == "snapshots" and path.parent.parent.name.startswith("models--"):
+            repo = path.parent.parent.name[len("models--"):].replace("--", "/")
+            snapshot_revision = path.name
+            if revision is not None and str(revision) != snapshot_revision:
+                raise BackendError("clone_prompt_identity_conflict", "Checkpoint snapshot and revision disagree. Recreate the prompt from the authorized reference with the target checkpoint.")
+            return repo, snapshot_revision
+        name = str(path)
+    return name, str(revision) if revision is not None else None
+
+
+def _clone_model_identity(model):
+    checkpoint = getattr(model, "_audio_box_checkpoint", None) or getattr(model, "name_or_path", None)
+    revision = getattr(model, "_audio_box_revision", None)
+    return _clone_checkpoint_identity(checkpoint, revision)
+
+
+def bind_clone_prompt(prompt, model=None, metadata=None):
+    """Bind a newly created prompt or an already validated trusted-cache payload.
+
+    ``metadata`` uses the cache sidecar's ``checkpoint`` and ``revision`` keys.
+    Existing provenance must agree; it cannot be relabelled for another model.
+    """
+    if metadata is not None:
+        if not isinstance(metadata, dict):
+            raise BackendError("clone_prompt_identity_missing", "Clone prompt metadata must be an object.")
+        checkpoint, revision = _clone_checkpoint_identity(metadata.get("checkpoint"), metadata.get("revision"))
+    elif model is not None:
+        checkpoint, revision = _clone_model_identity(model)
+    else:
+        raise BackendError("clone_prompt_identity_missing", "Clone prompt requires producing model or validated cache metadata.")
+    if isinstance(prompt, ClonePrompt):
+        current = _clone_checkpoint_identity(prompt.checkpoint, prompt.revision)
+        if current != (checkpoint, revision):
+            raise BackendError("clone_prompt_mismatch", "Clone prompt provenance disagrees with cache/model identity. Recreate the prompt from the authorized reference with the target checkpoint.")
+        bound = prompt
+    else:
+        bound = ClonePrompt(prompt, checkpoint, revision)
+    if model is not None and metadata is not None:
+        validate_clone_prompt(bound, model)
+    return bound
+
+
+def validate_clone_prompt(prompt, model, metadata=None):
+    """Reject incompatible or unproven prompts before any generation call."""
+    if metadata is not None:
+        prompt = bind_clone_prompt(prompt, metadata=metadata)
+    if not isinstance(prompt, ClonePrompt):
+        raise BackendError("clone_prompt_identity_missing", "Clone prompt has no checkpoint provenance. Recreate it from the authorized reference with the target checkpoint, or supply validated trusted-cache prompt_metadata.")
+    source = _clone_checkpoint_identity(prompt.checkpoint, prompt.revision)
+    target = _clone_model_identity(model)
+    # Resolve a lazy backend's immutable revision before comparison. This only
+    # loads the model; it never invokes generation or rewrites the cached prompt.
+    if source[0] == target[0] and isinstance(model, QwenBackend):
+        model.get_supported_languages()
+        target = _clone_model_identity(model)
+    if source != target:
+        raise BackendError("clone_prompt_mismatch", "Clone prompt checkpoint/revision does not match the target model. Recreate the prompt from the authorized reference with the target checkpoint.", prompt_checkpoint=source[0], target_checkpoint=target[0], prompt_revision=source[1], target_revision=target[1])
+    if not source[1] or not source[1].strip():
+        raise BackendError("clone_prompt_identity_missing", "Clone prompt revision is unresolved. Recreate the prompt from the authorized reference with a resolved target checkpoint revision.")
+    # An ordinary local directory is mutable even if a caller supplies a
+    # revision label: matching labels cannot prove that its weights stayed the
+    # same. Only canonical HF snapshots above provide local revision identity.
+    # Refuse rather than claim that a config or dimension fingerprint identifies
+    # every model weight, processor and tokenizer file.
+    if Path(source[0]).is_absolute():
+        raise BackendError("clone_prompt_identity_missing", "Mutable local checkpoint directories cannot establish clone prompt compatibility. Recreate the prompt from the authorized reference using a resolved Hugging Face checkpoint snapshot.")
+    return prompt.payload
+
+
 def synthesise_clone(
     text: str,
     language: str,
@@ -854,11 +947,14 @@ def synthesise_clone(
     seed: int | None,
     gen_kwargs: dict[str, Any] | None = None,
     timeout_s: float | None = None,
+    *,
+    prompt_metadata: dict[str, Any] | None = None,
 ) -> tuple[np.ndarray, int]:
-    """Generate speech from a voice-clone prompt."""
+    """Generate with a provenance-bound prompt or validated cache metadata."""
     kw = gen_kwargs or {}
     validate_checkpoint_request(getattr(model, "name_or_path", DEFAULT_TTS_MODEL), "clone", kw.get("instruct"))
-    return _generate(model, "generate_voice_clone", {"text": text, "language": language, "voice_clone_prompt": prompt, **kw}, kw, timeout_s, seed)
+    prompt = validate_clone_prompt(prompt, model, metadata=prompt_metadata)
+    return _generate(model, "generate_voice_clone", {**kw, "text": text, "language": language, "voice_clone_prompt": prompt}, kw, timeout_s, seed)
 
 
 

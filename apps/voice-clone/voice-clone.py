@@ -55,7 +55,7 @@ from tts import (  # noqa: E402  (import after path setup)
     resolve_generation_profile, build_generation_kwargs,
     resolve_language, validate_language,
     build_whisper_model, transcribe_segment, transcribe_ref,
-    load_tts_model, synthesise,
+    load_tts_model, synthesise, bind_clone_prompt,
     Timer,
 )
 from audio import (  # noqa: E402
@@ -823,7 +823,7 @@ def build_voice_clone_prompt(
         if valid:
             print(f"  [cache hit] voice prompt → {prompt_path.name}")
             with open(prompt_path, "rb") as fh:
-                return pickle.load(fh), prompt_path
+                return bind_clone_prompt(pickle.load(fh), model=model, metadata=meta), prompt_path
         print("  [cache stale] prompt identity mismatch; rebuilding …")
 
     print(f"  building voice-clone prompt (mode={mode}) …")
@@ -833,6 +833,8 @@ def build_voice_clone_prompt(
             ref_text=ref.transcript if not x_vector_only else None,
             x_vector_only_mode=x_vector_only,
         )
+
+    prompt = bind_clone_prompt(prompt, model=model, metadata=identity)
 
     prompts_dir.mkdir(parents=True, exist_ok=True)
     import tempfile
@@ -1212,9 +1214,7 @@ def cmd_synth(args) -> None:
     out_dir   = Path(args.out)
     ref_audio = _resolve_ref_audio(args, cache)
 
-    # Validate + ensure named voice exists in registry before doing any work.
-    # If --voice SLUG was used without an explicit --voice-name, auto-register
-    # back to the same slug so each synth run keeps the prompt up-to-date.
+    # Validate now; publish the named voice only after prompt construction.
     voice_name = getattr(args, "voice_name", None) or getattr(args, "voice", None)
     reg = VoiceRegistry(cache)
     if voice_name:
@@ -1223,12 +1223,6 @@ def cmd_synth(args) -> None:
             sys.path.insert(0, _lib)
         from voices import validate_slug  # type: ignore
         voice_name = validate_slug(voice_name)
-        if not reg.exists(voice_name):
-            reg.create(
-                voice_name,
-                display_name=voice_name,
-                source={"type": "file", "path": str(ref_audio)},
-            )
     elif getattr(args, "save_profile_default", False):
         print(
             "ERROR: --save-profile-default requires --voice or --voice-name.",
@@ -1293,7 +1287,7 @@ def cmd_synth(args) -> None:
     print(f"  synthesis language:    {language}")
     print(f"\n==> synthesising ({len(text)} chars): {text!r}")
 
-    voice_generation_defaults = reg.generation_defaults(voice_name) if voice_name else {}
+    voice_generation_defaults = reg.generation_defaults(voice_name) if voice_name and reg.exists(voice_name) else {}
     profile_name, profile_source = resolve_generation_profile(
         args.profile,
         voice_generation_defaults if voice_name else None,
@@ -1314,15 +1308,13 @@ def cmd_synth(args) -> None:
         policy = str(generation_meta.get("max_new_tokens_policy") or profile_name)
         if policy not in ("stable", "balanced", "expressive"):
             policy = profile_name
-        saved_generation_defaults = reg.update_generation_defaults(
-            voice_name,
+        saved_generation_defaults = dict(
             profile=profile_name,
             temperature=float(gen_kwargs["temperature"]),
             top_p=float(gen_kwargs["top_p"]),
             repetition_penalty=float(gen_kwargs["repetition_penalty"]),
             max_new_tokens_policy=policy,
         )
-        print(f"  saved generation defaults to voice '{voice_name}'")
 
     # Stage 4: load model + build prompt
     t_model = time.perf_counter()
@@ -1336,7 +1328,11 @@ def cmd_synth(args) -> None:
     # Register ref + prompt to named voice if requested
     if voice_name:
         meta_path = pkl_path.parent / (pkl_path.stem + ".meta.json")
-        reg.update_ref(voice_name, ref.segment, {
+        if not meta_path.is_file() or meta_path.stat().st_size == 0:
+            raise ValueError(f"Prompt metadata missing or empty: {meta_path}")
+        with open(meta_path) as _fh:
+            _meta = json.load(_fh)
+        reg.finalize_clone(voice_name, segment_wav=ref.segment, ref_meta={
             "hash":            ref.ref_hash,
             "segment_start":   ref.seg_start,
             "segment_end":     ref.seg_end,
@@ -1345,19 +1341,11 @@ def cmd_synth(args) -> None:
             "transcript_conf": round(ref.transcript_conf, 4),
             "language":        ref.ref_language,
             "language_prob":   round(ref.ref_language_prob, 4),
-        })
-        if meta_path.exists() and meta_path.stat().st_size > 0:
-            with open(meta_path) as _fh:
-                _meta = json.load(_fh)
-            reg.register_prompt(voice_name, pkl_path.stem, pkl_path, _meta, tone=args.tone)
-            tone_note = f"  (tone={args.tone!r})" if args.tone else ""
-            print(f"  [registry] voice '{voice_name}' \u2192 prompt registered{tone_note}")
-        else:
-            print(
-                f"  WARNING: meta.json not found or empty — prompt not registered\n"
-                f"    expected: {meta_path}",
-                file=sys.stderr,
-            )
+        }, stem=pkl_path.stem, pkl_src=pkl_path, meta=_meta,
+            source={"type": "file", "path": str(ref_audio)}, tone=args.tone,
+            generation_defaults=saved_generation_defaults)
+        tone_note = f"  (tone={args.tone!r})" if args.tone else ""
+        print(f"  [registry] voice '{voice_name}' → prompt registered{tone_note}")
     n_variants = max(1, args.variants)
     if args.select_best and args.seed is None:
         print("  --select-best enabled without --seed; using deterministic base seed 0")
@@ -1760,6 +1748,10 @@ def build_parser() -> argparse.ArgumentParser:
 
 # ── entry point ────────────────────────────────────────────────────────────────
 
+from tts_backends.contract import BackendError
+from tts_backends.qwen import QwenWorkerError
+
+
 def main() -> None:
     ap   = build_parser()
     args = ap.parse_args()
@@ -1775,18 +1767,30 @@ def main() -> None:
     hub_dir.mkdir(parents=True, exist_ok=True)
     torch.hub.set_dir(str(hub_dir))
 
-    match args.command:
-        case "synth":
-            if not args.text and not args.text_file:
-                ap.error("synth requires --text or --text-file")
-            cmd_synth(args)
-        case "prepare-ref":
-            cmd_prepare_ref(args)
-        case "self-test":
-            cmd_self_test(args)
-        case _:
-            ap.print_help()
-            sys.exit(1)
+    try:
+        match args.command:
+            case "synth":
+                if not args.text and not args.text_file:
+                    ap.error("synth requires --text or --text-file")
+                cmd_synth(args)
+            case "prepare-ref":
+                cmd_prepare_ref(args)
+            case "self-test":
+                cmd_self_test(args)
+            case _:
+                ap.print_help()
+                sys.exit(1)
+    except (QwenWorkerError, BackendError, ValueError) as exc:
+        if isinstance(exc, BackendError):
+            error = exc.as_dict()
+        else:
+            error = {"code": "qwen_worker_failed" if isinstance(exc, QwenWorkerError) else "invalid_input",
+                     "message": str(exc), "details": getattr(exc, "details", {})}
+        if getattr(args, "json", False) or getattr(args, "json_result", None):
+            print(json.dumps({"status": "error", "error": error}), file=sys.stderr)
+        else:
+            print(f"ERROR: {exc}", file=sys.stderr)
+        raise SystemExit(1) from None
 
 
 if __name__ == "__main__":

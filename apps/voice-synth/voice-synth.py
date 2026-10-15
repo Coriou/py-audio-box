@@ -63,7 +63,7 @@ from tts import (  # noqa: E402  (import after path setup)
     qwen_tts_package_version, probe_qwen_tts_api,
     custom_voice_feature_enabled, custom_voice_feature_env_value,
     checkpoint_capabilities, validate_checkpoint_request,
-    load_tts_model, synthesise, synthesise_custom_voice,
+    load_tts_model, synthesise, synthesise_custom_voice, bind_clone_prompt,
     Timer,
 )
 from audio import (  # noqa: E402
@@ -74,6 +74,8 @@ from audio import (  # noqa: E402
     rank_take_selection,
 )
 from voices import VoiceRegistry, validate_slug  # noqa: E402
+from tts_backends.contract import BackendError  # noqa: E402
+from tts_backends.qwen import QwenWorkerError  # noqa: E402
 from fidelity import concatenate_wavs, plan_chunks, sequence_errors, transcript_metrics  # noqa: E402
 
 # ── constants ──────────────────────────────────────────────────────────────────
@@ -1424,15 +1426,14 @@ def cmd_speak(args) -> None:
             policy = str(generation_meta.get("max_new_tokens_policy") or profile_name)
             if policy not in ("stable", "balanced", "expressive"):
                 policy = profile_name
-            saved_generation_defaults = reg.update_generation_defaults(
-                voice_id,
+            saved_generation_defaults = dict(
                 profile=profile_name,
                 temperature=float(gen_kwargs["temperature"]),
                 top_p=float(gen_kwargs["top_p"]),
                 repetition_penalty=float(gen_kwargs["repetition_penalty"]),
                 max_new_tokens_policy=policy,
             )
-            print(f"  saved generation defaults to voice '{voice_id}'")
+
         else:
             print(
                 "  WARNING: --save-profile-default ignored because this voice is not "
@@ -1467,7 +1468,7 @@ def cmd_speak(args) -> None:
         assert pkl_path is not None
         _validate_prompt_cache(reg, pkl_path, model, model_name)
         with open(pkl_path, "rb") as fh:
-            prompt = pickle.load(fh)
+            prompt = bind_clone_prompt(pickle.load(fh), metadata=voice_meta)
     load_sec = time.perf_counter() - t0
 
     try:
@@ -1653,6 +1654,10 @@ def cmd_speak(args) -> None:
             intel = t.get("qa", {}).get("intelligibility", 0.0)
             print(f"    #{rank} {t['take']}  intelligibility={intel:.0%}  "
                   f"dur={t['duration_sec']:.1f}s")
+
+    if saved_generation_defaults is not None:
+        saved_generation_defaults = reg.update_generation_defaults(voice_id, **saved_generation_defaults)
+        print(f"  saved generation defaults to voice '{voice_id}'")
 
     # Write takes meta
     total_sec = time.perf_counter() - t0
@@ -1843,6 +1848,7 @@ def cmd_design_voice(args) -> None:
             x_vector_only_mode=False,
         )
 
+    prompt = bind_clone_prompt(prompt, model=clone_model)
     with open(prompt_path, "wb") as fh:
         pickle.dump(prompt, fh)
 
@@ -1887,14 +1893,6 @@ def cmd_design_voice(args) -> None:
         from voices import VoiceRegistry, validate_slug  # type: ignore
         slug = validate_slug(voice_name)
         reg  = VoiceRegistry(Path(args.cache))
-        if not reg.exists(slug):
-            reg.create(slug, display_name=slug, source={
-                "type":     "designed",
-                "instruct": instruct,
-                "instruct_source": instruct_source,
-                "instruct_style": instruct_style_name,
-                "ref_text": ref_text,
-            })
         ref_meta = {
             "hash":            content_hash,
             "segment_start":   0.0,
@@ -1905,11 +1903,14 @@ def cmd_design_voice(args) -> None:
             "language":        language,
             "language_prob":   1.0,
         }
-        reg.update_ref(slug, design_wav_path, ref_meta)
-        if prompt_path.exists():
-            with open(meta_path) as _fh:
-                _meta = json.load(_fh)
-            reg.register_prompt(slug, stem, prompt_path, _meta)
+        with open(meta_path) as _fh:
+            prompt_meta = json.load(_fh)
+        reg.finalize_clone(slug, segment_wav=design_wav_path, ref_meta=ref_meta,
+            stem=stem, pkl_src=prompt_path, meta=prompt_meta, source={
+                "type": "designed", "instruct": instruct,
+                "instruct_source": instruct_source, "instruct_style": instruct_style_name,
+                "ref_text": ref_text,
+            })
         voice_label = slug
     else:
         voice_label = stem[:22] + "..."
@@ -2195,8 +2196,12 @@ def build_parser() -> argparse.ArgumentParser:
             "(weighted intelligibility + pacing sanity + duration fit)."
         ),
     )
-    sp.add_argument("--chunk",     action="store_true",
-                    help="Auto-chunk long text into sentences and concatenate output")
+    chunking = sp.add_mutually_exclusive_group()
+    chunking.add_argument("--chunk", dest="chunk", action="store_true",
+                          help="Split long text into separate generation calls and concatenate")
+    chunking.add_argument("--no-chunk", dest="chunk", action="store_false",
+                          help="Generate the full supplied text in one call per take (default)")
+    sp.set_defaults(chunk=False)
     sp.add_argument('--chunk-max-chars', type=int, default=200)
     sp.add_argument('--sentence-pause-ms', type=int, default=300)
     sp.add_argument('--paragraph-pause-ms', type=int, default=600)
@@ -2340,32 +2345,44 @@ def main() -> None:
     hub_dir.mkdir(parents=True, exist_ok=True)
     torch.hub.set_dir(str(hub_dir))
 
-    match args.command:
-        case "list-voices":
-            cmd_list_voices(args)
-        case "list-speakers":
-            cmd_list_speakers(args)
-        case "capabilities":
-            cmd_capabilities(args)
-        case "register-builtin":
-            cmd_register_builtin(args)
-        case "speak":
-            if not args.text and not args.text_file:
-                ap.error("speak requires --text or --text-file")
-            cmd_speak(args)
-        case "design-voice":
-            cmd_design_voice(args)
-        case "rename-voice":
-            cmd_rename_voice(args)
-        case "delete-voice":
-            cmd_delete_voice(args)
-        case "export-voice":
-            cmd_export_voice(args)
-        case "import-voice":
-            cmd_import_voice(args)
-        case _:
-            ap.print_help()
-            sys.exit(1)
+    try:
+        match args.command:
+            case "list-voices":
+                cmd_list_voices(args)
+            case "list-speakers":
+                cmd_list_speakers(args)
+            case "capabilities":
+                cmd_capabilities(args)
+            case "register-builtin":
+                cmd_register_builtin(args)
+            case "speak":
+                if not args.text and not args.text_file:
+                    ap.error("speak requires --text or --text-file")
+                cmd_speak(args)
+            case "design-voice":
+                cmd_design_voice(args)
+            case "rename-voice":
+                cmd_rename_voice(args)
+            case "delete-voice":
+                cmd_delete_voice(args)
+            case "export-voice":
+                cmd_export_voice(args)
+            case "import-voice":
+                cmd_import_voice(args)
+            case _:
+                ap.print_help()
+                sys.exit(1)
+    except (QwenWorkerError, BackendError, ValueError) as exc:
+        if isinstance(exc, BackendError):
+            error = exc.as_dict()
+        else:
+            error = {"code": "qwen_worker_failed" if isinstance(exc, QwenWorkerError) else "invalid_input",
+                     "message": str(exc), "details": getattr(exc, "details", {})}
+        if getattr(args, "json", False) or getattr(args, "json_result", None):
+            print(json.dumps({"status": "error", "error": error}), file=sys.stderr)
+        else:
+            print(f"ERROR: {exc}", file=sys.stderr)
+        raise SystemExit(1) from None
 
 
 if __name__ == "__main__":

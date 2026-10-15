@@ -10,6 +10,7 @@ from pathlib import Path
 from dataclasses import dataclass
 import threading
 import time
+import signal
 from .contract import BackendError, Capabilities, AudioResult
 
 
@@ -110,10 +111,40 @@ def _worker_impl(connection, settings):
     except BaseException as exc:
         try:
             connection.send(('error', (type(exc).__name__, str(exc))))
-        except (BrokenPipeError, EOFError):
+        except (OSError, EOFError):
             pass
     finally:
         connection.close()
+
+
+def _memory_snapshot():
+    """Best-effort Linux cgroup evidence, never a claim about one process."""
+    result = {}
+    roots = [Path('/sys/fs/cgroup')]
+    try:
+        for line in Path('/proc/self/cgroup').read_text().splitlines():
+            if line.startswith('0::'):
+                roots.insert(0, Path('/sys/fs/cgroup') / line[3:].lstrip('/'))
+    except OSError:
+        pass
+    for root in roots:
+        try:
+            events = dict(line.split() for line in (root / 'memory.events').read_text().splitlines())
+            result['oom_kill'] = int(events.get('oom_kill', 0))
+            limit = (root / 'memory.max').read_text().strip()
+            result['memory_limit_bytes'] = int(limit) if limit != 'max' else 'unlimited'
+            return result
+        except (OSError, ValueError):
+            continue
+    return result
+
+
+class QwenWorkerError(RuntimeError):
+    """Transport failure with bounded, non-payload diagnostics."""
+    def __init__(self, details):
+        self.details = details
+        summary = ', '.join(f'{key}={value}' for key, value in details.items())
+        super().__init__(f'Qwen worker unavailable: {summary}')
 
 
 class QwenBackend:
@@ -150,7 +181,7 @@ class QwenBackend:
         if callback is not None:
             atexit.unregister(callback)
         process, connection = self._process, self._connection
-        if process is not None:
+        if process is not None and process.pid is not None:
             if process.is_alive():
                 process.terminate()
             process.join(2)
@@ -161,45 +192,92 @@ class QwenBackend:
                 self._failed_reap = True
                 raise RuntimeError('Inference worker could not be reaped; backend is unavailable')
             process.close()
+        elif process is not None:
+            process.close()
         if connection is not None:
             connection.close()
         self._process = self._connection = None
 
-    def _receive(self, deadline):
+    def _worker_failure(self, method, stage, before):
+        process = self._process
+        # EOF can precede publication of the OS exit status by a few ticks.
+        if process is not None and process.pid is not None:
+            process.join(0.1)
+        exitcode = process.exitcode if process is not None else None
+        details = {'method': method, 'stage': stage,
+                   'checkpoint': str(self.name_or_path).rstrip('/').split('/')[-1],
+                   'dtype': str(self.settings.get('dtype_str', self.settings.get('dtype', 'auto'))),
+                   'exitcode': exitcode}
+        if exitcode is not None and exitcode < 0:
+            try:
+                details['signal'] = signal.Signals(-exitcode).name
+            except ValueError:
+                details['signal'] = -exitcode
+        after = _memory_snapshot()
+        if 'memory_limit_bytes' in after:
+            details['memory_limit_bytes'] = after['memory_limit_bytes']
+        if 'oom_kill' in before and 'oom_kill' in after:
+            delta = after['oom_kill'] - before['oom_kill']
+            details['cgroup_oom_kill_delta'] = max(0, delta)
+            if delta > 0:
+                details['memory_evidence'] = 'OOM observed in shared cgroup; worker attribution unproven'
+        return QwenWorkerError(details)
+
+    def _receive(self, deadline, method, stage, before):
         while True:
             remaining = None if deadline is None else deadline - time.monotonic()
             if remaining is not None and remaining <= 0:
                 raise TimeoutError('Qwen inference exceeded wall-clock timeout')
-            if self._connection.poll(min(1, remaining) if remaining is not None else 1):
-                status, value = self._connection.recv()
-                if status == 'error':
-                    raise RuntimeError(f'Qwen worker {value[0]}: {value[1]}')
-                return value
+            try:
+                if self._connection.poll(min(1, remaining) if remaining is not None else 1):
+                    status, value = self._connection.recv()
+                    if status == 'error':
+                        raise RuntimeError(f'Qwen worker {value[0]}: {value[1]}')
+                    return value
+            except (EOFError, OSError) as exc:
+                raise self._worker_failure(method, stage, before) from exc
             if not self._process.is_alive():
-                raise RuntimeError(f'Qwen worker exited ({self._process.exitcode})')
+                raise self._worker_failure(method, stage, before)
 
     def invoke(self, method, args=(), kwargs=None, timeout_s=None):
         with self._lock:
             if self._failed_reap:
                 raise RuntimeError('Backend disabled after failed worker reap')
             deadline = None if timeout_s == 0 else time.monotonic() + (timeout_s if timeout_s is not None else 3600)
+            before = _memory_snapshot()
+            child = None
             try:
                 if self._process is None:
                     atexit.register(self._exit_callback)
                     ctx = mp.get_context('spawn')
                     parent, child = ctx.Pipe()
                     self._connection = parent
-                    self._process = ctx.Process(target=_worker, args=(child, self.settings), daemon=True)
-                    self._process.start()
-                    child.close()
-                    ready = self._receive(deadline)
+                    try:
+                        self._process = ctx.Process(target=_worker, args=(child, self.settings), daemon=True)
+                        self._process.start()
+                    except (OSError, EOFError) as exc:
+                        raise self._worker_failure(method, 'spawn', before) from exc
+                    finally:
+                        child.close()
+                        child = None
+                    ready = self._receive(deadline, method, 'startup', before)
                     if isinstance(ready, dict):
                         self._audio_box_revision = ready.get("revision")
-                self._connection.send((method, args, kwargs or {}))
-                return self._receive(deadline)
+                try:
+                    self._connection.send((method, args, kwargs or {}))
+                except (OSError, EOFError) as exc:
+                    raise self._worker_failure(method, 'send', before) from exc
+                return self._receive(deadline, method, 'response', before)
             except BaseException:
+                if child is not None:
+                    child.close()
                 self.close()
                 raise
+
+    def create_voice_clone_prompt(self, *args, **kwargs):
+        from tts import bind_clone_prompt
+        prompt = self.invoke('create_voice_clone_prompt', args, kwargs)
+        return bind_clone_prompt(prompt, model=self)
 
     def __getattr__(self, name):
         if name.startswith('_'):

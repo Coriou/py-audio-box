@@ -614,3 +614,11 @@ rebuilding from a trusted local reference. Imported archives carry WAV/JSON only
 
 Model weights are downloaded once and cached at `$XDG_CACHE_HOME/huggingface`
 (→ `/cache/huggingface` inside the container).
+
+### Cloud failure diagnostics and full-text context
+
+See [cloud troubleshooting](../../docs/TTS_CLOUD_TROUBLESHOOTING.md) for checkpoint-bound
+clone prompts, transactional registration, worker-exit diagnostics and the
+RAM/dtype checks needed after a cloud failure. `speak --no-chunk` explicitly keeps
+one application-level generation call per take (also the default). `--chunk`
+creates separate calls; neither mode guarantees acoustic consistency.

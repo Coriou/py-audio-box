@@ -476,6 +476,47 @@ class VoiceRegistry:
         self._save(slug, data)
         return dest_pkl
 
+    @_locked
+    def finalize_clone(
+        self, slug: str, *, segment_wav: Path, ref_meta: dict[str, Any],
+        stem: str, pkl_src: Path, meta: dict[str, Any], source: dict[str, Any],
+        tone: str | None = None, display_name: str | None = None,
+        source_clip: Path | None = None,
+        generation_defaults: dict[str, Any] | None = None,
+    ) -> Path:
+        """Stage a complete clone under the registry lock; preserve old data on failure."""
+        slug = validate_slug(slug)
+        if not isinstance(meta, dict) or not meta:
+            raise ValueError("Prompt metadata is required for clone registration")
+        dest = self.voice_dir(slug)
+        workspace = Path(tempfile.mkdtemp(prefix=".clone-", dir=self.root))
+        backup = workspace / "previous"
+        try:
+            staged = VoiceRegistry(workspace)
+            if dest.exists():
+                shutil.copytree(dest, staged.voice_dir(slug))
+            else:
+                staged.create(slug, display_name=display_name or slug, source=source)
+            if source_clip is not None:
+                staged.set_source_clip(slug, source_clip)
+            staged.update_ref(slug, segment_wav, ref_meta)
+            staged.register_prompt(slug, stem, pkl_src, meta, tone=tone)
+            if generation_defaults is not None:
+                staged.update_generation_defaults(slug, **generation_defaults)
+            if dest.exists():
+                os.replace(dest, backup)
+            try:
+                os.replace(staged.voice_dir(slug), dest)
+            except BaseException:
+                if backup.exists():
+                    os.replace(backup, dest)
+                raise
+        finally:
+            # Retain recovery bytes if rollback itself failed.
+            if not backup.exists() or dest.exists():
+                shutil.rmtree(workspace)
+        return self.prompts_dir(slug) / f"{stem}.pkl"
+
     def custom_voice_profile(self, slug: str) -> dict[str, Any] | None:
         """
         Return normalised custom-voice profile for *slug*, or ``None``
