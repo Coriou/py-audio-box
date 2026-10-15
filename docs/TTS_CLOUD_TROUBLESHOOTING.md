@@ -70,6 +70,19 @@ On Linux hosts where Docker requires sudo, the Bash launcher accepts
 `TOOLBOX_VARIANT=gpu` when needed. Elevation is explicit and never an automatic
 retry of a failed generation.
 
+If the cloud host can download models only through `docker run --network host`,
+use `TOOLBOX_NETWORK=host` with the Bash launcher as well:
+
+```sh
+TOOLBOX_DOCKER_SUDO=1 TOOLBOX_NETWORK=host TOOLBOX_VARIANT=gpu ./run voice-synth speak --voice cloud-speaker --text 'Bonjour'
+```
+
+Omit the sudo/GPU options if unnecessary. This explicitly enables the host network
+for that invocation; it does not pre-download a model or diagnose the bridge's
+timeout. The normal Compose network remains the default, with no automatic retry.
+See the root README for Linux/Docker Desktop prerequisites. Cloud connectivity
+still needs to be confirmed on that host.
+
 ## Named voice publication
 
 `voice-clone synth` no longer creates a named entry before reference preparation,

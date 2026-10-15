@@ -5,6 +5,7 @@
 #   ./run <app-name> [args...]
 #   TOOLBOX_VARIANT=gpu ./run <app-name> [args...]
 #   TOOLBOX_DOCKER_SUDO=1 ./run <app-name> [args...]
+#   TOOLBOX_NETWORK=host ./run <app-name> [args...]  # Linux host networking
 #
 # Examples:
 #   ./run voice-split --url "https://www.youtube.com/watch?v=XXXX" --clips 5 --length 30
@@ -50,6 +51,11 @@ COMPOSE_FILES=(-f docker-compose.yml)
 if [[ "${TOOLBOX_VARIANT:-}" == "gpu" ]]; then
   COMPOSE_FILES+=(-f docker-compose.gpu.yml)
 fi
+case "${TOOLBOX_NETWORK:-default}" in
+  default) ;;
+  host) COMPOSE_FILES+=(-f docker-compose.host.yml) ;;
+  *) echo 'Error: TOOLBOX_NETWORK must be default or host.' >&2; exit 2 ;;
+esac
 
 # Elevation is opt-in: never retry a failed app under different privileges.
 DOCKER_COMMAND=(docker)

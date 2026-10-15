@@ -1,0 +1,6 @@
+# Explicit host networking for Linux hosts whose Docker bridge cannot reach
+# model providers. Opt in with TOOLBOX_NETWORK=host ./run <app> [args...].
+# Can be combined with the GPU overlay; the default Compose network is unchanged.
+services:
+  pab:
+    network_mode: host

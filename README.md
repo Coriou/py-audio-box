@@ -122,6 +122,23 @@ This runs `sudo -- docker compose …`; sudo may ask for your password. The defa
 remains ordinary `docker`. The launcher never retries a failed generation with
 sudo automatically. This option applies to the Bash `./run` launcher.
 
+### Model downloads time out on a Linux Docker bridge
+
+If downloads work with `docker run --network host` on the same machine, opt into
+host networking through the Bash launcher:
+
+```sh
+TOOLBOX_DOCKER_SUDO=1 TOOLBOX_NETWORK=host TOOLBOX_VARIANT=gpu ./run voice-synth speak --voice my-voice --text "Hello"
+```
+
+Omit sudo or GPU options if unnecessary. `TOOLBOX_NETWORK=host` adds
+`docker-compose.host.yml`, sharing the Docker host's network namespace. It targets
+Linux Docker Engine; Docker Desktop requires host networking to be enabled in
+its settings ([Docker documentation](https://docs.docker.com/engine/network/drivers/host/)).
+Unset the option (or use `TOOLBOX_NETWORK=default`) to retain the usual Compose
+network. No automatic network retry or model-cache change occurs. A timeout alone
+does not establish the underlying DNS, proxy or firewall cause.
+
 ### Windows
 
 The `./run` bash script works in Git Bash and WSL 2.
