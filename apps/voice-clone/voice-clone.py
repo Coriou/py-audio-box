@@ -25,6 +25,7 @@ Usage:
 
 import argparse
 import json
+import math
 import os
 import pickle
 import re
@@ -75,6 +76,9 @@ CANDIDATE_COUNT      = 3       # top-N VAD candidates to whisper-score
 
 # Transcripts below this avg_logprob may hurt cloning quality.
 QUALITY_GATE_LOGPROB = -1.2
+# Conservative ASR confidence heuristic; this does not prove intelligibility.
+QUALITY_GATE_LANGUAGE_PROBABILITY = 0.8
+REFERENCE_QUALITY_POLICY_VERSION = 1
 
 # Bump whenever candidate scoring policy/weights change so old cached
 # best_segment.json entries are re-evaluated automatically.
@@ -109,7 +113,41 @@ def transcript_confidence_passes(
     """
     Return True when the transcript confidence passes the quality gate.
     """
-    return float(avg_logprob) >= float(threshold)
+    value = _finite_metric(avg_logprob)
+    return value is not None and value >= float(threshold)
+
+
+def _finite_metric(value):
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return None
+    return float(value) if math.isfinite(value) else None
+
+
+def reference_quality_report(transcript, avg_logprob, language_probability,
+                             source="asr", override=False):
+    """Report observable ASR checks without claiming semantic validation."""
+    thresholds = {"avg_logprob_min": QUALITY_GATE_LOGPROB,
+                  "language_probability_min": QUALITY_GATE_LANGUAGE_PROBABILITY}
+    checks = {}
+    reasons = []
+    if source == "asr":
+        lp = _finite_metric(avg_logprob)
+        probability = _finite_metric(language_probability)
+        checks = {
+            "avg_logprob": lp is not None and lp >= QUALITY_GATE_LOGPROB,
+            "language_probability": probability is not None and 0 <= probability <= 1
+                and probability >= QUALITY_GATE_LANGUAGE_PROBABILITY,
+            "transcript_letters": isinstance(transcript, str) and any(c.isalpha() for c in transcript),
+        }
+        reasons = [name for name, passed in checks.items() if not passed]
+    return {"policy_version": REFERENCE_QUALITY_POLICY_VERSION, "source": source,
+            "thresholds": thresholds,
+            "observed": {"avg_logprob": _finite_metric(avg_logprob),
+                         "language_probability": _finite_metric(language_probability)},
+            "checks": checks, "reasons": reasons,
+            "status": "unvalidated" if source != "asr" else ("failed" if reasons else "passed"),
+            "override": bool(override and reasons),
+            "accepted": source != "asr" or not reasons or bool(override)}
 
 
 def candidate_scoring_cache_is_current(payload: dict[str, Any]) -> bool:
@@ -620,99 +658,58 @@ def prepare_ref(
     transcript_json = ref_dir / "ref_transcript.json"
     provided_ref_text = ref_text.strip() if ref_text is not None else None
 
-    if x_vector_only:
-        print("  --x-vector-only: skipping transcription (quality may be lower)")
-        transcript    = ""
-        conf          = 0.0
-        detected_lang = "English"
-        lang_prob     = 1.0
+    cached_transcript = None
+    if (not x_vector_only and provided_ref_text is None
+            and transcript_json.exists() and not force and not interactive):
+        with open(transcript_json) as fh:
+            candidate = json.load(fh)
+        # A caller-supplied transcript or embedding-only run is not ASR evidence.
+        if (candidate.get("transcript_source", "asr") == "asr"
+                and candidate.get("whisper_model") not in ("provided_ref_text", "x_vector_only")):
+            cached_transcript = candidate
 
+    if x_vector_only:
+        print("  --x-vector-only: skipping transcription; reference quality unvalidated")
+        transcript, conf, detected_lang, lang_prob = "", 0.0, "English", 1.0
+        transcript_source = "x_vector_only"
     elif provided_ref_text is not None:
         if not provided_ref_text:
             print("ERROR: --ref-text cannot be empty.", file=sys.stderr)
             sys.exit(1)
-        transcript = provided_ref_text
-        conf = 0.0
-        if ref_language and ref_language != "Auto":
-            detected_lang = ref_language
-            lang_prob = 1.0
-        else:
-            detected_lang = segment_lang or "English"
-            lang_prob = float(segment_lang_prob) if segment_lang_prob else 1.0
-        print("  using provided --ref-text; skipping final whisper transcription + quality gate")
-        with open(transcript_json, "w") as fh:
-            json.dump(
-                {
-                    "transcript": transcript,
-                    "avg_logprob": conf,
-                    "whisper_model": "provided_ref_text",
-                    "ref_language_detected": detected_lang,
-                    "ref_language_probability": lang_prob,
-                    "transcript_source": "provided_ref_text",
-                    "timestamp": datetime.now(timezone.utc).isoformat(),
-                },
-                fh,
-                indent=2,
-            )
-
-    elif transcript_json.exists() and not force and not interactive:
-        with open(transcript_json) as fh:
-            td = json.load(fh)
-        transcript    = td["transcript"]
-        conf          = td["avg_logprob"]
-        whisper_model = td.get("whisper_model", whisper_model)
-        detected_lang = td.get("ref_language_detected", "English")
-        lang_prob     = td.get("ref_language_probability", 1.0)
-        print(
-            f"  [cache hit] ({whisper_model}) "
-            f"[{detected_lang} p={lang_prob:.2f}]  {transcript!r}"
-        )
-
+        transcript, conf = provided_ref_text, 0.0
+        detected_lang = ref_language if ref_language and ref_language != "Auto" else segment_lang or "English"
+        lang_prob = 1.0 if ref_language and ref_language != "Auto" else segment_lang_prob
+        transcript_source = "provided_ref_text"
+        print("  using provided --ref-text; ASR reference quality unvalidated")
+    elif cached_transcript is not None:
+        transcript = cached_transcript.get("transcript", "")
+        conf = cached_transcript.get("avg_logprob")
+        detected_lang = cached_transcript.get("ref_language_detected", "English")
+        lang_prob = cached_transcript.get("ref_language_probability")
+        transcript_source = "asr"
+        whisper_model = cached_transcript.get("whisper_model", whisper_model)
+        print(f"  [cache hit] ASR transcript [{detected_lang}] {transcript!r}")
     else:
-        # If candidate scoring already gave us a transcript (from fast pass),
-        # upgrade to a full beam=5 pass for the final file.
         with Timer("faster-whisper"):
             transcript, conf, detected_lang, lang_prob = transcribe_ref(
-                segment_wav, whisper_model, num_threads,
-            )
+                segment_wav, whisper_model, num_threads)
+        transcript_source = "asr"
 
-        # ── quality gate ───────────────────────────────────────────────────────
-        if not transcript_confidence_passes(conf) and not force_bad_ref:
-            print(
-                f"\n  ⚠  LOW TRANSCRIPT CONFIDENCE: avg_logprob={conf:.2f} "
-                f"(threshold {QUALITY_GATE_LOGPROB}).\n"
-                f"  This may result in poor cloning quality. Try:\n"
-                f"    • --ref-start / --ref-end to select a cleaner segment\n"
-                f"    • a higher-quality reference recording\n"
-                f"    • --force-bad-ref to proceed anyway",
-                file=sys.stderr,
-            )
-            sys.exit(1)
-        elif not transcript_confidence_passes(conf):
-            print(
-                f"  WARNING: low transcript confidence ({conf:.2f}) — "
-                f"proceeding due to --force-bad-ref",
-                file=sys.stderr,
-            )
-
-        if not transcript:
-            print(
-                "  WARNING: empty transcript — cloning quality may be reduced.",
-                file=sys.stderr,
-            )
-
-        with open(transcript_json, "w") as fh:
-            json.dump(
-                {
-                    "transcript":               transcript,
-                    "avg_logprob":              conf,
-                    "whisper_model":            whisper_model,
-                    "ref_language_detected":    detected_lang,
-                    "ref_language_probability": lang_prob,
-                    "timestamp":                datetime.now(timezone.utc).isoformat(),
-                },
-                fh, indent=2,
-            )
+    quality = reference_quality_report(transcript, conf, lang_prob,
+                                       source=transcript_source, override=force_bad_ref)
+    transcript_record = {
+        "transcript": transcript,
+        "avg_logprob": _finite_metric(conf),
+        "whisper_model": (cached_transcript.get("whisper_model", whisper_model)
+                          if transcript_source == "asr" and cached_transcript is not None
+                          else whisper_model if transcript_source == "asr" else transcript_source),
+        "ref_language_detected": detected_lang,
+        "ref_language_probability": _finite_metric(lang_prob),
+        "transcript_source": transcript_source,
+        "quality_report": quality,
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+    }
+    atomic_json(transcript_json, transcript_record)
 
     # Persist lightweight pipeline state
     state_path = ref_dir / "pipeline_state.json"
@@ -725,12 +722,30 @@ def prepare_ref(
                 "seg_end":                 seg_end,
                 "transcript":              transcript,
                 "ref_language_detected":   detected_lang,
-                "ref_language_probability": lang_prob,
+                "ref_language_probability": _finite_metric(lang_prob),
                 "x_vector_only":           x_vector_only,
+                "quality_report":          quality,
                 "updated_at":              datetime.now(timezone.utc).isoformat(),
             },
             fh, indent=2,
         )
+
+    if quality["reasons"]:
+        reasons = ", ".join(quality["reasons"])
+        print(f"  ASR reference measurements: avg_logprob={_finite_metric(conf)!r} "
+              f"(minimum {QUALITY_GATE_LOGPROB}), language_probability={_finite_metric(lang_prob)!r} "
+              f"(minimum {QUALITY_GATE_LANGUAGE_PROBABILITY})", file=sys.stderr)
+        if not quality["accepted"]:
+            print(f"ERROR: reference quality gate failed: {reasons}. "
+                  "Choose a cleaner segment or explicitly use --force-bad-ref.", file=sys.stderr)
+            sys.exit(1)
+        print(f"WARNING: reference quality gate failed: {reasons}; "
+              "proceeding due to --force-bad-ref", file=sys.stderr)
+
+    # Keep RefResult's numeric API usable even when an explicit override accepted
+    # missing/nonfinite metrics; the report retains the failed checks.
+    conf = _finite_metric(conf) if _finite_metric(conf) is not None else 0.0
+    lang_prob = _finite_metric(lang_prob) if _finite_metric(lang_prob) is not None else 0.0
 
     return RefResult(
         ref_hash=ref_hash,
@@ -1700,7 +1715,7 @@ def build_parser() -> argparse.ArgumentParser:
                     ))
     sp.add_argument(
         "--force-bad-ref", action="store_true",
-        help="Bypass the transcript quality gate (low avg_logprob warning)",
+        help="Explicitly override failed ASR reference quality checks (records reasons)",
     )
     sp.add_argument("--out", default="/work",
                     help="Output directory for WAV + meta.json")

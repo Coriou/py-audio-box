@@ -112,7 +112,7 @@ One of `--text` or `--text-file` must be provided.
 | `--ref-start SEC`     | `float`  | —       | Manual segment start (seconds)                                |
 | `--ref-end SEC`       | `float`  | —       | Manual segment end (seconds)                                  |
 | `--ref-language LANG` | `choice` | `Auto`  | Language of the reference audio; `Auto` = whisper auto-detect |
-| `--force-bad-ref`     | flag     | off     | Bypass the transcript quality gate (low avg_logprob warning)  |
+| `--force-bad-ref`     | flag     | off     | Explicitly override failed ASR reference checks, with a warning and saved reasons |
 
 **Language & synthesis**
 
@@ -203,20 +203,33 @@ Supported languages: `Chinese`, `English`, `Japanese`, `Korean`, `German`,
 
 ## Transcript quality gate
 
-After transcribing the reference segment, the pipeline checks the faster-whisper
-`avg_logprob` confidence score. If it falls below the threshold (`-1.2`), synthesis
-is blocked with a clear diagnostic:
+Fresh and cached ASR transcripts must satisfy all reference checks:
 
-```
-⚠  LOW TRANSCRIPT CONFIDENCE: avg_logprob=-1.45 (threshold -1.2).
-This may result in poor cloning quality. Try:
-  • --ref-start / --ref-end to select a cleaner segment
-  • a higher-quality reference recording
-  • --force-bad-ref to proceed anyway
-```
+- finite `avg_logprob` at least `-1.2`;
+- finite detected-language probability between `0.8` and `1.0`;
+- nonempty transcript containing Unicode letters.
 
-Use `--force-bad-ref` to bypass the gate and synthesise anyway (useful for
-exploring edge cases or when you know the recording is acceptable).
+For example, `avg_logprob=-0.78` with language probability `0.63` is rejected.
+Missing or invalid ASR evidence is also rejected. Cached references are checked
+again under the current policy; a previous override does not authorize a later
+invocation. `--force` refreshes the cache and retains the checks.
+
+These thresholds are conservative heuristics, without calibration on the reported
+cloud audio. The [faster-whisper language probability](https://github.com/SYSTRAN/faster-whisper/blob/master/faster_whisper/transcribe.py)
+comes from language identification. This gate does not establish intelligibility
+or semantic correctness and may reject acceptable short or multilingual clips.
+It uses no dictionary or ASCII-only vocabulary rule: accents, names and non-Latin
+scripts are accepted when their ASR evidence passes.
+
+Choose a clearer segment with `--ref-start` / `--ref-end` or a better recording
+when a check fails. `--force-bad-ref` explicitly overrides failed checks, retaining
+the warning and reasons in the quality report. `--ref-text` and `--x-vector-only`
+remain intentional ways to skip ASR validation; their reports identify that the
+reference was not validated. A cached supplied transcript is not reused as ASR
+evidence on a later call without `--ref-text`.
+
+The versioned quality report is saved alongside the transcript and pipeline state.
+It describes the source, thresholds, failed checks and any explicit override.
 
 ---
 

@@ -80,8 +80,31 @@ TOOLBOX_DOCKER_SUDO=1 TOOLBOX_NETWORK=host TOOLBOX_VARIANT=gpu ./run voice-synth
 Omit the sudo/GPU options if unnecessary. This explicitly enables the host network
 for that invocation; it does not pre-download a model or diagnose the bridge's
 timeout. The normal Compose network remains the default, with no automatic retry.
-See the root README for Linux/Docker Desktop prerequisites. Cloud connectivity
-still needs to be confirmed on that host.
+See the root README for Linux/Docker Desktop prerequisites. The cloud agent
+reported that commit `de82a3e` reached Hugging Face and downloaded models in host
+mode, rejected invalid options and retained working Ryan/clone synthesis. This
+is reported runtime evidence from that machine, not a local rerun.
+
+## Reference quality
+
+The cloud agent also reported accepting a reversed reference with ASR log
+probability `-0.78` and language probability `0.63`. The local checkout does not
+contain its `voice-tests/retest3/` logs or audio. Regression tests reproduce those
+reported metrics with synthetic ASR output.
+
+Automatic reference preparation now checks both the existing log probability
+threshold (`-1.2`) and detected-language probability (at least `0.8`), and requires
+a transcript containing Unicode letters. These checks also run on cached ASR
+transcripts. Missing/non-finite evidence fails; `--force` does not bypass checks.
+`--force-bad-ref` remains an explicit recorded override. Supplied `--ref-text` and
+`--x-vector-only` remain ASR bypasses, labeled as unvalidated in the quality report.
+
+The language threshold is a conservative heuristic, not a calibrated detector of
+reversed speech or meaningless sentences. A high-confidence hallucination can
+still pass; acceptable short/multilingual recordings can fail. There is no
+dictionary filter that would exclude proper names, accents or non-Latin scripts.
+Use a clearer reference and assess it by listening. See the voice-clone README
+for cache and quality-report behavior.
 
 ## Named voice publication
 
