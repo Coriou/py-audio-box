@@ -112,3 +112,8 @@ all job processing, restarts and final worker cleanup before report publication.
 once per worker and retained separately from the provisioning manifest versions. Lower `rtf` is faster (seconds / audio seconds).
 This is actual model reuse, not a renamed cold-process repeat. Naturalness, text
 fidelity and voice identity still require listening.
+
+Kokoro disables ONNX CPU arena reserves; dedicated CPU images use a fixed glibc
+mmap threshold to return large freed buffers. This saves RAM with some allocation
+overhead. Weights remain FP32. Completed audio is released between
+jobs while the model stays loaded. See [memory measurements and their scope](../../docs/TTS_MEMORY.md).

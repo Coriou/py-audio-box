@@ -234,6 +234,7 @@ def _batch_worker(connection, args, source):
             started = time.monotonic()
             cold = backend is None
             load_seconds = 0.0
+            result = None
             try:
                 with contextlib.redirect_stdout(sys.stderr):
                     if args.reference and hashlib.sha256(args.reference.read_bytes()).hexdigest() != source['reference_sha256']:
@@ -280,6 +281,10 @@ def _batch_worker(connection, args, source):
                         total_seconds=time.monotonic()-started)))
                 # An inference error discards state; parent supervises shutdown/restart.
                 break
+            finally:
+                # Keep the resident model, but release this take before waiting
+                # for another job or allocating the next inference's audio.
+                result = None
     except (EOFError, BrokenPipeError):
         pass
     finally:

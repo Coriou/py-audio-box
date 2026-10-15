@@ -6,6 +6,9 @@ WORKDIR /app
 COPY requirements /requirements
 COPY requirements/tts-assets.json /app/requirements/tts-assets.json
 RUN pip install --no-cache-dir --require-hashes -r /requirements/${BACKEND}.lock --extra-index-url https://download.pytorch.org/whl/cpu
+# Keep large freed inference buffers returnable instead of allowing glibc's
+# adaptive mmap threshold to retain them in per-thread heaps.
+ENV MALLOC_MMAP_THRESHOLD_=131072
 COPY lib /app/lib
 COPY apps/voice-cpu /app/apps/voice-cpu
 COPY apps/audio-export /app/apps/audio-export

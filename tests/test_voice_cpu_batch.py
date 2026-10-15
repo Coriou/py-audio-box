@@ -51,6 +51,52 @@ def args_for(app, tmp_path, jobs, extra=()):
         '--jobs', str(jobs_path), '--report', str(tmp_path / 'report.json'), '--json', *extra])
 
 
+def test_batch_releases_previous_audio_before_waiting_and_next_inference(tmp_path, monkeypatch):
+    import weakref
+    import numpy as np
+    import soundfile as sf
+    app = load_app()
+    prior_audio = []
+    records = []
+    jobs = [dict(id=str(i), text='Bonjour.', output=str(tmp_path / f'{i}.wav'),
+                 _audio_stage=str(tmp_path / f'{i}.stage.wav'),
+                 _meta_stage=str(tmp_path / f'{i}.stage.json')) for i in range(2)]
+    expected = (np.arange(2400, dtype=np.float64) - 1200) / 4096
+
+    class Backend:
+        manifest = {'checkpoint': 'synthetic', 'files': []}
+        def synthesise(self, text, **kwargs):
+            assert all(reference() is None for reference in prior_audio)
+            samples = expected.copy()
+            prior_audio.append(weakref.ref(samples))
+            return SimpleNamespace(samples=samples, sample_rate=24000, channels=1, metadata={})
+        def close(self):
+            assert all(reference() is None for reference in prior_audio)
+
+    pending = iter([*jobs, None])
+    class Connection:
+        def recv(self):
+            # Includes the idle wait after every completed take.
+            assert all(reference() is None for reference in prior_audio)
+            return next(pending)
+        def send(self, payload):
+            records.append(payload)
+        def close(self):
+            pass
+
+    args = args_for(app, tmp_path, [])
+    monkeypatch.setattr(app, '_make_backend', lambda _args: Backend())
+    monkeypatch.setattr(app, '_runtime_versions', lambda _backend: {})
+    app._batch_worker(Connection(), args, {})
+    assert [record['status'] for record in records] == ['ok', 'ok']
+    # Release happens after export; both takes retain the same PCM24 samples.
+    expected_pcm = np.floor(expected * 2**23) / 2**23
+    for job in jobs:
+        actual, rate = sf.read(job['_audio_stage'])
+        assert rate == 24000
+        np.testing.assert_array_equal(actual, expected_pcm)
+
+
 def test_real_spawn_reuses_one_model_and_preserves_job_identity(tmp_path, monkeypatch):
     app = load_app()
     monkeypatch.setattr(app, '_batch_worker', fake_backend_worker)

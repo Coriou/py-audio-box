@@ -6,6 +6,7 @@ Everything runs in Docker — zero host installs, fast re-runs, shared cache acr
 Optional isolated CPU engines: [Kokoro presets and Pocket clone setup](apps/voice-cpu/README.md).
 Qwen remains the default. [Benchmark and listening protocol](docs/TTS_BENCHMARK.md)
 separates runtime measurements from human acoustic acceptance.
+See also [resident memory tuning and measurements](docs/TTS_MEMORY.md).
 
 ---
 

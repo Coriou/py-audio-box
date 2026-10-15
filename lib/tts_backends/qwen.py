@@ -87,6 +87,7 @@ def _worker_impl(connection, settings):
         connection.send(('ready', {'revision': getattr(model, '_audio_box_revision', settings.get('revision'))}))
         while True:
             method, args, kwargs = connection.recv()
+            value = None
             try:
                 seed = kwargs.pop('_audio_box_seed', None)
                 if seed is not None:
@@ -102,6 +103,10 @@ def _worker_impl(connection, settings):
                 connection.send(('ok', _cpu_payload(value)))
             except Exception as exc:
                 connection.send(('error', (type(exc).__name__, str(exc))))
+            finally:
+                # Sending serializes the result; the owner need not retain the
+                # previous take while idle or during the next inference.
+                value = None
     except BaseException as exc:
         try:
             connection.send(('error', (type(exc).__name__, str(exc))))

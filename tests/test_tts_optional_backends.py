@@ -50,8 +50,21 @@ def test_kokoro_mock_contract(tmp_path, monkeypatch):
         def __init__(self, path, sess_options, providers):
             assert sess_options.intra_op_num_threads == 2
             assert sess_options.inter_op_num_threads == 1
+            assert sess_options.enable_cpu_mem_arena is False
             assert Path(path).is_file()
             assert providers == ['CPUExecutionProvider']
+            self._model_path = path
+        def get_inputs(self):
+            return ['tokens']
+        def get_outputs(self):
+            return ['audio']
+        def get_modelmeta(self):
+            return 'model metadata'
+        def run(self, output_names, input_feed, run_options=None):
+            assert output_names is None
+            assert input_feed == {'text': Kokoro.generated_texts[-1]}
+            assert run_options is None
+            return [np.arange(24, dtype=np.float32)]
         def get_providers(self):
             Session.provider_reads += 1
             return ['CPUExecutionProvider']
@@ -60,6 +73,11 @@ def test_kokoro_mock_contract(tmp_path, monkeypatch):
         generated_texts = []
         @classmethod
         def from_session(cls, session, voices):
+            assert isinstance(session, Session)
+            assert session._model_path == str(tmp_path / 'model.onnx')
+            assert session.get_inputs() == ['tokens']
+            assert session.get_outputs() == ['audio']
+            assert session.get_modelmeta() == 'model metadata'
             obj = cls()
             obj.sess = session
             return obj
@@ -69,7 +87,7 @@ def test_kokoro_mock_contract(tmp_path, monkeypatch):
         def create(self, text, voice, lang):
             Kokoro.generated_texts.append(text)
             assert voice == 'ff_siwis' and lang == 'fr-fr'
-            return np.ones(24), 24000
+            return self.sess.run(None, {'text': text})[0], 24000
     monkeypatch.setitem(sys.modules, 'onnxruntime', types.SimpleNamespace(SessionOptions=lambda: types.SimpleNamespace(), InferenceSession=Session))
     monkeypatch.setitem(sys.modules, 'kokoro_onnx', types.SimpleNamespace(Kokoro=Kokoro))
     model = KokoroBackend(tmp_path)
@@ -80,6 +98,7 @@ def test_kokoro_mock_contract(tmp_path, monkeypatch):
     assert result.metadata['model_load_seconds'] == result.metadata['load_seconds']
     assert result.metadata['model_reused'] is False
     assert result.metadata['request_index'] == 1
+    assert result.metadata['cpu_mem_arena'] is False
     for kwargs in ({'reference': 'x.wav'}, {'instruct': 'warm'}, {'seed': 1}):
         with pytest.raises(BackendError):
             model.synthesise('Bonjour.', preset='ff_siwis', **kwargs)
@@ -92,6 +111,7 @@ def test_kokoro_mock_contract(tmp_path, monkeypatch):
     assert repeated.metadata['model_reused'] is True
     assert repeated.metadata['request_index'] == 2
     assert other.metadata['request_index'] == 3
+    np.testing.assert_array_equal(result.samples, np.arange(24, dtype=np.float32))
     assert Kokoro.generated_texts == ['Bonjour.', 'Bonjour.', 'Une nouvelle phrase.']
     assert Kokoro.catalog_reads == 1
     assert Session.provider_reads == 1

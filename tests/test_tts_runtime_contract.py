@@ -21,6 +21,44 @@ def healthy_generation():
     return [np.ones(24)], 24000
 
 
+def test_qwen_worker_releases_sent_audio_before_next_request(monkeypatch):
+    import weakref
+    import tts
+    import tts_backends.qwen as qwen
+    references, outputs = [], []
+    expected = np.arange(24, dtype=np.float32)
+
+    class Model:
+        def generate(self):
+            assert all(reference() is None for reference in references)
+            samples = expected.copy()
+            references.append(weakref.ref(samples))
+            return [samples], 24000
+
+    class Connection:
+        calls = 0
+        def recv(self):
+            assert all(reference() is None for reference in references)
+            self.calls += 1
+            if self.calls > 2:
+                raise EOFError
+            return 'generate', (), {}
+        def send(self, message):
+            if message[0] == 'ok':
+                # A real Pipe serializes; retain only a copy in this fake.
+                wavs, rate = message[1]
+                outputs.append((wavs[0].copy(), rate))
+        def close(self):
+            pass
+
+    monkeypatch.setattr(tts, '_load_tts_model_local', lambda **_settings: Model())
+    qwen._worker_impl(Connection(), {})
+    assert len(outputs) == 2
+    for samples, rate in outputs:
+        assert rate == 24000
+        np.testing.assert_array_equal(samples, expected)
+
+
 def failing_generation():
     raise MemoryError('synthetic OOM')
 

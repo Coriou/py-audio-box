@@ -129,3 +129,12 @@ The final source image `sha256:24a40ae526151bc6d8c375068dfb282abf7620d19a83053e5
 For these two three-phrase groups, total process wall was 36.796 s for six separate commands versus 20.817 s for two homogeneous batches: 43.4% less time. Each batch includes its initial model load. This is one repetition on the same four-CPU/4-GiB Linux x86_64 setup, not a universal speed promise or an acoustic rating. Full receipts: `work/tts-performance-20261014/final-source-check/results.json`.
 
 The final no-network, no-source-mount unit image passes 195 tests (one opt-in/package-dependent skip). Astra accepts the bounded implementation after three performance review rounds. Raw WAVs, scripts and listening metadata are in `work/tts-listening-20261014/enriched/`; the downloadable archive is `work/tts-listening-20261014/audios-complets-a-ecouter.zip`. No human listening acceptance is claimed.
+
+## Memory policy follow-up, 15 October 2026
+
+The dedicated CPU image now combines disabled Kokoro CPU arena reservations with
+a fixed glibc mmap threshold. [Memory measurements](TTS_MEMORY.md) report the
+resulting RAM/latency tradeoff on short/long resident batches. The throughput
+figures above remain attributed to their original frozen image; they do not
+measure this newer allocation policy. Re-run the paired cold/batch harness to
+establish a current speed ratio under that policy.
