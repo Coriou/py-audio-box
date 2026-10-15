@@ -51,6 +51,25 @@ and subsequent synthesis. Use the dtype supported by that runtime. Existing
 named entries/references remain recoverable; successful rebuilding publishes a
 complete prompt without deleting other tones.
 
+For a named voice with both model variants already cached, `voice-synth speak
+--voice cloud-speaker --model Qwen/Qwen3-TTS-12Hz-0.6B-Base` selects an existing
+compatible 0.6B prompt instead of blindly taking the newest 1.7B prompt. Selection
+checks the resolved revision, prompt bytes and that prompt's own reference. It
+does not convert or rebuild prompts. If no compatible variant exists, build it
+once for the target model. Direct pickle paths and legacy prompt IDs stay exact.
+Without `--model`, named voices select a compatible prompt for the existing
+default Base model; building a larger-model prompt does not change that default.
+
+`--tone` additionally requires the same registered tone. New registrations record
+the tone in each prompt sidecar so variants survive a later model switch. For old
+sidecars without tone metadata, only the current explicit tone index establishes
+that association; an unidentifiable older variant may need rebuilding once.
+
+On Linux hosts where Docker requires sudo, the Bash launcher accepts
+`TOOLBOX_DOCKER_SUDO=1 ./run voice-synth …`; combine it with
+`TOOLBOX_VARIANT=gpu` when needed. Elevation is explicit and never an automatic
+retry of a failed generation.
+
 ## Named voice publication
 
 `voice-clone synth` no longer creates a named entry before reference preparation,

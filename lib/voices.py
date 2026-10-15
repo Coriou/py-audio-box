@@ -325,6 +325,31 @@ class VoiceRegistry:
         except (OSError, ValueError, TypeError):
             return False
 
+    def matching_prompt(self, slug: str, *, checkpoint: str, revision: str | None,
+                        schema_version: int, tone: str | None = None) -> Path | None:
+        """Select an existing fully validated model variant without loading pickle."""
+        import hashlib
+        current_tones = self.list_tones(slug)
+        candidates = sorted(self.prompts_dir(slug).glob("*.pkl"),
+                            key=lambda p: p.stat().st_mtime, reverse=True)
+        for path in candidates:
+            try:
+                meta = json.loads(path.with_suffix(".meta.json").read_text())
+                if not isinstance(meta, dict):
+                    continue
+                if tone is not None and not (meta.get("tone") == tone or current_tones.get(tone) == path.stem):
+                    continue
+                reference = self.prompt_reference(path)
+                if reference is None:
+                    continue
+                reference_hash = hashlib.sha256(reference.read_bytes()).hexdigest()
+                if self.compatible_prompt(path, checkpoint=checkpoint, revision=revision,
+                        schema_version=schema_version, reference_hash=reference_hash):
+                    return path
+            except (OSError, ValueError, TypeError):
+                continue
+        return None
+
     def list_voices(self) -> list[dict[str, Any]]:
         """
         Return all named voices, sorted by creation date (newest first).
@@ -457,6 +482,8 @@ class VoiceRegistry:
         if Path(pkl_src).resolve() != dest_pkl.resolve():
             shutil.copyfile(pkl_src, dest_pkl)
         meta = dict(meta)
+        if tone is not None:
+            meta["tone"] = tone
         reference = self.ref_wav(slug)
         if reference.is_file():
             import hashlib

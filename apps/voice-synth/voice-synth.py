@@ -191,6 +191,26 @@ def _validate_prompt_cache(reg, pkl_path, model, model_name):
                          'rebuild from the trusted local WAV with voice-clone synth --voice.')
 
 
+def _select_named_prompt_variant(reg, resolved, model, model_name, tone=None):
+    """Select a compatible named variant for the requested or default model."""
+    slug = resolved.get("named_slug")
+    if not slug:
+        return resolved["prompt_path"]
+    resolve_identity = getattr(model, 'get_supported_languages', None)
+    if callable(resolve_identity):
+        resolve_identity()  # Resolve symbolic revisions such as main to the loaded snapshot.
+    selected = reg.matching_prompt(slug, checkpoint=model_name,
+        revision=getattr(model, '_audio_box_revision', None),
+        schema_version=PROMPT_SCHEMA_VERSION, tone=tone)
+    if selected is None:
+        tone_option = f" --tone {tone}" if tone is not None else ""
+        raise ValueError(f"Voice '{slug}' has no compatible cached prompt for model '{model_name}'"
+                         f"{(' and tone ' + repr(tone)) if tone is not None else ''}. "
+                         f"Build it with voice-clone synth --voice {slug} --model {model_name}"
+                         f"{tone_option} --text 'Hello', or select a model with a matching cached prompt.")
+    return str(selected)
+
+
 def concat_wavs_simple(wav_paths: list[Path], dest: Path,
                         silence_ms: int = CHUNK_SILENCE_MS,
                         sample_rate: int = 24_000, pauses_ms=None) -> None:
@@ -627,6 +647,7 @@ def resolve_voice(voice_arg: str, cache: Path, tone: str | None = None) -> dict[
                 "voice_id": voice_arg,
                 "engine_mode": engine,
                 "prompt_path": str(pkl),
+                "named_slug": voice_arg,
                 "speaker": None,
                 "instruct": None,
                 "instruct_source": None,
@@ -648,6 +669,7 @@ def resolve_voice(voice_arg: str, cache: Path, tone: str | None = None) -> dict[
             "voice_id": voice_arg,
             "engine_mode": engine,
             "prompt_path": str(best),
+            "named_slug": voice_arg,
             "speaker": None,
             "instruct": None,
             "instruct_source": None,
@@ -1457,6 +1479,10 @@ def cmd_speak(args) -> None:
         'custom_voice' if engine_mode == 'custom_voice' else 'clone', instruct=instruct)
     t0 = time.perf_counter()
     model = _load_owned_model(model_name, args.threads, args.dtype)
+    if engine_mode != "custom_voice":
+        pkl_path = _select_named_prompt_variant(reg, resolved, model, model_name, tone=tone)
+        voice_meta = json.loads(Path(pkl_path).with_suffix(".meta.json").read_text())
+        ref_language = voice_meta.get("ref_language_detected", "English")
     language = validate_language(resolve_language(args.language, ref_language, raw_text), model)
     print(f"  language: {language}  (ref detected: {ref_language})")
 

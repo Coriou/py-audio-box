@@ -11,5 +11,6 @@ COPY tests /app/tests
 COPY benchmarks /app/benchmarks
 COPY scripts /app/scripts
 COPY run-cpu /app/run-cpu
+COPY run /app/run
 COPY pyproject.toml /app/pyproject.toml
 CMD ["python", "-m", "pytest", "tests", "-m", "not integration and not redis_integration", "-q"]

@@ -4,6 +4,7 @@
 # Usage:
 #   ./run <app-name> [args...]
 #   TOOLBOX_VARIANT=gpu ./run <app-name> [args...]
+#   TOOLBOX_DOCKER_SUDO=1 ./run <app-name> [args...]
 #
 # Examples:
 #   ./run voice-split --url "https://www.youtube.com/watch?v=XXXX" --clips 5 --length 30
@@ -45,9 +46,17 @@ fi
 
 # ── compose file selection ─────────────────────────────────────────────────────
 # TOOLBOX_VARIANT=gpu adds the GPU overlay; everything else uses CPU-only defaults.
-COMPOSE_FILES="-f docker-compose.yml"
+COMPOSE_FILES=(-f docker-compose.yml)
 if [[ "${TOOLBOX_VARIANT:-}" == "gpu" ]]; then
-  COMPOSE_FILES="$COMPOSE_FILES -f docker-compose.gpu.yml"
+  COMPOSE_FILES+=(-f docker-compose.gpu.yml)
 fi
 
-exec docker compose $COMPOSE_FILES run --rm pab python "${SCRIPT}" "$@"
+# Elevation is opt-in: never retry a failed app under different privileges.
+DOCKER_COMMAND=(docker)
+case "${TOOLBOX_DOCKER_SUDO:-0}" in
+  0) ;;
+  1) DOCKER_COMMAND=(sudo -- docker) ;;
+  *) echo 'Error: TOOLBOX_DOCKER_SUDO must be 0 or 1.' >&2; exit 2 ;;
+esac
+
+exec "${DOCKER_COMMAND[@]}" compose "${COMPOSE_FILES[@]}" run --rm pab python "${SCRIPT}" "$@"

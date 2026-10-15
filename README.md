@@ -108,6 +108,20 @@ Acceleration details:
 - Whisper (voice-clone / voice-synth QA) switches to `float16` on GPU
 - Qwen3-TTS uses the detected device; measure GPU/CPU speed on the same script and checkpoint.
 
+### Docker requires sudo on Linux
+
+If your account can only access Docker through `sudo`, use the launcher's explicit
+option (also compatible with `TOOLBOX_VARIANT=gpu`):
+
+```sh
+TOOLBOX_DOCKER_SUDO=1 ./run voice-synth --help
+TOOLBOX_DOCKER_SUDO=1 TOOLBOX_VARIANT=gpu ./run voice-synth speak --voice my-voice --text "Hello"
+```
+
+This runs `sudo -- docker compose …`; sudo may ask for your password. The default
+remains ordinary `docker`. The launcher never retries a failed generation with
+sudo automatically. This option applies to the Bash `./run` launcher.
+
 ### Windows
 
 The `./run` bash script works in Git Bash and WSL 2.
