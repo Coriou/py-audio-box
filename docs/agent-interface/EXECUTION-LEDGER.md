@@ -19,7 +19,7 @@
 | Lot | State | Dependency / next action |
 | --- | --- | --- |
 | Launch preparation | Complete | Planning baseline `2c1adaa`; source base `ae67cd6`; integration branch `feat/agent-voice-workspace`. |
-| 0A Contract/compatibility pack | Review round 3 | Candidate `ca0ad37`, revision 1.2.0; independent frozen-boundary review running. |
+| 0A Contract/compatibility pack | Correction round 3 | R2 findings closed; R3-1 reusable settings and R3-2 output conformance remain. |
 | 0B Editor browser fixture | Pending | Recorded 0A contract fixture; separate owned component slice and reviewer. |
 | 0C Integration skeleton/acceptance ledger | Pending | 0A boundaries; integrate component decision after 0B. |
 | Phase 0 gate | Not evaluated | Integrated contracts, browser evidence, packaging boundary and relevant checks. |
@@ -77,3 +77,9 @@ Record failures and missing evidence; do not replace them with a successful late
 - Implementer reports revision 1.2.0, four operation transcripts and 185 final selected tests (114 contract +71 legacy), exact-source image with 137 files/zero mismatches. E1 claims await independent verification.
 - Independent Sol-low request/task suffix `pab-phase0a-review-r3-20261016` (same full task-ID prefix above), report `reviews/0A-r3-sol.md`. Full prior findings/Astra matrix supplied; sole heavy test lane. Required per-finding/adjacent invariant verdict and final exact-source tests.
 - No objections waived; no 0A/Phase 0 GO. Final global Astra remains separate.
+
+## Lot 0A round-3 verdict
+
+- [Independent R3 report](reviews/0A-r3-sol.md): NO-GO on `ca0ad37`; exact-source match and 185 selected passing tests independently verified. Original R2-1/2/3 counterexamples now reject; prior F1/F3/F4/F5/F6 preserved.
+- Remaining R3-1: immutable reusable speech settings need typed retrievable preimage and publication validation, distinct from prepare/design generation settings. R3-2: output media format/subtype and render length/channels/rate must match frozen operation policy, with truthful synthetic verification evidence.
+- Correction request `pab-phase0a-fix-r3-20261016`, isolated Sol-low; bounded two-finding repair followed by independent review. No integration or waiver; all evidence E1.
