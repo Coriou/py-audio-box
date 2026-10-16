@@ -407,3 +407,8 @@ Record failures and missing evidence; do not replace them with a successful late
 - Candidate `d4290c6e0c31e132b6ae6039312c5292e88fb12b`, frozen source `aae8919`, app-owned `t3-361ad50c`; root read fullcorrectionresponse and commit summary, unintegrated. F1 structuralallocationjoins; F2 boundedclosedbeforeimage/proof/stepdocuments with actualsnapshot/manifest/certificate and receiptarchive validation.
 - Claims193focused/388affected/423passed18skipped finalfrozen sequentialruns; E1only, no selfGO. Applyunavailable/activationclosed.
 - FreshSol-low request/task suffix `pab-phase1a-p1b21-review-r2-20261022`, report `reviews/P1B21-r2-sol.md`; originalbrief/fullpriorfindings+responses supplied. No waiver/integration; subsequentlots and A1inventoryqualification remainpending.
+
+## B2.1 round2 NO-GO / nonterminal semantic correction
+
+- [R2review](reviews/P1B21-r2-sol.md): F1originalclosed, F2stillopen exactd4290c6. Fullyrehashed nonterminalcompletion permits erasedattempts/unknownjobfields through completion/startup/historicalCore.193focused/423passed18skipped independentlyconfirmed, no waiver/integration.
+- Isolated Sol-low request `pab-phase1a-p1b21-fix-r2-20261022`: canonical closed job validation and explicit frozen-beforeimage unsuccessful-transition delta preserving attemptprovenance; fullyrehashed negatives/positive allocated fail-cancel fixtures. Apply remainsunavailable, subsequentlotsclosed.
