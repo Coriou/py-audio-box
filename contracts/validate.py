@@ -71,6 +71,7 @@ def project(p):
     aliases=[a for v in p['voices'] for a in [v['id']]+v['aliases']]
     require(len(set(aliases))==len(aliases), 'alias_collision')
     for v in p['voice_versions']:
+        voice_configuration(v)
         require(v['voice_id'] in groups['voices'] and all(a in groups['assets'] for a in v['reference_asset_ids']), 'reference_missing')
     for s in p['speakers']:
         require(s['voice_version_id'] in groups['voice_versions'], 'voice_version_missing')
@@ -138,6 +139,11 @@ def publication(job, attempt, artifact, present_hashes, *, transport_owner, cont
     require(len(outputs)==(plan['request']['variants'] if job['operation']=='speech_generate' else 1), 'result_mismatch')
     require(not set(outputs)&set(required_asset_ids(plan)), 'result_mismatch')
     require(all(present_hashes.get(k)==v['sha256'] for k,v in outputs.items()), 'missing_media')
+    if job['operation'] in ('voice_prepare','voice_design'):
+        require(all(a['media_format']=='wav' and a['media_subtype']=='PCM_16' for a in outputs.values()), 'output_format_mismatch')
+    if job['operation']=='project_render':
+        policy=plan['request']['policy']
+        require(all(a['media_format']=='wav' and a['media_subtype']=='PCM_24' and a['sample_rate']==policy['sample_rate'] and a['channels']==policy['channels'] and a['frames']*48000==policy['length_ticks']*policy['sample_rate'] for a in outputs.values()), 'output_policy_mismatch')
     candidates=unique(manifest['candidates'])
     if job['operation'] in ('voice_prepare','voice_design'):
         require(len(candidates)==1, 'candidate_missing')
@@ -148,6 +154,7 @@ def publication(job, attempt, artifact, present_hashes, *, transport_owner, cont
             require(version['origin']==('design' if job['operation']=='voice_design' else 'clone'), 'origin_mismatch')
             require(cfg.get('reference_asset_id')==candidate['audition_asset_id'], 'reference_mismatch')
             require(version['reference_text']==plan['request']['reference_text'], 'reference_mismatch')
+            require(cfg==plan['resolved']['reuse_configuration'] and version['settings']==plan['resolved']['reuse_settings'], 'reuse_configuration_mismatch')
             if job['operation']=='voice_design':
                 require(version['identity']==plan['resolved']['reuse_identity'] and cfg.get('conditioning')=='icl', 'identity_substitution')
                 lineage=version['design_lineage']
@@ -198,8 +205,11 @@ def unique(items):
 
 def voice_configuration(version, bundles=None):
     cfg=version['configuration'];mode=cfg['mode'];identity=version['identity']
+    validate('speech_settings',version['settings'])
+    require(version['settings_sha256']==canonical_hash(version['settings']), 'settings_mismatch')
     engine={'qwen_preset':'qwen','kokoro_preset':'kokoro','qwen_clone':'qwen','pocket_clone':'pocket-tts'}[mode]
     require(identity['engine']==engine, 'configuration_engine_mismatch')
+    require(version['settings']['kind']==mode, 'settings_mode_mismatch')
     require(version['origin']!='design' or mode=='qwen_clone', 'origin_mismatch')
     clone=mode in ('qwen_clone','pocket_clone')
     require(version['origin'] in (('clone','design') if clone else ('preset',)), 'origin_mismatch')
@@ -207,6 +217,7 @@ def voice_configuration(version, bundles=None):
     require(version['reference_text']==cfg.get('reference_text',''), 'reference_mismatch')
     require((version['design_lineage'] is not None)==(version['origin']=='design'), 'design_lineage_mismatch')
     if mode=='qwen_clone':
+        require(version['settings']['instruction'] is None, 'unsupported_instruction')
         require(cfg['conditioning']!='icl' or bool(cfg['reference_text']), 'conditioning_mismatch')
         require(cfg['conditioning']!='x_vector' or cfg['reference_text']=='', 'conditioning_mismatch')
     if bundles is not None:
@@ -217,6 +228,12 @@ def voice_configuration(version, bundles=None):
             matches=[v for v in bundle['selectors'] if v['value']==selector]
             require(len(matches)==1, 'unknown_selector')
             if mode=='kokoro_preset':require(cfg['language'] in matches[0]['languages'], 'language_mismatch')
+        require(version['settings']['language'] in bundle['languages'], 'language_mismatch')
+        if mode=='qwen_preset':
+            require(version['settings']['language'] in matches[0]['languages'], 'language_mismatch')
+            require(version['settings']['instruction'] is None or bundle['instructions'], 'unsupported_instruction')
+        if 'language' in cfg:
+            require(version['settings']['language']==cfg['language'], 'language_mismatch')
         if 'language' in cfg:require(cfg['language'] in bundle['languages'], 'language_mismatch')
 
 
@@ -254,6 +271,17 @@ def frozen_plan(plan, bundles=None):
     require(profile['topology']==('packaged_native' if profile['device']=='metal' else 'networkless_container'), 'profile_mismatch')
     require(dict(operation=op,mode=mode,identity=effective) in profile['compatibility'], 'profile_incompatible')
     require(identity['fallback']!='allow_cpu' or (request.get('fallback','forbid')=='allow_cpu' and r['operator_fallback']=='allow_cpu'), 'fallback_policy_mismatch')
+    if op in ('voice_prepare','voice_design'):
+        require(r['reuse_settings'] is not None and r['reuse_configuration'] is not None, 'reuse_configuration_mismatch')
+        cfg=r['reuse_configuration'];reuse=r['reuse_settings']
+        target=r['reuse_identity'] if op=='voice_design' else effective
+        require(target is not None, 'unresolved_identity')
+        prospective=dict(origin='design' if op=='voice_design' else 'clone',identity=target,configuration=cfg,settings=reuse,settings_sha256=canonical_hash(reuse),reference_asset_ids=[cfg.get('reference_asset_id')],reference_text=request['reference_text'],design_lineage=dict(generation_identity=effective) if op=='voice_design' else None)
+        voice_configuration(prospective,bundles)
+        require(cfg.get('reference_text',request['reference_text'])==request['reference_text'], 'reference_mismatch')
+        require(op!='voice_design' or cfg.get('conditioning')=='icl', 'conditioning_mismatch')
+        require(op!='voice_prepare' or cfg.get('conditioning','pocket')==settings['conditioning'], 'conditioning_mismatch')
+    else:require(r['reuse_settings'] is None and r['reuse_configuration'] is None, 'operation_mismatch')
     if op!='voice_design':require(r['reuse_identity'] is None, 'operation_mismatch')
     if op!='project_render':require(identity['requested']==request['identity'], 'identity_substitution')
     assets=unique(plan['assets']);versions=unique(plan['voice_versions'])
@@ -267,7 +295,7 @@ def frozen_plan(plan, bundles=None):
         require(mode==cfg['mode'], 'settings_mode_mismatch')
         if mode in ('kokoro_preset','pocket_clone'):require(settings['language']==cfg['language'], 'language_mismatch')
         if mode=='qwen_clone':require(settings['instruction'] is None, 'unsupported_instruction')
-        require(voice['settings_sha256']==r['settings_sha256'], 'settings_mismatch')
+        require(voice['settings']==settings and voice['settings_sha256']==r['settings_sha256'], 'settings_mismatch')
         if bundles is not None:
             bundle=select_bundle(effective,mode,bundles)
             require(settings['language'] in bundle['languages'], 'language_mismatch')
@@ -390,7 +418,7 @@ def content(data, request, *, authorized):
     require(authorized, 'forbidden')
     start,end=request['start'],request['end_exclusive']
     require(0<=start<end<=len(data) and end-start<=16777216, 'invalid_range')
-    result=dict(schema_version='1.2.0',asset_id=request['asset_id'],total_bytes=len(data),start=start,end_exclusive=end,content_sha256=hashlib.sha256(data).hexdigest(),content_base64=base64.b64encode(data[start:end]).decode())
+    result=dict(schema_version='1.3.0',asset_id=request['asset_id'],total_bytes=len(data),start=start,end_exclusive=end,content_sha256=hashlib.sha256(data).hexdigest(),content_base64=base64.b64encode(data[start:end]).decode())
     validate('content_result',result)
     return result
 

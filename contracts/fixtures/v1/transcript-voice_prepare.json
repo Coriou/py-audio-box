@@ -2,7 +2,7 @@
   "evidence": "E1 synthetic catalogue only",
   "context": {
     "plan": {
-      "schema_version": "1.2.0",
+      "schema_version": "1.3.0",
       "operation": "voice_prepare",
       "request": {
         "asset_id": "impulse",
@@ -21,6 +21,7 @@
       "voice_versions": [],
       "assets": [
         {
+          "media_subtype": "PCM_16",
           "media_format": "wav",
           "id": "impulse",
           "sha256": "6de1d8cc4c678241ac609b81e8728a89850ce72a9cf736c4214a7ea9dc0943df",
@@ -36,6 +37,23 @@
         }
       ],
       "resolved": {
+        "reuse_configuration": {
+          "mode": "qwen_clone",
+          "reference_asset_id": "output-prepare",
+          "reference_text": "Exact reference.",
+          "conditioning": "icl"
+        },
+        "reuse_settings": {
+          "kind": "qwen_clone",
+          "language": "French",
+          "seed": 1,
+          "temperature": 0.9,
+          "top_p": 1,
+          "top_k": 50,
+          "repetition_penalty": 1.05,
+          "max_new_tokens": 2048,
+          "instruction": null
+        },
         "reuse_identity": null,
         "kind": "prepare",
         "identity": {
@@ -238,7 +256,7 @@
   "job": {
     "id": "job-prepare",
     "operation": "voice_prepare",
-    "input_sha256": "bc545b3049364b6a9e3a975e48a24e2dec21cdaf436680e2e49334c65152f3f7",
+    "input_sha256": "e66b85672b76820118e446985cd6f433e8f9709658cf1c4bef4c26f63570c719",
     "principal_id": "principal1",
     "idempotency_key": "request-prepare",
     "state": "running",
@@ -257,12 +275,12 @@
     "deadline": "2026-10-16T00:10:00Z"
   },
   "message": {
-    "protocol_version": "1.2.0",
+    "protocol_version": "1.3.0",
     "kind": "result",
     "job_id": "job-prepare",
     "attempt_id": "attempt-prepare",
     "generation": 1,
-    "input_sha256": "bc545b3049364b6a9e3a975e48a24e2dec21cdaf436680e2e49334c65152f3f7",
+    "input_sha256": "e66b85672b76820118e446985cd6f433e8f9709658cf1c4bef4c26f63570c719",
     "input_asset_ids": [
       "impulse"
     ],
@@ -293,7 +311,7 @@
       "output-prepare"
     ],
     "plan": {
-      "schema_version": "1.2.0",
+      "schema_version": "1.3.0",
       "operation": "voice_prepare",
       "request": {
         "asset_id": "impulse",
@@ -312,6 +330,7 @@
       "voice_versions": [],
       "assets": [
         {
+          "media_subtype": "PCM_16",
           "media_format": "wav",
           "id": "impulse",
           "sha256": "6de1d8cc4c678241ac609b81e8728a89850ce72a9cf736c4214a7ea9dc0943df",
@@ -327,6 +346,23 @@
         }
       ],
       "resolved": {
+        "reuse_configuration": {
+          "mode": "qwen_clone",
+          "reference_asset_id": "output-prepare",
+          "reference_text": "Exact reference.",
+          "conditioning": "icl"
+        },
+        "reuse_settings": {
+          "kind": "qwen_clone",
+          "language": "French",
+          "seed": 1,
+          "temperature": 0.9,
+          "top_p": 1,
+          "top_k": 50,
+          "repetition_penalty": 1.05,
+          "max_new_tokens": 2048,
+          "instruction": null
+        },
         "reuse_identity": null,
         "kind": "prepare",
         "identity": {
@@ -398,9 +434,9 @@
     "asset_ids": [
       "output-prepare"
     ],
-    "input_sha256": "bc545b3049364b6a9e3a975e48a24e2dec21cdaf436680e2e49334c65152f3f7",
+    "input_sha256": "e66b85672b76820118e446985cd6f433e8f9709658cf1c4bef4c26f63570c719",
     "project_revision": 0,
-    "manifest_sha256": "1abf6877df4aa7e42f8839ad0aadabae5f318873d4ee9e822a58b5400d041232",
+    "manifest_sha256": "c3c656a9062004db107d416ab0bbc9801309940a070c8ebdb46ee673b13f78f0",
     "identity": {
       "requested": {
         "engine": "qwen",
@@ -431,10 +467,11 @@
     "generation": 1,
     "owner_id": "worker1",
     "staging_id": "stage-prepare",
-    "input_sha256": "bc545b3049364b6a9e3a975e48a24e2dec21cdaf436680e2e49334c65152f3f7",
+    "input_sha256": "e66b85672b76820118e446985cd6f433e8f9709658cf1c4bef4c26f63570c719",
     "artifact_id": "artifact-prepare",
     "outputs": [
       {
+        "media_subtype": "PCM_16",
         "media_format": "wav",
         "id": "output-prepare",
         "sha256": "6de1d8cc4c678241ac609b81e8728a89850ce72a9cf736c4214a7ea9dc0943df",
@@ -451,7 +488,7 @@
     ],
     "candidates": [
       {
-        "schema_version": "1.2.0",
+        "schema_version": "1.3.0",
         "id": "candidate-prepare",
         "job_id": "job-prepare",
         "version": {
@@ -468,6 +505,17 @@
             "bundle_sha256": "63e1fd8333a5024d06a7c82aaa3ce7790caec03c0684393d01d77a22acd535f0",
             "device": "cpu",
             "precision": "float32"
+          },
+          "settings": {
+            "kind": "qwen_clone",
+            "language": "French",
+            "seed": 1,
+            "temperature": 0.9,
+            "top_p": 1,
+            "top_k": 50,
+            "repetition_penalty": 1.05,
+            "max_new_tokens": 2048,
+            "instruction": null
           },
           "settings_sha256": "16f6e4895b03418a85b032b485ab57aa74a6e9157949172e536c18801b512d44",
           "provenance": {
@@ -498,6 +546,7 @@
         "asset_id": "impulse"
       },
       "response": {
+        "media_subtype": "PCM_16",
         "media_format": "wav",
         "id": "impulse",
         "sha256": "6de1d8cc4c678241ac609b81e8728a89850ce72a9cf736c4214a7ea9dc0943df",
@@ -529,7 +578,7 @@
       },
       "response": {
         "job_id": "job-prepare",
-        "input_sha256": "bc545b3049364b6a9e3a975e48a24e2dec21cdaf436680e2e49334c65152f3f7",
+        "input_sha256": "e66b85672b76820118e446985cd6f433e8f9709658cf1c4bef4c26f63570c719",
         "state": "queued",
         "status_url": "/v1/jobs/job-prepare"
       }
@@ -542,7 +591,7 @@
       "response": {
         "id": "job-prepare",
         "operation": "voice_prepare",
-        "input_sha256": "bc545b3049364b6a9e3a975e48a24e2dec21cdaf436680e2e49334c65152f3f7",
+        "input_sha256": "e66b85672b76820118e446985cd6f433e8f9709658cf1c4bef4c26f63570c719",
         "principal_id": "principal1",
         "idempotency_key": "request-prepare",
         "state": "succeeded",
@@ -575,9 +624,9 @@
         "asset_ids": [
           "output-prepare"
         ],
-        "input_sha256": "bc545b3049364b6a9e3a975e48a24e2dec21cdaf436680e2e49334c65152f3f7",
+        "input_sha256": "e66b85672b76820118e446985cd6f433e8f9709658cf1c4bef4c26f63570c719",
         "project_revision": 0,
-        "manifest_sha256": "1abf6877df4aa7e42f8839ad0aadabae5f318873d4ee9e822a58b5400d041232",
+        "manifest_sha256": "c3c656a9062004db107d416ab0bbc9801309940a070c8ebdb46ee673b13f78f0",
         "identity": {
           "requested": {
             "engine": "qwen",
@@ -608,6 +657,7 @@
         "asset_id": "output-prepare"
       },
       "response": {
+        "media_subtype": "PCM_16",
         "media_format": "wav",
         "id": "output-prepare",
         "sha256": "6de1d8cc4c678241ac609b81e8728a89850ce72a9cf736c4214a7ea9dc0943df",
@@ -628,11 +678,11 @@
         "job_id": "job-prepare"
       },
       "response": {
-        "schema_version": "1.2.0",
+        "schema_version": "1.3.0",
         "job_id": "job-prepare",
         "candidates": [
           {
-            "schema_version": "1.2.0",
+            "schema_version": "1.3.0",
             "id": "candidate-prepare",
             "job_id": "job-prepare",
             "version": {
@@ -649,6 +699,17 @@
                 "bundle_sha256": "63e1fd8333a5024d06a7c82aaa3ce7790caec03c0684393d01d77a22acd535f0",
                 "device": "cpu",
                 "precision": "float32"
+              },
+              "settings": {
+                "kind": "qwen_clone",
+                "language": "French",
+                "seed": 1,
+                "temperature": 0.9,
+                "top_p": 1,
+                "top_k": 50,
+                "repetition_penalty": 1.05,
+                "max_new_tokens": 2048,
+                "instruction": null
               },
               "settings_sha256": "16f6e4895b03418a85b032b485ab57aa74a6e9157949172e536c18801b512d44",
               "provenance": {
@@ -738,6 +799,17 @@
           "bundle_sha256": "63e1fd8333a5024d06a7c82aaa3ce7790caec03c0684393d01d77a22acd535f0",
           "device": "cpu",
           "precision": "float32"
+        },
+        "settings": {
+          "kind": "qwen_clone",
+          "language": "French",
+          "seed": 1,
+          "temperature": 0.9,
+          "top_p": 1,
+          "top_k": 50,
+          "repetition_penalty": 1.05,
+          "max_new_tokens": 2048,
+          "instruction": null
         },
         "settings_sha256": "16f6e4895b03418a85b032b485ab57aa74a6e9157949172e536c18801b512d44",
         "provenance": {

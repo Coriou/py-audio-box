@@ -9,3 +9,5 @@ iniconfig==2.3.0
 packaging==26.0
 pluggy==1.6.0
 pygments==2.19.2
+numpy==1.26.4
+soundfile==0.12.1

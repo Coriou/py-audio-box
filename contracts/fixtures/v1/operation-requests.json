@@ -72,7 +72,7 @@
   },
   "project_create": {
     "project": {
-      "schema_version": "1.2.0",
+      "schema_version": "1.3.0",
       "id": "production-30",
       "revision": 1,
       "speakers": [
@@ -1586,6 +1586,7 @@
       ],
       "assets": [
         {
+          "media_subtype": "PCM_16",
           "media_format": "wav",
           "id": "impulse",
           "sha256": "6de1d8cc4c678241ac609b81e8728a89850ce72a9cf736c4214a7ea9dc0943df",
@@ -1600,6 +1601,7 @@
           }
         },
         {
+          "media_subtype": "PCM_16",
           "media_format": "wav",
           "id": "sine",
           "sha256": "c020cc7bf173196fe590913ceca31fc59f4818536b39c50bc6ecc59aaea40593",
@@ -1614,6 +1616,7 @@
           }
         },
         {
+          "media_subtype": "PCM_16",
           "media_format": "wav",
           "id": "long",
           "sha256": "50723bc660718f92239c358c36818fa390a429bfc7bcf3fd4530b295532a1bb0",
@@ -1628,6 +1631,7 @@
           }
         },
         {
+          "media_subtype": "PCM_16",
           "media_format": "wav",
           "id": "short",
           "sha256": "4a00018adfff151e83d66254d04188e36076b9ea6d4159824937c895750fa399",
@@ -1691,6 +1695,17 @@
             "device": "cpu",
             "precision": "float32"
           },
+          "settings": {
+            "kind": "qwen_preset",
+            "language": "French",
+            "seed": 1,
+            "temperature": 0.9,
+            "top_p": 1,
+            "top_k": 50,
+            "repetition_penalty": 1.05,
+            "max_new_tokens": 2048,
+            "instruction": null
+          },
           "settings_sha256": "fc175f2a5312a4ced9c72e1a02bd4c725439f7d9e47fdd720c3954bd07271694",
           "provenance": {
             "kind": "synthetic",
@@ -1717,6 +1732,17 @@
             "device": "cpu",
             "precision": "float32"
           },
+          "settings": {
+            "kind": "qwen_preset",
+            "language": "French",
+            "seed": 1,
+            "temperature": 0.9,
+            "top_p": 1,
+            "top_k": 50,
+            "repetition_penalty": 1.05,
+            "max_new_tokens": 2048,
+            "instruction": null
+          },
           "settings_sha256": "fc175f2a5312a4ced9c72e1a02bd4c725439f7d9e47fdd720c3954bd07271694",
           "provenance": {
             "kind": "synthetic",
@@ -1742,6 +1768,17 @@
             "bundle_sha256": "cbe72b0955b3fceef5c4e22fa3f8ad318cfd7a4b75d96156bc42c7cf2139d070",
             "device": "cpu",
             "precision": "float32"
+          },
+          "settings": {
+            "kind": "qwen_preset",
+            "language": "French",
+            "seed": 1,
+            "temperature": 0.9,
+            "top_p": 1,
+            "top_k": 50,
+            "repetition_penalty": 1.05,
+            "max_new_tokens": 2048,
+            "instruction": null
           },
           "settings_sha256": "fc175f2a5312a4ced9c72e1a02bd4c725439f7d9e47fdd720c3954bd07271694",
           "provenance": {

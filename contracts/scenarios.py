@@ -24,20 +24,17 @@ def identity(entry,device='cpu'):
 
 
 def preset_version(i,provenance):
-    return dict(id=f'vv{i}',voice_id=f'voice.{i}',origin='preset',reference_asset_ids=[],reference_text='',identity=identity(catalogue()[0]),settings_sha256=c.canonical_hash(qwen_settings()),provenance=copy.deepcopy(provenance),configuration=dict(mode='qwen_preset',speaker='Vivian' if i%2==0 else 'Serena'),design_lineage=None)
+    return dict(id=f'vv{i}',voice_id=f'voice.{i}',origin='preset',reference_asset_ids=[],reference_text='',identity=identity(catalogue()[0]),settings=qwen_settings(),settings_sha256=c.canonical_hash(qwen_settings()),provenance=copy.deepcopy(provenance),configuration=dict(mode='qwen_preset',speaker='Vivian' if i%2==0 else 'Serena'),design_lineage=None)
 
 
-def transcript(operation, project, profiles, requests, *, version=None, device='cpu'):
+def transcript(operation, project, profiles, requests, *, version=None, device='cpu', reuse_settings=None):
     """Trusted catalogues and previous typed replies are explicit in each transcript."""
     bundles=catalogue();p=copy.deepcopy(project);request=copy.deepcopy(requests[operation]);assets=[];versions=[]
     settings=qwen_settings();kind='speech'
     if operation=='speech_generate':
         version=copy.deepcopy(version or p['voice_versions'][0]);versions=[version]
         request.update(voice_version_id=version['id'],identity=copy.deepcopy(version['identity']),variants=1)
-        settings=copy.deepcopy(qwen_settings(version['configuration']['mode']))
-        if settings['kind']=='kokoro_preset':settings=dict(kind='kokoro_preset',language=version['configuration']['language'])
-        if settings['kind']=='pocket_clone':settings=dict(kind='pocket_clone',language=version['configuration']['language'],seed=1)
-        version['settings_sha256']=c.canonical_hash(settings)
+        settings=copy.deepcopy(version['settings'])
         assets=[a for a in p['assets'] if a['id'] in version['reference_asset_ids']]
     elif operation=='voice_prepare':
         kind='prepare';request.update(asset_id=p['assets'][0]['id'],in_tick=0,out_tick=4800,reference_text='Exact reference.',identity=identity(bundles[1]));assets=[p['assets'][0]]
@@ -50,20 +47,26 @@ def transcript(operation, project, profiles, requests, *, version=None, device='
     effective=copy.deepcopy(request.get('identity',dict(engine='pcm-render',model='pcm24-v1',bundle_sha256='0'*64,device=device,precision='float32')));effective['device']=device
     if 'identity' in request:request['identity']['device']=device
     profile=copy.deepcopy(next(x for x in profiles if x['device']==device));profile['compatibility']=[dict(operation=operation,mode=settings['kind'],identity=effective)]
-    resolved=dict(reuse_identity=identity(bundles[1]) if kind=='design' else None,kind=kind,identity=dict(requested=copy.deepcopy(effective),effective=copy.deepcopy(effective),fallback='forbid',reason='',profile_id=profile['id']),profile=c.profile_snapshot(profile),operator_fallback='forbid',settings=settings,settings_sha256=c.canonical_hash(settings))
-    plan=dict(schema_version='1.2.0',operation=operation,request=request,project=p if operation=='project_render' else None,voice_versions=versions,assets=assets,resolved=resolved)
+    reuse_cfg=dict(mode='qwen_clone',reference_asset_id='output-'+kind,reference_text=request.get('reference_text',''),conditioning='icl') if kind in ('prepare','design') else None
+    reuse_settings=copy.deepcopy(reuse_settings if reuse_settings is not None else qwen_settings('qwen_clone')) if reuse_cfg else None
+    resolved=dict(reuse_configuration=reuse_cfg,reuse_settings=reuse_settings,reuse_identity=identity(bundles[1]) if kind=='design' else None,kind=kind,identity=dict(requested=copy.deepcopy(effective),effective=copy.deepcopy(effective),fallback='forbid',reason='',profile_id=profile['id']),profile=c.profile_snapshot(profile),operator_fallback='forbid',settings=settings,settings_sha256=c.canonical_hash(settings))
+    plan=dict(schema_version='1.3.0',operation=operation,request=request,project=p if operation=='project_render' else None,voice_versions=versions,assets=assets,resolved=resolved)
     job=dict(id='job-'+kind,operation=operation,input_sha256=c.plan_hash(plan),principal_id='principal1',idempotency_key='request-'+kind,state='running',generation=1,attempts=[dict(id='attempt-'+kind,generation=1,owner_id='worker1',staging_id='stage-'+kind,reaped=False)],artifact_ids=[],stage='loading',deadline='2026-10-16T00:10:00Z')
     attempt=job['attempts'][0]
     output=copy.deepcopy(p['assets'][0]);output['id']='output-'+kind
+    if kind=='render':
+        from .media import synthetic_media
+        policy=request['policy'];output.update(synthetic_media(policy['length_ticks']*policy['sample_rate']//48000,policy['sample_rate'],policy['channels'],'WAV','PCM_24')[1])
+        output['provenance']=dict(kind='synthetic',source_sha256=output['sha256'],source_id='E1-render-silence',missing_fields=[])
     candidates=[]
     if operation in ('voice_prepare','voice_design'):
-        v=copy.deepcopy(p['voice_versions'][0]);v.update(id='prospective-'+kind,origin='clone' if kind=='prepare' else 'design',identity=identity(bundles[1]),reference_asset_ids=[output['id']],reference_text=request['reference_text'],configuration=dict(mode='qwen_clone',reference_asset_id=output['id'],reference_text=request['reference_text'],conditioning='icl'),settings_sha256=c.canonical_hash(qwen_settings('qwen_clone')))
+        v=copy.deepcopy(p['voice_versions'][0]);v.update(id='prospective-'+kind,origin='clone' if kind=='prepare' else 'design',identity=identity(bundles[1]),reference_asset_ids=[output['id']],reference_text=request['reference_text'],configuration=copy.deepcopy(reuse_cfg),settings=copy.deepcopy(reuse_settings),settings_sha256=c.canonical_hash(reuse_settings))
         if kind=='design':v['design_lineage']=dict(description=request['description'],source_candidate_id='candidate-design',generation_identity=effective)
-        candidates=[dict(schema_version='1.2.0',id='candidate-'+kind,job_id=job['id'],version=v,audition_asset_id=output['id'])]
+        candidates=[dict(schema_version='1.3.0',id='candidate-'+kind,job_id=job['id'],version=v,audition_asset_id=output['id'])]
     manifest=dict(operation=operation,job_id=job['id'],attempt_id=attempt['id'],generation=1,owner_id=attempt['owner_id'],staging_id=attempt['staging_id'],input_sha256=job['input_sha256'],artifact_id='artifact-'+kind,outputs=[output],candidates=candidates)
-    message=dict(protocol_version='1.2.0',kind='result',job_id=job['id'],attempt_id=attempt['id'],generation=1,input_sha256=job['input_sha256'],input_asset_ids=c.required_asset_ids(plan),staging_id=attempt['staging_id'],owner_id=attempt['owner_id'],identity=resolved['identity'],deadline=job['deadline'],stage='completed',result_asset_ids=[output['id']],plan=plan)
+    message=dict(protocol_version='1.3.0',kind='result',job_id=job['id'],attempt_id=attempt['id'],generation=1,input_sha256=job['input_sha256'],input_asset_ids=c.required_asset_ids(plan),staging_id=attempt['staging_id'],owner_id=attempt['owner_id'],identity=resolved['identity'],deadline=job['deadline'],stage='completed',result_asset_ids=[output['id']],plan=plan)
     artifact=dict(id=manifest['artifact_id'],job_id=job['id'],generation=1,asset_ids=message['result_asset_ids'],input_sha256=job['input_sha256'],project_revision=p['revision'] if kind=='render' else 0,manifest_sha256=c.canonical_hash(manifest),identity=resolved['identity'],attempt_id=attempt['id'],owner_id=attempt['owner_id'],staging_id=attempt['staging_id'])
-    result=dict(schema_version='1.2.0',job_id=job['id'],candidates=candidates)
+    result=dict(schema_version='1.3.0',job_id=job['id'],candidates=candidates)
     exchanges=[dict(operation=operation,request=request,response=dict(job_id=job['id'],input_sha256=job['input_sha256'],state='queued',status_url='/v1/jobs/'+job['id']))]
     completed=copy.deepcopy(job);completed.update(state='succeeded',artifact_ids=[artifact['id']],stage='completed')
     exchanges += [dict(operation='job_get',request=dict(job_id=job['id']),response=completed),dict(operation='artifact_get',request=dict(artifact_id=artifact['id']),response=artifact),dict(operation='asset_get',request=dict(asset_id=output['id']),response=output)]

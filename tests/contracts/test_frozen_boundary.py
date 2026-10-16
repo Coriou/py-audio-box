@@ -22,7 +22,7 @@ def refreeze(t):
     """Explicit trusted control resolution for a NEW synthetic test baseline only."""
     p=t['context']['plan'];r=p['resolved'];r['settings_sha256']=c.canonical_hash(r['settings'])
     if p['operation']=='speech_generate':
-        for v in p['voice_versions']:v['settings_sha256']=r['settings_sha256']
+        for v in p['voice_versions']:v.update(settings=copy.deepcopy(r['settings']),settings_sha256=r['settings_sha256'])
     h=c.plan_hash(p);t['job']['input_sha256']=h;t['message']['input_sha256']=h;t['artifact']['input_sha256']=h;t['verified_manifest']['input_sha256']=h
     t['message']['plan']=wire(p);t['message']['identity']=wire(r['identity']);t['artifact']['identity']=wire(r['identity'])
     t['message']['input_asset_ids']=c.required_asset_ids(p);t['authorized_assets']=c.required_asset_ids(p)
@@ -33,6 +33,8 @@ def cloned(origin='clone',engine='qwen'):
     p=load('production-30.json');v=copy.deepcopy(p['voice_versions'][0]);b=catalogue()[1 if engine=='qwen' else 4]
     v.update(origin=origin,identity=identity(b),reference_asset_ids=['impulse'],reference_text='Exact reference.' if engine=='qwen' else '')
     v['configuration']=dict(mode='qwen_clone',reference_asset_id='impulse',reference_text=v['reference_text'],conditioning='icl') if engine=='qwen' else dict(mode='pocket_clone',reference_asset_id='impulse',language='fr')
+    v['settings']=qwen_settings('qwen_clone') if engine=='qwen' else dict(kind='pocket_clone',language='fr',seed=1)
+    v['settings_sha256']=c.canonical_hash(v['settings'])
     if origin=='design':v['design_lineage']=dict(description='Historical design.',source_candidate_id='historical-candidate',generation_identity=identity(catalogue()[2]))
     return v
 
@@ -100,7 +102,7 @@ def test_publication_context(claim):
 def test_received_plan_is_never_authority(mutation):
     t=scenario();check(t);bad=wire(t);p=bad['message']['plan']
     if mutation in ('text','rehash'):p['request']['text']='changed text'
-    elif mutation=='settings':p['resolved']['settings']['seed']=2;p['resolved']['settings_sha256']=c.canonical_hash(p['resolved']['settings']);p['voice_versions'][0]['settings_sha256']=p['resolved']['settings_sha256']
+    elif mutation=='settings':p['resolved']['settings']['seed']=2;p['resolved']['settings_sha256']=c.canonical_hash(p['resolved']['settings']);p['voice_versions'][0]['settings_sha256']=p['resolved']['settings_sha256'];p['voice_versions'][0]['settings']=wire(p['resolved']['settings'])
     elif mutation=='voice':p['voice_versions'][0]['configuration']['speaker']='Serena'
     elif mutation=='profile':p['resolved']['profile']['limits']['threads']=3
     else:p['assets']=[load('production-30.json')['assets'][0]]
@@ -179,6 +181,7 @@ def test_muted_render_and_history_transfer():
 
 def test_kokoro_explicit_settings_and_selector():
     v=load('production-30.json')['voice_versions'][0];v.update(identity=identity(catalogue()[3]),configuration=dict(mode='kokoro_preset',preset='ff_siwis',language='fr'))
+    v['settings']=dict(kind='kokoro_preset',language='fr');v['settings_sha256']=c.canonical_hash(v['settings'])
     t=scenario(version=v);check(t)
     for key,value in [('seed',1),('instruction','whisper'),('top_p',1)]:
         bad=wire(t);bad['context']['plan']['resolved']['settings'][key]=value
@@ -191,7 +194,7 @@ def test_kokoro_explicit_settings_and_selector():
 def test_semantic_settings_and_conditioning():
     t=scenario(version=cloned());check(t)
     for key,value,error in [('instruction','whisper','unsupported_instruction'),('language','Japanese','language_mismatch')]:
-        bad=wire(t);p=bad['context']['plan'];p['resolved']['settings'][key]=value;p['resolved']['settings_sha256']=c.canonical_hash(p['resolved']['settings']);p['voice_versions'][0]['settings_sha256']=p['resolved']['settings_sha256']
+        bad=wire(t);p=bad['context']['plan'];p['resolved']['settings'][key]=value;p['resolved']['settings_sha256']=c.canonical_hash(p['resolved']['settings']);p['voice_versions'][0]['settings_sha256']=p['resolved']['settings_sha256'];p['voice_versions'][0]['settings']=wire(p['resolved']['settings'])
         with pytest.raises(c.ContractError,match=error):c.frozen_plan(p,bad['context']['bundles'])
     bad=wire(t);bad['context']['plan']['resolved']['settings_sha256']='f'*64
     with pytest.raises(c.ContractError,match='settings_mismatch'):c.frozen_plan(bad['context']['plan'],bad['context']['bundles'])

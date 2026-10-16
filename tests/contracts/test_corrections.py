@@ -89,15 +89,15 @@ def test_ripple_exact_max_and_atomic_overflow():
 def test_voice_history_and_frozen_plan_reconnect_workflows():
     p=load('production-30.json');v=p['voices'][0];c.validate('voice',v)
     for operation in ['voice_prepare','voice_design']:
-        candidate=dict(schema_version='1.2.0',id='candidate1',job_id='job1',version=p['voice_versions'][0],audition_asset_id='impulse')
-        result=dict(schema_version='1.2.0',job_id='job1',candidates=[candidate]);c.validate('voice_results',result)
+        candidate=dict(schema_version='1.3.0',id='candidate1',job_id='job1',version=p['voice_versions'][0],audition_asset_id='impulse')
+        result=dict(schema_version='1.3.0',job_id='job1',candidates=[candidate]);c.validate('voice_results',result)
         save=dict(candidate_id=result['candidates'][0]['id'],voice_id=v['id'],expected_revision=v['revision']);c.validate('voice_save_request',save)
         c.revision(save['expected_revision'],v['revision'])
         with pytest.raises(c.ContractError):c.revision(save['expected_revision'],v['revision']+1)
         c.validate('voice_version',candidate['version'])
     requests=load('operation-requests.json');record=dict(project_id=p['id'],revision=1,parent_revision=0,operation_id='edit1',actor_id='human',state_sha256='0'*64,changed_ids=['b0'],recorded=dict(operation='block_text',request=requests['block_text']),snapshot=p)
     c.validate('revision',record)
-    c.validate('history',dict(schema_version='1.2.0',project_id=p['id'],revisions=[record],next_cursor=None))
+    c.validate('history',dict(schema_version='1.3.0',project_id=p['id'],revisions=[record],next_cursor=None))
     restore=requests['project_restore'];restore['source_revision']=record['revision'];c.validate('project_restore_request',restore)
     c.revision(2,2)
     with pytest.raises(c.ContractError):c.revision(2,3)  # reconnect after another writer; no silent undo
