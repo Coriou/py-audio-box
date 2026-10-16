@@ -19,7 +19,7 @@
 | Lot | State | Dependency / next action |
 | --- | --- | --- |
 | Launch preparation | Complete | Planning baseline `2c1adaa`; source base `ae67cd6`; integration branch `feat/agent-voice-workspace`. |
-| 0A Contract/compatibility pack | Re-reviewing | Corrected candidate `aa9a61a`; independent round 2 checks all F1–F6. |
+| 0A Contract/compatibility pack | Targeted Astra advice | Round 2 NO-GO: F1/F3/F4/F5/F6 closed; F2 plus identity/asset binding remain. |
 | 0B Editor browser fixture | Pending | Recorded 0A contract fixture; separate owned component slice and reviewer. |
 | 0C Integration skeleton/acceptance ledger | Pending | 0A boundaries; integrate component decision after 0B. |
 | Phase 0 gate | Not evaluated | Integrated contracts, browser evidence, packaging boundary and relevant checks. |
@@ -59,3 +59,8 @@ Record failures and missing evidence; do not replace them with a successful late
 - Implementer-reported E1: final 47 focused tests and 353 collected; selected 113 passed before final additions. Catalogue/worker protocol 1.1.0. Review must verify final exact-source selected suite and all original counterexamples.
 - Independent review request `pab-phase0a-review-r2-20261016`, task `node:delegated-task:command%3Amcp%3Ab4587ef3-fd31-4580-ac56-59ae142ceb03%3Adelegate-task%3Apab-phase0a-review-r2-20261016`, Sol `gpt-6.1-sol` low, running. Sole heavy lane; read-only candidate, report `reviews/0A-r2-sol.md`.
 - No finding waived; no 0A/Phase 0 GO. Integrate only after independent acceptance and root integration checks.
+
+## Lot 0A round-2 verdict and narrowing
+
+- [Independent round-2 report](reviews/0A-r2-sol.md): **NO-GO** on `aa9a61a`; exact-source image verified, 118 selected tests passed. F1/F3/F4/F5/F6 closed at E1. F2 remains incomplete (preset selector), with cross-object identity/fallback binding and plan asset authorization counterexamples R2-2/R2-3.
+- No integration or finding waiver. Targeted Astra advice requested before next bounded Sol-low correction: specify complete preset configuration, authoritative hashed resolution and derived authorized asset dependencies, without runtime expansion. Final global Astra review remains separately required.
