@@ -338,3 +338,9 @@ Record failures and missing evidence; do not replace them with a successful late
 
 - Candidate`6723528fbb557c751b4fe69e4ccda5dd470c2687`, source`1b7d111`+report, app-owned`t3-d36d52bb`, branch`t3/fix-persistence-schema-refs`. Claims279pass18skipfullfinalsuite/39focused, standards-basedunionapplicability andsingularrefs. Root read response; unintegrated.
 - IndependentSol-low request/task suffix`pab-phase1a-p1a2-review-r3-20261022`, currenttask-IDprefix, report`reviews/P1A2-r3-sol.md`; fullpriorbrief/findings/responsesprovided. No waiver/integration; B/Cactivationclosed.
+
+## A2 bounded GO / integration / B1 launch
+
+- [IndependentR3report](reviews/P1A2-r3-sol.md): boundedA2GO exact`6723528`;F1/F1b/F2closed,preserved.39focused and279pass18skipfullfinalsuite independentlyconfirmed; E1only C2pending.
+- RootintegratedsixA2commits oldestfirst ending`1602331`; exactsource diffvsreviewedcandidateempty. Root39focusedtests running. NoDocker/globalinventorypreservationclaim.
+- NextSol-low request`pab-phase1a-p1b1-implementation-r1-20261022`: explicitnewsyntheticinstallationenrollment + offlineinspect/plan READONLYrecovery, applyunavailableuntilB2. Noreset/cleanup/activation.
