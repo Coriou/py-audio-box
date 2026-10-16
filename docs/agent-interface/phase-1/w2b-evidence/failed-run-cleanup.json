@@ -1,0 +1,20 @@
+[
+  {
+    "project": "pab-w2b-5a51c459a386",
+    "states": [],
+    "removed_volumes": [
+      "pab-w2b-5a51c459a386_control",
+      "pab-w2b-5a51c459a386_ipc",
+      "pab-w2b-5a51c459a386_staging"
+    ]
+  },
+  {
+    "project": "pab-w2b-cf347aac23f4",
+    "states": [],
+    "removed_volumes": [
+      "pab-w2b-cf347aac23f4_control",
+      "pab-w2b-cf347aac23f4_ipc",
+      "pab-w2b-cf347aac23f4_staging"
+    ]
+  }
+]

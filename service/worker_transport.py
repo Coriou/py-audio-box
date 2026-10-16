@@ -61,7 +61,7 @@ class TransportObservation:
     received_monotonic: float | None = None
 
 
-def exchange(connection, authority, session, cutoff):
+def exchange(connection, authority, session, cutoff, *, fault=lambda _: None):
     evidence = None
     try:
         if session.binding != authority.binding:
@@ -69,7 +69,9 @@ def exchange(connection, authority, session, cutoff):
         message = authority.message()
         authority.check(message, 'execute')
         evidence = authenticate(connection, session, cutoff, control=True)
+        fault('presend')
         send(connection, message, cutoff)
+        fault('postsend')
         proposal = receive(connection, cutoff)
         if not isinstance(proposal, dict) or set(proposal) != {'message', 'manifest'}:
             raise Refused('unexpected_result')

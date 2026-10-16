@@ -1,4 +1,7 @@
-"""Dormant W2 evidence policy. No spawn, transport, publication or cleanup API."""
+"""Serialized synthetic owner lifecycle, W1 reconnect and verification fencing.
+
+Runtime creation/start are trusted callbacks; publication/cleanup stay with control.
+"""
 from worker.lifecycle import Observation, State
 
 
@@ -37,3 +40,54 @@ class Supervisor:
             if current['state'] == State.STOPPED.value:
                 break
         return current
+
+    def dispatch(self, authority, prepare, start, *, fault=lambda _: None):
+        """Persist before any runtime callback. Prepare creates a stopped runtime;
+        bind BEFORE physical start closes the spawn/registration gap. Repeated
+        intent never invokes either callback (including after a lost start ACK).
+        Unbound interrupted intent stays quarantined for explicit operator recovery.
+        """
+        from service.owner_store import allocation, Fenced
+        from worker.transport import canonical
+        old = self.store.current()
+        if old and canonical(old['authority']) == canonical(allocation(authority)):
+            return self.reconnect()
+        self.store.intent(authority)
+        fault('prespawn')
+        identity = prepare()
+        fault('preregistration')
+        self.store.bind(authority, identity)
+        fault('prestart')
+        start(identity)
+        fault('postspawn')
+        return self.reconnect()
+
+    def exchange(self, connection, authority, session, *, fault=lambda _: None):
+        """Serialized control owner receives a proposal; never publishes here."""
+        from service.owner_store import allocation, Fenced
+        from service.worker_transport import exchange
+        from worker.transport import canonical
+        current = self.reconnect()
+        if current is None or current['state'] != State.ALIVE.value or canonical(current['authority']) != canonical(allocation(authority)):
+            raise Fenced('live_exact_allocation_required')
+        result = exchange(connection, authority, session, authority.cutoff(), fault=fault)
+        return result
+
+    def verify(self, observation, verifier, *, fault=lambda _: None):
+        """No adoption API: verification runs on the store's serialized owner only,
+        after independently observed termination. Callback remains control-owned.
+        """
+        from service.owner_store import Fenced
+        self.store.assert_owner()
+        fault('observation_reap')
+        current = self.reconnect()
+        if current is None or current['state'] != State.STOPPED.value:
+            raise Fenced('termination_required_before_verification')
+        if observation.status != 'proposal':
+            raise Fenced('proposal_required')
+        message = current['authority']['message']
+        for field in ('job_id', 'attempt_id', 'generation', 'owner_id', 'input_sha256', 'staging_id', 'deadline'):
+            if observation.message[field] != message[field]:
+                raise Fenced('stale_proposal')
+        fault('preverification')
+        return verifier(observation)

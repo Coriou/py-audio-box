@@ -2,6 +2,7 @@
 import fcntl
 import json
 import sqlite3
+import threading
 from pathlib import Path
 from service.worker_transport import Authority
 
@@ -15,6 +16,7 @@ class Fenced(RuntimeError):
 
 class OwnerStore:
     def __init__(self, path):
+        self._thread = threading.get_ident()
         path = Path(path)
         self._lock = open(str(path) + '.lock', 'a')
         try:
@@ -32,7 +34,12 @@ class OwnerStore:
         self.db.close()
         self._lock.close()
 
+    def assert_owner(self):
+        if threading.get_ident() != self._thread:
+            raise Fenced("serialized_control_owner_required")
+
     def current(self):
+        self.assert_owner()
         row = self.db.execute('SELECT authority,runtime,state FROM lane WHERE id=1').fetchone()
         if row is None:
             return None

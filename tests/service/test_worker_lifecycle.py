@@ -131,3 +131,111 @@ def test_runtime_mismatch_quarantines_and_control_is_exclusive(tmp_path):
         with pytest.raises(Fenced): store.intent(other(authority))
     finally:
         store.close()
+
+@pytest.mark.parametrize('point', ['prespawn','preregistration','prestart','postspawn'])
+def test_dispatch_faults_never_repeat_physical_start(tmp_path, point):
+    authority = fixture_authority()
+    store = OwnerStore(tmp_path/'owners.sqlite')
+    calls = []
+    runtime = Runtime([State.UNKNOWN]*5)
+    supervisor = Supervisor(store, runtime)
+    def prepare():
+        assert store.current()['authority']['binding'] == authority.binding
+        calls.append('create'); return 'immutable-container'
+    def start(identity): calls.append('start')
+    def fault(stage):
+        if stage == point: raise InterruptedError(stage)
+    try:
+        with pytest.raises(InterruptedError): supervisor.dispatch(authority, prepare, start, fault=fault)
+        before = list(calls)
+        store.close()
+        store = OwnerStore(tmp_path/'owners.sqlite')
+        supervisor = Supervisor(store, runtime)
+        supervisor.dispatch(authority, prepare, start)
+        assert calls == before
+        assert calls.count('start') <= 1
+        assert store.current()['authority']['message']['deadline'] == authority.job['deadline']
+        with pytest.raises(Fenced): store.intent(other(authority))
+    finally: store.close()
+
+
+def test_docker_evidence_requires_wait_and_rejects_restart():
+    import json
+    from service.runtime_adapter import DockerHarnessRuntime
+    item = dict(Id='exact', Image='image', RestartCount=0, HostConfig={'RestartPolicy': {'Name':'no'}}, State=dict(Running=False, Status='exited', Pid=0, FinishedAt='finished', Restarting=False, ExitCode=0, StartedAt='first'))
+    calls = []
+    def invoke(args, timeout):
+        calls.append(args[0])
+        assert 0 < timeout <= 1
+        return 'daemon' if args[0]=='info' else ('0' if args[0]=='wait' else json.dumps([item]))
+    runtime = DockerHarnessRuntime(invoke)
+    identity = json.dumps(['daemon','exact','image'])
+    runtime._started[identity] = 'first'
+    assert runtime.observe(identity, 1).state == State.STOPPED
+    assert calls == ['info','inspect','wait']
+    item['RestartCount'] = 1
+    assert runtime.observe(identity, 1).state == State.UNKNOWN
+    item['RestartCount'] = 0; item['State']['Status'] = 'created'
+    assert runtime.observe(identity, 1).state == State.UNKNOWN
+
+@pytest.mark.parametrize('point', ['presend','postsend','observation_reap','preverification'])
+def test_control_interruptions_preserve_allocation_and_fence_publication(tmp_path, monkeypatch, point):
+    from service.worker_transport import TransportObservation
+    authority = fixture_authority()
+    store = OwnerStore(tmp_path/'owners.sqlite')
+    store.intent(authority);store.bind(authority,'exact')
+    runtime = Runtime([State.ALIVE]*3 if point in ('presend','postsend') else [State.STOPPED])
+    supervisor = Supervisor(store,runtime)
+    result = TransportObservation('proposal','test',message=dict(authority.message(),kind='result'))
+    sent=[];published=[]
+    def exchange(*args, fault):
+        fault('presend')
+        sent.append(True)
+        fault('postsend')
+        return result
+    monkeypatch.setattr('service.worker_transport.exchange',exchange)
+    def fault(stage):
+        if stage==point: raise InterruptedError(stage)
+    try:
+        with pytest.raises(InterruptedError):
+            if point in ('presend','postsend'):
+                supervisor.exchange(None,authority,None,fault=fault)
+            else:
+                supervisor.verify(result,lambda _:published.append(True),fault=fault)
+        assert sent == ([] if point!='postsend' else [True])
+        assert not published
+        assert store.current()['authority']['message']==authority.message()
+    finally: store.close()
+
+
+def test_verification_unknown_and_stale_result_cannot_publish(tmp_path):
+    from service.worker_transport import TransportObservation
+    store=OwnerStore(tmp_path/'owners.sqlite');authority=fixture_authority()
+    store.intent(authority);store.bind(authority,'exact')
+    result=TransportObservation('proposal','test',message=dict(authority.message(),kind='result'))
+    published=[]
+    try:
+        with pytest.raises(Fenced):Supervisor(store,Runtime([State.UNKNOWN])).verify(result,lambda _:published.append(True))
+        result.message['generation']+=1
+        with pytest.raises(Fenced):Supervisor(store,Runtime([State.STOPPED])).verify(result,lambda _:published.append(True))
+        assert not published
+    finally:store.close()
+
+
+def test_runtime_restart_cannot_be_signalled_as_original():
+    import json
+    from service.runtime_adapter import DockerHarnessRuntime
+    item = dict(Id='container',Image='image',RestartCount=0,HostConfig={'RestartPolicy':{'Name':'no'}},State={'StartedAt':'second'})
+    calls=[]
+    def invoke(args, timeout):
+        calls.append(args[0])
+        return 'daemon' if args[0]=='info' else json.dumps([item])
+    runtime=DockerHarnessRuntime(invoke)
+    identity=json.dumps(['daemon','container','image'])
+    runtime._started[identity]='first'
+    assert runtime.observe(identity,1).state==State.UNKNOWN
+    with pytest.raises(ValueError):runtime.terminate(identity,1)
+    with pytest.raises(ValueError):runtime.kill(identity,1)
+    assert 'kill' not in calls
+    # Operator loss cannot reconstruct proof from JSON/PID/lock alone.
+    assert DockerHarnessRuntime(invoke).observe(identity,1).state==State.UNKNOWN

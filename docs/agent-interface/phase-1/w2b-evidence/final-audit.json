@@ -1,0 +1,9 @@
+{
+  "source_and_harness_hashes_match": true,
+  "prior_inventory_preserved": {
+    "containers": true,
+    "volumes": true
+  },
+  "owned_containers_remaining": [],
+  "owned_volumes_remaining": []
+}
