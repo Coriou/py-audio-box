@@ -373,3 +373,9 @@ Record failures and missing evidence; do not replace them with a successful late
 - [Independent R2](reviews/P1B1-r2-sol.md): bounded source/E1 GO exact `70251613902948c474d8030ab8f566815dc9e860`; F1/F2/F3 closed, no new blocker. Independently338passed18skipped and59focused; installed qualification pending.
 - Root integrated three commits oldestfirst `dfce8d6`, `ff86a54`, `79b8c48`; source diff versus reviewed candidate empty. Root59B1tests passed3.70s exit0, existingvenv/E1only.
 - Next isolated Sol-low request `pab-phase1a-p1b2-implementation-r1-20261022`: proof-bound offline synthetic abandonment/reset only per Astra B2, independent review required. No public/unattendedactivation, cleanup, or installedqualification; A1globalinventorylimitation retained.
+
+## B2 allowlist dependency amendment
+
+- Initial task `pab-phase1a-p1b2-implementation-r1-20261022` stopped cleanly at baseline514f32b, no edits/tests/commits; necessary reconciliation adapter requested. Root verified exact known-table/column and B1-specific validation in current source.
+- Orchestrator APPROVES `service/reconciliation.py` only for exact B2 table/column recognition, closed record/digest validation, bounded fingerprint and typed reference traversal preserving retired dispatch/publication obligations. Existing bounds, fail-closed behavior and ordinary A2/R1 epochs unchanged. Regression tests stay in existing B2 allowlist.
+- Fresh isolated request `pab-phase1a-p1b2-implementation-r1b-20261022` repeats original B2 outcome/invariants plus amendment. No implementation/GO/activation claim.
