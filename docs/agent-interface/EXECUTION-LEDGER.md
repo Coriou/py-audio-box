@@ -333,3 +333,8 @@ Record failures and missing evidence; do not replace them with a successful late
 
 - [R2report](reviews/P1A2-r2-sol.md): NO-GO exact`43e6c8d`; originalprefixF1closed/F2durableepochclosed, newF1b validnullableobject union walksnullbranch andfalseunknownschemaquarantine.269pass18skip independentlyconfirmed.
 - NarrowSol-low request`pab-phase1a-p1a2-fix-r2-20261022`: actualschema/type/refunionselection+singularreferencecoverage, fullycoherentpositivefixtures andunknownnegatives. No integrityprotocolredesign/waiver/integration.
+
+## A2 nullable-branch candidate / review round3
+
+- Candidate`6723528fbb557c751b4fe69e4ccda5dd470c2687`, source`1b7d111`+report, app-owned`t3-d36d52bb`, branch`t3/fix-persistence-schema-refs`. Claims279pass18skipfullfinalsuite/39focused, standards-basedunionapplicability andsingularrefs. Root read response; unintegrated.
+- IndependentSol-low request/task suffix`pab-phase1a-p1a2-review-r3-20261022`, currenttask-IDprefix, report`reviews/P1A2-r3-sol.md`; fullpriorbrief/findings/responsesprovided. No waiver/integration; B/Cactivationclosed.
