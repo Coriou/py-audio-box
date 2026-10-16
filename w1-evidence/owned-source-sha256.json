@@ -1,0 +1,11 @@
+{
+  "worker/transport.py": "19f3445def62f61b29979e573d029d61c09c6d5590623a2d5d747460bc73f660",
+  "worker/isolated_synthetic.py": "94f3ff3363f42d1fb8119f32866288a1efaa3ab4a3da7d91bb9ac2dd5bd20f87",
+  "service/worker_transport.py": "d28b2dde83e66560c26b03b3b667aa835f37f82f21806be01ce57fea3ced76ba",
+  "tests/service/test_worker_transport.py": "abad28c64620674ce49c6e0acbb11e216d8df4b94665a7c908e2f2898ff79f4b",
+  "tests/release/test_worker_boundary.py": "c11badc5340c97adb3bda0b6dfc9dc9e63fcf15f43f9428bc4e5b5ef1ad9e18c",
+  "service/compose.w1.yml": "af2c103ee7ba814437dc470237542d327c42ece37cbd072e19a1f8549ab96bef",
+  "service/Dockerfile.w1": "03383d44eeba01504d203dc3c42f6291a99af008482beabdf147484462418bcc",
+  "service/Dockerfile.w1.dockerignore": "a6871d4d4ec3138b078c8cc182beb9e0bb55ea2db02db7e945d00ab27c2c0490",
+  "scripts/test-worker-w1.sh": "c35e6b5a0991993e1952deab0ccf1eebb796287c071184a09e882e1175e5ccd1"
+}
