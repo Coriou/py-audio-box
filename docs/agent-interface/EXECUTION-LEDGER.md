@@ -318,3 +318,8 @@ Record failures and missing evidence; do not replace them with a successful late
 - Candidate`54730c631f8708dd577be5a794215df205c3df7d`, source`801cfbb`+report, app-owned`t3-9d9cebfc`, branch`t3/p1a2-reconciliation-inventory`. Root read fullhandoff; unintegrated.
 - Finalfocused30tests passed; prior203target/249pass18skip broaderchecks precededlastrefinements, nofinalfullsuiteclaim. E1only, noDocker/c2installedclaim; A1inventorylimitationretained.
 - IndependentSol-low request/task suffix`pab-phase1a-p1a2-review-r1-20261022`, currenttask-IDprefix, report`reviews/P1A2-r1-sol.md`; fullAstraA2brief supplied andfinalaffectedregressions requested. B/Cactivationremainclosed.
+
+## P1A2 review NO-GO / targeted correction
+
+- [A2review](reviews/P1A2-r1-sol.md): NO-GO final`54730c6`;205affectedtests passed, F1arbitraryasset-prefixprose causesfalsemediafault; F2diagnosticwritefailure losesobserveddefectafterrestart. No integration/waiver.
+- IsolatedSol-low request`pab-phase1a-p1a2-fix-r1-20261022`: explicitschema-aware refs + independentpre-observationintegrityuncertainty boundary, preserveR1authority andstopresponsiveness; boundhistoricaldiagnosticbytes. Independentre-reviewrequired.
