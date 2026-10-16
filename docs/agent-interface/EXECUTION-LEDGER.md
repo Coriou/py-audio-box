@@ -384,3 +384,9 @@ Record failures and missing evidence; do not replace them with a successful late
 
 - Task `pab-phase1a-p1b2-implementation-r1b-20261022` terminal without files/commits/candidate. Baselinec07f066; B1regression59passed3.74s only. Historical Core publication probe suggests bypass, but task explicitly did not establish a further allowlist dependency; existing persistence initializer may fence startup. No B2 blocker/acceptance proven.
 - Targeted Astra request `pab-phase1a-p1b2-boundary-astra-20261022`: inspect actual call paths, settle pending-recovery/publication fence location and finite Sol-low execution boundaries. No implementation/waiver; do not repeat unchanged broad task before this decision.
+
+## Astra B2 boundary decision / B2.1 launch
+
+- [Astra decision](reviews/P1B2-BOUNDARY-ASTRA.md): source-only design, three sequential independently reviewed sublots B2.1 records/fences/plans, B2.2 unreachable transition kernel, B2.3 trustedhostproof/applywiring. No Core expansion: existing initializer and both storage_session publication decorators suffice.
+- Orchestrator APPROVES exact additional reconciliation resolution-consumption amendment for B2.2: completed dispatch/publication/diagnostic resolutions in joins/startup classification, exacttuple/reason/contentdigest only; pending has no effect, references/history/availability/ordinaryepochs preserved. B2.1 remains schema/namespace/typedrefs only.
+- Full decision committed as implementation authority. Next isolated Sol-low request `pab-phase1a-p1b21-implementation-r1-20261022` implements ONLY B2.1 exactallowlist/exits. All apply stays unavailable. No B2/P1acceptance; A1inventory/C1C2limitations retained.
