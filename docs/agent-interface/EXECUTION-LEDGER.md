@@ -186,3 +186,9 @@ Record failures and missing evidence; do not replace them with a successful late
 
 - Ancienne tâche `pab-phase1a-w1-implementation-r1-20261016` terminal failed: limite d'usage fournisseur, aucun candidat accepté. Checkout app-owned `t3-ba67e485` à03b0544 contient onze chemins non suivis W1; préservés pour inspection/récupération ciblée, aucune suppression.
 - Root intégration `f5d0b3b`, arbre suivi propre vérifié. Nouvelle tâche Sol-low isolée `node:delegated-task:command%3Amcp%3A30cfb9d8-e755-4477-bc78-ca85e864c6aa%3Adelegate-task%3Apab-phase1a-w1-resume-r1-20261022`, request `pab-phase1a-w1-resume-r1-20261022`, running. Brief W1/Astra complet réémis; aucun succès de test antérieur supposé. Revue indépendante requise avant intégration.
+
+## W1 reprise candidate / independent review
+
+- Candidate `30afe884ebfa509113cc2b9872b044b11f1b1cf9`, app-owned `/Users/ben/.txcode/worktrees/py-audio-box/t3-2ae2fcb5`, branch `t3/private-uds-worker-exchange`. Root read complete W1 handoff. Original interrupted work retained; unintegrated.
+- Implementer reports68Linuxservice/release tests and3separatecontainer scenarios, exacttopology/sourceimage maps. Host supplementalcontracts failed missingnumpy/soundfile, explicitly not passing evidence. Canonical1.3.0 unchanged, internalsessionw1-session/1, W2unopened.
+- IndependentSol-low task `node:delegated-task:command%3Amcp%3A30cfb9d8-e755-4477-bc78-ca85e864c6aa%3Adelegate-task%3Apab-phase1a-w1-review-r1-20261022`, report `reviews/W1-r1-sol.md`; originalAstraW1brief supplied, soleheavylane. NoW1/full1AGO.
