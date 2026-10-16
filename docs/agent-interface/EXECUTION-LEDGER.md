@@ -21,7 +21,7 @@
 | Launch preparation | Complete | Planning baseline `2c1adaa`; source base `ae67cd6`; integration branch `feat/agent-voice-workspace`. |
 | 0A Contract/compatibility pack | Integrated GO at E1 | Candidate `26f8e08` reviewed GO; integrated `bf66c30`, source equality verified. |
 | 0B Editor browser fixture | Integrated GO E1/E4 | Reviewed `b62261e`, integrated `1c4e269`;8tests/build pass after integration. |
-| 0C Integration skeleton/acceptance ledger | Launching | 0A1.3.0 and0B integrated; isolated Sol-low skeleton/discovery/packaging slice. |
+| 0C Integration skeleton/acceptance ledger | Reviewing | Candidate `7ab54bb`; HTTP/CLI/MCP and Docker boundary review running. |
 | Phase 0 gate | Not evaluated | Integrated contracts, browser evidence, packaging boundary and relevant checks. |
 
 ## Per-lot record
@@ -134,3 +134,9 @@ Record failures and missing evidence; do not replace them with a successful late
 - [IndependentR3 report](reviews/0B-r3-sol.md): boundedGO exact `b62261e4ebb37fd9e0d1840c599b92846fcadb96`,R1/R2closed,E1/E4only.8tests/build/browser independently confirmed.
 - Root cherry-picked three implementation commits, integrated `1c4e269`; empty source diff vs reviewed candidate for studio/contracts/design context. `npm ci --prefix studio --ignore-scripts`,8tests andTS/Vitebuild pass after integration; external isolated oracle interpreter only, integrated test/source used. Known2moderatedevprobe findings/bundlewarning retained, no autofix. Root research untouched.
 - 0C request `pab-phase0c-implementation-r1-20261016`: pinned service/client skeleton, cheap discovery/MCP fixture, releaseCompose boundary/evidence matrix. No durable core/realworker/hardware claim yet. Independent review follows candidate; Phase0gate remains unevaluated.
+
+## Lot0C candidate / reviewround1
+
+- Candidate `7ab54bb4bf3b30f95a7debc9a9198267d1ac3bdb`, isolated `/Users/ben/.txcode/worktrees/py-audio-box/t3-e6cca322`, branch `t3/build-isolated-0c-skeleton`. Root read complete SKELETON-0C handoff. Unintegrated.
+- Implementer reports4tests,574fixtureonboarding tokens,containerboundarysmoke,50packagedfilesmatch. Default internalnetwork hostport unavailable oncurrentdaemon; explicit localUIbridgeoverride untested. No installedUI/durablecore/hardwareclaim.
+- IndependentSol-low request/task suffix `pab-phase0c-review-r1-20261016`, report `reviews/0C-r1-sol.md`; investigate packagehostaccess/override and exact transport/token/containment evidence. Soleheavylane. No0C/Phase0GO.
