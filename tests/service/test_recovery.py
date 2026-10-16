@@ -1164,7 +1164,11 @@ def test_b22_prefix_damaged_journal_preserves_status_and_coverage(installation,j
     import hashlib,tempfile
     roots,scope,_,_=installation
     if journal_tranche=='core':
-        with sqlite3.connect(roots['control']/'core'/'core.sqlite') as db:db.execute('UPDATE resource_accounting SET highwater=?',(20*1024**2,))
+        # SQLite's transaction context does not close the source handle. Close it
+        # before private-copy entry; rebinding db inside that context could
+        # otherwise checkpoint/unlink the original WAL/SHM during inspection.
+        with closing(sqlite3.connect(roots['control']/'core'/'core.sqlite')) as db,db:
+            db.execute('UPDATE resource_accounting SET highwater=?',(20*1024**2,))
     intent,observation,_=prefix_fixture(installation)
     journal=roots['receipts']/'journal.json'
     raw=b'' if journal_state=='missing' else b'original corrupt journal bytes'
