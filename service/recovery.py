@@ -1401,7 +1401,6 @@ def _pending_prefix(roots, scope, intent, observation, *, now=None, snapshot_byt
             _completed_prefix_receipts(roots,intent)
             if through_receipt and any(s['recovery_id']==intent['id'] and s['step']=='receipt-complete' for s in data['p1_recovery_steps']):
                 _verify_finished_receipt_evidence(roots,intent)
-                _retained_exact(creation,_receipt_descriptor(intent,encode(_core_result(intent)['certificate']).encode()))
                 if data['p1_recoveries'][-1]['id']==intent['id'] and not retained_names:
                     fence=dict(revision=1,**{k:intent[k] for k in ('deployment_id','plan_id','plan_digest','proof_digest','old_lane','new_lane')},recovery_id=intent['id'],step='complete',certificate=_core_result(intent)['certificate'])
                     _retained_exact(receipts/'p1-maintenance.json',encode(fence).encode())
@@ -1824,6 +1823,10 @@ def _verify_finished_receipt_evidence(roots,intent):
     fence=dict(revision=1,**{k:intent[k] for k in ('deployment_id','plan_id','plan_digest','proof_digest','old_lane','new_lane')},recovery_id=intent['id'],step='complete',certificate=certificate)
     bound=journal_bytes(dict(intent['expected'][2]['output']['journal'],maintenance=certificate))
     prefix='p1-recovery-'+intent['id'];receipts=roots['receipts']
+    core_raw=encode(certificate).encode()
+    core_name=next(n for n,k in archive_names(intent).items() if k=='certificate')
+    _prefix_exact(roots['control']/'core'/core_name,core_raw)
+    _prefix_exact(receipts/(prefix+'.core-certificate.intent.json'),_receipt_descriptor(intent,core_raw))
     _prefix_exact(receipts/(prefix+'.certificate.json'),archive)
     for kind,raw in (('receipt-certificate',archive),('completion-journal',bound),('completion-fence',encode(fence).encode())):
         _prefix_exact(receipts/(prefix+'.'+kind+'.intent.json'),_receipt_descriptor(intent,raw))

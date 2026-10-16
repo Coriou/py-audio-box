@@ -2258,6 +2258,50 @@ def retained_bytes(roots):
             if p.is_file()}
 
 
+@pytest.mark.parametrize('other',['predecessor','successor'])
+@pytest.mark.parametrize('damage',['none','missing','wrong','mode'])
+def test_b22d_r4_other_completed_core_descriptor(installation,monkeypatch,other,damage):
+    from service import resource_store
+    roots,scope,_,_=installation
+    first,observation,_=core_fixture(installation)
+    first_result=recovery._complete_receipts(roots,scope,first,observation,now=102)
+    second=b2_intent(installation,prepare_only=True,recovery_id='7'*32,archive_id='6'*32)
+    second_result=recovery._complete_receipts(roots,scope,second,second['proof']['observation'],now=102)
+    damaged,requested,expected=(first,second,second_result) if other=='predecessor' else (second,first,first_result)
+    path=roots['receipts']/('p1-recovery-'+damaged['id']+'.core-certificate.intent.json')
+    if damage=='missing':path.unlink()
+    elif damage=='wrong':path.write_bytes(b'wrong')
+    elif damage=='mode':path.chmod(0o644)
+    # Only the descriptor changes: actual certificates and all five SQL steps
+    # remain intact, so this cannot pass merely by detecting a broken output.
+    with recovery.offline(roots) as (_,db):
+        data=recovery.validate_b2_database(db,roots['control']/'core')
+    assert all(sum(s['recovery_id']==i['id'] for s in data['p1_recovery_steps'])==5 for i in (first,second))
+    for i in (first,second):
+        chain=[dict(recovery_id=i['id'],**e,lane=i['new_lane'],epoch=i['new_epoch']) for e in i['expected'][:4]]
+        certificate=recovery._certificate(i,chain[-1])
+        name=next(n for n,k in recovery.archive_names(i).items() if k=='certificate')
+        assert (roots['control']/'core'/name).read_bytes()==encode(certificate).encode()
+        assert (roots['receipts']/('p1-recovery-'+i['id']+'.certificate.json')).read_bytes()==encode(dict(certificate=certificate,steps=chain)).encode()
+    before=logical(roots);files=retained_bytes(roots)
+    modes={str(p):p.stat().st_mode for root in roots.values() for p in root.rglob('*') if p.is_file()}
+    def forbidden(*a,**k):raise AssertionError('completed replay scan or write')
+    monkeypatch.setattr(recovery,'snapshot',forbidden)
+    monkeypatch.setattr(Reconciliation,'_collect',forbidden)
+    monkeypatch.setattr(resource_store,'_recovery_scan',forbidden)
+    monkeypatch.setattr(recovery,'_prefix_file',forbidden)
+    monkeypatch.setattr(recovery,'_prefix_transaction',forbidden)
+    for _ in range(2):
+        if damage=='none':
+            assert recovery._complete_receipts(roots,scope,requested,requested['proof']['observation'],now=1000)==expected
+        else:
+            with pytest.raises((ValueError,OSError)):
+                recovery._complete_receipts(roots,scope,requested,requested['proof']['observation'],now=1000)
+        assert logical(roots)==before
+        assert retained_bytes(roots)==files
+        assert {str(p):p.stat().st_mode for root in roots.values() for p in root.rglob('*') if p.is_file()}==modes
+
+
 @pytest.mark.parametrize('restart',['unchanged','same-container','different-container'])
 def test_b22d_correction_unfinished_current_registration(installation,restart,monkeypatch):
     from worker.runtime_journal import Journal
