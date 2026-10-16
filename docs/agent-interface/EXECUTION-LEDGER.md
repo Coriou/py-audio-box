@@ -379,3 +379,8 @@ Record failures and missing evidence; do not replace them with a successful late
 - Initial task `pab-phase1a-p1b2-implementation-r1-20261022` stopped cleanly at baseline514f32b, no edits/tests/commits; necessary reconciliation adapter requested. Root verified exact known-table/column and B1-specific validation in current source.
 - Orchestrator APPROVES `service/reconciliation.py` only for exact B2 table/column recognition, closed record/digest validation, bounded fingerprint and typed reference traversal preserving retired dispatch/publication obligations. Existing bounds, fail-closed behavior and ordinary A2/R1 epochs unchanged. Regression tests stay in existing B2 allowlist.
 - Fresh isolated request `pab-phase1a-p1b2-implementation-r1b-20261022` repeats original B2 outcome/invariants plus amendment. No implementation/GO/activation claim.
+
+## B2 second clean stop / targeted Astra arbitration
+
+- Task `pab-phase1a-p1b2-implementation-r1b-20261022` terminal without files/commits/candidate. Baselinec07f066; B1regression59passed3.74s only. Historical Core publication probe suggests bypass, but task explicitly did not establish a further allowlist dependency; existing persistence initializer may fence startup. No B2 blocker/acceptance proven.
+- Targeted Astra request `pab-phase1a-p1b2-boundary-astra-20261022`: inspect actual call paths, settle pending-recovery/publication fence location and finite Sol-low execution boundaries. No implementation/waiver; do not repeat unchanged broad task before this decision.
