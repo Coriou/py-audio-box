@@ -198,3 +198,9 @@ Record failures and missing evidence; do not replace them with a successful late
 - [Independent W1 report](reviews/W1-r1-sol.md): GO exact `30afe884ebfa509113cc2b9872b044b11f1b1cf9`,68tests and3separatecontainer scenarios independently passed, cleanup/sourceidentity verified; E1/E2 only.
 - Integrated `624b305`; exact source diff vs reviewed candidate empty for service/worker/contracts/clients/tests/scripts. Root integrated Linux regression: **68 passed in24.27s**, exit0, exactsourceimage networknone/read-onlyroot/tmpfs/no mounts. No durable dispatcher activation/full1A claim.
 - Next isolated Sol-low request `pab-phase1a-w2-implementation-r1-20261022`, owner lifecycle/reconnect only under Astra ordered brief; independent review required. Resource/persistence/registry/render lots remain separate.
+
+## W2a partial candidate / independent review
+
+- Candidate `1194814141073be76c78fde9d32a9439f737987b`, app-owned`t3-001f240a`, branch`t3/w2-worker-supervision`. Root read full report: W2a dormant durable owner-state seam only, no actual runtime/W1 reconnect. W2 NOT complete.
+- Reports76regressions+9focused/hashverifier; final harness-only edits not rerun. Hostmissingjsonschema noted; E1 sourceoverlay only, no separatecontainerW2proof.
+- IndependentSol-low request `pab-phase1a-w2a-review-r1-20261022`, same current task-ID prefix, report `reviews/W2a-r1-sol.md`. Boundedstate/transactionreview and finalscriptverification; all originalW2 actualruntime/deadline/restart gates remain. No integration yet.
