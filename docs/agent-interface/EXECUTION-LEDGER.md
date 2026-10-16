@@ -210,3 +210,9 @@ Record failures and missing evidence; do not replace them with a successful late
 - [Independent review](reviews/W2a-r1-sol.md): boundedGO exact`1194814`; finalscript9pass and76regressions+1sourceverifier passed. Dormantprimitives only, actualW2 operational gates unchanged.
 - Integrated`1812365`; exact source diff vs reviewedcandidate empty. Root exact finalscript running from disposable gitarchive to preserve historicalreceipts; no semantic integrationdelta.
 - Next Sol-low W2b request `pab-phase1a-w2b-implementation-r1-20261022`: concrete isolated runtime/reconnect/deadline integration; independentlyreview beforeacceptance. No fullW2/1AGO.
+
+## W2b candidate / independent review
+
+- Candidate`5eae4d1e45569cd2372028f5d32e02f6cbd2c457`, app-owned`t3-8466bed9`, branch`t3/implement-w2b-runtime`. Root read fullhandoff; unintegrated.
+- Claims87tests+2actualcontainer scenarios for cachedreconnect/controlabsentdeadline/stopescalation/termination/restartquarantine. Dockeroperator explicitlyhosttestharness, deployedcompanion unimplemented; no productionexecutor/whole1Aclaim.
+- IndependentSol-low task suffix`pab-phase1a-w2b-review-r1-20261022`, samecurrenttask-IDprefix, report`reviews/W2b-r1-sol.md`; fulloriginalAstraW2brief andW2a report supplied. Soleheavylane; source/runtimeproof and boundedacceptance reviewed independently.
