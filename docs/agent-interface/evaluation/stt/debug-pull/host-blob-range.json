@@ -1,0 +1,9 @@
+{
+  "probe": "host_blob_range",
+  "status": 206,
+  "body_bytes_read": 1048576,
+  "content_range": "bytes 0-1048575/316264412",
+  "elapsed_seconds": 0.59,
+  "saved_payload": false,
+  "wire_bytes": null
+}

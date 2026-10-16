@@ -1,0 +1,7 @@
+{
+  "package_bytes_from_print_uris": 13526736,
+  "apt_reported_wire_bytes_approx": 111500000,
+  "budget_bytes": 150000000,
+  "within_budget": true,
+  "note": "Executed awk initially summed filename column2 and recorded0; corrected source now sums size column3. Actual pinned plan independently parsed here. No repeat provisioning performed."
+}

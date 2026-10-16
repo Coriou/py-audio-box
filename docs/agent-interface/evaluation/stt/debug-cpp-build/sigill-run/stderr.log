@@ -1,0 +1,24 @@
+whisper_init_from_file_with_params_no_state: loading model from '/assets/models/whisper-cpp/ggml-tiny-q5_1.bin'
+whisper_init_with_params_no_state: use gpu    = 0
+whisper_init_with_params_no_state: flash attn = 1
+whisper_init_with_params_no_state: gpu_device = 0
+whisper_init_with_params_no_state: dtw        = 0
+whisper_init_with_params_no_state: devices    = 1
+whisper_init_with_params_no_state: backends   = 1
+whisper_model_load: loading model
+whisper_model_load: n_vocab       = 51865
+whisper_model_load: n_audio_ctx   = 1500
+whisper_model_load: n_audio_state = 384
+whisper_model_load: n_audio_head  = 6
+whisper_model_load: n_audio_layer = 4
+whisper_model_load: n_text_ctx    = 448
+whisper_model_load: n_text_state  = 384
+whisper_model_load: n_text_head   = 6
+whisper_model_load: n_text_layer  = 4
+whisper_model_load: n_mels        = 80
+whisper_model_load: ftype         = 9
+whisper_model_load: qntvr         = 1
+whisper_model_load: type          = 1 (tiny)
+whisper_model_load: adding 1608 extra tokens
+whisper_model_load: n_langs       = 99
+CAPTURE signal=4 si_code=2 pc=0x7fbad70b9f9d library=/app/build/bin/libggml-cpu.so.0 base=0x7fbad7098000 offset=0x21f9d bytes=62f2fd087cc14c8d

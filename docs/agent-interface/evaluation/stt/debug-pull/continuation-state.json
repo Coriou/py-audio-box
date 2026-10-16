@@ -1,0 +1,27 @@
+{
+  "at": "2026-10-15T15:29:26.377570+00:00",
+  "image_present": false,
+  "observed_compressed_progress_bytes": 387809002,
+  "download_complete_layers": [
+    "24a3c0232ffe",
+    "98c4455a9898",
+    "5fd3eb4a0303"
+  ],
+  "retry_statuses": [],
+  "last_progress": {
+    "at": "2026-10-15T15:29:18.768773+00:00",
+    "detail": {
+      "current": 199129728,
+      "total": 316264412
+    },
+    "event": "progress",
+    "layer": "789c34f75d56",
+    "observed_compressed_progress_bytes": 387809002,
+    "status": "Downloading"
+  },
+  "daemon_snapshot": {
+    "status": 200,
+    "raw_stack_saved": false,
+    "matching_function_names_only": []
+  }
+}

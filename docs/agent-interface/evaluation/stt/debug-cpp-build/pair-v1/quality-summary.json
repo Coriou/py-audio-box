@@ -1,0 +1,72 @@
+[
+  {
+    "sample_id": "fr-1679",
+    "reference": "Le groupe Aerosmith a annulé les derniers concerts de sa tournée.",
+    "hypothesis": "le compagre et recemne, c'est un mille et dernier concern de sa tournée.",
+    "metrics": {
+      "raw_wer": {
+        "edits": 10,
+        "reference_units": 11,
+        "rate": 0.9090909090909091,
+        "inserted_when_empty": null
+      },
+      "normalized_wer": {
+        "edits": 10,
+        "reference_units": 11,
+        "rate": 0.9090909090909091,
+        "inserted_when_empty": null
+      },
+      "raw_cer": {
+        "edits": 32,
+        "reference_units": 65,
+        "rate": 0.49230769230769234,
+        "inserted_when_empty": null
+      },
+      "normalized_cer": {
+        "edits": 30,
+        "reference_units": 64,
+        "rate": 0.46875,
+        "inserted_when_empty": null
+      },
+      "normalization": "nfc-casefold-word-tokens-v1;digits-and-accents-preserved"
+    },
+    "result": {
+      "language": "fr"
+    }
+  },
+  {
+    "sample_id": "en-1914",
+    "reference": "Twentieth century research has shown that there are two pools of genetic variation: hidden and expressed.",
+    "hypothesis": "20th century research has shown that there are two pools of genetic variation, hidden and expressed.",
+    "metrics": {
+      "raw_wer": {
+        "edits": 2,
+        "reference_units": 16,
+        "rate": 0.125,
+        "inserted_when_empty": null
+      },
+      "normalized_wer": {
+        "edits": 1,
+        "reference_units": 16,
+        "rate": 0.0625,
+        "inserted_when_empty": null
+      },
+      "raw_cer": {
+        "edits": 8,
+        "reference_units": 105,
+        "rate": 0.0761904761904762,
+        "inserted_when_empty": null
+      },
+      "normalized_cer": {
+        "edits": 7,
+        "reference_units": 103,
+        "rate": 0.06796116504854369,
+        "inserted_when_empty": null
+      },
+      "normalization": "nfc-casefold-word-tokens-v1;digits-and-accents-preserved"
+    },
+    "result": {
+      "language": "en"
+    }
+  }
+]

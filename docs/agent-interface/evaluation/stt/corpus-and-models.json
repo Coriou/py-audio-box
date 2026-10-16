@@ -1,0 +1,202 @@
+{
+  "dataset": "google/fleurs",
+  "dataset_revision": "70bb2e84b976b7e960aa89f1c648e09c59f894dd",
+  "license": "CC-BY-4.0",
+  "dataset_citation": "Conneau et al., FLEURS: Few-shot Learning Evaluation of Universal Representations of Speech (2022)",
+  "models": {
+    "small": {
+      "repo": "Systran/faster-whisper-small",
+      "revision": "536b0662742c02347bc0e980a01041f333bce120"
+    },
+    "turbo": {
+      "repo": "mobiuslabsgmbh/faster-whisper-large-v3-turbo",
+      "revision": "0a363e9161cbc7ed1431c9597a8ceaf0c4f78fcf"
+    }
+  },
+  "samples": [
+    {
+      "id": "en-1771",
+      "language": "en",
+      "file": "/assets/corpus/en-2589557553267364799.wav",
+      "text": "Remember that even though music on the main stages may have finished, there may be sections of the festival that will keep playing music until late into the night.",
+      "dataset_text_normalized": "remember that even though music on the main stages may have finished there may be sections of the festival that will keep playing music until late into the night",
+      "source_row_id": "1771",
+      "source_filename": "2589557553267364799.wav",
+      "duration": 8.94,
+      "sha256": "5db6068216c1f013f1fda5068e1f3b4e326a533bb361682ef05795f35549aa4f",
+      "kind": "natural_read_speech"
+    },
+    {
+      "id": "en-1914",
+      "language": "en",
+      "file": "/assets/corpus/en-621925716775998155.wav",
+      "text": "Twentieth century research has shown that there are two pools of genetic variation: hidden and expressed.",
+      "dataset_text_normalized": "twentieth century research has shown that there are two pools of genetic variation hidden and expressed",
+      "source_row_id": "1914",
+      "source_filename": "621925716775998155.wav",
+      "duration": 5.88,
+      "sha256": "cf4c405546467f94f1589e574bec7c07cfe2a709bdc40b65660ed24f74d13d60",
+      "kind": "natural_read_speech"
+    },
+    {
+      "id": "en-1980",
+      "language": "en",
+      "file": "/assets/corpus/en-12741024238657315067.wav",
+      "text": "Unfortunately, studying traffic flow is difficult because driver behavior cannot be predicted with one-hundred percent certainty.",
+      "dataset_text_normalized": "unfortunately studying traffic flow is difficult because driver behavior cannot be predicted with one-hundred percent certainty",
+      "source_row_id": "1980",
+      "source_filename": "12741024238657315067.wav",
+      "duration": 12.64,
+      "sha256": "3e76cc5728bfd7c24f1039b5c9a47e8d79c7f225605862e977833a4f79249bff",
+      "kind": "natural_read_speech"
+    },
+    {
+      "id": "fr-1679",
+      "language": "fr",
+      "file": "/assets/corpus/fr-17999210160761730950.wav",
+      "text": "Le groupe Aerosmith a annulé les derniers concerts de sa tournée.",
+      "dataset_text_normalized": "le groupe aerosmith a annulé les derniers concerts de sa tournée",
+      "source_row_id": "1679",
+      "source_filename": "17999210160761730950.wav",
+      "duration": 6.0,
+      "sha256": "8e604fa3ed7d574fa2f4da0d96bece714164c22e3a454740708aec8438d61298",
+      "kind": "natural_read_speech"
+    },
+    {
+      "id": "fr-1707",
+      "language": "fr",
+      "file": "/assets/corpus/fr-17467158799788389101.wav",
+      "text": "Il s'agit de l'un des parcs d'attraction les plus connus en Afrique du Sud et considéré comme le fleuron des parcs Nationaux sud-africains (SANParks).",
+      "dataset_text_normalized": "il s'agit de l'un des parcs d'attraction les plus connus en afrique du sud et considéré comme le fleuron des parcs nationaux sud-africains sanparks",
+      "source_row_id": "1707",
+      "source_filename": "17467158799788389101.wav",
+      "duration": 8.22,
+      "sha256": "7923ce5db0b63dd1493a5450e9ddcd6900e9526f079a30b026f41a5b90b7ef3a",
+      "kind": "natural_read_speech"
+    },
+    {
+      "id": "fr-1829",
+      "language": "fr",
+      "file": "/assets/corpus/fr-7105431834829365765.wav",
+      "text": "Les voyageurs à destination de pays où les taxes sont élevées peuvent parfois faire des économies considérables, en particulier sur des produits comme les boissons alcoolisées ou le tabac.",
+      "dataset_text_normalized": "les voyageurs à destination de pays où les taxes sont élevées peuvent parfois faire des économies considérables en particulier sur des produits comme les boissons alcoolisées ou le tabac",
+      "source_row_id": "1829",
+      "source_filename": "7105431834829365765.wav",
+      "duration": 9.42,
+      "sha256": "84b9775ac39f437bfd565f5912942d1bde2237bded75473d98486499f200c990",
+      "kind": "natural_read_speech"
+    },
+    {
+      "id": "silence",
+      "language": null,
+      "file": "/assets/corpus/silence.wav",
+      "text": "",
+      "duration": 4,
+      "sha256": "f751fd7094be088dc785125e4a1a0222a17c2bd20469aa31728ca5e515ed5809",
+      "kind": "synthetic_negative"
+    },
+    {
+      "id": "noise",
+      "language": null,
+      "file": "/assets/corpus/noise.wav",
+      "text": "",
+      "duration": 4,
+      "sha256": "f3f64df5dc890639410d33b27aadbc5193cc1dc9d49eade70702031953a98644",
+      "kind": "synthetic_negative"
+    },
+    {
+      "id": "constructed-fr-en",
+      "language": null,
+      "file": "/assets/corpus/constructed-fr-en.wav",
+      "text": "Le groupe Aerosmith a annulé les derniers concerts de sa tournée. Remember that even though music on the main stages may have finished, there may be sections of the festival that will keep playing music until late into the night.",
+      "duration": 15.94,
+      "sha256": "68431105b9f00ad82cc33a3782b95dd76c9dddaa25e5e9ebb8763f208e906a2a",
+      "kind": "constructed_concat_not_natural_code_switch",
+      "source_samples": [
+        "fr-1679",
+        "en-1771"
+      ]
+    }
+  ],
+  "sources": [
+    {
+      "url": "https://huggingface.co/datasets/google/fleurs/resolve/70bb2e84b976b7e960aa89f1c648e09c59f894dd/data/fr_fr/test.tsv",
+      "path": "/assets/sources/fr_fr-test.tsv",
+      "bytes": 456972,
+      "sha256": "5d06d338b242e00786fcf12c4c92008b9f399d5a5c872c91dca90572e7869c0d"
+    },
+    {
+      "url": "https://huggingface.co/datasets/google/fleurs/resolve/70bb2e84b976b7e960aa89f1c648e09c59f894dd/data/fr_fr/audio/test.tar.gz",
+      "path": "/assets/sources/fr_fr-test.tar.gz",
+      "bytes": 349036055,
+      "sha256": "d23690e102f373554d1b544cd2ff1e76e4fedeb04953c0b72751a1b7c518cfdd"
+    },
+    {
+      "url": "https://huggingface.co/datasets/google/fleurs/resolve/70bb2e84b976b7e960aa89f1c648e09c59f894dd/data/en_us/test.tsv",
+      "path": "/assets/sources/en_us-test.tsv",
+      "bytes": 367864,
+      "sha256": "74c046239374deeb60fa63f258f907388093a32bcaa3140965f70ef05c79f7ca"
+    },
+    {
+      "url": "https://huggingface.co/datasets/google/fleurs/resolve/70bb2e84b976b7e960aa89f1c648e09c59f894dd/data/en_us/audio/test.tar.gz",
+      "path": "/assets/sources/en_us-test.tar.gz",
+      "bytes": 289851356,
+      "sha256": "d9c2e37b41aacd41bc283554a0a82b5476b36887049774ecb2819dcaaa55a356"
+    },
+    {
+      "url": "https://huggingface.co/Systran/faster-whisper-small/resolve/536b0662742c02347bc0e980a01041f333bce120/config.json",
+      "path": "/assets/models/small/config.json",
+      "bytes": 2370,
+      "sha256": "b55496ac7940a7ae47d2c01eab40edfd8701feec1229d9cce3b40014383fb828"
+    },
+    {
+      "url": "https://huggingface.co/Systran/faster-whisper-small/resolve/536b0662742c02347bc0e980a01041f333bce120/model.bin",
+      "path": "/assets/models/small/model.bin",
+      "bytes": 483546902,
+      "sha256": "3e305921506d8872816023e4c273e75d2419fb89b24da97b4fe7bce14170d671"
+    },
+    {
+      "url": "https://huggingface.co/Systran/faster-whisper-small/resolve/536b0662742c02347bc0e980a01041f333bce120/tokenizer.json",
+      "path": "/assets/models/small/tokenizer.json",
+      "bytes": 2203239,
+      "sha256": "fb7b63191e9bb045082c79fd742a3106a12c99513ab30df4a0d47fa6cb6fd0ab"
+    },
+    {
+      "url": "https://huggingface.co/Systran/faster-whisper-small/resolve/536b0662742c02347bc0e980a01041f333bce120/vocabulary.txt",
+      "path": "/assets/models/small/vocabulary.txt",
+      "bytes": 459861,
+      "sha256": "34ce3fe1c5041027b3f8d42912270993f986dbc4bb34cf27f951e34a1e453913"
+    },
+    {
+      "url": "https://huggingface.co/mobiuslabsgmbh/faster-whisper-large-v3-turbo/resolve/0a363e9161cbc7ed1431c9597a8ceaf0c4f78fcf/config.json",
+      "path": "/assets/models/turbo/config.json",
+      "bytes": 2263,
+      "sha256": "b0253ea6c0d3bea6b1e19e91a02acfd3b53f4467362efcb5a3e6b16c9b3a9b7e"
+    },
+    {
+      "url": "https://huggingface.co/mobiuslabsgmbh/faster-whisper-large-v3-turbo/resolve/0a363e9161cbc7ed1431c9597a8ceaf0c4f78fcf/model.bin",
+      "path": "/assets/models/turbo/model.bin",
+      "bytes": 1617884929,
+      "sha256": "e76620f83d5f5b69efd3d87e3dc180c1bd21df9fbebacfd4335e5e1efcc018da"
+    },
+    {
+      "url": "https://huggingface.co/mobiuslabsgmbh/faster-whisper-large-v3-turbo/resolve/0a363e9161cbc7ed1431c9597a8ceaf0c4f78fcf/tokenizer.json",
+      "path": "/assets/models/turbo/tokenizer.json",
+      "bytes": 2710337,
+      "sha256": "297b13372ac43916285644fb9687add3cc62ee2a1adb60da3dc25cc94c1871fd"
+    },
+    {
+      "url": "https://huggingface.co/mobiuslabsgmbh/faster-whisper-large-v3-turbo/resolve/0a363e9161cbc7ed1431c9597a8ceaf0c4f78fcf/vocabulary.json",
+      "path": "/assets/models/turbo/vocabulary.json",
+      "bytes": 1068114,
+      "sha256": "c69260f2ab26d659b7c398f9a2b2b48ed0df16c3b47d7326782fd9cba71690c1"
+    },
+    {
+      "url": "https://huggingface.co/mobiuslabsgmbh/faster-whisper-large-v3-turbo/resolve/0a363e9161cbc7ed1431c9597a8ceaf0c4f78fcf/preprocessor_config.json",
+      "path": "/assets/models/turbo/preprocessor_config.json",
+      "bytes": 340,
+      "sha256": "7ccc62c6f2765af1f3b46c00c9b5894426835a05021c8b9c01eecb6dfb542711"
+    }
+  ],
+  "total_download_bytes": 2747590602
+}

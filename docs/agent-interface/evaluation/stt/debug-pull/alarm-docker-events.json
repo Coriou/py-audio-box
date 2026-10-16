@@ -1,0 +1,15 @@
+{
+  "started_at": "2026-10-15T15:20:37.253904+00:00",
+  "finished_at": "2026-10-15T15:20:40.321824+00:00",
+  "elapsed_seconds": 3.068,
+  "limit_seconds": 3.0,
+  "kill_grace_seconds": 0.2,
+  "timed_out": true,
+  "signals_sent": [
+    "SIGTERM"
+  ],
+  "client_returncode": 143,
+  "client_reaped": true,
+  "log_bytes": 0,
+  "scope": "client process group; daemon-side completion requires separate verification"
+}

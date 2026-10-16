@@ -1,0 +1,40 @@
+{
+  "scope": "Pinned upstream export function only, mocked DB/audio loader, synthetic PCM; no installed app/SQL/browser/real media",
+  "source_sha256": "d1fd94c8bc36969639bd79d035b19a49f0a6bfaf4c6fee8b4093549c76bafecf",
+  "fixtures": {
+    "missing_source_alongside_valid": {
+      "returned_audio": true,
+      "samples": 24000,
+      "rate": 24000,
+      "peak": 0.75,
+      "mean": 0.75
+    },
+    "two_overlaps_with_peak_above_one": {
+      "returned_audio": true,
+      "samples": 24000,
+      "rate": 24000,
+      "peak": 1.0,
+      "mean": 1.0
+    },
+    "zero_clip_volume": {
+      "returned_audio": true,
+      "samples": 24000,
+      "rate": 24000,
+      "peak": 0.75,
+      "mean": 0.75
+    },
+    "nonzero_half_clip_volume": {
+      "returned_audio": true,
+      "samples": 24000,
+      "rate": 24000,
+      "peak": 0.375,
+      "mean": 0.375
+    }
+  },
+  "observations": [
+    "missing asset skipped with valid output",
+    "overlap peak automatically normalized",
+    "volume zero treated as default one",
+    "nonzero clip gain applied"
+  ]
+}

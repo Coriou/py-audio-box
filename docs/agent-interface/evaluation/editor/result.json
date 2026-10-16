@@ -1,0 +1,79 @@
+{
+  "date": "2026-10-15T14:24:24.148Z",
+  "node": "v25.2.1",
+  "scope": "Published headless metadata engine only; no browser/audio playback/render/RPC/model testing",
+  "packages": [
+    {
+      "name": "core",
+      "version": "12.6.1",
+      "distSha256": "040856ff0780510f08d35e1c9fd441d7c5a58322e6bb781acbeca88a728c58b2"
+    },
+    {
+      "name": "engine",
+      "version": "13.6.0",
+      "distSha256": "be9c2743e154b66129206fe3f85c7f730d34d60079172b480780f96125176d5b"
+    }
+  ],
+  "checks": [
+    {
+      "name": "Headless metadata state without AudioContext/model",
+      "passed": true
+    },
+    {
+      "name": "Stable supplied clip/track IDs survive ingestion",
+      "passed": true
+    },
+    {
+      "name": "Move preserves source trim and other track",
+      "passed": true
+    },
+    {
+      "name": "Undo and redo preserve clip identity/placement",
+      "passed": true
+    },
+    {
+      "name": "Grouped edits undo in one step",
+      "passed": true
+    },
+    {
+      "name": "Abort transaction restores arrangement",
+      "passed": true
+    },
+    {
+      "name": "Split conserves source interval and duration",
+      "passed": true
+    },
+    {
+      "name": "Same-track overlap request is clamped",
+      "passed": true
+    },
+    {
+      "name": "Existing overlap can be represented at ingestion",
+      "passed": true
+    },
+    {
+      "name": "Authoritative refresh clears local undo",
+      "passed": true
+    },
+    {
+      "name": "getState clip references are shallow",
+      "passed": true
+    }
+  ],
+  "observations": [
+    {
+      "name": "same_track_overlap",
+      "requestedDelta": -72000,
+      "appliedDelta": -48000,
+      "implication": "Intentional same-track overlap needs an adapter/policy change or separate tracks; do not silently clamp an accepted server edit."
+    },
+    {
+      "name": "refresh_history",
+      "implication": "Server revision/CAS and persistent undo must be owned outside local engine history; setTracks resets local history."
+    },
+    {
+      "name": "state_ownership",
+      "implication": "Treat returned clip objects as immutable or clone at the adapter boundary; not a server isolation/CAS layer."
+    }
+  ]
+}

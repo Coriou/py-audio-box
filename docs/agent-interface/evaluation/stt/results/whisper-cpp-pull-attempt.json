@@ -1,0 +1,26 @@
+{
+  "started_at": "2026-10-15T14:41:25Z",
+  "finished_at": "2026-10-15T14:43:52Z",
+  "elapsed_seconds_from_file_receipts": 147,
+  "intended_pull_cap_seconds": 120,
+  "cap_enforced": false,
+  "timeout_method": "Perl alarm followed by exec docker; did not terminate Docker client",
+  "termination": "Manual SIGKILL of exact verified task Docker client PID16647",
+  "exit_code": 137,
+  "image_ready": false,
+  "inference_started": false,
+  "image": "ghcr.io/ggml-org/whisper.cpp@sha256:23da2ac176ae6be2633f5766f1e532746383dce1864cbebf6c7af64887a23647",
+  "manifest_compressed_layer_bytes": 504943686,
+  "registry_wire_bytes": null,
+  "log_bytes": 0,
+  "model": {
+    "repo": "ggerganov/whisper.cpp",
+    "revision": "5359861c739e955e79d9a303bcbc70fb988958b1",
+    "file": "ggml-tiny-q5_1.bin",
+    "multilingual": true,
+    "license": "MIT",
+    "bytes": 32152673,
+    "sha256": "818710568da3ca15689e31a743197b520007872ff9576237bda97bd1b469c3d7"
+  },
+  "disposition": "No retry, alternate image, build, fourth configuration or model-default change. Future pull requires external parent watchdog rather than exec-inherited alarm."
+}

@@ -1,0 +1,22 @@
+{
+  "libwhisper.so.1.9.5": {
+    "bytes": 615800,
+    "sha256": "63489cf1ea12c60b10a912a5ddf2f63aeb09f387ec68b99ae65a6d026aa7de0b"
+  },
+  "libggml.so.0.26.0": {
+    "bytes": 59736,
+    "sha256": "4378d845f9cfe47bd42a190d97ccea6bbed3fa42ef428892338561a272f0b330"
+  },
+  "whisper-cli": {
+    "bytes": 976312,
+    "sha256": "1e8fadf5676bc2396d0e65231f0e2bfc2266134efd685bd1a372eeb1f8e31272"
+  },
+  "libggml-base.so.0.26.0": {
+    "bytes": 931232,
+    "sha256": "39d9e224e9ca9431223b3cc46f1b3a940f1b758129ae40e6b4f439fe34fdc3f0"
+  },
+  "libggml-cpu.so.0.26.0": {
+    "bytes": 1279912,
+    "sha256": "359fed40e7c5f04e2351d2e81115abb38001661ccd4d8df5356a03c68890ea8b"
+  }
+}

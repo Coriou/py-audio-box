@@ -1,0 +1,4 @@
+# Verbatim tool evidence: preserve original bytes, including emitted whitespace.
+stt/debug-cpp-build/original-image-static-evidence.txt -whitespace
+stt/debug-cpp-build/portable-v1/CMakeCache.txt -whitespace
+stt/debug-cpp-build/portable-v1/ggml-cpu-flags.make -whitespace

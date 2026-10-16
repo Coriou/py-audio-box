@@ -1,0 +1,348 @@
+2026-10-15T14:35:58Z
+300220416
+301363200
+usage_usec 2861507
+user_usec 1807409
+system_usec 1054098
+nice_usec 0
+nr_periods 27
+nr_throttled 0
+throttled_usec 0
+nr_bursts 0
+burst_usec 0
+2026-10-15T14:36:09Z
+3392974848
+3490889728
+usage_usec 14605444
+user_usec 3533344
+system_usec 11072100
+nice_usec 0
+nr_periods 131
+nr_throttled 0
+throttled_usec 0
+nr_bursts 0
+burst_usec 0
+2026-10-15T14:36:19Z
+3749740544
+3898277888
+usage_usec 31213710
+user_usec 18869268
+system_usec 12344442
+nice_usec 0
+nr_periods 236
+nr_throttled 6
+throttled_usec 64750
+nr_bursts 0
+burst_usec 0
+2026-10-15T14:36:29Z
+3749769216
+3898740736
+usage_usec 41492952
+user_usec 28854675
+system_usec 12638277
+nice_usec 0
+nr_periods 339
+nr_throttled 6
+throttled_usec 64750
+nr_bursts 0
+burst_usec 0
+2026-10-15T14:36:40Z
+2095017984
+3899023360
+usage_usec 51791214
+user_usec 38736626
+system_usec 13054587
+nice_usec 0
+nr_periods 442
+nr_throttled 6
+throttled_usec 64750
+nr_bursts 0
+burst_usec 0
+2026-10-15T14:36:50Z
+2095284224
+3899023360
+usage_usec 62025587
+user_usec 48937418
+system_usec 13088169
+nice_usec 0
+nr_periods 544
+nr_throttled 6
+throttled_usec 64750
+nr_bursts 0
+burst_usec 0
+2026-10-15T14:37:00Z
+2095173632
+3899023360
+usage_usec 72242408
+user_usec 59154238
+system_usec 13088169
+nice_usec 0
+nr_periods 646
+nr_throttled 6
+throttled_usec 64750
+nr_bursts 0
+burst_usec 0
+2026-10-15T14:37:10Z
+2095190016
+3899023360
+usage_usec 82468921
+user_usec 69380751
+system_usec 13088169
+nice_usec 0
+nr_periods 748
+nr_throttled 6
+throttled_usec 64750
+nr_bursts 0
+burst_usec 0
+2026-10-15T14:37:21Z
+1910632448
+3899023360
+usage_usec 92883675
+user_usec 79795505
+system_usec 13088169
+nice_usec 0
+nr_periods 852
+nr_throttled 6
+throttled_usec 64750
+nr_bursts 0
+burst_usec 0
+2026-10-15T14:37:31Z
+1911197696
+3899023360
+usage_usec 103127543
+user_usec 90039374
+system_usec 13088169
+nice_usec 0
+nr_periods 954
+nr_throttled 6
+throttled_usec 64750
+nr_bursts 0
+burst_usec 0
+2026-10-15T14:37:41Z
+1910939648
+3899023360
+usage_usec 113359651
+user_usec 100271481
+system_usec 13088169
+nice_usec 0
+nr_periods 1056
+nr_throttled 6
+throttled_usec 64750
+nr_bursts 0
+burst_usec 0
+2026-10-15T14:37:51Z
+1911283712
+3899023360
+usage_usec 123614313
+user_usec 110526144
+system_usec 13088169
+nice_usec 0
+nr_periods 1158
+nr_throttled 6
+throttled_usec 64750
+nr_bursts 0
+burst_usec 0
+2026-10-15T14:38:02Z
+1911513088
+3899023360
+usage_usec 133888349
+user_usec 120800180
+system_usec 13088169
+nice_usec 0
+nr_periods 1261
+nr_throttled 6
+throttled_usec 64750
+nr_bursts 0
+burst_usec 0
+2026-10-15T14:38:12Z
+1911148544
+3899023360
+usage_usec 144144978
+user_usec 131056808
+system_usec 13088169
+nice_usec 0
+nr_periods 1363
+nr_throttled 6
+throttled_usec 64750
+nr_bursts 0
+burst_usec 0
+2026-10-15T14:38:22Z
+1910853632
+3899023360
+usage_usec 154389069
+user_usec 141300900
+system_usec 13088169
+nice_usec 0
+nr_periods 1466
+nr_throttled 6
+throttled_usec 64750
+nr_bursts 0
+burst_usec 0
+2026-10-15T14:38:32Z
+1966555136
+3899023360
+usage_usec 164921603
+user_usec 151249520
+system_usec 13672083
+nice_usec 0
+nr_periods 1568
+nr_throttled 6
+throttled_usec 64750
+nr_bursts 0
+burst_usec 0
+2026-10-15T14:38:43Z
+1997504512
+3899023360
+usage_usec 175264731
+user_usec 161318408
+system_usec 13946323
+nice_usec 0
+nr_periods 1671
+nr_throttled 6
+throttled_usec 64750
+nr_bursts 0
+burst_usec 0
+2026-10-15T14:38:53Z
+2145439744
+3899023360
+usage_usec 185524930
+user_usec 170976487
+system_usec 14548442
+nice_usec 0
+nr_periods 1773
+nr_throttled 6
+throttled_usec 64750
+nr_bursts 0
+burst_usec 0
+2026-10-15T14:39:03Z
+1966088192
+3899023360
+usage_usec 195754466
+user_usec 180729650
+system_usec 15024815
+nice_usec 0
+nr_periods 1875
+nr_throttled 6
+throttled_usec 64750
+nr_bursts 0
+burst_usec 0
+2026-10-15T14:39:13Z
+1966063616
+3899023360
+usage_usec 206037784
+user_usec 191007500
+system_usec 15030284
+nice_usec 0
+nr_periods 1978
+nr_throttled 6
+throttled_usec 64750
+nr_bursts 0
+burst_usec 0
+2026-10-15T14:39:24Z
+1966026752
+3899023360
+usage_usec 216335610
+user_usec 201304664
+system_usec 15030945
+nice_usec 0
+nr_periods 2080
+nr_throttled 6
+throttled_usec 64750
+nr_bursts 0
+burst_usec 0
+2026-10-15T14:39:34Z
+1914843136
+3899023360
+usage_usec 226608728
+user_usec 211566804
+system_usec 15041923
+nice_usec 0
+nr_periods 2183
+nr_throttled 6
+throttled_usec 64750
+nr_bursts 0
+burst_usec 0
+2026-10-15T14:39:44Z
+1915039744
+3899023360
+usage_usec 236846328
+user_usec 221803606
+system_usec 15042721
+nice_usec 0
+nr_periods 2285
+nr_throttled 6
+throttled_usec 64750
+nr_bursts 0
+burst_usec 0
+2026-10-15T14:39:54Z
+1914781696
+3899023360
+usage_usec 247093786
+user_usec 232046950
+system_usec 15046835
+nice_usec 0
+nr_periods 2387
+nr_throttled 6
+throttled_usec 64750
+nr_bursts 0
+burst_usec 0
+2026-10-15T14:40:05Z
+1915125760
+3899023360
+usage_usec 257473452
+user_usec 242405681
+system_usec 15067771
+nice_usec 0
+nr_periods 2491
+nr_throttled 6
+throttled_usec 64750
+nr_bursts 0
+burst_usec 0
+2026-10-15T14:40:15Z
+1950527488
+3899023360
+usage_usec 268097705
+user_usec 252232526
+system_usec 15865178
+nice_usec 0
+nr_periods 2594
+nr_throttled 6
+throttled_usec 64750
+nr_bursts 0
+burst_usec 0
+2026-10-15T14:40:25Z
+2003955712
+3899023360
+usage_usec 278384225
+user_usec 261906288
+system_usec 16477937
+nice_usec 0
+nr_periods 2697
+nr_throttled 6
+throttled_usec 64750
+nr_bursts 0
+burst_usec 0
+2026-10-15T14:40:35Z
+2093416448
+3899023360
+usage_usec 288692580
+user_usec 271687663
+system_usec 17004917
+nice_usec 0
+nr_periods 2799
+nr_throttled 6
+throttled_usec 64750
+nr_bursts 0
+burst_usec 0
+2026-10-15T14:40:46Z
+1948192768
+3899023360
+usage_usec 298980129
+user_usec 281745315
+system_usec 17234814
+nice_usec 0
+nr_periods 2902
+nr_throttled 6
+throttled_usec 64750
+nr_bursts 0
+burst_usec 0

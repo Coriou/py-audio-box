@@ -1,0 +1,3 @@
+{"client": "ok", "transport": "unix-domain socket", "network": "none", "client_volume": "read-only"}
+SERVER_OK
+SERVER_EXIT=0

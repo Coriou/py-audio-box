@@ -1,0 +1,20 @@
+{
+  "at": "2026-10-15T15:28:04.171014+00:00",
+  "engine_goroutine_http_status": 200,
+  "stack_bytes_read": 122759,
+  "stack_saved": false,
+  "matching_function_names_only": [
+    "created by github.com/moby/moby/v2/daemon/images.",
+    "created by github.com/moby/moby/v2/daemon/internal/distribution.",
+    "created by github.com/moby/moby/v2/daemon/internal/distribution/xfer.",
+    "github.com/docker/distribution/registry/client/transport.",
+    "github.com/moby/moby/v2/daemon/images.",
+    "github.com/moby/moby/v2/daemon/internal/distribution.",
+    "github.com/moby/moby/v2/daemon/internal/distribution.Pull",
+    "github.com/moby/moby/v2/daemon/internal/distribution.Pull.func1",
+    "github.com/moby/moby/v2/daemon/internal/distribution.pullEndpoints",
+    "github.com/moby/moby/v2/daemon/internal/distribution/utils.WriteDistributionProgress",
+    "github.com/moby/moby/v2/daemon/internal/distribution/xfer."
+  ],
+  "purpose": "Positive control while the known task pull is active; no raw stack or request parameters persisted."
+}

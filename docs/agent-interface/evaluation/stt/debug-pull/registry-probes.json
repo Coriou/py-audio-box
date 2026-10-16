@@ -1,0 +1,32 @@
+[
+  {
+    "probe": "anonymous_token",
+    "status": 200,
+    "elapsed_seconds": 0.289,
+    "body_bytes": 73
+  },
+  {
+    "probe": "pinned_manifest",
+    "status": 200,
+    "elapsed_seconds": 0.229,
+    "sha256": "sha256:23da2ac176ae6be2633f5766f1e532746383dce1864cbebf6c7af64887a23647",
+    "layers": 4,
+    "compressed_layer_bytes": 504943686
+  },
+  {
+    "probe": "config_head",
+    "status": 200,
+    "elapsed_seconds": 0.235,
+    "content_length": "2132",
+    "response_host": "ghcr.io",
+    "declared_bytes": 2132
+  },
+  {
+    "probe": "largest_layer_head",
+    "status": 200,
+    "elapsed_seconds": 0.237,
+    "content_length": "316264412",
+    "response_host": "ghcr.io",
+    "declared_bytes": 316264412
+  }
+]

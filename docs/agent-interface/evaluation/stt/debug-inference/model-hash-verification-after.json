@@ -1,0 +1,34 @@
+[
+  {
+    "path": "work/stt-evaluation/models/small/config.json",
+    "expected": "b55496ac7940a7ae47d2c01eab40edfd8701feec1229d9cce3b40014383fb828",
+    "actual": "b55496ac7940a7ae47d2c01eab40edfd8701feec1229d9cce3b40014383fb828",
+    "bytes": 2370,
+    "match": true,
+    "hash_seconds": 0.001099737943150103
+  },
+  {
+    "path": "work/stt-evaluation/models/small/model.bin",
+    "expected": "3e305921506d8872816023e4c273e75d2419fb89b24da97b4fe7bce14170d671",
+    "actual": "3e305921506d8872816023e4c273e75d2419fb89b24da97b4fe7bce14170d671",
+    "bytes": 483546902,
+    "match": true,
+    "hash_seconds": 1.4478808369021863
+  },
+  {
+    "path": "work/stt-evaluation/models/small/tokenizer.json",
+    "expected": "fb7b63191e9bb045082c79fd742a3106a12c99513ab30df4a0d47fa6cb6fd0ab",
+    "actual": "fb7b63191e9bb045082c79fd742a3106a12c99513ab30df4a0d47fa6cb6fd0ab",
+    "bytes": 2203239,
+    "match": true,
+    "hash_seconds": 0.007035088958218694
+  },
+  {
+    "path": "work/stt-evaluation/models/small/vocabulary.txt",
+    "expected": "34ce3fe1c5041027b3f8d42912270993f986dbc4bb34cf27f951e34a1e453913",
+    "actual": "34ce3fe1c5041027b3f8d42912270993f986dbc4bb34cf27f951e34a1e453913",
+    "bytes": 459861,
+    "match": true,
+    "hash_seconds": 0.0016918480396270752
+  }
+]

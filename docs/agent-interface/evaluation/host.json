@@ -1,0 +1,32 @@
+{
+  "observed_date": "2026-10-15",
+  "scope": "Read-only task host and Docker VM metadata; no GPU runtime test",
+  "host": {
+    "os_family": "Darwin",
+    "architecture": "x86_64",
+    "cpu": "Intel Core i7-8700B CPU @ 3.20GHz",
+    "physical_cores": 6,
+    "logical_cpus": 12,
+    "memory_bytes": 68719476736,
+    "observed_cpu_features": [
+      "SSE4.1",
+      "SSE4.2",
+      "AVX",
+      "AVX2",
+      "FMA",
+      "F16C"
+    ]
+  },
+  "docker": {
+    "client_version": "29.4.0",
+    "server_version": "29.4.0",
+    "server_os": "linux",
+    "server_architecture": "x86_64",
+    "cpus": 12,
+    "memory_bytes": 16843739136,
+    "server_operating_system": "OrbStack",
+    "kernel": "7.0.14-orbstack-00380-ga7e0a2dc9535",
+    "qualification_note": "Actual probes use OrbStack Linux VM through Docker-compatible CLI; not Docker Desktop certification."
+  },
+  "inference_gpu": "not verified/available for this evaluation; no GPU measurements claimed"
+}

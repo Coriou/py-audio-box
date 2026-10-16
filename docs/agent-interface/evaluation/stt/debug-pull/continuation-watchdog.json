@@ -1,0 +1,23 @@
+{
+  "started_at": "2026-10-15T15:27:18.807259+00:00",
+  "finished_at": "2026-10-15T15:29:20.932831+00:00",
+  "elapsed_seconds": 122.126,
+  "limit_seconds": 120.0,
+  "kill_grace_seconds": 2.0,
+  "timed_out": true,
+  "signals_sent": [
+    "SIGTERM"
+  ],
+  "group_signal_errors": [
+    {
+      "signal": "SIGKILL",
+      "error": "PermissionError"
+    }
+  ],
+  "client_returncode": -15,
+  "client_reaped": true,
+  "group_inventory_available": true,
+  "group_members_after_client_reap": [],
+  "log_bytes": 169101,
+  "scope": "client process group; daemon-side completion requires separate verification"
+}

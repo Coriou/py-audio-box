@@ -1,0 +1,16 @@
+{
+  "recorded_at": "2026-10-15T15:27:18.485679+00:00",
+  "failure": "watchdog cleanup crashed on macOS PermissionError from killpg(pgid,0), then late killpg(SIGKILL), after timeout180 and initial SIGTERM",
+  "automatic_watchdog_receipt_created": false,
+  "client_absence_verified_by_process_inventory": true,
+  "client_exit_code": null,
+  "exact_wall_seconds": null,
+  "last_logged_compressed_progress_bytes": 354578730,
+  "no_further_pull_before_watchdog_repair": true,
+  "subsequent_checks": [
+    "repaired-escalation.json",
+    "repaired-term.json",
+    "daemon-after-first.json"
+  ],
+  "credential_metadata_clarification": "Docker config structure and auth-entry count were inspected; credential values were not used or printed. preflight credentials_read=false refers to the anonymous pull path, not a claim that config.json was never opened."
+}

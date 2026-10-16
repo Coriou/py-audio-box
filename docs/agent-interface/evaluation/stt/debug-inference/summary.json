@@ -1,0 +1,1111 @@
+{
+  "image": "sha256:fd86a754708e099477a8e624babe5e9880df365a100f18cdc784f55f917a038e",
+  "configs": {
+    "baseline": {
+      "environment": {
+        "event": "environment",
+        "wall": 1.9812164910836145,
+        "ct2": "4.8.3",
+        "env": {
+          "CT2_VERBOSE": "1",
+          "OMP_NUM_THREADS": "4",
+          "MKL_NUM_THREADS": "4",
+          "OPENBLAS_NUM_THREADS": "4"
+        },
+        "cpu_affinity": [
+          0,
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7,
+          8,
+          9,
+          10,
+          11
+        ],
+        "counters": {
+          "cpu_seconds": 2.678396744,
+          "maxrss_kib": 71868,
+          "cpu.stat": "usage_usec 2683867\nuser_usec 1926849\nsystem_usec 757017\nnice_usec 0\nnr_periods 24\nnr_throttled 0\nthrottled_usec 0\nnr_bursts 0\nburst_usec 0\n",
+          "memory.current": "219639808\n",
+          "memory.peak": "219639808\n",
+          "memory.events": "low 0\nhigh 0\nmax 0\noom 0\noom_kill 0\noom_group_kill 0\nsock_throttled 0\n",
+          "io": "rchar: 6954113\nwchar: 10214\nsyscr: 802\nsyscw: 7\nread_bytes: 185778176\nwrite_bytes: 0\ncancelled_write_bytes: 0\n"
+        }
+      },
+      "container_seconds": 121.994071,
+      "state": {
+        "Status": "exited",
+        "Running": false,
+        "Paused": false,
+        "Restarting": false,
+        "OOMKilled": false,
+        "Dead": false,
+        "Pid": 0,
+        "ExitCode": 137,
+        "Error": "",
+        "StartedAt": "2026-10-15T15:21:56.475938234Z",
+        "FinishedAt": "2026-10-15T15:23:58.470009903Z"
+      },
+      "supervisor": {
+        "command": [
+          "docker",
+          "run",
+          "--name",
+          "pab-stt-debug-baseline-20261015",
+          "--network",
+          "none",
+          "--cpus",
+          "4",
+          "--memory",
+          "6g",
+          "--pids-limit",
+          "256",
+          "-e",
+          "CT2_VERBOSE=1",
+          "-e",
+          "OMP_NUM_THREADS=4",
+          "-e",
+          "MKL_NUM_THREADS=4",
+          "-e",
+          "OPENBLAS_NUM_THREADS=4",
+          "-e",
+          "HF_HUB_OFFLINE=1",
+          "-e",
+          "TRANSFORMERS_OFFLINE=1",
+          "-v",
+          "/Users/ben/Projects/py-audio-box/docs/agent-interface/evaluation/stt/debug-inference:/diagnostic:ro",
+          "-v",
+          "/Users/ben/Projects/py-audio-box/work/stt-evaluation:/assets:ro",
+          "sha256:fd86a754708e099477a8e624babe5e9880df365a100f18cdc784f55f917a038e",
+          "python",
+          "/diagnostic/diagnose.py"
+        ],
+        "deadline_seconds": 120.0,
+        "timed_out": true,
+        "client_exit": null,
+        "elapsed_seconds": 123.28871065401472,
+        "ended_utc": "2026-10-15T15:23:59.360024+00:00"
+      },
+      "stages": [
+        {
+          "event": "load_end",
+          "wall": 8.236109703080729,
+          "seconds": 6.2533783240942284,
+          "effective_compute_type": "int8_float32"
+        },
+        {
+          "event": "features_end",
+          "wall": 8.258982868050225,
+          "seconds": 0.007707056007348001,
+          "cpu_seconds": 0.01433516899999887
+        },
+        {
+          "event": "encode_end",
+          "wall": 26.673744922038168,
+          "seconds": 18.37321473902557,
+          "cpu_seconds": 18.473973117
+        }
+      ],
+      "samples": [],
+      "last_counters": {
+        "cpu_seconds": 125.353716499,
+        "maxrss_kib": 758764,
+        "cpu.stat": "usage_usec 126101677\nuser_usec 118018436\nsystem_usec 8083241\nnice_usec 0\nnr_periods 1206\nnr_throttled 2\nthrottled_usec 5468\nnr_bursts 0\nburst_usec 0\n",
+        "memory.current": "721727488\n",
+        "memory.peak": "1403351040\n",
+        "memory.events": "low 0\nhigh 0\nmax 0\noom 0\noom_kill 0\noom_group_kill 0\nsock_throttled 0\n",
+        "io": "rchar: 496881075\nwchar: 70360\nsyscr: 2926\nsyscw: 116\nread_bytes: 223653888\nwrite_bytes: 0\ncancelled_write_bytes: 0\n"
+      },
+      "host_cpu_speed_limit_samples": [
+        65,
+        65,
+        67,
+        67,
+        67,
+        65,
+        65,
+        67,
+        65
+      ],
+      "generation_observed_lower_bound_seconds": 93.45187275100034,
+      "generation_observed_cpu_delta": 93.277092141
+    },
+    "unpacked": {
+      "environment": {
+        "event": "environment",
+        "wall": 2.1974053580779582,
+        "ct2": "4.8.3",
+        "env": {
+          "CT2_VERBOSE": "1",
+          "CT2_PACKED_GEMM": "0",
+          "OMP_NUM_THREADS": "4",
+          "MKL_NUM_THREADS": "4",
+          "OPENBLAS_NUM_THREADS": "4"
+        },
+        "cpu_affinity": [
+          0,
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7,
+          8,
+          9,
+          10,
+          11
+        ],
+        "counters": {
+          "cpu_seconds": 2.839583028,
+          "maxrss_kib": 71936,
+          "cpu.stat": "usage_usec 2847273\nuser_usec 2063716\nsystem_usec 783556\nnice_usec 0\nnr_periods 26\nnr_throttled 0\nthrottled_usec 0\nnr_bursts 0\nburst_usec 0\n",
+          "memory.current": "217772032\n",
+          "memory.peak": "217772032\n",
+          "memory.events": "low 0\nhigh 0\nmax 0\noom 0\noom_kill 0\noom_group_kill 0\nsock_throttled 0\n",
+          "io": "rchar: 6954541\nwchar: 10214\nsyscr: 802\nsyscw: 7\nread_bytes: 183742464\nwrite_bytes: 0\ncancelled_write_bytes: 0\n"
+        }
+      },
+      "container_seconds": 26.437688,
+      "state": {
+        "Status": "exited",
+        "Running": false,
+        "Paused": false,
+        "Restarting": false,
+        "OOMKilled": false,
+        "Dead": false,
+        "Pid": 0,
+        "ExitCode": 0,
+        "Error": "",
+        "StartedAt": "2026-10-15T15:25:01.839192902Z",
+        "FinishedAt": "2026-10-15T15:25:28.276880914Z"
+      },
+      "supervisor": {
+        "command": [
+          "docker",
+          "run",
+          "--name",
+          "pab-stt-debug-unpacked-20261015",
+          "--network",
+          "none",
+          "--cpus",
+          "4",
+          "--memory",
+          "6g",
+          "--pids-limit",
+          "256",
+          "-e",
+          "CT2_VERBOSE=1",
+          "-e",
+          "CT2_PACKED_GEMM=0",
+          "-e",
+          "OMP_NUM_THREADS=4",
+          "-e",
+          "MKL_NUM_THREADS=4",
+          "-e",
+          "OPENBLAS_NUM_THREADS=4",
+          "-e",
+          "HF_HUB_OFFLINE=1",
+          "-e",
+          "TRANSFORMERS_OFFLINE=1",
+          "-v",
+          "/Users/ben/Projects/py-audio-box/docs/agent-interface/evaluation/stt/debug-inference:/diagnostic:ro",
+          "-v",
+          "/Users/ben/Projects/py-audio-box/work/stt-evaluation:/assets:ro",
+          "sha256:fd86a754708e099477a8e624babe5e9880df365a100f18cdc784f55f917a038e",
+          "python",
+          "/diagnostic/diagnose.py"
+        ],
+        "deadline_seconds": 115.0,
+        "timed_out": false,
+        "client_exit": 0,
+        "client_reaped": true,
+        "elapsed_seconds": 29.798042897018604,
+        "ended_utc": "2026-10-15T15:25:28.936447+00:00"
+      },
+      "stages": [
+        {
+          "event": "load_end",
+          "wall": 9.79504458408337,
+          "seconds": 7.596671953913756,
+          "effective_compute_type": "int8_float32"
+        },
+        {
+          "event": "features_end",
+          "wall": 9.81089151604101,
+          "seconds": 0.008910273085348308,
+          "cpu_seconds": 0.0171318960000022
+        },
+        {
+          "event": "encode_end",
+          "wall": 13.752999508054927,
+          "seconds": 3.896156847011298,
+          "cpu_seconds": 15.035204395999997
+        },
+        {
+          "event": "generate_end",
+          "wall": 16.47155662602745,
+          "seconds": 2.717177562066354,
+          "cpu_seconds": 10.783857928000003
+        },
+        {
+          "event": "features_end",
+          "wall": 16.498361798003316,
+          "seconds": 0.010023562936112285,
+          "cpu_seconds": 0.04679592499999785
+        },
+        {
+          "event": "encode_end",
+          "wall": 23.37122845603153,
+          "seconds": 6.866837257053703,
+          "cpu_seconds": 25.691835491999996
+        },
+        {
+          "event": "generate_end",
+          "wall": 25.546231947024353,
+          "seconds": 2.173853960004635,
+          "cpu_seconds": 8.656148768999998
+        }
+      ],
+      "samples": [
+        {
+          "event": "sample_end",
+          "wall": 16.473246164037846,
+          "id": "fr-1679",
+          "seconds": 6.6727317839395255,
+          "cpu_seconds": 26.028806019999998,
+          "text": "Le compagnie Rossmiss a annulé les derniers concerts de sa tournée.",
+          "reference": "Le groupe Aerosmith a annulé les derniers concerts de sa tournée.",
+          "segments": [
+            {
+              "tokens": 23,
+              "start": 0.0,
+              "end": 5.0
+            }
+          ],
+          "duration": 6.0,
+          "rtf": 1.112121963989921,
+          "cpu_wall_ratio": 3.9007721069574908,
+          "metrics": {
+            "raw_wer": {
+              "edits": 2,
+              "reference_units": 11,
+              "rate": 0.18181818181818182,
+              "inserted_when_empty": null
+            },
+            "normalized_wer": {
+              "edits": 2,
+              "reference_units": 11,
+              "rate": 0.18181818181818182,
+              "inserted_when_empty": null
+            },
+            "raw_cer": {
+              "edits": 12,
+              "reference_units": 65,
+              "rate": 0.18461538461538463,
+              "inserted_when_empty": null
+            },
+            "normalized_cer": {
+              "edits": 11,
+              "reference_units": 64,
+              "rate": 0.171875,
+              "inserted_when_empty": null
+            },
+            "normalization": "nfc-casefold-word-tokens-v1;digits-and-accents-preserved"
+          }
+        },
+        {
+          "event": "sample_end",
+          "wall": 25.54690612910781,
+          "id": "en-1914",
+          "seconds": 9.059946360997856,
+          "cpu_seconds": 34.434398697,
+          "text": "20th century research has shown that there are two pools of genetic variation, hidden and expressed.",
+          "reference": "Twentieth century research has shown that there are two pools of genetic variation: hidden and expressed.",
+          "segments": [
+            {
+              "tokens": 21,
+              "start": 0.0,
+              "end": 5.5
+            }
+          ],
+          "duration": 5.88,
+          "rtf": 1.540807204251336,
+          "cpu_wall_ratio": 3.800728759856302,
+          "metrics": {
+            "raw_wer": {
+              "edits": 2,
+              "reference_units": 16,
+              "rate": 0.125,
+              "inserted_when_empty": null
+            },
+            "normalized_wer": {
+              "edits": 1,
+              "reference_units": 16,
+              "rate": 0.0625,
+              "inserted_when_empty": null
+            },
+            "raw_cer": {
+              "edits": 8,
+              "reference_units": 105,
+              "rate": 0.0761904761904762,
+              "inserted_when_empty": null
+            },
+            "normalized_cer": {
+              "edits": 7,
+              "reference_units": 103,
+              "rate": 0.06796116504854369,
+              "inserted_when_empty": null
+            },
+            "normalization": "nfc-casefold-word-tokens-v1;digits-and-accents-preserved"
+          }
+        }
+      ],
+      "last_counters": {
+        "cpu_seconds": 78.270146558,
+        "maxrss_kib": 628288,
+        "cpu.stat": "usage_usec 78284153\nuser_usec 66618513\nsystem_usec 11665640\nnice_usec 0\nnr_periods 260\nnr_throttled 66\nthrottled_usec 2031715\nnr_bursts 0\nburst_usec 0\n",
+        "memory.current": "704012288\n",
+        "memory.peak": "1288015872\n",
+        "memory.events": "low 0\nhigh 0\nmax 0\noom 0\noom_kill 0\noom_group_kill 0\nsock_throttled 0\n",
+        "io": "rchar: 497586058\nwchar: 37467\nsyscr: 2049\nsyscw: 76\nread_bytes: 218787840\nwrite_bytes: 0\ncancelled_write_bytes: 0\n"
+      },
+      "host_cpu_speed_limit_samples": [
+        67,
+        60
+      ]
+    },
+    "spread": {
+      "environment": {
+        "event": "environment",
+        "wall": 0.7261644370155409,
+        "ct2": "4.8.3",
+        "env": {
+          "CT2_VERBOSE": "1",
+          "OMP_PROC_BIND": "spread",
+          "MKL_NUM_THREADS": "4",
+          "OPENBLAS_NUM_THREADS": "4",
+          "CT2_PACKED_GEMM": "1",
+          "OMP_PLACES": "cores",
+          "OMP_NUM_THREADS": "4"
+        },
+        "cpu_affinity": [
+          0,
+          1
+        ],
+        "counters": {
+          "cpu_seconds": 1.17720008,
+          "maxrss_kib": 71560,
+          "cpu.stat": "usage_usec 1179180\nuser_usec 807123\nsystem_usec 372057\nnice_usec 0\nnr_periods 10\nnr_throttled 0\nthrottled_usec 0\nnr_bursts 0\nburst_usec 0\n",
+          "memory.current": "42827776\n",
+          "memory.peak": "42827776\n",
+          "memory.events": "low 0\nhigh 0\nmax 0\noom 0\noom_kill 0\noom_group_kill 0\nsock_throttled 0\n",
+          "io": "rchar: 6954611\nwchar: 10214\nsyscr: 810\nsyscw: 7\nread_bytes: 8052736\nwrite_bytes: 0\ncancelled_write_bytes: 0\n"
+        }
+      },
+      "container_seconds": 16.174313,
+      "state": {
+        "Status": "exited",
+        "Running": false,
+        "Paused": false,
+        "Restarting": false,
+        "OOMKilled": false,
+        "Dead": false,
+        "Pid": 0,
+        "ExitCode": 0,
+        "Error": "",
+        "StartedAt": "2026-10-15T15:25:55.161941948Z",
+        "FinishedAt": "2026-10-15T15:26:11.336254838Z"
+      },
+      "supervisor": {
+        "command": [
+          "docker",
+          "run",
+          "--name",
+          "pab-stt-debug-spread-20261015",
+          "--network",
+          "none",
+          "--cpus",
+          "4",
+          "--memory",
+          "6g",
+          "--pids-limit",
+          "256",
+          "-e",
+          "CT2_VERBOSE=1",
+          "-e",
+          "CT2_PACKED_GEMM=1",
+          "-e",
+          "OMP_PROC_BIND=spread",
+          "-e",
+          "OMP_PLACES=cores",
+          "-e",
+          "OMP_NUM_THREADS=4",
+          "-e",
+          "MKL_NUM_THREADS=4",
+          "-e",
+          "OPENBLAS_NUM_THREADS=4",
+          "-e",
+          "HF_HUB_OFFLINE=1",
+          "-e",
+          "TRANSFORMERS_OFFLINE=1",
+          "-v",
+          "/Users/ben/Projects/py-audio-box/docs/agent-interface/evaluation/stt/debug-inference:/diagnostic:ro",
+          "-v",
+          "/Users/ben/Projects/py-audio-box/work/stt-evaluation:/assets:ro",
+          "sha256:fd86a754708e099477a8e624babe5e9880df365a100f18cdc784f55f917a038e",
+          "python",
+          "/diagnostic/diagnose.py"
+        ],
+        "deadline_seconds": 115.0,
+        "timed_out": false,
+        "client_exit": 0,
+        "client_reaped": true,
+        "elapsed_seconds": 16.728078068001196,
+        "ended_utc": "2026-10-15T15:26:11.671592+00:00"
+      },
+      "stages": [
+        {
+          "event": "load_end",
+          "wall": 4.499800664023496,
+          "seconds": 3.7731214590603486,
+          "effective_compute_type": "int8_float32"
+        },
+        {
+          "event": "features_end",
+          "wall": 4.514069108990952,
+          "seconds": 0.010019258013926446,
+          "cpu_seconds": 0.019573130000000383
+        },
+        {
+          "event": "encode_end",
+          "wall": 7.140130516025238,
+          "seconds": 2.5955176108982414,
+          "cpu_seconds": 9.287117058
+        },
+        {
+          "event": "generate_end",
+          "wall": 9.674330052919686,
+          "seconds": 2.533358796965331,
+          "cpu_seconds": 5.018526687000001
+        },
+        {
+          "event": "features_end",
+          "wall": 9.689181581954472,
+          "seconds": 0.005498589016497135,
+          "cpu_seconds": 0.008397058999999985
+        },
+        {
+          "event": "encode_end",
+          "wall": 12.570044426014647,
+          "seconds": 2.8773446229752153,
+          "cpu_seconds": 9.897458995000001
+        },
+        {
+          "event": "generate_end",
+          "wall": 15.576750275911763,
+          "seconds": 3.0056967629352584,
+          "cpu_seconds": 5.344870203999996
+        }
+      ],
+      "samples": [
+        {
+          "event": "sample_end",
+          "wall": 9.676304832915775,
+          "id": "fr-1679",
+          "seconds": 5.172178160981275,
+          "cpu_seconds": 14.450181393000001,
+          "text": "Le compagnie Rossmiss a annulé les derniers concerts de sa tournée.",
+          "reference": "Le groupe Aerosmith a annulé les derniers concerts de sa tournée.",
+          "segments": [
+            {
+              "tokens": 23,
+              "start": 0.0,
+              "end": 5.0
+            }
+          ],
+          "duration": 6.0,
+          "rtf": 0.8620296934968792,
+          "cpu_wall_ratio": 2.79382901037935,
+          "metrics": {
+            "raw_wer": {
+              "edits": 2,
+              "reference_units": 11,
+              "rate": 0.18181818181818182,
+              "inserted_when_empty": null
+            },
+            "normalized_wer": {
+              "edits": 2,
+              "reference_units": 11,
+              "rate": 0.18181818181818182,
+              "inserted_when_empty": null
+            },
+            "raw_cer": {
+              "edits": 12,
+              "reference_units": 65,
+              "rate": 0.18461538461538463,
+              "inserted_when_empty": null
+            },
+            "normalized_cer": {
+              "edits": 11,
+              "reference_units": 64,
+              "rate": 0.171875,
+              "inserted_when_empty": null
+            },
+            "normalization": "nfc-casefold-word-tokens-v1;digits-and-accents-preserved"
+          }
+        },
+        {
+          "event": "sample_end",
+          "wall": 15.59818983497098,
+          "id": "en-1914",
+          "seconds": 5.91494096594397,
+          "cpu_seconds": 15.286414298999997,
+          "text": "20th century research has shown that there are two pools of genetic variation, hidden and expressed.",
+          "reference": "Twentieth century research has shown that there are two pools of genetic variation: hidden and expressed.",
+          "segments": [
+            {
+              "tokens": 21,
+              "start": 0.0,
+              "end": 5.5
+            }
+          ],
+          "duration": 5.88,
+          "rtf": 1.0059423411469337,
+          "cpu_wall_ratio": 2.584373096369598,
+          "metrics": {
+            "raw_wer": {
+              "edits": 2,
+              "reference_units": 16,
+              "rate": 0.125,
+              "inserted_when_empty": null
+            },
+            "normalized_wer": {
+              "edits": 1,
+              "reference_units": 16,
+              "rate": 0.0625,
+              "inserted_when_empty": null
+            },
+            "raw_cer": {
+              "edits": 8,
+              "reference_units": 105,
+              "rate": 0.0761904761904762,
+              "inserted_when_empty": null
+            },
+            "normalized_cer": {
+              "edits": 7,
+              "reference_units": 103,
+              "rate": 0.06796116504854369,
+              "inserted_when_empty": null
+            },
+            "normalization": "nfc-casefold-word-tokens-v1;digits-and-accents-preserved"
+          }
+        }
+      ],
+      "last_counters": {
+        "cpu_seconds": 37.438460912,
+        "maxrss_kib": 828408,
+        "cpu.stat": "usage_usec 37443649\nuser_usec 29179288\nsystem_usec 8264360\nnice_usec 0\nnr_periods 159\nnr_throttled 6\nthrottled_usec 288330\nnr_bursts 0\nburst_usec 0\n",
+        "memory.current": "732315648\n",
+        "memory.peak": "1292136448\n",
+        "memory.events": "low 0\nhigh 0\nmax 0\noom 0\noom_kill 0\noom_group_kill 0\nsock_throttled 0\n",
+        "io": "rchar: 497548978\nwchar: 32379\nsyscr: 1923\nsyscw: 70\nread_bytes: 50221056\nwrite_bytes: 0\ncancelled_write_bytes: 0\n"
+      },
+      "host_cpu_speed_limit_samples": [
+        73,
+        63
+      ]
+    },
+    "spread-repeat": {
+      "environment": {
+        "event": "environment",
+        "wall": 1.0342879049712792,
+        "ct2": "4.8.3",
+        "env": {
+          "OMP_PROC_BIND": "spread",
+          "OMP_NUM_THREADS": "4",
+          "CT2_VERBOSE": "1",
+          "CT2_PACKED_GEMM": "1",
+          "OMP_PLACES": "cores",
+          "MKL_NUM_THREADS": "4",
+          "OPENBLAS_NUM_THREADS": "4"
+        },
+        "cpu_affinity": [
+          0,
+          1
+        ],
+        "counters": {
+          "cpu_seconds": 1.580072633,
+          "maxrss_kib": 71120,
+          "cpu.stat": "usage_usec 1586604\nuser_usec 1091559\nsystem_usec 495045\nnice_usec 0\nnr_periods 14\nnr_throttled 0\nthrottled_usec 0\nnr_bursts 0\nburst_usec 0\n",
+          "memory.current": "147120128\n",
+          "memory.peak": "147120128\n",
+          "memory.events": "low 0\nhigh 0\nmax 0\noom 0\noom_kill 0\noom_group_kill 0\nsock_throttled 0\n",
+          "io": "rchar: 6954614\nwchar: 10214\nsyscr: 809\nsyscw: 7\nread_bytes: 113643520\nwrite_bytes: 0\ncancelled_write_bytes: 0\n"
+        }
+      },
+      "container_seconds": 17.98085,
+      "state": {
+        "Status": "exited",
+        "Running": false,
+        "Paused": false,
+        "Restarting": false,
+        "OOMKilled": false,
+        "Dead": false,
+        "Pid": 0,
+        "ExitCode": 0,
+        "Error": "",
+        "StartedAt": "2026-10-15T15:27:08.69982607Z",
+        "FinishedAt": "2026-10-15T15:27:26.680676637Z"
+      },
+      "supervisor": {
+        "command": [
+          "docker",
+          "run",
+          "--name",
+          "pab-stt-debug-spread-repeat-20261015",
+          "--network",
+          "none",
+          "--cpus",
+          "4",
+          "--memory",
+          "6g",
+          "--pids-limit",
+          "256",
+          "-e",
+          "CT2_VERBOSE=1",
+          "-e",
+          "CT2_PACKED_GEMM=1",
+          "-e",
+          "OMP_PROC_BIND=spread",
+          "-e",
+          "OMP_PLACES=cores",
+          "-e",
+          "OMP_NUM_THREADS=4",
+          "-e",
+          "MKL_NUM_THREADS=4",
+          "-e",
+          "OPENBLAS_NUM_THREADS=4",
+          "-e",
+          "HF_HUB_OFFLINE=1",
+          "-e",
+          "TRANSFORMERS_OFFLINE=1",
+          "-v",
+          "/Users/ben/Projects/py-audio-box/docs/agent-interface/evaluation/stt/debug-inference:/diagnostic:ro",
+          "-v",
+          "/Users/ben/Projects/py-audio-box/work/stt-evaluation:/assets:ro",
+          "sha256:fd86a754708e099477a8e624babe5e9880df365a100f18cdc784f55f917a038e",
+          "python",
+          "/diagnostic/diagnose.py"
+        ],
+        "deadline_seconds": 115.0,
+        "timed_out": false,
+        "client_exit": 0,
+        "client_reaped": true,
+        "elapsed_seconds": 18.662791633047163,
+        "ended_utc": "2026-10-15T15:27:27.106820+00:00"
+      },
+      "stages": [
+        {
+          "event": "load_end",
+          "wall": 5.016675436985679,
+          "seconds": 3.981574345030822,
+          "effective_compute_type": "int8_float32"
+        },
+        {
+          "event": "features_end",
+          "wall": 5.0270678219385445,
+          "seconds": 0.006501886993646622,
+          "cpu_seconds": 0.011918187000000913
+        },
+        {
+          "event": "encode_end",
+          "wall": 8.05182616901584,
+          "seconds": 3.000256016966887,
+          "cpu_seconds": 10.544964076
+        },
+        {
+          "event": "generate_end",
+          "wall": 11.422470286954194,
+          "seconds": 3.369920163997449,
+          "cpu_seconds": 5.986464485000003
+        },
+        {
+          "event": "features_end",
+          "wall": 11.44073698692955,
+          "seconds": 0.01181297900620848,
+          "cpu_seconds": 0.024854182999998642
+        },
+        {
+          "event": "encode_end",
+          "wall": 14.327921772026457,
+          "seconds": 2.8805448120692745,
+          "cpu_seconds": 10.183952025999996
+        },
+        {
+          "event": "generate_end",
+          "wall": 17.34512736601755,
+          "seconds": 3.0166049379622564,
+          "cpu_seconds": 5.353261834000001
+        }
+      ],
+      "samples": [
+        {
+          "event": "sample_end",
+          "wall": 11.423280164017342,
+          "id": "fr-1679",
+          "seconds": 6.403192290919833,
+          "cpu_seconds": 16.643339182,
+          "text": "Le compagnie Rossmiss a annulé les derniers concerts de sa tournée.",
+          "reference": "Le groupe Aerosmith a annulé les derniers concerts de sa tournée.",
+          "segments": [
+            {
+              "tokens": 23,
+              "start": 0.0,
+              "end": 5.0
+            }
+          ],
+          "duration": 6.0,
+          "rtf": 1.0671987151533056,
+          "cpu_wall_ratio": 2.5992252654353982,
+          "metrics": {
+            "raw_wer": {
+              "edits": 2,
+              "reference_units": 11,
+              "rate": 0.18181818181818182,
+              "inserted_when_empty": null
+            },
+            "normalized_wer": {
+              "edits": 2,
+              "reference_units": 11,
+              "rate": 0.18181818181818182,
+              "inserted_when_empty": null
+            },
+            "raw_cer": {
+              "edits": 12,
+              "reference_units": 65,
+              "rate": 0.18461538461538463,
+              "inserted_when_empty": null
+            },
+            "normalized_cer": {
+              "edits": 11,
+              "reference_units": 64,
+              "rate": 0.171875,
+              "inserted_when_empty": null
+            },
+            "normalization": "nfc-casefold-word-tokens-v1;digits-and-accents-preserved"
+          }
+        },
+        {
+          "event": "sample_end",
+          "wall": 17.346944120014086,
+          "id": "en-1914",
+          "seconds": 5.918193522957154,
+          "cpu_seconds": 15.591358962999998,
+          "text": "20th century research has shown that there are two pools of genetic variation, hidden and expressed.",
+          "reference": "Twentieth century research has shown that there are two pools of genetic variation: hidden and expressed.",
+          "segments": [
+            {
+              "tokens": 21,
+              "start": 0.0,
+              "end": 5.5
+            }
+          ],
+          "duration": 5.88,
+          "rtf": 1.0064954971015567,
+          "cpu_wall_ratio": 2.6344794070217286,
+          "metrics": {
+            "raw_wer": {
+              "edits": 2,
+              "reference_units": 16,
+              "rate": 0.125,
+              "inserted_when_empty": null
+            },
+            "normalized_wer": {
+              "edits": 1,
+              "reference_units": 16,
+              "rate": 0.0625,
+              "inserted_when_empty": null
+            },
+            "raw_cer": {
+              "edits": 8,
+              "reference_units": 105,
+              "rate": 0.0761904761904762,
+              "inserted_when_empty": null
+            },
+            "normalized_cer": {
+              "edits": 7,
+              "reference_units": 103,
+              "rate": 0.06796116504854369,
+              "inserted_when_empty": null
+            },
+            "normalization": "nfc-casefold-word-tokens-v1;digits-and-accents-preserved"
+          }
+        }
+      ],
+      "last_counters": {
+        "cpu_seconds": 40.34465227,
+        "maxrss_kib": 827756,
+        "cpu.stat": "usage_usec 40355365\nuser_usec 31114550\nsystem_usec 9240814\nnice_usec 0\nnr_periods 177\nnr_throttled 3\nthrottled_usec 398139\nnr_bursts 0\nburst_usec 0\n",
+        "memory.current": "1305296896\n",
+        "memory.peak": "1413144576\n",
+        "memory.events": "low 0\nhigh 0\nmax 0\noom 0\noom_kill 0\noom_group_kill 0\nsock_throttled 0\n",
+        "io": "rchar: 497549018\nwchar: 32437\nsyscr: 1922\nsyscw: 70\nread_bytes: 130347008\nwrite_bytes: 0\ncancelled_write_bytes: 0\n"
+      },
+      "host_cpu_speed_limit_samples": [
+        67,
+        63
+      ]
+    },
+    "turbo-spread": {
+      "environment": {
+        "event": "environment",
+        "wall": 0.8996094280155376,
+        "model_name": "turbo",
+        "ct2": "4.8.3",
+        "env": {
+          "OMP_PROC_BIND": "spread",
+          "OMP_PLACES": "cores",
+          "OMP_NUM_THREADS": "4",
+          "MKL_NUM_THREADS": "4",
+          "CT2_VERBOSE": "1",
+          "CT2_PACKED_GEMM": "1",
+          "OPENBLAS_NUM_THREADS": "4"
+        },
+        "cpu_affinity": [
+          0,
+          1
+        ],
+        "counters": {
+          "cpu_seconds": 1.419385775,
+          "maxrss_kib": 71236,
+          "cpu.stat": "usage_usec 1425153\nuser_usec 890463\nsystem_usec 534689\nnice_usec 0\nnr_periods 13\nnr_throttled 0\nthrottled_usec 0\nnr_bursts 0\nburst_usec 0\n",
+          "memory.current": "233279488\n",
+          "memory.peak": "233279488\n",
+          "memory.events": "low 0\nhigh 0\nmax 0\noom 0\noom_kill 0\noom_group_kill 0\nsock_throttled 0\n",
+          "io": "rchar: 6955115\nwchar: 10214\nsyscr: 809\nsyscw: 7\nread_bytes: 199811072\nwrite_bytes: 0\ncancelled_write_bytes: 0\n"
+        }
+      },
+      "container_seconds": 36.461364,
+      "state": {
+        "Status": "exited",
+        "Running": false,
+        "Paused": false,
+        "Restarting": false,
+        "OOMKilled": false,
+        "Dead": false,
+        "Pid": 0,
+        "ExitCode": 0,
+        "Error": "",
+        "StartedAt": "2026-10-15T15:28:54.437528632Z",
+        "FinishedAt": "2026-10-15T15:29:30.898892197Z"
+      },
+      "supervisor": {
+        "command": [
+          "docker",
+          "run",
+          "--name",
+          "pab-stt-debug-turbo-spread-20261015",
+          "--network",
+          "none",
+          "--cpus",
+          "4",
+          "--memory",
+          "6g",
+          "--pids-limit",
+          "256",
+          "-e",
+          "DIAG_MODEL=turbo",
+          "-e",
+          "CT2_VERBOSE=1",
+          "-e",
+          "CT2_PACKED_GEMM=1",
+          "-e",
+          "OMP_PROC_BIND=spread",
+          "-e",
+          "OMP_PLACES=cores",
+          "-e",
+          "OMP_NUM_THREADS=4",
+          "-e",
+          "MKL_NUM_THREADS=4",
+          "-e",
+          "OPENBLAS_NUM_THREADS=4",
+          "-e",
+          "HF_HUB_OFFLINE=1",
+          "-e",
+          "TRANSFORMERS_OFFLINE=1",
+          "-v",
+          "/Users/ben/Projects/py-audio-box/docs/agent-interface/evaluation/stt/debug-inference:/diagnostic:ro",
+          "-v",
+          "/Users/ben/Projects/py-audio-box/work/stt-evaluation:/assets:ro",
+          "sha256:fd86a754708e099477a8e624babe5e9880df365a100f18cdc784f55f917a038e",
+          "python",
+          "/diagnostic/diagnose.py"
+        ],
+        "deadline_seconds": 110.0,
+        "timed_out": false,
+        "client_exit": 0,
+        "client_reaped": true,
+        "elapsed_seconds": 37.214247733936645,
+        "ended_utc": "2026-10-15T15:29:31.187671+00:00"
+      },
+      "stages": [
+        {
+          "event": "load_end",
+          "wall": 11.188160664052702,
+          "seconds": 10.287644663942046,
+          "effective_compute_type": "int8_float32"
+        },
+        {
+          "event": "features_end",
+          "wall": 11.202546616084874,
+          "seconds": 0.0077942609786987305,
+          "cpu_seconds": 0.018666797000001623
+        },
+        {
+          "event": "encode_end",
+          "wall": 23.28363032406196,
+          "seconds": 12.048814491950907,
+          "cpu_seconds": 44.495206648999996
+        },
+        {
+          "event": "generate_end",
+          "wall": 24.391570384032093,
+          "seconds": 1.106556499027647,
+          "cpu_seconds": 2.840201682000007
+        },
+        {
+          "event": "features_end",
+          "wall": 24.406454066047445,
+          "seconds": 0.006886897957883775,
+          "cpu_seconds": 0.015927908999998408
+        },
+        {
+          "event": "encode_end",
+          "wall": 34.981049922062084,
+          "seconds": 10.568925974075682,
+          "cpu_seconds": 38.903300134999995
+        },
+        {
+          "event": "generate_end",
+          "wall": 35.9333280720748,
+          "seconds": 0.9516206689877436,
+          "cpu_seconds": 2.513631098999994
+        }
+      ],
+      "samples": [
+        {
+          "event": "sample_end",
+          "wall": 24.39268679008819,
+          "id": "fr-1679",
+          "seconds": 13.19848360598553,
+          "cpu_seconds": 47.485668286,
+          "text": "Le groupe Aerosmith a annulé les derniers concerts de sa tournée.",
+          "reference": "Le groupe Aerosmith a annulé les derniers concerts de sa tournée.",
+          "segments": [
+            {
+              "tokens": 21,
+              "start": 0.0,
+              "end": 4.88
+            }
+          ],
+          "duration": 6.0,
+          "rtf": 2.199747267664255,
+          "cpu_wall_ratio": 3.5978124232745334,
+          "metrics": {
+            "raw_wer": {
+              "edits": 0,
+              "reference_units": 11,
+              "rate": 0.0,
+              "inserted_when_empty": null
+            },
+            "normalized_wer": {
+              "edits": 0,
+              "reference_units": 11,
+              "rate": 0.0,
+              "inserted_when_empty": null
+            },
+            "raw_cer": {
+              "edits": 0,
+              "reference_units": 65,
+              "rate": 0.0,
+              "inserted_when_empty": null
+            },
+            "normalized_cer": {
+              "edits": 0,
+              "reference_units": 64,
+              "rate": 0.0,
+              "inserted_when_empty": null
+            },
+            "normalization": "nfc-casefold-word-tokens-v1;digits-and-accents-preserved"
+          }
+        },
+        {
+          "event": "sample_end",
+          "wall": 35.93438094609883,
+          "id": "en-1914",
+          "seconds": 11.53621656098403,
+          "cpu_seconds": 41.45668437100001,
+          "text": "20th century research has shown that there are two pools of genetic variation, hidden and expressed.",
+          "reference": "Twentieth century research has shown that there are two pools of genetic variation: hidden and expressed.",
+          "segments": [
+            {
+              "tokens": 21,
+              "start": 0.0,
+              "end": 5.44
+            }
+          ],
+          "duration": 5.88,
+          "rtf": 1.9619415920040868,
+          "cpu_wall_ratio": 3.593611835548256,
+          "metrics": {
+            "raw_wer": {
+              "edits": 2,
+              "reference_units": 16,
+              "rate": 0.125,
+              "inserted_when_empty": null
+            },
+            "normalized_wer": {
+              "edits": 1,
+              "reference_units": 16,
+              "rate": 0.0625,
+              "inserted_when_empty": null
+            },
+            "raw_cer": {
+              "edits": 8,
+              "reference_units": 105,
+              "rate": 0.0761904761904762,
+              "inserted_when_empty": null
+            },
+            "normalized_cer": {
+              "edits": 7,
+              "reference_units": 103,
+              "rate": 0.06796116504854369,
+              "inserted_when_empty": null
+            },
+            "normalization": "nfc-casefold-word-tokens-v1;digits-and-accents-preserved"
+          }
+        }
+      ],
+      "last_counters": {
+        "cpu_seconds": 106.661831567,
+        "maxrss_kib": 2083440,
+        "cpu.stat": "usage_usec 106675451\nuser_usec 90405330\nsystem_usec 16270120\nnice_usec 0\nnr_periods 363\nnr_throttled 8\nthrottled_usec 238002\nnr_bursts 0\nburst_usec 0\n",
+        "memory.current": "2113363968\n",
+        "memory.peak": "3906560000\n",
+        "memory.events": "low 0\nhigh 0\nmax 0\noom 0\noom_kill 0\noom_group_kill 0\nsock_throttled 0\n",
+        "io": "rchar: 1633455372\nwchar: 44083\nsyscr: 2460\nsyscw: 82\nread_bytes: 219582464\nwrite_bytes: 0\ncancelled_write_bytes: 0\n"
+      },
+      "host_cpu_speed_limit_samples": [
+        71,
+        60,
+        63
+      ]
+    }
+  },
+  "total_inference_container_seconds_including_load_cleanup": 219.04828600000002
+}

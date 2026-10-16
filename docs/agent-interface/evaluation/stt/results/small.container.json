@@ -1,0 +1,23 @@
+{
+  "Id": "143ea39f8f39f951b4b1497505dd721121c6ef2f60d4a6fe47b009bfe0c048aa",
+  "State": {
+    "Status": "exited",
+    "Running": false,
+    "Paused": false,
+    "Restarting": false,
+    "OOMKilled": false,
+    "Dead": false,
+    "Pid": 0,
+    "ExitCode": 124,
+    "Error": "",
+    "StartedAt": "2026-10-15T14:30:59.882550842Z",
+    "FinishedAt": "2026-10-15T14:35:55.222656755Z"
+  },
+  "limits": {
+    "NanoCpus": 4000000000,
+    "Memory": 6442450944,
+    "PidsLimit": 256,
+    "NetworkMode": "none"
+  },
+  "image": "sha256:fd86a754708e099477a8e624babe5e9880df365a100f18cdc784f55f917a038e"
+}

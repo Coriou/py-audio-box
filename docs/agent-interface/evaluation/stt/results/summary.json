@@ -1,0 +1,320 @@
+{
+  "small": {
+    "environment": {
+      "event": "environment",
+      "versions": {
+        "faster-whisper": "1.2.1",
+        "ctranslate2": "4.8.3",
+        "av": "18.1.0",
+        "onnxruntime": "1.31.0",
+        "numpy": "1.26.4"
+      },
+      "platform": "Linux-7.0.14-orbstack-00380-ga7e0a2dc9535-x86_64-with-glibc2.36",
+      "supported_cpu_compute_types": [
+        "float32",
+        "int16",
+        "int8",
+        "int8_float32"
+      ],
+      "threads": 4,
+      "decoder_beam": 5,
+      "batch_size": 1,
+      "max_new_tokens": 128,
+      "model_identity": {
+        "repo": "Systran/faster-whisper-small",
+        "revision": "536b0662742c02347bc0e980a01041f333bce120"
+      },
+      "model": "small",
+      "wall_since_start": 0.6406046519987285
+    },
+    "load": {
+      "event": "model_loaded",
+      "load_seconds": 3.167472664033994,
+      "load_count": 1,
+      "requested_compute_type": "int8",
+      "effective_compute_type": "int8_float32",
+      "device": "cpu",
+      "model": "small",
+      "wall_since_start": 3.8092744289897382
+    },
+    "memory": null,
+    "external_memory": {
+      "samples": 10,
+      "current_peak_sampled_bytes": 714252288,
+      "largest_kernel_peak_observed_bytes": 1400434688,
+      "last_sample": {
+        "time": "2026-10-15T14:35:48Z",
+        "current_bytes": 711573504,
+        "kernel_peak_bytes": 1400434688
+      },
+      "scope": "External10s samples; kernel peak may increase after final observation; includes container page cache"
+    },
+    "terminal": {
+      "Id": "143ea39f8f39f951b4b1497505dd721121c6ef2f60d4a6fe47b009bfe0c048aa",
+      "State": {
+        "Status": "exited",
+        "Running": false,
+        "Paused": false,
+        "Restarting": false,
+        "OOMKilled": false,
+        "Dead": false,
+        "Pid": 0,
+        "ExitCode": 124,
+        "Error": "",
+        "StartedAt": "2026-10-15T14:30:59.882550842Z",
+        "FinishedAt": "2026-10-15T14:35:55.222656755Z"
+      },
+      "limits": {
+        "NanoCpus": 4000000000,
+        "Memory": 6442450944,
+        "PidsLimit": 256,
+        "NetworkMode": "none"
+      },
+      "image": "sha256:fd86a754708e099477a8e624babe5e9880df365a100f18cdc784f55f917a038e"
+    },
+    "complete": false,
+    "errors": [],
+    "sample_runs": 0,
+    "primary_natural_count": 0,
+    "strata": {
+      "all": {
+        "samples": 0,
+        "duration_seconds": 0,
+        "decode_seconds": 0,
+        "rtf": null,
+        "raw_wer": {
+          "edits": 0,
+          "reference_units": 0,
+          "rate": null
+        },
+        "normalized_wer": {
+          "edits": 0,
+          "reference_units": 0,
+          "rate": null
+        },
+        "raw_cer": {
+          "edits": 0,
+          "reference_units": 0,
+          "rate": null
+        },
+        "normalized_cer": {
+          "edits": 0,
+          "reference_units": 0,
+          "rate": null
+        }
+      },
+      "fr": {
+        "samples": 0,
+        "duration_seconds": 0,
+        "decode_seconds": 0,
+        "rtf": null,
+        "raw_wer": {
+          "edits": 0,
+          "reference_units": 0,
+          "rate": null
+        },
+        "normalized_wer": {
+          "edits": 0,
+          "reference_units": 0,
+          "rate": null
+        },
+        "raw_cer": {
+          "edits": 0,
+          "reference_units": 0,
+          "rate": null
+        },
+        "normalized_cer": {
+          "edits": 0,
+          "reference_units": 0,
+          "rate": null
+        }
+      },
+      "en": {
+        "samples": 0,
+        "duration_seconds": 0,
+        "decode_seconds": 0,
+        "rtf": null,
+        "raw_wer": {
+          "edits": 0,
+          "reference_units": 0,
+          "rate": null
+        },
+        "normalized_wer": {
+          "edits": 0,
+          "reference_units": 0,
+          "rate": null
+        },
+        "raw_cer": {
+          "edits": 0,
+          "reference_units": 0,
+          "rate": null
+        },
+        "normalized_cer": {
+          "edits": 0,
+          "reference_units": 0,
+          "rate": null
+        }
+      }
+    },
+    "controls": []
+  },
+  "turbo": {
+    "environment": {
+      "event": "environment",
+      "versions": {
+        "faster-whisper": "1.2.1",
+        "ctranslate2": "4.8.3",
+        "av": "18.1.0",
+        "onnxruntime": "1.31.0",
+        "numpy": "1.26.4"
+      },
+      "platform": "Linux-7.0.14-orbstack-00380-ga7e0a2dc9535-x86_64-with-glibc2.36",
+      "supported_cpu_compute_types": [
+        "float32",
+        "int16",
+        "int8",
+        "int8_float32"
+      ],
+      "threads": 4,
+      "decoder_beam": 5,
+      "batch_size": 1,
+      "max_new_tokens": 128,
+      "model_identity": {
+        "repo": "mobiuslabsgmbh/faster-whisper-large-v3-turbo",
+        "revision": "0a363e9161cbc7ed1431c9597a8ceaf0c4f78fcf"
+      },
+      "model": "turbo",
+      "wall_since_start": 1.4934332419652492
+    },
+    "load": {
+      "event": "model_loaded",
+      "load_seconds": 12.822104145074263,
+      "load_count": 1,
+      "requested_compute_type": "int8",
+      "effective_compute_type": "int8_float32",
+      "device": "cpu",
+      "model": "turbo",
+      "wall_since_start": 14.319206647924148
+    },
+    "memory": null,
+    "external_memory": {
+      "samples": 29,
+      "current_peak_sampled_bytes": 3749769216,
+      "largest_kernel_peak_observed_bytes": 3899023360,
+      "last_sample": {
+        "time": "2026-10-15T14:40:46Z",
+        "current_bytes": 1948192768,
+        "kernel_peak_bytes": 3899023360
+      },
+      "scope": "External10s samples; kernel peak may increase after final observation; includes container page cache"
+    },
+    "terminal": {
+      "Id": "40230a4dea72d450cd9c19b01923385a8462f19cb9d7dee1c30dc4c016a22975",
+      "State": {
+        "Status": "exited",
+        "Running": false,
+        "Paused": false,
+        "Restarting": false,
+        "OOMKilled": false,
+        "Dead": false,
+        "Pid": 0,
+        "ExitCode": 124,
+        "Error": "",
+        "StartedAt": "2026-10-15T14:35:56.120519221Z",
+        "FinishedAt": "2026-10-15T14:40:51.320254922Z"
+      },
+      "limits": {
+        "NanoCpus": 4000000000,
+        "Memory": 6442450944,
+        "PidsLimit": 256,
+        "NetworkMode": "none"
+      },
+      "image": "sha256:fd86a754708e099477a8e624babe5e9880df365a100f18cdc784f55f917a038e"
+    },
+    "complete": false,
+    "errors": [],
+    "sample_runs": 2,
+    "primary_natural_count": 2,
+    "strata": {
+      "all": {
+        "samples": 2,
+        "duration_seconds": 14.82,
+        "decode_seconds": 234.88943595206365,
+        "rtf": 15.849489605402406,
+        "raw_wer": {
+          "edits": 2,
+          "reference_units": 45,
+          "rate": 0.044444444444444446
+        },
+        "normalized_wer": {
+          "edits": 1,
+          "reference_units": 45,
+          "rate": 0.022222222222222223
+        },
+        "raw_cer": {
+          "edits": 8,
+          "reference_units": 268,
+          "rate": 0.029850746268656716
+        },
+        "normalized_cer": {
+          "edits": 7,
+          "reference_units": 264,
+          "rate": 0.026515151515151516
+        }
+      },
+      "fr": {
+        "samples": 0,
+        "duration_seconds": 0,
+        "decode_seconds": 0,
+        "rtf": null,
+        "raw_wer": {
+          "edits": 0,
+          "reference_units": 0,
+          "rate": null
+        },
+        "normalized_wer": {
+          "edits": 0,
+          "reference_units": 0,
+          "rate": null
+        },
+        "raw_cer": {
+          "edits": 0,
+          "reference_units": 0,
+          "rate": null
+        },
+        "normalized_cer": {
+          "edits": 0,
+          "reference_units": 0,
+          "rate": null
+        }
+      },
+      "en": {
+        "samples": 2,
+        "duration_seconds": 14.82,
+        "decode_seconds": 234.88943595206365,
+        "rtf": 15.849489605402406,
+        "raw_wer": {
+          "edits": 2,
+          "reference_units": 45,
+          "rate": 0.044444444444444446
+        },
+        "normalized_wer": {
+          "edits": 1,
+          "reference_units": 45,
+          "rate": 0.022222222222222223
+        },
+        "raw_cer": {
+          "edits": 8,
+          "reference_units": 268,
+          "rate": 0.029850746268656716
+        },
+        "normalized_cer": {
+          "edits": 7,
+          "reference_units": 264,
+          "rate": 0.026515151515151516
+        }
+      }
+    },
+    "controls": []
+  }
+}
