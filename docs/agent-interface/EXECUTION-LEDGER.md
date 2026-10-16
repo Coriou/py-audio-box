@@ -401,3 +401,9 @@ Record failures and missing evidence; do not replace them with a successful late
 
 - [Independent review](reviews/P1B21-r1-sol.md) NO-GO exactccf3c07;149focused and379passed18skipped independently confirmed. F1 unexplained executing reservation passes coherent-predecessor planning; F2 completion accepts hash-shaped assertions without closed before-image/step/archive evidence. No integration/waiver.
 - Isolated Sol-low request `pab-phase1a-p1b21-fix-r1-20261022`: reject incoherent allocation provenance before schema mutation; freeze and validate bounded evidence/step documents with coherent completed fixtures. B2.2kernel/apply remain unavailable; fresh independent re-review required.
+
+## B2.1 corrected candidate / review round2
+
+- Candidate `d4290c6e0c31e132b6ae6039312c5292e88fb12b`, frozen source `aae8919`, app-owned `t3-361ad50c`; root read fullcorrectionresponse and commit summary, unintegrated. F1 structuralallocationjoins; F2 boundedclosedbeforeimage/proof/stepdocuments with actualsnapshot/manifest/certificate and receiptarchive validation.
+- Claims193focused/388affected/423passed18skipped finalfrozen sequentialruns; E1only, no selfGO. Applyunavailable/activationclosed.
+- FreshSol-low request/task suffix `pab-phase1a-p1b21-review-r2-20261022`, report `reviews/P1B21-r2-sol.md`; originalbrief/fullpriorfindings+responses supplied. No waiver/integration; subsequentlots and A1inventoryqualification remainpending.
