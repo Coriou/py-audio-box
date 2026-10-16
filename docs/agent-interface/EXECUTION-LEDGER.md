@@ -487,3 +487,9 @@ Record failures and missing evidence; do not replace them with a successful late
 
 - R2review boundedsource/E1GO exact3f411135 F1closed;509focused/661passed18skipped independentlyconfirmed. Rootintegratedsixcommits endingc6f2629 exactsource diffvsreviewedcandidateempty;9targetedtests passed13.71s368deselected.
 - Nextrequest pab-phase1a-p1b22d-implementation-r1-20261022 finalprivate receiptcompletion/handshake only. Applyunavailable activationclosed; independentreview/B2.3/C1C2/finalAstra pending, A1inventorylimit retained.
+
+## B2.2d candidate / independent review
+
+- Candidate fccb0391db4d45d52f56dfbdc33a63a2aa6cb6a0 frozen1ceec772 app-ownedt3-11ad9433; rootreadhandoff, unintegrated. Onlyrecovery/tests/report. Claims583focused/735passed18skipped sequentialfinalfrozen.
+- Receiptcert/boundjournal/completefence/fifthSQLstep privatecompletion; allapplyunavailable activationclosed. Reviewerexplicitlytasked toassess fence-before-fifthrow window and exactstartup/restartsemantics.
+- FreshSol-low request/task suffix pab-phase1a-p1b22d-review-r1-20261022 report reviews/P1B22d-r1-sol.md fulloriginalbrief/candidate/limits supplied. No integration/waiver/installedacceptance.
