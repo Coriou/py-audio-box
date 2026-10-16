@@ -220,5 +220,5 @@ Record failures and missing evidence; do not replace them with a successful late
 ## W2b bounded accepted integration / deployed lifecycle choice
 
 - [Independent report](reviews/W2b-r1-sol.md): GO syntheticW2b exact`5eae4d1`,87tests+2realDocker scenarios rerun, exactimages/topology/cleanupverified. NO-GO fullW2/productionactivation; hostoperator only, deployedcompanion/dispatcherallocation remain.
-- Integrated`71eec93`; source diff vs reviewedcandidate empty; root exactimage87test rerun inprogress. No publicactivation.
+- Integrated`71eec93`; source diff vs reviewedcandidate empty; root exactimage regression **87passed in29.25s**,exit0,networknone/read-onlyroot/tmpfs/no mounts. No publicactivation.
 - Targeted Astra request`pab-phase1a-deployed-lifecycle-advice-20261022`: choose practical packaged runtimeownership architecture and bounded nextimplementation that closes harness-only gap, preserve noDockerSocketcontrol and easyDockerCPUfirst. No new broadpartial implementation until architecture frozen.
