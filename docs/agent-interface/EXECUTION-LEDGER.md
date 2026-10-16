@@ -20,7 +20,7 @@
 | --- | --- | --- |
 | Launch preparation | Complete | Planning baseline `2c1adaa`; source base `ae67cd6`; integration branch `feat/agent-voice-workspace`. |
 | 0A Contract/compatibility pack | Integrated GO at E1 | Candidate `26f8e08` reviewed GO; integrated `bf66c30`, source equality verified. |
-| 0B Editor browser fixture | Pending | Recorded 0A contract fixture; separate owned component slice and reviewer. |
+| 0B Editor browser fixture | Reviewing | Candidate `a7b7435`; independent Sol-low browser/adapter review running. |
 | 0C Integration skeleton/acceptance ledger | Pending | 0A boundaries; integrate component decision after 0B. |
 | Phase 0 gate | Not evaluated | Integrated contracts, browser evidence, packaging boundary and relevant checks. |
 
@@ -100,3 +100,9 @@ Record failures and missing evidence; do not replace them with a successful late
 
 - Sol-low implementation task `node:delegated-task:command%3Amcp%3Ab4587ef3-fd31-4580-ac56-59ae142ceb03%3Adelegate-task%3Apab-phase0b-implementation-r1-20261016`, request `pab-phase0b-implementation-r1-20261016`, isolated worktree from committed `9c50c32`.
 - Owned slice: studio editor fixture/toolchain/tests, phase-0 EDITOR-0B report/evidence and required design context. Exact canonical fixtures1.3.0; Waveform Playlist evaluated first, own-state adapter or justified thin fallback. Real browser proof required; independent reviewer pending candidate. 0C remains queued.
+
+## Lot 0B candidate / review round 1
+
+- Candidate `a7b7435fa1819a100f33c5f5c08e9d0dd8b2a530`, branch `t3/lot0b-browser-editor`, worktree `/Users/ben/.txcode/worktrees/py-audio-box/t3-b7ef8a9f`, base `9c50c32`. Root inspected43path scope and full EDITOR-0B report. Unintegrated.
+- Implementer claims6adapter tests/Pythonoracle,TS/Vitebuild and native browser interactions; proposed custom timeline+WaveSurfer after legacyPlaylist probe, modernPlaylist docs considered. Split/replacement contract restrictions, local-only history, dev audit/bundle limits documented; not accepted yet.
+- Independent review task `node:delegated-task:command%3Amcp%3Ab4587ef3-fd31-4580-ac56-59ae142ceb03%3Adelegate-task%3Apab-phase0b-review-r1-20261016`, Sol `gpt-6.1-sol` low, report `reviews/0B-r1-sol.md`. Actual browser/adapter/component decision check; sole heavy lane. Browser evidence is E4 under canonical plan, regardless of implementer's E2 label.
