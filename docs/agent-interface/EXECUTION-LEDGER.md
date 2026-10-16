@@ -273,3 +273,8 @@ Record failures and missing evidence; do not replace them with a successful late
 
 - Candidate`0aaa70780a979d501eae959147f01c0f7475ebf3`, app-owned`t3-f6dcdb48`, branch`t3/r1-fail-closed-stop`. Claims173tests+36installedsteps andF1/F2corrections; root read response. Unintegrated.
 - IndependentSol-low request/task suffix`pab-phase1a-r1-review-r2-20261022`, currenttask-IDprefix, report`reviews/R1-r2-sol.md`; originalbrief+allfindings/reproducers/response supplied. No waiver/R1GO; P1activationclosed.
+
+## R1 round2 NO-GO / targeted Astra durability advice
+
+- [R2review](reviews/R1-r2-sol.md): NO-GO exact`0aaa707`; F2closed, F1INSERT/live-loopfixed but witnessUPDATEfailure thenrestart losesfault andcanpublish/admit.173tests36steps confirmed, independentE1reproductionofunwritablewitness supplied.
+- Candidate remainsunintegrated. TargetedAstra request`pab-phase1a-r1-fault-authority-astra-20261022` tofreezeconservative durableauthority design preservingordinaryW2reconnect; no waiver/P1scopeexpansion. NextSol-lowcorrection/re-reviewafteradvice.
