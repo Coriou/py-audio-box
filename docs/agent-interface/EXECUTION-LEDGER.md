@@ -19,7 +19,7 @@
 | Lot | State | Dependency / next action |
 | --- | --- | --- |
 | Launch preparation | Complete | Planning baseline `2c1adaa`; source base `ae67cd6`; integration branch `feat/agent-voice-workspace`. |
-| 0A Contract/compatibility pack | Targeted Astra advice | Round 2 NO-GO: F1/F3/F4/F5/F6 closed; F2 plus identity/asset binding remain. |
+| 0A Contract/compatibility pack | Correcting frozen boundary | Astra upheld R2-1/2/3; bounded correction round 2 with complete regression matrix. |
 | 0B Editor browser fixture | Pending | Recorded 0A contract fixture; separate owned component slice and reviewer. |
 | 0C Integration skeleton/acceptance ledger | Pending | 0A boundaries; integrate component decision after 0B. |
 | Phase 0 gate | Not evaluated | Integrated contracts, browser evidence, packaging boundary and relevant checks. |
@@ -64,3 +64,9 @@ Record failures and missing evidence; do not replace them with a successful late
 
 - [Independent round-2 report](reviews/0A-r2-sol.md): **NO-GO** on `aa9a61a`; exact-source image verified, 118 selected tests passed. F1/F3/F4/F5/F6 closed at E1. F2 remains incomplete (preset selector), with cross-object identity/fallback binding and plan asset authorization counterexamples R2-2/R2-3.
 - No integration or finding waiver. Targeted Astra advice requested before next bounded Sol-low correction: specify complete preset configuration, authoritative hashed resolution and derived authorized asset dependencies, without runtime expansion. Final global Astra review remains separately required.
+
+## Targeted Astra advice / correction round 2
+
+- Task `pab-phase0a-astra-targeted-20261016`, `gpt-6-astra`: [targeted report](reviews/0A-astra-targeted.md), NO-GO upheld with independently reproduced R2-1/2/3. No code changed; E1 only, not final global review.
+- Required coherent boundary: typed backend voice/settings, hashed control-approved resolution/profile/policy, derived authorized media dependencies, stored-context worker/publication checks and verified result manifest. Adjacent settings/deadline/revision relations included, with four operation transcripts and explicit regression/closure matrix.
+- Next correction request `pab-phase0a-fix-r2-20261016`, Sol-low isolated worktree; base must cherry-pick original and correction commits before bounded repair. No integration; independent re-review required.
