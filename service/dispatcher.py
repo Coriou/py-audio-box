@@ -1,0 +1,236 @@
+"""Installed internal fixed synthetic dispatcher. R1/P1 activation stays closed.
+
+The owner loop alone uses Core/SQLite. A single executor performs bounded UDS I/O;
+its detached replies are consumed as commands on that loop, never as DB callbacks.
+"""
+from concurrent.futures import Future, ThreadPoolExecutor
+import copy
+import json
+from pathlib import Path
+import queue
+import threading
+import time
+
+from service.core import Core, encode
+from service.dispatch_store import DispatchStore
+from service.supervisor_runtime import SupervisorRuntime
+from worker.lifecycle import State
+
+
+class Dispatcher:
+    def __init__(self, root, *, ipc='/ipc', staging='/staging', runtime=None, fault=lambda _:None):
+        self.root, self.staging = Path(root), Path(staging)
+        self.runtime = runtime or SupervisorRuntime(ipc)
+        self.fault = fault
+        self.commands=queue.Queue(64)
+        self.initialized=Future()
+        self.thread=threading.Thread(target=self._run,name='control-writer',daemon=True)
+        self.thread.start()
+        self.initialized.result(timeout=5)
+
+    def call(self, op, *args, timeout=3, **kwargs):
+        if op not in ('submit','job','jobs','events','artifact','asset','cancel','status','replace','close'):
+            raise ValueError('unknown_control_command')
+        future=Future()
+        self.commands.put_nowait((op,copy.deepcopy(args),copy.deepcopy(kwargs),future))
+        return future.result(timeout=timeout)
+
+    def close(self):
+        self.call('close');self.thread.join(timeout=4)
+        if self.thread.is_alive():raise RuntimeError('control_close_timeout')
+
+    def _run(self):
+        core=None
+        try:
+            core=self.core=Core(self.root)
+            self.store=DispatchStore(core)
+            self.pool=ThreadPoolExecutor(max_workers=1,thread_name_prefix='bounded-lifecycle')
+            self.pending=None;self.reconciled=False;self.quarantined=False
+            # A former local/foundation attempt has no supervisor death proof.
+            self.orphaned=bool(self.core.db.execute("SELECT 1 FROM jobs WHERE json_extract(job,'$.state') IN ('running','cancel_requested') AND id NOT IN (SELECT job_id FROM dispatches) LIMIT 1").fetchone())
+            self.error=None;self.next_poll=0;self.stopping=False
+            self.profiles=json.loads(Path('contracts/fixtures/v1/transcript-speech_generate.json').read_text())['profiles']
+            for p in self.profiles:
+                p.update(support='qualified',installation='installed',readiness='ready',verification='measured',qualification_receipt='E1-W2d-fixed-synthetic-only')
+            self.initialized.set_result(True)
+            while not self.stopping:
+                try:
+                    item=self.commands.get(timeout=.02)
+                except queue.Empty:item=None
+                if item:
+                    op,args,kwargs,future=item
+                    try:future.set_result(copy.deepcopy(self._command(op,*args,**kwargs)))
+                    except Exception as exc:future.set_exception(exc)
+                if self.stopping:break
+                try:self._tick()
+                except Exception as exc:
+                    # Persistence/verification faults retain durable ownership and evidence.
+                    self.error=type(exc).__name__;self.quarantined=True
+                    self.next_poll=time.monotonic()+.2
+            if self.pending:self.pending[0].result(timeout=3)
+        except BaseException as exc:
+            if not self.initialized.done():self.initialized.set_exception(exc)
+            else:self.error=type(exc).__name__
+        finally:
+            if hasattr(self,'pool'):self.pool.shutdown(wait=True,cancel_futures=True)
+            if core:core.close()
+
+    def _command(self,op,*args,**kwargs):
+        if op=='close':self.stopping=True;return None
+        if op=='status':
+            row=self.store.current()
+            return dict(reconciled=self.reconciled,quarantined=self.quarantined,
+                phase=row['phase'] if row else 'idle',runtime_id=row['runtime'] if row else None,
+                resource_activation=False,persistent_activation=False,error=self.error)
+        if op=='cancel':
+            job=self.core.request_cancel(*args,**kwargs,_cancel_unstarted=True)
+            self.next_poll=0
+            return job
+        if op in ('submit','replace'):
+            # Idempotent lookup is a read, including during quarantine/reconnect.
+            if op=='submit':
+                if len(args)!=2 or not set(kwargs)<= {'retry_of','fixture','seconds'}:raise ValueError('closed_synthetic_command')
+                existing=self.core.db.execute("SELECT job FROM jobs WHERE principal=? AND operation='speech_generate' AND key=?",args).fetchone()
+                if existing:return json.loads(existing[0])
+            if not self.reconciled or self.quarantined:raise ValueError('startup_or_quarantine')
+            if op=='replace':
+                if self.pending or self.store.current():raise ValueError('lane_busy')
+                job_id=args[0]
+                row=self.store.allocate(self.profiles,'silence',8,replacement=job_id)
+                self.fault('prespawn')
+                self._launch(row,'prepare',lambda:self.runtime.prepare(row['authority'],row['fixture']))
+                return self.core.job(row['job_id'])
+            # Fixed installed internal fixture; caller supplies no context/profile/plan.
+            principal,key=args
+            if not set(kwargs)<= {'retry_of','fixture','seconds'}:raise ValueError('closed_synthetic_command')
+            fixture=kwargs.get('fixture','silence');seconds=kwargs.get('seconds',8)
+            if fixture not in ('silence','busy','descendants','permissions') or type(seconds)!=int or not 2<=seconds<=25:raise ValueError('fixed_fixture_required')
+            context=json.loads(Path('contracts/fixtures/v1/transcript-speech_generate.json').read_text())['context']
+            job=self.core.submit_synthetic(principal,key,context,retry_of=kwargs.get('retry_of'),
+                _dispatch_settings=(fixture,seconds))
+            return job
+        return getattr(self.core,op)(*args,**kwargs)
+
+    def _launch(self,row,op,fn):
+        command=self.store.command(row,op)
+        self.fault('before_'+op)
+        self.pending=(self.pool.submit(fn),row,op,command)
+
+    def _tick(self):
+        if self.pending:
+            future,row,op,command=self.pending
+            if not future.done():return
+            self.pending=None
+            try:value=future.result()
+            except Exception:
+                self.store.complete(command,False)
+                if op=='ack':self.next_poll=time.monotonic()+.2;return
+                self.store.update(row,phase='unknown');self.quarantined=True
+                self.reconciled=True;self.next_poll=time.monotonic()+.2;return
+            self.fault('after_'+op)
+            self.store.complete(command,True)
+            if op=='prepare':
+                self.fault('preregistration')
+                self.store.update(row,runtime=value,phase='bound')
+                self.fault('prestart')
+                self._launch(self.store.current(),'start',lambda:self.runtime.start(value));return
+            if op=='start':self.store.update(row,phase='observing');self.fault('postspawn')
+            elif op=='observe':
+                if value.runtime_id!=row['runtime']:raise ValueError('unbound_observation')
+                self.reconciled=True
+                self.quarantined=value.state==State.UNKNOWN
+                if value.state==State.STOPPED:
+                    self.fault('observation_reap')
+                    self._launch(row,'collect',lambda:self.runtime.collect(row['authority'],row['runtime']));return
+                self.store.update(row,phase='unknown' if self.quarantined else 'observing')
+                if value.state==State.ALIVE and self.core.job(row['job_id'])['state']=='cancel_requested':
+                    self._launch(row,'stop',lambda:self.runtime.terminate(row['runtime'],1.5));return
+            elif op=='collect':
+                if value is None:raise ValueError('terminal_receipt_missing')
+                self._terminal(row,*value)
+            elif op=='ack':
+                if value!={'acked':True}:raise ValueError('ack_required')
+                self.store.update(row,acked=1,phase='acknowledged');self.quarantined=False
+            self.next_poll=time.monotonic()+.03
+        if self.pending or time.monotonic()<self.next_poll:return
+        row=self.store.current()
+        if row:
+            if row['outcome']:
+                self._launch(row,'ack',lambda:self.runtime.call('ack',dict(runtime_id=row['runtime'])));return
+            if row['phase']=='intent':
+                # Only a new live allocation reaches prepare. Startup never replays intent.
+                self.store.update(row,phase='unknown');self.quarantined=True;self.reconciled=True
+            if row['runtime'] is None:
+                self.quarantined=True;self.reconciled=True;return
+            self._launch(row,'observe',lambda:self.runtime.observe(row['runtime'],1.5));return
+        if not self.reconciled:
+            # Validate actual installed supervisor before admitting anything.
+            if not hasattr(self,'hello'):
+                self.hello=self.pool.submit(self.runtime.call,'hello',{})
+            if not self.hello.done():return
+            try: value=self.hello.result();self.quarantined=self.orphaned or bool(value['quarantined'])
+            except Exception:self.quarantined=True
+            self.reconciled=True;return
+        if self.quarantined:return
+        queued=next((json.loads(r[0]) for r in self.core.db.execute('SELECT job FROM jobs ORDER BY seq') if json.loads(r[0])['state']=='queued'),None)
+        if queued:
+            settings=self.core.db.execute('SELECT fixture,seconds FROM dispatch_settings WHERE job_id=?',(queued['id'],)).fetchone()
+            if settings is None:raise ValueError('fixed_dispatch_settings_required')
+            row=self.store.allocate(self.profiles,*settings)
+            self.fault('prespawn')
+            self._launch(row,'prepare',lambda:self.runtime.prepare(row['authority'],row['fixture']))
+
+    def _terminal(self,row,receipt,observation):
+        authority=row['authority'];job=self.core.job(row['job_id'])
+        if (receipt['runtime_id']!=row['runtime'] or receipt['binding']!=authority.binding or
+            receipt['reaped'] is not True or receipt['reap_method']!='pid1-waitpid-echild' or
+            receipt['original_deadline']!=authority.job['deadline']):raise ValueError('unbound_receipt')
+        self.store.update(row,receipt=encode(receipt),phase='receipt')
+        self.fault('preverification')
+        if job['state'] not in ('succeeded','failed','cancelled'):
+            intent=self.core.db.execute('SELECT 1 FROM publications WHERE job_id=?',(job['id'],)).fetchone()
+            try:
+                if intent:
+                    if receipt['timely'] is not True:raise ValueError('late_publication_intent')
+                    stored=json.loads(self.core.db.execute('SELECT artifact FROM publications WHERE job_id=?',(job['id'],)).fetchone()[0])
+                    for key in ('generation','attempt_id','owner_id','staging_id'):
+                        expected=authority.job['generation'] if key=='generation' else authority.job['attempts'][-1]['id' if key=='attempt_id' else key]
+                        if stored[key]!=expected:raise ValueError('stale_publication_intent')
+                    self.core._commit_publication(job['id'])
+                elif receipt['timely'] is True and observation is not None:
+                    self.core._publish(job['id'],dict(message=observation.message,manifest=observation.manifest),
+                        fault=self.fault,stage_root=self.staging,engine_uid=receipt['engine_uid'])
+                else:self._fail(job,'deadline_or_reaped')
+            except (OSError,ValueError,AssertionError) as exc:
+                self._fail(self.core.job(job['id']),'verification_failed')
+        # Crash after success before outcome journal is recoverable from Core terminal.
+        job=self.core.job(job['id'])
+        if job['state'] not in ('succeeded','failed','cancelled'):raise ValueError('terminal_required')
+        self.store.update(row,outcome=encode(job),phase='ack_pending')
+        self.fault('durable_outcome')
+        self.quarantined=False
+
+    def _fail(self,job,stage):
+        with self.core.transaction():
+            if job['state'] not in ('running','cancel_requested'):raise ValueError('invalid_transition')
+            job.update(state='cancelled' if job['state']=='cancel_requested' else 'failed',stage=stage)
+            job['attempts'][-1]['reaped']=True;self.core._save(job)
+
+
+def main():
+    """Bounded installed diagnostic session; JSON lines, no public listener."""
+    import sys
+    dispatcher=Dispatcher('/control/core')
+    try:
+        for line in sys.stdin:
+            value=json.loads(line)
+            if set(value)-{'op','args','kwargs'}:raise ValueError('closed_command')
+            try:
+                result=dispatcher.call(value['op'],*value.get('args',[]),**value.get('kwargs',{}))
+                print(json.dumps(dict(ok=True,value=result)),flush=True)
+            except Exception as exc:
+                print(json.dumps(dict(ok=False,error=type(exc).__name__)),flush=True)
+    finally:dispatcher.close()
+
+
+if __name__=='__main__':main()

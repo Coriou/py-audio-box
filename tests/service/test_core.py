@@ -9,7 +9,10 @@ import time
 
 import pytest
 from contracts.validate import ContractError
-from service.core import Core
+from service.core import Core as ActiveCore
+
+def Core(root):
+    return ActiveCore(root, historical_local=True)
 
 FIXTURES=Path(__file__).resolve().parents[2]/'contracts/fixtures/v1'
 
@@ -136,7 +139,7 @@ def test_control_process_death_and_restart(tmp_path,point,state):
 import json,os,sys
 from pathlib import Path
 from service.core import Core
-c=Core(Path(sys.argv[1]));context=json.loads(Path(sys.argv[2]).read_text())['context']
+c=Core(Path(sys.argv[1]), historical_local=True);context=json.loads(Path(sys.argv[2]).read_text())['context']
 c.submit_synthetic('p','a',context);c.start()
 def die(point):
     if point==sys.argv[3]: os._exit(73)
@@ -162,7 +165,7 @@ def test_control_death_live_worker_quarantine_then_recover(tmp_path):
 import json,os,sys
 from pathlib import Path
 from service.core import Core
-c=Core(Path(sys.argv[1]));x=json.loads(Path(sys.argv[2]).read_text())['context']
+c=Core(Path(sys.argv[1]), historical_local=True);x=json.loads(Path(sys.argv[2]).read_text())['context']
 c.submit_synthetic('p','a',x);c.start(delay=1);os._exit(74)
 '''
     assert subprocess.run([sys.executable,'-c',script,str(root),str(FIXTURES/'transcript-speech_generate.json')],timeout=5).returncode==74
@@ -307,7 +310,7 @@ def test_deadline_observation_lost_on_restart_fails_closed(tmp_path):
 import json,os,sys
 from pathlib import Path
 from service.core import Core
-c=Core(Path(sys.argv[1]));x=json.loads(Path(sys.argv[2]).read_text())['context']
+c=Core(Path(sys.argv[1]), historical_local=True);x=json.loads(Path(sys.argv[2]).read_text())['context']
 x['plan']['resolved']['profile']['limits']['deadline_seconds']=1
 c.submit_synthetic('p','a',x);c.start()
 c.active[1].completion.thread.join(timeout=5)
@@ -342,3 +345,14 @@ def test_already_exited_late_worker_rejected(core,context,monkeypatch):
     result=core.finish()
     assert result['state']=='failed' and result['stage']=='deadline'
     assert result['attempts'][-1]['reaped'] and not result['artifact_ids']
+
+
+def test_default_core_cannot_launch_historical_worker(tmp_path,context):
+    active=ActiveCore(tmp_path/'active')
+    try:
+        active.submit_synthetic('p','a',context)
+        with pytest.raises(ValueError,match='dispatcher_required'): active.start()
+        with pytest.raises(ValueError,match='dispatcher_required'): active.finish()
+        with pytest.raises(ValueError,match='dispatcher_required'): active.reconcile()
+        assert active.active is None
+    finally: active.close()

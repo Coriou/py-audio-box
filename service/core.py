@@ -75,7 +75,8 @@ class CompletionObserver:
 
 
 class Core:
-    def __init__(self, root: Path):
+    def __init__(self, root: Path, *, historical_local=False):
+        self.historical_local = historical_local
         self.root = Path(root).absolute()
         self.root.mkdir(mode=0o700, parents=True, exist_ok=True)
         if self.root.is_symlink() or self.root.stat().st_uid != os.getuid():
@@ -178,7 +179,7 @@ class Core:
             self.db.execute('INSERT INTO revisions VALUES (?,?,?)', (project_id,after['revision'],encode(after)))
         return after
 
-    def submit_synthetic(self, principal: str, key: str, context: dict, *, retry_of: str | None = None) -> dict:
+    def submit_synthetic(self, principal: str, key: str, context: dict, *, retry_of: str | None = None, _dispatch_settings=None) -> dict:
         """Trusted fixture-only admission; never claims installed/qualified ML readiness.
 
         Resolve context in control before calling. Duplicate lookup precedes resolution.
@@ -209,9 +210,12 @@ class Core:
             oracle.validate('job', job)
             self.db.execute('INSERT INTO jobs(id,principal,operation,key,fingerprint,job,context,retry_of) VALUES (?,?,?,?,?,?,?,?)', (job['id'],principal,operation,key,fingerprint,encode(job),encode(context),retry_of))
             self.db.execute('INSERT INTO events(job_id,state) VALUES (?,?)', (job['id'],'queued'))
+            if _dispatch_settings is not None:
+                self.db.execute('INSERT INTO dispatch_settings VALUES (?,?,?)',(job['id'],*_dispatch_settings))
         return job
 
     def start(self, *, delay: float = 0) -> dict | None:
+        if not self.historical_local: raise ValueError('dispatcher_required')
         if self.active is not None: raise ValueError('lane_busy')
         if self.reconcile(): raise ValueError('lane_quarantined')
         with self.transaction():
@@ -243,15 +247,18 @@ class Core:
         a = job['attempts'][-1]
         return dict(protocol_version='1.3.0',kind=kind,job_id=job['id'],attempt_id=a['id'],generation=a['generation'],input_sha256=job['input_sha256'],input_asset_ids=[],staging_id=a['staging_id'],owner_id=a['owner_id'],identity=context['plan']['resolved']['identity'],deadline=job['deadline'],stage='completed' if kind=='result' else 'loading',result_asset_ids=[],plan=context['plan'])
 
-    def request_cancel(self, job_id: str) -> dict:
+    def request_cancel(self, job_id: str, *, _cancel_unstarted=False) -> dict:
         with self.transaction():
             job,_ = self._load(job_id)
             if job['state'] in ('queued','running'):
                 job['state']='cancel_requested'; self._save(job)
+                if _cancel_unstarted and not job['attempts']:
+                    job.update(state='cancelled',stage='never_started');self._save(job)
         return job
 
     def finish(self, *, cancel: bool = False, fault=None) -> dict:
         """Wait/reap known child; verified result can win cancellation. Fault hooks E2 only."""
+        if not self.historical_local: raise ValueError('dispatcher_required')
         if self.active is None: raise ValueError('no_owner')
         job_id, process, connection, lock = self.active
         if cancel:
@@ -282,7 +289,7 @@ class Core:
         self.reconcile()
         return self.job(job_id)
 
-    def _verified(self, job, proposal):
+    def _verified(self, job, proposal, *, stage_root=None, engine_uid=None):
         message, manifest = proposal['message'], proposal['manifest']
         _,context=self._load(job['id'])
         owner=job['attempts'][-1]['owner_id'] # bound to the private socket inherited only by our child
@@ -290,13 +297,13 @@ class Core:
         oracle.validate('result_manifest',manifest)
         oracle.require(len(manifest['outputs'])==1, 'result_mismatch')
         output=manifest['outputs'][0]
-        path=self.root/'staging'/job['attempts'][-1]['staging_id']/'output.wav'
+        path=(Path(stage_root) if stage_root is not None else self.root/'staging')/job['attempts'][-1]['staging_id']/'output.wav'
         stage=path.parent
-        oracle.require(not stage.is_symlink() and stage.stat().st_uid==os.getuid() and stat.S_IMODE(stage.stat().st_mode)==0o700, 'foreign_stage')
+        oracle.require(not stage.is_symlink() and stage.stat().st_uid==os.getuid() and stat.S_IMODE(stage.stat().st_mode)==(0o770 if stage_root is not None else 0o700), 'foreign_stage')
         fd=os.open(path, os.O_RDONLY|os.O_NOFOLLOW)
         with os.fdopen(fd,'rb') as stream:
             info=os.fstat(stream.fileno())
-            oracle.require(stat.S_ISREG(info.st_mode) and info.st_uid==os.getuid() and info.st_nlink==1 and info.st_size<=1024*1024, 'foreign_media')
+            oracle.require(stat.S_ISREG(info.st_mode) and info.st_uid==(engine_uid if stage_root is not None else os.getuid()) and info.st_nlink==1 and info.st_size<=1024*1024, 'foreign_media')
             data=stream.read(1024*1024+1)
         import io
         with wave.open(io.BytesIO(data),'rb') as wav:
@@ -310,9 +317,9 @@ class Core:
         oracle.publication(job,job['attempts'][-1],artifact,{output['id']:measured['sha256']},transport_owner=owner,context=context,manifest=manifest,verified_result=message,allowed_assets=[])
         return data,manifest,artifact,message
 
-    def _publish(self, job_id, proposal, fault=None):
+    def _publish(self, job_id, proposal, fault=None, *, stage_root=None, engine_uid=None):
         job,_=self._load(job_id)
-        data,manifest,artifact,message=self._verified(job,proposal)
+        data,manifest,artifact,message=self._verified(job,proposal,stage_root=stage_root,engine_uid=engine_uid)
         with self.transaction():
             self.db.execute('INSERT INTO publications VALUES (?,?,?,?)', (job_id,encode(manifest),encode(artifact),encode(message)))
         if fault: fault('before_adoption')
@@ -351,6 +358,7 @@ class Core:
 
     def reconcile(self) -> bool:
         """No retries, kills or blind deletion. An inherited lock fences a living fake owner."""
+        if not self.historical_local: raise ValueError('dispatcher_required')
         quarantined=False
         for (raw,) in self.db.execute('SELECT job FROM jobs').fetchall():
             job=json.loads(raw)

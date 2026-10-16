@@ -1,0 +1,27 @@
+{
+  "base": "53429a0df626cbee2adfa34476caeaccadb4976e",
+  "worktree": "/Users/ben/.txcode/worktrees/py-audio-box/t3-efa81fcc",
+  "branch": "t3/implement-w2d-dispatcher",
+  "run_sha256": "590ed000286640d0c8f199b76c8d06c77f13efc370f5b8eb807882ebe0d6ea02",
+  "source_mismatches": [],
+  "control_files": 89,
+  "worker_files": 18,
+  "packaging_files": 4,
+  "images": {
+    "worker": "sha256:7101cd00bbd2e49544233d62bf439d9483e5612e1254cbb750591ce8f14dbb9b",
+    "control": "sha256:49e338a4a376bd3f9612c6d6ace24fd52e44fade12ae143d1abee73b157699db"
+  },
+  "scenarios": 32,
+  "prior_preserved": {
+    "containers": {
+      "count": 15,
+      "sha256": "23c6be7289f12faa7ff8834a8e01311c6002bd2c4c0afb645799b04a2f16725e"
+    },
+    "volumes": {
+      "count": 140,
+      "sha256": "4d632ffe7511b22b72200660d00a49a09ea3d4d77e6773fde88e029e433b8aef"
+    }
+  },
+  "remaining_owned_containers": [],
+  "remaining_owned_volumes": []
+}
