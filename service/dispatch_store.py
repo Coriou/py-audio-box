@@ -37,7 +37,8 @@ class DispatchStore:
 
     def allocate(self, profiles, fixture, seconds, *, replacement=None):
         if self.current(): raise ValueError('lane_busy')
-        with self.core.transaction():
+        from contextlib import nullcontext
+        with (self.admission._preflight() if self.admission is not None else nullcontext()), self.core.transaction():
             if replacement:
                 job,context=self.core._load(replacement)
                 if self.db.execute('SELECT 1 FROM publications WHERE job_id=?',(replacement,)).fetchone():raise ValueError('publication_reconciliation_required')

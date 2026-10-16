@@ -12,6 +12,7 @@ import uuid
 
 def installed(case):
     from tests.release.test_dispatcher import installed as lifecycle
+    if case.startswith('authority-'):return authority_installed(case)
     if not case.startswith('resource-'):
         result=lifecycle(case)
         if case=='unknown':assert result['status']['reservations'][0]['state']=='executing'
@@ -105,6 +106,93 @@ def installed(case):
     finally:d.close()
 
 
+def authority_installed(case):
+    """E1 owner-connection policy injection; real E2 supervisor stop/reap."""
+    import sqlite3
+    import threading
+    from service.dispatcher import Dispatcher
+    from service.supervisor_runtime import SupervisorRuntime
+    def wait(fn):
+        end=time.monotonic()+12
+        while time.monotonic()<end:
+            value=fn()
+            if value:return value
+            time.sleep(.02)
+        raise AssertionError('authority_installed_timeout')
+    if case=='authority-recover':
+        db=sqlite3.connect('/control/core/core.sqlite')
+        assert db.execute('SELECT state FROM resource_monitor').fetchone()==('checking',)
+        job=json.loads(db.execute('SELECT job FROM jobs').fetchone()[0]);db.close()
+        output=Path('/staging')/job['attempts'][-1]['staging_id']/'output.wav'
+        assert not output.exists() or output.stat().st_size!=10000
+        class ReconnectRuntime(SupervisorRuntime):
+            def __init__(self):super().__init__();self.stops=0
+            def terminate(self,identity,timeout):
+                self.stops+=1
+                return super().terminate(identity,timeout)
+        runtime=ReconnectRuntime();d=Dispatcher('/control/core',runtime=runtime)
+        try:
+            wait(lambda:d.call('status')['reconciled'])
+            wait(lambda:d.call('job',job['id'])['state']=='failed')
+            status=d.call('status');result=d.call('job',job['id'])
+            assert status['persistence_fault'] and status['quarantined']
+            assert status['reservations'][0]['state']=='executing'
+            assert result['attempts'][-1]['reaped'] and not result['artifact_ids']
+            assert d.call('submit','p','a')['id']==job['id']
+            for op,args in [('submit',('p','fresh')),('replace',(job['id'],))]:
+                try:d.call(op,*args)
+                except ValueError:pass
+                else:raise AssertionError('authority_progress')
+            assert runtime.call('hello',{})['launches']==1
+            db=sqlite3.connect('/control/core/core.sqlite')
+            row=db.execute('SELECT outcome,acked FROM dispatches').fetchone()
+            assert row==(None,0)
+            receipt=json.loads(db.execute('SELECT receipt FROM dispatches').fetchone()[0])
+            assert receipt['reaped'] is True and receipt['reap_method']=='pid1-waitpid-echild'
+            assert receipt['original_deadline']==result['deadline']
+            assert runtime.stops==(0 if job['state']=='failed' else 1)
+            assert db.execute('SELECT state FROM resource_monitor').fetchone()==('checking',)
+            db.close()
+            return dict(status=status,job=result,authority='checking',ack=row[1],stops=runtime.stops,receipt=receipt,lifecycle='real supervisor exact reap; charge retained')
+        finally:d.close()
+    if case=='authority-setup':
+        d=Dispatcher('/control/core')
+        try:
+            wait(lambda:d.call('status')['reconciled'])
+            job=d.call('submit','p','a',fixture='busy',seconds=25)
+            wait(lambda:d.call('status')['phase']=='observing')
+            job=d.call('job',job['id'])
+        finally:d.close()
+        db=sqlite3.connect('/control/core/core.sqlite')
+        assert db.execute('SELECT state FROM resource_monitor').fetchone()==('healthy',);db.close()
+        return dict(job=job,barrier='clean shutdown; operator may inject owned staging bytes')
+    assert case=='authority-denied'
+    from service.admission import Admission
+    from service.resource_store import ResourceStore
+    check=Admission.check;observe=ResourceStore.observe;denied=[]
+    def violation(admission,**kwargs):
+        db=sqlite3.connect('/control/core/core.sqlite')
+        assert db.execute('SELECT state FROM resource_monitor').fetchone()==('checking',);db.close()
+        try:check(admission,**kwargs)
+        except ValueError as exc:
+            assert str(exc)=='resource_output_bytes'
+            admission.core.db.execute('PRAGMA query_only=ON');denied.append(True)
+            admission.core.db.set_trace_callback(lambda sql: denied.append(sql) if sql.startswith("UPDATE resource_monitor SET state='fault'") else None)
+            raise
+        raise AssertionError('missing_real_10000_byte_violation')
+    Admission.check=violation
+    def fenced(store,fn):
+        try:return observe(store,fn)
+        except sqlite3.OperationalError:
+            assert len(denied)==2 and denied[1].startswith("UPDATE resource_monitor SET state='fault'") and store.state()=='checking'
+            print(json.dumps(dict(crash_fence='checking',fault='E1 query_only after actual operator-injected 10000-byte output observation')),flush=True)
+            os._exit(29)  # No loop, close, finally, or retry after denied UPDATE.
+    ResourceStore.observe=fenced
+    d=Dispatcher('/control/core')
+    d.thread.join(10)
+    raise AssertionError(('expected_immediate_death',d.call('status'),denied))
+
+
 def main():
     lane=open('/tmp/pab-worker-w1-docker-lane.lock','a')
     fcntl.flock(lane,fcntl.LOCK_EX|fcntl.LOCK_NB)
@@ -115,7 +203,7 @@ def main():
     compose=['docker','compose','-p',project,'-f','service/compose.admission.yml']
     names=[];worker=None
     prefix=os.environ.get('R1_EVIDENCE_PREFIX','')
-    if prefix not in ('','correction-'):raise ValueError('closed_evidence_prefix')
+    if prefix not in ('','correction-','authority-'):raise ValueError('closed_evidence_prefix')
     def save(): (out/(prefix+'run.json')).write_text(json.dumps(record,indent=2))
     def run(args,timeout=40,check=True):
         result=subprocess.run(args,env=env,text=True,capture_output=True,timeout=timeout)
@@ -135,7 +223,9 @@ def main():
         result=dc('run','--name',name,'--no-deps','--entrypoint','python','control','-c',script,check=False)
         assert result.returncode==expected,(case,result.returncode,result.stdout,result.stderr)
         run(['docker','rm',name])
-        value=json.loads(result.stdout.strip().splitlines()[-1]) if expected==0 else dict(exit=expected)
+        value=json.loads(result.stdout.strip().splitlines()[-1]) if expected==0 else dict(exit=expected,barrier=result.stdout.strip().splitlines()[-1] if result.stdout.strip() else None)
+        if case in ('crash-start-sent','crash-start-overlap'):
+            assert json.loads(value['barrier'])['crash_fence']==('healthy' if case=='crash-start-sent' else 'checking')
         record['scenarios'].append(dict(case=case,result=value));save();return value
     def audit(script):return run(['docker','exec',worker,'python','-c',script])
     def reset():
@@ -189,6 +279,14 @@ def main():
             rows=json.loads(audit("import json;from pathlib import Path;print(json.dumps(json.loads(Path('/receipts/journal.json').read_text())['payload']['records']))").stdout)
             assert len(rows)==1 and rows[0]['phase']=='terminal' and rows[0]['acked']
             record['scenarios'][-1]['physical_allocations']=len(rows)
+        reset();control('crash-start-overlap',17);control('authority-recover');control('authority-recover')
+        reset();setup=control('authority-setup')
+        pressure='/staging/'+setup['job']['attempts'][-1]['staging_id']+'/output.wav'
+        run(['docker','exec','--user','10001:10001',worker,'python','-c',"from pathlib import Path;p=Path("+repr(pressure)+");assert not p.exists();p.write_bytes(b'x'*10000)"])
+        control('authority-denied',29)
+        # Restore the test pressure before either new control opens the same root.
+        run(['docker','exec','--user','10001:10001',worker,'python','-c',"from pathlib import Path;p=Path("+repr(pressure)+");assert p.stat().st_size==10000;p.unlink()"])
+        control('authority-recover');control('authority-recover')
         reset();control('leave-deadline',17);time.sleep(3.3);control('recover-failed')
         reset();control('leave-running',17)
         run(['docker','kill','--signal','KILL',worker]);run(['docker','wait',worker]);run(['docker','start',worker]);time.sleep(.3)

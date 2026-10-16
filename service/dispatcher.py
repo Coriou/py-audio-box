@@ -51,11 +51,12 @@ class Dispatcher:
             self.pending=None;self.reconciled=False;self.quarantined=False
             # A former local/foundation attempt has no supervisor death proof.
             self.orphaned=bool(self.core.db.execute("SELECT 1 FROM jobs WHERE json_extract(job,'$.state') IN ('running','cancel_requested') AND id NOT IN (SELECT job_id FROM dispatches) LIMIT 1").fetchone())
-            monitor_state=core.db.execute('SELECT state FROM resource_monitor WHERE id=1').fetchone()[0]
+            monitor_state=self.admission.store.state()
             self.persistence_fault=monitor_state not in ('healthy','fault')
             self.resource_fault=monitor_state!='healthy' or bool(core.db.execute('SELECT 1 FROM resource_faults').fetchone())
             self.stop_obligation=self.resource_fault
             self.resource_stop_sent=set()
+            self.admission.store.on_fault=self._sync_resource_fault
             self.error=None;self.next_poll=0;self.stopping=False
             self.profiles=json.loads(Path('contracts/fixtures/v1/transcript-speech_generate.json').read_text())['profiles']
             for p in self.profiles:
@@ -64,7 +65,7 @@ class Dispatcher:
             self.orphaned = self.orphaned or self.admission.unaccounted
             with core.transaction():
                 for reservation in self.admission.store.rows():
-                    if reservation['state']=='queued' and core.job(reservation['id'])['state']=='cancelled':
+                    if not self.persistence_fault and reservation['state']=='queued' and core.job(reservation['id'])['state']=='cancelled':
                         self.admission.store.release_tx(reservation['id'],unstarted=True)
             self.initialized.set_result(True)
             while not self.stopping:
@@ -74,11 +75,14 @@ class Dispatcher:
                 if item:
                     op,args,kwargs,future=item
                     try:future.set_result(copy.deepcopy(self._command(op,*args,**kwargs)))
-                    except Exception as exc:future.set_exception(exc)
+                    except Exception as exc:
+                        self._sync_resource_fault()
+                        future.set_exception(exc)
                 if self.stopping:break
                 try:self._tick()
                 except Exception as exc:
                     # Persistence/verification faults retain durable ownership and evidence.
+                    self._sync_resource_fault()
                     self.error=type(exc).__name__;self.quarantined=True
                     self.next_poll=time.monotonic()+.2
             if self.pending:self.pending[0].result(timeout=3)
@@ -133,32 +137,21 @@ class Dispatcher:
         self.fault('before_'+op)
         self.pending=(self.pool.submit(fn),row,op,command)
 
-    def _resource_check(self, *, publication=False):
-        # Memory latches before either fallible write. The independent witness
-        # is only for an OBSERVED fault: normal control crashes retain W2 recovery.
-        try:self.admission.check(publication=publication)
-        except (OSError,ValueError) as exc:
-            self.error=str(exc)
+    def _sync_resource_fault(self):
+        store=self.admission.store
+        if store.failed or store.state()!='healthy':
             if not self.resource_fault:self.stop_obligation=True
             self.resource_fault=self.quarantined=True
-            try:
-                if not self.persistence_fault:
-                    self.core.db.execute("UPDATE resource_monitor SET state='checking' WHERE id=1")
-                self.core.db.execute('INSERT OR IGNORE INTO resource_faults VALUES(?)',(str(exc),))
-                if not self.persistence_fault:
-                    self.core.db.execute("UPDATE resource_monitor SET state='fault' WHERE id=1")
-            except Exception as persistence_error:
-                self.persistence_fault=True
-                self.error=type(persistence_error).__name__
+            self.persistence_fault=store.state()!='fault'
+
+    def _resource_check(self, *, publication=False):
+        if self.resource_fault:return
+        try:
+            self.admission.store.observe(lambda:self.admission.check(publication=publication))
         except Exception as exc:
-            self.resource_fault=self.quarantined=self.persistence_fault=True
-            self.stop_obligation=True
-            self.error=type(exc).__name__
-            # A scan journal error is unresolved too; a separate write may still
-            # preserve that fact. If the journal remains unavailable, retain the
-            # live latch/ownership and refuse progress, never claim recovery.
-            try:self.core.db.execute("UPDATE resource_monitor SET state='checking' WHERE id=1")
-            except Exception:pass
+            self.error=str(exc) if isinstance(exc,(OSError,ValueError)) else type(exc).__name__
+            self.resource_fault=self.quarantined=self.stop_obligation=True
+            self.persistence_fault=self.admission.store.state()!='fault'
 
     def _service_stop(self,row):
         # One bounded stop request per bound runtime, including after pending I/O.
@@ -196,9 +189,13 @@ class Dispatcher:
                 if value.runtime_id!=row['runtime']:raise ValueError('unbound_observation')
                 self.reconciled=True
                 self.quarantined=value.state==State.UNKNOWN or self.resource_fault
-                if value.state==State.STOPPED and not (self.persistence_fault and row['receipt']):
-                    self.fault('observation_reap')
-                    self._launch(row,'collect',lambda:self.runtime.collect(row['authority'],row['runtime']));return
+                if value.state==State.STOPPED:
+                    if self.persistence_fault and row['receipt']:
+                        if self.core.job(row['job_id'])['state'] not in ('succeeded','failed','cancelled'):
+                            self._terminal(row,row['receipt'],None)
+                    else:
+                        self.fault('observation_reap')
+                        self._launch(row,'collect',lambda:self.runtime.collect(row['authority'],row['runtime']));return
                 self.store.update(row,phase='unknown' if self.quarantined else 'observing')
                 if value.state==State.ALIVE and not self.stop_obligation and self.core.job(row['job_id'])['state']=='cancel_requested':
                     self._launch(row,'stop',lambda:self.runtime.terminate(row['runtime'],1.5));return
@@ -215,6 +212,7 @@ class Dispatcher:
         row=self.store.current()
         if row:
             if row['outcome']:
+                if self.persistence_fault:return
                 self._launch(row,'ack',lambda:self.runtime.call('ack',dict(runtime_id=row['runtime'])));return
             if row['phase']=='intent':
                 # Only a new live allocation reaches prepare. Startup never replays intent.

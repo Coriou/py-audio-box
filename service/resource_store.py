@@ -3,6 +3,8 @@ import json
 import os
 from pathlib import Path
 import stat
+import threading
+from contextlib import contextmanager
 from service.core import encode
 
 
@@ -10,6 +12,16 @@ class ResourceStore:
     def __init__(self, core, budget, roots):
         self.core, self.db, self.budget = core, core.db, budget
         self.roots = tuple(Path(p) for p in roots)
+        self.owner = threading.get_ident()
+        self._token = self._snapshot = None
+        self.failed = False
+        self.on_fault = lambda:None
+        existing = self.db.execute("SELECT 1 FROM sqlite_master WHERE name='resource_monitor'").fetchone()
+        tables={r[0] for r in self.db.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+        populated=any(self.db.execute('SELECT 1 FROM '+name+' LIMIT 1').fetchone()
+                      for name in ('jobs','revisions','assets','artifacts','publications') if name in tables)
+        # Even an emptied old resource schema is not a new protocol root.
+        old_resource_schema=bool(tables & {'resource_reservations','resource_accounting','resource_faults','resource_protocol'})
         self.db.executescript('''
         CREATE TABLE IF NOT EXISTS resource_reservations(
           id TEXT PRIMARY KEY, category TEXT NOT NULL, demand TEXT NOT NULL,
@@ -19,15 +31,97 @@ class ResourceStore:
         CREATE TABLE IF NOT EXISTS resource_faults(reason TEXT PRIMARY KEY);
         CREATE TABLE IF NOT EXISTS resource_monitor(
           id INTEGER PRIMARY KEY CHECK(id=1), state TEXT NOT NULL CHECK(state IN ('healthy','checking','fault')));
-        INSERT OR IGNORE INTO resource_monitor VALUES(1,'healthy');
+
         INSERT OR IGNORE INTO resource_accounting VALUES(1,0);
         ''')
-        self.check_disk()
+        self.db.execute('CREATE TABLE IF NOT EXISTS resource_protocol(id INTEGER PRIMARY KEY CHECK(id=1), revision INTEGER NOT NULL)')
+        revision = self.db.execute('SELECT revision FROM resource_protocol WHERE id=1').fetchone()
+        monitor = self.db.execute('SELECT state FROM resource_monitor WHERE id=1').fetchone()
+        if not existing and not old_resource_schema and not populated:
+            with self.core.transaction():
+                self.db.execute("INSERT INTO resource_monitor VALUES(1,'healthy')")
+                self.db.execute('INSERT INTO resource_protocol VALUES(1,2)')
+        self.valid = (not existing and not old_resource_schema and not populated) or bool(revision == (2,) and monitor)
+
+    def state(self):
+        row = self.db.execute('SELECT state FROM resource_monitor WHERE id=1').fetchone()
+        return row[0] if self.valid and row else 'invalid'
+
+    def _owner(self):
+        if threading.get_ident() != self.owner:raise ValueError('resource_owner')
+
+    def observe(self, observation):
+        """The begin commit is independent of both observation and consuming transactions."""
+        self._owner()
+        if self.db.in_transaction or self._token is not None:raise ValueError('resource_reentrant_check')
+        self.require_admission()
+        token = object()
+        try:
+            with self.core.transaction():
+                if self.db.execute("UPDATE resource_monitor SET state='checking' WHERE id=1 AND state='healthy'").rowcount != 1:
+                    raise ValueError('resource_fence_begin')
+        except BaseException:
+            self.failed = True
+            self.on_fault()
+            raise
+        self._token = token
+        self._measured = None
+        try:
+            result = observation()
+        except BaseException as exc:
+            self.failed = True
+            self.on_fault()
+            # Local quarantine is already latched before these fallible writes.
+            try:
+                # Still the sole writer. Deferred BEGIN lets a write-denied
+                # connection reach the fault UPDATE itself; it grants no authority.
+                with self.core.transaction(_deferred=True):
+                    if self._token is not token:raise ValueError('resource_check_token')
+                    if self.db.execute("UPDATE resource_monitor SET state='fault' WHERE id=1 AND state='checking'").rowcount != 1:
+                        raise ValueError('resource_fence_fault')
+                    self.db.execute('INSERT OR IGNORE INTO resource_faults VALUES(?)',(str(exc)[:160],))
+            finally:
+                self._token = None
+            raise
+        try:
+            if self._token is not token:raise ValueError('resource_check_token')
+            if self._measured is None:raise ValueError('resource_accounting_attestation_required')
+            with self.core.transaction():
+                if self._measured is not None:
+                    self.db.execute('UPDATE resource_accounting SET highwater=max(highwater,?) WHERE id=1',(self._measured[0],))
+                if self.db.execute("UPDATE resource_monitor SET state='healthy' WHERE id=1 AND state='checking' AND NOT EXISTS(SELECT 1 FROM resource_faults)").rowcount != 1:
+                    raise ValueError('resource_fence_complete')
+        except BaseException:
+            self.failed = True
+            self.on_fault()
+            raise
+        finally:self._token = None
+        return result
+
+    @contextmanager
+    def _preflight(self, observation=None):
+        self._owner()
+        if self._snapshot is not None or self.db.in_transaction:raise ValueError('resource_stale_snapshot')
+        self.observe(observation or self.check_disk)
+        self._snapshot = (*self._measured, self.core._transaction_serial+1)
+        try:yield
+        finally:self._snapshot = None
+
+    def _capacity(self, extra):
+        self._owner()
+        if not self.db.in_transaction or self._snapshot is None:raise ValueError('resource_preflight_required')
+        high, free, serial = self._snapshot
+        if serial != self.core._transaction_serial:raise ValueError('resource_stale_snapshot')
+        charged = sum(r['demand']['disk_bytes'] for r in self.rows())
+        if high+charged+extra>self.budget['disk_bytes']:raise ValueError('disk_quota')
+        if free<self.budget['free_bytes']+charged+extra:raise ValueError('disk_free_reserve')
 
     def rows(self):
         return [dict(id=r[0],category=r[1],demand=json.loads(r[2]),state=r[3]) for r in self.db.execute('SELECT * FROM resource_reservations ORDER BY rowid')]
 
     def measure(self):
+        self._owner()
+        if self._token is None or self.db.in_transaction:raise ValueError('resource_unfenced_measurement')
         total=0
         for root in self.roots:
             if not root.is_dir() or root.is_symlink():raise ValueError('resource_root_missing')
@@ -39,21 +133,21 @@ class ResourceStore:
                     total += s.st_size
         return total
 
-    def check_disk(self, extra=0):
+    def check_disk(self):
+        if self._token is None:return self.observe(self.check_disk)
+        self._owner()
+        if self.db.in_transaction:raise ValueError('resource_transactional_observation')
         actual=self.measure()
         high=max(actual,self.db.execute('SELECT highwater FROM resource_accounting').fetchone()[0])
-        if high>self.db.execute('SELECT highwater FROM resource_accounting').fetchone()[0]:
-            self.db.execute('UPDATE resource_accounting SET highwater=?',(high,))
-        # Deliberate conservative double accounting: retained charge PLUS observed bytes.
         charged=sum(r['demand']['disk_bytes'] for r in self.rows())
-        if high+charged+extra>self.budget['disk_bytes']:raise ValueError('disk_quota')
-        for root in self.roots:
-            v=os.statvfs(root)
-            if v.f_bavail*v.f_frsize < self.budget['free_bytes']+charged+extra:raise ValueError('disk_free_reserve')
+        free=min(v.f_bavail*v.f_frsize for v in (os.statvfs(root) for root in self.roots))
+        if high+charged>self.budget['disk_bytes']:raise ValueError('disk_quota')
+        if free<self.budget['free_bytes']+charged:raise ValueError('disk_free_reserve')
+        self._measured=(high,free)
         return actual
 
     def require_admission(self):
-        if (self.db.execute('SELECT state FROM resource_monitor WHERE id=1').fetchone()[0]!='healthy'
+        if (self.failed or self.state()!='healthy'
                 or self.db.execute('SELECT 1 FROM resource_faults').fetchone()):
             raise ValueError('resource_fault_unresolved')
 
@@ -75,7 +169,7 @@ class ResourceStore:
             if demand[key]>self.budget[key]:raise ValueError('resource_'+key)
         rows=self.rows()
         if sum(r['state']!='retained' for r in rows)>=self.budget['queue']:raise ValueError('queue_full')
-        self.check_disk(demand['disk_bytes'])
+        self._capacity(demand['disk_bytes'])
         self.db.execute('INSERT INTO resource_reservations VALUES(?,?,?,?)',(identity,category,encode(demand),'queued'))
 
     def acquire_tx(self, identity, *, replacement=False):
@@ -91,8 +185,8 @@ class ResourceStore:
             if sum(r['demand'][key] for r in active)+d[key]>self.budget[key]:raise ValueError('resource_'+key)
         configs={r['demand']['configuration'] for r in active}|{d['configuration']}
         if len(configs)>self.budget['resident_models']:raise ValueError('resource_resident_models')
+        self._capacity(d['attempt_disk_bytes'] if replacement else 0)
         if replacement:
-            self.check_disk(d['attempt_disk_bytes'])
             # Persist cumulative disk charge without inflating execution charges.
             d['disk_bytes']+=d['attempt_disk_bytes']
         self.db.execute("UPDATE resource_reservations SET state='executing',demand=? WHERE id=?",(encode(d),identity))
@@ -101,7 +195,7 @@ class ResourceStore:
         row=next((r for r in self.rows() if r['id']==identity),None)
         if row is None:raise ValueError('resource_reservation_missing')
         if row['state']=='retained':return
-        if self.db.execute('SELECT state FROM resource_monitor WHERE id=1').fetchone()[0]=='checking':
+        if self.state() not in ('healthy','fault') or (self.failed and self.state()!='fault'):
             raise ValueError('resource_fault_persistence_unresolved')
         if not confirmed_reap and not (unstarted and row['state']=='queued'):raise ValueError('resource_reap_required')
         self.db.execute("UPDATE resource_reservations SET state='retained' WHERE id=?",(identity,))

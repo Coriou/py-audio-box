@@ -262,3 +262,72 @@ all prior 15 containers/140 volumes were preserved and zero owned resources rema
 Full commands, final hashes, failures and limits are in RESPONSE-R1-r1.md and
 correction-audit.json. Independent re-review is still required; R1/P1 activation
 and acceptance remain closed.
+
+## R1 correction round 2: pre-observation authority (2026-10-16)
+
+This section supersedes round 1's post-observation witness and unconditional
+start-sent recovery description. The frozen authority decision is
+`reviews/R1-FAULT-AUTHORITY-ASTRA.md`; both complete independent R1 reviews remain
+unchanged. This is an implementation candidate, not R1/P1 acceptance.
+
+The existing Core SQLite monitor now has a private protocol revision, 2, separate
+from unchanged public contracts 1.3.0. Only a new, empty resource root initializes
+revision 2 and healthy. A populated old/unversioned root, missing monitor, invalid
+revision or inherited checking refuses progress; no healthy scan migrates it.
+ResourceStore construction performs no filesystem measurement. Dispatcher reads
+this authority before cancellation-release reconciliation, scans, publication
+recovery and ACK. Metadata and existing idempotent results remain readable.
+
+Every R1 observation begins with a committed conditional healthy-to-checking
+transition, outside the observation and consuming job/attempt transaction. Failed
+begin means zero resource observation and no dependent allocation/publication.
+A same-owner live token alone can complete its check. Healthy completion and
+high-water accounting commit together; failed completion retains checking. Faults
+latch the local resource/stop authority before attempting atomic fault UPDATE plus
+bounded reason INSERT. Either write/commit failure leaves the previously committed
+checking. The fault transaction uses deferred BEGIN on the same sole Core writer;
+this permits the query_only regression to deny the UPDATE itself. It provides no
+second authority or fallback journal. Later healthy samples never clear a latch.
+
+Reservation/acquisition consume a private, scoped preflight of measured high-water
+and free reserve. The snapshot belongs to this owner and the immediately next Core
+transaction serial; reuse after rollback, another transaction or scope exit is
+refused. Scans and statvfs never run inside job/attempt transactions. Current
+cumulative charges, capacity, FIFO and replacement additions still calculate
+inside the atomic transaction. Pure demand/capacity/profile/input refusals leave
+healthy authority healthy. Duplicate lookup precedes preflight. Historical Core
+operations without Admission retain their prior behavior.
+
+Under unresolved authority, scans stop but pending lifecycle observation and
+bounded stop continue. A returned prepare binds then stops before start; UNKNOWN
+is never reap. Exact reap can record failure/cancellation but cannot release
+execution charges, publish/adopt/recover an intent, replace, admit or send a new
+ACK. Stored outcomes cannot bypass this ACK guard. Previously committed successful
+artifacts/releases remain readable and are never undone. A committed ordinary
+fault retains the established F2 failed/cancelled-plus-exact-reap release/ACK path;
+disk charges never decrease. Queued unresolved cancellation refuses its combined
+transaction without partial job/event/release changes.
+
+Availability cost is explicit: death during an otherwise healthy check leaves
+checking and quarantines the root, with no R1 recovery command. Clean W2
+start-sent recovery requires an owner-thread barrier proving persisted healthy at
+death and exactly one physical launch. A separate overlap test proves persisted
+checking at start-sent death and requires quarantine, even with a healthy exact
+supervisor receipt. Neither test permits either outcome. Other W2 recovery families
+continue to require their specific successful/failed outcomes. Monitoring remains
+active while lifecycle I/O is pending; the short crash barrier is test-owned.
+
+See `RESPONSE-R1-r2.md` and new `r1-evidence/authority-*.json` for exact commands,
+source/image identities, results, failure history and owned-resource cleanup.
+All prior receipts remain historical and unchanged. P1, unattended persistent,
+public activation, full Phase 1A and final global Astra remain closed; independent
+Sol-low review of the committed candidate is next.
+
+Round-2 frozen-source verification: **200 E1 tests and 43 installed steps passed**;
+96 control/18 worker/four packaging hashes matched current bytes. Control image
+`sha256:4cc00cca231ad920710b9e28aa36ea0e22838d87a14920e774a6b70774e7ec8a`;
+worker/dependency images unchanged. All 15 prior containers/140 prior volumes
+preserved, zero owned containers/volumes after confirmed termination. Exact
+commands, both failed preliminary injection attempts, final identities, full
+regression mapping and limitations are in RESPONSE-R1-r2 and authority receipts.
+Only independent review can decide F1 closure; this is no self-GO or activation.

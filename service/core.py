@@ -115,6 +115,7 @@ class Core:
             PRAGMA user_version=1;
             COMMIT;''')
         self.active = None
+        self._transaction_serial = 0
 
     def close(self):
         if self.active is not None: raise ValueError('live_owner_close')
@@ -122,8 +123,9 @@ class Core:
         self.owner.close()
 
     @contextmanager
-    def transaction(self):
-        self.db.execute('BEGIN IMMEDIATE')
+    def transaction(self, *, _deferred=False):
+        self._transaction_serial += 1
+        self.db.execute('BEGIN' if _deferred else 'BEGIN IMMEDIATE')
         try:
             yield
             self.db.execute('COMMIT')
@@ -187,7 +189,14 @@ class Core:
         plan = context['plan']
         operation = plan['operation']
         fingerprint = oracle.fingerprint(principal, operation, plan['request'])
-        with self.transaction():
+        if _admission is not None:
+            row = self.db.execute('SELECT fingerprint,job FROM jobs WHERE principal=? AND operation=? AND key=?',(principal,operation,key)).fetchone()
+            if row:
+                oracle.require(row[0] == fingerprint, 'idempotency_conflict')
+                return json.loads(row[1])
+            _admission.demand(context,_profiles)
+        from contextlib import nullcontext
+        with (_admission._preflight() if _admission is not None else nullcontext()), self.transaction():
             row = self.db.execute('SELECT fingerprint,job FROM jobs WHERE principal=? AND operation=? AND key=?', (principal,operation,key)).fetchone()
             if row:
                 oracle.require(row[0] == fingerprint, 'idempotency_conflict')

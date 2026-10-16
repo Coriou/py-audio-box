@@ -1,0 +1,161 @@
+{
+  "worktree": "/Users/ben/.txcode/worktrees/py-audio-box/t3-f53dbe4c",
+  "branch": "t3/r1-fault-authority-round2",
+  "parent": "bb60c7a3df134b2f695e2af4ebe57e1a7dbb0fb9",
+  "cherry_picks": [
+    {
+      "original": "22e75ca2964d51b5b80ee91e9a14c7776c682d15",
+      "local": "b6368cb5e1a0f8d446e7b1f76cca5074fce13284"
+    },
+    {
+      "original": "0aaa70780a979d501eae959147f01c0f7475ebf3",
+      "local": "04deec47a5b7f144612d4729ffaeb7a233a99637"
+    }
+  ],
+  "implementation_commit": "Final handoff identifies the commit containing this receipt",
+  "source_checks": {
+    "control": {
+      "entries": 96,
+      "mismatches": [],
+      "image": "sha256:4cc00cca231ad920710b9e28aa36ea0e22838d87a14920e774a6b70774e7ec8a"
+    },
+    "worker": {
+      "entries": 18,
+      "mismatches": [],
+      "image": "sha256:7101cd00bbd2e49544233d62bf439d9483e5612e1254cbb750591ce8f14dbb9b"
+    }
+  },
+  "packaging_entries": 4,
+  "packaging_mismatches": [],
+  "inherited_evidence_sha256": {
+    "docs/agent-interface/phase-1/r1-evidence/correction-audit.json": "6713aeb017906e772325b116a26fe0abb14e1e484a25a3ae9b27d3adc6bd2bb4",
+    "docs/agent-interface/phase-1/r1-evidence/correction-failed-cleanup-1.json": "e3e05ca91fb57fb5f9c5f19277a1f59b3d1162ca731cde6da2299544abde7580",
+    "docs/agent-interface/phase-1/r1-evidence/correction-failure-1.json": "ed86a25a311a63f533d74424f53fdfaebbd21d401ffb142e50e8a7950f316962",
+    "docs/agent-interface/phase-1/r1-evidence/correction-red.json": "93942c146cf4ea30da9ee86c9af79970d8acde8878a80474d53d9c697a4c071e",
+    "docs/agent-interface/phase-1/r1-evidence/correction-run.json": "14b2a8d3d70fa6bc63110d058c447e3fcad1cb112ae62f9b6dad07a920730c20",
+    "docs/agent-interface/phase-1/r1-evidence/failure-1.json": "592243d164e2a1df53217cf9c29f4580eeca433dd622bcc97a2ac2f4491373d0",
+    "docs/agent-interface/phase-1/r1-evidence/final-audit.json": "d040a814437be59cc77341d21713167812ba66126f2e22b687821d2d44670a6a",
+    "docs/agent-interface/phase-1/r1-evidence/run.json": "3b5f795a5222e7929fab8396728f9a8f66f247e475384b9a11b14dcd5b69e264"
+  },
+  "dependency_image": "sha256:85141b253c04344134252c0878750756aef6bae3d4d4d083301004db7f43ce0e",
+  "topology": {
+    "entrypoint": [
+      "python",
+      "-m",
+      "worker.runtime_supervisor"
+    ],
+    "network": "none",
+    "mounts": [
+      {
+        "destination": "/receipts",
+        "rw": true
+      },
+      {
+        "destination": "/ipc",
+        "rw": true
+      },
+      {
+        "destination": "/staging",
+        "rw": true
+      }
+    ]
+  },
+  "control_topology_source": "Unchanged exact-hashed compose: network none, read-only root and staging/ipc, writable named control volume, 384MiB/64PID, no capabilities",
+  "pytest": {
+    "argv": [
+      "docker",
+      "run",
+      "--name",
+      "pab-r1-a7f4746d92-tests",
+      "--network",
+      "none",
+      "--cpus",
+      "2",
+      "--memory",
+      "1g",
+      "--pids-limit",
+      "128",
+      "--read-only",
+      "--tmpfs",
+      "/tmp:rw,nosuid,size=64m",
+      "--entrypoint",
+      "python",
+      "pab-r1-a7f4746d92-control",
+      "-m",
+      "pytest",
+      "tests/service",
+      "tests/release",
+      "-q",
+      "-p",
+      "no:cacheprovider"
+    ],
+    "exit": 0,
+    "output": "........................................................................ [ 36%]\n........................................................................ [ 72%]\n........................................................                 [100%]\n200 passed in 82.95s (0:01:22)\n"
+  },
+  "installed_steps": 43,
+  "scenarios": [
+    "resource-ram",
+    "resource-disk",
+    "resource-queue",
+    "resource-transient",
+    "sequential",
+    "cancel",
+    "queue-cancel",
+    "cancel-completion",
+    "deadline",
+    "stale",
+    "lost-ack",
+    "preverification",
+    "crash-postspawn",
+    "recover",
+    "crash-start-sent",
+    "recover",
+    "crash-after_collect",
+    "recover",
+    "crash-preverification",
+    "recover",
+    "crash-before_adoption",
+    "recover-failed",
+    "crash-after_adoption",
+    "recover",
+    "crash-after_commit",
+    "recover",
+    "crash-durable_outcome",
+    "recover",
+    "crash-before_ack",
+    "recover",
+    "crash-after_ack",
+    "recover",
+    "crash-start-overlap",
+    "authority-recover",
+    "authority-recover",
+    "authority-setup",
+    "authority-denied",
+    "authority-recover",
+    "authority-recover",
+    "leave-deadline",
+    "recover-failed",
+    "leave-running",
+    "unknown"
+  ],
+  "run_sha256": "6ffb8bb3052acc45d5334885910fd8d90b4bb49c6a885cba4d1a9efa736342d2",
+  "prior_preserved": {
+    "containers": {
+      "count": 15,
+      "sha256": "23c6be7289f12faa7ff8834a8e01311c6002bd2c4c0afb645799b04a2f16725e"
+    },
+    "volumes": {
+      "count": 140,
+      "sha256": "4d632ffe7511b22b72200660d00a49a09ea3d4d77e6773fde88e029e433b8aef"
+    }
+  },
+  "remaining_owned_containers": [],
+  "remaining_owned_volumes": [],
+  "evidence_tiers": "E1 policy/SQLite/write denial; E2 fixed synthetic real supervisor lifecycle",
+  "limits": [
+    "No physical ENOSPC/remount/power loss proof",
+    "No R1 acceptance, P1 or activation",
+    "Healthy interrupted checks deliberately quarantine",
+    "No models/hardware/acoustic/browser qualification"
+  ]
+}

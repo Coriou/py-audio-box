@@ -27,10 +27,51 @@ def installed(case):
         raise AssertionError('installed_timeout')
     marker=threading.Event()
     def fault(point):
-        if case.startswith('crash-') and point==case[6:]:os._exit(17)
+        if case.startswith('crash-') and point==case[6:]:
+            import sqlite3
+            db=sqlite3.connect('/control/core/core.sqlite')
+            state=db.execute('SELECT state FROM resource_monitor').fetchone()[0];db.close()
+            assert state=='healthy'
+            print(json.dumps(dict(crash_fence=state,boundary=case)),flush=True)
+            os._exit(17)
         if case in ('cancel-completion','stale','preverification') and point=='preverification' and not marker.is_set():
             marker.set();raise RuntimeError('deterministic_preverification_interruption')
-    runtime=SupervisorRuntime(interrupt='start-sent' if case=='crash-start-sent' else 'none')
+    runtime=SupervisorRuntime()
+    if case in ('crash-start-sent','crash-start-overlap'):
+        # The owner chooses the crash boundary; pool-thread send cannot race a scan.
+        import service.supervisor_runtime as adapter
+        import sqlite3
+        sent=threading.Event();crash=threading.Event()
+        original_send=adapter.send
+        def send(connection, message, cutoff):
+            original_send(connection,message,cutoff)
+            if message.get('op')=='start':
+                sent.set();assert crash.wait(3)
+                db=sqlite3.connect('/control/core/core.sqlite')
+                state=db.execute('SELECT state FROM resource_monitor').fetchone()[0];db.close()
+                assert state==('healthy' if case=='crash-start-sent' else 'checking')
+                print(json.dumps(dict(crash_fence=state,boundary=case)),flush=True)
+                os._exit(17)
+        adapter.send=send
+        previous_fault=fault
+        def fault(point):
+            previous_fault(point)
+            if point=='before_start':
+                observe=d.admission.store.observe
+                if case=='crash-start-sent':
+                    def barrier(fn):
+                        assert sent.wait(3)
+                        assert d.admission.store.state()=='healthy'
+                        crash.set();threading.Event().wait(3)
+                        raise AssertionError('expected_process_death')
+                    d.admission.store.observe=barrier
+                else:
+                    check=d.admission.check
+                    def checking(**kwargs):
+                        assert d.admission.store.state()=='checking'
+                        assert sent.wait(3);crash.set();threading.Event().wait(3)
+                        raise AssertionError('expected_process_death')
+                    d.admission.check=checking
     if case=='stale':
         collect=runtime.collect
         def stale(a,i):
@@ -74,7 +115,18 @@ def installed(case):
             if case in ('leave-running','leave-deadline'):
                 wait(lambda:d.call('status')['phase']=='observing')
                 # Leave actual descendants alive for PID1/container restart injection.
-                time.sleep(.3);os._exit(17)
+                # Ask the owner to die only after its accounting/fence commit.
+                observe=d.admission.store.observe
+                def die_after_check(fn):
+                    value=observe(fn)
+                    import sqlite3
+                    db=sqlite3.connect('/control/core/core.sqlite')
+                    assert db.execute('SELECT state FROM resource_monitor').fetchone()==('healthy',);db.close()
+                    print(json.dumps(dict(crash_fence='healthy',boundary=case)),flush=True)
+                    os._exit(17)
+                d.admission.store.observe=die_after_check
+                d.thread.join(5)
+                raise AssertionError('expected_process_death')
             if case=='cancel':
                 wait(lambda:d.call('status')['phase']=='observing');time.sleep(.3)
                 t=time.monotonic()

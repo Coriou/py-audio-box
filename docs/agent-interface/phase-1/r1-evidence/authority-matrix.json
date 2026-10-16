@@ -1,0 +1,113 @@
+{
+  "status": "Tests passed; independent acceptance pending",
+  "e1": "200 passed",
+  "installed_steps": 43,
+  "cases": {
+    "begin UPDATE/commit denied, zero observation and no dependent work": [
+      "test_fence_write_failure_and_zero_observation_on_begin",
+      "test_fence_commit_failure_rolls_back_only_its_own_transaction",
+      "test_failed_preflight_cannot_insert_job_or_attempt",
+      "test_failed_begin_unchanged_healthy_restarts_without_invented_fault"
+    ],
+    "fault INSERT denied after real 10000 bytes, with/without cancel": [
+      "test_fault_insert_failure_transient_output_never_recovers"
+    ],
+    "fault UPDATE denied after real 10000 bytes, immediate exit and healthy interval, twice restart": [
+      "test_query_only_after_real_violation_immediate_death_twice_restart",
+      "authority-setup",
+      "authority-denied",
+      "authority-recover (twice)"
+    ],
+    "healthy death before/mid/after scan, completion UPDATE/commit denied": [
+      "test_healthy_check_death_retains_committed_fence",
+      "test_fence_write_failure_and_zero_observation_on_begin",
+      "test_fence_commit_failure_rolls_back_only_its_own_transaction"
+    ],
+    "atomic reserve/acquire rollback; stale/private snapshot and pure capacity refusal": [
+      "test_snapshot_is_private_immediate_and_not_rollbackable",
+      "test_atomic_reserve_failure_rolls_job_settings_events",
+      "test_acquisition_rollback_preserves_job_reservation_and_attestation",
+      "test_queue_quota_free_space_and_growth",
+      "test_independent_capacity_dimensions"
+    ],
+    "constructor/startup/periodic/publication/replacement/direct allocation and protocol revision": [
+      "test_no_constructor_observation_and_allocation_reads_outside_transaction",
+      "test_populated_roots_never_invent_healthy_authority",
+      "test_replacement_only_confirmed_terminal_increments_generation",
+      "test_decoded_header_bound_before_publication"
+    ],
+    "clean start-sent requires persisted healthy and exactly one execution": [
+      "crash-start-sent",
+      "recover"
+    ],
+    "open start-sent requires persisted checking and quarantine through twice restart": [
+      "crash-start-overlap",
+      "authority-recover (twice)"
+    ],
+    "other clean W2 crash, cancel, stale, lost ACK, deadline and UNKNOWN families": [
+      "resource-ram",
+      "resource-disk",
+      "resource-queue",
+      "resource-transient",
+      "sequential",
+      "cancel",
+      "queue-cancel",
+      "cancel-completion",
+      "deadline",
+      "stale",
+      "lost-ack",
+      "preverification",
+      "crash-postspawn",
+      "recover",
+      "crash-start-sent",
+      "recover",
+      "crash-after_collect",
+      "recover",
+      "crash-preverification",
+      "recover",
+      "crash-before_adoption",
+      "recover-failed",
+      "crash-after_adoption",
+      "recover",
+      "crash-after_commit",
+      "recover",
+      "crash-durable_outcome",
+      "recover",
+      "crash-before_ack",
+      "recover",
+      "crash-after_ack",
+      "recover",
+      "crash-start-overlap",
+      "authority-recover",
+      "authority-recover",
+      "authority-setup",
+      "authority-denied",
+      "authority-recover",
+      "authority-recover",
+      "leave-deadline",
+      "recover-failed",
+      "leave-running",
+      "unknown"
+    ],
+    "queued/running cancellation under uncertainty; no partial queued release": [
+      "test_unresolved_queued_cancel_has_no_partial_state",
+      "test_fault_insert_failure_transient_output_never_recovers"
+    ],
+    "full pending prepare/start/observe x cancel x stop success/UNKNOWN and failed pending calls": [
+      "test_transient_pressure_pending_io_latches_stop",
+      "test_pressure_pending_error_keeps_stop_or_unknown_ownership",
+      "test_repeated_faults_do_not_storm_stop_or_release_unknown",
+      "resource-transient"
+    ],
+    "known fault exact-reap release/ACK versus unresolved charge/ACK retention": [
+      "test_actual_byte_growth_stops_and_refuses_publication",
+      "test_fault_insert_failure_transient_output_never_recovers",
+      "authority-recover"
+    ],
+    "read/dedup/already terminal/stored outcome and publication-intent ACK/adoption bypass": [
+      "test_stored_terminal_outcome_cannot_ack_under_inherited_fence",
+      "test_publication_intent_is_not_recovered_under_unresolved_authority",
+      "test_no_constructor_observation_and_allocation_reads_outside_transaction"
+    ]
+  }
+}

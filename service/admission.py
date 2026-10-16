@@ -48,7 +48,18 @@ class Admission:
         d=self.demand(context,profiles)
         self.store.reserve_tx(job['id'],'inference',d)
 
+    def _preflight(self):
+        return self.store._preflight(self.check)
+
     def check(self, *, publication=False):
+        if self.store._token is None:
+            return self.store.observe(lambda:self.check(publication=publication))
+        if getattr(self,'_checking',False):raise ValueError('resource_reentrant_check')
+        self._checking=True
+        try:return self._scan(publication=publication)
+        finally:self._checking=False
+
+    def _scan(self, *, publication=False):
         self.store.check_disk()
         for row in self.store.rows():
             if row['state']!='executing':continue
