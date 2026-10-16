@@ -1,0 +1,16 @@
+{
+  "tier": "E4",
+  "browser": "Native T3 preview",
+  "observations": [
+    {"step":"empty string full navigation","raw":"","revision":1,"status":"unsaved fixture fallback","alert":true},
+    {"step":"actual Clip c0 ArrowRight then Apply","raw":"","status":"Edits blocked; original bytes retained","alert":true},
+    {"step":"actual Reload current","raw":"","status":"unsaved fixture fallback","alert":true},
+    {"step":"actual Apply after Reload current","raw":"","status":"Edits blocked; original bytes retained"},
+    {"step":"deliberate Reset","storedLength":36274,"alert":false,"status":"Fixture reset locally"},
+    {"step":"missing key full navigation","raw":null,"start":0,"alert":false,"status":"Saved locally · no service"},
+    {"step":"actual ArrowRight then full navigation","start":480,"revision":2,"status":"Saved locally · no service"},
+    {"step":"actual Undo","start":0,"revision":3,"status":"Saved locally · no service"},
+    {"step":"Reload current then actual Apply for each present invalid string","inputs":[" ","null","{}","{broken"],"exactBytesPreservedEach":true,"alertEach":true,"statusEach":"Edits blocked; original bytes retained"},
+    {"step":"cleanup","fixtureReset":true,"knownRevisionRemoved":true,"taskOwnedTabClosed":true,"taskOwnedViteExit":130}
+  ]
+}

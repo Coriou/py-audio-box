@@ -1,0 +1,20 @@
+
+> speech-editor-0b@0.0.0 test
+> tsx --test src/*.test.ts
+
+✔ shared fixtures remain verbatim and satisfy canonical Python schema/semantics (762.890128ms)
+✔ fixed move overlaps without ripple; zero gain, mute, solo and exact fade endpoints (380.855815ms)
+✔ trim/split preserves source, gain, fixed offsets; rejects boundary, duplicate ID and faded split atomically (334.418767ms)
+✔ explicit long replacement exposes overlap; short fails then succeeds only with explicit adjusted clip (314.539173ms)
+✔ reload preserves recorded operations, undo/redo create revisions; conflict never overwrites another edit (571.527273ms)
+✔ invalid outbound edits and malformed/replayed local state fail with no partial mutation (28.474069ms)
+✔ schema-valid huge timings are refused by fixture policy; canonical history survives and undo recovers (106.446465ms)
+✔ startup exposes malformed JSON and replay-invalid snapshot without rewriting bytes (29.837685ms)
+ℹ tests 8
+ℹ suites 0
+ℹ pass 8
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 2980.905676

@@ -41,3 +41,13 @@ export function recover(read: () => Session, fixture: Project) {
 export function recoverRaw(raw: string, fixture: Project) {
   return recover(() => restoreSession(raw, fixture), fixture);
 }
+
+// Only a missing key is initial state; every stored string must be validated.
+export function readStoredSession(
+  storage: Pick<Storage, "getItem">,
+  key: string,
+  fixture: Project,
+): Session {
+  const raw = storage.getItem(key);
+  return raw === null ? initial(fixture) : restoreSession(raw, fixture);
+}

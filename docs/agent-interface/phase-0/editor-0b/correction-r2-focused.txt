@@ -1,0 +1,10 @@
+✔ schema-valid huge timings are refused by fixture policy; canonical history survives and undo recovers (96.766162ms)
+✔ startup exposes malformed JSON and replay-invalid snapshot without rewriting bytes (21.662813ms)
+ℹ tests 2
+ℹ suites 0
+ℹ pass 2
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 1046.594787

@@ -8,7 +8,6 @@ import {
   initial,
   edit,
   travel,
-  restoreSession,
   overlaps,
   audible,
   RevisionConflict,
@@ -17,13 +16,12 @@ import {
   type Operation,
   type Request,
 } from "./adapter";
-import { recover, requireSupported, extent, FIXTURE_END } from "./recovery";
+import { readStoredSession, recover, requireSupported, extent, FIXTURE_END } from "./recovery";
 import { samples, mix } from "./media";
 import "./style.css";
 const key = (id: string) => `editor-0b:1.3.0:${id}`;
 function read(id: string): Session {
-  const raw = localStorage.getItem(key(id));
-  return raw ? restoreSession(raw, fixtures[id]) : initial(fixtures[id]);
+  return readStoredSession(localStorage, key(id), fixtures[id]);
 }
 // Undo belongs to this tab. A foreign revision clears the local undo cursor;
 // it never turns another writer's edit into this client's undo target.

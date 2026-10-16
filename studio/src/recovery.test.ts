@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { fixtures, initial, edit, current, travel } from "./adapter";
-import { FIXTURE_END, extent, requireSupported, recoverRaw } from "./recovery";
+import { FIXTURE_END, extent, requireSupported, recoverRaw, readStoredSession, recover } from "./recovery";
 const fixture = fixtures["30"];
 function move(start: number) {
   const s = initial(fixture);
@@ -36,12 +36,20 @@ test("schema-valid huge timings are refused by fixture policy; canonical history
 test("startup exposes malformed JSON and replay-invalid snapshot without rewriting bytes", () => {
   const s = move(480);
   s.entries[1].project.clips[0].start = 999;
-  for (const raw of ["{broken", JSON.stringify(s)]) {
-    const recovered = recoverRaw(raw, fixture);
+  const key = "editor-0b:1.3.0:30";
+  const storage = new Map<string, string>();
+  const entry = { getItem: (name: string) => storage.get(name) ?? null };
+  const read = () => readStoredSession(entry, key, fixture);
+  assert.deepEqual(read(), initial(fixture)); // Legitimate missing-key startup.
+  for (const raw of ["", " ", "null", "{}", "{broken", JSON.stringify(s)]) {
+    storage.set(key, raw);
+    assert.throws(read); // Exercise the same entry boundary used by startup/reload/edit.
+    const recovered = recover(read, fixture);
     assert.equal(recovered.invalid, true);
     assert.match(recovered.status, /unsaved fixture fallback/);
     assert.match(recovered.status, /Original bytes retained/);
     assert.equal(current(recovered.session).revision, 1);
+    assert.equal(storage.get(key), raw);
   }
   const restored = recoverRaw(JSON.stringify(move(480)), fixture);
   assert.equal(restored.invalid, false);
