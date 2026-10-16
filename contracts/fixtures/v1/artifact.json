@@ -11,15 +11,15 @@
   "identity": {
     "requested": {
       "engine": "qwen",
-      "model": "synthetic-qwen-fixture",
-      "bundle_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+      "model": "Qwen3-TTS-12Hz-1.7B-CustomVoice",
+      "bundle_sha256": "cbe72b0955b3fceef5c4e22fa3f8ad318cfd7a4b75d96156bc42c7cf2139d070",
       "device": "cpu",
       "precision": "float32"
     },
     "effective": {
       "engine": "qwen",
-      "model": "synthetic-qwen-fixture",
-      "bundle_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+      "model": "Qwen3-TTS-12Hz-1.7B-CustomVoice",
+      "bundle_sha256": "cbe72b0955b3fceef5c4e22fa3f8ad318cfd7a4b75d96156bc42c7cf2139d070",
       "device": "cpu",
       "precision": "float32"
     },

@@ -1,3 +1,5 @@
+> Historical evidence for the earlier candidate only. Current consumer revision is 1.2.0; see CONTRACTS.md and RESPONSE-0A-r2.md. Earlier counts/versions do not certify this candidate.
+
 # Lot 0A round-1 correction response
 
 Candidate for independent Sol-low re-review; no self GO or phase acceptance. All six findings remain subject to that review. No objections waived. Evidence is E1 only.

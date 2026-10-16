@@ -1,3 +1,5 @@
+> Historical evidence for the earlier candidate only. Current consumer revision is 1.2.0; see CONTRACTS.md and RESPONSE-0A-r2.md. Earlier counts/versions do not certify this candidate.
+
 # Lot 0A implementation evidence
 
 Base: `a25169bd674b38c232e3476a23ede251b99d20e4`; worktree `/Users/ben/.txcode/worktrees/py-audio-box/t3-0fe72d9f`; task branch initially `t3/0fe72d9f`, renamed by the orchestration environment to `t3/voice-contract-pack` while HEAD remained at the base. No integration-branch checkout or mutation was performed by this implementer. Baseline status was clean. PRODUCT, implementation entry point/protocol, shared contracts/Phase 0 and full lot 0A ticket were read; no applicable AGENTS.md was found in the worktree/parent search.

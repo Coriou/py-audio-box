@@ -1,7 +1,9 @@
 {
-  "schema_version": "1.0.0",
+  "schema_version": "1.2.0",
   "profiles": [
     {
+      "config_revision": "config-1",
+      "compatibility": [],
       "id": "cpu-synthetic",
       "device": "cpu",
       "topology": "networkless_container",
@@ -29,6 +31,8 @@
       "next_action": "Inventory host and qualify exact backend/model/precision before advertising support."
     },
     {
+      "config_revision": "config-1",
+      "compatibility": [],
       "id": "cuda-synthetic",
       "device": "cuda",
       "topology": "networkless_container",
@@ -56,6 +60,8 @@
       "next_action": "Inventory host and qualify exact backend/model/precision before advertising support."
     },
     {
+      "config_revision": "config-1",
+      "compatibility": [],
       "id": "metal-synthetic",
       "device": "metal",
       "topology": "packaged_native",

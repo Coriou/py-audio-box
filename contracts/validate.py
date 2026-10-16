@@ -22,6 +22,8 @@ def validate(kind, value):
     intrinsic(value)
     if kind == 'project':
         project(value)
+    elif kind == 'voice_version':
+        voice_configuration(value)
     elif kind == 'worker_plan':
         frozen_plan(value)
     elif kind == 'capabilities':
@@ -112,7 +114,7 @@ def active_attempt(job):
     require(all(a['reaped'] for a in job['attempts'][:-1]), 'owner_not_reaped')
     return job['attempts'][-1]
 
-def publication(job, attempt, artifact, present_hashes, *, transport_owner):
+def publication(job, attempt, artifact, present_hashes, *, transport_owner, context, manifest, verified_result, allowed_assets):
     current=active_attempt(job)
     require(job['state'] in ('running','cancel_requested'), 'invalid_transition')
     require(attempt == current and not current['reaped'], 'attempt_mismatch')
@@ -120,7 +122,41 @@ def publication(job, attempt, artifact, present_hashes, *, transport_owner):
     require(transport_owner == current['owner_id'], 'owner_mismatch')
     for key, expected in dict(job_id=job['id'], attempt_id=current['id'], generation=job['generation'], input_sha256=job['input_sha256'], staging_id=current['staging_id'], owner_id=current['owner_id']).items():
         require(artifact[key] == expected, 'attempt_mismatch')
-    require(bool(artifact['asset_ids']) and all(x in present_hashes for x in artifact['asset_ids']), 'missing_media')
+    worker_message(verified_result,job,allowed_assets,transport_owner=transport_owner,context=context)
+    require(verified_result['kind']=='result', 'result_mismatch')
+    plan=context['plan']
+    require(artifact['identity']==plan['resolved']['identity'], 'resolution_mismatch')
+    require(artifact['project_revision']==(plan['project']['revision'] if plan['operation']=='project_render' else 0), 'revision_conflict')
+    validate('result_manifest',manifest)
+    for key in ('job_id','attempt_id','generation','input_sha256','staging_id','owner_id'):
+        require(manifest[key]==artifact[key], 'manifest_attempt_mismatch')
+    require(manifest['operation']==job['operation'] and manifest['artifact_id']==artifact['id'], 'result_mismatch')
+    require(artifact['manifest_sha256']==canonical_hash(manifest), 'manifest_mismatch')
+    outputs=unique(manifest['outputs'])
+    require(set(verified_result['result_asset_ids'])==set(outputs), 'result_mismatch')
+    require(bool(outputs) and len(artifact['asset_ids'])==len(set(artifact['asset_ids'])) and set(artifact['asset_ids'])==set(outputs), 'result_mismatch')
+    require(len(outputs)==(plan['request']['variants'] if job['operation']=='speech_generate' else 1), 'result_mismatch')
+    require(not set(outputs)&set(required_asset_ids(plan)), 'result_mismatch')
+    require(all(present_hashes.get(k)==v['sha256'] for k,v in outputs.items()), 'missing_media')
+    candidates=unique(manifest['candidates'])
+    if job['operation'] in ('voice_prepare','voice_design'):
+        require(len(candidates)==1, 'candidate_missing')
+        for candidate in candidates.values():
+            require(candidate['job_id']==job['id'] and candidate['audition_asset_id'] in outputs, 'result_mismatch')
+            version=candidate['version'];voice_configuration(version,context['bundles'])
+            cfg=version['configuration']
+            require(version['origin']==('design' if job['operation']=='voice_design' else 'clone'), 'origin_mismatch')
+            require(cfg.get('reference_asset_id')==candidate['audition_asset_id'], 'reference_mismatch')
+            require(version['reference_text']==plan['request']['reference_text'], 'reference_mismatch')
+            if job['operation']=='voice_design':
+                require(version['identity']==plan['resolved']['reuse_identity'] and cfg.get('conditioning')=='icl', 'identity_substitution')
+                lineage=version['design_lineage']
+                require(lineage['generation_identity']==plan['resolved']['identity']['effective'] and lineage['description']==plan['request']['description'] and lineage['source_candidate_id']==candidate['id'], 'design_lineage_mismatch')
+            else:
+                require(all(version['identity'][k]==plan['resolved']['identity']['effective'][k] for k in ('engine','model','bundle_sha256')), 'identity_substitution')
+                require(cfg.get('conditioning','pocket')==plan['resolved']['settings']['conditioning'], 'conditioning_mismatch')
+    else:
+        require(not candidates, 'result_mismatch')
 
 def replacement(job, attempt, *, owner_dead):
     old=active_attempt(job)
@@ -149,47 +185,194 @@ def migration(report, *, source_root, destination_root, pending_policy='leave_le
     require(pending_policy=='leave_legacy', 'pending_jobs_not_importable')
     require(report['apply_allowed'], 'migration_not_approved')
 
-def worker_message(message, job, allowed_assets, *, transport_owner):
+def canonical_hash(value):
+    """Canonical preimage: finite JSON, sorted keys, compact UTF-8, exact strings."""
+    return hashlib.sha256(json.dumps(value,ensure_ascii=False,sort_keys=True,separators=(',', ':'),allow_nan=False).encode()).hexdigest()
+
+
+def unique(items):
+    result={v['id']:v for v in items}
+    require(len(result)==len(items), 'duplicate_id')
+    return result
+
+
+def voice_configuration(version, bundles=None):
+    cfg=version['configuration'];mode=cfg['mode'];identity=version['identity']
+    engine={'qwen_preset':'qwen','kokoro_preset':'kokoro','qwen_clone':'qwen','pocket_clone':'pocket-tts'}[mode]
+    require(identity['engine']==engine, 'configuration_engine_mismatch')
+    require(version['origin']!='design' or mode=='qwen_clone', 'origin_mismatch')
+    clone=mode in ('qwen_clone','pocket_clone')
+    require(version['origin'] in (('clone','design') if clone else ('preset',)), 'origin_mismatch')
+    require(version['reference_asset_ids']==([cfg['reference_asset_id']] if clone else []), 'reference_mismatch')
+    require(version['reference_text']==cfg.get('reference_text',''), 'reference_mismatch')
+    require((version['design_lineage'] is not None)==(version['origin']=='design'), 'design_lineage_mismatch')
+    if mode=='qwen_clone':
+        require(cfg['conditioning']!='icl' or bool(cfg['reference_text']), 'conditioning_mismatch')
+        require(cfg['conditioning']!='x_vector' or cfg['reference_text']=='', 'conditioning_mismatch')
+    if bundles is not None:
+        if version['origin']=='design':select_bundle(version['design_lineage']['generation_identity'],'qwen_design',bundles)
+        bundle=select_bundle(identity,mode,bundles)
+        if not clone:
+            selector=cfg['speaker'] if mode=='qwen_preset' else cfg['preset']
+            matches=[v for v in bundle['selectors'] if v['value']==selector]
+            require(len(matches)==1, 'unknown_selector')
+            if mode=='kokoro_preset':require(cfg['language'] in matches[0]['languages'], 'language_mismatch')
+        if 'language' in cfg:require(cfg['language'] in bundle['languages'], 'language_mismatch')
+
+
+def select_bundle(identity,mode,bundles):
+    for b in bundles:validate('bundle_catalogue_entry',b)
+    matches=[b for b in bundles if b['mode']==mode and all(b[k]==identity[k] for k in ('engine','model','bundle_sha256'))]
+    require(len(matches)==1, 'incompatible_bundle')
+    return matches[0]
+
+
+def required_asset_ids(plan):
+    op=plan['operation']
+    if op=='voice_prepare':return [plan['request']['asset_id']]
+    if op=='voice_design':return []
+    if op=='project_render':return sorted({c['asset_id'] for c in plan['project']['clips']})
+    versions=unique(plan['voice_versions'])
+    require(plan['request']['voice_version_id'] in versions, 'voice_version_missing')
+    cfg=versions[plan['request']['voice_version_id']]['configuration']
+    return [cfg['reference_asset_id']] if 'reference_asset_id' in cfg else []
+
+
+def profile_snapshot(profile):
+    return {k:copy.deepcopy(profile[k]) for k in ('id','config_revision','device','topology','limits','compatibility')}
+
+
+def frozen_plan(plan, bundles=None):
+    request=plan['request'];op=plan['operation'];r=plan['resolved'];identity=r['identity']
+    resolution(identity)
+    require(r['kind']=={'speech_generate':'speech','voice_prepare':'prepare','voice_design':'design','project_render':'render'}[op], 'operation_mismatch')
+    require(r['settings_sha256']==canonical_hash(r['settings']), 'settings_mismatch')
+    profile=r['profile'];effective=identity['effective'];settings=r['settings'];mode=settings['kind']
+    require(identity['profile_id']==profile['id'] and effective['device']==profile['device'], 'profile_mismatch')
+    if effective['engine'] in ('kokoro','pocket-tts','pcm-render'):
+        require(effective['device']=='cpu' and effective['precision']=='float32', 'unsupported_execution')
+    require(profile['topology']==('packaged_native' if profile['device']=='metal' else 'networkless_container'), 'profile_mismatch')
+    require(dict(operation=op,mode=mode,identity=effective) in profile['compatibility'], 'profile_incompatible')
+    require(identity['fallback']!='allow_cpu' or (request.get('fallback','forbid')=='allow_cpu' and r['operator_fallback']=='allow_cpu'), 'fallback_policy_mismatch')
+    if op!='voice_design':require(r['reuse_identity'] is None, 'operation_mismatch')
+    if op!='project_render':require(identity['requested']==request['identity'], 'identity_substitution')
+    assets=unique(plan['assets']);versions=unique(plan['voice_versions'])
+    for version in versions.values():
+        voice_configuration(version,bundles);validate('voice_version',version)
+    if op=='speech_generate':
+        require(plan['project'] is None, 'unrelated_project')
+        require(len(versions)==1 and request['voice_version_id'] in versions, 'voice_version_missing')
+        voice=versions[request['voice_version_id']];cfg=voice['configuration']
+        require(all(effective[k]==voice['identity'][k] for k in ('engine','model','bundle_sha256')), 'identity_substitution')
+        require(mode==cfg['mode'], 'settings_mode_mismatch')
+        if mode in ('kokoro_preset','pocket_clone'):require(settings['language']==cfg['language'], 'language_mismatch')
+        if mode=='qwen_clone':require(settings['instruction'] is None, 'unsupported_instruction')
+        require(voice['settings_sha256']==r['settings_sha256'], 'settings_mismatch')
+        if bundles is not None:
+            bundle=select_bundle(effective,mode,bundles)
+            require(settings['language'] in bundle['languages'], 'language_mismatch')
+            if mode=='qwen_preset':
+                selector=next(v for v in bundle['selectors'] if v['value']==cfg['speaker'])
+                require(settings['language'] in selector['languages'], 'language_mismatch')
+                require(settings['instruction'] is None or bundle['instructions'], 'unsupported_instruction')
+    elif op=='voice_prepare':
+        require(plan['project'] is None and not versions and mode=='prepare', 'operation_mismatch')
+        require(request['asset_id'] in assets, 'missing_media')
+        asset=assets[request['asset_id']]
+        require(request['in_tick']<request['out_tick']<=ticks(Decimal(asset['frames'])/asset['sample_rate']), 'invalid_trim')
+        require((effective['engine']=='qwen' and settings['conditioning'] in ('icl','x_vector')) or (effective['engine']=='pocket-tts' and settings['conditioning']=='pocket'), 'conditioning_mismatch')
+        require(settings['conditioning']!='icl' or bool(request['reference_text']), 'conditioning_mismatch')
+        require(settings['conditioning']=='icl' or request['reference_text']=='', 'conditioning_mismatch')
+        if bundles is not None:select_bundle(effective,'qwen_clone' if effective['engine']=='qwen' else 'pocket_clone',bundles)
+    elif op=='voice_design':
+        require(plan['project'] is None and not versions and mode=='qwen_design' and effective['engine']=='qwen', 'operation_mismatch')
+        require(settings['instruction']==request['description'], 'unsupported_instruction')
+        require(r['reuse_identity'] is not None and r['reuse_identity']['device']!='auto' and r['reuse_identity']['precision']!='auto', 'unresolved_identity')
+        require(bool(request['reference_text']), 'conditioning_mismatch')
+        if bundles is not None:
+            select_bundle(r['reuse_identity'],'qwen_clone',bundles)
+            bundle=select_bundle(effective,'qwen_design',bundles)
+            require(settings['language'] in bundle['languages'], 'language_mismatch')
+    else:
+        p=plan['project'];require(p is not None, 'missing_project');validate('project',p)
+        require(mode=='render' and effective['engine']=='pcm-render' and identity['requested']==effective and identity['fallback']=='forbid', 'operation_mismatch')
+        require(request['project_id']==p['id'] and request['expected_revision']==p['revision'], 'revision_conflict')
+        require(settings['policy']==request['policy'], 'settings_mismatch')
+        require(plan['voice_versions']==p['voice_versions'], 'voice_version_missing')
+        for a in p['assets']:
+            require(a['id'] not in assets or assets[a['id']]==a, 'asset_metadata_mismatch')
+        renderable(p,request['policy'])
+    required=set(required_asset_ids(plan))
+    if op=='speech_generate' and mode in ('qwen_clone','pocket_clone'):
+        require(all(assets.get(k,{}).get('media_format')=='wav' for k in required), 'reference_format_mismatch')
+    require(set(assets)==required, 'asset_dependencies_mismatch')
+    if op=='project_render':
+        source=unique(plan['project']['assets'])
+        require(all(source.get(k)==v for k,v in assets.items()), 'asset_metadata_mismatch')
+    limits=profile['limits']
+    require(len(request.get('text',request.get('reference_text','')))<=limits['text_chars'] and request.get('variants',1)<=limits['variants'], 'profile_limit')
+    require(all(ticks(Decimal(a['frames'])/a['sample_rate'])<=limits['decoded_ticks'] for a in assets.values()), 'profile_limit')
+
+
+def plan_hash(plan):
+    validate('worker_plan',plan)
+    return canonical_hash(plan)
+
+
+def stored_context(job, context):
+    plan=context['plan']
+    require(job['input_sha256']==plan_hash(plan) and job['operation']==plan['operation'], 'input_mismatch')
+    frozen_plan(plan,context['bundles'])
+    return plan
+
+
+def admission(job, context, profiles):
+    """Control-owned installed/qualification state; mocks are E1 only."""
+    plan=stored_context(job,context);snapshot=plan['resolved']['profile']
+    matches=[p for p in profiles if p['id']==snapshot['id']]
+    require(len(matches)==1, 'unknown_profile')
+    p=matches[0];validate('profile',p)
+    require(profile_snapshot(p)==snapshot, 'profile_mismatch')
+    require(p['readiness']=='ready' and p['support']=='qualified' and p['installation']=='installed' and p['configuration']=='valid', 'not_ready')
+
+
+def worker_message(message, job, allowed_assets, *, transport_owner, context, current_profiles=()):
     validate('worker_message',message)
     attempt=active_attempt(job)
     require(job['state'] in ('running','cancel_requested') and not attempt['reaped'], 'invalid_transition')
     require(transport_owner == attempt['owner_id'], 'owner_mismatch')
     expected=dict(job_id=job['id'],attempt_id=attempt['id'],generation=job['generation'],input_sha256=job['input_sha256'],staging_id=attempt['staging_id'],owner_id=attempt['owner_id'])
     require(all(message[k]==v for k,v in expected.items()), 'attempt_mismatch')
-    require(set(message['input_asset_ids'])<=set(allowed_assets), 'unmanaged_asset')
-    require(message['input_sha256']==plan_hash(message['plan']), 'input_mismatch')
-    require(message['plan']['operation']==job['operation'], 'input_mismatch')
-    require(message['identity']['requested']==message['plan']['request'].get('identity', message['identity']['requested']), 'identity_substitution')
+    plan=stored_context(job,context)
+    if message['kind']=='execute':admission(job,context,current_profiles)
+    require(message['plan']==plan and message['input_sha256']==plan_hash(message['plan']), 'input_mismatch')
+    require(message['identity']==plan['resolved']['identity'], 'resolution_mismatch')
+    require(message['deadline']==job['deadline'], 'deadline_mismatch')
+    ids=message['input_asset_ids'];required=set(required_asset_ids(plan))
+    require(len(ids)==len(set(ids)) and set(ids)==required, 'asset_dependencies_mismatch')
+    require(required<=set(allowed_assets), 'unmanaged_asset')
+    require(len(message['result_asset_ids'])==len(set(message['result_asset_ids'])), 'duplicate_id')
 
-def frozen_plan(plan):
-    validate('project',plan['project'])
-    request=plan['request'];op=plan['operation']
-    assets={a['id']:a for a in plan['assets']}
-    versions={v['id']:v for v in plan['voice_versions']}
-    require(len(assets)==len(plan['assets']) and len(versions)==len(plan['voice_versions']), 'duplicate_id')
-    require(all(x in assets for v in versions.values() for x in v['reference_asset_ids']), 'reference_missing')
-    if op=='speech_generate':
-        require(request['voice_version_id'] in versions, 'voice_version_missing')
-        voice=versions[request['voice_version_id']]
-        require(all(request['identity'][k]==voice['identity'][k] for k in ('engine','model','bundle_sha256')), 'identity_substitution')
-    elif op=='voice_prepare':
-        require(request['asset_id'] in assets, 'missing_media')
-        asset=assets[request['asset_id']]
-        require(request['in_tick']<request['out_tick']<=ticks(Decimal(asset['frames'])/asset['sample_rate']), 'invalid_trim')
-    elif op=='project_render':
-        p=plan['project']
-        require(request['project_id']==p['id'] and request['expected_revision']==p['revision'], 'revision_conflict')
-        require(all(assets.get(a['id'])==a for a in p['assets']), 'missing_media')
-        require(all(versions.get(v['id'])==v for v in p['voice_versions']), 'voice_version_missing')
-        renderable(p,request['policy'])
 
-def plan_hash(plan):
-    validate('worker_plan',plan)
-    return hashlib.sha256(json.dumps(plan,ensure_ascii=False,sort_keys=True,separators=(',', ':'),allow_nan=False).encode()).hexdigest()
+def input_content(plan, asset_id, *, authorized_assets):
+    """Transfer authorization relation; runtime must also scope job/attempt and hash bytes."""
+    require(asset_id in required_asset_ids(plan) and asset_id in authorized_assets, 'unmanaged_asset')
+    return unique(plan['assets'])[asset_id]
+
+def job_input_content(data, request, job, *, context, attempt_id, transport_owner, authorized_assets):
+    """E1 transfer relation; the host/runtime supplies actual bytes and current ACL."""
+    plan=stored_context(job,context);attempt=active_attempt(job)
+    require(job['state'] in ('running','cancel_requested') and not attempt['reaped'], 'invalid_transition')
+    require(attempt_id==attempt['id'] and transport_owner==attempt['owner_id'], 'attempt_mismatch')
+    asset=input_content(plan,request['asset_id'],authorized_assets=authorized_assets)
+    require(hashlib.sha256(data).hexdigest()==asset['sha256'], 'invalid_hash')
+    return content(data,request,authorized=True)
+
 
 def intrinsic(value):
     if isinstance(value, dict):
         if {'requested','effective','fallback','reason','profile_id'} <= value.keys(): resolution(value)
+        if {'configuration','origin','voice_id','reference_asset_ids'} <= value.keys(): voice_configuration(value)
         for child in value.values(): intrinsic(child)
     elif isinstance(value,list):
         for child in value: intrinsic(child)
@@ -207,19 +390,20 @@ def content(data, request, *, authorized):
     require(authorized, 'forbidden')
     start,end=request['start'],request['end_exclusive']
     require(0<=start<end<=len(data) and end-start<=16777216, 'invalid_range')
-    result=dict(schema_version='1.1.0',asset_id=request['asset_id'],total_bytes=len(data),start=start,end_exclusive=end,content_sha256=hashlib.sha256(data).hexdigest(),content_base64=base64.b64encode(data[start:end]).decode())
+    result=dict(schema_version='1.2.0',asset_id=request['asset_id'],total_bytes=len(data),start=start,end_exclusive=end,content_sha256=hashlib.sha256(data).hexdigest(),content_base64=base64.b64encode(data[start:end]).decode())
     validate('content_result',result)
     return result
 
 
 def edit_semantics(before, after, operation):
     """Validate non-interference on snapshots; consumers still implement atomic edits."""
-    validate('project',before);validate('project',after)
+    validate('project',before)
     require(after['id']==before['id'] and after['revision']==before['revision']+1, 'revision_conflict')
     for group in ('takes','assets','voice_versions'):
         new={x['id']:x for x in after[group]}
         for old in before[group]:
             require(new.get(old['id']) == old, 'immutable_identity')
+    validate('project',after)
     if operation in ('block_text','blocks_reorder','candidate_arrival'):
         require(before['clips']==after['clips'] and before['tracks']==after['tracks'], 'implicit_arrangement')
     if operation=='candidate_arrival':

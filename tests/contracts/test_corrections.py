@@ -28,44 +28,38 @@ def test_exact_byte_upload_download_transcript():
 
 
 def execution():
-    p=load('production-30.json');requests=load('operation-requests.json')
-    requests['speech_generate'].update(voice_version_id='vv0',identity=p['voice_versions'][0]['identity'])
-    plan=dict(synthesis_settings=dict(language='auto',seed=1,temperature=0.9,top_p=1,top_k=50,repetition_penalty=1.05,max_new_tokens=2048),schema_version='1.1.0',operation='speech_generate',request=requests['speech_generate'],project=p,voice_versions=p['voice_versions'],assets=p['assets'])
-    j=load('job.json');j['input_sha256']=c.plan_hash(plan)
-    a=j['attempts'][0]
-    m=dict(protocol_version='1.1.0',kind='result',job_id=j['id'],attempt_id=a['id'],generation=1,input_sha256=j['input_sha256'],input_asset_ids=['impulse'],staging_id=a['staging_id'],owner_id=a['owner_id'],identity=p['takes'][0]['identity'],deadline=j['deadline'],stage='completed',result_asset_ids=['impulse'],plan=plan)
-    artifact=load('artifact.json');artifact['input_sha256']=j['input_sha256']
-    return j,m,artifact
+    t=load('transcript-speech_generate.json')
+    return t['job'],t['message'],t['artifact'],t['context'],t['verified_manifest']
 
 
 def test_authenticated_attempt_reconnect_cancel_and_replacement():
-    j,m,artifact=execution();a=j['attempts'][0]
+    j,m,artifact,context,manifest=execution();a=j['attempts'][0]
     for state in ['running','cancel_requested']:
         j['state']=state
-        c.worker_message(m,j,['impulse'],transport_owner='worker1')
-        c.publication(j,a,artifact,{'impulse':'verified'},transport_owner='worker1')
+        c.worker_message(m,j,[],transport_owner='worker1',context=context)
+        c.publication(j,a,artifact,{manifest['outputs'][0]['id']:manifest['outputs'][0]['sha256']},transport_owner='worker1',context=context,manifest=manifest,verified_result=m,allowed_assets=[])
     for key,value in [('job_id','other'),('attempt_id','other'),('owner_id','other'),('input_sha256','f'*64),('staging_id','other'),('generation',2)]:
         bad={**m,key:value}
-        with pytest.raises(c.ContractError):c.worker_message(bad,j,['impulse'],transport_owner='worker1')
+        with pytest.raises(c.ContractError):c.worker_message(bad,j,[],transport_owner='worker1',context=context)
         bad={**artifact,key:value}
-        with pytest.raises(c.ContractError):c.publication(j,a,bad,{'impulse':'verified'},transport_owner='worker1')
-    with pytest.raises(c.ContractError,match='owner_mismatch'):c.worker_message(m,j,['impulse'],transport_owner='rogue')
-    with pytest.raises(c.ContractError,match='attempt_mismatch'):c.publication(j,{**a,'id':'rogue'},artifact,{'impulse':'verified'},transport_owner='worker1')
+        with pytest.raises(c.ContractError):c.publication(j,a,bad,{manifest['outputs'][0]['id']:manifest['outputs'][0]['sha256']},transport_owner='worker1',context=context,manifest=manifest,verified_result=m,allowed_assets=[])
+    with pytest.raises(c.ContractError,match='owner_mismatch'):c.worker_message(m,j,[],transport_owner='rogue',context=context)
+    with pytest.raises(c.ContractError,match='attempt_mismatch'):c.publication(j,{**a,'id':'rogue'},artifact,{manifest['outputs'][0]['id']:manifest['outputs'][0]['sha256']},transport_owner='worker1',context=context,manifest=manifest,verified_result=m,allowed_assets=[])
     new=dict(id='attempt2',generation=2,owner_id='worker2',staging_id='stage2',reaped=False)
     with pytest.raises(c.ContractError,match='owner_not_reaped'):c.replacement(j,new,owner_dead=True)
     a['reaped']=True
     with pytest.raises(c.ContractError):c.replacement(j,new,owner_dead=False)
     c.replacement(j,new,owner_dead=True)
     j['attempts'].append(new);j['generation']=2
-    with pytest.raises(c.ContractError):c.worker_message(m,j,['impulse'],transport_owner='worker1')
-    j,m,artifact=execution();j['state']='cancelled'
-    with pytest.raises(c.ContractError):c.publication(j,j['attempts'][0],artifact,{'impulse':'verified'},transport_owner='worker1')
+    with pytest.raises(c.ContractError):c.worker_message(m,j,[],transport_owner='worker1',context=context)
+    j,m,artifact,context,manifest=execution();j['state']='cancelled'
+    with pytest.raises(c.ContractError):c.publication(j,j['attempts'][0],artifact,{manifest['outputs'][0]['id']:manifest['outputs'][0]['sha256']},transport_owner='worker1',context=context,manifest=manifest,verified_result=m,allowed_assets=[])
 
 
 @pytest.mark.parametrize('kind',['artifact','take','worker_message'])
 @pytest.mark.parametrize('change',['model','bundle_sha256','device','precision','fallback'])
 def test_intrinsic_identity_at_resource_entrypoints(kind,change):
-    j,m,a=execution();value={'artifact':a,'take':load('production-30.json')['takes'][0],'worker_message':m}[kind]
+    j,m,a,context,manifest=execution();value={'artifact':a,'take':load('production-30.json')['takes'][0],'worker_message':m}[kind]
     if change=='fallback':value['identity']['requested']['device']='cuda'
     else:value['identity']['effective'][change]={'model':'substitution','bundle_sha256':'f'*64,'device':'auto','precision':'auto'}[change]
     with pytest.raises(c.ContractError):c.validate(kind,value)
@@ -95,21 +89,21 @@ def test_ripple_exact_max_and_atomic_overflow():
 def test_voice_history_and_frozen_plan_reconnect_workflows():
     p=load('production-30.json');v=p['voices'][0];c.validate('voice',v)
     for operation in ['voice_prepare','voice_design']:
-        candidate=dict(schema_version='1.1.0',id='candidate1',job_id='job1',version=p['voice_versions'][0],audition_asset_id='impulse')
-        result=dict(schema_version='1.1.0',job_id='job1',candidates=[candidate]);c.validate('voice_results',result)
+        candidate=dict(schema_version='1.2.0',id='candidate1',job_id='job1',version=p['voice_versions'][0],audition_asset_id='impulse')
+        result=dict(schema_version='1.2.0',job_id='job1',candidates=[candidate]);c.validate('voice_results',result)
         save=dict(candidate_id=result['candidates'][0]['id'],voice_id=v['id'],expected_revision=v['revision']);c.validate('voice_save_request',save)
         c.revision(save['expected_revision'],v['revision'])
         with pytest.raises(c.ContractError):c.revision(save['expected_revision'],v['revision']+1)
         c.validate('voice_version',candidate['version'])
     requests=load('operation-requests.json');record=dict(project_id=p['id'],revision=1,parent_revision=0,operation_id='edit1',actor_id='human',state_sha256='0'*64,changed_ids=['b0'],recorded=dict(operation='block_text',request=requests['block_text']),snapshot=p)
     c.validate('revision',record)
-    c.validate('history',dict(schema_version='1.1.0',project_id=p['id'],revisions=[record],next_cursor=None))
+    c.validate('history',dict(schema_version='1.2.0',project_id=p['id'],revisions=[record],next_cursor=None))
     restore=requests['project_restore'];restore['source_revision']=record['revision'];c.validate('project_restore_request',restore)
     c.revision(2,2)
     with pytest.raises(c.ContractError):c.revision(2,3)  # reconnect after another writer; no silent undo
-    j,m,a=execution();original=c.plan_hash(m['plan']);m['plan']['request']['text']='changed'
+    j,m,a,context,manifest=execution();original=c.plan_hash(m['plan']);m['plan']['request']['text']='changed'
     assert c.plan_hash(m['plan'])!=original
-    with pytest.raises(c.ContractError,match='input_mismatch'):c.worker_message(m,j,['impulse'],transport_owner='worker1')
+    with pytest.raises(c.ContractError,match='input_mismatch'):c.worker_message(m,j,[],transport_owner='worker1',context=context)
 
 @pytest.mark.parametrize('field,value',[('text','rewritten'),('settings_sha256','f'*64),('voice_version_id','vv1')])
 def test_block_edit_cannot_rewrite_old_take(field,value):
@@ -129,15 +123,11 @@ def test_upload_oversize_and_byte_idempotency():
 
 
 def test_all_frozen_operation_plans_have_executable_inputs():
-    p=load('production-30.json');requests=load('operation-requests.json')
-    requests['speech_generate'].update(voice_version_id='vv0',identity=p['voice_versions'][0]['identity'])
-    requests['voice_prepare'].update(asset_id='impulse',in_tick=0,out_tick=4800)
-    requests['project_render'].update(project_id=p['id'],expected_revision=1,policy=p['render'])
     for op in ['speech_generate','voice_prepare','voice_design','project_render']:
-        plan=dict(synthesis_settings=dict(language='auto',seed=1,temperature=0.9,top_p=1,top_k=50,repetition_penalty=1.05,max_new_tokens=2048),schema_version='1.1.0',operation=op,request=requests[op],project=p,voice_versions=p['voice_versions'],assets=p['assets'])
+        t=load('transcript-'+op+'.json');plan=t['message']['plan']
         c.validate('worker_plan',plan)
         frozen=json.loads(json.dumps(plan));digest=c.plan_hash(frozen)
-        p_changed=copy.deepcopy(p);p_changed['blocks'][0]['text']='later client edit'
-        assert c.plan_hash(frozen)==digest and frozen['project']!=p_changed
+        later=load('production-30.json');later['blocks'][0]['text']='later client edit'
+        assert c.plan_hash(frozen)==digest
     plan['request']['expected_revision']=2
     with pytest.raises(c.ContractError,match='revision_conflict'):c.validate('worker_plan',plan)

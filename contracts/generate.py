@@ -7,7 +7,8 @@ import wave
 from pathlib import Path
 ROOT=Path(__file__).parent/'fixtures/v1'
 H='0'*64
-IDENTITY=dict(engine='qwen',model='synthetic-qwen-fixture',bundle_sha256=H,device='cpu',precision='float32')
+from .scenarios import catalogue, identity, preset_version, transcript
+IDENTITY=identity(catalogue()[0])
 RESOLUTION=dict(requested=IDENTITY,effective=IDENTITY,fallback='forbid',reason='',profile_id='cpu-synthetic')
 
 def dump(path,value):
@@ -16,9 +17,9 @@ def dump(path,value):
 def production(n,scale=False):
     assets=[]
     for name in ('impulse','sine','long','short'):
-        assets.append(dict(id=name,sha256=hashlib.sha256((ROOT/(name+'.wav')).read_bytes()).hexdigest(),frames=(2400 if name=='short' else 9600 if name=='long' else 4800),sample_rate=48000,channels=1,provenance=dict(kind='synthetic',source_sha256=hashlib.sha256((ROOT/(name+'.wav')).read_bytes()).hexdigest(),source_id=name,missing_fields=[])))
+        assets.append(dict(media_format='wav',id=name,sha256=hashlib.sha256((ROOT/(name+'.wav')).read_bytes()).hexdigest(),frames=(2400 if name=='short' else 9600 if name=='long' else 4800),sample_rate=48000,channels=1,provenance=dict(kind='synthetic',source_sha256=hashlib.sha256((ROOT/(name+'.wav')).read_bytes()).hexdigest(),source_id=name,missing_fields=[])))
     voices=[dict(id=f'voice.{i}',aliases=[f'legacy_{i}'],version_ids=[f'vv{i}'],archived=False,revision=1) for i in range(3)]
-    versions=[dict(id=f'vv{i}',voice_id=f'voice.{i}',origin='preset',reference_asset_ids=[],reference_text='',identity=IDENTITY,settings_sha256=H,provenance=assets[0]['provenance']) for i in range(3)]
+    versions=[preset_version(i,assets[0]['provenance']) for i in range(3)]
     blocks=[];takes=[];clips=[]
     for i in range(n):
         text=f'  Ligne {i:03d} — café!\nExact text.  '
@@ -30,7 +31,7 @@ def production(n,scale=False):
         clips.append(dict(id=f'bed{i}',track_id='bed',asset_id='sine',take_id=None,start=i*4800+2400,in_tick=0,out_tick=4800,gain=0.25,fade_in=480,fade_out=480,mute=False))
     takes.append({**takes[0],'id':'candidate-long','asset_id':'long'})
     takes.append({**takes[0],'id':'candidate-short','asset_id':'short'})
-    return dict(schema_version='1.0.0',id=f'production-{n}',revision=1,speakers=[dict(id=f's{i}',voice_version_id=f'vv{i}') for i in range(3)],blocks=blocks,takes=takes,tracks=[dict(id=x,mute=False,solo=False) for x in ('speech','bed')],clips=clips,assets=assets,voices=voices,voice_versions=versions,render=dict(sample_rate=48000,format='wav_pcm24',channels=2,channel_mapping='mono_duplicate_stereo_average',clipping='fail',include_stale=False,length_ticks=n*4800+2400))
+    return dict(schema_version='1.2.0',id=f'production-{n}',revision=1,speakers=[dict(id=f's{i}',voice_version_id=f'vv{i}') for i in range(3)],blocks=blocks,takes=takes,tracks=[dict(id=x,mute=False,solo=False) for x in ('speech','bed')],clips=clips,assets=assets,voices=voices,voice_versions=versions,render=dict(sample_rate=48000,format='wav_pcm24',channels=2,channel_mapping='mono_duplicate_stereo_average',clipping='fail',include_stale=False,length_ticks=n*4800+2400))
 
 def generate():
     ROOT.mkdir(parents=True,exist_ok=True)
@@ -43,8 +44,8 @@ def generate():
     dump(ROOT/'production-100.json',production(100,True))
     profiles=[]
     for device in ('cpu','cuda','metal'):
-        profiles.append(dict(id=device+'-synthetic',device=device,topology='packaged_native' if device=='metal' else 'networkless_container',support='unqualified',installation='absent',configuration='valid',readiness='not_ready',verification='synthetic',checked_at='2026-10-16T00:00:00Z',qualification_receipt='',limits=dict(expensive_slots=1 if device=='cpu' else 2,resident_models=1,threads=2,queue=32,upload_bytes=16777216,decoded_ticks=48000*600,text_chars=10000,variants=4,disk_bytes=1073741824,deadline_seconds=600,ram_bytes=4294967296,vram_bytes=0 if device=='cpu' else 8589934592),next_action='Inventory host and qualify exact backend/model/precision before advertising support.'))
-    dump(ROOT/'capabilities.json',dict(schema_version='1.0.0',profiles=profiles,operations=['discover','speech_generate'],engines=['qwen','kokoro','pocket-tts'],source_types=['upload','microphone','https','youtube'],checked_at='2026-10-16T00:00:00Z'))
+        profiles.append(dict(config_revision='config-1',compatibility=[],id=device+'-synthetic',device=device,topology='packaged_native' if device=='metal' else 'networkless_container',support='unqualified',installation='absent',configuration='valid',readiness='not_ready',verification='synthetic',checked_at='2026-10-16T00:00:00Z',qualification_receipt='',limits=dict(expensive_slots=1 if device=='cpu' else 2,resident_models=1,threads=2,queue=32,upload_bytes=16777216,decoded_ticks=48000*600,text_chars=10000,variants=4,disk_bytes=1073741824,deadline_seconds=600,ram_bytes=4294967296,vram_bytes=0 if device=='cpu' else 8589934592),next_action='Inventory host and qualify exact backend/model/precision before advertising support.'))
+    dump(ROOT/'capabilities.json',dict(schema_version='1.2.0',profiles=profiles,operations=['discover','speech_generate'],engines=['qwen','kokoro','pocket-tts'],source_types=['upload','microphone','https','youtube'],checked_at='2026-10-16T00:00:00Z'))
     dump(ROOT/'negative.json',[
         dict(name='end-exclusive-empty',path=['clips',0,'out_tick'],value=0,error='invalid_trim'),
         dict(name='missing-media',path=['clips',0,'asset_id'],value='absent',error='missing_media'),
@@ -52,7 +53,7 @@ def generate():
         dict(name='wrong-take-audio',path=['clips',0,'asset_id'],value='sine',error='take_asset_mismatch'),
         dict(name='wrong-selected-block',path=['blocks',0,'selected_take_id'],value='t1',error='selection_invalid'),
         dict(name='unknown-speaker',path=['blocks',0,'speaker_id'],value='absent',error='speaker_missing')])
-    dump(ROOT/'expected.json',dict(version='1.0.0',tick_rate=48000,production_30=dict(blocks=30,speakers=3,clips=31,length_ticks=146400),production_100=dict(blocks=100,clips=200,length_ticks=482400),media=dict(frames=4800,impulse_first_sample=0.5,sine_frequency_hz=1000),cases=[dict(action='replace_text_b0',stale=['t0','candidate-long','candidate-short'],inference_starts=0,unchanged_clip_ids=['c0','c1']),dict(action='select_longer_take',following_clip_start_unchanged=4800,overlap_visible=True),dict(action='select_shorter_than_trim',error='invalid_trim',old_arrangement_preserved=True)]))
+    dump(ROOT/'expected.json',dict(version='1.2.0',tick_rate=48000,production_30=dict(blocks=30,speakers=3,clips=31,length_ticks=146400),production_100=dict(blocks=100,clips=200,length_ticks=482400),media=dict(frames=4800,impulse_first_sample=0.5,sine_frequency_hz=1000),cases=[dict(action='replace_text_b0',stale=['t0','candidate-long','candidate-short'],inference_starts=0,unchanged_clip_ids=['c0','c1']),dict(action='select_longer_take',following_clip_start_unchanged=4800,overlap_visible=True),dict(action='select_shorter_than_trim',error='invalid_trim',old_arrangement_preserved=True)]))
     schema=json.loads((ROOT.parents[1]/'v1/schema.json').read_text())['$defs']
     ops=json.loads((ROOT.parents[1]/'v1/operations.json').read_text())['operations']
     def example(spec):
@@ -69,7 +70,10 @@ def generate():
         if spec.get('pattern')=='^[a-f0-9]{64}$':return H
         if spec.get('pattern','').startswith('^https'):return 'https://example.invalid/media.wav'
         return 'example'
-    dump(ROOT/'operation-requests.json',{op['id']:example(schema[op['request']]) for op in ops})
+    requests={op['id']:example(schema[op['request']]) for op in ops}
+    dump(ROOT/'operation-requests.json',requests)
+    for operation in ('voice_prepare','voice_design','speech_generate','project_render'):
+        dump(ROOT/('transcript-'+operation+'.json'),transcript(operation,production(30),profiles,requests))
     dump(ROOT/'job.json',dict(id='job1',operation='speech_generate',input_sha256=H,principal_id='principal1',idempotency_key='request1',state='running',generation=1,attempts=[dict(id='attempt1',generation=1,owner_id='worker1',reaped=False,staging_id='staging1')],artifact_ids=[],stage='loading',deadline='2026-10-16T00:10:00Z'))
     dump(ROOT/'artifact.json',dict(id='artifact1',job_id='job1',generation=1,asset_ids=['impulse'],input_sha256=H,project_revision=1,manifest_sha256=H,identity=RESOLUTION,attempt_id='attempt1',owner_id='worker1',staging_id='staging1'))
 if __name__=='__main__':generate()

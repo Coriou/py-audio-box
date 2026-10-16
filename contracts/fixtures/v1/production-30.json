@@ -1,5 +1,5 @@
 {
-  "schema_version": "1.0.0",
+  "schema_version": "1.2.0",
   "id": "production-30",
   "revision": 1,
   "speakers": [
@@ -239,15 +239,15 @@
       "identity": {
         "requested": {
           "engine": "qwen",
-          "model": "synthetic-qwen-fixture",
-          "bundle_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+          "model": "Qwen3-TTS-12Hz-1.7B-CustomVoice",
+          "bundle_sha256": "cbe72b0955b3fceef5c4e22fa3f8ad318cfd7a4b75d96156bc42c7cf2139d070",
           "device": "cpu",
           "precision": "float32"
         },
         "effective": {
           "engine": "qwen",
-          "model": "synthetic-qwen-fixture",
-          "bundle_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+          "model": "Qwen3-TTS-12Hz-1.7B-CustomVoice",
+          "bundle_sha256": "cbe72b0955b3fceef5c4e22fa3f8ad318cfd7a4b75d96156bc42c7cf2139d070",
           "device": "cpu",
           "precision": "float32"
         },
@@ -266,15 +266,15 @@
       "identity": {
         "requested": {
           "engine": "qwen",
-          "model": "synthetic-qwen-fixture",
-          "bundle_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+          "model": "Qwen3-TTS-12Hz-1.7B-CustomVoice",
+          "bundle_sha256": "cbe72b0955b3fceef5c4e22fa3f8ad318cfd7a4b75d96156bc42c7cf2139d070",
           "device": "cpu",
           "precision": "float32"
         },
         "effective": {
           "engine": "qwen",
-          "model": "synthetic-qwen-fixture",
-          "bundle_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+          "model": "Qwen3-TTS-12Hz-1.7B-CustomVoice",
+          "bundle_sha256": "cbe72b0955b3fceef5c4e22fa3f8ad318cfd7a4b75d96156bc42c7cf2139d070",
           "device": "cpu",
           "precision": "float32"
         },
@@ -293,15 +293,15 @@
       "identity": {
         "requested": {
           "engine": "qwen",
-          "model": "synthetic-qwen-fixture",
-          "bundle_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+          "model": "Qwen3-TTS-12Hz-1.7B-CustomVoice",
+          "bundle_sha256": "cbe72b0955b3fceef5c4e22fa3f8ad318cfd7a4b75d96156bc42c7cf2139d070",
           "device": "cpu",
           "precision": "float32"
         },
         "effective": {
           "engine": "qwen",
-          "model": "synthetic-qwen-fixture",
-          "bundle_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+          "model": "Qwen3-TTS-12Hz-1.7B-CustomVoice",
+          "bundle_sha256": "cbe72b0955b3fceef5c4e22fa3f8ad318cfd7a4b75d96156bc42c7cf2139d070",
           "device": "cpu",
           "precision": "float32"
         },
@@ -320,15 +320,15 @@
       "identity": {
         "requested": {
           "engine": "qwen",
-          "model": "synthetic-qwen-fixture",
-          "bundle_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+          "model": "Qwen3-TTS-12Hz-1.7B-CustomVoice",
+          "bundle_sha256": "cbe72b0955b3fceef5c4e22fa3f8ad318cfd7a4b75d96156bc42c7cf2139d070",
           "device": "cpu",
           "precision": "float32"
         },
         "effective": {
           "engine": "qwen",
-          "model": "synthetic-qwen-fixture",
-          "bundle_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+          "model": "Qwen3-TTS-12Hz-1.7B-CustomVoice",
+          "bundle_sha256": "cbe72b0955b3fceef5c4e22fa3f8ad318cfd7a4b75d96156bc42c7cf2139d070",
           "device": "cpu",
           "precision": "float32"
         },
@@ -347,15 +347,15 @@
       "identity": {
         "requested": {
           "engine": "qwen",
-          "model": "synthetic-qwen-fixture",
-          "bundle_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+          "model": "Qwen3-TTS-12Hz-1.7B-CustomVoice",
+          "bundle_sha256": "cbe72b0955b3fceef5c4e22fa3f8ad318cfd7a4b75d96156bc42c7cf2139d070",
           "device": "cpu",
           "precision": "float32"
         },
         "effective": {
           "engine": "qwen",
-          "model": "synthetic-qwen-fixture",
-          "bundle_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+          "model": "Qwen3-TTS-12Hz-1.7B-CustomVoice",
+          "bundle_sha256": "cbe72b0955b3fceef5c4e22fa3f8ad318cfd7a4b75d96156bc42c7cf2139d070",
           "device": "cpu",
           "precision": "float32"
         },
@@ -374,15 +374,15 @@
       "identity": {
         "requested": {
           "engine": "qwen",
-          "model": "synthetic-qwen-fixture",
-          "bundle_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+          "model": "Qwen3-TTS-12Hz-1.7B-CustomVoice",
+          "bundle_sha256": "cbe72b0955b3fceef5c4e22fa3f8ad318cfd7a4b75d96156bc42c7cf2139d070",
           "device": "cpu",
           "precision": "float32"
         },
         "effective": {
           "engine": "qwen",
-          "model": "synthetic-qwen-fixture",
-          "bundle_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+          "model": "Qwen3-TTS-12Hz-1.7B-CustomVoice",
+          "bundle_sha256": "cbe72b0955b3fceef5c4e22fa3f8ad318cfd7a4b75d96156bc42c7cf2139d070",
           "device": "cpu",
           "precision": "float32"
         },
@@ -401,15 +401,15 @@
       "identity": {
         "requested": {
           "engine": "qwen",
-          "model": "synthetic-qwen-fixture",
-          "bundle_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+          "model": "Qwen3-TTS-12Hz-1.7B-CustomVoice",
+          "bundle_sha256": "cbe72b0955b3fceef5c4e22fa3f8ad318cfd7a4b75d96156bc42c7cf2139d070",
           "device": "cpu",
           "precision": "float32"
         },
         "effective": {
           "engine": "qwen",
-          "model": "synthetic-qwen-fixture",
-          "bundle_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+          "model": "Qwen3-TTS-12Hz-1.7B-CustomVoice",
+          "bundle_sha256": "cbe72b0955b3fceef5c4e22fa3f8ad318cfd7a4b75d96156bc42c7cf2139d070",
           "device": "cpu",
           "precision": "float32"
         },
@@ -428,15 +428,15 @@
       "identity": {
         "requested": {
           "engine": "qwen",
-          "model": "synthetic-qwen-fixture",
-          "bundle_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+          "model": "Qwen3-TTS-12Hz-1.7B-CustomVoice",
+          "bundle_sha256": "cbe72b0955b3fceef5c4e22fa3f8ad318cfd7a4b75d96156bc42c7cf2139d070",
           "device": "cpu",
           "precision": "float32"
         },
         "effective": {
           "engine": "qwen",
-          "model": "synthetic-qwen-fixture",
-          "bundle_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+          "model": "Qwen3-TTS-12Hz-1.7B-CustomVoice",
+          "bundle_sha256": "cbe72b0955b3fceef5c4e22fa3f8ad318cfd7a4b75d96156bc42c7cf2139d070",
           "device": "cpu",
           "precision": "float32"
         },
@@ -455,15 +455,15 @@
       "identity": {
         "requested": {
           "engine": "qwen",
-          "model": "synthetic-qwen-fixture",
-          "bundle_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+          "model": "Qwen3-TTS-12Hz-1.7B-CustomVoice",
+          "bundle_sha256": "cbe72b0955b3fceef5c4e22fa3f8ad318cfd7a4b75d96156bc42c7cf2139d070",
           "device": "cpu",
           "precision": "float32"
         },
         "effective": {
           "engine": "qwen",
-          "model": "synthetic-qwen-fixture",
-          "bundle_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+          "model": "Qwen3-TTS-12Hz-1.7B-CustomVoice",
+          "bundle_sha256": "cbe72b0955b3fceef5c4e22fa3f8ad318cfd7a4b75d96156bc42c7cf2139d070",
           "device": "cpu",
           "precision": "float32"
         },
@@ -482,15 +482,15 @@
       "identity": {
         "requested": {
           "engine": "qwen",
-          "model": "synthetic-qwen-fixture",
-          "bundle_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+          "model": "Qwen3-TTS-12Hz-1.7B-CustomVoice",
+          "bundle_sha256": "cbe72b0955b3fceef5c4e22fa3f8ad318cfd7a4b75d96156bc42c7cf2139d070",
           "device": "cpu",
           "precision": "float32"
         },
         "effective": {
           "engine": "qwen",
-          "model": "synthetic-qwen-fixture",
-          "bundle_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+          "model": "Qwen3-TTS-12Hz-1.7B-CustomVoice",
+          "bundle_sha256": "cbe72b0955b3fceef5c4e22fa3f8ad318cfd7a4b75d96156bc42c7cf2139d070",
           "device": "cpu",
           "precision": "float32"
         },
@@ -509,15 +509,15 @@
       "identity": {
         "requested": {
           "engine": "qwen",
-          "model": "synthetic-qwen-fixture",
-          "bundle_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+          "model": "Qwen3-TTS-12Hz-1.7B-CustomVoice",
+          "bundle_sha256": "cbe72b0955b3fceef5c4e22fa3f8ad318cfd7a4b75d96156bc42c7cf2139d070",
           "device": "cpu",
           "precision": "float32"
         },
         "effective": {
           "engine": "qwen",
-          "model": "synthetic-qwen-fixture",
-          "bundle_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+          "model": "Qwen3-TTS-12Hz-1.7B-CustomVoice",
+          "bundle_sha256": "cbe72b0955b3fceef5c4e22fa3f8ad318cfd7a4b75d96156bc42c7cf2139d070",
           "device": "cpu",
           "precision": "float32"
         },
@@ -536,15 +536,15 @@
       "identity": {
         "requested": {
           "engine": "qwen",
-          "model": "synthetic-qwen-fixture",
-          "bundle_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+          "model": "Qwen3-TTS-12Hz-1.7B-CustomVoice",
+          "bundle_sha256": "cbe72b0955b3fceef5c4e22fa3f8ad318cfd7a4b75d96156bc42c7cf2139d070",
           "device": "cpu",
           "precision": "float32"
         },
         "effective": {
           "engine": "qwen",
-          "model": "synthetic-qwen-fixture",
-          "bundle_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+          "model": "Qwen3-TTS-12Hz-1.7B-CustomVoice",
+          "bundle_sha256": "cbe72b0955b3fceef5c4e22fa3f8ad318cfd7a4b75d96156bc42c7cf2139d070",
           "device": "cpu",
           "precision": "float32"
         },
@@ -563,15 +563,15 @@
       "identity": {
         "requested": {
           "engine": "qwen",
-          "model": "synthetic-qwen-fixture",
-          "bundle_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+          "model": "Qwen3-TTS-12Hz-1.7B-CustomVoice",
+          "bundle_sha256": "cbe72b0955b3fceef5c4e22fa3f8ad318cfd7a4b75d96156bc42c7cf2139d070",
           "device": "cpu",
           "precision": "float32"
         },
         "effective": {
           "engine": "qwen",
-          "model": "synthetic-qwen-fixture",
-          "bundle_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+          "model": "Qwen3-TTS-12Hz-1.7B-CustomVoice",
+          "bundle_sha256": "cbe72b0955b3fceef5c4e22fa3f8ad318cfd7a4b75d96156bc42c7cf2139d070",
           "device": "cpu",
           "precision": "float32"
         },
@@ -590,15 +590,15 @@
       "identity": {
         "requested": {
           "engine": "qwen",
-          "model": "synthetic-qwen-fixture",
-          "bundle_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+          "model": "Qwen3-TTS-12Hz-1.7B-CustomVoice",
+          "bundle_sha256": "cbe72b0955b3fceef5c4e22fa3f8ad318cfd7a4b75d96156bc42c7cf2139d070",
           "device": "cpu",
           "precision": "float32"
         },
         "effective": {
           "engine": "qwen",
-          "model": "synthetic-qwen-fixture",
-          "bundle_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+          "model": "Qwen3-TTS-12Hz-1.7B-CustomVoice",
+          "bundle_sha256": "cbe72b0955b3fceef5c4e22fa3f8ad318cfd7a4b75d96156bc42c7cf2139d070",
           "device": "cpu",
           "precision": "float32"
         },
@@ -617,15 +617,15 @@
       "identity": {
         "requested": {
           "engine": "qwen",
-          "model": "synthetic-qwen-fixture",
-          "bundle_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+          "model": "Qwen3-TTS-12Hz-1.7B-CustomVoice",
+          "bundle_sha256": "cbe72b0955b3fceef5c4e22fa3f8ad318cfd7a4b75d96156bc42c7cf2139d070",
           "device": "cpu",
           "precision": "float32"
         },
         "effective": {
           "engine": "qwen",
-          "model": "synthetic-qwen-fixture",
-          "bundle_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+          "model": "Qwen3-TTS-12Hz-1.7B-CustomVoice",
+          "bundle_sha256": "cbe72b0955b3fceef5c4e22fa3f8ad318cfd7a4b75d96156bc42c7cf2139d070",
           "device": "cpu",
           "precision": "float32"
         },
@@ -644,15 +644,15 @@
       "identity": {
         "requested": {
           "engine": "qwen",
-          "model": "synthetic-qwen-fixture",
-          "bundle_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+          "model": "Qwen3-TTS-12Hz-1.7B-CustomVoice",
+          "bundle_sha256": "cbe72b0955b3fceef5c4e22fa3f8ad318cfd7a4b75d96156bc42c7cf2139d070",
           "device": "cpu",
           "precision": "float32"
         },
         "effective": {
           "engine": "qwen",
-          "model": "synthetic-qwen-fixture",
-          "bundle_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+          "model": "Qwen3-TTS-12Hz-1.7B-CustomVoice",
+          "bundle_sha256": "cbe72b0955b3fceef5c4e22fa3f8ad318cfd7a4b75d96156bc42c7cf2139d070",
           "device": "cpu",
           "precision": "float32"
         },
@@ -671,15 +671,15 @@
       "identity": {
         "requested": {
           "engine": "qwen",
-          "model": "synthetic-qwen-fixture",
-          "bundle_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+          "model": "Qwen3-TTS-12Hz-1.7B-CustomVoice",
+          "bundle_sha256": "cbe72b0955b3fceef5c4e22fa3f8ad318cfd7a4b75d96156bc42c7cf2139d070",
           "device": "cpu",
           "precision": "float32"
         },
         "effective": {
           "engine": "qwen",
-          "model": "synthetic-qwen-fixture",
-          "bundle_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+          "model": "Qwen3-TTS-12Hz-1.7B-CustomVoice",
+          "bundle_sha256": "cbe72b0955b3fceef5c4e22fa3f8ad318cfd7a4b75d96156bc42c7cf2139d070",
           "device": "cpu",
           "precision": "float32"
         },
@@ -698,15 +698,15 @@
       "identity": {
         "requested": {
           "engine": "qwen",
-          "model": "synthetic-qwen-fixture",
-          "bundle_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+          "model": "Qwen3-TTS-12Hz-1.7B-CustomVoice",
+          "bundle_sha256": "cbe72b0955b3fceef5c4e22fa3f8ad318cfd7a4b75d96156bc42c7cf2139d070",
           "device": "cpu",
           "precision": "float32"
         },
         "effective": {
           "engine": "qwen",
-          "model": "synthetic-qwen-fixture",
-          "bundle_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+          "model": "Qwen3-TTS-12Hz-1.7B-CustomVoice",
+          "bundle_sha256": "cbe72b0955b3fceef5c4e22fa3f8ad318cfd7a4b75d96156bc42c7cf2139d070",
           "device": "cpu",
           "precision": "float32"
         },
@@ -725,15 +725,15 @@
       "identity": {
         "requested": {
           "engine": "qwen",
-          "model": "synthetic-qwen-fixture",
-          "bundle_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+          "model": "Qwen3-TTS-12Hz-1.7B-CustomVoice",
+          "bundle_sha256": "cbe72b0955b3fceef5c4e22fa3f8ad318cfd7a4b75d96156bc42c7cf2139d070",
           "device": "cpu",
           "precision": "float32"
         },
         "effective": {
           "engine": "qwen",
-          "model": "synthetic-qwen-fixture",
-          "bundle_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+          "model": "Qwen3-TTS-12Hz-1.7B-CustomVoice",
+          "bundle_sha256": "cbe72b0955b3fceef5c4e22fa3f8ad318cfd7a4b75d96156bc42c7cf2139d070",
           "device": "cpu",
           "precision": "float32"
         },
@@ -752,15 +752,15 @@
       "identity": {
         "requested": {
           "engine": "qwen",
-          "model": "synthetic-qwen-fixture",
-          "bundle_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+          "model": "Qwen3-TTS-12Hz-1.7B-CustomVoice",
+          "bundle_sha256": "cbe72b0955b3fceef5c4e22fa3f8ad318cfd7a4b75d96156bc42c7cf2139d070",
           "device": "cpu",
           "precision": "float32"
         },
         "effective": {
           "engine": "qwen",
-          "model": "synthetic-qwen-fixture",
-          "bundle_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+          "model": "Qwen3-TTS-12Hz-1.7B-CustomVoice",
+          "bundle_sha256": "cbe72b0955b3fceef5c4e22fa3f8ad318cfd7a4b75d96156bc42c7cf2139d070",
           "device": "cpu",
           "precision": "float32"
         },
@@ -779,15 +779,15 @@
       "identity": {
         "requested": {
           "engine": "qwen",
-          "model": "synthetic-qwen-fixture",
-          "bundle_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+          "model": "Qwen3-TTS-12Hz-1.7B-CustomVoice",
+          "bundle_sha256": "cbe72b0955b3fceef5c4e22fa3f8ad318cfd7a4b75d96156bc42c7cf2139d070",
           "device": "cpu",
           "precision": "float32"
         },
         "effective": {
           "engine": "qwen",
-          "model": "synthetic-qwen-fixture",
-          "bundle_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+          "model": "Qwen3-TTS-12Hz-1.7B-CustomVoice",
+          "bundle_sha256": "cbe72b0955b3fceef5c4e22fa3f8ad318cfd7a4b75d96156bc42c7cf2139d070",
           "device": "cpu",
           "precision": "float32"
         },
@@ -806,15 +806,15 @@
       "identity": {
         "requested": {
           "engine": "qwen",
-          "model": "synthetic-qwen-fixture",
-          "bundle_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+          "model": "Qwen3-TTS-12Hz-1.7B-CustomVoice",
+          "bundle_sha256": "cbe72b0955b3fceef5c4e22fa3f8ad318cfd7a4b75d96156bc42c7cf2139d070",
           "device": "cpu",
           "precision": "float32"
         },
         "effective": {
           "engine": "qwen",
-          "model": "synthetic-qwen-fixture",
-          "bundle_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+          "model": "Qwen3-TTS-12Hz-1.7B-CustomVoice",
+          "bundle_sha256": "cbe72b0955b3fceef5c4e22fa3f8ad318cfd7a4b75d96156bc42c7cf2139d070",
           "device": "cpu",
           "precision": "float32"
         },
@@ -833,15 +833,15 @@
       "identity": {
         "requested": {
           "engine": "qwen",
-          "model": "synthetic-qwen-fixture",
-          "bundle_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+          "model": "Qwen3-TTS-12Hz-1.7B-CustomVoice",
+          "bundle_sha256": "cbe72b0955b3fceef5c4e22fa3f8ad318cfd7a4b75d96156bc42c7cf2139d070",
           "device": "cpu",
           "precision": "float32"
         },
         "effective": {
           "engine": "qwen",
-          "model": "synthetic-qwen-fixture",
-          "bundle_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+          "model": "Qwen3-TTS-12Hz-1.7B-CustomVoice",
+          "bundle_sha256": "cbe72b0955b3fceef5c4e22fa3f8ad318cfd7a4b75d96156bc42c7cf2139d070",
           "device": "cpu",
           "precision": "float32"
         },
@@ -860,15 +860,15 @@
       "identity": {
         "requested": {
           "engine": "qwen",
-          "model": "synthetic-qwen-fixture",
-          "bundle_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+          "model": "Qwen3-TTS-12Hz-1.7B-CustomVoice",
+          "bundle_sha256": "cbe72b0955b3fceef5c4e22fa3f8ad318cfd7a4b75d96156bc42c7cf2139d070",
           "device": "cpu",
           "precision": "float32"
         },
         "effective": {
           "engine": "qwen",
-          "model": "synthetic-qwen-fixture",
-          "bundle_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+          "model": "Qwen3-TTS-12Hz-1.7B-CustomVoice",
+          "bundle_sha256": "cbe72b0955b3fceef5c4e22fa3f8ad318cfd7a4b75d96156bc42c7cf2139d070",
           "device": "cpu",
           "precision": "float32"
         },
@@ -887,15 +887,15 @@
       "identity": {
         "requested": {
           "engine": "qwen",
-          "model": "synthetic-qwen-fixture",
-          "bundle_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+          "model": "Qwen3-TTS-12Hz-1.7B-CustomVoice",
+          "bundle_sha256": "cbe72b0955b3fceef5c4e22fa3f8ad318cfd7a4b75d96156bc42c7cf2139d070",
           "device": "cpu",
           "precision": "float32"
         },
         "effective": {
           "engine": "qwen",
-          "model": "synthetic-qwen-fixture",
-          "bundle_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+          "model": "Qwen3-TTS-12Hz-1.7B-CustomVoice",
+          "bundle_sha256": "cbe72b0955b3fceef5c4e22fa3f8ad318cfd7a4b75d96156bc42c7cf2139d070",
           "device": "cpu",
           "precision": "float32"
         },
@@ -914,15 +914,15 @@
       "identity": {
         "requested": {
           "engine": "qwen",
-          "model": "synthetic-qwen-fixture",
-          "bundle_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+          "model": "Qwen3-TTS-12Hz-1.7B-CustomVoice",
+          "bundle_sha256": "cbe72b0955b3fceef5c4e22fa3f8ad318cfd7a4b75d96156bc42c7cf2139d070",
           "device": "cpu",
           "precision": "float32"
         },
         "effective": {
           "engine": "qwen",
-          "model": "synthetic-qwen-fixture",
-          "bundle_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+          "model": "Qwen3-TTS-12Hz-1.7B-CustomVoice",
+          "bundle_sha256": "cbe72b0955b3fceef5c4e22fa3f8ad318cfd7a4b75d96156bc42c7cf2139d070",
           "device": "cpu",
           "precision": "float32"
         },
@@ -941,15 +941,15 @@
       "identity": {
         "requested": {
           "engine": "qwen",
-          "model": "synthetic-qwen-fixture",
-          "bundle_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+          "model": "Qwen3-TTS-12Hz-1.7B-CustomVoice",
+          "bundle_sha256": "cbe72b0955b3fceef5c4e22fa3f8ad318cfd7a4b75d96156bc42c7cf2139d070",
           "device": "cpu",
           "precision": "float32"
         },
         "effective": {
           "engine": "qwen",
-          "model": "synthetic-qwen-fixture",
-          "bundle_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+          "model": "Qwen3-TTS-12Hz-1.7B-CustomVoice",
+          "bundle_sha256": "cbe72b0955b3fceef5c4e22fa3f8ad318cfd7a4b75d96156bc42c7cf2139d070",
           "device": "cpu",
           "precision": "float32"
         },
@@ -968,15 +968,15 @@
       "identity": {
         "requested": {
           "engine": "qwen",
-          "model": "synthetic-qwen-fixture",
-          "bundle_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+          "model": "Qwen3-TTS-12Hz-1.7B-CustomVoice",
+          "bundle_sha256": "cbe72b0955b3fceef5c4e22fa3f8ad318cfd7a4b75d96156bc42c7cf2139d070",
           "device": "cpu",
           "precision": "float32"
         },
         "effective": {
           "engine": "qwen",
-          "model": "synthetic-qwen-fixture",
-          "bundle_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+          "model": "Qwen3-TTS-12Hz-1.7B-CustomVoice",
+          "bundle_sha256": "cbe72b0955b3fceef5c4e22fa3f8ad318cfd7a4b75d96156bc42c7cf2139d070",
           "device": "cpu",
           "precision": "float32"
         },
@@ -995,15 +995,15 @@
       "identity": {
         "requested": {
           "engine": "qwen",
-          "model": "synthetic-qwen-fixture",
-          "bundle_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+          "model": "Qwen3-TTS-12Hz-1.7B-CustomVoice",
+          "bundle_sha256": "cbe72b0955b3fceef5c4e22fa3f8ad318cfd7a4b75d96156bc42c7cf2139d070",
           "device": "cpu",
           "precision": "float32"
         },
         "effective": {
           "engine": "qwen",
-          "model": "synthetic-qwen-fixture",
-          "bundle_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+          "model": "Qwen3-TTS-12Hz-1.7B-CustomVoice",
+          "bundle_sha256": "cbe72b0955b3fceef5c4e22fa3f8ad318cfd7a4b75d96156bc42c7cf2139d070",
           "device": "cpu",
           "precision": "float32"
         },
@@ -1022,15 +1022,15 @@
       "identity": {
         "requested": {
           "engine": "qwen",
-          "model": "synthetic-qwen-fixture",
-          "bundle_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+          "model": "Qwen3-TTS-12Hz-1.7B-CustomVoice",
+          "bundle_sha256": "cbe72b0955b3fceef5c4e22fa3f8ad318cfd7a4b75d96156bc42c7cf2139d070",
           "device": "cpu",
           "precision": "float32"
         },
         "effective": {
           "engine": "qwen",
-          "model": "synthetic-qwen-fixture",
-          "bundle_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+          "model": "Qwen3-TTS-12Hz-1.7B-CustomVoice",
+          "bundle_sha256": "cbe72b0955b3fceef5c4e22fa3f8ad318cfd7a4b75d96156bc42c7cf2139d070",
           "device": "cpu",
           "precision": "float32"
         },
@@ -1049,15 +1049,15 @@
       "identity": {
         "requested": {
           "engine": "qwen",
-          "model": "synthetic-qwen-fixture",
-          "bundle_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+          "model": "Qwen3-TTS-12Hz-1.7B-CustomVoice",
+          "bundle_sha256": "cbe72b0955b3fceef5c4e22fa3f8ad318cfd7a4b75d96156bc42c7cf2139d070",
           "device": "cpu",
           "precision": "float32"
         },
         "effective": {
           "engine": "qwen",
-          "model": "synthetic-qwen-fixture",
-          "bundle_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+          "model": "Qwen3-TTS-12Hz-1.7B-CustomVoice",
+          "bundle_sha256": "cbe72b0955b3fceef5c4e22fa3f8ad318cfd7a4b75d96156bc42c7cf2139d070",
           "device": "cpu",
           "precision": "float32"
         },
@@ -1076,15 +1076,15 @@
       "identity": {
         "requested": {
           "engine": "qwen",
-          "model": "synthetic-qwen-fixture",
-          "bundle_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+          "model": "Qwen3-TTS-12Hz-1.7B-CustomVoice",
+          "bundle_sha256": "cbe72b0955b3fceef5c4e22fa3f8ad318cfd7a4b75d96156bc42c7cf2139d070",
           "device": "cpu",
           "precision": "float32"
         },
         "effective": {
           "engine": "qwen",
-          "model": "synthetic-qwen-fixture",
-          "bundle_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+          "model": "Qwen3-TTS-12Hz-1.7B-CustomVoice",
+          "bundle_sha256": "cbe72b0955b3fceef5c4e22fa3f8ad318cfd7a4b75d96156bc42c7cf2139d070",
           "device": "cpu",
           "precision": "float32"
         },
@@ -1513,6 +1513,7 @@
   ],
   "assets": [
     {
+      "media_format": "wav",
       "id": "impulse",
       "sha256": "6de1d8cc4c678241ac609b81e8728a89850ce72a9cf736c4214a7ea9dc0943df",
       "frames": 4800,
@@ -1526,6 +1527,7 @@
       }
     },
     {
+      "media_format": "wav",
       "id": "sine",
       "sha256": "c020cc7bf173196fe590913ceca31fc59f4818536b39c50bc6ecc59aaea40593",
       "frames": 4800,
@@ -1539,6 +1541,7 @@
       }
     },
     {
+      "media_format": "wav",
       "id": "long",
       "sha256": "50723bc660718f92239c358c36818fa390a429bfc7bcf3fd4530b295532a1bb0",
       "frames": 9600,
@@ -1552,6 +1555,7 @@
       }
     },
     {
+      "media_format": "wav",
       "id": "short",
       "sha256": "4a00018adfff151e83d66254d04188e36076b9ea6d4159824937c895750fa399",
       "frames": 2400,
@@ -1609,18 +1613,23 @@
       "reference_text": "",
       "identity": {
         "engine": "qwen",
-        "model": "synthetic-qwen-fixture",
-        "bundle_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+        "model": "Qwen3-TTS-12Hz-1.7B-CustomVoice",
+        "bundle_sha256": "cbe72b0955b3fceef5c4e22fa3f8ad318cfd7a4b75d96156bc42c7cf2139d070",
         "device": "cpu",
         "precision": "float32"
       },
-      "settings_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+      "settings_sha256": "fc175f2a5312a4ced9c72e1a02bd4c725439f7d9e47fdd720c3954bd07271694",
       "provenance": {
         "kind": "synthetic",
         "source_sha256": "6de1d8cc4c678241ac609b81e8728a89850ce72a9cf736c4214a7ea9dc0943df",
         "source_id": "impulse",
         "missing_fields": []
-      }
+      },
+      "configuration": {
+        "mode": "qwen_preset",
+        "speaker": "Vivian"
+      },
+      "design_lineage": null
     },
     {
       "id": "vv1",
@@ -1630,18 +1639,23 @@
       "reference_text": "",
       "identity": {
         "engine": "qwen",
-        "model": "synthetic-qwen-fixture",
-        "bundle_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+        "model": "Qwen3-TTS-12Hz-1.7B-CustomVoice",
+        "bundle_sha256": "cbe72b0955b3fceef5c4e22fa3f8ad318cfd7a4b75d96156bc42c7cf2139d070",
         "device": "cpu",
         "precision": "float32"
       },
-      "settings_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+      "settings_sha256": "fc175f2a5312a4ced9c72e1a02bd4c725439f7d9e47fdd720c3954bd07271694",
       "provenance": {
         "kind": "synthetic",
         "source_sha256": "6de1d8cc4c678241ac609b81e8728a89850ce72a9cf736c4214a7ea9dc0943df",
         "source_id": "impulse",
         "missing_fields": []
-      }
+      },
+      "configuration": {
+        "mode": "qwen_preset",
+        "speaker": "Serena"
+      },
+      "design_lineage": null
     },
     {
       "id": "vv2",
@@ -1651,18 +1665,23 @@
       "reference_text": "",
       "identity": {
         "engine": "qwen",
-        "model": "synthetic-qwen-fixture",
-        "bundle_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+        "model": "Qwen3-TTS-12Hz-1.7B-CustomVoice",
+        "bundle_sha256": "cbe72b0955b3fceef5c4e22fa3f8ad318cfd7a4b75d96156bc42c7cf2139d070",
         "device": "cpu",
         "precision": "float32"
       },
-      "settings_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+      "settings_sha256": "fc175f2a5312a4ced9c72e1a02bd4c725439f7d9e47fdd720c3954bd07271694",
       "provenance": {
         "kind": "synthetic",
         "source_sha256": "6de1d8cc4c678241ac609b81e8728a89850ce72a9cf736c4214a7ea9dc0943df",
         "source_id": "impulse",
         "missing_fields": []
-      }
+      },
+      "configuration": {
+        "mode": "qwen_preset",
+        "speaker": "Vivian"
+      },
+      "design_lineage": null
     }
   ],
   "render": {

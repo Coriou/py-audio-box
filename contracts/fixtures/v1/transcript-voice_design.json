@@ -1,0 +1,753 @@
+{
+  "evidence": "E1 synthetic catalogue only",
+  "context": {
+    "plan": {
+      "schema_version": "1.2.0",
+      "operation": "voice_design",
+      "request": {
+        "description": "Warm precise voice.",
+        "reference_text": "Exact design audition.",
+        "identity": {
+          "engine": "qwen",
+          "model": "Qwen3-TTS-12Hz-1.7B-VoiceDesign",
+          "bundle_sha256": "c9cdba559c10e84ff39673a8acc0c569d15d1c5d3b7ddc81027122788eaf5fd0",
+          "device": "cpu",
+          "precision": "float32"
+        }
+      },
+      "project": null,
+      "voice_versions": [],
+      "assets": [],
+      "resolved": {
+        "reuse_identity": {
+          "engine": "qwen",
+          "model": "Qwen3-TTS-12Hz-0.6B-Base",
+          "bundle_sha256": "63e1fd8333a5024d06a7c82aaa3ce7790caec03c0684393d01d77a22acd535f0",
+          "device": "cpu",
+          "precision": "float32"
+        },
+        "kind": "design",
+        "identity": {
+          "requested": {
+            "engine": "qwen",
+            "model": "Qwen3-TTS-12Hz-1.7B-VoiceDesign",
+            "bundle_sha256": "c9cdba559c10e84ff39673a8acc0c569d15d1c5d3b7ddc81027122788eaf5fd0",
+            "device": "cpu",
+            "precision": "float32"
+          },
+          "effective": {
+            "engine": "qwen",
+            "model": "Qwen3-TTS-12Hz-1.7B-VoiceDesign",
+            "bundle_sha256": "c9cdba559c10e84ff39673a8acc0c569d15d1c5d3b7ddc81027122788eaf5fd0",
+            "device": "cpu",
+            "precision": "float32"
+          },
+          "fallback": "forbid",
+          "reason": "",
+          "profile_id": "cpu-synthetic"
+        },
+        "profile": {
+          "id": "cpu-synthetic",
+          "config_revision": "config-1",
+          "device": "cpu",
+          "topology": "networkless_container",
+          "limits": {
+            "expensive_slots": 1,
+            "resident_models": 1,
+            "threads": 2,
+            "queue": 32,
+            "upload_bytes": 16777216,
+            "decoded_ticks": 28800000,
+            "text_chars": 10000,
+            "variants": 4,
+            "disk_bytes": 1073741824,
+            "deadline_seconds": 600,
+            "ram_bytes": 4294967296,
+            "vram_bytes": 0
+          },
+          "compatibility": [
+            {
+              "operation": "voice_design",
+              "mode": "qwen_design",
+              "identity": {
+                "engine": "qwen",
+                "model": "Qwen3-TTS-12Hz-1.7B-VoiceDesign",
+                "bundle_sha256": "c9cdba559c10e84ff39673a8acc0c569d15d1c5d3b7ddc81027122788eaf5fd0",
+                "device": "cpu",
+                "precision": "float32"
+              }
+            }
+          ]
+        },
+        "operator_fallback": "forbid",
+        "settings": {
+          "kind": "qwen_design",
+          "language": "French",
+          "seed": 1,
+          "temperature": 0.9,
+          "top_p": 1,
+          "top_k": 50,
+          "repetition_penalty": 1.05,
+          "max_new_tokens": 2048,
+          "instruction": "Warm precise voice."
+        },
+        "settings_sha256": "3e6f313b9a0cc192978a49c1ceec11f53085e7de6034bb081072371bef605346"
+      }
+    },
+    "bundles": [
+      {
+        "instructions": true,
+        "engine": "qwen",
+        "model": "Qwen3-TTS-12Hz-1.7B-CustomVoice",
+        "mode": "qwen_preset",
+        "bundle_sha256": "cbe72b0955b3fceef5c4e22fa3f8ad318cfd7a4b75d96156bc42c7cf2139d070",
+        "languages": [
+          "French",
+          "English"
+        ],
+        "selectors": [
+          {
+            "value": "Vivian",
+            "languages": [
+              "French",
+              "English"
+            ]
+          },
+          {
+            "value": "Serena",
+            "languages": [
+              "French",
+              "English"
+            ]
+          }
+        ]
+      },
+      {
+        "instructions": false,
+        "engine": "qwen",
+        "model": "Qwen3-TTS-12Hz-0.6B-Base",
+        "mode": "qwen_clone",
+        "bundle_sha256": "63e1fd8333a5024d06a7c82aaa3ce7790caec03c0684393d01d77a22acd535f0",
+        "languages": [
+          "French",
+          "English"
+        ],
+        "selectors": []
+      },
+      {
+        "instructions": true,
+        "engine": "qwen",
+        "model": "Qwen3-TTS-12Hz-1.7B-VoiceDesign",
+        "mode": "qwen_design",
+        "bundle_sha256": "c9cdba559c10e84ff39673a8acc0c569d15d1c5d3b7ddc81027122788eaf5fd0",
+        "languages": [
+          "French",
+          "English"
+        ],
+        "selectors": []
+      },
+      {
+        "instructions": false,
+        "engine": "kokoro",
+        "model": "synthetic-kokoro",
+        "mode": "kokoro_preset",
+        "bundle_sha256": "a9d6af35e985eee68a4c30fddf7ac54ccff8f45e191b333e1c1c4d75135cf730",
+        "languages": [
+          "fr",
+          "en"
+        ],
+        "selectors": [
+          {
+            "value": "ff_siwis",
+            "languages": [
+              "fr"
+            ]
+          },
+          {
+            "value": "af_heart",
+            "languages": [
+              "en"
+            ]
+          }
+        ]
+      },
+      {
+        "instructions": false,
+        "engine": "pocket-tts",
+        "model": "synthetic-pocket-fr",
+        "mode": "pocket_clone",
+        "bundle_sha256": "0a3318e2a621f3668fd53beeda700df5992fab95f47111ec5cf7b539ee54aa38",
+        "languages": [
+          "fr"
+        ],
+        "selectors": []
+      }
+    ]
+  },
+  "profiles": [
+    {
+      "config_revision": "config-1",
+      "compatibility": [
+        {
+          "operation": "voice_design",
+          "mode": "qwen_design",
+          "identity": {
+            "engine": "qwen",
+            "model": "Qwen3-TTS-12Hz-1.7B-VoiceDesign",
+            "bundle_sha256": "c9cdba559c10e84ff39673a8acc0c569d15d1c5d3b7ddc81027122788eaf5fd0",
+            "device": "cpu",
+            "precision": "float32"
+          }
+        }
+      ],
+      "id": "cpu-synthetic",
+      "device": "cpu",
+      "topology": "networkless_container",
+      "support": "unqualified",
+      "installation": "absent",
+      "configuration": "valid",
+      "readiness": "not_ready",
+      "verification": "synthetic",
+      "checked_at": "2026-10-16T00:00:00Z",
+      "qualification_receipt": "",
+      "limits": {
+        "expensive_slots": 1,
+        "resident_models": 1,
+        "threads": 2,
+        "queue": 32,
+        "upload_bytes": 16777216,
+        "decoded_ticks": 28800000,
+        "text_chars": 10000,
+        "variants": 4,
+        "disk_bytes": 1073741824,
+        "deadline_seconds": 600,
+        "ram_bytes": 4294967296,
+        "vram_bytes": 0
+      },
+      "next_action": "Inventory host and qualify exact backend/model/precision before advertising support."
+    }
+  ],
+  "authorized_assets": [],
+  "job": {
+    "id": "job-design",
+    "operation": "voice_design",
+    "input_sha256": "6477a6a3b7c5e62e445474ebe58b784311aa0c141bcf8f0d31a80e4e517c5dfa",
+    "principal_id": "principal1",
+    "idempotency_key": "request-design",
+    "state": "running",
+    "generation": 1,
+    "attempts": [
+      {
+        "id": "attempt-design",
+        "generation": 1,
+        "owner_id": "worker1",
+        "staging_id": "stage-design",
+        "reaped": false
+      }
+    ],
+    "artifact_ids": [],
+    "stage": "loading",
+    "deadline": "2026-10-16T00:10:00Z"
+  },
+  "message": {
+    "protocol_version": "1.2.0",
+    "kind": "result",
+    "job_id": "job-design",
+    "attempt_id": "attempt-design",
+    "generation": 1,
+    "input_sha256": "6477a6a3b7c5e62e445474ebe58b784311aa0c141bcf8f0d31a80e4e517c5dfa",
+    "input_asset_ids": [],
+    "staging_id": "stage-design",
+    "owner_id": "worker1",
+    "identity": {
+      "requested": {
+        "engine": "qwen",
+        "model": "Qwen3-TTS-12Hz-1.7B-VoiceDesign",
+        "bundle_sha256": "c9cdba559c10e84ff39673a8acc0c569d15d1c5d3b7ddc81027122788eaf5fd0",
+        "device": "cpu",
+        "precision": "float32"
+      },
+      "effective": {
+        "engine": "qwen",
+        "model": "Qwen3-TTS-12Hz-1.7B-VoiceDesign",
+        "bundle_sha256": "c9cdba559c10e84ff39673a8acc0c569d15d1c5d3b7ddc81027122788eaf5fd0",
+        "device": "cpu",
+        "precision": "float32"
+      },
+      "fallback": "forbid",
+      "reason": "",
+      "profile_id": "cpu-synthetic"
+    },
+    "deadline": "2026-10-16T00:10:00Z",
+    "stage": "completed",
+    "result_asset_ids": [
+      "output-design"
+    ],
+    "plan": {
+      "schema_version": "1.2.0",
+      "operation": "voice_design",
+      "request": {
+        "description": "Warm precise voice.",
+        "reference_text": "Exact design audition.",
+        "identity": {
+          "engine": "qwen",
+          "model": "Qwen3-TTS-12Hz-1.7B-VoiceDesign",
+          "bundle_sha256": "c9cdba559c10e84ff39673a8acc0c569d15d1c5d3b7ddc81027122788eaf5fd0",
+          "device": "cpu",
+          "precision": "float32"
+        }
+      },
+      "project": null,
+      "voice_versions": [],
+      "assets": [],
+      "resolved": {
+        "reuse_identity": {
+          "engine": "qwen",
+          "model": "Qwen3-TTS-12Hz-0.6B-Base",
+          "bundle_sha256": "63e1fd8333a5024d06a7c82aaa3ce7790caec03c0684393d01d77a22acd535f0",
+          "device": "cpu",
+          "precision": "float32"
+        },
+        "kind": "design",
+        "identity": {
+          "requested": {
+            "engine": "qwen",
+            "model": "Qwen3-TTS-12Hz-1.7B-VoiceDesign",
+            "bundle_sha256": "c9cdba559c10e84ff39673a8acc0c569d15d1c5d3b7ddc81027122788eaf5fd0",
+            "device": "cpu",
+            "precision": "float32"
+          },
+          "effective": {
+            "engine": "qwen",
+            "model": "Qwen3-TTS-12Hz-1.7B-VoiceDesign",
+            "bundle_sha256": "c9cdba559c10e84ff39673a8acc0c569d15d1c5d3b7ddc81027122788eaf5fd0",
+            "device": "cpu",
+            "precision": "float32"
+          },
+          "fallback": "forbid",
+          "reason": "",
+          "profile_id": "cpu-synthetic"
+        },
+        "profile": {
+          "id": "cpu-synthetic",
+          "config_revision": "config-1",
+          "device": "cpu",
+          "topology": "networkless_container",
+          "limits": {
+            "expensive_slots": 1,
+            "resident_models": 1,
+            "threads": 2,
+            "queue": 32,
+            "upload_bytes": 16777216,
+            "decoded_ticks": 28800000,
+            "text_chars": 10000,
+            "variants": 4,
+            "disk_bytes": 1073741824,
+            "deadline_seconds": 600,
+            "ram_bytes": 4294967296,
+            "vram_bytes": 0
+          },
+          "compatibility": [
+            {
+              "operation": "voice_design",
+              "mode": "qwen_design",
+              "identity": {
+                "engine": "qwen",
+                "model": "Qwen3-TTS-12Hz-1.7B-VoiceDesign",
+                "bundle_sha256": "c9cdba559c10e84ff39673a8acc0c569d15d1c5d3b7ddc81027122788eaf5fd0",
+                "device": "cpu",
+                "precision": "float32"
+              }
+            }
+          ]
+        },
+        "operator_fallback": "forbid",
+        "settings": {
+          "kind": "qwen_design",
+          "language": "French",
+          "seed": 1,
+          "temperature": 0.9,
+          "top_p": 1,
+          "top_k": 50,
+          "repetition_penalty": 1.05,
+          "max_new_tokens": 2048,
+          "instruction": "Warm precise voice."
+        },
+        "settings_sha256": "3e6f313b9a0cc192978a49c1ceec11f53085e7de6034bb081072371bef605346"
+      }
+    }
+  },
+  "artifact": {
+    "id": "artifact-design",
+    "job_id": "job-design",
+    "generation": 1,
+    "asset_ids": [
+      "output-design"
+    ],
+    "input_sha256": "6477a6a3b7c5e62e445474ebe58b784311aa0c141bcf8f0d31a80e4e517c5dfa",
+    "project_revision": 0,
+    "manifest_sha256": "c4d8941b17937071f632ce13b602b06f3f43a41c2a9b7b7d132f71119136603c",
+    "identity": {
+      "requested": {
+        "engine": "qwen",
+        "model": "Qwen3-TTS-12Hz-1.7B-VoiceDesign",
+        "bundle_sha256": "c9cdba559c10e84ff39673a8acc0c569d15d1c5d3b7ddc81027122788eaf5fd0",
+        "device": "cpu",
+        "precision": "float32"
+      },
+      "effective": {
+        "engine": "qwen",
+        "model": "Qwen3-TTS-12Hz-1.7B-VoiceDesign",
+        "bundle_sha256": "c9cdba559c10e84ff39673a8acc0c569d15d1c5d3b7ddc81027122788eaf5fd0",
+        "device": "cpu",
+        "precision": "float32"
+      },
+      "fallback": "forbid",
+      "reason": "",
+      "profile_id": "cpu-synthetic"
+    },
+    "attempt_id": "attempt-design",
+    "owner_id": "worker1",
+    "staging_id": "stage-design"
+  },
+  "verified_manifest": {
+    "operation": "voice_design",
+    "job_id": "job-design",
+    "attempt_id": "attempt-design",
+    "generation": 1,
+    "owner_id": "worker1",
+    "staging_id": "stage-design",
+    "input_sha256": "6477a6a3b7c5e62e445474ebe58b784311aa0c141bcf8f0d31a80e4e517c5dfa",
+    "artifact_id": "artifact-design",
+    "outputs": [
+      {
+        "media_format": "wav",
+        "id": "output-design",
+        "sha256": "6de1d8cc4c678241ac609b81e8728a89850ce72a9cf736c4214a7ea9dc0943df",
+        "frames": 4800,
+        "sample_rate": 48000,
+        "channels": 1,
+        "provenance": {
+          "kind": "synthetic",
+          "source_sha256": "6de1d8cc4c678241ac609b81e8728a89850ce72a9cf736c4214a7ea9dc0943df",
+          "source_id": "impulse",
+          "missing_fields": []
+        }
+      }
+    ],
+    "candidates": [
+      {
+        "schema_version": "1.2.0",
+        "id": "candidate-design",
+        "job_id": "job-design",
+        "version": {
+          "id": "prospective-design",
+          "voice_id": "voice.0",
+          "origin": "design",
+          "reference_asset_ids": [
+            "output-design"
+          ],
+          "reference_text": "Exact design audition.",
+          "identity": {
+            "engine": "qwen",
+            "model": "Qwen3-TTS-12Hz-0.6B-Base",
+            "bundle_sha256": "63e1fd8333a5024d06a7c82aaa3ce7790caec03c0684393d01d77a22acd535f0",
+            "device": "cpu",
+            "precision": "float32"
+          },
+          "settings_sha256": "16f6e4895b03418a85b032b485ab57aa74a6e9157949172e536c18801b512d44",
+          "provenance": {
+            "kind": "synthetic",
+            "source_sha256": "6de1d8cc4c678241ac609b81e8728a89850ce72a9cf736c4214a7ea9dc0943df",
+            "source_id": "impulse",
+            "missing_fields": []
+          },
+          "configuration": {
+            "mode": "qwen_clone",
+            "reference_asset_id": "output-design",
+            "reference_text": "Exact design audition.",
+            "conditioning": "icl"
+          },
+          "design_lineage": {
+            "description": "Warm precise voice.",
+            "source_candidate_id": "candidate-design",
+            "generation_identity": {
+              "engine": "qwen",
+              "model": "Qwen3-TTS-12Hz-1.7B-VoiceDesign",
+              "bundle_sha256": "c9cdba559c10e84ff39673a8acc0c569d15d1c5d3b7ddc81027122788eaf5fd0",
+              "device": "cpu",
+              "precision": "float32"
+            }
+          }
+        },
+        "audition_asset_id": "output-design"
+      }
+    ]
+  },
+  "present_hashes": {
+    "output-design": "6de1d8cc4c678241ac609b81e8728a89850ce72a9cf736c4214a7ea9dc0943df"
+  },
+  "exchanges": [
+    {
+      "operation": "voice_design",
+      "request": {
+        "description": "Warm precise voice.",
+        "reference_text": "Exact design audition.",
+        "identity": {
+          "engine": "qwen",
+          "model": "Qwen3-TTS-12Hz-1.7B-VoiceDesign",
+          "bundle_sha256": "c9cdba559c10e84ff39673a8acc0c569d15d1c5d3b7ddc81027122788eaf5fd0",
+          "device": "cpu",
+          "precision": "float32"
+        }
+      },
+      "response": {
+        "job_id": "job-design",
+        "input_sha256": "6477a6a3b7c5e62e445474ebe58b784311aa0c141bcf8f0d31a80e4e517c5dfa",
+        "state": "queued",
+        "status_url": "/v1/jobs/job-design"
+      }
+    },
+    {
+      "operation": "job_get",
+      "request": {
+        "job_id": "job-design"
+      },
+      "response": {
+        "id": "job-design",
+        "operation": "voice_design",
+        "input_sha256": "6477a6a3b7c5e62e445474ebe58b784311aa0c141bcf8f0d31a80e4e517c5dfa",
+        "principal_id": "principal1",
+        "idempotency_key": "request-design",
+        "state": "succeeded",
+        "generation": 1,
+        "attempts": [
+          {
+            "id": "attempt-design",
+            "generation": 1,
+            "owner_id": "worker1",
+            "staging_id": "stage-design",
+            "reaped": false
+          }
+        ],
+        "artifact_ids": [
+          "artifact-design"
+        ],
+        "stage": "completed",
+        "deadline": "2026-10-16T00:10:00Z"
+      }
+    },
+    {
+      "operation": "artifact_get",
+      "request": {
+        "artifact_id": "artifact-design"
+      },
+      "response": {
+        "id": "artifact-design",
+        "job_id": "job-design",
+        "generation": 1,
+        "asset_ids": [
+          "output-design"
+        ],
+        "input_sha256": "6477a6a3b7c5e62e445474ebe58b784311aa0c141bcf8f0d31a80e4e517c5dfa",
+        "project_revision": 0,
+        "manifest_sha256": "c4d8941b17937071f632ce13b602b06f3f43a41c2a9b7b7d132f71119136603c",
+        "identity": {
+          "requested": {
+            "engine": "qwen",
+            "model": "Qwen3-TTS-12Hz-1.7B-VoiceDesign",
+            "bundle_sha256": "c9cdba559c10e84ff39673a8acc0c569d15d1c5d3b7ddc81027122788eaf5fd0",
+            "device": "cpu",
+            "precision": "float32"
+          },
+          "effective": {
+            "engine": "qwen",
+            "model": "Qwen3-TTS-12Hz-1.7B-VoiceDesign",
+            "bundle_sha256": "c9cdba559c10e84ff39673a8acc0c569d15d1c5d3b7ddc81027122788eaf5fd0",
+            "device": "cpu",
+            "precision": "float32"
+          },
+          "fallback": "forbid",
+          "reason": "",
+          "profile_id": "cpu-synthetic"
+        },
+        "attempt_id": "attempt-design",
+        "owner_id": "worker1",
+        "staging_id": "stage-design"
+      }
+    },
+    {
+      "operation": "asset_get",
+      "request": {
+        "asset_id": "output-design"
+      },
+      "response": {
+        "media_format": "wav",
+        "id": "output-design",
+        "sha256": "6de1d8cc4c678241ac609b81e8728a89850ce72a9cf736c4214a7ea9dc0943df",
+        "frames": 4800,
+        "sample_rate": 48000,
+        "channels": 1,
+        "provenance": {
+          "kind": "synthetic",
+          "source_sha256": "6de1d8cc4c678241ac609b81e8728a89850ce72a9cf736c4214a7ea9dc0943df",
+          "source_id": "impulse",
+          "missing_fields": []
+        }
+      }
+    },
+    {
+      "operation": "voice_results",
+      "request": {
+        "job_id": "job-design"
+      },
+      "response": {
+        "schema_version": "1.2.0",
+        "job_id": "job-design",
+        "candidates": [
+          {
+            "schema_version": "1.2.0",
+            "id": "candidate-design",
+            "job_id": "job-design",
+            "version": {
+              "id": "prospective-design",
+              "voice_id": "voice.0",
+              "origin": "design",
+              "reference_asset_ids": [
+                "output-design"
+              ],
+              "reference_text": "Exact design audition.",
+              "identity": {
+                "engine": "qwen",
+                "model": "Qwen3-TTS-12Hz-0.6B-Base",
+                "bundle_sha256": "63e1fd8333a5024d06a7c82aaa3ce7790caec03c0684393d01d77a22acd535f0",
+                "device": "cpu",
+                "precision": "float32"
+              },
+              "settings_sha256": "16f6e4895b03418a85b032b485ab57aa74a6e9157949172e536c18801b512d44",
+              "provenance": {
+                "kind": "synthetic",
+                "source_sha256": "6de1d8cc4c678241ac609b81e8728a89850ce72a9cf736c4214a7ea9dc0943df",
+                "source_id": "impulse",
+                "missing_fields": []
+              },
+              "configuration": {
+                "mode": "qwen_clone",
+                "reference_asset_id": "output-design",
+                "reference_text": "Exact design audition.",
+                "conditioning": "icl"
+              },
+              "design_lineage": {
+                "description": "Warm precise voice.",
+                "source_candidate_id": "candidate-design",
+                "generation_identity": {
+                  "engine": "qwen",
+                  "model": "Qwen3-TTS-12Hz-1.7B-VoiceDesign",
+                  "bundle_sha256": "c9cdba559c10e84ff39673a8acc0c569d15d1c5d3b7ddc81027122788eaf5fd0",
+                  "device": "cpu",
+                  "precision": "float32"
+                }
+              }
+            },
+            "audition_asset_id": "output-design"
+          }
+        ]
+      }
+    },
+    {
+      "operation": "voice_get",
+      "request": {
+        "voice_id": "voice.0"
+      },
+      "response": {
+        "id": "voice.0",
+        "aliases": [
+          "legacy_0"
+        ],
+        "version_ids": [
+          "vv0"
+        ],
+        "archived": false,
+        "revision": 1
+      }
+    },
+    {
+      "operation": "voice_save",
+      "request": {
+        "candidate_id": "candidate-design",
+        "voice_id": "voice.0",
+        "expected_revision": 1
+      },
+      "response": {
+        "job_id": "save-design",
+        "input_sha256": "bfa41ed1535d89d5fffdaab1327d79417cbe990a01c1419207b080f0ee43d853",
+        "state": "queued",
+        "status_url": "/v1/jobs/save-design"
+      }
+    },
+    {
+      "operation": "voice_get",
+      "request": {
+        "voice_id": "voice.0"
+      },
+      "response": {
+        "id": "voice.0",
+        "aliases": [
+          "legacy_0"
+        ],
+        "version_ids": [
+          "vv0",
+          "saved-design"
+        ],
+        "archived": false,
+        "revision": 2
+      }
+    },
+    {
+      "operation": "voice_version_get",
+      "request": {
+        "voice_version_id": "saved-design"
+      },
+      "response": {
+        "id": "saved-design",
+        "voice_id": "voice.0",
+        "origin": "design",
+        "reference_asset_ids": [
+          "output-design"
+        ],
+        "reference_text": "Exact design audition.",
+        "identity": {
+          "engine": "qwen",
+          "model": "Qwen3-TTS-12Hz-0.6B-Base",
+          "bundle_sha256": "63e1fd8333a5024d06a7c82aaa3ce7790caec03c0684393d01d77a22acd535f0",
+          "device": "cpu",
+          "precision": "float32"
+        },
+        "settings_sha256": "16f6e4895b03418a85b032b485ab57aa74a6e9157949172e536c18801b512d44",
+        "provenance": {
+          "kind": "synthetic",
+          "source_sha256": "6de1d8cc4c678241ac609b81e8728a89850ce72a9cf736c4214a7ea9dc0943df",
+          "source_id": "impulse",
+          "missing_fields": []
+        },
+        "configuration": {
+          "mode": "qwen_clone",
+          "reference_asset_id": "output-design",
+          "reference_text": "Exact design audition.",
+          "conditioning": "icl"
+        },
+        "design_lineage": {
+          "description": "Warm precise voice.",
+          "source_candidate_id": "candidate-design",
+          "generation_identity": {
+            "engine": "qwen",
+            "model": "Qwen3-TTS-12Hz-1.7B-VoiceDesign",
+            "bundle_sha256": "c9cdba559c10e84ff39673a8acc0c569d15d1c5d3b7ddc81027122788eaf5fd0",
+            "device": "cpu",
+            "precision": "float32"
+          }
+        }
+      }
+    }
+  ]
+}

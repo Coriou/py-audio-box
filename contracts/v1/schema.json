@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "urn:py-audio-box:contracts:1.0.0",
-  "title": "Speech workspace contract 1.0.0",
+  "$id": "urn:py-audio-box:contracts:1.2.0",
+  "title": "Speech workspace contract 1.2.0",
   "$defs": {
     "identity": {
       "type": "object",
@@ -144,6 +144,14 @@
         },
         "provenance": {
           "$ref": "#/$defs/provenance"
+        },
+        "media_format": {
+          "enum": [
+            "wav",
+            "flac",
+            "mp3",
+            "other"
+          ]
         }
       },
       "required": [
@@ -152,7 +160,8 @@
         "frames",
         "sample_rate",
         "channels",
-        "provenance"
+        "provenance",
+        "media_format"
       ],
       "additionalProperties": false
     },
@@ -193,6 +202,19 @@
         },
         "provenance": {
           "$ref": "#/$defs/provenance"
+        },
+        "configuration": {
+          "$ref": "#/$defs/voice_configuration"
+        },
+        "design_lineage": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/design_lineage"
+            },
+            {
+              "type": "null"
+            }
+          ]
         }
       },
       "required": [
@@ -203,7 +225,9 @@
         "reference_text",
         "identity",
         "settings_sha256",
-        "provenance"
+        "provenance",
+        "configuration",
+        "design_lineage"
       ],
       "additionalProperties": false
     },
@@ -487,7 +511,7 @@
       "type": "object",
       "properties": {
         "schema_version": {
-          "const": "1.0.0"
+          "const": "1.2.0"
         },
         "id": {
           "type": "string",
@@ -709,7 +733,7 @@
           "pattern": "^[a-f0-9]{64}$"
         },
         "identity": {
-          "$ref": "#/$defs/resolution"
+          "$ref": "#/$defs/execution_resolution"
         },
         "attempt_id": {
           "type": "string",
@@ -964,6 +988,16 @@
         },
         "next_action": {
           "type": "string"
+        },
+        "config_revision": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+        },
+        "compatibility": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/compatibility"
+          }
         }
       },
       "required": [
@@ -978,7 +1012,9 @@
         "checked_at",
         "qualification_receipt",
         "limits",
-        "next_action"
+        "next_action",
+        "config_revision",
+        "compatibility"
       ],
       "additionalProperties": false
     },
@@ -986,7 +1022,7 @@
       "type": "object",
       "properties": {
         "schema_version": {
-          "const": "1.0.0"
+          "const": "1.2.0"
         },
         "profiles": {
           "type": "array",
@@ -1912,7 +1948,7 @@
       "type": "object",
       "properties": {
         "protocol_version": {
-          "const": "1.1.0"
+          "const": "1.2.0"
         },
         "kind": {
           "enum": [
@@ -1954,7 +1990,7 @@
           "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
         },
         "identity": {
-          "$ref": "#/$defs/resolution"
+          "$ref": "#/$defs/execution_resolution"
         },
         "deadline": {
           "type": "string"
@@ -2184,7 +2220,7 @@
       "type": "object",
       "properties": {
         "schema_version": {
-          "const": "1.1.0"
+          "const": "1.2.0"
         },
         "asset_id": {
           "type": "string",
@@ -2229,7 +2265,7 @@
       "type": "object",
       "properties": {
         "schema_version": {
-          "const": "1.1.0"
+          "const": "1.2.0"
         },
         "id": {
           "type": "string",
@@ -2260,7 +2296,7 @@
       "type": "object",
       "properties": {
         "schema_version": {
-          "const": "1.1.0"
+          "const": "1.2.0"
         },
         "job_id": {
           "type": "string",
@@ -2539,7 +2575,7 @@
       "type": "object",
       "properties": {
         "schema_version": {
-          "const": "1.1.0"
+          "const": "1.2.0"
         },
         "project_id": {
           "type": "string",
@@ -2592,7 +2628,7 @@
           "type": "object",
           "properties": {
             "schema_version": {
-              "const": "1.1.0"
+              "const": "1.2.0"
             },
             "operation": {
               "const": "voice_prepare"
@@ -2601,7 +2637,14 @@
               "$ref": "#/$defs/voice_prepare_request"
             },
             "project": {
-              "$ref": "#/$defs/project"
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/project"
+                },
+                {
+                  "type": "null"
+                }
+              ]
             },
             "voice_versions": {
               "type": "array",
@@ -2615,8 +2658,8 @@
                 "$ref": "#/$defs/asset"
               }
             },
-            "synthesis_settings": {
-              "$ref": "#/$defs/synthesis_settings"
+            "resolved": {
+              "$ref": "#/$defs/resolved_execution"
             }
           },
           "required": [
@@ -2626,7 +2669,7 @@
             "project",
             "voice_versions",
             "assets",
-            "synthesis_settings"
+            "resolved"
           ],
           "additionalProperties": false
         },
@@ -2634,7 +2677,7 @@
           "type": "object",
           "properties": {
             "schema_version": {
-              "const": "1.1.0"
+              "const": "1.2.0"
             },
             "operation": {
               "const": "voice_design"
@@ -2643,7 +2686,14 @@
               "$ref": "#/$defs/voice_design_request"
             },
             "project": {
-              "$ref": "#/$defs/project"
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/project"
+                },
+                {
+                  "type": "null"
+                }
+              ]
             },
             "voice_versions": {
               "type": "array",
@@ -2657,8 +2707,8 @@
                 "$ref": "#/$defs/asset"
               }
             },
-            "synthesis_settings": {
-              "$ref": "#/$defs/synthesis_settings"
+            "resolved": {
+              "$ref": "#/$defs/resolved_execution"
             }
           },
           "required": [
@@ -2668,7 +2718,7 @@
             "project",
             "voice_versions",
             "assets",
-            "synthesis_settings"
+            "resolved"
           ],
           "additionalProperties": false
         },
@@ -2676,7 +2726,7 @@
           "type": "object",
           "properties": {
             "schema_version": {
-              "const": "1.1.0"
+              "const": "1.2.0"
             },
             "operation": {
               "const": "speech_generate"
@@ -2685,7 +2735,14 @@
               "$ref": "#/$defs/speech_generate_request"
             },
             "project": {
-              "$ref": "#/$defs/project"
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/project"
+                },
+                {
+                  "type": "null"
+                }
+              ]
             },
             "voice_versions": {
               "type": "array",
@@ -2699,8 +2756,8 @@
                 "$ref": "#/$defs/asset"
               }
             },
-            "synthesis_settings": {
-              "$ref": "#/$defs/synthesis_settings"
+            "resolved": {
+              "$ref": "#/$defs/resolved_execution"
             }
           },
           "required": [
@@ -2710,7 +2767,7 @@
             "project",
             "voice_versions",
             "assets",
-            "synthesis_settings"
+            "resolved"
           ],
           "additionalProperties": false
         },
@@ -2718,7 +2775,7 @@
           "type": "object",
           "properties": {
             "schema_version": {
-              "const": "1.1.0"
+              "const": "1.2.0"
             },
             "operation": {
               "const": "project_render"
@@ -2727,7 +2784,14 @@
               "$ref": "#/$defs/project_render_request"
             },
             "project": {
-              "$ref": "#/$defs/project"
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/project"
+                },
+                {
+                  "type": "null"
+                }
+              ]
             },
             "voice_versions": {
               "type": "array",
@@ -2741,8 +2805,8 @@
                 "$ref": "#/$defs/asset"
               }
             },
-            "synthesis_settings": {
-              "$ref": "#/$defs/synthesis_settings"
+            "resolved": {
+              "$ref": "#/$defs/resolved_execution"
             }
           },
           "required": [
@@ -2752,61 +2816,894 @@
             "project",
             "voice_versions",
             "assets",
-            "synthesis_settings"
+            "resolved"
           ],
           "additionalProperties": false
         }
       ]
     },
-    "synthesis_settings": {
+    "voice_configuration": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "mode": {
+              "const": "qwen_preset"
+            },
+            "speaker": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "required": [
+            "mode",
+            "speaker"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "mode": {
+              "const": "kokoro_preset"
+            },
+            "preset": {
+              "type": "string",
+              "minLength": 1
+            },
+            "language": {
+              "enum": [
+                "fr",
+                "en"
+              ]
+            }
+          },
+          "required": [
+            "mode",
+            "preset",
+            "language"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "mode": {
+              "const": "qwen_clone"
+            },
+            "reference_asset_id": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+            },
+            "reference_text": {
+              "type": "string"
+            },
+            "conditioning": {
+              "enum": [
+                "icl",
+                "x_vector"
+              ]
+            }
+          },
+          "required": [
+            "mode",
+            "reference_asset_id",
+            "reference_text",
+            "conditioning"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "mode": {
+              "const": "pocket_clone"
+            },
+            "reference_asset_id": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+            },
+            "language": {
+              "enum": [
+                "fr",
+                "en"
+              ]
+            }
+          },
+          "required": [
+            "mode",
+            "reference_asset_id",
+            "language"
+          ],
+          "additionalProperties": false
+        }
+      ]
+    },
+    "design_lineage": {
       "type": "object",
       "properties": {
-        "language": {
+        "description": {
           "type": "string",
-          "maxLength": 64
+          "minLength": 1
         },
-        "seed": {
-          "type": "integer",
-          "minimum": 0,
-          "maximum": 2147483647
+        "source_candidate_id": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
         },
-        "temperature": {
-          "type": "number",
-          "minimum": 0,
-          "maximum": 2
-        },
-        "top_p": {
-          "type": "number",
-          "minimum": 0,
-          "maximum": 1
-        },
-        "top_k": {
-          "type": "integer",
-          "minimum": 0,
-          "maximum": 1000
-        },
-        "repetition_penalty": {
-          "type": "number",
-          "exclusiveMinimum": 0,
-          "maximum": 10
-        },
-        "max_new_tokens": {
-          "type": "integer",
-          "minimum": 1,
-          "maximum": 32768
+        "generation_identity": {
+          "$ref": "#/$defs/identity"
         }
       },
-      "additionalProperties": false,
       "required": [
-        "language",
-        "seed",
-        "temperature",
-        "top_p",
-        "top_k",
-        "repetition_penalty",
-        "max_new_tokens"
+        "description",
+        "source_candidate_id",
+        "generation_identity"
+      ],
+      "additionalProperties": false
+    },
+    "effective_settings": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "const": "qwen_preset"
+            },
+            "language": {
+              "enum": [
+                "Auto",
+                "Chinese",
+                "English",
+                "Japanese",
+                "Korean",
+                "German",
+                "French",
+                "Russian",
+                "Portuguese",
+                "Spanish",
+                "Italian"
+              ]
+            },
+            "seed": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 2147483647
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "temperature": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 2
+            },
+            "top_p": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1
+            },
+            "top_k": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 1000
+            },
+            "repetition_penalty": {
+              "type": "number",
+              "exclusiveMinimum": 0,
+              "maximum": 10
+            },
+            "max_new_tokens": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 32768
+            },
+            "instruction": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          "required": [
+            "kind",
+            "language",
+            "seed",
+            "temperature",
+            "top_p",
+            "top_k",
+            "repetition_penalty",
+            "max_new_tokens",
+            "instruction"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "const": "qwen_clone"
+            },
+            "language": {
+              "enum": [
+                "Auto",
+                "Chinese",
+                "English",
+                "Japanese",
+                "Korean",
+                "German",
+                "French",
+                "Russian",
+                "Portuguese",
+                "Spanish",
+                "Italian"
+              ]
+            },
+            "seed": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 2147483647
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "temperature": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 2
+            },
+            "top_p": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1
+            },
+            "top_k": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 1000
+            },
+            "repetition_penalty": {
+              "type": "number",
+              "exclusiveMinimum": 0,
+              "maximum": 10
+            },
+            "max_new_tokens": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 32768
+            },
+            "instruction": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          "required": [
+            "kind",
+            "language",
+            "seed",
+            "temperature",
+            "top_p",
+            "top_k",
+            "repetition_penalty",
+            "max_new_tokens",
+            "instruction"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "const": "qwen_design"
+            },
+            "language": {
+              "enum": [
+                "Auto",
+                "Chinese",
+                "English",
+                "Japanese",
+                "Korean",
+                "German",
+                "French",
+                "Russian",
+                "Portuguese",
+                "Spanish",
+                "Italian"
+              ]
+            },
+            "seed": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 2147483647
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "temperature": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 2
+            },
+            "top_p": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1
+            },
+            "top_k": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 1000
+            },
+            "repetition_penalty": {
+              "type": "number",
+              "exclusiveMinimum": 0,
+              "maximum": 10
+            },
+            "max_new_tokens": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 32768
+            },
+            "instruction": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          "required": [
+            "kind",
+            "language",
+            "seed",
+            "temperature",
+            "top_p",
+            "top_k",
+            "repetition_penalty",
+            "max_new_tokens",
+            "instruction"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "const": "kokoro_preset"
+            },
+            "language": {
+              "enum": [
+                "fr",
+                "en"
+              ]
+            }
+          },
+          "required": [
+            "kind",
+            "language"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "const": "pocket_clone"
+            },
+            "language": {
+              "enum": [
+                "fr",
+                "en"
+              ]
+            },
+            "seed": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 2147483647
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          "required": [
+            "kind",
+            "language",
+            "seed"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "const": "prepare"
+            },
+            "conditioning": {
+              "enum": [
+                "icl",
+                "x_vector",
+                "pocket"
+              ]
+            },
+            "output_format": {
+              "const": "wav_pcm16"
+            }
+          },
+          "required": [
+            "kind",
+            "conditioning",
+            "output_format"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "const": "render"
+            },
+            "policy": {
+              "$ref": "#/$defs/render_policy"
+            }
+          },
+          "required": [
+            "kind",
+            "policy"
+          ],
+          "additionalProperties": false
+        }
       ]
+    },
+    "execution_identity": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/identity"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "engine": {
+              "const": "pcm-render"
+            },
+            "model": {
+              "const": "pcm24-v1"
+            },
+            "bundle_sha256": {
+              "type": "string",
+              "pattern": "^[a-f0-9]{64}$"
+            },
+            "device": {
+              "enum": [
+                "cpu",
+                "cuda",
+                "metal",
+                "auto"
+              ]
+            },
+            "precision": {
+              "enum": [
+                "float32",
+                "auto"
+              ]
+            }
+          },
+          "required": [
+            "engine",
+            "model",
+            "bundle_sha256",
+            "device",
+            "precision"
+          ],
+          "additionalProperties": false
+        }
+      ]
+    },
+    "execution_resolution": {
+      "type": "object",
+      "properties": {
+        "requested": {
+          "$ref": "#/$defs/execution_identity"
+        },
+        "effective": {
+          "$ref": "#/$defs/execution_identity"
+        },
+        "fallback": {
+          "enum": [
+            "forbid",
+            "allow_cpu"
+          ]
+        },
+        "reason": {
+          "type": "string"
+        },
+        "profile_id": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+        }
+      },
+      "required": [
+        "requested",
+        "effective",
+        "fallback",
+        "reason",
+        "profile_id"
+      ],
+      "additionalProperties": false
+    },
+    "compatibility": {
+      "type": "object",
+      "properties": {
+        "operation": {
+          "enum": [
+            "voice_prepare",
+            "voice_design",
+            "speech_generate",
+            "project_render"
+          ]
+        },
+        "mode": {
+          "enum": [
+            "qwen_preset",
+            "qwen_clone",
+            "kokoro_preset",
+            "pocket_clone",
+            "qwen_design",
+            "prepare",
+            "render"
+          ]
+        },
+        "identity": {
+          "$ref": "#/$defs/execution_identity"
+        }
+      },
+      "required": [
+        "operation",
+        "mode",
+        "identity"
+      ],
+      "additionalProperties": false
+    },
+    "profile_snapshot": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+        },
+        "device": {
+          "enum": [
+            "cpu",
+            "cuda",
+            "metal"
+          ]
+        },
+        "topology": {
+          "enum": [
+            "networkless_container",
+            "packaged_native"
+          ]
+        },
+        "limits": {
+          "type": "object",
+          "properties": {
+            "expensive_slots": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 64
+            },
+            "resident_models": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 64
+            },
+            "threads": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 1024
+            },
+            "queue": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 10000
+            },
+            "upload_bytes": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            },
+            "decoded_ticks": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            },
+            "text_chars": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            },
+            "variants": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100
+            },
+            "disk_bytes": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            },
+            "deadline_seconds": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 86400
+            },
+            "ram_bytes": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            },
+            "vram_bytes": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            }
+          },
+          "required": [
+            "expensive_slots",
+            "resident_models",
+            "threads",
+            "queue",
+            "upload_bytes",
+            "decoded_ticks",
+            "text_chars",
+            "variants",
+            "disk_bytes",
+            "deadline_seconds",
+            "ram_bytes",
+            "vram_bytes"
+          ],
+          "additionalProperties": false
+        },
+        "config_revision": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+        },
+        "compatibility": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/compatibility"
+          }
+        }
+      },
+      "required": [
+        "id",
+        "device",
+        "topology",
+        "limits",
+        "config_revision",
+        "compatibility"
+      ],
+      "additionalProperties": false
+    },
+    "resolved_execution": {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "enum": [
+            "speech",
+            "prepare",
+            "design",
+            "render"
+          ]
+        },
+        "identity": {
+          "$ref": "#/$defs/execution_resolution"
+        },
+        "profile": {
+          "$ref": "#/$defs/profile_snapshot"
+        },
+        "operator_fallback": {
+          "enum": [
+            "forbid",
+            "allow_cpu"
+          ]
+        },
+        "settings": {
+          "$ref": "#/$defs/effective_settings"
+        },
+        "settings_sha256": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "reuse_identity": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/identity"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "kind",
+        "identity",
+        "profile",
+        "operator_fallback",
+        "settings",
+        "settings_sha256",
+        "reuse_identity"
+      ],
+      "additionalProperties": false
+    },
+    "result_manifest": {
+      "type": "object",
+      "properties": {
+        "operation": {
+          "enum": [
+            "voice_prepare",
+            "voice_design",
+            "speech_generate",
+            "project_render"
+          ]
+        },
+        "job_id": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+        },
+        "attempt_id": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+        },
+        "generation": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "owner_id": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+        },
+        "staging_id": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+        },
+        "input_sha256": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "artifact_id": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+        },
+        "outputs": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/asset"
+          }
+        },
+        "candidates": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/voice_candidate"
+          }
+        }
+      },
+      "required": [
+        "operation",
+        "job_id",
+        "attempt_id",
+        "generation",
+        "owner_id",
+        "staging_id",
+        "input_sha256",
+        "artifact_id",
+        "outputs",
+        "candidates"
+      ],
+      "additionalProperties": false
+    },
+    "bundle_catalogue_entry": {
+      "type": "object",
+      "properties": {
+        "engine": {
+          "enum": [
+            "qwen",
+            "kokoro",
+            "pocket-tts"
+          ]
+        },
+        "model": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+        },
+        "bundle_sha256": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "mode": {
+          "enum": [
+            "qwen_preset",
+            "qwen_clone",
+            "kokoro_preset",
+            "pocket_clone",
+            "qwen_design"
+          ]
+        },
+        "languages": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "selectors": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "value": {
+                "type": "string",
+                "minLength": 1
+              },
+              "languages": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              }
+            },
+            "required": [
+              "value",
+              "languages"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "instructions": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "engine",
+        "model",
+        "bundle_sha256",
+        "mode",
+        "languages",
+        "selectors",
+        "instructions"
+      ],
+      "additionalProperties": false
     }
   },
-  "$comment": "Contract pack revision 1.1.0; persisted project schema remains 1.0.0."
+  "$comment": "Contract pack, fixtures and worker protocol 1.2.0. Unintegrated revision; no deployed migration obligation."
 }
