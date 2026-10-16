@@ -344,3 +344,9 @@ Record failures and missing evidence; do not replace them with a successful late
 - [IndependentR3report](reviews/P1A2-r3-sol.md): boundedA2GO exact`6723528`;F1/F1b/F2closed,preserved.39focused and279pass18skipfullfinalsuite independentlyconfirmed; E1only C2pending.
 - RootintegratedsixA2commits oldestfirst ending`1602331`; exactsource diffvsreviewedcandidateempty. Root39focusedtests passed8.63s,79deselected,exit0; existingvenv/localE1, noDockerpreservationclaim. NoDocker/globalinventorypreservationclaim.
 - NextSol-low request`pab-phase1a-p1b1-implementation-r1-20261022`: explicitnewsyntheticinstallationenrollment + offlineinspect/plan READONLYrecovery, applyunavailableuntilB2. Noreset/cleanup/activation.
+
+## B1 allowlist dependency amendment
+
+- InitialB1task terminalwithoutimplementation/tests/changes: requestedexplicit`service/reconciliation.py`adapter fornewB1tables (A2rejectsunknownschema).
+- Orchestrator APPROVES narrowamendment: exactcolumnvalidation,boundedread/fingerprint andtypedreference retention forB1installation/enrollment/planrecords only. No integrityepoch/authority/cleanup/applychanges. Necessaryauthorizedintegrationchoice, no userapprovalneeded.
+- Freshisolatedrequest`pab-phase1a-p1b1-implementation-r1b-20261022` repeatsfullbrief+amendment; priorcleanworktreepreserved. NoB1candidate/GOyet.
