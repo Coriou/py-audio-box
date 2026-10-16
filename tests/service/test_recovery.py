@@ -1983,3 +1983,31 @@ def test_b22c_uncertified_core_revalidates_owned_restart_evidence(installation,d
     for _ in range(2):
         with pytest.raises((ValueError,OSError)):recovery._pending_through_core(roots,scope,intent,observation,now=1000)
         assert not certificate.exists()
+
+
+@pytest.mark.parametrize('change', ['unchanged', 'context-text', 'context-bundle', 'job-input', 'job-owner', 'job-generation', 'row-principal'])
+def test_b22c_completed_resolution_current_joins_two_startups(installation, change):
+    from contextlib import closing
+    roots, scope, _, _ = installation
+    intent, observation, jid = core_fixture(installation, 'running')
+    recovery._pending_through_core(roots, scope, intent, observation, now=102)
+    root = roots['control'] / 'core'
+    with closing(sqlite3.connect(root / 'core.sqlite')) as db, db:
+        original = db.execute('SELECT acked,receipt,outcome FROM dispatches').fetchall()
+        job, context = map(json.loads, db.execute('SELECT job,context FROM jobs WHERE id=?', (jid,)).fetchone())
+        if change == 'context-text': context['plan']['request']['text'] = 'changed after recovery'
+        elif change == 'context-bundle': context['bundles'] = []
+        elif change == 'job-input': job['input_sha256'] = 'f' * 64
+        elif change == 'job-owner': job['attempts'][-1]['owner_id'] = 'f' * 32
+        elif change == 'job-generation': job['generation'] += 1
+        elif change == 'row-principal': db.execute("UPDATE jobs SET principal='changed' WHERE id=?", (jid,))
+        db.execute('UPDATE jobs SET job=?,context=? WHERE id=?', (encode(job), encode(context), jid))
+    results = []
+    for _ in range(2):
+        core = Core(root)
+        try:
+            results.append(Reconciliation(core, roots['staging']).reconcile_startup())
+            assert core.db.execute('SELECT acked,receipt,outcome FROM dispatches').fetchall() == original
+        finally: core.close()
+    assert all(result['complete'] for result in results), results
+    assert all(result['blocked'] == (change != 'unchanged') for result in results), results

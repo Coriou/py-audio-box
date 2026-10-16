@@ -297,7 +297,7 @@ class Reconciliation:
         dispatches = data.get('dispatches', [])
         for r in dispatches:
             if r['acked']: continue
-            reason = None
+            dispatch_reasons = set()
             try:
                 a = Authority(*json.loads(r['authority']))
                 job = jobs[r['job_id']]
@@ -305,44 +305,54 @@ class Reconciliation:
                     a.job['attempts'][-1] != {**job['attempts'][-1], 'reaped': a.job['attempts'][-1]['reaped']} or
                     a.job['generation'] != job['generation'] or a.context != contexts[job['id']] or
                     a.job['deadline'] != job['deadline']):
-                    reason = 'dispatch_owner_mismatch'
-                if r['runtime'] is None: reason = 'unbound_dispatch'
+                    dispatch_reasons.add('dispatch_owner_mismatch')
+                if r['runtime'] is None: dispatch_reasons.add('unbound_dispatch')
                 reservation = reservations.get(job['id'])
                 if reservation:
                     demand = json.loads(reservation['demand'])
                     frozen_configuration = hashlib.sha256(encode(a.context['plan']['resolved']['identity']['effective']).encode()).hexdigest()
                     if (reservation['category'] != 'inference' or demand['configuration'] != frozen_configuration or
                         demand['disk_bytes'] < demand['attempt_disk_bytes'] * len(job['attempts'])):
-                        reason = 'reservation_binding_mismatch'
+                        dispatch_reasons.add('reservation_binding_mismatch')
                 if not reservation or reservation['state'] not in ('executing', 'retained'):
-                    reason = 'missing_or_invalid_reservation'
+                    dispatch_reasons.add('missing_or_invalid_reservation')
                 if reservation and ((reservation['state'] == 'retained' and not r['outcome']) or (reservation['state'] == 'executing' and r['outcome'])):
-                    reason = 'reservation_outcome_mismatch'
+                    dispatch_reasons.add('reservation_outcome_mismatch')
                 if r['receipt']:
                     receipt = json.loads(r['receipt'])
                     if (receipt.get('runtime_id') != r['runtime'] or receipt.get('binding') != a.binding or
                         receipt.get('original_deadline') != a.job['deadline'] or receipt.get('reaped') is not True or
                         receipt.get('reap_method') != 'pid1-waitpid-echild'):
-                        reason = 'receipt_mismatch'
+                        dispatch_reasons.add('receipt_mismatch')
                 elif r['outcome'] or job['state'] in ('succeeded','failed','cancelled'):
-                    reason = 'terminal_receipt_missing'
+                    dispatch_reasons.add('terminal_receipt_missing')
                 publication = next((p for p in data.get('publications', []) if p['job_id'] == job['id']), None)
                 if publication:
                     artifact = json.loads(publication['artifact'])
                     for key in ('attempt_id','owner_id','staging_id','generation'):
                         expected = a.job['generation'] if key == 'generation' else a.job['attempts'][-1]['id' if key == 'attempt_id' else key]
-                        if artifact[key] != expected: reason = 'publication_owner_mismatch'
+                        if artifact[key] != expected: dispatch_reasons.add('publication_owner_mismatch')
             except (ValueError, ValidationError, KeyError, IndexError, TypeError, RecursionError):
-                reason = 'invalid_dispatch_identity'
+                dispatch_reasons.add('invalid_dispatch_identity')
             resolution=resolved.get(r['seq'])
-            if resolution and reason in ('unbound_dispatch','reservation_outcome_mismatch','terminal_receipt_missing'):
-                accepted=next(v for v in b2['p1_recoveries'] if v['id']==resolution['recovery_id'])
-                expected=accepted['expected'][3]['output']['rows']
-                job_row=next(v for v in expected['jobs'] if v[1]==r['job_id'])
-                reservation_row=next(v for v in expected['resource_reservations'] if v[0]==r['job_id'])
-                if (encode(job)==job_row[6] and reservation==dict(zip(COLUMNS['resource_reservations'].split(),reservation_row))):reason=None
-            if reason:
-                self.reasons.add(reason)
+            # Consume old mismatches only after independently checking all
+            # current joins. Allowed reasons cannot erase a new strict defect.
+            permitted = {'unbound_dispatch', 'reservation_outcome_mismatch', 'terminal_receipt_missing'}
+            if resolution:
+                accepted = next(v for v in b2['p1_recoveries'] if v['id'] == resolution['recovery_id'])
+                expected = accepted['expected'][3]['output']['rows']
+                job_row = next(v for v in expected['jobs'] if v[1] == r['job_id'])
+                reservation_row = next(v for v in expected['resource_reservations'] if v[0] == r['job_id'])
+                current_job_row = next(v for v in data['jobs'] if v['id'] == r['job_id'])
+                if (current_job_row != dict(zip(COLUMNS['jobs'].split(), job_row)) or
+                    reservation != dict(zip(COLUMNS['resource_reservations'].split(), reservation_row))):
+                    dispatch_reasons.add('recovered_job_reservation_mismatch')
+                if not dispatch_reasons - permitted:
+                    dispatch_reasons.difference_update(permitted)
+            if dispatch_reasons:
+                self.reasons.update(dispatch_reasons)
+                # Retain one stable object; summary retains every reason.
+                reason = sorted(dispatch_reasons - permitted or dispatch_reasons)[0]
                 self._row('dispatch', str(r['seq']), 'unresolved_owner_receipt_reservation', reason, owner=job_owner(r['job_id']))
         if 'resource_reservations' in data:
             for job_id in jobs.keys() - reservations.keys():
