@@ -470,13 +470,14 @@ def b2_plan(installation):
     return observation,result
 
 
-def b2_intent(installation, *, complete=False,recovery_id='9'*32,archive_id='8'*32,prepare_only=False):
+def b2_intent(installation, *, complete=False,recovery_id='9'*32,archive_id='8'*32,prepare_only=False,diagnostic_decisions=None):
     """Test-only evidence construction; no production transition/apply writer."""
     import hashlib
     roots,scope,_,_=installation
     observation,planned=b2_plan(installation);p=planned['plan'];root=roots['control']/'core'
     proof=dict(kind='E1-mock',observation=observation,prior_epoch=p['prior_epoch'],old_lane=p['old_lane'])
     p['proof_digest']=digest(proof)
+    if diagnostic_decisions is not None:p['diagnostic_decisions']=diagnostic_decisions
     with closing(sqlite3.connect(root/'core.sqlite')) as db,db:
         db.execute('UPDATE p1_abandon_plans SET record=?,digest=? WHERE id=?',(encode(p),digest(p),p['id']))
     with recovery.offline(roots) as (checked,db):
@@ -527,6 +528,12 @@ def b2_intent(installation, *, complete=False,recovery_id='9'*32,archive_id='8'*
             for expected in r['expected'][:4]:
                 step=dict(recovery_id=r['id'],**expected,lane=r['new_lane'],epoch=r['new_epoch'])
                 db.execute('INSERT INTO p1_recovery_steps VALUES(?,?,?,?)',(r['id'],step['step'],encode(step),digest(step)))
+    if complete:
+        with closing(sqlite3.connect(root/'core.sqlite')) as db,db:
+            for table,records in recovery._resolution_outputs(r).items():
+                for record in records:
+                    key=record.get('dispatch_seq',record.get('job_id',record.get('object_id')))
+                    db.execute('INSERT INTO '+table+' VALUES(?,?,?,?)',(key,r['id'],encode(record),digest(record)))
     for name,kind in recovery.archive_names(r).items():
         if kind=='snapshot':continue
         value=recovery.archive_manifest(r) if kind=='manifest' else recovery._certificate(r,step) if complete else None
@@ -679,7 +686,7 @@ def test_b2_retirement_precedes_both_publication_bodies(installation,monkeypatch
         job=json.loads(db.execute('SELECT job FROM jobs WHERE id=?',(job_id,)).fetchone()[0])
         value=dict(job_id=job_id,recovery_id=r['id'],attempt_id=job['attempts'][-1]['id'],binding=digest(json.loads(work[1])),
             publication_digest=digest(publication),work_digest=digest(work),decision='retired')
-        db.execute('INSERT INTO p1_retired_publications VALUES(?,?,?,?)',(job_id,r['id'],encode(value),digest(value)))
+        db.execute('INSERT OR REPLACE INTO p1_retired_publications VALUES(?,?,?,?)',(job_id,r['id'],encode(value),digest(value)))
     before=logical(roots)
     files={p.name:p.read_bytes() for p in (roots['control']/'core'/'assets').iterdir()}
     core=Core(roots['control']/'core',historical_local=True)
@@ -1150,12 +1157,15 @@ def test_b22_prefix_unaccepted_expiry_and_locks(installation):
     assert not (roots['receipts']/'p1-b2-required.json').exists()
 
 
-@pytest.mark.parametrize('journal_tranche',[False,True])
+@pytest.mark.parametrize('journal_tranche',[False,True,'core'])
 @pytest.mark.parametrize('journal_state',['missing','unreadable'])
 @pytest.mark.parametrize('coverage',['exact','missing-owner','live'])
 def test_b22_prefix_damaged_journal_preserves_status_and_coverage(installation,journal_state,coverage,journal_tranche):
     import hashlib,tempfile
-    roots,scope,_,_=installation;intent,observation,_=prefix_fixture(installation)
+    roots,scope,_,_=installation
+    if journal_tranche=='core':
+        with sqlite3.connect(roots['control']/'core'/'core.sqlite') as db:db.execute('UPDATE resource_accounting SET highwater=?',(20*1024**2,))
+    intent,observation,_=prefix_fixture(installation)
     journal=roots['receipts']/'journal.json'
     raw=b'' if journal_state=='missing' else b'original corrupt journal bytes'
     if journal_state=='missing':journal.unlink()
@@ -1192,12 +1202,15 @@ def test_b22_prefix_damaged_journal_preserves_status_and_coverage(installation,j
         if coverage=='missing-owner':observation['containers'].pop()
         else:observation['states'][0]['running']=True
         with pytest.raises(ValueError):
-            if journal_tranche:recovery._pending_through_journal(roots,scope,intent,observation,now=102)
+            if journal_tranche=='core':recovery._pending_through_core(roots,scope,intent,observation,now=102)
+            elif journal_tranche:recovery._pending_through_journal(roots,scope,intent,observation,now=102)
             else:recovery._pending_through_evidence(roots,scope,intent,observation,now=102,snapshot_bytes=evidence)
         assert not (roots['receipts']/'p1-maintenance.json').exists()
         return
     for _ in range(2):
-        if journal_tranche:
+        if journal_tranche=='core':
+            assert recovery._pending_through_core(roots,scope,intent,observation,now=102)['status']=='core-complete-receipt-pending'
+        elif journal_tranche:
             assert recovery._pending_through_journal(roots,scope,intent,observation,now=102)['status']=='pending-through-journal'
             assert json.loads(journal.read_bytes())['payload']==intent['expected'][2]['output']['journal']
         else:
@@ -1589,3 +1602,365 @@ def test_b22b_expiry_and_both_locks(installation):
             fcntl.flock(lock,fcntl.LOCK_EX|fcntl.LOCK_NB)
             with pytest.raises(ValueError,match='lock_busy'):recovery._pending_through_journal(roots,scope,intent,observation,now=102)
     assert not (roots['receipts']/'p1-maintenance.json').exists()
+
+
+def test_b22c_atomic_core_completion(installation):
+    roots,scope,_,_=installation
+    with sqlite3.connect(roots['control']/'core'/'core.sqlite') as db:
+        db.execute('UPDATE resource_accounting SET highwater=?',(20*1024**2,))
+    intent,observation,_=prefix_fixture(installation)
+    result=recovery._pending_through_core(roots,scope,intent,observation,now=102)
+    assert result['status']=='core-complete-receipt-pending'
+    with sqlite3.connect(roots['control']/'core'/'core.sqlite') as db:
+        assert db.execute('SELECT count(*) FROM p1_recovery_steps').fetchone()==(4,)
+        assert recovery.completion_binding(db)['epoch']==intent['new_epoch']
+    before=logical(roots)
+    assert recovery._pending_through_core(roots,scope,intent,observation,now=1000)==result
+    assert logical(roots)==before
+    from worker.runtime_journal import Journal
+    with pytest.raises(ValueError):Journal(roots['receipts'])
+
+
+def core_fixture(installation,kind='queued',*,highwater=20*1024**2):
+    from service.admission import Admission
+    from service.dispatch_store import DispatchStore
+    from tests.service.test_admission import fixture
+    roots=installation[0];core=Core(roots['control']/'core')
+    try:
+        f=fixture();admission=Admission(core,roots['staging']);store=DispatchStore(core,admission)
+        job=core.submit_synthetic('p','atomic-core',f['context'],_admission=admission,_profiles=f['profiles'],_dispatch_settings=('silence',8))
+        if kind!='queued':
+            allocated=store.allocate(f['profiles'],'silence',8)
+            if kind=='unknown':
+                lane=json.loads((roots['receipts']/'journal.json').read_bytes())['payload']['lane']
+                store.update(allocated,runtime=lane+'/'+'b'*32+'/unknown',phase='prepared')
+        if kind=='cancel':core.request_cancel(job['id'])
+        with core.transaction():
+            core.db.execute('UPDATE resource_accounting SET highwater=?',(highwater,))
+            core.db.execute("UPDATE resource_monitor SET state='checking'")
+            core.db.execute("UPDATE p1_integrity SET state='checking',token='inherited-A2'")
+    finally:core.close()
+    intent,observation,_=prefix_fixture(installation)
+    return intent,observation,job['id']
+
+
+@pytest.mark.parametrize('kind',['queued','running','cancel'])
+def test_b22c_real_actions_history_and_resolution_guards(installation,kind):
+    from service.dispatch_store import DispatchStore
+    roots,scope,_,_=installation;intent,observation,job_id=core_fixture(installation,kind)
+    recovery._pending_through_core(roots,scope,intent,observation,now=102)
+    with sqlite3.connect(roots['control']/'core'/'core.sqlite') as db:
+        expected=intent['expected'][3]['output']['rows']
+        for table,rows in expected.items():assert encode(db.execute('SELECT * FROM '+table+' ORDER BY rowid').fetchall())==encode(rows)
+        for table in ('dispatches','dispatch_commands','events','assets','artifacts','publications','publication_work','p1_inventory_history'):
+            assert encode(db.execute('SELECT * FROM '+table+' ORDER BY rowid').fetchall())==encode(intent['before']['source']['data'][table])
+        assert db.execute('SELECT * FROM p1_integrity').fetchall()==[(1,1,'healthy',None)]
+        assert db.execute('SELECT count(*) FROM dispatch_resolutions').fetchone()==(int(kind!='queued'),)
+    core=Core(roots['control']/'core')
+    try:
+        store=DispatchStore(core);assert store.current() is None
+        if kind!='queued':
+            with pytest.raises(ValueError,match='operator_resolved_job'):store.allocate([], 'silence',8,replacement=job_id)
+    finally:core.close()
+    assert recovery._pending_through_core(roots,scope,intent,observation,now=1000)['epoch']==intent['new_epoch']
+
+
+@pytest.mark.parametrize('point',['core-scan','core-complete-begin','core-complete-write','core-complete-commit','core-complete-parent','core-certificate-create','core-certificate-write','core-certificate-fsync','core-certificate-parent'])
+def test_b22c_atomic_faults(installation,point):
+    roots,scope,_,_=installation;intent,observation,_=core_fixture(installation,'running')
+    def fault(where):
+        if where==point:raise OSError(point)
+    with pytest.raises(OSError,match=point):recovery._pending_through_core(roots,scope,intent,observation,now=102,fault=fault)
+    with sqlite3.connect(roots['control']/'core'/'core.sqlite') as db:
+        committed=bool(db.execute("SELECT 1 FROM p1_recovery_steps WHERE step='core-complete'").fetchone())
+        for table in recovery.CORE_OUTPUT_TABLES:
+            expected=intent['expected'][3]['output']['rows'][table] if committed else intent['before']['source']['data'][table]
+            assert encode(db.execute('SELECT * FROM '+table+' ORDER BY rowid').fetchall())==encode(expected)
+    if point=='core-certificate-create':
+        for _ in range(2):
+            with pytest.raises(ValueError):recovery._pending_through_core(roots,scope,intent,observation,now=1000)
+    else:
+        for _ in range(2):assert recovery._pending_through_core(roots,scope,intent,observation,now=1000)['epoch']==intent['new_epoch']
+
+
+@pytest.mark.parametrize('mode',['quota','free','changed-highwater'])
+def test_b22c_scan_refusal_retains_pending_authority(installation,monkeypatch,mode):
+    roots,scope,_,_=installation
+    if mode=='changed-highwater':intent,observation,_=prefix_fixture(installation)
+    else:intent,observation,_=core_fixture(installation,'running',highwater=(64 if mode=='quota' else 20)*1024**2)
+    if mode=='free':monkeypatch.setattr(os,'statvfs',lambda root:type('V',(),dict(f_bavail=0,f_frsize=4096))())
+    for _ in range(2):
+        with pytest.raises(ValueError,match='disk_|b2_scan_output_changed'):
+            recovery._pending_through_core(roots,scope,intent,observation,now=102 if _==0 else 1000)
+    with sqlite3.connect(roots['control']/'core'/'core.sqlite') as db:
+        assert db.execute('SELECT count(*) FROM p1_recovery_steps').fetchone()==(3,)
+        assert not db.execute('SELECT 1 FROM dispatch_resolutions').fetchone()
+        assert db.execute('SELECT * FROM resource_monitor').fetchall()==[tuple(v) for v in intent['before']['source']['data']['resource_monitor']]
+
+
+@pytest.mark.parametrize('point',['core-complete-write','core-complete-commit'])
+def test_b22c_process_death_fresh_interpreter_twice(installation,point):
+    import subprocess,sys
+    roots,scope,_,_=installation;intent,observation,_=core_fixture(installation,'cancel')
+    pid=os.fork()
+    if pid==0:
+        recovery._pending_through_core(roots,scope,intent,observation,now=102,fault=lambda where:os._exit(73) if where==point else None)
+        os._exit(74)
+    assert os.waitpid(pid,0)[1]==73<<8
+    rid=intent['id'];epoch=intent['new_epoch'];del intent,observation
+    code='''import json,sys,sqlite3
+from pathlib import Path
+from service import recovery
+from worker.runtime_journal import Journal
+v=json.load(sys.stdin);roots={k:Path(p) for k,p in v['roots'].items()}
+intent=json.loads((roots['receipts']/('p1-recovery-'+v['rid']+'.intent.json')).read_bytes())
+for _ in range(2):
+ try:Journal(roots['receipts'])
+ except ValueError:pass
+ else:raise AssertionError('worker started')
+ result=recovery._pending_through_core(roots,v['scope'],intent,intent['proof']['observation'],now=1000)
+ assert result['epoch']==v['epoch']
+with sqlite3.connect(roots['control']/'core'/'core.sqlite') as db:
+ assert db.execute('SELECT count(*) FROM p1_recovery_steps').fetchone()==(4,)
+ assert db.execute('SELECT count(*) FROM dispatch_resolutions').fetchone()==(1,)
+ assert db.execute('SELECT count(*) FROM p1_recoveries').fetchone()==(1,)
+'''
+    child=subprocess.run([sys.executable,'-c',code],input=encode(dict(roots={k:str(p) for k,p in roots.items()},scope=scope,rid=rid,epoch=epoch)),text=True,capture_output=True,env={**os.environ,'PYTHONDONTWRITEBYTECODE':'1'})
+    assert child.returncode==0,child.stderr
+
+
+def test_b22c_completed_no_scan_and_pending_resolution_has_no_effect(installation,monkeypatch):
+    from service.dispatch_store import DispatchStore
+    roots,scope,_,_=installation;intent,observation,_=core_fixture(installation,'running')
+    recovery._pending_through_journal(roots,scope,intent,observation,now=102)
+    with sqlite3.connect(roots['control']/'core'/'core.sqlite') as db:
+        record=recovery._resolution_outputs(intent)['dispatch_resolutions'][0]
+        db.execute('INSERT INTO dispatch_resolutions VALUES(?,?,?,?)',(record['dispatch_seq'],intent['id'],encode(record),digest(record)))
+        store=DispatchStore.__new__(DispatchStore);store.db=db
+        assert store.current()['seq']==record['dispatch_seq']
+        db.execute('DELETE FROM dispatch_resolutions')
+    result=recovery._pending_through_core(roots,scope,intent,observation,now=1000)
+    def forbidden(*args,**kwargs):raise AssertionError('extra scan')
+    monkeypatch.setattr(Reconciliation,'_collect',forbidden)
+    from service import resource_store
+    monkeypatch.setattr(resource_store,'_recovery_scan',forbidden)
+    for _ in range(2):assert recovery._pending_through_core(roots,scope,intent,observation,now=1000)==result
+
+
+@pytest.mark.parametrize('changed',['none','new-defect','changed-old','unknown-reference'])
+def test_b22c_exact_degraded_resolution_and_strict_unavailability(installation,changed):
+    roots,scope,_,_=installation;job_id=terminal_enrolled(installation);root=roots['control']/'core'
+    asset=next(p for p in (root/'assets').iterdir() if p.is_file());asset_id=asset.name;asset.unlink()
+    core=Core(root)
+    try:
+        scanner=Reconciliation(core,roots['staging']);assert scanner.reconcile_startup()['blocked']
+        row=next(json.loads(raw) for (raw,) in core.db.execute('SELECT record FROM p1_inventory_objects') if json.loads(raw)['classification']=='missing_hash_mismatched_terminal')
+        with core.transaction():core.db.execute('UPDATE resource_accounting SET highwater=?',(20*1024**2,))
+    finally:core.close()
+    decision=dict(object_id=row['id'],reason=row['reason'],content_digest=recovery.diagnostic_digest(row),decision='accept-degraded',availability='unavailable')
+    intent=b2_intent(installation,prepare_only=True,diagnostic_decisions=[decision]);observation=intent['proof']['observation']
+    recovery._pending_through_core(roots,scope,intent,observation,now=102)
+    if changed=='new-defect':(root/'assets'/'new-orphan').write_bytes(b'new')
+    elif changed=='changed-old':asset.write_bytes(b'wrong-media')
+    elif changed=='unknown-reference':
+        with sqlite3.connect(root/'core.sqlite') as db:db.execute('CREATE TABLE unknown_refs(id TEXT)')
+    if changed=='unknown-reference':
+        with pytest.raises(ValueError):Core(root)
+        return
+    core=Core(root)
+    try:
+        scanner=Reconciliation(core,roots['staging']);result=scanner.reconcile_startup()
+        assert result['complete']
+        assert result['blocked']==(changed!='none')
+        assert core.job(job_id)['state']=='succeeded'
+        with pytest.raises((ValueError,OSError)):core.asset(asset_id)
+        assert any(r['classification']=='missing_hash_mismatched_terminal' for r in scanner.rows.values())
+    finally:core.close()
+
+
+@pytest.mark.parametrize('method',['_publish','_commit_publication'])
+def test_b22c_terminal_history_and_permanent_retirement(installation,monkeypatch,method):
+    from service.persistence import PublicationQuarantine
+    roots,scope,_,_=installation;job_id=terminal_enrolled(installation);root=roots['control']/'core'
+    with sqlite3.connect(root/'core.sqlite') as db:db.execute('UPDATE resource_accounting SET highwater=?',(20*1024**2,))
+    intent,observation,_=prefix_fixture(installation)
+    media={p:p.read_bytes() for p in (root/'assets').iterdir()}
+    recovery._pending_through_core(roots,scope,intent,observation,now=102)
+    with sqlite3.connect(root/'core.sqlite') as db:
+        for table in ('jobs','dispatches','dispatch_commands','events','assets','artifacts','publications','publication_work'):
+            assert encode(db.execute('SELECT * FROM '+table+' ORDER BY rowid').fetchall())==encode(intent['before']['source']['data'][table])
+    assert all(p.read_bytes()==raw for p,raw in media.items())
+    core=Core(root,historical_local=True)
+    try:
+        monkeypatch.setattr(core,'_load',lambda *args:pytest.fail('retired body entered'))
+        with pytest.raises(PublicationQuarantine,match='retired'):
+            if method=='_publish':core._publish(job_id,{})
+            else:core._commit_publication(job_id)
+    finally:core.close()
+
+
+@pytest.mark.parametrize('point',['core-certificate-intent-create','core-certificate-intent-write','core-certificate-intent-fsync','core-certificate-intent-parent','core-certificate-intent-recorded'])
+def test_b22c_certificate_creation_intent_never_remints(installation,point):
+    roots,scope,_,_=installation;intent,observation,_=core_fixture(installation)
+    with pytest.raises(OSError):
+        recovery._pending_through_core(roots,scope,intent,observation,now=102,fault=lambda at:(_ for _ in ()).throw(OSError(at)) if at==point else None)
+    before=logical(roots)
+    for _ in range(2):
+        with pytest.raises((ValueError,OSError)):recovery._pending_through_core(roots,scope,intent,observation,now=1000)
+        assert logical(roots)==before
+
+
+@pytest.mark.parametrize('barrier',['file','parent'])
+def test_b22c_actual_certificate_barrier_denial(installation,monkeypatch,barrier):
+    import stat
+    roots,scope,_,_=installation;intent,observation,_=core_fixture(installation)
+    original=os.fsync;armed=False;denied=False
+    def fault(at):
+        nonlocal armed
+        if at==('core-certificate-write' if barrier=='file' else 'core-certificate-fsync'):armed=True
+    def sync(fd):
+        nonlocal denied
+        if armed and not denied and (stat.S_ISREG(os.fstat(fd).st_mode) if barrier=='file' else stat.S_ISDIR(os.fstat(fd).st_mode)):
+            denied=True;raise OSError('actual-certificate-barrier')
+        return original(fd)
+    monkeypatch.setattr(os,'fsync',sync)
+    with pytest.raises(OSError,match='actual-certificate-barrier'):recovery._pending_through_core(roots,scope,intent,observation,now=102,fault=fault)
+    assert denied
+    for _ in range(2):assert recovery._pending_through_core(roots,scope,intent,observation,now=1000)['epoch']==intent['new_epoch']
+
+
+def test_b22c_sql_write_denial_rolls_back_all_core_authority(installation,monkeypatch):
+    from contextlib import contextmanager
+    roots,scope,_,_=installation;intent,observation,_=core_fixture(installation,'running')
+    original=recovery.offline
+    @contextmanager
+    def denied(*args,**kwargs):
+        with original(*args,**kwargs) as (checked,db):
+            db.set_authorizer(lambda action,table,*rest:sqlite3.SQLITE_DENY if action==sqlite3.SQLITE_UPDATE and table=='resource_monitor' else sqlite3.SQLITE_OK)
+            yield checked,db
+    monkeypatch.setattr(recovery,'offline',denied)
+    with pytest.raises(sqlite3.DatabaseError):recovery._pending_through_core(roots,scope,intent,observation,now=102)
+    with sqlite3.connect(roots['control']/'core'/'core.sqlite') as db:
+        for table in recovery.CORE_OUTPUT_TABLES:
+            assert encode(db.execute('SELECT * FROM '+table+' ORDER BY rowid').fetchall())==encode(intent['before']['source']['data'][table])
+        assert not db.execute('SELECT 1 FROM dispatch_resolutions').fetchone()
+    monkeypatch.setattr(recovery,'offline',original)
+    recovery._pending_through_core(roots,scope,intent,observation,now=1000)
+
+
+@pytest.mark.parametrize('coverage',['exact','omitted','live','unknown'])
+def test_b22c_unknown_dispatch_requires_exact_death(installation,coverage):
+    roots,scope,_,_=installation;intent,observation,_=core_fixture(installation,'unknown')
+    if coverage!='exact':
+        observation=copy.deepcopy(observation)
+        if coverage=='omitted':observation['containers'].pop()
+        elif coverage=='live':observation['states'][0]['running']=True
+        else:observation['states'].pop()
+        for _ in range(2):
+            with pytest.raises(ValueError):recovery._pending_through_core(roots,scope,intent,observation,now=102)
+        return
+    for now in (102,1000):recovery._pending_through_core(roots,scope,intent,observation,now=now)
+    with sqlite3.connect(roots['control']/'core'/'core.sqlite') as db:
+        assert encode(db.execute('SELECT * FROM dispatches').fetchall())==encode(intent['before']['source']['data']['dispatches'])
+        assert db.execute('SELECT count(*) FROM dispatch_resolutions').fetchone()==(1,)
+
+
+@pytest.mark.parametrize('registration',[None,'recorded'])
+def test_b22c_core_complete_receipt_pending_blocks_startup(installation,registration):
+    from service.dispatcher import Dispatcher
+    from worker.runtime_journal import Journal
+    roots,scope,_,_=installation;intent,observation,_=core_fixture(installation)
+    recovery._pending_through_core(roots,scope,intent,observation,now=102)
+    class Runtime:
+        def call(self,op,body):
+            assert op=='hello'
+            Journal(roots['receipts'])
+            pytest.fail('pending worker supplied hello')
+    for _ in range(2):
+        before=logical(roots)
+        with pytest.raises(ValueError):Dispatcher(roots['control']/'core',runtime=Runtime(),**({} if registration is None else {'persistent_registration':dict(registration_id='recorded')}))
+        assert before==logical(roots)
+
+
+@pytest.mark.parametrize('damage',['history','media','scope','proof','bundle','resolution','certificate','receipt-archive'])
+def test_b22c_completed_immutable_inputs_and_history_refuse(installation,damage):
+    roots,scope,_,_=installation;intent,observation,_=core_fixture(installation,'running')
+    recovery._pending_through_core(roots,scope,intent,observation,now=102)
+    if damage=='history':
+        with sqlite3.connect(roots['control']/'core'/'core.sqlite') as db:db.execute('DELETE FROM p1_recovery_plans')
+    elif damage=='scope':scope={**scope,'daemon':'wrong'}
+    elif damage=='proof':observation={**observation,'evidence':'actual-host'}
+    elif damage=='bundle':next(roots['receipts'].glob('*.snapshot.bundle')).write_bytes(b'wrong')
+    elif damage=='resolution':
+        with sqlite3.connect(roots['control']/'core'/'core.sqlite') as db:db.execute('DELETE FROM dispatch_resolutions')
+    elif damage=='certificate':
+        path=next(roots['control'].glob('core/*.certificate.json'));path.write_bytes(b'{}')
+    elif damage=='receipt-archive':next(roots['receipts'].glob('*.journal')).unlink()
+    else:
+        # Current media eligibility is separate from immutable completed history.
+        (roots['staging']/'new-activity').write_bytes(b'new')
+        assert recovery._pending_through_core(roots,scope,intent,observation,now=1000)['status']=='core-complete-receipt-pending'
+        return
+    for _ in range(2):
+        with pytest.raises((ValueError,OSError)):recovery._pending_through_core(roots,scope,intent,observation,now=1000)
+
+
+def test_b22c_denied_fault_update_inherited_checking_new_epoch(installation):
+    from service.resource_store import ResourceStore
+    roots,scope,_,_=installation;root=roots['control']/'core'
+    pid=os.fork()
+    if pid==0:
+        core=Core(root);store=ResourceStore(core,DEFAULT_BUDGET,(root,roots['staging']))
+        def observe():
+            assert store.state()=='checking'
+            core.db.execute('PRAGMA query_only=ON')
+            raise ValueError('transient-output-growth')
+        try:store.observe(observe)
+        except sqlite3.OperationalError:
+            # No close/finally/later loop can write a witness before death.
+            os._exit(73)
+        os._exit(74)
+    assert os.waitpid(pid,0)[1]==73<<8
+    for _ in range(2):
+        core=Core(root)
+        try:
+            store=ResourceStore(core,DEFAULT_BUDGET,(root,roots['staging']))
+            with pytest.raises(ValueError,match='unresolved'):store.check_disk()
+        finally:core.close()
+    with sqlite3.connect(root/'core.sqlite') as db:db.execute('UPDATE resource_accounting SET highwater=?',(20*1024**2,))
+    intent,observation,_=prefix_fixture(installation)
+    recovery._pending_through_core(roots,scope,intent,observation,now=102)
+    assert intent['before']['source']['data']['resource_monitor']==[[1,'checking']]
+    assert intent['prior_epoch']!=intent['new_epoch']
+    with sqlite3.connect(root/'core.sqlite') as db:assert db.execute('SELECT * FROM resource_monitor').fetchall()==[(1,'healthy')]
+
+
+def test_b22c_dispatch_diagnostic_history_is_exactly_accounted(installation):
+    from service.admission import Admission
+    from service.dispatch_store import DispatchStore
+    from tests.service.test_admission import fixture
+    roots,scope,_,_=installation;root=roots['control']/'core';core=Core(root)
+    try:
+        f=fixture();admission=Admission(core,roots['staging']);store=DispatchStore(core,admission)
+        core.submit_synthetic('p','diagnostic-dispatch',f['context'],_admission=admission,_profiles=f['profiles'],_dispatch_settings=('silence',8))
+        store.allocate(f['profiles'],'silence',8)
+        scanner=Reconciliation(core,roots['staging']);assert scanner.reconcile_startup()['blocked']
+        with core.transaction():
+            core.db.execute("UPDATE resource_monitor SET state='fault'")
+            core.db.execute("INSERT INTO resource_faults VALUES('old-observed-output-fault')")
+            core.db.execute('UPDATE resource_accounting SET highwater=?',(20*1024**2,))
+    finally:core.close()
+    intent,observation,_=prefix_fixture(installation)
+    recovery._pending_through_core(roots,scope,intent,observation,now=102)
+    assert intent['before']['source']['data']['resource_faults']==[['old-observed-output-fault']]
+    core=Core(root)
+    try:
+        scanner=Reconciliation(core,roots['staging']);result=scanner.reconcile_startup()
+        assert result['complete'] and not result['blocked'],result
+        # A different historical defect cannot borrow the completed dispatch ID.
+        with core.transaction():
+            raw=core.db.execute("SELECT id,record FROM p1_inventory_objects WHERE record LIKE '%unbound_dispatch%'").fetchone()
+            value=json.loads(raw[1]);value['reason']='new-owner-defect'
+            core.db.execute('UPDATE p1_inventory_objects SET record=? WHERE id=?',(encode(value),raw[0]))
+        assert scanner.reconcile_startup()['blocked']
+    finally:core.close()

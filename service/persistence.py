@@ -237,3 +237,18 @@ def check_publication_allowed(db, job_id):
     state = check_recovery_open(db)
     if state and any(r['job_id']==job_id for r in state['p1_retired_publications']):
         raise PublicationQuarantine('b2_retired_publication')
+
+
+def completed_dispatch_resolutions(db):
+    """Read-only validated completed identities; pending records have no effect."""
+    from service.recovery import validate_b2_database
+    state=validate_b2_database(db)
+    if not state:return []
+    completed={s['recovery_id'] for s in state['p1_recovery_steps'] if s['step']=='core-complete'}
+    return [r for r in state['dispatch_resolutions'] if r['recovery_id'] in completed]
+
+
+def check_operator_resolved(db,job_id):
+    state=check_recovery_open(db)
+    if state and any(a['job_id']==job_id for r in state['p1_recoveries'] for a in r['actions']):
+        raise ValueError('operator_resolved_job')

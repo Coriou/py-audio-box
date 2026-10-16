@@ -13,7 +13,7 @@ import threading
 import time
 
 from service.core import Core, encode
-from service.persistence import PublicationQuarantine
+from service.persistence import PublicationQuarantine, check_operator_resolved
 from service.reconciliation import Reconciliation
 from service.admission import Admission
 from service.dispatch_store import DispatchStore
@@ -168,6 +168,7 @@ class Dispatcher:
             if op=='replace':
                 if self.pending or self.store.current():raise ValueError('lane_busy')
                 job_id=args[0]
+                check_operator_resolved(self.core.db,job_id)
                 row=self.store.allocate(self.profiles,'silence',8,replacement=job_id)
                 self.fault('prespawn')
                 self._launch(row,'prepare',lambda:self.runtime.prepare(row['authority'],row['fixture']))

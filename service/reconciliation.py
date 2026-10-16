@@ -90,7 +90,7 @@ class Reconciliation:
         self.rows[key] = dict(id=key, namespace=namespace, name=name, classification=kind,
             reason=reason, identity=identity, owner=owner, references=sorted(set(refs)))
 
-    def _collect(self):
+    def _collect(self, *, _before=None):
         self.entries = self.bytes = 0
         self.end = time.monotonic() + self.seconds
         self.rows, self.reasons = {}, set()
@@ -103,7 +103,7 @@ class Reconciliation:
         b2 = None
         if tables & persistence.B2_COLUMNS.keys():
             from service.recovery import validate_b2_database
-            b2 = validate_b2_database(self.db, self.core.root)
+            b2 = validate_b2_database(self.db, self.core.root, _uncertified=_before['id'] if _before else None)
         data = {}
         for table in sorted(tables & TABLES - DIAGNOSTICS - {'sqlite_sequence'}):
             columns = [r[1] for r in self.db.execute('PRAGMA table_info('+table+')')]
@@ -120,6 +120,16 @@ class Reconciliation:
                 self.fingerprint.update(serialized.encode())
                 records.append(dict(zip(columns, raw)))
             data[table] = records
+        if _before is not None:
+            # Only the recovery projection oracle calls this, after verifying
+            # every declared after row. Re-render its exact original joins/refs.
+            from service.recovery import CORE_OUTPUT_TABLES, RESOLUTION_TABLES
+            for table in CORE_OUTPUT_TABLES:
+                data[table]=[dict(zip(COLUMNS[table].split(),r)) for r in _before['before']['source']['data'][table]]
+            for table in RESOLUTION_TABLES:
+                data[table]=[r for r in data[table] if r['recovery_id']!=_before['id']]
+        completed={r['recovery_id'] for r in (b2 or {}).get('p1_recovery_steps',[]) if r['step']=='core-complete'}
+        resolved={r['dispatch_seq']:r for r in (b2 or {}).get('dispatch_resolutions',[]) if r['recovery_id'] in completed and (_before is None or r['recovery_id']!=_before['id'])}
         refs = {}
         # Closed contract locations, never scalar spelling or user-authored keys.
         document = json.loads(Path('contracts/v1/schema.json').read_text())
@@ -324,6 +334,13 @@ class Reconciliation:
                         if artifact[key] != expected: reason = 'publication_owner_mismatch'
             except (ValueError, ValidationError, KeyError, IndexError, TypeError, RecursionError):
                 reason = 'invalid_dispatch_identity'
+            resolution=resolved.get(r['seq'])
+            if resolution and reason in ('unbound_dispatch','reservation_outcome_mismatch','terminal_receipt_missing'):
+                accepted=next(v for v in b2['p1_recoveries'] if v['id']==resolution['recovery_id'])
+                expected=accepted['expected'][3]['output']['rows']
+                job_row=next(v for v in expected['jobs'] if v[1]==r['job_id'])
+                reservation_row=next(v for v in expected['resource_reservations'] if v[0]==r['job_id'])
+                if (encode(job)==job_row[6] and reservation==dict(zip(COLUMNS['resource_reservations'].split(),reservation_row))):reason=None
             if reason:
                 self.reasons.add(reason)
                 self._row('dispatch', str(r['seq']), 'unresolved_owner_receipt_reservation', reason, owner=job_owner(r['job_id']))
@@ -473,6 +490,24 @@ class Reconciliation:
                 reasons=['unacknowledged_integrity' if isinstance(exc, Incomplete) else 'inventory_persistence_failed'], cleanup_allowed=False)
             return False
 
+    def _resolved_diagnostic(self,row):
+        if row['classification'] not in ('adopted_orphan','missing_hash_mismatched_terminal','unresolved_owner_receipt_reservation'):
+            return False
+        from service.recovery import validate_b2_database, diagnostic_digest
+        state=validate_b2_database(self.db,self.core.root)
+        if not state:return False
+        completed={s['recovery_id'] for s in state['p1_recovery_steps'] if s['step']=='core-complete'}
+        content=diagnostic_digest(row)
+        if row['classification']=='unresolved_owner_receipt_reservation':
+            if row['namespace']!='dispatch':return False
+            for resolution in state['dispatch_resolutions']:
+                if resolution['recovery_id'] not in completed or str(resolution['dispatch_seq'])!=row['name']:continue
+                accepted=next(r for r in state['p1_recoveries'] if r['id']==resolution['recovery_id'])
+                original=next((json.loads(r[4]) for r in accepted['before']['source']['data']['p1_inventory_objects'] if r[0]==row['id']),None)
+                if original and original['reason']==row['reason'] and diagnostic_digest(original)==content:return True
+            return False
+        return any(r['recovery_id'] in completed and r['object_id']==row['id'] and r['reason']==row['reason'] and r['content_digest']==content for r in state['p1_integrity_resolutions'])
+
     def reconcile_startup(self):
         self._owner()
         if not self._begin(): return dict(self.summary)
@@ -499,14 +534,17 @@ class Reconciliation:
             if count + history_count > self.entry_limit or size + summary_size + history_size > max(0, self.byte_limit - self.bytes):
                 raise Incomplete('inventory_history_budget')
             prior = self.db.execute('SELECT record FROM p1_inventory_objects')
-            if any(json.loads(raw)['classification'] in ('unknown_foreign','adopted_orphan','missing_hash_mismatched_terminal','unresolved_owner_receipt_reservation') for (raw,) in prior):
+            if any((row:=json.loads(raw))['classification'] in ('unknown_foreign','adopted_orphan','missing_hash_mismatched_terminal','unresolved_owner_receipt_reservation') and not self._resolved_diagnostic(row) for (raw,) in prior):
                 self.reasons.add('unacknowledged_integrity')
         except (sqlite3.Error, ValueError, TypeError, KeyError):
             complete = False
             self.reasons.add('inventory_history_budget')
+        for reason in ('unavailable','no_publication_provenance'):
+            related=[r for r in self.rows.values() if r['reason']==reason]
+            if related and all(self._resolved_diagnostic(r) for r in related):self.reasons.discard(reason)
         if self.inherited_fault: self.reasons.add('unacknowledged_integrity')
         counts = dict(Counter(r['classification'] for r in self.rows.values()))
-        defect_latched = bool(self.reasons & {'unacknowledged_integrity','unknown_reference_schema','unknown_reference_kind'}) or any(r['classification'] in ('unknown_foreign','adopted_orphan','missing_hash_mismatched_terminal','unresolved_owner_receipt_reservation') for r in self.rows.values())
+        defect_latched = bool(self.reasons & {'unacknowledged_integrity','unknown_reference_schema','unknown_reference_kind'}) or any(r['classification'] in ('unknown_foreign','adopted_orphan','missing_hash_mismatched_terminal','unresolved_owner_receipt_reservation') and not self._resolved_diagnostic(r) for r in self.rows.values())
         self.summary = dict(scan_id=self.scan_id, complete=complete, defect_latched=defect_latched,
             blocked=not complete or bool(self.reasons), counts=counts, reasons=sorted(self.reasons)[:20],
             cleanup_allowed=False)

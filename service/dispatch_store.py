@@ -22,7 +22,9 @@ class DispatchStore:
         ''')
 
     def current(self):
-        row = self.db.execute('SELECT seq,job_id,authority,binding,fixture,runtime,phase,receipt,outcome,acked FROM dispatches WHERE acked=0 ORDER BY seq LIMIT 1').fetchone()
+        from service.persistence import completed_dispatch_resolutions
+        resolved={r['dispatch_seq'] for r in completed_dispatch_resolutions(self.db)}
+        row = next((r for r in self.db.execute('SELECT seq,job_id,authority,binding,fixture,runtime,phase,receipt,outcome,acked FROM dispatches WHERE acked=0 ORDER BY seq') if r[0] not in resolved),None)
         if row is None: return None
         value = dict(zip(('seq','job_id','authority','binding','fixture','runtime','phase','receipt','outcome','acked'),row))
         value['authority'] = Authority(*json.loads(value['authority']))
@@ -36,6 +38,8 @@ class DispatchStore:
             self.db.execute('UPDATE dispatches SET '+','.join(k+'=?' for k in fields)+' WHERE seq=?', (*fields.values(),row['seq']))
 
     def allocate(self, profiles, fixture, seconds, *, replacement=None):
+        from service.persistence import check_operator_resolved
+        if replacement:check_operator_resolved(self.db,replacement)
         if self.current(): raise ValueError('lane_busy')
         from contextlib import nullcontext
         with (self.admission._preflight() if self.admission is not None else nullcontext()), self.core.transaction():
@@ -47,6 +51,7 @@ class DispatchStore:
                 row=next((json.loads(r[0]) for r in self.db.execute('SELECT job FROM jobs ORDER BY seq') if json.loads(r[0])['state']=='queued'),None)
                 if row is None:return None
                 job=row; _,context=self.core._load(job['id'])
+            check_operator_resolved(self.db,job['id'])
             if self.admission is not None:
                 self.admission.demand(context,profiles)
                 self.admission.store.acquire_tx(job['id'],replacement=bool(replacement))

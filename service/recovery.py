@@ -149,7 +149,7 @@ def offline(roots, *, write=False, journal_lock=True):
             for fd in reversed(locks): os.close(fd)
 
 
-def snapshot(roots, db, scope, *, exclude_plan=None, exclude_abandon=None, transaction=True, _prefix=None, _journal_after=False):
+def snapshot(roots, db, scope, *, exclude_plan=None, exclude_abandon=None, transaction=True, _prefix=None, _journal_after=False, _core_after=False):
     """Read-only transaction including WAL; never calls an observation fence."""
     validate_scope(scope)
     if transaction: db.execute('BEGIN')
@@ -161,7 +161,7 @@ def snapshot(roots, db, scope, *, exclude_plan=None, exclude_abandon=None, trans
             p1_inventory_history='seq scan_id object_id observed record',
             p1_integrity='id revision state token',sqlite_sequence='name seq')
         if tables & B2_COLUMNS.keys():
-            validate_b2_database(db, roots['control']/'core')
+            validate_b2_database(db, roots['control']/'core', _uncertified=_prefix['id'] if _core_after else None)
             expected.update(B2_COLUMNS)
             deadline=time.monotonic()+2
             db.set_progress_handler(lambda:int(time.monotonic()>deadline),1000)
@@ -272,10 +272,11 @@ def snapshot(roots, db, scope, *, exclude_plan=None, exclude_abandon=None, trans
         for pid,raw,h in data['p1_recovery_plans']:
             p=json.loads(raw); validate_plan(p)
             if digest(p)!=h or p['id']!=pid or p['deployment_id']!=identity: raise ValueError('plan_digest_scope')
+        if _core_after:_verify_core_rows(db,_prefix)
         scanner=Reconciliation.__new__(Reconciliation)
         scanner.core=SimpleNamespace(root=roots['control']/'core'); scanner.db=db; scanner.staging=roots['staging']
         scanner.entry_limit=MAX_ROWS; scanner.byte_limit=MAX_BYTES; scanner.seconds=1
-        scanner._collect()
+        scanner._collect(_before=_prefix if _core_after else None)
         if tables & B2_COLUMNS.keys():
             size += scanner.bytes + len(journal_raw)
             if size>MAX_BYTES or count+scanner.entries+len(payload['records'])>MAX_ROWS:
@@ -288,9 +289,15 @@ def snapshot(roots, db, scope, *, exclude_plan=None, exclude_abandon=None, trans
         if _prefix is not None:
             state['p1_recoveries']=[r for r in data['p1_recoveries'] if r[0]!=_prefix['id']]
             state['p1_recovery_steps']=[r for r in data['p1_recovery_steps'] if r[0]!=_prefix['id']]
+            if _core_after:
+                _verify_core_rows(db,_prefix)
+                for table in (*CORE_OUTPUT_TABLES,'p1_integrity'):
+                    state[table]=_prefix['before']['source']['data'][table]
+                for table in RESOLUTION_TABLES:
+                    state[table]=[r for r in data[table] if r[1]!=_prefix['id']]
         inventory=[]
         for row in sorted(scanner.rows.values(),key=lambda r:r['id']):
-            if _prefix is not None and row['namespace']=='recovery' and row['name'] in {n for n,k in archive_names(_prefix).items() if k!='certificate'}:
+            if _prefix is not None and row['namespace']=='recovery' and row['name'] in {n for n,k in archive_names(_prefix).items() if k!='certificate' or _core_after}:
                 continue
             inventory.append({**row,'references':[r for r in row['references'] if r not in ('p1_recovery_plans:'+str(exclude_plan), 'p1_abandon_plans:'+str(exclude_abandon)) and not (_prefix is not None and r in _prefix_reference_labels(_prefix))]})
         journal_hash=__import__('hashlib').sha256(journal_raw).hexdigest() if damaged else digest(journal)
@@ -308,7 +315,7 @@ def snapshot(roots, db, scope, *, exclude_plan=None, exclude_abandon=None, trans
             dispatches=[dict(seq=r[0],job_id=r[1],binding=r[3],runtime_id=r[5],phase=r[6],receipt_digest=digest(json.loads(r[7])) if r[7] else None,acked=bool(r[9])) for r in data['dispatches']],
             jobs=[{k:v for k,v in json.loads(r[6]).items() if k in ('id','state','generation','deadline','attempts')} for r in data['jobs']],
             publications=[dict(job_id=r[0],manifest_digest=digest(json.loads(r[1]))) for r in data['publications']],
-            allocation_coherent=_allocation_coherent(data),
+            allocation_coherent=_allocation_coherent(state if _core_after else data),
             inventory=dict(counts=dict(__import__('collections').Counter(r['classification'] for r in scanner.rows.values())),reasons=sorted(scanner.reasons)),
             journal_digest=journal_hash,lane=payload['lane'],
             journal_records=None if damaged else [dict(runtime_id=r['id'],boot=r['boot'],phase=r['phase'],binding=r['allocation']['binding']) for r in payload['records']],
@@ -736,6 +743,7 @@ def _validate_journal_evidence(evidence,r):
 def _validate_evidence(r):
     # Documents are finite read-only descriptions; no arbitrary patch or path fields.
     if len(encode(r).encode())>MAX_BYTES: raise ValueError('b2_evidence_budget')
+    if r['budget_after']!=r['budget_before']:raise ValueError('b2_budget_change_unsupported')
     before=r['before'];closed(before,'source prior_certificate journal')
     source=before['source'];_validate_source(source);data=source['data']
     _validate_journal_evidence(before['journal'],r)
@@ -766,6 +774,13 @@ def _validate_evidence(r):
                   'cancel-never-started' if not job['attempts'] else
                   'cancel-requested' if job['state']=='cancel_requested' else 'fail')
         if action['before_digest']!=digest(job) or action['action']!=expected: raise ValueError('b2_action_before_binding')
+    inventory={v['id']:v for v in source['inventory']}
+    for decision in r['diagnostic_decisions']:
+        row=inventory.get(decision['object_id'])
+        if (not row or row['classification'] not in ('missing_hash_mismatched_terminal','adopted_orphan') or
+            decision['reason']!=row['reason'] or decision['content_digest']!=diagnostic_digest(row) or
+            decision['availability']!=('unavailable' if row['classification']=='missing_hash_mismatched_terminal' else 'retained')):
+            raise ValueError('b2_diagnostic_before_binding')
     previous=r['before_digest']
     for descriptor in r['expected']:
         output=descriptor['output'];step=descriptor['step']
@@ -807,7 +822,7 @@ def _archive_database(raw):
         finally:db.close()
 
 
-def _validate_archives(root,data,entries,used):
+def _validate_archives(root,data,entries,used,uncertified=None):
     import hashlib
     deadline=time.monotonic()+2
     for r in data['p1_recoveries']:
@@ -816,6 +831,11 @@ def _validate_archives(root,data,entries,used):
         content={}
         for name,kind in archive_names(r).items():
             if kind=='certificate' and 'core-complete' not in steps:continue
+            if kind=='certificate' and r['id']==uncertified:
+                # Reserve the exact not-yet-created certificate before COMMIT.
+                used+=len(encode(_certificate(r,steps['core-complete'])).encode());entries+=1
+                if used>MAX_BYTES or entries>MAX_ROWS:raise ValueError('b2_archive_budget')
+                continue
             if (root/name).stat(follow_symlinks=False).st_mode & 0o077:raise ValueError('b2_archive_permissions')
             raw=read_file(root/name,MAX_BYTES-used)
             used+=len(raw);entries+=1
@@ -898,7 +918,7 @@ def validate_b2_record(table,value):
     _uuid(value['recovery_id'])
 
 
-def _validate_b2_database(db, root):
+def _validate_b2_database(db, root, uncertified=None):
     """Bound the complete logical population before decoding any JSON."""
     from service.persistence import B2_COLUMNS, b2_schema
     if not b2_schema(db): return None
@@ -981,6 +1001,13 @@ def _validate_b2_database(db, root):
                 if (not work or digest(raw)!=resolution['publication_digest'] or digest(work)!=resolution['work_digest'] or
                     digest(json.loads(work[1]))!=resolution['binding'] or not job['attempts'] or job['attempts'][-1]['id']!=resolution['attempt_id']): raise ValueError('b2_publication_binding')
             elif {k:v for k,v in resolution.items() if k!='recovery_id'} not in r['diagnostic_decisions']: raise ValueError('b2_diagnostic_binding')
+    # A completion binds its entire finite resolution set, not merely whatever
+    # subset happens to remain in the tables on a later startup.
+    for intent in data['p1_recoveries']:
+        if any(s['recovery_id']==intent['id'] and s['step']=='core-complete' for s in data['p1_recovery_steps']):
+            for table,expected_records in _resolution_outputs(intent).items():
+                actual=[r for r in data[table] if r['recovery_id']==intent['id']]
+                if actual!=expected_records:raise ValueError('b2_completed_resolution_set')
     # Embedded history and archive populations share the original aggregate ceilings.
     for intent in data['p1_recoveries']:
         source=intent['before']['source']
@@ -994,11 +1021,11 @@ def _validate_b2_database(db, root):
             current=db.execute('SELECT * FROM '+table+' ORDER BY rowid').fetchall()
             for old in source['data'][table]:
                 if not any(encode(old)==encode(row) for row in current):raise ValueError('b2_before_history_binding')
-    _validate_archives(root,data,count,size)
+    _validate_archives(root,data,count,size,uncertified)
     return data
 
 
-def validate_b2_database(db, root=None):
+def validate_b2_database(db, root=None, *, _uncertified=None):
     # These owning seams have no live resource observation. Restore no handler;
     # offline snapshot installs its own deadline for its remaining SQL work.
     deadline=time.monotonic()+2
@@ -1006,7 +1033,7 @@ def validate_b2_database(db, root=None):
     try:
         if root is None:
             root=Path(next(r[2] for r in db.execute('PRAGMA database_list') if r[1]=='main')).parent
-        return _validate_b2_database(db,Path(root))
+        return _validate_b2_database(db,Path(root),_uncertified)
     except (RecursionError,TypeError,KeyError,IndexError) as exc:
         raise ValueError('b2_malformed_evidence') from exc
     finally: db.set_progress_handler(None,0)
@@ -1121,7 +1148,7 @@ def verify_abandon_plan(roots,db,scope,observation,plan_id,expected_digest,*,pro
 
 def _prefix_reference_labels(intent):
     return {'p1_recoveries:'+intent['id']} | {
-        'p1_recovery_steps:'+intent['id']+':'+name for name in STEPS[:3]}
+        'p1_recovery_steps:'+intent['id']+':'+name for name in STEPS[:4]}
 
 
 def _prefix_file(path, raw, fault, point):
@@ -1151,7 +1178,9 @@ def _prefix_transaction(db, operation, fault, point):
         fault(point+'-begin'); operation(); fault(point+'-write')
         db.execute('COMMIT'); fault(point+'-commit')
     except BaseException:
-        if db.in_transaction: db.execute('ROLLBACK')
+        if db.in_transaction:
+            try:db.execute('ROLLBACK')
+            except sqlite3.Error:pass  # preserve the original ambiguity; owner closes
         raise
 
 
@@ -1164,7 +1193,7 @@ def _prefix_receipt_namespace(receipts, intents):
         prefix='p1-recovery-'+intent['id']
         allowed.update(prefix+suffix for suffix in ('.intent.json','.journal','.certificate.json',
             '.snapshot.intent.json','.manifest.intent.json','.original-journal.intent.json',
-            '.snapshot.bundle','.bundle.intent.json','.rotation.intent.json'))
+            '.snapshot.bundle','.bundle.intent.json','.rotation.intent.json','.core-certificate.intent.json'))
     used=count=0; deadline=time.monotonic()+2
     with os.scandir(receipts) as entries:
         for entry in entries:
@@ -1185,20 +1214,26 @@ def _pending_through_journal(roots, scope, intent, observation, *, now=None, fau
     return _pending_prefix(roots,scope,intent,observation,now=now,fault=fault,through_journal=True)
 
 
-def _pending_prefix(roots, scope, intent, observation, *, now=None, snapshot_bytes=None, fault=lambda point:None, through_journal=False):
+def _pending_through_core(roots, scope, intent, observation, *, now=None, fault=lambda point:None):
+    """Private B2.2c continuation; receipt authority stays PENDING."""
+    return _pending_prefix(roots,scope,intent,observation,now=now,fault=fault,through_journal=True,through_core=True)
+
+
+def _pending_prefix(roots, scope, intent, observation, *, now=None, snapshot_bytes=None, fault=lambda point:None, through_journal=False, through_core=False):
     """Private bounded prefix. Supplied proof is NOT host authentication.
 
-    Both normal locks cover evidence and optional fixed journal rotation. Never
-    changes jobs/resource authority, completes a receipt, or enables public apply.
+    Both normal locks cover the named continuation. Core completion is optional;
+    receipt completion and public apply are never enabled here.
     """
     import hashlib
     intent=json.loads(encode(intent))
     validate_b2_record('p1_recoveries',intent)
     now=time.time() if now is None else now; _time(now)
-    if observation!=intent['proof']['observation']: raise ValueError('b2_prefix_proof_changed')
+    validate_scope(scope)
+    if observation!=intent['proof']['observation'] or observation['scope']!=scope: raise ValueError('b2_prefix_proof_changed')
     with offline(roots,write=True) as (roots,db):
         root=roots['control']/'core'; receipts=roots['receipts']
-        data=validate_b2_database(db,root)
+        data=validate_b2_database(db,root,_uncertified=intent['id'] if through_core else None)
         plan=next((p for p in data['p1_abandon_plans'] if p['id']==intent['plan_id']),None) if data else None
         if plan is None or digest(plan)!=intent['plan_digest']: raise ValueError('b2_prefix_plan_changed')
         for key in ('deployment_id','source_digest','observation_digest','proof_digest','prior_epoch','new_epoch','old_lane','new_lane','affected','budget_before','budget_after','diagnostic_decisions'):
@@ -1207,10 +1242,26 @@ def _pending_prefix(roots, scope, intent, observation, *, now=None, snapshot_byt
             raise ValueError('b2_prefix_plan_journal')
         existing=next((r for r in data['p1_recoveries'] if r['id']==intent['id']),None)
         if existing is not None and existing!=intent: raise ValueError('b2_prefix_intent_changed')
+        completed=any(r['recovery_id']==intent['id'] and r['step']=='core-complete' for r in data['p1_recovery_steps'])
+        certificate_path=next(root/n for n,k in archive_names(intent).items() if k=='certificate')
+        creation=receipts/('p1-recovery-'+intent['id']+'.core-certificate.intent.json')
+        if through_core and completed and (certificate_path.exists() or creation.exists()):
+            # Immutable completion is separate from current startup eligibility.
+            # Later ordinary rows/journal activity must never replay this epoch.
+            _prefix_receipt_namespace(receipts,data['p1_recoveries'])
+            for prior in data['p1_recoveries']:
+                if prior['id']==intent['id']:break
+                chain=[dict(recovery_id=prior['id'],**e,lane=prior['new_lane'],epoch=prior['new_epoch']) for e in prior['expected'][:4]]
+                _prefix_exact(receipts/('p1-recovery-'+prior['id']+'.certificate.json'),encode(dict(certificate=_certificate(prior,chain[-1]),steps=chain)).encode())
+                _prefix_exact(receipts/('p1-recovery-'+prior['id']+'.journal'),bytes.fromhex(prior['before']['journal']['bytes_hex']))
+            _completed_prefix_receipts(roots,intent)
+            _core_certificate(root,receipts,intent,fault)
+            validate_b2_database(db,root)
+            return _core_result(intent)
         if any(r['id']!=intent['id'] and not any(s['recovery_id']==r['id'] and s['step']=='core-complete' for s in data['p1_recovery_steps']) for r in data['p1_recoveries']):
             raise ValueError('b2_prefix_other_pending')
         steps=[s for s in data['p1_recovery_steps'] if s['recovery_id']==intent['id']]
-        if any(s['step'] not in STEPS[:3 if through_journal else 2] for s in steps): raise ValueError('b2_prefix_already_advanced')
+        if any(s['step'] not in STEPS[:4 if through_core else 3 if through_journal else 2] for s in steps): raise ValueError('b2_prefix_already_advanced')
         marker=dict(revision=1,deployment_id=intent['deployment_id'])
         fence=dict(revision=1,**{k:intent[k] for k in ('deployment_id','plan_id','plan_digest','proof_digest','old_lane','new_lane')},recovery_id=intent['id'],step='pending',certificate=None)
         from worker.runtime_journal import maintenance_record
@@ -1261,7 +1312,8 @@ def _pending_prefix(roots, scope, intent, observation, *, now=None, snapshot_byt
             _prefix_exact(receipts/'journal.json',new_raw)
             journal_after=True
         elif any(s['step']=='journal' for s in steps): raise ValueError('b2_missing_rotation_intent')
-        state=snapshot(roots,db,scope,exclude_abandon=plan['id'],transaction=False,_prefix=intent,_journal_after=journal_after)
+        core_after=any(s['step']=='core-complete' for s in steps)
+        state=snapshot(roots,db,scope,exclude_abandon=plan['id'],transaction=False,_prefix=intent,_journal_after=journal_after,_core_after=core_after)
         check_consumers(state,observation); _coherent_b2(state)
         if encode(state['evidence_projection'])!=encode(intent['before']['source']): raise ValueError('b2_prefix_prestate_changed')
         if {**state['affected'],'reservations':[r['job_id'] for r in state['reservations']]}!=plan['affected']:
@@ -1269,7 +1321,11 @@ def _pending_prefix(roots, scope, intent, observation, *, now=None, snapshot_byt
         if not journal_after and intent['before']['journal']['state']!='missing' and read_file(receipts/'journal.json',1024**2).hex()!=intent['before']['journal']['bytes_hex']:
             raise ValueError('b2_prefix_journal_changed')
         names={kind:root/name for name,kind in archive_names(intent).items()}
-        if names['certificate'].exists() or (receipts/('p1-recovery-'+intent['id']+'.certificate.json')).exists(): raise ValueError('b2_prefix_premature_certificate')
+        if (names['certificate'].exists() and not core_after) or (receipts/('p1-recovery-'+intent['id']+'.certificate.json')).exists(): raise ValueError('b2_prefix_premature_certificate')
+        if core_after:
+            _core_certificate(root,receipts,intent,fault)
+            validate_b2_database(db,root)
+            return _core_result(intent)
         bundle=receipts/('p1-recovery-'+intent['id']+'.snapshot.bundle')
         bundle_intent=receipts/('p1-recovery-'+intent['id']+'.bundle.intent.json')
         bundle_descriptor=encode(dict(revision=1,recovery_id=intent['id'],intent_digest=digest(intent),
@@ -1399,7 +1455,140 @@ def _pending_prefix(roots, scope, intent, observation, *, now=None, snapshot_byt
             _prefix_exact(receipts/'journal.json',new_raw)
             record(2)
             validate_b2_database(db,root)
+        if through_core:
+            _complete_core(db,roots,intent,fault)
+            return _core_result(intent)
         return dict(status='pending-through-journal' if through_journal else 'pending-through-evidence',recovery_id=intent['id'],lane=intent['new_lane'],epoch=intent['new_epoch'])
+
+
+RESOLUTION_TABLES=('dispatch_resolutions','p1_retired_publications','p1_integrity_resolutions')
+
+
+def diagnostic_digest(row):
+    # Typed references remain retained independently; adding an audit reference
+    # does not change the original defect's tuple, bytes or availability.
+    return digest({k:v for k,v in row.items() if k!='references'})
+
+
+def _resolution_outputs(intent):
+    before=intent['before']['source']['data'];rid=intent['id']
+    dispatches=[dict(dispatch_seq=r[0],recovery_id=rid,job_id=r[1],binding=r[3],original_digest=digest(r),decision='abandoned')
+        for r in before['dispatches'] if r[0] in intent['affected']['dispatches']]
+    work={r[0]:r for r in before['publication_work']};jobs={r[1]:json.loads(r[6]) for r in before['jobs']}
+    publications=[dict(job_id=r[0],recovery_id=rid,attempt_id=jobs[r[0]]['attempts'][-1]['id'],
+        binding=digest(json.loads(work[r[0]][1])),publication_digest=digest(r),work_digest=digest(work[r[0]]),decision='retired')
+        for r in before['publications'] if r[0] in intent['affected']['publications']]
+    diagnostics=[dict(**r,recovery_id=rid) for r in intent['diagnostic_decisions']]
+    return dict(zip(RESOLUTION_TABLES,(dispatches,publications,diagnostics)))
+
+
+def _verify_core_rows(db,intent):
+    # Explicit closed after-image; every unaffected table is compared by snapshot.
+    for table,rows in intent['expected'][3]['output']['rows'].items():
+        if encode(db.execute('SELECT * FROM '+table+' ORDER BY rowid').fetchall())!=encode(rows):raise ValueError('b2_core_output_changed')
+    if db.execute('SELECT * FROM p1_integrity').fetchall()!=[(1,1,'healthy',None)]:raise ValueError('b2_core_integrity_changed')
+    for table,records in _resolution_outputs(intent).items():
+        expected=[[r.get('dispatch_seq',r.get('job_id',r.get('object_id'))),intent['id'],encode(r),digest(r)] for r in records]
+        actual=db.execute('SELECT * FROM '+table+' WHERE recovery_id=? ORDER BY rowid',(intent['id'],)).fetchall()
+        if encode(actual)!=encode(expected):raise ValueError('b2_core_resolution_changed')
+
+
+def _core_result(intent):
+    step=dict(recovery_id=intent['id'],**intent['expected'][3],lane=intent['new_lane'],epoch=intent['new_epoch'])
+    return dict(status='core-complete-receipt-pending',recovery_id=intent['id'],lane=intent['new_lane'],epoch=intent['new_epoch'],certificate=_certificate(intent,step))
+
+
+def _completed_prefix_receipts(roots,intent):
+    """Verify immutable owned inputs without another inventory/resource scan."""
+    import hashlib
+    receipts=roots['receipts'];root=roots['control']/'core';prefix='p1-recovery-'+intent['id']
+    private=json.loads(read_file(receipts/'p1-init.json'))
+    closed(private,'deployment_id revision scope host profile_budget_digest roots seed')
+    installation=json.loads(intent['before']['source']['data']['p1_installation'][0][3])
+    if {k:v for k,v in private.items() if k not in ('roots','seed')}!=installation:raise ValueError('deployment_scope_mismatch')
+    _prefix_exact(receipts/(prefix+'.intent.json'),encode(intent).encode())
+    _prefix_exact(receipts/'p1-b2-required.json',encode(dict(revision=1,deployment_id=intent['deployment_id'])).encode())
+    if json.loads(read_file(receipts/'p1-enrolled.json'))!=intent['before']['source']['marker']:raise ValueError('incomplete_enrollment')
+    from worker.runtime_journal import journal_bytes
+    rotation=encode(dict(revision=1,recovery_id=intent['id'],intent_digest=digest(intent),step=intent['expected'][2],before=intent['before']['journal'],sha256=hashlib.sha256(journal_bytes(intent['expected'][2]['output']['journal'])).hexdigest())).encode()
+    _prefix_exact(receipts/(prefix+'.rotation.intent.json'),rotation)
+    if private['roots']!={k:[p.stat().st_dev,p.stat().st_ino] for k,p in roots.items()}:raise ValueError('volume_role_identity_mismatch')
+    for key in ('lifecycle','execution'):
+        if read_file(roots['ipc']/(key+'.key'),64)!=hashlib.sha256((private['seed']+key).encode()).hexdigest().encode():raise ValueError('installation_key_missing_or_changed')
+    raw=read_file(receipts/(prefix+'.snapshot.bundle'),MAX_BYTES)
+    descriptor=encode(dict(revision=1,recovery_id=intent['id'],intent_digest=digest(intent),source_digest=intent['source_digest'],snapshot_digest=intent['expected'][1]['output']['snapshot_digest'])).encode()
+    _prefix_exact(receipts/(prefix+'.bundle.intent.json'),descriptor)
+    if hashlib.sha256(raw).hexdigest()!=intent['expected'][1]['output']['snapshot_digest']:raise ValueError('b2_prefix_snapshot_changed')
+    _prefix_exact(receipts/(prefix+'.snapshot.bundle'),raw)
+    names={kind:root/name for name,kind in archive_names(intent).items()}
+    for path,content,kind in ((names['snapshot'],raw,'snapshot'),(names['manifest'],encode(archive_manifest(intent)).encode(),'manifest'),(receipts/(prefix+'.journal'),bytes.fromhex(intent['before']['journal']['bytes_hex']),'original-journal')):
+        creation=encode(dict(revision=1,recovery_id=intent['id'],kind=kind,sha256=hashlib.sha256(content).hexdigest())).encode()
+        _prefix_exact(receipts/(prefix+'.'+kind+'.intent.json'),creation)
+        _prefix_exact(path,content)
+
+
+def _core_certificate(root,receipts,intent,fault):
+    raw=encode(_core_result(intent)['certificate']).encode()
+    name=next(n for n,k in archive_names(intent).items() if k=='certificate');path=root/name
+    creation=receipts/('p1-recovery-'+intent['id']+'.core-certificate.intent.json')
+    descriptor=encode(dict(revision=1,recovery_id=intent['id'],intent_digest=digest(intent),sha256=__import__('hashlib').sha256(raw).hexdigest())).encode()
+    if creation.exists():
+        _prefix_exact(creation,descriptor)
+        if not path.exists():raise ValueError('b2_core_certificate_missing_quarantine')
+    else:
+        if path.exists() or path.is_symlink():raise ValueError('b2_core_certificate_unrecorded')
+        _prefix_file(creation,descriptor,fault,'core-certificate-intent')
+        fault('core-certificate-intent-recorded')
+        _prefix_file(path,raw,fault,'core-certificate')
+    _prefix_exact(path,raw)
+
+
+def _complete_core(db,roots,intent,fault):
+    from service.resource_store import _recovery_scan
+    root=roots['control']/'core'
+    # Full bounded inventory/prestate was just validated under BOTH locks. The
+    # resource observation is separate from ordinary R1/A2 inherited tokens.
+    decisions={r['object_id']:r for r in intent['diagnostic_decisions']}
+    for row in intent['before']['source']['inventory']:
+        if row['classification'] in ('missing_hash_mismatched_terminal','adopted_orphan') and row['id'] not in decisions:
+            raise ValueError('b2_unresolved_diagnostic')
+    for old in intent['before']['source']['data']['p1_inventory_objects']:
+        row=json.loads(old[4])
+        if row['classification'] in ('unknown_foreign','unresolved_owner_receipt_reservation'):
+            # Dispatch mismatch is accounted by exact original dispatch history;
+            # arbitrary reservation/schema defects cannot be acknowledged away.
+            if row['classification']=='unknown_foreign' or row['namespace']!='dispatch' or not any(str(v)==row['name'] for v in intent['affected']['dispatches']):
+                raise ValueError('b2_unresolved_diagnostic')
+        elif row['classification'] in ('missing_hash_mismatched_terminal','adopted_orphan'):
+            decision=decisions.get(row['id'])
+            if not decision or decision['content_digest']!=diagnostic_digest(row):raise ValueError('b2_unresolved_diagnostic')
+    used,count=_prefix_receipt_namespace(roots['receipts'],[json.loads(r[0]) for r in db.execute('SELECT record FROM p1_recoveries ORDER BY rowid')])
+    certificate_raw=encode(_core_result(intent)['certificate']).encode()
+    descriptor=encode(dict(revision=1,recovery_id=intent['id'],intent_digest=digest(intent),sha256=__import__('hashlib').sha256(certificate_raw).hexdigest())).encode()
+    if count+1>MAX_ROWS or used+len(descriptor)>MAX_BYTES:raise ValueError('b2_prefix_receipt_budget')
+    _recovery_scan(db,(root,roots['staging']),intent);fault('core-scan')
+    if intent['budget_after']!=intent['budget_before']:raise ValueError('b2_budget_change_unsupported')
+    def write():
+        rows=intent['expected'][3]['output']['rows']
+        for row in rows['jobs']:
+            db.execute('UPDATE jobs SET job=? WHERE id=?',(row[6],row[1]))
+        db.execute("UPDATE resource_reservations SET state='retained'")
+        db.execute('UPDATE resource_accounting SET highwater=? WHERE id=1',(rows['resource_accounting'][0][1],))
+        db.execute('DELETE FROM resource_faults')
+        db.execute("UPDATE resource_monitor SET state='healthy' WHERE id=1")
+        db.execute("UPDATE p1_integrity SET state='healthy',token=NULL WHERE id=1 AND revision=1")
+        for table,records in _resolution_outputs(intent).items():
+            for r in records:
+                key=r.get('dispatch_seq',r.get('job_id',r.get('object_id')))
+                db.execute('INSERT INTO '+table+' VALUES(?,?,?,?)',(key,intent['id'],encode(r),digest(r)))
+        step=dict(recovery_id=intent['id'],**intent['expected'][3],lane=intent['new_lane'],epoch=intent['new_epoch'])
+        db.execute('INSERT INTO p1_recovery_steps VALUES(?,?,?,?)',(intent['id'],'core-complete',encode(step),digest(step)))
+        _verify_core_rows(db,intent)
+        validate_b2_database(db,root,_uncertified=intent['id'])
+    _prefix_transaction(db,write,fault,'core-complete')
+    sync_dir(root);fault('core-complete-parent')
+    _core_certificate(root,roots['receipts'],intent,fault)
+    validate_b2_database(db,root)
 
 
 if __name__=='__main__': main()

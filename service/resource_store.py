@@ -199,3 +199,48 @@ class ResourceStore:
             raise ValueError('resource_fault_persistence_unresolved')
         if not confirmed_reap and not (unstarted and row['state']=='queued'):raise ValueError('resource_reap_required')
         self.db.execute("UPDATE resource_reservations SET state='retained' WHERE id=?",(identity,))
+
+
+def _recovery_scan(db, roots, intent):
+    """Private maintenance observation; caller holds both locks and pending proof.
+
+    No ordinary monitor/token/constructor is used. This scan grants no authority
+    until its exact accepted output and the whole Core transaction commit.
+    """
+    import time
+    from service.admission import finite_budget
+    from service.persistent_init import digest
+    budget=finite_budget(intent['budget_after'])
+    if budget!=intent['budget_before']:raise ValueError('b2_budget_change_unsupported')
+    row=db.execute('SELECT record,digest FROM p1_recoveries WHERE id=?',(intent['id'],)).fetchone()
+    if row!=(encode(intent),digest(intent)):raise ValueError('b2_scan_pending_required')
+    if db.in_transaction or db.execute("SELECT 1 FROM p1_recovery_steps WHERE recovery_id=? AND step='core-complete'",(intent['id'],)).fetchone():
+        raise ValueError('b2_scan_pending_required')
+    deadline=time.monotonic()+1;count=total=0
+    for root in roots:
+        root=Path(root)
+        if root.is_symlink() or not root.is_dir():raise ValueError('resource_root_missing')
+        for directory,dirs,files in os.walk(root,followlinks=False,onerror=lambda exc: (_ for _ in ()).throw(exc)):
+            for name in dirs+files:
+                count+=1
+                if count>2048 or time.monotonic()>deadline:raise ValueError('b2_resource_scan_budget')
+                info=(Path(directory)/name).lstat()
+                if info.st_uid!=os.getuid() or stat.S_ISLNK(info.st_mode) or not (stat.S_ISREG(info.st_mode) or stat.S_ISDIR(info.st_mode)):
+                    raise ValueError('resource_namespace_unknown')
+                total+=info.st_size
+                if total>2**53-1:raise ValueError('b2_resource_scan_budget')
+    jobs={r[1]:json.loads(r[6]) for r in intent['before']['source']['data']['jobs']}
+    for identity,category,raw,state in intent['before']['source']['data']['resource_reservations']:
+        if state!='executing':continue
+        demand=json.loads(raw);stage=Path(roots[1])/jobs[identity]['attempts'][-1]['staging_id']
+        if stage.exists():
+            if sum(p.stat().st_size for p in stage.iterdir() if p.is_file())>demand['attempt_disk_bytes']:raise ValueError('resource_stage_growth')
+            output=stage/'output.wav'
+            if output.exists() and output.stat().st_size>9644:raise ValueError('resource_output_bytes')
+    high=max(total,intent['highwater'])
+    charged=sum(json.loads(r[0])['disk_bytes'] for r in db.execute('SELECT demand FROM resource_reservations'))
+    free=min(v.f_bavail*v.f_frsize for v in (os.statvfs(root) for root in roots))
+    if high+charged>budget['disk_bytes']:raise ValueError('disk_quota')
+    if free<budget['free_bytes']+charged:raise ValueError('disk_free_reserve')
+    if high!=intent['expected'][3]['output']['highwater']:raise ValueError('b2_scan_output_changed')
+    return high
