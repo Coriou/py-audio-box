@@ -356,3 +356,8 @@ Record failures and missing evidence; do not replace them with a successful late
 - Candidate `b2af46fe7b60f6fe30624e549a21201827ef3fce`, baseline `75bc71c`, app-owned `t3-e310284d`, branch `t3/p1b1-enrollment-recovery`; eight authorized paths including approved narrow reconciliation adapter. Root read handoff/diff summary; unintegrated.
 - Implementer claims final **326 passed, 18 skipped**, including 47 B1 tests; E1 only, Docker projection mocked. Apply and persistent activation unavailable. No installed qualification or waiver of unresolved A1 global inventory drift.
 - Fresh independent Sol-low request/task suffix `pab-phase1a-p1b1-review-r1-20261022` (current task-ID prefix), report `reviews/P1B1-r1-sol.md`; original B1 requirements, approved amendment, exact candidate and evidence limits supplied. Review pending; B2/B3/C1/C2 remain closed.
+
+## B1 round1 NO-GO / targeted correction
+
+- [Independent report](reviews/P1B1-r1-sol.md): NO-GO exact `b2af46f`; independently 326 passed/18 skipped and47focused. F1 missing previously created Core can remint healthy authority during matching completion; F2 blanket plan exclusion misses prior evidence deletion; F3 SQLite read-only connection mutates source SHM. No integration/waiver.
+- Fresh isolated Sol-low request `pab-phase1a-p1b1-fix-r1-20261022`: durable pre-Core creation intent, exact self-only plan projection and source-preserving WAL-aware inspection with adversarial regressions. Original B1 scope retained, no B2 authority/activation. Separate re-review required.
