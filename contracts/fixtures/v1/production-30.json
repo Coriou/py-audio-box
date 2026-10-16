@@ -1,0 +1,1674 @@
+{
+  "schema_version": "1.0.0",
+  "id": "production-30",
+  "revision": 1,
+  "speakers": [
+    {
+      "id": "s0",
+      "voice_version_id": "vv0"
+    },
+    {
+      "id": "s1",
+      "voice_version_id": "vv1"
+    },
+    {
+      "id": "s2",
+      "voice_version_id": "vv2"
+    }
+  ],
+  "blocks": [
+    {
+      "id": "b0",
+      "speaker_id": "s0",
+      "text": "  Ligne 000 — café!\nExact text.  ",
+      "selected_take_id": "t0",
+      "settings_sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+    },
+    {
+      "id": "b1",
+      "speaker_id": "s1",
+      "text": "  Ligne 001 — café!\nExact text.  ",
+      "selected_take_id": "t1",
+      "settings_sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+    },
+    {
+      "id": "b2",
+      "speaker_id": "s2",
+      "text": "  Ligne 002 — café!\nExact text.  ",
+      "selected_take_id": "t2",
+      "settings_sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+    },
+    {
+      "id": "b3",
+      "speaker_id": "s0",
+      "text": "  Ligne 003 — café!\nExact text.  ",
+      "selected_take_id": "t3",
+      "settings_sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+    },
+    {
+      "id": "b4",
+      "speaker_id": "s1",
+      "text": "  Ligne 004 — café!\nExact text.  ",
+      "selected_take_id": "t4",
+      "settings_sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+    },
+    {
+      "id": "b5",
+      "speaker_id": "s2",
+      "text": "  Ligne 005 — café!\nExact text.  ",
+      "selected_take_id": "t5",
+      "settings_sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+    },
+    {
+      "id": "b6",
+      "speaker_id": "s0",
+      "text": "  Ligne 006 — café!\nExact text.  ",
+      "selected_take_id": "t6",
+      "settings_sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+    },
+    {
+      "id": "b7",
+      "speaker_id": "s1",
+      "text": "  Ligne 007 — café!\nExact text.  ",
+      "selected_take_id": "t7",
+      "settings_sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+    },
+    {
+      "id": "b8",
+      "speaker_id": "s2",
+      "text": "  Ligne 008 — café!\nExact text.  ",
+      "selected_take_id": "t8",
+      "settings_sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+    },
+    {
+      "id": "b9",
+      "speaker_id": "s0",
+      "text": "  Ligne 009 — café!\nExact text.  ",
+      "selected_take_id": "t9",
+      "settings_sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+    },
+    {
+      "id": "b10",
+      "speaker_id": "s1",
+      "text": "  Ligne 010 — café!\nExact text.  ",
+      "selected_take_id": "t10",
+      "settings_sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+    },
+    {
+      "id": "b11",
+      "speaker_id": "s2",
+      "text": "  Ligne 011 — café!\nExact text.  ",
+      "selected_take_id": "t11",
+      "settings_sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+    },
+    {
+      "id": "b12",
+      "speaker_id": "s0",
+      "text": "  Ligne 012 — café!\nExact text.  ",
+      "selected_take_id": "t12",
+      "settings_sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+    },
+    {
+      "id": "b13",
+      "speaker_id": "s1",
+      "text": "  Ligne 013 — café!\nExact text.  ",
+      "selected_take_id": "t13",
+      "settings_sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+    },
+    {
+      "id": "b14",
+      "speaker_id": "s2",
+      "text": "  Ligne 014 — café!\nExact text.  ",
+      "selected_take_id": "t14",
+      "settings_sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+    },
+    {
+      "id": "b15",
+      "speaker_id": "s0",
+      "text": "  Ligne 015 — café!\nExact text.  ",
+      "selected_take_id": "t15",
+      "settings_sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+    },
+    {
+      "id": "b16",
+      "speaker_id": "s1",
+      "text": "  Ligne 016 — café!\nExact text.  ",
+      "selected_take_id": "t16",
+      "settings_sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+    },
+    {
+      "id": "b17",
+      "speaker_id": "s2",
+      "text": "  Ligne 017 — café!\nExact text.  ",
+      "selected_take_id": "t17",
+      "settings_sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+    },
+    {
+      "id": "b18",
+      "speaker_id": "s0",
+      "text": "  Ligne 018 — café!\nExact text.  ",
+      "selected_take_id": "t18",
+      "settings_sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+    },
+    {
+      "id": "b19",
+      "speaker_id": "s1",
+      "text": "  Ligne 019 — café!\nExact text.  ",
+      "selected_take_id": "t19",
+      "settings_sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+    },
+    {
+      "id": "b20",
+      "speaker_id": "s2",
+      "text": "  Ligne 020 — café!\nExact text.  ",
+      "selected_take_id": "t20",
+      "settings_sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+    },
+    {
+      "id": "b21",
+      "speaker_id": "s0",
+      "text": "  Ligne 021 — café!\nExact text.  ",
+      "selected_take_id": "t21",
+      "settings_sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+    },
+    {
+      "id": "b22",
+      "speaker_id": "s1",
+      "text": "  Ligne 022 — café!\nExact text.  ",
+      "selected_take_id": "t22",
+      "settings_sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+    },
+    {
+      "id": "b23",
+      "speaker_id": "s2",
+      "text": "  Ligne 023 — café!\nExact text.  ",
+      "selected_take_id": "t23",
+      "settings_sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+    },
+    {
+      "id": "b24",
+      "speaker_id": "s0",
+      "text": "  Ligne 024 — café!\nExact text.  ",
+      "selected_take_id": "t24",
+      "settings_sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+    },
+    {
+      "id": "b25",
+      "speaker_id": "s1",
+      "text": "  Ligne 025 — café!\nExact text.  ",
+      "selected_take_id": "t25",
+      "settings_sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+    },
+    {
+      "id": "b26",
+      "speaker_id": "s2",
+      "text": "  Ligne 026 — café!\nExact text.  ",
+      "selected_take_id": "t26",
+      "settings_sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+    },
+    {
+      "id": "b27",
+      "speaker_id": "s0",
+      "text": "  Ligne 027 — café!\nExact text.  ",
+      "selected_take_id": "t27",
+      "settings_sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+    },
+    {
+      "id": "b28",
+      "speaker_id": "s1",
+      "text": "  Ligne 028 — café!\nExact text.  ",
+      "selected_take_id": "t28",
+      "settings_sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+    },
+    {
+      "id": "b29",
+      "speaker_id": "s2",
+      "text": "  Ligne 029 — café!\nExact text.  ",
+      "selected_take_id": "t29",
+      "settings_sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+    }
+  ],
+  "takes": [
+    {
+      "id": "t0",
+      "block_id": "b0",
+      "text": "  Ligne 000 — café!\nExact text.  ",
+      "voice_version_id": "vv0",
+      "settings_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+      "asset_id": "impulse",
+      "identity": {
+        "requested": {
+          "engine": "qwen",
+          "model": "synthetic-qwen-fixture",
+          "bundle_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+          "device": "cpu",
+          "precision": "float32"
+        },
+        "effective": {
+          "engine": "qwen",
+          "model": "synthetic-qwen-fixture",
+          "bundle_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+          "device": "cpu",
+          "precision": "float32"
+        },
+        "fallback": "forbid",
+        "reason": "",
+        "profile_id": "cpu-synthetic"
+      }
+    },
+    {
+      "id": "t1",
+      "block_id": "b1",
+      "text": "  Ligne 001 — café!\nExact text.  ",
+      "voice_version_id": "vv1",
+      "settings_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+      "asset_id": "impulse",
+      "identity": {
+        "requested": {
+          "engine": "qwen",
+          "model": "synthetic-qwen-fixture",
+          "bundle_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+          "device": "cpu",
+          "precision": "float32"
+        },
+        "effective": {
+          "engine": "qwen",
+          "model": "synthetic-qwen-fixture",
+          "bundle_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+          "device": "cpu",
+          "precision": "float32"
+        },
+        "fallback": "forbid",
+        "reason": "",
+        "profile_id": "cpu-synthetic"
+      }
+    },
+    {
+      "id": "t2",
+      "block_id": "b2",
+      "text": "  Ligne 002 — café!\nExact text.  ",
+      "voice_version_id": "vv2",
+      "settings_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+      "asset_id": "impulse",
+      "identity": {
+        "requested": {
+          "engine": "qwen",
+          "model": "synthetic-qwen-fixture",
+          "bundle_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+          "device": "cpu",
+          "precision": "float32"
+        },
+        "effective": {
+          "engine": "qwen",
+          "model": "synthetic-qwen-fixture",
+          "bundle_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+          "device": "cpu",
+          "precision": "float32"
+        },
+        "fallback": "forbid",
+        "reason": "",
+        "profile_id": "cpu-synthetic"
+      }
+    },
+    {
+      "id": "t3",
+      "block_id": "b3",
+      "text": "  Ligne 003 — café!\nExact text.  ",
+      "voice_version_id": "vv0",
+      "settings_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+      "asset_id": "impulse",
+      "identity": {
+        "requested": {
+          "engine": "qwen",
+          "model": "synthetic-qwen-fixture",
+          "bundle_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+          "device": "cpu",
+          "precision": "float32"
+        },
+        "effective": {
+          "engine": "qwen",
+          "model": "synthetic-qwen-fixture",
+          "bundle_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+          "device": "cpu",
+          "precision": "float32"
+        },
+        "fallback": "forbid",
+        "reason": "",
+        "profile_id": "cpu-synthetic"
+      }
+    },
+    {
+      "id": "t4",
+      "block_id": "b4",
+      "text": "  Ligne 004 — café!\nExact text.  ",
+      "voice_version_id": "vv1",
+      "settings_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+      "asset_id": "impulse",
+      "identity": {
+        "requested": {
+          "engine": "qwen",
+          "model": "synthetic-qwen-fixture",
+          "bundle_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+          "device": "cpu",
+          "precision": "float32"
+        },
+        "effective": {
+          "engine": "qwen",
+          "model": "synthetic-qwen-fixture",
+          "bundle_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+          "device": "cpu",
+          "precision": "float32"
+        },
+        "fallback": "forbid",
+        "reason": "",
+        "profile_id": "cpu-synthetic"
+      }
+    },
+    {
+      "id": "t5",
+      "block_id": "b5",
+      "text": "  Ligne 005 — café!\nExact text.  ",
+      "voice_version_id": "vv2",
+      "settings_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+      "asset_id": "impulse",
+      "identity": {
+        "requested": {
+          "engine": "qwen",
+          "model": "synthetic-qwen-fixture",
+          "bundle_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+          "device": "cpu",
+          "precision": "float32"
+        },
+        "effective": {
+          "engine": "qwen",
+          "model": "synthetic-qwen-fixture",
+          "bundle_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+          "device": "cpu",
+          "precision": "float32"
+        },
+        "fallback": "forbid",
+        "reason": "",
+        "profile_id": "cpu-synthetic"
+      }
+    },
+    {
+      "id": "t6",
+      "block_id": "b6",
+      "text": "  Ligne 006 — café!\nExact text.  ",
+      "voice_version_id": "vv0",
+      "settings_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+      "asset_id": "impulse",
+      "identity": {
+        "requested": {
+          "engine": "qwen",
+          "model": "synthetic-qwen-fixture",
+          "bundle_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+          "device": "cpu",
+          "precision": "float32"
+        },
+        "effective": {
+          "engine": "qwen",
+          "model": "synthetic-qwen-fixture",
+          "bundle_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+          "device": "cpu",
+          "precision": "float32"
+        },
+        "fallback": "forbid",
+        "reason": "",
+        "profile_id": "cpu-synthetic"
+      }
+    },
+    {
+      "id": "t7",
+      "block_id": "b7",
+      "text": "  Ligne 007 — café!\nExact text.  ",
+      "voice_version_id": "vv1",
+      "settings_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+      "asset_id": "impulse",
+      "identity": {
+        "requested": {
+          "engine": "qwen",
+          "model": "synthetic-qwen-fixture",
+          "bundle_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+          "device": "cpu",
+          "precision": "float32"
+        },
+        "effective": {
+          "engine": "qwen",
+          "model": "synthetic-qwen-fixture",
+          "bundle_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+          "device": "cpu",
+          "precision": "float32"
+        },
+        "fallback": "forbid",
+        "reason": "",
+        "profile_id": "cpu-synthetic"
+      }
+    },
+    {
+      "id": "t8",
+      "block_id": "b8",
+      "text": "  Ligne 008 — café!\nExact text.  ",
+      "voice_version_id": "vv2",
+      "settings_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+      "asset_id": "impulse",
+      "identity": {
+        "requested": {
+          "engine": "qwen",
+          "model": "synthetic-qwen-fixture",
+          "bundle_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+          "device": "cpu",
+          "precision": "float32"
+        },
+        "effective": {
+          "engine": "qwen",
+          "model": "synthetic-qwen-fixture",
+          "bundle_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+          "device": "cpu",
+          "precision": "float32"
+        },
+        "fallback": "forbid",
+        "reason": "",
+        "profile_id": "cpu-synthetic"
+      }
+    },
+    {
+      "id": "t9",
+      "block_id": "b9",
+      "text": "  Ligne 009 — café!\nExact text.  ",
+      "voice_version_id": "vv0",
+      "settings_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+      "asset_id": "impulse",
+      "identity": {
+        "requested": {
+          "engine": "qwen",
+          "model": "synthetic-qwen-fixture",
+          "bundle_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+          "device": "cpu",
+          "precision": "float32"
+        },
+        "effective": {
+          "engine": "qwen",
+          "model": "synthetic-qwen-fixture",
+          "bundle_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+          "device": "cpu",
+          "precision": "float32"
+        },
+        "fallback": "forbid",
+        "reason": "",
+        "profile_id": "cpu-synthetic"
+      }
+    },
+    {
+      "id": "t10",
+      "block_id": "b10",
+      "text": "  Ligne 010 — café!\nExact text.  ",
+      "voice_version_id": "vv1",
+      "settings_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+      "asset_id": "impulse",
+      "identity": {
+        "requested": {
+          "engine": "qwen",
+          "model": "synthetic-qwen-fixture",
+          "bundle_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+          "device": "cpu",
+          "precision": "float32"
+        },
+        "effective": {
+          "engine": "qwen",
+          "model": "synthetic-qwen-fixture",
+          "bundle_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+          "device": "cpu",
+          "precision": "float32"
+        },
+        "fallback": "forbid",
+        "reason": "",
+        "profile_id": "cpu-synthetic"
+      }
+    },
+    {
+      "id": "t11",
+      "block_id": "b11",
+      "text": "  Ligne 011 — café!\nExact text.  ",
+      "voice_version_id": "vv2",
+      "settings_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+      "asset_id": "impulse",
+      "identity": {
+        "requested": {
+          "engine": "qwen",
+          "model": "synthetic-qwen-fixture",
+          "bundle_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+          "device": "cpu",
+          "precision": "float32"
+        },
+        "effective": {
+          "engine": "qwen",
+          "model": "synthetic-qwen-fixture",
+          "bundle_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+          "device": "cpu",
+          "precision": "float32"
+        },
+        "fallback": "forbid",
+        "reason": "",
+        "profile_id": "cpu-synthetic"
+      }
+    },
+    {
+      "id": "t12",
+      "block_id": "b12",
+      "text": "  Ligne 012 — café!\nExact text.  ",
+      "voice_version_id": "vv0",
+      "settings_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+      "asset_id": "impulse",
+      "identity": {
+        "requested": {
+          "engine": "qwen",
+          "model": "synthetic-qwen-fixture",
+          "bundle_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+          "device": "cpu",
+          "precision": "float32"
+        },
+        "effective": {
+          "engine": "qwen",
+          "model": "synthetic-qwen-fixture",
+          "bundle_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+          "device": "cpu",
+          "precision": "float32"
+        },
+        "fallback": "forbid",
+        "reason": "",
+        "profile_id": "cpu-synthetic"
+      }
+    },
+    {
+      "id": "t13",
+      "block_id": "b13",
+      "text": "  Ligne 013 — café!\nExact text.  ",
+      "voice_version_id": "vv1",
+      "settings_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+      "asset_id": "impulse",
+      "identity": {
+        "requested": {
+          "engine": "qwen",
+          "model": "synthetic-qwen-fixture",
+          "bundle_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+          "device": "cpu",
+          "precision": "float32"
+        },
+        "effective": {
+          "engine": "qwen",
+          "model": "synthetic-qwen-fixture",
+          "bundle_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+          "device": "cpu",
+          "precision": "float32"
+        },
+        "fallback": "forbid",
+        "reason": "",
+        "profile_id": "cpu-synthetic"
+      }
+    },
+    {
+      "id": "t14",
+      "block_id": "b14",
+      "text": "  Ligne 014 — café!\nExact text.  ",
+      "voice_version_id": "vv2",
+      "settings_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+      "asset_id": "impulse",
+      "identity": {
+        "requested": {
+          "engine": "qwen",
+          "model": "synthetic-qwen-fixture",
+          "bundle_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+          "device": "cpu",
+          "precision": "float32"
+        },
+        "effective": {
+          "engine": "qwen",
+          "model": "synthetic-qwen-fixture",
+          "bundle_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+          "device": "cpu",
+          "precision": "float32"
+        },
+        "fallback": "forbid",
+        "reason": "",
+        "profile_id": "cpu-synthetic"
+      }
+    },
+    {
+      "id": "t15",
+      "block_id": "b15",
+      "text": "  Ligne 015 — café!\nExact text.  ",
+      "voice_version_id": "vv0",
+      "settings_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+      "asset_id": "impulse",
+      "identity": {
+        "requested": {
+          "engine": "qwen",
+          "model": "synthetic-qwen-fixture",
+          "bundle_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+          "device": "cpu",
+          "precision": "float32"
+        },
+        "effective": {
+          "engine": "qwen",
+          "model": "synthetic-qwen-fixture",
+          "bundle_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+          "device": "cpu",
+          "precision": "float32"
+        },
+        "fallback": "forbid",
+        "reason": "",
+        "profile_id": "cpu-synthetic"
+      }
+    },
+    {
+      "id": "t16",
+      "block_id": "b16",
+      "text": "  Ligne 016 — café!\nExact text.  ",
+      "voice_version_id": "vv1",
+      "settings_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+      "asset_id": "impulse",
+      "identity": {
+        "requested": {
+          "engine": "qwen",
+          "model": "synthetic-qwen-fixture",
+          "bundle_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+          "device": "cpu",
+          "precision": "float32"
+        },
+        "effective": {
+          "engine": "qwen",
+          "model": "synthetic-qwen-fixture",
+          "bundle_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+          "device": "cpu",
+          "precision": "float32"
+        },
+        "fallback": "forbid",
+        "reason": "",
+        "profile_id": "cpu-synthetic"
+      }
+    },
+    {
+      "id": "t17",
+      "block_id": "b17",
+      "text": "  Ligne 017 — café!\nExact text.  ",
+      "voice_version_id": "vv2",
+      "settings_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+      "asset_id": "impulse",
+      "identity": {
+        "requested": {
+          "engine": "qwen",
+          "model": "synthetic-qwen-fixture",
+          "bundle_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+          "device": "cpu",
+          "precision": "float32"
+        },
+        "effective": {
+          "engine": "qwen",
+          "model": "synthetic-qwen-fixture",
+          "bundle_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+          "device": "cpu",
+          "precision": "float32"
+        },
+        "fallback": "forbid",
+        "reason": "",
+        "profile_id": "cpu-synthetic"
+      }
+    },
+    {
+      "id": "t18",
+      "block_id": "b18",
+      "text": "  Ligne 018 — café!\nExact text.  ",
+      "voice_version_id": "vv0",
+      "settings_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+      "asset_id": "impulse",
+      "identity": {
+        "requested": {
+          "engine": "qwen",
+          "model": "synthetic-qwen-fixture",
+          "bundle_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+          "device": "cpu",
+          "precision": "float32"
+        },
+        "effective": {
+          "engine": "qwen",
+          "model": "synthetic-qwen-fixture",
+          "bundle_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+          "device": "cpu",
+          "precision": "float32"
+        },
+        "fallback": "forbid",
+        "reason": "",
+        "profile_id": "cpu-synthetic"
+      }
+    },
+    {
+      "id": "t19",
+      "block_id": "b19",
+      "text": "  Ligne 019 — café!\nExact text.  ",
+      "voice_version_id": "vv1",
+      "settings_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+      "asset_id": "impulse",
+      "identity": {
+        "requested": {
+          "engine": "qwen",
+          "model": "synthetic-qwen-fixture",
+          "bundle_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+          "device": "cpu",
+          "precision": "float32"
+        },
+        "effective": {
+          "engine": "qwen",
+          "model": "synthetic-qwen-fixture",
+          "bundle_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+          "device": "cpu",
+          "precision": "float32"
+        },
+        "fallback": "forbid",
+        "reason": "",
+        "profile_id": "cpu-synthetic"
+      }
+    },
+    {
+      "id": "t20",
+      "block_id": "b20",
+      "text": "  Ligne 020 — café!\nExact text.  ",
+      "voice_version_id": "vv2",
+      "settings_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+      "asset_id": "impulse",
+      "identity": {
+        "requested": {
+          "engine": "qwen",
+          "model": "synthetic-qwen-fixture",
+          "bundle_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+          "device": "cpu",
+          "precision": "float32"
+        },
+        "effective": {
+          "engine": "qwen",
+          "model": "synthetic-qwen-fixture",
+          "bundle_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+          "device": "cpu",
+          "precision": "float32"
+        },
+        "fallback": "forbid",
+        "reason": "",
+        "profile_id": "cpu-synthetic"
+      }
+    },
+    {
+      "id": "t21",
+      "block_id": "b21",
+      "text": "  Ligne 021 — café!\nExact text.  ",
+      "voice_version_id": "vv0",
+      "settings_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+      "asset_id": "impulse",
+      "identity": {
+        "requested": {
+          "engine": "qwen",
+          "model": "synthetic-qwen-fixture",
+          "bundle_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+          "device": "cpu",
+          "precision": "float32"
+        },
+        "effective": {
+          "engine": "qwen",
+          "model": "synthetic-qwen-fixture",
+          "bundle_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+          "device": "cpu",
+          "precision": "float32"
+        },
+        "fallback": "forbid",
+        "reason": "",
+        "profile_id": "cpu-synthetic"
+      }
+    },
+    {
+      "id": "t22",
+      "block_id": "b22",
+      "text": "  Ligne 022 — café!\nExact text.  ",
+      "voice_version_id": "vv1",
+      "settings_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+      "asset_id": "impulse",
+      "identity": {
+        "requested": {
+          "engine": "qwen",
+          "model": "synthetic-qwen-fixture",
+          "bundle_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+          "device": "cpu",
+          "precision": "float32"
+        },
+        "effective": {
+          "engine": "qwen",
+          "model": "synthetic-qwen-fixture",
+          "bundle_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+          "device": "cpu",
+          "precision": "float32"
+        },
+        "fallback": "forbid",
+        "reason": "",
+        "profile_id": "cpu-synthetic"
+      }
+    },
+    {
+      "id": "t23",
+      "block_id": "b23",
+      "text": "  Ligne 023 — café!\nExact text.  ",
+      "voice_version_id": "vv2",
+      "settings_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+      "asset_id": "impulse",
+      "identity": {
+        "requested": {
+          "engine": "qwen",
+          "model": "synthetic-qwen-fixture",
+          "bundle_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+          "device": "cpu",
+          "precision": "float32"
+        },
+        "effective": {
+          "engine": "qwen",
+          "model": "synthetic-qwen-fixture",
+          "bundle_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+          "device": "cpu",
+          "precision": "float32"
+        },
+        "fallback": "forbid",
+        "reason": "",
+        "profile_id": "cpu-synthetic"
+      }
+    },
+    {
+      "id": "t24",
+      "block_id": "b24",
+      "text": "  Ligne 024 — café!\nExact text.  ",
+      "voice_version_id": "vv0",
+      "settings_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+      "asset_id": "impulse",
+      "identity": {
+        "requested": {
+          "engine": "qwen",
+          "model": "synthetic-qwen-fixture",
+          "bundle_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+          "device": "cpu",
+          "precision": "float32"
+        },
+        "effective": {
+          "engine": "qwen",
+          "model": "synthetic-qwen-fixture",
+          "bundle_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+          "device": "cpu",
+          "precision": "float32"
+        },
+        "fallback": "forbid",
+        "reason": "",
+        "profile_id": "cpu-synthetic"
+      }
+    },
+    {
+      "id": "t25",
+      "block_id": "b25",
+      "text": "  Ligne 025 — café!\nExact text.  ",
+      "voice_version_id": "vv1",
+      "settings_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+      "asset_id": "impulse",
+      "identity": {
+        "requested": {
+          "engine": "qwen",
+          "model": "synthetic-qwen-fixture",
+          "bundle_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+          "device": "cpu",
+          "precision": "float32"
+        },
+        "effective": {
+          "engine": "qwen",
+          "model": "synthetic-qwen-fixture",
+          "bundle_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+          "device": "cpu",
+          "precision": "float32"
+        },
+        "fallback": "forbid",
+        "reason": "",
+        "profile_id": "cpu-synthetic"
+      }
+    },
+    {
+      "id": "t26",
+      "block_id": "b26",
+      "text": "  Ligne 026 — café!\nExact text.  ",
+      "voice_version_id": "vv2",
+      "settings_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+      "asset_id": "impulse",
+      "identity": {
+        "requested": {
+          "engine": "qwen",
+          "model": "synthetic-qwen-fixture",
+          "bundle_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+          "device": "cpu",
+          "precision": "float32"
+        },
+        "effective": {
+          "engine": "qwen",
+          "model": "synthetic-qwen-fixture",
+          "bundle_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+          "device": "cpu",
+          "precision": "float32"
+        },
+        "fallback": "forbid",
+        "reason": "",
+        "profile_id": "cpu-synthetic"
+      }
+    },
+    {
+      "id": "t27",
+      "block_id": "b27",
+      "text": "  Ligne 027 — café!\nExact text.  ",
+      "voice_version_id": "vv0",
+      "settings_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+      "asset_id": "impulse",
+      "identity": {
+        "requested": {
+          "engine": "qwen",
+          "model": "synthetic-qwen-fixture",
+          "bundle_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+          "device": "cpu",
+          "precision": "float32"
+        },
+        "effective": {
+          "engine": "qwen",
+          "model": "synthetic-qwen-fixture",
+          "bundle_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+          "device": "cpu",
+          "precision": "float32"
+        },
+        "fallback": "forbid",
+        "reason": "",
+        "profile_id": "cpu-synthetic"
+      }
+    },
+    {
+      "id": "t28",
+      "block_id": "b28",
+      "text": "  Ligne 028 — café!\nExact text.  ",
+      "voice_version_id": "vv1",
+      "settings_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+      "asset_id": "impulse",
+      "identity": {
+        "requested": {
+          "engine": "qwen",
+          "model": "synthetic-qwen-fixture",
+          "bundle_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+          "device": "cpu",
+          "precision": "float32"
+        },
+        "effective": {
+          "engine": "qwen",
+          "model": "synthetic-qwen-fixture",
+          "bundle_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+          "device": "cpu",
+          "precision": "float32"
+        },
+        "fallback": "forbid",
+        "reason": "",
+        "profile_id": "cpu-synthetic"
+      }
+    },
+    {
+      "id": "t29",
+      "block_id": "b29",
+      "text": "  Ligne 029 — café!\nExact text.  ",
+      "voice_version_id": "vv2",
+      "settings_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+      "asset_id": "impulse",
+      "identity": {
+        "requested": {
+          "engine": "qwen",
+          "model": "synthetic-qwen-fixture",
+          "bundle_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+          "device": "cpu",
+          "precision": "float32"
+        },
+        "effective": {
+          "engine": "qwen",
+          "model": "synthetic-qwen-fixture",
+          "bundle_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+          "device": "cpu",
+          "precision": "float32"
+        },
+        "fallback": "forbid",
+        "reason": "",
+        "profile_id": "cpu-synthetic"
+      }
+    },
+    {
+      "id": "candidate-long",
+      "block_id": "b0",
+      "text": "  Ligne 000 — café!\nExact text.  ",
+      "voice_version_id": "vv0",
+      "settings_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+      "asset_id": "long",
+      "identity": {
+        "requested": {
+          "engine": "qwen",
+          "model": "synthetic-qwen-fixture",
+          "bundle_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+          "device": "cpu",
+          "precision": "float32"
+        },
+        "effective": {
+          "engine": "qwen",
+          "model": "synthetic-qwen-fixture",
+          "bundle_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+          "device": "cpu",
+          "precision": "float32"
+        },
+        "fallback": "forbid",
+        "reason": "",
+        "profile_id": "cpu-synthetic"
+      }
+    },
+    {
+      "id": "candidate-short",
+      "block_id": "b0",
+      "text": "  Ligne 000 — café!\nExact text.  ",
+      "voice_version_id": "vv0",
+      "settings_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+      "asset_id": "short",
+      "identity": {
+        "requested": {
+          "engine": "qwen",
+          "model": "synthetic-qwen-fixture",
+          "bundle_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+          "device": "cpu",
+          "precision": "float32"
+        },
+        "effective": {
+          "engine": "qwen",
+          "model": "synthetic-qwen-fixture",
+          "bundle_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+          "device": "cpu",
+          "precision": "float32"
+        },
+        "fallback": "forbid",
+        "reason": "",
+        "profile_id": "cpu-synthetic"
+      }
+    }
+  ],
+  "tracks": [
+    {
+      "id": "speech",
+      "mute": false,
+      "solo": false
+    },
+    {
+      "id": "bed",
+      "mute": false,
+      "solo": false
+    }
+  ],
+  "clips": [
+    {
+      "id": "c0",
+      "track_id": "speech",
+      "asset_id": "impulse",
+      "take_id": "t0",
+      "start": 0,
+      "in_tick": 0,
+      "out_tick": 4800,
+      "gain": 1,
+      "fade_in": 0,
+      "fade_out": 0,
+      "mute": false
+    },
+    {
+      "id": "c1",
+      "track_id": "speech",
+      "asset_id": "impulse",
+      "take_id": "t1",
+      "start": 4800,
+      "in_tick": 0,
+      "out_tick": 4800,
+      "gain": 1,
+      "fade_in": 0,
+      "fade_out": 0,
+      "mute": false
+    },
+    {
+      "id": "c2",
+      "track_id": "speech",
+      "asset_id": "impulse",
+      "take_id": "t2",
+      "start": 9600,
+      "in_tick": 0,
+      "out_tick": 4800,
+      "gain": 1,
+      "fade_in": 0,
+      "fade_out": 0,
+      "mute": false
+    },
+    {
+      "id": "c3",
+      "track_id": "speech",
+      "asset_id": "impulse",
+      "take_id": "t3",
+      "start": 14400,
+      "in_tick": 0,
+      "out_tick": 4800,
+      "gain": 1,
+      "fade_in": 0,
+      "fade_out": 0,
+      "mute": false
+    },
+    {
+      "id": "c4",
+      "track_id": "speech",
+      "asset_id": "impulse",
+      "take_id": "t4",
+      "start": 19200,
+      "in_tick": 0,
+      "out_tick": 4800,
+      "gain": 1,
+      "fade_in": 0,
+      "fade_out": 0,
+      "mute": false
+    },
+    {
+      "id": "c5",
+      "track_id": "speech",
+      "asset_id": "impulse",
+      "take_id": "t5",
+      "start": 24000,
+      "in_tick": 0,
+      "out_tick": 4800,
+      "gain": 1,
+      "fade_in": 0,
+      "fade_out": 0,
+      "mute": false
+    },
+    {
+      "id": "c6",
+      "track_id": "speech",
+      "asset_id": "impulse",
+      "take_id": "t6",
+      "start": 28800,
+      "in_tick": 0,
+      "out_tick": 4800,
+      "gain": 1,
+      "fade_in": 0,
+      "fade_out": 0,
+      "mute": false
+    },
+    {
+      "id": "c7",
+      "track_id": "speech",
+      "asset_id": "impulse",
+      "take_id": "t7",
+      "start": 33600,
+      "in_tick": 0,
+      "out_tick": 4800,
+      "gain": 1,
+      "fade_in": 0,
+      "fade_out": 0,
+      "mute": false
+    },
+    {
+      "id": "c8",
+      "track_id": "speech",
+      "asset_id": "impulse",
+      "take_id": "t8",
+      "start": 38400,
+      "in_tick": 0,
+      "out_tick": 4800,
+      "gain": 1,
+      "fade_in": 0,
+      "fade_out": 0,
+      "mute": false
+    },
+    {
+      "id": "c9",
+      "track_id": "speech",
+      "asset_id": "impulse",
+      "take_id": "t9",
+      "start": 43200,
+      "in_tick": 0,
+      "out_tick": 4800,
+      "gain": 1,
+      "fade_in": 0,
+      "fade_out": 0,
+      "mute": false
+    },
+    {
+      "id": "c10",
+      "track_id": "speech",
+      "asset_id": "impulse",
+      "take_id": "t10",
+      "start": 48000,
+      "in_tick": 0,
+      "out_tick": 4800,
+      "gain": 1,
+      "fade_in": 0,
+      "fade_out": 0,
+      "mute": false
+    },
+    {
+      "id": "c11",
+      "track_id": "speech",
+      "asset_id": "impulse",
+      "take_id": "t11",
+      "start": 52800,
+      "in_tick": 0,
+      "out_tick": 4800,
+      "gain": 1,
+      "fade_in": 0,
+      "fade_out": 0,
+      "mute": false
+    },
+    {
+      "id": "c12",
+      "track_id": "speech",
+      "asset_id": "impulse",
+      "take_id": "t12",
+      "start": 57600,
+      "in_tick": 0,
+      "out_tick": 4800,
+      "gain": 1,
+      "fade_in": 0,
+      "fade_out": 0,
+      "mute": false
+    },
+    {
+      "id": "c13",
+      "track_id": "speech",
+      "asset_id": "impulse",
+      "take_id": "t13",
+      "start": 62400,
+      "in_tick": 0,
+      "out_tick": 4800,
+      "gain": 1,
+      "fade_in": 0,
+      "fade_out": 0,
+      "mute": false
+    },
+    {
+      "id": "c14",
+      "track_id": "speech",
+      "asset_id": "impulse",
+      "take_id": "t14",
+      "start": 67200,
+      "in_tick": 0,
+      "out_tick": 4800,
+      "gain": 1,
+      "fade_in": 0,
+      "fade_out": 0,
+      "mute": false
+    },
+    {
+      "id": "c15",
+      "track_id": "speech",
+      "asset_id": "impulse",
+      "take_id": "t15",
+      "start": 72000,
+      "in_tick": 0,
+      "out_tick": 4800,
+      "gain": 1,
+      "fade_in": 0,
+      "fade_out": 0,
+      "mute": false
+    },
+    {
+      "id": "c16",
+      "track_id": "speech",
+      "asset_id": "impulse",
+      "take_id": "t16",
+      "start": 76800,
+      "in_tick": 0,
+      "out_tick": 4800,
+      "gain": 1,
+      "fade_in": 0,
+      "fade_out": 0,
+      "mute": false
+    },
+    {
+      "id": "c17",
+      "track_id": "speech",
+      "asset_id": "impulse",
+      "take_id": "t17",
+      "start": 81600,
+      "in_tick": 0,
+      "out_tick": 4800,
+      "gain": 1,
+      "fade_in": 0,
+      "fade_out": 0,
+      "mute": false
+    },
+    {
+      "id": "c18",
+      "track_id": "speech",
+      "asset_id": "impulse",
+      "take_id": "t18",
+      "start": 86400,
+      "in_tick": 0,
+      "out_tick": 4800,
+      "gain": 1,
+      "fade_in": 0,
+      "fade_out": 0,
+      "mute": false
+    },
+    {
+      "id": "c19",
+      "track_id": "speech",
+      "asset_id": "impulse",
+      "take_id": "t19",
+      "start": 91200,
+      "in_tick": 0,
+      "out_tick": 4800,
+      "gain": 1,
+      "fade_in": 0,
+      "fade_out": 0,
+      "mute": false
+    },
+    {
+      "id": "c20",
+      "track_id": "speech",
+      "asset_id": "impulse",
+      "take_id": "t20",
+      "start": 96000,
+      "in_tick": 0,
+      "out_tick": 4800,
+      "gain": 1,
+      "fade_in": 0,
+      "fade_out": 0,
+      "mute": false
+    },
+    {
+      "id": "c21",
+      "track_id": "speech",
+      "asset_id": "impulse",
+      "take_id": "t21",
+      "start": 100800,
+      "in_tick": 0,
+      "out_tick": 4800,
+      "gain": 1,
+      "fade_in": 0,
+      "fade_out": 0,
+      "mute": false
+    },
+    {
+      "id": "c22",
+      "track_id": "speech",
+      "asset_id": "impulse",
+      "take_id": "t22",
+      "start": 105600,
+      "in_tick": 0,
+      "out_tick": 4800,
+      "gain": 1,
+      "fade_in": 0,
+      "fade_out": 0,
+      "mute": false
+    },
+    {
+      "id": "c23",
+      "track_id": "speech",
+      "asset_id": "impulse",
+      "take_id": "t23",
+      "start": 110400,
+      "in_tick": 0,
+      "out_tick": 4800,
+      "gain": 1,
+      "fade_in": 0,
+      "fade_out": 0,
+      "mute": false
+    },
+    {
+      "id": "c24",
+      "track_id": "speech",
+      "asset_id": "impulse",
+      "take_id": "t24",
+      "start": 115200,
+      "in_tick": 0,
+      "out_tick": 4800,
+      "gain": 1,
+      "fade_in": 0,
+      "fade_out": 0,
+      "mute": false
+    },
+    {
+      "id": "c25",
+      "track_id": "speech",
+      "asset_id": "impulse",
+      "take_id": "t25",
+      "start": 120000,
+      "in_tick": 0,
+      "out_tick": 4800,
+      "gain": 1,
+      "fade_in": 0,
+      "fade_out": 0,
+      "mute": false
+    },
+    {
+      "id": "c26",
+      "track_id": "speech",
+      "asset_id": "impulse",
+      "take_id": "t26",
+      "start": 124800,
+      "in_tick": 0,
+      "out_tick": 4800,
+      "gain": 1,
+      "fade_in": 0,
+      "fade_out": 0,
+      "mute": false
+    },
+    {
+      "id": "c27",
+      "track_id": "speech",
+      "asset_id": "impulse",
+      "take_id": "t27",
+      "start": 129600,
+      "in_tick": 0,
+      "out_tick": 4800,
+      "gain": 1,
+      "fade_in": 0,
+      "fade_out": 0,
+      "mute": false
+    },
+    {
+      "id": "c28",
+      "track_id": "speech",
+      "asset_id": "impulse",
+      "take_id": "t28",
+      "start": 134400,
+      "in_tick": 0,
+      "out_tick": 4800,
+      "gain": 1,
+      "fade_in": 0,
+      "fade_out": 0,
+      "mute": false
+    },
+    {
+      "id": "c29",
+      "track_id": "speech",
+      "asset_id": "impulse",
+      "take_id": "t29",
+      "start": 139200,
+      "in_tick": 0,
+      "out_tick": 4800,
+      "gain": 1,
+      "fade_in": 0,
+      "fade_out": 0,
+      "mute": false
+    },
+    {
+      "id": "bed0",
+      "track_id": "bed",
+      "asset_id": "sine",
+      "take_id": null,
+      "start": 2400,
+      "in_tick": 0,
+      "out_tick": 4800,
+      "gain": 0.25,
+      "fade_in": 480,
+      "fade_out": 480,
+      "mute": false
+    }
+  ],
+  "assets": [
+    {
+      "id": "impulse",
+      "sha256": "6de1d8cc4c678241ac609b81e8728a89850ce72a9cf736c4214a7ea9dc0943df",
+      "frames": 4800,
+      "sample_rate": 48000,
+      "channels": 1,
+      "provenance": {
+        "kind": "synthetic",
+        "source_sha256": "6de1d8cc4c678241ac609b81e8728a89850ce72a9cf736c4214a7ea9dc0943df",
+        "source_id": "impulse",
+        "missing_fields": []
+      }
+    },
+    {
+      "id": "sine",
+      "sha256": "c020cc7bf173196fe590913ceca31fc59f4818536b39c50bc6ecc59aaea40593",
+      "frames": 4800,
+      "sample_rate": 48000,
+      "channels": 1,
+      "provenance": {
+        "kind": "synthetic",
+        "source_sha256": "c020cc7bf173196fe590913ceca31fc59f4818536b39c50bc6ecc59aaea40593",
+        "source_id": "sine",
+        "missing_fields": []
+      }
+    },
+    {
+      "id": "long",
+      "sha256": "50723bc660718f92239c358c36818fa390a429bfc7bcf3fd4530b295532a1bb0",
+      "frames": 9600,
+      "sample_rate": 48000,
+      "channels": 1,
+      "provenance": {
+        "kind": "synthetic",
+        "source_sha256": "50723bc660718f92239c358c36818fa390a429bfc7bcf3fd4530b295532a1bb0",
+        "source_id": "long",
+        "missing_fields": []
+      }
+    },
+    {
+      "id": "short",
+      "sha256": "4a00018adfff151e83d66254d04188e36076b9ea6d4159824937c895750fa399",
+      "frames": 2400,
+      "sample_rate": 48000,
+      "channels": 1,
+      "provenance": {
+        "kind": "synthetic",
+        "source_sha256": "4a00018adfff151e83d66254d04188e36076b9ea6d4159824937c895750fa399",
+        "source_id": "short",
+        "missing_fields": []
+      }
+    }
+  ],
+  "voices": [
+    {
+      "id": "voice.0",
+      "aliases": [
+        "legacy_0"
+      ],
+      "version_ids": [
+        "vv0"
+      ],
+      "archived": false
+    },
+    {
+      "id": "voice.1",
+      "aliases": [
+        "legacy_1"
+      ],
+      "version_ids": [
+        "vv1"
+      ],
+      "archived": false
+    },
+    {
+      "id": "voice.2",
+      "aliases": [
+        "legacy_2"
+      ],
+      "version_ids": [
+        "vv2"
+      ],
+      "archived": false
+    }
+  ],
+  "voice_versions": [
+    {
+      "id": "vv0",
+      "voice_id": "voice.0",
+      "origin": "preset",
+      "reference_asset_ids": [],
+      "reference_text": "",
+      "identity": {
+        "engine": "qwen",
+        "model": "synthetic-qwen-fixture",
+        "bundle_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+        "device": "cpu",
+        "precision": "float32"
+      },
+      "settings_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+      "provenance": {
+        "kind": "synthetic",
+        "source_sha256": "6de1d8cc4c678241ac609b81e8728a89850ce72a9cf736c4214a7ea9dc0943df",
+        "source_id": "impulse",
+        "missing_fields": []
+      }
+    },
+    {
+      "id": "vv1",
+      "voice_id": "voice.1",
+      "origin": "preset",
+      "reference_asset_ids": [],
+      "reference_text": "",
+      "identity": {
+        "engine": "qwen",
+        "model": "synthetic-qwen-fixture",
+        "bundle_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+        "device": "cpu",
+        "precision": "float32"
+      },
+      "settings_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+      "provenance": {
+        "kind": "synthetic",
+        "source_sha256": "6de1d8cc4c678241ac609b81e8728a89850ce72a9cf736c4214a7ea9dc0943df",
+        "source_id": "impulse",
+        "missing_fields": []
+      }
+    },
+    {
+      "id": "vv2",
+      "voice_id": "voice.2",
+      "origin": "preset",
+      "reference_asset_ids": [],
+      "reference_text": "",
+      "identity": {
+        "engine": "qwen",
+        "model": "synthetic-qwen-fixture",
+        "bundle_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+        "device": "cpu",
+        "precision": "float32"
+      },
+      "settings_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+      "provenance": {
+        "kind": "synthetic",
+        "source_sha256": "6de1d8cc4c678241ac609b81e8728a89850ce72a9cf736c4214a7ea9dc0943df",
+        "source_id": "impulse",
+        "missing_fields": []
+      }
+    }
+  ],
+  "render": {
+    "sample_rate": 48000,
+    "format": "wav_pcm24",
+    "channels": 2,
+    "channel_mapping": "mono_duplicate_stereo_average",
+    "clipping": "fail",
+    "include_stale": false,
+    "length_ticks": 146400
+  }
+}

@@ -1,0 +1,923 @@
+{
+  "version": "1.0.0",
+  "operations": [
+    {
+      "id": "discover",
+      "http": {
+        "method": "GET",
+        "route": "/v1/capabilities",
+        "input_location": "query_and_path"
+      },
+      "cli": "discover",
+      "mcp": "speech_discover",
+      "request": "discover_request",
+      "response": "capabilities",
+      "idempotency": false,
+      "scope": "read",
+      "headers": [],
+      "errors": [
+        "invalid_request",
+        "forbidden",
+        "not_found"
+      ]
+    },
+    {
+      "id": "voices_list",
+      "http": {
+        "method": "GET",
+        "route": "/v1/voices",
+        "input_location": "query_and_path"
+      },
+      "cli": "voices list",
+      "mcp": "speech_voices_list",
+      "request": "voices_list_request",
+      "response": "list",
+      "idempotency": false,
+      "scope": "read",
+      "headers": [],
+      "errors": [
+        "invalid_request",
+        "forbidden",
+        "not_found"
+      ]
+    },
+    {
+      "id": "voice_get",
+      "http": {
+        "method": "GET",
+        "route": "/v1/voices/{voice_id}",
+        "input_location": "query_and_path"
+      },
+      "cli": "voice get",
+      "mcp": "speech_voice_get",
+      "request": "voice_get_request",
+      "response": "voice",
+      "idempotency": false,
+      "scope": "read",
+      "headers": [],
+      "errors": [
+        "invalid_request",
+        "forbidden",
+        "not_found"
+      ]
+    },
+    {
+      "id": "asset_get",
+      "http": {
+        "method": "GET",
+        "route": "/v1/assets/{asset_id}",
+        "input_location": "query_and_path"
+      },
+      "cli": "asset get",
+      "mcp": "speech_asset_get",
+      "request": "asset_get_request",
+      "response": "asset",
+      "idempotency": false,
+      "scope": "read",
+      "headers": [],
+      "errors": [
+        "invalid_request",
+        "forbidden",
+        "not_found"
+      ]
+    },
+    {
+      "id": "artifact_get",
+      "http": {
+        "method": "GET",
+        "route": "/v1/artifacts/{artifact_id}",
+        "input_location": "query_and_path"
+      },
+      "cli": "artifact get",
+      "mcp": "speech_artifact_get",
+      "request": "artifact_get_request",
+      "response": "artifact",
+      "idempotency": false,
+      "scope": "read",
+      "headers": [],
+      "errors": [
+        "invalid_request",
+        "forbidden",
+        "not_found"
+      ]
+    },
+    {
+      "id": "asset_upload",
+      "http": {
+        "method": "POST",
+        "route": "/v1/operations/asset_upload",
+        "input_location": "json"
+      },
+      "cli": "asset upload",
+      "mcp": "speech_asset_upload",
+      "request": "asset_upload_request",
+      "response": "receipt",
+      "idempotency": true,
+      "scope": "production-write",
+      "headers": [
+        "Idempotency-Key"
+      ],
+      "errors": [
+        "invalid_request",
+        "forbidden",
+        "not_found",
+        "idempotency_conflict",
+        "not_ready",
+        "resource_limit",
+        "unsupported_control"
+      ]
+    },
+    {
+      "id": "asset_acquire",
+      "http": {
+        "method": "POST",
+        "route": "/v1/operations/asset_acquire",
+        "input_location": "json"
+      },
+      "cli": "asset acquire",
+      "mcp": "speech_asset_acquire",
+      "request": "asset_acquire_request",
+      "response": "receipt",
+      "idempotency": true,
+      "scope": "production-write",
+      "headers": [
+        "Idempotency-Key"
+      ],
+      "errors": [
+        "invalid_request",
+        "forbidden",
+        "not_found",
+        "idempotency_conflict",
+        "not_ready",
+        "resource_limit",
+        "unsupported_control"
+      ]
+    },
+    {
+      "id": "voice_prepare",
+      "http": {
+        "method": "POST",
+        "route": "/v1/operations/voice_prepare",
+        "input_location": "json"
+      },
+      "cli": "voice prepare",
+      "mcp": "speech_voice_prepare",
+      "request": "voice_prepare_request",
+      "response": "receipt",
+      "idempotency": true,
+      "scope": "production-write",
+      "headers": [
+        "Idempotency-Key"
+      ],
+      "errors": [
+        "invalid_request",
+        "forbidden",
+        "not_found",
+        "idempotency_conflict",
+        "not_ready",
+        "resource_limit",
+        "unsupported_control"
+      ]
+    },
+    {
+      "id": "voice_design",
+      "http": {
+        "method": "POST",
+        "route": "/v1/operations/voice_design",
+        "input_location": "json"
+      },
+      "cli": "voice design",
+      "mcp": "speech_voice_design",
+      "request": "voice_design_request",
+      "response": "receipt",
+      "idempotency": true,
+      "scope": "production-write",
+      "headers": [
+        "Idempotency-Key"
+      ],
+      "errors": [
+        "invalid_request",
+        "forbidden",
+        "not_found",
+        "idempotency_conflict",
+        "not_ready",
+        "resource_limit",
+        "unsupported_control"
+      ]
+    },
+    {
+      "id": "voice_save",
+      "http": {
+        "method": "POST",
+        "route": "/v1/operations/voice_save",
+        "input_location": "json"
+      },
+      "cli": "voice save",
+      "mcp": "speech_voice_save",
+      "request": "voice_save_request",
+      "response": "receipt",
+      "idempotency": true,
+      "scope": "production-write",
+      "headers": [
+        "Idempotency-Key"
+      ],
+      "errors": [
+        "invalid_request",
+        "forbidden",
+        "not_found",
+        "idempotency_conflict",
+        "not_ready",
+        "resource_limit",
+        "unsupported_control",
+        "revision_conflict"
+      ]
+    },
+    {
+      "id": "voice_archive",
+      "http": {
+        "method": "POST",
+        "route": "/v1/operations/voice_archive",
+        "input_location": "json"
+      },
+      "cli": "voice archive",
+      "mcp": "speech_voice_archive",
+      "request": "voice_archive_request",
+      "response": "receipt",
+      "idempotency": true,
+      "scope": "production-write",
+      "headers": [
+        "Idempotency-Key"
+      ],
+      "errors": [
+        "invalid_request",
+        "forbidden",
+        "not_found",
+        "idempotency_conflict",
+        "not_ready",
+        "resource_limit",
+        "unsupported_control",
+        "revision_conflict"
+      ]
+    },
+    {
+      "id": "speech_generate",
+      "http": {
+        "method": "POST",
+        "route": "/v1/operations/speech_generate",
+        "input_location": "json"
+      },
+      "cli": "speech generate",
+      "mcp": "speech_speech_generate",
+      "request": "speech_generate_request",
+      "response": "receipt",
+      "idempotency": true,
+      "scope": "production-write",
+      "headers": [
+        "Idempotency-Key"
+      ],
+      "errors": [
+        "invalid_request",
+        "forbidden",
+        "not_found",
+        "idempotency_conflict",
+        "not_ready",
+        "resource_limit",
+        "unsupported_control"
+      ]
+    },
+    {
+      "id": "project_create",
+      "http": {
+        "method": "POST",
+        "route": "/v1/operations/project_create",
+        "input_location": "json"
+      },
+      "cli": "project create",
+      "mcp": "speech_project_create",
+      "request": "project_create_request",
+      "response": "receipt",
+      "idempotency": true,
+      "scope": "production-write",
+      "headers": [
+        "Idempotency-Key"
+      ],
+      "errors": [
+        "invalid_request",
+        "forbidden",
+        "not_found",
+        "idempotency_conflict",
+        "not_ready",
+        "resource_limit",
+        "unsupported_control"
+      ]
+    },
+    {
+      "id": "project_get",
+      "http": {
+        "method": "GET",
+        "route": "/v1/projects/{project_id}",
+        "input_location": "query_and_path"
+      },
+      "cli": "project get",
+      "mcp": "speech_project_get",
+      "request": "project_get_request",
+      "response": "project",
+      "idempotency": false,
+      "scope": "read",
+      "headers": [],
+      "errors": [
+        "invalid_request",
+        "forbidden",
+        "not_found"
+      ]
+    },
+    {
+      "id": "block_text",
+      "http": {
+        "method": "POST",
+        "route": "/v1/operations/block_text",
+        "input_location": "json"
+      },
+      "cli": "block text",
+      "mcp": "speech_block_text",
+      "request": "block_text_request",
+      "response": "edit_result",
+      "idempotency": true,
+      "scope": "production-write",
+      "headers": [
+        "Idempotency-Key"
+      ],
+      "errors": [
+        "invalid_request",
+        "forbidden",
+        "not_found",
+        "idempotency_conflict",
+        "not_ready",
+        "resource_limit",
+        "unsupported_control",
+        "revision_conflict"
+      ]
+    },
+    {
+      "id": "blocks_generate",
+      "http": {
+        "method": "POST",
+        "route": "/v1/operations/blocks_generate",
+        "input_location": "json"
+      },
+      "cli": "blocks generate",
+      "mcp": "speech_blocks_generate",
+      "request": "blocks_generate_request",
+      "response": "receipt",
+      "idempotency": true,
+      "scope": "production-write",
+      "headers": [
+        "Idempotency-Key"
+      ],
+      "errors": [
+        "invalid_request",
+        "forbidden",
+        "not_found",
+        "idempotency_conflict",
+        "not_ready",
+        "resource_limit",
+        "unsupported_control",
+        "revision_conflict"
+      ]
+    },
+    {
+      "id": "blocks_reorder",
+      "http": {
+        "method": "POST",
+        "route": "/v1/operations/blocks_reorder",
+        "input_location": "json"
+      },
+      "cli": "blocks reorder",
+      "mcp": "speech_blocks_reorder",
+      "request": "blocks_reorder_request",
+      "response": "edit_result",
+      "idempotency": true,
+      "scope": "production-write",
+      "headers": [
+        "Idempotency-Key"
+      ],
+      "errors": [
+        "invalid_request",
+        "forbidden",
+        "not_found",
+        "idempotency_conflict",
+        "not_ready",
+        "resource_limit",
+        "unsupported_control",
+        "revision_conflict"
+      ]
+    },
+    {
+      "id": "speaker_assign",
+      "http": {
+        "method": "POST",
+        "route": "/v1/operations/speaker_assign",
+        "input_location": "json"
+      },
+      "cli": "speaker assign",
+      "mcp": "speech_speaker_assign",
+      "request": "speaker_assign_request",
+      "response": "edit_result",
+      "idempotency": true,
+      "scope": "production-write",
+      "headers": [
+        "Idempotency-Key"
+      ],
+      "errors": [
+        "invalid_request",
+        "forbidden",
+        "not_found",
+        "idempotency_conflict",
+        "not_ready",
+        "resource_limit",
+        "unsupported_control",
+        "revision_conflict"
+      ]
+    },
+    {
+      "id": "clip_put",
+      "http": {
+        "method": "POST",
+        "route": "/v1/operations/clip_put",
+        "input_location": "json"
+      },
+      "cli": "clip put",
+      "mcp": "speech_clip_put",
+      "request": "clip_put_request",
+      "response": "edit_result",
+      "idempotency": true,
+      "scope": "production-write",
+      "headers": [
+        "Idempotency-Key"
+      ],
+      "errors": [
+        "invalid_request",
+        "forbidden",
+        "not_found",
+        "idempotency_conflict",
+        "not_ready",
+        "resource_limit",
+        "unsupported_control",
+        "revision_conflict"
+      ]
+    },
+    {
+      "id": "clip_split",
+      "http": {
+        "method": "POST",
+        "route": "/v1/operations/clip_split",
+        "input_location": "json"
+      },
+      "cli": "clip split",
+      "mcp": "speech_clip_split",
+      "request": "clip_split_request",
+      "response": "edit_result",
+      "idempotency": true,
+      "scope": "production-write",
+      "headers": [
+        "Idempotency-Key"
+      ],
+      "errors": [
+        "invalid_request",
+        "forbidden",
+        "not_found",
+        "idempotency_conflict",
+        "not_ready",
+        "resource_limit",
+        "unsupported_control",
+        "revision_conflict"
+      ]
+    },
+    {
+      "id": "clip_delete",
+      "http": {
+        "method": "POST",
+        "route": "/v1/operations/clip_delete",
+        "input_location": "json"
+      },
+      "cli": "clip delete",
+      "mcp": "speech_clip_delete",
+      "request": "clip_delete_request",
+      "response": "edit_result",
+      "idempotency": true,
+      "scope": "production-write",
+      "headers": [
+        "Idempotency-Key"
+      ],
+      "errors": [
+        "invalid_request",
+        "forbidden",
+        "not_found",
+        "idempotency_conflict",
+        "not_ready",
+        "resource_limit",
+        "unsupported_control",
+        "revision_conflict"
+      ]
+    },
+    {
+      "id": "track_put",
+      "http": {
+        "method": "POST",
+        "route": "/v1/operations/track_put",
+        "input_location": "json"
+      },
+      "cli": "track put",
+      "mcp": "speech_track_put",
+      "request": "track_put_request",
+      "response": "edit_result",
+      "idempotency": true,
+      "scope": "production-write",
+      "headers": [
+        "Idempotency-Key"
+      ],
+      "errors": [
+        "invalid_request",
+        "forbidden",
+        "not_found",
+        "idempotency_conflict",
+        "not_ready",
+        "resource_limit",
+        "unsupported_control",
+        "revision_conflict"
+      ]
+    },
+    {
+      "id": "take_select",
+      "http": {
+        "method": "POST",
+        "route": "/v1/operations/take_select",
+        "input_location": "json"
+      },
+      "cli": "take select",
+      "mcp": "speech_take_select",
+      "request": "take_select_request",
+      "response": "edit_result",
+      "idempotency": true,
+      "scope": "production-write",
+      "headers": [
+        "Idempotency-Key"
+      ],
+      "errors": [
+        "invalid_request",
+        "forbidden",
+        "not_found",
+        "idempotency_conflict",
+        "not_ready",
+        "resource_limit",
+        "unsupported_control",
+        "revision_conflict"
+      ]
+    },
+    {
+      "id": "project_assemble",
+      "http": {
+        "method": "POST",
+        "route": "/v1/operations/project_assemble",
+        "input_location": "json"
+      },
+      "cli": "project assemble",
+      "mcp": "speech_project_assemble",
+      "request": "project_assemble_request",
+      "response": "edit_result",
+      "idempotency": true,
+      "scope": "production-write",
+      "headers": [
+        "Idempotency-Key"
+      ],
+      "errors": [
+        "invalid_request",
+        "forbidden",
+        "not_found",
+        "idempotency_conflict",
+        "not_ready",
+        "resource_limit",
+        "unsupported_control",
+        "revision_conflict"
+      ]
+    },
+    {
+      "id": "project_ripple",
+      "http": {
+        "method": "POST",
+        "route": "/v1/operations/project_ripple",
+        "input_location": "json"
+      },
+      "cli": "project ripple",
+      "mcp": "speech_project_ripple",
+      "request": "project_ripple_request",
+      "response": "edit_result",
+      "idempotency": true,
+      "scope": "production-write",
+      "headers": [
+        "Idempotency-Key"
+      ],
+      "errors": [
+        "invalid_request",
+        "forbidden",
+        "not_found",
+        "idempotency_conflict",
+        "not_ready",
+        "resource_limit",
+        "unsupported_control",
+        "revision_conflict"
+      ]
+    },
+    {
+      "id": "project_restore",
+      "http": {
+        "method": "POST",
+        "route": "/v1/operations/project_restore",
+        "input_location": "json"
+      },
+      "cli": "project restore",
+      "mcp": "speech_project_restore",
+      "request": "project_restore_request",
+      "response": "edit_result",
+      "idempotency": true,
+      "scope": "production-write",
+      "headers": [
+        "Idempotency-Key"
+      ],
+      "errors": [
+        "invalid_request",
+        "forbidden",
+        "not_found",
+        "idempotency_conflict",
+        "not_ready",
+        "resource_limit",
+        "unsupported_control",
+        "revision_conflict"
+      ]
+    },
+    {
+      "id": "project_render",
+      "http": {
+        "method": "POST",
+        "route": "/v1/operations/project_render",
+        "input_location": "json"
+      },
+      "cli": "project render",
+      "mcp": "speech_project_render",
+      "request": "project_render_request",
+      "response": "receipt",
+      "idempotency": true,
+      "scope": "production-write",
+      "headers": [
+        "Idempotency-Key"
+      ],
+      "errors": [
+        "invalid_request",
+        "forbidden",
+        "not_found",
+        "idempotency_conflict",
+        "not_ready",
+        "resource_limit",
+        "unsupported_control",
+        "revision_conflict"
+      ]
+    },
+    {
+      "id": "job_get",
+      "http": {
+        "method": "GET",
+        "route": "/v1/jobs/{job_id}",
+        "input_location": "query_and_path"
+      },
+      "cli": "job get",
+      "mcp": "speech_job_get",
+      "request": "job_get_request",
+      "response": "job",
+      "idempotency": false,
+      "scope": "read",
+      "headers": [],
+      "errors": [
+        "invalid_request",
+        "forbidden",
+        "not_found"
+      ]
+    },
+    {
+      "id": "job_cancel",
+      "http": {
+        "method": "POST",
+        "route": "/v1/operations/job_cancel",
+        "input_location": "json"
+      },
+      "cli": "job cancel",
+      "mcp": "speech_job_cancel",
+      "request": "job_cancel_request",
+      "response": "receipt",
+      "idempotency": true,
+      "scope": "production-write",
+      "headers": [
+        "Idempotency-Key"
+      ],
+      "errors": [
+        "invalid_request",
+        "forbidden",
+        "not_found",
+        "idempotency_conflict",
+        "not_ready",
+        "resource_limit",
+        "unsupported_control"
+      ]
+    },
+    {
+      "id": "job_retry",
+      "http": {
+        "method": "POST",
+        "route": "/v1/operations/job_retry",
+        "input_location": "json"
+      },
+      "cli": "job retry",
+      "mcp": "speech_job_retry",
+      "request": "job_retry_request",
+      "response": "receipt",
+      "idempotency": true,
+      "scope": "production-write",
+      "headers": [
+        "Idempotency-Key"
+      ],
+      "errors": [
+        "invalid_request",
+        "forbidden",
+        "not_found",
+        "idempotency_conflict",
+        "not_ready",
+        "resource_limit",
+        "unsupported_control"
+      ]
+    },
+    {
+      "id": "provision",
+      "http": {
+        "method": "POST",
+        "route": "/v1/operations/provision",
+        "input_location": "json"
+      },
+      "cli": "provision",
+      "mcp": "speech_provision",
+      "request": "provision_request",
+      "response": "receipt",
+      "idempotency": true,
+      "scope": "admin",
+      "headers": [
+        "Idempotency-Key"
+      ],
+      "errors": [
+        "invalid_request",
+        "forbidden",
+        "not_found",
+        "idempotency_conflict",
+        "not_ready",
+        "resource_limit",
+        "unsupported_control"
+      ]
+    },
+    {
+      "id": "migration_preview",
+      "http": {
+        "method": "POST",
+        "route": "/v1/operations/migration_preview",
+        "input_location": "json"
+      },
+      "cli": "migration preview",
+      "mcp": "speech_migration_preview",
+      "request": "migration_preview_request",
+      "response": "migration_report",
+      "idempotency": true,
+      "scope": "admin",
+      "headers": [
+        "Idempotency-Key"
+      ],
+      "errors": [
+        "invalid_request",
+        "forbidden",
+        "not_found",
+        "idempotency_conflict",
+        "not_ready",
+        "resource_limit",
+        "unsupported_control"
+      ]
+    },
+    {
+      "id": "migration_apply",
+      "http": {
+        "method": "POST",
+        "route": "/v1/operations/migration_apply",
+        "input_location": "json"
+      },
+      "cli": "migration apply",
+      "mcp": "speech_migration_apply",
+      "request": "migration_apply_request",
+      "response": "migration_report",
+      "idempotency": true,
+      "scope": "admin",
+      "headers": [
+        "Idempotency-Key"
+      ],
+      "errors": [
+        "invalid_request",
+        "forbidden",
+        "not_found",
+        "idempotency_conflict",
+        "not_ready",
+        "resource_limit",
+        "unsupported_control",
+        "revision_conflict"
+      ]
+    },
+    {
+      "id": "blocks_put",
+      "http": {
+        "method": "POST",
+        "route": "/v1/operations/blocks_put",
+        "input_location": "json"
+      },
+      "cli": "blocks put",
+      "mcp": "speech_blocks_put",
+      "request": "blocks_put_request",
+      "response": "edit_result",
+      "idempotency": true,
+      "scope": "production-write",
+      "headers": [
+        "Idempotency-Key"
+      ],
+      "errors": [
+        "revision_conflict",
+        "invalid_request",
+        "forbidden"
+      ]
+    },
+    {
+      "id": "blocks_delete",
+      "http": {
+        "method": "POST",
+        "route": "/v1/operations/blocks_delete",
+        "input_location": "json"
+      },
+      "cli": "blocks delete",
+      "mcp": "speech_blocks_delete",
+      "request": "blocks_delete_request",
+      "response": "edit_result",
+      "idempotency": true,
+      "scope": "production-write",
+      "headers": [
+        "Idempotency-Key"
+      ],
+      "errors": [
+        "revision_conflict",
+        "invalid_request",
+        "forbidden"
+      ]
+    },
+    {
+      "id": "track_delete",
+      "http": {
+        "method": "POST",
+        "route": "/v1/operations/track_delete",
+        "input_location": "json"
+      },
+      "cli": "track delete",
+      "mcp": "speech_track_delete",
+      "request": "track_delete_request",
+      "response": "edit_result",
+      "idempotency": true,
+      "scope": "production-write",
+      "headers": [
+        "Idempotency-Key"
+      ],
+      "errors": [
+        "revision_conflict",
+        "invalid_request",
+        "forbidden"
+      ]
+    },
+    {
+      "id": "project_history",
+      "http": {
+        "method": "GET",
+        "route": "/v1/projects/{project_id}/history",
+        "input_location": "query_and_path"
+      },
+      "cli": "project history",
+      "mcp": "speech_project_history",
+      "request": "project_history_request",
+      "response": "list",
+      "idempotency": false,
+      "scope": "read",
+      "headers": [],
+      "errors": [
+        "revision_conflict",
+        "invalid_request",
+        "forbidden"
+      ]
+    }
+  ]
+}

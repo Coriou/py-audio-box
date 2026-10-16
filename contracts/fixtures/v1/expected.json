@@ -1,0 +1,45 @@
+{
+  "version": "1.0.0",
+  "tick_rate": 48000,
+  "production_30": {
+    "blocks": 30,
+    "speakers": 3,
+    "clips": 31,
+    "length_ticks": 146400
+  },
+  "production_100": {
+    "blocks": 100,
+    "clips": 200,
+    "length_ticks": 482400
+  },
+  "media": {
+    "frames": 4800,
+    "impulse_first_sample": 0.5,
+    "sine_frequency_hz": 1000
+  },
+  "cases": [
+    {
+      "action": "replace_text_b0",
+      "stale": [
+        "t0",
+        "candidate-long",
+        "candidate-short"
+      ],
+      "inference_starts": 0,
+      "unchanged_clip_ids": [
+        "c0",
+        "c1"
+      ]
+    },
+    {
+      "action": "select_longer_take",
+      "following_clip_start_unchanged": 4800,
+      "overlap_visible": true
+    },
+    {
+      "action": "select_shorter_than_trim",
+      "error": "invalid_trim",
+      "old_arrangement_preserved": true
+    }
+  ]
+}

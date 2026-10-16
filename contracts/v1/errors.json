@@ -1,0 +1,26 @@
+{
+  "version": "1.0.0",
+  "http_status": {
+    "revision_conflict": 409,
+    "idempotency_conflict": 409,
+    "unsupported_control": 422,
+    "not_ready": 503,
+    "resource_limit": 429,
+    "invalid_media": 422,
+    "invalid_request": 422,
+    "not_found": 404,
+    "forbidden": 403,
+    "stale_attempt": 409,
+    "cancel_pending": 409,
+    "missing_media": 422,
+    "stale_take": 409,
+    "clipping": 422,
+    "migration_collision": 409
+  },
+  "cli_exit": {
+    "success": 0,
+    "request_or_contract_error": 2,
+    "transport_unavailable": 3
+  },
+  "mcp_error": "isError=true; structuredContent carries the same error object; never traceback"
+}
