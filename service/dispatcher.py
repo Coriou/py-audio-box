@@ -48,13 +48,27 @@ class Dispatcher:
     def _run(self):
         core=None
         try:
-            if self.persistent_registration is not None:
+            from service.recovery import startup_read, check_completion_hello
+            startup = startup_read(self.root)
+            hello = None
+            if startup is not None or self.persistent_registration is not None:
+                hello = self.runtime.call('hello', {})
+                if startup is not None and hello.get('maintenance')!=startup['completion']:
+                    raise ValueError('b2_cross_volume_completion_mismatch')
+                if self.persistent_registration is None:
+                    raise ValueError('persistent_registration_required_before_startup')
                 from service.recovery import enrollment_gate
                 from service.admission import DEFAULT_BUDGET
                 enrollment_gate(self.root, self.persistent_registration,
-                    self.runtime.call('hello', {}), self.current_profiles,
+                    hello, self.current_profiles,
                     DEFAULT_BUDGET if self.budget is None else self.budget)
             core=self.core=Core(self.root)
+            if startup is not None:
+                if core.db.execute('SELECT id FROM p1_installation').fetchall()!=[(startup['deployment_id'],)]:
+                    raise ValueError('startup_deployment_changed')
+                second_hello = self.runtime.call('hello', {})
+                check_completion_hello(core.db, second_hello)
+                if second_hello!=hello: raise ValueError('startup_hello_changed')
             self.enrolled=bool(core.db.execute("SELECT 1 FROM sqlite_master WHERE name='p1_installation'").fetchone())
             self.admission=Admission(core,self.staging,self.budget)
             self.store=DispatchStore(core,self.admission)

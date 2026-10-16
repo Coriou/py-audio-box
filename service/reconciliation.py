@@ -33,6 +33,7 @@ TABLES = {
     'p1_inventory_scans', 'p1_inventory_objects', 'p1_inventory_history', 'p1_integrity',
 }
 TABLES.update(persistence.B1_COLUMNS)
+TABLES.update(persistence.B2_COLUMNS)
 DIAGNOSTICS = {'p1_inventory_scans', 'p1_inventory_objects', 'p1_inventory_history', 'p1_integrity'}
 
 COLUMNS = {
@@ -99,10 +100,14 @@ class Reconciliation:
         self.fingerprint = hashlib.sha256(encode(schema).encode())
         if tables - TABLES:
             self.reasons.add('unknown_reference_schema')
+        b2 = None
+        if tables & persistence.B2_COLUMNS.keys():
+            from service.recovery import validate_b2_database
+            b2 = validate_b2_database(self.db)
         data = {}
         for table in sorted(tables & TABLES - DIAGNOSTICS - {'sqlite_sequence'}):
             columns = [r[1] for r in self.db.execute('PRAGMA table_info('+table+')')]
-            if columns != COLUMNS[table].split():
+            if columns != {**COLUMNS, **persistence.B2_COLUMNS}[table].split():
                 raise Incomplete('unknown_reference_schema')
             records = []
             # Reject oversized rows before materializing their content in Python.
@@ -177,6 +182,8 @@ class Reconciliation:
         for table, records in data.items():
             for index, record in enumerate(records):
                 source = table+':'+str(record.get('id', record.get('job_id', record.get('project', index))))+(':'+str(record['revision']) if 'revision' in record else '')
+                if table in persistence.B2_COLUMNS and table not in ('p1_b2_format','p1_abandon_plans','p1_recoveries'):
+                    source = table+':'+str(record.get('recovery_id'))+':'+str(record.get('step',record.get('dispatch_seq',record.get('job_id',record.get('object_id')))))
                 for column, definition in adapters.get(table, {}).items():
                     value = json.loads(record[column])
                     if column == 'context': context(value, source)
@@ -219,6 +226,25 @@ class Reconciliation:
                     installations = data.get('p1_installation', [])
                     if (len(installations) != 1 or value['deployment_id'] != installations[0]['id']):
                         raise Incomplete('unknown_b1_deployment_reference')
+                if table in persistence.B2_COLUMNS and table != 'p1_b2_format':
+                    value = json.loads(record['record'])
+                    # Follow only closed typed references. Resolutions have no
+                    # reconciliation effect until the later kernel lot.
+                    affected = value.get('affected', {})
+                    for job_id in set(affected.get('jobs', []) + affected.get('reservations', []) + ([value['job_id']] if 'job_id' in value else [])):
+                        target = next((r for r in data.get('jobs', []) if r['id']==job_id), None)
+                        if target is None: raise Incomplete('unknown_b2_job_reference')
+                        walk(json.loads(target['job']), 'job', source)
+                        context(json.loads(target['context']), source)
+                    for dispatch_id in affected.get('dispatches', []) + ([value['dispatch_seq']] if 'dispatch_seq' in value else []):
+                        target = next((r for r in data.get('dispatches', []) if r['seq']==dispatch_id), None)
+                        if target is None: raise Incomplete('unknown_b2_dispatch_reference')
+                        authority = json.loads(target['authority'])
+                        walk(authority[0], 'job', source); context(authority[1], source); add(authority[2], source)
+                    for job_id in affected.get('publications', []) + ([value['job_id']] if table=='p1_retired_publications' else []):
+                        target = next((r for r in data.get('publications', []) if r['job_id']==job_id), None)
+                        if target is None: raise Incomplete('unknown_b2_publication_reference')
+                        for column, definition in adapters['publications'].items(): walk(json.loads(target[column]), definition, source)
                 if table == 'publication_work':
                     add(record['destination'], source)
                     walk(json.loads(record['binding']), 'artifact', source)
@@ -382,12 +408,31 @@ class Reconciliation:
                 if stable(os.fstat(fd)) != stable(info) or stable(os.stat(path, dir_fd=parent_fd, follow_symlinks=False)) != stable(info):
                     raise Incomplete('inventory_changed')
             finally: os.close(fd)
+        archives = {}
+        if b2 is not None:
+            from service.recovery import archive_names
+            for intent in b2['p1_recoveries']:
+                for name, kind in archive_names(intent).items():
+                    if name in archives: raise Incomplete('duplicate_b2_archive')
+                    archives[name] = (kind, intent)
         root_fd = os.open(self.core.root, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
         try:
             with os.scandir(root_fd) as root_entries:
                 for entry in root_entries:
                     self._charge()
                     info = os.stat(entry.name, dir_fd=root_fd, follow_symlinks=False)
+                    if entry.name in archives:
+                        kind, intent = archives[entry.name]
+                        if not stat.S_ISREG(info.st_mode) or info.st_uid!=os.getuid() or info.st_nlink!=1 or info.st_mode & 0o077:
+                            raise Incomplete('foreign_b2_archive')
+                        from service.persistent_init import read_file
+                        from service.recovery import validate_archive_document
+                        content = read_file(self.core.root/entry.name, self.byte_limit-self.bytes)
+                        self._charge(len(content))
+                        if kind!='snapshot': validate_archive_document(kind,json.loads(content),intent)
+                        self._row('recovery',entry.name,'recovery_evidence','retained_recovery_evidence',
+                            identity=[*stable(info),hashlib.sha256(content).hexdigest()],refs=['p1_recoveries:'+intent['id']])
+                        continue
                     is_directory = entry.name in ('assets','staging','owners')
                     is_control = entry.name in ('core.sqlite','core.sqlite-wal','core.sqlite-shm','control.lock')
                     if not ((is_directory and stat.S_ISDIR(info.st_mode)) or

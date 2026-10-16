@@ -74,8 +74,10 @@ class RuntimeSupervisor:
         if op == 'hello':
             if body:
                 raise Refused('closed_body')
-            return dict(boot=self.boot, lane=self.journal.value['lane'], quarantined=self.failed or any(
+            value = dict(boot=self.boot, lane=self.journal.value['lane'], quarantined=self.failed or any(
                 r['phase'] != 'terminal' and (not self.active or self.active['id'] != r['id']) for r in self.journal.value['records']), launches=self.launches)
+            if self.journal.maintenance is not None: value['maintenance']=self.journal.maintenance
+            return value
         if op == 'prepare':
             if set(body) != {'snapshot', 'binding', 'fixture'} or body['fixture'] not in ('silence', 'busy', 'descendants', 'permissions'):
                 raise Refused('closed_prepare')

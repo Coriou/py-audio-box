@@ -12,6 +12,7 @@ class PublicationQuarantine(ValueError):
 
 def initialize(db, *, fresh):
     tables = {r[0] for r in db.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+    check_recovery_open(db)
     private = tables & {'p1_format', 'publication_work'}
     if private:
         if private != {'p1_format', 'publication_work'}:
@@ -92,6 +93,8 @@ def storage_session(method):
         if getattr(core, '_publication_storage_failed', False):
             raise OSError('publication_reopen_required')
         try:
+            job_id = args[0] if args else kwargs['job_id']
+            check_publication_allowed(core.db, job_id)
             return method(core, *args, **kwargs)
         except (OSError, sqlite3.Error, PublicationQuarantine):
             core._publication_storage_failed = True
@@ -171,3 +174,66 @@ def initialize_enrollment(core, record):
         core.db.execute('CREATE TABLE p1_recovery_plans(id TEXT PRIMARY KEY, record TEXT NOT NULL, digest TEXT NOT NULL)')
         core.db.execute('INSERT INTO p1_installation VALUES(?,1,?,?,?)',
                         (record['deployment_id'], 'owned-synthetic', encode(record), hashlib.sha256(encode(record).encode()).hexdigest()))
+
+
+# Optional B2 extension. Normal constructors validate it, never install it.
+B2_COLUMNS = {
+    'p1_b2_format': 'id revision',
+    'p1_abandon_plans': 'id record digest',
+    'p1_recoveries': 'id plan_id record digest',
+    'p1_recovery_steps': 'recovery_id step record digest',
+    'dispatch_resolutions': 'dispatch_seq recovery_id record digest',
+    'p1_retired_publications': 'job_id recovery_id record digest',
+    'p1_integrity_resolutions': 'object_id recovery_id record digest',
+}
+B2_DDL = (
+    'CREATE TABLE p1_b2_format(id INTEGER PRIMARY KEY CHECK(id=1), revision INTEGER NOT NULL CHECK(revision=1))',
+    'CREATE TABLE p1_abandon_plans(id TEXT PRIMARY KEY, record TEXT NOT NULL, digest TEXT NOT NULL)',
+    'CREATE TABLE p1_recoveries(id TEXT PRIMARY KEY, plan_id TEXT NOT NULL UNIQUE REFERENCES p1_abandon_plans(id), record TEXT NOT NULL, digest TEXT NOT NULL)',
+    'CREATE TABLE p1_recovery_steps(recovery_id TEXT NOT NULL REFERENCES p1_recoveries(id), step TEXT NOT NULL, record TEXT NOT NULL, digest TEXT NOT NULL, PRIMARY KEY(recovery_id,step))',
+    'CREATE TABLE dispatch_resolutions(dispatch_seq INTEGER NOT NULL REFERENCES dispatches(seq), recovery_id TEXT NOT NULL REFERENCES p1_recoveries(id), record TEXT NOT NULL, digest TEXT NOT NULL, PRIMARY KEY(dispatch_seq,recovery_id))',
+    'CREATE TABLE p1_retired_publications(job_id TEXT NOT NULL REFERENCES publications(job_id), recovery_id TEXT NOT NULL REFERENCES p1_recoveries(id), record TEXT NOT NULL, digest TEXT NOT NULL, PRIMARY KEY(job_id,recovery_id))',
+    'CREATE TABLE p1_integrity_resolutions(object_id TEXT NOT NULL REFERENCES p1_inventory_objects(id), recovery_id TEXT NOT NULL REFERENCES p1_recoveries(id), record TEXT NOT NULL, digest TEXT NOT NULL, PRIMARY KEY(object_id,recovery_id))',
+)
+
+
+def b2_schema(db):
+    names = db.execute("SELECT name FROM sqlite_master WHERE type='table' LIMIT 2049").fetchall()
+    if len(names)>2048: raise PublicationQuarantine('b2_schema_budget')
+    tables = {r[0] for r in names}
+    present = tables & B2_COLUMNS.keys()
+    if not present:
+        return False
+    if present != B2_COLUMNS.keys():
+        raise PublicationQuarantine('partial_b2_schema')
+    for table, ddl in zip(B2_COLUMNS, B2_DDL):
+        if db.execute('SELECT length(sql) FROM sqlite_master WHERE name=?',(table,)).fetchone()[0]>65536:
+            raise PublicationQuarantine('b2_schema_budget')
+        sql = db.execute('SELECT sql FROM sqlite_master WHERE name=?', (table,)).fetchone()[0]
+        if ' '.join(sql.split()) != ' '.join(ddl.split()):
+            raise PublicationQuarantine('unsupported_b2_schema')
+    if db.execute('SELECT id,revision FROM p1_b2_format').fetchall() != [(1,1)]:
+        raise PublicationQuarantine('unsupported_b2_format')
+    return True
+
+
+def check_recovery_open(db):
+    """DB mutation authority only; cannot attest the receipt volume."""
+    if not b2_schema(db):
+        return None
+    from service.recovery import validate_b2_database
+    try:
+        state = validate_b2_database(db)
+        completed = {r['recovery_id']: r for r in state['p1_recovery_steps'] if r['step']=='core-complete'}
+        for row in state['p1_recoveries']:
+            if row['id'] not in completed:
+                raise ValueError('b2_recovery_pending')
+        return state
+    except (ValueError, TypeError, KeyError) as exc:
+        raise PublicationQuarantine('b2_'+str(exc)) from exc
+
+
+def check_publication_allowed(db, job_id):
+    state = check_recovery_open(db)
+    if state and any(r['job_id']==job_id for r in state['p1_retired_publications']):
+        raise PublicationQuarantine('b2_retired_publication')

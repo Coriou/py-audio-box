@@ -372,3 +372,44 @@ os._exit(23)
                 assert receipt['reaped'] and receipt['binding']==runtime.authority.binding
                 assert db.execute('SELECT count(*) FROM publications').fetchone()[0]==0
         finally:d.close()
+
+
+# Coherent enrolled B2 fixtures are shared test data, never runtime entrypoints.
+from tests.service.test_recovery import installation, b2_intent, b2_receipt, registration, logical
+
+
+@pytest.mark.parametrize('changed',['none','boot','certificate','unavailable'])
+def test_b2_explicit_startup_rechecks_hello_before_admission(installation,monkeypatch,changed):
+    from service import recovery
+    from service.admission import DEFAULT_BUDGET
+    import sqlite3
+    roots,scope,profiles,_=installation
+    intent=b2_intent(installation,complete=True)
+    fence=b2_receipt(roots,intent,complete=True)
+    record=registration(installation,'actual-host-inspection')
+    rid=recovery.register(roots,scope,record)
+    hello=dict(lane=record['lane'],boot=record['boot'],quarantined=False,maintenance=fence['certificate'])
+    class Hello:
+        calls=0
+        def call(self,op,body):
+            assert op=='hello';self.calls+=1
+            if self.calls==2:
+                if changed=='unavailable':raise OSError('E1 unavailable hello')
+                if changed=='boot':return {**hello,'boot':'f'*32}
+                if changed=='certificate':return {**hello,'maintenance':{**hello['maintenance'],'certificate_digest':'f'*64}}
+            return hello
+    runtime=Hello();before=logical(roots)
+    if changed!='none':
+        monkeypatch.setattr('service.dispatcher.Admission',lambda *a,**k:pytest.fail('Admission before repeated hello'))
+        with pytest.raises((ValueError,OSError)):
+            Dispatcher(roots['control']/'core',staging=roots['staging'],runtime=runtime,
+                persistent_registration=rid,profiles=profiles,budget=DEFAULT_BUDGET)
+        assert logical(roots)==before
+    else:
+        dispatcher=Dispatcher(roots['control']/'core',staging=roots['staging'],runtime=runtime,
+            persistent_registration=rid,profiles=profiles,budget=DEFAULT_BUDGET)
+        try:
+            assert runtime.calls==2
+            assert dispatcher.call('status')['persistent_activation'] is False
+            with pytest.raises(ValueError,match='persistent_activation_closed'):dispatcher.call('submit','p','closed')
+        finally:dispatcher.close()

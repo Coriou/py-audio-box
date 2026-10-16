@@ -1,5 +1,6 @@
 """B1 E1 only: real disposable roots/SQLite/locks, mocked host projection."""
 import copy
+from contextlib import closing
 import fcntl
 import importlib.util
 import json
@@ -340,15 +341,14 @@ def test_partial_file_write_refuses_resume_without_replacement(tmp_path,monkeypa
 def test_enrolled_root_cannot_bypass_closed_activation_via_diagnostic_default(installation):
     from service.dispatcher import Dispatcher
     roots,_,_,_=installation
-    class NoRuntime:
-        def __getattr__(self,name):pytest.fail('B1 must never invoke runtime '+name)
-    dispatcher=Dispatcher(roots['control']/'core',staging=roots['staging'],runtime=NoRuntime())
-    try:
-        assert dispatcher.call('status')['persistent_activation'] is False
-        with pytest.raises(ValueError,match='persistent_activation_closed'):dispatcher.call('submit','p','new')
-        with pytest.raises(ValueError,match='persistent_activation_closed'):dispatcher.call('cancel','unknown')
-        assert dispatcher.call('jobs','p')==[]
-    finally:dispatcher.close()
+    class Hello:
+        def call(self,op,body):
+            assert op=='hello'
+            return dict(lane='a'*32,boot='b'*32,quarantined=False)
+    before=logical(roots)
+    with pytest.raises(ValueError,match='persistent_registration_required'):
+        Dispatcher(roots['control']/'core',staging=roots['staging'],runtime=Hello())
+    assert before==logical(roots)
 
 
 def test_unknown_inventory_refuses_plan_but_is_visible_in_inspect(installation):
@@ -440,3 +440,313 @@ def test_private_snapshot_copy_error_cleans_only_private(installation,monkeypatc
     monkeypatch.setattr(recovery.sqlite3,'connect',original)
     assert private_dirs and all(not p.exists() for p in private_dirs)
     assert recovery.inspect(roots,scope)['monitor']==[(1,'healthy')]
+
+
+def test_b2_optional_schema_and_plan_self_binding(installation):
+    roots,scope,_,_=installation
+    observation,_=enrolled_plan(installation)
+    planned=recovery.plan_abandon(roots,scope,observation,proof_digest='3'*64,profiles=installation[2],budget=DEFAULT_BUDGET,now=100)
+    with recovery.offline(roots) as (checked,db):
+        assert recovery.verify_abandon_plan(checked,db,scope,observation,planned['plan']['id'],planned['digest'],proof_digest='3'*64,now=101)==planned['plan']
+    assert planned['plan']['new_lane']!=planned['plan']['old_lane']
+    assert planned['plan']['new_epoch']!=planned['plan']['prior_epoch']
+    with pytest.raises(NotImplementedError): recovery.apply(plan_id=planned['plan']['id'],plan_digest=planned['digest'],proof_digest='3'*64)
+
+
+def test_b2_partial_schema_core_refuses(installation):
+    roots,_,_,_=installation
+    with closing(sqlite3.connect(roots['control']/'core'/'core.sqlite')) as db, db:
+        db.execute('CREATE TABLE p1_b2_format(id INTEGER PRIMARY KEY, revision INTEGER NOT NULL)')
+    for historical in (False,True):
+        with pytest.raises(ValueError,match='b2'):
+            Core(roots['control']/'core',historical_local=historical)
+
+
+def b2_plan(installation):
+    roots,scope,profiles,_=installation
+    observation,_=enrolled_plan(installation)
+    result=recovery.plan_abandon(roots,scope,observation,proof_digest='3'*64,profiles=profiles,budget=DEFAULT_BUDGET,now=100)
+    return observation,result
+
+
+def b2_intent(installation, *, complete=False):
+    """Test-only fixed records, never a production recovery writer."""
+    roots,_,_,_=installation
+    observation,planned=b2_plan(installation); p=planned['plan']
+    r=dict(id='9'*32,deployment_id=p['deployment_id'],plan_id=p['id'],plan_digest=planned['digest'],
+        **{k:p[k] for k in ('source_digest','observation_digest','proof_digest','prior_epoch','new_epoch','old_lane','new_lane','affected','budget_before','budget_after','diagnostic_decisions')},
+        proof_kind='E1-mock',before_digest='4'*64,monitor_digest='5'*64,faults_digest='6'*64,highwater=0,
+        actions=[dict(job_id=j,action='retain-terminal',before_digest='7'*64) for j in p['affected']['jobs']],
+        archive_id='8'*32,expected=[dict(step=s,input_digest=str(i+1)*64,output_digest=str(i+2)*64) for i,s in enumerate(recovery.STEPS)],created=101)
+    with closing(sqlite3.connect(roots['control']/'core'/'core.sqlite')) as db, db:
+        db.execute('PRAGMA foreign_keys=ON')
+        db.execute('INSERT INTO p1_recoveries VALUES(?,?,?,?)',(r['id'],r['plan_id'],encode(r),digest(r)))
+        if complete:
+            for expected in r['expected'][:4]:
+                step=dict(recovery_id=r['id'],**expected,lane=r['new_lane'],epoch=r['new_epoch'])
+                db.execute('INSERT INTO p1_recovery_steps VALUES(?,?,?,?)',(r['id'],step['step'],encode(step),digest(step)))
+    return r
+
+
+def b2_receipt(roots,r, *, complete=False):
+    cert=None
+    if complete:
+        with closing(sqlite3.connect(roots['control']/'core'/'core.sqlite')) as db, db: cert=recovery.completion_binding(db)
+    marker=dict(revision=1,deployment_id=r['deployment_id'])
+    fence=dict(revision=1,deployment_id=r['deployment_id'],recovery_id=r['id'],plan_id=r['plan_id'],
+        plan_digest=r['plan_digest'],proof_digest=r['proof_digest'],old_lane=r['old_lane'],new_lane=r['new_lane'],
+        step='complete' if complete else 'pending',certificate=cert)
+    for name,value in (('p1-b2-required.json',marker),('p1-maintenance.json',fence)):
+        path=roots['receipts']/name;path.write_text(encode(value));path.chmod(0o600)
+    if complete:
+        value=dict(version=1,lane=r['new_lane'],records=[],maintenance=cert)
+        (roots['receipts']/'journal.json').write_text(encode(dict(payload=value,sha256=digest(value))))
+    return fence
+
+
+@pytest.mark.parametrize('mutation',['delete','content','append'])
+def test_b2_prior_history_is_bound(installation,mutation):
+    roots,scope,profiles,_=installation
+    observation,first=b2_plan(installation)
+    second=recovery.plan_abandon(roots,scope,observation,proof_digest='3'*64,profiles=profiles,budget=DEFAULT_BUDGET,now=100)
+    with recovery.offline(roots) as (checked,db):
+        recovery.verify_abandon_plan(checked,db,scope,observation,second['plan']['id'],second['digest'],proof_digest='3'*64,now=101)
+    with closing(sqlite3.connect(roots['control']/'core'/'core.sqlite')) as db, db:
+        if mutation=='delete': db.execute('DELETE FROM p1_abandon_plans WHERE id=?',(first['plan']['id'],))
+        elif mutation=='content':
+            p=first['plan'];p['created']=99;p['expires']=399
+            db.execute('UPDATE p1_abandon_plans SET record=?,digest=? WHERE id=?',(encode(p),digest(p),p['id']))
+    if mutation=='append': recovery.plan_abandon(roots,scope,observation,proof_digest='3'*64,profiles=profiles,budget=DEFAULT_BUDGET,now=100)
+    with recovery.offline(roots) as (checked,db), pytest.raises(ValueError,match='stale_b2_plan'):
+        recovery.verify_abandon_plan(checked,db,scope,observation,second['plan']['id'],second['digest'],proof_digest='3'*64,now=101)
+
+
+@pytest.mark.parametrize('historical',[False,True])
+def test_b2_pending_direct_core_refusal_twice(installation,historical):
+    roots,_,_,_=installation;b2_intent(installation)
+    before=logical(roots)
+    for _ in range(2):
+        with pytest.raises(ValueError,match='pending'): Core(roots['control']/'core',historical_local=historical)
+        assert logical(roots)==before
+
+
+@pytest.mark.parametrize('core_state,receipt_state',[(False,'pending'),(False,'absent'),(True,'pending'),(True,'absent'),(True,'complete')])
+def test_b2_cross_volume_startup_before_mutation(installation,monkeypatch,core_state,receipt_state):
+    from service.dispatcher import Dispatcher
+    from worker.runtime_journal import Journal
+    roots,_,_,_=installation
+    r=b2_intent(installation,complete=core_state)
+    if receipt_state!='absent':b2_receipt(roots,r,complete=receipt_state=='complete')
+    before=logical(roots)
+    class Runtime:
+        def call(self,op,body):
+            assert op=='hello'
+            journal=Journal(roots['receipts'])
+            try:return dict(lane=journal.value['lane'],boot='b'*32,quarantined=False,maintenance=journal.maintenance)
+            finally:journal.lock.close()
+    monkeypatch.setattr('service.dispatcher.Core',lambda *a,**k:pytest.fail('must refuse before mutable Core'))
+    for _ in range(2):
+        with pytest.raises(ValueError): Dispatcher(roots['control']/'core',staging=roots['staging'],runtime=Runtime())
+        assert logical(roots)==before
+
+
+def test_b2_nonempty_plan_pure_self_verify(installation):
+    from tests.service.test_admission import fixture
+    from service.admission import Admission
+    from service.dispatch_store import DispatchStore
+    roots,scope,_,_=installation
+    core=Core(roots['control']/'core')
+    try:
+        f=fixture();a=Admission(core,roots['staging']);DispatchStore(core,a)
+        job=core.submit_synthetic('p','b2',f['context'],_admission=a,_profiles=f['profiles'],_dispatch_settings=('silence',8))
+    finally:core.close()
+    observation,result=b2_plan(installation)
+    p=result['plan'];assert p['affected']['jobs']==[job['id']] and p['affected']['reservations']==[job['id']]
+    with recovery.offline(roots) as (checked,db):
+        db.execute('BEGIN')
+        before=db.total_changes
+        assert recovery.verify_abandon_plan(checked,db,scope,observation,p['id'],result['digest'],proof_digest='3'*64,now=101)==p
+        assert db.in_transaction and db.total_changes==before
+        db.execute('ROLLBACK')
+
+
+@pytest.mark.parametrize('mutation',['unknown-field','bool','nan','duplicate','reference','oversize','columns'])
+def test_b2_closed_records_refuse(installation,mutation):
+    roots,scope,_,_=installation
+    _,result=b2_plan(installation);p=result['plan']
+    if mutation=='unknown-field':p['patch']={'sql':'no'}
+    elif mutation=='bool':p['revision']=True
+    elif mutation=='nan':p['created']=float('nan')
+    elif mutation=='duplicate':p['affected']['jobs']=['x','x'];p['count']=2
+    elif mutation=='reference':p['affected']['jobs']=['unknown'];p['count']=1
+    elif mutation=='oversize':p['id']='x'*(recovery.MAX_BYTES+1)
+    with closing(sqlite3.connect(roots['control']/'core'/'core.sqlite')) as db, db:
+        if mutation=='columns':db.execute('ALTER TABLE p1_abandon_plans ADD COLUMN extra TEXT')
+        else:
+            raw=json.dumps(p) if mutation=='nan' else encode(p)
+            h='0'*64 if mutation=='nan' else digest(p)
+            db.execute('UPDATE p1_abandon_plans SET record=?,digest=?',(raw,h))
+    with pytest.raises((ValueError,OSError)):
+        recovery.inspect(roots,scope)
+
+
+def terminal_enrolled(installation):
+    from tests.service.test_admission import fixture
+    from tests.service.test_dispatcher import Runtime
+    from service.admission import Admission
+    from service.dispatch_store import DispatchStore
+    roots,scope,_,_=installation
+    lane=recovery.inspect(roots,scope)['lane']
+    core=Core(roots['control']/'core')
+    try:
+        f=fixture();admission=Admission(core,roots['staging']);store=DispatchStore(core,admission)
+        job=core.submit_synthetic('p','terminal-b2',f['context'],_admission=admission,_profiles=f['profiles'],_dispatch_settings=('silence',8))
+        row=store.allocate(f['profiles'],'silence',8)
+        runtime=Runtime(roots['staging']);runtime.prepares=1
+        identity=lane+'/'+'b'*32+'/one'
+        receipt,observation=runtime.collect(row['authority'],identity)
+        store.update(row,runtime=identity,receipt=encode(receipt),phase='receipt')
+        core._publish(job['id'],dict(message=observation.message,manifest=observation.manifest),stage_root=roots['staging'],engine_uid=receipt['engine_uid'])
+        with admission._preflight(),core.transaction():
+            admission.store.release_tx(job['id'],confirmed_reap=True)
+            core.db.execute("UPDATE dispatches SET outcome=?,phase='done',acked=1 WHERE seq=?",(encode(core.job(job['id'])),row['seq']))
+        return job['id']
+    finally:core.close()
+
+
+@pytest.mark.parametrize('method',['_publish','_commit_publication'])
+def test_b2_retirement_precedes_both_publication_bodies(installation,monkeypatch,method):
+    from service import persistence
+    roots,_,_,_=installation
+    job_id=terminal_enrolled(installation)
+    r=b2_intent(installation,complete=True)
+    with closing(sqlite3.connect(roots['control']/'core'/'core.sqlite')) as db,db:
+        publication=db.execute('SELECT * FROM publications WHERE job_id=?',(job_id,)).fetchone()
+        work=db.execute('SELECT * FROM publication_work WHERE job_id=?',(job_id,)).fetchone()
+        job=json.loads(db.execute('SELECT job FROM jobs WHERE id=?',(job_id,)).fetchone()[0])
+        value=dict(job_id=job_id,recovery_id=r['id'],attempt_id=job['attempts'][-1]['id'],binding=digest(json.loads(work[1])),
+            publication_digest=digest(publication),work_digest=digest(work),decision='retired')
+        db.execute('INSERT INTO p1_retired_publications VALUES(?,?,?,?)',(job_id,r['id'],encode(value),digest(value)))
+    before=logical(roots)
+    files={p.name:p.read_bytes() for p in (roots['control']/'core'/'assets').iterdir()}
+    core=Core(roots['control']/'core',historical_local=True)
+    try:
+        monkeypatch.setattr(core,'_verified',lambda *a,**k:pytest.fail('verification must not run'))
+        monkeypatch.setattr(core,'_load',lambda *a,**k:pytest.fail('even terminal fast return must not run'))
+        with pytest.raises(persistence.PublicationQuarantine,match='retired'):
+            getattr(core,method)(job_id, {}) if method=='_publish' else core._commit_publication(job_id)
+        assert before==logical(roots)
+        assert files=={p.name:p.read_bytes() for p in (roots['control']/'core'/'assets').iterdir()}
+    finally:core.close()
+
+
+@pytest.mark.parametrize('damage',['missing','unknown','digest','lane','pending','journal-binding','all-fences-missing'])
+def test_b2_worker_refuses_before_boot_or_listen(installation,monkeypatch,damage):
+    import worker.runtime_supervisor as module
+    roots,_,_,_=installation
+    r=b2_intent(installation,complete=True);fence=b2_receipt(roots,r,complete=True)
+    if damage=='missing':(roots['receipts']/'p1-maintenance.json').unlink()
+    elif damage=='all-fences-missing':
+        (roots['receipts']/'p1-maintenance.json').unlink();(roots['receipts']/'p1-b2-required.json').unlink()
+    elif damage=='journal-binding':
+        value=dict(version=1,lane=r['new_lane'],records=[])
+        (roots['receipts']/'journal.json').write_text(encode(dict(payload=value,sha256=digest(value))))
+    else:
+        if damage=='unknown':fence['argv']=[]
+        elif damage=='digest':fence['certificate']['certificate_digest']='x'
+        elif damage=='lane':fence['certificate']['lane']='f'*32
+        elif damage=='pending':fence.update(step='pending',certificate=None)
+        (roots['receipts']/'p1-maintenance.json').write_text(encode(fence))
+    before=(roots['receipts']/'journal.json').read_bytes()
+    with monkeypatch.context() as patch:
+        patch.setattr(module.os,'getpid',lambda:1)
+        patch.setattr(module.secrets,'token_hex',lambda *a:pytest.fail('boot minted before fence'))
+        patch.setattr(module.socket,'socket',lambda *a:pytest.fail('listen before fence'))
+        for _ in range(2):
+            with pytest.raises(ValueError):module.RuntimeSupervisor(roots['receipts'],roots['ipc'])
+            assert (roots['receipts']/'journal.json').read_bytes()==before
+
+
+def test_b2_worker_completed_hello_matches_core(installation):
+    from worker.runtime_journal import Journal
+    from worker.runtime_supervisor import RuntimeSupervisor
+    roots,_,_,_=installation
+    r=b2_intent(installation,complete=True);fence=b2_receipt(roots,r,complete=True)
+    runtime=RuntimeSupervisor.__new__(RuntimeSupervisor)
+    runtime.journal=Journal(roots['receipts']);runtime.boot='b'*32;runtime.failed=False;runtime.active=None;runtime.launches=0
+    try:
+        hello=runtime.operation('hello',{})
+        assert hello['maintenance']==fence['certificate'] and hello['lane']==r['new_lane']
+        with closing(sqlite3.connect(roots['control']/'core'/'core.sqlite')) as db:
+            assert recovery.check_completion_hello(db,hello)==fence['certificate']
+    finally:runtime.journal.lock.close()
+
+
+def test_b2_nonempty_publication_self_reference_and_namespace(installation):
+    from service.reconciliation import Reconciliation
+    from types import SimpleNamespace
+    roots,scope,_,_=installation
+    job_id=terminal_enrolled(installation)
+    observation,result=b2_plan(installation)
+    with recovery.offline(roots) as (checked,db):
+        p=recovery.verify_abandon_plan(checked,db,scope,observation,result['plan']['id'],result['digest'],proof_digest='3'*64,now=101)
+        assert p['affected']['publications']==[job_id]
+        scanner=Reconciliation.__new__(Reconciliation)
+        scanner.core=SimpleNamespace(root=roots['control']/'core');scanner.db=db;scanner.staging=roots['staging']
+        scanner.entry_limit=2048;scanner.byte_limit=16*1024**2;scanner.seconds=1;scanner._collect()
+        media=next(r for r in scanner.rows.values() if r['namespace']=='assets')
+        assert 'p1_abandon_plans:'+p['id'] in media['references']
+
+
+@pytest.mark.parametrize('core_state',['absent','pending','complete'])
+def test_b2_receipt_pending_always_blocks_two_restarts(installation,core_state):
+    from service.dispatcher import Dispatcher
+    from worker.runtime_journal import Journal
+    roots,_,_,_=installation
+    r=b2_intent(installation,complete=core_state=='complete')
+    if core_state=='absent':
+        with closing(sqlite3.connect(roots['control']/'core'/'core.sqlite')) as db,db:
+            db.execute('DELETE FROM p1_recoveries')
+    b2_receipt(roots,r)
+    before=logical(roots)
+    class Worker:
+        def call(self,op,body):
+            assert op=='hello'
+            journal=Journal(roots['receipts'])
+            journal.lock.close()
+            pytest.fail('pending worker cannot hello')
+    for _ in range(2):
+        with pytest.raises(ValueError):Dispatcher(roots['control']/'core',runtime=Worker())
+        assert before==logical(roots)
+
+
+def test_b2_schema_install_is_atomic_and_configuration_bound(installation,monkeypatch):
+    from service import persistence
+    roots,scope,profiles,_=installation
+    observation,_=enrolled_plan(installation);before=logical(roots)
+    with pytest.raises(ValueError,match='configuration'):
+        recovery.plan_abandon(roots,scope,observation,proof_digest='3'*64,profiles=profiles,budget={**DEFAULT_BUDGET,'disk_bytes':1},now=100)
+    assert before==logical(roots)
+    monkeypatch.setattr(persistence,'B2_DDL',(*persistence.B2_DDL[:3],'INVALID DDL'))
+    with pytest.raises(sqlite3.Error):
+        recovery.plan_abandon(roots,scope,observation,proof_digest='3'*64,profiles=profiles,budget=DEFAULT_BUDGET,now=100)
+    assert before==logical(roots)
+
+
+def test_b2_archive_namespace_is_closed_retained_evidence(installation):
+    from types import SimpleNamespace
+    roots,_,_,_=installation
+    intent=b2_intent(installation,complete=True)
+    root=roots['control']/'core'
+    manifest=dict(revision=1,recovery_id=intent['id'],source_digest=intent['source_digest'],snapshot_digest='1'*64,journal_state='valid',journal_digest='2'*64)
+    name=next(n for n,k in recovery.archive_names(intent).items() if k=='manifest')
+    path=root/name;path.write_text(encode(manifest));path.chmod(0o600)
+    with closing(sqlite3.connect(root/'core.sqlite')) as db:
+        scanner=Reconciliation.__new__(Reconciliation);scanner.core=SimpleNamespace(root=root);scanner.db=db
+        scanner.staging=roots['staging'];scanner.entry_limit=2048;scanner.byte_limit=16*1024**2;scanner.seconds=1
+        scanner._collect()
+        evidence=next(row for row in scanner.rows.values() if row['namespace']=='recovery')
+        assert evidence['classification']=='recovery_evidence'
+        assert evidence['references']==['p1_recoveries:'+intent['id']]
+        manifest['unknown']=True;path.write_text(encode(manifest))
+        with pytest.raises(ValueError,match='unknown_record_fields'):scanner._collect()

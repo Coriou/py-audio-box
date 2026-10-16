@@ -180,3 +180,19 @@ def test_journal_semantic_bit_change_and_oversize_fail_closed(tmp_path):
     with pytest.raises(ValueError):Journal(tmp_path)
     (tmp_path/'journal.json').write_bytes(b'x'*(MAX_BYTES+1))
     with pytest.raises(ValueError):Journal(tmp_path)
+
+
+def test_maintenance_is_checked_under_lane_lock_before_journal_read(tmp_path,monkeypatch):
+    import fcntl
+    import worker.runtime_journal as module
+    write_journal(tmp_path,dict(version=1,lane='lane',records=[]))
+    calls=[]
+    def fence(root):
+        with (root/'lane.lock').open('rb') as lock:
+            with pytest.raises(BlockingIOError):fcntl.flock(lock,fcntl.LOCK_EX|fcntl.LOCK_NB)
+        calls.append('fence')
+        raise ValueError('maintenance_pending')
+    monkeypatch.setattr(module,'read_maintenance',fence)
+    for _ in range(2):
+        with pytest.raises(ValueError,match='maintenance_pending'):Journal(tmp_path)
+    assert calls==['fence','fence']
