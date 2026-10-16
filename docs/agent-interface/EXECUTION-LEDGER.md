@@ -94,4 +94,9 @@ Record failures and missing evidence; do not replace them with a successful late
 
 - [R4 independent report](reviews/0A-r4-sol.md): **GO for 0A at E1**, exact reviewed candidate `26f8e08ed9db4935dad1f5c4916e885d9b392645`. R3-1/R3-2 and all prior required findings closed without waiver; 214 tests independently passed,139source/image files match.
 - Root cherry-picked only four implementation commits, yielding `4fbd770`, `95674f8`, `2df4be8`, final integrated `bf66c30`. Exact diff against reviewed candidate for contracts/tests/Dockerfile.tests/apps/lib/scripts/benchmarks/launchers/config is empty. Existing untracked research preserved.
-- Root integrated selected suite using exact-source image: result recorded on completion below. No service/browser/hardware/acoustic/Phase0 approval implied; 0B and0C remain pending.
+- Root integrated selected suite using exact-source image: **214 passed in 48.81s**, exit0, bounded network-none disposable container, no mounts. Source equality to reviewed candidate verified before image reuse. No service/browser/hardware/acoustic/Phase0 approval implied; 0B and0C remain pending.
+
+## Active lot 0B
+
+- Sol-low implementation task `node:delegated-task:command%3Amcp%3Ab4587ef3-fd31-4580-ac56-59ae142ceb03%3Adelegate-task%3Apab-phase0b-implementation-r1-20261016`, request `pab-phase0b-implementation-r1-20261016`, isolated worktree from committed `9c50c32`.
+- Owned slice: studio editor fixture/toolchain/tests, phase-0 EDITOR-0B report/evidence and required design context. Exact canonical fixtures1.3.0; Waveform Playlist evaluated first, own-state adapter or justified thin fallback. Real browser proof required; independent reviewer pending candidate. 0C remains queued.
