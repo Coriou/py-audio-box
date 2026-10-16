@@ -15,6 +15,7 @@ import threading
 import time
 import uuid
 
+from jsonschema import Draft202012Validator
 from jsonschema.exceptions import ValidationError
 
 from service.core import encode
@@ -111,9 +112,11 @@ class Reconciliation:
             data[table] = records
         refs = {}
         # Closed contract locations, never scalar spelling or user-authored keys.
-        schema = json.loads(Path('contracts/v1/schema.json').read_text())['$defs']
+        document = json.loads(Path('contracts/v1/schema.json').read_text())
+        schema = document['$defs']
+        validator = Draft202012Validator(document)
         reference_keys = {'asset_id','asset_ids','input_asset_ids','result_asset_ids',
-                          'audition_asset_id','reference_asset_ids'}
+                          'audition_asset_id','reference_asset_id','reference_asset_ids'}
         def add(value, source):
             if isinstance(value, list):
                 for item in value: add(item, source)
@@ -121,7 +124,6 @@ class Reconciliation:
                 refs.setdefault(value, set()).add(source if len(source)<=256 else source.split(':')[0]+':'+hashlib.sha256(source.encode()).hexdigest())
             else: self.reasons.add('unknown_reference_kind')
         def walk(value, definition, source):
-            if value is None: return
             if definition == 'asset' and isinstance(value, dict): add(value.get('id'), source)
             node = schema[definition] if isinstance(definition, str) else definition
             if '$ref' in node:
@@ -130,14 +132,22 @@ class Reconciliation:
                 return walk(value, name, source)
             for union in ('oneOf', 'anyOf', 'allOf'):
                 if union in node:
-                    # Closed union branches are selected by their declared constants.
-                    branches = [n for n in node[union] if all(
-                        not isinstance(value, dict) or k not in value or
-                        ('const' not in v or value[k] == v['const'])
-                        for k,v in n.get('properties', {}).items())]
+                    # Delegate type, $ref and discriminator applicability to the
+                    # same Draft 2020-12 implementation used by the contract oracle.
+                    branches = [n for n in node[union]
+                                if validator.evolve(schema=n).is_valid(value)]
+                    if union == 'oneOf' and len(branches) != 1:
+                        self.reasons.add('unknown_reference_kind')
+                    if union == 'allOf' and len(branches) != len(node[union]):
+                        self.reasons.add('unknown_reference_kind')
                     if not branches: self.reasons.add('unknown_reference_kind')
                     for branch in branches: walk(value, branch, source)
                     return
+            if 'type' in node and not validator.evolve(schema={'type': node['type']}).is_valid(value):
+                self.reasons.add('unknown_reference_kind')
+                return
+            if not isinstance(value, (dict, list)) and not validator.evolve(schema=node).is_valid(value):
+                self.reasons.add('unknown_reference_kind')
             if isinstance(value, list):
                 if 'items' in node:
                     for item in value: walk(item, node['items'], source)
@@ -146,7 +156,9 @@ class Reconciliation:
                 if set(value) - properties.keys(): self.reasons.add('unknown_reference_schema')
                 for key, item in value.items():
                     if key not in properties: continue
-                    if key in reference_keys: add(item, source)
+                    if key in reference_keys:
+                        if validator.evolve(schema=properties[key]).is_valid(item): add(item, source)
+                        else: self.reasons.add('unknown_reference_kind')
                     else: walk(item, properties[key], source)
         def context(value, source):
             if set(value) != {'plan','bundles'}: self.reasons.add('unknown_reference_schema')

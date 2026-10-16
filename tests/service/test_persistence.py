@@ -689,7 +689,10 @@ def test_inventory_design_description_and_instruction_are_prose(core):
     core.db.execute('INSERT INTO jobs(id,principal,operation,key,fingerprint,job,context) VALUES(?,?,?,?,?,?,?)',
         (job['id'],'asset-principal',job['operation'],'asset-design-key',job['input_sha256'],json.dumps(job),json.dumps(ctx)))
     for _ in range(2):
-        Reconciliation(core).reconcile_startup()
+        summary=Reconciliation(core).reconcile_startup()
+        assert summary['complete'] and summary['blocked']
+        assert summary['reasons']==(['unavailable'] if _==0 else ['unacknowledged_integrity','unavailable'])
+        assert summary['counts']=={'missing_hash_mismatched_terminal':1}
         names=[json.loads(r[0])['name'] for r in core.db.execute('SELECT record FROM p1_inventory_objects')]
         assert not any(name.startswith(('asset-description','asset-reference prose')) for name in names)
         assert core.job(job['id'])==job
@@ -707,3 +710,80 @@ def test_inventory_diagnostic_aggregate_refused_before_decode(core, monkeypatch)
     monkeypatch.setattr(module.json,'loads',decode)
     result=module.Reconciliation(core,byte_budget=2048).reconcile_startup()
     assert result['blocked'] and 'inventory_history_budget' in result['reasons']
+
+
+def inventory_media(core, metadata):
+    """Install owned synthetic bytes with matching retained contract metadata."""
+    import hashlib
+    metadata['sha256'] = hashlib.sha256(b'x').hexdigest()
+    core.db.execute('INSERT OR REPLACE INTO assets VALUES(?,?)', (metadata['id'], json.dumps(metadata)))
+    (core.root/'assets'/metadata['id']).write_bytes(b'x')
+
+
+@pytest.mark.parametrize('operation', ['voice_design','voice_prepare'])
+def test_inventory_valid_design_lineage_project_restart(core, operation):
+    from contracts import validate as oracle
+    from service.reconciliation import Reconciliation
+    transcript=json.loads((FIXTURES/('transcript-'+operation+'.json')).read_text())
+    version=next(e['response'] for e in transcript['exchanges'] if e['operation']=='voice_version_get')
+    asset=next(e['response'] for e in transcript['exchanges'] if e['operation']=='asset_get' and e['response']['id']==version['reference_asset_ids'][0])
+    inventory_media(core,asset)
+    project=json.loads((FIXTURES/'transcript-project_render.json').read_text())['context']['plan']['project']
+    for key in ('speakers','blocks','takes','tracks','clips'): project[key]=[]
+    project['voices']=[dict(id=version['voice_id'],aliases=[],version_ids=[version['id']],archived=False,revision=1)]
+    project['voice_versions'],project['assets']=[version],[asset]
+    assert (version['design_lineage'] is None)==(operation=='voice_prepare')
+    oracle.validate('project',project)
+    core.create_project(project)
+    for _ in range(3):
+        summary=Reconciliation(core).reconcile_startup()
+        assert summary['complete'] and not summary['blocked'], summary
+        assert summary['reasons']==[] and summary['counts']=={'committed_referenced':1}
+        assert core.project(project['id'])==project
+        reopen(core)
+
+
+@pytest.mark.parametrize('operation', ['voice_prepare','voice_design'])
+@pytest.mark.parametrize('missing', [False,True])
+def test_inventory_valid_resolved_snapshot_dependencies(core, operation, missing):
+    from contracts import validate as oracle
+    from service.reconciliation import Reconciliation
+    transcript=json.loads((FIXTURES/('transcript-'+operation+'.json')).read_text())
+    ctx,job=transcript['context'],transcript['job']
+    resolved=ctx['plan']['resolved']
+    assert all(resolved[k] is not None for k in ('reuse_settings','reuse_configuration'))
+    assert (resolved['reuse_identity'] is None)==(operation=='voice_prepare')
+    prospective=resolved['reuse_configuration']['reference_asset_id']
+    for asset in ctx['plan']['assets']: inventory_media(core,asset)
+    output=next(e['response'] for e in transcript['exchanges'] if e['operation']=='asset_get' and e['response']['id']==prospective)
+    if not missing: inventory_media(core,output)
+    job['input_sha256']=oracle.plan_hash(ctx['plan'])
+    oracle.stored_context(job,ctx)
+    core.db.execute('INSERT INTO jobs(id,principal,operation,key,fingerprint,job,context) VALUES(?,?,?,?,?,?,?)',
+        (job['id'],'p',operation,'resolved',job['input_sha256'],json.dumps(job),json.dumps(ctx)))
+    for _ in range(3):
+        summary=Reconciliation(core).reconcile_startup()
+        assert summary['complete'], summary
+        expected=['unacknowledged_integrity','unavailable'] if missing and _ else ['unavailable'] if missing else []
+        assert summary['reasons']==expected
+        assert summary['blocked']==missing
+        assert summary['counts'].get('missing_hash_mismatched_terminal',0)==int(missing)
+        records=[json.loads(r[0]) for r in core.db.execute('SELECT record FROM p1_inventory_objects')]
+        row=next(r for r in records if r['name']==prospective)
+        assert row['references']==(['jobs:'+job['id']] if missing else ['assets:'+prospective,'jobs:'+job['id']])
+        assert {r['name'] for r in records}=={a['id'] for a in ctx['plan']['assets']}|{prospective}
+        reopen(core)
+
+
+@pytest.mark.parametrize('change', ['variant','field','type','null_type'])
+def test_inventory_unknown_snapshot_shapes_refuse(core, context, change):
+    from service.reconciliation import Reconciliation
+    job=core.submit_synthetic('p','shape',context)
+    if change=='variant': context['plan']['resolved']['settings']['kind']='future'
+    elif change=='field': context['plan']['resolved']['future_media']={'asset_id':'opaque'}
+    elif change=='type': context['plan']['resolved']['reuse_identity']=[]
+    else: context['plan']['request']['text']=None
+    core.db.execute('UPDATE jobs SET context=? WHERE id=?',(json.dumps(context),job['id']))
+    summary=Reconciliation(core).reconcile_startup()
+    assert summary['blocked']
+    assert set(summary['reasons']) & {'unknown_reference_kind','unknown_reference_schema'}
