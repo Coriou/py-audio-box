@@ -19,7 +19,7 @@
 | Lot | State | Dependency / next action |
 | --- | --- | --- |
 | Launch preparation | Complete | Planning baseline `2c1adaa`; source base `ae67cd6`; integration branch `feat/agent-voice-workspace`. |
-| 0A Contract/compatibility pack | Corrections required | Candidate `9f1027b` rejected by independent review; F1–F6, correction round 1. |
+| 0A Contract/compatibility pack | Re-reviewing | Corrected candidate `aa9a61a`; independent round 2 checks all F1–F6. |
 | 0B Editor browser fixture | Pending | Recorded 0A contract fixture; separate owned component slice and reviewer. |
 | 0C Integration skeleton/acceptance ledger | Pending | 0A boundaries; integrate component decision after 0B. |
 | Phase 0 gate | Not evaluated | Integrated contracts, browser evidence, packaging boundary and relevant checks. |
@@ -51,3 +51,11 @@ Record failures and missing evidence; do not replace them with a successful late
 - Independent reviewer: `codex` / `gpt-6.1-sol` / `low`, request `pab-phase0a-review-r1-20261016`; task ID `node:delegated-task:command%3Amcp%3Ab4587ef3-fd31-4580-ac56-59ae142ceb03%3Adelegate-task%3Apab-phase0a-review-r1-20261016`. Read-only candidate inspection and tests; sole heavy test lane. Report destination `reviews/0A-r1-sol.md`.
 - Review round 1: **NO-GO**, [report](reviews/0A-r1-sol.md). Independently verified image/source match, 85 selected tests passed and 320 collected; concrete counterexamples expose six required corrections (F1–F6): media transport, resource/worker workflow completeness, full attempt ownership/fencing, nested identity validation, immutable historical takes, ripple end overflow.
 - Candidate remains unintegrated. Correction round 1 will start from the rejected candidate in a fresh isolated worktree; every finding requires response/tests and independent re-review. No 0A/Phase 0 GO.
+
+## Lot 0A correction round 1 / review round 2
+
+- Correction task: `pab-phase0a-fix-r1-20261016` (same task-ID prefix as above), Sol `gpt-6.1-sol` low. Started `e8aa9a9`; original candidate cherry-picked only in isolated worktree as `dd5b869`.
+- Corrected candidate: `aa9a61a183545df65c96b5ccc5df071aa464c714`, branch `t3/fix-lot-0a-contracts`, worktree `/Users/ben/.txcode/worktrees/py-audio-box/t3-032fdaf1`. Root verified clean candidate and 12-file correction diff; read finding-by-finding response. Original and corrected candidates remain unintegrated.
+- Implementer-reported E1: final 47 focused tests and 353 collected; selected 113 passed before final additions. Catalogue/worker protocol 1.1.0. Review must verify final exact-source selected suite and all original counterexamples.
+- Independent review request `pab-phase0a-review-r2-20261016`, task `node:delegated-task:command%3Amcp%3Ab4587ef3-fd31-4580-ac56-59ae142ceb03%3Adelegate-task%3Apab-phase0a-review-r2-20261016`, Sol `gpt-6.1-sol` low, running. Sole heavy lane; read-only candidate, report `reviews/0A-r2-sol.md`.
+- No finding waived; no 0A/Phase 0 GO. Integrate only after independent acceptance and root integration checks.
