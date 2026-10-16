@@ -498,3 +498,9 @@ Record failures and missing evidence; do not replace them with a successful late
 
 - R1review reviews/P1B22d-r1-sol.md NO-GO exactfccb0391;583focused735passed18skipped confirmed. F1unfinishedfifthstep accepts staleownerproof afternewretainedregistration; F2completedA replay incorrectlyrequiresfuturecertificate ofpendingB.
 - NextisolatedSol-low request pab-phase1a-p1b22d-fix-r1-20261022: currentownercoverage beforeunfinishedwrites; stage-aware immutablecompletedhistory replay. No integration/waiver/applyactivation.
+
+## B2.2d corrected candidate / review round2
+
+- Candidate6d84699a9fa79ba1ef601e75bf1c06e0695bc7e9 frozenb3e4fec app-ownedt3-ec6f294d; rootreadresponse, unintegrated. F1currentregistrationcoverage beforeunfinishedwrites; F2actualstage-aware retainedhistory replay.
+- Claims5REDfail10pass then606focused/758passed18skipped finalfrozen sequential23newcases. Applyunavailable/activationclosed E1only.
+- FreshSol-low request/task suffix pab-phase1a-p1b22d-review-r2-20261022 report reviews/P1B22d-r2-sol.md fulloriginalbrief/priorfindings/responses supplied. No waiver/integration/installedacceptance.
