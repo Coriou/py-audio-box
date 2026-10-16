@@ -19,7 +19,7 @@
 | Lot | State | Dependency / next action |
 | --- | --- | --- |
 | Launch preparation | Complete | Planning baseline `2c1adaa`; source base `ae67cd6`; integration branch `feat/agent-voice-workspace`. |
-| 0A Contract/compatibility pack | Review round 4 | Candidate `26f8e08`, revision 1.3.0; R3 corrections under independent review. |
+| 0A Contract/compatibility pack | Integrated GO at E1 | Candidate `26f8e08` reviewed GO; integrated `bf66c30`, source equality verified. |
 | 0B Editor browser fixture | Pending | Recorded 0A contract fixture; separate owned component slice and reviewer. |
 | 0C Integration skeleton/acceptance ledger | Pending | 0A boundaries; integrate component decision after 0B. |
 | Phase 0 gate | Not evaluated | Integrated contracts, browser evidence, packaging boundary and relevant checks. |
@@ -89,3 +89,9 @@ Record failures and missing evidence; do not replace them with a successful late
 - Candidate `26f8e08ed9db4935dad1f5c4916e885d9b392645`, branch `t3/speech-output-boundary-fix`, isolated worktree `/Users/ben/.txcode/worktrees/py-audio-box/t3-66ad7ec3`. Root verified clean tree and read complete R3 response. Unintegrated.
 - Implementer reports revision1.3.0 and 214 final selected tests (143contract+71legacy), image `py-audio-box-0a-fix-r3-tests`,139copied files0mismatches. Immutable reuse settings preimage and operation-specific truthful output metadata tests added. E1 claims await independent verification.
 - Independent Sol-low review request/task suffix `pab-phase0a-review-r4-20261016`, report `reviews/0A-r4-sol.md`; full prior findings/Astra guidance supplied. Sole heavy test lane, read-only candidate. No 0A/Phase0 GO or waived findings.
+
+## Lot 0A integration
+
+- [R4 independent report](reviews/0A-r4-sol.md): **GO for 0A at E1**, exact reviewed candidate `26f8e08ed9db4935dad1f5c4916e885d9b392645`. R3-1/R3-2 and all prior required findings closed without waiver; 214 tests independently passed,139source/image files match.
+- Root cherry-picked only four implementation commits, yielding `4fbd770`, `95674f8`, `2df4be8`, final integrated `bf66c30`. Exact diff against reviewed candidate for contracts/tests/Dockerfile.tests/apps/lib/scripts/benchmarks/launchers/config is empty. Existing untracked research preserved.
+- Root integrated selected suite using exact-source image: result recorded on completion below. No service/browser/hardware/acoustic/Phase0 approval implied; 0B and0C remain pending.
