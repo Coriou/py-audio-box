@@ -158,3 +158,8 @@ Record failures and missing evidence; do not replace them with a successful late
 
 - `pab-phase1a-foundation-review-r1-20261016` failed with provider message: possible cybersecurity risk. No report exists; no review verdict/evidence obtained. Candidate remains unintegrated.
 - New request `pab-phase1a-foundation-review-r1b-20261016` limits work to read-only functional code review and existing local synthetic tests, excludes independent security probing. Report `reviews/1A-foundation-r1b-sol.md`. This narrower scope does not waive the remaining independent durability/adversarial acceptance requirements.
+
+## Foundation functional review result / correction
+
+- [R1b report](reviews/1A-foundation-r1b-sol.md): NO-GO on `a1a4668`;29existingtests/sourceimage match independently confirmed. F1 late-finished child can publish afterdeadline when collection delayed; F2 Pythonnumeric equality permits canonically changed retrycontext/hash. Source-derived examples, not independently executed probes.
+- Correction request `pab-phase1a-foundation-fix-r1-20261016`, isolated Sol-low; preserve timelycompletion collectedlater and exactretry lineage. New targeted regressions and independent re-review required; foundation/full1A remain unaccepted and unintegrated.
