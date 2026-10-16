@@ -519,3 +519,8 @@ Record failures and missing evidence; do not replace them with a successful late
 
 - R3report reviews/P1B22d-r3-sol.md NO-GO exact3eddd266; F1/F3closed, F2receipt-onlyB accepted/fence/bundle beforeCore SQL falselyblockscompletedA viaSQL-onlynamespace.633focused785passed18skipped confirmed, actualdeathreproducer/controlBresume valid.
 - NextisolatedSol-low request pab-phase1a-p1b22d-fix-r3-20261022 boundedprotectedreceipt-onlysuccessor plan/accepted/priorbinding/actualprefix validation before namespace, no futureSQL/output demand/no writes. Applyunavailable no integration/waiver.
+
+## B2.2d receipt-only corrected candidate / review round4
+
+- Candidatee3d58452de53de114feb71b4bbc7c7c5d3821305 frozen8d6ccd5 app-ownedt3-108eec6e; rootreadresponse unintegrated. Boundedprotectedreceipt-onlysuccessor discovery/actualprefix validation before namespace; F1/F3preserved.
+- Claims3REDfail then108target/685focused/837passed18skipped frozenfinal52newcases. FreshSol-low request pab-phase1a-p1b22d-review-r4-20261022 report reviews/P1B22d-r4-sol.md fulloriginalbrief/allpriorfindings/responses supplied. Applyunavailable activationclosed no waiver/integration.
