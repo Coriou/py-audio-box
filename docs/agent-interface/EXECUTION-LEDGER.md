@@ -306,3 +306,9 @@ Record failures and missing evidence; do not replace them with a successful late
 - Candidate`29fc22c484c4bf32f36cb6bfd6ce602d81554325`, app-owned`t3-e92f4233`, branch`t3/p1a1-publication-durability`; testedsource`a85df08`, finalreportonlydelta. Root read fullreport; unintegrated.
 - Claims247tests43installedsteps pass butfullrunnerEXIT1 globalinventorydrift (onepriorcontainer+volume absent) twice. Ownedremovalcommands scoped/zeroownedresources verified, cause notestablished; globalpreservationNOTaccepted.
 - IndependentSol-low task suffix`pab-phase1a-p1a1-review-r1-20261022`, currenttask-IDprefix, report`reviews/P1A1-r1-sol.md`; exactAstraA1brief andinventorylimitation supplied. No redundantheavycampaign withoutreason. A1/P1activationclosed.
+
+## A1 bounded GO / integration / A2 launch
+
+- [IndependentA1report](reviews/P1A1-r1-sol.md): boundedGO exact`29fc22c`, fresh103targetedtests; no blocker. GlobalrunnerEXIT1/inventorypreservationunverified retained, notgreenfullgate.
+- Initialrootcherry-pickomitted61aadfa prerequisite, conflicted; abortedwithoutretainingdelta. Prematuretestcollectionfailedconflictmarkers, notcodefinding. Correctthreecommitsequence integrated`660abd2`,`d7cba98`,`2b914b0`; exactsourcediffvsreviewedcandidateempty. Root103targetedtests running.
+- NextisolatedSol-low request`pab-phase1a-p1a2-implementation-r1-20261022`, A2boundedreferenceinventory/integrity/startupjoins only. No B/Cactivationorcleanupauthority.
