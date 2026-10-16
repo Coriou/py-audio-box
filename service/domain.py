@@ -1,4 +1,8 @@
-"""Stateless synthetic reads only. Durable state/admission belong to lot 1A."""
+"""Domain entry points: retained 0C fixture reads and trusted 1A durable core.
+
+HTTP remains explicitly fixture-only until transport lot 1B.
+"""
+from service.core import Core as DurableCore
 import base64
 import hashlib
 from jsonschema.exceptions import ValidationError
