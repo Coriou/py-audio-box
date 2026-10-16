@@ -412,3 +412,9 @@ Record failures and missing evidence; do not replace them with a successful late
 
 - [R2review](reviews/P1B21-r2-sol.md): F1originalclosed, F2stillopen exactd4290c6. Fullyrehashed nonterminalcompletion permits erasedattempts/unknownjobfields through completion/startup/historicalCore.193focused/423passed18skipped independentlyconfirmed, no waiver/integration.
 - Isolated Sol-low request `pab-phase1a-p1b21-fix-r2-20261022`: canonical closed job validation and explicit frozen-beforeimage unsuccessful-transition delta preserving attemptprovenance; fullyrehashed negatives/positive allocated fail-cancel fixtures. Apply remainsunavailable, subsequentlotsclosed.
+
+## B2.1 transition-contract candidate / review round3
+
+- Candidate `5959d8fb9b577c5e6b4cf5f30276f712a4ee4fa1`, source `0d976dac304db7eccdfb60d2078defda07026fdf`, app-owned `t3-b05a2844`; root read response. Canonicalclosedjobs/context + exactbeforeimage permitted unsuccessfultransition, attemptprovenance preserved. Unintegrated.
+- Claims22REDfail2pass then227focused/457passed18skipped finalfrozen sequential. Applyunavailable/activationclosed E1only.
+- FreshSol-low request/task suffix `pab-phase1a-p1b21-review-r3-20261022`, report `reviews/P1B21-r3-sol.md`; fulloriginalbrief/priorfindings/responses supplied. No waiver/integration, subsequentlots remainpending.
