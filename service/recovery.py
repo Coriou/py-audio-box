@@ -746,6 +746,7 @@ def _validate_evidence(r):
         elif step=='journal':expected=dict(old_lane=r['old_lane'],new_lane=r['new_lane'],journal=dict(version=1,lane=r['new_lane'],records=[]))
         elif step=='core-complete':
             _validate_core_output(output['rows'],r)
+            _integer(output['highwater'],2**53-1)
             expected=dict(before_digest=r['before_digest'],prior_epoch=r['prior_epoch'],new_epoch=r['new_epoch'],actions=r['actions'],diagnostic_decisions=r['diagnostic_decisions'],highwater=output['highwater'],budget_after=r['budget_after'],monitor_state='healthy',rows=output['rows'])
             if type(output['highwater'])!=int or output['highwater']<r['highwater'] or output['rows']['resource_accounting']!=[[1,output['highwater']]]:raise ValueError('b2_output_highwater')
         else:expected=dict(recovery_id=r['id'],lane=r['new_lane'],epoch=r['new_epoch'],core_output_digest=r['expected'][3]['output_digest'])
@@ -1027,7 +1028,7 @@ def _allocation_coherent(data):
                 if job['attempts'] or dispatches or job['state'] not in ('queued','cancel_requested'): return False
             elif reservation[3]=='executing':
                 if not job['attempts'] or not any(not r[9] for r in dispatches): return False
-            elif reservation[3]!='retained': return False
+            elif reservation[3]!='retained' or job['state'] not in ('succeeded','failed','cancelled'): return False
             for row in dispatches:
                 authority=Authority(*json.loads(row[2]))
                 if (authority.binding!=row[3] or authority.job['id']!=job_id or
