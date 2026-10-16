@@ -509,3 +509,8 @@ Record failures and missing evidence; do not replace them with a successful late
 
 - R2review reviews/P1B22d-r2-sol.md NO-GO exact6d84699; F1closed; F2open legitimateCorecommitted-uncertifiedsuccessor falselyblockscompletedA; F3rotationattempt acceptsdeletedpredecessorevidencestep.606focused758passed18skipped confirmed.
 - NextisolatedSol-low request pab-phase1a-p1b22d-fix-r2-20261022 exactdurablestage validation/prerequisites and noattempt uncertifiedwindow, no futureoutputdemand/nohistoryomission. Applyunavailable no integration/waiver.
+
+## B2.2d stage-chain candidate / review round3
+
+- Candidate3eddd2662ebbbb08a728fce6e23d22e3784e18af frozen8dbfdca app-ownedt3-42ef127a; rootreadresponse unintegrated. F2actualuncertifiednoattemptwindow bothvalidators; F3finiteSQL/creationattemptprerequisites; F1preserved.
+- Claims4REDfail1pass then633focused/785passed18skipped frozenfinal27newcases. FreshSol-low request pab-phase1a-p1b22d-review-r3-20261022 report reviews/P1B22d-r3-sol.md fulloriginalbrief/findings/responses supplied. Applyunavailable activationclosed no waiver/integration.
