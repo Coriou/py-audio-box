@@ -251,3 +251,9 @@ Record failures and missing evidence; do not replace them with a successful late
 - [IndependentW2d report](reviews/W2d-r1-sol.md): GO exact`d1fe65f`,122tests+32installedsteps independentlypassed; completeW2 integrationmatrix notyetclosed. W2c15scenarios remain explicitlyattributed unchangedworker evidence.
 - Integrated`601c558`; exactsource diff vs reviewedcandidate empty. Root exactsourceimage regression **122passed in39.35s**,exit0,networknone/read-onlyroot/tmpfs/no mounts. No publicactivation/R1P1waiver.
 - NextindependentSol-low evidenceaudit `pab-phase1a-w2-integrated-gate-20261022`: fulloriginalmatrix frozenintegratedSHA, unchangedsource/imageattribution and anyneeded targetedinstalledrows; noimplementation expansion. Report will determine boundedfullW2synthetic engineeringGO or specific gaps.
+
+## Full W2 fixed-synthetic engineering GO / R1 launch
+
+- [Integratedgate](reviews/W2-INTEGRATED-GATE.md): GO frozen`601c558d360e498159e3a8a12e77c3e8286760c1`; completeoriginalmatrix mapped to currentDispatcherCore and hash-verifiedunchangedW2cworker evidence. Fresh122tests+32installedsteps passed, cleanup/sourceidentityverified.
+- W2 syntheticengineering gate CLOSED GO; NOT full1A/publicactivation/realengines. R1/P1 stillmandatory, allfoundationorphan/fsync/SQLite/diskcases retainedwithoutwaiver.
+- NextisolatedSol-low request`pab-phase1a-r1-implementation-r1-20261022`: authoritative deployment resourceadmission/reservation/restartreconstruction over accepteddispatcher; independentreview follows.
