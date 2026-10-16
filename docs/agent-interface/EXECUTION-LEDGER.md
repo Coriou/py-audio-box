@@ -459,3 +459,9 @@ Record failures and missing evidence; do not replace them with a successful late
 - Candidate `5290e50f30b76be1275e84c51e6a64ad56c040b3`, source8864b6fa, app-owned `t3-7d5b1e82`; fourauthorizedpaths. Rootreadhandoff; unintegrated. Claims325focused/595passed18skipped frozenfinalsequential.
 - Privatepending-through-journal fixedlane/rotationintent/durableJournalpath/verifiedstep, no Core/resource/job/resolutioncompletion. Applyunavailable/activationclosed E1only.
 - FreshindependentSol-low request/task suffix `pab-phase1a-p1b22b-review-r1-20261022`, report `reviews/P1B22b-r1-sol.md`; originalbrief/precedentfindings/candidate/limits supplied. No integration/waiver; latertranches/qualificationpending.
+
+## B2.2b bounded GO / integration / Core completion tranche
+
+- [R1review](reviews/P1B22b-r1-sol.md) boundedsource/E1GO exact5290e50 no blockers;325focused/595passed18skipped independentlyconfirmed plusfreshinterpreterdeathresume/ordinaryJournalioprobes.
+- Rootintegrated de8113a/fdd0e5a exactsource diffvsreviewedcandidateempty;33journaltranchetests passed12.59s278deselected exit0.
+- NextisolatedSol-low request `pab-phase1a-p1b22c-implementation-r1-20261022` ONLYatomicCore/resource/job/resolutioncompletion afterjournalprefix; receiptfence stayspending, finalreceiptcompletion separatelyreviewed. OriginalB2.2allowlist and precise reconciliationamendment apply. Allapplyunavailable/activationclosed; A1inventory/C1C2/finalAstra qualificationpending.
