@@ -204,3 +204,9 @@ Record failures and missing evidence; do not replace them with a successful late
 - Candidate `1194814141073be76c78fde9d32a9439f737987b`, app-owned`t3-001f240a`, branch`t3/w2-worker-supervision`. Root read full report: W2a dormant durable owner-state seam only, no actual runtime/W1 reconnect. W2 NOT complete.
 - Reports76regressions+9focused/hashverifier; final harness-only edits not rerun. Hostmissingjsonschema noted; E1 sourceoverlay only, no separatecontainerW2proof.
 - IndependentSol-low request `pab-phase1a-w2a-review-r1-20261022`, same current task-ID prefix, report `reviews/W2a-r1-sol.md`. Boundedstate/transactionreview and finalscriptverification; all originalW2 actualruntime/deadline/restart gates remain. No integration yet.
+
+## W2a accepted integration / W2b continuation
+
+- [Independent review](reviews/W2a-r1-sol.md): boundedGO exact`1194814`; finalscript9pass and76regressions+1sourceverifier passed. Dormantprimitives only, actualW2 operational gates unchanged.
+- Integrated`1812365`; exact source diff vs reviewedcandidate empty. Root exact finalscript running from disposable gitarchive to preserve historicalreceipts; no semantic integrationdelta.
+- Next Sol-low W2b request `pab-phase1a-w2b-implementation-r1-20261022`: concrete isolated runtime/reconnect/deadline integration; independentlyreview beforeacceptance. No fullW2/1AGO.
