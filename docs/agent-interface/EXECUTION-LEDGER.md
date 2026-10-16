@@ -1,6 +1,6 @@
 # Implementation execution ledger
 
-2026-10-16. Launch preparation complete; Phase 0A is implementing in an isolated worktree. **No application service/studio has been implemented.** This ledger records execution evidence; the [implementation plan](IMPLEMENTATION-PLAN.md) defines outcomes and the [orchestration protocol](ORCHESTRATION-PROTOCOL.md) defines roles/review/integration.
+2026-10-16. Launch preparation complete; Phase 0A candidate is awaiting independent adversarial review. **No application service/studio has been implemented.** This ledger records execution evidence; the [implementation plan](IMPLEMENTATION-PLAN.md) defines outcomes and the [orchestration protocol](ORCHESTRATION-PROTOCOL.md) defines roles/review/integration.
 
 ## Launch state
 
@@ -19,7 +19,7 @@
 | Lot | State | Dependency / next action |
 | --- | --- | --- |
 | Launch preparation | Complete | Planning baseline `2c1adaa`; source base `ae67cd6`; integration branch `feat/agent-voice-workspace`. |
-| 0A Contract/compatibility pack | Implementing | [Ticket](lots/0A-contracts.md); base `a25169b`, isolated Sol-low task; independent review pending candidate. |
+| 0A Contract/compatibility pack | Reviewing | Candidate `9f1027b`; independent Sol-low adversarial review round 1 running. |
 | 0B Editor browser fixture | Pending | Recorded 0A contract fixture; separate owned component slice and reviewer. |
 | 0C Integration skeleton/acceptance ledger | Pending | 0A boundaries; integrate component decision after 0B. |
 | Phase 0 gate | Not evaluated | Integrated contracts, browser evidence, packaging boundary and relevant checks. |
@@ -44,6 +44,9 @@ Record failures and missing evidence; do not replace them with a successful late
 - Task ID: `node:delegated-task:command%3Amcp%3Ab4587ef3-fd31-4580-ac56-59ae142ceb03%3Adelegate-task%3Apab-phase0a-implementation-r1-20261016`.
 - Provider/model/effort: `codex` / `gpt-6.1-sol` / `low`; request `pab-phase0a-implementation-r1-20261016`.
 - Committed handoff/base: `a25169bd674b38c232e3476a23ede251b99d20e4`.
-- Worktree: `/Users/ben/.txcode/worktrees/py-audio-box/t3-0fe72d9f`; branch `t3/0fe72d9f`. Required plan/protocol/ticket files verified present, HEAD verified equal to handoff.
+- Worktree: `/Users/ben/.txcode/worktrees/py-audio-box/t3-0fe72d9f`; branch initially `t3/0fe72d9f`, now `t3/voice-contract-pack`. Required plan/protocol/ticket files verified present, HEAD verified equal to handoff.
 - Allowed scope and checks: [lot ticket](lots/0A-contracts.md). No application source changes or real model work authorized by this lot.
-- Candidate, test results, reviewer and integrated commit: pending. No 0A/Phase 0 GO.
+- Candidate: `9f1027b95229ed30f12d918b27bba989fbfe5d9d`; root verified committed diff (26 paths) and clean candidate worktree. Root read contract guide, validator and evidence report; no integration yet.
+- Implementer-reported E1 checks: 14 focused tests, 85 selected contract/legacy tests, 320-test collection in network-disabled bounded container. Independent verification is pending; no runtime/hardware/browser/acoustic acceptance.
+- Independent reviewer: `codex` / `gpt-6.1-sol` / `low`, request `pab-phase0a-review-r1-20261016`; task ID `node:delegated-task:command%3Amcp%3Ab4587ef3-fd31-4580-ac56-59ae142ceb03%3Adelegate-task%3Apab-phase0a-review-r1-20261016`. Read-only candidate inspection and tests; sole heavy test lane. Report destination `reviews/0A-r1-sol.md`.
+- Review verdict and integrated commit pending. No 0A/Phase 0 GO.
