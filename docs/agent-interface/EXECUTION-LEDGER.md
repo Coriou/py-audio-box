@@ -268,3 +268,8 @@ Record failures and missing evidence; do not replace them with a successful late
 
 - [IndependentR1 report](reviews/R1-r1-sol.md): NO-GO exact`22e75ca`;155tests+35installedsteps andsourceimageidentity confirmed. AdditionalE1probes reproduced F1 failedresourcefaultwrite loseslatch afterALIVEobservation, F2 transientviolationduringpendingI/O leavesstopunscheduled.
 - No integration/waiver. IsolatedSol-low request`pab-phase1a-r1-fix-r1-20261022`: failclosedlatchbeforefalliblepersistence + persistentstopobligation servicedafterI/O; mandatoryexactregressions/re-review. P1/fullactivationremainclosed.
+
+## R1 corrected candidate / independent review round2
+
+- Candidate`0aaa70780a979d501eae959147f01c0f7475ebf3`, app-owned`t3-f6dcdb48`, branch`t3/r1-fail-closed-stop`. Claims173tests+36installedsteps andF1/F2corrections; root read response. Unintegrated.
+- IndependentSol-low request/task suffix`pab-phase1a-r1-review-r2-20261022`, currenttask-IDprefix, report`reviews/R1-r2-sol.md`; originalbrief+allfindings/reproducers/response supplied. No waiver/R1GO; P1activationclosed.
