@@ -2435,3 +2435,170 @@ for _ in range(2):
 '''
     child=subprocess.run([sys.executable,'-c',code],input=encode(dict(roots={k:str(p) for k,p in roots.items()},scope=scope,rid=rid)),text=True,capture_output=True,env={**os.environ,'PYTHONDONTWRITEBYTECODE':'1'})
     assert child.returncode==0,child.stderr
+
+
+@pytest.mark.parametrize('point,quarantine',[
+    ('accepted-create',True),('accepted-write',False),('accepted-fsync',False),('accepted-parent',False),
+    ('fence-create',True),('fence-write',True),('fence-fsync',True),('fence-parent',True),
+    ('fence-replace-parent',False),
+    ('bundle-intent-create',True),('bundle-intent-write',True),('bundle-intent-fsync',True),
+    ('bundle-intent-parent',True),('bundle-intent-recorded',True),('bundle-create',True),
+    ('bundle-write',False),('bundle-fsync',False),('bundle-parent',False),
+])
+def test_b22d_r3_receipt_only_successor(installation,monkeypatch,point,quarantine):
+    from service import resource_store
+    roots,scope,_,_=installation;a,observation,_=core_fixture(installation)
+    expected=recovery._complete_receipts(roots,scope,a,observation,now=102)
+    b=b2_intent(installation,prepare_only=True,recovery_id='7'*32,archive_id='6'*32)
+    fired=[]
+    def stop(where):
+        if where==point:
+            fired.append(where);raise OSError('r3-stop')
+    with pytest.raises(OSError,match='r3-stop'):
+        recovery._complete_receipts(roots,scope,b,b['proof']['observation'],now=102,fault=stop)
+    assert fired==[point]
+    before=logical(roots);files=retained_bytes(roots)
+    def forbidden(*a,**k):raise AssertionError('completed replay scan or write')
+    with monkeypatch.context() as m:
+        for obj,name in ((recovery,'snapshot'),(Reconciliation,'_collect'),(resource_store,'_recovery_scan'),(recovery,'_prefix_file'),(recovery,'_prefix_transaction')):
+            m.setattr(obj,name,forbidden)
+        for _ in range(2):
+            if quarantine:
+                with pytest.raises((ValueError,OSError)):
+                    recovery._complete_receipts(roots,scope,a,observation,now=1000)
+            else:assert recovery._complete_receipts(roots,scope,a,observation,now=1000)==expected
+            assert logical(roots)==before and retained_bytes(roots)==files
+    if quarantine:return
+    assert recovery._complete_receipts(roots,scope,b,b['proof']['observation'],now=1000)['status']=='complete'
+    assert recovery._complete_receipts(roots,scope,a,observation,now=1000)==expected
+
+
+@pytest.mark.parametrize('damage',[
+    'accepted-missing','accepted-partial','accepted-unknown','accepted-noncanonical','accepted-mode',
+    'accepted-symlink','accepted-hardlink','filename','ambiguous','plan','prior-binding','scope','proof',
+    'descriptor','descriptor-missing','descriptor-partial','bundle-missing','bundle-partial','bundle-wrong',
+    'bundle-mode','bundle-symlink','bundle-hardlink','fence','fence-missing','marker','marker-missing',
+    'journal','unknown-extra','future-output','future-attempt','old-core-attempt','later-plan',
+])
+def test_b22d_r3_receipt_only_tamper(installation,monkeypatch,damage):
+    from service import resource_store
+    roots,scope,_,_=installation;a,observation,_=core_fixture(installation)
+    recovery._complete_receipts(roots,scope,a,observation,now=102)
+    b=b2_intent(installation,prepare_only=True,recovery_id='7'*32,archive_id='6'*32)
+    def stop(where):
+        if where=='bundle-parent':raise OSError('r3-stop')
+    with pytest.raises(OSError,match='r3-stop'):
+        recovery._complete_receipts(roots,scope,b,b['proof']['observation'],now=102,fault=stop)
+    receipts=roots['receipts'];prefix='p1-recovery-'+b['id']
+    accepted=receipts/(prefix+'.intent.json');bundle=receipts/(prefix+'.snapshot.bundle')
+    descriptor=receipts/(prefix+'.bundle.intent.json')
+    if damage in ('plan','later-plan'):
+        with closing(sqlite3.connect(roots['control']/'core'/'core.sqlite')) as db,db:
+            plan=json.loads(db.execute('SELECT record FROM p1_abandon_plans WHERE id=?',(b['plan_id'],)).fetchone()[0])
+            if damage=='plan':
+                plan['created']+=1
+                db.execute('UPDATE p1_abandon_plans SET record=?,digest=? WHERE id=?',(encode(plan),digest(plan),plan['id']))
+            else:
+                plan['id']='8'*32
+                db.execute('INSERT INTO p1_abandon_plans VALUES(?,?,?)',(plan['id'],encode(plan),digest(plan)))
+    elif damage in ('prior-binding','scope','proof','accepted-unknown'):
+        changed=json.loads(accepted.read_bytes())
+        if damage=='prior-binding':changed['before']['prior_certificate']['certificate_digest']='f'*64
+        elif damage=='scope':changed['proof']['observation']['scope']['context']='changed'
+        elif damage=='proof':changed['proof']['kind']='host-admin-container-teardown-v1'
+        else:changed['unknown']=True
+        accepted.write_text(encode(changed))
+    elif damage=='accepted-noncanonical':accepted.write_text(json.dumps(b,indent=2))
+    elif damage=='filename':accepted.rename(receipts/('p1-recovery-'+'8'*32+'.intent.json'))
+    elif damage=='ambiguous':
+        extra=receipts/('p1-recovery-'+'8'*32+'.intent.json');extra.write_bytes(accepted.read_bytes());extra.chmod(0o600)
+    elif damage=='descriptor':
+        value=json.loads(descriptor.read_bytes());value['intent_digest']='f'*64;descriptor.write_text(encode(value))
+    elif damage in ('fence','marker'):
+        path=receipts/('p1-maintenance.json' if damage=='fence' else 'p1-b2-required.json')
+        value=json.loads(path.read_bytes());value['deployment_id']='f'*32;path.write_text(encode(value))
+    elif damage=='journal':(receipts/'journal.json').write_bytes(b'changed')
+    elif damage=='unknown-extra':(receipts/'unknown.json').write_bytes(b'{}')
+    elif damage=='future-output':(receipts/(prefix+'.journal')).write_bytes(bytes.fromhex(b['before']['journal']['bytes_hex']))
+    elif damage=='future-attempt':(receipts/(prefix+'.snapshot.intent.json')).write_bytes(b'{}')
+    elif damage=='old-core-attempt':(receipts/('p1-recovery-'+a['id']+'.core-certificate.intent.json')).unlink()
+    else:
+        kind,change=damage.rsplit('-',1)
+        path={'accepted':accepted,'bundle':bundle,'descriptor':descriptor,'fence':receipts/'p1-maintenance.json','marker':receipts/'p1-b2-required.json'}[kind]
+        if change=='missing':path.unlink()
+        elif change=='partial':path.write_bytes(b'{')
+        elif change=='wrong':path.write_bytes(b'wrong')
+        elif change=='mode':path.chmod(0o644)
+        else:
+            target=receipts/'tamper-target';path.rename(target)
+            if change=='symlink':path.symlink_to(target)
+            else:os.link(target,path)
+    before=logical(roots);files=retained_bytes(roots)
+    def forbidden(*a,**k):raise AssertionError('completed replay scan or write')
+    for obj,name in ((recovery,'snapshot'),(Reconciliation,'_collect'),(resource_store,'_recovery_scan'),(recovery,'_prefix_file'),(recovery,'_prefix_transaction')):
+        monkeypatch.setattr(obj,name,forbidden)
+    for _ in range(2):
+        with pytest.raises((ValueError,OSError)):
+            recovery._complete_receipts(roots,scope,a,observation,now=1000)
+        assert logical(roots)==before and retained_bytes(roots)==files
+
+
+def test_b22d_r3_receipt_only_crash_fresh_interpreter(installation):
+    import subprocess,sys
+    roots,scope,_,_=installation;a,observation,snapshot_bytes=core_fixture(installation)
+    recovery._complete_receipts(roots,scope,a,observation,now=102)
+    b=b2_intent(installation,prepare_only=True,recovery_id='7'*32,archive_id='6'*32)
+    del snapshot_bytes
+    pid=os.fork()
+    if pid==0:
+        recovery._complete_receipts(roots,scope,b,b['proof']['observation'],now=102,
+            fault=lambda where:os._exit(73) if where=='bundle-parent' else None)
+        os._exit(74)
+    assert os.waitpid(pid,0)[1]==73<<8
+    rid=a['id'];del a,b,observation
+    code='''import json,sys,re
+from pathlib import Path
+from unittest.mock import patch
+from tests.service.test_recovery import logical,retained_bytes
+from service import recovery,resource_store
+from service.reconciliation import Reconciliation
+v=json.load(sys.stdin);roots={k:Path(p) for k,p in v['roots'].items()}
+a=json.loads((roots['receipts']/('p1-recovery-'+v['rid']+'.intent.json')).read_bytes())
+before=logical(roots);files=retained_bytes(roots)
+expected=dict(recovery._core_result(a),status='complete')
+def forbidden(*a,**k):raise AssertionError('completed replay scan or write')
+with patch.object(recovery,'snapshot',forbidden),patch.object(Reconciliation,'_collect',forbidden),patch.object(resource_store,'_recovery_scan',forbidden),patch.object(recovery,'_prefix_file',forbidden),patch.object(recovery,'_prefix_transaction',forbidden):
+ for _ in range(2):
+  assert recovery._complete_receipts(roots,v['scope'],a,a['proof']['observation'],now=1000)==expected
+  assert logical(roots)==before and retained_bytes(roots)==files
+candidates=[p for p in roots['receipts'].iterdir() if re.fullmatch(r'p1-recovery-[0-9a-f]{32}\\.intent\\.json',p.name) and p.name!='p1-recovery-'+v['rid']+'.intent.json']
+assert len(candidates)==1
+b=json.loads(candidates[0].read_bytes())
+assert recovery._complete_receipts(roots,v['scope'],b,b['proof']['observation'],now=1000)['status']=='complete'
+assert recovery._complete_receipts(roots,v['scope'],a,a['proof']['observation'],now=1000)==expected
+'''
+    child=subprocess.run([sys.executable,'-c',code],input=encode(dict(roots={k:str(p) for k,p in roots.items()},scope=scope,rid=rid)),text=True,capture_output=True,env={**os.environ,'PYTHONDONTWRITEBYTECODE':'1'})
+    assert child.returncode==0,child.stderr
+
+
+def test_b22d_r3_receipt_only_marker_precedes_acceptance(installation,monkeypatch):
+    roots,scope,_,_=installation;a,observation,_=core_fixture(installation)
+    expected=recovery._complete_receipts(roots,scope,a,observation,now=102)
+    b=b2_intent(installation,prepare_only=True,recovery_id='7'*32,archive_id='6'*32)
+    writer=recovery._prefix_file
+    def stop(path,raw,fault,point):
+        if point=='accepted':raise OSError('before-accepted-attempt')
+        return writer(path,raw,fault,point)
+    with monkeypatch.context() as m:
+        m.setattr(recovery,'_prefix_file',stop)
+        with pytest.raises(OSError,match='before-accepted-attempt'):
+            recovery._complete_receipts(roots,scope,b,b['proof']['observation'],now=102)
+    assert not (roots['receipts']/('p1-recovery-'+b['id']+'.intent.json')).exists()
+    before=logical(roots);files=retained_bytes(roots)
+    def forbidden(*a,**k):raise AssertionError('completed replay scan or write')
+    from service import resource_store
+    for obj,name in ((recovery,'snapshot'),(Reconciliation,'_collect'),(resource_store,'_recovery_scan'),(recovery,'_prefix_file'),(recovery,'_prefix_transaction')):
+        monkeypatch.setattr(obj,name,forbidden)
+    for _ in range(2):
+        assert recovery._complete_receipts(roots,scope,a,observation,now=1000)==expected
+        assert logical(roots)==before and retained_bytes(roots)==files
