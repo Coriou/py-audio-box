@@ -96,21 +96,43 @@ class Journal:
             raise ValueError('journal_limit')
 
     def save(self, value):
-        data = canonical(dict(payload=value, sha256=hashlib.sha256(canonical(value)).hexdigest()))
-        if len(data) > MAX_BYTES:
-            raise ValueError('journal_limit')
-        fd = os.open(self.root / 'journal.tmp', os.O_WRONLY | os.O_CREAT | os.O_TRUNC | os.O_NOFOLLOW, 0o600)
-        with os.fdopen(fd, 'wb') as stream:
-            stream.write(data)
-            stream.flush()
-            os.fsync(stream.fileno())
-        os.replace(self.root / 'journal.tmp', self.root / 'journal.json')
-        fd = os.open(self.root, os.O_RDONLY | os.O_DIRECTORY)
-        try:
-            os.fsync(fd)
-        finally:
-            os.close(fd)
+        _durable_save(self.root,value)
         self.value = value
+
+
+def journal_bytes(value):
+    data=canonical(dict(payload=value,sha256=hashlib.sha256(canonical(value)).hexdigest()))
+    if len(data)>MAX_BYTES: raise ValueError('journal_limit')
+    return data
+
+
+def _durable_save(root,value,*,fault=lambda point:None,exclusive=False):
+    data=journal_bytes(value)
+    flags=os.O_WRONLY|os.O_CREAT|os.O_NOFOLLOW|(os.O_EXCL if exclusive else os.O_TRUNC)
+    fd=os.open(root/'journal.tmp',flags,0o600)
+    with os.fdopen(fd,'wb') as stream:
+        if stream.write(data)!=len(data): raise OSError('journal_short_write')
+        stream.flush(); fault('journal-write')
+        os.fsync(stream.fileno()); fault('journal-fsync')
+    os.replace(root/'journal.tmp',root/'journal.json'); fault('journal-replace')
+    fd=os.open(root,os.O_RDONLY|os.O_DIRECTORY)
+    try: os.fsync(fd)
+    finally: os.close(fd)
+    fault('journal-dirsync')
+
+
+def _maintenance_replace(root,value,*,fault=lambda point:None):
+    """Offline caller holds both normal locks and validates proof/archive chain.
+
+    Fixed managed names only; no normal constructor bypass of pending startup.
+    The caller durably records the exact creation attempt before entering here.
+    """
+    if (set(value)!={'version','lane','records'} or value['version']!=1 or value['records']!=[]):
+        raise ValueError('invalid_maintenance_journal')
+    fence=json.loads((root/'p1-maintenance.json').read_bytes())
+    maintenance_record(fence)
+    if fence['step']!='pending' or fence['new_lane']!=value['lane']: raise ValueError('maintenance_rotation_binding')
+    _durable_save(root,value,fault=fault,exclusive=True)
 
 
 def maintenance_record(value):

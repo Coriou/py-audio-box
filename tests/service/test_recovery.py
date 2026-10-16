@@ -1,3 +1,4 @@
+import os
 """B1 E1 only: real disposable roots/SQLite/locks, mocked host projection."""
 import copy
 from contextlib import closing
@@ -1149,9 +1150,10 @@ def test_b22_prefix_unaccepted_expiry_and_locks(installation):
     assert not (roots['receipts']/'p1-b2-required.json').exists()
 
 
+@pytest.mark.parametrize('journal_tranche',[False,True])
 @pytest.mark.parametrize('journal_state',['missing','unreadable'])
 @pytest.mark.parametrize('coverage',['exact','missing-owner','live'])
-def test_b22_prefix_damaged_journal_preserves_status_and_coverage(installation,journal_state,coverage):
+def test_b22_prefix_damaged_journal_preserves_status_and_coverage(installation,journal_state,coverage,journal_tranche):
     import hashlib,tempfile
     roots,scope,_,_=installation;intent,observation,_=prefix_fixture(installation)
     journal=roots['receipts']/'journal.json'
@@ -1189,12 +1191,18 @@ def test_b22_prefix_damaged_journal_preserves_status_and_coverage(installation,j
         observation=copy.deepcopy(observation)
         if coverage=='missing-owner':observation['containers'].pop()
         else:observation['states'][0]['running']=True
-        with pytest.raises(ValueError):recovery._pending_through_evidence(roots,scope,intent,observation,now=102,snapshot_bytes=evidence)
+        with pytest.raises(ValueError):
+            if journal_tranche:recovery._pending_through_journal(roots,scope,intent,observation,now=102)
+            else:recovery._pending_through_evidence(roots,scope,intent,observation,now=102,snapshot_bytes=evidence)
         assert not (roots['receipts']/'p1-maintenance.json').exists()
         return
     for _ in range(2):
-        assert recovery._pending_through_evidence(roots,scope,intent,observation,now=102,snapshot_bytes=evidence)['status']=='pending-through-evidence'
-        assert journal.exists()==(journal_state!='missing')
+        if journal_tranche:
+            assert recovery._pending_through_journal(roots,scope,intent,observation,now=102)['status']=='pending-through-journal'
+            assert json.loads(journal.read_bytes())['payload']==intent['expected'][2]['output']['journal']
+        else:
+            assert recovery._pending_through_evidence(roots,scope,intent,observation,now=102,snapshot_bytes=evidence)['status']=='pending-through-evidence'
+            assert journal.exists()==(journal_state!='missing')
     archive=roots['receipts']/('p1-recovery-'+intent['id']+'.journal')
     assert archive.read_bytes()==raw
     manifest=json.loads(next(root.glob('*.manifest.json')).read_bytes())
@@ -1222,7 +1230,8 @@ def test_b22_prefix_exact_inputs_and_archive_loss(installation,change):
         recovery._pending_through_evidence(roots,scope,intent,observation,now=102,snapshot_bytes=evidence)
 
 
-def test_b22_prefix_real_allocated_work_is_not_transitioned(installation):
+@pytest.mark.parametrize('journal_tranche',[False,True])
+def test_b22_prefix_real_allocated_work_is_not_transitioned(installation,journal_tranche):
     # Same real allocation seam as the B2.1 coherence/output regressions.
     from service.admission import Admission
     from service.dispatch_store import DispatchStore
@@ -1236,7 +1245,7 @@ def test_b22_prefix_real_allocated_work_is_not_transitioned(installation):
     finally:core.close()
     roots,scope,_,_=installation;intent,observation,evidence=prefix_fixture(installation)
     assert any(a['action']=='cancel-requested' for a in intent['actions'])
-    recovery._pending_through_evidence(roots,scope,intent,observation,now=102,snapshot_bytes=evidence)
+    (recovery._pending_through_journal(roots,scope,intent,observation,now=102) if journal_tranche else recovery._pending_through_evidence(roots,scope,intent,observation,now=102,snapshot_bytes=evidence))
     with sqlite3.connect(roots['control']/'core'/'core.sqlite') as db:
         for table in ('jobs','dispatches','resource_reservations','resource_accounting','resource_monitor','resource_faults','events','publications'):
             assert encode(db.execute('SELECT * FROM '+table+' ORDER BY rowid').fetchall())==encode(intent['before']['source']['data'][table])
@@ -1286,13 +1295,14 @@ def test_b22_prefix_retains_prior_completed_history(installation,damage):
     assert recovery._pending_through_evidence(roots,scope,intent,observation,now=1000,snapshot_bytes=evidence)==result
 
 
-def test_b22_prefix_terminal_media_and_history_unchanged(installation):
+@pytest.mark.parametrize('journal_tranche',[False,True])
+def test_b22_prefix_terminal_media_and_history_unchanged(installation,journal_tranche):
     terminal_enrolled(installation)
     roots,scope,_,_=installation;intent,observation,evidence=prefix_fixture(installation)
     root=roots['control']/'core'
     media={p:p.read_bytes() for p in (root/'assets').iterdir() if p.is_file()}
     assert media
-    recovery._pending_through_evidence(roots,scope,intent,observation,now=102,snapshot_bytes=evidence)
+    (recovery._pending_through_journal(roots,scope,intent,observation,now=102) if journal_tranche else recovery._pending_through_evidence(roots,scope,intent,observation,now=102,snapshot_bytes=evidence))
     assert all(p.read_bytes()==raw for p,raw in media.items())
     with sqlite3.connect(root/'core.sqlite') as db:
         for table in ('jobs','events','attempts','publications','publication_work','dispatches','artifacts'):
@@ -1343,24 +1353,26 @@ def test_b22_correction_process_death_owned_restart(installation,point):
     assert archives[0].read_bytes()==next(roots['receipts'].glob('*.snapshot.bundle')).read_bytes()
 
 
+@pytest.mark.parametrize('journal_tranche',[False,True])
 @pytest.mark.parametrize('suffix',['.journal','.certificate.json'])
 @pytest.mark.parametrize('damage',['changed','missing','none'])
-def test_b22_correction_prior_receipts_every_resume(installation,suffix,damage):
+def test_b22_correction_prior_receipts_every_resume(installation,suffix,damage,journal_tranche):
     roots,scope,_,_=installation
     first=b2_intent(installation,complete=True);b2_receipt(roots,first,complete=True)
     second=b2_intent(installation,complete=True,recovery_id='7'*32,archive_id='6'*32)
     b2_receipt(roots,second,complete=True)
     intent=b2_intent(installation,prepare_only=True,recovery_id='5'*32,archive_id='4'*32)
-    result=recovery._pending_through_evidence(roots,scope,intent,intent['proof']['observation'],now=102)
+    helper=recovery._pending_through_journal if journal_tranche else recovery._pending_through_evidence
+    result=helper(roots,scope,intent,intent['proof']['observation'],now=102)
     path=roots['receipts']/('p1-recovery-'+first['id']+suffix)
     if damage=='changed':path.write_bytes(b'X'+path.read_bytes()[1:])
     elif damage=='missing':path.unlink()
     for _ in range(2):
         if damage=='none':
-            assert recovery._pending_through_evidence(roots,scope,intent,intent['proof']['observation'],now=1000)==result
+            assert helper(roots,scope,intent,intent['proof']['observation'],now=1000)==result
         else:
             with pytest.raises((ValueError,FileNotFoundError)):
-                recovery._pending_through_evidence(roots,scope,intent,intent['proof']['observation'],now=1000)
+                helper(roots,scope,intent,intent['proof']['observation'],now=1000)
 
 
 @pytest.mark.parametrize('point',['bundle-intent-create','bundle-intent-write','bundle-intent-fsync','bundle-intent-parent','bundle-intent-recorded','bundle-create','bundle-write','bundle-fsync','bundle-parent'])
@@ -1405,3 +1417,175 @@ def test_b22_correction_bundle_damage_no_repair(installation,damage):
     with sqlite3.connect(roots['control']/'core'/'core.sqlite') as db:
         assert db.execute('SELECT count(*) FROM p1_recoveries').fetchone()==(1,)
         assert db.execute('SELECT count(*) FROM p1_recovery_steps').fetchone()==(0,)
+
+
+def test_b22b_rotation_pending_resume(installation):
+    roots,scope,_,_=installation
+    intent,observation,_=prefix_fixture(installation)
+    result=recovery._pending_through_journal(roots,scope,intent,observation,now=102)
+    assert result['status']=='pending-through-journal'
+    journal=roots['receipts']/'journal.json'
+    inode=journal.stat().st_ino
+    assert json.loads(journal.read_bytes())['payload']==intent['expected'][2]['output']['journal']
+    for _ in range(2):
+        from worker.runtime_journal import Journal
+        with pytest.raises(ValueError,match='pending'):Journal(roots['receipts'])
+        with pytest.raises(ValueError,match='pending'):Core(roots['control']/'core',historical_local=True)
+        assert recovery._pending_through_journal(roots,scope,intent,observation,now=1000)==result
+        assert journal.stat().st_ino==inode
+    with sqlite3.connect(roots['control']/'core'/'core.sqlite') as db:
+        assert db.execute('SELECT step FROM p1_recovery_steps ORDER BY rowid').fetchall()==[('pending',),('evidence',),('journal',)]
+        for table,rows in intent['before']['source']['data'].items():
+            if table in ('p1_recoveries','p1_recovery_steps','p1_abandon_plans'):continue
+            assert encode(db.execute('SELECT * FROM '+table+' ORDER BY rowid').fetchall())==encode(rows)
+
+
+@pytest.mark.parametrize('point',[
+    'journal-intent-create','journal-intent-write','journal-intent-fsync','journal-intent-parent','journal-intent-recorded',
+    'journal-write','journal-fsync','journal-replace','journal-dirsync',
+    'journal-receipt-begin','journal-receipt-write','journal-receipt-commit'])
+def test_b22b_faults(installation,point):
+    roots,scope,_,_=installation;intent,observation,_=prefix_fixture(installation)
+    def fault(at):
+        if at==point:raise OSError(at)
+    with pytest.raises(OSError,match=point):
+        recovery._pending_through_journal(roots,scope,intent,observation,now=102,fault=fault)
+    journal=roots['receipts']/'journal.json';raw=journal.read_bytes();inode=journal.stat().st_ino
+    for _ in range(2):
+        if point in ('journal-replace','journal-dirsync','journal-receipt-begin','journal-receipt-write','journal-receipt-commit'):
+            assert recovery._pending_through_journal(roots,scope,intent,observation,now=1000)['status']=='pending-through-journal'
+        else:
+            with pytest.raises((ValueError,OSError)):
+                recovery._pending_through_journal(roots,scope,intent,observation,now=1000)
+        assert journal.read_bytes()==raw and journal.stat().st_ino==inode
+
+
+@pytest.mark.parametrize('damage',['missing','wrong-lane','wrong-hash','symlink','hardlink','archive','manifest','media','history','proof','extra'])
+def test_b22b_changed_output_refuses(installation,damage):
+    roots,scope,_,_=installation;intent,observation,_=prefix_fixture(installation)
+    recovery._pending_through_journal(roots,scope,intent,observation,now=102)
+    journal=roots['receipts']/'journal.json'
+    if damage=='missing':journal.unlink()
+    elif damage in ('wrong-lane','wrong-hash'):
+        doc=json.loads(journal.read_bytes())
+        if damage=='wrong-lane':
+            doc['payload']['lane']='f'*32;doc['sha256']=digest(doc['payload'])
+        else:doc['sha256']='f'*64
+        journal.write_text(encode(doc))
+    elif damage in ('symlink','hardlink'):
+        target=roots['receipts'].parent/'journal-retained-test';journal.rename(target)
+        if damage=='symlink':journal.symlink_to(target)
+        else:os.link(target,journal)
+    elif damage=='archive':(roots['receipts']/('p1-recovery-'+intent['id']+'.journal')).write_bytes(b'changed')
+    elif damage=='manifest':next((roots['control']/'core').glob('*.manifest.json')).write_bytes(b'changed')
+    elif damage=='media':(roots['staging']/'foreign').write_bytes(b'changed')
+    elif damage=='history':
+        with sqlite3.connect(roots['control']/'core'/'core.sqlite') as db:db.execute('UPDATE resource_monitor SET state=?',('fault',))
+    elif damage=='proof':observation=copy.deepcopy(observation);observation['states'][0]['running']=True
+    else:(roots['receipts']/'foreign').write_bytes(b'changed')
+    for _ in range(2):
+        with pytest.raises((ValueError,OSError)):
+            recovery._pending_through_journal(roots,scope,intent,observation,now=1000)
+
+
+def test_b22b_process_death_fresh_interpreter(installation):
+    import subprocess,sys
+    roots,scope,_,_=installation;intent,observation,raw=prefix_fixture(installation)
+    del raw
+    child=os.fork()
+    if child==0:
+        recovery._pending_through_journal(roots,scope,intent,observation,now=102,
+            fault=lambda point:os._exit(73) if point=='journal-replace' else None)
+        os._exit(74)
+    assert os.waitpid(child,0)[1]==73<<8
+    identity=intent['id'];del intent,observation
+    script='''
+import json,sys,sqlite3
+from pathlib import Path
+from service import recovery
+from service.core import Core
+from worker.runtime_journal import Journal
+v=json.load(sys.stdin);roots={k:Path(p) for k,p in v['roots'].items()}
+intent=json.loads((roots['receipts']/('p1-recovery-'+v['id']+'.intent.json')).read_bytes())
+journal=roots['receipts']/'journal.json';raw=journal.read_bytes();inode=journal.stat().st_ino
+for _ in range(2):
+    for constructor in (lambda:Core(roots['control']/'core',historical_local=True),lambda:Journal(roots['receipts'])):
+        try:constructor()
+        except ValueError as e:assert 'pending' in str(e)
+        else:raise AssertionError('startup opened')
+    result=recovery._pending_through_journal(roots,v['scope'],intent,intent['proof']['observation'],now=1000)
+    assert result['lane']==intent['new_lane'] and result['status']=='pending-through-journal'
+    assert journal.read_bytes()==raw and journal.stat().st_ino==inode
+with sqlite3.connect(roots['control']/'core'/'core.sqlite') as db:
+    assert db.execute('SELECT count(*) FROM p1_recoveries').fetchone()==(1,)
+    assert db.execute('SELECT step FROM p1_recovery_steps ORDER BY rowid').fetchall()==[('pending',),('evidence',),('journal',)]
+assert len(list((roots['control']/'core').glob('*.manifest.json')))==1
+'''
+    result=subprocess.run([sys.executable,'-c',script],input=json.dumps(dict(roots={k:str(v) for k,v in roots.items()},scope=scope,id=identity)),text=True,capture_output=True)
+    assert result.returncode==0,result.stdout+result.stderr
+
+
+@pytest.mark.parametrize('barrier',['file','replace','directory'])
+def test_b22b_actual_io_denial(installation,monkeypatch,barrier):
+    roots,scope,_,_=installation;intent,observation,_=prefix_fixture(installation)
+    recovery._pending_through_evidence(roots,scope,intent,observation,now=102)
+    import worker.runtime_journal as runtime
+    original_fsync=os.fsync;original_replace=os.replace
+    def fsync(fd):
+        import stat
+        info=os.fstat(fd)
+        target=roots['receipts']/('journal.tmp' if barrier=='file' else 'journal.json')
+        if barrier=='file' and target.exists() and info.st_ino==target.stat().st_ino:raise OSError('actual journal IO denial')
+        if barrier=='directory' and info.st_ino==roots['receipts'].stat().st_ino and (roots['receipts']/'journal.json').read_bytes()==runtime.journal_bytes(intent['expected'][2]['output']['journal']):raise OSError('actual journal IO denial')
+        return original_fsync(fd)
+    def replace(source,target):
+        if Path(source).name=='journal.tmp':raise OSError('actual journal IO denial')
+        return original_replace(source,target)
+    with monkeypatch.context() as patch:
+        patch.setattr(os,'replace',replace) if barrier=='replace' else patch.setattr(os,'fsync',fsync)
+        with pytest.raises(OSError,match='actual journal IO denial'):
+            recovery._pending_through_journal(roots,scope,intent,observation,now=1000)
+    for _ in range(2):
+        if barrier=='directory':assert recovery._pending_through_journal(roots,scope,intent,observation,now=1000)['status']=='pending-through-journal'
+        else:
+            with pytest.raises(ValueError):recovery._pending_through_journal(roots,scope,intent,observation,now=1000)
+
+
+@pytest.mark.parametrize('coverage',['exact','omitted','live','unknown'])
+def test_b22b_unknown_dispatch_coverage(installation,coverage):
+    from service.admission import Admission
+    from service.dispatch_store import DispatchStore
+    from tests.service.test_admission import fixture
+    roots,scope,_,_=installation
+    core=Core(roots['control']/'core')
+    try:
+        f=fixture();admission=Admission(core,roots['staging']);store=DispatchStore(core,admission)
+        core.submit_synthetic('p','rotation-unknown',f['context'],_admission=admission,_profiles=f['profiles'],_dispatch_settings=('silence',8))
+        row=store.allocate(f['profiles'],'silence',8)
+        lane=json.loads((roots['receipts']/'journal.json').read_bytes())['payload']['lane']
+        store.update(row,runtime=lane+'/'+'b'*32+'/unknown',phase='prepared')
+    finally:core.close()
+    intent,observation,_=prefix_fixture(installation)
+    if coverage!='exact':
+        observation=copy.deepcopy(observation)
+        if coverage=='omitted':observation['containers'].pop()
+        elif coverage=='live':observation['states'][0]['running']=True
+        else:observation['states'].pop()
+        with pytest.raises(ValueError):recovery._pending_through_journal(roots,scope,intent,observation,now=102)
+        return
+    for now in (102,1000):
+        recovery._pending_through_journal(roots,scope,intent,observation,now=now)
+    with sqlite3.connect(roots['control']/'core'/'core.sqlite') as db:
+        for table in ('jobs','dispatches','resource_reservations','resource_accounting','resource_monitor','resource_faults','events'):
+            assert encode(db.execute('SELECT * FROM '+table+' ORDER BY rowid').fetchall())==encode(intent['before']['source']['data'][table])
+
+
+def test_b22b_expiry_and_both_locks(installation):
+    import fcntl
+    roots,scope,_,_=installation;intent,observation,_=prefix_fixture(installation)
+    with pytest.raises(ValueError,match='expired'):recovery._pending_through_journal(roots,scope,intent,observation,now=1000)
+    for path in (roots['control']/'core'/'control.lock',roots['receipts']/'lane.lock'):
+        with path.open('rb') as lock:
+            fcntl.flock(lock,fcntl.LOCK_EX|fcntl.LOCK_NB)
+            with pytest.raises(ValueError,match='lock_busy'):recovery._pending_through_journal(roots,scope,intent,observation,now=102)
+    assert not (roots['receipts']/'p1-maintenance.json').exists()

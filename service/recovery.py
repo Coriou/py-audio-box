@@ -149,7 +149,7 @@ def offline(roots, *, write=False, journal_lock=True):
             for fd in reversed(locks): os.close(fd)
 
 
-def snapshot(roots, db, scope, *, exclude_plan=None, exclude_abandon=None, transaction=True, _prefix=None):
+def snapshot(roots, db, scope, *, exclude_plan=None, exclude_abandon=None, transaction=True, _prefix=None, _journal_after=False):
     """Read-only transaction including WAL; never calls an observation fence."""
     validate_scope(scope)
     if transaction: db.execute('BEGIN')
@@ -197,21 +197,22 @@ def snapshot(roots, db, scope, *, exclude_plan=None, exclude_abandon=None, trans
                 raise ValueError('installation_key_missing_or_changed')
         marker=json.loads(read_file(roots['receipts']/'p1-enrolled.json'))
         if marker!=dict(deployment_id=identity,digest=h): raise ValueError('incomplete_enrollment')
+        journal_before=bytes.fromhex(_prefix['before']['journal']['bytes_hex']) if _journal_after else None
         damaged=_prefix is not None and _prefix['before']['journal']['state']!='valid'
         if damaged:
-            try: journal_raw=read_file(roots['receipts']/'journal.json',1024**2)
+            try: journal_raw=journal_before if _journal_after else read_file(roots['receipts']/'journal.json',1024**2)
             except FileNotFoundError:
                 if _prefix['before']['journal']['state']!='missing': raise
                 journal_raw=b''
             else:
-                if _prefix['before']['journal']['state']=='missing': raise ValueError('b2_expected_missing_journal')
+                if _prefix['before']['journal']['state']=='missing' and not _journal_after: raise ValueError('b2_expected_missing_journal')
             if journal_raw.hex()!=_prefix['before']['journal']['bytes_hex']: raise ValueError('b2_prefix_journal_changed')
             # Coverage comes from coherent Core allocations and ALL registrations;
             # these placeholders are never a clean-receipt observation.
             payload=dict(version=1,lane=_prefix['old_lane'],records=[])
             journal=dict(payload=payload,sha256=digest(payload))
         else:
-            journal_raw=read_file(roots['receipts']/'journal.json',1024**2)
+            journal_raw=journal_before if _journal_after else read_file(roots['receipts']/'journal.json',1024**2)
             journal=json.loads(journal_raw)
         closed(journal,'payload sha256')
         payload_keys='version lane records maintenance' if 'maintenance' in journal['payload'] else 'version lane records'
@@ -1120,7 +1121,7 @@ def verify_abandon_plan(roots,db,scope,observation,plan_id,expected_digest,*,pro
 
 def _prefix_reference_labels(intent):
     return {'p1_recoveries:'+intent['id']} | {
-        'p1_recovery_steps:'+intent['id']+':'+name for name in STEPS[:2]}
+        'p1_recovery_steps:'+intent['id']+':'+name for name in STEPS[:3]}
 
 
 def _prefix_file(path, raw, fault, point):
@@ -1163,7 +1164,7 @@ def _prefix_receipt_namespace(receipts, intents):
         prefix='p1-recovery-'+intent['id']
         allowed.update(prefix+suffix for suffix in ('.intent.json','.journal','.certificate.json',
             '.snapshot.intent.json','.manifest.intent.json','.original-journal.intent.json',
-            '.snapshot.bundle','.bundle.intent.json'))
+            '.snapshot.bundle','.bundle.intent.json','.rotation.intent.json'))
     used=count=0; deadline=time.monotonic()+2
     with os.scandir(receipts) as entries:
         for entry in entries:
@@ -1172,13 +1173,23 @@ def _prefix_receipt_namespace(receipts, intents):
                 raise ValueError('b2_prefix_receipt_namespace')
             used+=len(read_file(receipts/entry.name,MAX_BYTES-used))
             if used>MAX_BYTES: raise ValueError('b2_prefix_receipt_budget')
+    return used,count
 
 
 def _pending_through_evidence(roots, scope, intent, observation, *, now=None, snapshot_bytes=None, fault=lambda point:None):
-    """Private B2.2a prefix. Supplied closed intent/proof is NOT host authentication.
+    return _pending_prefix(roots,scope,intent,observation,now=now,snapshot_bytes=snapshot_bytes,fault=fault)
 
-    Owns both existing locks throughout. Never rotates a journal, changes jobs or
-    resource authority, completes a receipt, or makes public apply available.
+
+def _pending_through_journal(roots, scope, intent, observation, *, now=None, fault=lambda point:None):
+    """Private fixed journal continuation; never grants completion or activation."""
+    return _pending_prefix(roots,scope,intent,observation,now=now,fault=fault,through_journal=True)
+
+
+def _pending_prefix(roots, scope, intent, observation, *, now=None, snapshot_bytes=None, fault=lambda point:None, through_journal=False):
+    """Private bounded prefix. Supplied proof is NOT host authentication.
+
+    Both normal locks cover evidence and optional fixed journal rotation. Never
+    changes jobs/resource authority, completes a receipt, or enables public apply.
     """
     import hashlib
     intent=json.loads(encode(intent))
@@ -1199,7 +1210,7 @@ def _pending_through_evidence(roots, scope, intent, observation, *, now=None, sn
         if any(r['id']!=intent['id'] and not any(s['recovery_id']==r['id'] and s['step']=='core-complete' for s in data['p1_recovery_steps']) for r in data['p1_recoveries']):
             raise ValueError('b2_prefix_other_pending')
         steps=[s for s in data['p1_recovery_steps'] if s['recovery_id']==intent['id']]
-        if any(s['step'] not in STEPS[:2] for s in steps): raise ValueError('b2_prefix_already_advanced')
+        if any(s['step'] not in STEPS[:3 if through_journal else 2] for s in steps): raise ValueError('b2_prefix_already_advanced')
         marker=dict(revision=1,deployment_id=intent['deployment_id'])
         fence=dict(revision=1,**{k:intent[k] for k in ('deployment_id','plan_id','plan_digest','proof_digest','old_lane','new_lane')},recovery_id=intent['id'],step='pending',certificate=None)
         from worker.runtime_journal import maintenance_record
@@ -1236,12 +1247,26 @@ def _pending_through_evidence(roots, scope, intent, observation, *, now=None, sn
         if not accepted and not plan['created']<=now<plan['expires']: raise ValueError('expired_b2_plan')
         # Exact own rows and derived archive labels only are removed from this
         # projection. Every older plan/history, media identity and namespace stays.
-        state=snapshot(roots,db,scope,exclude_abandon=plan['id'],transaction=False,_prefix=intent)
+        rotation=receipts/('p1-recovery-'+intent['id']+'.rotation.intent.json')
+        from worker.runtime_journal import journal_bytes
+        new_raw=journal_bytes(intent['expected'][2]['output']['journal'])
+        rotation_raw=encode(dict(revision=1,recovery_id=intent['id'],intent_digest=digest(intent),
+            step=intent['expected'][2],before=intent['before']['journal'],sha256=hashlib.sha256(new_raw).hexdigest())).encode()
+        journal_after=False
+        if rotation.exists():
+            if not through_journal: raise ValueError('b2_prefix_already_advanced')
+            _prefix_exact(rotation,rotation_raw)
+            # A recorded attempt may only resume its exact output, never retry
+            # replacement from an absent/old/partial output.
+            _prefix_exact(receipts/'journal.json',new_raw)
+            journal_after=True
+        elif any(s['step']=='journal' for s in steps): raise ValueError('b2_missing_rotation_intent')
+        state=snapshot(roots,db,scope,exclude_abandon=plan['id'],transaction=False,_prefix=intent,_journal_after=journal_after)
         check_consumers(state,observation); _coherent_b2(state)
         if encode(state['evidence_projection'])!=encode(intent['before']['source']): raise ValueError('b2_prefix_prestate_changed')
         if {**state['affected'],'reservations':[r['job_id'] for r in state['reservations']]}!=plan['affected']:
             raise ValueError('b2_prefix_affected_changed')
-        if intent['before']['journal']['state']!='missing' and read_file(receipts/'journal.json',1024**2).hex()!=intent['before']['journal']['bytes_hex']:
+        if not journal_after and intent['before']['journal']['state']!='missing' and read_file(receipts/'journal.json',1024**2).hex()!=intent['before']['journal']['bytes_hex']:
             raise ValueError('b2_prefix_journal_changed')
         names={kind:root/name for name,kind in archive_names(intent).items()}
         if names['certificate'].exists() or (receipts/('p1-recovery-'+intent['id']+'.certificate.json')).exists(): raise ValueError('b2_prefix_premature_certificate')
@@ -1360,7 +1385,21 @@ def _pending_through_evidence(roots, scope, intent, observation, *, now=None, sn
         _validate_archives(root,dict(p1_recoveries=[intent],p1_abandon_plans=[plan],p1_recovery_steps=[witness]),0,0)
         record(1)
         validate_b2_database(db,root)
-        return dict(status='pending-through-evidence',recovery_id=intent['id'],lane=intent['new_lane'],epoch=intent['new_epoch'])
+        if through_journal:
+            if not journal_after:
+                used,count=_prefix_receipt_namespace(receipts,[*data['p1_recoveries'],intent])
+                # Include the replacement temporary and immutable descriptor in
+                # the same finite receipt population before attempting creation.
+                if count+2>MAX_ROWS or used+len(rotation_raw)+len(new_raw)>MAX_BYTES:
+                    raise ValueError('b2_prefix_receipt_budget')
+                _prefix_file(rotation,rotation_raw,fault,'journal-intent')
+                fault('journal-intent-recorded')
+                from worker.runtime_journal import _maintenance_replace
+                _maintenance_replace(receipts,intent['expected'][2]['output']['journal'],fault=fault)
+            _prefix_exact(receipts/'journal.json',new_raw)
+            record(2)
+            validate_b2_database(db,root)
+        return dict(status='pending-through-journal' if through_journal else 'pending-through-evidence',recovery_id=intent['id'],lane=intent['new_lane'],epoch=intent['new_epoch'])
 
 
 if __name__=='__main__': main()
