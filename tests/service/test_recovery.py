@@ -500,7 +500,9 @@ def b2_intent(installation, *, complete=False,recovery_id='9'*32,archive_id='8'*
     core_rows={k:copy.deepcopy(source['data'][k]) for k in recovery.CORE_OUTPUT_TABLES}
     for row,action in zip(core_rows['jobs'],actions):
         if action['action']=='retain-terminal':continue
-        job=json.loads(row[6]);job['state']='failed' if action['action']=='fail' else 'cancelled';row[6]=encode(job)
+        job=json.loads(row[6]);job['state']='failed' if action['action']=='fail' else 'cancelled'
+        if job['attempts']:job['attempts'][-1]['reaped']=True
+        row[6]=encode(job)
     for row in core_rows['resource_reservations']:row[3]='retained'
     core_rows['resource_monitor']=[[1,'healthy']];core_rows['resource_faults']=[]
     outputs=[dict(recovery_id=r['id'],plan_digest=r['plan_digest'],proof_digest=r['proof_digest'],before_digest=r['before_digest']),
@@ -995,3 +997,60 @@ def test_b2_cancel_requested_action_uses_frozen_job_state(installation):
         db.execute('UPDATE p1_recoveries SET record=?,digest=?',(encode(intent),digest(intent)))
     with closing(sqlite3.connect(root/'core.sqlite')) as db,pytest.raises(ValueError,match='action_before_binding'):
         recovery.validate_b2_database(db,root)
+
+
+@pytest.mark.parametrize('cancel',[False,True])
+@pytest.mark.parametrize('field',['none','deleted-attempts','attempt-id','attempt-generation','owner','staging','unknown-job','unknown-attempt','stage','artifacts','input','principal','context','unreaped','state','generation','deadline'])
+def test_b2_rehashed_nonterminal_output_preserves_contract(installation,cancel,field):
+    from service.admission import Admission
+    from service.dispatch_store import DispatchStore
+    from tests.service.test_admission import fixture
+    roots,_,_,_=installation;root=roots['control']/'core'
+    core=Core(root)
+    try:
+        f=fixture();a=Admission(core,roots['staging']);store=DispatchStore(core,a)
+        job=core.submit_synthetic('p','output-contract',f['context'],_admission=a,_profiles=f['profiles'],_dispatch_settings=('silence',8))
+        store.allocate(f['profiles'],'silence',8)
+        if cancel:core.request_cancel(job['id'])
+    finally:core.close()
+    r=b2_intent(installation,complete=True)
+    row=r['expected'][3]['output']['rows']['jobs'][0];job=json.loads(row[6])
+    if field=='deleted-attempts':job['attempts']=[]
+    elif field in ('attempt-id','attempt-generation','owner','staging'):
+        key={'attempt-id':'id','attempt-generation':'generation','owner':'owner_id','staging':'staging_id'}[field]
+        job['attempts'][0][key]=job['attempts'][0][key]+1 if key=='generation' else 'changed'
+    elif field=='unknown-job':job['invented_field']={'arbitrary':['unvalidated']}
+    elif field=='unknown-attempt':job['attempts'][0]['invented_field']={'arbitrary':['unvalidated']}
+    elif field=='stage':job['stage']='invented-outcome'
+    elif field=='artifacts':job['artifact_ids']=['invented-artifact']
+    elif field=='input':job['input_sha256']='a'*64
+    elif field=='principal':job['principal_id']='changed'
+    elif field=='context':
+        context=json.loads(row[7]);context['invented_field']={'arbitrary':['unvalidated']};row[7]=encode(context)
+    elif field=='unreaped':job['attempts'][-1]['reaped']=False
+    elif field=='state':job['state']='failed' if cancel else 'cancelled'
+    elif field=='generation':job['generation']+=1
+    elif field=='deadline':job['deadline']='changed'
+    row[6]=encode(job)
+    previous=r['before_digest']
+    for descriptor in r['expected']:
+        if descriptor['step']=='receipt-complete':descriptor['output']['core_output_digest']=previous
+        descriptor['input_digest']=previous
+        descriptor['output_digest']=digest(dict(step=descriptor['step'],input_digest=previous,output=descriptor['output']))
+        previous=descriptor['output_digest']
+    with closing(sqlite3.connect(root/'core.sqlite')) as db,db:
+        db.execute('UPDATE p1_recoveries SET record=?,digest=?',(encode(r),digest(r)))
+        for descriptor in r['expected'][:4]:
+            step=dict(recovery_id=r['id'],**descriptor,lane=r['new_lane'],epoch=r['new_epoch'])
+            db.execute('UPDATE p1_recovery_steps SET record=?,digest=? WHERE step=?',(encode(step),digest(step),step['step']))
+    name=next(n for n,k in recovery.archive_names(r).items() if k=='certificate')
+    (root/name).write_text(encode(recovery._certificate(r,step)))
+    for reader in ('completion','startup','historical'):
+        def read():
+            if reader=='completion':
+                with closing(sqlite3.connect(root/'core.sqlite')) as db:return recovery.completion_binding(db)
+            if reader=='startup':return recovery.startup_read(root)
+            core=Core(root,historical_local=True);core.close();return True
+        if field=='none':assert read() is not None
+        else:
+            with pytest.raises(ValueError):read()

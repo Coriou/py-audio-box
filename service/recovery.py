@@ -658,10 +658,30 @@ def _validate_core_output(rows,r):
     for old,new in zip(before['jobs'],rows['jobs']):
         if old[:6]!=new[:6] or old[7:]!=new[7:]:raise ValueError('b2_output_job_identity')
         job=json.loads(new[6]);prior=json.loads(old[6]);action=actions[old[1]]
+        # Validate both complete canonical documents before comparing a fixed
+        # unsuccessful transition. Hash agreement alone is not job authority.
+        from contracts import validate as oracle
+        from jsonschema.exceptions import ValidationError
+        import copy
+        try:
+            context=json.loads(old[7])
+            closed(context,'plan bundles')
+            for value in (prior,job):
+                oracle.validate('job',value)
+                oracle.stored_context(value,context)
+                if value['attempts']:oracle.active_attempt(value)
+        except (ValidationError,KeyError,TypeError,ValueError) as exc:
+            raise ValueError('b2_output_job_contract') from exc
         if action=='retain-terminal':
             if old!=new:raise ValueError('b2_output_terminal_history')
-        elif job['state']!=('failed' if action=='fail' else 'cancelled') or job['id']!=prior['id'] or job['generation']!=prior['generation'] or job['deadline']!=prior['deadline']:
-            raise ValueError('b2_output_job_outcome')
+        else:
+            # Separate validated operator proof (never a PID-1 receipt) supports
+            # only terminal state and the current attempt's proven reap bit.
+            # Every other field, all prior attempts and the context stay frozen.
+            expected=copy.deepcopy(prior)
+            expected['state']='failed' if action=='fail' else 'cancelled'
+            if expected['attempts']:expected['attempts'][-1]['reaped']=True
+            if job!=expected:raise ValueError('b2_output_job_outcome')
     for old,new in zip(before['resource_reservations'],rows['resource_reservations']):
         if old[:3]!=new[:3] or new[3]!='retained':raise ValueError('b2_output_reservation')
 
