@@ -216,3 +216,9 @@ Record failures and missing evidence; do not replace them with a successful late
 - Candidate`5eae4d1e45569cd2372028f5d32e02f6cbd2c457`, app-owned`t3-8466bed9`, branch`t3/implement-w2b-runtime`. Root read fullhandoff; unintegrated.
 - Claims87tests+2actualcontainer scenarios for cachedreconnect/controlabsentdeadline/stopescalation/termination/restartquarantine. Dockeroperator explicitlyhosttestharness, deployedcompanion unimplemented; no productionexecutor/whole1Aclaim.
 - IndependentSol-low task suffix`pab-phase1a-w2b-review-r1-20261022`, samecurrenttask-IDprefix, report`reviews/W2b-r1-sol.md`; fulloriginalAstraW2brief andW2a report supplied. Soleheavylane; source/runtimeproof and boundedacceptance reviewed independently.
+
+## W2b bounded accepted integration / deployed lifecycle choice
+
+- [Independent report](reviews/W2b-r1-sol.md): GO syntheticW2b exact`5eae4d1`,87tests+2realDocker scenarios rerun, exactimages/topology/cleanupverified. NO-GO fullW2/productionactivation; hostoperator only, deployedcompanion/dispatcherallocation remain.
+- Integrated`71eec93`; source diff vs reviewedcandidate empty; root exactimage87test rerun inprogress. No publicactivation.
+- Targeted Astra request`pab-phase1a-deployed-lifecycle-advice-20261022`: choose practical packaged runtimeownership architecture and bounded nextimplementation that closes harness-only gap, preserve noDockerSocketcontrol and easyDockerCPUfirst. No new broadpartial implementation until architecture frozen.
