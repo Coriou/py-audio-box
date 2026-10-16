@@ -17,6 +17,7 @@ import {
   type Operation,
   type Request,
 } from "./adapter";
+import { recover, requireSupported, extent, FIXTURE_END } from "./recovery";
 import { samples, mix } from "./media";
 import "./style.css";
 const key = (id: string) => `editor-0b:1.3.0:${id}`;
@@ -73,15 +74,13 @@ function Waveform({ clip }: { clip: Clip }) {
 }
 function App() {
   const [fixture, setFixture] = useState("30");
-  const [session, setSession] = useState<Session>(() => {
-    try {
-      return readForTab("30");
-    } catch {
-      return initial(fixtures["30"]);
-    }
-  });
+  const [startup] = useState(() =>
+    recover(() => readForTab("30"), fixtures["30"]),
+  );
+  const [session, setSession] = useState<Session>(startup.session);
+  const [invalid, setInvalid] = useState(startup.invalid);
   const [selected, setSelected] = useState("c0");
-  const [status, setStatus] = useState("Saved locally · no service");
+  const [status, setStatus] = useState(startup.status);
   const [conflict, setConflict] = useState(false);
   const [zoom, setZoom] = useState(1);
   const [scroll, setScroll] = useState(0);
@@ -110,9 +109,7 @@ function App() {
   }, [block?.id]);
   const collisions = overlaps(p);
   const px = (600 * zoom) / 48000;
-  const duration = Math.max(
-    ...p.clips.map((c) => c.start + c.out_tick - c.in_tick),
-  );
+  const duration = Math.min(FIXTURE_END, extent(session));
   useEffect(() => setDraft(clone(clip)), [clip]);
   useEffect(() => {
     const fn = (e: StorageEvent) => {
@@ -134,6 +131,7 @@ function App() {
     setPlaying(false);
   }
   function save(next: Session) {
+    requireSupported(next);
     localStorage.setItem(key(fixture), JSON.stringify(next));
     sessionStorage.setItem(
       key(fixture) + ":known",
@@ -145,6 +143,12 @@ function App() {
     stop();
   }
   function submit(op: Operation, fields: Record<string, unknown>) {
+    if (invalid) {
+      setStatus(
+        "Local history invalid. Edits blocked; original bytes retained. Use Reset fixture to recover.",
+      );
+      return;
+    }
     try {
       const stored = {
         ...read(fixture),
@@ -179,33 +183,38 @@ function App() {
   }
   function load(id: string) {
     stop();
-    try {
-      const s = readForTab(id);
-      setFixture(id);
-      setSession(s);
-      setSelected(current(s).clips[0].id);
-      setConflict(false);
-      setScroll(0);
-      setScriptScroll(0);
-      setStatus("Reloaded current · saved locally");
-    } catch (e) {
-      setStatus(
-        `Local history invalid: ${String(e)}. Use Reset fixture to recover.`,
-      );
-    }
+    const result = recover(() => readForTab(id), fixtures[id]);
+    setFixture(id);
+    setSession(result.session);
+    setInvalid(result.invalid);
+    setSelected(current(result.session).clips[0].id);
+    setConflict(false);
+    setScroll(0);
+    setScriptScroll(0);
+    setStatus(result.status);
   }
+
   function reset() {
     stop();
-    const s = initial(fixtures[fixture]);
-    localStorage.setItem(key(fixture), JSON.stringify(s));
-    sessionStorage.setItem(
-      key(fixture) + ":known",
-      String(current(s).revision),
-    );
-    setSession(s);
-    setSelected("c0");
-    setConflict(false);
-    setStatus("Fixture reset locally");
+    try {
+      const s = initial(fixtures[fixture]);
+      localStorage.setItem(key(fixture), JSON.stringify(s));
+      sessionStorage.setItem(
+        key(fixture) + ":known",
+        String(current(s).revision),
+      );
+      setSession(s);
+      setSelected("c0");
+      setConflict(false);
+      setInvalid(false);
+      setScroll(0);
+      setPlayhead(0);
+      setStatus("Fixture reset locally");
+    } catch (e) {
+      setStatus(
+        `Reset failed: ${String(e)}. Original recovery state retained.`,
+      );
+    }
   }
   async function play() {
     if (playing) {
@@ -289,8 +298,14 @@ function App() {
           <button onClick={reset}>Reset fixture</button>
         </div>
       </header>
+      {invalid && (
+        <p role="alert">
+          Local history could not be loaded. This is an unsaved fallback.
+          Original bytes are retained until Reset fixture; editing is blocked.
+        </p>
+      )}
       <div className="statusbar">
-        <span role="status" className={conflict ? "error" : ""}>
+        <span role="status" className={conflict || invalid ? "error" : ""}>
           {status}
         </span>
         <span>
@@ -446,6 +461,7 @@ function App() {
                       .filter(
                         (c) =>
                           c.track_id === t.id &&
+                          c.start < duration &&
                           c.start * px < scroll + 1400 &&
                           (c.start + c.out_tick - c.in_tick) * px >
                             scroll - 200,
@@ -492,7 +508,10 @@ function App() {
                   </div>
                 </div>
               ))}
-              <div className="playhead" style={{ left: 140 + playhead * px }} />
+              <div
+                className="playhead"
+                style={{ left: 140 + Math.min(playhead, duration) * px }}
+              />
             </div>
           </div>
           <div className="timeline-note">
@@ -528,6 +547,7 @@ function App() {
                     expected_revision: current(stored).revision,
                     clip: { ...c, start: c.start + 480 },
                   });
+                  requireSupported(next);
                   localStorage.setItem(key(fixture), JSON.stringify(next));
                   setStatus(
                     "Second writer simulated. Next edit or undo checks the stale revision.",

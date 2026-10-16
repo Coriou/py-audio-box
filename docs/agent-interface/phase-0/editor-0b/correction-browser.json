@@ -1,0 +1,242 @@
+{
+  "tier": "E4",
+  "browser": "Native T3 preview, loopback Vite 127.0.0.1:5178",
+  "observations": [
+    {
+      "label": "huge-refused",
+      "result": {
+        "toolIcon": {
+          "_tag": "website",
+          "pageUrl": "http://127.0.0.1:5178/"
+        },
+        "value": {
+          "status": "Fixture extent unsupported: clip end exceeds 2,880,000 ticks (60 seconds). Edit was not saved. Reduce Start or use Undo / Reset fixture. This is a synthetic fixture ceiling, not an API or hardware limit.",
+          "revision": 1,
+          "body": 2179
+        }
+      }
+    },
+    {
+      "label": "inject-valid-huge-history",
+      "result": {
+        "toolIcon": {
+          "_tag": "website",
+          "pageUrl": "http://127.0.0.1:5178/"
+        },
+        "value": {
+          "start": 9007199254700000
+        }
+      }
+    },
+    {
+      "label": "huge-full-reload",
+      "result": {
+        "toolIcon": {
+          "_tag": "website",
+          "pageUrl": "http://127.0.0.1:5178/"
+        },
+        "value": {
+          "status": "Saved history exceeds this fixture’s 60-second ceiling. Timeline is bounded; use Undo, reduce Start, or Reset fixture. Stored timing is unchanged.",
+          "ruler": 601,
+          "width": "36160px",
+          "undo": false,
+          "storedStart": 9007199254700000
+        }
+      }
+    },
+    {
+      "label": "huge-undo",
+      "result": {
+        "toolIcon": {
+          "_tag": "website",
+          "pageUrl": "http://127.0.0.1:5178/"
+        },
+        "value": {
+          "status": "Saved locally · no service",
+          "start": 0
+        }
+      }
+    },
+    {
+      "label": "inject-malformed",
+      "result": {
+        "toolIcon": {
+          "_tag": "website",
+          "pageUrl": "http://127.0.0.1:5178/"
+        },
+        "value": true
+      }
+    },
+    {
+      "label": "malformed-fullreload",
+      "result": {
+        "toolIcon": {
+          "_tag": "website",
+          "pageUrl": "http://127.0.0.1:5178/"
+        },
+        "value": {
+          "status": "Local history invalid: SyntaxError: Expected property name or '}' in JSON at position 1 (line 1 column 2). Showing unsaved fixture fallback. Original bytes retained; use Reset fixture to replace them. Edits are blocked until recovery.",
+          "alert": "Local history could not be loaded. This is an unsaved fallback. Original bytes are retained until Reset fixture; editing is blocked.",
+          "bytes": "{broken"
+        }
+      }
+    },
+    {
+      "label": "malformed-edit",
+      "result": {
+        "toolIcon": {
+          "_tag": "website",
+          "pageUrl": "http://127.0.0.1:5178/"
+        },
+        "value": {
+          "status": "Local history invalid. Edits blocked; original bytes retained. Use Reset fixture to recover.",
+          "bytes": "{broken"
+        }
+      }
+    },
+    {
+      "label": "inject-replay-invalid",
+      "result": {
+        "toolIcon": {
+          "_tag": "website",
+          "pageUrl": "http://127.0.0.1:5178/"
+        },
+        "value": true
+      }
+    },
+    {
+      "label": "replay-invalid-fullreload",
+      "result": {
+        "toolIcon": {
+          "_tag": "website",
+          "pageUrl": "http://127.0.0.1:5178/"
+        },
+        "value": {
+          "status": "Local history invalid: Error: invalid_request: history_snapshot_mismatch. Showing unsaved fixture fallback. Original bytes retained; use Reset fixture to replace them. Edits are blocked until recovery.",
+          "start": 999
+        }
+      }
+    },
+    {
+      "label": "replay-invalid-edit",
+      "result": {
+        "toolIcon": {
+          "_tag": "website",
+          "pageUrl": "http://127.0.0.1:5178/"
+        },
+        "value": {
+          "status": "Local history invalid. Edits blocked; original bytes retained. Use Reset fixture to recover.",
+          "start": 999
+        }
+      }
+    },
+    {
+      "label": "normal-fullreload",
+      "result": {
+        "toolIcon": {
+          "_tag": "website",
+          "pageUrl": "http://127.0.0.1:5178/"
+        },
+        "value": {
+          "status": "Saved locally · no service",
+          "start": 480
+        }
+      }
+    },
+    {
+      "label": "normal-undo",
+      "result": {
+        "toolIcon": {
+          "_tag": "website",
+          "pageUrl": "http://127.0.0.1:5178/"
+        },
+        "value": {
+          "status": "Saved locally · no service",
+          "start": 0
+        }
+      }
+    },
+    {
+      "label": "start-1000000000",
+      "result": {
+        "toolIcon": {
+          "_tag": "website",
+          "pageUrl": "http://127.0.0.1:5178/"
+        },
+        "value": {
+          "status": "Fixture extent unsupported: clip end exceeds 2,880,000 ticks (60 seconds). Edit was not saved. Reduce Start or use Undo / Reset fixture. This is a synthetic fixture ceiling, not an API or hardware limit.",
+          "revision": 3,
+          "start": 0,
+          "ruler": 31,
+          "width": "1960px"
+        }
+      }
+    },
+    {
+      "label": "start-9007199254736191",
+      "result": {
+        "toolIcon": {
+          "_tag": "website",
+          "pageUrl": "http://127.0.0.1:5178/"
+        },
+        "value": {
+          "status": "Fixture extent unsupported: clip end exceeds 2,880,000 ticks (60 seconds). Edit was not saved. Reduce Start or use Undo / Reset fixture. This is a synthetic fixture ceiling, not an API or hardware limit.",
+          "revision": 3,
+          "start": 0,
+          "ruler": 31,
+          "width": "1960px"
+        }
+      }
+    },
+    {
+      "label": "start-2875201",
+      "result": {
+        "toolIcon": {
+          "_tag": "website",
+          "pageUrl": "http://127.0.0.1:5178/"
+        },
+        "value": {
+          "status": "Fixture extent unsupported: clip end exceeds 2,880,000 ticks (60 seconds). Edit was not saved. Reduce Start or use Undo / Reset fixture. This is a synthetic fixture ceiling, not an API or hardware limit.",
+          "revision": 3,
+          "start": 0,
+          "ruler": 31,
+          "width": "1960px"
+        }
+      }
+    },
+    {
+      "label": "start-2875200",
+      "result": {
+        "toolIcon": {
+          "_tag": "website",
+          "pageUrl": "http://127.0.0.1:5178/"
+        },
+        "value": {
+          "status": "Saved locally · no service",
+          "revision": 4,
+          "start": 2875200,
+          "ruler": 601,
+          "width": "36160px"
+        }
+      }
+    },
+    {
+      "label": "100-scroll-end",
+      "result": {
+        "toolIcon": {
+          "_tag": "website",
+          "pageUrl": "http://127.0.0.1:5178/"
+        },
+        "value": {
+          "clips": 25,
+          "lastClip": true,
+          "b99": true,
+          "ruler": 102,
+          "width": "6190px",
+          "documentWidth": 1280,
+          "viewport": 1280
+        }
+      }
+    }
+  ]
+}
