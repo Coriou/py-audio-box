@@ -267,3 +267,56 @@ PYTHONDONTWRITEBYTECODE=1 /tmp/pab-0c-venv/bin/python -m pytest -p no:cacheprovi
 ```
 
 **522 passed, 18 skipped in 177.95s, exit 0**, `/tmp/b22-full-final.log`. Sequential after the focused run, on unchanged source/tests `b999c129c8cea52d637d270c977995cf11dca32b`. Skips remain unqualified. Final `git diff --check` passes. `git diff 5959d8fb9b577c5e6b4cf5f30276f712a4ee4fa1 c8d3fa0f53f6fcead11467ab96ca81c59fb09276 -- service worker tests/service` is empty: actual starting production/tests match the independently reviewed B2.1 predecessor. Complete baseline-to-candidate changes are exactly recovery.py, recovery tests and this report. The final report-only commit follows the frozen source/test commit; exact candidate SHA is returned with the handoff. No independent review or integration GO is asserted.
+
+## B2.2a round-1 NO-GO targeted correction — awaiting fresh independent review
+
+2026-10-16, gpt-6.1-sol / low implementation. Only worktree `/Users/ben/.txcode/worktrees/py-audio-box/t3-c72faa32` changed; current branch `t3/b22a-durable-resume`. Clean root HEAD was `177cdd7`. Inspected actual `c8d3fa0..903b44367bbbd07724b17d24627d693dfc1c308f` chain: exactly source `b999c129` then report `903b4436`, imported oldest first as `ad91496` then `76b8fd7`. Root reviews/docs remain preserved. Read full P1B22a-r1-sol, boundary architecture/resume/B2.2, this complete handoff/corrections and P1B21-r3/protocol. No applicable AGENTS.md found. Memory registry search returned no relevant B2 guidance; no memory-derived acceptance used.
+
+Production correction commit: `ba120cb81c967a4fd33f969ca0e5c65960cc83bd`; final frozen source/test commit is recorded below after the explicit caller-state-discard test strengthening. Correction changes only `service/recovery.py`, `tests/service/test_recovery.py`, and this appended response. No namespace adapter dependency or broader allowlist amendment was needed. All apply entrypoints remain unconditionally unavailable; enrolled activation remains closed, with no new flags.
+
+### F1 response: owned durable restart input
+
+The earlier paragraph describing caller-retained RAM snapshot bytes as a later transport requirement is **superseded and was insufficient for B2.2a acceptance**. The old exception matrix's caller-RAM replay is not process-restart evidence. Normal restart now requires no caller `snapshot_bytes`; the optional private input remains validated and cannot repair missing/corrupt staging.
+
+Under both existing locks, after exact prestate/proof/initial-expiry checks and prospective grounded snapshot validation, order is: marker; full accepted receipt document; pending fence; fixed staging creation descriptor; exact original snapshot staging bytes; file and receipt-parent barriers; Core accepted-intent commit; pending step commit; existing final snapshot/manifest/original-journal creation descriptors and artifacts; evidence step commit. Receipt-first pending ordering remains intact. Snapshot is evidence only, never restored over Core or reconstructed from the mutated pending database.
+
+New receipt names are only `p1-recovery-<accepted recovery_id>.bundle.intent.json` and `.snapshot.bundle`. Descriptor bytes are exactly canonical `{revision,recovery_id,intent_digest,source_digest,snapshot_digest}`; accepted-intent digest transitively binds archive ID, plan, proof, source history, lane/epoch and original physical snapshot digest. The bundle is exact original bounded SQLite snapshot bytes. Existing protected no-follow/nonblocking readers check owner, regular-file identity, single link, bounded stable bytes; `_prefix_exact` additionally requires private permissions. Exclusive 0600 creation, file fsync and parent fsync precede Core acceptance. Both new files consume the existing bounded receipt namespace; no enlarged limits or general path writer.
+
+On resume descriptor and bundle are verified/re-barriered, SHA-256 and grounded logical snapshot/source are checked again, then those exact bytes feed the final archive. A recorded staging creation intent with missing/partial/wrong bundle quarantines without recapture or overwrite. An accepted Core row without staging also quarantines even if caller supplies correct bytes. Existing final-artifact creation-intent missing/partial/wrong quarantine remains unchanged.
+
+Actual `os.fork` child exits via `os._exit(73)` at both Core-intent commit and pending-step commit. Parent discards intent/observation/snapshot caller values, reloads only the owned persisted accepted document, and resumes twice after TTL with no snapshot argument. Assertions retain one accepted recovery, two prefix steps, one final archive and identical recovery/lane/epoch. Core and worker refuse pending across both restarts.
+
+### F2 response: every completed predecessor receipt on every invocation
+
+Before any new prefix mutation, iterate all validated predecessor accepted records. Derive the first four exact expected step documents, immutable Core certificate, and fixed receipt names. Compare actual bounded protected certificate bytes against canonical `{certificate,steps}` and original journal bytes against the accepted before-image. Missing or changed earlier journal/certificate refuses even after the current pending fence is durable. No history removal, certificate rewrite or corruption repair. Existing control-archive/source/history grounding remains.
+
+Regression fixtures now retain two completed predecessors and start a third pending recovery; separate changed/missing oldest journal and certificate cases refuse on two invocations, while both unchanged variants resume coherently.
+
+### RED/GREEN and boundary evidence
+
+Existing interpreter only; every pytest command uses `PYTHONDONTWRITEBYTECODE=1 /tmp/pab-0c-venv/bin/python -m pytest -p no:cacheprovider`, no installs. Disposable test roots only.
+
+- Real RED on imported candidate, `tests/service/test_recovery.py -k b22_correction -q`: **6 failed, 2 passed, 238 deselected in 6.27s**, `/tmp/b22-correction-red.log`. Both actual child-death restarts failed at missing snapshot; all four changed/missing predecessor receipt variants reached missing-refusal assertions. Unchanged positives passed.
+- Initial same-reproducer GREEN: **8 passed, 238 deselected in 5.33s**, `/tmp/b22-correction-green.log`.
+- Expanded prefix/correction matrix: **89 passed, 173 deselected in 23.20s**, `/tmp/b22-correction-dev.log`.
+- Strengthened two-predecessor history and actual snapshot/bundle file-fsync/parent-sync failures: **10 passed, 254 deselected in 7.08s**, `/tmp/b22-correction-history-barrier.log`.
+
+New staging fault points cover creation descriptor create/write/fsync/parent/recorded, bundle create/write/fsync/parent. Incomplete descriptor or absent/empty bundle quarantines before Core acceptance; complete exact outputs resume preserving inode/bytes. Separate post-acceptance missing/changed bundle, changed descriptor, public mode, symlink, extra hard link and oversized bundle refuse twice even with supplied original caller bytes. Existing archive creation fault matrix and no-remint behavior remain. No development failures after production correction; frozen focused/full receipts follow.
+
+E1 local source/SQLite/filesystem/process and mocked host evidence only. Skips are not qualifications. A1 whole-Docker-inventory drift remains unexplained and unqualified; no inferred cause or waiver. Remaining B2.2 tranches/B2.3, B3, C1/C2, root integration, final Astra and public/unattended acceptance remain pending. No actual-host transport, physical power-loss/ENOSPC/daemon/VM/controller, engine/audio/hardware or installed qualification. No subagents, Docker/network/models/audio/paid/E2E/cloud/STT/Voicebox, installs, push/PR/deploy, prune or user cleanup; unrelated research/worktrees preserved. Ready for fresh independent review after the frozen receipts; no self-GO.
+
+First focused run on `ba120cb`: **278 passed in 85.66s**, `/tmp/b22-correction-focused-final.log`. Superseded for final frozen-source attribution by the following run: the child-death test was strengthened to explicitly delete fixture snapshot bytes before fork (rather than merely never supplying them) and directly compare final archive bytes to staging. Production code did not change. This justified the repeated focused check; the full service/release campaign runs once on the final source/tests.
+
+Final frozen source/tests: `9d273aad1d50be38ecb66ec6cd4dbad06e1b1c84` (production `ba120cb`, explicit discard/direct byte-equality test strengthening `9d273aa`). Only this report changes during final verification.
+
+```sh
+PYTHONDONTWRITEBYTECODE=1 /tmp/pab-0c-venv/bin/python -m pytest -p no:cacheprovider tests/service/test_recovery.py tests/service/test_packaged_lifecycle.py -q
+```
+
+**278 passed in 82.78s**, exit 0, `/tmp/b22-correction-focused-final2.log`. Includes 26 added/expanded correction cases over the imported 252 focused tests. The single full service/release run follows sequentially on this unchanged source/test commit.
+
+```sh
+PYTHONDONTWRITEBYTECODE=1 /tmp/pab-0c-venv/bin/python -m pytest -p no:cacheprovider tests/service tests/release -q
+```
+
+**548 passed, 18 skipped in 188.28s**, exit 0, `/tmp/b22-correction-full-final.log`. Sequential after final focused verification on unchanged `9d273aad1d50be38ecb66ec6cd4dbad06e1b1c84`. The 18 skips remain unqualified. No redundant full campaign. Final `git diff --check` passes; complete fresh-root baseline `177cdd7` to candidate path set is exactly recovery.py, recovery tests and this report. Protected root reviews/ledger, Core/initializer/supervisor/reconciliation and all other paths are preserved. This report-only commit follows frozen source/tests; exact candidate SHA accompanies handoff. Fresh independent review and root integration verification remain required; no self-GO.
