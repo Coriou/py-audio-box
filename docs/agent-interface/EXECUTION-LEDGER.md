@@ -20,8 +20,8 @@
 | --- | --- | --- |
 | Launch preparation | Complete | Planning baseline `2c1adaa`; source base `ae67cd6`; integration branch `feat/agent-voice-workspace`. |
 | 0A Contract/compatibility pack | Integrated GO at E1 | Candidate `26f8e08` reviewed GO; integrated `bf66c30`, source equality verified. |
-| 0B Editor browser fixture | Review round 3 | Narrow candidate `b62261e`; storage-entry browser recheck running. |
-| 0C Integration skeleton/acceptance ledger | Pending | 0A boundaries; integrate component decision after 0B. |
+| 0B Editor browser fixture | Integrated GO E1/E4 | Reviewed `b62261e`, integrated `1c4e269`;8tests/build pass after integration. |
+| 0C Integration skeleton/acceptance ledger | Launching | 0A1.3.0 and0B integrated; isolated Sol-low skeleton/discovery/packaging slice. |
 | Phase 0 gate | Not evaluated | Integrated contracts, browser evidence, packaging boundary and relevant checks. |
 
 ## Per-lot record
@@ -128,3 +128,9 @@ Record failures and missing evidence; do not replace them with a successful late
 
 - Candidate `b62261e4ebb37fd9e0d1840c599b92846fcadb96`, isolated `/Users/ben/.txcode/worktrees/py-audio-box/t3-badfaf5f`, branch `t3/empty-string-restoration`; implementer reports clean,2focused/8fulltests/build and nativebrowser empty-string recovery proof. Root inspected correction scope; no integration.
 - Independent Sol-low task suffix `pab-phase0b-review-r3-20261016`, report `reviews/0B-r3-sol.md`. Full previous findings/brief provided; exact storage-boundary recheck plus preserved regressions. No0B/Phase0GO.
+
+## Lot 0B accepted integration / lot0C launch
+
+- [IndependentR3 report](reviews/0B-r3-sol.md): boundedGO exact `b62261e4ebb37fd9e0d1840c599b92846fcadb96`,R1/R2closed,E1/E4only.8tests/build/browser independently confirmed.
+- Root cherry-picked three implementation commits, integrated `1c4e269`; empty source diff vs reviewed candidate for studio/contracts/design context. `npm ci --prefix studio --ignore-scripts`,8tests andTS/Vitebuild pass after integration; external isolated oracle interpreter only, integrated test/source used. Known2moderatedevprobe findings/bundlewarning retained, no autofix. Root research untouched.
+- 0C request `pab-phase0c-implementation-r1-20261016`: pinned service/client skeleton, cheap discovery/MCP fixture, releaseCompose boundary/evidence matrix. No durable core/realworker/hardware claim yet. Independent review follows candidate; Phase0gate remains unevaluated.
