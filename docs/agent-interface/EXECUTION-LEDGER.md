@@ -493,3 +493,8 @@ Record failures and missing evidence; do not replace them with a successful late
 - Candidate fccb0391db4d45d52f56dfbdc33a63a2aa6cb6a0 frozen1ceec772 app-ownedt3-11ad9433; rootreadhandoff, unintegrated. Onlyrecovery/tests/report. Claims583focused/735passed18skipped sequentialfinalfrozen.
 - Receiptcert/boundjournal/completefence/fifthSQLstep privatecompletion; allapplyunavailable activationclosed. Reviewerexplicitlytasked toassess fence-before-fifthrow window and exactstartup/restartsemantics.
 - FreshSol-low request/task suffix pab-phase1a-p1b22d-review-r1-20261022 report reviews/P1B22d-r1-sol.md fulloriginalbrief/candidate/limits supplied. No integration/waiver/installedacceptance.
+
+## B2.2d round1 NO-GO / continuation versus completed replay
+
+- R1review reviews/P1B22d-r1-sol.md NO-GO exactfccb0391;583focused735passed18skipped confirmed. F1unfinishedfifthstep accepts staleownerproof afternewretainedregistration; F2completedA replay incorrectlyrequiresfuturecertificate ofpendingB.
+- NextisolatedSol-low request pab-phase1a-p1b22d-fix-r1-20261022: currentownercoverage beforeunfinishedwrites; stage-aware immutablecompletedhistory replay. No integration/waiver/applyactivation.
