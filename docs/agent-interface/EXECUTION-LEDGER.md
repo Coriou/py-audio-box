@@ -283,3 +283,8 @@ Record failures and missing evidence; do not replace them with a successful late
 
 - [Targeteddecision](reviews/R1-FAULT-AUTHORITY-ASTRA.md): require committed pre-observation checking fence, healthy attestation onlysameuninterruptedcheck. Inheritedopencheck quarantines; explicit availabilitycost onscan-overlapcrash, clean-boundaryW2recovery preserved. Coverconstructor/transaction/prepublication observations; no postfaultfallbackstorefiction.
 - NextisolatedSol-low request`pab-phase1a-r1-fix-r2-20261022` exactAstraallowlist/matrix; nointegration/waiver. F2closedmustremain. P1/publicactivationstillclosed.
+
+## R1 pre-observation candidate / independent review round3
+
+- Candidate`5ab47170c4c467cb3d3bef6075a0ff6480e8d56f`, app-owned`t3-f53dbe4c`, branch`t3/r1-fault-authority-round2`. Claims200tests43installedsteps; explicithealthy-scan-death quarantineavailabilitytradeoff. Root read response; unintegrated.
+- IndependentSol-low request/task suffix`pab-phase1a-r1-review-r3-20261022`, currenttask-IDprefix, report`reviews/R1-r3-sol.md`; allpriorfindings+fullAstraordering/matrix supplied. No waiver/R1acceptance; P1activationclosed.
