@@ -144,6 +144,6 @@ Record failures and missing evidence; do not replace them with a successful late
 ## Lot0C integration / Phase0 engineering gate
 
 - [Independent0C report](reviews/0C-r1-sol.md): boundedGO candidate `7ab54bb4bf3b30f95a7debc9a9198267d1ac3bdb`;4tests,50source/imagefiles and574SDKfixturetokens verified. Default internalnetwork hostpublication fails; explicit bridgeoverride hostHTTP passes with worker stillnetworknone. Browserinstallation/1C/defaulttopology remain open.
-- Integrated `53ce9c0`, exact source diff vs reviewed candidate empty for service/worker/clients/tests/scripts/studio/contracts. Root reran bounded exact-source test image (result below). No app/legacy changes or research cleanup.
+- Integrated `53ce9c0`, exact source diff vs reviewed candidate empty for service/worker/clients/tests/scripts/studio/contracts. Root reran bounded exact-source test image: **4 passed in10.26s**, exit0, networknone/read-onlyroot/no mounts. No app/legacy changes or research cleanup.
 - Phase0 engineering handoff GO: canonical1.3.0 contract, browser editor approach, pinned packaging boundary and named fixture measurements executable. This is not release, hardware, acoustic or wholeproduct approval. Known60sec UIfixture ceiling/localhistory and hostnetworkchoice remain explicit later gates.
 - Next1A durablecore with syntheticworker, one authoritative store/domain before1Btransports. Request `pab-phase1a-implementation-r1-20261016`, independentSol-lowreview thenintegration; finalAstraglobalreview remains required.
