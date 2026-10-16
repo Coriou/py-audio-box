@@ -27,6 +27,47 @@ def installed(case):
             if value:return value
             time.sleep(.02)
         raise AssertionError('resource_installed_timeout')
+    if case=='resource-transient':
+        import threading
+        from service.supervisor_runtime import SupervisorRuntime
+        class DelayedRuntime(SupervisorRuntime):
+            def __init__(self):
+                super().__init__();self.entered=threading.Event();self.release=threading.Event();self.stops=0
+            def observe(self, identity, timeout):
+                if not self.entered.is_set():
+                    self.entered.set();assert self.release.wait(2)
+                return super().observe(identity,timeout)
+            def terminate(self, identity, timeout):
+                self.stops+=1
+                return super().terminate(identity,timeout)
+        runtime=DelayedRuntime();pressure=[]
+        def fault(point):
+            if point=='prespawn':
+                original=d.admission.check
+                def check(**kwargs):
+                    if runtime.entered.is_set() and not pressure:
+                        pressure.append(True);runtime.release.set()
+                        raise ValueError('resource_stage_growth')
+                    return original(**kwargs)
+                d.admission.check=check
+        d=Dispatcher('/control/core',runtime=runtime,fault=fault)
+        try:
+            wait(lambda:d.call('status')['reconciled'])
+            j=d.call('submit','p','a',fixture='busy',seconds=8)
+            wait(lambda:d.call('status')['phase']=='idle' and runtime.stops==1)
+            job=d.call('job',j['id']);status=d.call('status')
+            assert job['state']=='failed' and job['attempts'][-1]['reaped'] and not job['artifact_ids']
+            assert status['quarantined'] and status['reservations'][0]['state']=='retained'
+            time.sleep(.2)
+            assert d.call('status')['quarantined']
+            try:d.call('submit','p','fresh')
+            except ValueError:pass
+            else:raise AssertionError('fault_latch_lost')
+            supervisor=runtime.call('hello',{})
+            assert supervisor['launches']==1
+            return dict(status=status,job=job,stops=runtime.stops,supervisor=supervisor,
+                        pressure='one-shot E1 policy injection during real UDS observe; no physical disk pressure')
+        finally:runtime.release.set();d.close()
     budget=dict(DEFAULT_BUDGET)
     if case=='resource-ram':budget['ram_bytes']-=1
     if case=='resource-disk':budget['disk_bytes']=1024**2
@@ -73,7 +114,9 @@ def main():
     env=dict(os.environ,R1_CONTROL_IMAGE=project+'-control',R1_WORKER_IMAGE=project+'-worker')
     compose=['docker','compose','-p',project,'-f','service/compose.admission.yml']
     names=[];worker=None
-    def save(): (out/'run.json').write_text(json.dumps(record,indent=2))
+    prefix=os.environ.get('R1_EVIDENCE_PREFIX','')
+    if prefix not in ('','correction-'):raise ValueError('closed_evidence_prefix')
+    def save(): (out/(prefix+'run.json')).write_text(json.dumps(record,indent=2))
     def run(args,timeout=40,check=True):
         result=subprocess.run(args,env=env,text=True,capture_output=True,timeout=timeout)
         output=(result.stdout+result.stderr)[-6000:]
@@ -134,7 +177,7 @@ def main():
         assert {m['Destination'] for m in topology['Mounts']}=={'/ipc','/staging','/receipts'}
         assert all(m['Type']=='volume' for m in topology['Mounts'])
         record['topology']=dict(entrypoint=topology['Config']['Entrypoint'],network=host['NetworkMode'],mounts=[dict(destination=m['Destination'],rw=m['RW']) for m in topology['Mounts']])
-        for case in ('resource-ram','resource-disk','resource-queue','sequential','cancel','queue-cancel','cancel-completion','deadline','stale','lost-ack','preverification'):
+        for case in ('resource-ram','resource-disk','resource-queue','resource-transient','sequential','cancel','queue-cancel','cancel-completion','deadline','stale','lost-ack','preverification'):
             reset();control(case)
         for point in ('postspawn','start-sent','after_collect','preverification','before_adoption','after_adoption','after_commit','durable_outcome','before_ack','after_ack'):
             reset();control('crash-'+point,17)
@@ -153,8 +196,8 @@ def main():
         record['passed']=True
     except BaseException as exc:
         record['passed']=False;record['failure']=str(exc)
-        previous=list(out.glob('failure-*.json'))
-        (out/('failure-'+str(len(previous)+1)+'.json')).write_text(json.dumps(record,indent=2))
+        previous=list(out.glob(prefix+'failure-*.json'))
+        (out/(prefix+'failure-'+str(len(previous)+1)+'.json')).write_text(json.dumps(record,indent=2))
         raise
     finally:
         if worker:

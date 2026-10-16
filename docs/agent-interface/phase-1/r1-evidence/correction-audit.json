@@ -1,0 +1,61 @@
+{
+  "worktree": "/Users/ben/.txcode/worktrees/py-audio-box/t3-f6dcdb48",
+  "branch": "t3/r1-fail-closed-stop",
+  "base": "3f816ea96d021eed23d2593da0753d6c707e799a",
+  "upstream_r1": "22e75ca2964d51b5b80ee91e9a14c7776c682d15",
+  "receipt_sha256": "14b2a8d3d70fa6bc63110d058c447e3fcad1cb112ae62f9b6dad07a920730c20",
+  "source_checks": {
+    "control_source_sha256": {
+      "entries": 96,
+      "mismatches": []
+    },
+    "worker_source_sha256": {
+      "entries": 18,
+      "mismatches": []
+    },
+    "packaging_sha256": {
+      "entries": 4,
+      "mismatches": []
+    }
+  },
+  "images": {
+    "worker": "sha256:7101cd00bbd2e49544233d62bf439d9483e5612e1254cbb750591ce8f14dbb9b",
+    "control": "sha256:384bce5a1596e443f9fa195678374434fc5e42b95a469026f09617dea0e4b612"
+  },
+  "dependency_image": "sha256:85141b253c04344134252c0878750756aef6bae3d4d4d083301004db7f43ce0e",
+  "scenarios": 36,
+  "prior_preserved": {
+    "containers": {
+      "count": 15,
+      "sha256": "23c6be7289f12faa7ff8834a8e01311c6002bd2c4c0afb645799b04a2f16725e"
+    },
+    "volumes": {
+      "count": 140,
+      "sha256": "4d632ffe7511b22b72200660d00a49a09ea3d4d77e6773fde88e029e433b8aef"
+    }
+  },
+  "remaining_owned_containers": [],
+  "remaining_owned_volumes": [],
+  "historical_evidence_preserved": {
+    "run.json": "3b5f795a5222e7929fab8396728f9a8f66f247e475384b9a11b14dcd5b69e264",
+    "failure-1.json": "592243d164e2a1df53217cf9c29f4580eeca433dd622bcc97a2ac2f4491373d0",
+    "final-audit.json": "d040a814437be59cc77341d21713167812ba66126f2e22b687821d2d44670a6a"
+  },
+  "activation": false,
+  "review": "awaiting independent Sol-low re-review; no self-GO",
+  "final_test_output": "........................................................................ [ 41%]\n........................................................................ [ 83%]\n.............................                                            [100%]\n173 passed in 63.87s (0:01:03)\n",
+  "diff_check_exit": 0,
+  "correction_files": [
+    "docs/agent-interface/phase-1/RESOURCE-R1.md",
+    "docs/agent-interface/phase-1/RESPONSE-R1-r1.md",
+    "docs/agent-interface/phase-1/r1-evidence/correction-audit.json",
+    "docs/agent-interface/phase-1/r1-evidence/correction-failed-cleanup-1.json",
+    "docs/agent-interface/phase-1/r1-evidence/correction-failure-1.json",
+    "docs/agent-interface/phase-1/r1-evidence/correction-red.json",
+    "docs/agent-interface/phase-1/r1-evidence/correction-run.json",
+    "service/dispatcher.py",
+    "service/resource_store.py",
+    "tests/release/test_admission.py",
+    "tests/service/test_admission.py"
+  ]
+}

@@ -17,6 +17,9 @@ class ResourceStore:
         CREATE TABLE IF NOT EXISTS resource_accounting(
           id INTEGER PRIMARY KEY CHECK(id=1), highwater INTEGER NOT NULL);
         CREATE TABLE IF NOT EXISTS resource_faults(reason TEXT PRIMARY KEY);
+        CREATE TABLE IF NOT EXISTS resource_monitor(
+          id INTEGER PRIMARY KEY CHECK(id=1), state TEXT NOT NULL CHECK(state IN ('healthy','checking','fault')));
+        INSERT OR IGNORE INTO resource_monitor VALUES(1,'healthy');
         INSERT OR IGNORE INTO resource_accounting VALUES(1,0);
         ''')
         self.check_disk()
@@ -49,6 +52,11 @@ class ResourceStore:
             if v.f_bavail*v.f_frsize < self.budget['free_bytes']+charged+extra:raise ValueError('disk_free_reserve')
         return actual
 
+    def require_admission(self):
+        if (self.db.execute('SELECT state FROM resource_monitor WHERE id=1').fetchone()[0]!='healthy'
+                or self.db.execute('SELECT 1 FROM resource_faults').fetchone()):
+            raise ValueError('resource_fault_unresolved')
+
     def reserve_tx(self, identity, category, demand):
         if category not in ('inference','decode','render','provision'):raise ValueError('resource_category')
         keys={'configuration','slots','ram_bytes','vram_bytes','pids','disk_bytes','attempt_disk_bytes'}
@@ -62,6 +70,7 @@ class ResourceStore:
         if old:
             if old['category']!=category or encode(old['demand'])!=encode(demand):raise ValueError('reservation_conflict')
             return old
+        self.require_admission()
         for key in ('slots','ram_bytes','vram_bytes','pids'):
             if demand[key]>self.budget[key]:raise ValueError('resource_'+key)
         rows=self.rows()
@@ -70,6 +79,7 @@ class ResourceStore:
         self.db.execute('INSERT INTO resource_reservations VALUES(?,?,?,?)',(identity,category,encode(demand),'queued'))
 
     def acquire_tx(self, identity, *, replacement=False):
+        self.require_admission()
         rows=self.rows();row=next((r for r in rows if r['id']==identity),None)
         if row is None:raise ValueError('resource_reservation_missing')
         if row['state']=='executing':raise ValueError('resource_already_executing')
@@ -91,5 +101,7 @@ class ResourceStore:
         row=next((r for r in self.rows() if r['id']==identity),None)
         if row is None:raise ValueError('resource_reservation_missing')
         if row['state']=='retained':return
+        if self.db.execute('SELECT state FROM resource_monitor WHERE id=1').fetchone()[0]=='checking':
+            raise ValueError('resource_fault_persistence_unresolved')
         if not confirmed_reap and not (unstarted and row['state']=='queued'):raise ValueError('resource_reap_required')
         self.db.execute("UPDATE resource_reservations SET state='retained' WHERE id=?",(identity,))

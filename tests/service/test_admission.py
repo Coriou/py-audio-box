@@ -206,3 +206,206 @@ def test_reconstructed_disk_charge_and_missing_stage_never_frees(allocator):
     reconstructed=ResourceStore(c,dict(DEFAULT_BUDGET),(c.root,stage))
     assert reconstructed.rows()==before
     assert reconstructed.rows()[0]['demand']['disk_bytes']==2*1024**2
+
+
+class PendingRuntime(Runtime):
+    """Deterministically park one real Dispatcher I/O future until fault observed."""
+    def __init__(self, stage, pending='observe', stop_unknown=False):
+        import threading
+        super().__init__(stage)
+        self.pending_op=pending;self.entered=threading.Event();self.release=threading.Event()
+        self.stops=0;self.stop_unknown=stop_unknown
+
+    def park(self, op):
+        if op==self.pending_op and not self.entered.is_set():
+            self.entered.set()
+            assert self.release.wait(4)
+
+    def prepare(self, a, fixture):
+        self.park('prepare');return super().prepare(a,fixture)
+
+    def start(self, identity):
+        self.park('start');return super().start(identity)
+
+    def observe(self, identity, timeout):
+        self.park('observe');return super().observe(identity,timeout)
+
+    def terminate(self, identity, timeout):
+        self.stops+=1
+        if self.stop_unknown:
+            self.state=State.UNKNOWN
+            raise OSError('stop_response_unknown')
+        return super().terminate(identity,timeout)
+
+
+@pytest.mark.parametrize('cancel',[False,True])
+@pytest.mark.parametrize('pending',['prepare','start','observe'])
+@pytest.mark.parametrize('stop_unknown',[False,True])
+def test_transient_pressure_pending_io_latches_stop(tmp_path,pending,stop_unknown,cancel):
+    stage=tmp_path/'stage';stage.mkdir();r=PendingRuntime(stage,pending,stop_unknown)
+    fired=[]
+    def fault(point):
+        if point=='prespawn':
+            original=d.admission.check
+            def check(**kwargs):
+                if r.entered.is_set() and not fired:
+                    fired.append(True);raise ValueError('resource_stage_growth')
+                return original(**kwargs)
+            d.admission.check=check
+    d=Dispatcher(tmp_path/'core',staging=stage,runtime=r,fault=fault);ready(d)
+    try:
+        j=d.call('submit','p','a')
+        assert r.entered.wait(2)
+        wait(d,lambda:getattr(d,'resource_fault',False))
+        assert not r.stops
+        assert d.call('status')['reservations'][0]['state']=='executing'
+        if cancel:d.call('cancel',j['id'])  # cancellation cannot discard resource stop
+        r.release.set();wait(d,lambda:r.stops)
+        if stop_unknown:
+            wait(d,lambda:d.call('status')['phase']=='unknown')
+            # Multiple healthy observations must not erase the obligation/latch.
+            import time
+            time.sleep(.5)
+            assert d.call('status')['stop_obligation']
+            assert d.call('status')['reservations'][0]['state']=='executing'
+            assert d.call('job',j['id'])['state']==('cancel_requested' if cancel else 'running')
+            r.state=State.STOPPED
+        wait(d,lambda:d.call('status')['phase']=='idle')
+        result=d.call('job',j['id'])
+        assert result['state']==('cancelled' if cancel else 'failed') and not result['artifact_ids']
+        assert result['attempts'][-1]['reaped']
+        assert d.call('status')['reservations'][0]['state']=='retained'
+        import time
+        time.sleep(.3)  # ACK and later healthy scans cannot unlatch the fault.
+        assert d.call('status')['quarantined'] and not d.call('status')['stop_obligation']
+        assert r.stops==1 and r.prepares==1
+        assert r.starts==(0 if pending=='prepare' else 1)
+        with pytest.raises(ValueError):d.call('submit','p','fresh')
+        assert d.call('submit','p','a')['id']==j['id']
+    finally:r.release.set();d.close()
+
+
+def test_fault_insert_failure_transient_output_never_recovers(tmp_path):
+    stage=tmp_path/'stage';stage.mkdir();r=PendingRuntime(stage,stop_unknown=True)
+    def fault(point):
+        if point=='prespawn':
+            d.core.db.execute("CREATE TRIGGER fail_fault BEFORE INSERT ON resource_faults BEGIN SELECT RAISE(ABORT,'fault_write_failed'); END")
+    root=tmp_path/'core'
+    d=Dispatcher(root,staging=stage,runtime=r,fault=fault);ready(d)
+    try:
+        j=d.call('submit','p','a');assert r.entered.wait(2)
+        path=stage/r.authority.job['attempts'][-1]['staging_id'];path.mkdir()
+        output=path/'output.wav';output.write_bytes(b'x'*10000)
+        wait(d,lambda:d.call('status')['error']=='IntegrityError')
+        output.unlink();r.release.set();wait(d,lambda:r.stops)
+        import time
+        r.state=State.ALIVE;time.sleep(.5)
+        assert d.call('status')['quarantined'] and d.call('status')['persistence_fault']
+        assert d.call('status')['reservations'][0]['state']=='executing'
+        with pytest.raises(ValueError):d.call('submit','p','b')
+        r.state=State.STOPPED
+        wait(d,lambda:d.call('job',j['id'])['state']=='failed')
+        time.sleep(.3)
+        assert not d.call('job',j['id'])['artifact_ids']
+        assert d.call('status')['reservations'][0]['state']=='executing'
+        assert r.acks==0 and r.stops==1
+    finally:r.release.set();d.close()
+    # No resource_faults INSERT succeeded; unresolved monitor state is authority.
+    c=Core(root)
+    assert c.db.execute('SELECT * FROM resource_faults').fetchall()==[]
+    assert c.db.execute('SELECT state FROM resource_monitor').fetchone()[0]=='checking'
+    c.close()
+    d=Dispatcher(root,staging=stage,runtime=r)
+    try:
+        ready(d);time.sleep(.4)
+        assert d.call('status')['persistence_fault'] and d.call('status')['quarantined']
+        assert d.call('status')['reservations'][0]['state']=='executing'
+        assert d.call('submit','p','a')['id']==j['id']
+        with pytest.raises(ValueError):d.call('submit','p','new')
+        assert not d.call('job',j['id'])['artifact_ids'] and r.acks==0 and r.starts==1
+    finally:d.close()
+
+
+def test_unresolved_monitor_blocks_store_acquire_reserve_and_release(allocator):
+    c,a,_=allocator;s=a.store;d=demand()
+    with c.transaction():s.reserve_tx('a','inference',d);s.acquire_tx('a')
+    c.db.execute("UPDATE resource_monitor SET state='checking'")
+    with c.transaction():assert s.reserve_tx('a','inference',d)['id']=='a'
+    with pytest.raises(ValueError,match='unresolved'):
+        with c.transaction():s.reserve_tx('b','decode',d)
+    with pytest.raises(ValueError,match='unresolved'):
+        with c.transaction():s.acquire_tx('a')
+    with pytest.raises(ValueError,match='unresolved'):
+        with c.transaction():s.release_tx('a',confirmed_reap=True)
+    assert s.rows()[0]['state']=='executing'
+
+
+@pytest.mark.parametrize('pending',['prepare','start','observe'])
+def test_pressure_pending_error_keeps_stop_or_unknown_ownership(tmp_path,pending):
+    stage=tmp_path/'stage';stage.mkdir()
+    class FailedRuntime(PendingRuntime):
+        def park(self, op):
+            super().park(op)
+            if op==self.pending_op:raise OSError('pending_io_failed')
+    r=FailedRuntime(stage,pending);fired=[]
+    def fault(point):
+        if point=='prespawn':
+            original=d.admission.check
+            def check(**kwargs):
+                if r.entered.is_set() and not fired:
+                    fired.append(True);raise ValueError('resource_stage_growth')
+                return original(**kwargs)
+            d.admission.check=check
+    d=Dispatcher(tmp_path/'core',staging=stage,runtime=r,fault=fault);ready(d)
+    try:
+        j=d.call('submit','p','a');assert r.entered.wait(2)
+        wait(d,lambda:d.call('status')['resource_fault']);r.release.set()
+        if pending=='prepare':
+            wait(d,lambda:d.call('status')['phase']=='unknown')
+            import time
+            time.sleep(.3)
+            assert d.call('status')['stop_obligation']
+            assert d.call('status')['reservations'][0]['state']=='executing'
+            assert r.stops==r.starts==r.prepares==0
+        elif pending=='observe':
+            wait(d,lambda:r.stops==1)
+            # Failed observe replies never prove death, even after successful stop.
+            import time
+            time.sleep(.3)
+            assert d.call('status')['reservations'][0]['state']=='executing'
+            assert d.call('status')['stop_obligation']
+        else:
+            wait(d,lambda:d.call('status')['phase']=='idle')
+            assert r.stops==1 and r.starts==0
+            assert d.call('status')['reservations'][0]['state']=='retained'
+        assert not d.call('job',j['id'])['artifact_ids']
+        with pytest.raises(ValueError):d.call('submit','p','fresh')
+    finally:r.release.set();d.close()
+
+
+def test_repeated_faults_do_not_storm_stop_or_release_unknown(tmp_path):
+    stage=tmp_path/'stage';stage.mkdir();r=PendingRuntime(stage,stop_unknown=True);fired=[]
+    def fault(point):
+        if point=='prespawn':
+            original=d.admission.check
+            def check(**kwargs):
+                if r.entered.is_set() and len(fired)<8:
+                    fired.append(True);raise ValueError('resource_stage_growth')
+                return original(**kwargs)
+            d.admission.check=check
+    d=Dispatcher(tmp_path/'core',staging=stage,runtime=r,fault=fault);ready(d)
+    try:
+        j=d.call('submit','p','a');assert r.entered.wait(2)
+        wait(d,lambda:len(fired)>=3);r.release.set()
+        wait(d,lambda:r.stops==1 and len(fired)==8)
+        import time
+        time.sleep(.5)
+        assert r.stops==1 and r.starts==1 and r.prepares==1
+        assert d.call('status')['stop_obligation'] and d.call('status')['quarantined']
+        assert d.call('status')['reservations'][0]['state']=='executing'
+        assert not d.call('job',j['id'])['artifact_ids']
+        r.state=State.STOPPED;wait(d,lambda:d.call('status')['phase']=='idle')
+        time.sleep(.3)
+        assert d.call('status')['quarantined'] and r.acks==1
+        with pytest.raises(ValueError):d.call('submit','p','fresh')
+    finally:r.release.set();d.close()

@@ -191,3 +191,74 @@ compose.admission.yml}`, `tests/service/test_admission.py`,
 `r1-evidence/{run.json,failure-1.json,final-audit.json}`. Everything else is preserved.
 Next action is independent Sol-low review of the exact committed candidate;
 no acceptance or integration decision is made here.
+
+## R1 review correction round 1 (2026-10-16)
+
+The preceding candidate history and receipts remain historical. The assigned
+correction worktree is `/Users/ben/.txcode/worktrees/py-audio-box/t3-f6dcdb48`,
+branch `t3/r1-fail-closed-stop`, initially clean at
+`946966ec4abc8cf83544d7b8e2576e364bb3a2fa`. Only this tree cherry-picked
+`22e75ca2964d51b5b80ee91e9a14c7776c682d15`, producing
+`3f816ea96d021eed23d2593da0753d6c707e799a`. The original review remains NO-GO;
+this correction requires a new independent Sol-low review, with no self-GO.
+
+F1: the owner loop sets the irreversible resource-fault latch and stop obligation
+before attempting the fault INSERT. ALIVE, UNKNOWN, ACK, terminal and exception
+paths cannot clear this latch. A separate `resource_monitor` row starts `healthy` and commits `checking`
+after a fault is observed, before the fault INSERT, then `fault` only after
+successful fault persistence. Healthy scans never write or reset this witness. Failed fault persistence
+leaves `checking`; subsequent healthy scans never erase it. Restart reads that
+unresolved state, refuses new admission/publication, and retains reservations even
+when an exact reaped receipt has since been collected. No ACK, release, repair or
+successful fault recovery is invented for this state. A durable ordinary resource
+fault also remains latched after ACK/restart; with working persistence it permits
+execution release only after the exact bound receipt and durable terminal outcome.
+The shared store rejects fresh reserve/acquire while the monitor/fault authority is
+unresolved, and rejects release while `checking`. Identical existing reservations
+and job keys remain retrievable.
+
+F2: stop is an obligation independent of subsequent scan results and the one
+pending I/O future. Once prepare returns, binding is journaled and resource stop is
+serviced before start; pending start/observe replies and error paths similarly
+leave the obligation available to the next owner-loop service step. One bounded
+stop request is sent per bound runtime in this control session. A failed/unknown
+stop does not clear the obligation, release execution, or trigger a replacement;
+observation continues and the independent supervisor deadline remains authoritative.
+Only an exact validated receipt discharges stop. Prepare failure without a bound
+runtime retains unknown ownership and its reservation; no second prepare/start is
+invented. A fault after a receipt does not require spawning or stopping another
+worker. The publication-time resource scan uses the same latch path.
+
+The monitor is a narrow SQLite uncertainty witness for resource scanning/fault
+persistence, not a new filesystem journal or full storage-recovery protocol. A
+crash between the observed-fault witness and successful fault persistence
+conservatively leaves `checking` and requires future operator recovery. An unreadable/unwritable startup journal can
+refuse initialization; it is never treated as recovered capacity. No power-loss,
+full SQLite failure matrix, cleanup, fsync or persistent-volume acceptance claim
+is added. P1 still owns those gates and operator recovery.
+
+Round-1 tests use actual Dispatcher owner loops, deterministic pending-future
+barriers, the exact `fail_fault` SQL trigger and temporary 10,000-byte output, then
+healthy observations, ACK where permitted, explicit receipt/reap, fresh-key
+refusal and restart. They include pending prepare/start/observe, cancellation
+races, failed pending calls, repeated faults and unknown stop. The added installed
+case injects one transient policy failure while a real SupervisorRuntime observe
+is pending, then uses real UDS stop, PID-1 reap/receipt and ACK. This is synthetic
+policy-injection evidence with a real packaged worker, not actual disk exhaustion.
+
+Correction receipts use `r1-evidence/correction-*.json`; original `run.json`,
+`failure-1.json` and `final-audit.json` are preserved. The release harness adds only
+that installed case and a closed correction evidence-prefix option. No dependency,
+contract, worker/legacy/client/studio/API/ledger/review or activation changes occur.
+See `RESPONSE-R1-r1.md` for exact commands, final results, identities and limits.
+
+Final corrected-source runner: **173 E1 tests passed; all 36 installed E2 steps
+passed**, including the transient-pressure real-worker stop and inherited
+start-sent recovery. A first correction run exposed an over-conservative healthy
+scan witness and is preserved as correction-failure-1.json, with completed cleanup
+in correction-failed-cleanup-1.json. The witness was narrowed to observed faults
+before the final run. Post-run source/image manifest checks had zero mismatches;
+all prior 15 containers/140 volumes were preserved and zero owned resources remain.
+Full commands, final hashes, failures and limits are in RESPONSE-R1-r1.md and
+correction-audit.json. Independent re-review is still required; R1/P1 activation
+and acceptance remain closed.

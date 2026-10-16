@@ -1,0 +1,36 @@
+{
+  "baseline": "3f816ea",
+  "upstream_candidate": "22e75ca2964d51b5b80ee91e9a14c7776c682d15",
+  "runs": [
+    {
+      "command": [
+        "/tmp/pab-0c-venv/bin/python",
+        "-m",
+        "pytest",
+        "tests/service",
+        "tests/release",
+        "-k",
+        "not transient_pressure_pending_io and not fault_insert_failure_transient and not unresolved_monitor and not pressure_pending_error",
+        "-q",
+        "-p",
+        "no:cacheprovider"
+      ],
+      "exit": 0,
+      "output": "........................................................................ [ 46%]\n..............................................................ssssssssss [ 92%]\nssssssss...                                                              [100%]\n137 passed, 18 skipped, 17 deselected in 37.38s\n"
+    },
+    {
+      "command": [
+        "/tmp/pab-0c-venv/bin/python",
+        "-m",
+        "pytest",
+        "tests/service/test_admission.py::test_fault_insert_failure_transient_output_never_recovers",
+        "tests/service/test_admission.py::test_transient_pressure_pending_io_latches_stop[False-observe-False]",
+        "-q",
+        "-p",
+        "no:cacheprovider"
+      ],
+      "exit": 1,
+      "output": "FF                                                                       [100%]\n=================================== FAILURES ===================================\n__________ test_fault_insert_failure_transient_output_never_recovers ___________\n\ntmp_path = PosixPath('/private/var/folders/gk/6rj578d95ls341449hb55pj80000gn/T/pytest-of-ben/pytest-39/test_fault_insert_failure_tran0')\n\n    def test_fault_insert_failure_transient_output_never_recovers(tmp_path):\n        stage=tmp_path/'stage';stage.mkdir();r=PendingRuntime(stage,stop_unknown=True)\n        def fault(point):\n            if point=='prespawn':\n                d.core.db.execute(\"CREATE TRIGGER fail_fault BEFORE INSERT ON resource_faults BEGIN SELECT RAISE(ABORT,'fault_write_failed'); END\")\n        root=tmp_path/'core'\n        d=Dispatcher(root,staging=stage,runtime=r,fault=fault);ready(d)\n        try:\n            j=d.call('submit','p','a');assert r.entered.wait(2)\n            path=stage/r.authority.job['attempts'][-1]['staging_id'];path.mkdir()\n            output=path/'output.wav';output.write_bytes(b'x'*10000)\n            wait(d,lambda:d.call('status')['error']=='IntegrityError')\n>           output.unlink();r.release.set();wait(d,lambda:r.stops)\n                                            ^^^^^^^^^^^^^^^^^^^^^^\n\ntests/service/test_admission.py:300: \n_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ \n\nd = <service.dispatcher.Dispatcher object at 0x10ca8b620>\npredicate = <function test_fault_insert_failure_transient_output_never_recovers.<locals>.<lambda> at 0x10ceafcc0>\ntimeout = 5\n\n    def wait(d, predicate, timeout=5):\n        end=time.monotonic()+timeout\n        while time.monotonic()<end:\n            value=predicate()\n            if value:return value\n            time.sleep(.02)\n>       raise AssertionError(('timeout',d.call('status')))\nE       AssertionError: ('timeout', {'reconciled': True, 'quarantined': False, 'phase': 'observing', 'runtime_id': 'lane/boot/allocation-1', 'resource_activation': False, 'persistent_activation': False, 'error': 'IntegrityError', 'reservations': [{'id': 'job-763a4a9eaf53419e84e3d2ee300a2a03', 'category': 'inference', 'demand': {'attempt_disk_bytes': 2097152, 'configuration': 'c7ce49eb965fd9ce97260b5e11754ef917d92bddfbf8f3c0b30e2bc7f6d97cf8', 'disk_bytes': 2097152, 'pids': 48, 'ram_bytes': 201326592, 'slots': 1, 'vram_bytes': 0}, 'state': 'executing'}]})\n\ntests/service/test_dispatcher.py:24: AssertionError\n_____ test_transient_pressure_pending_io_latches_stop[False-observe-False] _____\n\ntmp_path = PosixPath('/private/var/folders/gk/6rj578d95ls341449hb55pj80000gn/T/pytest-of-ben/pytest-39/test_transient_pressure_pendin0')\npending = 'observe', stop_unknown = False, cancel = False\n\n    @pytest.mark.parametrize('cancel',[False,True])\n    @pytest.mark.parametrize('pending',['prepare','start','observe'])\n    @pytest.mark.parametrize('stop_unknown',[False,True])\n    def test_transient_pressure_pending_io_latches_stop(tmp_path,pending,stop_unknown,cancel):\n        stage=tmp_path/'stage';stage.mkdir();r=PendingRuntime(stage,pending,stop_unknown)\n        fired=[]\n        def fault(point):\n            if point=='prespawn':\n                original=d.admission.check\n                def check(**kwargs):\n                    if r.entered.is_set() and not fired:\n                        fired.append(True);raise ValueError('resource_stage_growth')\n                    return original(**kwargs)\n                d.admission.check=check\n        d=Dispatcher(tmp_path/'core',staging=stage,runtime=r,fault=fault);ready(d)\n        try:\n            j=d.call('submit','p','a')\n            assert r.entered.wait(2)\n            wait(d,lambda:getattr(d,'resource_fault',False))\n            assert not r.stops\n            assert d.call('status')['reservations'][0]['state']=='executing'\n            if cancel:d.call('cancel',j['id'])  # cancellation cannot discard resource stop\n>           r.release.set();wait(d,lambda:r.stops)\n                            ^^^^^^^^^^^^^^^^^^^^^^\n\ntests/service/test_admission.py:263: \n_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ \n\nd = <service.dispatcher.Dispatcher object at 0x10ceb5590>\npredicate = <function test_transient_pressure_pending_io_latches_stop.<locals>.<lambda> at 0x10ceaddd0>\ntimeout = 5\n\n    def wait(d, predicate, timeout=5):\n        end=time.monotonic()+timeout\n        while time.monotonic()<end:\n            value=predicate()\n            if value:return value\n            time.sleep(.02)\n>       raise AssertionError(('timeout',d.call('status')))\nE       AssertionError: ('timeout', {'reconciled': True, 'quarantined': True, 'phase': 'unknown', 'runtime_id': 'lane/boot/allocation-1', 'resource_activation': False, 'persistent_activation': False, 'error': 'resource_stage_growth', 'reservations': [{'id': 'job-6f2ddcd731294611aa92249fd27d4058', 'category': 'inference', 'demand': {'attempt_disk_bytes': 2097152, 'configuration': 'c7ce49eb965fd9ce97260b5e11754ef917d92bddfbf8f3c0b30e2bc7f6d97cf8', 'disk_bytes': 2097152, 'pids': 48, 'ram_bytes': 201326592, 'slots': 1, 'vram_bytes': 0}, 'state': 'executing'}]})\n\ntests/service/test_dispatcher.py:24: AssertionError\n=========================== short test summary info ============================\nFAILED tests/service/test_admission.py::test_fault_insert_failure_transient_output_never_recovers\nFAILED tests/service/test_admission.py::test_transient_pressure_pending_io_latches_stop[False-observe-False]\n2 failed in 10.94s\n"
+    }
+  ]
+}
