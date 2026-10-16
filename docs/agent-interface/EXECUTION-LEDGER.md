@@ -233,3 +233,9 @@ Record failures and missing evidence; do not replace them with a successful late
 - Candidate`b166665f3415b45bd509994a23245a8beddd4ca4`, app-owned`t3-785fa36e`, branch`t3/implement-w2c-runtime`. Root read completehandoff; unintegrated.
 - Claims100service/release tests+15packagedscenarios, PID1descendantreap/protectedjournal/realUDScontrolCLI, nohostruntimeobservation. ENOSPCE1 distinguished fromactualE2permissionfailure. Canonical1.3.0unchanged; fullW2/W2dR1P1pending.
 - IndependentSol-low task suffix`pab-phase1a-w2c-review-r1-20261022`, samecurrenttask-IDprefix, report`reviews/W2c-r1-sol.md`; fullAstraexitmatrix supplied, soleheavylane. NoW2cGO untilreview/integratedchecks.
+
+## W2c accepted integration / W2d launch
+
+- [IndependentW2c report](reviews/W2c-r1-sol.md): GO exact`b166665`,100tests+15packaged scenarios independentlypassed, source/image/topology/cleanup verified. FullW2 waitsW2d; R1/P1activationseparate.
+- Integrated`1074a47`; exactsource diff vs reviewedcandidate empty. Root initial test invocation mistakenly appended python to image CLI entrypoint (exit2, no tests); corrected explicit `--entrypoint python` regression running. No semantic sourcechange.
+- NextSol-low request`pab-phase1a-w2d-implementation-r1-20261022`: serializedallocator/dispatcher and realruntime receipts, replaceoldlocal executor, no dualauthority. Independentreviewrequired.
