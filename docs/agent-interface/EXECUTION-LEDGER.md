@@ -192,3 +192,9 @@ Record failures and missing evidence; do not replace them with a successful late
 - Candidate `30afe884ebfa509113cc2b9872b044b11f1b1cf9`, app-owned `/Users/ben/.txcode/worktrees/py-audio-box/t3-2ae2fcb5`, branch `t3/private-uds-worker-exchange`. Root read complete W1 handoff. Original interrupted work retained; unintegrated.
 - Implementer reports68Linuxservice/release tests and3separatecontainer scenarios, exacttopology/sourceimage maps. Host supplementalcontracts failed missingnumpy/soundfile, explicitly not passing evidence. Canonical1.3.0 unchanged, internalsessionw1-session/1, W2unopened.
 - IndependentSol-low task `node:delegated-task:command%3Amcp%3A30cfb9d8-e755-4477-bc78-ca85e864c6aa%3Adelegate-task%3Apab-phase1a-w1-review-r1-20261022`, report `reviews/W1-r1-sol.md`; originalAstraW1brief supplied, soleheavylane. NoW1/full1AGO.
+
+## W1 accepted integration / W2 launch
+
+- [Independent W1 report](reviews/W1-r1-sol.md): GO exact `30afe884ebfa509113cc2b9872b044b11f1b1cf9`,68tests and3separatecontainer scenarios independently passed, cleanup/sourceidentity verified; E1/E2 only.
+- Integrated `624b305`; exact source diff vs reviewed candidate empty for service/worker/contracts/clients/tests/scripts. Root integrated Linux regression run pending completion. No durable dispatcher activation/full1A claim.
+- Next isolated Sol-low request `pab-phase1a-w2-implementation-r1-20261022`, owner lifecycle/reconnect only under Astra ordered brief; independent review required. Resource/persistence/registry/render lots remain separate.
