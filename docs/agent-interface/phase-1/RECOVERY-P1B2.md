@@ -819,3 +819,74 @@ Frozen focused result: **685 passed in 506.08s (8:26)**, exit 0, `/tmp/b22d-r3-f
 Frozen full preservation result: **837 passed, 18 skipped in 551.14s (9:11)**, exit 0, `/tmp/b22d-r3-full-final.log`. Sequential after the 685-pass focused suite on the same unchanged `8d6ccd5308aa6eee5413f203ab9c3296260d3dd0`; all 18 skips remain unqualified. No source/test changes during or between final suites. No redundant broad campaign and no observed final-suite failure.
 
 Final `git diff --check` passes. Source/test-to-frozen comparison is empty; frozen-to-final is report-only. Complete actual-root `657ff8f` to candidate path set is exactly service/recovery.py, tests/service/test_recovery.py and this handoff. Comparison excluding those three paths is empty: root reviews/ledger and every other source/worker/contracts/dependency/packaging path are preserved. The six imported patches have equal range-diff identities. Final report-only commit follows `8d6ccd5`; its exact SHA accompanies the handoff. Fresh independent review of that exact final candidate and parent integration verification remain required. No self-GO; B2.3/B3/C1/C2/final Astra/public/unattended acceptance remain pending.
+
+## B2.2d round-4 F4 retained Core creation descriptor correction — awaiting independent review
+
+2026-10-17, gpt-6.1-sol / low implementation. Only worktree `/Users/ben/.txcode/worktrees/py-audio-box/t3-dec21b4c`, branch `t3/fix-b22d-f4-history-evidence`, is edited. Actual clean fresh-root baseline `2efa63d` lacked the implementation. Inspected the complete `657ff8f..e3d58452de53de114feb71b4bbc7c7c5d3821305` log and imported ALL eight commits oldest first: `544c19a`, `3d9481a`, `7d0df05`, `53e6f2e`, `0f9f674`, `dacf8fd`, `8d6ccd5`, `e3d5845`, locally `1b34b57`, `2a867c6`, `fe1e9c5`, `588cf13`, `2c7de87`, `4c1fae9`, `16fc113`, `f56854b`. Range-diff reports every imported patch equal. Root docs/reviews are preserved; no other checkout was edited.
+
+Read full R4 including its exact reproducer/minimal fix and prior closures, R1/R2/R3, full boundary architecture/records/resume/B2.2, and full RECOVERY-P1B2 contracts/tranches/correction responses; orchestration protocol and R1 fault-authority/B1 round-2 WAL/no-remint context. No applicable ancestor/scoped AGENTS.md found. Memory supplied only general exact-checkout/evidence-tier guidance; no historical acceptance is current evidence.
+
+### F4 response and finite completed creation obligations
+
+The common `_verify_finished_receipt_evidence` now derives the actual canonical Core certificate from each validated history's fourth step, requires the actual derived control certificate bytes, and requires its exact canonical `.core-certificate.intent.json` using the same accepted-intent digest and actual certificate SHA-256. The protected exact reader enforces 0600, owner/regular/single-link/no-follow/bounded bytes. This validator already runs for EVERY fifth-completed history, including a completed successor when requesting an earlier recovery. The old requested-only descriptor guard is removed. There is no special recovery-ID condition, wildcard allowance or skipped history.
+
+Audited the entire finite production creation sequence against the shared completed-history calls:
+
+| Completed creation obligation | Common retained validation |
+| --- | --- |
+| Accepted full intent / required marker / installation keys and volume binding | `_completed_prefix_receipts` exact owned inputs |
+| Original snapshot bundle descriptor and actual grounded bundle | `_completed_prefix_receipts`, plus existing database/archive grounding |
+| Snapshot, manifest, original-journal descriptors and exact outputs | `_completed_prefix_receipts` for all three; database validates actual control archive/source |
+| Rotation descriptor | `_completed_prefix_receipts` canonical original/new-journal binding |
+| Core certificate descriptor and actual Core certificate | `_verify_finished_receipt_evidence`, added here |
+| Receipt certificate descriptor and actual four-step receipt certificate | `_verify_finished_receipt_evidence` |
+| Completion-journal and completion-fence descriptors | `_verify_finished_receipt_evidence`, canonical historical outputs; current outputs can legitimately belong to later activity/history |
+| Fifth SQL receipt and prior SQL chain/resolution sets | Existing bounded database/chain validator |
+
+The latest unfinished Core-COMMIT/no-attempt exception and stage-aware SQL/receipt-only pending validators are unchanged. Missing/partial/wrong attempted outputs still quarantine; no future output is demanded. F1 whole-registration/original stopped-owner coverage before unfinished writes remains; F2 valid pending SQL/receipt-only prefixes and F3 preceding SQL/creation prerequisites remain. No current-startup eligibility restriction, scan, repair/remint, output rewrite or broad redesign is added.
+
+The actual production delta is four added validation lines and deletion of the requested-only check. Core certificate → four-step receipt certificate → bound journal → complete fence → fifth SQL receipt ordering and both locks are unchanged. Closed bounds/records, original proof, file/parent barriers, no-remint, immutable completed replay, ordinary-activity independence, strict context/resolution and R1 inherited uncertainty/B1 private WAL preservation remain. Public/programmatic/CLI apply remains unconditionally unavailable and enrolled activation closed without flags/autolaunch. No B2.3 host authentication is needed for this correction.
+
+### Actual reproduction and verification
+
+Existing interpreter only; no installs, bytecode/cache disabled, disposable local roots. Extracted the exact R4 embedded Python probe in memory and ran it unchanged via `/tmp/pab-0c-venv/bin/python -c` with `PYTHONDONTWRITEBYTECODE=1`: exit 0; missing/wrong/mode each printed `incorrectly accepted twice`, `/tmp/b22d-r4-exact-red.log`. This is defect reproduction, not correctness evidence. After correction the identical setup with only the acceptance assertion replaced by mandatory refusal exits 0, each variant `correctly refused twice`, `/tmp/b22d-r4-exact-green.log`.
+
+Added eight production two-history regression cases: missing/wrong/mode damage to ONLY the other completed history's Core descriptor, in BOTH predecessor and successor directions, plus unchanged controls in both directions. Actual Core certificate, receipt certificate and all five SQL steps are explicitly verified intact before replay. Two after-TTL replays forbid snapshot, Reconciliation collection, resource scan and production file/SQL writers. Each refusal/control preserves all logical SQL, every retained regular-file byte and file modes. No fixture acceptance digest is rewritten.
+
+Required-correctness RED before production edits:
+
+```sh
+PYTHONDONTWRITEBYTECODE=1 /tmp/pab-0c-venv/bin/python -m pytest -p no:cacheprovider tests/service/test_recovery.py -k b22d_r4 -q
+```
+
+**6 failed, 2 passed, 553 deselected in 22.48s**, exit 1, `/tmp/b22d-r4-red.log`. All six negatives reached `DID NOT RAISE`; both unchanged controls passed. No setup failure is counted as defect evidence.
+
+Combined meaningful GREEN command:
+
+```sh
+PYTHONDONTWRITEBYTECODE=1 /tmp/pab-0c-venv/bin/python -m pytest -p no:cacheprovider tests/service/test_recovery.py -k 'b22d_r4 or b22d_r3 or b22d_r2 or b22d_correction or b22d_prior_completed' -q
+```
+
+Final targeted and frozen focused/full results follow. Source/tests remain unchanged during final verification; only this report changes. Complete imported-plus-correction and correction-only path sets are recovery.py, recovery tests and this report. No persistence/Journal changes are needed; no Core/init/Dispatcher/supervisor/host/reconciliation/resource/contracts/dependencies/packaging/ledger/reviews changes.
+
+E1 local source/SQLite/filesystem/process and mocked host inputs only. E1-mock is not actual-host proof. Skips are not qualification. A1 whole-Docker-inventory drift remains unexplained and unqualified, with no inferred cause or waiver. Physical power-loss/ENOSPC/daemon/VM/controller durability, installed lifecycle, engine/audio/hardware and clean-host operation remain unqualified. B2.3/B3/C1/C2, parent integration, fresh independent review, final Astra and public/unattended acceptance remain pending. No subagents, Docker/network/model/audio/paid/E2E runner, installs, push/PR/deploy, prune or user cleanup; research/other worktrees preserved. No self-GO.
+
+Combined targeted GREEN: **116 passed, 445 deselected in 213.80s**, exit 0, `/tmp/b22d-r4-targeted-green.log`. Includes all eight F4 cases and all inherited F1/F2/F3 targeted controls/refusals, receipt-only and SQL pending/no-attempt positives, attempted-output quarantine and retained prerequisites. No development failures occurred after the intended RED. Final frozen source/test commit: **`0d1a89440d4fa17764d484c8cf31b1b13ea0453a`**. Only this handoff changes afterward.
+
+Frozen focused command:
+
+```sh
+PYTHONDONTWRITEBYTECODE=1 /tmp/pab-0c-venv/bin/python -m pytest -p no:cacheprovider tests/service/test_recovery.py tests/service/test_packaged_lifecycle.py tests/service/test_admission.py tests/service/test_dispatcher.py -q
+```
+
+Frozen full preservation command, sequential after focused on the same unchanged source/tests:
+
+```sh
+PYTHONDONTWRITEBYTECODE=1 /tmp/pab-0c-venv/bin/python -m pytest -p no:cacheprovider tests/service tests/release -q
+```
+
+Frozen focused result: **693 passed in 536.57s (8:56)**, exit 0, `/tmp/b22d-r4-focused-final.log`, on unchanged `0d1a89440d4fa17764d484c8cf31b1b13ea0453a`. Includes all eight new F4 cases plus inherited receipt/process/ordering/startup/F1/F2/F3/authority cases. Full service/release starts sequentially afterward on the same source/tests; only this report changes.
+
+Frozen full preservation result: **845 passed, 18 skipped in 571.85s (9:31)**, exit 0, `/tmp/b22d-r4-full-final.log`. Sequential after the 693-pass focused suite on the same unchanged `0d1a89440d4fa17764d484c8cf31b1b13ea0453a`; all 18 skips remain unqualified. No source/test changes during or between final suites, no final-suite failure and no redundant broad campaign.
+
+Final `git diff --check` passes. Complete actual-root `2efa63d` to candidate path set is exactly service/recovery.py, tests/service/test_recovery.py and this handoff. Protected-path comparison excluding those three paths is empty; root docs/reviews/ledger and every other source/worker/contracts/dependency/packaging path are preserved. All eight imported patches are range-diff equal. Source/test-to-frozen comparison is empty; frozen-to-final is report-only. The report-only commit follows frozen `0d1a894`; its exact candidate SHA accompanies the handoff. Fresh independent review of that exact candidate and parent integration verification remain required. No self-GO; B2.3/B3/C1/C2/final Astra/public/unattended acceptance remain pending.
