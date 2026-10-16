@@ -1,0 +1,4957 @@
+{
+  "project": "pab-w2c-62ed49238a",
+  "tier": "E1/E2 offline dependency-overlay synthetic only",
+  "commands": [
+    {
+      "argv": [
+        "docker",
+        "ps",
+        "-aq"
+      ],
+      "exit": 0,
+      "output": "[sanitized inventory/inspect/source-map output; digest retained; assertions and source maps recorded separately]",
+      "output_sha256": "4f6a5def436676fa1e8d845f4615b75cf5f9a51103329439f62711cc0c0749fc"
+    },
+    {
+      "argv": [
+        "docker",
+        "volume",
+        "ls",
+        "-q"
+      ],
+      "exit": 0,
+      "output": "[sanitized inventory/inspect/source-map output; digest retained; assertions and source maps recorded separately]",
+      "output_sha256": "4f6a5def436676fa1e8d845f4615b75cf5f9a51103329439f62711cc0c0749fc"
+    },
+    {
+      "argv": [
+        "docker",
+        "image",
+        "inspect",
+        "speech-core-1a-tests:f1-f2",
+        "--format",
+        "{{.Id}}"
+      ],
+      "exit": 0,
+      "output": "sha256:85141b253c04344134252c0878750756aef6bae3d4d4d083301004db7f43ce0e\n",
+      "output_sha256": "4bd712f8d7c0390b600ecc564fd7275a57cbc7c61b145358727f7a6a227c9b3c"
+    },
+    {
+      "argv": [
+        "docker",
+        "build",
+        "--network=none",
+        "--memory",
+        "2g",
+        "-f",
+        "service/Dockerfile.lifecycle",
+        "--target",
+        "worker",
+        "-t",
+        "pab-w2c-62ed49238a-worker",
+        "."
+      ],
+      "exit": 0,
+      "output": "#0 building with \"orbstack\" instance using docker driver\n\n#1 [internal] load build definition from Dockerfile.lifecycle\n#1 transferring dockerfile: 1.11kB done\n#1 DONE 0.0s\n\n#2 [internal] load metadata for docker.io/library/speech-core-1a-tests:f1-f2\n#2 DONE 0.0s\n\n#3 [internal] load metadata for docker.io/library/python:3.14.8-slim-bookworm@sha256:48b13b003dda20b16f9442b8475aa05fe21bf6579a8c881db92ffb4d8fd20f83\n#3 DONE 0.0s\n\n#4 [worker 1/6] FROM docker.io/library/python:3.14.8-slim-bookworm@sha256:48b13b003dda20b16f9442b8475aa05fe21bf6579a8c881db92ffb4d8fd20f83\n#4 DONE 0.0s\n\n#5 [dependencies 1/1] FROM docker.io/library/speech-core-1a-tests:f1-f2\n#5 DONE 0.0s\n\n#6 [internal] load build context\n#6 transferring context: 6.31kB done\n#6 DONE 0.0s\n\n#7 [worker 4/6] COPY contracts/__init__.py contracts/validate.py ./contracts/\n#7 CACHED\n\n#8 [worker 2/6] WORKDIR /opt/speech\n#8 CACHED\n\n#9 [worker 3/6] COPY --from=dependencies /usr/local /usr/local\n#9 CACHED\n\n#10 [worker 5/6] COPY contracts/v1 ./contracts/v1\n#10 CACHED\n\n#11 [worker 6/6] COPY worker ./worker\n#11 DONE 0.1s\n\n#12 exporting to image\n#12 exporting layers 0.0s done\n#12 writing image sha256:7101cd00bbd2e49544233d62bf439d9483e5612e1254cbb750591ce8f14dbb9b done\n#12 naming to docker.io/library/pab-w2c-62ed49238a-worker done\n#12 DONE 0.0s\n",
+      "output_sha256": "3c6850244ee3d76ad4ffb259f44efceb1a1acc1b120dfbb17839176341a129a9"
+    },
+    {
+      "argv": [
+        "docker",
+        "build",
+        "--network=none",
+        "--memory",
+        "2g",
+        "-f",
+        "service/Dockerfile.lifecycle",
+        "--target",
+        "control",
+        "-t",
+        "pab-w2c-62ed49238a-control",
+        "."
+      ],
+      "exit": 0,
+      "output": "#0 building with \"orbstack\" instance using docker driver\n\n#1 [internal] load build definition from Dockerfile.lifecycle\n#1 transferring dockerfile: 1.11kB done\n#1 DONE 0.0s\n\n#2 [internal] load metadata for docker.io/library/speech-core-1a-tests:f1-f2\n#2 DONE 0.0s\n\n#3 [internal] load build context\n#3 transferring context: 937.23kB 0.0s done\n#3 DONE 0.0s\n\n#4 [dependencies 1/1] FROM docker.io/library/speech-core-1a-tests:f1-f2\n#4 CACHED\n\n#5 [control 1/6] COPY service ./service\n#5 DONE 0.1s\n\n#6 [control 2/6] COPY worker ./worker\n#6 DONE 0.1s\n\n#7 [control 3/6] COPY contracts ./contracts\n#7 DONE 0.1s\n\n#8 [control 4/6] COPY clients ./clients\n#8 DONE 0.1s\n\n#9 [control 5/6] COPY tests/service ./tests/service\n#9 DONE 0.1s\n\n#10 [control 6/6] COPY tests/release ./tests/release\n#10 DONE 0.1s\n\n#11 exporting to image\n#11 exporting layers 0.1s done\n#11 writing image sha256:62b9d27609a63975ffba5d0c7d321ecd6df085e1dfd843bce162f2ebdb34e9b2 done\n#11 naming to docker.io/library/pab-w2c-62ed49238a-control done\n#11 DONE 0.1s\n",
+      "output_sha256": "cd28fb51db964a56dfeeab0f4a504afc7ec0e925f4e056768ca9000e6043f998"
+    },
+    {
+      "argv": [
+        "docker",
+        "image",
+        "inspect",
+        "pab-w2c-62ed49238a-worker",
+        "--format",
+        "{{.Id}}"
+      ],
+      "exit": 0,
+      "output": "sha256:7101cd00bbd2e49544233d62bf439d9483e5612e1254cbb750591ce8f14dbb9b\n",
+      "output_sha256": "2fde280af9562afec8b7d0abe273496065cd7ba07f0f31a5d07e40bc1f141e3c"
+    },
+    {
+      "argv": [
+        "docker",
+        "image",
+        "inspect",
+        "pab-w2c-62ed49238a-control",
+        "--format",
+        "{{.Id}}"
+      ],
+      "exit": 0,
+      "output": "sha256:62b9d27609a63975ffba5d0c7d321ecd6df085e1dfd843bce162f2ebdb34e9b2\n",
+      "output_sha256": "6c7cffb3693835d77ae68f3c974fce09fa2c4066e82c2416964b46ddaa616104"
+    },
+    {
+      "argv": [
+        "docker",
+        "run",
+        "--name",
+        "pab-w2c-62ed49238a-source-control",
+        "--network",
+        "none",
+        "--entrypoint",
+        "python",
+        "pab-w2c-62ed49238a-control",
+        "-c",
+        "import pathlib,hashlib,json; print(json.dumps({str(p):hashlib.sha256(p.read_bytes()).hexdigest() for root in ['service', 'worker', 'contracts', 'clients', 'tests/service', 'tests/release'] for p in pathlib.Path(root).rglob('*') if p.is_file() and '__pycache__' not in p.parts and p.suffix!='.pyc'}))"
+      ],
+      "exit": 0,
+      "output": "[sanitized inventory/inspect/source-map output; digest retained; assertions and source maps recorded separately]",
+      "output_sha256": "ce717c5fda9bc5940509b3b0fe4e5edf3993ae610e506d5420c660a408559f3e"
+    },
+    {
+      "argv": [
+        "docker",
+        "run",
+        "--name",
+        "pab-w2c-62ed49238a-source-worker",
+        "--network",
+        "none",
+        "--entrypoint",
+        "python",
+        "pab-w2c-62ed49238a-worker",
+        "-c",
+        "import pathlib,hashlib,json; print(json.dumps({str(p):hashlib.sha256(p.read_bytes()).hexdigest() for root in ['service', 'worker', 'contracts', 'clients', 'tests/service', 'tests/release'] for p in pathlib.Path(root).rglob('*') if p.is_file() and '__pycache__' not in p.parts and p.suffix!='.pyc'}))"
+      ],
+      "exit": 0,
+      "output": "[sanitized inventory/inspect/source-map output; digest retained; assertions and source maps recorded separately]",
+      "output_sha256": "203089996ff452f7f6215f24685a047f78fdb5ad60a751f46a260c5164d57585"
+    },
+    {
+      "argv": [
+        "docker",
+        "run",
+        "--name",
+        "pab-w2c-62ed49238a-regressions",
+        "--network",
+        "none",
+        "--cpus",
+        "2",
+        "--memory",
+        "1g",
+        "--pids-limit",
+        "128",
+        "--read-only",
+        "--tmpfs",
+        "/tmp:rw,nosuid,size=64m",
+        "--entrypoint",
+        "python",
+        "pab-w2c-62ed49238a-control",
+        "-m",
+        "pytest",
+        "tests/service",
+        "tests/release",
+        "-q",
+        "-p",
+        "no:cacheprovider"
+      ],
+      "exit": 0,
+      "output": "........................................................................ [ 72%]\n............................                                             [100%]\n100 passed in 25.48s\n",
+      "output_sha256": "41f73141d738eb8890362abfac40c93c17a76740e44316bfdecd4726dded55b2"
+    },
+    {
+      "argv": [
+        "docker",
+        "compose",
+        "-p",
+        "pab-w2c-62ed49238a",
+        "-f",
+        "service/compose.lifecycle.yml",
+        "up",
+        "-d",
+        "worker"
+      ],
+      "exit": 0,
+      "output": " Volume pab-w2c-62ed49238a_receipts Creating \n Volume pab-w2c-62ed49238a_receipts Created \n Volume pab-w2c-62ed49238a_control Creating \n Volume pab-w2c-62ed49238a_control Created \n Volume pab-w2c-62ed49238a_ipc Creating \n Volume pab-w2c-62ed49238a_ipc Created \n Volume pab-w2c-62ed49238a_staging Creating \n Volume pab-w2c-62ed49238a_staging Created \n Container pab-w2c-62ed49238a-init-1 Creating \n Container pab-w2c-62ed49238a-init-1 Created \n Container pab-w2c-62ed49238a-worker-1 Creating \n Container pab-w2c-62ed49238a-worker-1 Created \n Container pab-w2c-62ed49238a-init-1 Starting \n Container pab-w2c-62ed49238a-init-1 Started \n Container pab-w2c-62ed49238a-init-1 Waiting \n Container pab-w2c-62ed49238a-init-1 Exited \n Container pab-w2c-62ed49238a-worker-1 Starting \n Container pab-w2c-62ed49238a-worker-1 Started \n",
+      "output_sha256": "78ea208339143670bc4fcd0b737c3bca88ca875ec8d71d74e55d103b9d54c27b"
+    },
+    {
+      "argv": [
+        "docker",
+        "compose",
+        "-p",
+        "pab-w2c-62ed49238a",
+        "-f",
+        "service/compose.lifecycle.yml",
+        "ps",
+        "-aq",
+        "worker"
+      ],
+      "exit": 0,
+      "output": "6ad72320deabbc20fb27e05dfe8a88c6cf896991b80a1835d04a3a5828f013c8\n",
+      "output_sha256": "b80148ec34135ffe0e96c0edcde3fc78361d386fa62cd10508d4fe364405c731"
+    },
+    {
+      "argv": [
+        "docker",
+        "compose",
+        "-p",
+        "pab-w2c-62ed49238a",
+        "-f",
+        "service/compose.lifecycle.yml",
+        "run",
+        "--name",
+        "pab-w2c-62ed49238a-c-b99d8d94",
+        "--no-deps",
+        "control",
+        "hello"
+      ],
+      "exit": 0,
+      "output": "{\"boot\": \"f1fa5da97a9b83c1196cd48bc76dae46\", \"lane\": \"5587e19f1c336318132d09777127e42f\", \"launches\": 0, \"quarantined\": false}\n Container pab-w2c-62ed49238a-c-b99d8d94 Creating \n Container pab-w2c-62ed49238a-c-b99d8d94 Created \n",
+      "output_sha256": "da6a03d1096a6d2ea7cf20e860e258d844b86dd6e828bb2f4a64855513478e24"
+    },
+    {
+      "argv": [
+        "docker",
+        "rm",
+        "pab-w2c-62ed49238a-c-b99d8d94"
+      ],
+      "exit": 0,
+      "output": "pab-w2c-62ed49238a-c-b99d8d94\n",
+      "output_sha256": "49aba19a4c1d2b4d776ba0a3b38bf727372976589bdffd48aed307b4114e6141"
+    },
+    {
+      "argv": [
+        "docker",
+        "inspect",
+        "6ad72320deabbc20fb27e05dfe8a88c6cf896991b80a1835d04a3a5828f013c8"
+      ],
+      "exit": 0,
+      "output": "[sanitized inventory/inspect/source-map output; digest retained; assertions and source maps recorded separately]",
+      "output_sha256": "0a356558565aacd28269157187af45c83c1dcc2b63bf4c0bd10cbd0bfd53b76b"
+    },
+    {
+      "argv": [
+        "docker",
+        "compose",
+        "-p",
+        "pab-w2c-62ed49238a",
+        "-f",
+        "service/compose.lifecycle.yml",
+        "run",
+        "--name",
+        "pab-w2c-62ed49238a-namespace",
+        "--no-deps",
+        "--entrypoint",
+        "python",
+        "control",
+        "-c",
+        "import os,json,shutil;assert shutil.which('docker') is None;print(json.dumps({k:os.readlink('/proc/self/ns/'+k) for k in ('pid','net','mnt')}))"
+      ],
+      "exit": 0,
+      "output": "{\"pid\": \"pid:[4026532466]\", \"net\": \"net:[4026532468]\", \"mnt\": \"mnt:[4026532462]\"}\n Container pab-w2c-62ed49238a-namespace Creating \n Container pab-w2c-62ed49238a-namespace Created \n",
+      "output_sha256": "6e2cd83b17ce4442434f329ba7d285ad521fb569a327cca2c92d3d560b87c151"
+    },
+    {
+      "argv": [
+        "docker",
+        "inspect",
+        "pab-w2c-62ed49238a-namespace"
+      ],
+      "exit": 0,
+      "output": "[sanitized inventory/inspect/source-map output; digest retained; assertions and source maps recorded separately]",
+      "output_sha256": "e7dec8676326db3444b46cd76a577a611d4ba6186469c95b3a2b09fae0a1aa5e"
+    },
+    {
+      "argv": [
+        "docker",
+        "exec",
+        "6ad72320deabbc20fb27e05dfe8a88c6cf896991b80a1835d04a3a5828f013c8",
+        "python",
+        "-c",
+        "import os,json,shutil;assert shutil.which('docker') is None;print(json.dumps({k:os.readlink('/proc/self/ns/'+k) for k in ('pid','net','mnt')}))"
+      ],
+      "exit": 0,
+      "output": "{\"pid\": \"pid:[4026532463]\", \"net\": \"net:[4026532566]\", \"mnt\": \"mnt:[4026532459]\"}\n",
+      "output_sha256": "78f7b12c69efe48d3bd6d5bcd72421653ad7df7dd10488e3763f1e6da1cd06ad"
+    },
+    {
+      "argv": [
+        "docker",
+        "rm",
+        "pab-w2c-62ed49238a-namespace"
+      ],
+      "exit": 0,
+      "output": "pab-w2c-62ed49238a-namespace\n",
+      "output_sha256": "243ea4129681d380fef1db13e9f807eb33fc921381d96a6ec96d9b8bc60e86c7"
+    },
+    {
+      "argv": [
+        "docker",
+        "compose",
+        "-p",
+        "pab-w2c-62ed49238a",
+        "-f",
+        "service/compose.lifecycle.yml",
+        "run",
+        "--name",
+        "pab-w2c-62ed49238a-c-45249b47",
+        "--no-deps",
+        "control",
+        "dispatch",
+        "--fixture",
+        "silence",
+        "--seconds",
+        "8"
+      ],
+      "exit": 0,
+      "output": "{\"runtime_id\": \"5587e19f1c336318132d09777127e42f/f1fa5da97a9b83c1196cd48bc76dae46/e933d9d2815ffaa1903ae4b0cd6770ec\", \"state\": \"alive\"}\n Container pab-w2c-62ed49238a-c-45249b47 Creating \n Container pab-w2c-62ed49238a-c-45249b47 Created \n",
+      "output_sha256": "83d670abfddb08ebeb2e7daede027f9c16e733417cdc351c94b9b7b722b61683"
+    },
+    {
+      "argv": [
+        "docker",
+        "rm",
+        "pab-w2c-62ed49238a-c-45249b47"
+      ],
+      "exit": 0,
+      "output": "pab-w2c-62ed49238a-c-45249b47\n",
+      "output_sha256": "55d98d17db23890af0134953f14ae2dbd0e72befbcfdb9f9052d3d1381893f6f"
+    },
+    {
+      "argv": [
+        "docker",
+        "compose",
+        "-p",
+        "pab-w2c-62ed49238a",
+        "-f",
+        "service/compose.lifecycle.yml",
+        "run",
+        "--name",
+        "pab-w2c-62ed49238a-c-b559e09e",
+        "--no-deps",
+        "control",
+        "execute"
+      ],
+      "exit": 0,
+      "output": "{\"status\": \"proposal\", \"proposal_sha256\": \"b8c5702631345dcbaf7451bf6896923dfc08f3683b977c5bac24dcd29cdf2415\"}\n Container pab-w2c-62ed49238a-c-b559e09e Creating \n Container pab-w2c-62ed49238a-c-b559e09e Created \n",
+      "output_sha256": "22e969beec66122026541ca156c855285abc81ffd85f09e1ca6a0227c4341227"
+    },
+    {
+      "argv": [
+        "docker",
+        "rm",
+        "pab-w2c-62ed49238a-c-b559e09e"
+      ],
+      "exit": 0,
+      "output": "pab-w2c-62ed49238a-c-b559e09e\n",
+      "output_sha256": "1c50b752e97c28e1d7fbb727c266d5af892bf84c613f3c6f8fca51297a5a8ba4"
+    },
+    {
+      "argv": [
+        "docker",
+        "compose",
+        "-p",
+        "pab-w2c-62ed49238a",
+        "-f",
+        "service/compose.lifecycle.yml",
+        "run",
+        "--name",
+        "pab-w2c-62ed49238a-c-09f04240",
+        "--no-deps",
+        "control",
+        "observe"
+      ],
+      "exit": 0,
+      "output": "{\"runtime_id\": \"5587e19f1c336318132d09777127e42f/f1fa5da97a9b83c1196cd48bc76dae46/e933d9d2815ffaa1903ae4b0cd6770ec\", \"state\": \"stopped-and-reaped\"}\n Container pab-w2c-62ed49238a-c-09f04240 Creating \n Container pab-w2c-62ed49238a-c-09f04240 Created \n",
+      "output_sha256": "6166fd47bed46e3f15d3677018366f7faa2e7e8086424b83788ad942829786a4"
+    },
+    {
+      "argv": [
+        "docker",
+        "rm",
+        "pab-w2c-62ed49238a-c-09f04240"
+      ],
+      "exit": 0,
+      "output": "pab-w2c-62ed49238a-c-09f04240\n",
+      "output_sha256": "1d8eda18fde6ffc1d1ff144c7b1901046b9b691306c4f8f5b430e9f9cf3d7718"
+    },
+    {
+      "argv": [
+        "docker",
+        "compose",
+        "-p",
+        "pab-w2c-62ed49238a",
+        "-f",
+        "service/compose.lifecycle.yml",
+        "run",
+        "--name",
+        "pab-w2c-62ed49238a-c-e4583825",
+        "--no-deps",
+        "control",
+        "observe"
+      ],
+      "exit": 0,
+      "output": "{\"runtime_id\": \"5587e19f1c336318132d09777127e42f/f1fa5da97a9b83c1196cd48bc76dae46/e933d9d2815ffaa1903ae4b0cd6770ec\", \"state\": \"stopped-and-reaped\"}\n Container pab-w2c-62ed49238a-c-e4583825 Creating \n Container pab-w2c-62ed49238a-c-e4583825 Created \n",
+      "output_sha256": "4782f52891defc54d5812a9d43c65ec5f491ab1587bd334d983344c9bb403819"
+    },
+    {
+      "argv": [
+        "docker",
+        "rm",
+        "pab-w2c-62ed49238a-c-e4583825"
+      ],
+      "exit": 0,
+      "output": "pab-w2c-62ed49238a-c-e4583825\n",
+      "output_sha256": "bdf4153bc58633e087cad07efed555708e9820f07ac4c9a724aeb2811854c188"
+    },
+    {
+      "argv": [
+        "docker",
+        "compose",
+        "-p",
+        "pab-w2c-62ed49238a",
+        "-f",
+        "service/compose.lifecycle.yml",
+        "run",
+        "--name",
+        "pab-w2c-62ed49238a-c-2ae968e3",
+        "--no-deps",
+        "control",
+        "collect"
+      ],
+      "exit": 0,
+      "output": "{\"receipt\": {\"binding\": \"fc3e2f5013a062178702da4d1d9910fa384d697172efddb53020d531b45daf14\", \"engine_uid\": 20000, \"original_deadline\": \"2026-10-16T13:10:48.857178+00:00\", \"reap_method\": \"pid1-waitpid-echild\", \"reaped\": true, \"reaped_children\": 1, \"runtime_id\": \"5587e19f1c336318132d09777127e42f/f1fa5da97a9b83c1196cd48bc76dae46/e933d9d2815ffaa1903ae4b0cd6770ec\", \"timely\": true}, \"sha256\": \"639dad0ac2923f5fe9e9ccfb99aa9b3084048e2e53317d1903e6e899a4f6296a\", \"proposal_sha256\": \"b8c5702631345dcbaf7451bf6896923dfc08f3683b977c5bac24dcd29cdf2415\"}\n Container pab-w2c-62ed49238a-c-2ae968e3 Creating \n Container pab-w2c-62ed49238a-c-2ae968e3 Created \n",
+      "output_sha256": "5e62ec291abcef8f6281f4af477e0c90760f6a32b1d070310d9812bed2c56bce"
+    },
+    {
+      "argv": [
+        "docker",
+        "rm",
+        "pab-w2c-62ed49238a-c-2ae968e3"
+      ],
+      "exit": 0,
+      "output": "pab-w2c-62ed49238a-c-2ae968e3\n",
+      "output_sha256": "e87d8cda5ba5713adcfaba9aa73c575a426ee4b2f6116a4fbf05103209bc7907"
+    },
+    {
+      "argv": [
+        "docker",
+        "compose",
+        "-p",
+        "pab-w2c-62ed49238a",
+        "-f",
+        "service/compose.lifecycle.yml",
+        "run",
+        "--name",
+        "pab-w2c-62ed49238a-c-1121912b",
+        "--no-deps",
+        "control",
+        "collect"
+      ],
+      "exit": 0,
+      "output": "{\"receipt\": {\"binding\": \"fc3e2f5013a062178702da4d1d9910fa384d697172efddb53020d531b45daf14\", \"engine_uid\": 20000, \"original_deadline\": \"2026-10-16T13:10:48.857178+00:00\", \"reap_method\": \"pid1-waitpid-echild\", \"reaped\": true, \"reaped_children\": 1, \"runtime_id\": \"5587e19f1c336318132d09777127e42f/f1fa5da97a9b83c1196cd48bc76dae46/e933d9d2815ffaa1903ae4b0cd6770ec\", \"timely\": true}, \"sha256\": \"639dad0ac2923f5fe9e9ccfb99aa9b3084048e2e53317d1903e6e899a4f6296a\", \"proposal_sha256\": \"b8c5702631345dcbaf7451bf6896923dfc08f3683b977c5bac24dcd29cdf2415\"}\n Container pab-w2c-62ed49238a-c-1121912b Creating \n Container pab-w2c-62ed49238a-c-1121912b Created \n",
+      "output_sha256": "7daf7e000db0c0fde3a8c117d4db272e839a0cbf5f1d89d48f973b7d601fdd49"
+    },
+    {
+      "argv": [
+        "docker",
+        "rm",
+        "pab-w2c-62ed49238a-c-1121912b"
+      ],
+      "exit": 0,
+      "output": "pab-w2c-62ed49238a-c-1121912b\n",
+      "output_sha256": "bfd72765a9cc1265102c406c03a74fd3d92029e90c0266e8ef3c5420bac4906a"
+    },
+    {
+      "argv": [
+        "docker",
+        "compose",
+        "-p",
+        "pab-w2c-62ed49238a",
+        "-f",
+        "service/compose.lifecycle.yml",
+        "run",
+        "--name",
+        "pab-w2c-62ed49238a-c-d5141da3",
+        "--no-deps",
+        "control",
+        "ack"
+      ],
+      "exit": 0,
+      "output": "{\"acked\": true}\n Container pab-w2c-62ed49238a-c-d5141da3 Creating \n Container pab-w2c-62ed49238a-c-d5141da3 Created \n",
+      "output_sha256": "703d98ed9582db00babf7d0318f6a9da2ebf5dadf89d5aaa062753f579b8a5c2"
+    },
+    {
+      "argv": [
+        "docker",
+        "rm",
+        "pab-w2c-62ed49238a-c-d5141da3"
+      ],
+      "exit": 0,
+      "output": "pab-w2c-62ed49238a-c-d5141da3\n",
+      "output_sha256": "40638e70eeaa1c94d117b167124fe47c4452b424e39033fd55feb7ad26600325"
+    },
+    {
+      "argv": [
+        "docker",
+        "compose",
+        "-p",
+        "pab-w2c-62ed49238a",
+        "-f",
+        "service/compose.lifecycle.yml",
+        "run",
+        "--name",
+        "pab-w2c-62ed49238a-c-3a8026a3",
+        "--no-deps",
+        "control",
+        "dispatch",
+        "--fixture",
+        "permissions",
+        "--seconds",
+        "8"
+      ],
+      "exit": 0,
+      "output": "{\"runtime_id\": \"5587e19f1c336318132d09777127e42f/f1fa5da97a9b83c1196cd48bc76dae46/004b757bed5427327f2360f21af75970\", \"state\": \"alive\"}\n Container pab-w2c-62ed49238a-c-3a8026a3 Creating \n Container pab-w2c-62ed49238a-c-3a8026a3 Created \n",
+      "output_sha256": "6b742ffcf5c5a57693259cbf5633f256ede1d8332fadefbbea0a8324a7dfbeb7"
+    },
+    {
+      "argv": [
+        "docker",
+        "rm",
+        "pab-w2c-62ed49238a-c-3a8026a3"
+      ],
+      "exit": 0,
+      "output": "pab-w2c-62ed49238a-c-3a8026a3\n",
+      "output_sha256": "07d322a8edbbcbaf564dccd6087835ef0319dd25808ebaf24f1b874982c48bcd"
+    },
+    {
+      "argv": [
+        "docker",
+        "compose",
+        "-p",
+        "pab-w2c-62ed49238a",
+        "-f",
+        "service/compose.lifecycle.yml",
+        "run",
+        "--name",
+        "pab-w2c-62ed49238a-c-e526f3a3",
+        "--no-deps",
+        "control",
+        "execute"
+      ],
+      "exit": 0,
+      "output": "{\"status\": \"proposal\", \"proposal_sha256\": \"f32d76d873e565a1796c2c15dba276e46782dc007ae8d63ae9e019c77897114e\"}\n Container pab-w2c-62ed49238a-c-e526f3a3 Creating \n Container pab-w2c-62ed49238a-c-e526f3a3 Created \n",
+      "output_sha256": "378a141efb91b062884a2a01057b70a4df07814559e7ba7192fe8070b01d0888"
+    },
+    {
+      "argv": [
+        "docker",
+        "rm",
+        "pab-w2c-62ed49238a-c-e526f3a3"
+      ],
+      "exit": 0,
+      "output": "pab-w2c-62ed49238a-c-e526f3a3\n",
+      "output_sha256": "123fbc691231baa8910e08ef4c5ecc1779c013b8ed644d01025c13d8f5805bf9"
+    },
+    {
+      "argv": [
+        "docker",
+        "compose",
+        "-p",
+        "pab-w2c-62ed49238a",
+        "-f",
+        "service/compose.lifecycle.yml",
+        "run",
+        "--name",
+        "pab-w2c-62ed49238a-c-b2a09622",
+        "--no-deps",
+        "control",
+        "observe"
+      ],
+      "exit": 0,
+      "output": "{\"runtime_id\": \"5587e19f1c336318132d09777127e42f/f1fa5da97a9b83c1196cd48bc76dae46/004b757bed5427327f2360f21af75970\", \"state\": \"stopped-and-reaped\"}\n Container pab-w2c-62ed49238a-c-b2a09622 Creating \n Container pab-w2c-62ed49238a-c-b2a09622 Created \n",
+      "output_sha256": "3d9e4db67cb4e2cda86e994226adf54070990d6e110a42010473bb5b8711176c"
+    },
+    {
+      "argv": [
+        "docker",
+        "rm",
+        "pab-w2c-62ed49238a-c-b2a09622"
+      ],
+      "exit": 0,
+      "output": "pab-w2c-62ed49238a-c-b2a09622\n",
+      "output_sha256": "e570f2d27556cbb067f7f1eed4c2fcaf0804f30d86394d40afb8930b91e4cee9"
+    },
+    {
+      "argv": [
+        "docker",
+        "compose",
+        "-p",
+        "pab-w2c-62ed49238a",
+        "-f",
+        "service/compose.lifecycle.yml",
+        "run",
+        "--name",
+        "pab-w2c-62ed49238a-c-cc891463",
+        "--no-deps",
+        "control",
+        "observe"
+      ],
+      "exit": 0,
+      "output": "{\"runtime_id\": \"5587e19f1c336318132d09777127e42f/f1fa5da97a9b83c1196cd48bc76dae46/004b757bed5427327f2360f21af75970\", \"state\": \"stopped-and-reaped\"}\n Container pab-w2c-62ed49238a-c-cc891463 Creating \n Container pab-w2c-62ed49238a-c-cc891463 Created \n",
+      "output_sha256": "a0fcc87f9c795923a757fe1d5de899e2934bbbea04210a76f0e04a73f4803835"
+    },
+    {
+      "argv": [
+        "docker",
+        "rm",
+        "pab-w2c-62ed49238a-c-cc891463"
+      ],
+      "exit": 0,
+      "output": "pab-w2c-62ed49238a-c-cc891463\n",
+      "output_sha256": "02f27919f9e2c48aa1b1f99f528b144a380e6796661acd5a14bcd88dec855f86"
+    },
+    {
+      "argv": [
+        "docker",
+        "compose",
+        "-p",
+        "pab-w2c-62ed49238a",
+        "-f",
+        "service/compose.lifecycle.yml",
+        "run",
+        "--name",
+        "pab-w2c-62ed49238a-c-614ea34f",
+        "--no-deps",
+        "control",
+        "collect"
+      ],
+      "exit": 0,
+      "output": "{\"receipt\": {\"binding\": \"2d5d2ef9a5e745704b93030aeaeabad0818f8786826cba079a6095bccd6650f4\", \"engine_uid\": 20001, \"original_deadline\": \"2026-10-16T13:10:59.389968+00:00\", \"reap_method\": \"pid1-waitpid-echild\", \"reaped\": true, \"reaped_children\": 1, \"runtime_id\": \"5587e19f1c336318132d09777127e42f/f1fa5da97a9b83c1196cd48bc76dae46/004b757bed5427327f2360f21af75970\", \"timely\": true}, \"sha256\": \"639dad0ac2923f5fe9e9ccfb99aa9b3084048e2e53317d1903e6e899a4f6296a\", \"proposal_sha256\": \"f32d76d873e565a1796c2c15dba276e46782dc007ae8d63ae9e019c77897114e\"}\n Container pab-w2c-62ed49238a-c-614ea34f Creating \n Container pab-w2c-62ed49238a-c-614ea34f Created \n",
+      "output_sha256": "f20efc8d9c176e1e6b216d0604b687f67b9d939d467ee96438ee9285e93180a4"
+    },
+    {
+      "argv": [
+        "docker",
+        "rm",
+        "pab-w2c-62ed49238a-c-614ea34f"
+      ],
+      "exit": 0,
+      "output": "pab-w2c-62ed49238a-c-614ea34f\n",
+      "output_sha256": "85b1dcceb82cd4b942324fda66e89525d5be4c379871a3c8c589e84d95c9bade"
+    },
+    {
+      "argv": [
+        "docker",
+        "compose",
+        "-p",
+        "pab-w2c-62ed49238a",
+        "-f",
+        "service/compose.lifecycle.yml",
+        "run",
+        "--name",
+        "pab-w2c-62ed49238a-c-23b6bbaa",
+        "--no-deps",
+        "control",
+        "collect"
+      ],
+      "exit": 0,
+      "output": "{\"receipt\": {\"binding\": \"2d5d2ef9a5e745704b93030aeaeabad0818f8786826cba079a6095bccd6650f4\", \"engine_uid\": 20001, \"original_deadline\": \"2026-10-16T13:10:59.389968+00:00\", \"reap_method\": \"pid1-waitpid-echild\", \"reaped\": true, \"reaped_children\": 1, \"runtime_id\": \"5587e19f1c336318132d09777127e42f/f1fa5da97a9b83c1196cd48bc76dae46/004b757bed5427327f2360f21af75970\", \"timely\": true}, \"sha256\": \"639dad0ac2923f5fe9e9ccfb99aa9b3084048e2e53317d1903e6e899a4f6296a\", \"proposal_sha256\": \"f32d76d873e565a1796c2c15dba276e46782dc007ae8d63ae9e019c77897114e\"}\n Container pab-w2c-62ed49238a-c-23b6bbaa Creating \n Container pab-w2c-62ed49238a-c-23b6bbaa Created \n",
+      "output_sha256": "deaa2abdea1dfdad4a93656f6e6b3240d2ce8bc80239a8a6c1e81f37f8a1e3ed"
+    },
+    {
+      "argv": [
+        "docker",
+        "rm",
+        "pab-w2c-62ed49238a-c-23b6bbaa"
+      ],
+      "exit": 0,
+      "output": "pab-w2c-62ed49238a-c-23b6bbaa\n",
+      "output_sha256": "65db9ac42fa9935c0b533e0cdf5bce938b642d85c50f7d4d705ffe1a37578b1a"
+    },
+    {
+      "argv": [
+        "docker",
+        "kill",
+        "--signal",
+        "KILL",
+        "6ad72320deabbc20fb27e05dfe8a88c6cf896991b80a1835d04a3a5828f013c8"
+      ],
+      "exit": 0,
+      "output": "6ad72320deabbc20fb27e05dfe8a88c6cf896991b80a1835d04a3a5828f013c8\n",
+      "output_sha256": "b80148ec34135ffe0e96c0edcde3fc78361d386fa62cd10508d4fe364405c731"
+    },
+    {
+      "argv": [
+        "docker",
+        "wait",
+        "6ad72320deabbc20fb27e05dfe8a88c6cf896991b80a1835d04a3a5828f013c8"
+      ],
+      "exit": 0,
+      "output": "137\n",
+      "output_sha256": "e3b9c2844b5a5c2677b3a2279db2ec8487491dd9a23d6b22fac153391b3bb63c"
+    },
+    {
+      "argv": [
+        "docker",
+        "start",
+        "6ad72320deabbc20fb27e05dfe8a88c6cf896991b80a1835d04a3a5828f013c8"
+      ],
+      "exit": 0,
+      "output": "6ad72320deabbc20fb27e05dfe8a88c6cf896991b80a1835d04a3a5828f013c8\n",
+      "output_sha256": "b80148ec34135ffe0e96c0edcde3fc78361d386fa62cd10508d4fe364405c731"
+    },
+    {
+      "argv": [
+        "docker",
+        "compose",
+        "-p",
+        "pab-w2c-62ed49238a",
+        "-f",
+        "service/compose.lifecycle.yml",
+        "run",
+        "--name",
+        "pab-w2c-62ed49238a-c-6bf9e133",
+        "--no-deps",
+        "control",
+        "collect"
+      ],
+      "exit": 0,
+      "output": "{\"receipt\": {\"binding\": \"2d5d2ef9a5e745704b93030aeaeabad0818f8786826cba079a6095bccd6650f4\", \"engine_uid\": 20001, \"original_deadline\": \"2026-10-16T13:10:59.389968+00:00\", \"reap_method\": \"pid1-waitpid-echild\", \"reaped\": true, \"reaped_children\": 1, \"runtime_id\": \"5587e19f1c336318132d09777127e42f/f1fa5da97a9b83c1196cd48bc76dae46/004b757bed5427327f2360f21af75970\", \"timely\": true}, \"sha256\": \"639dad0ac2923f5fe9e9ccfb99aa9b3084048e2e53317d1903e6e899a4f6296a\", \"proposal_sha256\": \"f32d76d873e565a1796c2c15dba276e46782dc007ae8d63ae9e019c77897114e\"}\n Container pab-w2c-62ed49238a-c-6bf9e133 Creating \n Container pab-w2c-62ed49238a-c-6bf9e133 Created \n",
+      "output_sha256": "04be89316427855e0c309c0050e04e150b9bfd66a17146e4d22e54a49c57bbf0"
+    },
+    {
+      "argv": [
+        "docker",
+        "rm",
+        "pab-w2c-62ed49238a-c-6bf9e133"
+      ],
+      "exit": 0,
+      "output": "pab-w2c-62ed49238a-c-6bf9e133\n",
+      "output_sha256": "917d961f32f16cc16fe048e834152677dae43d86e7926a4d9813a7f312c75541"
+    },
+    {
+      "argv": [
+        "docker",
+        "compose",
+        "-p",
+        "pab-w2c-62ed49238a",
+        "-f",
+        "service/compose.lifecycle.yml",
+        "run",
+        "--name",
+        "pab-w2c-62ed49238a-c-9a871235",
+        "--no-deps",
+        "control",
+        "ack"
+      ],
+      "exit": 0,
+      "output": "{\"acked\": true}\n Container pab-w2c-62ed49238a-c-9a871235 Creating \n Container pab-w2c-62ed49238a-c-9a871235 Created \n",
+      "output_sha256": "5102a3350dedc32235b01770b1cd1dff264f3b86dde475864ae1648b60250f36"
+    },
+    {
+      "argv": [
+        "docker",
+        "rm",
+        "pab-w2c-62ed49238a-c-9a871235"
+      ],
+      "exit": 0,
+      "output": "pab-w2c-62ed49238a-c-9a871235\n",
+      "output_sha256": "bc92b8cd2e63cf696518322e1db5d3107da9c3d450b6237a140143de416504e3"
+    },
+    {
+      "argv": [
+        "docker",
+        "compose",
+        "-p",
+        "pab-w2c-62ed49238a",
+        "-f",
+        "service/compose.lifecycle.yml",
+        "run",
+        "--name",
+        "pab-w2c-62ed49238a-c-4b0368e0",
+        "--no-deps",
+        "control",
+        "hello"
+      ],
+      "exit": 0,
+      "output": "{\"boot\": \"bebd0aefb37512488aa91313b65b04c0\", \"lane\": \"5587e19f1c336318132d09777127e42f\", \"launches\": 0, \"quarantined\": false}\n Container pab-w2c-62ed49238a-c-4b0368e0 Creating \n Container pab-w2c-62ed49238a-c-4b0368e0 Created \n",
+      "output_sha256": "d7974582c93f3bfe547dcfac49c3c45c9cda6ff663a2b1036739cc109e874b64"
+    },
+    {
+      "argv": [
+        "docker",
+        "rm",
+        "pab-w2c-62ed49238a-c-4b0368e0"
+      ],
+      "exit": 0,
+      "output": "pab-w2c-62ed49238a-c-4b0368e0\n",
+      "output_sha256": "3dd1707d38d5341a3e21e8d0bab0e60215634c583343a4e12f48ae32312ad91b"
+    },
+    {
+      "argv": [
+        "docker",
+        "compose",
+        "-p",
+        "pab-w2c-62ed49238a",
+        "-f",
+        "service/compose.lifecycle.yml",
+        "run",
+        "--name",
+        "pab-w2c-62ed49238a-old-start",
+        "--no-deps",
+        "--entrypoint",
+        "python",
+        "control",
+        "-c",
+        "from service.supervisor_runtime import SupervisorRuntime; r=SupervisorRuntime(); ids=['5587e19f1c336318132d09777127e42f/f1fa5da97a9b83c1196cd48bc76dae46/e933d9d2815ffaa1903ae4b0cd6770ec', '5587e19f1c336318132d09777127e42f/f1fa5da97a9b83c1196cd48bc76dae46/004b757bed5427327f2360f21af75970']; assert all(r.start(i)['state']=='stopped-and-reaped' for i in ids); assert r.call('hello',{})['launches']==0; print('old_identity_fenced')"
+      ],
+      "exit": 0,
+      "output": "old_identity_fenced\n Container pab-w2c-62ed49238a-old-start Creating \n Container pab-w2c-62ed49238a-old-start Created \n",
+      "output_sha256": "f3b900df7abaf704b35e4ac83ef640f0b488b6676e3bb4745a4d83f79f88e47b"
+    },
+    {
+      "argv": [
+        "docker",
+        "rm",
+        "pab-w2c-62ed49238a-old-start"
+      ],
+      "exit": 0,
+      "output": "pab-w2c-62ed49238a-old-start\n",
+      "output_sha256": "1247a8100b2c8ae2a146931369f5cee8d2b058a104e9ee6be38ff5722e27811e"
+    },
+    {
+      "argv": [
+        "docker",
+        "exec",
+        "6ad72320deabbc20fb27e05dfe8a88c6cf896991b80a1835d04a3a5828f013c8",
+        "python",
+        "-c",
+        "import os; p=[int(n) for n in os.listdir('/proc') if n.isdigit()];assert set(p)<={1,os.getpid()};print('namespace_execution_tree_empty')"
+      ],
+      "exit": 0,
+      "output": "namespace_execution_tree_empty\n",
+      "output_sha256": "b41a493185674da375044dca4cc23cf9f000145032ba10233840f238656c2c56"
+    },
+    {
+      "argv": [
+        "docker",
+        "compose",
+        "-p",
+        "pab-w2c-62ed49238a",
+        "-f",
+        "service/compose.lifecycle.yml",
+        "run",
+        "--name",
+        "pab-w2c-62ed49238a-frames",
+        "--no-deps",
+        "--entrypoint",
+        "python",
+        "control",
+        "-c",
+        "import socket,time,struct\nfrom pathlib import Path\nfrom worker.runtime_protocol import session,authenticate,send,receive,VERSION\nfrom worker.transport import Session\nkey=Path('/ipc/lifecycle.key').read_text().strip()\nfor mode in ('wrong_session','wrong_tuple','oversized','incomplete'):\n s=socket.socket(socket.AF_UNIX);s.settimeout(3);s.connect('/ipc/lifecycle.sock');cutoff=time.monotonic()+2\n try:\n  auth=Session(key,'wrong-domain',0,10001) if mode=='wrong_session' else session(key,0,10001)\n  authenticate(s,auth,cutoff,control=True)\n  s.settimeout(3)\n  if mode=='wrong_tuple':\n   send(s,dict(version=VERSION,op='start',body=dict(runtime_id='wrong/tuple/nonce')),cutoff)\n   assert receive(s,cutoff)['ok'] is False\n  elif mode=='oversized':\n   s.sendall(struct.pack('!I',65537));assert not s.recv(1)\n  elif mode=='incomplete':\n   s.sendall(struct.pack('!I',20)+b'{');assert not s.recv(1)\n  else:raise AssertionError('wrong_session_accepted')\n except (OSError,ValueError):\n  assert mode=='wrong_session'\n finally:s.close()\nprint('bounded_closed_frame_refusals')\n"
+      ],
+      "exit": 0,
+      "output": "bounded_closed_frame_refusals\n Container pab-w2c-62ed49238a-frames Creating \n Container pab-w2c-62ed49238a-frames Created \n",
+      "output_sha256": "454143a2dbcdef4f7f062e238be5254e8ec6557f66fbea89ebb59c735a03509a"
+    },
+    {
+      "argv": [
+        "docker",
+        "rm",
+        "pab-w2c-62ed49238a-frames"
+      ],
+      "exit": 0,
+      "output": "pab-w2c-62ed49238a-frames\n",
+      "output_sha256": "34255dbec95e94d2fae3287e522d95f5247421d67b48d4f0cf524569005a2e58"
+    },
+    {
+      "argv": [
+        "docker",
+        "compose",
+        "-p",
+        "pab-w2c-62ed49238a",
+        "-f",
+        "service/compose.lifecycle.yml",
+        "run",
+        "--name",
+        "pab-w2c-62ed49238a-c-d8fda403",
+        "--no-deps",
+        "control",
+        "collect"
+      ],
+      "exit": 0,
+      "output": "{\"receipt\": {\"binding\": \"2d5d2ef9a5e745704b93030aeaeabad0818f8786826cba079a6095bccd6650f4\", \"engine_uid\": 20001, \"original_deadline\": \"2026-10-16T13:10:59.389968+00:00\", \"reap_method\": \"pid1-waitpid-echild\", \"reaped\": true, \"reaped_children\": 1, \"runtime_id\": \"5587e19f1c336318132d09777127e42f/f1fa5da97a9b83c1196cd48bc76dae46/004b757bed5427327f2360f21af75970\", \"timely\": true}, \"sha256\": null, \"proposal_sha256\": null}\n Container pab-w2c-62ed49238a-c-d8fda403 Creating \n Container pab-w2c-62ed49238a-c-d8fda403 Created \n",
+      "output_sha256": "2ac33a92227d82c8ba49d05f8c2339b55006e5caf0f7f6ae802c0cc68de1912a"
+    },
+    {
+      "argv": [
+        "docker",
+        "rm",
+        "pab-w2c-62ed49238a-c-d8fda403"
+      ],
+      "exit": 0,
+      "output": "pab-w2c-62ed49238a-c-d8fda403\n",
+      "output_sha256": "baf8728e9cce145d1158f08cffa9ebed907fb36671cc9980570dd9d229fc8281"
+    },
+    {
+      "argv": [
+        "docker",
+        "kill",
+        "--signal",
+        "KILL",
+        "6ad72320deabbc20fb27e05dfe8a88c6cf896991b80a1835d04a3a5828f013c8"
+      ],
+      "exit": 0,
+      "output": "6ad72320deabbc20fb27e05dfe8a88c6cf896991b80a1835d04a3a5828f013c8\n",
+      "output_sha256": "b80148ec34135ffe0e96c0edcde3fc78361d386fa62cd10508d4fe364405c731"
+    },
+    {
+      "argv": [
+        "docker",
+        "wait",
+        "6ad72320deabbc20fb27e05dfe8a88c6cf896991b80a1835d04a3a5828f013c8"
+      ],
+      "exit": 0,
+      "output": "137\n",
+      "output_sha256": "e3b9c2844b5a5c2677b3a2279db2ec8487491dd9a23d6b22fac153391b3bb63c"
+    },
+    {
+      "argv": [
+        "docker",
+        "start",
+        "6ad72320deabbc20fb27e05dfe8a88c6cf896991b80a1835d04a3a5828f013c8"
+      ],
+      "exit": 0,
+      "output": "6ad72320deabbc20fb27e05dfe8a88c6cf896991b80a1835d04a3a5828f013c8\n",
+      "output_sha256": "b80148ec34135ffe0e96c0edcde3fc78361d386fa62cd10508d4fe364405c731"
+    },
+    {
+      "argv": [
+        "docker",
+        "compose",
+        "-p",
+        "pab-w2c-62ed49238a",
+        "-f",
+        "service/compose.lifecycle.yml",
+        "run",
+        "--name",
+        "pab-w2c-62ed49238a-c-edfc3824",
+        "--no-deps",
+        "control",
+        "collect"
+      ],
+      "exit": 0,
+      "output": "{\"receipt\": {\"binding\": \"2d5d2ef9a5e745704b93030aeaeabad0818f8786826cba079a6095bccd6650f4\", \"engine_uid\": 20001, \"original_deadline\": \"2026-10-16T13:10:59.389968+00:00\", \"reap_method\": \"pid1-waitpid-echild\", \"reaped\": true, \"reaped_children\": 1, \"runtime_id\": \"5587e19f1c336318132d09777127e42f/f1fa5da97a9b83c1196cd48bc76dae46/004b757bed5427327f2360f21af75970\", \"timely\": true}, \"sha256\": null, \"proposal_sha256\": null}\n Container pab-w2c-62ed49238a-c-edfc3824 Creating \n Container pab-w2c-62ed49238a-c-edfc3824 Created \n",
+      "output_sha256": "477580399f616a40f2cf851d14c4a303b789e2c5789a92fe78ba7fcffb9adc3f"
+    },
+    {
+      "argv": [
+        "docker",
+        "rm",
+        "pab-w2c-62ed49238a-c-edfc3824"
+      ],
+      "exit": 0,
+      "output": "pab-w2c-62ed49238a-c-edfc3824\n",
+      "output_sha256": "4d464e22695582df86764dcdee699142d0339458171ff6cd1ea603c72903283f"
+    },
+    {
+      "argv": [
+        "docker",
+        "compose",
+        "-p",
+        "pab-w2c-62ed49238a",
+        "-f",
+        "service/compose.lifecycle.yml",
+        "run",
+        "--name",
+        "pab-w2c-62ed49238a-c-14f5627d",
+        "--no-deps",
+        "control",
+        "hello"
+      ],
+      "exit": 0,
+      "output": "{\"boot\": \"1cdf8e4a825796f42e82f07b227c766f\", \"lane\": \"5587e19f1c336318132d09777127e42f\", \"launches\": 0, \"quarantined\": false}\n Container pab-w2c-62ed49238a-c-14f5627d Creating \n Container pab-w2c-62ed49238a-c-14f5627d Created \n",
+      "output_sha256": "36801e78d6c9afc6b804d8c75ecaddc21452654aaaa03790e64237187eeb6937"
+    },
+    {
+      "argv": [
+        "docker",
+        "rm",
+        "pab-w2c-62ed49238a-c-14f5627d"
+      ],
+      "exit": 0,
+      "output": "pab-w2c-62ed49238a-c-14f5627d\n",
+      "output_sha256": "45c6519af25200d8de11056ec986f9d72aaf54adfd5864217dab0687de386ace"
+    },
+    {
+      "argv": [
+        "docker",
+        "compose",
+        "-p",
+        "pab-w2c-62ed49238a",
+        "-f",
+        "service/compose.lifecycle.yml",
+        "run",
+        "--name",
+        "pab-w2c-62ed49238a-c-d1334a25",
+        "--no-deps",
+        "control",
+        "dispatch",
+        "--seconds",
+        "8",
+        "--interrupt",
+        "postspawn"
+      ],
+      "exit": 17,
+      "output": " Container pab-w2c-62ed49238a-c-d1334a25 Creating \n Container pab-w2c-62ed49238a-c-d1334a25 Created \n\n",
+      "output_sha256": "0087915c4a859495e33952b97938dd75cca89029361325a7a701237c1defc1f7"
+    },
+    {
+      "argv": [
+        "docker",
+        "rm",
+        "pab-w2c-62ed49238a-c-d1334a25"
+      ],
+      "exit": 0,
+      "output": "pab-w2c-62ed49238a-c-d1334a25\n",
+      "output_sha256": "8d51eb45d6c30e655e26f67de0e4056005cd4ad098e5f2c6e99f16ddb4ea43bd"
+    },
+    {
+      "argv": [
+        "docker",
+        "compose",
+        "-p",
+        "pab-w2c-62ed49238a",
+        "-f",
+        "service/compose.lifecycle.yml",
+        "run",
+        "--name",
+        "pab-w2c-62ed49238a-c-228716a3",
+        "--no-deps",
+        "control",
+        "observe"
+      ],
+      "exit": 0,
+      "output": "{\"runtime_id\": \"5587e19f1c336318132d09777127e42f/1cdf8e4a825796f42e82f07b227c766f/5f6be08e008228039e3f09bd4a2c47d4\", \"state\": \"stopped-and-reaped\"}\n Container pab-w2c-62ed49238a-c-228716a3 Creating \n Container pab-w2c-62ed49238a-c-228716a3 Created \n",
+      "output_sha256": "7ce25c927ddf06e5ea251a2e4f7edc55c64080b624517bba7f8c8f831ee8439f"
+    },
+    {
+      "argv": [
+        "docker",
+        "rm",
+        "pab-w2c-62ed49238a-c-228716a3"
+      ],
+      "exit": 0,
+      "output": "pab-w2c-62ed49238a-c-228716a3\n",
+      "output_sha256": "4d9e2465c0458e75c9afa4016364b6faa4d4d23aa1285a2b86c888ba2dc6f79b"
+    },
+    {
+      "argv": [
+        "docker",
+        "compose",
+        "-p",
+        "pab-w2c-62ed49238a",
+        "-f",
+        "service/compose.lifecycle.yml",
+        "run",
+        "--name",
+        "pab-w2c-62ed49238a-c-e2237b27",
+        "--no-deps",
+        "control",
+        "observe"
+      ],
+      "exit": 0,
+      "output": "{\"runtime_id\": \"5587e19f1c336318132d09777127e42f/1cdf8e4a825796f42e82f07b227c766f/5f6be08e008228039e3f09bd4a2c47d4\", \"state\": \"stopped-and-reaped\"}\n Container pab-w2c-62ed49238a-c-e2237b27 Creating \n Container pab-w2c-62ed49238a-c-e2237b27 Created \n",
+      "output_sha256": "fae103d8aa290020e340936d0ca487dfc05278d839ef819364c3db50a46cf1a1"
+    },
+    {
+      "argv": [
+        "docker",
+        "rm",
+        "pab-w2c-62ed49238a-c-e2237b27"
+      ],
+      "exit": 0,
+      "output": "pab-w2c-62ed49238a-c-e2237b27\n",
+      "output_sha256": "aa9dd10e76e567c79d77e48f83361263a4bf738b2cb19d1b06fc7334fa39d55e"
+    },
+    {
+      "argv": [
+        "docker",
+        "compose",
+        "-p",
+        "pab-w2c-62ed49238a",
+        "-f",
+        "service/compose.lifecycle.yml",
+        "run",
+        "--name",
+        "pab-w2c-62ed49238a-c-fbcf5fe7",
+        "--no-deps",
+        "control",
+        "hello"
+      ],
+      "exit": 0,
+      "output": "{\"boot\": \"1cdf8e4a825796f42e82f07b227c766f\", \"lane\": \"5587e19f1c336318132d09777127e42f\", \"launches\": 1, \"quarantined\": false}\n Container pab-w2c-62ed49238a-c-fbcf5fe7 Creating \n Container pab-w2c-62ed49238a-c-fbcf5fe7 Created \n",
+      "output_sha256": "febc19e6ec4605fe03890cfbacc7c9186262191d227fed7fde3a51c17742a83f"
+    },
+    {
+      "argv": [
+        "docker",
+        "rm",
+        "pab-w2c-62ed49238a-c-fbcf5fe7"
+      ],
+      "exit": 0,
+      "output": "pab-w2c-62ed49238a-c-fbcf5fe7\n",
+      "output_sha256": "b75e7306620903a2d42ef37109ad44374b6db98ccb5837448e8e8b486d9b4845"
+    },
+    {
+      "argv": [
+        "docker",
+        "compose",
+        "-p",
+        "pab-w2c-62ed49238a",
+        "-f",
+        "service/compose.lifecycle.yml",
+        "run",
+        "--name",
+        "pab-w2c-62ed49238a-c-6d16f9b0",
+        "--no-deps",
+        "control",
+        "collect"
+      ],
+      "exit": 0,
+      "output": "{\"receipt\": {\"binding\": \"03ef19c2456d90050dcc8ae4decd6db6d34931615334ccda53116dff4d8ca372\", \"engine_uid\": 20002, \"original_deadline\": \"2026-10-16T13:11:18.817670+00:00\", \"reap_method\": \"pid1-waitpid-echild\", \"reaped\": true, \"reaped_children\": 1, \"runtime_id\": \"5587e19f1c336318132d09777127e42f/1cdf8e4a825796f42e82f07b227c766f/5f6be08e008228039e3f09bd4a2c47d4\", \"timely\": true}, \"sha256\": \"639dad0ac2923f5fe9e9ccfb99aa9b3084048e2e53317d1903e6e899a4f6296a\", \"proposal_sha256\": \"7e2a8e1ac2e0cc888e48148da939fa4346cb0521618953d3b56f4b32ac2837e5\"}\n Container pab-w2c-62ed49238a-c-6d16f9b0 Creating \n Container pab-w2c-62ed49238a-c-6d16f9b0 Created \n",
+      "output_sha256": "28dacd7ed01fba5d7eb0be8fbca278e272a4256ecaefbaed294708771420b9bb"
+    },
+    {
+      "argv": [
+        "docker",
+        "rm",
+        "pab-w2c-62ed49238a-c-6d16f9b0"
+      ],
+      "exit": 0,
+      "output": "pab-w2c-62ed49238a-c-6d16f9b0\n",
+      "output_sha256": "9e93a6acdbeb03bb43fb21dbe3238fbc9a4f06b38650c4410dfc5aa1cee5ba4e"
+    },
+    {
+      "argv": [
+        "docker",
+        "compose",
+        "-p",
+        "pab-w2c-62ed49238a",
+        "-f",
+        "service/compose.lifecycle.yml",
+        "run",
+        "--name",
+        "pab-w2c-62ed49238a-c-6514102d",
+        "--no-deps",
+        "control",
+        "ack"
+      ],
+      "exit": 0,
+      "output": "{\"acked\": true}\n Container pab-w2c-62ed49238a-c-6514102d Creating \n Container pab-w2c-62ed49238a-c-6514102d Created \n",
+      "output_sha256": "c47244b57807254c86826b882859a502fcb59cbb412c89f549d4a3f97d57c12e"
+    },
+    {
+      "argv": [
+        "docker",
+        "rm",
+        "pab-w2c-62ed49238a-c-6514102d"
+      ],
+      "exit": 0,
+      "output": "pab-w2c-62ed49238a-c-6514102d\n",
+      "output_sha256": "6f9c016936b9f5d08db4f1751895d3c8750e5ab1ce012bde406fef6b12e3f773"
+    },
+    {
+      "argv": [
+        "docker",
+        "compose",
+        "-p",
+        "pab-w2c-62ed49238a",
+        "-f",
+        "service/compose.lifecycle.yml",
+        "run",
+        "--name",
+        "pab-w2c-62ed49238a-c-73750a3f",
+        "--no-deps",
+        "control",
+        "hello"
+      ],
+      "exit": 0,
+      "output": "{\"boot\": \"1cdf8e4a825796f42e82f07b227c766f\", \"lane\": \"5587e19f1c336318132d09777127e42f\", \"launches\": 1, \"quarantined\": false}\n Container pab-w2c-62ed49238a-c-73750a3f Creating \n Container pab-w2c-62ed49238a-c-73750a3f Created \n",
+      "output_sha256": "ec0a9d5e032e9e50d45fb3ebb7a7c468ac70eec77ce8724f5a798552d5887597"
+    },
+    {
+      "argv": [
+        "docker",
+        "rm",
+        "pab-w2c-62ed49238a-c-73750a3f"
+      ],
+      "exit": 0,
+      "output": "pab-w2c-62ed49238a-c-73750a3f\n",
+      "output_sha256": "00a181436c2e061e1e3a36af9061c332ee56db8c1200b1b62f9c144b9f5af110"
+    },
+    {
+      "argv": [
+        "docker",
+        "compose",
+        "-p",
+        "pab-w2c-62ed49238a",
+        "-f",
+        "service/compose.lifecycle.yml",
+        "run",
+        "--name",
+        "pab-w2c-62ed49238a-c-96666e0a",
+        "--no-deps",
+        "control",
+        "dispatch",
+        "--seconds",
+        "8",
+        "--interrupt",
+        "start-sent"
+      ],
+      "exit": 17,
+      "output": " Container pab-w2c-62ed49238a-c-96666e0a Creating \n Container pab-w2c-62ed49238a-c-96666e0a Created \n\n",
+      "output_sha256": "ae41e834f44496ee6796a453d82dd4c856dbc6921b3c7cc7189aa171d769c3ab"
+    },
+    {
+      "argv": [
+        "docker",
+        "rm",
+        "pab-w2c-62ed49238a-c-96666e0a"
+      ],
+      "exit": 0,
+      "output": "pab-w2c-62ed49238a-c-96666e0a\n",
+      "output_sha256": "8cf6e7b858879b83ebc58315f239a1a19f1a700f783e51e1361e68312ff589e4"
+    },
+    {
+      "argv": [
+        "docker",
+        "compose",
+        "-p",
+        "pab-w2c-62ed49238a",
+        "-f",
+        "service/compose.lifecycle.yml",
+        "run",
+        "--name",
+        "pab-w2c-62ed49238a-c-9d0adb7b",
+        "--no-deps",
+        "control",
+        "observe"
+      ],
+      "exit": 0,
+      "output": "{\"runtime_id\": \"5587e19f1c336318132d09777127e42f/1cdf8e4a825796f42e82f07b227c766f/f0c94ec0e4b57867f2a2eb4867d0d298\", \"state\": \"stopped-and-reaped\"}\n Container pab-w2c-62ed49238a-c-9d0adb7b Creating \n Container pab-w2c-62ed49238a-c-9d0adb7b Created \n",
+      "output_sha256": "ab81ad47d5b1127f5950fa750b2c1fb9c7e255041cbf104fda7e672c91b55266"
+    },
+    {
+      "argv": [
+        "docker",
+        "rm",
+        "pab-w2c-62ed49238a-c-9d0adb7b"
+      ],
+      "exit": 0,
+      "output": "pab-w2c-62ed49238a-c-9d0adb7b\n",
+      "output_sha256": "1fbb21bc694d237e5e068aaac44ab6df28b477ad90fe0db6d97c9587fc7c77b8"
+    },
+    {
+      "argv": [
+        "docker",
+        "compose",
+        "-p",
+        "pab-w2c-62ed49238a",
+        "-f",
+        "service/compose.lifecycle.yml",
+        "run",
+        "--name",
+        "pab-w2c-62ed49238a-c-da8c0058",
+        "--no-deps",
+        "control",
+        "observe"
+      ],
+      "exit": 0,
+      "output": "{\"runtime_id\": \"5587e19f1c336318132d09777127e42f/1cdf8e4a825796f42e82f07b227c766f/f0c94ec0e4b57867f2a2eb4867d0d298\", \"state\": \"stopped-and-reaped\"}\n Container pab-w2c-62ed49238a-c-da8c0058 Creating \n Container pab-w2c-62ed49238a-c-da8c0058 Created \n",
+      "output_sha256": "8cfd220672353fa06ac4116575fb862ea1e2cafe13691d8785e73a144c271086"
+    },
+    {
+      "argv": [
+        "docker",
+        "rm",
+        "pab-w2c-62ed49238a-c-da8c0058"
+      ],
+      "exit": 0,
+      "output": "pab-w2c-62ed49238a-c-da8c0058\n",
+      "output_sha256": "a2f555be899d97c2c8ac3a2b2fb7b63a8161d444cc0dd64c516df8166125afc6"
+    },
+    {
+      "argv": [
+        "docker",
+        "compose",
+        "-p",
+        "pab-w2c-62ed49238a",
+        "-f",
+        "service/compose.lifecycle.yml",
+        "run",
+        "--name",
+        "pab-w2c-62ed49238a-c-228ee8bb",
+        "--no-deps",
+        "control",
+        "hello"
+      ],
+      "exit": 0,
+      "output": "{\"boot\": \"1cdf8e4a825796f42e82f07b227c766f\", \"lane\": \"5587e19f1c336318132d09777127e42f\", \"launches\": 2, \"quarantined\": false}\n Container pab-w2c-62ed49238a-c-228ee8bb Creating \n Container pab-w2c-62ed49238a-c-228ee8bb Created \n",
+      "output_sha256": "c6a5c2550473c3213382e640135cc6d8c82a434103a355abd341f6081eaf79fe"
+    },
+    {
+      "argv": [
+        "docker",
+        "rm",
+        "pab-w2c-62ed49238a-c-228ee8bb"
+      ],
+      "exit": 0,
+      "output": "pab-w2c-62ed49238a-c-228ee8bb\n",
+      "output_sha256": "a4f29d513e10a53830d5ae1705c7a324f961e3b995bb0a529d910eea7e5ff6f6"
+    },
+    {
+      "argv": [
+        "docker",
+        "compose",
+        "-p",
+        "pab-w2c-62ed49238a",
+        "-f",
+        "service/compose.lifecycle.yml",
+        "run",
+        "--name",
+        "pab-w2c-62ed49238a-c-6cda66df",
+        "--no-deps",
+        "control",
+        "collect"
+      ],
+      "exit": 0,
+      "output": "{\"receipt\": {\"binding\": \"9407fa10f0c96e225f9224c5607db8c0f5d7c816c88e495c255abe48a5f18237\", \"engine_uid\": 20003, \"original_deadline\": \"2026-10-16T13:11:25.082083+00:00\", \"reap_method\": \"pid1-waitpid-echild\", \"reaped\": true, \"reaped_children\": 1, \"runtime_id\": \"5587e19f1c336318132d09777127e42f/1cdf8e4a825796f42e82f07b227c766f/f0c94ec0e4b57867f2a2eb4867d0d298\", \"timely\": true}, \"sha256\": \"639dad0ac2923f5fe9e9ccfb99aa9b3084048e2e53317d1903e6e899a4f6296a\", \"proposal_sha256\": \"e2993864f4282845cc9729a77a64ea6efe3589b880a5208bb834075f3cc39755\"}\n Container pab-w2c-62ed49238a-c-6cda66df Creating \n Container pab-w2c-62ed49238a-c-6cda66df Created \n",
+      "output_sha256": "1810517e0dbf0ebf9b5f06be2ddc7e197c56d0243cdbd5e4a15ddb1dfd66bb5b"
+    },
+    {
+      "argv": [
+        "docker",
+        "rm",
+        "pab-w2c-62ed49238a-c-6cda66df"
+      ],
+      "exit": 0,
+      "output": "pab-w2c-62ed49238a-c-6cda66df\n",
+      "output_sha256": "7f73fe338cfc494914f9c8d658464a9a4ece66aa364c4c0cb29772a420a89948"
+    },
+    {
+      "argv": [
+        "docker",
+        "compose",
+        "-p",
+        "pab-w2c-62ed49238a",
+        "-f",
+        "service/compose.lifecycle.yml",
+        "run",
+        "--name",
+        "pab-w2c-62ed49238a-c-3053562d",
+        "--no-deps",
+        "control",
+        "ack"
+      ],
+      "exit": 0,
+      "output": "{\"acked\": true}\n Container pab-w2c-62ed49238a-c-3053562d Creating \n Container pab-w2c-62ed49238a-c-3053562d Created \n",
+      "output_sha256": "98dbf472bc9e66009b1a3900ea7fbb72d54bc74a752edaa5e25204d6cbb136ea"
+    },
+    {
+      "argv": [
+        "docker",
+        "rm",
+        "pab-w2c-62ed49238a-c-3053562d"
+      ],
+      "exit": 0,
+      "output": "pab-w2c-62ed49238a-c-3053562d\n",
+      "output_sha256": "7995fab9fe40029e814ad8bf593173cc03ec3c80fa1772cbce99b10b74872932"
+    },
+    {
+      "argv": [
+        "docker",
+        "compose",
+        "-p",
+        "pab-w2c-62ed49238a",
+        "-f",
+        "service/compose.lifecycle.yml",
+        "run",
+        "--name",
+        "pab-w2c-62ed49238a-c-faa0eb9c",
+        "--no-deps",
+        "control",
+        "dispatch",
+        "--fixture",
+        "busy",
+        "--seconds",
+        "6"
+      ],
+      "exit": 0,
+      "output": "{\"runtime_id\": \"5587e19f1c336318132d09777127e42f/1cdf8e4a825796f42e82f07b227c766f/5afbfcab73a265bb0b226d0432278af7\", \"state\": \"alive\"}\n Container pab-w2c-62ed49238a-c-faa0eb9c Creating \n Container pab-w2c-62ed49238a-c-faa0eb9c Created \n",
+      "output_sha256": "adf29b80244ec516d8ed2748613af23f6cac9e2f359951f29c09ee190970228a"
+    },
+    {
+      "argv": [
+        "docker",
+        "rm",
+        "pab-w2c-62ed49238a-c-faa0eb9c"
+      ],
+      "exit": 0,
+      "output": "pab-w2c-62ed49238a-c-faa0eb9c\n",
+      "output_sha256": "476193022874bd5f4536e82d3c1ad00a32d09f4d4ec9c68ee61492d5ff99ca67"
+    },
+    {
+      "argv": [
+        "docker",
+        "exec",
+        "6ad72320deabbc20fb27e05dfe8a88c6cf896991b80a1835d04a3a5828f013c8",
+        "python",
+        "-c",
+        "import os,json,time\nfrom pathlib import Path\nend=time.monotonic()+2\nwhile True:\n rows=[]\n for path in Path('/proc').iterdir():\n  if not path.name.isdigit():continue\n  try:\n   status=(path/'status').read_text();uid=int(next(l for l in status.splitlines() if l.startswith('Uid:')).split()[1])\n   if not 20000<=uid<20064:continue\n   ignored=int(next(l for l in status.splitlines() if l.startswith('SigIgn:')).split()[1],16)\n   rest=(path/'stat').read_text().rpartition(')')[2].split()\n   rows.append(dict(pid=int(path.name),uid=uid,session=int(rest[3]),ignored_term=bool(ignored & (1<<14))))\n  except (FileNotFoundError,ProcessLookupError):pass\n if len(rows)>=1 and all(r['ignored_term'] for r in rows) and (1==1 or len({r['session'] for r in rows})>=2):break\n if time.monotonic()>end:raise AssertionError(('fault_child_tree_not_live',rows))\n time.sleep(.01)\nprint(json.dumps(rows))\n"
+      ],
+      "exit": 0,
+      "output": "[{\"pid\": 33, \"uid\": 20004, \"session\": 33, \"ignored_term\": true}]\n",
+      "output_sha256": "e28f1d1cc5d24a2f709aa4fa03c77067acf6ab5157b06b7a7864918912b6d4f6"
+    },
+    {
+      "argv": [
+        "docker",
+        "compose",
+        "-p",
+        "pab-w2c-62ed49238a",
+        "-f",
+        "service/compose.lifecycle.yml",
+        "run",
+        "--name",
+        "pab-w2c-62ed49238a-c-a4eb2cb3",
+        "--no-deps",
+        "control",
+        "start"
+      ],
+      "exit": 0,
+      "output": "{\"runtime_id\": \"5587e19f1c336318132d09777127e42f/1cdf8e4a825796f42e82f07b227c766f/5afbfcab73a265bb0b226d0432278af7\", \"state\": \"alive\"}\n Container pab-w2c-62ed49238a-c-a4eb2cb3 Creating \n Container pab-w2c-62ed49238a-c-a4eb2cb3 Created \n",
+      "output_sha256": "d8966366893b3e9e7d046f62eefb490c52637803c42a5d01236c536d40dec836"
+    },
+    {
+      "argv": [
+        "docker",
+        "rm",
+        "pab-w2c-62ed49238a-c-a4eb2cb3"
+      ],
+      "exit": 0,
+      "output": "pab-w2c-62ed49238a-c-a4eb2cb3\n",
+      "output_sha256": "b9717dcc4829b505ce6791808aa785805cb9b2e05c72c4bd14a930d804c10577"
+    },
+    {
+      "argv": [
+        "docker",
+        "compose",
+        "-p",
+        "pab-w2c-62ed49238a",
+        "-f",
+        "service/compose.lifecycle.yml",
+        "run",
+        "--name",
+        "pab-w2c-62ed49238a-c-54e6b36d",
+        "--no-deps",
+        "control",
+        "observe"
+      ],
+      "exit": 0,
+      "output": "{\"runtime_id\": \"5587e19f1c336318132d09777127e42f/1cdf8e4a825796f42e82f07b227c766f/5afbfcab73a265bb0b226d0432278af7\", \"state\": \"stopped-and-reaped\"}\n Container pab-w2c-62ed49238a-c-54e6b36d Creating \n Container pab-w2c-62ed49238a-c-54e6b36d Created \n",
+      "output_sha256": "1636eb7643d398b6a73a723209619ed596023fc5cd0b52428a13f67b3d37758e"
+    },
+    {
+      "argv": [
+        "docker",
+        "rm",
+        "pab-w2c-62ed49238a-c-54e6b36d"
+      ],
+      "exit": 0,
+      "output": "pab-w2c-62ed49238a-c-54e6b36d\n",
+      "output_sha256": "e6496cdc29e0cab0fac1af2af0c8c425c6b4cc3794edaa32d1a3d683c26e7bf9"
+    },
+    {
+      "argv": [
+        "docker",
+        "compose",
+        "-p",
+        "pab-w2c-62ed49238a",
+        "-f",
+        "service/compose.lifecycle.yml",
+        "run",
+        "--name",
+        "pab-w2c-62ed49238a-c-236d571f",
+        "--no-deps",
+        "control",
+        "collect"
+      ],
+      "exit": 0,
+      "output": "{\"receipt\": {\"binding\": \"c4e8c7a262d961ee8d76af7f52c11e9a38959d22fc85f7372f3af3f149adeaa8\", \"engine_uid\": 20004, \"original_deadline\": \"2026-10-16T13:11:28.535417+00:00\", \"reap_method\": \"pid1-waitpid-echild\", \"reaped\": true, \"reaped_children\": 1, \"runtime_id\": \"5587e19f1c336318132d09777127e42f/1cdf8e4a825796f42e82f07b227c766f/5afbfcab73a265bb0b226d0432278af7\", \"timely\": false}, \"sha256\": null, \"proposal_sha256\": null}\n Container pab-w2c-62ed49238a-c-236d571f Creating \n Container pab-w2c-62ed49238a-c-236d571f Created \n",
+      "output_sha256": "d3591b662a5145c108701a86b34311bf97dbacd017c96243e2f20d6d4fa059b6"
+    },
+    {
+      "argv": [
+        "docker",
+        "rm",
+        "pab-w2c-62ed49238a-c-236d571f"
+      ],
+      "exit": 0,
+      "output": "pab-w2c-62ed49238a-c-236d571f\n",
+      "output_sha256": "b879942e03535456436d79a38eef31de228af56be13ead35fae5af52fdcf0217"
+    },
+    {
+      "argv": [
+        "docker",
+        "compose",
+        "-p",
+        "pab-w2c-62ed49238a",
+        "-f",
+        "service/compose.lifecycle.yml",
+        "run",
+        "--name",
+        "pab-w2c-62ed49238a-c-7855da14",
+        "--no-deps",
+        "control",
+        "ack"
+      ],
+      "exit": 0,
+      "output": "{\"acked\": true}\n Container pab-w2c-62ed49238a-c-7855da14 Creating \n Container pab-w2c-62ed49238a-c-7855da14 Created \n",
+      "output_sha256": "21b25db0d8e83052108f520dba0f4319e919375379b34aba8cc575cb153bdfde"
+    },
+    {
+      "argv": [
+        "docker",
+        "rm",
+        "pab-w2c-62ed49238a-c-7855da14"
+      ],
+      "exit": 0,
+      "output": "pab-w2c-62ed49238a-c-7855da14\n",
+      "output_sha256": "4c74ea24a1c063c9c4a8705093a58caf62ec2711b0e749ec5629dcfa6894ceee"
+    },
+    {
+      "argv": [
+        "docker",
+        "compose",
+        "-p",
+        "pab-w2c-62ed49238a",
+        "-f",
+        "service/compose.lifecycle.yml",
+        "run",
+        "--name",
+        "pab-w2c-62ed49238a-c-e953d6de",
+        "--no-deps",
+        "control",
+        "dispatch",
+        "--fixture",
+        "descendants",
+        "--seconds",
+        "6"
+      ],
+      "exit": 0,
+      "output": "{\"runtime_id\": \"5587e19f1c336318132d09777127e42f/1cdf8e4a825796f42e82f07b227c766f/ab94c3c4324d2333603a87bac140a0a3\", \"state\": \"alive\"}\n Container pab-w2c-62ed49238a-c-e953d6de Creating \n Container pab-w2c-62ed49238a-c-e953d6de Created \n",
+      "output_sha256": "9c61ca4f08620018be124c44881d601aeb41d9041ca3c85e0473f4d89f4e0fea"
+    },
+    {
+      "argv": [
+        "docker",
+        "rm",
+        "pab-w2c-62ed49238a-c-e953d6de"
+      ],
+      "exit": 0,
+      "output": "pab-w2c-62ed49238a-c-e953d6de\n",
+      "output_sha256": "fffe7028bed7298e15b4bbfe2a92147aba411024ff6365816e2bd53e119383b7"
+    },
+    {
+      "argv": [
+        "docker",
+        "exec",
+        "6ad72320deabbc20fb27e05dfe8a88c6cf896991b80a1835d04a3a5828f013c8",
+        "python",
+        "-c",
+        "import os,json,time\nfrom pathlib import Path\nend=time.monotonic()+2\nwhile True:\n rows=[]\n for path in Path('/proc').iterdir():\n  if not path.name.isdigit():continue\n  try:\n   status=(path/'status').read_text();uid=int(next(l for l in status.splitlines() if l.startswith('Uid:')).split()[1])\n   if not 20000<=uid<20064:continue\n   ignored=int(next(l for l in status.splitlines() if l.startswith('SigIgn:')).split()[1],16)\n   rest=(path/'stat').read_text().rpartition(')')[2].split()\n   rows.append(dict(pid=int(path.name),uid=uid,session=int(rest[3]),ignored_term=bool(ignored & (1<<14))))\n  except (FileNotFoundError,ProcessLookupError):pass\n if len(rows)>=3 and all(r['ignored_term'] for r in rows) and (3==1 or len({r['session'] for r in rows})>=2):break\n if time.monotonic()>end:raise AssertionError(('fault_child_tree_not_live',rows))\n time.sleep(.01)\nprint(json.dumps(rows))\n"
+      ],
+      "exit": 0,
+      "output": "[{\"pid\": 49, \"uid\": 20005, \"session\": 49, \"ignored_term\": true}, {\"pid\": 57, \"uid\": 20005, \"session\": 57, \"ignored_term\": true}, {\"pid\": 58, \"uid\": 20005, \"session\": 57, \"ignored_term\": true}]\n",
+      "output_sha256": "254630420b517759f9d3dbf12bc61378f35dbf9e4f1c02e8698c77752ca425c1"
+    },
+    {
+      "argv": [
+        "docker",
+        "compose",
+        "-p",
+        "pab-w2c-62ed49238a",
+        "-f",
+        "service/compose.lifecycle.yml",
+        "run",
+        "--name",
+        "pab-w2c-62ed49238a-c-5a12e294",
+        "--no-deps",
+        "control",
+        "observe"
+      ],
+      "exit": 0,
+      "output": "{\"runtime_id\": \"5587e19f1c336318132d09777127e42f/1cdf8e4a825796f42e82f07b227c766f/ab94c3c4324d2333603a87bac140a0a3\", \"state\": \"stopped-and-reaped\"}\n Container pab-w2c-62ed49238a-c-5a12e294 Creating \n Container pab-w2c-62ed49238a-c-5a12e294 Created \n",
+      "output_sha256": "998de96ad5364503e1b64eac4c3d9b684d62bff456ce7d6be8fbaee6935bcd8c"
+    },
+    {
+      "argv": [
+        "docker",
+        "rm",
+        "pab-w2c-62ed49238a-c-5a12e294"
+      ],
+      "exit": 0,
+      "output": "pab-w2c-62ed49238a-c-5a12e294\n",
+      "output_sha256": "71f52ac81334895bba7dd555f12b8463201e7ff2ac1ef6c475c87193be7e638b"
+    },
+    {
+      "argv": [
+        "docker",
+        "compose",
+        "-p",
+        "pab-w2c-62ed49238a",
+        "-f",
+        "service/compose.lifecycle.yml",
+        "run",
+        "--name",
+        "pab-w2c-62ed49238a-c-87d37591",
+        "--no-deps",
+        "control",
+        "collect"
+      ],
+      "exit": 0,
+      "output": "{\"receipt\": {\"binding\": \"fb2e7dddb5e25e872830c94b9ddaa784d08bba404a6f7000a750ce162dff608d\", \"engine_uid\": 20005, \"original_deadline\": \"2026-10-16T13:11:39.961980+00:00\", \"reap_method\": \"pid1-waitpid-echild\", \"reaped\": true, \"reaped_children\": 3, \"runtime_id\": \"5587e19f1c336318132d09777127e42f/1cdf8e4a825796f42e82f07b227c766f/ab94c3c4324d2333603a87bac140a0a3\", \"timely\": false}, \"sha256\": null, \"proposal_sha256\": null}\n Container pab-w2c-62ed49238a-c-87d37591 Creating \n Container pab-w2c-62ed49238a-c-87d37591 Created \n",
+      "output_sha256": "a2c8338a3137dd4abd17d4c25ac6e3e9b7bd2f683e058067347be19cbe3a6a63"
+    },
+    {
+      "argv": [
+        "docker",
+        "rm",
+        "pab-w2c-62ed49238a-c-87d37591"
+      ],
+      "exit": 0,
+      "output": "pab-w2c-62ed49238a-c-87d37591\n",
+      "output_sha256": "56867461d839889b05f3e335789cfb5556daa75815b267ffc45d9fe5b3deee51"
+    },
+    {
+      "argv": [
+        "docker",
+        "compose",
+        "-p",
+        "pab-w2c-62ed49238a",
+        "-f",
+        "service/compose.lifecycle.yml",
+        "run",
+        "--name",
+        "pab-w2c-62ed49238a-c-2fee7cae",
+        "--no-deps",
+        "control",
+        "ack"
+      ],
+      "exit": 0,
+      "output": "{\"acked\": true}\n Container pab-w2c-62ed49238a-c-2fee7cae Creating \n Container pab-w2c-62ed49238a-c-2fee7cae Created \n",
+      "output_sha256": "940f884595010742458c1cb51d8ac68561f73e202d16bd1337ea2622012f9b90"
+    },
+    {
+      "argv": [
+        "docker",
+        "rm",
+        "pab-w2c-62ed49238a-c-2fee7cae"
+      ],
+      "exit": 0,
+      "output": "pab-w2c-62ed49238a-c-2fee7cae\n",
+      "output_sha256": "9e09d4dc61438b8b707843adf4da5deedf2c9143defa2438bda2cbee388db6c5"
+    },
+    {
+      "argv": [
+        "docker",
+        "compose",
+        "-p",
+        "pab-w2c-62ed49238a",
+        "-f",
+        "service/compose.lifecycle.yml",
+        "run",
+        "--name",
+        "pab-w2c-62ed49238a-c-0fc162df",
+        "--no-deps",
+        "control",
+        "dispatch",
+        "--fixture",
+        "descendants",
+        "--seconds",
+        "10"
+      ],
+      "exit": 0,
+      "output": "{\"runtime_id\": \"5587e19f1c336318132d09777127e42f/1cdf8e4a825796f42e82f07b227c766f/c6416c5250f01b828599bdcbf9cf8363\", \"state\": \"alive\"}\n Container pab-w2c-62ed49238a-c-0fc162df Creating \n Container pab-w2c-62ed49238a-c-0fc162df Created \n",
+      "output_sha256": "dedcf7f776f94db71dd3b6d07c364e2248f9f81c537776e08d2738917c30d79d"
+    },
+    {
+      "argv": [
+        "docker",
+        "rm",
+        "pab-w2c-62ed49238a-c-0fc162df"
+      ],
+      "exit": 0,
+      "output": "pab-w2c-62ed49238a-c-0fc162df\n",
+      "output_sha256": "4ff67379da170a8578ef17a05a5bf6d14badea2191ea3f2e1c77917691ad44c0"
+    },
+    {
+      "argv": [
+        "docker",
+        "exec",
+        "6ad72320deabbc20fb27e05dfe8a88c6cf896991b80a1835d04a3a5828f013c8",
+        "python",
+        "-c",
+        "import os,json,time\nfrom pathlib import Path\nend=time.monotonic()+2\nwhile True:\n rows=[]\n for path in Path('/proc').iterdir():\n  if not path.name.isdigit():continue\n  try:\n   status=(path/'status').read_text();uid=int(next(l for l in status.splitlines() if l.startswith('Uid:')).split()[1])\n   if not 20000<=uid<20064:continue\n   ignored=int(next(l for l in status.splitlines() if l.startswith('SigIgn:')).split()[1],16)\n   rest=(path/'stat').read_text().rpartition(')')[2].split()\n   rows.append(dict(pid=int(path.name),uid=uid,session=int(rest[3]),ignored_term=bool(ignored & (1<<14))))\n  except (FileNotFoundError,ProcessLookupError):pass\n if len(rows)>=3 and all(r['ignored_term'] for r in rows) and (3==1 or len({r['session'] for r in rows})>=2):break\n if time.monotonic()>end:raise AssertionError(('fault_child_tree_not_live',rows))\n time.sleep(.01)\nprint(json.dumps(rows))\n"
+      ],
+      "exit": 0,
+      "output": "[{\"pid\": 66, \"uid\": 20006, \"session\": 66, \"ignored_term\": true}, {\"pid\": 74, \"uid\": 20006, \"session\": 74, \"ignored_term\": true}, {\"pid\": 75, \"uid\": 20006, \"session\": 74, \"ignored_term\": true}]\n",
+      "output_sha256": "65d64b6e2eff78b6e670786af07da41025230f5c43c7110943e866df7d969504"
+    },
+    {
+      "argv": [
+        "docker",
+        "compose",
+        "-p",
+        "pab-w2c-62ed49238a",
+        "-f",
+        "service/compose.lifecycle.yml",
+        "run",
+        "-d",
+        "--name",
+        "pab-w2c-62ed49238a-blocked",
+        "--no-deps",
+        "--entrypoint",
+        "python",
+        "control",
+        "-c",
+        "import socket,time; s=socket.socket(socket.AF_UNIX);s.connect('/ipc/lifecycle.sock');time.sleep(3)"
+      ],
+      "exit": 0,
+      "output": "037da253a6da94837f87a8e1dd87aa177a692c0118b129500c1a662fe1b46900\n Container pab-w2c-62ed49238a-blocked Creating \n Container pab-w2c-62ed49238a-blocked Created \n",
+      "output_sha256": "5def16c243d945894489cace85c9b430803ea4ba011da9de2e3ab763c1debe0a"
+    },
+    {
+      "argv": [
+        "docker",
+        "compose",
+        "-p",
+        "pab-w2c-62ed49238a",
+        "-f",
+        "service/compose.lifecycle.yml",
+        "run",
+        "--name",
+        "pab-w2c-62ed49238a-c-26792555",
+        "--no-deps",
+        "control",
+        "hello"
+      ],
+      "exit": 0,
+      "output": "{\"boot\": \"1cdf8e4a825796f42e82f07b227c766f\", \"lane\": \"5587e19f1c336318132d09777127e42f\", \"launches\": 5, \"quarantined\": false}\n Container pab-w2c-62ed49238a-c-26792555 Creating \n Container pab-w2c-62ed49238a-c-26792555 Created \n",
+      "output_sha256": "d866bebc5eb7b6adeac39f83103dd8994fb9fe922583e21c4e0f8fb067103b1b"
+    },
+    {
+      "argv": [
+        "docker",
+        "rm",
+        "pab-w2c-62ed49238a-c-26792555"
+      ],
+      "exit": 0,
+      "output": "pab-w2c-62ed49238a-c-26792555\n",
+      "output_sha256": "55b4fba645f00495c576a3393902aac66e73c0293250a42bebae61a35af9d2fb"
+    },
+    {
+      "argv": [
+        "docker",
+        "wait",
+        "pab-w2c-62ed49238a-blocked"
+      ],
+      "exit": 0,
+      "output": "0\n",
+      "output_sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+    },
+    {
+      "argv": [
+        "docker",
+        "rm",
+        "pab-w2c-62ed49238a-blocked"
+      ],
+      "exit": 0,
+      "output": "pab-w2c-62ed49238a-blocked\n",
+      "output_sha256": "b21bdb119e9e458be5e452358f236e3cfdcaefb7fcfee2aea8838a7eb027d477"
+    },
+    {
+      "argv": [
+        "docker",
+        "compose",
+        "-p",
+        "pab-w2c-62ed49238a",
+        "-f",
+        "service/compose.lifecycle.yml",
+        "run",
+        "--name",
+        "pab-w2c-62ed49238a-c-162b6a04",
+        "--no-deps",
+        "control",
+        "stop"
+      ],
+      "exit": 0,
+      "output": "{\"state\": \"stopped-and-reaped\"}\n Container pab-w2c-62ed49238a-c-162b6a04 Creating \n Container pab-w2c-62ed49238a-c-162b6a04 Created \n",
+      "output_sha256": "a8b90fbe4887962edc54892c2974da28dc646a0d0358ff263e8fa2e76aeaf7bf"
+    },
+    {
+      "argv": [
+        "docker",
+        "rm",
+        "pab-w2c-62ed49238a-c-162b6a04"
+      ],
+      "exit": 0,
+      "output": "pab-w2c-62ed49238a-c-162b6a04\n",
+      "output_sha256": "b447ddb82eab59937084db2242c62d40455459de06d1a4785bb21bc79882a194"
+    },
+    {
+      "argv": [
+        "docker",
+        "compose",
+        "-p",
+        "pab-w2c-62ed49238a",
+        "-f",
+        "service/compose.lifecycle.yml",
+        "run",
+        "--name",
+        "pab-w2c-62ed49238a-c-f8b94078",
+        "--no-deps",
+        "control",
+        "collect"
+      ],
+      "exit": 0,
+      "output": "{\"receipt\": {\"binding\": \"44c9c785c42894789937640f94a3ca4181a1b73a186023b03d0846adc3437b8c\", \"engine_uid\": 20006, \"original_deadline\": \"2026-10-16T13:11:54.327633+00:00\", \"reap_method\": \"pid1-waitpid-echild\", \"reaped\": true, \"reaped_children\": 3, \"runtime_id\": \"5587e19f1c336318132d09777127e42f/1cdf8e4a825796f42e82f07b227c766f/c6416c5250f01b828599bdcbf9cf8363\", \"timely\": false}, \"sha256\": null, \"proposal_sha256\": null}\n Container pab-w2c-62ed49238a-c-f8b94078 Creating \n Container pab-w2c-62ed49238a-c-f8b94078 Created \n",
+      "output_sha256": "f52eb20ce992dafb70e868137a54227664f2f05639b8032bf296315bd68a3e6c"
+    },
+    {
+      "argv": [
+        "docker",
+        "rm",
+        "pab-w2c-62ed49238a-c-f8b94078"
+      ],
+      "exit": 0,
+      "output": "pab-w2c-62ed49238a-c-f8b94078\n",
+      "output_sha256": "9ca5242b763d621fea0668cdd19786c0b20e8de156fe287673e225f515592ec1"
+    },
+    {
+      "argv": [
+        "docker",
+        "compose",
+        "-p",
+        "pab-w2c-62ed49238a",
+        "-f",
+        "service/compose.lifecycle.yml",
+        "run",
+        "--name",
+        "pab-w2c-62ed49238a-c-10ba2740",
+        "--no-deps",
+        "control",
+        "ack"
+      ],
+      "exit": 0,
+      "output": "{\"acked\": true}\n Container pab-w2c-62ed49238a-c-10ba2740 Creating \n Container pab-w2c-62ed49238a-c-10ba2740 Created \n",
+      "output_sha256": "f503a3e9e3f6dd5b695241540573bf4132b5fe053497e9171c4f04e939e66d61"
+    },
+    {
+      "argv": [
+        "docker",
+        "rm",
+        "pab-w2c-62ed49238a-c-10ba2740"
+      ],
+      "exit": 0,
+      "output": "pab-w2c-62ed49238a-c-10ba2740\n",
+      "output_sha256": "efc35f4953b0513554fc146272371e1623b58b6f65e1ef5dbc695bc0ceba6ca5"
+    },
+    {
+      "argv": [
+        "docker",
+        "compose",
+        "-p",
+        "pab-w2c-62ed49238a",
+        "-f",
+        "service/compose.lifecycle.yml",
+        "run",
+        "--name",
+        "pab-w2c-62ed49238a-c-ebf2ec8d",
+        "--no-deps",
+        "control",
+        "dispatch",
+        "--fixture",
+        "busy",
+        "--seconds",
+        "10"
+      ],
+      "exit": 0,
+      "output": "{\"runtime_id\": \"5587e19f1c336318132d09777127e42f/1cdf8e4a825796f42e82f07b227c766f/a0d24ba7c05991f84e315f99430a6e1a\", \"state\": \"alive\"}\n Container pab-w2c-62ed49238a-c-ebf2ec8d Creating \n Container pab-w2c-62ed49238a-c-ebf2ec8d Created \n",
+      "output_sha256": "0f191845fb08b2dd486922721c73eeee872cee01f3ed2bc690fcf7ad77aca814"
+    },
+    {
+      "argv": [
+        "docker",
+        "rm",
+        "pab-w2c-62ed49238a-c-ebf2ec8d"
+      ],
+      "exit": 0,
+      "output": "pab-w2c-62ed49238a-c-ebf2ec8d\n",
+      "output_sha256": "08b3770b90831d36fbe384286b10b540279a2e425b988f68fb9d41ceaaec2d3a"
+    },
+    {
+      "argv": [
+        "docker",
+        "compose",
+        "-p",
+        "pab-w2c-62ed49238a",
+        "-f",
+        "service/compose.lifecycle.yml",
+        "run",
+        "--name",
+        "pab-w2c-62ed49238a-c-a6dd669c",
+        "--no-deps",
+        "control",
+        "stop",
+        "--interrupt",
+        "stop-sent"
+      ],
+      "exit": 17,
+      "output": " Container pab-w2c-62ed49238a-c-a6dd669c Creating \n Container pab-w2c-62ed49238a-c-a6dd669c Created \n\n",
+      "output_sha256": "5c7f3fe8f8634c8c87e20978ef6996f167a3cfebb2cd0207576334fdda1e3481"
+    },
+    {
+      "argv": [
+        "docker",
+        "rm",
+        "pab-w2c-62ed49238a-c-a6dd669c"
+      ],
+      "exit": 0,
+      "output": "pab-w2c-62ed49238a-c-a6dd669c\n",
+      "output_sha256": "8011cc73e1e394d0c7b7589c6c0cfdcf37aca0158e7473ebf22a9fff7c4af416"
+    },
+    {
+      "argv": [
+        "docker",
+        "compose",
+        "-p",
+        "pab-w2c-62ed49238a",
+        "-f",
+        "service/compose.lifecycle.yml",
+        "run",
+        "--name",
+        "pab-w2c-62ed49238a-c-dfa885d3",
+        "--no-deps",
+        "control",
+        "observe"
+      ],
+      "exit": 0,
+      "output": "{\"runtime_id\": \"5587e19f1c336318132d09777127e42f/1cdf8e4a825796f42e82f07b227c766f/a0d24ba7c05991f84e315f99430a6e1a\", \"state\": \"stopped-and-reaped\"}\n Container pab-w2c-62ed49238a-c-dfa885d3 Creating \n Container pab-w2c-62ed49238a-c-dfa885d3 Created \n",
+      "output_sha256": "e550ce425689d53987c62d446a8234686f2019ad6f7817e342d70f2f18283d1c"
+    },
+    {
+      "argv": [
+        "docker",
+        "rm",
+        "pab-w2c-62ed49238a-c-dfa885d3"
+      ],
+      "exit": 0,
+      "output": "pab-w2c-62ed49238a-c-dfa885d3\n",
+      "output_sha256": "8ad7a1914f41d911835e7236ab029c330db81ee427d4f0228b4cdc0957081c1e"
+    },
+    {
+      "argv": [
+        "docker",
+        "compose",
+        "-p",
+        "pab-w2c-62ed49238a",
+        "-f",
+        "service/compose.lifecycle.yml",
+        "run",
+        "--name",
+        "pab-w2c-62ed49238a-c-0e195ce4",
+        "--no-deps",
+        "control",
+        "ack"
+      ],
+      "exit": 0,
+      "output": "{\"acked\": true}\n Container pab-w2c-62ed49238a-c-0e195ce4 Creating \n Container pab-w2c-62ed49238a-c-0e195ce4 Created \n",
+      "output_sha256": "40a673843d67c13c565624997ed7280e4c4f8ce5041d08fe645ec1b1f8214803"
+    },
+    {
+      "argv": [
+        "docker",
+        "rm",
+        "pab-w2c-62ed49238a-c-0e195ce4"
+      ],
+      "exit": 0,
+      "output": "pab-w2c-62ed49238a-c-0e195ce4\n",
+      "output_sha256": "d76bf889324a28055a7f02e45d6557b3708475895ccb2de6c48bdb0596eb77f3"
+    },
+    {
+      "argv": [
+        "docker",
+        "compose",
+        "-p",
+        "pab-w2c-62ed49238a",
+        "-f",
+        "service/compose.lifecycle.yml",
+        "run",
+        "--name",
+        "pab-w2c-62ed49238a-c-5a533869",
+        "--no-deps",
+        "control",
+        "dispatch",
+        "--fixture",
+        "busy",
+        "--seconds",
+        "12"
+      ],
+      "exit": 0,
+      "output": "{\"runtime_id\": \"5587e19f1c336318132d09777127e42f/1cdf8e4a825796f42e82f07b227c766f/6c197d08cec6f311c7e94db871f4956a\", \"state\": \"alive\"}\n Container pab-w2c-62ed49238a-c-5a533869 Creating \n Container pab-w2c-62ed49238a-c-5a533869 Created \n",
+      "output_sha256": "129236099f5a7802814b1681cda60c74f1523501d3ce43c1fcd3a8e1e2023c07"
+    },
+    {
+      "argv": [
+        "docker",
+        "rm",
+        "pab-w2c-62ed49238a-c-5a533869"
+      ],
+      "exit": 0,
+      "output": "pab-w2c-62ed49238a-c-5a533869\n",
+      "output_sha256": "73cf4e9c1f2325102df62cddc73f5ebec540a4d396eee36abfaac0d5dc5ee54c"
+    },
+    {
+      "argv": [
+        "docker",
+        "compose",
+        "-p",
+        "pab-w2c-62ed49238a",
+        "-f",
+        "service/compose.lifecycle.yml",
+        "run",
+        "--name",
+        "pab-w2c-62ed49238a-c-945c662b",
+        "--no-deps",
+        "control",
+        "observe"
+      ],
+      "exit": 0,
+      "output": "{\"runtime_id\": \"5587e19f1c336318132d09777127e42f/1cdf8e4a825796f42e82f07b227c766f/6c197d08cec6f311c7e94db871f4956a\", \"state\": \"alive\"}\n Container pab-w2c-62ed49238a-c-945c662b Creating \n Container pab-w2c-62ed49238a-c-945c662b Created \n",
+      "output_sha256": "f7847f9a07180222fba248d8313f0a9f01290c1ebd3cc1707c3994aab930d8b3"
+    },
+    {
+      "argv": [
+        "docker",
+        "rm",
+        "pab-w2c-62ed49238a-c-945c662b"
+      ],
+      "exit": 0,
+      "output": "pab-w2c-62ed49238a-c-945c662b\n",
+      "output_sha256": "c7d1a78d7a6d70861d125dc0e7ee95640117b8bae58b67df64d520857ad0509e"
+    },
+    {
+      "argv": [
+        "docker",
+        "compose",
+        "-p",
+        "pab-w2c-62ed49238a",
+        "-f",
+        "service/compose.lifecycle.yml",
+        "run",
+        "--name",
+        "pab-w2c-62ed49238a-c-6a65484e",
+        "--no-deps",
+        "control",
+        "hello"
+      ],
+      "exit": 0,
+      "output": "{\"boot\": \"1cdf8e4a825796f42e82f07b227c766f\", \"lane\": \"5587e19f1c336318132d09777127e42f\", \"launches\": 7, \"quarantined\": false}\n Container pab-w2c-62ed49238a-c-6a65484e Creating \n Container pab-w2c-62ed49238a-c-6a65484e Created \n",
+      "output_sha256": "fb880f088a27661916700e75be189ad32ecc44df07373f0627454a4eb60a4da3"
+    },
+    {
+      "argv": [
+        "docker",
+        "rm",
+        "pab-w2c-62ed49238a-c-6a65484e"
+      ],
+      "exit": 0,
+      "output": "pab-w2c-62ed49238a-c-6a65484e\n",
+      "output_sha256": "15406d5ea989bbb6ee85b91397e33d29582c90064540220d9ad57be096e420a5"
+    },
+    {
+      "argv": [
+        "docker",
+        "kill",
+        "--signal",
+        "KILL",
+        "6ad72320deabbc20fb27e05dfe8a88c6cf896991b80a1835d04a3a5828f013c8"
+      ],
+      "exit": 0,
+      "output": "6ad72320deabbc20fb27e05dfe8a88c6cf896991b80a1835d04a3a5828f013c8\n",
+      "output_sha256": "b80148ec34135ffe0e96c0edcde3fc78361d386fa62cd10508d4fe364405c731"
+    },
+    {
+      "argv": [
+        "docker",
+        "wait",
+        "6ad72320deabbc20fb27e05dfe8a88c6cf896991b80a1835d04a3a5828f013c8"
+      ],
+      "exit": 0,
+      "output": "137\n",
+      "output_sha256": "e3b9c2844b5a5c2677b3a2279db2ec8487491dd9a23d6b22fac153391b3bb63c"
+    },
+    {
+      "argv": [
+        "docker",
+        "start",
+        "6ad72320deabbc20fb27e05dfe8a88c6cf896991b80a1835d04a3a5828f013c8"
+      ],
+      "exit": 0,
+      "output": "6ad72320deabbc20fb27e05dfe8a88c6cf896991b80a1835d04a3a5828f013c8\n",
+      "output_sha256": "b80148ec34135ffe0e96c0edcde3fc78361d386fa62cd10508d4fe364405c731"
+    },
+    {
+      "argv": [
+        "docker",
+        "compose",
+        "-p",
+        "pab-w2c-62ed49238a",
+        "-f",
+        "service/compose.lifecycle.yml",
+        "run",
+        "--name",
+        "pab-w2c-62ed49238a-c-2cfb6b0f",
+        "--no-deps",
+        "control",
+        "hello"
+      ],
+      "exit": 0,
+      "output": "{\"boot\": \"b314858e2c460158865503cf22f692c0\", \"lane\": \"5587e19f1c336318132d09777127e42f\", \"launches\": 0, \"quarantined\": true}\n Container pab-w2c-62ed49238a-c-2cfb6b0f Creating \n Container pab-w2c-62ed49238a-c-2cfb6b0f Created \n",
+      "output_sha256": "b00c2a2ac5e751336e8759ef6b51e225d69f212d263fc988ff0a149034ca8e9b"
+    },
+    {
+      "argv": [
+        "docker",
+        "rm",
+        "pab-w2c-62ed49238a-c-2cfb6b0f"
+      ],
+      "exit": 0,
+      "output": "pab-w2c-62ed49238a-c-2cfb6b0f\n",
+      "output_sha256": "7dc8d4dd911bc83163d7f0fac2927aeecbdcbb369eea1a998094b3d0c6e084f8"
+    },
+    {
+      "argv": [
+        "docker",
+        "compose",
+        "-p",
+        "pab-w2c-62ed49238a",
+        "-f",
+        "service/compose.lifecycle.yml",
+        "run",
+        "--name",
+        "pab-w2c-62ed49238a-c-9f65b9ba",
+        "--no-deps",
+        "control",
+        "observe"
+      ],
+      "exit": 0,
+      "output": "{\"runtime_id\": \"5587e19f1c336318132d09777127e42f/1cdf8e4a825796f42e82f07b227c766f/6c197d08cec6f311c7e94db871f4956a\", \"state\": \"unknown\"}\n Container pab-w2c-62ed49238a-c-9f65b9ba Creating \n Container pab-w2c-62ed49238a-c-9f65b9ba Created \n",
+      "output_sha256": "50f8db46a70245e6d5784adb7591c128e71cfe4a30aa99623c7a4bb5e47cb5ad"
+    },
+    {
+      "argv": [
+        "docker",
+        "rm",
+        "pab-w2c-62ed49238a-c-9f65b9ba"
+      ],
+      "exit": 0,
+      "output": "pab-w2c-62ed49238a-c-9f65b9ba\n",
+      "output_sha256": "be9a3606731a392533b1d3d20a3a7e5035c096c60fd643985f29952e22d75698"
+    },
+    {
+      "argv": [
+        "docker",
+        "compose",
+        "-p",
+        "pab-w2c-62ed49238a",
+        "-f",
+        "service/compose.lifecycle.yml",
+        "run",
+        "--name",
+        "pab-w2c-62ed49238a-c-32705252",
+        "--no-deps",
+        "control",
+        "dispatch"
+      ],
+      "exit": 0,
+      "output": "{\"runtime_id\": \"5587e19f1c336318132d09777127e42f/1cdf8e4a825796f42e82f07b227c766f/6c197d08cec6f311c7e94db871f4956a\", \"state\": \"unknown\"}\n Container pab-w2c-62ed49238a-c-32705252 Creating \n Container pab-w2c-62ed49238a-c-32705252 Created \n",
+      "output_sha256": "b48c37e1f27b6fc41b4cdce06f2ac4ed44f979060b4e1d9397a17776dc6fdfde"
+    },
+    {
+      "argv": [
+        "docker",
+        "rm",
+        "pab-w2c-62ed49238a-c-32705252"
+      ],
+      "exit": 0,
+      "output": "pab-w2c-62ed49238a-c-32705252\n",
+      "output_sha256": "6e8e0d8954c85f1805653bb166dc361e45f133d102fa4db5ce27883eb02cb92d"
+    },
+    {
+      "argv": [
+        "docker",
+        "compose",
+        "-p",
+        "pab-w2c-62ed49238a",
+        "-f",
+        "service/compose.lifecycle.yml",
+        "run",
+        "--name",
+        "pab-w2c-62ed49238a-c-d98a2c63",
+        "--no-deps",
+        "control",
+        "hello"
+      ],
+      "exit": 0,
+      "output": "{\"boot\": \"b314858e2c460158865503cf22f692c0\", \"lane\": \"5587e19f1c336318132d09777127e42f\", \"launches\": 0, \"quarantined\": true}\n Container pab-w2c-62ed49238a-c-d98a2c63 Creating \n Container pab-w2c-62ed49238a-c-d98a2c63 Created \n",
+      "output_sha256": "2647d31bb5e001e8c046e0c9361a402024de2cc2a2739a07a461d57f15e5e8d7"
+    },
+    {
+      "argv": [
+        "docker",
+        "rm",
+        "pab-w2c-62ed49238a-c-d98a2c63"
+      ],
+      "exit": 0,
+      "output": "pab-w2c-62ed49238a-c-d98a2c63\n",
+      "output_sha256": "92201ccee2972612609746ebe0da55570019d04f26622858b1f587d41c62a2f2"
+    },
+    {
+      "argv": [
+        "docker",
+        "compose",
+        "-p",
+        "pab-w2c-62ed49238a",
+        "-f",
+        "service/compose.lifecycle.yml",
+        "run",
+        "--name",
+        "pab-w2c-62ed49238a-quarantine-admission",
+        "--no-deps",
+        "--entrypoint",
+        "python",
+        "control",
+        "-c",
+        "from service.supervisor_runtime import SupervisorRuntime;from service.lifecycle_cli import fixture_authority; r=SupervisorRuntime()\ntry:r.prepare(fixture_authority())\nexcept RuntimeError:print('fresh_admission_refused')\nelse:raise AssertionError('quarantine_bypassed')"
+      ],
+      "exit": 0,
+      "output": "fresh_admission_refused\n Container pab-w2c-62ed49238a-quarantine-admission Creating \n Container pab-w2c-62ed49238a-quarantine-admission Created \n",
+      "output_sha256": "f604b787d9beb6eee316ab00e2ee91db28f10d3b9187c521ae731d0844a516f4"
+    },
+    {
+      "argv": [
+        "docker",
+        "rm",
+        "pab-w2c-62ed49238a-quarantine-admission"
+      ],
+      "exit": 0,
+      "output": "pab-w2c-62ed49238a-quarantine-admission\n",
+      "output_sha256": "0f018781230ba62a3169b08a1d6db312218db5b933cec4c191eeb5735abc7bf7"
+    },
+    {
+      "argv": [
+        "docker",
+        "exec",
+        "6ad72320deabbc20fb27e05dfe8a88c6cf896991b80a1835d04a3a5828f013c8",
+        "python",
+        "-c",
+        "import os;os.chmod('/receipts',0o700)"
+      ],
+      "exit": 0,
+      "output": "",
+      "output_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "argv": [
+        "docker",
+        "stop",
+        "-t",
+        "3",
+        "6ad72320deabbc20fb27e05dfe8a88c6cf896991b80a1835d04a3a5828f013c8"
+      ],
+      "exit": 0,
+      "output": "6ad72320deabbc20fb27e05dfe8a88c6cf896991b80a1835d04a3a5828f013c8\n",
+      "output_sha256": "b80148ec34135ffe0e96c0edcde3fc78361d386fa62cd10508d4fe364405c731"
+    },
+    {
+      "argv": [
+        "docker",
+        "wait",
+        "6ad72320deabbc20fb27e05dfe8a88c6cf896991b80a1835d04a3a5828f013c8"
+      ],
+      "exit": 0,
+      "output": "0\n",
+      "output_sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+    },
+    {
+      "argv": [
+        "docker",
+        "compose",
+        "-p",
+        "pab-w2c-62ed49238a",
+        "-f",
+        "service/compose.lifecycle.yml",
+        "ps",
+        "-aq"
+      ],
+      "exit": 0,
+      "output": "e9248e651c8b510821ce62c27a1cf984e03cfe837852e609aa7c82578353d8f8\n6ad72320deabbc20fb27e05dfe8a88c6cf896991b80a1835d04a3a5828f013c8\n",
+      "output_sha256": "cc21da20c40635d24284d0ca60ed2831b0e04f36d4fb166ed54eba13d8af7697"
+    },
+    {
+      "argv": [
+        "docker",
+        "inspect",
+        "e9248e651c8b510821ce62c27a1cf984e03cfe837852e609aa7c82578353d8f8"
+      ],
+      "exit": 0,
+      "output": "[sanitized inventory/inspect/source-map output; digest retained; assertions and source maps recorded separately]",
+      "output_sha256": "789383e01214eb9fbc91796181462b33da05941bcec210078e72420905625a10"
+    },
+    {
+      "argv": [
+        "docker",
+        "rm",
+        "e9248e651c8b510821ce62c27a1cf984e03cfe837852e609aa7c82578353d8f8"
+      ],
+      "exit": 0,
+      "output": "e9248e651c8b510821ce62c27a1cf984e03cfe837852e609aa7c82578353d8f8\n",
+      "output_sha256": "a6e0d501e6ca06cbbccff3e472ed84be98fe3c4a295db2cf0219cceab85ebc7c"
+    },
+    {
+      "argv": [
+        "docker",
+        "inspect",
+        "6ad72320deabbc20fb27e05dfe8a88c6cf896991b80a1835d04a3a5828f013c8"
+      ],
+      "exit": 0,
+      "output": "[sanitized inventory/inspect/source-map output; digest retained; assertions and source maps recorded separately]",
+      "output_sha256": "aeeb2e8aae981ed61a1c4eb13cf4283245352e1442b3729fcae7038728bc0639"
+    },
+    {
+      "argv": [
+        "docker",
+        "rm",
+        "6ad72320deabbc20fb27e05dfe8a88c6cf896991b80a1835d04a3a5828f013c8"
+      ],
+      "exit": 0,
+      "output": "6ad72320deabbc20fb27e05dfe8a88c6cf896991b80a1835d04a3a5828f013c8\n",
+      "output_sha256": "b80148ec34135ffe0e96c0edcde3fc78361d386fa62cd10508d4fe364405c731"
+    },
+    {
+      "argv": [
+        "docker",
+        "compose",
+        "-p",
+        "pab-w2c-62ed49238a",
+        "-f",
+        "service/compose.lifecycle.yml",
+        "down",
+        "-v"
+      ],
+      "exit": 0,
+      "output": " Volume pab-w2c-62ed49238a_ipc Removing \n Volume pab-w2c-62ed49238a_staging Removing \n Volume pab-w2c-62ed49238a_control Removing \n Volume pab-w2c-62ed49238a_receipts Removing \n Volume pab-w2c-62ed49238a_ipc Removed \n Volume pab-w2c-62ed49238a_control Removed \n Volume pab-w2c-62ed49238a_staging Removed \n Volume pab-w2c-62ed49238a_receipts Removed \n",
+      "output_sha256": "5da59aaa8692d6da364213d415de2bb4fa7aa33be9ba5b9a624467ff6290c157"
+    },
+    {
+      "argv": [
+        "docker",
+        "compose",
+        "-p",
+        "pab-w2c-62ed49238a",
+        "-f",
+        "service/compose.lifecycle.yml",
+        "up",
+        "-d",
+        "worker"
+      ],
+      "exit": 0,
+      "output": " Volume pab-w2c-62ed49238a_ipc Creating \n Volume pab-w2c-62ed49238a_ipc Created \n Volume pab-w2c-62ed49238a_staging Creating \n Volume pab-w2c-62ed49238a_staging Created \n Volume pab-w2c-62ed49238a_receipts Creating \n Volume pab-w2c-62ed49238a_receipts Created \n Volume pab-w2c-62ed49238a_control Creating \n Volume pab-w2c-62ed49238a_control Created \n Container pab-w2c-62ed49238a-init-1 Creating \n Container pab-w2c-62ed49238a-init-1 Created \n Container pab-w2c-62ed49238a-worker-1 Creating \n Container pab-w2c-62ed49238a-worker-1 Created \n Container pab-w2c-62ed49238a-init-1 Starting \n Container pab-w2c-62ed49238a-init-1 Started \n Container pab-w2c-62ed49238a-init-1 Waiting \n Container pab-w2c-62ed49238a-init-1 Exited \n Container pab-w2c-62ed49238a-worker-1 Starting \n Container pab-w2c-62ed49238a-worker-1 Started \n",
+      "output_sha256": "8d5b1550a4754ed7c9d8a6abc27854af5b32b1761d6479e6506742fcf10db55a"
+    },
+    {
+      "argv": [
+        "docker",
+        "compose",
+        "-p",
+        "pab-w2c-62ed49238a",
+        "-f",
+        "service/compose.lifecycle.yml",
+        "ps",
+        "-aq",
+        "worker"
+      ],
+      "exit": 0,
+      "output": "694bf806c08d08004d302a10d02147d755709b3fbee27b01a41dd4428d2a4728\n",
+      "output_sha256": "616467ce7bdca3a3515e75fe2028280253e59ae73101cf901fdc7009de0a7a18"
+    },
+    {
+      "argv": [
+        "docker",
+        "compose",
+        "-p",
+        "pab-w2c-62ed49238a",
+        "-f",
+        "service/compose.lifecycle.yml",
+        "run",
+        "--name",
+        "pab-w2c-62ed49238a-c-dc4de236",
+        "--no-deps",
+        "control",
+        "hello"
+      ],
+      "exit": 0,
+      "output": "{\"boot\": \"7cd2e05a83964459248816d4933cc5eb\", \"lane\": \"85c965e96d9bdf43aae5a76354729bca\", \"launches\": 0, \"quarantined\": false}\n Container pab-w2c-62ed49238a-c-dc4de236 Creating \n Container pab-w2c-62ed49238a-c-dc4de236 Created \n",
+      "output_sha256": "0de47563af3455eed5212594c199be2261fd74acad80cbcde47e4faff9d2a6b2"
+    },
+    {
+      "argv": [
+        "docker",
+        "rm",
+        "pab-w2c-62ed49238a-c-dc4de236"
+      ],
+      "exit": 0,
+      "output": "pab-w2c-62ed49238a-c-dc4de236\n",
+      "output_sha256": "0dda6ba4234d8eb625e4709c8ce0ba1e87d2f23cdc4ab2bd0ccdc85fa051b45b"
+    },
+    {
+      "argv": [
+        "docker",
+        "compose",
+        "-p",
+        "pab-w2c-62ed49238a",
+        "-f",
+        "service/compose.lifecycle.yml",
+        "run",
+        "--name",
+        "pab-w2c-62ed49238a-c-62c3345b",
+        "--no-deps",
+        "control",
+        "dispatch",
+        "--seconds",
+        "20",
+        "--interrupt",
+        "prestart"
+      ],
+      "exit": 17,
+      "output": " Container pab-w2c-62ed49238a-c-62c3345b Creating \n Container pab-w2c-62ed49238a-c-62c3345b Created \n\n",
+      "output_sha256": "7490967ecd6c9c54a2ab63e5db4f10609fe6a4b3d778f3fc2a2648f95550fb1e"
+    },
+    {
+      "argv": [
+        "docker",
+        "rm",
+        "pab-w2c-62ed49238a-c-62c3345b"
+      ],
+      "exit": 0,
+      "output": "pab-w2c-62ed49238a-c-62c3345b\n",
+      "output_sha256": "27ad658715d6c9072eb1b66a67559dfc7c7dddc3334270263bea6875749f6040"
+    },
+    {
+      "argv": [
+        "docker",
+        "compose",
+        "-p",
+        "pab-w2c-62ed49238a",
+        "-f",
+        "service/compose.lifecycle.yml",
+        "run",
+        "--name",
+        "pab-w2c-62ed49238a-c-3cc42f98",
+        "--no-deps",
+        "control",
+        "hello"
+      ],
+      "exit": 0,
+      "output": "{\"boot\": \"7cd2e05a83964459248816d4933cc5eb\", \"lane\": \"85c965e96d9bdf43aae5a76354729bca\", \"launches\": 0, \"quarantined\": false}\n Container pab-w2c-62ed49238a-c-3cc42f98 Creating \n Container pab-w2c-62ed49238a-c-3cc42f98 Created \n",
+      "output_sha256": "31193b2c8cc6174f8d65a83b5820ea89f6f070a5cffb7fb13d64950f7332dc1c"
+    },
+    {
+      "argv": [
+        "docker",
+        "rm",
+        "pab-w2c-62ed49238a-c-3cc42f98"
+      ],
+      "exit": 0,
+      "output": "pab-w2c-62ed49238a-c-3cc42f98\n",
+      "output_sha256": "a69c488d2d1e0e49a9685ed377d480c46d9d792037be9e1bc51e0c11ff7a6845"
+    },
+    {
+      "argv": [
+        "docker",
+        "exec",
+        "694bf806c08d08004d302a10d02147d755709b3fbee27b01a41dd4428d2a4728",
+        "python",
+        "-c",
+        "import os;os.chmod('/receipts',0o500)"
+      ],
+      "exit": 0,
+      "output": "",
+      "output_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "argv": [
+        "docker",
+        "compose",
+        "-p",
+        "pab-w2c-62ed49238a",
+        "-f",
+        "service/compose.lifecycle.yml",
+        "run",
+        "--name",
+        "pab-w2c-62ed49238a-c-a04883f2",
+        "--no-deps",
+        "control",
+        "start"
+      ],
+      "exit": 2,
+      "output": "{\"error\": \"lifecycle_unavailable_or_quarantined\"}\n Container pab-w2c-62ed49238a-c-a04883f2 Creating \n Container pab-w2c-62ed49238a-c-a04883f2 Created \n\n",
+      "output_sha256": "395ed7be351caa0a50460657a988028f684044632adfa04d1dafa814d11c9d0b"
+    },
+    {
+      "argv": [
+        "docker",
+        "rm",
+        "pab-w2c-62ed49238a-c-a04883f2"
+      ],
+      "exit": 0,
+      "output": "pab-w2c-62ed49238a-c-a04883f2\n",
+      "output_sha256": "acdff52678e74dc72b3df592914247e0ac17ea19a7d6997154e01eb8f7c502d8"
+    },
+    {
+      "argv": [
+        "docker",
+        "compose",
+        "-p",
+        "pab-w2c-62ed49238a",
+        "-f",
+        "service/compose.lifecycle.yml",
+        "run",
+        "--name",
+        "pab-w2c-62ed49238a-c-03361a6e",
+        "--no-deps",
+        "control",
+        "hello"
+      ],
+      "exit": 0,
+      "output": "{\"boot\": \"7cd2e05a83964459248816d4933cc5eb\", \"lane\": \"85c965e96d9bdf43aae5a76354729bca\", \"launches\": 0, \"quarantined\": true}\n Container pab-w2c-62ed49238a-c-03361a6e Creating \n Container pab-w2c-62ed49238a-c-03361a6e Created \n",
+      "output_sha256": "50c7eebb646041aee99e67dfb67370fdc983805aecf9f7df34f3ca76ef1c0fad"
+    },
+    {
+      "argv": [
+        "docker",
+        "rm",
+        "pab-w2c-62ed49238a-c-03361a6e"
+      ],
+      "exit": 0,
+      "output": "pab-w2c-62ed49238a-c-03361a6e\n",
+      "output_sha256": "8d6c4b1a19a0d6595358ea8cbe85fc92587e1884da65bef41a6cc08eb082c79f"
+    },
+    {
+      "argv": [
+        "docker",
+        "compose",
+        "-p",
+        "pab-w2c-62ed49238a",
+        "-f",
+        "service/compose.lifecycle.yml",
+        "run",
+        "--name",
+        "pab-w2c-62ed49238a-c-25ef2ddb",
+        "--no-deps",
+        "control",
+        "observe"
+      ],
+      "exit": 0,
+      "output": "{\"runtime_id\": \"85c965e96d9bdf43aae5a76354729bca/7cd2e05a83964459248816d4933cc5eb/8c5c82bc6bf44e9f970cd5f599a9653d\", \"state\": \"unknown\"}\n Container pab-w2c-62ed49238a-c-25ef2ddb Creating \n Container pab-w2c-62ed49238a-c-25ef2ddb Created \n",
+      "output_sha256": "8698cc83c9c3bb40706c0507a0cdf47e5657747986f54b76db2dcf4c5d39bfbb"
+    },
+    {
+      "argv": [
+        "docker",
+        "rm",
+        "pab-w2c-62ed49238a-c-25ef2ddb"
+      ],
+      "exit": 0,
+      "output": "pab-w2c-62ed49238a-c-25ef2ddb\n",
+      "output_sha256": "a3a266a2c375a295525df33829da787fad101307a7d1cdc8fb20abc7f458808e"
+    },
+    {
+      "argv": [
+        "docker",
+        "exec",
+        "694bf806c08d08004d302a10d02147d755709b3fbee27b01a41dd4428d2a4728",
+        "python",
+        "-c",
+        "import os;os.chmod('/receipts',0o700)"
+      ],
+      "exit": 0,
+      "output": "",
+      "output_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "argv": [
+        "docker",
+        "stop",
+        "-t",
+        "3",
+        "694bf806c08d08004d302a10d02147d755709b3fbee27b01a41dd4428d2a4728"
+      ],
+      "exit": 0,
+      "output": "694bf806c08d08004d302a10d02147d755709b3fbee27b01a41dd4428d2a4728\n",
+      "output_sha256": "616467ce7bdca3a3515e75fe2028280253e59ae73101cf901fdc7009de0a7a18"
+    },
+    {
+      "argv": [
+        "docker",
+        "wait",
+        "694bf806c08d08004d302a10d02147d755709b3fbee27b01a41dd4428d2a4728"
+      ],
+      "exit": 0,
+      "output": "0\n",
+      "output_sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+    },
+    {
+      "argv": [
+        "docker",
+        "compose",
+        "-p",
+        "pab-w2c-62ed49238a",
+        "-f",
+        "service/compose.lifecycle.yml",
+        "ps",
+        "-aq"
+      ],
+      "exit": 0,
+      "output": "9f6744d4eb25303ca63d146f1b613a3e8d242935d10baa63703f0085e308a976\n694bf806c08d08004d302a10d02147d755709b3fbee27b01a41dd4428d2a4728\n",
+      "output_sha256": "2d3a2b5f55f7cfc439bf7715b6ec0add69a3a52903e924891c6e88888682d24f"
+    },
+    {
+      "argv": [
+        "docker",
+        "inspect",
+        "9f6744d4eb25303ca63d146f1b613a3e8d242935d10baa63703f0085e308a976"
+      ],
+      "exit": 0,
+      "output": "[sanitized inventory/inspect/source-map output; digest retained; assertions and source maps recorded separately]",
+      "output_sha256": "b8c98c8bd929b29a1ad85ebbd2d99f4fb4ec00f4746f9e586cdce8eb70e0ed99"
+    },
+    {
+      "argv": [
+        "docker",
+        "rm",
+        "9f6744d4eb25303ca63d146f1b613a3e8d242935d10baa63703f0085e308a976"
+      ],
+      "exit": 0,
+      "output": "9f6744d4eb25303ca63d146f1b613a3e8d242935d10baa63703f0085e308a976\n",
+      "output_sha256": "c333b1e92663d5e83cc690af073dbba92834da14107b8908dc7fbe3999253672"
+    },
+    {
+      "argv": [
+        "docker",
+        "inspect",
+        "694bf806c08d08004d302a10d02147d755709b3fbee27b01a41dd4428d2a4728"
+      ],
+      "exit": 0,
+      "output": "[sanitized inventory/inspect/source-map output; digest retained; assertions and source maps recorded separately]",
+      "output_sha256": "e32a5cea91c579047946c5b3843972b2d3fafc33a4fb58e2f93ddaa8756404fb"
+    },
+    {
+      "argv": [
+        "docker",
+        "rm",
+        "694bf806c08d08004d302a10d02147d755709b3fbee27b01a41dd4428d2a4728"
+      ],
+      "exit": 0,
+      "output": "694bf806c08d08004d302a10d02147d755709b3fbee27b01a41dd4428d2a4728\n",
+      "output_sha256": "616467ce7bdca3a3515e75fe2028280253e59ae73101cf901fdc7009de0a7a18"
+    },
+    {
+      "argv": [
+        "docker",
+        "compose",
+        "-p",
+        "pab-w2c-62ed49238a",
+        "-f",
+        "service/compose.lifecycle.yml",
+        "down",
+        "-v"
+      ],
+      "exit": 0,
+      "output": " Volume pab-w2c-62ed49238a_receipts Removing \n Volume pab-w2c-62ed49238a_receipts Removed \n Volume pab-w2c-62ed49238a_staging Removing \n Volume pab-w2c-62ed49238a_ipc Removing \n Volume pab-w2c-62ed49238a_control Removing \n Volume pab-w2c-62ed49238a_staging Removed \n Volume pab-w2c-62ed49238a_ipc Removed \n Volume pab-w2c-62ed49238a_control Removed \n",
+      "output_sha256": "046c94c34face2f00db586955c6e7274532622c08eb252a6b624edd3f91da612"
+    },
+    {
+      "argv": [
+        "docker",
+        "compose",
+        "-p",
+        "pab-w2c-62ed49238a",
+        "-f",
+        "service/compose.lifecycle.yml",
+        "up",
+        "-d",
+        "worker"
+      ],
+      "exit": 0,
+      "output": " Volume pab-w2c-62ed49238a_receipts Creating \n Volume pab-w2c-62ed49238a_receipts Created \n Volume pab-w2c-62ed49238a_control Creating \n Volume pab-w2c-62ed49238a_control Created \n Volume pab-w2c-62ed49238a_ipc Creating \n Volume pab-w2c-62ed49238a_ipc Created \n Volume pab-w2c-62ed49238a_staging Creating \n Volume pab-w2c-62ed49238a_staging Created \n Container pab-w2c-62ed49238a-init-1 Creating \n Container pab-w2c-62ed49238a-init-1 Created \n Container pab-w2c-62ed49238a-worker-1 Creating \n Container pab-w2c-62ed49238a-worker-1 Created \n Container pab-w2c-62ed49238a-init-1 Starting \n Container pab-w2c-62ed49238a-init-1 Started \n Container pab-w2c-62ed49238a-init-1 Waiting \n Container pab-w2c-62ed49238a-init-1 Exited \n Container pab-w2c-62ed49238a-worker-1 Starting \n Container pab-w2c-62ed49238a-worker-1 Started \n",
+      "output_sha256": "78ea208339143670bc4fcd0b737c3bca88ca875ec8d71d74e55d103b9d54c27b"
+    },
+    {
+      "argv": [
+        "docker",
+        "compose",
+        "-p",
+        "pab-w2c-62ed49238a",
+        "-f",
+        "service/compose.lifecycle.yml",
+        "ps",
+        "-aq",
+        "worker"
+      ],
+      "exit": 0,
+      "output": "08bcc92b69498452c7dec68eb1421db980541053e1bb3174e26af6cb588b17ae\n",
+      "output_sha256": "76b4db75373f892bb2836b1d3e431142e0f7af9cff2edf40b84f359b7127dd5e"
+    },
+    {
+      "argv": [
+        "docker",
+        "compose",
+        "-p",
+        "pab-w2c-62ed49238a",
+        "-f",
+        "service/compose.lifecycle.yml",
+        "run",
+        "--name",
+        "pab-w2c-62ed49238a-c-451b6421",
+        "--no-deps",
+        "control",
+        "hello"
+      ],
+      "exit": 0,
+      "output": "{\"boot\": \"12296cec21bedcc87bbe3384162c78ef\", \"lane\": \"f0743986b4a8718c88a167908d64e387\", \"launches\": 0, \"quarantined\": false}\n Container pab-w2c-62ed49238a-c-451b6421 Creating \n Container pab-w2c-62ed49238a-c-451b6421 Created \n",
+      "output_sha256": "f42c5ef5ade46ae08f40cb43d7cb8dfc5e4e056804839ebdfa578b60a5ae783c"
+    },
+    {
+      "argv": [
+        "docker",
+        "rm",
+        "pab-w2c-62ed49238a-c-451b6421"
+      ],
+      "exit": 0,
+      "output": "pab-w2c-62ed49238a-c-451b6421\n",
+      "output_sha256": "8f1e9bfab276e29cf4681a543811952b2beb17de30005d298a23ad3d601ff761"
+    },
+    {
+      "argv": [
+        "docker",
+        "compose",
+        "-p",
+        "pab-w2c-62ed49238a",
+        "-f",
+        "service/compose.lifecycle.yml",
+        "run",
+        "--name",
+        "pab-w2c-62ed49238a-c-c3dba3d5",
+        "--no-deps",
+        "control",
+        "dispatch",
+        "--fixture",
+        "busy",
+        "--seconds",
+        "20"
+      ],
+      "exit": 0,
+      "output": "{\"runtime_id\": \"f0743986b4a8718c88a167908d64e387/12296cec21bedcc87bbe3384162c78ef/fa078f45465c51821a62895ccfbab6a5\", \"state\": \"alive\"}\n Container pab-w2c-62ed49238a-c-c3dba3d5 Creating \n Container pab-w2c-62ed49238a-c-c3dba3d5 Created \n",
+      "output_sha256": "8a6abe3d00b8ccb588a82478e3cb4654bf911d455155778593cd41a5f345243b"
+    },
+    {
+      "argv": [
+        "docker",
+        "rm",
+        "pab-w2c-62ed49238a-c-c3dba3d5"
+      ],
+      "exit": 0,
+      "output": "pab-w2c-62ed49238a-c-c3dba3d5\n",
+      "output_sha256": "eeaa4c8ba196a9c477959898b1585761b60ac8235236c154dc2d8ac2cb54631d"
+    },
+    {
+      "argv": [
+        "docker",
+        "exec",
+        "08bcc92b69498452c7dec68eb1421db980541053e1bb3174e26af6cb588b17ae",
+        "python",
+        "-c",
+        "import os;os.chmod('/receipts',0o500)"
+      ],
+      "exit": 0,
+      "output": "",
+      "output_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "argv": [
+        "docker",
+        "compose",
+        "-p",
+        "pab-w2c-62ed49238a",
+        "-f",
+        "service/compose.lifecycle.yml",
+        "run",
+        "--name",
+        "pab-w2c-62ed49238a-c-b5be5289",
+        "--no-deps",
+        "control",
+        "stop"
+      ],
+      "exit": 0,
+      "output": "{\"state\": \"unknown\"}\n Container pab-w2c-62ed49238a-c-b5be5289 Creating \n Container pab-w2c-62ed49238a-c-b5be5289 Created \n",
+      "output_sha256": "a6cef78a21c2626542543d05b4796a09cc695c84ba71dea1f9bb179bb6cd1843"
+    },
+    {
+      "argv": [
+        "docker",
+        "rm",
+        "pab-w2c-62ed49238a-c-b5be5289"
+      ],
+      "exit": 0,
+      "output": "pab-w2c-62ed49238a-c-b5be5289\n",
+      "output_sha256": "db7e6e6548f28d991f6d24fdf2c14fb9b1da66a161576d76687f3947541d99aa"
+    },
+    {
+      "argv": [
+        "docker",
+        "compose",
+        "-p",
+        "pab-w2c-62ed49238a",
+        "-f",
+        "service/compose.lifecycle.yml",
+        "run",
+        "--name",
+        "pab-w2c-62ed49238a-c-51f0b3a9",
+        "--no-deps",
+        "control",
+        "ack"
+      ],
+      "exit": 2,
+      "output": "{\"error\": \"lifecycle_unavailable_or_quarantined\"}\n Container pab-w2c-62ed49238a-c-51f0b3a9 Creating \n Container pab-w2c-62ed49238a-c-51f0b3a9 Created \n\n",
+      "output_sha256": "3da01bd46a1d064352e9ecb4f6203898743dc995b96e91e03a42b717b7bcdfcc"
+    },
+    {
+      "argv": [
+        "docker",
+        "rm",
+        "pab-w2c-62ed49238a-c-51f0b3a9"
+      ],
+      "exit": 0,
+      "output": "pab-w2c-62ed49238a-c-51f0b3a9\n",
+      "output_sha256": "74cf898b28b7809b11736214b7c4d32e4b99c28cae88e34e9d9521649adaf153"
+    },
+    {
+      "argv": [
+        "docker",
+        "kill",
+        "--signal",
+        "KILL",
+        "08bcc92b69498452c7dec68eb1421db980541053e1bb3174e26af6cb588b17ae"
+      ],
+      "exit": 0,
+      "output": "08bcc92b69498452c7dec68eb1421db980541053e1bb3174e26af6cb588b17ae\n",
+      "output_sha256": "76b4db75373f892bb2836b1d3e431142e0f7af9cff2edf40b84f359b7127dd5e"
+    },
+    {
+      "argv": [
+        "docker",
+        "wait",
+        "08bcc92b69498452c7dec68eb1421db980541053e1bb3174e26af6cb588b17ae"
+      ],
+      "exit": 0,
+      "output": "137\n",
+      "output_sha256": "e3b9c2844b5a5c2677b3a2279db2ec8487491dd9a23d6b22fac153391b3bb63c"
+    },
+    {
+      "argv": [
+        "docker",
+        "start",
+        "08bcc92b69498452c7dec68eb1421db980541053e1bb3174e26af6cb588b17ae"
+      ],
+      "exit": 0,
+      "output": "08bcc92b69498452c7dec68eb1421db980541053e1bb3174e26af6cb588b17ae\n",
+      "output_sha256": "76b4db75373f892bb2836b1d3e431142e0f7af9cff2edf40b84f359b7127dd5e"
+    },
+    {
+      "argv": [
+        "docker",
+        "compose",
+        "-p",
+        "pab-w2c-62ed49238a",
+        "-f",
+        "service/compose.lifecycle.yml",
+        "run",
+        "--name",
+        "pab-w2c-62ed49238a-c-88b299a2",
+        "--no-deps",
+        "control",
+        "observe"
+      ],
+      "exit": 0,
+      "output": "{\"runtime_id\": \"f0743986b4a8718c88a167908d64e387/12296cec21bedcc87bbe3384162c78ef/fa078f45465c51821a62895ccfbab6a5\", \"state\": \"unknown\"}\n Container pab-w2c-62ed49238a-c-88b299a2 Creating \n Container pab-w2c-62ed49238a-c-88b299a2 Created \n",
+      "output_sha256": "f2e23b746186e1f8f4ac0c50d88be6603454979292a9cb0918c755f782cba4ee"
+    },
+    {
+      "argv": [
+        "docker",
+        "rm",
+        "pab-w2c-62ed49238a-c-88b299a2"
+      ],
+      "exit": 0,
+      "output": "pab-w2c-62ed49238a-c-88b299a2\n",
+      "output_sha256": "4ab60d88af983f470ec28588baff632983660eddb83d6f96c99d7e949bfc36ef"
+    },
+    {
+      "argv": [
+        "docker",
+        "compose",
+        "-p",
+        "pab-w2c-62ed49238a",
+        "-f",
+        "service/compose.lifecycle.yml",
+        "run",
+        "--name",
+        "pab-w2c-62ed49238a-c-943323e1",
+        "--no-deps",
+        "control",
+        "hello"
+      ],
+      "exit": 0,
+      "output": "{\"boot\": \"6df9a151a7f9aad9ecb2a10ed6e12949\", \"lane\": \"f0743986b4a8718c88a167908d64e387\", \"launches\": 0, \"quarantined\": true}\n Container pab-w2c-62ed49238a-c-943323e1 Creating \n Container pab-w2c-62ed49238a-c-943323e1 Created \n",
+      "output_sha256": "cac8d9e0572d8f126c8f31814f0d340e99d71434765d70ae08be693c3350b70e"
+    },
+    {
+      "argv": [
+        "docker",
+        "rm",
+        "pab-w2c-62ed49238a-c-943323e1"
+      ],
+      "exit": 0,
+      "output": "pab-w2c-62ed49238a-c-943323e1\n",
+      "output_sha256": "71f97de1fdaa74fa2f1963981c49c2dcc1a8f24184f23da2a44ff0f3a35fecf8"
+    },
+    {
+      "argv": [
+        "docker",
+        "exec",
+        "08bcc92b69498452c7dec68eb1421db980541053e1bb3174e26af6cb588b17ae",
+        "python",
+        "-c",
+        "import os;os.chmod('/receipts',0o700)"
+      ],
+      "exit": 0,
+      "output": "",
+      "output_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "argv": [
+        "docker",
+        "stop",
+        "-t",
+        "3",
+        "08bcc92b69498452c7dec68eb1421db980541053e1bb3174e26af6cb588b17ae"
+      ],
+      "exit": 0,
+      "output": "08bcc92b69498452c7dec68eb1421db980541053e1bb3174e26af6cb588b17ae\n",
+      "output_sha256": "76b4db75373f892bb2836b1d3e431142e0f7af9cff2edf40b84f359b7127dd5e"
+    },
+    {
+      "argv": [
+        "docker",
+        "wait",
+        "08bcc92b69498452c7dec68eb1421db980541053e1bb3174e26af6cb588b17ae"
+      ],
+      "exit": 0,
+      "output": "0\n",
+      "output_sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+    },
+    {
+      "argv": [
+        "docker",
+        "compose",
+        "-p",
+        "pab-w2c-62ed49238a",
+        "-f",
+        "service/compose.lifecycle.yml",
+        "ps",
+        "-aq"
+      ],
+      "exit": 0,
+      "output": "fd5f03518f7154952af854194a548c2afeb111ac5ef671d699e532fe02ca66b2\n08bcc92b69498452c7dec68eb1421db980541053e1bb3174e26af6cb588b17ae\n",
+      "output_sha256": "d51792b4fe202f92a23c575e27744a5ac78a76cb92964f015222e33e5dae635d"
+    },
+    {
+      "argv": [
+        "docker",
+        "inspect",
+        "fd5f03518f7154952af854194a548c2afeb111ac5ef671d699e532fe02ca66b2"
+      ],
+      "exit": 0,
+      "output": "[sanitized inventory/inspect/source-map output; digest retained; assertions and source maps recorded separately]",
+      "output_sha256": "4ff61cf53edae2fe6b578bb914ff1ca088948a6d5548c5ac89820f91077036b3"
+    },
+    {
+      "argv": [
+        "docker",
+        "rm",
+        "fd5f03518f7154952af854194a548c2afeb111ac5ef671d699e532fe02ca66b2"
+      ],
+      "exit": 0,
+      "output": "fd5f03518f7154952af854194a548c2afeb111ac5ef671d699e532fe02ca66b2\n",
+      "output_sha256": "2ee68d44f6cc75c96c93c198dc981a92639592b554369aa7f95a92f06a609b47"
+    },
+    {
+      "argv": [
+        "docker",
+        "inspect",
+        "08bcc92b69498452c7dec68eb1421db980541053e1bb3174e26af6cb588b17ae"
+      ],
+      "exit": 0,
+      "output": "[sanitized inventory/inspect/source-map output; digest retained; assertions and source maps recorded separately]",
+      "output_sha256": "c903594eb794ea51410087196d1a3b8effc5926e4af21e4e4d88d9838223484f"
+    },
+    {
+      "argv": [
+        "docker",
+        "rm",
+        "08bcc92b69498452c7dec68eb1421db980541053e1bb3174e26af6cb588b17ae"
+      ],
+      "exit": 0,
+      "output": "08bcc92b69498452c7dec68eb1421db980541053e1bb3174e26af6cb588b17ae\n",
+      "output_sha256": "76b4db75373f892bb2836b1d3e431142e0f7af9cff2edf40b84f359b7127dd5e"
+    },
+    {
+      "argv": [
+        "docker",
+        "compose",
+        "-p",
+        "pab-w2c-62ed49238a",
+        "-f",
+        "service/compose.lifecycle.yml",
+        "down",
+        "-v"
+      ],
+      "exit": 0,
+      "output": " Volume pab-w2c-62ed49238a_staging Removing \n Volume pab-w2c-62ed49238a_control Removing \n Volume pab-w2c-62ed49238a_ipc Removing \n Volume pab-w2c-62ed49238a_receipts Removing \n Volume pab-w2c-62ed49238a_staging Removed \n Volume pab-w2c-62ed49238a_control Removed \n Volume pab-w2c-62ed49238a_ipc Removed \n Volume pab-w2c-62ed49238a_receipts Removed \n",
+      "output_sha256": "5b06b076ce189b9283a8bc9142c25c987f207b0cc148cd7d5d103f7df1861e5b"
+    },
+    {
+      "argv": [
+        "docker",
+        "compose",
+        "-p",
+        "pab-w2c-62ed49238a",
+        "-f",
+        "service/compose.lifecycle.yml",
+        "up",
+        "-d",
+        "worker"
+      ],
+      "exit": 0,
+      "output": " Volume pab-w2c-62ed49238a_receipts Creating \n Volume pab-w2c-62ed49238a_receipts Created \n Volume pab-w2c-62ed49238a_control Creating \n Volume pab-w2c-62ed49238a_control Created \n Volume pab-w2c-62ed49238a_ipc Creating \n Volume pab-w2c-62ed49238a_ipc Created \n Volume pab-w2c-62ed49238a_staging Creating \n Volume pab-w2c-62ed49238a_staging Created \n Container pab-w2c-62ed49238a-init-1 Creating \n Container pab-w2c-62ed49238a-init-1 Created \n Container pab-w2c-62ed49238a-worker-1 Creating \n Container pab-w2c-62ed49238a-worker-1 Created \n Container pab-w2c-62ed49238a-init-1 Starting \n Container pab-w2c-62ed49238a-init-1 Started \n Container pab-w2c-62ed49238a-init-1 Waiting \n Container pab-w2c-62ed49238a-init-1 Exited \n Container pab-w2c-62ed49238a-worker-1 Starting \n Container pab-w2c-62ed49238a-worker-1 Started \n",
+      "output_sha256": "78ea208339143670bc4fcd0b737c3bca88ca875ec8d71d74e55d103b9d54c27b"
+    },
+    {
+      "argv": [
+        "docker",
+        "compose",
+        "-p",
+        "pab-w2c-62ed49238a",
+        "-f",
+        "service/compose.lifecycle.yml",
+        "ps",
+        "-aq",
+        "worker"
+      ],
+      "exit": 0,
+      "output": "f4a71f0c7c3e6b2012bf85f40333c146da95f75a651ebdcb28652307f96c4087\n",
+      "output_sha256": "2474e2bb387efa624aabd83e8873b6599411d127fd5b8db74e8d4b9c44acc5de"
+    },
+    {
+      "argv": [
+        "docker",
+        "compose",
+        "-p",
+        "pab-w2c-62ed49238a",
+        "-f",
+        "service/compose.lifecycle.yml",
+        "run",
+        "--name",
+        "pab-w2c-62ed49238a-c-09e4b1c6",
+        "--no-deps",
+        "control",
+        "hello"
+      ],
+      "exit": 0,
+      "output": "{\"boot\": \"c7ecbc7c634a8c529156ab503842b6e1\", \"lane\": \"23b02906ab71dd2cfec94bdba3d449e3\", \"launches\": 0, \"quarantined\": false}\n Container pab-w2c-62ed49238a-c-09e4b1c6 Creating \n Container pab-w2c-62ed49238a-c-09e4b1c6 Created \n",
+      "output_sha256": "3b8ed572eafd62dadb706aae03aa82e83953def2bf1b935597305e09de982de5"
+    },
+    {
+      "argv": [
+        "docker",
+        "rm",
+        "pab-w2c-62ed49238a-c-09e4b1c6"
+      ],
+      "exit": 0,
+      "output": "pab-w2c-62ed49238a-c-09e4b1c6\n",
+      "output_sha256": "86918b0f65e0f085c06974151e9455a72d302de93396a8f0b95f635bb819e566"
+    },
+    {
+      "argv": [
+        "docker",
+        "compose",
+        "-p",
+        "pab-w2c-62ed49238a",
+        "-f",
+        "service/compose.lifecycle.yml",
+        "run",
+        "--name",
+        "pab-w2c-62ed49238a-c-b176260c",
+        "--no-deps",
+        "control",
+        "dispatch",
+        "--fixture",
+        "busy",
+        "--seconds",
+        "20"
+      ],
+      "exit": 0,
+      "output": "{\"runtime_id\": \"23b02906ab71dd2cfec94bdba3d449e3/c7ecbc7c634a8c529156ab503842b6e1/3668a6b69d6b0596604ebbf3a7385c1a\", \"state\": \"alive\"}\n Container pab-w2c-62ed49238a-c-b176260c Creating \n Container pab-w2c-62ed49238a-c-b176260c Created \n",
+      "output_sha256": "3c510b61f0dbae430380023a59ebec748ee94576b792fb6e6652632b0bcef9a7"
+    },
+    {
+      "argv": [
+        "docker",
+        "rm",
+        "pab-w2c-62ed49238a-c-b176260c"
+      ],
+      "exit": 0,
+      "output": "pab-w2c-62ed49238a-c-b176260c\n",
+      "output_sha256": "e8c4faee3504d1a0f4998cb2eeb9f7f586d66b66d243929b093096a62d393170"
+    },
+    {
+      "argv": [
+        "docker",
+        "exec",
+        "f4a71f0c7c3e6b2012bf85f40333c146da95f75a651ebdcb28652307f96c4087",
+        "python",
+        "-c",
+        "import os;os.unlink('/receipts/journal.json')"
+      ],
+      "exit": 0,
+      "output": "",
+      "output_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "argv": [
+        "docker",
+        "kill",
+        "--signal",
+        "KILL",
+        "f4a71f0c7c3e6b2012bf85f40333c146da95f75a651ebdcb28652307f96c4087"
+      ],
+      "exit": 0,
+      "output": "f4a71f0c7c3e6b2012bf85f40333c146da95f75a651ebdcb28652307f96c4087\n",
+      "output_sha256": "2474e2bb387efa624aabd83e8873b6599411d127fd5b8db74e8d4b9c44acc5de"
+    },
+    {
+      "argv": [
+        "docker",
+        "wait",
+        "f4a71f0c7c3e6b2012bf85f40333c146da95f75a651ebdcb28652307f96c4087"
+      ],
+      "exit": 0,
+      "output": "137\n",
+      "output_sha256": "e3b9c2844b5a5c2677b3a2279db2ec8487491dd9a23d6b22fac153391b3bb63c"
+    },
+    {
+      "argv": [
+        "docker",
+        "start",
+        "f4a71f0c7c3e6b2012bf85f40333c146da95f75a651ebdcb28652307f96c4087"
+      ],
+      "exit": 0,
+      "output": "f4a71f0c7c3e6b2012bf85f40333c146da95f75a651ebdcb28652307f96c4087\n",
+      "output_sha256": "2474e2bb387efa624aabd83e8873b6599411d127fd5b8db74e8d4b9c44acc5de"
+    },
+    {
+      "argv": [
+        "docker",
+        "compose",
+        "-p",
+        "pab-w2c-62ed49238a",
+        "-f",
+        "service/compose.lifecycle.yml",
+        "run",
+        "--name",
+        "pab-w2c-62ed49238a-c-4691272e",
+        "--no-deps",
+        "control",
+        "hello"
+      ],
+      "exit": 2,
+      "output": "{\"error\": \"lifecycle_unavailable_or_quarantined\"}\n Container pab-w2c-62ed49238a-c-4691272e Creating \n Container pab-w2c-62ed49238a-c-4691272e Created \n\n",
+      "output_sha256": "cb1dba4504e0d231a5431b173c06c536ba4f8178d28398c3bf1d4d9cb19f6144"
+    },
+    {
+      "argv": [
+        "docker",
+        "rm",
+        "pab-w2c-62ed49238a-c-4691272e"
+      ],
+      "exit": 0,
+      "output": "pab-w2c-62ed49238a-c-4691272e\n",
+      "output_sha256": "2f6a2dc4e53bdbadaeb578685382c6565c4480b3b051f49871d07d3fd56f71a8"
+    },
+    {
+      "argv": [
+        "docker",
+        "compose",
+        "-p",
+        "pab-w2c-62ed49238a",
+        "-f",
+        "service/compose.lifecycle.yml",
+        "run",
+        "--name",
+        "pab-w2c-62ed49238a-c-b6d74b3b",
+        "--no-deps",
+        "control",
+        "observe"
+      ],
+      "exit": 0,
+      "output": "{\"runtime_id\": \"23b02906ab71dd2cfec94bdba3d449e3/c7ecbc7c634a8c529156ab503842b6e1/3668a6b69d6b0596604ebbf3a7385c1a\", \"state\": \"unknown\"}\n Container pab-w2c-62ed49238a-c-b6d74b3b Creating \n Container pab-w2c-62ed49238a-c-b6d74b3b Created \n",
+      "output_sha256": "85cfaffa1eb1efb53e6abcc9fa0af4eb86f3388ef40f23ce01318e469fdd06f1"
+    },
+    {
+      "argv": [
+        "docker",
+        "rm",
+        "pab-w2c-62ed49238a-c-b6d74b3b"
+      ],
+      "exit": 0,
+      "output": "pab-w2c-62ed49238a-c-b6d74b3b\n",
+      "output_sha256": "02495493dccaa3328e6a83aa244d8d5c2c8104cdb56d86f9b45ca852e7bc41c0"
+    },
+    {
+      "argv": [
+        "docker",
+        "exec",
+        "f4a71f0c7c3e6b2012bf85f40333c146da95f75a651ebdcb28652307f96c4087",
+        "python",
+        "-c",
+        "import os;os.chmod('/receipts',0o700)"
+      ],
+      "exit": 1,
+      "output": "Error response from daemon: container f4a71f0c7c3e6b2012bf85f40333c146da95f75a651ebdcb28652307f96c4087 is not running\n",
+      "output_sha256": "9343cb40e362d30b8beaa3b2bd1f838d48f057660ebec2103a8f8e28c67cb414"
+    },
+    {
+      "argv": [
+        "docker",
+        "stop",
+        "-t",
+        "3",
+        "f4a71f0c7c3e6b2012bf85f40333c146da95f75a651ebdcb28652307f96c4087"
+      ],
+      "exit": 0,
+      "output": "f4a71f0c7c3e6b2012bf85f40333c146da95f75a651ebdcb28652307f96c4087\n",
+      "output_sha256": "2474e2bb387efa624aabd83e8873b6599411d127fd5b8db74e8d4b9c44acc5de"
+    },
+    {
+      "argv": [
+        "docker",
+        "wait",
+        "f4a71f0c7c3e6b2012bf85f40333c146da95f75a651ebdcb28652307f96c4087"
+      ],
+      "exit": 0,
+      "output": "2\n",
+      "output_sha256": "53c234e5e8472b6ac51c1ae1cab3fe06fad053beb8ebfd8977b010655bfdd3c3"
+    },
+    {
+      "argv": [
+        "docker",
+        "compose",
+        "-p",
+        "pab-w2c-62ed49238a",
+        "-f",
+        "service/compose.lifecycle.yml",
+        "ps",
+        "-aq"
+      ],
+      "exit": 0,
+      "output": "4586c2ed33fd0566b7dea6ae833601670dfb774963adfe215d3b790c1bd841b7\nf4a71f0c7c3e6b2012bf85f40333c146da95f75a651ebdcb28652307f96c4087\n",
+      "output_sha256": "d6e97ca9bb53963a918c75ea450104a93cdf384ccc501baa2593f85ace042ab3"
+    },
+    {
+      "argv": [
+        "docker",
+        "inspect",
+        "4586c2ed33fd0566b7dea6ae833601670dfb774963adfe215d3b790c1bd841b7"
+      ],
+      "exit": 0,
+      "output": "[sanitized inventory/inspect/source-map output; digest retained; assertions and source maps recorded separately]",
+      "output_sha256": "c220b3cd4bc0ca828d463994bb675db8ba83b63c1994db7eb57bfb10a13ba214"
+    },
+    {
+      "argv": [
+        "docker",
+        "rm",
+        "4586c2ed33fd0566b7dea6ae833601670dfb774963adfe215d3b790c1bd841b7"
+      ],
+      "exit": 0,
+      "output": "4586c2ed33fd0566b7dea6ae833601670dfb774963adfe215d3b790c1bd841b7\n",
+      "output_sha256": "5a86ef4d1c75f175f2dd3fb8c6d2ce9f7493548e4b77ffa3b330a7bbebed1767"
+    },
+    {
+      "argv": [
+        "docker",
+        "inspect",
+        "f4a71f0c7c3e6b2012bf85f40333c146da95f75a651ebdcb28652307f96c4087"
+      ],
+      "exit": 0,
+      "output": "[sanitized inventory/inspect/source-map output; digest retained; assertions and source maps recorded separately]",
+      "output_sha256": "36cb5c28668d2d27ce5bb56e4e6880e05cac59c646289f44068b7070a310ee12"
+    },
+    {
+      "argv": [
+        "docker",
+        "rm",
+        "f4a71f0c7c3e6b2012bf85f40333c146da95f75a651ebdcb28652307f96c4087"
+      ],
+      "exit": 0,
+      "output": "f4a71f0c7c3e6b2012bf85f40333c146da95f75a651ebdcb28652307f96c4087\n",
+      "output_sha256": "2474e2bb387efa624aabd83e8873b6599411d127fd5b8db74e8d4b9c44acc5de"
+    },
+    {
+      "argv": [
+        "docker",
+        "compose",
+        "-p",
+        "pab-w2c-62ed49238a",
+        "-f",
+        "service/compose.lifecycle.yml",
+        "down",
+        "-v"
+      ],
+      "exit": 0,
+      "output": " Volume pab-w2c-62ed49238a_control Removing \n Volume pab-w2c-62ed49238a_ipc Removing \n Volume pab-w2c-62ed49238a_control Removed \n Volume pab-w2c-62ed49238a_receipts Removing \n Volume pab-w2c-62ed49238a_staging Removing \n Volume pab-w2c-62ed49238a_ipc Removed \n Volume pab-w2c-62ed49238a_receipts Removed \n Volume pab-w2c-62ed49238a_staging Removed \n",
+      "output_sha256": "0e619485eb7347e9000e3476f17792464196535d39830dc54396a86d1acb683c"
+    },
+    {
+      "argv": [
+        "docker",
+        "compose",
+        "-p",
+        "pab-w2c-62ed49238a",
+        "-f",
+        "service/compose.lifecycle.yml",
+        "up",
+        "-d",
+        "worker"
+      ],
+      "exit": 0,
+      "output": " Volume pab-w2c-62ed49238a_control Creating \n Volume pab-w2c-62ed49238a_control Created \n Volume pab-w2c-62ed49238a_ipc Creating \n Volume pab-w2c-62ed49238a_ipc Created \n Volume pab-w2c-62ed49238a_staging Creating \n Volume pab-w2c-62ed49238a_staging Created \n Volume pab-w2c-62ed49238a_receipts Creating \n Volume pab-w2c-62ed49238a_receipts Created \n Container pab-w2c-62ed49238a-init-1 Creating \n Container pab-w2c-62ed49238a-init-1 Created \n Container pab-w2c-62ed49238a-worker-1 Creating \n Container pab-w2c-62ed49238a-worker-1 Created \n Container pab-w2c-62ed49238a-init-1 Starting \n Container pab-w2c-62ed49238a-init-1 Started \n Container pab-w2c-62ed49238a-init-1 Waiting \n Container pab-w2c-62ed49238a-init-1 Exited \n Container pab-w2c-62ed49238a-worker-1 Starting \n Container pab-w2c-62ed49238a-worker-1 Started \n",
+      "output_sha256": "4e406d560f127d99ab257de7c7e1aca2abe5a2bd049bab5123677a8974eeb8cd"
+    },
+    {
+      "argv": [
+        "docker",
+        "compose",
+        "-p",
+        "pab-w2c-62ed49238a",
+        "-f",
+        "service/compose.lifecycle.yml",
+        "ps",
+        "-aq",
+        "worker"
+      ],
+      "exit": 0,
+      "output": "a728c4133aefe844c01ea80c2beba166a23fdee2216c96ffe4687a8846a66d42\n",
+      "output_sha256": "ba5988ce05148d13266a5678b211aefe312e6b7765fd03e222c0d0c13bdc0d41"
+    },
+    {
+      "argv": [
+        "docker",
+        "compose",
+        "-p",
+        "pab-w2c-62ed49238a",
+        "-f",
+        "service/compose.lifecycle.yml",
+        "run",
+        "--name",
+        "pab-w2c-62ed49238a-c-2984e9f9",
+        "--no-deps",
+        "control",
+        "hello"
+      ],
+      "exit": 0,
+      "output": "{\"boot\": \"dc47aba07f9cb9813ee8ad5e78ee1f44\", \"lane\": \"194cc3f2af47fe51c6d4aa7c9cdbcb85\", \"launches\": 0, \"quarantined\": false}\n Container pab-w2c-62ed49238a-c-2984e9f9 Creating \n Container pab-w2c-62ed49238a-c-2984e9f9 Created \n",
+      "output_sha256": "10a37fb6f18a67debdc73fe637c36fe3cbd427d5588051248d7e4a9de352ad04"
+    },
+    {
+      "argv": [
+        "docker",
+        "rm",
+        "pab-w2c-62ed49238a-c-2984e9f9"
+      ],
+      "exit": 0,
+      "output": "pab-w2c-62ed49238a-c-2984e9f9\n",
+      "output_sha256": "a78eabece28e1ebc4440216645a425123e6cb4af89be83356bb08fbc246ec80c"
+    },
+    {
+      "argv": [
+        "docker",
+        "compose",
+        "-p",
+        "pab-w2c-62ed49238a",
+        "-f",
+        "service/compose.lifecycle.yml",
+        "run",
+        "--name",
+        "pab-w2c-62ed49238a-c-8e01be57",
+        "--no-deps",
+        "control",
+        "dispatch",
+        "--fixture",
+        "busy",
+        "--seconds",
+        "20"
+      ],
+      "exit": 0,
+      "output": "{\"runtime_id\": \"194cc3f2af47fe51c6d4aa7c9cdbcb85/dc47aba07f9cb9813ee8ad5e78ee1f44/375decc48bcedeacbb1204f07415b2ce\", \"state\": \"alive\"}\n Container pab-w2c-62ed49238a-c-8e01be57 Creating \n Container pab-w2c-62ed49238a-c-8e01be57 Created \n",
+      "output_sha256": "a7ad0daaf62fd59cf79c613a7a1e53af4b4d0540501ca1ff96b3678131faf7fb"
+    },
+    {
+      "argv": [
+        "docker",
+        "rm",
+        "pab-w2c-62ed49238a-c-8e01be57"
+      ],
+      "exit": 0,
+      "output": "pab-w2c-62ed49238a-c-8e01be57\n",
+      "output_sha256": "cac5bdc767c48df42e4654eb86806ca2c02f5b11e7f4a435abd5b279399134d3"
+    },
+    {
+      "argv": [
+        "docker",
+        "exec",
+        "a728c4133aefe844c01ea80c2beba166a23fdee2216c96ffe4687a8846a66d42",
+        "python",
+        "-c",
+        "open('/receipts/journal.json','w').write('{}')"
+      ],
+      "exit": 0,
+      "output": "",
+      "output_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "argv": [
+        "docker",
+        "kill",
+        "--signal",
+        "KILL",
+        "a728c4133aefe844c01ea80c2beba166a23fdee2216c96ffe4687a8846a66d42"
+      ],
+      "exit": 0,
+      "output": "a728c4133aefe844c01ea80c2beba166a23fdee2216c96ffe4687a8846a66d42\n",
+      "output_sha256": "ba5988ce05148d13266a5678b211aefe312e6b7765fd03e222c0d0c13bdc0d41"
+    },
+    {
+      "argv": [
+        "docker",
+        "wait",
+        "a728c4133aefe844c01ea80c2beba166a23fdee2216c96ffe4687a8846a66d42"
+      ],
+      "exit": 0,
+      "output": "137\n",
+      "output_sha256": "e3b9c2844b5a5c2677b3a2279db2ec8487491dd9a23d6b22fac153391b3bb63c"
+    },
+    {
+      "argv": [
+        "docker",
+        "start",
+        "a728c4133aefe844c01ea80c2beba166a23fdee2216c96ffe4687a8846a66d42"
+      ],
+      "exit": 0,
+      "output": "a728c4133aefe844c01ea80c2beba166a23fdee2216c96ffe4687a8846a66d42\n",
+      "output_sha256": "ba5988ce05148d13266a5678b211aefe312e6b7765fd03e222c0d0c13bdc0d41"
+    },
+    {
+      "argv": [
+        "docker",
+        "compose",
+        "-p",
+        "pab-w2c-62ed49238a",
+        "-f",
+        "service/compose.lifecycle.yml",
+        "run",
+        "--name",
+        "pab-w2c-62ed49238a-c-eac16eb4",
+        "--no-deps",
+        "control",
+        "hello"
+      ],
+      "exit": 2,
+      "output": "{\"error\": \"lifecycle_unavailable_or_quarantined\"}\n Container pab-w2c-62ed49238a-c-eac16eb4 Creating \n Container pab-w2c-62ed49238a-c-eac16eb4 Created \n\n",
+      "output_sha256": "f2543e87569e2f0cd14b76db4699aeb36c83b6726d034929795436ec10c9e538"
+    },
+    {
+      "argv": [
+        "docker",
+        "rm",
+        "pab-w2c-62ed49238a-c-eac16eb4"
+      ],
+      "exit": 0,
+      "output": "pab-w2c-62ed49238a-c-eac16eb4\n",
+      "output_sha256": "ba60a1a79c2520686f63e660094cfbc18bf36a1248dfb00e094afb1c320368c3"
+    },
+    {
+      "argv": [
+        "docker",
+        "compose",
+        "-p",
+        "pab-w2c-62ed49238a",
+        "-f",
+        "service/compose.lifecycle.yml",
+        "run",
+        "--name",
+        "pab-w2c-62ed49238a-c-02f149f3",
+        "--no-deps",
+        "control",
+        "observe"
+      ],
+      "exit": 0,
+      "output": "{\"runtime_id\": \"194cc3f2af47fe51c6d4aa7c9cdbcb85/dc47aba07f9cb9813ee8ad5e78ee1f44/375decc48bcedeacbb1204f07415b2ce\", \"state\": \"unknown\"}\n Container pab-w2c-62ed49238a-c-02f149f3 Creating \n Container pab-w2c-62ed49238a-c-02f149f3 Created \n",
+      "output_sha256": "20b76e293b66ce826000ed327c46567c8b8a02122d959c44a1c5c96920bc5a65"
+    },
+    {
+      "argv": [
+        "docker",
+        "rm",
+        "pab-w2c-62ed49238a-c-02f149f3"
+      ],
+      "exit": 0,
+      "output": "pab-w2c-62ed49238a-c-02f149f3\n",
+      "output_sha256": "19c4561459e0582a0d583e90fa87805282ab00edf5ccc14b5101ced0488db0b4"
+    },
+    {
+      "argv": [
+        "docker",
+        "logs",
+        "--tail",
+        "20",
+        "a728c4133aefe844c01ea80c2beba166a23fdee2216c96ffe4687a8846a66d42"
+      ],
+      "exit": 0,
+      "output": "lifecycle supervisor unavailable; lane quarantined\n",
+      "output_sha256": "d301a9b24603ad852176f02550bcc90f9327559a6d0338068284c939ea7194f0"
+    },
+    {
+      "argv": [
+        "docker",
+        "stop",
+        "-t",
+        "3",
+        "a728c4133aefe844c01ea80c2beba166a23fdee2216c96ffe4687a8846a66d42"
+      ],
+      "exit": 0,
+      "output": "a728c4133aefe844c01ea80c2beba166a23fdee2216c96ffe4687a8846a66d42\n",
+      "output_sha256": "ba5988ce05148d13266a5678b211aefe312e6b7765fd03e222c0d0c13bdc0d41"
+    },
+    {
+      "argv": [
+        "docker",
+        "wait",
+        "a728c4133aefe844c01ea80c2beba166a23fdee2216c96ffe4687a8846a66d42"
+      ],
+      "exit": 0,
+      "output": "2\n",
+      "output_sha256": "53c234e5e8472b6ac51c1ae1cab3fe06fad053beb8ebfd8977b010655bfdd3c3"
+    },
+    {
+      "argv": [
+        "docker",
+        "compose",
+        "-p",
+        "pab-w2c-62ed49238a",
+        "-f",
+        "service/compose.lifecycle.yml",
+        "ps",
+        "-aq"
+      ],
+      "exit": 0,
+      "output": "5d74de0fcf37701e226eb6fe89a1775ffdda08d0fa70c19230323f04b59d64d7\na728c4133aefe844c01ea80c2beba166a23fdee2216c96ffe4687a8846a66d42\n",
+      "output_sha256": "88dd9591d924119ebb1f5c302341f3eb478bbfe823b28b3d842d661e6da8bf49"
+    },
+    {
+      "argv": [
+        "docker",
+        "inspect",
+        "pab-w2c-62ed49238a-c-943323e1"
+      ],
+      "exit": 1,
+      "output": "[sanitized inventory/inspect/source-map output; digest retained; assertions and source maps recorded separately]",
+      "output_sha256": "05a6c34ce3bb59f30501276c7a9034c8ab0232a7cc8b09c86c41fec4430b5c2b"
+    },
+    {
+      "argv": [
+        "docker",
+        "inspect",
+        "pab-w2c-62ed49238a-c-d98a2c63"
+      ],
+      "exit": 1,
+      "output": "[sanitized inventory/inspect/source-map output; digest retained; assertions and source maps recorded separately]",
+      "output_sha256": "cc0b2d652c6c51513a27dfd105c4dd29504ca47ffe54020cf7bbf695fd42b3ee"
+    },
+    {
+      "argv": [
+        "docker",
+        "inspect",
+        "pab-w2c-62ed49238a-blocked"
+      ],
+      "exit": 1,
+      "output": "[sanitized inventory/inspect/source-map output; digest retained; assertions and source maps recorded separately]",
+      "output_sha256": "fd7131cb229e0b6f000c7d6d3e3311645ef4e6c33472b766db310f36d7c942cc"
+    },
+    {
+      "argv": [
+        "docker",
+        "inspect",
+        "pab-w2c-62ed49238a-c-23b6bbaa"
+      ],
+      "exit": 1,
+      "output": "[sanitized inventory/inspect/source-map output; digest retained; assertions and source maps recorded separately]",
+      "output_sha256": "544a270b39ee676c7ae51c1bbfe5b6e109b8ad805266ec283fd21e566071a48a"
+    },
+    {
+      "argv": [
+        "docker",
+        "inspect",
+        "pab-w2c-62ed49238a-c-62c3345b"
+      ],
+      "exit": 1,
+      "output": "[sanitized inventory/inspect/source-map output; digest retained; assertions and source maps recorded separately]",
+      "output_sha256": "f2ebb6c4f052284c8d6371248c15ae7827b1254cf1c1d10b1827ad6b51a82f2d"
+    },
+    {
+      "argv": [
+        "docker",
+        "inspect",
+        "pab-w2c-62ed49238a-c-3a8026a3"
+      ],
+      "exit": 1,
+      "output": "[sanitized inventory/inspect/source-map output; digest retained; assertions and source maps recorded separately]",
+      "output_sha256": "2ed35903900681ecfac8a9986ed537735b426eed712980aba47eef35c7ca05fa"
+    },
+    {
+      "argv": [
+        "docker",
+        "inspect",
+        "pab-w2c-62ed49238a-namespace"
+      ],
+      "exit": 1,
+      "output": "[sanitized inventory/inspect/source-map output; digest retained; assertions and source maps recorded separately]",
+      "output_sha256": "6c66f717ad32efd81c9f11418c12c1da0cceca931c6e8f6f479ba4b2bb2014d8"
+    },
+    {
+      "argv": [
+        "docker",
+        "inspect",
+        "pab-w2c-62ed49238a-c-51f0b3a9"
+      ],
+      "exit": 1,
+      "output": "[sanitized inventory/inspect/source-map output; digest retained; assertions and source maps recorded separately]",
+      "output_sha256": "64f19d8e3578da295427cd73dbde04a33e983ca43b9b218fd99a42a463ba5d63"
+    },
+    {
+      "argv": [
+        "docker",
+        "inspect",
+        "pab-w2c-62ed49238a-c-0e195ce4"
+      ],
+      "exit": 1,
+      "output": "[sanitized inventory/inspect/source-map output; digest retained; assertions and source maps recorded separately]",
+      "output_sha256": "b439ced4f536761208fe5e6103db4ba03df5ec0b5840bccf51be7b574dd9e382"
+    },
+    {
+      "argv": [
+        "docker",
+        "inspect",
+        "pab-w2c-62ed49238a-c-b176260c"
+      ],
+      "exit": 1,
+      "output": "[sanitized inventory/inspect/source-map output; digest retained; assertions and source maps recorded separately]",
+      "output_sha256": "895d1c50bf6a1e0e8a59d489fb4ae5fc0f2ffc3bb23bd61bd7b0efae62c2e6e1"
+    },
+    {
+      "argv": [
+        "docker",
+        "inspect",
+        "pab-w2c-62ed49238a-c-fbcf5fe7"
+      ],
+      "exit": 1,
+      "output": "[sanitized inventory/inspect/source-map output; digest retained; assertions and source maps recorded separately]",
+      "output_sha256": "2502caf1add94ac63419228922f9502a1dbfb554c7c38b08b140e2ae45157a14"
+    },
+    {
+      "argv": [
+        "docker",
+        "inspect",
+        "pab-w2c-62ed49238a-c-6d16f9b0"
+      ],
+      "exit": 1,
+      "output": "[sanitized inventory/inspect/source-map output; digest retained; assertions and source maps recorded separately]",
+      "output_sha256": "d74b4aec90f9a52950d92db96ba810e0afb018f934194f20bb6847cd605e0265"
+    },
+    {
+      "argv": [
+        "docker",
+        "inspect",
+        "pab-w2c-62ed49238a-c-162b6a04"
+      ],
+      "exit": 1,
+      "output": "[sanitized inventory/inspect/source-map output; digest retained; assertions and source maps recorded separately]",
+      "output_sha256": "0e47a3b60229cb24232d92c7230368555d4932393554c1bb2c29ca9b0a1ce144"
+    },
+    {
+      "argv": [
+        "docker",
+        "inspect",
+        "pab-w2c-62ed49238a-c-2fee7cae"
+      ],
+      "exit": 1,
+      "output": "[sanitized inventory/inspect/source-map output; digest retained; assertions and source maps recorded separately]",
+      "output_sha256": "337496b1854c871e68a3909679773cec99026dfbd8b648d9f9b594c644fea2f3"
+    },
+    {
+      "argv": [
+        "docker",
+        "inspect",
+        "pab-w2c-62ed49238a-c-d8fda403"
+      ],
+      "exit": 1,
+      "output": "[sanitized inventory/inspect/source-map output; digest retained; assertions and source maps recorded separately]",
+      "output_sha256": "f09903fcaf020dc980e345c021060cadd47dcba08adbb8170536cd843969999d"
+    },
+    {
+      "argv": [
+        "docker",
+        "inspect",
+        "pab-w2c-62ed49238a-c-6cda66df"
+      ],
+      "exit": 1,
+      "output": "[sanitized inventory/inspect/source-map output; digest retained; assertions and source maps recorded separately]",
+      "output_sha256": "a3e9c0e79d05142f0c002067bd9eb29a597cf97b4ae6b4010cc4ddfb92eac5ea"
+    },
+    {
+      "argv": [
+        "docker",
+        "inspect",
+        "pab-w2c-62ed49238a-c-a04883f2"
+      ],
+      "exit": 1,
+      "output": "[sanitized inventory/inspect/source-map output; digest retained; assertions and source maps recorded separately]",
+      "output_sha256": "c496525a75b5f0d99c8ee114d343185de838f7dca11f409d7d6d0d11a78eadfe"
+    },
+    {
+      "argv": [
+        "docker",
+        "inspect",
+        "pab-w2c-62ed49238a-c-96666e0a"
+      ],
+      "exit": 1,
+      "output": "[sanitized inventory/inspect/source-map output; digest retained; assertions and source maps recorded separately]",
+      "output_sha256": "7245db014b5a8dfe60ec2a772a41dd97be71280d64587421613c758d4bb5eecc"
+    },
+    {
+      "argv": [
+        "docker",
+        "inspect",
+        "pab-w2c-62ed49238a-c-6514102d"
+      ],
+      "exit": 1,
+      "output": "[sanitized inventory/inspect/source-map output; digest retained; assertions and source maps recorded separately]",
+      "output_sha256": "33b8cb3619f078804028001a3400114e02f4a5537b59f354cbad4403144221a3"
+    },
+    {
+      "argv": [
+        "docker",
+        "inspect",
+        "pab-w2c-62ed49238a-c-e2237b27"
+      ],
+      "exit": 1,
+      "output": "[sanitized inventory/inspect/source-map output; digest retained; assertions and source maps recorded separately]",
+      "output_sha256": "ffaf4c51d8e253b78b4c273d08a79ffbe76968c5ffe7ff049bfb7f0a757eee93"
+    },
+    {
+      "argv": [
+        "docker",
+        "inspect",
+        "pab-w2c-62ed49238a-c-2cfb6b0f"
+      ],
+      "exit": 1,
+      "output": "[sanitized inventory/inspect/source-map output; digest retained; assertions and source maps recorded separately]",
+      "output_sha256": "8025e043eb07028e40848e9b52e2a01c642aab59e7f9712ef44257c34a58df82"
+    },
+    {
+      "argv": [
+        "docker",
+        "inspect",
+        "pab-w2c-62ed49238a-c-faa0eb9c"
+      ],
+      "exit": 1,
+      "output": "[sanitized inventory/inspect/source-map output; digest retained; assertions and source maps recorded separately]",
+      "output_sha256": "165f460fdfdbbbf25f8a5d70313bd329980e224bd717bc80498853cf1b4658c3"
+    },
+    {
+      "argv": [
+        "docker",
+        "inspect",
+        "pab-w2c-62ed49238a-c-6bf9e133"
+      ],
+      "exit": 1,
+      "output": "[sanitized inventory/inspect/source-map output; digest retained; assertions and source maps recorded separately]",
+      "output_sha256": "491263eb470bbc5764f7852a23ca59c00e0aad2d89a9256aa7d4c6e95ceac2f1"
+    },
+    {
+      "argv": [
+        "docker",
+        "inspect",
+        "pab-w2c-62ed49238a-c-b99d8d94"
+      ],
+      "exit": 1,
+      "output": "[sanitized inventory/inspect/source-map output; digest retained; assertions and source maps recorded separately]",
+      "output_sha256": "64c2ddb9d2862ffce0e19f72edd9fed0c294b099127386acf9d28f6e3844c98b"
+    },
+    {
+      "argv": [
+        "docker",
+        "inspect",
+        "pab-w2c-62ed49238a-c-a6dd669c"
+      ],
+      "exit": 1,
+      "output": "[sanitized inventory/inspect/source-map output; digest retained; assertions and source maps recorded separately]",
+      "output_sha256": "421465600c59994b5adb434f81e132ab9a2f93497ed39b7867f48a38dd87a700"
+    },
+    {
+      "argv": [
+        "docker",
+        "inspect",
+        "pab-w2c-62ed49238a-c-614ea34f"
+      ],
+      "exit": 1,
+      "output": "[sanitized inventory/inspect/source-map output; digest retained; assertions and source maps recorded separately]",
+      "output_sha256": "926e09a030bcb9ab988d3df302fe7fe7bec490e5996d58d10b00ffc91c568edd"
+    },
+    {
+      "argv": [
+        "docker",
+        "inspect",
+        "pab-w2c-62ed49238a-c-451b6421"
+      ],
+      "exit": 1,
+      "output": "[sanitized inventory/inspect/source-map output; digest retained; assertions and source maps recorded separately]",
+      "output_sha256": "f1e00c5ed940a0585d28298f1a9013eebdb3c6e7450e90a1691d17fe8331e6fe"
+    },
+    {
+      "argv": [
+        "docker",
+        "inspect",
+        "pab-w2c-62ed49238a-c-09f04240"
+      ],
+      "exit": 1,
+      "output": "[sanitized inventory/inspect/source-map output; digest retained; assertions and source maps recorded separately]",
+      "output_sha256": "3ae0d76fd1344254082c8097e1c1e6a534a16ebe824ce6a7a93aba33393035d4"
+    },
+    {
+      "argv": [
+        "docker",
+        "inspect",
+        "pab-w2c-62ed49238a-c-26792555"
+      ],
+      "exit": 1,
+      "output": "[sanitized inventory/inspect/source-map output; digest retained; assertions and source maps recorded separately]",
+      "output_sha256": "57fecf3d90bdd8cf85e9a37cc2c46c19af499668e4d2933e83cc91f3887a47f0"
+    },
+    {
+      "argv": [
+        "docker",
+        "inspect",
+        "pab-w2c-62ed49238a-c-e4583825"
+      ],
+      "exit": 1,
+      "output": "[sanitized inventory/inspect/source-map output; digest retained; assertions and source maps recorded separately]",
+      "output_sha256": "8e92dce0f1b3a3756781817172c3b3bdc80122b02d39066ed927e68f866d5d7e"
+    },
+    {
+      "argv": [
+        "docker",
+        "inspect",
+        "pab-w2c-62ed49238a-c-5a12e294"
+      ],
+      "exit": 1,
+      "output": "[sanitized inventory/inspect/source-map output; digest retained; assertions and source maps recorded separately]",
+      "output_sha256": "4ae13774e948ea2602ac23f844348c462197d5d33602a01fac641f13c8e32b84"
+    },
+    {
+      "argv": [
+        "docker",
+        "inspect",
+        "pab-w2c-62ed49238a-c-b6d74b3b"
+      ],
+      "exit": 1,
+      "output": "[sanitized inventory/inspect/source-map output; digest retained; assertions and source maps recorded separately]",
+      "output_sha256": "ea3a5e5166fd38882d8260d834b19a9211889707e1970dd0ca16971947f22fc8"
+    },
+    {
+      "argv": [
+        "docker",
+        "inspect",
+        "pab-w2c-62ed49238a-c-9a871235"
+      ],
+      "exit": 1,
+      "output": "[sanitized inventory/inspect/source-map output; digest retained; assertions and source maps recorded separately]",
+      "output_sha256": "b9b5cb14a1366587a950c0d2184b742fa77144872ee0fe63e2f71b2a6c7a04a3"
+    },
+    {
+      "argv": [
+        "docker",
+        "inspect",
+        "pab-w2c-62ed49238a-c-a4eb2cb3"
+      ],
+      "exit": 1,
+      "output": "[sanitized inventory/inspect/source-map output; digest retained; assertions and source maps recorded separately]",
+      "output_sha256": "14e5d1a615c6370d9a79bcac12f9c9f14d72a512ae9f8479667aaf4fe63c4b59"
+    },
+    {
+      "argv": [
+        "docker",
+        "inspect",
+        "pab-w2c-62ed49238a-c-e953d6de"
+      ],
+      "exit": 1,
+      "output": "[sanitized inventory/inspect/source-map output; digest retained; assertions and source maps recorded separately]",
+      "output_sha256": "152540fe769667a02a15e0be9154d5280408b4f97469d2a0112acc44925615ba"
+    },
+    {
+      "argv": [
+        "docker",
+        "inspect",
+        "pab-w2c-62ed49238a-source-control"
+      ],
+      "exit": 0,
+      "output": "[sanitized inventory/inspect/source-map output; digest retained; assertions and source maps recorded separately]",
+      "output_sha256": "5d1060a5ac97a6edec28026b9d085a7a4c23ca2dd356e92cbed8087ebeb8b569"
+    },
+    {
+      "argv": [
+        "docker",
+        "rm",
+        "pab-w2c-62ed49238a-source-control"
+      ],
+      "exit": 0,
+      "output": "pab-w2c-62ed49238a-source-control\n",
+      "output_sha256": "dfea356a7233cdce0044f60efe77876954bba55d91d2689557e5d2a77efbfaef"
+    },
+    {
+      "argv": [
+        "docker",
+        "inspect",
+        "pab-w2c-62ed49238a-c-45249b47"
+      ],
+      "exit": 1,
+      "output": "[sanitized inventory/inspect/source-map output; digest retained; assertions and source maps recorded separately]",
+      "output_sha256": "b61e1c828463b1ff91253f0991ed211d06e5c6ca38e8aabf4e9b84029ffbcc2f"
+    },
+    {
+      "argv": [
+        "docker",
+        "inspect",
+        "pab-w2c-62ed49238a-c-02f149f3"
+      ],
+      "exit": 1,
+      "output": "[sanitized inventory/inspect/source-map output; digest retained; assertions and source maps recorded separately]",
+      "output_sha256": "46ec0cad79536267f4d852caf512b751b5576743caf9e5ad5721e9621a34a859"
+    },
+    {
+      "argv": [
+        "docker",
+        "inspect",
+        "pab-w2c-62ed49238a-c-10ba2740"
+      ],
+      "exit": 1,
+      "output": "[sanitized inventory/inspect/source-map output; digest retained; assertions and source maps recorded separately]",
+      "output_sha256": "9b7185c3aa6cca3166b5a0106ac92542120a89519abce168970cb9cfe01af840"
+    },
+    {
+      "argv": [
+        "docker",
+        "inspect",
+        "pab-w2c-62ed49238a-c-f8b94078"
+      ],
+      "exit": 1,
+      "output": "[sanitized inventory/inspect/source-map output; digest retained; assertions and source maps recorded separately]",
+      "output_sha256": "72f6081a8a5681bf4cd2e95e34359abf45ac01abfdf3190317f0e388642d8683"
+    },
+    {
+      "argv": [
+        "docker",
+        "inspect",
+        "pab-w2c-62ed49238a-c-e526f3a3"
+      ],
+      "exit": 1,
+      "output": "[sanitized inventory/inspect/source-map output; digest retained; assertions and source maps recorded separately]",
+      "output_sha256": "287bcd14c81882f6a6b73b4b51f8920c44c30f0273c3dc9077a19d71678bcc1d"
+    },
+    {
+      "argv": [
+        "docker",
+        "inspect",
+        "pab-w2c-62ed49238a-c-cc891463"
+      ],
+      "exit": 1,
+      "output": "[sanitized inventory/inspect/source-map output; digest retained; assertions and source maps recorded separately]",
+      "output_sha256": "3eae64e36587ee435dea896a40a47a7a3fd92d6abc5f4d9f86663d2c3554174b"
+    },
+    {
+      "argv": [
+        "docker",
+        "inspect",
+        "pab-w2c-62ed49238a-old-start"
+      ],
+      "exit": 1,
+      "output": "[sanitized inventory/inspect/source-map output; digest retained; assertions and source maps recorded separately]",
+      "output_sha256": "6d9ded2f369cded060650136e1639e482719ed3342aebd301294d886b9810b55"
+    },
+    {
+      "argv": [
+        "docker",
+        "inspect",
+        "5d74de0fcf37701e226eb6fe89a1775ffdda08d0fa70c19230323f04b59d64d7"
+      ],
+      "exit": 0,
+      "output": "[sanitized inventory/inspect/source-map output; digest retained; assertions and source maps recorded separately]",
+      "output_sha256": "636f7d9802fea1c9a17999e2d4a53b29cff1dbb3a322c97d4e319e40536531b8"
+    },
+    {
+      "argv": [
+        "docker",
+        "rm",
+        "5d74de0fcf37701e226eb6fe89a1775ffdda08d0fa70c19230323f04b59d64d7"
+      ],
+      "exit": 0,
+      "output": "5d74de0fcf37701e226eb6fe89a1775ffdda08d0fa70c19230323f04b59d64d7\n",
+      "output_sha256": "606c79e2393d2debbac3abe2c204c8ca1aea509914f6f04709b635adec168d7b"
+    },
+    {
+      "argv": [
+        "docker",
+        "inspect",
+        "pab-w2c-62ed49238a-source-worker"
+      ],
+      "exit": 0,
+      "output": "[sanitized inventory/inspect/source-map output; digest retained; assertions and source maps recorded separately]",
+      "output_sha256": "561a0e16f69583260049a32210c48887384774006143badee7997a5c59e2277d"
+    },
+    {
+      "argv": [
+        "docker",
+        "rm",
+        "pab-w2c-62ed49238a-source-worker"
+      ],
+      "exit": 0,
+      "output": "pab-w2c-62ed49238a-source-worker\n",
+      "output_sha256": "2c33cbdac8eb34e88f07e49d60968ebf1a24bee6ed53a9d84a16bba6637c4d97"
+    },
+    {
+      "argv": [
+        "docker",
+        "inspect",
+        "pab-w2c-62ed49238a-c-b5be5289"
+      ],
+      "exit": 1,
+      "output": "[sanitized inventory/inspect/source-map output; digest retained; assertions and source maps recorded separately]",
+      "output_sha256": "79010a40f391351909b6e5d0444f929f3f5e436424bf1531d0570c2fbbd1a3d5"
+    },
+    {
+      "argv": [
+        "docker",
+        "inspect",
+        "pab-w2c-62ed49238a-c-73750a3f"
+      ],
+      "exit": 1,
+      "output": "[sanitized inventory/inspect/source-map output; digest retained; assertions and source maps recorded separately]",
+      "output_sha256": "522971903689331b041c5bf97d2696e41f493851fbe7606725352b81cafaa100"
+    },
+    {
+      "argv": [
+        "docker",
+        "inspect",
+        "pab-w2c-62ed49238a-c-14f5627d"
+      ],
+      "exit": 1,
+      "output": "[sanitized inventory/inspect/source-map output; digest retained; assertions and source maps recorded separately]",
+      "output_sha256": "0a631938ac68631aba3c89b1cb496d1d5f1ff106e6c0540125ad4f1f9f485f9f"
+    },
+    {
+      "argv": [
+        "docker",
+        "inspect",
+        "pab-w2c-62ed49238a-c-87d37591"
+      ],
+      "exit": 1,
+      "output": "[sanitized inventory/inspect/source-map output; digest retained; assertions and source maps recorded separately]",
+      "output_sha256": "90c56250c7cb13f4aa3d4a338443adf88f19b46b2ec0ffe9721b3e7bded2b5ad"
+    },
+    {
+      "argv": [
+        "docker",
+        "inspect",
+        "pab-w2c-62ed49238a-c-edfc3824"
+      ],
+      "exit": 1,
+      "output": "[sanitized inventory/inspect/source-map output; digest retained; assertions and source maps recorded separately]",
+      "output_sha256": "a0b103d5732592b4e6f0f626f0b92dc0228a81901a0c0558fd9065d307f683b2"
+    },
+    {
+      "argv": [
+        "docker",
+        "inspect",
+        "pab-w2c-62ed49238a-c-228716a3"
+      ],
+      "exit": 1,
+      "output": "[sanitized inventory/inspect/source-map output; digest retained; assertions and source maps recorded separately]",
+      "output_sha256": "1a980242094a489c95bd5c0f3868089f3c9f663386460cb906b8d560146c5bd6"
+    },
+    {
+      "argv": [
+        "docker",
+        "inspect",
+        "pab-w2c-62ed49238a-c-9d0adb7b"
+      ],
+      "exit": 1,
+      "output": "[sanitized inventory/inspect/source-map output; digest retained; assertions and source maps recorded separately]",
+      "output_sha256": "27673ea3d5c414af7c4fbdb96463f81be65a9b1aeda324369b5c312225786b0b"
+    },
+    {
+      "argv": [
+        "docker",
+        "inspect",
+        "pab-w2c-62ed49238a-c-dc4de236"
+      ],
+      "exit": 1,
+      "output": "[sanitized inventory/inspect/source-map output; digest retained; assertions and source maps recorded separately]",
+      "output_sha256": "b76d7dc15c6bea1d0b0e79ff4e33ddcab47cadf50316a3758b28d6fad507a192"
+    },
+    {
+      "argv": [
+        "docker",
+        "inspect",
+        "pab-w2c-62ed49238a-c-25ef2ddb"
+      ],
+      "exit": 1,
+      "output": "[sanitized inventory/inspect/source-map output; digest retained; assertions and source maps recorded separately]",
+      "output_sha256": "022344b3ad9ad03ffed76a5070cd47fa5e9eb087431d020e17df5d4d8ea715b5"
+    },
+    {
+      "argv": [
+        "docker",
+        "inspect",
+        "pab-w2c-62ed49238a-c-8e01be57"
+      ],
+      "exit": 1,
+      "output": "[sanitized inventory/inspect/source-map output; digest retained; assertions and source maps recorded separately]",
+      "output_sha256": "19357318bc4a5225461f32f551c81fc0338a3dade1a9ee8008f33a577e128c21"
+    },
+    {
+      "argv": [
+        "docker",
+        "inspect",
+        "pab-w2c-62ed49238a-c-4691272e"
+      ],
+      "exit": 1,
+      "output": "[sanitized inventory/inspect/source-map output; digest retained; assertions and source maps recorded separately]",
+      "output_sha256": "674ac6de0bba0c4acf5e88f1cbad4d2741f61895e8b806262b68bf118895f9f7"
+    },
+    {
+      "argv": [
+        "docker",
+        "inspect",
+        "pab-w2c-62ed49238a-quarantine-admission"
+      ],
+      "exit": 1,
+      "output": "[sanitized inventory/inspect/source-map output; digest retained; assertions and source maps recorded separately]",
+      "output_sha256": "efa0c93dc395f9b400ac884113eb4990a77b7e7afd2a34ac41e3e9fa46551225"
+    },
+    {
+      "argv": [
+        "docker",
+        "inspect",
+        "pab-w2c-62ed49238a-c-32705252"
+      ],
+      "exit": 1,
+      "output": "[sanitized inventory/inspect/source-map output; digest retained; assertions and source maps recorded separately]",
+      "output_sha256": "e7db5ec836766a8cc3c65fb140ba7a3348dbee65c7ca4534899487e8953419b2"
+    },
+    {
+      "argv": [
+        "docker",
+        "inspect",
+        "pab-w2c-62ed49238a-c-228ee8bb"
+      ],
+      "exit": 1,
+      "output": "[sanitized inventory/inspect/source-map output; digest retained; assertions and source maps recorded separately]",
+      "output_sha256": "513c6aa26abb30a4dadc511b7f969dfe526c18e1a21eace67843151ac1b3e3a6"
+    },
+    {
+      "argv": [
+        "docker",
+        "inspect",
+        "pab-w2c-62ed49238a-c-945c662b"
+      ],
+      "exit": 1,
+      "output": "[sanitized inventory/inspect/source-map output; digest retained; assertions and source maps recorded separately]",
+      "output_sha256": "50a7389115bf6d69025480f053b4433074068be082bdd2b19b3e49b6200fef99"
+    },
+    {
+      "argv": [
+        "docker",
+        "inspect",
+        "pab-w2c-62ed49238a-regressions"
+      ],
+      "exit": 0,
+      "output": "[sanitized inventory/inspect/source-map output; digest retained; assertions and source maps recorded separately]",
+      "output_sha256": "8950016b48b9a01207be1e23b1c5be00cad7bf479176cb6105348e6aaa38d413"
+    },
+    {
+      "argv": [
+        "docker",
+        "rm",
+        "pab-w2c-62ed49238a-regressions"
+      ],
+      "exit": 0,
+      "output": "pab-w2c-62ed49238a-regressions\n",
+      "output_sha256": "e744150da0ab1232184c45f6d3059c31214015cf655396ec376b8fa314fc1223"
+    },
+    {
+      "argv": [
+        "docker",
+        "inspect",
+        "pab-w2c-62ed49238a-c-3cc42f98"
+      ],
+      "exit": 1,
+      "output": "[sanitized inventory/inspect/source-map output; digest retained; assertions and source maps recorded separately]",
+      "output_sha256": "932d9c7ab952d64dcd8b443ab99310f85c83530916b108aaf601d6a541300823"
+    },
+    {
+      "argv": [
+        "docker",
+        "inspect",
+        "pab-w2c-62ed49238a-c-da8c0058"
+      ],
+      "exit": 1,
+      "output": "[sanitized inventory/inspect/source-map output; digest retained; assertions and source maps recorded separately]",
+      "output_sha256": "0f4c25ea171331bfc88bd561b3b719aa876ae6376100a74512f4c242826fb6e0"
+    },
+    {
+      "argv": [
+        "docker",
+        "inspect",
+        "pab-w2c-62ed49238a-c-5a533869"
+      ],
+      "exit": 1,
+      "output": "[sanitized inventory/inspect/source-map output; digest retained; assertions and source maps recorded separately]",
+      "output_sha256": "05386582e9f6ca4818c9d5503793e9f682eea64ae95e63ad23fe0bf3db9b8e4e"
+    },
+    {
+      "argv": [
+        "docker",
+        "inspect",
+        "pab-w2c-62ed49238a-c-d5141da3"
+      ],
+      "exit": 1,
+      "output": "[sanitized inventory/inspect/source-map output; digest retained; assertions and source maps recorded separately]",
+      "output_sha256": "3e9083c084b3bf509bf295f89cc7b00ee54cfc12529b0ad8824f6f48651d65eb"
+    },
+    {
+      "argv": [
+        "docker",
+        "inspect",
+        "pab-w2c-62ed49238a-c-d1334a25"
+      ],
+      "exit": 1,
+      "output": "[sanitized inventory/inspect/source-map output; digest retained; assertions and source maps recorded separately]",
+      "output_sha256": "6f7c8e13ff4391f785d6294cd8e1b036a02859bfbd7f1deb16ca775c89ee87d8"
+    },
+    {
+      "argv": [
+        "docker",
+        "inspect",
+        "pab-w2c-62ed49238a-c-dfa885d3"
+      ],
+      "exit": 1,
+      "output": "[sanitized inventory/inspect/source-map output; digest retained; assertions and source maps recorded separately]",
+      "output_sha256": "a80f51a0a5071c986035b77be89df431d9c020f2accc197c3a52e129e61233ce"
+    },
+    {
+      "argv": [
+        "docker",
+        "inspect",
+        "pab-w2c-62ed49238a-c-ebf2ec8d"
+      ],
+      "exit": 1,
+      "output": "[sanitized inventory/inspect/source-map output; digest retained; assertions and source maps recorded separately]",
+      "output_sha256": "535e196e9466e67379ddbf3d156ba40c428eb4e37b60ae17ce8e1f89e51babdd"
+    },
+    {
+      "argv": [
+        "docker",
+        "inspect",
+        "a728c4133aefe844c01ea80c2beba166a23fdee2216c96ffe4687a8846a66d42"
+      ],
+      "exit": 0,
+      "output": "[sanitized inventory/inspect/source-map output; digest retained; assertions and source maps recorded separately]",
+      "output_sha256": "837bc4d45bcd14dc286b713db29c28ee53c300bcc8fe5ad7626ac652b7c4ac15"
+    },
+    {
+      "argv": [
+        "docker",
+        "rm",
+        "a728c4133aefe844c01ea80c2beba166a23fdee2216c96ffe4687a8846a66d42"
+      ],
+      "exit": 0,
+      "output": "a728c4133aefe844c01ea80c2beba166a23fdee2216c96ffe4687a8846a66d42\n",
+      "output_sha256": "ba5988ce05148d13266a5678b211aefe312e6b7765fd03e222c0d0c13bdc0d41"
+    },
+    {
+      "argv": [
+        "docker",
+        "inspect",
+        "pab-w2c-62ed49238a-c-88b299a2"
+      ],
+      "exit": 1,
+      "output": "[sanitized inventory/inspect/source-map output; digest retained; assertions and source maps recorded separately]",
+      "output_sha256": "36f2f49061323600b346099135ad91a3006ca43bb3173900745c219a6993359c"
+    },
+    {
+      "argv": [
+        "docker",
+        "inspect",
+        "pab-w2c-62ed49238a-c-9f65b9ba"
+      ],
+      "exit": 1,
+      "output": "[sanitized inventory/inspect/source-map output; digest retained; assertions and source maps recorded separately]",
+      "output_sha256": "27bae98e03902570e4b0ef8d94905aa5167e9e20e4a492e10a3614a50aefc7de"
+    },
+    {
+      "argv": [
+        "docker",
+        "inspect",
+        "pab-w2c-62ed49238a-c-03361a6e"
+      ],
+      "exit": 1,
+      "output": "[sanitized inventory/inspect/source-map output; digest retained; assertions and source maps recorded separately]",
+      "output_sha256": "66ace1305a2cd895d1be6662b7baebd3242ef9c54a3680c1da4911a3d99053a1"
+    },
+    {
+      "argv": [
+        "docker",
+        "inspect",
+        "pab-w2c-62ed49238a-c-b2a09622"
+      ],
+      "exit": 1,
+      "output": "[sanitized inventory/inspect/source-map output; digest retained; assertions and source maps recorded separately]",
+      "output_sha256": "82fa19e2e08e91917d47a0babebfc98e839bca6876b4f2145aa9d0e19a58495d"
+    },
+    {
+      "argv": [
+        "docker",
+        "inspect",
+        "pab-w2c-62ed49238a-c-0fc162df"
+      ],
+      "exit": 1,
+      "output": "[sanitized inventory/inspect/source-map output; digest retained; assertions and source maps recorded separately]",
+      "output_sha256": "4f807a065ecd38b1a87c8383b553088877c3fc1251e0095798a3e4b85b47ba37"
+    },
+    {
+      "argv": [
+        "docker",
+        "inspect",
+        "pab-w2c-62ed49238a-c-4b0368e0"
+      ],
+      "exit": 1,
+      "output": "[sanitized inventory/inspect/source-map output; digest retained; assertions and source maps recorded separately]",
+      "output_sha256": "1985090c7d24c4792f9b13f463e799dff025ac1da14c4c052c52f452da31cf46"
+    },
+    {
+      "argv": [
+        "docker",
+        "inspect",
+        "pab-w2c-62ed49238a-c-eac16eb4"
+      ],
+      "exit": 1,
+      "output": "[sanitized inventory/inspect/source-map output; digest retained; assertions and source maps recorded separately]",
+      "output_sha256": "28e0c93a5aac4631934b6e878abef5e56038b43dad090d9087dd9d533c4947bd"
+    },
+    {
+      "argv": [
+        "docker",
+        "inspect",
+        "pab-w2c-62ed49238a-c-b559e09e"
+      ],
+      "exit": 1,
+      "output": "[sanitized inventory/inspect/source-map output; digest retained; assertions and source maps recorded separately]",
+      "output_sha256": "defb844e64e3f20fce5e81bc78299f40ac4df0c1051b59498e0f3c9f2fc9c762"
+    },
+    {
+      "argv": [
+        "docker",
+        "inspect",
+        "pab-w2c-62ed49238a-c-6a65484e"
+      ],
+      "exit": 1,
+      "output": "[sanitized inventory/inspect/source-map output; digest retained; assertions and source maps recorded separately]",
+      "output_sha256": "1210ba1d60b867d4e71c7f7d171a7f0530ae1d7d02ae721f8f14f45c3f8dcfd3"
+    },
+    {
+      "argv": [
+        "docker",
+        "inspect",
+        "pab-w2c-62ed49238a-c-c3dba3d5"
+      ],
+      "exit": 1,
+      "output": "[sanitized inventory/inspect/source-map output; digest retained; assertions and source maps recorded separately]",
+      "output_sha256": "40851ddcf9141ad7dc72a1e0dd155ec9947bd731e4ab73b854cedbdba6fd55d4"
+    },
+    {
+      "argv": [
+        "docker",
+        "inspect",
+        "pab-w2c-62ed49238a-c-2984e9f9"
+      ],
+      "exit": 1,
+      "output": "[sanitized inventory/inspect/source-map output; digest retained; assertions and source maps recorded separately]",
+      "output_sha256": "1263019a273f9d80348a9c4354653593aec603253833559957f798d03f1cf128"
+    },
+    {
+      "argv": [
+        "docker",
+        "inspect",
+        "pab-w2c-62ed49238a-c-236d571f"
+      ],
+      "exit": 1,
+      "output": "[sanitized inventory/inspect/source-map output; digest retained; assertions and source maps recorded separately]",
+      "output_sha256": "9572f2dd282d891be8a512c7ff94747676c209442801887a3502a95747414da0"
+    },
+    {
+      "argv": [
+        "docker",
+        "inspect",
+        "pab-w2c-62ed49238a-c-2ae968e3"
+      ],
+      "exit": 1,
+      "output": "[sanitized inventory/inspect/source-map output; digest retained; assertions and source maps recorded separately]",
+      "output_sha256": "8a4db3bd5859985959ca454b1ecfa0e1b356c0d3bcb1d52b8a3822922b2e8481"
+    },
+    {
+      "argv": [
+        "docker",
+        "inspect",
+        "pab-w2c-62ed49238a-c-7855da14"
+      ],
+      "exit": 1,
+      "output": "[sanitized inventory/inspect/source-map output; digest retained; assertions and source maps recorded separately]",
+      "output_sha256": "9c01dc8f9be19b67912b0fa6a7a7538971d3cc2e719203b1c66c80d77ec4810f"
+    },
+    {
+      "argv": [
+        "docker",
+        "inspect",
+        "pab-w2c-62ed49238a-frames"
+      ],
+      "exit": 1,
+      "output": "[sanitized inventory/inspect/source-map output; digest retained; assertions and source maps recorded separately]",
+      "output_sha256": "27060afc34c3e41f848b9af8ac6147557fe02d5aa37bc9655f57f896f8d5d61c"
+    },
+    {
+      "argv": [
+        "docker",
+        "inspect",
+        "pab-w2c-62ed49238a-c-54e6b36d"
+      ],
+      "exit": 1,
+      "output": "[sanitized inventory/inspect/source-map output; digest retained; assertions and source maps recorded separately]",
+      "output_sha256": "cb2b50e85eded28dbc010acce9e6b47b161ef06ee0cbf049c2d0f506f73da534"
+    },
+    {
+      "argv": [
+        "docker",
+        "inspect",
+        "pab-w2c-62ed49238a-c-09e4b1c6"
+      ],
+      "exit": 1,
+      "output": "[sanitized inventory/inspect/source-map output; digest retained; assertions and source maps recorded separately]",
+      "output_sha256": "b2b90786760d38cf61543c179c9fdb297cab16374faecce11d2c392112929ce6"
+    },
+    {
+      "argv": [
+        "docker",
+        "inspect",
+        "pab-w2c-62ed49238a-c-3053562d"
+      ],
+      "exit": 1,
+      "output": "[sanitized inventory/inspect/source-map output; digest retained; assertions and source maps recorded separately]",
+      "output_sha256": "f3490a196441fa088516fa41862d427ec420c5d6a3a57ad62910e56b4410cb9f"
+    },
+    {
+      "argv": [
+        "docker",
+        "inspect",
+        "pab-w2c-62ed49238a-c-1121912b"
+      ],
+      "exit": 1,
+      "output": "[sanitized inventory/inspect/source-map output; digest retained; assertions and source maps recorded separately]",
+      "output_sha256": "74eb1e0f4eed7c85f11f5ea6c319320256c94adbc85697dba84586804d484fd8"
+    },
+    {
+      "argv": [
+        "docker",
+        "compose",
+        "-p",
+        "pab-w2c-62ed49238a",
+        "-f",
+        "service/compose.lifecycle.yml",
+        "down",
+        "-v"
+      ],
+      "exit": 0,
+      "output": " Volume pab-w2c-62ed49238a_receipts Removing \n Volume pab-w2c-62ed49238a_ipc Removing \n Volume pab-w2c-62ed49238a_staging Removing \n Volume pab-w2c-62ed49238a_receipts Removed \n Volume pab-w2c-62ed49238a_control Removing \n Volume pab-w2c-62ed49238a_ipc Removed \n Volume pab-w2c-62ed49238a_control Removed \n Volume pab-w2c-62ed49238a_staging Removed \n",
+      "output_sha256": "da267c3c654413d65c718db0c20bb85b69aad77b22e029a39926f09316c190fc"
+    },
+    {
+      "argv": [
+        "docker",
+        "ps",
+        "-aq"
+      ],
+      "exit": 0,
+      "output": "[sanitized inventory/inspect/source-map output; digest retained; assertions and source maps recorded separately]",
+      "output_sha256": "4f6a5def436676fa1e8d845f4615b75cf5f9a51103329439f62711cc0c0749fc"
+    },
+    {
+      "argv": [
+        "docker",
+        "volume",
+        "ls",
+        "-q"
+      ],
+      "exit": 0,
+      "output": "[sanitized inventory/inspect/source-map output; digest retained; assertions and source maps recorded separately]",
+      "output_sha256": "4f6a5def436676fa1e8d845f4615b75cf5f9a51103329439f62711cc0c0749fc"
+    },
+    {
+      "argv": [
+        "docker",
+        "ps",
+        "-aq",
+        "--filter",
+        "label=com.docker.compose.project=pab-w2c-62ed49238a"
+      ],
+      "exit": 0,
+      "output": "[sanitized inventory/inspect/source-map output; digest retained; assertions and source maps recorded separately]",
+      "output_sha256": "4f6a5def436676fa1e8d845f4615b75cf5f9a51103329439f62711cc0c0749fc"
+    },
+    {
+      "argv": [
+        "docker",
+        "volume",
+        "ls",
+        "-q",
+        "--filter",
+        "label=com.docker.compose.project=pab-w2c-62ed49238a"
+      ],
+      "exit": 0,
+      "output": "[sanitized inventory/inspect/source-map output; digest retained; assertions and source maps recorded separately]",
+      "output_sha256": "4f6a5def436676fa1e8d845f4615b75cf5f9a51103329439f62711cc0c0749fc"
+    }
+  ],
+  "scenarios": [
+    {
+      "name": "sequential_silence",
+      "result": {
+        "receipt": {
+          "binding": "fc3e2f5013a062178702da4d1d9910fa384d697172efddb53020d531b45daf14",
+          "engine_uid": 20000,
+          "original_deadline": "2026-10-16T13:10:48.857178+00:00",
+          "reap_method": "pid1-waitpid-echild",
+          "reaped": true,
+          "reaped_children": 1,
+          "runtime_id": "5587e19f1c336318132d09777127e42f/f1fa5da97a9b83c1196cd48bc76dae46/e933d9d2815ffaa1903ae4b0cd6770ec",
+          "timely": true
+        },
+        "sha256": "639dad0ac2923f5fe9e9ccfb99aa9b3084048e2e53317d1903e6e899a4f6296a",
+        "proposal_sha256": "b8c5702631345dcbaf7451bf6896923dfc08f3683b977c5bac24dcd29cdf2415"
+      }
+    },
+    {
+      "name": "sequential_permissions",
+      "result": {
+        "receipt": {
+          "binding": "2d5d2ef9a5e745704b93030aeaeabad0818f8786826cba079a6095bccd6650f4",
+          "engine_uid": 20001,
+          "original_deadline": "2026-10-16T13:10:59.389968+00:00",
+          "reap_method": "pid1-waitpid-echild",
+          "reaped": true,
+          "reaped_children": 1,
+          "runtime_id": "5587e19f1c336318132d09777127e42f/f1fa5da97a9b83c1196cd48bc76dae46/004b757bed5427327f2360f21af75970",
+          "timely": true
+        },
+        "sha256": "639dad0ac2923f5fe9e9ccfb99aa9b3084048e2e53317d1903e6e899a4f6296a",
+        "proposal_sha256": "f32d76d873e565a1796c2c15dba276e46782dc007ae8d63ae9e019c77897114e"
+      }
+    },
+    {
+      "name": "old_identity_and_closed_frames",
+      "passed": true
+    },
+    {
+      "name": "terminal_receipt_restart_replay",
+      "passed": true
+    },
+    {
+      "name": "actual_control_death_postspawn",
+      "passed": true
+    },
+    {
+      "name": "actual_control_death_start-sent",
+      "passed": true
+    },
+    {
+      "name": "absent_control_deadline_busy",
+      "result": {
+        "receipt": {
+          "binding": "c4e8c7a262d961ee8d76af7f52c11e9a38959d22fc85f7372f3af3f149adeaa8",
+          "engine_uid": 20004,
+          "original_deadline": "2026-10-16T13:11:28.535417+00:00",
+          "reap_method": "pid1-waitpid-echild",
+          "reaped": true,
+          "reaped_children": 1,
+          "runtime_id": "5587e19f1c336318132d09777127e42f/1cdf8e4a825796f42e82f07b227c766f/5afbfcab73a265bb0b226d0432278af7",
+          "timely": false
+        },
+        "sha256": null,
+        "proposal_sha256": null
+      }
+    },
+    {
+      "name": "absent_control_deadline_descendants",
+      "result": {
+        "receipt": {
+          "binding": "fb2e7dddb5e25e872830c94b9ddaa784d08bba404a6f7000a750ce162dff608d",
+          "engine_uid": 20005,
+          "original_deadline": "2026-10-16T13:11:39.961980+00:00",
+          "reap_method": "pid1-waitpid-echild",
+          "reaped": true,
+          "reaped_children": 3,
+          "runtime_id": "5587e19f1c336318132d09777127e42f/1cdf8e4a825796f42e82f07b227c766f/ab94c3c4324d2333603a87bac140a0a3",
+          "timely": false
+        },
+        "sha256": null,
+        "proposal_sha256": null
+      }
+    },
+    {
+      "name": "term_kill_detached_descendants",
+      "passed": true
+    },
+    {
+      "name": "lost_stop_response",
+      "passed": true
+    },
+    {
+      "name": "container_restart_quarantine",
+      "passed": true
+    },
+    {
+      "name": "unwritable_start_fence_no_fork",
+      "passed": true
+    },
+    {
+      "name": "unwritable_terminal_receipt_quarantine",
+      "passed": true
+    },
+    {
+      "name": "missing_journal_fail_closed",
+      "passed": true
+    },
+    {
+      "name": "corrupt_journal_fail_closed",
+      "passed": true
+    }
+  ],
+  "before": {
+    "containers": {
+      "count": 15,
+      "sha256": "23c6be7289f12faa7ff8834a8e01311c6002bd2c4c0afb645799b04a2f16725e"
+    },
+    "volumes": {
+      "count": 140,
+      "sha256": "4d632ffe7511b22b72200660d00a49a09ea3d4d77e6773fde88e029e433b8aef"
+    }
+  },
+  "dependency_image": "sha256:85141b253c04344134252c0878750756aef6bae3d4d4d083301004db7f43ce0e",
+  "images": {
+    "worker": "sha256:7101cd00bbd2e49544233d62bf439d9483e5612e1254cbb750591ce8f14dbb9b",
+    "control": "sha256:62b9d27609a63975ffba5d0c7d321ecd6df085e1dfd843bce162f2ebdb34e9b2"
+  },
+  "control_source_sha256": {
+    "service/Dockerfile.release": "02c0f2840a7a0d40c3f5669e207ee05ba5135392a23fc10acc5e248565454186",
+    "service/Dockerfile.release.dockerignore": "36b2a7b1a3a49b88dd5727ea8a43ac6437a29d02520536bc658bff9065618daa",
+    "service/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "service/api.py": "b7b1077a00d9668ef14c81289d64f0ca597720c0b10e6c9f8a9879e21b1687eb",
+    "service/catalogue.py": "1dd8d63d0a5328d7fba07942165e95035724d83dd12b67adaffec882c63db7e8",
+    "service/compose.local-ui.yml": "49d6fad0dd7da597a0931a1b176a42b62b90a0f9ff00c35c10f10af19cdf0197",
+    "service/compose.release.yml": "b01721151a25436b859170e5e1c4fcc03baca406824a09dedef4b58d9aa3a26a",
+    "service/core.py": "81de67844a51136656b00131675cc8116d245a1aede2f008c45500581dc7e41b",
+    "service/domain.py": "9575ddc41a97c4be3c6d32d7ed49957f262bef39831b9680ce0302c72dbeba85",
+    "service/requirements.in": "4a515cbbc940757f4528acaae5cc990fc8ef4bad04f7e0d28e4937d8a8d94146",
+    "service/requirements.lock": "4ad7f2d9e6d4f03b7abb22d4946524f4372b5277b7b80c186332720f490909ea",
+    "service/Dockerfile.lifecycle": "e86762eb80c5fe45b6462d3b8a66bbb7c52a8efbc9e4dbc87db1e9ced4966e0b",
+    "service/Dockerfile.lifecycle.dockerignore": "a6871d4d4ec3138b078c8cc182beb9e0bb55ea2db02db7e945d00ab27c2c0490",
+    "service/Dockerfile.w1": "03383d44eeba01504d203dc3c42f6291a99af008482beabdf147484462418bcc",
+    "service/Dockerfile.w1.dockerignore": "a6871d4d4ec3138b078c8cc182beb9e0bb55ea2db02db7e945d00ab27c2c0490",
+    "service/Dockerfile.w2": "13c52631ff625672cbd972608184752024b15b56309cb86d3bfed11ffb4209c7",
+    "service/Dockerfile.w2.dockerignore": "a6871d4d4ec3138b078c8cc182beb9e0bb55ea2db02db7e945d00ab27c2c0490",
+    "service/compose.lifecycle.yml": "51f542faa7b7a8ef231fb79efb0d19ecb479cbd6fc21537f7b7ec50e3d9ad868",
+    "service/compose.w1.yml": "af2c103ee7ba814437dc470237542d327c42ece37cbd072e19a1f8549ab96bef",
+    "service/compose.w2.yml": "ec8dfe0331940f91eb1dbb95f43629ffc04c58530291c808b44a1d5dfea14552",
+    "service/lifecycle_cli.py": "b900a9881edd0aeaaf854c8642da11675d14dc86de03b24fbde60b58caddfbc3",
+    "service/owner_store.py": "6825476d37d3b0345b69f2487935dd164d14ee6f252391ab73e925d1dba21506",
+    "service/runtime_adapter.py": "8ab319b17f5538043a7ebc7c697ceb5a2754a0482e152ec85210924123b6c78e",
+    "service/supervisor_runtime.py": "7235121ac9c94fa061e6df1351930bc100b1aaae94d91ef678f07ccf46b11196",
+    "service/worker_supervisor.py": "762056f605d54e4be44de6a4c4cfd6661bc9815bfc780538f655e7484c714ec3",
+    "service/worker_transport.py": "081ae6ef6b8bdbafa52d0443e43d738eb1d9a500c0ca091d587d11adf365b0d2",
+    "worker/README.md": "3776c659f4b8e8131f50c77dcb04ce16d04e094b0040f3a162fc375908fb5add",
+    "worker/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "worker/boundary.py": "5048cec5041d74bb83c950b762b0a9c7c18d3211df7ffab90153a4d0376d75e3",
+    "worker/synthetic.py": "2233233ebb091d58f06e2263e80abf3258d63db28b7062a5259c09add4b669fc",
+    "worker/isolated_synthetic.py": "94f3ff3363f42d1fb8119f32866288a1efaa3ab4a3da7d91bb9ac2dd5bd20f87",
+    "worker/lifecycle.py": "573bd2ed4c1da4a709f787c6cb57c408fed00046373d3ac5c701f3c5562e68a6",
+    "worker/runtime_child.py": "ec5000b17a3b8869b887ad02d4f492789020db48d6f7408824e4a822477dca9a",
+    "worker/runtime_journal.py": "66ca21d342c8f0bf98b9ebb707773303a154e4624c9fcca00f63ed3de37c2765",
+    "worker/runtime_protocol.py": "e39bdc3900c9b1f1326e6000689e84d01cc0e8719f8fe999511d05da432001ea",
+    "worker/runtime_supervisor.py": "e2d4837fe834131c3e16e1ad49dcba89fe58d8cf5432b3488b33b0d19b10c6f3",
+    "worker/supervised_synthetic.py": "49572c429d5fa8b1be2f84f5f31322c281412fa47fd8b7fc7c65f2660e9e33d4",
+    "worker/transport.py": "19f3445def62f61b29979e573d029d61c09c6d5590623a2d5d747460bc73f660",
+    "contracts/__init__.py": "a25d5627d95edc0017306e4fc37d1ed68190aec967d52a92ad44abf19955173a",
+    "contracts/generate.py": "72c325cb6a1ce259208875a08311bf6af1c80ee51cdbfdc53f336067386e2c74",
+    "contracts/media.py": "98f9f52743ea7dcd1515bddda91f7c5222c966306d3c5f1f43c552ecd6f32707",
+    "contracts/scenarios.py": "2fc7555daeffdf4b48affe77c900e8447f74c65ec6c2b1e01151584fc057d910",
+    "contracts/validate.py": "e42931ae8a41a7b90ebdab740e2a264c20da0b9f159bf604db6f1215d05d9dc6",
+    "contracts/v1/errors.json": "a40059efbdef914b15aa00d2bc7c7abc870d858a748dd55df831fed5a7ad7289",
+    "contracts/v1/legacy-controls.json": "d24069599eb72452e1c5978f60d33d18465e0d28f0f816ba4fb73bf356a3364c",
+    "contracts/v1/operations.json": "85de2d8e7e9e684bbbf90c333783f743d1d440ecd1d3be6f7b76ab22086efdfd",
+    "contracts/v1/schema.json": "f6f3ee5e207053e7542e1699e9ccc0b3a809c8a6697c7cf849d0f12f7f038bc3",
+    "contracts/fixtures/v1/artifact.json": "31c1df4a81f2237ade99fa88377f17a2b0e73906142f74d09b7f09d20ca6d900",
+    "contracts/fixtures/v1/capabilities.json": "0f88b5b26d0a48e4cfedad3234915f80b1f1e3d60c0b18ca2b96ed08a350f910",
+    "contracts/fixtures/v1/expected.json": "6c787171dfde576d0512f6585a26a5d038bb1864305f016c15852f2a206cb051",
+    "contracts/fixtures/v1/impulse.wav": "6de1d8cc4c678241ac609b81e8728a89850ce72a9cf736c4214a7ea9dc0943df",
+    "contracts/fixtures/v1/job.json": "667d9ef03dcf06740556e1f227f878f19b84a39401fb5f151cf1eca11c078cdb",
+    "contracts/fixtures/v1/long.wav": "50723bc660718f92239c358c36818fa390a429bfc7bcf3fd4530b295532a1bb0",
+    "contracts/fixtures/v1/negative.json": "6aee70ee971b518f2604f6a5b6b0abe9b35554343f296d69d592f5020e6d8f29",
+    "contracts/fixtures/v1/operation-requests.json": "ef1e1659aff1ba8620b2500afa080360b2fd3f4d638ccbf95c7135c01e34551f",
+    "contracts/fixtures/v1/production-100.json": "fa69804d3a55bc7a99f056e6065e8a4bcb5c0240b1710881406d49051e16622a",
+    "contracts/fixtures/v1/production-30.json": "4ffd99289611aa4bd42e6697b75ac9a3d5d2a11a896f76e2fa43a876d7485f03",
+    "contracts/fixtures/v1/short.wav": "4a00018adfff151e83d66254d04188e36076b9ea6d4159824937c895750fa399",
+    "contracts/fixtures/v1/sine.wav": "c020cc7bf173196fe590913ceca31fc59f4818536b39c50bc6ecc59aaea40593",
+    "contracts/fixtures/v1/transcript-project_render.json": "84d27e27cf4c353cc176c7c9888196fb0d8e9c7c5cc3bbe3603a1df484d423c8",
+    "contracts/fixtures/v1/transcript-speech_generate.json": "eb0cff1bfa3edba4e8380e1a48a391626c9a3864b191eb8f02adbbaacac90cb8",
+    "contracts/fixtures/v1/transcript-voice_design.json": "0a4e912bc436149b5c87377385e67bc854f58954d2a0b24853da51d6623e8028",
+    "contracts/fixtures/v1/transcript-voice_prepare.json": "b0cbe9e5f47b1d031b57c6567e12e3968759d3b963b190f2c48fcf6ed6b834c1",
+    "clients/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "clients/cli.py": "ffa8be94f1c3aee103018bfbe4e31dd5957c3760d8de4182a5d541cdb0aac547",
+    "clients/http.py": "3abc871f477458497df88f2f90b6deecca03cb256bf6b4de48dd29bc32e505cc",
+    "clients/mcp.py": "fdea300955d94282b2200f0f797da573a3f312147750c03bcb2e1257870c63d6",
+    "tests/service/conftest.py": "6a74f7594739d6fecd59db87642282ff8ea1ec78b3b79d89eef8d514b01fcc47",
+    "tests/service/test_adapters.py": "40d4b249a7c2d7dc70fe1a30ed2f3faa712cbd006ff73165a978eacdc61a85dd",
+    "tests/service/test_core.py": "83cade17ea2f90eb94b4dd7b5470d6f70226daba6f7c69a886de46a89ed053db",
+    "tests/service/test_packaged_lifecycle.py": "3da0613a7ac4dc304341c67fcb097666fb20ec44ccbde4291016fa75f3328f1d",
+    "tests/service/test_worker_lifecycle.py": "9fb8327abd1eb47dd585c0a5b484d464a6dedb014fa2ae003e9670a49f14b0c3",
+    "tests/service/test_worker_transport.py": "abad28c64620674ce49c6e0acbb11e216d8df4b94665a7c908e2f2898ff79f4b",
+    "tests/release/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "tests/release/measure.py": "d3fc63dd17aa8012b21209028bec8871cec2fb3a5e3ec5ba6727b9f71896a729",
+    "tests/release/requirements.in": "d162109abf42c56add5a53d9dd81eac7c90c4753183a666087b637bbaa254200",
+    "tests/release/requirements.lock": "1128749ee3509236a0dbd614e03869c001daab61a1f7fad3959b4c9b5a6b18ad",
+    "tests/release/smoke.py": "67da0b52ad2cb42b607dc03c4829400512b99bb90aad8b04437078a8cb411118",
+    "tests/release/test_compactness.py": "a84044e55d82f3c79badcae9f1ad4939927f06505fc61304a8110130be5af001",
+    "tests/release/test_packaged_lifecycle.py": "746dabc06ccdfc07f6102dfd7330bbb6fdfba539e9900f98cdc3012be5f40077",
+    "tests/release/test_worker_boundary.py": "c11badc5340c97adb3bda0b6dfc9dc9e63fcf15f43f9428bc4e5b5ef1ad9e18c",
+    "tests/release/test_worker_lifecycle_boundary.py": "1459cc4c938a136258c9f4ed99a6479cd17dc3e9fceff8d22808c8f7bf88c2d9"
+  },
+  "worker_source_sha256": {
+    "worker/README.md": "3776c659f4b8e8131f50c77dcb04ce16d04e094b0040f3a162fc375908fb5add",
+    "worker/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "worker/boundary.py": "5048cec5041d74bb83c950b762b0a9c7c18d3211df7ffab90153a4d0376d75e3",
+    "worker/isolated_synthetic.py": "94f3ff3363f42d1fb8119f32866288a1efaa3ab4a3da7d91bb9ac2dd5bd20f87",
+    "worker/lifecycle.py": "573bd2ed4c1da4a709f787c6cb57c408fed00046373d3ac5c701f3c5562e68a6",
+    "worker/runtime_child.py": "ec5000b17a3b8869b887ad02d4f492789020db48d6f7408824e4a822477dca9a",
+    "worker/runtime_journal.py": "66ca21d342c8f0bf98b9ebb707773303a154e4624c9fcca00f63ed3de37c2765",
+    "worker/runtime_protocol.py": "e39bdc3900c9b1f1326e6000689e84d01cc0e8719f8fe999511d05da432001ea",
+    "worker/runtime_supervisor.py": "e2d4837fe834131c3e16e1ad49dcba89fe58d8cf5432b3488b33b0d19b10c6f3",
+    "worker/supervised_synthetic.py": "49572c429d5fa8b1be2f84f5f31322c281412fa47fd8b7fc7c65f2660e9e33d4",
+    "worker/synthetic.py": "2233233ebb091d58f06e2263e80abf3258d63db28b7062a5259c09add4b669fc",
+    "worker/transport.py": "19f3445def62f61b29979e573d029d61c09c6d5590623a2d5d747460bc73f660",
+    "contracts/__init__.py": "a25d5627d95edc0017306e4fc37d1ed68190aec967d52a92ad44abf19955173a",
+    "contracts/validate.py": "e42931ae8a41a7b90ebdab740e2a264c20da0b9f159bf604db6f1215d05d9dc6",
+    "contracts/v1/errors.json": "a40059efbdef914b15aa00d2bc7c7abc870d858a748dd55df831fed5a7ad7289",
+    "contracts/v1/legacy-controls.json": "d24069599eb72452e1c5978f60d33d18465e0d28f0f816ba4fb73bf356a3364c",
+    "contracts/v1/operations.json": "85de2d8e7e9e684bbbf90c333783f743d1d440ecd1d3be6f7b76ab22086efdfd",
+    "contracts/v1/schema.json": "f6f3ee5e207053e7542e1699e9ccc0b3a809c8a6697c7cf849d0f12f7f038bc3"
+  },
+  "namespaces": {
+    "control": {
+      "pid": "pid:[4026532466]",
+      "net": "net:[4026532468]",
+      "mnt": "mnt:[4026532462]"
+    },
+    "worker": {
+      "pid": "pid:[4026532463]",
+      "net": "net:[4026532566]",
+      "mnt": "mnt:[4026532459]"
+    }
+  },
+  "topology": {
+    "entrypoint": [
+      "python",
+      "-m",
+      "worker.runtime_supervisor"
+    ],
+    "user": "0:10001",
+    "network": "none",
+    "pid_mode": "",
+    "caps": [
+      "CAP_KILL",
+      "CAP_SETGID",
+      "CAP_SETUID"
+    ],
+    "mounts": [
+      {
+        "destination": "/staging",
+        "type": "volume",
+        "rw": true
+      },
+      {
+        "destination": "/receipts",
+        "type": "volume",
+        "rw": true
+      },
+      {
+        "destination": "/ipc",
+        "type": "volume",
+        "rw": true
+      }
+    ]
+  },
+  "live_tree_audits": [
+    [
+      {
+        "pid": 33,
+        "uid": 20004,
+        "session": 33,
+        "ignored_term": true
+      }
+    ],
+    [
+      {
+        "pid": 49,
+        "uid": 20005,
+        "session": 49,
+        "ignored_term": true
+      },
+      {
+        "pid": 57,
+        "uid": 20005,
+        "session": 57,
+        "ignored_term": true
+      },
+      {
+        "pid": 58,
+        "uid": 20005,
+        "session": 57,
+        "ignored_term": true
+      }
+    ],
+    [
+      {
+        "pid": 66,
+        "uid": 20006,
+        "session": 66,
+        "ignored_term": true
+      },
+      {
+        "pid": 74,
+        "uid": 20006,
+        "session": 74,
+        "ignored_term": true
+      },
+      {
+        "pid": 75,
+        "uid": 20006,
+        "session": 74,
+        "ignored_term": true
+      }
+    ]
+  ],
+  "readiness_ceiling_seconds": 5,
+  "readiness_observed_seconds": 0.8987852509599179,
+  "status": "matrix_passed",
+  "after": {
+    "containers": {
+      "count": 15,
+      "sha256": "23c6be7289f12faa7ff8834a8e01311c6002bd2c4c0afb645799b04a2f16725e"
+    },
+    "volumes": {
+      "count": 140,
+      "sha256": "4d632ffe7511b22b72200660d00a49a09ea3d4d77e6773fde88e029e433b8aef"
+    }
+  },
+  "prior_resources_preserved": true,
+  "owned_resources_remaining": 0,
+  "packaging_sha256": {
+    "scripts/test-worker-w2c.sh": "3347cdfba51996158d76b2b08a20fc30eb81e7319b18faba9c574c8344f104b2",
+    "service/compose.lifecycle.yml": "51f542faa7b7a8ef231fb79efb0d19ecb479cbd6fc21537f7b7ec50e3d9ad868",
+    "service/Dockerfile.lifecycle": "e86762eb80c5fe45b6462d3b8a66bbb7c52a8efbc9e4dbc87db1e9ced4966e0b",
+    "service/Dockerfile.lifecycle.dockerignore": "a6871d4d4ec3138b078c8cc182beb9e0bb55ea2db02db7e945d00ab27c2c0490"
+  },
+  "sanitization": "Unrelated inventory names and raw inspect bodies omitted; command output digests retained. No capabilities, audio payloads or credentials recorded."
+}

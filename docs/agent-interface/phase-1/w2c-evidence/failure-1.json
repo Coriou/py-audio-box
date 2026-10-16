@@ -1,0 +1,83 @@
+{
+  "project": "pab-w2c-1f6b42017d",
+  "tier": "E1/E2 offline dependency-overlay synthetic only",
+  "status": "failed",
+  "failure": "AssertionError: ",
+  "dependency_image": "sha256:85141b253c04344134252c0878750756aef6bae3d4d4d083301004db7f43ce0e",
+  "images": {
+    "worker": "sha256:6407a23d784a22f3e515c17a4170230c50f0a9675754f0b5297a4edb476c66fd",
+    "control": "sha256:cc3dfaf95966e764bb5dd468b39e93fb94d4b1561f25794b9c771ddeb2061ac2"
+  },
+  "scenarios": [],
+  "before": {
+    "containers": {
+      "count": 15,
+      "sha256": "23c6be7289f12faa7ff8834a8e01311c6002bd2c4c0afb645799b04a2f16725e"
+    },
+    "volumes": {
+      "count": 140,
+      "sha256": "4d632ffe7511b22b72200660d00a49a09ea3d4d77e6773fde88e029e433b8aef"
+    }
+  },
+  "after": {
+    "containers": {
+      "count": 15,
+      "sha256": "23c6be7289f12faa7ff8834a8e01311c6002bd2c4c0afb645799b04a2f16725e"
+    },
+    "volumes": {
+      "count": 140,
+      "sha256": "4d632ffe7511b22b72200660d00a49a09ea3d4d77e6773fde88e029e433b8aef"
+    }
+  },
+  "prior_resources_preserved": true,
+  "summarized_receipt_sha256": "83334bf79cbaf4c70078a7ed9e2ad56cc4fcb553f56bc797d33ff1d4c4915227",
+  "source_maps_sha256": {
+    "control_source_sha256": "defa81f0ec684d6887cd2ffd1e58ad054e47f3bea7b27c702cb1997be6a4222e",
+    "worker_source_sha256": "53f21d3df579b82b97dca1adf37667299f8ef06743965a2ab934704c33d4ebe2"
+  },
+  "commands": [
+    {
+      "argv": [
+        "docker",
+        "run",
+        "--name",
+        "pab-w2c-1f6b42017d-regressions",
+        "--network",
+        "none",
+        "--cpus",
+        "2",
+        "--memory",
+        "1g",
+        "--pids-limit",
+        "128",
+        "--read-only",
+        "--tmpfs",
+        "/tmp:rw,nosuid,size=64m",
+        "--entrypoint",
+        "python",
+        "pab-w2c-1f6b42017d-control",
+        "-m",
+        "pytest",
+        "tests/service",
+        "tests/release",
+        "-q",
+        "-p",
+        "no:cacheprovider"
+      ],
+      "exit": 0,
+      "output": "........................................................................ [ 77%]\n.....................                                                    [100%]\n93 passed in 29.14s\n",
+      "output_sha256": "6cb527b84dc4f28d95dac2da5976f9c9383b8f22ea6e3683a8f0a2436f1a04ef"
+    },
+    {
+      "argv": [
+        "docker",
+        "inspect",
+        "pab-w2c-1f6b42017d-c-d449c6cd"
+      ],
+      "exit": 1,
+      "output": "[sanitized inventory/inspect/source-map output; digest retained; assertions and source maps recorded separately]",
+      "output_sha256": "03f5f51490cc2b3d012032a5f650563a00dbbf63fb2ff30277f7c9c63b8f7d7b"
+    }
+  ],
+  "sanitization": "Bounded historical diagnostic summary only; failures and regression commands retained, source-map digests and image IDs identify that run. No final-source passing claim."
+}

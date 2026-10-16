@@ -1,0 +1,489 @@
+{
+  "project": "pab-w2c-0ce9e88893",
+  "tier": "E1/E2 offline dependency-overlay synthetic only",
+  "status": "partial_matrix_passed",
+  "dependency_image": "sha256:85141b253c04344134252c0878750756aef6bae3d4d4d083301004db7f43ce0e",
+  "images": {
+    "worker": "sha256:c2005d424e0a12af00067e384e3f9160733c51b38991f8fc7f07f3d9455cceda",
+    "control": "sha256:0a8228fcda451a5dfda9ae394177d3b399441e3dad8e869b1647eeea4c010e00"
+  },
+  "scenarios": [
+    {
+      "name": "sequential_silence",
+      "result": {
+        "receipt": {
+          "binding": "a379d478653cb8ea04a06a77e12d614d2468ba5c4e17deed2d1bc1f46cae8bb2",
+          "original_deadline": "2026-10-16T12:48:17.666895+00:00",
+          "reaped": true,
+          "runtime_id": "5dccc8e230b3dba6f0c54deaf6f6a1ad/bcea8b2f9c24abdb0d64c3275e48668b/a9f5919a6f7396dbe8a9052646455d19",
+          "timely": true
+        },
+        "sha256": "639dad0ac2923f5fe9e9ccfb99aa9b3084048e2e53317d1903e6e899a4f6296a",
+        "proposal_sha256": "abd6233f5001bed8e97504f5972e69038076ea463032728308472cfca2247f48"
+      }
+    },
+    {
+      "name": "sequential_permissions",
+      "result": {
+        "receipt": {
+          "binding": "a7b8bb74e5dacbb673c9109707a419a17daebc442fc4658660e2f2286f25a7fe",
+          "original_deadline": "2026-10-16T12:48:25.723809+00:00",
+          "reaped": true,
+          "runtime_id": "5dccc8e230b3dba6f0c54deaf6f6a1ad/bcea8b2f9c24abdb0d64c3275e48668b/96efa45f5169e82516cb58b35bc6613e",
+          "timely": true
+        },
+        "sha256": "639dad0ac2923f5fe9e9ccfb99aa9b3084048e2e53317d1903e6e899a4f6296a",
+        "proposal_sha256": "196285f133553c4d2c4aad8f7442e6b70461cee97b9e38ecefb952b7adf82e6f"
+      }
+    },
+    {
+      "name": "absent_control_deadline_busy",
+      "result": {
+        "receipt": {
+          "binding": "d7d7ea953fd0865b697877758417537ef2197c8dfc5842622b22cb5f4e1d803b",
+          "original_deadline": "2026-10-16T12:48:30.127536+00:00",
+          "reaped": true,
+          "runtime_id": "5dccc8e230b3dba6f0c54deaf6f6a1ad/bcea8b2f9c24abdb0d64c3275e48668b/640c608752b6e275e2bf3f80f195daa4",
+          "timely": false
+        },
+        "sha256": null,
+        "proposal_sha256": null
+      }
+    },
+    {
+      "name": "absent_control_deadline_descendants",
+      "result": {
+        "receipt": {
+          "binding": "6a23fe0546963848ad60e97c6a3cb0209db91eb3848b76c30290c2b6387df396",
+          "original_deadline": "2026-10-16T12:48:37.828724+00:00",
+          "reaped": true,
+          "runtime_id": "5dccc8e230b3dba6f0c54deaf6f6a1ad/bcea8b2f9c24abdb0d64c3275e48668b/772fbca0c12f17ffb68e8a40204349c7",
+          "timely": false
+        },
+        "sha256": null,
+        "proposal_sha256": null
+      }
+    },
+    {
+      "name": "term_kill_detached_descendants",
+      "passed": true
+    },
+    {
+      "name": "container_restart_quarantine",
+      "passed": true
+    }
+  ],
+  "before": {
+    "containers": {
+      "count": 15,
+      "sha256": "23c6be7289f12faa7ff8834a8e01311c6002bd2c4c0afb645799b04a2f16725e"
+    },
+    "volumes": {
+      "count": 140,
+      "sha256": "4d632ffe7511b22b72200660d00a49a09ea3d4d77e6773fde88e029e433b8aef"
+    }
+  },
+  "after": {
+    "containers": {
+      "count": 15,
+      "sha256": "23c6be7289f12faa7ff8834a8e01311c6002bd2c4c0afb645799b04a2f16725e"
+    },
+    "volumes": {
+      "count": 140,
+      "sha256": "4d632ffe7511b22b72200660d00a49a09ea3d4d77e6773fde88e029e433b8aef"
+    }
+  },
+  "prior_resources_preserved": true,
+  "topology": {
+    "entrypoint": [
+      "python",
+      "-m",
+      "worker.runtime_supervisor"
+    ],
+    "user": "0:10001",
+    "network": "none",
+    "pid_mode": "",
+    "caps": [
+      "CAP_KILL",
+      "CAP_SETGID",
+      "CAP_SETUID"
+    ],
+    "mounts": [
+      {
+        "destination": "/ipc",
+        "type": "volume",
+        "rw": true
+      },
+      {
+        "destination": "/staging",
+        "type": "volume",
+        "rw": true
+      },
+      {
+        "destination": "/receipts",
+        "type": "volume",
+        "rw": true
+      }
+    ]
+  },
+  "summarized_receipt_sha256": "a71ad95137058f3cfd17f693f03bf421fe2566910f153ba10d4668394fe78997",
+  "source_maps_sha256": {
+    "control_source_sha256": "1ea79a212bc1743367907bc2d87fcb6b38f6e79bd9a2f37ab66691df7e833c66",
+    "worker_source_sha256": "799378e0b28287d78be8e7a032cc8fc4a06d6dbd1b00c085d27fec2e620c3137"
+  },
+  "commands": [
+    {
+      "argv": [
+        "docker",
+        "run",
+        "--name",
+        "pab-w2c-0ce9e88893-regressions",
+        "--network",
+        "none",
+        "--cpus",
+        "2",
+        "--memory",
+        "1g",
+        "--pids-limit",
+        "128",
+        "--read-only",
+        "--tmpfs",
+        "/tmp:rw,nosuid,size=64m",
+        "--entrypoint",
+        "python",
+        "pab-w2c-0ce9e88893-control",
+        "-m",
+        "pytest",
+        "tests/service",
+        "tests/release",
+        "-q",
+        "-p",
+        "no:cacheprovider"
+      ],
+      "exit": 0,
+      "output": "........................................................................ [ 77%]\n.....................                                                    [100%]\n93 passed in 27.83s\n",
+      "output_sha256": "ca449ff1d5071670485b002417844d28098ce4cd79b2b355e4c64282dd96c7b4"
+    },
+    {
+      "argv": [
+        "docker",
+        "inspect",
+        "pab-w2c-0ce9e88893-c-43c9ffa4"
+      ],
+      "exit": 1,
+      "output": "[sanitized inventory/inspect/source-map output; digest retained; assertions and source maps recorded separately]",
+      "output_sha256": "1e6b717e1eab7dc930c1771c1d4a4ab3476d2d09121bef73f09c428816080847"
+    },
+    {
+      "argv": [
+        "docker",
+        "inspect",
+        "57db968297079a26a15a5943b265eada2af59f226918ec5d0fd12947110a3c4e"
+      ],
+      "exit": 1,
+      "output": "[sanitized inventory/inspect/source-map output; digest retained; assertions and source maps recorded separately]",
+      "output_sha256": "9397bb0acbdfb25a57730be470c2b7f5b8a5e00844f500790400633d55e2c634"
+    },
+    {
+      "argv": [
+        "docker",
+        "inspect",
+        "pab-w2c-0ce9e88893-c-dc9e5a52"
+      ],
+      "exit": 1,
+      "output": "[sanitized inventory/inspect/source-map output; digest retained; assertions and source maps recorded separately]",
+      "output_sha256": "721b965722c7f6888d884cbce20085427e557481a598c62a44e083b01097cf0c"
+    },
+    {
+      "argv": [
+        "docker",
+        "inspect",
+        "pab-w2c-0ce9e88893-c-9b89a493"
+      ],
+      "exit": 1,
+      "output": "[sanitized inventory/inspect/source-map output; digest retained; assertions and source maps recorded separately]",
+      "output_sha256": "9b3446b308875b243cf819f6bf8ef09c1e0861584559d9e99c7a6bc0376ad75e"
+    },
+    {
+      "argv": [
+        "docker",
+        "inspect",
+        "pab-w2c-0ce9e88893-c-3e9d03fb"
+      ],
+      "exit": 1,
+      "output": "[sanitized inventory/inspect/source-map output; digest retained; assertions and source maps recorded separately]",
+      "output_sha256": "9b9d66762754dc54ec056fd7b183328a330145212e4d66ff6e7a932edfcf8c89"
+    },
+    {
+      "argv": [
+        "docker",
+        "inspect",
+        "c41f7dbc6950162f81c281bfab75c16494390a9060c69835a3348738e5fdca28"
+      ],
+      "exit": 1,
+      "output": "[sanitized inventory/inspect/source-map output; digest retained; assertions and source maps recorded separately]",
+      "output_sha256": "1bb3a1c5e19e8b0108919b7ab3d933b696da6ee886b91843b3b01d5e52ba3a3f"
+    },
+    {
+      "argv": [
+        "docker",
+        "inspect",
+        "pab-w2c-0ce9e88893-c-331d33df"
+      ],
+      "exit": 1,
+      "output": "[sanitized inventory/inspect/source-map output; digest retained; assertions and source maps recorded separately]",
+      "output_sha256": "878de9e1d4e34e4d769b693c7c1fddd9eab221f9d098d70ba44dab12714976d4"
+    },
+    {
+      "argv": [
+        "docker",
+        "inspect",
+        "a3b3085aac380dd47a4fcd76503cfda1b930369d9bf2825adb235e7d80a73627"
+      ],
+      "exit": 1,
+      "output": "[sanitized inventory/inspect/source-map output; digest retained; assertions and source maps recorded separately]",
+      "output_sha256": "de25e5a72c7dd1f37ce7d831551cafc3453d28166cbb181b071f8bf1b214dc80"
+    },
+    {
+      "argv": [
+        "docker",
+        "inspect",
+        "pab-w2c-0ce9e88893-c-7d915911"
+      ],
+      "exit": 1,
+      "output": "[sanitized inventory/inspect/source-map output; digest retained; assertions and source maps recorded separately]",
+      "output_sha256": "2ae7dbbc28268d5b0a909d218d629887e87afd8f5f6b071b28199c3bc780b91e"
+    },
+    {
+      "argv": [
+        "docker",
+        "inspect",
+        "pab-w2c-0ce9e88893-c-99adaa46"
+      ],
+      "exit": 1,
+      "output": "[sanitized inventory/inspect/source-map output; digest retained; assertions and source maps recorded separately]",
+      "output_sha256": "020b4b569cd39ff521af02f87ec317c936a6d7cec9914a3b07b04d4eca920066"
+    },
+    {
+      "argv": [
+        "docker",
+        "inspect",
+        "7eade3d8a28f12c1eced54fd0bed9704f158afe9e2406c77eb6f49567fecfd3b"
+      ],
+      "exit": 1,
+      "output": "[sanitized inventory/inspect/source-map output; digest retained; assertions and source maps recorded separately]",
+      "output_sha256": "0486d63f8bd65e86f27a68a46d0577df2663210e6364e144cce300a6ce1e47a3"
+    },
+    {
+      "argv": [
+        "docker",
+        "inspect",
+        "pab-w2c-0ce9e88893-c-bde76112"
+      ],
+      "exit": 1,
+      "output": "[sanitized inventory/inspect/source-map output; digest retained; assertions and source maps recorded separately]",
+      "output_sha256": "920db9bb92bdcd24171b1489ec5f2aaad979ae9a09c63bb003f6708f290742a2"
+    },
+    {
+      "argv": [
+        "docker",
+        "inspect",
+        "2f8882ad1bb347719e081e7e794fe6e5355ac3a876f6eca90b0d0a73fd0134b9"
+      ],
+      "exit": 1,
+      "output": "[sanitized inventory/inspect/source-map output; digest retained; assertions and source maps recorded separately]",
+      "output_sha256": "d0cd78c95e651b108376dbf7613e590775e3c7502ae0e911d9619a23c12a211c"
+    },
+    {
+      "argv": [
+        "docker",
+        "inspect",
+        "2cafbf5befdba08a79ea9de3ffe34ca152a0206ea5e7ba19c00b180f84865981"
+      ],
+      "exit": 1,
+      "output": "[sanitized inventory/inspect/source-map output; digest retained; assertions and source maps recorded separately]",
+      "output_sha256": "6cfa51ec252ca2bdc682846e0e0ba2493cf9af9f325f47dc12c4fdb8d89d4dd3"
+    },
+    {
+      "argv": [
+        "docker",
+        "inspect",
+        "pab-w2c-0ce9e88893-c-511b2b5d"
+      ],
+      "exit": 1,
+      "output": "[sanitized inventory/inspect/source-map output; digest retained; assertions and source maps recorded separately]",
+      "output_sha256": "d3321bb9ae339dc62cf677571666eced65b3db85c4028b661566c0908a471e82"
+    },
+    {
+      "argv": [
+        "docker",
+        "inspect",
+        "pab-w2c-0ce9e88893-c-1cdb0278"
+      ],
+      "exit": 1,
+      "output": "[sanitized inventory/inspect/source-map output; digest retained; assertions and source maps recorded separately]",
+      "output_sha256": "70ac04f2378b91d1969c9e2c2643e9b792281020dd654a7e6084b8529dbcccad"
+    },
+    {
+      "argv": [
+        "docker",
+        "inspect",
+        "50e253917d04c8b73268a6ae8e8dfa72e4b9ea68a28b7b0513bf3ed953c6db7f"
+      ],
+      "exit": 1,
+      "output": "[sanitized inventory/inspect/source-map output; digest retained; assertions and source maps recorded separately]",
+      "output_sha256": "81bf9dc3411866ed47fe86c54d70087c2357dd99ce7dae7ece75430ef7c77f2e"
+    },
+    {
+      "argv": [
+        "docker",
+        "inspect",
+        "7594ab47801315944aab352603c63b6d121dd5898713d152d8ccf27abfbb3af7"
+      ],
+      "exit": 1,
+      "output": "[sanitized inventory/inspect/source-map output; digest retained; assertions and source maps recorded separately]",
+      "output_sha256": "4c8f87211c8906d6af440b23ce5fa1b9ac7cb4a7fef91c690b771fab8a2c3f72"
+    },
+    {
+      "argv": [
+        "docker",
+        "inspect",
+        "pab-w2c-0ce9e88893-c-21e91e95"
+      ],
+      "exit": 1,
+      "output": "[sanitized inventory/inspect/source-map output; digest retained; assertions and source maps recorded separately]",
+      "output_sha256": "48fd7b13d83d1ddf4015a3f4b78da57d428e5b3fc769a57433fbba4180e279aa"
+    },
+    {
+      "argv": [
+        "docker",
+        "inspect",
+        "pab-w2c-0ce9e88893-c-640a1df3"
+      ],
+      "exit": 1,
+      "output": "[sanitized inventory/inspect/source-map output; digest retained; assertions and source maps recorded separately]",
+      "output_sha256": "8ae243e0728a7435f8dce405ef15698fdb0a304dca69087789dbe75e058fb438"
+    },
+    {
+      "argv": [
+        "docker",
+        "inspect",
+        "pab-w2c-0ce9e88893-c-e27c8c1c"
+      ],
+      "exit": 1,
+      "output": "[sanitized inventory/inspect/source-map output; digest retained; assertions and source maps recorded separately]",
+      "output_sha256": "a6ef7818e3cd5e7985d796945c68a7e96f797ee4ee508722eaf62d6ddf20b36e"
+    },
+    {
+      "argv": [
+        "docker",
+        "inspect",
+        "pab-w2c-0ce9e88893-c-f9540f6b"
+      ],
+      "exit": 1,
+      "output": "[sanitized inventory/inspect/source-map output; digest retained; assertions and source maps recorded separately]",
+      "output_sha256": "0b7d2f8d19a95dc9a23ae06f8db6d392cbd25bdc8def14e1de74a05d7073b3bd"
+    },
+    {
+      "argv": [
+        "docker",
+        "inspect",
+        "pab-w2c-0ce9e88893-c-3d91a612"
+      ],
+      "exit": 1,
+      "output": "[sanitized inventory/inspect/source-map output; digest retained; assertions and source maps recorded separately]",
+      "output_sha256": "8453821576d6e9fa07696aa8811f709ab6eeaf6dad7c501e6cc619e3dc13cd69"
+    },
+    {
+      "argv": [
+        "docker",
+        "inspect",
+        "c12fa8f26fd7595280194f41ef208a545c496be42e4b8ae8827ea33379b59a83"
+      ],
+      "exit": 1,
+      "output": "[sanitized inventory/inspect/source-map output; digest retained; assertions and source maps recorded separately]",
+      "output_sha256": "50cbc0fa2328f1597140283b76395e061fc085cfd08e9e5ea781fa92990450a0"
+    },
+    {
+      "argv": [
+        "docker",
+        "inspect",
+        "pab-w2c-0ce9e88893-c-bde4bbe1"
+      ],
+      "exit": 1,
+      "output": "[sanitized inventory/inspect/source-map output; digest retained; assertions and source maps recorded separately]",
+      "output_sha256": "528d98183ecbbf5ca9c32a5aad61e2c852f33f93524d5b90ed03e8f11c3e63c0"
+    },
+    {
+      "argv": [
+        "docker",
+        "inspect",
+        "0fbffbdb7268150d7aa42c06c40ce5afdd60b068e8b6af1c522180a1bb80b736"
+      ],
+      "exit": 1,
+      "output": "[sanitized inventory/inspect/source-map output; digest retained; assertions and source maps recorded separately]",
+      "output_sha256": "15b81aa2310743623d606bc4d4fa4d74d4cc92e61622858b1d7c15668ce196f0"
+    },
+    {
+      "argv": [
+        "docker",
+        "inspect",
+        "4e6ed0211ad935bdd6b6191e060683da84ae8803db6fe2704b62a6a381d313f2"
+      ],
+      "exit": 1,
+      "output": "[sanitized inventory/inspect/source-map output; digest retained; assertions and source maps recorded separately]",
+      "output_sha256": "e05a666c4653dba8eb6a7904464684005259a9bfcbced1de9001a0fe103c1016"
+    },
+    {
+      "argv": [
+        "docker",
+        "inspect",
+        "e6f963bc979da19dd935c853e157883e6a3c9c5ce5d2a9bcb09b9a6a93c88ff4"
+      ],
+      "exit": 1,
+      "output": "[sanitized inventory/inspect/source-map output; digest retained; assertions and source maps recorded separately]",
+      "output_sha256": "b9b2b206661beaee65ef4717ae68ba9c5878878df27805240b97a4a33f453dc3"
+    },
+    {
+      "argv": [
+        "docker",
+        "inspect",
+        "5ec3fdb9d72e0ecedb67d7bbf701fcb8d22864b61e5e5a4bbaaeed9be1255c11"
+      ],
+      "exit": 1,
+      "output": "[sanitized inventory/inspect/source-map output; digest retained; assertions and source maps recorded separately]",
+      "output_sha256": "c24e7e319901495e28ee0d4482fe38b9bfdcb6cf71df79bee0f09f72273c7ec1"
+    },
+    {
+      "argv": [
+        "docker",
+        "inspect",
+        "pab-w2c-0ce9e88893-c-40fac4bd"
+      ],
+      "exit": 1,
+      "output": "[sanitized inventory/inspect/source-map output; digest retained; assertions and source maps recorded separately]",
+      "output_sha256": "465b436eac1d4d4ddf9f33b709bdc3e494c1588ddd810f21ea3208d878470acf"
+    },
+    {
+      "argv": [
+        "docker",
+        "inspect",
+        "pab-w2c-0ce9e88893-c-c84a0e9d"
+      ],
+      "exit": 1,
+      "output": "[sanitized inventory/inspect/source-map output; digest retained; assertions and source maps recorded separately]",
+      "output_sha256": "ef0340279b5f242c27e760671043304b91f305f3c0193e5f81673702197b430c"
+    },
+    {
+      "argv": [
+        "docker",
+        "inspect",
+        "1a126b8460847754623606cad19c0d478ed340f7b8fa195c4befbc5159b42c72"
+      ],
+      "exit": 1,
+      "output": "[sanitized inventory/inspect/source-map output; digest retained; assertions and source maps recorded separately]",
+      "output_sha256": "f36cc1eab15ec88919a1f61ae3d738688f24190c7a1ad1fb32bb3fa85a5a67cf"
+    }
+  ],
+  "sanitization": "Bounded historical diagnostic summary only; failures and regression commands retained, source-map digests and image IDs identify that run. No final-source passing claim."
+}

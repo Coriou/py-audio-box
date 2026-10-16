@@ -1,0 +1,29 @@
+{
+  "base_commit": "8b64f70ef5dd0483b8b8430a976945b52d1cceeb",
+  "branch": "t3/implement-w2c-runtime",
+  "worktree": "/Users/ben/.txcode/worktrees/py-audio-box/t3-785fa36e",
+  "source_image_maps_match": true,
+  "packaging_match": true,
+  "owned_resources_remaining": 0,
+  "prior_resources_preserved": true,
+  "canonical_contract_revision": "1.3.0 unchanged",
+  "files": {
+    "worker/runtime_supervisor.py": "e2d4837fe834131c3e16e1ad49dcba89fe58d8cf5432b3488b33b0d19b10c6f3",
+    "worker/runtime_protocol.py": "e39bdc3900c9b1f1326e6000689e84d01cc0e8719f8fe999511d05da432001ea",
+    "worker/runtime_journal.py": "66ca21d342c8f0bf98b9ebb707773303a154e4624c9fcca00f63ed3de37c2765",
+    "worker/runtime_child.py": "ec5000b17a3b8869b887ad02d4f492789020db48d6f7408824e4a822477dca9a",
+    "service/supervisor_runtime.py": "7235121ac9c94fa061e6df1351930bc100b1aaae94d91ef678f07ccf46b11196",
+    "service/lifecycle_cli.py": "b900a9881edd0aeaaf854c8642da11675d14dc86de03b24fbde60b58caddfbc3",
+    "service/compose.lifecycle.yml": "51f542faa7b7a8ef231fb79efb0d19ecb479cbd6fc21537f7b7ec50e3d9ad868",
+    "service/Dockerfile.lifecycle": "e86762eb80c5fe45b6462d3b8a66bbb7c52a8efbc9e4dbc87db1e9ced4966e0b",
+    "service/Dockerfile.lifecycle.dockerignore": "a6871d4d4ec3138b078c8cc182beb9e0bb55ea2db02db7e945d00ab27c2c0490",
+    "tests/service/test_packaged_lifecycle.py": "3da0613a7ac4dc304341c67fcb097666fb20ec44ccbde4291016fa75f3328f1d",
+    "tests/release/test_packaged_lifecycle.py": "746dabc06ccdfc07f6102dfd7330bbb6fdfba539e9900f98cdc3012be5f40077",
+    "scripts/test-worker-w2c.sh": "3347cdfba51996158d76b2b08a20fc30eb81e7319b18faba9c574c8344f104b2",
+    "docs/agent-interface/phase-1/WORKER-W2C.md": "e5adc8787115960f740003f985683e9c2462ffb43abd43da836274305492dbd9"
+  },
+  "images": {
+    "worker": "sha256:7101cd00bbd2e49544233d62bf439d9483e5612e1254cbb750591ce8f14dbb9b",
+    "control": "sha256:62b9d27609a63975ffba5d0c7d321ecd6df085e1dfd843bce162f2ebdb34e9b2"
+  }
+}

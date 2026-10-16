@@ -1,0 +1,247 @@
+{
+  "project": "pab-w2c-4f38816f78",
+  "tier": "E1/E2 offline dependency-overlay synthetic only",
+  "status": "failed",
+  "failure": "AssertionError: readiness_failed",
+  "dependency_image": "sha256:85141b253c04344134252c0878750756aef6bae3d4d4d083301004db7f43ce0e",
+  "images": {
+    "worker": "sha256:72dc61979e7321f9c75ac71db33b031f4a47c0225c0509ec59005d3f044bdd64",
+    "control": "sha256:c2d50a90faf9ebbddb2e75d4ac2c458478faa2df0c1eac7eafba499f6cd45678"
+  },
+  "scenarios": [],
+  "before": {
+    "containers": {
+      "count": 15,
+      "sha256": "23c6be7289f12faa7ff8834a8e01311c6002bd2c4c0afb645799b04a2f16725e"
+    },
+    "volumes": {
+      "count": 140,
+      "sha256": "4d632ffe7511b22b72200660d00a49a09ea3d4d77e6773fde88e029e433b8aef"
+    }
+  },
+  "after": {
+    "containers": {
+      "count": 15,
+      "sha256": "23c6be7289f12faa7ff8834a8e01311c6002bd2c4c0afb645799b04a2f16725e"
+    },
+    "volumes": {
+      "count": 140,
+      "sha256": "4d632ffe7511b22b72200660d00a49a09ea3d4d77e6773fde88e029e433b8aef"
+    }
+  },
+  "prior_resources_preserved": true,
+  "summarized_receipt_sha256": "bf2466bb3129e04619977358de69260a55a6ec59c3096b3bac144a8b307750fc",
+  "source_maps_sha256": {
+    "control_source_sha256": "9d0d66fe17f93837a926271f8f209828731a06f613af64cd5fc40815102c98c4",
+    "worker_source_sha256": "b10c4f063be47bf3155ac558a8704706c7015e4c9b258f6a88008abae6898092"
+  },
+  "commands": [
+    {
+      "argv": [
+        "docker",
+        "run",
+        "--name",
+        "pab-w2c-4f38816f78-regressions",
+        "--network",
+        "none",
+        "--cpus",
+        "2",
+        "--memory",
+        "1g",
+        "--pids-limit",
+        "128",
+        "--read-only",
+        "--tmpfs",
+        "/tmp:rw,nosuid,size=64m",
+        "--entrypoint",
+        "python",
+        "pab-w2c-4f38816f78-control",
+        "-m",
+        "pytest",
+        "tests/service",
+        "tests/release",
+        "-q",
+        "-p",
+        "no:cacheprovider"
+      ],
+      "exit": 0,
+      "output": "........................................................................ [ 77%]\n.....................                                                    [100%]\n93 passed in 27.54s\n",
+      "output_sha256": "7c619614914c66917ec5989ed4562fef2c8c555263b991018784fdc955450726"
+    },
+    {
+      "argv": [
+        "docker",
+        "compose",
+        "-p",
+        "pab-w2c-4f38816f78",
+        "-f",
+        "service/compose.lifecycle.yml",
+        "run",
+        "--name",
+        "pab-w2c-4f38816f78-c-98a5c23f",
+        "--no-deps",
+        "control",
+        "hello"
+      ],
+      "exit": 2,
+      "output": "{\"error\": \"lifecycle_unavailable_or_quarantined\"}\n Container pab-w2c-4f38816f78-c-98a5c23f Creating \n Container pab-w2c-4f38816f78-c-98a5c23f Created \n\n",
+      "output_sha256": "c8ba48dfe0c884b0657f5f4246191b6c216749f4f4a5003c7634aa69e0acf059"
+    },
+    {
+      "argv": [
+        "docker",
+        "compose",
+        "-p",
+        "pab-w2c-4f38816f78",
+        "-f",
+        "service/compose.lifecycle.yml",
+        "run",
+        "--name",
+        "pab-w2c-4f38816f78-c-d5ed576d",
+        "--no-deps",
+        "control",
+        "hello"
+      ],
+      "exit": 2,
+      "output": "{\"error\": \"lifecycle_unavailable_or_quarantined\"}\n Container pab-w2c-4f38816f78-c-d5ed576d Creating \n Container pab-w2c-4f38816f78-c-d5ed576d Created \n\n",
+      "output_sha256": "2e91ca6c075e99b80ab784080d8194cea9590d64027def851023f075bf002079"
+    },
+    {
+      "argv": [
+        "docker",
+        "compose",
+        "-p",
+        "pab-w2c-4f38816f78",
+        "-f",
+        "service/compose.lifecycle.yml",
+        "run",
+        "--name",
+        "pab-w2c-4f38816f78-c-116f272a",
+        "--no-deps",
+        "control",
+        "hello"
+      ],
+      "exit": 2,
+      "output": "{\"error\": \"lifecycle_unavailable_or_quarantined\"}\n Container pab-w2c-4f38816f78-c-116f272a Creating \n Container pab-w2c-4f38816f78-c-116f272a Created \n\n",
+      "output_sha256": "3b8380386b4cdd6f7273162f331ec9508dd536398a66b03f9a25b122cef1dd81"
+    },
+    {
+      "argv": [
+        "docker",
+        "compose",
+        "-p",
+        "pab-w2c-4f38816f78",
+        "-f",
+        "service/compose.lifecycle.yml",
+        "run",
+        "--name",
+        "pab-w2c-4f38816f78-c-79a84c02",
+        "--no-deps",
+        "control",
+        "hello"
+      ],
+      "exit": 2,
+      "output": "{\"error\": \"lifecycle_unavailable_or_quarantined\"}\n Container pab-w2c-4f38816f78-c-79a84c02 Creating \n Container pab-w2c-4f38816f78-c-79a84c02 Created \n\n",
+      "output_sha256": "8df5a5e77e6304cd626f6b3c719b6af1e3396fc0a590a99613d732cdf42f0c16"
+    },
+    {
+      "argv": [
+        "docker",
+        "compose",
+        "-p",
+        "pab-w2c-4f38816f78",
+        "-f",
+        "service/compose.lifecycle.yml",
+        "run",
+        "--name",
+        "pab-w2c-4f38816f78-c-e2df996d",
+        "--no-deps",
+        "control",
+        "hello"
+      ],
+      "exit": 2,
+      "output": "{\"error\": \"lifecycle_unavailable_or_quarantined\"}\n Container pab-w2c-4f38816f78-c-e2df996d Creating \n Container pab-w2c-4f38816f78-c-e2df996d Created \n\n",
+      "output_sha256": "dffcc96899bfb8401942390e785b99a0ada221ea77687a5b82001c984cf99bef"
+    },
+    {
+      "argv": [
+        "docker",
+        "compose",
+        "-p",
+        "pab-w2c-4f38816f78",
+        "-f",
+        "service/compose.lifecycle.yml",
+        "run",
+        "--name",
+        "pab-w2c-4f38816f78-c-6c80be12",
+        "--no-deps",
+        "control",
+        "hello"
+      ],
+      "exit": 2,
+      "output": "{\"error\": \"lifecycle_unavailable_or_quarantined\"}\n Container pab-w2c-4f38816f78-c-6c80be12 Creating \n Container pab-w2c-4f38816f78-c-6c80be12 Created \n\n",
+      "output_sha256": "b6359020269c832518e6539158bc4e5eab96c8b4631fd060280a2413025bacbe"
+    },
+    {
+      "argv": [
+        "docker",
+        "inspect",
+        "pab-w2c-4f38816f78-c-98a5c23f"
+      ],
+      "exit": 1,
+      "output": "[sanitized inventory/inspect/source-map output; digest retained; assertions and source maps recorded separately]",
+      "output_sha256": "05b798b6815c16fb00704e52a4e39b48ca5f4020947bd879b9ee8eec7bb5484e"
+    },
+    {
+      "argv": [
+        "docker",
+        "inspect",
+        "pab-w2c-4f38816f78-c-e2df996d"
+      ],
+      "exit": 1,
+      "output": "[sanitized inventory/inspect/source-map output; digest retained; assertions and source maps recorded separately]",
+      "output_sha256": "26cf1d1d95cf806b97cfe77d365a7940c5637d70c9b6ace59f0470e802e95618"
+    },
+    {
+      "argv": [
+        "docker",
+        "inspect",
+        "pab-w2c-4f38816f78-c-79a84c02"
+      ],
+      "exit": 1,
+      "output": "[sanitized inventory/inspect/source-map output; digest retained; assertions and source maps recorded separately]",
+      "output_sha256": "43816531b4184b8b638744e9108a34b9b4b7762d7f88a8e33c9a2f262a905cac"
+    },
+    {
+      "argv": [
+        "docker",
+        "inspect",
+        "pab-w2c-4f38816f78-c-116f272a"
+      ],
+      "exit": 1,
+      "output": "[sanitized inventory/inspect/source-map output; digest retained; assertions and source maps recorded separately]",
+      "output_sha256": "354925fbfa7afa60ae1cc00ce3dfa6c527bd987ddca1582a682f8b3123c08ba3"
+    },
+    {
+      "argv": [
+        "docker",
+        "inspect",
+        "pab-w2c-4f38816f78-c-6c80be12"
+      ],
+      "exit": 1,
+      "output": "[sanitized inventory/inspect/source-map output; digest retained; assertions and source maps recorded separately]",
+      "output_sha256": "b0207c7aa192d33affa96b1360c624105695a93e91de56e0fad5dfeb4d1ae764"
+    },
+    {
+      "argv": [
+        "docker",
+        "inspect",
+        "pab-w2c-4f38816f78-c-d5ed576d"
+      ],
+      "exit": 1,
+      "output": "[sanitized inventory/inspect/source-map output; digest retained; assertions and source maps recorded separately]",
+      "output_sha256": "6986df80a32e35fd71c77ee3f1460bacefbd45d1b47ef1128d292e6555afee86"
+    }
+  ],
+  "sanitization": "Bounded historical diagnostic summary only; failures and regression commands retained, source-map digests and image IDs identify that run. No final-source passing claim."
+}
