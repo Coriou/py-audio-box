@@ -361,3 +361,9 @@ Record failures and missing evidence; do not replace them with a successful late
 
 - [Independent report](reviews/P1B1-r1-sol.md): NO-GO exact `b2af46f`; independently 326 passed/18 skipped and47focused. F1 missing previously created Core can remint healthy authority during matching completion; F2 blanket plan exclusion misses prior evidence deletion; F3 SQLite read-only connection mutates source SHM. No integration/waiver.
 - Fresh isolated Sol-low request `pab-phase1a-p1b1-fix-r1-20261022`: durable pre-Core creation intent, exact self-only plan projection and source-preserving WAL-aware inspection with adversarial regressions. Original B1 scope retained, no B2 authority/activation. Separate re-review required.
+
+## B1 corrected candidate / independent review round2
+
+- Candidate `70251613902948c474d8030ab8f566815dc9e860`, source `34e68d5` plus report, precursor `b172e06`; app-owned `t3-94e6816a`, branch `t3/b1-enrollment-corrections`. Root read response/diff summary; unintegrated.
+- Claims10RED then59focusedGREEN and338passed18skipped final service/release. F1pre-Coreintent, F2self-onlyplanexclusion/priorhistorybinding, F3bounded source-preserving WAL-aware privatecopy; E1only.
+- Fresh Sol-low request/task suffix `pab-phase1a-p1b1-review-r2-20261022`, report `reviews/P1B1-r2-sol.md`; originalbrief/fullpriorfindings+response supplied. No waiver/integration/activation; B2/B3/C1/C2 remainpending and A1globalinventorylimit retained.
