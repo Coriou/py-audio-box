@@ -8,6 +8,7 @@ from pathlib import Path
 import re
 import sqlite3
 import time
+import tempfile
 from types import SimpleNamespace
 import uuid
 
@@ -69,10 +70,55 @@ def validate_plan(record):
 
 
 @contextmanager
+def private_database(path):
+    """Bounded stable WAL-aware copy under the normal external owner lock.
+
+    SQLite opens only the private 0700 namespace. Cooperative writers are
+    excluded by control.lock; detected source changes refuse the result.
+    """
+    deadline = time.monotonic()+2
+    def capture():
+        result = {}; total = 0
+        namespace = []
+        with os.scandir(path.parent) as entries:
+            for entry in entries:
+                if len(namespace)>=MAX_ROWS or time.monotonic()>deadline:
+                    raise ValueError('snapshot_namespace_budget')
+                namespace.append(entry.name)
+        namespace.sort()
+        for name in ('core.sqlite', 'core.sqlite-wal', 'core.sqlite-shm'):
+            source = path.parent/name
+            if source.exists() or source.is_symlink():
+                if time.monotonic()>deadline: raise ValueError('snapshot_deadline')
+                data = read_file(source, MAX_BYTES-total)
+                total += len(data)
+                if total > MAX_BYTES: raise ValueError('snapshot_byte_budget')
+                st = source.stat(follow_symlinks=False)
+                result[name] = (data, (st.st_dev, st.st_ino, st.st_mode,
+                    st.st_uid, st.st_nlink, st.st_size, st.st_mtime_ns, st.st_ctime_ns))
+        if 'core.sqlite' not in result: raise sqlite3.OperationalError('missing_database')
+        return namespace, result
+    if not path.parent.is_dir(): raise sqlite3.OperationalError('missing_database')
+    before = capture()
+    with tempfile.TemporaryDirectory(prefix='p1-inspect-') as directory:
+        target = Path(directory)/'core.sqlite'
+        for name, (data, _) in before[1].items():
+            fd = os.open(Path(directory)/name, os.O_WRONLY|os.O_CREAT|os.O_EXCL, 0o600)
+            with os.fdopen(fd, 'wb') as stream:
+                if stream.write(data) != len(data): raise OSError('short_private_copy')
+        if capture() != before: raise ValueError('snapshot_source_changed')
+        try:
+            yield target
+        finally:
+            if capture() != before: raise ValueError('snapshot_source_changed')
+
+
+@contextmanager
 def offline(roots, *, write=False, journal_lock=True):
     roots = roots_checked(roots)
     locks = []
     db = None
+    private = None
     try:
         lock_paths=[roots['control']/'core'/'control.lock']
         if journal_lock: lock_paths.append(roots['receipts']/'lane.lock')
@@ -85,6 +131,9 @@ def offline(roots, *, write=False, journal_lock=True):
             except BlockingIOError: raise ValueError('maintenance_lock_busy') from None
         path=roots['control']/'core'/'core.sqlite'
         if path.is_symlink(): raise ValueError('foreign_database')
+        if not write:
+            private = private_database(path)
+            path = private.__enter__()
         db=sqlite3.connect(path.as_uri()+('?mode=rw' if write else '?mode=ro'),uri=True,timeout=0,isolation_level=None)
         db.execute('PRAGMA trusted_schema=OFF')
         if write: db.execute('PRAGMA synchronous=FULL')
@@ -94,10 +143,13 @@ def offline(roots, *, write=False, journal_lock=True):
         yield roots,db
     finally:
         if db is not None: db.close()
-        for fd in reversed(locks): os.close(fd)
+        try:
+            if private is not None: private.__exit__(None,None,None)
+        finally:
+            for fd in reversed(locks): os.close(fd)
 
 
-def snapshot(roots, db, scope):
+def snapshot(roots, db, scope, *, exclude_plan=None):
     """Read-only transaction including WAL; never calls an observation fence."""
     validate_scope(scope)
     db.execute('BEGIN')
@@ -199,12 +251,12 @@ def snapshot(roots, db, scope):
         scanner.core=SimpleNamespace(root=roots['control']/'core'); scanner.db=db; scanner.staging=roots['staging']
         scanner.entry_limit=MAX_ROWS; scanner.byte_limit=MAX_BYTES; scanner.seconds=1
         scanner._collect()
-        # Plans are immutable proposals, not source authority. Adding a proposal
-        # must not invalidate itself; every other row including diagnostics binds.
-        state={k:v for k,v in data.items() if k!='p1_recovery_plans'}
+        # Exclude only this proposal. Later appends invalidate older plans.
+        state=dict(data)
+        state['p1_recovery_plans']=[r for r in data['p1_recovery_plans'] if r[0]!=exclude_plan]
         inventory=[]
         for row in sorted(scanner.rows.values(),key=lambda r:r['id']):
-            inventory.append({**row,'references':[r for r in row['references'] if not r.startswith('p1_recovery_plans:')]})
+            inventory.append({**row,'references':[r for r in row['references'] if r != 'p1_recovery_plans:'+str(exclude_plan)]})
         fingerprint=digest(dict(schema=schema,data=state,inventory=inventory,journal=digest(journal),marker=marker))
         affected=dict(jobs=[r[1] for r in data['jobs']], dispatches=[r[0] for r in data['dispatches'] if not r[-1]], publications=[r[0] for r in data['publications']])
         if sum(map(len,affected.values()))>MAX_ROWS: raise ValueError('affected_budget')
@@ -303,7 +355,7 @@ def verify_plan(roots,scope,observation,plan_id,expected_digest, *, now=None):
         value=json.loads(row[0]); validate_plan(value)
         if digest(value)!=row[1] or row[1]!=expected_digest: raise ValueError('plan_digest_mismatch')
         if not value['created']<=now<value['expires']: raise ValueError('expired_plan')
-        state=snapshot(roots,db,scope); check_consumers(state,observation)
+        state=snapshot(roots,db,scope,exclude_plan=plan_id); check_consumers(state,observation)
         if value['source_digest']!=state['source_digest'] or value['proof_digest']!=digest(observation) or value['affected']!=state['affected']:
             raise ValueError('stale_plan')
         return value
@@ -316,7 +368,7 @@ def apply(*args,**kwargs):
 def enrollment_gate(root, registration_id, hello, profiles, budget):
     """Read-only pre-Core startup check. No Docker access or new health epoch."""
     path=Path(root).absolute()/'core.sqlite'
-    with sqlite3.connect(path.as_uri()+'?mode=ro',uri=True,timeout=0) as db:
+    with private_database(path) as private_path, sqlite3.connect(private_path.as_uri()+'?mode=ro',uri=True,timeout=0) as db:
         db.execute('PRAGMA query_only=ON')
         for table,columns in B1_COLUMNS.items():
             if [r[1] for r in db.execute('PRAGMA table_info('+table+')')] != columns.split(): raise ValueError('unsupported_enrollment_schema')

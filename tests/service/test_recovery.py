@@ -46,7 +46,8 @@ def enrolled_plan(installation):
 
 
 def logical(roots):
-    with sqlite3.connect(roots['control']/'core'/'core.sqlite') as db:
+    from contextlib import closing
+    with closing(sqlite3.connect(roots['control']/'core'/'core.sqlite')) as db:
         return list(db.iterdump())
 
 
@@ -280,7 +281,7 @@ def test_finite_inspection_refuses_oversized_records(installation):
     roots,scope,_,_=installation
     with sqlite3.connect(roots['control']/'core'/'core.sqlite') as db:
         db.execute('INSERT INTO p1_registrations VALUES(?,?,?)',('x','x'*(recovery.MAX_BYTES+1),'x'))
-    with pytest.raises(ValueError,match='inspection_budget'):recovery.inspect(roots,scope)
+    with pytest.raises(ValueError,match='inspection_budget|snapshot_byte_budget|unsafe_private_file'):recovery.inspect(roots,scope)
 
 
 def test_nonempty_plan_remains_verifiable_and_dispatch_reference_is_retained(installation):
@@ -357,3 +358,85 @@ def test_unknown_inventory_refuses_plan_but_is_visible_in_inspect(installation):
     state=recovery.inspect(roots,scope)
     assert state['inventory']['counts']['unknown_foreign']==1
     with pytest.raises(ValueError,match='unknown_recovery_scope'):recovery.plan(roots,scope,observation)
+
+
+@pytest.mark.parametrize('damage',['lost','empty','intent'])
+def test_core_creation_intent_never_remints(tmp_path,damage):
+    import shutil
+    roots={k:tmp_path/k for k in ('control','staging','receipts','ipc')}
+    for p in roots.values(): p.mkdir()
+    scope=dict(daemon='d',context='c',volumes={k:dict(name=k,driver='local',created='now') for k in roots})
+    def fault(point):
+        if point==('core_intent' if damage=='intent' else 'database'): raise OSError('crash')
+    with pytest.raises(OSError): initialize(roots,scope,synthetic_profiles(),DEFAULT_BUDGET,fault=fault)
+    record=json.loads(read_file(roots['receipts']/'p1-init.json'))
+    core=roots['control']/'core'
+    if damage!='intent': shutil.rmtree(core)
+    if damage=='empty': core.mkdir()
+    with pytest.raises(ValueError,match='core.*quarantine'):
+        initialize(roots,scope,synthetic_profiles(),DEFAULT_BUDGET,complete=digest(record))
+    assert not (core/'core.sqlite').exists()
+    assert not (roots['receipts']/'p1-enrolled.json').exists()
+
+
+@pytest.mark.parametrize('mutation',['delete','content','append'])
+def test_plan_binds_other_plan_evidence(installation,mutation):
+    roots,scope,_,_=installation
+    observation,first=enrolled_plan(installation)
+    second=recovery.plan(roots,scope,observation,now=101)
+    assert recovery.verify_plan(roots,scope,observation,second['plan']['id'],second['digest'],now=102)==second['plan']
+    if mutation=='append': recovery.plan(roots,scope,observation,now=102)
+    else:
+        with sqlite3.connect(roots['control']/'core/core.sqlite') as db:
+            if mutation=='delete': db.execute('DELETE FROM p1_recovery_plans WHERE id=?',(first['plan']['id'],))
+            else:
+                value=first['plan']; value['expires']-=1
+                db.execute('UPDATE p1_recovery_plans SET record=?,digest=? WHERE id=?',(encode(value),digest(value),value['id']))
+    with pytest.raises(ValueError,match='stale_plan'):
+        recovery.verify_plan(roots,scope,observation,second['plan']['id'],second['digest'],now=103)
+
+
+@pytest.mark.parametrize('missing_shm,readonly',[(False,False),(True,False),(False,True),(True,True)])
+def test_crash_wal_inspection_preserves_source(installation,missing_shm,readonly):
+    import subprocess,sys,os,hashlib
+    roots,scope,_,_=installation
+    directory=roots['control']/'core'; path=directory/'core.sqlite'
+    subprocess.run([sys.executable,'-c',"import sqlite3,os,sys; db=sqlite3.connect(sys.argv[1]); db.execute('PRAGMA journal_mode=WAL'); db.execute(\"UPDATE resource_monitor SET state='checking'\"); db.commit(); os._exit(0)",str(path)],check=True)
+    if missing_shm: Path(str(path)+'-shm').unlink()
+    def files(): return {p.name:hashlib.sha256(p.read_bytes()).hexdigest() for p in directory.iterdir() if p.is_file()}
+    before=files()
+    if readonly: directory.chmod(0o500)
+    try:
+        assert recovery.inspect(roots,scope)['monitor']==[(1,'checking')]
+        assert files()==before
+    finally: directory.chmod(0o700)
+
+
+def test_private_snapshot_source_change_refuses_and_cleans(installation,monkeypatch):
+    roots,scope,_,_=installation
+    original=recovery.snapshot
+    private_dirs=[]
+    def changed(roots,db,scope,**kwargs):
+        private_dirs.append(Path(db.execute('PRAGMA database_list').fetchone()[2]).parent)
+        result=original(roots,db,scope,**kwargs)
+        (roots['control']/'core'/'unexpected').write_bytes(b'changed')
+        return result
+    monkeypatch.setattr(recovery,'snapshot',changed)
+    with pytest.raises(ValueError,match='snapshot_source_changed'): recovery.inspect(roots,scope)
+    assert private_dirs and all(not p.exists() for p in private_dirs)
+    assert (roots['control']/'core'/'unexpected').read_bytes()==b'changed'
+
+
+def test_private_snapshot_copy_error_cleans_only_private(installation,monkeypatch):
+    roots,scope,_,_=installation
+    original=recovery.sqlite3.connect
+    private_dirs=[]
+    def failed(path,*args,**kwargs):
+        from urllib.parse import urlparse,unquote
+        private_dirs.append(Path(unquote(urlparse(path).path)).parent)
+        raise sqlite3.OperationalError('private-open-injected')
+    monkeypatch.setattr(recovery.sqlite3,'connect',failed)
+    with pytest.raises(sqlite3.OperationalError,match='private-open-injected'): recovery.inspect(roots,scope)
+    monkeypatch.setattr(recovery.sqlite3,'connect',original)
+    assert private_dirs and all(not p.exists() for p in private_dirs)
+    assert recovery.inspect(roots,scope)['monitor']==[(1,'healthy')]

@@ -108,7 +108,7 @@ def initialize(roots, scope, profiles, budget, *, complete=None, fault=lambda _:
         ('receipts','lane.lock'): b'',
     }
     allowed = {'control':{'core'},'staging':set(),'ipc':{'lifecycle.key','execution.key'},
-               'receipts':{'p1-init.json','journal.json','initialized','p1-enrolled.json','lane.lock'}}
+               'receipts':{'p1-init.json','p1-core-intent','journal.json','initialized','p1-enrolled.json','lane.lock'}}
     allowed['receipts'].update('p1-created-'+role+'-'+name for role,name in files)
     for role,p in roots.items():
         if {x.name for x in p.iterdir()} - allowed[role]: raise ValueError('unexplained_initialization_entries')
@@ -126,7 +126,44 @@ def initialize(roots, scope, profiles, budget, *, complete=None, fault=lambda _:
             exclusive(intent, digest(dict(role=role,name=name,sha256=hashlib.sha256(data).hexdigest())).encode())
             exclusive(path,data)
         fault(name)
-    existing_core = (roots['control']/'core').exists()
+    core_path = roots['control']/'core'
+    core_intent = roots['receipts']/'p1-core-intent'
+    intent_bytes = digest(dict(deployment_id=private['deployment_id'], namespace='control/core')).encode()
+    if core_intent.exists():
+        if read_file(core_intent) != intent_bytes: raise ValueError('core_intent_quarantine')
+        # Refuse before Core can create namespace or schema.
+        if (core_path.is_symlink() or not core_path.is_dir() or
+                any(not (core_path/name).is_dir() or (core_path/name).is_symlink()
+                    for name in ('assets','staging','owners')) or
+                not (core_path/'core.sqlite').is_file() or (core_path/'core.sqlite').is_symlink() or
+                (core_path/'core.sqlite').stat().st_size == 0):
+            raise ValueError('core_namespace_quarantine')
+    else:
+        if core_path.exists() or core_path.is_symlink(): raise ValueError('core_without_intent_quarantine')
+        exclusive(core_intent, intent_bytes)
+        fault('core_intent')
+    existing_core = core_path.exists()
+    if existing_core:
+        # A constructor is a writer: validate the retained authority first using
+        # the same source-preserving private copy as offline inspection.
+        from service.recovery import offline
+        from service.reconciliation import COLUMNS
+        with offline(roots) as (_, db):
+            required = dict(COLUMNS, **persistence.B1_COLUMNS,
+                p1_inventory_scans='id observed complete fingerprint summary',
+                p1_inventory_objects='id first_observed last_observed scan_id record',
+                p1_inventory_history='seq scan_id object_id observed record',
+                p1_integrity='id revision state token', sqlite_sequence='name seq')
+            tables = {r[0] for r in db.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+            if tables != set(required) or any(
+                    [r[1] for r in db.execute('PRAGMA table_info('+t+')')] != columns.split()
+                    for t,columns in required.items()):
+                raise ValueError('partial_database_initialization_quarantine')
+            if (db.execute('SELECT * FROM resource_protocol').fetchall() != [(1,2)] or
+                    db.execute('SELECT * FROM resource_monitor').fetchall() != [(1,'healthy')] or
+                    db.execute('SELECT * FROM p1_integrity').fetchall() != [(1,1,'healthy',None)] or
+                    db.execute('SELECT record FROM p1_installation').fetchall() != [(encode(public),)]):
+                raise ValueError('partial_authority_initialization_quarantine')
     core = Core(roots['control']/'core')
     try:
         if any(core.db.execute('SELECT 1 FROM '+t+' LIMIT 1').fetchone() for t in ('jobs','assets','publications','artifacts','revisions')):
