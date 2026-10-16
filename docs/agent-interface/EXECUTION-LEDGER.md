@@ -424,3 +424,9 @@ Record failures and missing evidence; do not replace them with a successful late
 - [R3review](reviews/P1B21-r3-sol.md) boundedsource/E1GO exact5959d8f; F1/F2closed nonewblocker,227focused/457passed18skipped independentlyconfirmed.
 - Root integratedallsevenimplementationcommits oldestfirst c651014/00465f1/e8ec8e5/ad012d9/467673b/4d7b3a6/6f8c0a2; source diffvsreviewedcandidateempty. Root targeted fullyrehashed nonterminal+allocationregressions36passed137deselected21.83s exit0.
 - NextisolatedSol-low request `pab-phase1a-p1b22-implementation-r1-20261022` ONLYB2.2 private transition/resolution/resumekernel perAstra; independentreviewrequired, applystillunavailable/noactivation. A1inventory/C1C2/finalAstralimitations retained.
+
+## B2.2 incomplete attempt / bounded evidence tranche
+
+- Task `pab-phase1a-p1b22-implementation-r1-20261022` ended after inspection only at2bb8235: no files/tests/commits or concrete blocker. Not implementation/acceptance.
+- Orchestrator splits implementation internally: B2.2a accepted intent + evidence archive prefix only, then remaining journal/Core/receipt transition steps after independent review/integration. Same B2.2 architecture/allowlist, no new authority/activation. Prefix stops safely under durable pending fences; all apply unavailable.
+- Fresh isolated Sol-low request `pab-phase1a-p1b22a-implementation-r1-20261022`; narrow deliverable with actual RED/GREEN tests and handoff required, not another inspection-only report.
