@@ -396,3 +396,8 @@ Record failures and missing evidence; do not replace them with a successful late
 - Candidate `ccf3c07c93f504056a538d2f318bdbaa35bb4dd3`, baseline8ede631, app-owned `t3-15922103`, branch `t3/closed-records-publication-fences`; ten authorized paths. Root read fullhandoff/diff summary; unintegrated.
 - Claims344affectedpass and379passed18skipped fullfinalsuite; optionalclosedschema/selfbindingplans/startup-publicationfences/completionhandshake. Apply remainsunavailable/activationclosed; E1only.
 - Fresh independentSol-low request/task suffix `pab-phase1a-p1b21-review-r1-20261022`, report `reviews/P1B21-r1-sol.md`; fullAstraoriginalbrief/candidate/limits supplied. No waiver or B2acceptance; subsequentlots/C1C2 and A1inventoryqualification pending.
+
+## B2.1 round1 NO-GO / focused correction
+
+- [Independent review](reviews/P1B21-r1-sol.md) NO-GO exactccf3c07;149focused and379passed18skipped independently confirmed. F1 unexplained executing reservation passes coherent-predecessor planning; F2 completion accepts hash-shaped assertions without closed before-image/step/archive evidence. No integration/waiver.
+- Isolated Sol-low request `pab-phase1a-p1b21-fix-r1-20261022`: reject incoherent allocation provenance before schema mutation; freeze and validate bounded evidence/step documents with coherent completed fixtures. B2.2kernel/apply remain unavailable; fresh independent re-review required.
