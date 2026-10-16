@@ -245,3 +245,9 @@ Record failures and missing evidence; do not replace them with a successful late
 - Candidate`d1fe65f2743191b65978e8db5390bc20c3b92189`, app-owned`t3-efa81fcc`, branch`t3/implement-w2d-dispatcher`. Root read fullhandoff; unintegrated.
 - Claims122tests+32installedscenario steps, singleCorewriter/asyncUDS/durableallocator/receipt-fencedpublication/outcome-beforeACK; oldlocalexecutor historicalflagonly. R1/P1activationclosed.
 - IndependentSol-low request/task suffix`pab-phase1a-w2d-review-r1-20261022`, samecurrenttask-IDprefix, report`reviews/W2d-r1-sol.md`; fullAstraW2d requirements andmandatoryremaininggates supplied. Soleheavylane; noW2d/fullW2GOyet.
+
+## W2d accepted integration / complete W2 evidence gate
+
+- [IndependentW2d report](reviews/W2d-r1-sol.md): GO exact`d1fe65f`,122tests+32installedsteps independentlypassed; completeW2 integrationmatrix notyetclosed. W2c15scenarios remain explicitlyattributed unchangedworker evidence.
+- Integrated`601c558`; exactsource diff vs reviewedcandidate empty. Root exactsourceimage122test regression running. No publicactivation/R1P1waiver.
+- NextindependentSol-low evidenceaudit `pab-phase1a-w2-integrated-gate-20261022`: fulloriginalmatrix frozenintegratedSHA, unchangedsource/imageattribution and anyneeded targetedinstalledrows; noimplementation expansion. Report will determine boundedfullW2synthetic engineeringGO or specific gaps.
