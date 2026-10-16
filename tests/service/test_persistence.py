@@ -3,6 +3,7 @@ import hashlib
 import json
 import os
 import sqlite3
+import stat
 import subprocess
 import sys
 
@@ -76,7 +77,12 @@ def test_real_publication_write_failures(core, context, monkeypatch, kind):
     job, result = proposal(core, context)
     with monkeypatch.context() as patch:
         patch.setattr(builtins, 'open', wrapped)
-        if kind == 'file_fsync': patch.setattr(persistence.os, 'fsync', lambda _: (_ for _ in ()).throw(OSError('file sync denied')))
+        if kind == 'file_fsync':
+            fsync = os.fsync
+            def denied_file(fd):
+                if stat.S_ISREG(os.fstat(fd).st_mode): raise OSError('file sync denied')
+                fsync(fd)
+            patch.setattr(persistence.os, 'fsync', denied_file)
         if kind == 'short': core._publish(job['id'], result)
         else:
             with pytest.raises(OSError): core._publish(job['id'], result)
@@ -364,6 +370,8 @@ def test_old_terminal_history_reads_and_dedup_remain(core, context):
     for _ in range(2):
         reopen(core)
         assert not core.p1
+        with pytest.raises(sqlite3.OperationalError):
+            core.db.execute('CREATE TABLE forbidden_migration(value)')
         assert core.job(job['id']) == terminal and core.events(job['id']) == events
         assert core.artifact(artifact['id']) == artifact
         assert core.submit_synthetic('p', 'a', context) == terminal
@@ -371,3 +379,39 @@ def test_old_terminal_history_reads_and_dedup_remain(core, context):
             core.submit_synthetic('p', 'new', context)
         core._commit_publication(job['id'])
         assert core.events(job['id']) == events
+
+
+def test_recovery_stat_io_error_is_not_incomplete_media(core, context, monkeypatch):
+    from pathlib import Path
+    job, result = pending(core, context, 'after_adoption')
+    destination, temporary = names(core)
+    lstat = Path.lstat
+    def denied(path, *args, **kwargs):
+        if path == destination: raise OSError(5, 'stat I/O denied')
+        return lstat(path, *args, **kwargs)
+    with monkeypatch.context() as patch:
+        patch.setattr(Path, 'lstat', denied)
+        assert core.reconcile()
+        assert core.job(job['id'])['state'] == 'running'
+        assert not core.db.execute('SELECT * FROM assets').fetchall()
+    reopen(core)
+    assert not core.reconcile() and core.job(job['id'])['state'] == 'succeeded'
+    reopen(core)
+    assert not core.reconcile()
+
+
+def test_intent_namespace_sync_failure_precedes_temp_create(core, context, monkeypatch):
+    import service.core as module
+    job, result = proposal(core, context)
+    sync = module.sync_dir
+    def denied(path):
+        if path == core.root: raise OSError('SQLite namespace sync denied')
+        sync(path)
+    with monkeypatch.context() as patch:
+        patch.setattr(module, 'sync_dir', denied)
+        with pytest.raises(OSError, match='namespace sync denied'): core._publish(job['id'], result)
+    assert core.db.execute('SELECT count(*) FROM publication_work').fetchone() == (1,)
+    assert not list((core.root/'assets').iterdir())
+    for _ in range(2):
+        reopen(core)
+        assert not core.reconcile() and core.job(job['id'])['state'] == 'failed'

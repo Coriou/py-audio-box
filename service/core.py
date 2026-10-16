@@ -135,6 +135,8 @@ class Core:
             PRAGMA user_version=1;
             COMMIT;''')
         self.p1 = persistence.initialize(self.db, fresh=fresh)
+        if not self.p1:
+            self.db.execute('PRAGMA query_only=ON')  # Also fence direct schema writers.
         # SQLite FULL protects WAL commits; persist the database/WAL namespace too.
         sync_dir(self.root)
         sync_dir(self.root.parent)
@@ -380,6 +382,7 @@ class Core:
             self.db.execute('INSERT INTO publications VALUES (?,?,?,?)', (job_id,encode(manifest),encode(artifact),encode(message)))
             self.db.execute('INSERT INTO publication_work VALUES (?,?,?,?,?,?)',
                 (job_id,encode(artifact),output['id'],temporary_name,hashlib.sha256(data).hexdigest(),len(data)))
+        sync_dir(self.root)  # Persist any newly created SQLite WAL/SHM names too.
         if fault: fault('before_adoption')
         output=manifest['outputs'][0]
         destination=self.root/'assets'/output['id']
@@ -414,10 +417,13 @@ class Core:
             verified_result=json.loads(self.db.execute('SELECT message FROM publications WHERE job_id=?',(job_id,)).fetchone()[0]),allowed_assets=[])
         directory=self.root/'assets'
         path=directory/destination
-        if not path.exists() and not path.is_symlink():
-            raise ValueError('incomplete_adoption')
+        try: path.lstat()
+        except FileNotFoundError:
+            raise ValueError('incomplete_adoption') from None
         alias=directory/temporary
-        if alias.exists() or alias.is_symlink():
+        try: alias_info=alias.lstat()
+        except FileNotFoundError: alias_info=None
+        if alias_info is not None:
             first=persistence.verify_file(path,digest,length,links=2)
             second=persistence.verify_file(alias,digest,length,links=2)
             if (first.st_dev,first.st_ino)!=(second.st_dev,second.st_ino):
@@ -455,6 +461,9 @@ class Core:
     def reconcile(self) -> bool:
         """No retries, kills or blind deletion. An inherited lock fences a living fake owner."""
         if not self.historical_local: raise ValueError('dispatcher_required')
+        if not self.p1:
+            return any(json.loads(raw)['state'] not in ('succeeded','failed','cancelled')
+                       for (raw,) in self.db.execute('SELECT job FROM jobs'))
         quarantined=False
         for (raw,) in self.db.execute('SELECT job FROM jobs').fetchall():
             job=json.loads(raw)
