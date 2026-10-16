@@ -239,3 +239,9 @@ Record failures and missing evidence; do not replace them with a successful late
 - [IndependentW2c report](reviews/W2c-r1-sol.md): GO exact`b166665`,100tests+15packaged scenarios independentlypassed, source/image/topology/cleanup verified. FullW2 waitsW2d; R1/P1activationseparate.
 - Integrated`1074a47`; exactsource diff vs reviewedcandidate empty. Root initial test invocation mistakenly appended python to image CLI entrypoint (exit2, no tests); corrected explicit `--entrypoint python` regression **100passed in25.43s**,exit0, exactsourceimage/networknone/read-only/tmpfs/no mounts. No semantic sourcechange.
 - NextSol-low request`pab-phase1a-w2d-implementation-r1-20261022`: serializedallocator/dispatcher and realruntime receipts, replaceoldlocal executor, no dualauthority. Independentreviewrequired.
+
+## W2d candidate / independent review
+
+- Candidate`d1fe65f2743191b65978e8db5390bc20c3b92189`, app-owned`t3-efa81fcc`, branch`t3/implement-w2d-dispatcher`. Root read fullhandoff; unintegrated.
+- Claims122tests+32installedscenario steps, singleCorewriter/asyncUDS/durableallocator/receipt-fencedpublication/outcome-beforeACK; oldlocalexecutor historicalflagonly. R1/P1activationclosed.
+- IndependentSol-low request/task suffix`pab-phase1a-w2d-review-r1-20261022`, samecurrenttask-IDprefix, report`reviews/W2d-r1-sol.md`; fullAstraW2d requirements andmandatoryremaininggates supplied. Soleheavylane; noW2d/fullW2GOyet.
