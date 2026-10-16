@@ -471,3 +471,8 @@ Record failures and missing evidence; do not replace them with a successful late
 - Candidate `c5173055bce21101621f25fb4d868495a7b7e2c3`, source/testsd1c732d production766dc11, app-owned `t3-bb9261f6`; eightauthorizedpaths. Rootreadhandoff; unintegrated. Claims502focused/654passed18skipped finalfrozen.
 - Earlier interruptedfull exit143 and failedfull1failed653pass18skip explicitlysuperseded: uncertifiedevidencewindowfixed and testsourceconnection closed beforeprivatecopy; no sourcevalidationrelaxation/A1causeinference.
 - FreshindependentSol-low request/task suffix `pab-phase1a-p1b22c-review-r1-20261022`, report `reviews/P1B22c-r1-sol.md`; originalbrief/implementerresponses/remaininglimits supplied. Corecompleteprivateonly receiptPENDING applyunavailable/noactivation; no integration/waiver.
+
+## B2.2c round1 NO-GO / exact resolution guard correction
+
+- [R1review](reviews/P1B22c-r1-sol.md) NO-GO exactc517305;502focused/654passed18skipped confirmed. F1 completedresolution suppresses laterjobs.context mismatch because latermissingreceipt reason overwritesownermismatch and resolutioncomparesjobJSON/reservation only; A2 falselyclean twice.
+- IsolatedSol-low request `pab-phase1a-p1b22c-fix-r1-20261022`: fullrecoveredrow/context strictjoins beforeknownoldreasonconsumption, no overwrittennewdefects; productionwriter positive/onefieldnegative across2startups. No integration/waiver, receiptPENDING/applyunavailable.
