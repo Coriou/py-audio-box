@@ -2339,3 +2339,99 @@ def test_b22d_correction_completed_replay_pending_exact_attempt(installation,mon
     for _ in range(2):
         assert recovery._complete_receipts(roots,scope,first,observation,now=1000)==expected
         assert logical(roots)==before and retained_bytes(roots)==files
+
+
+@pytest.mark.parametrize('point,deleted',[
+    ('core-complete-commit',None),('core-complete-parent',None),
+    ('journal-replace',None),('journal-replace','evidence'),
+    ('snapshot-parent','pending'),
+    ('core-intent-parent',None),('pending-receipt-commit',None),
+    ('snapshot-parent',None),('manifest-parent',None),('original-journal-parent',None),
+    ('evidence-receipt-commit',None),('journal-receipt-commit',None),
+    ('core-certificate-parent',None),('receipt-certificate-parent',None),
+    ('completion-journal-replace',None),('completion-fence-replace',None),
+    ('manifest-parent','snapshot-attempt'),
+    ('original-journal-parent','manifest-attempt'),
+    ('receipt-certificate-parent','core-certificate-attempt'),
+    ('completion-journal-replace','receipt-certificate-attempt'),
+    ('completion-fence-replace','completion-journal-attempt'),
+    ('core-certificate-parent','core-certificate-output'),
+    ('core-certificate-parent','core-certificate-partial'),
+    ('core-certificate-parent','core-certificate-wrong'),
+    ('core-certificate-intent-recorded',None),
+])
+def test_b22d_r2_retained_successor_prefix(installation,monkeypatch,point,deleted):
+    from service import resource_store
+    roots,scope,_,_=installation;first,observation,_=core_fixture(installation)
+    expected=recovery._complete_receipts(roots,scope,first,observation,now=102)
+    second=b2_intent(installation,prepare_only=True,recovery_id='7'*32,archive_id='6'*32)
+    fired=[]
+    def fault(where):
+        if where==point:
+            fired.append(where)
+            raise OSError('r2-stop')
+    with pytest.raises(OSError,match='r2-stop'):
+        recovery._complete_receipts(roots,scope,second,second['proof']['observation'],now=102,fault=fault)
+    assert fired==[point]
+    if point.startswith('core-complete'):
+        assert not (roots['receipts']/('p1-recovery-'+second['id']+'.core-certificate.intent.json')).exists()
+        assert not (roots['control']/'core'/('p1-recovery-'+second['archive_id']+'.certificate.json')).exists()
+    quarantine=deleted is not None or point=='core-certificate-intent-recorded'
+    if deleted and deleted.endswith('-attempt'):
+        (roots['receipts']/('p1-recovery-'+second['id']+'.'+deleted[:-8]+'.intent.json')).unlink()
+    elif deleted and deleted.startswith('core-certificate-'):
+        path=roots['control']/'core'/('p1-recovery-'+second['archive_id']+'.certificate.json')
+        if deleted.endswith('output'):path.unlink()
+        else:path.write_bytes(b'{' if deleted.endswith('partial') else b'{}')
+    elif deleted:
+        with closing(sqlite3.connect(roots['control']/'core'/'core.sqlite')) as db,db:
+            assert db.execute('DELETE FROM p1_recovery_steps WHERE recovery_id=? AND step=?',(second['id'],deleted)).rowcount==1
+    before=logical(roots);files=retained_bytes(roots)
+    def forbidden(*a,**k):raise AssertionError('completed replay scan or write')
+    monkeypatch.setattr(recovery,'snapshot',forbidden)
+    monkeypatch.setattr(Reconciliation,'_collect',forbidden)
+    monkeypatch.setattr(resource_store,'_recovery_scan',forbidden)
+    monkeypatch.setattr(recovery,'_prefix_file',forbidden)
+    monkeypatch.setattr(recovery,'_prefix_transaction',forbidden)
+    for _ in range(2):
+        if quarantine:
+            with pytest.raises((ValueError,OSError)):recovery._complete_receipts(roots,scope,first,observation,now=1000)
+        else:assert recovery._complete_receipts(roots,scope,first,observation,now=1000)==expected
+        assert logical(roots)==before and retained_bytes(roots)==files
+
+
+@pytest.mark.parametrize('point',['core-complete-commit','core-complete-parent'])
+def test_b22d_r2_completed_replay_crash_successor_fresh_interpreter(installation,point):
+    import subprocess,sys
+    roots,scope,_,_=installation;first,observation,_=core_fixture(installation)
+    recovery._complete_receipts(roots,scope,first,observation,now=102)
+    second=b2_intent(installation,prepare_only=True,recovery_id='7'*32,archive_id='6'*32)
+    pid=os.fork()
+    if pid==0:
+        recovery._pending_through_core(roots,scope,second,second['proof']['observation'],now=102,
+            fault=lambda where:os._exit(73) if where==point else None)
+        os._exit(74)
+    assert os.waitpid(pid,0)[1]==73<<8
+    rid=first['id'];del first,second,observation
+    code='''import json,sys
+from pathlib import Path
+from tests.service.test_recovery import logical,retained_bytes
+from service import recovery,resource_store
+from service.reconciliation import Reconciliation
+v=json.load(sys.stdin);roots={k:Path(p) for k,p in v['roots'].items()}
+a=json.loads((roots['receipts']/('p1-recovery-'+v['rid']+'.intent.json')).read_bytes())
+b=json.loads((roots['receipts']/('p1-recovery-'+'7'*32+'.intent.json')).read_bytes())
+assert not (roots['receipts']/('p1-recovery-'+b['id']+'.core-certificate.intent.json')).exists()
+expected=dict(status='complete',recovery_id=a['id'],lane=a['new_lane'],epoch=a['new_epoch'],certificate=recovery._core_result(a)['certificate'])
+# Capture logical state first: opening crash-left SQLite can recover/checkpoint
+# WAL. Physical preservation is asserted only after this explicit capture.
+before=logical(roots);files=retained_bytes(roots)
+def forbidden(*a,**k):raise AssertionError('completed replay scan or write')
+recovery.snapshot=Reconciliation._collect=resource_store._recovery_scan=forbidden
+recovery._prefix_file=recovery._prefix_transaction=forbidden
+for _ in range(2):
+ assert recovery._complete_receipts(roots,v['scope'],a,a['proof']['observation'],now=1000)==expected
+ assert logical(roots)==before and retained_bytes(roots)==files
+'''
+    child=subprocess.run([sys.executable,'-c',code],input=encode(dict(roots={k:str(p) for k,p in roots.items()},scope=scope,rid=rid)),text=True,capture_output=True,env={**os.environ,'PYTHONDONTWRITEBYTECODE':'1'})
+    assert child.returncode==0,child.stderr

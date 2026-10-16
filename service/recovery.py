@@ -822,7 +822,7 @@ def _archive_database(raw):
         finally:db.close()
 
 
-def _validate_archives(root,data,entries,used,uncertified=None):
+def _validate_archives(root,data,entries,used,uncertified=None,retained_receipts=None):
     import hashlib
     deadline=time.monotonic()+2
     for r in data['p1_recoveries']:
@@ -831,7 +831,15 @@ def _validate_archives(root,data,entries,used,uncertified=None):
         content={}
         for name,kind in archive_names(r).items():
             if kind=='certificate' and 'core-complete' not in steps:continue
-            if kind=='certificate' and r['id']==uncertified:
+            # Only the latest unfinished history may have committed Core before
+            # its first certificate attempt. Attempted or completed histories
+            # retain the unconditional actual-certificate obligation.
+            unattempted=(retained_receipts is not None and r is data['p1_recoveries'][-1]
+                and 'receipt-complete' not in steps
+                and not (retained_receipts/('p1-recovery-'+r['id']+'.core-certificate.intent.json')).exists()
+                and not (retained_receipts/('p1-recovery-'+r['id']+'.core-certificate.intent.json')).is_symlink()
+                and not (root/name).exists() and not (root/name).is_symlink())
+            if kind=='certificate' and (r['id']==uncertified or unattempted):
                 # Reserve the exact not-yet-created certificate before COMMIT.
                 used+=len(encode(_certificate(r,steps['core-complete'])).encode());entries+=1
                 if used>MAX_BYTES or entries>MAX_ROWS:raise ValueError('b2_archive_budget')
@@ -918,7 +926,7 @@ def validate_b2_record(table,value):
     _uuid(value['recovery_id'])
 
 
-def _validate_b2_database(db, root, uncertified=None):
+def _validate_b2_database(db, root, uncertified=None, retained_receipts=None):
     """Bound the complete logical population before decoding any JSON."""
     from service.persistence import B2_COLUMNS, b2_schema
     if not b2_schema(db): return None
@@ -1021,11 +1029,11 @@ def _validate_b2_database(db, root, uncertified=None):
             current=db.execute('SELECT * FROM '+table+' ORDER BY rowid').fetchall()
             for old in source['data'][table]:
                 if not any(encode(old)==encode(row) for row in current):raise ValueError('b2_before_history_binding')
-    _validate_archives(root,data,count,size,uncertified)
+    _validate_archives(root,data,count,size,uncertified,retained_receipts)
     return data
 
 
-def validate_b2_database(db, root=None, *, _uncertified=None):
+def validate_b2_database(db, root=None, *, _uncertified=None, _retained_receipts=None):
     # These owning seams have no live resource observation. Restore no handler;
     # offline snapshot installs its own deadline for its remaining SQL work.
     deadline=time.monotonic()+2
@@ -1033,7 +1041,7 @@ def validate_b2_database(db, root=None, *, _uncertified=None):
     try:
         if root is None:
             root=Path(next(r[2] for r in db.execute('PRAGMA database_list') if r[1]=='main')).parent
-        return _validate_b2_database(db,Path(root),_uncertified)
+        return _validate_b2_database(db,Path(root),_uncertified,_retained_receipts)
     except (RecursionError,TypeError,KeyError,IndexError) as exc:
         raise ValueError('b2_malformed_evidence') from exc
     finally: db.set_progress_handler(None,0)
@@ -1240,7 +1248,7 @@ def _pending_prefix(roots, scope, intent, observation, *, now=None, snapshot_byt
     if observation!=intent['proof']['observation'] or observation['scope']!=scope: raise ValueError('b2_prefix_proof_changed')
     with offline(roots,write=True) as (roots,db):
         root=roots['control']/'core'; receipts=roots['receipts']
-        data=validate_b2_database(db,root,_uncertified=intent['id'] if through_core else None)
+        data=validate_b2_database(db,root,_uncertified=intent['id'] if through_core else None,_retained_receipts=receipts)
         plan=next((p for p in data['p1_abandon_plans'] if p['id']==intent['plan_id']),None) if data else None
         if plan is None or digest(plan)!=intent['plan_digest']: raise ValueError('b2_prefix_plan_changed')
         for key in ('deployment_id','source_digest','observation_digest','proof_digest','prior_epoch','new_epoch','old_lane','new_lane','affected','budget_before','budget_after','diagnostic_decisions'):
@@ -1283,7 +1291,7 @@ def _pending_prefix(roots, scope, intent, observation, *, now=None, snapshot_byt
                 check_consumers(dict(registrations=current,lane=intent['old_lane']),observation)
             _completed_prefix_receipts(roots,intent)
             _core_certificate(root,receipts,intent,fault)
-            validate_b2_database(db,root)
+            validate_b2_database(db,root,_retained_receipts=receipts)
             return _finish_receipts(db,roots,intent,fault) if through_receipt else _core_result(intent)
         if any(r['id']!=intent['id'] and not any(s['recovery_id']==r['id'] and s['step']=='core-complete' for s in data['p1_recovery_steps']) for r in data['p1_recoveries']):
             raise ValueError('b2_prefix_other_pending')
@@ -1352,7 +1360,7 @@ def _pending_prefix(roots, scope, intent, observation, *, now=None, snapshot_byt
         if core_after:
             _completed_prefix_receipts(roots,intent)
             _core_certificate(root,receipts,intent,fault)
-            validate_b2_database(db,root)
+            validate_b2_database(db,root,_retained_receipts=receipts)
             return _finish_receipts(db,roots,intent,fault) if through_receipt else _core_result(intent)
         bundle=receipts/('p1-recovery-'+intent['id']+'.snapshot.bundle')
         bundle_intent=receipts/('p1-recovery-'+intent['id']+'.bundle.intent.json')
@@ -1562,31 +1570,52 @@ def _completed_prefix_receipts(roots,intent, *, _stages=None):
 def _retained_pending_receipts(roots,intent,stages):
     """Validate retained production inputs at their actual durable stage."""
     from worker.runtime_journal import journal_bytes
-    _completed_prefix_receipts(roots,intent,_stages=stages)
     receipts=roots['receipts'];prefix='p1-recovery-'+intent['id']
+    def attempted(kind):
+        path=receipts/(prefix+'.'+kind+'.intent.json')
+        return path.exists() or path.is_symlink()
+    # Closed production order: an output may precede its OWN SQL receipt,
+    # but a later attempt proves that every predecessor receipt/output existed.
+    evidence=('snapshot','manifest','original-journal')
+    for index,kind in enumerate(evidence):
+        if attempted(kind) and ('pending' not in stages or any(not attempted(k) for k in evidence[:index])):
+            raise ValueError('b2_retained_creation_prerequisite')
+    if 'evidence' in stages and not all(attempted(k) for k in evidence):
+        raise ValueError('b2_retained_creation_prerequisite')
+    if attempted('rotation') and 'evidence' not in stages:
+        raise ValueError('b2_retained_creation_prerequisite')
+    if attempted('core-certificate') and 'core-complete' not in stages:
+        raise ValueError('b2_retained_creation_prerequisite')
+    if attempted('receipt-certificate') and ('core-complete' not in stages or not attempted('core-certificate')):
+        raise ValueError('b2_retained_creation_prerequisite')
+    _completed_prefix_receipts(roots,intent,_stages=stages)
     certificate=_core_result(intent)['certificate']
     raw=encode(certificate).encode()
     creation=receipts/(prefix+'.core-certificate.intent.json')
-    if 'core-complete' in stages or creation.exists():
+    if attempted('core-certificate'):
         _prefix_exact(creation,_receipt_descriptor(intent,raw))
         name=next(n for n,k in archive_names(intent).items() if k=='certificate')
         _prefix_exact(roots['control']/'core'/name,raw)
+    else:
+        name=next(n for n,k in archive_names(intent).items() if k=='certificate')
+        path=roots['control']/'core'/name
+        if path.exists() or path.is_symlink():raise ValueError('b2_core_certificate_unrecorded')
     chain=[dict(recovery_id=intent['id'],**e,lane=intent['new_lane'],epoch=intent['new_epoch']) for e in intent['expected'][:4]]
     archive=encode(dict(certificate=certificate,steps=chain)).encode()
     fence=dict(revision=1,**{k:intent[k] for k in ('deployment_id','plan_id','plan_digest','proof_digest','old_lane','new_lane')},recovery_id=intent['id'],step='complete',certificate=certificate)
-    attempted=[]
+    final_attempts=[]
     for kind,raw,path in (
         ('receipt-certificate',archive,receipts/(prefix+'.certificate.json')),
         ('completion-journal',journal_bytes(dict(intent['expected'][2]['output']['journal'],maintenance=certificate)),receipts/'journal.json'),
         ('completion-fence',encode(fence).encode(),receipts/'p1-maintenance.json')):
         creation=receipts/(prefix+'.'+kind+'.intent.json')
-        attempted.append(creation.exists())
-        if creation.exists():
+        final_attempts.append(creation.exists() or creation.is_symlink())
+        if creation.exists() or creation.is_symlink():
             if 'core-complete' not in stages:raise ValueError('b2_prefix_premature_certificate')
             _prefix_exact(creation,_receipt_descriptor(intent,raw));_prefix_exact(path,raw)
         elif kind=='receipt-certificate' and (path.exists() or path.is_symlink()):
             raise ValueError('b2_receipt_unrecorded_artifact')
-    if (attempted[2] and not attempted[1]) or (attempted[1] and not attempted[0]):
+    if (final_attempts[2] and not final_attempts[1]) or (final_attempts[1] and not final_attempts[0]):
         raise ValueError('b2_receipt_creation_chain')
     # The latest unfinished history still owns these live receipt outputs.
     pending=encode(dict(fence,step='pending',certificate=None)).encode()
@@ -1693,7 +1722,7 @@ def _finish_receipts(db,roots,intent,fault):
     """
     from worker.runtime_journal import journal_bytes, maintenance_record
     root=roots['control']/'core';receipts=roots['receipts'];prefix='p1-recovery-'+intent['id']
-    validate_b2_database(db,root)  # actual durable fourth step AND Core certificate
+    validate_b2_database(db,root,_retained_receipts=receipts)  # own durable fourth step AND Core certificate
     chain=[dict(recovery_id=intent['id'],**e,lane=intent['new_lane'],epoch=intent['new_epoch']) for e in intent['expected'][:4]]
     certificate=_certificate(intent,chain[-1])
     fence=dict(revision=1,**{k:intent[k] for k in ('deployment_id','plan_id','plan_digest','proof_digest','old_lane','new_lane')},recovery_id=intent['id'],step='complete',certificate=certificate)
