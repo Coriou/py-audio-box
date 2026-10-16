@@ -127,7 +127,10 @@ def test_disk_full_no_false_success(core,context,monkeypatch):
     with monkeypatch.context() as patch:
         patch.setattr(builtins,'open',failing)
         with pytest.raises(OSError): core._publish(job['id'],result)
-    core.reconcile()
+    assert core.reconcile()  # Storage ambiguity requires a reopened session.
+    assert core.job(job['id'])['state']=='running'
+    root=core.root;core.close();core.__init__(root,historical_local=True)
+    assert not core.reconcile()
     assert core.job(job['id'])['state']=='failed'
     assert not core.db.execute('SELECT * FROM artifacts').fetchall()
 

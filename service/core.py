@@ -8,6 +8,7 @@ import copy
 from contextlib import contextmanager
 from datetime import datetime, timedelta, timezone
 import fcntl
+import errno
 import hashlib
 import json
 import os
@@ -23,6 +24,7 @@ from uuid import uuid4
 import wave
 
 from contracts import validate as oracle
+from service import persistence
 
 
 def encode(value):
@@ -78,9 +80,12 @@ class Core:
     def __init__(self, root: Path, *, historical_local=False):
         self.historical_local = historical_local
         self.root = Path(root).absolute()
-        self.root.mkdir(mode=0o700, parents=True, exist_ok=True)
+        fresh = not self.root.exists() or (self.root.is_dir() and not any(self.root.iterdir()))
+        persistence.mkdir_durable(self.root, sync_dir)
         if self.root.is_symlink() or self.root.stat().st_uid != os.getuid():
             raise ValueError('foreign_root')
+        if not fresh and not (self.root/'core.sqlite').is_file():
+            raise persistence.PublicationQuarantine('incomplete_core_initialization')
         self.root.chmod(0o700)
         self.owner = open(self.root / 'control.lock', 'a+b')
         try: fcntl.flock(self.owner, fcntl.LOCK_EX | fcntl.LOCK_NB)
@@ -89,17 +94,32 @@ class Core:
             raise ValueError('control_busy') from None
         for name in ('staging', 'assets', 'owners'):
             path = self.root / name
-            path.mkdir(mode=0o700, exist_ok=True)
+            if not fresh and not path.is_dir():
+                self.owner.close()
+                raise persistence.PublicationQuarantine('incomplete_core_namespace')
+            persistence.mkdir_durable(path, sync_dir)
             if path.is_symlink() or path.stat().st_uid != os.getuid():
                 self.owner.close()
                 raise ValueError('foreign_namespace')
             path.chmod(0o700)
+        database=self.root/'core.sqlite'
+        if fresh:
+            fd=os.open(database,os.O_WRONLY|os.O_CREAT|os.O_EXCL,0o600)
+            try: os.fsync(fd)
+            finally: os.close(fd)
+            sync_dir(self.root)
+        elif database.is_symlink() or database.stat().st_uid!=os.getuid():
+            self.owner.close()
+            raise persistence.PublicationQuarantine('foreign_database')
         self.db = sqlite3.connect(self.root / 'core.sqlite', timeout=2, isolation_level=None)
         self.db.execute('PRAGMA journal_mode=WAL')
         self.db.execute('PRAGMA synchronous=FULL')
         self.db.execute('PRAGMA foreign_keys=ON')
         version = self.db.execute('PRAGMA user_version').fetchone()[0]
         if version not in (0, 1): raise ValueError('unsupported_store_version')
+        if version == 0 and not fresh:
+            self.db.close();self.owner.close()
+            raise persistence.PublicationQuarantine('incomplete_core_schema')
         if version == 0:
             self.db.executescript('''BEGIN IMMEDIATE;
             CREATE TABLE jobs(seq INTEGER PRIMARY KEY AUTOINCREMENT, id TEXT UNIQUE NOT NULL,
@@ -114,7 +134,12 @@ class Core:
             CREATE TABLE artifacts(id TEXT PRIMARY KEY, metadata TEXT NOT NULL);
             PRAGMA user_version=1;
             COMMIT;''')
+        self.p1 = persistence.initialize(self.db, fresh=fresh)
+        # SQLite FULL protects WAL commits; persist the database/WAL namespace too.
+        sync_dir(self.root)
+        sync_dir(self.root.parent)
         self.active = None
+        self._publication_storage_failed = False
         self._transaction_serial = 0
 
     def close(self):
@@ -124,13 +149,22 @@ class Core:
 
     @contextmanager
     def transaction(self, *, _deferred=False):
+        if not self.p1:
+            raise persistence.PublicationQuarantine('pre_p1_inspect_only')
         self._transaction_serial += 1
         self.db.execute('BEGIN' if _deferred else 'BEGIN IMMEDIATE')
         try:
             yield
             self.db.execute('COMMIT')
         except BaseException:
-            self.db.execute('ROLLBACK')
+            try:
+                self.db.execute('ROLLBACK')
+            except sqlite3.Error:
+                # Do not expose an uncommitted local success after rollback denial.
+                # DB-API rollback is a bounded fallback; failure closes this handle.
+                try: self.db.rollback()
+                except sqlite3.Error: self.db.close()
+                # Preserve the original COMMIT/write error, including ambiguity.
             raise
 
     def _load(self, job_id):
@@ -189,11 +223,11 @@ class Core:
         plan = context['plan']
         operation = plan['operation']
         fingerprint = oracle.fingerprint(principal, operation, plan['request'])
+        row = self.db.execute('SELECT fingerprint,job FROM jobs WHERE principal=? AND operation=? AND key=?',(principal,operation,key)).fetchone()
+        if row:
+            oracle.require(row[0] == fingerprint, 'idempotency_conflict')
+            return json.loads(row[1])
         if _admission is not None:
-            row = self.db.execute('SELECT fingerprint,job FROM jobs WHERE principal=? AND operation=? AND key=?',(principal,operation,key)).fetchone()
-            if row:
-                oracle.require(row[0] == fingerprint, 'idempotency_conflict')
-                return json.loads(row[1])
             _admission.demand(context,_profiles)
         from contextlib import nullcontext
         with (_admission._preflight() if _admission is not None else nullcontext()), self.transaction():
@@ -329,35 +363,85 @@ class Core:
         oracle.publication(job,job['attempts'][-1],artifact,{output['id']:measured['sha256']},transport_owner=owner,context=context,manifest=manifest,verified_result=message,allowed_assets=[])
         return data,manifest,artifact,message
 
+    @persistence.storage_session
     def _publish(self, job_id, proposal, fault=None, *, stage_root=None, engine_uid=None):
         job,_=self._load(job_id)
-        data,manifest,artifact,message=self._verified(job,proposal,stage_root=stage_root,engine_uid=engine_uid)
+        try:
+            data,manifest,artifact,message=self._verified(job,proposal,stage_root=stage_root,engine_uid=engine_uid)
+        except OSError as exc:
+            if exc.errno in (errno.ENOENT, errno.ELOOP):
+                raise oracle.ContractError('missing_or_symlink_result') from exc
+            raise
+        if not self.p1:
+            raise persistence.PublicationQuarantine('pre_p1_root')
+        temporary_name = new_id('adoption')
+        output=manifest['outputs'][0]
         with self.transaction():
             self.db.execute('INSERT INTO publications VALUES (?,?,?,?)', (job_id,encode(manifest),encode(artifact),encode(message)))
+            self.db.execute('INSERT INTO publication_work VALUES (?,?,?,?,?,?)',
+                (job_id,encode(artifact),output['id'],temporary_name,hashlib.sha256(data).hexdigest(),len(data)))
         if fault: fault('before_adoption')
         output=manifest['outputs'][0]
         destination=self.root/'assets'/output['id']
         # Same-filesystem atomic no-replace adoption. Keep crash orphans for review.
-        temporary=destination.parent/new_id('adoption')
+        temporary=destination.parent/temporary_name
         with open(temporary,'xb') as stream:
-            stream.write(data);stream.flush();os.fsync(stream.fileno())
+            persistence.write_complete(stream, data)
         os.link(temporary,destination,follow_symlinks=False)
-        temporary.unlink()
-        sync_dir(destination.parent)
+        if fault: fault('after_link')
+        # The same validated alias completion is used live and after restart.
+        self._publication_barrier(job_id, manifest, artifact)
         if fault: fault('after_adoption')
         self._commit_publication(job_id)
         if fault: fault('after_commit')
 
+    def _publication_barrier(self, job_id, manifest, artifact):
+        if not self.p1:
+            raise persistence.PublicationQuarantine('pre_p1_intent')
+        row=self.db.execute('SELECT binding,destination,temporary,sha256,byte_length FROM publication_work WHERE job_id=?',(job_id,)).fetchone()
+        if row is None:
+            raise persistence.PublicationQuarantine('missing_publication_provenance')
+        binding,destination,temporary,digest,length=row
+        output=manifest['outputs'][0]
+        if (len(manifest['outputs'])!=1 or binding!=encode(artifact) or destination!=output['id']
+                or digest!=output['sha256'] or not temporary.startswith('adoption-')
+                or len(temporary)!=41 or any(c not in '0123456789abcdef' for c in temporary[9:])):
+            raise persistence.PublicationQuarantine('publication_work_mismatch')
+        job,context=self._load(job_id)
+        attempt=job['attempts'][-1]
+        oracle.publication(job,attempt,artifact,{destination:digest},transport_owner=attempt['owner_id'],
+            context=context,manifest=manifest,
+            verified_result=json.loads(self.db.execute('SELECT message FROM publications WHERE job_id=?',(job_id,)).fetchone()[0]),allowed_assets=[])
+        directory=self.root/'assets'
+        path=directory/destination
+        if not path.exists() and not path.is_symlink():
+            raise ValueError('incomplete_adoption')
+        alias=directory/temporary
+        if alias.exists() or alias.is_symlink():
+            first=persistence.verify_file(path,digest,length,links=2)
+            second=persistence.verify_file(alias,digest,length,links=2)
+            if (first.st_dev,first.st_ino)!=(second.st_dev,second.st_ino):
+                raise persistence.PublicationQuarantine('foreign_publication_alias')
+            for (asset_id,) in self.db.execute('SELECT id FROM assets'):
+                try:
+                    other=(directory/asset_id).lstat()
+                except FileNotFoundError:
+                    raise persistence.PublicationQuarantine('unavailable_published_inode') from None
+                if (other.st_dev,other.st_ino)==(first.st_dev,first.st_ino):
+                    raise persistence.PublicationQuarantine('published_inode_alias')
+            alias.unlink()  # Only the exact recorded redundant protocol alias.
+            sync_dir(directory)
+        persistence.verify_file(path,digest,length,links=1)
+        sync_dir(directory)
+
+    @persistence.storage_session
     def _commit_publication(self, job_id):
+        job,_=self._load(job_id)
+        if job['state'] in ('succeeded','failed','cancelled'):
+            return  # Read durable state after ambiguous COMMIT; never rewrite history.
         row=self.db.execute('SELECT manifest,artifact FROM publications WHERE job_id=?',(job_id,)).fetchone()
         manifest,artifact=map(json.loads,row)
-        for output in manifest['outputs']:
-            path=self.root/'assets'/output['id']
-            fd=os.open(path,os.O_RDONLY|os.O_NOFOLLOW)
-            with os.fdopen(fd,'rb') as stream:
-                info=os.fstat(stream.fileno())
-                oracle.require(stat.S_ISREG(info.st_mode) and info.st_uid==os.getuid() and info.st_nlink==1 and info.st_size<=1024*1024, 'foreign_media')
-                oracle.require(hashlib.sha256(stream.read(1024*1024+1)).hexdigest()==output['sha256'], 'missing_media')
+        self._publication_barrier(job_id,manifest,artifact)
         with self.transaction():
             job,_=self._load(job_id)
             oracle.require(job['state'] in ('running','cancel_requested'), 'invalid_transition')
@@ -387,7 +471,11 @@ class Core:
                 row=self.db.execute('SELECT manifest FROM publications WHERE job_id=?',(job['id'],)).fetchone()
                 if row:
                     try: self._commit_publication(job['id'])
-                    except (OSError,ValueError,oracle.ContractError):
+                    except (persistence.PublicationQuarantine, sqlite3.Error):
+                        quarantined=True
+                    except OSError:
+                        quarantined=True
+                    except (ValueError,oracle.ContractError):
                         with self.transaction():
                             job.update(state='failed',stage='publication_interrupted');a['reaped']=True;self._save(job)
                 else:

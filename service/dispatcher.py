@@ -8,10 +8,12 @@ import copy
 import json
 from pathlib import Path
 import queue
+import sqlite3
 import threading
 import time
 
 from service.core import Core, encode
+from service.persistence import PublicationQuarantine
 from service.admission import Admission
 from service.dispatch_store import DispatchStore
 from service.supervisor_runtime import SupervisorRuntime
@@ -164,6 +166,9 @@ class Dispatcher:
         return False
 
     def _tick(self):
+        if getattr(self.core,'_publication_storage_failed',False):
+            self.persistence_fault=self.quarantined=True
+            return  # Exact reap preceded publication; storage needs reopen, no live retry.
         self._resource_check()
         if self.pending:
             future,row,op,command=self.pending
@@ -238,6 +243,9 @@ class Dispatcher:
             self._launch(row,'prepare',lambda:self.runtime.prepare(row['authority'],row['fixture']))
 
     def _terminal(self,row,receipt,observation):
+        if getattr(self.core,'_publication_storage_failed',False):
+            self.persistence_fault=self.quarantined=True
+            return  # Only reopen may resolve publication storage ambiguity.
         authority=row['authority'];job=self.core.job(row['job_id'])
         if (receipt['runtime_id']!=row['runtime'] or receipt['binding']!=authority.binding or
             receipt['reaped'] is not True or receipt['reap_method']!='pid1-waitpid-echild' or
@@ -260,7 +268,13 @@ class Dispatcher:
                     self.core._publish(job['id'],dict(message=observation.message,manifest=observation.manifest),
                         fault=self.fault,stage_root=self.staging,engine_uid=receipt['engine_uid'])
                 else:self._fail(job,'deadline_or_reaped')
-            except (OSError,ValueError,AssertionError) as exc:
+            except (OSError,sqlite3.Error,PublicationQuarantine):
+                # Storage failure is not invalid media. Retain intent, ownership,
+                # reservation and receipt; a reopened session reconciles DB state.
+                self.persistence_fault=True
+                self.quarantined=True
+                raise
+            except (ValueError,AssertionError) as exc:
                 self._fail(self.core.job(job['id']),'verification_failed')
         # Crash after success before outcome journal is recoverable from Core terminal.
         job=self.core.job(job['id'])
@@ -272,9 +286,14 @@ class Dispatcher:
             self.store.update(row,phase='unknown')
             self.quarantined=True
             return
-        with self.core.transaction():
-            self.admission.store.release_tx(job['id'],confirmed_reap=True)
-            self.core.db.execute("UPDATE dispatches SET outcome=?,phase='ack_pending' WHERE seq=?",(encode(job),row['seq']))
+        try:
+            with self.core.transaction():
+                self.admission.store.release_tx(job['id'],confirmed_reap=True)
+                self.core.db.execute("UPDATE dispatches SET outcome=?,phase='ack_pending' WHERE seq=?",(encode(job),row['seq']))
+        except (OSError,sqlite3.Error):
+            self.core._publication_storage_failed=True
+            self.persistence_fault=self.quarantined=True
+            raise
         self.fault('durable_outcome')
         self.quarantined=getattr(self,'resource_fault',False)
 
