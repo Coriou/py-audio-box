@@ -2250,3 +2250,92 @@ def test_b22d_prior_completed_creation_evidence_retained(installation,damage):
         if damage=='none':assert recovery._complete_receipts(roots,scope,second,second['proof']['observation'],now=1000)['status']=='complete'
         else:
             with pytest.raises((ValueError,OSError)):recovery._complete_receipts(roots,scope,second,second['proof']['observation'],now=1000)
+
+
+def retained_bytes(roots):
+    return {str(p.relative_to(root))+':'+role:p.read_bytes()
+            for role,root in roots.items() for p in root.rglob('*')
+            if p.is_file()}
+
+
+@pytest.mark.parametrize('restart',['unchanged','same-container','different-container'])
+def test_b22d_correction_unfinished_current_registration(installation,restart,monkeypatch):
+    from worker.runtime_journal import Journal
+    from worker.runtime_supervisor import RuntimeSupervisor
+    roots,scope,_,_=installation;intent,observation,_=core_fixture(installation)
+    def fault(point):
+        if point=='completion-fence-dirsync':raise OSError('stop-before-fifth')
+    with pytest.raises(OSError,match='stop-before-fifth'):
+        recovery._complete_receipts(roots,scope,intent,observation,now=102,fault=fault)
+    if restart!='unchanged':
+        supervisor=RuntimeSupervisor.__new__(RuntimeSupervisor)
+        supervisor.journal=Journal(roots['receipts']);supervisor.boot='e'*32
+        supervisor.failed=False;supervisor.active=None;supervisor.launches=0
+        try:hello=supervisor.operation('hello',{})
+        finally:supervisor.journal.lock.close()
+        assert hello['maintenance']['recovery_id']==intent['id']
+        r=json.loads(intent['before']['source']['data']['p1_registrations'][0][1])
+        r.update(lane=hello['lane'],boot=hello['boot'])
+        if restart=='different-container':r['containers'][1].update(id='e'*64,started='restarted-worker')
+        recovery.register(roots,scope,r)
+    before=logical(roots);files=retained_bytes(roots)
+    def forbidden(*a,**k):raise AssertionError('unfinished resume wrote before registration validation')
+    if restart!='unchanged':
+        monkeypatch.setattr(recovery,'_prefix_file',forbidden)
+        monkeypatch.setattr(recovery,'_prefix_transaction',forbidden)
+    for _ in range(2):
+        if restart=='unchanged':assert recovery._complete_receipts(roots,scope,intent,observation,now=1000)['status']=='complete'
+        else:
+            with pytest.raises(ValueError,match='b2_prefix_registrations_changed'):
+                recovery._complete_receipts(roots,scope,intent,observation,now=1000)
+            assert logical(roots)==before and retained_bytes(roots)==files
+            with closing(sqlite3.connect(roots['control']/'core'/'core.sqlite')) as db:
+                assert db.execute("SELECT count(*) FROM p1_recovery_steps WHERE step='receipt-complete'").fetchone()==(0,)
+
+
+@pytest.mark.parametrize('stage',['evidence','journal','core'])
+@pytest.mark.parametrize('damage',['none','bundle','original-journal','stage-descriptor','current-journal','fence'])
+def test_b22d_correction_completed_replay_pending_successor(installation,monkeypatch,stage,damage):
+    from service import resource_store
+    roots,scope,_,_=installation;first,observation,_=core_fixture(installation)
+    expected=recovery._complete_receipts(roots,scope,first,observation,now=102)
+    second=b2_intent(installation,prepare_only=True,recovery_id='7'*32,archive_id='6'*32)
+    writer={'evidence':recovery._pending_through_evidence,'journal':recovery._pending_through_journal,'core':recovery._pending_through_core}[stage]
+    writer(roots,scope,second,second['proof']['observation'],now=102)
+    if damage in ('current-journal','fence'):
+        (roots['receipts']/('journal.json' if damage=='current-journal' else 'p1-maintenance.json')).write_bytes(b'changed')
+    elif damage!='none':
+        suffix={'bundle':'.snapshot.bundle','original-journal':'.journal','stage-descriptor':
+            {'evidence':'.manifest.intent.json','journal':'.rotation.intent.json','core':'.core-certificate.intent.json'}[stage]}[damage]
+        (roots['receipts']/('p1-recovery-'+second['id']+suffix)).write_bytes(b'changed')
+    before=logical(roots);files=retained_bytes(roots)
+    def forbidden(*a,**k):raise AssertionError('completed replay scan or write')
+    monkeypatch.setattr(recovery,'snapshot',forbidden)
+    monkeypatch.setattr(Reconciliation,'_collect',forbidden)
+    monkeypatch.setattr(resource_store,'_recovery_scan',forbidden)
+    monkeypatch.setattr(recovery,'_prefix_file',forbidden)
+    monkeypatch.setattr(recovery,'_prefix_transaction',forbidden)
+    for _ in range(2):
+        if damage=='none':assert recovery._complete_receipts(roots,scope,first,observation,now=1000)==expected
+        else:
+            with pytest.raises((ValueError,OSError)):recovery._complete_receipts(roots,scope,first,observation,now=1000)
+        assert logical(roots)==before and retained_bytes(roots)==files
+
+
+@pytest.mark.parametrize('point',['journal-replace','completion-fence-dirsync'])
+def test_b22d_correction_completed_replay_pending_exact_attempt(installation,monkeypatch,point):
+    roots,scope,_,_=installation;first,observation,_=core_fixture(installation)
+    expected=recovery._complete_receipts(roots,scope,first,observation,now=102)
+    second=b2_intent(installation,prepare_only=True,recovery_id='7'*32,archive_id='6'*32)
+    def fault(where):
+        if where==point:raise OSError(point)
+    with pytest.raises(OSError,match=point):
+        recovery._complete_receipts(roots,scope,second,second['proof']['observation'],now=102,fault=fault)
+    before=logical(roots);files=retained_bytes(roots)
+    def forbidden(*a,**k):raise AssertionError('completed replay scan or write')
+    monkeypatch.setattr(recovery,'snapshot',forbidden)
+    monkeypatch.setattr(recovery,'_prefix_file',forbidden)
+    monkeypatch.setattr(recovery,'_prefix_transaction',forbidden)
+    for _ in range(2):
+        assert recovery._complete_receipts(roots,scope,first,observation,now=1000)==expected
+        assert logical(roots)==before and retained_bytes(roots)==files

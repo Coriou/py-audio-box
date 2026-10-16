@@ -1262,9 +1262,25 @@ def _pending_prefix(roots, scope, intent, observation, *, now=None, snapshot_byt
             _prefix_receipt_namespace(receipts,data['p1_recoveries'])
             for prior in data['p1_recoveries']:
                 if prior['id']==intent['id']:continue
-                chain=[dict(recovery_id=prior['id'],**e,lane=prior['new_lane'],epoch=prior['new_epoch']) for e in prior['expected'][:4]]
-                _prefix_exact(receipts/('p1-recovery-'+prior['id']+'.certificate.json'),encode(dict(certificate=_certificate(prior,chain[-1]),steps=chain)).encode())
-                _prefix_exact(receipts/('p1-recovery-'+prior['id']+'.journal'),bytes.fromhex(prior['before']['journal']['bytes_hex']))
+                stages={s['step'] for s in data['p1_recovery_steps'] if s['recovery_id']==prior['id']}
+                # A successor may still be pending. Its declared durable prefix
+                # requires its actual evidence, never a future receipt artifact.
+                if data['p1_recoveries'].index(prior)>data['p1_recoveries'].index(intent) and 'receipt-complete' not in stages:
+                    _retained_pending_receipts(roots,prior,stages)
+                else:
+                    chain=[dict(recovery_id=prior['id'],**e,lane=prior['new_lane'],epoch=prior['new_epoch']) for e in prior['expected'][:4]]
+                    _prefix_exact(receipts/('p1-recovery-'+prior['id']+'.certificate.json'),encode(dict(certificate=_certificate(prior,chain[-1]),steps=chain)).encode())
+                    _prefix_exact(receipts/('p1-recovery-'+prior['id']+'.journal'),bytes.fromhex(prior['before']['journal']['bytes_hex']))
+            if through_receipt and not any(s['recovery_id']==intent['id'] and s['step']=='receipt-complete' for s in data['p1_recovery_steps']):
+                # Core completion alone is not an immutable completed replay.
+                # Both locks exclude concurrent owners, but do not prove that a
+                # registered incarnation stayed stopped between invocations.
+                registrations=db.execute('SELECT * FROM p1_registrations ORDER BY rowid').fetchall()
+                if encode(registrations)!=encode(intent['before']['source']['data']['p1_registrations']):
+                    raise ValueError('b2_prefix_registrations_changed')
+                current=[json.loads(row[1]) for row in registrations]
+                for registration in current:validate_registration(registration)
+                check_consumers(dict(registrations=current,lane=intent['old_lane']),observation)
             _completed_prefix_receipts(roots,intent)
             _core_certificate(root,receipts,intent,fault)
             validate_b2_database(db,root)
@@ -1510,7 +1526,7 @@ def _core_result(intent):
     return dict(status='core-complete-receipt-pending',recovery_id=intent['id'],lane=intent['new_lane'],epoch=intent['new_epoch'],certificate=_certificate(intent,step))
 
 
-def _completed_prefix_receipts(roots,intent):
+def _completed_prefix_receipts(roots,intent, *, _stages=None):
     """Verify immutable owned inputs without another inventory/resource scan."""
     import hashlib
     receipts=roots['receipts'];root=roots['control']/'core';prefix='p1-recovery-'+intent['id']
@@ -1523,7 +1539,8 @@ def _completed_prefix_receipts(roots,intent):
     if json.loads(read_file(receipts/'p1-enrolled.json'))!=intent['before']['source']['marker']:raise ValueError('incomplete_enrollment')
     from worker.runtime_journal import journal_bytes
     rotation=encode(dict(revision=1,recovery_id=intent['id'],intent_digest=digest(intent),step=intent['expected'][2],before=intent['before']['journal'],sha256=hashlib.sha256(journal_bytes(intent['expected'][2]['output']['journal'])).hexdigest())).encode()
-    _prefix_exact(receipts/(prefix+'.rotation.intent.json'),rotation)
+    if _stages is None or 'journal' in _stages or (receipts/(prefix+'.rotation.intent.json')).exists():
+        _prefix_exact(receipts/(prefix+'.rotation.intent.json'),rotation)
     if private['roots']!={k:[p.stat().st_dev,p.stat().st_ino] for k,p in roots.items()}:raise ValueError('volume_role_identity_mismatch')
     for key in ('lifecycle','execution'):
         if read_file(roots['ipc']/(key+'.key'),64)!=hashlib.sha256((private['seed']+key).encode()).hexdigest().encode():raise ValueError('installation_key_missing_or_changed')
@@ -1535,8 +1552,53 @@ def _completed_prefix_receipts(roots,intent):
     names={kind:root/name for name,kind in archive_names(intent).items()}
     for path,content,kind in ((names['snapshot'],raw,'snapshot'),(names['manifest'],encode(archive_manifest(intent)).encode(),'manifest'),(receipts/(prefix+'.journal'),bytes.fromhex(intent['before']['journal']['bytes_hex']),'original-journal')):
         creation=encode(dict(revision=1,recovery_id=intent['id'],kind=kind,sha256=hashlib.sha256(content).hexdigest())).encode()
+        if _stages is not None and 'evidence' not in _stages and not (receipts/(prefix+'.'+kind+'.intent.json')).exists():
+            if path.exists() or path.is_symlink():raise ValueError('b2_prefix_unrecorded_artifact')
+            continue
         _prefix_exact(receipts/(prefix+'.'+kind+'.intent.json'),creation)
         _prefix_exact(path,content)
+
+
+def _retained_pending_receipts(roots,intent,stages):
+    """Validate retained production inputs at their actual durable stage."""
+    from worker.runtime_journal import journal_bytes
+    _completed_prefix_receipts(roots,intent,_stages=stages)
+    receipts=roots['receipts'];prefix='p1-recovery-'+intent['id']
+    certificate=_core_result(intent)['certificate']
+    raw=encode(certificate).encode()
+    creation=receipts/(prefix+'.core-certificate.intent.json')
+    if 'core-complete' in stages or creation.exists():
+        _prefix_exact(creation,_receipt_descriptor(intent,raw))
+        name=next(n for n,k in archive_names(intent).items() if k=='certificate')
+        _prefix_exact(roots['control']/'core'/name,raw)
+    chain=[dict(recovery_id=intent['id'],**e,lane=intent['new_lane'],epoch=intent['new_epoch']) for e in intent['expected'][:4]]
+    archive=encode(dict(certificate=certificate,steps=chain)).encode()
+    fence=dict(revision=1,**{k:intent[k] for k in ('deployment_id','plan_id','plan_digest','proof_digest','old_lane','new_lane')},recovery_id=intent['id'],step='complete',certificate=certificate)
+    attempted=[]
+    for kind,raw,path in (
+        ('receipt-certificate',archive,receipts/(prefix+'.certificate.json')),
+        ('completion-journal',journal_bytes(dict(intent['expected'][2]['output']['journal'],maintenance=certificate)),receipts/'journal.json'),
+        ('completion-fence',encode(fence).encode(),receipts/'p1-maintenance.json')):
+        creation=receipts/(prefix+'.'+kind+'.intent.json')
+        attempted.append(creation.exists())
+        if creation.exists():
+            if 'core-complete' not in stages:raise ValueError('b2_prefix_premature_certificate')
+            _prefix_exact(creation,_receipt_descriptor(intent,raw));_prefix_exact(path,raw)
+        elif kind=='receipt-certificate' and (path.exists() or path.is_symlink()):
+            raise ValueError('b2_receipt_unrecorded_artifact')
+    if (attempted[2] and not attempted[1]) or (attempted[1] and not attempted[0]):
+        raise ValueError('b2_receipt_creation_chain')
+    # The latest unfinished history still owns these live receipt outputs.
+    pending=encode(dict(fence,step='pending',certificate=None)).encode()
+    if not (receipts/(prefix+'.completion-fence.intent.json')).exists():
+        _prefix_exact(receipts/'p1-maintenance.json',pending)
+    if not (receipts/(prefix+'.completion-journal.intent.json')).exists():
+        if 'journal' in stages or (receipts/(prefix+'.rotation.intent.json')).exists():
+            _prefix_exact(receipts/'journal.json',journal_bytes(intent['expected'][2]['output']['journal']))
+        elif intent['before']['journal']['state']!='missing':
+            _prefix_exact(receipts/'journal.json',bytes.fromhex(intent['before']['journal']['bytes_hex']))
+        elif (receipts/'journal.json').exists() or (receipts/'journal.json').is_symlink():
+            raise ValueError('b2_prefix_journal_changed')
 
 
 def _core_certificate(root,receipts,intent,fault):
