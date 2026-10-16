@@ -324,3 +324,51 @@ def test_startup_conflicting_original_receipt_retained(tmp_path):
                 assert db.execute('SELECT receipt FROM dispatches').fetchone()[0]==original
                 assert db.execute('SELECT state FROM resource_reservations').fetchone()[0]=='executing'
         finally:d.close()
+
+
+@pytest.mark.parametrize('point', ['fault_denial', 'completion_denial', 'healthy_death'])
+def test_integrity_open_epoch_valid_receipt_two_restarts(tmp_path, point):
+    import subprocess
+    import sys
+    import sqlite3
+    stage=tmp_path/'stage';stage.mkdir();runtime=Runtime(stage);root=tmp_path/'core'
+    d=Dispatcher(root,staging=stage,runtime=runtime);ready(d)
+    job=running(d,runtime);d.close()
+    script=r'''
+import os,sys,sqlite3
+from service.core import Core
+from service.reconciliation import Reconciliation
+c=Core(sys.argv[1]);i=Reconciliation(c,sys.argv[2]);point=sys.argv[3]
+if point=='fault_denial': (c.root/'assets'/'asset-owned-test-orphan').write_bytes(b'x')
+original=i._collect
+def barrier():
+    with sqlite3.connect(c.root/'core.sqlite') as reader:
+        assert reader.execute('SELECT state FROM p1_integrity').fetchone()[0]=='checking'
+    if point=='healthy_death': os._exit(23)
+    result=original()
+    if point=='fault_denial': assert 'no_publication_provenance' in i.reasons
+    c.db.execute('PRAGMA query_only=ON')
+    return result
+i._collect=barrier
+assert i.reconcile_startup()['blocked']
+os._exit(23)
+'''
+    child=subprocess.run([sys.executable,'-c',script,str(root),str(stage),point], timeout=10,
+                         env={**os.environ,'PYTHONDONTWRITEBYTECODE':'1'})
+    assert child.returncode==23
+    (root/'assets'/'asset-owned-test-orphan').unlink(missing_ok=True)
+    runtime.state=State.STOPPED
+    for _ in range(2):
+        d=Dispatcher(root,staging=stage,runtime=runtime)
+        try:
+            assert d.call('status')['integrity_fault']
+            wait(d,lambda:d.call('status')['phase']=='receipt')
+            assert d.call('job',job['id'])['state'] != 'succeeded'
+            assert runtime.acks==0 and runtime.starts==1
+            assert d.call('status')['reservations'][0]['state']=='executing'
+            with pytest.raises(ValueError):d.call('submit','p','fresh')
+            with sqlite3.connect(root/'core.sqlite') as db:
+                receipt=json.loads(db.execute('SELECT receipt FROM dispatches').fetchone()[0])
+                assert receipt['reaped'] and receipt['binding']==runtime.authority.binding
+                assert db.execute('SELECT count(*) FROM publications').fetchone()[0]==0
+        finally:d.close()

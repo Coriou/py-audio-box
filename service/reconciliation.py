@@ -27,9 +27,9 @@ TABLES = {
     'artifacts', 'p1_format', 'publication_work', 'dispatch_settings', 'dispatches',
     'dispatch_commands', 'resource_reservations', 'resource_accounting',
     'resource_faults', 'resource_monitor', 'resource_protocol',
-    'p1_inventory_scans', 'p1_inventory_objects', 'p1_inventory_history',
+    'p1_inventory_scans', 'p1_inventory_objects', 'p1_inventory_history', 'p1_integrity',
 }
-DIAGNOSTICS = {'p1_inventory_scans', 'p1_inventory_objects', 'p1_inventory_history'}
+DIAGNOSTICS = {'p1_inventory_scans', 'p1_inventory_objects', 'p1_inventory_history', 'p1_integrity'}
 
 COLUMNS = {
     'jobs': 'seq id principal operation key fingerprint job context retry_of',
@@ -110,29 +110,77 @@ class Reconciliation:
                 records.append(dict(zip(columns, raw)))
             data[table] = records
         refs = {}
+        # Closed contract locations, never scalar spelling or user-authored keys.
+        schema = json.loads(Path('contracts/v1/schema.json').read_text())['$defs']
         reference_keys = {'asset_id','asset_ids','input_asset_ids','result_asset_ids',
-                          'audition_asset_id','reference_asset_id','reference_asset_ids'}
-        def walk(value, source, key=None):
-            if isinstance(value, dict):
-                if {'id','sha256','frames','sample_rate'} <= value.keys():
-                    walk(value['id'], source, 'asset_id')
-                for k,v in value.items():
-                    if 'asset' in k and k not in reference_keys | {'assets'}:
-                        self.reasons.add('unknown_reference_kind')
-                    walk(v, source, k)
-            elif isinstance(value, list):
-                for v in value: walk(v, source, key)
-            elif isinstance(value, str) and (key in reference_keys or value.startswith('asset-')):
+                          'audition_asset_id','reference_asset_ids'}
+        def add(value, source):
+            if isinstance(value, list):
+                for item in value: add(item, source)
+            elif isinstance(value, str):
                 refs.setdefault(value, set()).add(source if len(source)<=256 else source.split(':')[0]+':'+hashlib.sha256(source.encode()).hexdigest())
-        # Every frozen context, historical revision and receipt participates, even
-        # where executable input authorization is intentionally narrower.
+            else: self.reasons.add('unknown_reference_kind')
+        def walk(value, definition, source):
+            if value is None: return
+            if definition == 'asset' and isinstance(value, dict): add(value.get('id'), source)
+            node = schema[definition] if isinstance(definition, str) else definition
+            if '$ref' in node:
+                name = node['$ref'].split('/')[-1]
+                if name == 'asset' and isinstance(value, dict): add(value.get('id'), source)
+                return walk(value, name, source)
+            for union in ('oneOf', 'anyOf', 'allOf'):
+                if union in node:
+                    # Closed union branches are selected by their declared constants.
+                    branches = [n for n in node[union] if all(
+                        not isinstance(value, dict) or k not in value or
+                        ('const' not in v or value[k] == v['const'])
+                        for k,v in n.get('properties', {}).items())]
+                    if not branches: self.reasons.add('unknown_reference_kind')
+                    for branch in branches: walk(value, branch, source)
+                    return
+            if isinstance(value, list):
+                if 'items' in node:
+                    for item in value: walk(item, node['items'], source)
+            elif isinstance(value, dict):
+                properties = node.get('properties', {})
+                if set(value) - properties.keys(): self.reasons.add('unknown_reference_schema')
+                for key, item in value.items():
+                    if key not in properties: continue
+                    if key in reference_keys: add(item, source)
+                    else: walk(item, properties[key], source)
+        def context(value, source):
+            if set(value) != {'plan','bundles'}: self.reasons.add('unknown_reference_schema')
+            walk(value['plan'], 'worker_plan', source)
+            for bundle in value['bundles']: walk(bundle, 'bundle_catalogue_entry', source)
+        adapters = {
+            'jobs': {'job':'job', 'context':None}, 'revisions': {'snapshot':'project'},
+            'assets': {'metadata':'asset'}, 'artifacts': {'metadata':'artifact'},
+            'publications': {'manifest':'result_manifest','artifact':'artifact','message':'worker_message'},
+        }
         for table, records in data.items():
             for index, record in enumerate(records):
-                for value in record.values():
-                    if isinstance(value, str):
-                        try: value = json.loads(value)
-                        except (ValueError, TypeError): pass
-                        walk(value, table+':'+str(record.get('id', record.get('job_id', record.get('project', index))))+(':'+str(record['revision']) if 'revision' in record else ''))
+                source = table+':'+str(record.get('id', record.get('job_id', record.get('project', index))))+(':'+str(record['revision']) if 'revision' in record else '')
+                for column, definition in adapters.get(table, {}).items():
+                    value = json.loads(record[column])
+                    if column == 'context': context(value, source)
+                    else: walk(value, definition, source)
+                if table == 'publication_work':
+                    add(record['destination'], source)
+                    walk(json.loads(record['binding']), 'artifact', source)
+                if table == 'dispatches':
+                    authority = json.loads(record['authority'])
+                    walk(authority[0], 'job', source)
+                    context(authority[1], source)
+                    for profile in authority[3]: walk(profile, 'profile', source)
+                    add(authority[2], source)
+                    if record['outcome']: walk(json.loads(record['outcome']), 'job', source)
+                    if record['receipt']:
+                        receipt = json.loads(record['receipt'])
+                        if set(receipt) - {'runtime_id','binding','reaped','engine_uid','reap_method','reaped_children','timely','original_deadline'}:
+                            self.reasons.add('unknown_reference_schema')
+                if table == 'resource_reservations':
+                    if set(json.loads(record['demand'])) != {'configuration','slots','ram_bytes','vram_bytes','pids','disk_bytes','attempt_disk_bytes'}:
+                        self.reasons.add('unknown_reference_schema')
         assets = {r['id']: json.loads(r['metadata']) for r in data.get('assets', [])}
         jobs = {r['id']: json.loads(r['job']) for r in data.get('jobs', [])}
         contexts = {r['id']: json.loads(r['context']) for r in data.get('jobs', [])}
@@ -308,11 +356,30 @@ class Reconciliation:
             self.fingerprint.update(encode(row).encode())
         return self.fingerprint.hexdigest()
 
+    def _begin(self):
+        self._owner()
+        if getattr(self, 'failed_epoch', False): return False
+        try:
+            with self.core.transaction():
+                self.inherited_fault = self.db.execute('SELECT state FROM p1_integrity WHERE id=1').fetchone()[0] == 'unresolved'
+                token = uuid.uuid4().hex
+                changed = self.db.execute("UPDATE p1_integrity SET state='checking',token=? WHERE id=1 AND revision=1 AND state IN ('healthy','unresolved')", (token,)).rowcount
+                if changed != 1: raise Incomplete('unacknowledged_integrity')
+            self.epoch = token
+            return True
+        except (OSError, ValueError, sqlite3.Error) as exc:
+            self.failed_epoch = True
+            self.summary = dict(complete=False, blocked=True, defect_latched=True, counts={},
+                reasons=['unacknowledged_integrity' if isinstance(exc, Incomplete) else 'inventory_persistence_failed'], cleanup_allowed=False)
+            return False
+
     def reconcile_startup(self):
         self._owner()
+        if not self._begin(): return dict(self.summary)
         self.scan_id = uuid.uuid4().hex
         self.cursors = {}
         complete = False
+        self.rows, self.reasons = {}, set()
         try:
             self.db.set_progress_handler(lambda: int(time.monotonic() > self.end), 1000)
             fingerprint = self._collect()
@@ -324,22 +391,29 @@ class Reconciliation:
             self.db.set_progress_handler(None, 0)
         # A2 cannot acknowledge an observed defect, even when somebody replaces
         # bytes/removes a name. B2 will own explicit diagnostic resolutions.
-        prior = list(self.db.execute('SELECT record FROM p1_inventory_objects LIMIT ?', (self.entry_limit+1,)))
-        if len(prior) > self.entry_limit:
+        # Bound aggregate serialized diagnostic bytes BEFORE fetching/decoding.
+        try:
+            count, size = self.db.execute('SELECT count(*),coalesce(sum(length(CAST(record AS BLOB))),0) FROM p1_inventory_objects').fetchone()
+            summary_size = self.db.execute('SELECT coalesce(sum(length(CAST(summary AS BLOB))),0) FROM p1_inventory_scans').fetchone()[0]
+            history_count, history_size = self.db.execute('SELECT count(*),coalesce(sum(length(CAST(record AS BLOB))),0) FROM p1_inventory_history').fetchone()
+            if count + history_count > self.entry_limit or size + summary_size + history_size > max(0, self.byte_limit - self.bytes):
+                raise Incomplete('inventory_history_budget')
+            prior = self.db.execute('SELECT record FROM p1_inventory_objects')
+            if any(json.loads(raw)['classification'] in ('unknown_foreign','adopted_orphan','missing_hash_mismatched_terminal','unresolved_owner_receipt_reservation') for (raw,) in prior):
+                self.reasons.add('unacknowledged_integrity')
+        except (sqlite3.Error, ValueError, TypeError, KeyError):
             complete = False
             self.reasons.add('inventory_history_budget')
-        previous_scan = self.db.execute('SELECT summary FROM p1_inventory_scans ORDER BY rowid DESC LIMIT 1').fetchone()
-        if previous_scan and json.loads(previous_scan[0]).get('defect_latched'):
-            self.reasons.add('unacknowledged_integrity')
-        for (raw,) in prior:
-            record = json.loads(raw)
-            if record['classification'] in ('unknown_foreign','adopted_orphan','missing_hash_mismatched_terminal','unresolved_owner_receipt_reservation'):
-                self.reasons.add('unacknowledged_integrity')
+        if self.inherited_fault: self.reasons.add('unacknowledged_integrity')
         counts = dict(Counter(r['classification'] for r in self.rows.values()))
         defect_latched = bool(self.reasons & {'unacknowledged_integrity','unknown_reference_schema','unknown_reference_kind'}) or any(r['classification'] in ('unknown_foreign','adopted_orphan','missing_hash_mismatched_terminal','unresolved_owner_receipt_reservation') for r in self.rows.values())
         self.summary = dict(scan_id=self.scan_id, complete=complete, defect_latched=defect_latched,
             blocked=not complete or bool(self.reasons), counts=counts, reasons=sorted(self.reasons)[:20],
             cleanup_allowed=False)
+        if getattr(self, 'page_expected', fingerprint) != fingerprint:
+            self.reasons.add('inventory_changed')
+            self.summary.update(complete=False, blocked=True, reasons=['inventory_changed'])
+            complete = False
         now = time.time()
         try:
             with self.core.transaction():
@@ -351,8 +425,13 @@ class Reconciliation:
                         (row['id'], previous[0] if previous else now, now, self.scan_id, encode(row)))
                     self.db.execute('INSERT INTO p1_inventory_history(scan_id,object_id,observed,record) VALUES(?,?,?,?)',
                         (self.scan_id, row['id'], now, encode(row)))
+                if getattr(self, 'failed_epoch', False): raise Incomplete('integrity_epoch_interrupted')
+                state = 'healthy' if complete and not self.reasons else 'unresolved'
+                if self.db.execute('UPDATE p1_integrity SET state=?,token=NULL WHERE id=1 AND revision=1 AND state="checking" AND token=?', (state,self.epoch)).rowcount != 1:
+                    raise Incomplete('integrity_epoch_lost')
         except (OSError, ValueError, sqlite3.Error):
-            self.summary.update(complete=False, blocked=True, reasons=['inventory_persistence_failed'])
+            self.failed_epoch = True
+            self.summary.update(complete=False, blocked=True, defect_latched=True, reasons=['inventory_persistence_failed'])
         self.expected = fingerprint
         return dict(self.summary)
 
@@ -361,13 +440,17 @@ class Reconciliation:
         if type(limit) != int or not 1 <= limit <= 20: raise ValueError('inventory_page_limit')
         if scan_id != self.scan_id or not self.summary['complete']: raise ValueError('invalid_inventory_scan')
         if cursor is not None and cursor not in self.cursors: raise ValueError('invalid_inventory_cursor')
-        try:
-            self.db.set_progress_handler(lambda: int(time.monotonic() > self.end), 1000)
-            unchanged = self._collect() == self.expected
-        except (OSError, sqlite3.Error, ValueError, ValidationError, KeyError, IndexError, TypeError, RecursionError): unchanged = False
-        finally:self.db.set_progress_handler(None, 0)
+        expected, generation, cursors = self.expected, self.scan_id, self.cursors
+        self.page_expected = expected
+        try: result = self.reconcile_startup()
+        finally: del self.page_expected
+        unchanged = result['complete'] and self.expected == expected
+        self.scan_id, self.cursors = generation, cursors
+        self.summary['scan_id'] = generation
         if not unchanged:
+            # A fingerprint change is itself defect-bearing, even a healthy new image.
             self.summary.update(complete=False, blocked=True, reasons=['inventory_changed'])
+            self.failed_epoch = True
             raise ValueError('stale_inventory_cursor')
         offset = self.cursors[cursor] if cursor is not None else 0
         rows = sorted(self.rows.values(), key=lambda r:r['id'])

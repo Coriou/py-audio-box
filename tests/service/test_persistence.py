@@ -483,7 +483,7 @@ def test_inventory_all_reference_sources_and_unknown_future_schema(core, context
     job, result = proposal(core, context); core._publish(job['id'], result)
     asset_id=result['manifest']['outputs'][0]['id']
     # Historical revision and frozen context are deliberately outside the selected take.
-    core.db.execute('INSERT INTO revisions VALUES(?,?,?)',('project-evidence',1,json.dumps({'asset_id':asset_id})))
+    core.db.execute('INSERT INTO revisions VALUES(?,?,?)',('project-evidence',1,json.dumps({'assets':[result['manifest']['outputs'][0]]})))
     core.db.execute('INSERT INTO revisions VALUES(?,?,?)',('project-evidence',2,'{}'))
     inventory=Reconciliation(core); summary=inventory.reconcile_startup()
     row=next(json.loads(r[0]) for r in core.db.execute('SELECT record FROM p1_inventory_objects') if json.loads(r[0])['name']==asset_id)
@@ -561,3 +561,149 @@ def test_inventory_real_frozen_render_context_and_all_project_revisions(core):
     assert 'jobs:'+job['id'] in row['references']
     assert 'revisions:'+project['id']+':1' in row['references']
     assert 'revisions:'+project['id']+':2' in row['references']
+
+
+def test_inventory_authored_asset_prefix_is_not_reference(core, context):
+    from service.reconciliation import Reconciliation
+    context['plan']['request']['text'] = 'asset-management is useful.'
+    job = core.submit_synthetic('asset-principal', 'asset-key', context)
+    project = json.loads((FIXTURES/'transcript-project_render.json').read_text())['context']['plan']['project']
+    # Authored history text is unrelated to managed asset identity.
+    project['blocks'][0]['text'] = 'asset-history prose'
+    core.create_project(project)
+    # Render fixture dependencies are genuine refs; supply no fake prose ref.
+    inventory = Reconciliation(core)
+    inventory.reconcile_startup()
+    records = [json.loads(r[0]) for r in core.db.execute('SELECT record FROM p1_inventory_objects')]
+    assert not any(r['name'].startswith(('asset-management','asset-principal','asset-key','asset-history')) for r in records)
+    assert core.job(job['id'])['state'] == 'queued'
+
+
+def test_inventory_clean_text_restart(core, context):
+    from service.reconciliation import Reconciliation
+    context['plan']['request']['text'] = 'asset-management is useful.'
+    job = core.submit_synthetic('asset-principal', 'asset-key', context)
+    for _ in range(3):
+        assert not Reconciliation(core).reconcile_startup()['blocked']
+        assert core.submit_synthetic('asset-principal', 'asset-key', context) == job
+        reopen(core)
+
+
+def test_inventory_begin_denial_has_zero_observations(core, monkeypatch):
+    from service.reconciliation import Reconciliation
+    inventory = Reconciliation(core)
+    observed = []
+    monkeypatch.setattr(inventory, '_collect', lambda: observed.append(True))
+    core.db.execute('PRAGMA query_only=ON')
+    assert inventory.reconcile_startup()['blocked']
+    assert observed == []
+    core.db.execute('PRAGMA query_only=OFF')
+    reopen(core)
+    assert not Reconciliation(core).reconcile_startup()['blocked']
+
+
+@pytest.mark.parametrize('point', ['fault_denial','completion_denial','healthy_death','healthy_mid_death','healthy_after_death','page_denial'])
+def test_inventory_precommitted_epoch_immediate_death(tmp_path, point):
+    root = tmp_path/'core'
+    script = r'''
+import os, sys
+from service.core import Core
+from service.reconciliation import Reconciliation
+c=Core(sys.argv[1], historical_local=True)
+i=Reconciliation(c)
+assert not i.reconcile_startup()['blocked']
+point=sys.argv[2]
+if point == 'fault_denial': (c.root/'assets'/'asset-transient-orphan').write_bytes(b'x')
+original=i._collect
+def barrier():
+    # Independent reader proves begin COMMITTED before any observation.
+    import sqlite3
+    with sqlite3.connect(c.root/'core.sqlite') as reader:
+        assert reader.execute('SELECT state FROM p1_integrity').fetchone()[0]=='checking'
+    if point == 'healthy_death': os._exit(23)
+    if point == 'healthy_mid_death':
+        charge=i._charge
+        def mid(size=0):
+            charge(size)
+            if i.entries >= 4: os._exit(23)
+        i._charge=mid
+    result=original()
+    if point == 'healthy_after_death': os._exit(23)
+    if point == 'fault_denial': assert 'no_publication_provenance' in i.reasons
+    c.db.execute('PRAGMA query_only=ON')
+    return result
+i._collect=barrier
+if point == 'page_denial':
+    try: i.inventory_page(i.scan_id)
+    except ValueError: pass
+else:
+    assert i.reconcile_startup()['blocked']
+os._exit(23)
+'''
+    result = subprocess.run([sys.executable,'-c',script,str(root),point], env={**os.environ,'PYTHONDONTWRITEBYTECODE':'1'}, timeout=10)
+    assert result.returncode == 23
+    (root/'assets'/'asset-transient-orphan').unlink(missing_ok=True)
+    for _ in range(2):
+        c = ActiveCore(root, historical_local=True)
+        from service.reconciliation import Reconciliation
+        i = Reconciliation(c)
+        i._collect = lambda: pytest.fail('inherited open epoch must not observe')
+        assert i.reconcile_startup()['blocked']
+        assert c.db.execute('SELECT state FROM p1_integrity').fetchone()[0] == 'checking'
+        c.close()
+
+
+def test_inventory_page_change_durable(core):
+    from service.reconciliation import Reconciliation
+    i=Reconciliation(core); scan=i.reconcile_startup()['scan_id']
+    (core.root/'assets'/'asset-transient').write_bytes(b'x')
+    with pytest.raises(ValueError, match='stale'): i.inventory_page(scan)
+    (core.root/'assets'/'asset-transient').unlink()
+    for _ in range(2):
+        reopen(core)
+        assert Reconciliation(core).reconcile_startup()['blocked']
+
+
+def test_inventory_old_diagnostics_without_authority_are_unresolved(core):
+    from service.reconciliation import Reconciliation
+    assert not Reconciliation(core).reconcile_startup()['blocked']
+    core.db.execute('DROP TABLE p1_integrity')
+    reopen(core)
+    assert Reconciliation(core).reconcile_startup()['blocked']
+
+
+def test_inventory_design_description_and_instruction_are_prose(core):
+    from contracts import validate as oracle
+    from service.reconciliation import Reconciliation
+    ctx=json.loads((FIXTURES/'transcript-voice_design.json').read_text())['context']
+    ctx['plan']['request']['description']='asset-description for a voice'
+    ctx['plan']['request']['reference_text']='asset-reference prose'
+    ctx['plan']['resolved']['reuse_configuration']['reference_text']='asset-reference prose'
+    ctx['plan']['resolved']['settings']['instruction']='asset-description for a voice'
+    ctx['plan']['resolved']['settings_sha256']=oracle.canonical_hash(ctx['plan']['resolved']['settings'])
+    # Core's synthetic submit only executes speech; retain a valid design snapshot
+    # through its real stored jobs shape, as for frozen render coverage.
+    job=json.loads((FIXTURES/'transcript-voice_design.json').read_text())['job']
+    job['input_sha256']=oracle.plan_hash(ctx['plan'])
+    oracle.stored_context(job,ctx)
+    core.db.execute('INSERT INTO jobs(id,principal,operation,key,fingerprint,job,context) VALUES(?,?,?,?,?,?,?)',
+        (job['id'],'asset-principal',job['operation'],'asset-design-key',job['input_sha256'],json.dumps(job),json.dumps(ctx)))
+    for _ in range(2):
+        Reconciliation(core).reconcile_startup()
+        names=[json.loads(r[0])['name'] for r in core.db.execute('SELECT record FROM p1_inventory_objects')]
+        assert not any(name.startswith(('asset-description','asset-reference prose')) for name in names)
+        assert core.job(job['id'])==job
+        reopen(core)
+
+
+def test_inventory_diagnostic_aggregate_refused_before_decode(core, monkeypatch):
+    import service.reconciliation as module
+    i=module.Reconciliation(core);i.reconcile_startup()
+    core.db.execute('INSERT INTO p1_inventory_objects VALUES(?,?,?,?,?)',('oversized',0,0,i.scan_id,'x'*4096))
+    original=module.json.loads
+    def decode(raw, *args, **kwargs):
+        assert raw != 'x'*4096, 'oversized diagnostic materialized for decode'
+        return original(raw,*args,**kwargs)
+    monkeypatch.setattr(module.json,'loads',decode)
+    result=module.Reconciliation(core,byte_budget=2048).reconcile_startup()
+    assert result['blocked'] and 'inventory_history_budget' in result['reasons']

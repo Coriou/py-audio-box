@@ -118,8 +118,28 @@ def initialize_inventory(core):
         for table, columns in expected.items():
             if [r[1] for r in core.db.execute('PRAGMA table_info('+table+')')] != columns:
                 raise PublicationQuarantine('unsupported_inventory_schema')
+        initialize_integrity(core)
         return
     with core.transaction():
         core.db.execute('CREATE TABLE p1_inventory_scans(id TEXT PRIMARY KEY, observed REAL NOT NULL, complete INTEGER NOT NULL, fingerprint TEXT, summary TEXT NOT NULL)')
         core.db.execute('CREATE TABLE p1_inventory_objects(id TEXT PRIMARY KEY, first_observed REAL NOT NULL, last_observed REAL NOT NULL, scan_id TEXT NOT NULL REFERENCES p1_inventory_scans(id), record TEXT NOT NULL)')
         core.db.execute('CREATE TABLE p1_inventory_history(seq INTEGER PRIMARY KEY, scan_id TEXT NOT NULL REFERENCES p1_inventory_scans(id), object_id TEXT NOT NULL, observed REAL NOT NULL, record TEXT NOT NULL)')
+
+    initialize_integrity(core)
+
+
+def initialize_integrity(core):
+    """Revision 1: missing populated diagnostics are unresolved, never healthy."""
+    db = core.db
+    exists = db.execute("SELECT 1 FROM sqlite_master WHERE name='p1_integrity'").fetchone()
+    if exists:
+        if [r[1] for r in db.execute('PRAGMA table_info(p1_integrity)')] != ['id','revision','state','token']:
+            raise PublicationQuarantine('unsupported_integrity_schema')
+        if db.execute('SELECT id,revision FROM p1_integrity').fetchall() != [(1,1)]:
+            raise PublicationQuarantine('unsupported_integrity_revision')
+        return
+    populated = any(db.execute('SELECT 1 FROM '+t+' LIMIT 1').fetchone() for t in
+                    ('p1_inventory_scans','p1_inventory_objects','p1_inventory_history'))
+    with core.transaction():
+        db.execute('CREATE TABLE p1_integrity(id INTEGER PRIMARY KEY, revision INTEGER NOT NULL, state TEXT NOT NULL, token TEXT)')
+        db.execute('INSERT INTO p1_integrity VALUES(1,1,?,NULL)', ('unresolved' if populated else 'healthy',))
