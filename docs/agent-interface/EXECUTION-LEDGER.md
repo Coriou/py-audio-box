@@ -292,5 +292,5 @@ Record failures and missing evidence; do not replace them with a successful late
 ## R1 accepted integration / P1 scoping
 
 - [IndependentR3 report](reviews/R1-r3-sol.md): boundedGO exact`5ab4717`; F1closed/F2preserved,200tests43installedsteps independentlypassed withfullAstramatrix. Explicitscan-overlapquarantineavailabilitycost retained.
-- Root cherry-pickedoriginal+twocorrections, exactsource diffvsreviewedcandidate empty. Root exactimage200test regression running. No public/unattendedactivation/full1Aclaim.
+- Root cherry-pickedoriginal+twocorrections, exactsource diffvsreviewedcandidate empty. Root exactimage regression **200passed in81.84s**,exit0,networknone/read-onlyroot/tmpfs/no mounts. Integrated implementation `16950490919b18253f5d12e7ff4e9e31b4557f2d`. No public/unattendedactivation/full1Aclaim.
 - TargetedAstra request`pab-phase1a-p1-design-20261022`: smallorderedP1implementationbriefs forpublicationdurability/reconciliation/operatorrecovery, no broadpartialtask or safetywaiver. R1GOdoesnotcloseP1.
