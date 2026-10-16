@@ -430,3 +430,9 @@ Record failures and missing evidence; do not replace them with a successful late
 - Task `pab-phase1a-p1b22-implementation-r1-20261022` ended after inspection only at2bb8235: no files/tests/commits or concrete blocker. Not implementation/acceptance.
 - Orchestrator splits implementation internally: B2.2a accepted intent + evidence archive prefix only, then remaining journal/Core/receipt transition steps after independent review/integration. Same B2.2 architecture/allowlist, no new authority/activation. Prefix stops safely under durable pending fences; all apply unavailable.
 - Fresh isolated Sol-low request `pab-phase1a-p1b22a-implementation-r1-20261022`; narrow deliverable with actual RED/GREEN tests and handoff required, not another inspection-only report.
+
+## B2.2a candidate / independent review
+
+- Candidate `903b44367bbbd07724b17d24627d693dfc1c308f`, sourceb999c129, app-owned `t3-fa982d42`; onlyrecovery/tests/report changed. Root readhandoff; unintegrated. Claims252focused/522passed18skipped finalfrozen, privatepending-through-evidence only.
+- Explicit limitation: Coreintent-before-snapshot resume needs retained original snapshot_bytes if artifact absent; no remint claimed. Reviewer tasked to assess required durable restart behavior, not waive this window.
+- Fresh independentSol-low request/task suffix `pab-phase1a-p1b22a-review-r1-20261022`, report `reviews/P1B22a-r1-sol.md`; fulloriginalbrief/candidate/resumelimits supplied. Applyunavailable/noactivation; no laterkernel/installedacceptance.
