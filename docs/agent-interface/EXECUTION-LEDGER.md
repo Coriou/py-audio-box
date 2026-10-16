@@ -418,3 +418,9 @@ Record failures and missing evidence; do not replace them with a successful late
 - Candidate `5959d8fb9b577c5e6b4cf5f30276f712a4ee4fa1`, source `0d976dac304db7eccdfb60d2078defda07026fdf`, app-owned `t3-b05a2844`; root read response. Canonicalclosedjobs/context + exactbeforeimage permitted unsuccessfultransition, attemptprovenance preserved. Unintegrated.
 - Claims22REDfail2pass then227focused/457passed18skipped finalfrozen sequential. Applyunavailable/activationclosed E1only.
 - FreshSol-low request/task suffix `pab-phase1a-p1b21-review-r3-20261022`, report `reviews/P1B21-r3-sol.md`; fulloriginalbrief/priorfindings/responses supplied. No waiver/integration, subsequentlots remainpending.
+
+## B2.1 bounded GO / integration / B2.2 launch
+
+- [R3review](reviews/P1B21-r3-sol.md) boundedsource/E1GO exact5959d8f; F1/F2closed nonewblocker,227focused/457passed18skipped independentlyconfirmed.
+- Root integratedallsevenimplementationcommits oldestfirst c651014/00465f1/e8ec8e5/ad012d9/467673b/4d7b3a6/6f8c0a2; source diffvsreviewedcandidateempty. Root targeted fullyrehashed nonterminal+allocationregressions36passed137deselected21.83s exit0.
+- NextisolatedSol-low request `pab-phase1a-p1b22-implementation-r1-20261022` ONLYB2.2 private transition/resolution/resumekernel perAstra; independentreviewrequired, applystillunavailable/noactivation. A1inventory/C1C2/finalAstralimitations retained.
