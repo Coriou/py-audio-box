@@ -441,3 +441,9 @@ Record failures and missing evidence; do not replace them with a successful late
 
 - [R1review](reviews/P1B22a-r1-sol.md) NO-GO exact903b443;252focused/522passed18skipped independentlyconfirmed. F1 realprocessdeath afterCorecommit loses onlyoriginalsnapshot bytes, resume cannotfinish fromownedstate; F2pendingresume ignores changedpriorreceiptjournal/certificate. Safequarantine notfunctionalresume acceptance.
 - IsolatedSol-low request `pab-phase1a-p1b22a-fix-r1-20261022`: durableidentitybound originals snapshotbundle beforeCoreacceptance and allpredecessorreceiptevidence verification everyresume. Actualprocessdeath/noexternalRAM regressions required, applyunavailable. No integration/waiver.
+
+## B2.2a corrected candidate / review round2
+
+- Candidate `2f7d0705686c3124321b73dffca3599af2a153b1`, source/tests9d273aa, productionba120cb, app-owned `t3-c72faa32`; root readresponse, unintegrated. Durableexactstaging beforeCoreacceptance; allcompletedpredecessorreceiptevidence revalidatedeveryinvocation.
+- Claims6REDfail2pass then278focused/548passed18skipped finalfrozen sequential; actualchilddeath/RAMdiscard/ownedstateresume and multihistorynegatives. E1only applyunavailable.
+- FreshindependentSol-low request/task suffix `pab-phase1a-p1b22a-review-r2-20261022`, report `reviews/P1B22a-r2-sol.md`; fulloriginalbrief/priorfindings/responses supplied. No waiver/integration/activation.
