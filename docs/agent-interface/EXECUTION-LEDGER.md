@@ -222,3 +222,8 @@ Record failures and missing evidence; do not replace them with a successful late
 - [Independent report](reviews/W2b-r1-sol.md): GO syntheticW2b exact`5eae4d1`,87tests+2realDocker scenarios rerun, exactimages/topology/cleanupverified. NO-GO fullW2/productionactivation; hostoperator only, deployedcompanion/dispatcherallocation remain.
 - Integrated`71eec93`; source diff vs reviewedcandidate empty; root exactimage regression **87passed in29.25s**,exit0,networknone/read-onlyroot/tmpfs/no mounts. No publicactivation.
 - Targeted Astra request`pab-phase1a-deployed-lifecycle-advice-20261022`: choose practical packaged runtimeownership architecture and bounded nextimplementation that closes harness-only gap, preserve noDockerSocketcontrol and easyDockerCPUfirst. No new broadpartial implementation until architecture frozen.
+
+## Packaged lifecycle decision / W2c launch
+
+- [Targeted Astra decision](reviews/DEPLOYED-LIFECYCLE-ASTRA.md): staticComposeworker withtrustedPID1 supervisor/unprivilegedenginechild, privateauthenticatedUDS, noDockerSocket/broker. Explicitprotectedjournal/descendantreap/bootquarantine andpostdeadlinecollection requirements; sourceonlyadvice, notimplementationGO.
+- Orchestrator recorded narrow planclarification. Nextrequest`pab-phase1a-w2c-implementation-r1-20261022` usesexactAstraallowlist/mandatorymatrix. W2c -> W2ddispatcher -> R1admission -> P1activation; fullW2 and1A remainopen.

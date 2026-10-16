@@ -261,3 +261,7 @@ GO/NO-GO with exact evidence and next owner:
 ```
 
 Example Phase 1 exit: `[ ]` same service exercised by four clients; `[ ]` duplicate/conflict/restart/cancel/publication fixtures pass; `[ ]` browser synthetic overlap/edit/reload/render succeeds; `[ ]` compiled images run from clean volumes; `[ ]` discovery imports/downloads zero models; `[ ]` receipts/token measurements recorded; `[ ]` legacy regressions pass; `[ ]` integrated commit and E1/E2/E4 fixture evidence named. Any unchecked required item is NO-GO for claiming that milestone. It is not a reason to expand into unrelated research or to run unapproved heavy work.
+
+### Packaged lifecycle clarification (targeted Astra decision)
+
+For the initial Docker runtime use a static Compose worker with a trusted lightweight PID-1 supervisor and separate unprivileged engine children, authenticated private UDS and no Docker socket in either service. The container supplies outer namespaces; per-attempt process groups are not new namespaces. Lost incarnation/termination proof quarantines the lane. See [the architecture decision and W2c exit matrix](reviews/DEPLOYED-LIFECYCLE-ASTRA.md). W2c establishes the packaged synthetic lifecycle; W2d integrates the serialized dispatcher. Full W2 waits for W2d, and unattended activation also requires R1 admission and P1 persistent reconciliation. Resident engine mode remains a separate required Phase2B qualification, not removed by fresh-child synthetic execution.
