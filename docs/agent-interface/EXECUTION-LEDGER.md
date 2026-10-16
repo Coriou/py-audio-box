@@ -257,3 +257,9 @@ Record failures and missing evidence; do not replace them with a successful late
 - [Integratedgate](reviews/W2-INTEGRATED-GATE.md): GO frozen`601c558d360e498159e3a8a12e77c3e8286760c1`; completeoriginalmatrix mapped to currentDispatcherCore and hash-verifiedunchangedW2cworker evidence. Fresh122tests+32installedsteps passed, cleanup/sourceidentityverified.
 - W2 syntheticengineering gate CLOSED GO; NOT full1A/publicactivation/realengines. R1/P1 stillmandatory, allfoundationorphan/fsync/SQLite/diskcases retainedwithoutwaiver.
 - NextisolatedSol-low request`pab-phase1a-r1-implementation-r1-20261022`: authoritative deployment resourceadmission/reservation/restartreconstruction over accepteddispatcher; independentreview follows.
+
+## R1 candidate / independent review
+
+- Candidate`22e75ca2964d51b5b80ee91e9a14c7776c682d15`, app-owned`t3-3115080c`, branch`t3/resource-admission`. Root read completehandoff; unintegrated.
+- Claims155tests+35installedsteps, durabledeploymentreservations integratedsubmit/dispatch/cancel/reap/restart, actualmanaged/stagingaccounting andgrowthchecks. Genericcategories/profilebudgetsE1only; fixedsyntheticexecutor, P1/publicactivationclosed. Stagingparent1733->1777 accountingdelta explicitlyunderreview.
+- IndependentSol-low request/task suffix`pab-phase1a-r1-review-r1-20261022`, currenttask-IDprefix, report`reviews/R1-r1-sol.md`; originalbrief+remaininggates supplied, soleheavylane.
