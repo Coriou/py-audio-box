@@ -2011,3 +2011,242 @@ def test_b22c_completed_resolution_current_joins_two_startups(installation, chan
         finally: core.close()
     assert all(result['complete'] for result in results), results
     assert all(result['blocked'] == (change != 'unchanged') for result in results), results
+
+
+def test_b22d_complete_production_writer_and_noop(installation,monkeypatch):
+    roots,scope,_,_=installation;intent,observation,_=core_fixture(installation,'running')
+    result=recovery._complete_receipts(roots,scope,intent,observation,now=102)
+    assert result['status']=='complete'
+    from worker.runtime_journal import Journal
+    journal=Journal(roots['receipts'])
+    assert journal.maintenance==result['certificate']
+    journal.lock.close()
+    before=logical(roots)
+    monkeypatch.setattr(recovery,'snapshot',lambda *a,**k:(_ for _ in ()).throw(AssertionError('scan')))
+    for _ in range(2):assert recovery._complete_receipts(roots,scope,intent,observation,now=1000)==result
+    assert logical(roots)==before
+    with sqlite3.connect(roots['control']/'core'/'core.sqlite') as db:
+        assert db.execute('SELECT count(*) FROM p1_recovery_steps').fetchone()==(5,)
+        assert db.execute('SELECT count(*) FROM dispatch_resolutions').fetchone()==(1,)
+
+
+B22D_POINTS=(
+    [(kind+'-intent-'+boundary,False) for kind in ('receipt-certificate','completion-journal','completion-fence') for boundary in ('create','write','fsync','parent')]+
+    [(kind+'-intent-recorded',False) for kind in ('receipt-certificate','completion-journal','completion-fence')]+
+    [('receipt-certificate-'+boundary,boundary!='create') for boundary in ('create','write','fsync','parent')]+
+    [(kind+'-'+boundary,boundary in ('replace','dirsync')) for kind in ('completion-journal','completion-fence') for boundary in ('create','write','fsync','parent','before-replace','replace','dirsync')]+
+    [('receipt-complete-'+boundary,True) for boundary in ('begin','write','commit','parent')])
+
+
+@pytest.mark.parametrize('point,resumable',B22D_POINTS)
+def test_b22d_fault_matrix(installation,point,resumable):
+    roots,scope,_,_=installation;intent,observation,_=core_fixture(installation)
+    recovery._pending_through_core(roots,scope,intent,observation,now=102)
+    before=logical(roots)
+    def fault(where):
+        if where==point:raise OSError(point)
+    with pytest.raises(OSError,match=point):recovery._complete_receipts(roots,scope,intent,observation,now=1000,fault=fault)
+    for _ in range(2):
+        if resumable:assert recovery._complete_receipts(roots,scope,intent,observation,now=1000)['status']=='complete'
+        else:
+            with pytest.raises((ValueError,OSError)):recovery._complete_receipts(roots,scope,intent,observation,now=1000)
+    after=logical(roots)
+    assert [v for v in after if not v.startswith('INSERT INTO \"p1_recovery_steps\"')]==[v for v in before if not v.startswith('INSERT INTO \"p1_recovery_steps\"')]
+    with sqlite3.connect(roots['control']/'core'/'core.sqlite') as db:
+        assert db.execute('SELECT count(*) FROM p1_recovery_steps').fetchone()==(5 if resumable else 4,)
+
+
+@pytest.mark.parametrize('point',['completion-fence-before-replace','completion-fence-replace','receipt-complete-write','receipt-complete-commit'])
+def test_b22d_process_death_owned_fresh_resume_twice(installation,point):
+    import subprocess,sys
+    roots,scope,_,_=installation;intent,observation,_=core_fixture(installation,'running')
+    recovery._pending_through_core(roots,scope,intent,observation,now=102)
+    pid=os.fork()
+    if pid==0:
+        recovery._complete_receipts(roots,scope,intent,observation,now=1000,fault=lambda at:os._exit(73) if at==point else None)
+        os._exit(74)
+    assert os.waitpid(pid,0)[1]==73<<8
+    rid=intent['id'];epoch=intent['new_epoch'];lane=intent['new_lane'];del intent,observation
+    code='''import json,sys,sqlite3
+from pathlib import Path
+from service import recovery
+v=json.load(sys.stdin);roots={k:Path(p) for k,p in v['roots'].items()}
+intent=json.loads((roots['receipts']/('p1-recovery-'+v['rid']+'.intent.json')).read_bytes())
+for _ in range(2):
+ if v['quarantine']:
+  try:recovery._complete_receipts(roots,v['scope'],intent,intent['proof']['observation'],now=1000)
+  except (ValueError,OSError):pass
+  else:raise AssertionError('reminted attempted fence')
+ else:
+  result=recovery._complete_receipts(roots,v['scope'],intent,intent['proof']['observation'],now=1000)
+  assert result['epoch']==v['epoch'] and result['lane']==v['lane'] and result['status']=='complete'
+with sqlite3.connect(roots['control']/'core'/'core.sqlite') as db:
+ assert db.execute('SELECT count(*) FROM p1_recovery_steps').fetchone()==(4 if v['quarantine'] else 5,)
+ assert db.execute('SELECT count(*) FROM p1_recoveries').fetchone()==(1,)
+ assert db.execute('SELECT count(*) FROM dispatch_resolutions').fetchone()==(1,)
+'''
+    child=subprocess.run([sys.executable,'-c',code],input=encode(dict(roots={k:str(p) for k,p in roots.items()},scope=scope,rid=rid,epoch=epoch,lane=lane,quarantine=point.endswith('before-replace'))),text=True,capture_output=True,env={**os.environ,'PYTHONDONTWRITEBYTECODE':'1'})
+    assert child.returncode==0,child.stderr
+
+
+@pytest.mark.parametrize('damage',['receipt-missing','receipt-malformed','receipt-mode','receipt-symlink','receipt-hardlink','core','bundle','original','history','fence-missing','fence-malformed','fence-mode','lane','epoch','proof','extra'])
+def test_b22d_wrong_evidence_refuses_without_rewrite(installation,damage):
+    roots,scope,_,_=installation;intent,observation,_=core_fixture(installation)
+    def fault(at):
+        if at=='receipt-certificate-parent':raise OSError('stop')
+    with pytest.raises(OSError,match='stop'):recovery._complete_receipts(roots,scope,intent,observation,now=102,fault=fault)
+    receipts=roots['receipts'];path=receipts/('p1-recovery-'+intent['id']+'.certificate.json')
+    if damage=='receipt-missing':path.unlink()
+    elif damage=='receipt-malformed':path.write_bytes(b'{}')
+    elif damage=='receipt-mode':path.chmod(0o644)
+    elif damage=='receipt-symlink':
+        other=receipts/'other';path.rename(other);path.symlink_to(other)
+    elif damage=='receipt-hardlink':os.link(path,receipts/'other')
+    elif damage=='core':next(roots['control'].glob('core/*.certificate.json')).write_bytes(b'{}')
+    elif damage=='bundle':next(receipts.glob('*.snapshot.bundle')).write_bytes(b'changed')
+    elif damage=='original':next(receipts.glob('*.journal')).write_bytes(b'changed')
+    elif damage=='history':
+        with sqlite3.connect(roots['control']/'core'/'core.sqlite') as db:db.execute('DELETE FROM p1_recovery_plans')
+    elif damage=='fence-missing':(receipts/'p1-maintenance.json').unlink()
+    elif damage=='fence-malformed':(receipts/'p1-maintenance.json').write_bytes(b'{}')
+    elif damage=='fence-mode':(receipts/'p1-maintenance.json').chmod(0o644)
+    elif damage=='extra':(receipts/'foreign').write_bytes(b'x')
+    else:
+        value=json.loads(path.read_bytes());value['certificate'][damage if damage!='proof' else 'proof_digest']='f'*(64 if damage=='proof' else 32);path.write_text(encode(value))
+    before={p.name:(p.lstat().st_ino,p.read_bytes()) for p in receipts.iterdir() if p.is_file()}
+    for _ in range(2):
+        with pytest.raises((ValueError,OSError)):recovery._complete_receipts(roots,scope,intent,observation,now=1000)
+        assert before=={p.name:(p.lstat().st_ino,p.read_bytes()) for p in receipts.iterdir() if p.is_file()}
+
+
+@pytest.mark.parametrize('operation',['file-fsync','parent-fsync','journal-replace','fence-replace','sql-write','sql-commit'])
+def test_b22d_actual_io_denials(installation,monkeypatch,operation):
+    import stat
+    roots,scope,_,_=installation;intent,observation,_=core_fixture(installation)
+    recovery._pending_through_core(roots,scope,intent,observation,now=102)
+    original_fsync=os.fsync;original_replace=os.replace;original_transaction=recovery._prefix_transaction
+    triggered=[];armed=[]
+    def fault(at):
+        if at=='receipt-certificate-intent-recorded':armed.append(True)
+    def fsync(fd):
+        info=os.fstat(fd)
+        if armed and not triggered and ((operation=='file-fsync' and stat.S_ISREG(info.st_mode) and info.st_size>0) or (operation=='parent-fsync' and stat.S_ISDIR(info.st_mode))):
+            triggered.append(True);raise PermissionError('actual-io-denial')
+        return original_fsync(fd)
+    def replace(src,dst):
+        if (operation=='journal-replace' and Path(src).name=='p1-maintenance.journal.tmp') or (operation=='fence-replace' and Path(src).name=='p1-maintenance.complete.tmp'):
+            triggered.append(True);raise PermissionError('actual-io-denial')
+        return original_replace(src,dst)
+    def transaction(db,write,fault,point):
+        if point=='receipt-complete':
+            def authorize(action,a,b,c,d):
+                if ((operation=='sql-write' and action==sqlite3.SQLITE_INSERT and a=='p1_recovery_steps') or
+                    (operation=='sql-commit' and action==sqlite3.SQLITE_TRANSACTION and a=='COMMIT')):
+                    triggered.append(True);return sqlite3.SQLITE_DENY
+                return sqlite3.SQLITE_OK
+            db.set_authorizer(authorize)
+        return original_transaction(db,write,fault,point)
+    with monkeypatch.context() as patch:
+        patch.setattr(os,'fsync',fsync);patch.setattr(os,'replace',replace);patch.setattr(recovery,'_prefix_transaction',transaction)
+        with pytest.raises((OSError,sqlite3.DatabaseError)):recovery._complete_receipts(roots,scope,intent,observation,now=1000,fault=fault)
+    assert triggered
+    for _ in range(2):
+        if operation.endswith('replace'):
+            with pytest.raises((ValueError,OSError)):recovery._complete_receipts(roots,scope,intent,observation,now=1000)
+        else:assert recovery._complete_receipts(roots,scope,intent,observation,now=1000)['status']=='complete'
+
+
+def test_b22d_real_journal_hello_fresh_registration_dispatcher_stays_closed(installation):
+    from worker.runtime_journal import Journal
+    from worker.runtime_supervisor import RuntimeSupervisor
+    from service.dispatcher import Dispatcher
+    roots,scope,profiles,_=installation;intent,observation,jid=core_fixture(installation,'running')
+    result=recovery._complete_receipts(roots,scope,intent,observation,now=102)
+    supervisor=RuntimeSupervisor.__new__(RuntimeSupervisor)
+    supervisor.journal=Journal(roots['receipts']);supervisor.boot='e'*32
+    supervisor.failed=False;supervisor.active=None;supervisor.launches=0
+    try:hello=supervisor.operation('hello',{})
+    finally:supervisor.journal.lock.close()
+    assert hello['maintenance']==result['certificate']
+    class Runtime:
+        def __init__(self):self.calls=[]
+        def call(self,op,body):self.calls.append(op);assert op=='hello';return hello
+    runtime=Runtime()
+    old_id=digest(json.loads(intent['before']['source']['data']['p1_registrations'][0][1]))
+    for registration_id in (None,old_id):
+        with pytest.raises(ValueError):Dispatcher(roots['control']/'core',staging=roots['staging'],runtime=runtime,profiles=profiles,persistent_registration=registration_id)
+    r=json.loads(intent['before']['source']['data']['p1_registrations'][0][1])
+    r.update(lane=hello['lane'],boot=hello['boot'],evidence='actual-host-inspection')
+    # E1 document only; this does not authenticate B2.3 host transport.
+    rid=recovery.register(roots,scope,r)
+    dispatcher=Dispatcher(roots['control']/'core',staging=roots['staging'],runtime=runtime,profiles=profiles,persistent_registration=rid)
+    try:
+        status=dispatcher.call('status');assert not status['persistent_activation'] and not status['resource_activation']
+        for op,args in (('submit',('new','key')),('replace',(jid,)),('cancel',(jid,))):
+            with pytest.raises(ValueError,match='activation_closed'):dispatcher.call(op,*args)
+        assert supervisor.launches==0 and all(op=='hello' for op in runtime.calls)
+    finally:dispatcher.close()
+    before=logical(roots)
+    for _ in range(2):assert recovery._complete_receipts(roots,scope,intent,observation,now=1000)==result
+    assert logical(roots)==before
+
+
+@pytest.mark.parametrize('half',['core-complete-receipt-pending','core-pending-receipt-complete'])
+def test_b22d_half_startup_twice(installation,half):
+    from worker.runtime_journal import Journal
+    from service.dispatcher import Dispatcher
+    roots,scope,profiles,_=installation;intent,observation,_=core_fixture(installation,'running')
+    if half=='core-complete-receipt-pending':recovery._pending_through_core(roots,scope,intent,observation,now=102)
+    else:
+        recovery._complete_receipts(roots,scope,intent,observation,now=102)
+        # Deliberately unsupported cross-volume state; retain all receipt files.
+        with closing(sqlite3.connect(roots['control']/'core'/'core.sqlite')) as db,db:
+            db.execute("DELETE FROM p1_recovery_steps WHERE step IN ('core-complete','receipt-complete')")
+    class Runtime:
+        def call(self,op,body):
+            assert op=='hello';journal=Journal(roots['receipts'])
+            try:return dict(lane=journal.value['lane'],boot='e'*32,quarantined=False,maintenance=journal.maintenance)
+            finally:journal.lock.close()
+    before=logical(roots)
+    for _ in range(2):
+        with pytest.raises(ValueError):Dispatcher(roots['control']/'core',staging=roots['staging'],runtime=Runtime(),profiles=profiles,persistent_registration='f'*64)
+        if half=='core-complete-receipt-pending':
+            with pytest.raises(ValueError):Journal(roots['receipts'])
+        else:
+            with pytest.raises(ValueError):Core(roots['control']/'core')
+        assert logical(roots)==before
+
+
+def test_b22d_completed_later_ordinary_activity_no_scans_or_mutations(installation,monkeypatch):
+    from service.admission import Admission
+    from service.dispatch_store import DispatchStore
+    from service import resource_store
+    from tests.service.test_admission import fixture
+    roots,scope,_,_=installation;intent,observation,jid=core_fixture(installation,'running')
+    result=recovery._complete_receipts(roots,scope,intent,observation,now=102)
+    core=Core(roots['control']/'core')
+    try:
+        f=fixture();admission=Admission(core,roots['staging']);store=DispatchStore(core,admission)
+        core.submit_synthetic('p','later-retry',f['context'],retry_of=jid,_admission=admission,_profiles=f['profiles'],_dispatch_settings=('silence',8))
+        assert store.allocate(f['profiles'],'silence',8)
+    finally:core.close()
+    before=logical(roots)
+    def forbidden(*args,**kwargs):raise AssertionError('completed replay scan')
+    monkeypatch.setattr(Reconciliation,'_collect',forbidden);monkeypatch.setattr(resource_store,'_recovery_scan',forbidden)
+    for _ in range(2):assert recovery._complete_receipts(roots,scope,intent,observation,now=1000)==result
+    assert logical(roots)==before
+
+
+@pytest.mark.parametrize('damage',['none','bundle','rotation','receipt-descriptor','fence-descriptor','journal-descriptor'])
+def test_b22d_prior_completed_creation_evidence_retained(installation,damage):
+    roots,scope,_,_=installation;first,observation,_=core_fixture(installation)
+    recovery._complete_receipts(roots,scope,first,observation,now=102)
+    second=b2_intent(installation,prepare_only=True,recovery_id='7'*32,archive_id='6'*32)
+    recovery._complete_receipts(roots,scope,second,second['proof']['observation'],now=102)
+    if damage!='none':
+        suffix={'bundle':'.snapshot.bundle','rotation':'.rotation.intent.json','receipt-descriptor':'.receipt-certificate.intent.json','fence-descriptor':'.completion-fence.intent.json','journal-descriptor':'.completion-journal.intent.json'}[damage]
+        (roots['receipts']/('p1-recovery-'+first['id']+suffix)).write_bytes(b'changed')
+    for _ in range(2):
+        if damage=='none':assert recovery._complete_receipts(roots,scope,second,second['proof']['observation'],now=1000)['status']=='complete'
+        else:
+            with pytest.raises((ValueError,OSError)):recovery._complete_receipts(roots,scope,second,second['proof']['observation'],now=1000)

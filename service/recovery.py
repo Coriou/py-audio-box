@@ -1163,7 +1163,7 @@ def _prefix_file(path, raw, fault, point):
 
 
 def _prefix_exact(path, raw):
-    if path.stat(follow_symlinks=False).st_mode & 0o077: raise ValueError('b2_prefix_permissions')
+    if path.stat(follow_symlinks=False).st_mode & 0o777 != 0o600: raise ValueError('b2_prefix_permissions')
     if read_file(path,MAX_BYTES)!=raw: raise ValueError('b2_prefix_quarantine')
     fd=os.open(path,os.O_RDONLY|os.O_NOFOLLOW|os.O_NONBLOCK)
     try: os.fsync(fd)
@@ -1193,7 +1193,8 @@ def _prefix_receipt_namespace(receipts, intents):
         prefix='p1-recovery-'+intent['id']
         allowed.update(prefix+suffix for suffix in ('.intent.json','.journal','.certificate.json',
             '.snapshot.intent.json','.manifest.intent.json','.original-journal.intent.json',
-            '.snapshot.bundle','.bundle.intent.json','.rotation.intent.json','.core-certificate.intent.json'))
+            '.snapshot.bundle','.bundle.intent.json','.rotation.intent.json','.core-certificate.intent.json',
+            '.receipt-certificate.intent.json','.completion-journal.intent.json','.completion-fence.intent.json'))
     used=count=0; deadline=time.monotonic()+2
     with os.scandir(receipts) as entries:
         for entry in entries:
@@ -1219,11 +1220,17 @@ def _pending_through_core(roots, scope, intent, observation, *, now=None, fault=
     return _pending_prefix(roots,scope,intent,observation,now=now,fault=fault,through_journal=True,through_core=True)
 
 
-def _pending_prefix(roots, scope, intent, observation, *, now=None, snapshot_bytes=None, fault=lambda point:None, through_journal=False, through_core=False):
+def _complete_receipts(roots, scope, intent, observation, *, now=None, fault=lambda point:None):
+    """Private final continuation; public apply and activation remain unavailable."""
+    return _pending_prefix(roots,scope,intent,observation,now=now,fault=fault,
+        through_journal=True,through_core=True,through_receipt=True)
+
+
+def _pending_prefix(roots, scope, intent, observation, *, now=None, snapshot_bytes=None, fault=lambda point:None, through_journal=False, through_core=False, through_receipt=False):
     """Private bounded prefix. Supplied proof is NOT host authentication.
 
-    Both normal locks cover the named continuation. Core completion is optional;
-    receipt completion and public apply are never enabled here.
+    Both normal locks cover the named continuation. Completion is private;
+    public apply and enrolled activation remain unavailable.
     """
     import hashlib
     intent=json.loads(encode(intent))
@@ -1242,6 +1249,10 @@ def _pending_prefix(roots, scope, intent, observation, *, now=None, snapshot_byt
             raise ValueError('b2_prefix_plan_journal')
         existing=next((r for r in data['p1_recoveries'] if r['id']==intent['id']),None)
         if existing is not None and existing!=intent: raise ValueError('b2_prefix_intent_changed')
+        for prior in data['p1_recoveries']:
+            if prior['id']!=intent['id'] and any(s['recovery_id']==prior['id'] and s['step']=='receipt-complete' for s in data['p1_recovery_steps']):
+                _completed_prefix_receipts(roots,prior)
+                _verify_finished_receipt_evidence(roots,prior)
         completed=any(r['recovery_id']==intent['id'] and r['step']=='core-complete' for r in data['p1_recovery_steps'])
         certificate_path=next(root/n for n,k in archive_names(intent).items() if k=='certificate')
         creation=receipts/('p1-recovery-'+intent['id']+'.core-certificate.intent.json')
@@ -1250,14 +1261,14 @@ def _pending_prefix(roots, scope, intent, observation, *, now=None, snapshot_byt
             # Later ordinary rows/journal activity must never replay this epoch.
             _prefix_receipt_namespace(receipts,data['p1_recoveries'])
             for prior in data['p1_recoveries']:
-                if prior['id']==intent['id']:break
+                if prior['id']==intent['id']:continue
                 chain=[dict(recovery_id=prior['id'],**e,lane=prior['new_lane'],epoch=prior['new_epoch']) for e in prior['expected'][:4]]
                 _prefix_exact(receipts/('p1-recovery-'+prior['id']+'.certificate.json'),encode(dict(certificate=_certificate(prior,chain[-1]),steps=chain)).encode())
                 _prefix_exact(receipts/('p1-recovery-'+prior['id']+'.journal'),bytes.fromhex(prior['before']['journal']['bytes_hex']))
             _completed_prefix_receipts(roots,intent)
             _core_certificate(root,receipts,intent,fault)
             validate_b2_database(db,root)
-            return _core_result(intent)
+            return _finish_receipts(db,roots,intent,fault) if through_receipt else _core_result(intent)
         if any(r['id']!=intent['id'] and not any(s['recovery_id']==r['id'] and s['step']=='core-complete' for s in data['p1_recovery_steps']) for r in data['p1_recoveries']):
             raise ValueError('b2_prefix_other_pending')
         steps=[s for s in data['p1_recovery_steps'] if s['recovery_id']==intent['id']]
@@ -1326,7 +1337,7 @@ def _pending_prefix(roots, scope, intent, observation, *, now=None, snapshot_byt
             _completed_prefix_receipts(roots,intent)
             _core_certificate(root,receipts,intent,fault)
             validate_b2_database(db,root)
-            return _core_result(intent)
+            return _finish_receipts(db,roots,intent,fault) if through_receipt else _core_result(intent)
         bundle=receipts/('p1-recovery-'+intent['id']+'.snapshot.bundle')
         bundle_intent=receipts/('p1-recovery-'+intent['id']+'.bundle.intent.json')
         bundle_descriptor=encode(dict(revision=1,recovery_id=intent['id'],intent_digest=digest(intent),
@@ -1458,7 +1469,7 @@ def _pending_prefix(roots, scope, intent, observation, *, now=None, snapshot_byt
             validate_b2_database(db,root)
         if through_core:
             _complete_core(db,roots,intent,fault)
-            return _core_result(intent)
+            return _finish_receipts(db,roots,intent,fault) if through_receipt else _core_result(intent)
         return dict(status='pending-through-journal' if through_journal else 'pending-through-evidence',recovery_id=intent['id'],lane=intent['new_lane'],epoch=intent['new_epoch'])
 
 
@@ -1591,6 +1602,118 @@ def _complete_core(db,roots,intent,fault):
     _completed_prefix_receipts(roots,intent)
     _core_certificate(root,roots['receipts'],intent,fault)
     validate_b2_database(db,root)
+
+
+def _receipt_descriptor(intent,raw):
+    import hashlib
+    return encode(dict(revision=1,recovery_id=intent['id'],intent_digest=digest(intent),sha256=hashlib.sha256(raw).hexdigest())).encode()
+
+
+def _verify_finished_receipt_evidence(roots,intent):
+    from worker.runtime_journal import journal_bytes
+    chain=[dict(recovery_id=intent['id'],**e,lane=intent['new_lane'],epoch=intent['new_epoch']) for e in intent['expected'][:4]]
+    certificate=_certificate(intent,chain[-1])
+    archive=encode(dict(certificate=certificate,steps=chain)).encode()
+    fence=dict(revision=1,**{k:intent[k] for k in ('deployment_id','plan_id','plan_digest','proof_digest','old_lane','new_lane')},recovery_id=intent['id'],step='complete',certificate=certificate)
+    bound=journal_bytes(dict(intent['expected'][2]['output']['journal'],maintenance=certificate))
+    prefix='p1-recovery-'+intent['id'];receipts=roots['receipts']
+    _prefix_exact(receipts/(prefix+'.certificate.json'),archive)
+    for kind,raw in (('receipt-certificate',archive),('completion-journal',bound),('completion-fence',encode(fence).encode())):
+        _prefix_exact(receipts/(prefix+'.'+kind+'.intent.json'),_receipt_descriptor(intent,raw))
+
+
+def _finish_receipts(db,roots,intent,fault):
+    """Core certificate -> receipt certificate -> bound journal -> fence -> SQL.
+
+    Every creation attempt is immutable. Missing/partial output after an attempt
+    quarantines; only an exact durable output can be re-barriered and recorded.
+    A completed replay validates immutable evidence, never current work or scans.
+    """
+    from worker.runtime_journal import journal_bytes, maintenance_record
+    root=roots['control']/'core';receipts=roots['receipts'];prefix='p1-recovery-'+intent['id']
+    validate_b2_database(db,root)  # actual durable fourth step AND Core certificate
+    chain=[dict(recovery_id=intent['id'],**e,lane=intent['new_lane'],epoch=intent['new_epoch']) for e in intent['expected'][:4]]
+    certificate=_certificate(intent,chain[-1])
+    fence=dict(revision=1,**{k:intent[k] for k in ('deployment_id','plan_id','plan_digest','proof_digest','old_lane','new_lane')},recovery_id=intent['id'],step='complete',certificate=certificate)
+    maintenance_record(fence)
+    fence_raw=encode(fence).encode()
+    pending=encode(dict(fence,step='pending',certificate=None)).encode()
+    archive=encode(dict(certificate=certificate,steps=chain)).encode()
+    if len(archive)>65536:raise ValueError('b2_prefix_receipt_budget')
+    bound=journal_bytes(dict(intent['expected'][2]['output']['journal'],maintenance=certificate))
+    old=journal_bytes(intent['expected'][2]['output']['journal'])
+    step=dict(recovery_id=intent['id'],**intent['expected'][4],lane=intent['new_lane'],epoch=intent['new_epoch'])
+    row=db.execute('SELECT record,digest FROM p1_recovery_steps WHERE recovery_id=? AND step=?',(intent['id'],'receipt-complete')).fetchone()
+    if row is not None and row!=(encode(step),digest(step)):raise ValueError('b2_prefix_step_changed')
+    def descriptor(raw):
+        return _receipt_descriptor(intent,raw)
+    def artifact(path,raw,kind):
+        creation=receipts/(prefix+'.'+kind+'.intent.json');expected=descriptor(raw)
+        if creation.exists():
+            _prefix_exact(creation,expected)
+            if not path.exists():raise ValueError('b2_receipt_missing_artifact_quarantine')
+        else:
+            if path.exists() or path.is_symlink():raise ValueError('b2_receipt_unrecorded_artifact')
+            _prefix_file(creation,expected,fault,kind+'-intent');fault(kind+'-intent-recorded')
+            _prefix_file(path,raw,fault,kind)
+        _prefix_exact(path,raw)
+    # Bound the whole additional population before any finalization write.
+    used,count=_prefix_receipt_namespace(receipts,[json.loads(r[0]) for r in db.execute('SELECT record FROM p1_recoveries ORDER BY rowid')])
+    if row is not None:
+        for name in ('p1-maintenance.complete.tmp','p1-maintenance.journal.tmp'):
+            if (receipts/name).exists() or (receipts/name).is_symlink():raise ValueError('b2_receipt_temporary_quarantine')
+        latest=json.loads(db.execute('SELECT record FROM p1_recoveries ORDER BY rowid DESC LIMIT 1').fetchone()[0])
+        if latest['id']==intent['id']:_prefix_exact(receipts/'p1-maintenance.json',fence_raw)
+        _prefix_exact(receipts/(prefix+'.certificate.json'),archive)
+        for kind,raw in (('receipt-certificate',archive),('completion-journal',bound),('completion-fence',fence_raw)):
+            _prefix_exact(receipts/(prefix+'.'+kind+'.intent.json'),descriptor(raw))
+        return dict(status='complete',recovery_id=intent['id'],lane=intent['new_lane'],epoch=intent['new_epoch'],certificate=certificate)
+    if used+len(archive)+len(bound)+len(fence_raw)+3*1024>MAX_BYTES or count+6>MAX_ROWS:raise ValueError('b2_prefix_receipt_budget')
+    # Validate every existing creation attempt before creating any later file.
+    # An attempted replacement must already have its exact target, even when
+    # the temporary never appeared. Neither half-output may be reminted.
+    attempted=[]
+    for kind,raw,path,before in (
+        ('receipt-certificate',archive,receipts/(prefix+'.certificate.json'),None),
+        ('completion-journal',bound,receipts/'journal.json',old),
+        ('completion-fence',fence_raw,receipts/'p1-maintenance.json',pending)):
+        creation=receipts/(prefix+'.'+kind+'.intent.json')
+        attempted.append(creation.exists())
+        if creation.exists():
+            _prefix_exact(creation,descriptor(raw));_prefix_exact(path,raw)
+        elif before is not None:_prefix_exact(path,before)
+        elif path.exists() or path.is_symlink():raise ValueError('b2_receipt_unrecorded_artifact')
+    if (attempted[2] and not attempted[1]) or (attempted[1] and not attempted[0]):raise ValueError('b2_receipt_creation_chain')
+    artifact(receipts/(prefix+'.certificate.json'),archive,'receipt-certificate')
+    # Verify the exact receipt document against the durable Core binding before
+    # publishing either worker authority file. No self-hashing fifth certificate.
+    from worker.runtime_journal import validate_maintenance_archive
+    validate_maintenance_archive(fence,json.loads(archive),bytes.fromhex(intent['before']['journal']['bytes_hex']))
+    for kind,raw,path,temp,before in (
+        ('completion-journal',bound,receipts/'journal.json',receipts/'p1-maintenance.journal.tmp',old),
+        ('completion-fence',fence_raw,receipts/'p1-maintenance.json',receipts/'p1-maintenance.complete.tmp',pending)):
+        creation=receipts/(prefix+'.'+kind+'.intent.json');expected=descriptor(raw)
+        if creation.exists():
+            _prefix_exact(creation,expected)
+            # Only an actual completed replacement resumes. A leftover temporary
+            # or unchanged target after an attempted write is quarantined.
+            if temp.exists() or temp.is_symlink():raise ValueError('b2_receipt_temporary_quarantine')
+            _prefix_exact(path,raw)
+        else:
+            _prefix_exact(path,before)
+            if temp.exists() or temp.is_symlink():raise ValueError('b2_receipt_temporary_quarantine')
+            _prefix_file(creation,expected,fault,kind+'-intent');fault(kind+'-intent-recorded')
+            _prefix_file(temp,raw,fault,kind)
+            fault(kind+'-before-replace')
+            os.replace(temp,path);fault(kind+'-replace')
+            sync_dir(receipts);fault(kind+'-dirsync')
+            _prefix_exact(path,raw)
+    def write():
+        db.execute('INSERT INTO p1_recovery_steps VALUES(?,?,?,?)',(intent['id'],'receipt-complete',encode(step),digest(step)))
+        validate_b2_database(db,root)
+    _prefix_transaction(db,write,fault,'receipt-complete')
+    sync_dir(root);fault('receipt-complete-parent')
+    return dict(status='complete',recovery_id=intent['id'],lane=intent['new_lane'],epoch=intent['new_epoch'],certificate=certificate)
 
 
 if __name__=='__main__': main()
