@@ -312,3 +312,9 @@ Record failures and missing evidence; do not replace them with a successful late
 - [IndependentA1report](reviews/P1A1-r1-sol.md): boundedGO exact`29fc22c`, fresh103targetedtests; no blocker. GlobalrunnerEXIT1/inventorypreservationunverified retained, notgreenfullgate.
 - Initialrootcherry-pickomitted61aadfa prerequisite, conflicted; abortedwithoutretainingdelta. Prematuretestcollectionfailedconflictmarkers, notcodefinding. Correctthreecommitsequence integrated`660abd2`,`d7cba98`,`2b914b0`; exactsourcediffvsreviewedcandidateempty. Root103targetedtests **passed in44.42s**,exit0, existingisolatedvenv, noDockerresourcecampaign.
 - NextisolatedSol-low request`pab-phase1a-p1a2-implementation-r1-20261022`, A2boundedreferenceinventory/integrity/startupjoins only. No B/Cactivationorcleanupauthority.
+
+## P1A2 candidate / independent review
+
+- Candidate`54730c631f8708dd577be5a794215df205c3df7d`, source`801cfbb`+report, app-owned`t3-9d9cebfc`, branch`t3/p1a2-reconciliation-inventory`. Root read fullhandoff; unintegrated.
+- Finalfocused30tests passed; prior203target/249pass18skip broaderchecks precededlastrefinements, nofinalfullsuiteclaim. E1only, noDocker/c2installedclaim; A1inventorylimitationretained.
+- IndependentSol-low request/task suffix`pab-phase1a-p1a2-review-r1-20261022`, currenttask-IDprefix, report`reviews/P1A2-r1-sol.md`; fullAstraA2brief supplied andfinalaffectedregressions requested. B/Cactivationremainclosed.
