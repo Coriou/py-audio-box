@@ -19,7 +19,7 @@
 | Lot | State | Dependency / next action |
 | --- | --- | --- |
 | Launch preparation | Complete | Planning baseline `2c1adaa`; source base `ae67cd6`; integration branch `feat/agent-voice-workspace`. |
-| 0A Contract/compatibility pack | Reviewing | Candidate `9f1027b`; independent Sol-low adversarial review round 1 running. |
+| 0A Contract/compatibility pack | Corrections required | Candidate `9f1027b` rejected by independent review; F1–F6, correction round 1. |
 | 0B Editor browser fixture | Pending | Recorded 0A contract fixture; separate owned component slice and reviewer. |
 | 0C Integration skeleton/acceptance ledger | Pending | 0A boundaries; integrate component decision after 0B. |
 | Phase 0 gate | Not evaluated | Integrated contracts, browser evidence, packaging boundary and relevant checks. |
@@ -49,4 +49,5 @@ Record failures and missing evidence; do not replace them with a successful late
 - Candidate: `9f1027b95229ed30f12d918b27bba989fbfe5d9d`; root verified committed diff (26 paths) and clean candidate worktree. Root read contract guide, validator and evidence report; no integration yet.
 - Implementer-reported E1 checks: 14 focused tests, 85 selected contract/legacy tests, 320-test collection in network-disabled bounded container. Independent verification is pending; no runtime/hardware/browser/acoustic acceptance.
 - Independent reviewer: `codex` / `gpt-6.1-sol` / `low`, request `pab-phase0a-review-r1-20261016`; task ID `node:delegated-task:command%3Amcp%3Ab4587ef3-fd31-4580-ac56-59ae142ceb03%3Adelegate-task%3Apab-phase0a-review-r1-20261016`. Read-only candidate inspection and tests; sole heavy test lane. Report destination `reviews/0A-r1-sol.md`.
-- Review verdict and integrated commit pending. No 0A/Phase 0 GO.
+- Review round 1: **NO-GO**, [report](reviews/0A-r1-sol.md). Independently verified image/source match, 85 selected tests passed and 320 collected; concrete counterexamples expose six required corrections (F1–F6): media transport, resource/worker workflow completeness, full attempt ownership/fencing, nested identity validation, immutable historical takes, ripple end overflow.
+- Candidate remains unintegrated. Correction round 1 will start from the rejected candidate in a fresh isolated worktree; every finding requires response/tests and independent re-review. No 0A/Phase 0 GO.
