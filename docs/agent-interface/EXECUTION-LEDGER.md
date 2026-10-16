@@ -323,3 +323,8 @@ Record failures and missing evidence; do not replace them with a successful late
 
 - [A2review](reviews/P1A2-r1-sol.md): NO-GO final`54730c6`;205affectedtests passed, F1arbitraryasset-prefixprose causesfalsemediafault; F2diagnosticwritefailure losesobserveddefectafterrestart. No integration/waiver.
 - IsolatedSol-low request`pab-phase1a-p1a2-fix-r1-20261022`: explicitschema-aware refs + independentpre-observationintegrityuncertainty boundary, preserveR1authority andstopresponsiveness; boundhistoricaldiagnosticbytes. Independentre-reviewrequired.
+
+## P1A2 corrected candidate / independent review round2
+
+- Candidate`43e6c8d51a3b4998084ee5ee74e1b1e05c42ee08`, source`76e693f`+report, app-owned`t3-ae3b1e13`, branch`t3/typed-integrity-fence`. Claims269pass18skipfinalfullsuite, typedrefs/separateprescanintegrityfence, healthy-scan-deathavailabilitycost explicit. Root read response; unintegrated.
+- IndependentSol-low request/task suffix`pab-phase1a-p1a2-review-r2-20261022`, currenttask-IDprefix, report`reviews/P1A2-r2-sol.md`; originalbrief/findings/reproducers+response supplied. No waiver; B/Cactivationclosed andA1globalinventorylimitationretained.
