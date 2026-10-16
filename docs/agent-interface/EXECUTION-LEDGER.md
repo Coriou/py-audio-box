@@ -196,5 +196,5 @@ Record failures and missing evidence; do not replace them with a successful late
 ## W1 accepted integration / W2 launch
 
 - [Independent W1 report](reviews/W1-r1-sol.md): GO exact `30afe884ebfa509113cc2b9872b044b11f1b1cf9`,68tests and3separatecontainer scenarios independently passed, cleanup/sourceidentity verified; E1/E2 only.
-- Integrated `624b305`; exact source diff vs reviewed candidate empty for service/worker/contracts/clients/tests/scripts. Root integrated Linux regression run pending completion. No durable dispatcher activation/full1A claim.
+- Integrated `624b305`; exact source diff vs reviewed candidate empty for service/worker/contracts/clients/tests/scripts. Root integrated Linux regression: **68 passed in24.27s**, exit0, exactsourceimage networknone/read-onlyroot/tmpfs/no mounts. No durable dispatcher activation/full1A claim.
 - Next isolated Sol-low request `pab-phase1a-w2-implementation-r1-20261022`, owner lifecycle/reconnect only under Astra ordered brief; independent review required. Resource/persistence/registry/render lots remain separate.
