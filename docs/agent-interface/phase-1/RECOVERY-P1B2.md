@@ -652,3 +652,88 @@ PYTHONDONTWRITEBYTECODE=1 /tmp/pab-0c-venv/bin/python -m pytest -p no:cacheprovi
 **758 passed, 18 skipped in 398.44 seconds, exit 0**, `/tmp/b22d-correction-full-final.log`. All 18 skips remain unqualified. This single full campaign followed the 606-pass focused suite sequentially on the same frozen source/tests. No source/test changes occurred during or between final checks; no redundant broad repeat was run.
 
 Final `git diff --check` passes. Actual root baseline is `2bced6ec2cec67e9953f07cba1bea989af06f6b3`. Complete root-to-candidate changed paths and correction-only paths are exactly recovery.py, recovery tests and this appended handoff. Protected root reviews/ledger, Core/initializer/persistence/Dispatcher/supervisor/worker/host/reconciliation/resource/admission/dispatch stores/contracts/dependencies/packaging remain unchanged. Imported chain patch equivalence was verified by range-diff and direct comparisons. No source/test delta exists after frozen `b3e4fec940b5cfb8e1afe70bee7c76fccada9f96`; the final report-only commit follows it, and its exact candidate SHA accompanies the handoff. Ready for fresh independent review and parent integration verification; **no self-GO**, no B2.3/B3/C1/C2/final Astra or public/unattended acceptance.
+
+## B2.2d round-2 F2/F3 correction — awaiting fresh independent review
+
+2026-10-16, implementation gpt-6.1-sol / low. Only `/Users/ben/.txcode/worktrees/py-audio-box/t3-42ef127a`, branch `t3/b22d-recovery-resume-fixes`, was edited. Actual clean fresh-root baseline `3692f17` lacked the candidate implementation. Inspected the complete `2bced6e..6d84699a9fa79ba1ef601e75bf1c06e0695bc7e9` log and imported ALL four commits oldest first: `1a0f2fc` → `c6ffb06` → `b3e4fec` → `6d84699`, locally `da0561a` → `0954f61` → `b2270f8` → `899c25c`. Imports were clean; root documentation/reviews are preserved. No other checkout was edited.
+
+Read the full R2 report including exact F2/F3 reproducers/minimal fixes/prior F1 closure; full R1 report; full P1B2-BOUNDARY-ASTRA architecture, records, resume and B2.2; this full handoff including original contracts, tranches and every correction; orchestration protocol, P1B22c-r1/r2, P1B22b-r1 and R1/B1 authority/WAL/no-remint context. No applicable ancestor/scoped AGENTS.md found. Lightweight memory registry search returned no relevant B2 guidance; no historical acceptance is current evidence.
+
+Frozen correction source/tests: **`8dbfdca1da5b79ce1714984594a06e86bce3ead4`**. Correction-only delta from imported `899c25c` is recovery.py, recovery tests and this appended response. Complete fresh-root-to-candidate path set is the same three paths. No persistence/Journal change was needed; no Core/initializer/Dispatcher/supervisor/host/reconciliation/resources/contracts/dependencies/packaging/ledger/review changes. No schema, record-key, version, lane/epoch, job/resource/event/ACK or activation-interface delta.
+
+### F1 preserved; F2 response
+
+R1 F1 closure remains unchanged: actual fifth completion selects immutable replay; unfinished receipt continuation compares the entire current bounded registration population with the accepted before-image and checks original all-owner death coverage BEFORE any remaining receipt write/fifth insertion. Both locks span the operation. No substituted proof or current-startup requirement is imposed on a genuinely completed no-op. Existing production hello/register stale-proof and later ordinary-activity tests remain.
+
+The private database/archive validator now accepts an explicit retained-receipts root from the owning locked continuation. Only the latest unfinished history can reserve its exact future Core certificate when BOTH its creation attempt and output are absent. It still validates and grounds its snapshot/manifest, complete canonical before-history and SQL chain; every completed predecessor retains its actual certificate requirement. This applies to the initial validation and subsequent immutable replay/final-return validations, avoiding a later repeat of the same false refusal. Default startup/database readers retain their actual-certificate requirement. The existing requested-current `_uncertified` prospective transaction seam is unchanged.
+
+The retained-stage helper independently recognizes committed Core with no creation attempt/output as a legitimate prefix. Once an attempt exists, exact descriptor and output are mandatory; missing/partial/wrong output quarantines. An output without its descriptor also refuses. It never creates B's certificate while replaying completed A and never exempts a whole history/table. Existing exact source/archives/bundle/original-journal/rotation and prior completed-history obligations remain.
+
+### F3 response: closed finite prerequisite matrix
+
+Retained attempts are checked against the following fixed production order, in addition to exact bytes and the existing contiguous SQL chain. No general workflow framework or requirement for future receipts/certificates is introduced.
+
+| Retained durable item | Required predecessor evidence | Own missing SQL receipt permitted? |
+| --- | --- | --- |
+| Accepted Core intent / original bundle | Existing protected accepted document, marker/fence and exact grounded staging bundle/descriptor | Pending receipt may still be absent |
+| Snapshot creation attempt/output | Durable pending SQL receipt | Evidence receipt may be absent |
+| Manifest creation attempt/output | Pending receipt and exact snapshot attempt/output | Evidence receipt may be absent |
+| Original-journal creation attempt/output | Pending receipt and exact snapshot/manifest attempts/outputs | Evidence receipt may be absent |
+| Evidence SQL receipt | All three exact creation attempts/outputs | Not applicable |
+| Rotation attempt/exact replacement | Durable evidence SQL receipt and its predecessor chain | Journal receipt may be absent |
+| Core SQL completion | Durable journal SQL receipt and its predecessor chain (existing SQL validator) | Core certificate attempt/output may still be absent |
+| Core certificate attempt/output | Durable Core fourth SQL receipt and exact rotation/evidence inputs | No future receipt certificate required |
+| Receipt-certificate attempt/output | Durable Core receipt and exact Core certificate attempt/output | Fifth receipt may be absent |
+| Completion-journal attempt/output | Exact receipt-certificate attempt/output | Fifth receipt may be absent |
+| Completion-fence attempt/output | Exact completion-journal attempt/output | Fifth receipt may be absent |
+| Fifth SQL receipt | Existing complete certificate/bound-journal/fence production sequence | Completed immutable replay |
+
+The exact F3 one-row deletion now refuses before any scan/write: after actual `journal-replace` and before journal SQL receipt, deleting only B's evidence row cannot be mistaken for interrupted unrecorded journal output. Earlier evidence-order checks also reject a missing pending receipt or missing preceding creation descriptor. Final attempts retain their ordered chain and additionally require the Core certificate's own persisted creation attempt/output. Existing SQL validation already rejects missing journal/Core predecessor rows when later SQL steps exist. Missing predecessors are corruption; a valid output missing its own receipt remains accepted.
+
+### RED, GREEN and actual interruption evidence
+
+Existing interpreter only; no installs. Every pytest command uses `PYTHONDONTWRITEBYTECODE=1 /tmp/pab-0c-venv/bin/python -m pytest -p no:cacheprovider`; disposable owned synthetic roots only.
+
+RED on imported candidate before production edits:
+
+```sh
+PYTHONDONTWRITEBYTECODE=1 /tmp/pab-0c-venv/bin/python -m pytest -p no:cacheprovider tests/service/test_recovery.py -k b22d_r2 -q
+```
+
+**4 failed, 1 passed, 474 deselected in 13.75s**, exit 1, `/tmp/b22d-r2-red.log`. Both actual `core-complete-commit` and `core-complete-parent` faults fired and falsely required B's absent certificate; exact `journal-replace`/single evidence-row deletion and snapshot-parent/single pending-row deletion falsely accepted corruption. Unchanged post-journal-replace control passed. Every hook explicitly asserts it fired. Initial same-five GREEN: **5 passed, 474 deselected in 13.98s**, exit 0, `/tmp/b22d-r2-green.log`.
+
+Expanded same-command matrix: **25 passed, 474 deselected in 50.86s**, exit 0, `/tmp/b22d-r2-matrix.log`. Positives cover Core intent before pending receipt, pending COMMIT, exact snapshot/manifest/original-journal outputs before evidence receipt, evidence COMMIT, exact replaced journal before its SQL receipt, journal COMMIT, Core COMMIT and parent before certificate creation, certified Core, receipt certificate, bound-journal replace and complete-fence replace before fifth. Negatives delete exactly one SQL row/preceding attempt or remove/partially replace/wrongly replace attempted Core certificate output; the recorded-but-not-created Core certificate boundary quarantines. No development failures followed the intended RED.
+
+Actual process test command:
+
+```sh
+PYTHONDONTWRITEBYTECODE=1 /tmp/pab-0c-venv/bin/python -m pytest -p no:cacheprovider tests/service/test_recovery.py -k b22d_r2_completed_replay_crash -q
+```
+
+**2 passed, 499 deselected in 9.46s**, exit 0, `/tmp/b22d-r2-process.log`. Production B `_pending_through_core` exits via actual `os._exit(73)` at COMMIT and parent separately; exit status proves each hook fired. Parent discards A/B intent/observation and launches a fresh interpreter with only owned roots/scope/A recovery ID. It reloads actual accepted documents, confirms no B certificate attempt exists, then replays A twice after TTL. No inherited snapshot/intent RAM supplies authority. Logical capture occurs before physical-byte baseline because opening crash-left SQLite may recover/checkpoint WAL; byte preservation is claimed only after that explicit capture, not across initial crash-state opening.
+
+All 27 new cases replay A twice with snapshot/Reconciliation collection/recovery scan and production file/SQL writers forbidden; A returns its original result in valid windows or refuses corrupt retained inputs. Entire logical SQL state and every retained regular-file byte remain equal to their baselines on each replay, including all B state. Existing attempted-missing negatives, certified-B positives, F1 stale-proof cases and prior completed-history corruption tests remain in final focused/full verification. The expanded matrix and process subset briefly overlapped on separate disposable local roots; final focused/full suites are sequential on frozen source/tests.
+
+Core certificate → exact four-step receipt certificate → bound journal → durable complete fence → fifth SQL receipt ordering remains unchanged. Both locks, original all-owner proof, closed bounded records, exact 0600/no-follow/owner/single-link reads, file/parent barriers, creation-before-attempt/no-remint quarantine, all prior archives/staging/rotation evidence and B2.2c strict context/resolution and R1/B1 WAL/uncertainty behavior remain. All apply is unconditionally unavailable; enrolled activation stays closed without flags/autolaunch.
+
+E1 local source/SQLite/filesystem/process and mocked host documents only; E1-mock is not actual-host proof. Installed/platform skips remain unqualified. A1 whole-Docker-inventory drift remains unexplained and unqualified, with no inferred cause or waiver. No physical power-loss/ENOSPC/daemon/VM/controller durability, installed lifecycle, engine/audio/hardware or clean-host qualification. B2.3 host authentication is later work, not a prerequisite added to this correction. B2.3/B3/C1/C2, parent integration, fresh independent review, final Astra and public/unattended acceptance remain pending. No subagents, Docker/network/models/audio/paid/E2E runner, installs, push/PR/deploy, prune or user cleanup; research/other worktrees preserved. **No self-GO.**
+
+Final frozen focused/full receipts follow; only this report is edited during verification.
+
+Frozen focused command on unchanged `8dbfdca1da5b79ce1714984594a06e86bce3ead4`:
+
+```sh
+PYTHONDONTWRITEBYTECODE=1 /tmp/pab-0c-venv/bin/python -m pytest -p no:cacheprovider tests/service/test_recovery.py tests/service/test_packaged_lifecycle.py tests/service/test_admission.py tests/service/test_dispatcher.py -q
+```
+
+**633 passed in 418.05 seconds, exit 0**, `/tmp/b22d-r2-focused-final.log`. Includes all 27 new R2 cases plus inherited F1, attempted-output quarantine, prior-history, ordering/process/startup/authority cases. Full service/release follows sequentially on this same frozen source/tests; only this handoff changes.
+
+Frozen full preservation command:
+
+```sh
+PYTHONDONTWRITEBYTECODE=1 /tmp/pab-0c-venv/bin/python -m pytest -p no:cacheprovider tests/service tests/release -q
+```
+
+**785 passed, 18 skipped in 459.32 seconds, exit 0**, `/tmp/b22d-r2-full-final.log`. Sequential after the 633-pass focused run on unchanged frozen `8dbfdca1da5b79ce1714984594a06e86bce3ead4`. All 18 skips remain unqualified. No source/tests changed during or between the frozen checks, and no redundant broad campaign was run.
+
+Final `git diff --check` passes. Actual fresh-root baseline is `3692f17428b5ad58d0fdaddb0eba9e541a4347e2`. `git range-diff 2bced6e..6d84699 3692f17..899c25c` reports all four imported patches equal. Complete baseline-to-candidate and correction-only path sets are exactly recovery.py, recovery tests and this handoff. Protected-path comparison excluding these three paths is empty; root reviews/ledger and all other source/worker/contracts/dependencies/packaging remain preserved. Frozen-to-final delta is report-only. Final report-only commit follows the frozen implementation; its exact candidate SHA accompanies the handoff. Fresh independent review of that exact candidate and parent integration verification are required. No self-GO or B2.3/B3/C1/C2/final Astra/public/unattended acceptance is asserted.
