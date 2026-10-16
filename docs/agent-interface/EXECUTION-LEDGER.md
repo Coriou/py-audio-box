@@ -163,3 +163,9 @@ Record failures and missing evidence; do not replace them with a successful late
 
 - [R1b report](reviews/1A-foundation-r1b-sol.md): NO-GO on `a1a4668`;29existingtests/sourceimage match independently confirmed. F1 late-finished child can publish afterdeadline when collection delayed; F2 Pythonnumeric equality permits canonically changed retrycontext/hash. Source-derived examples, not independently executed probes.
 - Correction request `pab-phase1a-foundation-fix-r1-20261016`, isolated Sol-low; preserve timelycompletion collectedlater and exactretry lineage. New targeted regressions and independent re-review required; foundation/full1A remain unaccepted and unintegrated.
+
+## Foundation correction / functional review round2
+
+- Candidate `873dae231a5eacf663a2d36c0fe23de62a2db720`, branch `fix/1a-foundation-f1-f2`, actual worktree `/tmp/pab-1a-f1-f2`. Implementer unnecessarily created manual secondary worktree from assigned T3 checkout; root records deviation and will keep future implementations in app-owned checkout. No data discarded.
+- Reported34focused/38host/38container tests; exactsource-overlay image53filesmatch. Fresh offline release rebuild failed uncachedpip lookup; overlay verifies code with existing dependencies, not freshreleasebuild. Root read complete response; no integration.
+- Independent functional Sol-low request `pab-phase1a-foundation-review-r2-20261016`, report `reviews/1A-foundation-r2-sol.md`; same bounded scope and remaining full1A/adversarial requirements retained.
