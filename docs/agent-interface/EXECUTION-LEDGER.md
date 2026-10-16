@@ -328,3 +328,8 @@ Record failures and missing evidence; do not replace them with a successful late
 
 - Candidate`43e6c8d51a3b4998084ee5ee74e1b1e05c42ee08`, source`76e693f`+report, app-owned`t3-ae3b1e13`, branch`t3/typed-integrity-fence`. Claims269pass18skipfinalfullsuite, typedrefs/separateprescanintegrityfence, healthy-scan-deathavailabilitycost explicit. Root read response; unintegrated.
 - IndependentSol-low request/task suffix`pab-phase1a-p1a2-review-r2-20261022`, currenttask-IDprefix, report`reviews/P1A2-r2-sol.md`; originalbrief/findings/reproducers+response supplied. No waiver; B/Cactivationclosed andA1globalinventorylimitationretained.
+
+## A2 round2 NO-GO / narrow schema correction
+
+- [R2report](reviews/P1A2-r2-sol.md): NO-GO exact`43e6c8d`; originalprefixF1closed/F2durableepochclosed, newF1b validnullableobject union walksnullbranch andfalseunknownschemaquarantine.269pass18skip independentlyconfirmed.
+- NarrowSol-low request`pab-phase1a-p1a2-fix-r2-20261022`: actualschema/type/refunionselection+singularreferencecoverage, fullycoherentpositivefixtures andunknownnegatives. No integrityprotocolredesign/waiver/integration.
