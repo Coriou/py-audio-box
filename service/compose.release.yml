@@ -1,0 +1,50 @@
+# Isolated 0C fixture topology; no legacy Compose/default changes.
+name: speech-skeleton-0c
+services:
+  control:
+    image: speech-skeleton-0c-control:0.1.0
+    build:
+      context: ..
+      dockerfile: service/Dockerfile.release
+      target: control
+    ports:
+      - "127.0.0.1:${SPEECH_0C_PORT:-8780}:8780"
+    read_only: true
+    user: "10001:10001"
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    mem_limit: 384m
+    cpus: 1
+    pids_limit: 96
+    tmpfs: ["/tmp:rw,noexec,nosuid,size=16m"]
+    volumes:
+      - ipc:/run/speech-ipc
+      - staging:/staging
+      - assets:/assets
+    networks: [fixture]
+  fake-worker:
+    image: speech-skeleton-0c-worker:0.1.0
+    build:
+      context: ..
+      dockerfile: service/Dockerfile.release
+      target: worker
+    network_mode: none
+    read_only: true
+    user: "10001:10001"
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    mem_limit: 64m
+    cpus: 0.25
+    pids_limit: 32
+    tmpfs: ["/tmp:rw,noexec,nosuid,size=4m"]
+    volumes:
+      - ipc:/run/speech-ipc
+      - staging:/staging
+      - assets:/assets:ro
+volumes:
+  ipc:
+  staging:
+  assets:
+networks:
+  fixture:
+    internal: true

@@ -1,0 +1,26 @@
+# 0C dedicated acceptance matrix
+
+Candidate evidence ledger only; shared EXECUTION-LEDGER is untouched. No self-GO. E1 static/schema/offline; E2 integrated processes/containers/faults; E3 real engine/release hardware; E4 actual browser/agent host/accessibility; E5 listening/production. A green lower tier never fills a higher tier.
+
+| Phase | Named exit | Executable command / pending command owner | Evidence and open tiers | Hardware / frontend limit |
+| --- | --- | --- | --- | --- |
+| 0 boundaries | 0A canonical1.3.0 + accepted0B + reviewable0C paths/pins/catalogue/package | `scripts/test-skeleton-0c.sh`; `python -m tests.release.measure`; prior 0A/0B commands remain in their accepted reports | Current0C E1 adapters/limits, E2 synthetic container boundary; independent review and integrated Phase0 decision pending. No new E3/E4/E5 | Current x86_64 OrbStack only, no ML qualification; internal network suppresses host port, internal compiled0B HTML is not E4 |
+| 1 walking slice | Durable CAS/jobs/adoption/recovery and one synthetic task across HTTP/CLI/MCP/browser | Current `python -m pytest tests/service tests/release -q` is skeleton-only. 1A/1B/1C owners must add fault and browser commands; not yet executable | E1 partial; durable fault E2 and installed browser/agent E4 pending; no milestone exit | No service store/auth, executor/scheduler or browser transport. LocalStorage explicitly excluded |
+| 2 engines/profiles | Real cold/warm synthesis, provision/offline/load/cancel/reap/device policy | 2A–2C owners to add dedicated model/hardware harness; **not authorized or run by0C** | E2 lifecycle pending; E3 CPU/CUDA/Metal pending; E5 listening pending | Older Intel CPU, actual small Linux hosts, NVIDIA/WSL2, native Metal separately unqualified; no universal support |
+| 3 acquisition/voices | Mic/file/approved-URL, prepare/test, design/save/reuse exact versions | 3A–3C owners to add security/browser/voice journeys; unavailable in0C | E1 contract examples only; E2 ingest, E3 engines, E4 browser permissions, E5 audition pending | Intended source_types is not installed acquisition. No microphone/upload/URL endpoints |
+| 4 shared production | Human/agent multi-speaker edits, one-line stale-only, retained timing/history | 4A/4B owners to add integrated alternating-client/recovery test command | E1/accepted0B fixture precedent only; service E2, real-host E4, production E5 pending | No service revision storage, atomic CAS or history. Editor restrictions retained |
+| 5 timeline/delivery | Exact renderer, full arrangement, preview/export agreement | 5A–5C owners to add mixer/export/keyboard/drag/scale commands | Canonical E1 examples only; E2 real render, E4 browser, E5 listening pending | 60s tiny synthetic preview; no renderer/export, general faded split or multi-split replacement |
+| 6 release | Fresh install, explicit provision/offline, upgrade/restore/security, five full journeys | 6A–6C owners to add supported-host install/restore/agent-cost harness | 0C packaging E2 is preliminary; release E3/E4/E5 and independent global decision pending | No supported-host declaration or release distribution. CUDA/Metal objectives remain open, optional notifications not implied |
+
+## 0C checks and their actual scope
+
+| ID | Test command | Required observation | Tier / limitation |
+| --- | --- | --- | --- |
+| C-discovery | `python -m pytest tests/service/test_adapters.py -q` | Fresh interpreter blocks ML/legacy imports, model directory scans and outbound connect; cheap discovery and one operation detail succeed | E1 + loopback process E2; not a loaded-worker responsiveness SLA |
+| C-adapters | same command | Actual HTTP→CLI and HTTP→stdio MCP SDK client parity, named schemas, unknown-field/error mapping, absent future operations | E2 synthetic, no real agent-host E4 acceptance |
+| C-bytes | same command | 3072 accepted /3073 rejected direct MCP; larger fixture downloaded/hash-verified outside stdout; destination preserved on repeat | E2 synthetic download only; upload unavailable |
+| C-context | `python -m pytest tests/release/test_compactness.py -q`; `python -m tests.release.measure` | ≤2500 eager tools+discovery tokens in named fixture; raw ≤2KiB receipt/≤1KiB job; 20-item list | E1 measured serialization, not real-host E4 task economics; receipt/job are offline fixtures |
+| C-package | `python tests/release/smoke.py` after dedicated builds | Fresh private volumes; nonroot/RO/no worker network/socket/credentials/DB; UDS ping; compiled evaluation HTML; owned cleanup | E2 container boundary only. Default host publication unavailable on this daemon; opt-in bridge override is untested. No durable fault recovery, authentication, actual worker-protocol execution or browser E4 |
+| C-preservation | `git diff --exit-code a9163ad -- apps lib contracts studio poetry.lock PRODUCT.md DESIGN.md docs/agent-interface/EXECUTION-LEDGER.md docs/agent-interface/reviews` | Protected tracked paths unchanged | E1; no claim of full legacy test rerun |
+
+Initial guardrails and profile ceilings remain provisional. Token/byte counts come only from the named serialization fixture, hardware/resource ceilings are configured harness limits. No claimed host peaks, model speed, memory savings, acoustic quality or supported-profile acceptance.

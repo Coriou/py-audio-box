@@ -1,0 +1,45 @@
+{
+  "fixture": "0C SDK tools/list + CallToolResult compact UTF-8, text + structuredContent counted",
+  "tokenizer": "tiktoken 0.14.0 / o200k_base",
+  "agent_model": "none (offline client fixture)",
+  "host_duplication": "text and structuredContent included once each; other host prompts/copies unknown",
+  "metrics": {
+    "tools_list": {
+      "utf8_bytes": 1820,
+      "tokens": 423
+    },
+    "discovery_result": {
+      "utf8_bytes": 536,
+      "tokens": 151
+    },
+    "skeleton_status": {
+      "utf8_bytes": 1264,
+      "tokens": 284
+    },
+    "receipt_fixture": {
+      "utf8_bytes": 406,
+      "tokens": 147
+    },
+    "job_status_fixture": {
+      "utf8_bytes": 1000,
+      "tokens": 301
+    },
+    "list_20_fixture": {
+      "utf8_bytes": 680,
+      "tokens": 200
+    },
+    "receipt_raw": {
+      "utf8_bytes": 157,
+      "tokens": 63
+    },
+    "job_status_raw": {
+      "utf8_bytes": 434,
+      "tokens": 138
+    },
+    "list_20_raw": {
+      "utf8_bytes": 280,
+      "tokens": 89
+    }
+  },
+  "initial_connection_tokens": 574
+}

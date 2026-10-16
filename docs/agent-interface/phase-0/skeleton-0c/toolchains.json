@@ -1,0 +1,37 @@
+{
+  "control": {
+    "image_id": "sha256:c670144f2bf5ead7abec7293237c98744ca7c1adde2d0b7f4dd6ab3eaa83e054",
+    "architecture": "amd64",
+    "os": "linux",
+    "uncompressed_image_bytes": 172924868
+  },
+  "worker": {
+    "image_id": "sha256:e0918eaf7be61358e1cd526cfd1a03f9e2b4be8e26b43c95f0e016adc507623c",
+    "architecture": "amd64",
+    "os": "linux",
+    "uncompressed_image_bytes": 129015861
+  },
+  "tests": {
+    "image_id": "sha256:324b1080defc0980967cf5237028c5785b27408f25cf8f7be91f0f2658e63a0d",
+    "architecture": "amd64",
+    "os": "linux",
+    "uncompressed_image_bytes": 200315018
+  },
+  "python": "3.14.8",
+  "packages": {
+    "fastapi": "0.143.2",
+    "pydantic": "2.14.1",
+    "httpx": "0.28.1",
+    "uvicorn": "0.54.0",
+    "mcp": "1.30.0",
+    "jsonschema": "4.26.0",
+    "pytest": "9.1.1",
+    "tiktoken": "0.14.0"
+  },
+  "node_build": "24.22.0",
+  "npm_build": "11.19.1",
+  "docker_server": "29.4.0",
+  "docker_compose": "5.1.2",
+  "runtime_host": "x86_64 OrbStack Linux VM; 12 vCPU / 16843739136 VM bytes from docker info; not an ML qualification",
+  "lock_authoring_uv": "0.11.15"
+}
