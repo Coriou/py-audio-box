@@ -436,3 +436,8 @@ Record failures and missing evidence; do not replace them with a successful late
 - Candidate `903b44367bbbd07724b17d24627d693dfc1c308f`, sourceb999c129, app-owned `t3-fa982d42`; onlyrecovery/tests/report changed. Root readhandoff; unintegrated. Claims252focused/522passed18skipped finalfrozen, privatepending-through-evidence only.
 - Explicit limitation: Coreintent-before-snapshot resume needs retained original snapshot_bytes if artifact absent; no remint claimed. Reviewer tasked to assess required durable restart behavior, not waive this window.
 - Fresh independentSol-low request/task suffix `pab-phase1a-p1b22a-review-r1-20261022`, report `reviews/P1B22a-r1-sol.md`; fulloriginalbrief/candidate/resumelimits supplied. Applyunavailable/noactivation; no laterkernel/installedacceptance.
+
+## B2.2a round1 NO-GO / durable restart correction
+
+- [R1review](reviews/P1B22a-r1-sol.md) NO-GO exact903b443;252focused/522passed18skipped independentlyconfirmed. F1 realprocessdeath afterCorecommit loses onlyoriginalsnapshot bytes, resume cannotfinish fromownedstate; F2pendingresume ignores changedpriorreceiptjournal/certificate. Safequarantine notfunctionalresume acceptance.
+- IsolatedSol-low request `pab-phase1a-p1b22a-fix-r1-20261022`: durableidentitybound originals snapshotbundle beforeCoreacceptance and allpredecessorreceiptevidence verification everyresume. Actualprocessdeath/noexternalRAM regressions required, applyunavailable. No integration/waiver.
