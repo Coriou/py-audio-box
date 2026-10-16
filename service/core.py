@@ -17,6 +17,8 @@ import sqlite3
 import stat
 import subprocess
 import sys
+import threading
+import time
 from uuid import uuid4
 import wave
 
@@ -35,6 +37,41 @@ def sync_dir(path):
     fd = os.open(path, os.O_RDONLY | os.O_DIRECTORY)
     try: os.fsync(fd)
     finally: os.close(fd)
+
+
+class CompletionObserver:
+    """Control-only, conservative completion evidence; never a child timestamp.
+
+    Observation at/after cutoff fails even if the OS exit happened earlier.
+    No SQLite or publication runs on this thread. Lost evidence on control death
+    is handled by ordinary interrupted-job recovery, never inferred from output.
+    """
+    def __init__(self, process, cutoff):
+        self.process, self.cutoff = process, cutoff
+        self.expired = False
+        self.reaped = False
+        self.thread = threading.Thread(target=self._observe, daemon=True)
+        self.thread.start()
+
+    def _observe(self):
+        try:
+            self.process.wait(timeout=max(0, self.cutoff-time.monotonic()))
+            self.expired = time.monotonic() >= self.cutoff
+        except subprocess.TimeoutExpired:
+            self.expired = True
+        if self.expired and self.process.poll() is None:
+            self.process.kill()
+        try:
+            self.process.wait(timeout=3)
+            self.reaped = True
+        except subprocess.TimeoutExpired:
+            pass  # finish retains active ownership and quarantines the lane
+
+    def collect(self):
+        self.thread.join(timeout=max(0, self.cutoff-time.monotonic())+4)
+        if self.thread.is_alive() or not self.reaped:
+            raise ValueError('lane_quarantined')
+        return self.expired
 
 
 class Core:
@@ -163,7 +200,9 @@ class Core:
             if plan['assets']: raise NotImplementedError('synthetic preset has no inputs')
             if retry_of:
                 old, previous = self._load(retry_of)
-                oracle.require(old['state'] in ('failed','cancelled') and old['principal_id'] == principal and previous == context, 'invalid_retry')
+                oracle.require(old['state'] in ('failed','cancelled') and old['principal_id'] == principal and encode(previous) == encode(context)
+                               and old['input_sha256'] == oracle.plan_hash(previous['plan'])
+                               and old['input_sha256'] == oracle.plan_hash(plan), 'invalid_retry')
             count = sum(json.loads(r[0])['state'] in ('queued','running','cancel_requested') for r in self.db.execute('SELECT job FROM jobs'))
             if count >= min(32, plan['resolved']['profile']['limits']['queue']): raise ValueError('queue_full')
             job = dict(id=new_id('job'), operation=operation,input_sha256=oracle.plan_hash(plan),principal_id=principal,idempotency_key=key,state='queued',generation=0,attempts=[],artifact_ids=[],stage='queued',deadline='')
@@ -184,12 +223,15 @@ class Core:
             stage.mkdir(mode=0o700)
             job.update(state='running',stage='synthetic',generation=attempt['generation'],attempts=[*job['attempts'],attempt],deadline=(datetime.now(timezone.utc)+timedelta(seconds=min(30,self._load(job['id'])[1]['plan']['resolved']['profile']['limits']['deadline_seconds']))).isoformat())
             self._save(job)
+        # Anchor persisted wall deadline once to a monotonic control cutoff.
+        cutoff = time.monotonic() + (datetime.fromisoformat(job['deadline'])-datetime.now(timezone.utc)).total_seconds()
         lock = open(self.root / 'owners' / attempt['owner_id'], 'a+b')
         fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
         parent, child = socket.socketpair(socket.AF_UNIX, socket.SOCK_STREAM)
         try:
             process = subprocess.Popen([sys.executable,'-m','worker.synthetic',str(child.fileno()),str(lock.fileno()),str(stage),str(delay)],pass_fds=(child.fileno(),lock.fileno()),stdin=subprocess.DEVNULL,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL,start_new_session=True)
             self.active = (job['id'],process,parent,lock)
+            process.completion = CompletionObserver(process, cutoff)
             _, context = self._load(job['id'])
             message = self._message(job, context, 'execute')
             # Synthetic execution deliberately bypasses real-hardware admission only.
@@ -215,15 +257,7 @@ class Core:
         if cancel:
             self.request_cancel(job_id)
             if process.poll() is None: process.terminate()
-        expired=False
-        remaining=max(.01,min(35,(datetime.fromisoformat(self.job(job_id)['deadline'])-datetime.now(timezone.utc)).total_seconds()))
-        try:
-            process.wait(timeout=remaining)
-        except subprocess.TimeoutExpired:
-            expired=True
-            process.kill()
-            try: process.wait(timeout=3)
-            except subprocess.TimeoutExpired: raise ValueError('lane_quarantined') from None
+        expired = process.completion.collect()
         connection.settimeout(2)
         raw = bytearray()
         try:

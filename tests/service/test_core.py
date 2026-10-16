@@ -225,3 +225,120 @@ def test_deadline_kills_and_reaps(core,context):
     result=core.finish()
     assert result['state']=='failed' and result['stage']=='deadline'
     assert result['attempts'][-1]['reaped']
+
+
+def test_late_completion_delayed_collection(core,context):
+    context['plan']['resolved']['profile']['limits']['deadline_seconds']=1
+    core.submit_synthetic('p','late',context)
+    core.start(delay=2)
+    process=core.active[1]
+    # No finish call: the control observer must enforce and reap the deadline.
+    process.completion.thread.join(timeout=5)
+    assert not process.completion.thread.is_alive()
+    assert process.poll() is not None and process.completion.reaped
+    time.sleep(.1)
+    result=core.finish()
+    assert result['state']=='failed' and result['stage']=='deadline'
+    assert result['attempts'][-1]['reaped'] and not result['artifact_ids']
+
+
+def test_timely_completion_collected_after_deadline(core,context):
+    context['plan']['resolved']['profile']['limits']['deadline_seconds']=2
+    job=core.submit_synthetic('p','timely',context)
+    core.start()
+    process=core.active[1]
+    process.completion.thread.join(timeout=5)
+    assert process.completion.reaped and not process.completion.expired
+    from datetime import datetime, timezone
+    deadline=datetime.fromisoformat(core.job(job['id'])['deadline'])
+    time.sleep(max(0,(deadline-datetime.now(timezone.utc)).total_seconds())+.1)
+    result=core.finish()
+    assert result['state']=='succeeded' and result['input_sha256']==job['input_sha256']
+    assert result['attempts'][-1]['reaped']
+
+
+@pytest.mark.parametrize('offset,expired', [(-.001,False),(0,True),(.001,True)])
+def test_control_observation_deadline_edge(monkeypatch,offset,expired):
+    # Deterministic boundary of control observation, independent of child clocks.
+    from service.core import CompletionObserver
+    class Exited:
+        def wait(self,timeout): return 0
+        def poll(self): return 0
+    monkeypatch.setattr('service.core.time.monotonic',lambda:100+offset)
+    observer=CompletionObserver(Exited(),100)
+    assert observer.collect() is expired
+    assert observer.reaped
+
+
+def test_retry_canonical_numeric_context_rejected_unchanged(core,context):
+    from contracts import validate as oracle
+    job=core.submit_synthetic('p','old',context)
+    core.request_cancel(job['id']);core.reconcile()
+    old=core.job(job['id'])
+    changed=copy.deepcopy(context)
+    limits=changed['plan']['resolved']['profile']['limits']
+    limits['queue']=float(limits['queue'])
+    assert changed==context
+    oracle.frozen_plan(changed['plan'],changed['bundles'])
+    assert oracle.plan_hash(changed['plan'])!=old['input_sha256']
+    with pytest.raises(ContractError,match='invalid_retry'):
+        core.submit_synthetic('p','new',changed,retry_of=job['id'])
+    assert core.job(job['id'])==old and len(core.jobs('p'))==1
+    retry=core.submit_synthetic('p','exact',copy.deepcopy(context),retry_of=job['id'])
+    assert retry['id']!=old['id'] and retry['input_sha256']==old['input_sha256']
+    assert core.db.execute('SELECT retry_of FROM jobs WHERE id=?',(retry['id'],)).fetchone()==(old['id'],)
+
+
+def test_retry_checks_prior_stored_plan_hash(core,context):
+    job=core.submit_synthetic('p','old',context)
+    core.request_cancel(job['id']);core.reconcile()
+    old=core.job(job['id']);old['input_sha256']='0'*64
+    # Local synthetic inconsistent-store fixture, not an external probe.
+    from service.core import encode
+    core.db.execute('UPDATE jobs SET job=? WHERE id=?',(encode(old),old['id']))
+    with pytest.raises(ContractError,match='invalid_retry'):
+        core.submit_synthetic('p','retry',context,retry_of=old['id'])
+    assert core.job(old['id'])==old and len(core.jobs('p'))==1
+
+
+def test_deadline_observation_lost_on_restart_fails_closed(tmp_path):
+    root=tmp_path/'data'
+    script='''
+import json,os,sys
+from pathlib import Path
+from service.core import Core
+c=Core(Path(sys.argv[1]));x=json.loads(Path(sys.argv[2]).read_text())['context']
+x['plan']['resolved']['profile']['limits']['deadline_seconds']=1
+c.submit_synthetic('p','a',x);c.start()
+c.active[1].completion.thread.join(timeout=5)
+assert c.active[1].completion.reaped and not c.active[1].completion.expired
+os._exit(75)
+'''
+    assert subprocess.run([sys.executable,'-c',script,str(root),str(FIXTURES/'transcript-speech_generate.json')],timeout=8).returncode==75
+    reopened=Core(root)
+    try:
+        assert not reopened.reconcile()
+        job=reopened.jobs('p')[0]['job']
+        assert job['state']=='failed' and job['stage']=='interrupted'
+        assert job['attempts'][-1]['reaped'] and not job['artifact_ids']
+        assert not reopened.reconcile()
+    finally: reopened.close()
+
+
+def test_already_exited_late_worker_rejected(core,context,monkeypatch):
+    import threading
+    from service.core import CompletionObserver
+    release=threading.Event()
+    observe=CompletionObserver._observe
+    def delayed_observer(self):
+        assert release.wait(timeout=6)
+        observe(self)
+    monkeypatch.setattr(CompletionObserver,'_observe',delayed_observer)
+    context['plan']['resolved']['profile']['limits']['deadline_seconds']=1
+    core.submit_synthetic('p','late-exit',context);core.start(delay=1.2)
+    try:
+        assert core.active[1].wait(timeout=5)==0
+    finally: release.set()
+    result=core.finish()
+    assert result['state']=='failed' and result['stage']=='deadline'
+    assert result['attempts'][-1]['reaped'] and not result['artifact_ids']
