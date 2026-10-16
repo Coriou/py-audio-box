@@ -178,6 +178,6 @@ Record failures and missing evidence; do not replace them with a successful late
 ## Foundation targeted Astra GO / partial integration
 
 - [Astra gate](reviews/1A-foundation-astra-gate.md): GO only for dormant trusted syntheticfoundation PARTIAL, no complete durability/adversarial/1A acceptance. Source-only advice no newtests. Remaining coverage and operational guarantees explicitly mandatory.
-- Root integrated original+correction as `4b5f199` and `a3434a3`; source diff vs reviewed `873dae2` empty across service/worker/contracts/clients/tests. Exact-source image synthetic regression rerun in progress.
+- Root integrated original+correction as `4b5f199` and `a3434a3`; source diff vs reviewed `873dae2` empty across service/worker/contracts/clients/tests. Exact-source image synthetic regression rerun: **38 passed in22.41s**, exit0, networknone/read-onlyroot/tmpfs/no mounts.
 - Astra ordered small lots W1 isolatedtransport,W2ownerlifecycle,R1admission,P1persistentpublication,D1registry,D2ingest,D3trustedplans,D4mutationhistory,D5render. Each independently reviewed; no broad unfinished combined task.
 - Next request `pab-phase1a-w1-implementation-r1-20261016`, W1only. No activation of persistentdispatcher or whole1AGO.
