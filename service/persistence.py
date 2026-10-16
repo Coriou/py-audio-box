@@ -97,3 +97,29 @@ def storage_session(method):
             core._publication_storage_failed = True
             raise
     return guarded
+
+
+def initialize_inventory(core):
+    """Additive private revision-1 diagnostics, only on an existing A1 root.
+
+    This does not enroll an old/populated pre-P1 installation or create authority.
+    """
+    if not core.p1:
+        raise PublicationQuarantine('pre_p1_inspect_only')
+    expected = {
+        'p1_inventory_scans': ['id','observed','complete','fingerprint','summary'],
+        'p1_inventory_objects': ['id','first_observed','last_observed','scan_id','record'],
+        'p1_inventory_history': ['seq','scan_id','object_id','observed','record'],
+    }
+    tables = {r[0] for r in core.db.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+    existing = tables & expected.keys()
+    if existing:
+        if existing != expected.keys(): raise PublicationQuarantine('partial_inventory_schema')
+        for table, columns in expected.items():
+            if [r[1] for r in core.db.execute('PRAGMA table_info('+table+')')] != columns:
+                raise PublicationQuarantine('unsupported_inventory_schema')
+        return
+    with core.transaction():
+        core.db.execute('CREATE TABLE p1_inventory_scans(id TEXT PRIMARY KEY, observed REAL NOT NULL, complete INTEGER NOT NULL, fingerprint TEXT, summary TEXT NOT NULL)')
+        core.db.execute('CREATE TABLE p1_inventory_objects(id TEXT PRIMARY KEY, first_observed REAL NOT NULL, last_observed REAL NOT NULL, scan_id TEXT NOT NULL REFERENCES p1_inventory_scans(id), record TEXT NOT NULL)')
+        core.db.execute('CREATE TABLE p1_inventory_history(seq INTEGER PRIMARY KEY, scan_id TEXT NOT NULL REFERENCES p1_inventory_scans(id), object_id TEXT NOT NULL, observed REAL NOT NULL, record TEXT NOT NULL)')

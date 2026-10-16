@@ -14,6 +14,7 @@ import time
 
 from service.core import Core, encode
 from service.persistence import PublicationQuarantine
+from service.reconciliation import Reconciliation
 from service.admission import Admission
 from service.dispatch_store import DispatchStore
 from service.supervisor_runtime import SupervisorRuntime
@@ -33,7 +34,7 @@ class Dispatcher:
         self.initialized.result(timeout=5)
 
     def call(self, op, *args, timeout=3, **kwargs):
-        if op not in ('submit','job','jobs','events','artifact','asset','cancel','status','replace','close'):
+        if op not in ('submit','job','jobs','events','artifact','asset','cancel','status','replace','inventory_page','reconcile_startup','close'):
             raise ValueError('unknown_control_command')
         future=Future()
         self.commands.put_nowait((op,copy.deepcopy(args),copy.deepcopy(kwargs),future))
@@ -65,9 +66,17 @@ class Dispatcher:
                 p.update(support='qualified',installation='installed',readiness='ready',verification='measured',qualification_receipt='E1-W2d-fixed-synthetic-only')
             if self.current_profiles is not None:self.profiles=copy.deepcopy(self.current_profiles)
             self.orphaned = self.orphaned or self.admission.unaccounted
+            self.inventory = None
+            self.integrity = dict(complete=False, blocked=True, reasons=['inventory_unavailable'], counts={})
+            try:
+                self.inventory = Reconciliation(core, self.staging)
+                self.integrity = self.inventory.reconcile_startup()
+            except (OSError, sqlite3.Error, ValueError):
+                pass  # Diagnostic failure is fail-closed, but the owner must service stops.
+            self.integrity_fault = self.integrity['blocked']
             with core.transaction():
                 for reservation in self.admission.store.rows():
-                    if not self.persistence_fault and reservation['state']=='queued' and core.job(reservation['id'])['state']=='cancelled':
+                    if not self.integrity_fault and not self.persistence_fault and reservation['state']=='queued' and core.job(reservation['id'])['state']=='cancelled':
                         self.admission.store.release_tx(reservation['id'],unstarted=True)
             self.initialized.set_result(True)
             while not self.stopping:
@@ -97,15 +106,31 @@ class Dispatcher:
 
     def _command(self,op,*args,**kwargs):
         if op=='close':self.stopping=True;return None
+        if op=='reconcile_startup':
+            if self.pending or self.store.current():raise ValueError('inventory_lane_busy')
+            if self.inventory is None:raise ValueError('inventory_unavailable')
+            self.integrity=self.inventory.reconcile_startup()
+            self.integrity_fault = self.integrity_fault or self.integrity['blocked']
+            return self.integrity
+        if op=='inventory_page':
+            if self.inventory is None:raise ValueError('inventory_unavailable')
+            try:return self.inventory.inventory_page(*args,**kwargs)
+            finally:
+                self.integrity=self.inventory.summary
+                self.integrity_fault=self.integrity_fault or self.integrity['blocked']
+                if self.integrity_fault:self.stop_obligation=True
         if op=='status':
-            row=self.store.current()
+            try:row=self.store.current()
+            except ValueError:row=None;self.error='dispatch_identity_unreadable'
             return dict(reconciled=self.reconciled,quarantined=self.quarantined,
                 phase=row['phase'] if row else 'idle',runtime_id=row['runtime'] if row else None,
                 resource_activation=False,persistent_activation=False,error=self.error,
                 resource_fault=self.resource_fault,persistence_fault=self.persistence_fault,
                 stop_obligation=self.stop_obligation,
-                reservations=self.admission.store.rows())
+                reservations=self.admission.store.rows(), integrity=self.integrity,
+                integrity_fault=self.integrity_fault)
         if op=='cancel':
+            if self.integrity_fault and self.core.job(args[0])['state']=='queued':raise ValueError('integrity_blocks_release')
             job=self.core.request_cancel(*args,**kwargs,_cancel_unstarted=True,_admission=self.admission)
             self.next_poll=0
             return job
@@ -115,7 +140,7 @@ class Dispatcher:
                 if len(args)!=2 or not set(kwargs)<= {'retry_of','fixture','seconds'}:raise ValueError('closed_synthetic_command')
                 existing=self.core.db.execute("SELECT job FROM jobs WHERE principal=? AND operation='speech_generate' AND key=?",args).fetchone()
                 if existing:return json.loads(existing[0])
-            if not self.reconciled or self.quarantined or self.resource_fault:raise ValueError('startup_or_quarantine')
+            if not self.reconciled or self.quarantined or self.resource_fault or self.integrity_fault:raise ValueError('startup_or_quarantine')
             if op=='replace':
                 if self.pending or self.store.current():raise ValueError('lane_busy')
                 job_id=args[0]
@@ -217,6 +242,7 @@ class Dispatcher:
         row=self.store.current()
         if row:
             if row['outcome']:
+                if self.integrity_fault:return
                 if self.persistence_fault:return
                 self._launch(row,'ack',lambda:self.runtime.call('ack',dict(runtime_id=row['runtime'])));return
             if row['phase']=='intent':
@@ -233,7 +259,7 @@ class Dispatcher:
             try: value=self.hello.result();self.quarantined=self.orphaned or self.resource_fault or bool(value['quarantined'])
             except Exception:self.quarantined=True
             self.reconciled=True;return
-        if self.quarantined:return
+        if self.quarantined or self.integrity_fault:return
         queued=next((json.loads(r[0]) for r in self.core.db.execute('SELECT job FROM jobs ORDER BY seq') if json.loads(r[0])['state']=='queued'),None)
         if queued:
             settings=self.core.db.execute('SELECT fixture,seconds FROM dispatch_settings WHERE job_id=?',(queued['id'],)).fetchone()
@@ -250,6 +276,12 @@ class Dispatcher:
         if (receipt['runtime_id']!=row['runtime'] or receipt['binding']!=authority.binding or
             receipt['reaped'] is not True or receipt['reap_method']!='pid1-waitpid-echild' or
             receipt['original_deadline']!=authority.job['deadline']):raise ValueError('unbound_receipt')
+        if self.integrity_fault:
+            # Retain a conflicting original receipt; a fresh exact receipt may
+            # only fill an empty slot. Neither form authorizes release/ACK here.
+            if not row['receipt']:self.store.update(row,receipt=encode(receipt),phase='receipt')
+            self.stop_obligation=False
+            return
         self.store.update(row,receipt=encode(receipt),phase='receipt')
         self.fault('preverification')
         if job['state'] not in ('succeeded','failed','cancelled'):

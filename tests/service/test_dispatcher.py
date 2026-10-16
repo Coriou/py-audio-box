@@ -197,3 +197,130 @@ def test_queued_cancel_terminal_and_request_are_atomic(tmp_path):
         assert core.request_cancel(job['id'],_cancel_unstarted=True)['state']=='cancelled'
         assert [e['state'] for e in core.events(job['id'])]==['queued','cancel_requested','cancelled']
     finally:core.close()
+
+
+@pytest.mark.parametrize('damage', ['missing','corrupt'])
+def test_startup_integrity_preserves_success_and_strict_reads(tmp_path, damage):
+    stage=tmp_path/'stage';stage.mkdir();runtime=Runtime(stage);root=tmp_path/'core'
+    d=Dispatcher(root,staging=stage,runtime=runtime);ready(d)
+    job=running(d,runtime);runtime.state=State.STOPPED
+    wait(d,lambda:d.call('status')['phase']=='idle')
+    terminal=d.call('job',job['id']);events=d.call('events',job['id'])
+    artifact=d.call('artifact',terminal['artifact_ids'][0]);asset_id=artifact['asset_ids'][0]
+    d.close()
+    media=root/'assets'/asset_id
+    if damage=='missing':media.unlink()
+    else:media.write_bytes(b'changed')
+    for _ in range(2):
+        d=Dispatcher(root,staging=stage,runtime=runtime)
+        try:
+            ready(d);status=d.call('status')
+            assert status['integrity_fault'] and status['integrity']['complete']
+            assert status['integrity']['counts']['missing_hash_mismatched_terminal']==1
+            assert d.call('job',job['id'])==terminal and d.call('events',job['id'])==events
+            assert d.call('submit','p','a')==terminal
+            with pytest.raises(ValueError):d.call('submit','p','new')
+            with pytest.raises(Exception):d.call('asset',asset_id)
+            with pytest.raises(Exception):d.call('artifact',artifact['id'])
+            assert runtime.starts==1 and runtime.acks==1
+        finally:d.close()
+
+
+@pytest.mark.parametrize('damage', ['receipt','reservation','unbound','attempt','terminal_no_receipt','demand','state'])
+def test_startup_join_refuses_ack_release_and_launch(tmp_path, damage):
+    import sqlite3
+    stage=tmp_path/'stage';stage.mkdir();runtime=Runtime(stage);root=tmp_path/'core'
+    def fault(point):
+        if point=='durable_outcome':raise OSError('retain outcome before ack')
+    d=Dispatcher(root,staging=stage,runtime=runtime,fault=fault);ready(d)
+    job=running(d,runtime);runtime.state=State.STOPPED
+    wait(d,lambda:d.call('job',job['id'])['state']=='succeeded')
+    d.close()
+    with sqlite3.connect(root/'core.sqlite') as db:
+        if damage=='receipt':
+            receipt=json.loads(db.execute('SELECT receipt FROM dispatches').fetchone()[0]);receipt['binding']='wrong'
+            db.execute('UPDATE dispatches SET receipt=?',(json.dumps(receipt),))
+        elif damage=='reservation':db.execute('DELETE FROM resource_reservations')
+        elif damage=='state':db.execute("UPDATE resource_reservations SET state='executing'")
+        elif damage=='demand':
+            demand=json.loads(db.execute('SELECT demand FROM resource_reservations').fetchone()[0]);demand['configuration']='wrong'
+            db.execute('UPDATE resource_reservations SET demand=?',(json.dumps(demand),))
+        elif damage=='unbound':db.execute('UPDATE dispatches SET runtime=NULL')
+        elif damage=='terminal_no_receipt':db.execute('UPDATE dispatches SET receipt=NULL')
+        else:
+            stored=json.loads(db.execute('SELECT job FROM jobs').fetchone()[0]);stored['attempts'][-1]['owner_id']='owner-wrong'
+            db.execute('UPDATE jobs SET job=?',(json.dumps(stored),))
+    for _ in range(2):
+        d=Dispatcher(root,staging=stage,runtime=runtime)
+        try:
+            status=d.call('status');assert status['integrity_fault']
+            assert status['integrity']['counts']['unresolved_owner_receipt_reservation']>=1
+            assert runtime.acks==0 and runtime.starts==1
+            assert d.call('job',job['id'])['state']=='succeeded'
+            with pytest.raises(ValueError):d.call('submit','p','fresh')
+        finally:d.close()
+
+
+def test_startup_normal_exact_receipt_two_restarts(tmp_path):
+    stage=tmp_path/'stage';stage.mkdir();runtime=Runtime(stage);root=tmp_path/'core'
+    def fault(point):
+        if point=='durable_outcome':raise OSError('crash before ack')
+    d=Dispatcher(root,staging=stage,runtime=runtime,fault=fault);ready(d)
+    job=running(d,runtime);runtime.state=State.STOPPED
+    wait(d,lambda:d.call('job',job['id'])['state']=='succeeded');d.close()
+    for _ in range(2):
+        d=Dispatcher(root,staging=stage,runtime=runtime)
+        try:
+            wait(d,lambda:d.call('status')['phase']=='idle')
+            assert not d.call('status')['integrity_fault']
+            assert d.call('status')['reservations'][0]['state']=='retained'
+            assert len(d.call('events',job['id']))==3
+            assert runtime.starts==runtime.acks==1
+        finally:d.close()
+
+
+def test_live_inventory_failure_preserves_responsive_stop(tmp_path, monkeypatch):
+    from service.reconciliation import Reconciliation, Incomplete
+    stage=tmp_path/'stage';stage.mkdir();runtime=Runtime(stage)
+    stops=[]
+    terminate=runtime.terminate
+    def stop(*args):stops.append(args);return terminate(*args)
+    runtime.terminate=stop
+    d=Dispatcher(tmp_path/'core',staging=stage,runtime=runtime);ready(d)
+    try:
+        job=running(d,runtime)
+        scan=d.call('status')['integrity']['scan_id']
+        def denied(self):raise Incomplete('inventory_budget')
+        monkeypatch.setattr(Reconciliation,'_collect',denied)
+        with pytest.raises(ValueError,match='stale'):d.call('inventory_page',scan)
+        assert d.call('job',job['id'])['id']==job['id']
+        wait(d,lambda:stops)
+        assert len(stops)==1 and runtime.acks==0
+        with pytest.raises(ValueError):d.call('submit','p','fresh')
+    finally:d.close()
+
+
+def test_startup_conflicting_original_receipt_retained(tmp_path):
+    import sqlite3
+    stage=tmp_path/'stage';stage.mkdir();runtime=Runtime(stage);root=tmp_path/'core'
+    def fault(point):
+        if point=='preverification':raise OSError('stop before publication')
+    d=Dispatcher(root,staging=stage,runtime=runtime,fault=fault);ready(d)
+    job=running(d,runtime);runtime.state=State.STOPPED
+    wait(d,lambda:d.call('status')['phase']=='receipt');d.close()
+    with sqlite3.connect(root/'core.sqlite') as db:
+        bad=json.loads(db.execute('SELECT receipt FROM dispatches').fetchone()[0]);bad['binding']='conflicting-original'
+        original=json.dumps(bad);db.execute('UPDATE dispatches SET receipt=?',(original,))
+    collects=[];collect=runtime.collect
+    def collected(*args):collects.append(True);return collect(*args)
+    runtime.collect=collected
+    for _ in range(2):
+        collects.clear();d=Dispatcher(root,staging=stage,runtime=runtime)
+        try:
+            wait(d,lambda:collects)
+            assert d.call('status')['integrity_fault'] and runtime.acks==0
+            assert d.call('job',job['id'])['state']=='running'
+            with sqlite3.connect(root/'core.sqlite') as db:
+                assert db.execute('SELECT receipt FROM dispatches').fetchone()[0]==original
+                assert db.execute('SELECT state FROM resource_reservations').fetchone()[0]=='executing'
+        finally:d.close()

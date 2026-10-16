@@ -503,6 +503,8 @@ class Core:
         row=self.db.execute('SELECT metadata FROM assets WHERE id=?',(asset_id,)).fetchone()
         if row is None: raise ValueError('not_found')
         metadata=json.loads(row[0])
+        oracle.validate('asset', metadata)
+        oracle.require(metadata['id']==asset_id and '/' not in asset_id and asset_id not in ('.','..'), 'foreign_media')
         fd=os.open(self.root/'assets'/metadata['id'],os.O_RDONLY|os.O_NOFOLLOW)
         with os.fdopen(fd,'rb') as stream:
             info=os.fstat(stream.fileno())

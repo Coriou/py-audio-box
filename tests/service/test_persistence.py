@@ -415,3 +415,149 @@ def test_intent_namespace_sync_failure_precedes_temp_create(core, context, monke
     for _ in range(2):
         reopen(core)
         assert not core.reconcile() and core.job(job['id'])['state'] == 'failed'
+
+
+# A2 uses actual Core rows and managed filesystem names, never a shadow store.
+def test_inventory_terminal_integrity_and_history(core, context):
+    from service.reconciliation import Reconciliation
+    job, result = proposal(core, context); core._publish(job['id'], result)
+    terminal = core.job(job['id']); events = core.events(job['id'])
+    asset_id = result['manifest']['outputs'][0]['id']
+    media = core.root/'assets'/asset_id
+    inventory = Reconciliation(core)
+    assert not inventory.reconcile_startup()['blocked']
+    media.write_bytes(b'corrupt')
+    summary = inventory.reconcile_startup()
+    assert summary['complete'] and summary['blocked'] and 'unavailable' in summary['reasons']
+    assert core.job(job['id']) == terminal and core.events(job['id']) == events
+    with pytest.raises(Exception): core.asset(asset_id)
+    with pytest.raises(Exception): core.artifact(terminal['artifact_ids'][0])
+    media.unlink()
+    assert inventory.reconcile_startup()['counts']['missing_hash_mismatched_terminal'] == 1
+    media.write_bytes(b'corrupt')
+    assert inventory.reconcile_startup()['blocked']
+    assert core.db.execute('SELECT count(*) FROM p1_inventory_history').fetchone()[0] >= 4
+    assert core.job(job['id']) == terminal and core.events(job['id']) == events
+
+
+def test_inventory_pages_generation_and_filesystem_changes(core):
+    from service.reconciliation import Reconciliation
+    for n in range(23): (core.root/'assets'/('asset-orphan-'+str(n))).write_bytes(b'x')
+    inventory = Reconciliation(core)
+    summary = inventory.reconcile_startup()
+    assert summary['complete'] and summary['counts'] == {'adopted_orphan':23}
+    page = inventory.inventory_page(summary['scan_id'])
+    assert len(page['entries']) == 20 and page['next_cursor']
+    assert len(inventory.inventory_page(summary['scan_id'],page['next_cursor'])['entries']) == 3
+    with pytest.raises(ValueError, match='cursor'): inventory.inventory_page(summary['scan_id'], 'tampered')
+    old = summary['scan_id']; summary = inventory.reconcile_startup()
+    with pytest.raises(ValueError, match='scan'): inventory.inventory_page(old)
+    (core.root/'assets'/'new').write_bytes(b'x')
+    with pytest.raises(ValueError, match='stale'): inventory.inventory_page(summary['scan_id'])
+
+
+@pytest.mark.parametrize('budget', [{'entries':1}, {'byte_budget':1}, {'seconds':0}])
+def test_inventory_incomplete_never_cleanup(core, budget):
+    from service.reconciliation import Reconciliation
+    inventory = Reconciliation(core, **budget)
+    summary = inventory.reconcile_startup()
+    assert not summary['complete'] and summary['blocked'] and not summary['cleanup_allowed']
+    assert summary['reasons'] == ['inventory_budget']
+
+
+def test_inventory_unknown_symlink_hardlink_no_traversal(core, tmp_path):
+    from service.reconciliation import Reconciliation
+    outside = tmp_path/'outside'; outside.mkdir(); (outside/'private').write_bytes(b'preserve')
+    (core.root/'staging'/'unowned').symlink_to(outside, target_is_directory=True)
+    first=core.root/'assets'/'asset-unknown'; first.write_bytes(b'bytes')
+    os.link(first, core.root/'assets'/'third')
+    inventory=Reconciliation(core); summary=inventory.reconcile_startup()
+    assert summary['complete'] and summary['blocked']
+    assert summary['counts']['unknown_foreign'] == 3
+    assert not any('private' in r[0] for r in core.db.execute('SELECT record FROM p1_inventory_objects'))
+    assert (outside/'private').read_bytes() == b'preserve' and first.stat().st_nlink == 2
+
+
+def test_inventory_all_reference_sources_and_unknown_future_schema(core, context):
+    from service.reconciliation import Reconciliation
+    job, result = proposal(core, context); core._publish(job['id'], result)
+    asset_id=result['manifest']['outputs'][0]['id']
+    # Historical revision and frozen context are deliberately outside the selected take.
+    core.db.execute('INSERT INTO revisions VALUES(?,?,?)',('project-evidence',1,json.dumps({'asset_id':asset_id})))
+    core.db.execute('INSERT INTO revisions VALUES(?,?,?)',('project-evidence',2,'{}'))
+    inventory=Reconciliation(core); summary=inventory.reconcile_startup()
+    row=next(json.loads(r[0]) for r in core.db.execute('SELECT record FROM p1_inventory_objects') if json.loads(r[0])['name']==asset_id)
+    assert any(r.startswith('revisions:') for r in row['references'])
+    assert any(r.startswith('publications:') for r in row['references'])
+    assert any(r.startswith('artifacts:') for r in row['references'])
+    core.db.execute('CREATE TABLE future_cleanup_recovery_records(asset_id TEXT)')
+    core.db.execute('INSERT INTO future_cleanup_recovery_records VALUES(?)',(asset_id,))
+    summary=inventory.reconcile_startup()
+    assert summary['blocked'] and 'unknown_reference_schema' in summary['reasons']
+
+
+def test_inventory_persistence_failure_readable_and_owner_only(core, monkeypatch):
+    from service.reconciliation import Reconciliation
+    import concurrent.futures
+    inventory=Reconciliation(core)
+    with concurrent.futures.ThreadPoolExecutor(1) as pool:
+        with pytest.raises(ValueError, match='owner'): pool.submit(inventory.reconcile_startup).result()
+    core.db.execute('PRAGMA query_only=ON')
+    assert inventory.reconcile_startup()['reasons'] == ['inventory_persistence_failed']
+    assert core.jobs('p') == []
+
+
+def test_inventory_first_observed_and_resolved_diagnostic_retained(core):
+    from service.reconciliation import Reconciliation
+    media=core.root/'assets'/'asset-orphan';media.write_bytes(b'bytes')
+    inventory=Reconciliation(core);inventory.reconcile_startup()
+    first=core.db.execute('SELECT first_observed,record FROM p1_inventory_objects').fetchone()
+    inventory.reconcile_startup()
+    assert core.db.execute('SELECT first_observed FROM p1_inventory_objects').fetchone()[0]==first[0]
+    media.unlink()
+    summary=inventory.reconcile_startup()
+    assert summary['blocked'] and 'unacknowledged_integrity' in summary['reasons']
+    assert core.db.execute('SELECT record FROM p1_inventory_objects').fetchone()[0]==first[1]
+
+
+def test_inventory_database_change_refuses_cursor(core):
+    from service.reconciliation import Reconciliation
+    inventory=Reconciliation(core);summary=inventory.reconcile_startup()
+    core.db.execute('INSERT INTO revisions VALUES(?,?,?)',('project-diagnostic',1,'{}'))
+    with pytest.raises(ValueError,match='stale'):inventory.inventory_page(summary['scan_id'])
+
+
+def test_inventory_managed_ids_without_asset_prefix(core, context):
+    from service.reconciliation import Reconciliation
+    job,result=proposal(core,context)
+    original=result['manifest']['outputs'][0]['id']
+    result=json.loads(json.dumps(result).replace(original,'legacy.voice:output.1'))
+    core._publish(job['id'],result)
+    core.db.execute('INSERT INTO revisions VALUES(?,?,?)',('project-history',1,json.dumps({'clips':[{'asset_id':'legacy.voice:output.1'}]})))
+    inventory=Reconciliation(core);summary=inventory.reconcile_startup()
+    assert summary['complete'] and not summary['blocked']
+    row=next(json.loads(r[0]) for r in core.db.execute('SELECT record FROM p1_inventory_objects') if json.loads(r[0])['name']=='legacy.voice:output.1')
+    assert any(r.startswith('revisions:') for r in row['references'])
+    assert row['owner']['job_id']==job['id']
+    (core.root/'assets'/'legacy.voice:output.1').unlink()
+    summary=inventory.reconcile_startup()
+    assert summary['counts']['missing_hash_mismatched_terminal']==1
+
+
+def test_inventory_real_frozen_render_context_and_all_project_revisions(core):
+    from service.reconciliation import Reconciliation
+    from contracts import validate as oracle
+    transcript=json.loads((FIXTURES/'transcript-project_render.json').read_text())
+    job=transcript['job'];ctx=transcript['context'];oracle.stored_context(job,ctx)
+    with core.transaction():
+        core.db.execute('INSERT INTO jobs(id,principal,operation,key,fingerprint,job,context) VALUES(?,?,?,?,?,?,?)',
+            (job['id'],'p',job['operation'],'frozen',job['input_sha256'],json.dumps(job),json.dumps(ctx)))
+    project=ctx['plan']['project'];core.create_project(project)
+    core.edit_text(project['id'],1,project['blocks'][0]['id'],'later text')
+    inventory=Reconciliation(core);summary=inventory.reconcile_startup()
+    assert summary['complete'] and summary['blocked']
+    asset_id=ctx['plan']['assets'][0]['id']
+    row=next(json.loads(r[0]) for r in core.db.execute('SELECT record FROM p1_inventory_objects') if json.loads(r[0])['name']==asset_id)
+    assert 'jobs:'+job['id'] in row['references']
+    assert 'revisions:'+project['id']+':1' in row['references']
+    assert 'revisions:'+project['id']+':2' in row['references']
