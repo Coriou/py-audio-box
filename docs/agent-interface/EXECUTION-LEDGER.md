@@ -540,3 +540,9 @@ Record failures and missing evidence; do not replace them with a successful late
 - R5review reviews/P1B22d-r5-sol.md boundedsource/E1GO exact5bfaaa65 F1-F4closed nonewblocker;693focused845passed18skipped independentlyconfirmed.
 - Rootintegratedall10implementationcommits oldestfirst end11b3184; exactsource diffvsreviewedcandidateempty. Root8F4tests passed22.37s553deselected exit0.
 - TargetedAstra request pab-phase1a-p1b2-kernel-astra-20261017 integratedB2.1/B2.2kernel gate plus concreteB2.3trustedhostproofbrief beforeexposingapply. NotfinalproductAstra/no publicactivation; applyunavailable A1inventory/C1C2remainingqualification retained.
+
+## Astra integrated kernel GO / B2.3 authority sequence
+
+- reviews/P1B2-KERNEL-ASTRA.md sourcearchitecture boundedGO privatekernel only; no newprivatecontractblocker, NOdirectapplywiring. No Astratests,845passes attributedSolR5. Three sequentialB2.3a hostauthority/b productionpreparation/c closedwiring eachindependentlyreviewed.
+- Orchestrator adopts exactdecision: unchangedbudgetonly; conservativeexistinghighwater mustprovablydominatecompleteprefixfootprint elsepreacceptrefusal. Generalpreparation/budgetincrease outstanding, no accountinginflation. HostlocalLinuxproc/cgroup provenance only supportedifactualnamespaceassociation proved; DockerDesktop/remoteunsupportedmode refuses.
+- Approves exact B2.3b resource_store measurementfactor amendment ONLY noordinaryfence/scanequalitychange. NextisolatedSol-low request pab-phase1a-p1b23a-implementation-r1-20261017 originalexact4pathallowlist allapplyunavailable, no actualDockerexecution. A1inventory/C1C2/finalglobalAstralimits retained.
