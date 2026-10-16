@@ -227,3 +227,9 @@ Record failures and missing evidence; do not replace them with a successful late
 
 - [Targeted Astra decision](reviews/DEPLOYED-LIFECYCLE-ASTRA.md): staticComposeworker withtrustedPID1 supervisor/unprivilegedenginechild, privateauthenticatedUDS, noDockerSocket/broker. Explicitprotectedjournal/descendantreap/bootquarantine andpostdeadlinecollection requirements; sourceonlyadvice, notimplementationGO.
 - Orchestrator recorded narrow planclarification. Nextrequest`pab-phase1a-w2c-implementation-r1-20261022` usesexactAstraallowlist/mandatorymatrix. W2c -> W2ddispatcher -> R1admission -> P1activation; fullW2 and1A remainopen.
+
+## W2c candidate / independent review
+
+- Candidate`b166665f3415b45bd509994a23245a8beddd4ca4`, app-owned`t3-785fa36e`, branch`t3/implement-w2c-runtime`. Root read completehandoff; unintegrated.
+- Claims100service/release tests+15packagedscenarios, PID1descendantreap/protectedjournal/realUDScontrolCLI, nohostruntimeobservation. ENOSPCE1 distinguished fromactualE2permissionfailure. Canonical1.3.0unchanged; fullW2/W2dR1P1pending.
+- IndependentSol-low task suffix`pab-phase1a-w2c-review-r1-20261022`, samecurrenttask-IDprefix, report`reviews/W2c-r1-sol.md`; fullAstraexitmatrix supplied, soleheavylane. NoW2cGO untilreview/integratedchecks.
