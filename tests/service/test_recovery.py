@@ -1964,3 +1964,18 @@ def test_b22c_dispatch_diagnostic_history_is_exactly_accounted(installation):
             core.db.execute('UPDATE p1_inventory_objects SET record=? WHERE id=?',(encode(value),raw[0]))
         assert scanner.reconcile_startup()['blocked']
     finally:core.close()
+
+
+@pytest.mark.parametrize('damage',['bundle-missing','bundle-changed','descriptor','journal-archive'])
+def test_b22c_uncertified_core_revalidates_owned_restart_evidence(installation,damage):
+    roots,scope,_,_=installation;intent,observation,_=core_fixture(installation,'running')
+    with pytest.raises(OSError):
+        recovery._pending_through_core(roots,scope,intent,observation,now=102,fault=lambda at:(_ for _ in ()).throw(OSError(at)) if at=='core-complete-commit' else None)
+    if damage=='bundle-missing':next(roots['receipts'].glob('*.snapshot.bundle')).unlink()
+    elif damage=='bundle-changed':next(roots['receipts'].glob('*.snapshot.bundle')).write_bytes(b'changed')
+    elif damage=='descriptor':next(roots['receipts'].glob('*.bundle.intent.json')).write_bytes(b'{}')
+    else:next(roots['receipts'].glob('*.journal')).write_bytes(b'changed')
+    certificate=next(roots['control']/'core'/n for n,k in recovery.archive_names(intent).items() if k=='certificate')
+    for _ in range(2):
+        with pytest.raises((ValueError,OSError)):recovery._pending_through_core(roots,scope,intent,observation,now=1000)
+        assert not certificate.exists()

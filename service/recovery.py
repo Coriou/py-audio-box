@@ -1323,6 +1323,7 @@ def _pending_prefix(roots, scope, intent, observation, *, now=None, snapshot_byt
         names={kind:root/name for name,kind in archive_names(intent).items()}
         if (names['certificate'].exists() and not core_after) or (receipts/('p1-recovery-'+intent['id']+'.certificate.json')).exists(): raise ValueError('b2_prefix_premature_certificate')
         if core_after:
+            _completed_prefix_receipts(roots,intent)
             _core_certificate(root,receipts,intent,fault)
             validate_b2_database(db,root)
             return _core_result(intent)
@@ -1587,6 +1588,7 @@ def _complete_core(db,roots,intent,fault):
         validate_b2_database(db,root,_uncertified=intent['id'])
     _prefix_transaction(db,write,fault,'core-complete')
     sync_dir(root);fault('core-complete-parent')
+    _completed_prefix_receipts(roots,intent)
     _core_certificate(root,roots['receipts'],intent,fault)
     validate_b2_database(db,root)
 
