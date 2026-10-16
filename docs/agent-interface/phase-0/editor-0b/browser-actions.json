@@ -1,0 +1,469 @@
+{
+  "playlist": {
+    "result": "{\n  \"loaded\": 31,\n  \"canonicalTracks\": 2,\n  \"clips\": 31,\n  \"sampleRate\": 44100\n}",
+    "zeroGain": 1
+  },
+  "scale": {
+    "blocks": 100,
+    "clips": 200,
+    "renderedClips": 47,
+    "renderedBlocks": 12,
+    "waveCanvases": 94,
+    "width": 1440,
+    "documentWidth": 1440,
+    "height": 1100,
+    "documentHeight": 1100
+  },
+  "steps": [
+    {
+      "label": "Keyboard ArrowRight moves c0 480 ticks, c1 fixed",
+      "result": {
+        "revision": 2,
+        "clips": [
+          {
+            "id": "c0",
+            "track_id": "speech",
+            "asset_id": "impulse",
+            "take_id": "t0",
+            "start": 480,
+            "in_tick": 0,
+            "out_tick": 4800,
+            "gain": 1,
+            "fade_in": 0,
+            "fade_out": 0,
+            "mute": false
+          },
+          {
+            "id": "c1",
+            "track_id": "speech",
+            "asset_id": "impulse",
+            "take_id": "t1",
+            "start": 4800,
+            "in_tick": 0,
+            "out_tick": 4800,
+            "gain": 1,
+            "fade_in": 0,
+            "fade_out": 0,
+            "mute": false
+          }
+        ],
+        "selected": "t0",
+        "clipCount": 31,
+        "status": "Saved locally · no service"
+      }
+    },
+    {
+      "label": "Full page reload retains edit",
+      "result": {
+        "revision": 2,
+        "clips": [
+          {
+            "id": "c0",
+            "track_id": "speech",
+            "asset_id": "impulse",
+            "take_id": "t0",
+            "start": 480,
+            "in_tick": 0,
+            "out_tick": 4800,
+            "gain": 1,
+            "fade_in": 0,
+            "fade_out": 0,
+            "mute": false
+          },
+          {
+            "id": "c1",
+            "track_id": "speech",
+            "asset_id": "impulse",
+            "take_id": "t1",
+            "start": 4800,
+            "in_tick": 0,
+            "out_tick": 4800,
+            "gain": 1,
+            "fade_in": 0,
+            "fade_out": 0,
+            "mute": false
+          }
+        ],
+        "selected": "t0",
+        "clipCount": 31,
+        "status": "Saved locally · no service"
+      }
+    },
+    {
+      "label": "Undo after reload creates revision",
+      "result": {
+        "revision": 3,
+        "clips": [
+          {
+            "id": "c0",
+            "track_id": "speech",
+            "asset_id": "impulse",
+            "take_id": "t0",
+            "start": 0,
+            "in_tick": 0,
+            "out_tick": 4800,
+            "gain": 1,
+            "fade_in": 0,
+            "fade_out": 0,
+            "mute": false
+          },
+          {
+            "id": "c1",
+            "track_id": "speech",
+            "asset_id": "impulse",
+            "take_id": "t1",
+            "start": 4800,
+            "in_tick": 0,
+            "out_tick": 4800,
+            "gain": 1,
+            "fade_in": 0,
+            "fade_out": 0,
+            "mute": false
+          }
+        ],
+        "selected": "t0",
+        "clipCount": 31,
+        "status": "Saved locally · no service"
+      }
+    },
+    {
+      "label": "Redo creates revision",
+      "result": {
+        "revision": 4,
+        "clips": [
+          {
+            "id": "c0",
+            "track_id": "speech",
+            "asset_id": "impulse",
+            "take_id": "t0",
+            "start": 480,
+            "in_tick": 0,
+            "out_tick": 4800,
+            "gain": 1,
+            "fade_in": 0,
+            "fade_out": 0,
+            "mute": false
+          },
+          {
+            "id": "c1",
+            "track_id": "speech",
+            "asset_id": "impulse",
+            "take_id": "t1",
+            "start": 4800,
+            "in_tick": 0,
+            "out_tick": 4800,
+            "gain": 1,
+            "fade_in": 0,
+            "fade_out": 0,
+            "mute": false
+          }
+        ],
+        "selected": "t0",
+        "clipCount": 31,
+        "status": "Saved locally · no service"
+      }
+    },
+    {
+      "label": "Explicit long take",
+      "result": {
+        "revision": 5,
+        "clips": [
+          {
+            "id": "c0",
+            "track_id": "speech",
+            "asset_id": "long",
+            "take_id": "candidate-long",
+            "start": 480,
+            "in_tick": 0,
+            "out_tick": 9600,
+            "gain": 1,
+            "fade_in": 0,
+            "fade_out": 0,
+            "mute": false
+          },
+          {
+            "id": "c1",
+            "track_id": "speech",
+            "asset_id": "impulse",
+            "take_id": "t1",
+            "start": 4800,
+            "in_tick": 0,
+            "out_tick": 4800,
+            "gain": 1,
+            "fade_in": 0,
+            "fade_out": 0,
+            "mute": false
+          }
+        ],
+        "selected": "candidate-long",
+        "clipCount": 31,
+        "status": "Saved locally · no service"
+      }
+    },
+    {
+      "label": "Short take rejected without explicit trim",
+      "result": {
+        "revision": 5,
+        "clips": [
+          {
+            "id": "c0",
+            "track_id": "speech",
+            "asset_id": "long",
+            "take_id": "candidate-long",
+            "start": 480,
+            "in_tick": 0,
+            "out_tick": 9600,
+            "gain": 1,
+            "fade_in": 0,
+            "fade_out": 0,
+            "mute": false
+          },
+          {
+            "id": "c1",
+            "track_id": "speech",
+            "asset_id": "impulse",
+            "take_id": "t1",
+            "start": 4800,
+            "in_tick": 0,
+            "out_tick": 4800,
+            "gain": 1,
+            "fade_in": 0,
+            "fade_out": 0,
+            "mute": false
+          }
+        ],
+        "selected": "candidate-long",
+        "clipCount": 31,
+        "status": "invalid_request: short_take_requires_explicit_trim"
+      }
+    },
+    {
+      "label": "Short take accepted with explicit trim",
+      "result": {
+        "revision": 6,
+        "clips": [
+          {
+            "id": "c0",
+            "track_id": "speech",
+            "asset_id": "short",
+            "take_id": "candidate-short",
+            "start": 480,
+            "in_tick": 0,
+            "out_tick": 2400,
+            "gain": 1,
+            "fade_in": 0,
+            "fade_out": 0,
+            "mute": false
+          },
+          {
+            "id": "c1",
+            "track_id": "speech",
+            "asset_id": "impulse",
+            "take_id": "t1",
+            "start": 4800,
+            "in_tick": 0,
+            "out_tick": 4800,
+            "gain": 1,
+            "fade_in": 0,
+            "fade_out": 0,
+            "mute": false
+          }
+        ],
+        "selected": "candidate-short",
+        "clipCount": 31,
+        "status": "Saved locally · no service"
+      }
+    },
+    {
+      "label": "Trim source bounds",
+      "result": {
+        "revision": 7,
+        "clips": [
+          {
+            "id": "c0",
+            "track_id": "speech",
+            "asset_id": "short",
+            "take_id": "candidate-short",
+            "start": 480,
+            "in_tick": 100,
+            "out_tick": 2200,
+            "gain": 1,
+            "fade_in": 0,
+            "fade_out": 0,
+            "mute": false
+          },
+          {
+            "id": "c1",
+            "track_id": "speech",
+            "asset_id": "impulse",
+            "take_id": "t1",
+            "start": 4800,
+            "in_tick": 0,
+            "out_tick": 4800,
+            "gain": 1,
+            "fade_in": 0,
+            "fade_out": 0,
+            "mute": false
+          }
+        ],
+        "selected": "candidate-short",
+        "clipCount": 31,
+        "status": "Saved locally · no service"
+      }
+    },
+    {
+      "label": "Split trimmed source",
+      "result": {
+        "revision": 8,
+        "clips": [
+          {
+            "id": "c0",
+            "track_id": "speech",
+            "asset_id": "short",
+            "take_id": "candidate-short",
+            "start": 480,
+            "in_tick": 100,
+            "out_tick": 1150,
+            "gain": 1,
+            "fade_in": 0,
+            "fade_out": 0,
+            "mute": false
+          },
+          {
+            "id": "c1",
+            "track_id": "speech",
+            "asset_id": "impulse",
+            "take_id": "t1",
+            "start": 4800,
+            "in_tick": 0,
+            "out_tick": 4800,
+            "gain": 1,
+            "fade_in": 0,
+            "fade_out": 0,
+            "mute": false
+          }
+        ],
+        "selected": "candidate-short",
+        "clipCount": 32,
+        "status": "Saved locally · no service"
+      }
+    },
+    {
+      "label": "Gain zero and linear fades",
+      "result": {
+        "revision": 9,
+        "clips": [
+          {
+            "id": "c0",
+            "track_id": "speech",
+            "asset_id": "short",
+            "take_id": "candidate-short",
+            "start": 480,
+            "in_tick": 100,
+            "out_tick": 1150,
+            "gain": 0,
+            "fade_in": 100,
+            "fade_out": 100,
+            "mute": false
+          },
+          {
+            "id": "c1",
+            "track_id": "speech",
+            "asset_id": "impulse",
+            "take_id": "t1",
+            "start": 4800,
+            "in_tick": 0,
+            "out_tick": 4800,
+            "gain": 1,
+            "fade_in": 0,
+            "fade_out": 0,
+            "mute": false
+          }
+        ],
+        "selected": "candidate-short",
+        "clipCount": 32,
+        "status": "Saved locally · no service"
+      }
+    },
+    {
+      "label": "Clip mute track mute and track solo",
+      "result": {
+        "revision": 12,
+        "clips": [
+          {
+            "id": "c0",
+            "track_id": "speech",
+            "asset_id": "short",
+            "take_id": "candidate-short",
+            "start": 480,
+            "in_tick": 100,
+            "out_tick": 1150,
+            "gain": 0,
+            "fade_in": 100,
+            "fade_out": 100,
+            "mute": true
+          },
+          {
+            "id": "c1",
+            "track_id": "speech",
+            "asset_id": "impulse",
+            "take_id": "t1",
+            "start": 4800,
+            "in_tick": 0,
+            "out_tick": 4800,
+            "gain": 1,
+            "fade_in": 0,
+            "fade_out": 0,
+            "mute": false
+          }
+        ],
+        "selected": "candidate-short",
+        "clipCount": 32,
+        "status": "Saved locally · no service"
+      }
+    },
+    {
+      "label": "Undo conflicts after another writer, unchanged current",
+      "result": {
+        "revision": 13,
+        "clips": [
+          {
+            "id": "c0",
+            "track_id": "speech",
+            "asset_id": "short",
+            "take_id": "candidate-short",
+            "start": 480,
+            "in_tick": 100,
+            "out_tick": 1150,
+            "gain": 0,
+            "fade_in": 100,
+            "fade_out": 100,
+            "mute": true
+          },
+          {
+            "id": "c1",
+            "track_id": "speech",
+            "asset_id": "impulse",
+            "take_id": "t1",
+            "start": 5280,
+            "in_tick": 0,
+            "out_tick": 4800,
+            "gain": 1,
+            "fade_in": 0,
+            "fade_out": 0,
+            "mute": false
+          }
+        ],
+        "selected": "candidate-short",
+        "clipCount": 32,
+        "status": "revision_conflict: current revision 13. Reload current before editing."
+      }
+    }
+  ],
+  "failures": [
+    "preview_open about:blank: Invalid preview URL (parse: https:; input length 11). Retried with http://127.0.0.1:5178/evaluation/playlist.html successfully.",
+    "Playlist first load: Error: initial samplesPerPixel must be included in array zoomLevels. Corrected zoomLevels and repeated successfully.",
+    "Initial exact=true locator did not move c0; following state read failed TypeError: Cannot read properties of null (reading 'entries'). Retried with observed role locator, then actual stored revision changed.",
+    "History summary guessed 13 snapshots while actual 12; click did not open. Used observed summary selector, then conflict actions succeeded. No alternate browser used."
+  ]
+}

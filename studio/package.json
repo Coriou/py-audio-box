@@ -1,0 +1,31 @@
+{
+  "name": "speech-editor-0b",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": "25.2.1",
+    "npm": "11.6.2"
+  },
+  "scripts": {
+    "dev": "vite --host 127.0.0.1 --port 5178 --strictPort",
+    "build": "tsc --noEmit && vite build",
+    "test": "tsx --test src/*.test.ts"
+  },
+  "dependencies": {
+    "ajv": "8.20.0",
+    "react": "19.3.1",
+    "react-dom": "19.3.1",
+    "wavesurfer.js": "8.0.2"
+  },
+  "devDependencies": {
+    "@types/node": "26.6.5",
+    "@types/react": "19.2.14",
+    "@types/react-dom": "19.2.3",
+    "prettier": "3.8.1",
+    "tsx": "4.23.15",
+    "typescript": "5.9.3",
+    "vite": "8.3.4",
+    "waveform-playlist": "4.3.3"
+  }
+}

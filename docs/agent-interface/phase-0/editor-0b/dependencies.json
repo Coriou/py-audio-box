@@ -1,0 +1,67 @@
+{
+  "node": "v25.2.1",
+  "npm": "11.6.2",
+  "checked": "2026-10-16",
+  "dependencies": {
+    "ajv": {
+      "version": "8.20.0",
+      "license": "MIT",
+      "role": "runtime"
+    },
+    "react": {
+      "version": "19.3.1",
+      "license": "MIT",
+      "role": "runtime"
+    },
+    "react-dom": {
+      "version": "19.3.1",
+      "license": "MIT",
+      "role": "runtime"
+    },
+    "wavesurfer.js": {
+      "version": "8.0.2",
+      "license": "BSD-3-Clause",
+      "role": "runtime"
+    },
+    "@types/node": {
+      "version": "26.6.5",
+      "license": "MIT",
+      "role": "development"
+    },
+    "@types/react": {
+      "version": "19.2.14",
+      "license": "MIT",
+      "role": "development"
+    },
+    "@types/react-dom": {
+      "version": "19.2.3",
+      "license": "MIT",
+      "role": "development"
+    },
+    "prettier": {
+      "version": "3.8.1",
+      "license": "MIT",
+      "role": "development"
+    },
+    "tsx": {
+      "version": "4.23.15",
+      "license": "MIT",
+      "role": "development"
+    },
+    "typescript": {
+      "version": "5.9.3",
+      "license": "Apache-2.0",
+      "role": "development"
+    },
+    "vite": {
+      "version": "8.3.4",
+      "license": "MIT",
+      "role": "development"
+    },
+    "waveform-playlist": {
+      "version": "4.3.3",
+      "license": "MIT",
+      "role": "development"
+    }
+  }
+}

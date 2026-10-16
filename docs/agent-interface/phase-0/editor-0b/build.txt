@@ -1,0 +1,23 @@
+
+> speech-editor-0b@0.0.0 build
+> tsc --noEmit && vite build
+
+vite v8.3.4 building client environment for production...
+transforming...
+✓ 113 modules transformed.
+rendering chunks...
+computing gzip size...
+dist/index.html                     0.34 kB │ gzip:   0.25 kB
+dist/assets/short-DB5aQU6g.wav      4.84 kB
+dist/assets/impulse-CzRLhrdk.wav    9.64 kB
+dist/assets/sine-BO2Bu4dB.wav       9.64 kB
+dist/assets/long-DX0xayOb.wav      19.24 kB
+dist/assets/index-B2ihbT-v.css      6.00 kB │ gzip:   1.93 kB
+dist/assets/index-BoHH9SAA.js     613.97 kB │ gzip: 140.49 kB
+
+✓ built in 263ms
+[plugin builtin:vite-reporter]
+(!) Some chunks are larger than 500 kB after minification. Consider:
+- Using dynamic import() to code-split the application
+- Use build.rolldownOptions.output.codeSplitting to improve chunking: https://rolldown.rs/reference/OutputOptions.codeSplitting
+- Adjust chunk size limit for this warning via build.chunkSizeWarningLimit.
