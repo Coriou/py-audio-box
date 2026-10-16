@@ -310,5 +310,5 @@ Record failures and missing evidence; do not replace them with a successful late
 ## A1 bounded GO / integration / A2 launch
 
 - [IndependentA1report](reviews/P1A1-r1-sol.md): boundedGO exact`29fc22c`, fresh103targetedtests; no blocker. GlobalrunnerEXIT1/inventorypreservationunverified retained, notgreenfullgate.
-- Initialrootcherry-pickomitted61aadfa prerequisite, conflicted; abortedwithoutretainingdelta. Prematuretestcollectionfailedconflictmarkers, notcodefinding. Correctthreecommitsequence integrated`660abd2`,`d7cba98`,`2b914b0`; exactsourcediffvsreviewedcandidateempty. Root103targetedtests running.
+- Initialrootcherry-pickomitted61aadfa prerequisite, conflicted; abortedwithoutretainingdelta. Prematuretestcollectionfailedconflictmarkers, notcodefinding. Correctthreecommitsequence integrated`660abd2`,`d7cba98`,`2b914b0`; exactsourcediffvsreviewedcandidateempty. Root103targetedtests **passed in44.42s**,exit0, existingisolatedvenv, noDockerresourcecampaign.
 - NextisolatedSol-low request`pab-phase1a-p1a2-implementation-r1-20261022`, A2boundedreferenceinventory/integrity/startupjoins only. No B/Cactivationorcleanupauthority.
