@@ -161,7 +161,7 @@ def snapshot(roots, db, scope, *, exclude_plan=None, exclude_abandon=None, trans
             p1_inventory_history='seq scan_id object_id observed record',
             p1_integrity='id revision state token',sqlite_sequence='name seq')
         if tables & B2_COLUMNS.keys():
-            validate_b2_database(db)
+            validate_b2_database(db, roots['control']/'core')
             expected.update(B2_COLUMNS)
             deadline=time.monotonic()+2
             db.set_progress_handler(lambda:int(time.monotonic()>deadline),1000)
@@ -273,18 +273,21 @@ def snapshot(roots, db, scope, *, exclude_plan=None, exclude_abandon=None, trans
         inventory=[]
         for row in sorted(scanner.rows.values(),key=lambda r:r['id']):
             inventory.append({**row,'references':[r for r in row['references'] if r not in ('p1_recovery_plans:'+str(exclude_plan), 'p1_abandon_plans:'+str(exclude_abandon))]})
-        fingerprint=digest(dict(schema=schema,data=state,inventory=inventory,journal=digest(journal),marker=marker))
+        projection=dict(schema=schema,data=state,inventory=inventory,journal=digest(journal),marker=marker)
+        fingerprint=digest(projection)
         affected=dict(jobs=[r[1] for r in data['jobs']], dispatches=[r[0] for r in data['dispatches'] if not r[-1]], publications=[r[0] for r in data['publications']])
         if sum(map(len,affected.values()))>MAX_ROWS: raise ValueError('affected_budget')
         completions=[json.loads(r[2]) for r in data.get('p1_recovery_steps',[]) if r[1]=='core-complete']
         return dict(prior_epoch=completions[-1]['epoch'] if completions else identity,
             deployment_id=identity,source_digest=fingerprint,affected=affected,bytes=size,
+            evidence_projection=projection,
             monitor=data['resource_monitor'],protocol=2,integrity=data['p1_integrity'],
             reservations=[dict(zip(('job_id','category','demand','state'),(r[0],r[1],json.loads(r[2]),r[3]))) for r in data['resource_reservations']],
             faults=[r[0] for r in data['resource_faults']],
             dispatches=[dict(seq=r[0],job_id=r[1],binding=r[3],runtime_id=r[5],phase=r[6],receipt_digest=digest(json.loads(r[7])) if r[7] else None,acked=bool(r[9])) for r in data['dispatches']],
             jobs=[{k:v for k,v in json.loads(r[6]).items() if k in ('id','state','generation','deadline','attempts')} for r in data['jobs']],
             publications=[dict(job_id=r[0],manifest_digest=digest(json.loads(r[1]))) for r in data['publications']],
+            allocation_coherent=_allocation_coherent(data),
             inventory=dict(counts=dict(__import__('collections').Counter(r['classification'] for r in scanner.rows.values())),reasons=sorted(scanner.reasons)),
             journal_digest=digest(journal),lane=payload['lane'],
             journal_records=[dict(runtime_id=r['id'],boot=r['boot'],phase=r['phase'],binding=r['allocation']['binding']) for r in payload['records']],
@@ -408,7 +411,7 @@ def enrollment_gate(root, registration_id, hello, profiles, budget):
         row=db.execute('SELECT record,digest FROM p1_registrations WHERE id=?',(registration_id,)).fetchone()
         if not row or len(row[0])>65536: raise ValueError('missing_registration')
         record=json.loads(row[0]); validate_registration(record)
-        check_completion_hello(db,hello)
+        check_completion_hello(db,hello,Path(root))
         if (digest(record)!=row[1] or row[1]!=registration_id or record['deployment_id']!=installation['deployment_id'] or
             record['scope']!=installation['host'] or record['evidence']!='actual-host-inspection' or
             record['lane']!=hello.get('lane') or record['boot']!=hello.get('boot') or hello.get('quarantined') is not False):
@@ -423,26 +426,33 @@ def archive_names(intent):
     return {prefix+'.sqlite':'snapshot',prefix+'.manifest.json':'manifest',prefix+'.certificate.json':'certificate'}
 
 
+def archive_manifest(intent):
+    output=intent['expected'][1]['output']
+    return dict(revision=1,recovery_id=intent['id'],source_digest=intent['source_digest'],
+        before_digest=intent['before_digest'],proof_digest=intent['proof_digest'],
+        snapshot_digest=output['snapshot_digest'],journal=intent['before']['journal'],journal_state=output['journal_state'],
+        journal_digest=output['journal_digest'])
+
+
+def _certificate(intent,step):
+    return dict(deployment_id=intent['deployment_id'],recovery_id=intent['id'],
+        plan_digest=intent['plan_digest'],proof_digest=intent['proof_digest'],
+        lane=intent['new_lane'],epoch=intent['new_epoch'],certificate_digest=digest(step))
+
+
 def validate_archive_document(kind,value,intent):
     if kind=='manifest':
-        closed(value,'revision recovery_id source_digest snapshot_digest journal_state journal_digest')
-        if type(value['revision'])!=int or value['revision']!=1 or value['recovery_id']!=intent['id'] or value['source_digest']!=intent['source_digest']:
-            raise ValueError('b2_archive_manifest_binding')
-        if value['journal_state'] not in ('valid','missing','unreadable'): raise ValueError('b2_archive_journal_state')
-        _hash(value['snapshot_digest']); _hash(value['journal_digest'])
+        if encode(value)!=encode(archive_manifest(intent)): raise ValueError('b2_archive_manifest_binding')
     elif kind=='certificate':
-        closed(value,'deployment_id recovery_id plan_digest proof_digest lane epoch certificate_digest')
-        for key in ('deployment_id','recovery_id','plan_digest','proof_digest'):
-            expected=intent['id'] if key=='recovery_id' else intent[key]
-            if value[key]!=expected: raise ValueError('b2_archive_certificate_binding')
-        if value['lane']!=intent['new_lane'] or value['epoch']!=intent['new_epoch']: raise ValueError('b2_archive_certificate_epoch')
-        _hash(value['certificate_digest'])
+        expected=intent['expected'][3]
+        step=dict(recovery_id=intent['id'],**expected,lane=intent['new_lane'],epoch=intent['new_epoch'])
+        if encode(value)!=encode(_certificate(intent,step)): raise ValueError('b2_archive_certificate_binding')
     else: raise ValueError('unknown_b2_archive_document')
 
 
-def completion_binding(db):
+def completion_binding(db, root=None):
     from service.persistence import check_recovery_open
-    data=check_recovery_open(db)
+    data=check_recovery_open(db, root)
     if data is None: return None
     completions=[s for s in data['p1_recovery_steps'] if s['step']=='core-complete']
     if not completions: return None
@@ -453,10 +463,10 @@ def completion_binding(db):
         lane=step['lane'],epoch=step['epoch'],certificate_digest=digest(step))
 
 
-def check_completion_hello(db,hello):
+def check_completion_hello(db,hello,root=None):
     if not isinstance(hello,dict) or len(encode(hello).encode())>65536 or hello.get('quarantined') is not False:
         raise ValueError('b2_worker_hello_refused')
-    expected=completion_binding(db)
+    expected=completion_binding(db,root)
     if hello.get('maintenance')!=expected or (expected is not None and hello.get('lane')!=expected['lane']):
         raise ValueError('b2_cross_volume_completion_mismatch')
     return expected
@@ -480,7 +490,7 @@ def startup_read(root):
         value=json.loads(raw)
         closed(value,'deployment_id revision scope host profile_budget_digest'); validate_scope(value['host'])
         if digest(value)!=h or identity!=value['deployment_id'] or value['revision']!=1 or value['scope']!='owned-synthetic': raise ValueError('invalid_enrollment')
-        return dict(deployment_id=identity,completion=completion_binding(db))
+        return dict(deployment_id=identity,completion=completion_binding(db,Path(root)))
 
 
 def main():
@@ -507,7 +517,7 @@ PLAN_KEYS = ('id deployment_id revision policy source_digest observation_digest 
              'budget_after diagnostic_decisions count bytes created expires')
 RECOVERY_KEYS = ('id deployment_id plan_id plan_digest source_digest observation_digest proof_digest '
                  'proof_kind prior_epoch new_epoch old_lane new_lane affected before_digest monitor_digest '
-                 'faults_digest highwater budget_before budget_after actions diagnostic_decisions archive_id expected created')
+                 'faults_digest highwater budget_before budget_after actions diagnostic_decisions archive_id expected created before proof')
 
 
 def _text(value):
@@ -578,6 +588,226 @@ def validate_abandon_plan(value):
     _budget(value['budget_before']); _budget(value['budget_after']); _decisions(value['diagnostic_decisions'])
 
 
+def _evidence_columns():
+    return dict(COLUMNS,**B2_COLUMNS,
+        p1_inventory_scans='id observed complete fingerprint summary',
+        p1_inventory_objects='id first_observed last_observed scan_id record',
+        p1_inventory_history='seq scan_id object_id observed record',
+        p1_integrity='id revision state token',sqlite_sequence='name seq')
+
+
+def _scalar(value):
+    import math
+    if value is not None and (type(value) not in (str,int,float) or
+        (type(value)==float and not math.isfinite(value))): raise ValueError('b2_evidence_scalar')
+
+
+def _validate_source(source):
+    closed(source,'schema data inventory journal marker')
+    columns=_evidence_columns()
+    closed(source['data'],' '.join(columns))
+    count=0
+    for table,rows in source['data'].items():
+        if not isinstance(rows,list): raise ValueError('b2_before_rows')
+        count+=len(rows)
+        for row in rows:
+            if not isinstance(row,list) or len(row)!=len(columns[table].split()): raise ValueError('b2_before_columns')
+            for v in row: _scalar(v)
+    if not isinstance(source['schema'],list): raise ValueError('b2_before_schema')
+    for row in source['schema']:
+        if not isinstance(row,list) or len(row)!=4: raise ValueError('b2_before_schema')
+        for v in row:_scalar(v)
+    if not isinstance(source['inventory'],list): raise ValueError('b2_before_inventory')
+    count+=len(source['inventory'])
+    for row in source['inventory']:
+        closed(row,'id namespace name classification reason identity owner references')
+        for key in ('id','namespace','name','classification','reason'):
+            if not isinstance(row[key],str) or len(row[key])>256: raise ValueError('b2_before_inventory')
+        _hash(row['id'])
+        if row['identity'] is not None:
+            if not isinstance(row['identity'],list) or len(row['identity'])>16: raise ValueError('b2_before_identity')
+            for v in row['identity']:_scalar(v)
+        if row['owner'] is not None:
+            closed(row['owner'],'id generation owner_id staging_id job_id input_sha256')
+            for v in row['owner'].values():_scalar(v)
+        if not isinstance(row['references'],list) or len(row['references'])>MAX_ROWS: raise ValueError('b2_before_references')
+        for v in row['references']:
+            if not isinstance(v,str) or len(v)>256: raise ValueError('b2_before_references')
+        count+=len(row['references'])
+    _hash(source['journal']);closed(source['marker'],'deployment_id digest')
+    _uuid(source['marker']['deployment_id']);_hash(source['marker']['digest'])
+    if count>MAX_ROWS or len(encode(source).encode())>MAX_BYTES: raise ValueError('b2_evidence_budget')
+
+
+CORE_OUTPUT_TABLES=('jobs','resource_reservations','resource_monitor','resource_faults','resource_accounting')
+
+
+def _validate_core_output(rows,r):
+    closed(rows,' '.join(CORE_OUTPUT_TABLES))
+    columns=_evidence_columns();before=r['before']['source']['data'];count=0
+    for table,values in rows.items():
+        if not isinstance(values,list):raise ValueError('b2_output_rows')
+        count+=len(values)
+        for row in values:
+            if not isinstance(row,list) or len(row)!=len(columns[table].split()):raise ValueError('b2_output_columns')
+            for v in row:_scalar(v)
+    if count>MAX_ROWS:raise ValueError('b2_output_budget')
+    if rows['resource_monitor']!=[[1,'healthy']] or rows['resource_faults']:raise ValueError('b2_output_authority')
+    if len(rows['jobs'])!=len(before['jobs']) or len(rows['resource_reservations'])!=len(before['resource_reservations']):raise ValueError('b2_output_coverage')
+    actions={a['job_id']:a['action'] for a in r['actions']}
+    for old,new in zip(before['jobs'],rows['jobs']):
+        if old[:6]!=new[:6] or old[7:]!=new[7:]:raise ValueError('b2_output_job_identity')
+        job=json.loads(new[6]);prior=json.loads(old[6]);action=actions[old[1]]
+        if action=='retain-terminal':
+            if old!=new:raise ValueError('b2_output_terminal_history')
+        elif job['state']!=('failed' if action=='fail' else 'cancelled') or job['id']!=prior['id'] or job['generation']!=prior['generation'] or job['deadline']!=prior['deadline']:
+            raise ValueError('b2_output_job_outcome')
+    for old,new in zip(before['resource_reservations'],rows['resource_reservations']):
+        if old[:3]!=new[:3] or new[3]!='retained':raise ValueError('b2_output_reservation')
+
+
+def _validate_journal_evidence(evidence,r):
+    import hashlib
+    closed(evidence,'state bytes_hex')
+    state=evidence['state'];raw=evidence['bytes_hex']
+    if state not in ('valid','missing','unreadable') or not isinstance(raw,str) or len(raw)>2*1024**2 or not re.fullmatch('(?:[0-9a-f]{2})*',raw):raise ValueError('b2_journal_evidence')
+    raw=bytes.fromhex(raw)
+    output=r['expected'][1]['output']
+    if state!=output['journal_state']:raise ValueError('b2_journal_evidence_state')
+    if state=='valid':
+        document=json.loads(raw);closed(document,'payload sha256');payload=document['payload']
+        closed(payload,'version lane records maintenance' if 'maintenance' in payload else 'version lane records')
+        if type(payload['version'])!=int or payload['version']!=1 or payload['lane']!=r['old_lane'] or not isinstance(payload['records'],list) or len(payload['records'])>64 or digest(payload)!=document['sha256']:raise ValueError('b2_journal_evidence_binding')
+        from service.worker_transport import Authority
+        for row in payload['records']:
+            closed(row,'id allocation phase acked uid boot receipt proposal' if 'receipt' in row else 'id allocation phase acked uid boot')
+            closed(row['allocation'],'snapshot binding fixture')
+            authority=Authority(*row['allocation']['snapshot'])
+            if digest(row['allocation']['snapshot'])!=row['allocation']['binding'] or authority.binding!=row['allocation']['binding']:raise ValueError('b2_journal_allocation')
+        actual=digest(document)
+    elif state=='missing':
+        if raw:raise ValueError('b2_missing_journal_bytes')
+        actual=hashlib.sha256(raw).hexdigest()
+    else:actual=hashlib.sha256(raw).hexdigest()
+    if actual!=output['journal_digest']:raise ValueError('b2_journal_evidence_digest')
+
+
+def _validate_evidence(r):
+    # Documents are finite read-only descriptions; no arbitrary patch or path fields.
+    if len(encode(r).encode())>MAX_BYTES: raise ValueError('b2_evidence_budget')
+    before=r['before'];closed(before,'source prior_certificate journal')
+    source=before['source'];_validate_source(source);data=source['data']
+    _validate_journal_evidence(before['journal'],r)
+    if digest(source)!=r['source_digest'] or digest(before)!=r['before_digest']:
+        raise ValueError('b2_before_binding')
+    if (digest(data['resource_monitor'])!=r['monitor_digest'] or digest(data['resource_faults'])!=r['faults_digest'] or
+        data['resource_accounting']!=[[1,r['highwater']]]): raise ValueError('b2_monitor_fault_binding')
+    prior=before['prior_certificate']
+    histories=[json.loads(row[2]) for row in data['p1_recovery_steps'] if row[1]=='core-complete']
+    if histories:
+        last=histories[-1];old=next(json.loads(row[2]) for row in data['p1_recoveries'] if row[0]==last['recovery_id'])
+        if prior!=_certificate(old,last) or prior['epoch']!=r['prior_epoch'] or prior['lane']!=r['old_lane']:
+            raise ValueError('b2_prior_certificate')
+    elif prior is not None or r['prior_epoch']!=r['deployment_id']: raise ValueError('b2_prior_certificate')
+    proof=r['proof'];closed(proof,'kind observation prior_epoch old_lane')
+    if (proof['kind']!=r['proof_kind'] or proof['prior_epoch']!=r['prior_epoch'] or proof['old_lane']!=r['old_lane'] or
+        digest(proof)!=r['proof_digest'] or digest(proof['observation'])!=r['observation_digest']): raise ValueError('b2_proof_binding')
+    registrations=[]
+    for _,raw,h in data['p1_registrations']:
+        reg=json.loads(raw);validate_registration(reg)
+        if digest(reg)!=h: raise ValueError('b2_before_registration')
+        registrations.append(reg)
+    check_consumers(dict(registrations=registrations,lane=r['old_lane']),proof['observation'])
+    jobs={row[1]:json.loads(row[6]) for row in data['jobs']}
+    for action in r['actions']:
+        job=jobs[action['job_id']]
+        expected=('retain-terminal' if job['state'] in ('succeeded','failed','cancelled') else
+                  'cancel-never-started' if not job['attempts'] else
+                  'cancel-requested' if job.get('cancel_requested') else 'fail')
+        if action['before_digest']!=digest(job) or action['action']!=expected: raise ValueError('b2_action_before_binding')
+    previous=r['before_digest']
+    for descriptor in r['expected']:
+        output=descriptor['output'];step=descriptor['step']
+        keys={
+            'pending':'recovery_id plan_digest proof_digest before_digest',
+            'evidence':'archive_id snapshot_digest manifest_digest journal_state journal_digest',
+            'journal':'old_lane new_lane journal',
+            'core-complete':'before_digest prior_epoch new_epoch actions diagnostic_decisions highwater budget_after monitor_state rows',
+            'receipt-complete':'recovery_id lane epoch core_output_digest'}[step]
+        closed(output,keys)
+        if descriptor['input_digest']!=previous or digest(dict(step=step,input_digest=previous,output=output))!=descriptor['output_digest']: raise ValueError('b2_output_binding')
+        if step=='pending': expected={k:r[k] for k in ('plan_digest','proof_digest','before_digest')};expected['recovery_id']=r['id']
+        elif step=='evidence':
+            for k in ('snapshot_digest','manifest_digest','journal_digest'):_hash(output[k])
+            expected=dict(output)
+            expected.update(archive_id=r['archive_id'],journal_digest=source['journal'])
+            if output['journal_state'] not in ('valid','missing','unreadable'):raise ValueError('b2_evidence_journal')
+            if output['manifest_digest']!=digest(archive_manifest(r)):raise ValueError('b2_manifest_digest')
+        elif step=='journal':expected=dict(old_lane=r['old_lane'],new_lane=r['new_lane'],journal=dict(version=1,lane=r['new_lane'],records=[]))
+        elif step=='core-complete':
+            _validate_core_output(output['rows'],r)
+            expected=dict(before_digest=r['before_digest'],prior_epoch=r['prior_epoch'],new_epoch=r['new_epoch'],actions=r['actions'],diagnostic_decisions=r['diagnostic_decisions'],highwater=output['highwater'],budget_after=r['budget_after'],monitor_state='healthy',rows=output['rows'])
+            if type(output['highwater'])!=int or output['highwater']<r['highwater'] or output['rows']['resource_accounting']!=[[1,output['highwater']]]:raise ValueError('b2_output_highwater')
+        else:expected=dict(recovery_id=r['id'],lane=r['new_lane'],epoch=r['new_epoch'],core_output_digest=r['expected'][3]['output_digest'])
+        if output!=expected:raise ValueError('b2_step_output')
+        previous=descriptor['output_digest']
+
+
+@contextmanager
+def _archive_database(raw):
+    with tempfile.TemporaryDirectory(prefix='p1-evidence-') as directory:
+        path=Path(directory)/'snapshot.sqlite'
+        fd=os.open(path,os.O_WRONLY|os.O_CREAT|os.O_EXCL,0o600)
+        with os.fdopen(fd,'wb') as stream:
+            if stream.write(raw)!=len(raw):raise OSError('short_evidence_copy')
+        db=sqlite3.connect(path.as_uri()+'?mode=ro&immutable=1',uri=True)
+        try:yield db
+        finally:db.close()
+
+
+def _validate_archives(root,data,entries,used):
+    import hashlib
+    deadline=time.monotonic()+2
+    for r in data['p1_recoveries']:
+        steps={s['step']:s for s in data['p1_recovery_steps'] if s['recovery_id']==r['id']}
+        if 'evidence' not in steps:continue
+        content={}
+        for name,kind in archive_names(r).items():
+            if kind=='certificate' and 'core-complete' not in steps:continue
+            if (root/name).stat(follow_symlinks=False).st_mode & 0o077:raise ValueError('b2_archive_permissions')
+            raw=read_file(root/name,MAX_BYTES-used)
+            used+=len(raw);entries+=1
+            if used>MAX_BYTES or entries>MAX_ROWS or time.monotonic()>deadline:raise ValueError('b2_archive_budget')
+            content[kind]=raw
+            if kind!='snapshot':validate_archive_document(kind,json.loads(raw),r)
+        output=r['expected'][1]['output']
+        if hashlib.sha256(content['snapshot']).hexdigest()!=output['snapshot_digest']:raise ValueError('b2_snapshot_digest')
+        if digest(json.loads(content['manifest']))!=output['manifest_digest']:raise ValueError('b2_manifest_digest')
+        # SQLite reads a bounded private copy; retained archives are never opened writable.
+        with _archive_database(content['snapshot']) as archive:
+            archive.execute('PRAGMA trusted_schema=OFF')
+            archive.execute('PRAGMA query_only=ON')
+            archive.set_progress_handler(lambda:int(time.monotonic()>deadline),1000)
+            columns=_evidence_columns()
+            if {row[0] for row in archive.execute("SELECT name FROM sqlite_master WHERE type='table'")}!=set(columns):raise ValueError('b2_snapshot_schema')
+            if archive.execute('PRAGMA user_version').fetchone()!=(1,):raise ValueError('b2_snapshot_version')
+            schema=archive.execute('SELECT type,name,tbl_name,sql FROM sqlite_master ORDER BY name').fetchall()
+            source=r['before']['source']
+            if encode(schema)!=encode(source['schema']):raise ValueError('b2_snapshot_schema')
+            for table,cols in columns.items():
+                if [v[1] for v in archive.execute('PRAGMA table_info('+table+')')]!=cols.split():raise ValueError('b2_snapshot_columns')
+                n,b=archive.execute('SELECT count(*),coalesce(sum('+ '+'.join('coalesce(length(CAST("'+c+'" AS BLOB)),0)' for c in cols.split())+'),0) FROM '+table).fetchone()
+                entries+=n
+                if entries>MAX_ROWS or b>MAX_BYTES-used or time.monotonic()>deadline:raise ValueError('b2_archive_budget')
+                rows=archive.execute('SELECT * FROM '+table+' ORDER BY rowid').fetchall()
+                if table=='p1_abandon_plans':
+                    current=[v for v in rows if v[0]==r['plan_id']]
+                    plan=next(p for p in data['p1_abandon_plans'] if p['id']==r['plan_id'])
+                    if len(current)!=1 or encode(current[0])!=encode([r['plan_id'],encode(plan),r['plan_digest']]):raise ValueError('b2_snapshot_plan')
+                    rows=[v for v in rows if v[0]!=r['plan_id']]
+                if encode(rows)!=encode(source['data'][table]):raise ValueError('b2_snapshot_before')
+
+
 def validate_b2_record(table,value):
     if table=='p1_abandon_plans':
         validate_abandon_plan(value); return
@@ -601,10 +831,11 @@ def validate_b2_record(table,value):
         for previous,current in zip(value['expected'],value['expected'][1:]):
             if previous['output_digest']!=current['input_digest']: raise ValueError('b2_expected_chain')
         for row in value['expected']:
-            closed(row,'step input_digest output_digest'); _hash(row['input_digest']); _hash(row['output_digest'])
+            closed(row,'step input_digest output_digest output'); _hash(row['input_digest']); _hash(row['output_digest'])
+        _validate_evidence(value)
         return
     if table=='p1_recovery_steps':
-        closed(value,'recovery_id step input_digest output_digest lane epoch')
+        closed(value,'recovery_id step input_digest output_digest output lane epoch')
         if value['step'] not in STEPS: raise ValueError('b2_step')
         for key in ('input_digest','output_digest'): _hash(value[key])
         for key in ('recovery_id','lane','epoch'): _uuid(value[key])
@@ -625,7 +856,7 @@ def validate_b2_record(table,value):
     _uuid(value['recovery_id'])
 
 
-def _validate_b2_database(db):
+def _validate_b2_database(db, root):
     """Bound the complete logical population before decoding any JSON."""
     from service.persistence import B2_COLUMNS, b2_schema
     if not b2_schema(db): return None
@@ -676,6 +907,7 @@ def _validate_b2_database(db):
     for recovery in recoveries.values():
         p=plans.get(recovery['plan_id'])
         if not p or digest(p)!=recovery['plan_digest']: raise ValueError('b2_plan_reference')
+        if recovery['expected'][1]['output']['journal_state']!=p['journal_state'] or recovery['expected'][1]['output']['journal_digest']!=p['journal_digest']:raise ValueError('b2_plan_journal_binding')
         for key in ('deployment_id','source_digest','observation_digest','proof_digest','prior_epoch','new_epoch','old_lane','new_lane','affected','budget_before','budget_after','diagnostic_decisions'):
             if recovery[key]!=p[key]: raise ValueError('b2_intent_binding')
     epoch=deployment; lane=None; identities=set()
@@ -690,7 +922,7 @@ def _validate_b2_database(db):
         r=recoveries.get(step['recovery_id'])
         if not r: raise ValueError('b2_step_reference')
         expected_step=r['expected'][STEPS.index(step['step'])]
-        if any(step[k]!=expected_step[k] for k in ('input_digest','output_digest')) or step['lane']!=r['new_lane'] or step['epoch']!=r['new_epoch']: raise ValueError('b2_step_binding')
+        if any(step[k]!=expected_step[k] for k in ('input_digest','output_digest','output')) or step['lane']!=r['new_lane'] or step['epoch']!=r['new_epoch']: raise ValueError('b2_step_binding')
         preceding=STEPS[:STEPS.index(step['step'])]
         if any(not any(s['recovery_id']==r['id'] and s['step']==name for s in data['p1_recovery_steps']) for name in preceding): raise ValueError('b2_step_chain')
     for table,kind,key in (('dispatch_resolutions','dispatches','dispatch_seq'),('p1_retired_publications','publications','job_id'),('p1_integrity_resolutions',None,'object_id')):
@@ -707,15 +939,34 @@ def _validate_b2_database(db):
                 if (not work or digest(raw)!=resolution['publication_digest'] or digest(work)!=resolution['work_digest'] or
                     digest(json.loads(work[1]))!=resolution['binding'] or not job['attempts'] or job['attempts'][-1]['id']!=resolution['attempt_id']): raise ValueError('b2_publication_binding')
             elif {k:v for k,v in resolution.items() if k!='recovery_id'} not in r['diagnostic_decisions']: raise ValueError('b2_diagnostic_binding')
+    # Embedded history and archive populations share the original aggregate ceilings.
+    for intent in data['p1_recoveries']:
+        source=intent['before']['source']
+        count+=sum(len(rows) for rows in source['data'].values())+len(source['inventory'])+len(source['schema'])
+        count+=sum(len(row['references']) for row in source['inventory'])+len(intent['actions'])+len(intent['expected'])
+        count+=sum(len(rows) for rows in intent['expected'][3]['output']['rows'].values())
+        if count>MAX_ROWS:raise ValueError('b2_evidence_budget')
+        # Prior immutable rows cannot be omitted or relabelled in a later certificate.
+        for table in (*B1_COLUMNS,*B2_COLUMNS):
+            if table=='p1_b2_format':continue
+            current=db.execute('SELECT * FROM '+table+' ORDER BY rowid').fetchall()
+            for old in source['data'][table]:
+                if not any(encode(old)==encode(row) for row in current):raise ValueError('b2_before_history_binding')
+    _validate_archives(root,data,count,size)
     return data
 
 
-def validate_b2_database(db):
+def validate_b2_database(db, root=None):
     # These owning seams have no live resource observation. Restore no handler;
     # offline snapshot installs its own deadline for its remaining SQL work.
     deadline=time.monotonic()+2
     db.set_progress_handler(lambda:int(time.monotonic()>deadline),1000)
-    try: return _validate_b2_database(db)
+    try:
+        if root is None:
+            root=Path(next(r[2] for r in db.execute('PRAGMA database_list') if r[1]=='main')).parent
+        return _validate_b2_database(db,Path(root))
+    except (RecursionError,TypeError,KeyError,IndexError) as exc:
+        raise ValueError('b2_malformed_evidence') from exc
     finally: db.set_progress_handler(None,0)
 
 
@@ -762,18 +1013,58 @@ def plan_abandon(roots,scope,observation,*,proof_digest,profiles,budget,now=None
         return dict(plan=value,digest=digest(value),evidence=observation['evidence'])
 
 
+def _allocation_coherent(data):
+    """Check provenance joins directly; inventory reasons can overwrite each other."""
+    from service.worker_transport import Authority
+    try:
+        jobs={r[1]:(json.loads(r[6]),json.loads(r[7])) for r in data['jobs']}
+        reservations={r[0]:r for r in data['resource_reservations']}
+        if set(jobs)!=set(reservations): return False
+        for job_id,(job,context) in jobs.items():
+            reservation=reservations[job_id]
+            dispatches=[r for r in data['dispatches'] if r[1]==job_id]
+            if reservation[3]=='queued':
+                if job['attempts'] or dispatches or job['state'] not in ('queued','cancel_requested'): return False
+            elif reservation[3]=='executing':
+                if not job['attempts'] or not any(not r[9] for r in dispatches): return False
+            elif reservation[3]!='retained': return False
+            for row in dispatches:
+                authority=Authority(*json.loads(row[2]))
+                if (authority.binding!=row[3] or authority.job['id']!=job_id or
+                    authority.context!=context or authority.job['generation']!=job['generation'] or
+                    authority.job['deadline']!=job['deadline'] or not job['attempts'] or
+                    authority.job['attempts'][-1]!={**job['attempts'][-1],'reaped':authority.job['attempts'][-1]['reaped']}): return False
+                demand=json.loads(reservation[2])
+                if (reservation[1]!='inference' or demand['configuration']!=digest(authority.context['plan']['resolved']['identity']['effective']) or
+                    demand['disk_bytes']<demand['attempt_disk_bytes']*len(job['attempts'])): return False
+                if not row[9] and (reservation[3] not in ('executing','retained') or bool(row[8])!=(reservation[3]=='retained')): return False
+                if row[7]:
+                    receipt=json.loads(row[7])
+                    if (receipt.get('runtime_id')!=row[5] or receipt.get('binding')!=row[3] or
+                        receipt.get('original_deadline')!=job['deadline'] or receipt.get('reaped') is not True or
+                        receipt.get('reap_method')!='pid1-waitpid-echild'): return False
+                elif row[8] or job['state'] in ('succeeded','failed','cancelled'): return False
+                for publication in data['publications']:
+                    if publication[0]!=job_id: continue
+                    artifact=json.loads(publication[2]); attempt=authority.job['attempts'][-1]
+                    if any(artifact[k]!=(job['generation'] if k=='generation' else attempt['id' if k=='attempt_id' else k])
+                           for k in ('attempt_id','owner_id','staging_id','generation')): return False
+        return True
+    except (ValueError,KeyError,IndexError,TypeError):
+        return False
+
+
 def _coherent_b2(state):
-    if (set(state['inventory']['reasons']) & {'unknown_reference_schema','unknown_reference_kind','missing_reservation','reservation_outcome_mismatch','terminal_receipt_missing','missing_or_invalid_reservation','reservation_binding_mismatch','dispatch_owner_mismatch','receipt_mismatch','publication_owner_mismatch'} or
+    if (not state['allocation_coherent'] or
+        set(state['inventory']['reasons']) & {'unknown_reference_schema','unknown_reference_kind'} or
         state['inventory']['counts'].get('unknown_foreign',0)):
         raise ValueError('incoherent_b2_predecessor')
-    jobs={j['id'] for j in state['jobs']}
-    if jobs!={r['job_id'] for r in state['reservations']}: raise ValueError('incoherent_b2_reservations')
 
 
 def verify_abandon_plan(roots,db,scope,observation,plan_id,expected_digest,*,proof_digest,now=None):
     """Caller owns maintenance locks. Pure read, no lock/transaction acquisition."""
     now=time.time() if now is None else now; _time(now); _hash(proof_digest)
-    data=validate_b2_database(db)
+    data=validate_b2_database(db,roots['control']/'core')
     value=next((p for p in data['p1_abandon_plans'] if p['id']==plan_id),None) if data else None
     if value is None: raise ValueError('unknown_b2_plan')
     if any(r['plan_id']==plan_id for r in data['p1_recoveries']): raise ValueError('b2_accepted_plan_requires_resume')

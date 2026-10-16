@@ -217,13 +217,13 @@ def b2_schema(db):
     return True
 
 
-def check_recovery_open(db):
+def check_recovery_open(db, root=None):
     """DB mutation authority only; cannot attest the receipt volume."""
     if not b2_schema(db):
         return None
     from service.recovery import validate_b2_database
     try:
-        state = validate_b2_database(db)
+        state = validate_b2_database(db, root)
         completed = {r['recovery_id']: r for r in state['p1_recovery_steps'] if r['step']=='core-complete'}
         for row in state['p1_recoveries']:
             if row['id'] not in completed:

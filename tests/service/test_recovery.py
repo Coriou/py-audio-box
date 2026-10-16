@@ -469,22 +469,59 @@ def b2_plan(installation):
     return observation,result
 
 
-def b2_intent(installation, *, complete=False):
-    """Test-only fixed records, never a production recovery writer."""
-    roots,_,_,_=installation
-    observation,planned=b2_plan(installation); p=planned['plan']
-    r=dict(id='9'*32,deployment_id=p['deployment_id'],plan_id=p['id'],plan_digest=planned['digest'],
+def b2_intent(installation, *, complete=False,recovery_id='9'*32,archive_id='8'*32):
+    """Test-only evidence construction; no production transition/apply writer."""
+    import hashlib
+    roots,scope,_,_=installation
+    observation,planned=b2_plan(installation);p=planned['plan'];root=roots['control']/'core'
+    proof=dict(kind='E1-mock',observation=observation,prior_epoch=p['prior_epoch'],old_lane=p['old_lane'])
+    p['proof_digest']=digest(proof)
+    with closing(sqlite3.connect(root/'core.sqlite')) as db,db:
+        db.execute('UPDATE p1_abandon_plans SET record=?,digest=? WHERE id=?',(encode(p),digest(p),p['id']))
+    with recovery.offline(roots) as (checked,db):
+        source=recovery._b2_state(checked,db,scope,exclude_plan=p['id'])['evidence_projection']
+        # JSON round-trip canonicalizes SQL tuples into the frozen scalar row lists.
+        source=json.loads(encode(source))
+        before=dict(source=source,prior_certificate=recovery.completion_binding(db,root),journal=dict(state='valid',bytes_hex=(roots['receipts']/'journal.json').read_bytes().hex()))
+        import tempfile
+        with tempfile.TemporaryDirectory(prefix='b21-fixture-') as temporary:
+            temporary_path=Path(temporary)/'snapshot.sqlite'
+            with closing(sqlite3.connect(temporary_path)) as archive:db.backup(archive)
+            snapshot_bytes=temporary_path.read_bytes()
+    snapshot_path=root/('p1-recovery-'+archive_id+'.sqlite')
+    snapshot_path.write_bytes(snapshot_bytes);snapshot_path.chmod(0o600)
+    jobs=[json.loads(row[6]) for row in source['data']['jobs']]
+    actions=[dict(job_id=j['id'],action=('retain-terminal' if j['state'] in ('succeeded','failed','cancelled') else 'cancel-never-started' if not j['attempts'] else 'fail'),before_digest=digest(j)) for j in jobs]
+    r=dict(id=recovery_id,deployment_id=p['deployment_id'],plan_id=p['id'],plan_digest=digest(p),
         **{k:p[k] for k in ('source_digest','observation_digest','proof_digest','prior_epoch','new_epoch','old_lane','new_lane','affected','budget_before','budget_after','diagnostic_decisions')},
-        proof_kind='E1-mock',before_digest='4'*64,monitor_digest='5'*64,faults_digest='6'*64,highwater=0,
-        actions=[dict(job_id=j,action='retain-terminal',before_digest='7'*64) for j in p['affected']['jobs']],
-        archive_id='8'*32,expected=[dict(step=s,input_digest=str(i+1)*64,output_digest=str(i+2)*64) for i,s in enumerate(recovery.STEPS)],created=101)
-    with closing(sqlite3.connect(roots['control']/'core'/'core.sqlite')) as db, db:
+        proof_kind='E1-mock',before=before,proof=proof,before_digest=digest(before),
+        monitor_digest=digest(source['data']['resource_monitor']),faults_digest=digest(source['data']['resource_faults']),
+        highwater=source['data']['resource_accounting'][0][1],actions=actions,archive_id=archive_id,expected=[],created=101)
+    outputs=[dict(recovery_id=r['id'],plan_digest=r['plan_digest'],proof_digest=r['proof_digest'],before_digest=r['before_digest']),
+        dict(archive_id=r['archive_id'],snapshot_digest=hashlib.sha256(snapshot_path.read_bytes()).hexdigest(),manifest_digest='0'*64,journal_state=p['journal_state'],journal_digest=p['journal_digest']),
+        dict(old_lane=r['old_lane'],new_lane=r['new_lane'],journal=dict(version=1,lane=r['new_lane'],records=[])),
+        dict(before_digest=r['before_digest'],prior_epoch=r['prior_epoch'],new_epoch=r['new_epoch'],actions=actions,diagnostic_decisions=r['diagnostic_decisions'],highwater=r['highwater'],budget_after=r['budget_after'],monitor_state='healthy',rows={k:copy.deepcopy(source['data'][k]) for k in recovery.CORE_OUTPUT_TABLES})]
+    # Manifest does not hash itself or the completion certificate.
+    r['expected']=[dict(output=output) for output in outputs]
+    outputs[1]['manifest_digest']=digest(recovery.archive_manifest(r))
+    previous=r['before_digest'];r['expected']=[]
+    for name,output in zip(recovery.STEPS,outputs):
+        output_digest=digest(dict(step=name,input_digest=previous,output=output))
+        r['expected'].append(dict(step=name,input_digest=previous,output_digest=output_digest,output=output));previous=output_digest
+    output=dict(recovery_id=r['id'],lane=r['new_lane'],epoch=r['new_epoch'],core_output_digest=previous)
+    r['expected'].append(dict(step='receipt-complete',input_digest=previous,output_digest=digest(dict(step='receipt-complete',input_digest=previous,output=output)),output=output))
+    with closing(sqlite3.connect(root/'core.sqlite')) as db,db:
         db.execute('PRAGMA foreign_keys=ON')
         db.execute('INSERT INTO p1_recoveries VALUES(?,?,?,?)',(r['id'],r['plan_id'],encode(r),digest(r)))
         if complete:
             for expected in r['expected'][:4]:
                 step=dict(recovery_id=r['id'],**expected,lane=r['new_lane'],epoch=r['new_epoch'])
                 db.execute('INSERT INTO p1_recovery_steps VALUES(?,?,?,?)',(r['id'],step['step'],encode(step),digest(step)))
+    for name,kind in recovery.archive_names(r).items():
+        if kind=='snapshot':continue
+        value=recovery.archive_manifest(r) if kind=='manifest' else recovery._certificate(r,step) if complete else None
+        if value is not None:
+            path=root/name;path.write_text(encode(value));path.chmod(0o600)
     return r
 
 
@@ -499,6 +536,12 @@ def b2_receipt(roots,r, *, complete=False):
     for name,value in (('p1-b2-required.json',marker),('p1-maintenance.json',fence)):
         path=roots['receipts']/name;path.write_text(encode(value));path.chmod(0o600)
     if complete:
+        prefix='p1-recovery-'+r['id']
+        steps=[dict(recovery_id=r['id'],**e,lane=r['new_lane'],epoch=r['new_epoch']) for e in r['expected'][:4]]
+        path=roots['receipts']/(prefix+'.certificate.json')
+        path.write_text(encode(dict(certificate=cert,steps=steps)));path.chmod(0o600)
+        path=roots['receipts']/(prefix+'.journal')
+        path.write_bytes(bytes.fromhex(r['before']['journal']['bytes_hex']));path.chmod(0o600)
         value=dict(version=1,lane=r['new_lane'],records=[],maintenance=cert)
         (roots['receipts']/'journal.json').write_text(encode(dict(payload=value,sha256=digest(value))))
     return fence
@@ -640,12 +683,22 @@ def test_b2_retirement_precedes_both_publication_bodies(installation,monkeypatch
     finally:core.close()
 
 
-@pytest.mark.parametrize('damage',['missing','unknown','digest','lane','pending','journal-binding','all-fences-missing'])
+@pytest.mark.parametrize('damage',['missing','unknown','digest','lane','pending','journal-binding','all-fences-missing','archive-missing','archive-journal','archive-chain','archive-certificate'])
 def test_b2_worker_refuses_before_boot_or_listen(installation,monkeypatch,damage):
     import worker.runtime_supervisor as module
     roots,_,_,_=installation
     r=b2_intent(installation,complete=True);fence=b2_receipt(roots,r,complete=True)
-    if damage=='missing':(roots['receipts']/'p1-maintenance.json').unlink()
+    if damage.startswith('archive-'):
+        prefix=roots['receipts']/('p1-recovery-'+r['id'])
+        path=Path(str(prefix)+'.certificate.json')
+        if damage=='archive-missing':path.unlink()
+        elif damage=='archive-journal':Path(str(prefix)+'.journal').write_bytes(b'changed')
+        else:
+            archived=json.loads(path.read_text())
+            if damage=='archive-chain':archived['steps'][1]['input_digest']='a'*64
+            else:archived['certificate']['certificate_digest']='a'*64
+            path.write_text(encode(archived))
+    elif damage=='missing':(roots['receipts']/'p1-maintenance.json').unlink()
     elif damage=='all-fences-missing':
         (roots['receipts']/'p1-maintenance.json').unlink();(roots['receipts']/'p1-b2-required.json').unlink()
     elif damage=='journal-binding':
@@ -738,7 +791,7 @@ def test_b2_archive_namespace_is_closed_retained_evidence(installation):
     roots,_,_,_=installation
     intent=b2_intent(installation,complete=True)
     root=roots['control']/'core'
-    manifest=dict(revision=1,recovery_id=intent['id'],source_digest=intent['source_digest'],snapshot_digest='1'*64,journal_state='valid',journal_digest='2'*64)
+    manifest=recovery.archive_manifest(intent)
     name=next(n for n,k in recovery.archive_names(intent).items() if k=='manifest')
     path=root/name;path.write_text(encode(manifest));path.chmod(0o600)
     with closing(sqlite3.connect(root/'core.sqlite')) as db:
@@ -749,4 +802,165 @@ def test_b2_archive_namespace_is_closed_retained_evidence(installation):
         assert evidence['classification']=='recovery_evidence'
         assert evidence['references']==['p1_recoveries:'+intent['id']]
         manifest['unknown']=True;path.write_text(encode(manifest))
-        with pytest.raises(ValueError,match='unknown_record_fields'):scanner._collect()
+        with pytest.raises(ValueError,match='archive_manifest'):scanner._collect()
+
+
+@pytest.mark.parametrize('installed',[False,True])
+def test_b2_unexplained_execution_refuses_without_mutation(installation,installed):
+    from service.admission import Admission
+    from service.dispatch_store import DispatchStore
+    from tests.service.test_admission import fixture
+    roots,scope,profiles,_=installation
+    core=Core(roots['control']/'core')
+    try:
+        f=fixture(); admission=Admission(core,roots['staging']);DispatchStore(core,admission)
+        job=core.submit_synthetic('p','unexplained',f['context'],_admission=admission,_profiles=f['profiles'],_dispatch_settings=('silence',8))
+    finally:core.close()
+    observation,_=enrolled_plan(installation)
+    planned=None
+    if installed:
+        planned=recovery.plan_abandon(roots,scope,observation,proof_digest='3'*64,profiles=profiles,budget=DEFAULT_BUDGET,now=100)
+    with closing(sqlite3.connect(roots['control']/'core'/'core.sqlite')) as db,db:
+        db.execute("UPDATE resource_reservations SET state='executing' WHERE id=?",(job['id'],))
+    before=logical(roots)
+    with pytest.raises(ValueError,match='incoherent_b2'):
+        recovery.plan_abandon(roots,scope,observation,proof_digest='3'*64,profiles=profiles,budget=DEFAULT_BUDGET,now=100)
+    assert logical(roots)==before
+    if installed:
+        with recovery.offline(roots) as (checked,db),pytest.raises(ValueError,match='incoherent_b2'):
+            recovery.verify_abandon_plan(checked,db,scope,observation,planned['plan']['id'],planned['digest'],proof_digest='3'*64,now=101)
+        assert logical(roots)==before
+
+
+@pytest.mark.parametrize('field',['before_digest','monitor_digest','faults_digest','action','output','archive-missing','archive-bytes','certificate'])
+def test_b2_completion_requires_grounded_evidence(installation,field):
+    roots,_,_,_=installation
+    terminal_enrolled(installation)
+    r=b2_intent(installation,complete=True)
+    root=roots['control']/'core'
+    if field in ('before_digest','monitor_digest','faults_digest'):r[field]='a'*64
+    elif field=='action':r['actions'][0]['before_digest']='a'*64
+    elif field=='output':
+        r['expected'][2]['output_digest']='a'*64;r['expected'][3]['input_digest']='a'*64
+    else:
+        names=recovery.archive_names(r)
+        kind='certificate' if field=='certificate' else 'snapshot'
+        path=root/next(n for n,k in names.items() if k==kind)
+        if field=='archive-missing':path.unlink(missing_ok=True)
+        else:path.write_bytes(b'changed');path.chmod(0o600)
+    with closing(sqlite3.connect(root/'core.sqlite')) as db,db:
+        db.execute('UPDATE p1_recoveries SET record=?,digest=?',(encode(r),digest(r)))
+    with pytest.raises((ValueError,OSError)):
+        core=Core(root);core.close()
+
+
+@pytest.mark.parametrize('runtime',[None,'unknown'])
+def test_b2_coherent_executing_unbound_and_unknown_plan(installation,runtime):
+    from service.admission import Admission
+    from service.dispatch_store import DispatchStore
+    from tests.service.test_admission import fixture
+    roots,scope,_,_=installation
+    core=Core(roots['control']/'core')
+    try:
+        f=fixture();a=Admission(core,roots['staging']);store=DispatchStore(core,a)
+        core.submit_synthetic('p','allocated',f['context'],_admission=a,_profiles=f['profiles'],_dispatch_settings=('silence',8))
+        row=store.allocate(f['profiles'],'silence',8)
+        if runtime:
+            lane=json.loads((roots['receipts']/'journal.json').read_text())['payload']['lane']
+            store.update(row,runtime=lane+'/'+'b'*32+'/unknown',phase='prepared')
+    finally:core.close()
+    observation,planned=b2_plan(installation)
+    with recovery.offline(roots) as (checked,db):
+        assert recovery.verify_abandon_plan(checked,db,scope,observation,planned['plan']['id'],planned['digest'],proof_digest='3'*64,now=101)==planned['plan']
+
+
+@pytest.mark.parametrize('field',[
+    'source-monitor','source-faults','source-highwater','source-job','source-history','before-journal',
+    'proof-observation','proof-kind','prior-certificate',
+    'pending-output','evidence-output','journal-output','core-output','receipt-output',
+    'manifest-missing','certificate-missing','manifest-source','manifest-snapshot','manifest-journal',
+    'certificate-digest','certificate-epoch','snapshot-logical'])
+def test_b2_bound_documents_refuse_valid_row_digest_tampering(installation,field):
+    roots,_,_,_=installation;terminal_enrolled(installation)
+    r=b2_intent(installation,complete=True);root=roots['control']/'core'
+    names={kind:root/name for name,kind in recovery.archive_names(r).items()}
+    source=r['before']['source']['data']
+    if field=='before-journal':r['before']['journal']['bytes_hex']='00'
+    elif field=='source-monitor':source['resource_monitor'][0][1]='checking'
+    elif field=='source-faults':source['resource_faults'].append(['changed'])
+    elif field=='source-highwater':source['resource_accounting'][0][1]+=1
+    elif field=='source-job':
+        job=json.loads(source['jobs'][0][6]);job['generation']+=1;source['jobs'][0][6]=encode(job)
+    elif field=='source-history':source['p1_recovery_plans']=[]
+    elif field=='proof-observation':r['proof']['observation']['states'][0]['finished']='changed'
+    elif field=='proof-kind':r['proof']['kind']='host-admin-container-teardown-v1'
+    elif field=='prior-certificate':r['before']['prior_certificate']={}
+    elif field.endswith('-output'):
+        index=['pending','evidence','journal','core','receipt'].index(field[:-7]);output=r['expected'][index]['output']
+        key=['before_digest','snapshot_digest','new_lane','highwater','core_output_digest'][index]
+        output[key]=output[key]+1 if type(output[key])==int else 'a'*len(output[key])
+    elif field.endswith('-missing'):names[field[:-8]].unlink()
+    elif field.startswith('manifest-'):
+        value=json.loads(names['manifest'].read_text());value[{'manifest-source':'source_digest','manifest-snapshot':'snapshot_digest','manifest-journal':'journal_digest'}[field]]='a'*64
+        names['manifest'].write_text(encode(value))
+    elif field.startswith('certificate-'):
+        value=json.loads(names['certificate'].read_text());key='epoch' if field.endswith('epoch') else 'certificate_digest';value[key]='a'*len(value[key]);names['certificate'].write_text(encode(value))
+    elif field=='snapshot-logical':
+        with closing(sqlite3.connect(names['snapshot'])) as db,db:db.execute("UPDATE resource_monitor SET state='checking'")
+    with closing(sqlite3.connect(root/'core.sqlite')) as db,db:
+        db.execute('UPDATE p1_recoveries SET record=?,digest=?',(encode(r),digest(r)))
+    for reader in ('completion','startup','core'):
+        with pytest.raises((ValueError,OSError,sqlite3.Error)):
+            if reader=='completion':
+                with closing(sqlite3.connect(root/'core.sqlite')) as db:recovery.completion_binding(db)
+            elif reader=='startup':recovery.startup_read(root)
+            else:
+                core=Core(root,historical_local=True);core.close()
+
+
+@pytest.mark.parametrize('field',['snapshot','core-output'])
+def test_b2_rehashed_documents_still_require_grounding(installation,field):
+    import hashlib
+    roots,_,_,_=installation;terminal_enrolled(installation)
+    r=b2_intent(installation,complete=True);root=roots['control']/'core'
+    names={kind:root/name for name,kind in recovery.archive_names(r).items()}
+    if field=='snapshot':
+        with closing(sqlite3.connect(names['snapshot'])) as db,db:db.execute("UPDATE resource_monitor SET state='checking'")
+        r['expected'][1]['output']['snapshot_digest']=hashlib.sha256(names['snapshot'].read_bytes()).hexdigest()
+        r['expected'][1]['output']['manifest_digest']=digest(recovery.archive_manifest(r))
+    else:
+        rows=r['expected'][3]['output']['rows']
+        job=json.loads(rows['jobs'][0][6]);job['generation']+=1;rows['jobs'][0][6]=encode(job)
+    previous=r['before_digest']
+    for descriptor in r['expected']:
+        if descriptor['step']=='receipt-complete':descriptor['output']['core_output_digest']=previous
+        descriptor['input_digest']=previous
+        descriptor['output_digest']=digest(dict(step=descriptor['step'],input_digest=previous,output=descriptor['output']))
+        previous=descriptor['output_digest']
+    with closing(sqlite3.connect(root/'core.sqlite')) as db,db:
+        db.execute('UPDATE p1_recoveries SET record=?,digest=?',(encode(r),digest(r)))
+        for descriptor in r['expected'][:4]:
+            step=dict(recovery_id=r['id'],**descriptor,lane=r['new_lane'],epoch=r['new_epoch'])
+            db.execute('UPDATE p1_recovery_steps SET record=?,digest=? WHERE step=?',(encode(step),digest(step),step['step']))
+    names['manifest'].write_text(encode(recovery.archive_manifest(r)))
+    names['certificate'].write_text(encode(recovery._certificate(r,step)))
+    with closing(sqlite3.connect(root/'core.sqlite')) as db,pytest.raises(ValueError):recovery.completion_binding(db)
+
+
+@pytest.mark.parametrize('damage',['none','old-archive','old-history'])
+def test_b2_second_completion_retains_prior_evidence(installation,damage):
+    roots,_,_,_=installation;root=roots['control']/'core'
+    first=b2_intent(installation,complete=True);b2_receipt(roots,first,complete=True)
+    second=b2_intent(installation,complete=True,recovery_id='7'*32,archive_id='6'*32)
+    b2_receipt(roots,second,complete=True)
+    with closing(sqlite3.connect(root/'core.sqlite')) as db:
+        assert recovery.completion_binding(db)['recovery_id']==second['id']
+    assert second['before']['prior_certificate']['recovery_id']==first['id']
+    if damage=='none':
+        core=Core(root);core.close();return
+    if damage=='old-archive':
+        name=next(n for n,k in recovery.archive_names(first).items() if k=='manifest');(root/name).unlink()
+    else:
+        with closing(sqlite3.connect(root/'core.sqlite')) as db,db:
+            db.execute('DELETE FROM p1_recovery_plans')
+    with pytest.raises((ValueError,OSError)):Core(root)

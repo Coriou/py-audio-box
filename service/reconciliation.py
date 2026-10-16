@@ -103,7 +103,7 @@ class Reconciliation:
         b2 = None
         if tables & persistence.B2_COLUMNS.keys():
             from service.recovery import validate_b2_database
-            b2 = validate_b2_database(self.db)
+            b2 = validate_b2_database(self.db, self.core.root)
         data = {}
         for table in sorted(tables & TABLES - DIAGNOSTICS - {'sqlite_sequence'}):
             columns = [r[1] for r in self.db.execute('PRAGMA table_info('+table+')')]
