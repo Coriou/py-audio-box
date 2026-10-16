@@ -2,7 +2,7 @@
 
 2026-10-16. Implementation handoff for separate Sol-low review. No self-GO, integration acceptance, installed P1 gate or activation claim.
 
-Round-1 correction supersedes the original reference heuristic and diagnostic-write semantics below. See [RESPONSE-P1A2-r1.md](RESPONSE-P1A2-r1.md) for the current candidate, integrity epoch, regression results and availability cost. Earlier command results remain historical.
+Round-2 correction uses the existing Draft 2020-12 validator to select applicable reference-schema union branches and includes singular `reference_asset_id`. See [RESPONSE-P1A2-r2.md](RESPONSE-P1A2-r2.md) for the current candidate and verification. Round-1 [response](RESPONSE-P1A2-r1.md) remains the integrity-epoch/availability-cost record. Earlier command results and candidate identities below remain historical.
 
 ## Identity and exact scope
 
