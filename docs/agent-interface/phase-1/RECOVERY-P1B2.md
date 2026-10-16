@@ -172,3 +172,43 @@ PYTHONDONTWRITEBYTECODE=1 /tmp/pab-0c-venv/bin/python -m pytest -p no:cacheprovi
 ```
 
 **423 passed, 18 skipped in 139.26s, exit 0**, `/tmp/p1b21-correction-full-final.log`. This full preservation run followed the focused and affected runs sequentially on unchanged final source/tests. Skips remain unqualified; no aggregate passing count waives either original review finding or supplies independent acceptance. Final `git diff --check` passed. The complete baseline-to-candidate path set is exactly the ten allowed paths; protected Core/initializer/resource/admission/dispatch-store/host/contracts/reviews/ledger comparison against root baseline is empty. Only this report is committed after the frozen source/test commit. Fresh independent Sol-low review and parent integration verification are required before proceeding; no self-GO.
+
+## B2.1 round-2 targeted correction — awaiting independent review
+
+2026-10-16, gpt-6.1-sol / low implementation. Only this fresh worktree was changed: `/Users/ben/.txcode/worktrees/py-audio-box/t3-b05a2844`, branch `t3/recovery-job-context-validation`, clean root baseline `361deab2a9269800925cf9f7095fde033f98c680`. Inspected the ordered candidate log `d5b9bb9..d4290c6`; imported the complete chain oldest first: `ae54dcc` → `141810a` → `9dda031` → `aae8919` → `d4290c6`, yielding local `0d8f77d` → `75d4178` → `6f12aae` → `b7d5e07` → `ce0e262`. Root documentation/reviews/ledger are preserved against the actual fresh-root baseline. Original candidate and root checkouts were not edited.
+
+Read both complete P1B21 reviews, the candidate handoff/responses, full B2 boundary architecture/records/brief/exits, original P1 invariants and exit matrix, PRODUCT, start/protocol, canonical shared/Phase 1/evidence guidance, R1 fault-authority and B1 context. No applicable AGENTS.md was found. The quick memory registry search yielded no B2 authority or current acceptance evidence.
+
+### Finding responses and frozen transition
+
+F1: preserve the imported structural allocation joins unchanged. Existing queued, coherent real allocated/unbound and old-lane UNKNOWN positives and missing-allocation negatives remain in the focused preservation suite. No reason blacklist or allocation relaxation was introduced.
+
+F2: `service/recovery.py::_validate_core_output` now validates both before/output jobs with the canonical closed job oracle, validates the exact `plan bundles` context and its canonical stored-plan/input binding, and checks active-attempt generation ordering/prior reap rules. Validation errors become bounded recovery refusals. The context and every SQL job-row column outside JSON remain exactly equal to the before-image.
+
+For each nonterminal action, construct a deep copy of the validated frozen job and compare the entire output against it. The only permitted deltas are `state` to `failed` for `fail`, otherwise `cancelled`, and the last attempt's `reaped` to true if an attempt exists. Stage, artifact IDs, input, principal/idempotency identity, deadline, generation, attempt count/order/IDs/ownership/staging, all prior attempts and all other fields remain unchanged. Terminal rows remain byte-for-byte equal. This freezes one conservative output contract; it does not add a transition writer. The separately validated retained operator proof supports reap; no PID-1 receipt, timeliness, ACK or dispatch outcome is fabricated. Action selection still uses actual `state == 'cancel_requested'`. Queued never-started cancellation retains an empty attempt list.
+
+The synthetic completed-evidence fixture now describes proven reap in that exact allowed output; actual Core jobs/dispatches are not transitioned. New real Admission/DispatchStore allocated fail and cancel-requested positives exercise all three readers. Separate fully rehashed negatives cover erased attempts, attempt ID/generation/owner/staging changes, unknown job and nested attempt fields, stage/artifact/input/principal changes, changed context, unreaped current attempt, wrong terminal outcome, generation and deadline. Each fixture rehashes the entire expected descriptor chain, receipt-complete Core binding, accepted/step SQL row digests, and replacement certificate. Completion, source-preserving pre-Core startup and historical Core readers independently refuse each negative.
+
+Correction delta after import is only recovery validator, recovery tests and this appended response. No schema/record-key/table/version delta. The complete fresh-root-to-candidate path set remains the original ten allowed paths. No Core, initializer, resource/admission/dispatch store, host script, contracts, dependencies, packaging, ledger or reviews edit. Optional atomic bounded records, exact plan self-exclusion/history, private WAL copies, no-remint initialization, pre-body publication retirement, cross-volume authenticated hello and enrolled activation closure remain intact. Every apply remains unconditionally unavailable; no B2.2/B2.3 implementation.
+
+### Actual verification and limits
+
+All checks use existing `/tmp/pab-0c-venv/bin/python`, `PYTHONDONTWRITEBYTECODE=1`, `-p no:cacheprovider`, no installs and disposable local synthetic roots.
+
+RED before production correction: `tests/service/test_recovery.py -k rehashed_nonterminal -q`, **22 failed, 2 passed, 139 deselected in 14.27s**, exit 1, `/tmp/p1b21-r2-red.log`. All 22 failures reach the intended missing-refusal assertion; the two unchanged allocated fail/cancel witnesses pass. This includes the exact separate erased-attempt and unknown-field reproductions. Initial GREEN on the same 24 cases: **24 passed, 139 deselected in 15.07s**, exit 0, `/tmp/p1b21-r2-green.log`. Five further single-field variants per cancellation state were then added before freezing. No other development test failures occurred in this correction; prior-round failures/receipts above remain attributed and superseded as stated there.
+
+Frozen source/test commit: `0d976dac304db7eccdfb60d2078defda07026fdf`. Final focused/full receipts follow; only this report is edited during/after them.
+
+E1 local source/SQLite/filesystem/process and mocked host projections only. Installed/platform skips are not qualifications. A1 whole-Docker-inventory drift remains unexplained and unqualified, with no inferred cause or waiver. B2.2/B2.3, B3, C1/C2, parent integration, fresh independent review, final Astra and public/unattended acceptance remain pending. No physical power-loss/ENOSPC/controller/VM, real audio/engine/hardware or clean-host claim. No subagents, Docker/network/models/audio/paid/E2E runner, installs, push/PR/deploy, prune or user cleanup. Unrelated research/worktrees preserved. Ready for fresh independent review after the final checks below; no self-GO.
+
+```sh
+PYTHONDONTWRITEBYTECODE=1 /tmp/pab-0c-venv/bin/python -m pytest -p no:cacheprovider tests/service/test_recovery.py tests/service/test_dispatcher.py tests/service/test_packaged_lifecycle.py -q
+```
+
+**227 passed in 91.19s, exit 0**, `/tmp/p1b21-r2-focused-final.log`. Includes the 34 new real-allocated/rehashed reader cases and all imported preservation cases. Source/tests remained frozen. The full service/release run follows sequentially; no redundant separate affected-full run is needed.
+
+```sh
+PYTHONDONTWRITEBYTECODE=1 /tmp/pab-0c-venv/bin/python -m pytest -p no:cacheprovider tests/service tests/release -q
+```
+
+**457 passed, 18 skipped in 163.44s, exit 0**, `/tmp/p1b21-r2-full-final.log`. Sequential after the focused suite, on unchanged source/tests `0d976dac304db7eccdfb60d2078defda07026fdf`. The 18 skips remain unqualified. Final `git diff --check` passes. Exact protected-path comparison against fresh root `361deab` is empty for Core, initializer, resource/admission/dispatch stores, host script, contracts, reviews and ledger; complete changed-path set is exactly the original ten. No source/test/worker changes after the frozen commit. This report-only commit follows it. Parent owns fresh independent review and integration verification; neither these passing checks nor this response supplies self-acceptance.
