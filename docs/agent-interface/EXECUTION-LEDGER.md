@@ -476,3 +476,9 @@ Record failures and missing evidence; do not replace them with a successful late
 
 - [R1review](reviews/P1B22c-r1-sol.md) NO-GO exactc517305;502focused/654passed18skipped confirmed. F1 completedresolution suppresses laterjobs.context mismatch because latermissingreceipt reason overwritesownermismatch and resolutioncomparesjobJSON/reservation only; A2 falselyclean twice.
 - IsolatedSol-low request `pab-phase1a-p1b22c-fix-r1-20261022`: fullrecoveredrow/context strictjoins beforeknownoldreasonconsumption, no overwrittennewdefects; productionwriter positive/onefieldnegative across2startups. No integration/waiver, receiptPENDING/applyunavailable.
+
+## B2.2c corrected candidate / independent review round2
+
+- Candidate `3f41113535c3a686e7d281aafe308ef82f1fa354`, source/tests45f8cd7, app-owned `t3-0f37e098`; rootreadresponse, unintegrated. Accumulatedstrictjoinfailures/fullrecoveredSQLrow-context+reservation checks beforeoldresolutionconsumption.
+- Claims3REDfail4pass then9targetGREEN/509focused/661passed18skipped finalfrozen sequential. Context/bundles/principal negatives andunchangedpositive across2startups.
+- FreshindependentSol-low request/task suffix `pab-phase1a-p1b22c-review-r2-20261022`, report `reviews/P1B22c-r2-sol.md`; fulloriginalbrief/priorfinding/response supplied. No integration/waiver; receiptPENDING/applyunavailable activationclosed.
