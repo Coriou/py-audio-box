@@ -453,3 +453,9 @@ Record failures and missing evidence; do not replace them with a successful late
 - [R2review](reviews/P1B22a-r2-sol.md) boundedsource/E1GO exact2f7d070 F1/F2closed;278focused/548passed18skipped independentlyconfirmed includingfreshinterpreterdeathresume and middlepredecessorevidence probes.
 - Rootintegratedfivecommits oldestfirst45117a8/9dda7f9/509dfe5/8bbf5c9/ab0c7da; exactsource diffvsreviewedcandidateempty. Root24correctiontests passed11.31s240deselected exit0.
 - NextSol-low isolatedrequest `pab-phase1a-p1b22b-implementation-r1-20261022` B2.2b ONLYdurablejournalrotation/stepresume afterreviewedprefix, safePENDING beforeCore/resource/jobtransition. SameoriginalB2.2architecture/allowlist; independentreviewrequired. Applyunavailable/activationclosed A1inventory/C1C2/finalAstra limitationsretained.
+
+## B2.2b candidate / independent review
+
+- Candidate `5290e50f30b76be1275e84c51e6a64ad56c040b3`, source8864b6fa, app-owned `t3-7d5b1e82`; fourauthorizedpaths. Rootreadhandoff; unintegrated. Claims325focused/595passed18skipped frozenfinalsequential.
+- Privatepending-through-journal fixedlane/rotationintent/durableJournalpath/verifiedstep, no Core/resource/job/resolutioncompletion. Applyunavailable/activationclosed E1only.
+- FreshindependentSol-low request/task suffix `pab-phase1a-p1b22b-review-r1-20261022`, report `reviews/P1B22b-r1-sol.md`; originalbrief/precedentfindings/candidate/limits supplied. No integration/waiver; latertranches/qualificationpending.
