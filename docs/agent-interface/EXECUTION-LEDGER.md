@@ -249,5 +249,5 @@ Record failures and missing evidence; do not replace them with a successful late
 ## W2d accepted integration / complete W2 evidence gate
 
 - [IndependentW2d report](reviews/W2d-r1-sol.md): GO exact`d1fe65f`,122tests+32installedsteps independentlypassed; completeW2 integrationmatrix notyetclosed. W2c15scenarios remain explicitlyattributed unchangedworker evidence.
-- Integrated`601c558`; exactsource diff vs reviewedcandidate empty. Root exactsourceimage122test regression running. No publicactivation/R1P1waiver.
+- Integrated`601c558`; exactsource diff vs reviewedcandidate empty. Root exactsourceimage regression **122passed in39.35s**,exit0,networknone/read-onlyroot/tmpfs/no mounts. No publicactivation/R1P1waiver.
 - NextindependentSol-low evidenceaudit `pab-phase1a-w2-integrated-gate-20261022`: fulloriginalmatrix frozenintegratedSHA, unchangedsource/imageattribution and anyneeded targetedinstalledrows; noimplementation expansion. Report will determine boundedfullW2synthetic engineeringGO or specific gaps.
