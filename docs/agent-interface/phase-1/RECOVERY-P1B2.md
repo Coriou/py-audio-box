@@ -461,3 +461,47 @@ PYTHONDONTWRITEBYTECODE=1 /tmp/pab-0c-venv/bin/python -m pytest -p no:cacheprovi
 **654 passed, 18 skipped in 267.54s, exit 0**, `/tmp/b22c-full-final3.log`. All 18 skips remain unqualified. No source/tests changed during or between the final focused/full runs. Earlier interrupted/failed runs and their concrete corrections remain recorded above; they are not counted as passing receipts. No further broad repeat is needed.
 
 Final `git diff --check` passes. The complete actual-baseline-to-candidate path set is exactly eight allowed files: `service/recovery.py`, `service/persistence.py`, `service/resource_store.py`, `service/dispatch_store.py`, `service/dispatcher.py`, `service/reconciliation.py`, `tests/service/test_recovery.py`, and this handoff. Protected paths and unrelated research/worktrees are preserved. Local sequence: implementation `1d32289` → uncertified-window correction `766dc11` → fixture source-handle closure `d1c732d` → final report-only commit. Exact final candidate SHA accompanies the handoff, avoiding a self-referential commit hash in this file. Ready for fresh independent Sol-low review and parent integration verification; **no self-GO**. Receipt completion remains the next tranche; trusted B2.3 transport, B3, C1/C2, final Astra and public/unattended acceptance remain pending.
+
+## B2.2c round-1 F1 correction — awaiting fresh independent review
+
+2026-10-16, gpt-6.1-sol / low implementation. Worktree `/Users/ben/.txcode/worktrees/py-audio-box/t3-0f37e098`, branch `t3/b22c-recovery-context-fix`, clean root baseline `ac92b4175df53c03ea97672a894af17733dd4ac4`. Verified the complete `e52df2f..c5173055bce21101621f25fb4d868495a7b7e2c3` chain and imported all four commits oldest first: `1d32289e5e55fdd441b7214828a917f6f78651e1` → `766dc11d2ee736ddf70d2b755bc0c577163bf95a` → `d1c732d9ead927e7705e559a775df75ceaf7bbf9` → `c5173055bce21101621f25fb4d868495a7b7e2c3`, locally `b888bba` → `cf03131` → `c8ea7a2` → `4e53399`. Root documentation/reviews are preserved; no original/root checkout edits.
+
+Read the full P1B22c-r1-sol F1 reproducer/minimal fix/other probes, boundary architecture/records/resume/resolution amendment/B2.2, this handoff including all corrections, orchestration protocol, P1B22b-r1 and R1 fault-authority context. No applicable AGENTS.md found. Memory supplied only general exact-checkout/evidence-tier guidance, not acceptance evidence.
+
+F1 response: reconciliation accumulates independent dispatch join failures rather than overwriting them. A completed resolution consumes only the three permitted old unbound/missing receipt/outcome reasons, and only when no strict current defect exists. It compares the entire current recovered SQL job row (all columns, including complete context), and the complete reservation, to the accepted canonical Core output. Original Authority/binding/current attempt/generation/deadline/context/configuration/receipt/publication checks remain. Every detected reason stays in the summary; the stable inventory diagnostic prefers a strict defect. No text-field blacklist, completed-replay mutation, or additional current-state restriction in immutable replay was added. Pending resolutions have no effect. Raw history, typed references, availability and unknown-schema/origin refusals remain.
+
+Actual correction delta after import is only `service/reconciliation.py`, `tests/service/test_recovery.py`, and this appended response. Frozen source/test commit: `45f8cd7778b5d423c7536eb059e5d70dbed45e71`. Public 1.3.0, Core user_version 1, R1 protocol 2, private P1 revision 1 and exact B2 schemas/record keys are unchanged. No Core/initializer/supervisor/host/contracts/dependencies/packaging/ledger/reviews edits. Both locks/death provenance, owned bundles/prior archives, atomic SQL/certificate ordering, monotonic charges/high-water, distinct recovery epoch and ordinary R1/A2 checking refusal remain as imported. Budget changes remain unsupported. All apply entrypoints remain unavailable and enrolled activation closed; receipt fence remains PENDING.
+
+Regression uses real Admission/DispatchStore allocation and the production `_pending_through_core` writer, then independently varies one current field and opens two fresh Core sessions. Exact F1 changes only `context.plan.request.text`; related cases change context bundles, SQL principal, input hash, attempt owner or generation. The unchanged control must be clean twice; every mutation must block twice while original ACK/receipt/outcome remain unchanged. Existing old-diagnostic/no-scan/pending tests are retained.
+
+Commands use the existing interpreter, bytecode/cache disabled, no installs:
+
+```sh
+PYTHONDONTWRITEBYTECODE=1 /tmp/pab-0c-venv/bin/python -m pytest -p no:cacheprovider tests/service/test_recovery.py -k current_joins_two_startups -q
+```
+
+RED on imported candidate: **3 failed, 4 passed, 370 deselected in 11.37s**, exit 1, `/tmp/b22c-f1-red.log`. Exact text-only F1, bundle and SQL principal changes were falsely clean on both startups. Input/owner/generation already blocked. One edit command failed with `zsh: command not found: python` before changing source; its following nine-case run therefore remained RED (**3 failed, 6 passed, 368 deselected in 13.03s**). Reissued the edit with the specified interpreter; no validator relaxation.
+
+```sh
+PYTHONDONTWRITEBYTECODE=1 /tmp/pab-0c-venv/bin/python -m pytest -p no:cacheprovider tests/service/test_recovery.py -k 'current_joins_two_startups or dispatch_diagnostic_history or completed_no_scan' -q
+```
+
+GREEN: **9 passed, 368 deselected in 12.91s**, exit 0, `/tmp/b22c-f1-green.log`. Final frozen focused/full receipts follow; no source/tests change during them.
+
+E1 local SQLite/filesystem/process and mocked host documents only; E1-mock does not authenticate actual host authority. Skips remain unqualified. A1 Docker-inventory drift remains unexplained/unqualified, with no inferred cause or waiver. Receipt completion, B2.3 trusted host transport, B3, C1/C2, parent integration, fresh independent review, final Astra and public/unattended acceptance remain pending. No physical power-loss/ENOSPC/daemon/VM/controller, installed lifecycle, engine/audio/hardware or clean-host qualification. No subagents, Docker/network/model/audio/paid/E2E runner, push/PR/deploy, prune or user cleanup; unrelated research/worktrees preserved. No self-GO.
+
+Frozen focused verification on unchanged `45f8cd7778b5d423c7536eb059e5d70dbed45e71`:
+
+```sh
+PYTHONDONTWRITEBYTECODE=1 /tmp/pab-0c-venv/bin/python -m pytest -p no:cacheprovider tests/service/test_recovery.py tests/service/test_admission.py tests/service/test_dispatcher.py tests/service/test_packaged_lifecycle.py -q
+```
+
+**509 passed in 235.40s**, exit 0, `/tmp/b22c-f1-focused-final.log`. Full service/release follows sequentially on unchanged source/tests; only this report is edited.
+
+Frozen full preservation verification, sequential after focused on the same unchanged source/tests:
+
+```sh
+PYTHONDONTWRITEBYTECODE=1 /tmp/pab-0c-venv/bin/python -m pytest -p no:cacheprovider tests/service tests/release -q
+```
+
+**661 passed, 18 skipped in 272.07s**, exit 0, `/tmp/b22c-f1-full-final.log`. All skips remain unqualified. No source/test changes during/between final runs and no redundant broad campaign. `git diff --check` passes. Protected comparison against actual root baseline `ac92b41` is empty for Core/initializer/worker/contracts/reviews/ledger. Complete imported-plus-correction path set remains the original eight authorized paths. Correction-only delta from `4e53399` is exactly reconciliation, recovery tests and this handoff. Final report-only commit follows frozen `45f8cd7`; its exact SHA accompanies handoff. Fresh independent review of that exact final candidate and parent integration verification are required; no self-GO.
