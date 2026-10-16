@@ -737,3 +737,85 @@ PYTHONDONTWRITEBYTECODE=1 /tmp/pab-0c-venv/bin/python -m pytest -p no:cacheprovi
 **785 passed, 18 skipped in 459.32 seconds, exit 0**, `/tmp/b22d-r2-full-final.log`. Sequential after the 633-pass focused run on unchanged frozen `8dbfdca1da5b79ce1714984594a06e86bce3ead4`. All 18 skips remain unqualified. No source/tests changed during or between the frozen checks, and no redundant broad campaign was run.
 
 Final `git diff --check` passes. Actual fresh-root baseline is `3692f17428b5ad58d0fdaddb0eba9e541a4347e2`. `git range-diff 2bced6e..6d84699 3692f17..899c25c` reports all four imported patches equal. Complete baseline-to-candidate and correction-only path sets are exactly recovery.py, recovery tests and this handoff. Protected-path comparison excluding these three paths is empty; root reviews/ledger and all other source/worker/contracts/dependencies/packaging remain preserved. Frozen-to-final delta is report-only. Final report-only commit follows the frozen implementation; its exact candidate SHA accompanies the handoff. Fresh independent review of that exact candidate and parent integration verification are required. No self-GO or B2.3/B3/C1/C2/final Astra/public/unattended acceptance is asserted.
+
+## B2.2d round-3 F2 receipt-only successor correction — awaiting independent review
+
+2026-10-17, gpt-6.1-sol / low implementation. Only `/Users/ben/.txcode/worktrees/py-audio-box/t3-108eec6e`, branch `t3/receipt-only-successor`, changed. Actual clean root baseline `657ff8f` lacked the implementation. Inspected `3692f17..3eddd2662ebbbb08a728fce6e23d22e3784e18af`; imported ALL six commits oldest first: `da0561a`, `0954f61`, `b2270f8`, `899c25c`, `8dbfdca`, `3eddd26`, locally `544c19a`, `3d9481a`, `7d0df05`, `53e6f2e`, `0f9f674`, `dacf8fd`. Range-diff reports all six patches equal. Root docs/reviews are preserved; no other checkout was edited.
+
+Read the FULL R3 exact reproducer/minimal fix/closures, R1/R2 reviews, FULL boundary architecture/records/resume/B2.2 and FULL recovery handoff including original contracts, tranches and corrections, orchestration protocol and retained R1 fault-authority/B1 WAL/no-remint context. No applicable AGENTS.md found. The lightweight memory registry search returned no relevant guidance; no historical acceptance is current evidence.
+
+Correction-only and complete fresh-root delta remain exactly recovery.py, recovery tests and this appended response. No persistence/Journal change was needed. No Core/initializer/Dispatcher/supervisor/host/reconciliation/resources/contracts/dependencies/packaging/ledger/review edit. No versions, schemas, record keys, lanes/epochs/jobs/resources/events/resolutions/ACK or public interfaces change. All apply remains unconditionally unavailable; enrolled activation remains closed without flags/autolaunch.
+
+### F2 response and entire pre-Core finite sequence
+
+Before SQL-derived receipt namespace validation, immutable replay now discovers at most ONE new receipt-only accepted document. Discovery has the existing finite file/byte/deadline bounds and protected no-follow/owner/regular/single-link reads; matching a filename selects a candidate, never exempts it. Multiple candidates explicitly refuse. The full closed canonical accepted record must bind the EXISTING SQL plan, exact latest fifth-completed predecessor certificate, all-owner accepted proof/scope, installation/volume/key identities, complete canonical SQL before-image and schema. Only its own plan row is self-excluded; all prior plans/registrations/steps/resolutions remain compared. Embedded histories consume the existing population bound. No current media/inventory/resource scan or fresh proof is used.
+
+The stage-owned marker, accepted document, fence, journal, bundle descriptor and bundle require exact 0600 protected evidence. Only the accepted filename and actually reached exact bundle descriptor/output names can be added to the namespace allowlist. The old completed fence is legitimate immediately after full accepted-document persistence; the exact pending successor fence is legitimate after replacement. Bundle creation requires that pending fence. Its descriptor precedes its output, binds the complete accepted record/source/expected snapshot, and requires exact actual bundle bytes. The existing grounded archive oracle checks a private copy against all canonical source rows and the actual plan. No future SQL accepted row, snapshot/manifest archive or certificate is required; premature control archives or receipt outputs refuse. No repair/remint/finish-B operation occurs.
+
+| Actual pre-Core boundary | A replay result / retained obligation |
+| --- | --- |
+| Required marker, before accepted-file attempt | A remains immutable; successor acceptance has not occurred. A completion already owns the exact marker, so B does not recreate it. |
+| Accepted create, before complete write | Empty/partial accepted document quarantines. |
+| Accepted complete write / file fsync / parent fsync | Validate full accepted record; previous complete fence and original journal remain exact; no bundle is demanded. |
+| Pending-fence temporary create / complete write / fsync / parent | Quarantine the retained replacement temporary, including complete bytes, consistently with existing B resume; no automatic replacement/cleanup. |
+| Pending-fence replace + parent barrier | Exact successor pending fence, accepted record and original journal; future bundle not demanded. |
+| Bundle-descriptor create / write / fsync / parent / recorded | Incomplete descriptor or recorded missing output quarantines; descriptor alone is not success. |
+| Bundle create, before complete output | Empty/partial attempted bundle quarantines. |
+| Bundle complete write / fsync / parent | Exact descriptor + grounded complete bundle + pending fence accepted; no future Core SQL row or archive demanded. |
+| Core accepted SQL and later stages | Existing retained SQL/creation prerequisite validator remains in force, including legitimate own-output/pre-own-receipt windows and committed-Core/no-certificate-attempt. |
+
+After validation, a genuinely fifth-completed A validates its original immutable Core/receipt/bundle/rotation/final descriptors and returns its existing result directly. It does not re-enter the finalization writer or infer the live fence from the latest SQL history when a validated receipt-only successor owns it. The requested A's Core-certificate creation descriptor remains explicitly required. Unfinished A still uses the existing whole-registration/original-death-proof check BEFORE remaining writes (F1 preserved). Existing cross-stage SQL/creation prerequisites, missing predecessor refusals and attempted-missing/partial/wrong output quarantine remain (F3 preserved).
+
+Core certificate → exact four-step receipt certificate → bound journal → complete fence → fifth SQL receipt remains unchanged. Both locks span each invocation. All prior grounded archives/staging/rotation/closed history, strict canonical job/context/B2.2c joins and R1/B1 WAL/inherited-uncertainty/no-remint semantics remain.
+
+### Actual RED/GREEN and process evidence
+
+Every pytest command uses the existing interpreter, no installs:
+
+```sh
+PYTHONDONTWRITEBYTECODE=1 /tmp/pab-0c-venv/bin/python -m pytest -p no:cacheprovider tests/service/test_recovery.py -k b22d_r3 -q
+```
+
+Before production correction, exact R3 correctness regressions at accepted-parent, fence-replace-parent and bundle-parent were **3 failed, 501 deselected in 9.59s**, exit 1, `/tmp/b22d-r3-red.log`. Each asserted its production hook fired; each failed with the reported namespace refusal. Same three GREEN: **3 passed, 501 deselected in 11.78s**, exit 0, `/tmp/b22d-r3-green.log`.
+
+Expanded entire pre-Core boundary matrix, same command on evolving tests: **18 passed, 501 deselected in 38.22s**, exit 0, `/tmp/b22d-r3-matrix.log`. Every case replays A twice with snapshot/Reconciliation collection/resource scan/file and SQL writers forbidden, checking complete logical SQL and every retained file byte. All seven complete-output windows restore hooks and resume B after TTL with its same identity and no supplied snapshot bytes, then replay A successfully. Recorded incomplete outputs refuse twice without mutation.
+
+Tamper/process command:
+
+```sh
+PYTHONDONTWRITEBYTECODE=1 /tmp/pab-0c-venv/bin/python -m pytest -p no:cacheprovider tests/service/test_recovery.py -k 'b22d_r3_receipt_only_tamper or b22d_r3_receipt_only_crash' -q
+```
+
+**33 passed, 519 deselected in 56.40s**, exit 0, `/tmp/b22d-r3-tamper-process.log`. Separate negatives cover accepted presence/canonical/schema/mode/link/filename, plan, prior binding, scope/proof, descriptor, bundle, fence/marker/current journal, unknown extras, premature outputs/attempts, old Core descriptor, later plan and multiple candidates. No new development failure followed the intended RED. These are development receipts; the population bound and marker-before-acceptance test were finalized before the frozen campaign below.
+
+Actual child `os._exit(73)` at bundle-parent is followed by a FRESH interpreter receiving ONLY owned roots/scope/A ID. It reloads A's accepted document, replays A twice after TTL with all scans/writers forbidden and preserves logical/file state. After restoring hooks it discovers B from the owned accepted receipt, resumes B after TTL with no supplied snapshot/caller documents, and replays A. Parent discards A/B intent/observation and fixture snapshot variables; no inherited RAM authorizes the fresh interpreter. Logical capture precedes physical-byte baseline because initial opening of crash-left SQLite may recover/checkpoint WAL; no preservation claim is made across that first open.
+
+Final combined targeted and frozen focused/full receipts follow. Only this report changes during the final frozen checks. No self-GO; parent owns fresh independent review of the exact resulting candidate and integration verification.
+
+E1 local source/SQLite/filesystem/process and mocked host inputs only; E1-mock is NOT actual-host proof. Skips are not qualification. Physical power-loss/ENOSPC/daemon/VM/controller durability, installed lifecycle, engine/audio/hardware and clean-host operation remain unqualified. A1 whole-Docker-inventory drift remains unexplained/unqualified with no inferred cause or waiver. B2.3 host authentication is later work, not a prerequisite imposed here. B2.3/B3/C1/C2, parent integration, fresh independent review, final Astra and public/unattended acceptance remain pending. No subagents, Docker/network/model/audio/paid/E2E runner, installs, push/PR/deploy, prune or user cleanup; research/other worktrees preserved.
+
+Combined final targeted command, after all source/test changes:
+
+```sh
+PYTHONDONTWRITEBYTECODE=1 /tmp/pab-0c-venv/bin/python -m pytest -p no:cacheprovider tests/service/test_recovery.py -k 'b22d_r3 or b22d_r2 or b22d_correction or b22d_prior_completed' -q
+```
+
+**108 passed, 445 deselected in 191.04s**, exit 0, `/tmp/b22d-r3-targeted.log`. Includes all 52 new R3 cases, prior F1 registration controls/refusals, F2 SQL pending/journal/Core uncertified windows and F3 missing-predecessor/attempted-output quarantine. Final frozen source/tests commit: **`8d6ccd5308aa6eee5413f203ab9c3296260d3dd0`**. No source/tests change afterward; subsequent commit is report-only. Development subsets used disposable independent roots; final focused/full campaigns run sequentially on this frozen commit.
+
+Frozen focused command:
+
+```sh
+PYTHONDONTWRITEBYTECODE=1 /tmp/pab-0c-venv/bin/python -m pytest -p no:cacheprovider tests/service/test_recovery.py tests/service/test_packaged_lifecycle.py tests/service/test_admission.py tests/service/test_dispatcher.py -q
+```
+
+Frozen full preservation command, sequential afterward on unchanged source/tests:
+
+```sh
+PYTHONDONTWRITEBYTECODE=1 /tmp/pab-0c-venv/bin/python -m pytest -p no:cacheprovider tests/service tests/release -q
+```
+
+Frozen focused result: **685 passed in 506.08s (8:26)**, exit 0, `/tmp/b22d-r3-focused-final.log`, on unchanged `8d6ccd5308aa6eee5413f203ab9c3296260d3dd0`. All 52 new R3 cases and inherited receipt/process/ordering/startup/F1/F3/authority cases pass. Full service/release starts sequentially afterward on the same source/tests; only this report changes.
+
+Frozen full preservation result: **837 passed, 18 skipped in 551.14s (9:11)**, exit 0, `/tmp/b22d-r3-full-final.log`. Sequential after the 685-pass focused suite on the same unchanged `8d6ccd5308aa6eee5413f203ab9c3296260d3dd0`; all 18 skips remain unqualified. No source/test changes during or between final suites. No redundant broad campaign and no observed final-suite failure.
+
+Final `git diff --check` passes. Source/test-to-frozen comparison is empty; frozen-to-final is report-only. Complete actual-root `657ff8f` to candidate path set is exactly service/recovery.py, tests/service/test_recovery.py and this handoff. Comparison excluding those three paths is empty: root reviews/ledger and every other source/worker/contracts/dependency/packaging path are preserved. The six imported patches have equal range-diff identities. Final report-only commit follows `8d6ccd5`; its exact SHA accompanies the handoff. Fresh independent review of that exact final candidate and parent integration verification remain required. No self-GO; B2.3/B3/C1/C2/final Astra/public/unattended acceptance remain pending.
