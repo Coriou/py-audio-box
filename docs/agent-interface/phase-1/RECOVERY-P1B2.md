@@ -580,3 +580,75 @@ Focused result: **583 passed in 319.35 seconds, exit 0**, `/tmp/b22d-focused-fin
 Full preservation result: **735 passed, 18 skipped in 359.07 seconds, exit 0**, `/tmp/b22d-full-final.log`. Sequential after the 583-pass focused run, on the same unchanged source/tests `1ceec7726f799c80d586ac9ed5e5f835e8374b78`. The 18 skips remain unqualified. No source/test changes during or between frozen checks and no redundant broad campaign.
 
 Final `git diff --check` passes. Actual baseline production/worker/tests match reviewed `3f411135` exactly. Complete baseline-to-candidate changes are only recovery.py, recovery tests and this appended handoff. Protected Core/persistence/initializer/Dispatcher/supervisor/worker/resource/admission/dispatch-store/reconciliation/host/contracts/dependencies/packaging/reviews/ledger comparison is empty. The report-only commit follows frozen source/tests; its exact candidate SHA accompanies handoff. Candidate is ready for fresh independent Sol-low review, not self-approved. Parent owns integration verification and final Astra scheduling; B2.3/B3/C1/C2/public activation remain pending.
+
+## B2.2d round-1 F1/F2 corrections — awaiting fresh independent review
+
+2026-10-16, implementation gpt-6.1-sol / low. Only worktree `/Users/ben/.txcode/worktrees/py-audio-box/t3-ec6f294d`, branch `t3/b22d-recovery-fixes`, was edited. Actual clean root baseline: `2bced6e` (root's NO-GO documentation, after `ce86feb` and `50ee0b0`). Inspected `git log --reverse 50ee0b0..fccb0391db4d45d52f56dfbdc33a63a2aa6cb6a0`: exactly frozen source/tests `1ceec7726f799c80d586ac9ed5e5f835e8374b78`, then report `fccb0391db4d45d52f56dfbdc33a63a2aa6cb6a0`. Cherry-picked ALL oldest first as `1a0f2fc` then `c6ffb06`. `git range-diff 50ee0b0..fccb0391 2bced6e..c6ffb06` reports both patches equal; direct source/test and report comparisons are empty. Root documentation/reviews are preserved. No other checkout was edited.
+
+Read full P1B22d-r1-sol including exact reproducer, minimal fixes, ordering/process/startup probes and evidence limits; full P1B2-BOUNDARY-ASTRA architecture/records/resume/authority/B2.2; full preceding RECOVERY-P1B2 contracts, tranches and correction responses; orchestration protocol, P1B22c-r1/r2 and R1 fault-authority/B1 WAL/no-remint context. No applicable AGENTS.md found. Memory supplied only general exact-checkout/evidence-tier guidance; no historical acceptance is used as current evidence.
+
+Frozen correction source/tests: **`b3e4fec940b5cfb8e1afe70bee7c76fccada9f96`**. Correction delta from imported `c6ffb06` is only `service/recovery.py`, `tests/service/test_recovery.py`, and this appended response. The complete fresh-root-to-candidate path set is the same three paths. No persistence or worker reader change was necessary. No Core/initializer/Dispatcher/supervisor/host/reconciliation/resources/contracts/dependencies/packaging/ledger/reviews edits. Versions, schemas, exact closed record keys, journal lanes/epochs/events/jobs/resources/ACK behavior and public/private apply interfaces remain unchanged. Every apply entrypoint remains unavailable; enrolled activation remains closed, without flags or autolaunch.
+
+### F1 response
+
+The certified Core branch now distinguishes the actual fifth SQL receipt from an unfinished receipt continuation. Before remaining receipt writes or fifth insertion, an unfinished `_complete_receipts` compares the entire current bounded retained registration table, in canonical row order, to the immutable accepted before-image. The existing full database validator bounds the population before this read. New/changed registration identities, boot/lane or container/start incarnations refuse with `b2_prefix_registrations_changed`; validated unchanged registrations must also satisfy the original accepted observation's complete consumer/death coverage. No new proof, observation, recovery identity or ordinary scan is substituted. Both locks remain held; free locks are not death evidence.
+
+Regression stops the real production writer at `completion-fence-dirsync`, before the fifth row. A real Journal and production supervisor `operation('hello', {})` expose the completed fence/new lane; production `register` retains a new lane/boot, first with the same container set, then separately with a different worker container/full ID and started incarnation. Both subsequent stale-proof resumes refuse; fifth count remains zero, SQL logical state and every retained file byte (including SQLite) remain unchanged. Forbidden production file/SQL writer hooks additionally detect any attempted mutation before refusal. The unchanged stopped-owner control completes and replays successfully. These documents retain E1-mock provenance and are not actual-host proof. Existing fresh-registration/inspect-only Dispatcher and later ordinary-activity completed no-op tests remain intact: a genuine fifth-completed replay does not impose current registration eligibility.
+
+### F2 response
+
+Completed replay retains the old completed predecessor certificate/journal obligations and full production evidence checks for every fifth-completed history. A later unfinished history is validated according to its actual durable steps and recorded attempts, instead of requiring its future receipt certificate. The existing immutable owned-input validator now has an internal stage-aware mode: accepted document/installation/keys/bundle are retained; evidence requires its exact snapshot/manifest/original-journal creation records and outputs; journal requires the exact rotation descriptor; certified Core completion requires the exact Core certificate descriptor and certificate. Existing control archive validation still grounds all canonical source/history and snapshot rows. No table/history exclusion or special recovery-ID rule is added.
+
+For the latest pending successor, verify its declared current journal and pending fence; exact attempted rotation or final receipt replacements are validated against their deterministic outputs without repeating a write. A recorded final creation attempt still requires its exact output, correct order and durable Core stage. Missing/changed evidence cannot be acknowledged away. No descriptor, certificate, lane or epoch is reminted. Completed predecessors and their production bundle/rotation/final creation evidence retain their existing checks.
+
+A-completed/B-pending regression executes the production B writer separately through evidence, journal and certified Core-complete stages. A returns its original complete result twice at each stage with snapshot/inventory/resource scans and file/SQL writers forbidden; all SQL and file bytes stay unchanged. Independent damage to B's bundle, original journal archive, stage creation descriptor, current journal or fence must refuse twice without mutations. Two further positives cover B's exact post-journal-replace/pre-step and complete-fence/pre-fifth outputs. These are retained-stage validation, not permission to finish B or to perform ordinary resource scans.
+
+### Reproduction and verification
+
+All pytest commands use existing `/tmp/pab-0c-venv/bin/python`, `PYTHONDONTWRITEBYTECODE=1`, and `-p no:cacheprovider`; no installs. Only disposable synthetic roots are used.
+
+First extracted the exact report's embedded Python reproducer to `/tmp/b22d-exact-reproducer.py` and executed it unchanged against the imported candidate:
+
+```sh
+PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=. /tmp/pab-0c-venv/bin/python /tmp/b22d-exact-reproducer.py
+```
+
+Exit 0, printing `restarted-before-fifth reproduced twice` and `later-pending reproduced twice`. This diagnostic asserts the incorrect behavior, not the desired correction.
+
+Required-correctness RED, before production edits:
+
+```sh
+PYTHONDONTWRITEBYTECODE=1 /tmp/pab-0c-venv/bin/python -m pytest -p no:cacheprovider tests/service/test_recovery.py -k b22d_correction -q
+```
+
+**5 failed, 10 passed, 451 deselected in 28.73s**, exit 1, `/tmp/b22d-correction-red.log`. Both new registration variants reached the forbidden fifth-step SQL writer (AssertionError), proving continuation attempted a mutation before current-registration refusal. All three unmodified pending successor stages raised FileNotFoundError for B's future receipt certificate. The unchanged stopped control and existing-refusal damage cases passed; those damage passes alone do not establish stage-aware validation.
+
+Initial GREEN, same 15 cases/command: **15 passed, 451 deselected in 28.72s**, exit 0, `/tmp/b22d-correction-green.log`. Expanded byte-preservation/current-journal/fence and retained predecessor/startup check:
+
+```sh
+PYTHONDONTWRITEBYTECODE=1 /tmp/pab-0c-venv/bin/python -m pytest -p no:cacheprovider tests/service/test_recovery.py -k 'b22d_correction or b22d_prior_completed or b22d_real_journal' -q
+```
+
+**28 passed, 444 deselected in 53.43s**, exit 0, `/tmp/b22d-correction-green2.log`. Final exact attempted-output positives, `tests/service/test_recovery.py -k pending_exact_attempt -q`: **2 passed, 472 deselected in 5.06s**, exit 0, `/tmp/b22d-correction-attempts.log`. No development failures after the intended RED. The frozen source adds 23 regression cases; final focused/full results follow below. Only this response changes during those sequential checks.
+
+Core certificate -> four-step receipt certificate -> bound journal -> durable complete fence -> fifth SQL receipt ordering remains unchanged. No cross-volume atomicity is claimed. Existing real-process-death/owned-state resume, both locks, exact canonical grounded histories/all prior archives, fixed names/0600/no-follow/single-link/bounds/file-and-parent barriers/no-remint quarantine, R1/B1 WAL/no-remint and B2.2c strict resolution/context checking are preserved by unchanged writers and the full preservation suite.
+
+E1 local source/SQLite/filesystem/process and mocked host documents only; E1-mock is not actual-host authentication. All installed/platform skips remain unqualified. A1 whole-Docker-inventory drift remains unexplained and unqualified, with no inferred cause or waiver. No physical power-loss/ENOSPC/daemon/VM/controller, installed lifecycle, engine/audio/hardware or clean-host qualification. B2.3 trusted host transport, B3, C1/C2, parent integration verification, fresh independent Sol-low review, final Astra and public/unattended acceptance remain pending. No subagents, Docker/network/model/audio/paid/E2E runner, push/PR/deploy, prune or user cleanup; research and other worktrees preserved. Ready for fresh independent review after final receipts, **no self-GO**.
+
+Frozen focused command on unchanged `b3e4fec940b5cfb8e1afe70bee7c76fccada9f96`:
+
+```sh
+PYTHONDONTWRITEBYTECODE=1 /tmp/pab-0c-venv/bin/python -m pytest -p no:cacheprovider tests/service/test_recovery.py tests/service/test_packaged_lifecycle.py tests/service/test_admission.py tests/service/test_dispatcher.py -q
+```
+
+**606 passed in 359.07 seconds, exit 0**, `/tmp/b22d-correction-focused-final.log`. Includes all 23 correction cases and the inherited receipt ordering/fault/process-death/startup/authority cases. Full service/release follows sequentially on the same unchanged source/tests; only this handoff changes.
+
+Frozen full preservation command, sequential after focused on unchanged `b3e4fec940b5cfb8e1afe70bee7c76fccada9f96`:
+
+```sh
+PYTHONDONTWRITEBYTECODE=1 /tmp/pab-0c-venv/bin/python -m pytest -p no:cacheprovider tests/service tests/release -q
+```
+
+**758 passed, 18 skipped in 398.44 seconds, exit 0**, `/tmp/b22d-correction-full-final.log`. All 18 skips remain unqualified. This single full campaign followed the 606-pass focused suite sequentially on the same frozen source/tests. No source/test changes occurred during or between final checks; no redundant broad repeat was run.
+
+Final `git diff --check` passes. Actual root baseline is `2bced6ec2cec67e9953f07cba1bea989af06f6b3`. Complete root-to-candidate changed paths and correction-only paths are exactly recovery.py, recovery tests and this appended handoff. Protected root reviews/ledger, Core/initializer/persistence/Dispatcher/supervisor/worker/host/reconciliation/resource/admission/dispatch stores/contracts/dependencies/packaging remain unchanged. Imported chain patch equivalence was verified by range-diff and direct comparisons. No source/test delta exists after frozen `b3e4fec940b5cfb8e1afe70bee7c76fccada9f96`; the final report-only commit follows it, and its exact candidate SHA accompanies the handoff. Ready for fresh independent review and parent integration verification; **no self-GO**, no B2.3/B3/C1/C2/final Astra or public/unattended acceptance.
