@@ -529,3 +529,8 @@ Record failures and missing evidence; do not replace them with a successful late
 
 - R4review reviews/P1B22d-r4-sol.md NO-GO exacte3d58452. F1/F2/F3closed; newF4 completedreplay omitsothercompletedhistories core-certificate creationdescriptor missing/wrong/mode.685focused837passed18skipped confirmed.
 - NextisolatedSol-low request pab-phase1a-p1b22d-fix-r4-20261022 common immutable evidencevalidator exactCoredescriptor forEVERYfifthcompletedhistory; predecessor/successor damage regressions preservependingnoattempt exception. Applyunavailable no integration/waiver.
+
+## B2.2d all-history descriptor candidate / review round5
+
+- Candidate5bfaaa6587b5540dd7f5ac031d5209902af97b93 frozen0d1a894 app-ownedt3-dec21b4c; rootreadhandoff unintegrated. F4commonvalidator exactCorecreationdescriptor+actualcertificate EVERYfifthcompletedhistory, previousnoattemptstageexceptionspreserved.
+- Claims6REDfail2controls then116target/693focused/845passed18skipped finalfrozen. FreshSol-low request pab-phase1a-p1b22d-review-r5-20261022 report reviews/P1B22d-r5-sol.md fulloriginalbrief/priorfindings/responses supplied. Applyunavailable activationclosed no integration/waiver.
