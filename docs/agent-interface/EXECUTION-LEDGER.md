@@ -169,3 +169,8 @@ Record failures and missing evidence; do not replace them with a successful late
 - Candidate `873dae231a5eacf663a2d36c0fe23de62a2db720`, branch `fix/1a-foundation-f1-f2`, actual worktree `/tmp/pab-1a-f1-f2`. Implementer unnecessarily created manual secondary worktree from assigned T3 checkout; root records deviation and will keep future implementations in app-owned checkout. No data discarded.
 - Reported34focused/38host/38container tests; exactsource-overlay image53filesmatch. Fresh offline release rebuild failed uncachedpip lookup; overlay verifies code with existing dependencies, not freshreleasebuild. Root read complete response; no integration.
 - Independent functional Sol-low request `pab-phase1a-foundation-review-r2-20261016`, report `reviews/1A-foundation-r2-sol.md`; same bounded scope and remaining full1A/adversarial requirements retained.
+
+## Foundation functional GO / targeted integration advice
+
+- [R2 functional report](reviews/1A-foundation-r2-sol.md): boundedGO on `873dae2`,F1/F2closed,34host/38container tests confirmed with53sourcefilesmatch. Explicitly not full adversarial/durability qualification; no finding waiver.
+- Candidate remains unintegrated pending targeted Astra integration advice, request `pab-phase1a-foundation-astra-gate-20261016`, report `reviews/1A-foundation-astra-gate.md`. Read-only architecture/reliability analysis and small continuation-lot ordering; no prohibited probing or source repair. FinalglobalAstra remains separate.
