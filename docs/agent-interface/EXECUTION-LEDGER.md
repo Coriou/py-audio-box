@@ -447,3 +447,9 @@ Record failures and missing evidence; do not replace them with a successful late
 - Candidate `2f7d0705686c3124321b73dffca3599af2a153b1`, source/tests9d273aa, productionba120cb, app-owned `t3-c72faa32`; root readresponse, unintegrated. Durableexactstaging beforeCoreacceptance; allcompletedpredecessorreceiptevidence revalidatedeveryinvocation.
 - Claims6REDfail2pass then278focused/548passed18skipped finalfrozen sequential; actualchilddeath/RAMdiscard/ownedstateresume and multihistorynegatives. E1only applyunavailable.
 - FreshindependentSol-low request/task suffix `pab-phase1a-p1b22a-review-r2-20261022`, report `reviews/P1B22a-r2-sol.md`; fulloriginalbrief/priorfindings/responses supplied. No waiver/integration/activation.
+
+## B2.2a bounded GO / integration / journal tranche
+
+- [R2review](reviews/P1B22a-r2-sol.md) boundedsource/E1GO exact2f7d070 F1/F2closed;278focused/548passed18skipped independentlyconfirmed includingfreshinterpreterdeathresume and middlepredecessorevidence probes.
+- Rootintegratedfivecommits oldestfirst45117a8/9dda7f9/509dfe5/8bbf5c9/ab0c7da; exactsource diffvsreviewedcandidateempty. Root24correctiontests passed11.31s240deselected exit0.
+- NextSol-low isolatedrequest `pab-phase1a-p1b22b-implementation-r1-20261022` B2.2b ONLYdurablejournalrotation/stepresume afterreviewedprefix, safePENDING beforeCore/resource/jobtransition. SameoriginalB2.2architecture/allowlist; independentreviewrequired. Applyunavailable/activationclosed A1inventory/C1C2/finalAstra limitationsretained.
