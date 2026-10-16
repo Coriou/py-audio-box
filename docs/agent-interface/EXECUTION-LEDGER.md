@@ -390,3 +390,9 @@ Record failures and missing evidence; do not replace them with a successful late
 - [Astra decision](reviews/P1B2-BOUNDARY-ASTRA.md): source-only design, three sequential independently reviewed sublots B2.1 records/fences/plans, B2.2 unreachable transition kernel, B2.3 trustedhostproof/applywiring. No Core expansion: existing initializer and both storage_session publication decorators suffice.
 - Orchestrator APPROVES exact additional reconciliation resolution-consumption amendment for B2.2: completed dispatch/publication/diagnostic resolutions in joins/startup classification, exacttuple/reason/contentdigest only; pending has no effect, references/history/availability/ordinaryepochs preserved. B2.1 remains schema/namespace/typedrefs only.
 - Full decision committed as implementation authority. Next isolated Sol-low request `pab-phase1a-p1b21-implementation-r1-20261022` implements ONLY B2.1 exactallowlist/exits. All apply stays unavailable. No B2/P1acceptance; A1inventory/C1C2limitations retained.
+
+## B2.1 candidate / independent review
+
+- Candidate `ccf3c07c93f504056a538d2f318bdbaa35bb4dd3`, baseline8ede631, app-owned `t3-15922103`, branch `t3/closed-records-publication-fences`; ten authorized paths. Root read fullhandoff/diff summary; unintegrated.
+- Claims344affectedpass and379passed18skipped fullfinalsuite; optionalclosedschema/selfbindingplans/startup-publicationfences/completionhandshake. Apply remainsunavailable/activationclosed; E1only.
+- Fresh independentSol-low request/task suffix `pab-phase1a-p1b21-review-r1-20261022`, report `reviews/P1B21-r1-sol.md`; fullAstraoriginalbrief/candidate/limits supplied. No waiver or B2acceptance; subsequentlots/C1C2 and A1inventoryqualification pending.
