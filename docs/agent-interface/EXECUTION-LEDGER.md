@@ -367,3 +367,9 @@ Record failures and missing evidence; do not replace them with a successful late
 - Candidate `70251613902948c474d8030ab8f566815dc9e860`, source `34e68d5` plus report, precursor `b172e06`; app-owned `t3-94e6816a`, branch `t3/b1-enrollment-corrections`. Root read response/diff summary; unintegrated.
 - Claims10RED then59focusedGREEN and338passed18skipped final service/release. F1pre-Coreintent, F2self-onlyplanexclusion/priorhistorybinding, F3bounded source-preserving WAL-aware privatecopy; E1only.
 - Fresh Sol-low request/task suffix `pab-phase1a-p1b1-review-r2-20261022`, report `reviews/P1B1-r2-sol.md`; originalbrief/fullpriorfindings+response supplied. No waiver/integration/activation; B2/B3/C1/C2 remainpending and A1globalinventorylimit retained.
+
+## B1 bounded GO / integration / B2 launch
+
+- [Independent R2](reviews/P1B1-r2-sol.md): bounded source/E1 GO exact `70251613902948c474d8030ab8f566815dc9e860`; F1/F2/F3 closed, no new blocker. Independently338passed18skipped and59focused; installed qualification pending.
+- Root integrated three commits oldestfirst `dfce8d6`, `ff86a54`, `79b8c48`; source diff versus reviewed candidate empty. Root59B1tests passed3.70s exit0, existingvenv/E1only.
+- Next isolated Sol-low request `pab-phase1a-p1b2-implementation-r1-20261022`: proof-bound offline synthetic abandonment/reset only per Astra B2, independent review required. No public/unattendedactivation, cleanup, or installedqualification; A1globalinventorylimitation retained.
