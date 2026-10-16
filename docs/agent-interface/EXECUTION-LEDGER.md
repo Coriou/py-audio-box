@@ -504,3 +504,8 @@ Record failures and missing evidence; do not replace them with a successful late
 - Candidate6d84699a9fa79ba1ef601e75bf1c06e0695bc7e9 frozenb3e4fec app-ownedt3-ec6f294d; rootreadresponse, unintegrated. F1currentregistrationcoverage beforeunfinishedwrites; F2actualstage-aware retainedhistory replay.
 - Claims5REDfail10pass then606focused/758passed18skipped finalfrozen sequential23newcases. Applyunavailable/activationclosed E1only.
 - FreshSol-low request/task suffix pab-phase1a-p1b22d-review-r2-20261022 report reviews/P1B22d-r2-sol.md fulloriginalbrief/priorfindings/responses supplied. No waiver/integration/installedacceptance.
+
+## B2.2d round2 NO-GO / retained stage prerequisites
+
+- R2review reviews/P1B22d-r2-sol.md NO-GO exact6d84699; F1closed; F2open legitimateCorecommitted-uncertifiedsuccessor falselyblockscompletedA; F3rotationattempt acceptsdeletedpredecessorevidencestep.606focused758passed18skipped confirmed.
+- NextisolatedSol-low request pab-phase1a-p1b22d-fix-r2-20261022 exactdurablestage validation/prerequisites and noattempt uncertifiedwindow, no futureoutputdemand/nohistoryomission. Applyunavailable no integration/waiver.
