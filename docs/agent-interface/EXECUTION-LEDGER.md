@@ -237,5 +237,5 @@ Record failures and missing evidence; do not replace them with a successful late
 ## W2c accepted integration / W2d launch
 
 - [IndependentW2c report](reviews/W2c-r1-sol.md): GO exact`b166665`,100tests+15packaged scenarios independentlypassed, source/image/topology/cleanup verified. FullW2 waitsW2d; R1/P1activationseparate.
-- Integrated`1074a47`; exactsource diff vs reviewedcandidate empty. Root initial test invocation mistakenly appended python to image CLI entrypoint (exit2, no tests); corrected explicit `--entrypoint python` regression running. No semantic sourcechange.
+- Integrated`1074a47`; exactsource diff vs reviewedcandidate empty. Root initial test invocation mistakenly appended python to image CLI entrypoint (exit2, no tests); corrected explicit `--entrypoint python` regression **100passed in25.43s**,exit0, exactsourceimage/networknone/read-only/tmpfs/no mounts. No semantic sourcechange.
 - NextSol-low request`pab-phase1a-w2d-implementation-r1-20261022`: serializedallocator/dispatcher and realruntime receipts, replaceoldlocal executor, no dualauthority. Independentreviewrequired.
