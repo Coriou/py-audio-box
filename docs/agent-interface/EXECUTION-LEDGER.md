@@ -300,3 +300,9 @@ Record failures and missing evidence; do not replace them with a successful late
 - [AstraP1decision](reviews/P1-IMPLEMENTATION-ASTRA.md): designGO only, sevenorderedSMALLlots A1publication,A2inventory,B1enrollmentplanning,B2proofboundrecovery,B3boundedcleanup,C1persistentpackaging,C2installedgate. Exactallowlists/matrix; noactivation/cleanupauthorityfromdesign.
 - R1 integrated`16950490919b18253f5d12e7ff4e9e31b4557f2d` root200tests passed81.84s (recordedbf43abe). P1A1 predecessor satisfied.
 - NextisolatedSol-low request`pab-phase1a-p1a1-implementation-r1-20261022`: recordedtemporaryidentity/recoverabledurablepublication only. Independentreview andintegrationchecks beforeA2; allB/Cgatesremain.
+
+## P1A1 candidate / independent review
+
+- Candidate`29fc22c484c4bf32f36cb6bfd6ce602d81554325`, app-owned`t3-e92f4233`, branch`t3/p1a1-publication-durability`; testedsource`a85df08`, finalreportonlydelta. Root read fullreport; unintegrated.
+- Claims247tests43installedsteps pass butfullrunnerEXIT1 globalinventorydrift (onepriorcontainer+volume absent) twice. Ownedremovalcommands scoped/zeroownedresources verified, cause notestablished; globalpreservationNOTaccepted.
+- IndependentSol-low task suffix`pab-phase1a-p1a1-review-r1-20261022`, currenttask-IDprefix, report`reviews/P1A1-r1-sol.md`; exactAstraA1brief andinventorylimitation supplied. No redundantheavycampaign withoutreason. A1/P1activationclosed.
