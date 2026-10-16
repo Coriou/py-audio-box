@@ -179,7 +179,7 @@ class Core:
             self.db.execute('INSERT INTO revisions VALUES (?,?,?)', (project_id,after['revision'],encode(after)))
         return after
 
-    def submit_synthetic(self, principal: str, key: str, context: dict, *, retry_of: str | None = None, _dispatch_settings=None) -> dict:
+    def submit_synthetic(self, principal: str, key: str, context: dict, *, retry_of: str | None = None, _dispatch_settings=None, _admission=None, _profiles=None) -> dict:
         """Trusted fixture-only admission; never claims installed/qualified ML readiness.
 
         Resolve context in control before calling. Duplicate lookup precedes resolution.
@@ -210,6 +210,8 @@ class Core:
             oracle.validate('job', job)
             self.db.execute('INSERT INTO jobs(id,principal,operation,key,fingerprint,job,context,retry_of) VALUES (?,?,?,?,?,?,?,?)', (job['id'],principal,operation,key,fingerprint,encode(job),encode(context),retry_of))
             self.db.execute('INSERT INTO events(job_id,state) VALUES (?,?)', (job['id'],'queued'))
+            if _admission is not None:
+                _admission.reserve_tx(job,context,_profiles)
             if _dispatch_settings is not None:
                 self.db.execute('INSERT INTO dispatch_settings VALUES (?,?,?)',(job['id'],*_dispatch_settings))
         return job
@@ -247,13 +249,14 @@ class Core:
         a = job['attempts'][-1]
         return dict(protocol_version='1.3.0',kind=kind,job_id=job['id'],attempt_id=a['id'],generation=a['generation'],input_sha256=job['input_sha256'],input_asset_ids=[],staging_id=a['staging_id'],owner_id=a['owner_id'],identity=context['plan']['resolved']['identity'],deadline=job['deadline'],stage='completed' if kind=='result' else 'loading',result_asset_ids=[],plan=context['plan'])
 
-    def request_cancel(self, job_id: str, *, _cancel_unstarted=False) -> dict:
+    def request_cancel(self, job_id: str, *, _cancel_unstarted=False, _admission=None) -> dict:
         with self.transaction():
             job,_ = self._load(job_id)
             if job['state'] in ('queued','running'):
                 job['state']='cancel_requested'; self._save(job)
                 if _cancel_unstarted and not job['attempts']:
                     job.update(state='cancelled',stage='never_started');self._save(job)
+                    if _admission is not None:_admission.store.release_tx(job['id'],unstarted=True)
         return job
 
     def finish(self, *, cancel: bool = False, fault=None) -> dict:

@@ -1,0 +1,31 @@
+{
+  "baseline": "f6bd3f3042dedcc6a2cac535d50a85c9a0076f95",
+  "branch": "t3/resource-admission",
+  "worktree": "/Users/ben/.txcode/worktrees/py-audio-box/t3-3115080c",
+  "run_sha256": "3b5f795a5222e7929fab8396728f9a8f66f247e475384b9a11b14dcd5b69e264",
+  "images": {
+    "worker": "sha256:7101cd00bbd2e49544233d62bf439d9483e5612e1254cbb750591ce8f14dbb9b",
+    "control": "sha256:0a41e2eb3165c0f3d0a8726fa6913dc43a5d1c6a3a15797f36d04e49dc465e9e"
+  },
+  "dependency": "sha256:85141b253c04344134252c0878750756aef6bae3d4d4d083301004db7f43ce0e",
+  "source_entries": {
+    "control_source_sha256": 96,
+    "worker_source_sha256": 18,
+    "packaging_sha256": 4
+  },
+  "source_mismatches": [],
+  "installed_steps": 35,
+  "e1_tests": 155,
+  "owned_resources_remaining": 0,
+  "prior_preserved": {
+    "containers": {
+      "count": 15,
+      "sha256": "23c6be7289f12faa7ff8834a8e01311c6002bd2c4c0afb645799b04a2f16725e"
+    },
+    "volumes": {
+      "count": 140,
+      "sha256": "4d632ffe7511b22b72200660d00a49a09ea3d4d77e6773fde88e029e433b8aef"
+    }
+  },
+  "activation": false
+}

@@ -1,0 +1,67 @@
+services:
+  init:
+    image: ${R1_CONTROL_IMAGE:?required}
+    user: '0:0'
+    network_mode: none
+    read_only: true
+    cap_drop: [ALL]
+    cap_add: [CHOWN, FOWNER, DAC_OVERRIDE]
+    entrypoint: [python, -c]
+    command:
+      - |
+        import os,json,secrets,pathlib,hashlib
+        for p,uid,gid,mode in [('/ipc',0,10001,0o750),('/staging',0,0,0o1777),('/receipts',0,0,0o700),('/control',10001,10001,0o700)]:
+          os.chown(p,uid,gid);os.chmod(p,mode)
+        key=pathlib.Path('/ipc/lifecycle.key')
+        if not key.exists():
+          key.write_text(secrets.token_hex(32));os.chown(key,0,10001);key.chmod(0o640)
+        execution=pathlib.Path('/ipc/execution.key')
+        if not execution.exists():
+          execution.write_text(secrets.token_hex(32));os.chown(execution,0,10001);execution.chmod(0o640)
+        for file in (key,execution):
+          fd=os.open(file,os.O_RDONLY);os.fsync(fd);os.close(fd)
+        journal=pathlib.Path('/receipts/journal.json')
+        marker=pathlib.Path('/receipts/initialized')
+        if not marker.exists():
+          value=dict(version=1,lane=secrets.token_hex(16),records=[])
+          encoded=json.dumps(value,sort_keys=True,separators=(',',':'),ensure_ascii=False,allow_nan=False).encode()
+          journal.write_text(json.dumps(dict(payload=value,sha256=hashlib.sha256(encoded).hexdigest())));journal.chmod(0o600)
+          marker.touch(mode=0o600)
+          for file in (journal,marker):
+            fd=os.open(file,os.O_RDONLY);os.fsync(fd);os.close(fd)
+        for path in ('/ipc','/receipts'):
+          fd=os.open(path,os.O_RDONLY|os.O_DIRECTORY);os.fsync(fd);os.close(fd)
+    volumes: [ipc:/ipc, staging:/staging, receipts:/receipts, control:/control]
+  worker:
+    image: ${R1_WORKER_IMAGE:?required}
+    user: '0:10001'
+    restart: 'no'
+    network_mode: none
+    read_only: true
+    cap_drop: [ALL]
+    cap_add: [SETUID, SETGID, KILL]
+    security_opt: [no-new-privileges:true]
+    pids_limit: 48
+    mem_limit: 192m
+    cpus: 1
+    volumes: [ipc:/ipc, staging:/staging, receipts:/receipts]
+    depends_on:
+      init: {condition: service_completed_successfully}
+  control:
+    image: ${R1_CONTROL_IMAGE:?required}
+    user: '10001:10001'
+    network_mode: none
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    pids_limit: 64
+    mem_limit: 384m
+    cpus: 1
+    volumes: [ipc:/ipc:ro, staging:/staging:ro, control:/control]
+    depends_on:
+      init: {condition: service_completed_successfully}
+volumes:
+  ipc:
+  staging:
+  receipts:
+  control:

@@ -12,16 +12,18 @@ import threading
 import time
 
 from service.core import Core, encode
+from service.admission import Admission
 from service.dispatch_store import DispatchStore
 from service.supervisor_runtime import SupervisorRuntime
 from worker.lifecycle import State
 
 
 class Dispatcher:
-    def __init__(self, root, *, ipc='/ipc', staging='/staging', runtime=None, fault=lambda _:None):
+    def __init__(self, root, *, ipc='/ipc', staging='/staging', runtime=None, fault=lambda _:None, budget=None, profiles=None):
         self.root, self.staging = Path(root), Path(staging)
         self.runtime = runtime or SupervisorRuntime(ipc)
         self.fault = fault
+        self.budget, self.current_profiles = budget, profiles
         self.commands=queue.Queue(64)
         self.initialized=Future()
         self.thread=threading.Thread(target=self._run,name='control-writer',daemon=True)
@@ -43,15 +45,23 @@ class Dispatcher:
         core=None
         try:
             core=self.core=Core(self.root)
-            self.store=DispatchStore(core)
+            self.admission=Admission(core,self.staging,self.budget)
+            self.store=DispatchStore(core,self.admission)
             self.pool=ThreadPoolExecutor(max_workers=1,thread_name_prefix='bounded-lifecycle')
             self.pending=None;self.reconciled=False;self.quarantined=False
             # A former local/foundation attempt has no supervisor death proof.
             self.orphaned=bool(self.core.db.execute("SELECT 1 FROM jobs WHERE json_extract(job,'$.state') IN ('running','cancel_requested') AND id NOT IN (SELECT job_id FROM dispatches) LIMIT 1").fetchone())
+            self.resource_fault=bool(core.db.execute('SELECT 1 FROM resource_faults').fetchone())
             self.error=None;self.next_poll=0;self.stopping=False
             self.profiles=json.loads(Path('contracts/fixtures/v1/transcript-speech_generate.json').read_text())['profiles']
             for p in self.profiles:
                 p.update(support='qualified',installation='installed',readiness='ready',verification='measured',qualification_receipt='E1-W2d-fixed-synthetic-only')
+            if self.current_profiles is not None:self.profiles=copy.deepcopy(self.current_profiles)
+            self.orphaned = self.orphaned or self.admission.unaccounted
+            with core.transaction():
+                for reservation in self.admission.store.rows():
+                    if reservation['state']=='queued' and core.job(reservation['id'])['state']=='cancelled':
+                        self.admission.store.release_tx(reservation['id'],unstarted=True)
             self.initialized.set_result(True)
             while not self.stopping:
                 try:
@@ -81,9 +91,10 @@ class Dispatcher:
             row=self.store.current()
             return dict(reconciled=self.reconciled,quarantined=self.quarantined,
                 phase=row['phase'] if row else 'idle',runtime_id=row['runtime'] if row else None,
-                resource_activation=False,persistent_activation=False,error=self.error)
+                resource_activation=False,persistent_activation=False,error=self.error,
+                reservations=self.admission.store.rows())
         if op=='cancel':
-            job=self.core.request_cancel(*args,**kwargs,_cancel_unstarted=True)
+            job=self.core.request_cancel(*args,**kwargs,_cancel_unstarted=True,_admission=self.admission)
             self.next_poll=0
             return job
         if op in ('submit','replace'):
@@ -107,7 +118,7 @@ class Dispatcher:
             if fixture not in ('silence','busy','descendants','permissions') or type(seconds)!=int or not 2<=seconds<=25:raise ValueError('fixed_fixture_required')
             context=json.loads(Path('contracts/fixtures/v1/transcript-speech_generate.json').read_text())['context']
             job=self.core.submit_synthetic(principal,key,context,retry_of=kwargs.get('retry_of'),
-                _dispatch_settings=(fixture,seconds))
+                _dispatch_settings=(fixture,seconds),_admission=self.admission,_profiles=self.profiles)
             return job
         return getattr(self.core,op)(*args,**kwargs)
 
@@ -117,6 +128,16 @@ class Dispatcher:
         self.pending=(self.pool.submit(fn),row,op,command)
 
     def _tick(self):
+        try:self.admission.check()
+        except (OSError,ValueError) as exc:
+            self.error=str(exc);self.quarantined=True
+            self.core.db.execute('INSERT OR IGNORE INTO resource_faults VALUES(?)',(str(exc),))
+            row=self.store.current()
+            if row and row['runtime'] and not self.pending and not row['outcome'] and not getattr(self,'resource_stop_sent',False):
+                self.resource_stop_sent=True
+                self._launch(row,'stop',lambda:self.runtime.terminate(row['runtime'],1.5))
+            # Continue observing existing ownership, but never publish violating bytes.
+            self.resource_fault=True
         if self.pending:
             future,row,op,command=self.pending
             if not future.done():return
@@ -138,7 +159,7 @@ class Dispatcher:
             elif op=='observe':
                 if value.runtime_id!=row['runtime']:raise ValueError('unbound_observation')
                 self.reconciled=True
-                self.quarantined=value.state==State.UNKNOWN
+                self.quarantined=value.state==State.UNKNOWN or self.resource_fault
                 if value.state==State.STOPPED:
                     self.fault('observation_reap')
                     self._launch(row,'collect',lambda:self.runtime.collect(row['authority'],row['runtime']));return
@@ -150,7 +171,7 @@ class Dispatcher:
                 self._terminal(row,*value)
             elif op=='ack':
                 if value!={'acked':True}:raise ValueError('ack_required')
-                self.store.update(row,acked=1,phase='acknowledged');self.quarantined=False
+                self.store.update(row,acked=1,phase='acknowledged');self.quarantined=getattr(self,'resource_fault',False)
             self.next_poll=time.monotonic()+.03
         if self.pending or time.monotonic()<self.next_poll:return
         row=self.store.current()
@@ -168,7 +189,7 @@ class Dispatcher:
             if not hasattr(self,'hello'):
                 self.hello=self.pool.submit(self.runtime.call,'hello',{})
             if not self.hello.done():return
-            try: value=self.hello.result();self.quarantined=self.orphaned or bool(value['quarantined'])
+            try: value=self.hello.result();self.quarantined=self.orphaned or self.resource_fault or bool(value['quarantined'])
             except Exception:self.quarantined=True
             self.reconciled=True;return
         if self.quarantined:return
@@ -190,6 +211,8 @@ class Dispatcher:
         if job['state'] not in ('succeeded','failed','cancelled'):
             intent=self.core.db.execute('SELECT 1 FROM publications WHERE job_id=?',(job['id'],)).fetchone()
             try:
+                self.admission.check(publication=True)
+                if getattr(self,'resource_fault',False):raise ValueError('resource_violation')
                 if intent:
                     if receipt['timely'] is not True:raise ValueError('late_publication_intent')
                     stored=json.loads(self.core.db.execute('SELECT artifact FROM publications WHERE job_id=?',(job['id'],)).fetchone()[0])
@@ -206,9 +229,11 @@ class Dispatcher:
         # Crash after success before outcome journal is recoverable from Core terminal.
         job=self.core.job(job['id'])
         if job['state'] not in ('succeeded','failed','cancelled'):raise ValueError('terminal_required')
-        self.store.update(row,outcome=encode(job),phase='ack_pending')
+        with self.core.transaction():
+            self.admission.store.release_tx(job['id'],confirmed_reap=True)
+            self.core.db.execute("UPDATE dispatches SET outcome=?,phase='ack_pending' WHERE seq=?",(encode(job),row['seq']))
         self.fault('durable_outcome')
-        self.quarantined=False
+        self.quarantined=getattr(self,'resource_fault',False)
 
     def _fail(self,job,stage):
         with self.core.transaction():

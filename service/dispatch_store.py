@@ -6,8 +6,9 @@ from service.worker_transport import Authority
 
 
 class DispatchStore:
-    def __init__(self, core):
+    def __init__(self, core, admission=None):
         self.core, self.db = core, core.db
+        self.admission = admission
         self.db.executescript('''
         CREATE TABLE IF NOT EXISTS dispatch_settings(
           job_id TEXT PRIMARY KEY REFERENCES jobs(id), fixture TEXT NOT NULL, seconds INTEGER NOT NULL);
@@ -45,6 +46,9 @@ class DispatchStore:
                 row=next((json.loads(r[0]) for r in self.db.execute('SELECT job FROM jobs ORDER BY seq') if json.loads(r[0])['state']=='queued'),None)
                 if row is None:return None
                 job=row; _,context=self.core._load(job['id'])
+            if self.admission is not None:
+                self.admission.demand(context,profiles)
+                self.admission.store.acquire_tx(job['id'],replacement=bool(replacement))
             attempt=dict(id=new_id('attempt'),generation=job['generation']+1,owner_id=new_id('owner'),staging_id=new_id('stage'),reaped=False)
             job.update(state='running',stage='synthetic',generation=attempt['generation'],attempts=[*job['attempts'],attempt],deadline=(datetime.now(timezone.utc)+timedelta(seconds=min(seconds,context['plan']['resolved']['profile']['limits']['deadline_seconds']))).isoformat())
             authority=Authority(job,context,[],profiles)
