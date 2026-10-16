@@ -1317,7 +1317,8 @@ def test_b22_prefix_receipt_only_resume_without_new_identity(installation,point)
 def test_b22_correction_process_death_owned_restart(installation,point):
     import os
     roots,scope,_,_=installation
-    intent,observation,_=prefix_fixture(installation)
+    intent,observation,snapshot_raw=prefix_fixture(installation)
+    del snapshot_raw  # Neither child nor parent retains the caller snapshot bytes.
     pid=os.fork()
     if pid==0:
         recovery._pending_through_evidence(roots,scope,intent,observation,now=102,
@@ -1337,7 +1338,9 @@ def test_b22_correction_process_death_owned_restart(installation,point):
     with sqlite3.connect(roots['control']/'core'/'core.sqlite') as db:
         assert db.execute('SELECT count(*) FROM p1_recoveries').fetchone()==(1,)
         assert db.execute('SELECT count(*) FROM p1_recovery_steps').fetchone()==(2,)
-    assert len(list((roots['control']/'core').glob('p1-recovery-*.sqlite')))==1
+    archives=list((roots['control']/'core').glob('p1-recovery-*.sqlite'))
+    assert len(archives)==1
+    assert archives[0].read_bytes()==next(roots['receipts'].glob('*.snapshot.bundle')).read_bytes()
 
 
 @pytest.mark.parametrize('suffix',['.journal','.certificate.json'])
