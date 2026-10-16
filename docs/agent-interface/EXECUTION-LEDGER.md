@@ -294,3 +294,9 @@ Record failures and missing evidence; do not replace them with a successful late
 - [IndependentR3 report](reviews/R1-r3-sol.md): boundedGO exact`5ab4717`; F1closed/F2preserved,200tests43installedsteps independentlypassed withfullAstramatrix. Explicitscan-overlapquarantineavailabilitycost retained.
 - Root cherry-pickedoriginal+twocorrections, exactsource diffvsreviewedcandidate empty. Root exactimage regression **200passed in81.84s**,exit0,networknone/read-onlyroot/tmpfs/no mounts. Integrated implementation `16950490919b18253f5d12e7ff4e9e31b4557f2d`. No public/unattendedactivation/full1Aclaim.
 - TargetedAstra request`pab-phase1a-p1-design-20261022`: smallorderedP1implementationbriefs forpublicationdurability/reconciliation/operatorrecovery, no broadpartialtask or safetywaiver. R1GOdoesnotcloseP1.
+
+## P1 finite design / A1 launch
+
+- [AstraP1decision](reviews/P1-IMPLEMENTATION-ASTRA.md): designGO only, sevenorderedSMALLlots A1publication,A2inventory,B1enrollmentplanning,B2proofboundrecovery,B3boundedcleanup,C1persistentpackaging,C2installedgate. Exactallowlists/matrix; noactivation/cleanupauthorityfromdesign.
+- R1 integrated`16950490919b18253f5d12e7ff4e9e31b4557f2d` root200tests passed81.84s (recordedbf43abe). P1A1 predecessor satisfied.
+- NextisolatedSol-low request`pab-phase1a-p1a1-implementation-r1-20261022`: recordedtemporaryidentity/recoverabledurablepublication only. Independentreview andintegrationchecks beforeA2; allB/Cgatesremain.
