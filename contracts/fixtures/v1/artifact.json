@@ -26,5 +26,8 @@
     "fallback": "forbid",
     "reason": "",
     "profile_id": "cpu-synthetic"
-  }
+  },
+  "attempt_id": "attempt1",
+  "owner_id": "worker1",
+  "staging_id": "staging1"
 }

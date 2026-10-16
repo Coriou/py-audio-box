@@ -1,5 +1,5 @@
 {
-  "version": "1.0.0",
+  "version": "1.1.0",
   "operations": [
     {
       "id": "discover",
@@ -125,7 +125,8 @@
         "not_ready",
         "resource_limit",
         "unsupported_control"
-      ]
+      ],
+      "transport": "JSON base64 decoded bytes; maximum 16777216; verify length and SHA256 before admission; idempotency includes exact bytes"
     },
     {
       "id": "asset_acquire",
@@ -909,7 +910,7 @@
       "cli": "project history",
       "mcp": "speech_project_history",
       "request": "project_history_request",
-      "response": "list",
+      "response": "history",
       "idempotency": false,
       "scope": "read",
       "headers": [],
@@ -917,6 +918,86 @@
         "revision_conflict",
         "invalid_request",
         "forbidden"
+      ]
+    },
+    {
+      "id": "asset_content",
+      "http": {
+        "method": "GET",
+        "route": "/v1/assets/{asset_id}/content",
+        "input_location": "query_and_path"
+      },
+      "cli": "asset content",
+      "mcp": "speech_asset_content",
+      "request": "content_request",
+      "response": "content_result",
+      "idempotency": false,
+      "scope": "read",
+      "headers": [],
+      "errors": [
+        "invalid_request",
+        "forbidden",
+        "not_found"
+      ]
+    },
+    {
+      "id": "voice_results",
+      "http": {
+        "method": "GET",
+        "route": "/v1/jobs/{job_id}/voice-results",
+        "input_location": "query_and_path"
+      },
+      "cli": "voice results",
+      "mcp": "speech_voice_results",
+      "request": "voice_results_request",
+      "response": "voice_results",
+      "idempotency": false,
+      "scope": "read",
+      "headers": [],
+      "errors": [
+        "invalid_request",
+        "forbidden",
+        "not_found"
+      ]
+    },
+    {
+      "id": "voice_version_get",
+      "http": {
+        "method": "GET",
+        "route": "/v1/voice-versions/{voice_version_id}",
+        "input_location": "query_and_path"
+      },
+      "cli": "voice version get",
+      "mcp": "speech_voice_version_get",
+      "request": "voice_version_get_request",
+      "response": "voice_version",
+      "idempotency": false,
+      "scope": "read",
+      "headers": [],
+      "errors": [
+        "invalid_request",
+        "forbidden",
+        "not_found"
+      ]
+    },
+    {
+      "id": "project_revision_get",
+      "http": {
+        "method": "GET",
+        "route": "/v1/projects/{project_id}/revisions/{revision}",
+        "input_location": "query_and_path"
+      },
+      "cli": "project revision get",
+      "mcp": "speech_project_revision_get",
+      "request": "revision_get_request",
+      "response": "revision",
+      "idempotency": false,
+      "scope": "read",
+      "headers": [],
+      "errors": [
+        "invalid_request",
+        "forbidden",
+        "not_found"
       ]
     }
   ]

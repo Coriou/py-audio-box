@@ -17,7 +17,7 @@ def production(n,scale=False):
     assets=[]
     for name in ('impulse','sine','long','short'):
         assets.append(dict(id=name,sha256=hashlib.sha256((ROOT/(name+'.wav')).read_bytes()).hexdigest(),frames=(2400 if name=='short' else 9600 if name=='long' else 4800),sample_rate=48000,channels=1,provenance=dict(kind='synthetic',source_sha256=hashlib.sha256((ROOT/(name+'.wav')).read_bytes()).hexdigest(),source_id=name,missing_fields=[])))
-    voices=[dict(id=f'voice.{i}',aliases=[f'legacy_{i}'],version_ids=[f'vv{i}'],archived=False) for i in range(3)]
+    voices=[dict(id=f'voice.{i}',aliases=[f'legacy_{i}'],version_ids=[f'vv{i}'],archived=False,revision=1) for i in range(3)]
     versions=[dict(id=f'vv{i}',voice_id=f'voice.{i}',origin='preset',reference_asset_ids=[],reference_text='',identity=IDENTITY,settings_sha256=H,provenance=assets[0]['provenance']) for i in range(3)]
     blocks=[];takes=[];clips=[]
     for i in range(n):
@@ -71,5 +71,5 @@ def generate():
         return 'example'
     dump(ROOT/'operation-requests.json',{op['id']:example(schema[op['request']]) for op in ops})
     dump(ROOT/'job.json',dict(id='job1',operation='speech_generate',input_sha256=H,principal_id='principal1',idempotency_key='request1',state='running',generation=1,attempts=[dict(id='attempt1',generation=1,owner_id='worker1',reaped=False,staging_id='staging1')],artifact_ids=[],stage='loading',deadline='2026-10-16T00:10:00Z'))
-    dump(ROOT/'artifact.json',dict(id='artifact1',job_id='job1',generation=1,asset_ids=['impulse'],input_sha256=H,project_revision=1,manifest_sha256=H,identity=RESOLUTION))
+    dump(ROOT/'artifact.json',dict(id='artifact1',job_id='job1',generation=1,asset_ids=['impulse'],input_sha256=H,project_revision=1,manifest_sha256=H,identity=RESOLUTION,attempt_id='attempt1',owner_id='worker1',staging_id='staging1'))
 if __name__=='__main__':generate()

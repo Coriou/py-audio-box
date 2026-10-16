@@ -16,7 +16,8 @@
   "asset_upload": {
     "content_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
     "bytes": 1,
-    "source": "upload"
+    "source": "upload",
+    "content_base64": "example"
   },
   "asset_acquire": {
     "url": "https://example.invalid/media.wav",
@@ -1646,7 +1647,8 @@
           "version_ids": [
             "vv0"
           ],
-          "archived": false
+          "archived": false,
+          "revision": 1
         },
         {
           "id": "voice.1",
@@ -1656,7 +1658,8 @@
           "version_ids": [
             "vv1"
           ],
-          "archived": false
+          "archived": false,
+          "revision": 1
         },
         {
           "id": "voice.2",
@@ -1666,7 +1669,8 @@
           "version_ids": [
             "vv2"
           ],
-          "archived": false
+          "archived": false,
+          "revision": 1
         }
       ],
       "voice_versions": [
@@ -1913,5 +1917,20 @@
     "project_id": "example",
     "cursor": "example",
     "limit": 1
+  },
+  "asset_content": {
+    "asset_id": "example",
+    "start": 1,
+    "end_exclusive": 1
+  },
+  "voice_results": {
+    "job_id": "example"
+  },
+  "voice_version_get": {
+    "voice_version_id": "example"
+  },
+  "project_revision_get": {
+    "project_id": "example",
+    "revision": 1
   }
 }

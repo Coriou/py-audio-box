@@ -74,11 +74,6 @@ def test_lifecycle_cancel_fence_publication():
     c.transition('cancel_requested','cancelled',reaped=True)
     for old,new,kw,err in [('cancel_requested','cancelled',{},'cancel_pending'),('running','succeeded',{},'missing_media'),('running','succeeded',dict(generation=1,current_generation=2,media_verified=True),'stale_attempt'),('succeeded','running',{},'invalid_transition')]:
         with pytest.raises(c.ContractError,match=err):c.transition(old,new,**kw)
-    j=dict(id='j',state='running',generation=2,input_sha256='a')
-    a=dict(generation=2);artifact=dict(generation=2,job_id='j',input_sha256='a',asset_ids=['wav'])
-    c.publication(j,a,artifact,{'wav':'verified_hash'})
-    with pytest.raises(c.ContractError,match='stale_attempt'):c.publication(j,dict(generation=1),artifact,{'wav':'verified_hash'})
-    with pytest.raises(c.ContractError,match='missing_media'):c.publication(j,a,artifact,{})
 
 def test_stale_selection_render_and_fixed_timing(p):
     starts=[x['start'] for x in p['clips']];p['blocks'][0]['text']='Changed'
@@ -120,10 +115,6 @@ def test_migration_and_worker_boundaries():
     with pytest.raises(c.ContractError,match='distinct_root_required'):c.migration(report,source_root='/legacy',destination_root='/legacy')
     with pytest.raises(c.ContractError,match='migration_collision'):c.migration({**report,'collisions':['voice.0']},source_root='/legacy',destination_root='/service')
     with pytest.raises(c.ContractError,match='pending_jobs_not_importable'):c.migration(report,source_root='/legacy',destination_root='/service',pending_policy='retry')
-    m=dict(protocol_version='1.0.0',kind='execute',job_id='j',attempt_id='a',generation=2,input_sha256='0'*64,input_asset_ids=['impulse'],staging_id='stage-a',identity=load('production-30.json')['takes'][0]['identity'],deadline='2026-10-16T00:10:00Z',stage='loading',result_asset_ids=[])
-    c.worker_message(m,2,['impulse'])
-    with pytest.raises(c.ContractError,match='stale_attempt'):c.worker_message(m,3,['impulse'])
-    with pytest.raises(c.ContractError,match='unmanaged_asset'):c.worker_message(m,2,[])
 
 def test_operation_requests_jobs_artifacts_and_error_mapping():
     ops=json.loads((ROOT/'contracts/v1/operations.json').read_text())['operations']

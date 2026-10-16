@@ -1,4 +1,6 @@
 """E1 contract oracle. Not a store, executor, URL fetcher or audio renderer."""
+import base64
+import copy
 import hashlib
 import json
 from pathlib import Path
@@ -17,8 +19,11 @@ def require(condition, code):
 
 def validate(kind, value):
     Draft202012Validator({**SCHEMA, '$ref': '#/$defs/' + kind}).validate(value)
+    intrinsic(value)
     if kind == 'project':
         project(value)
+    elif kind == 'worker_plan':
+        frozen_plan(value)
     elif kind == 'capabilities':
         for profile in value['profiles']: validate('profile',profile)
     elif kind == 'resolution':
@@ -99,17 +104,41 @@ def transition(old, new, *, reaped=False, current_generation=0, generation=0, me
     if new=='cancelled': require(reaped, 'cancel_pending')
     if new=='succeeded': require(media_verified, 'missing_media')
 
-def publication(job, attempt, artifact, present_hashes):
+def active_attempt(job):
+    validate('job', job)
+    generations=[a['generation'] for a in job['attempts']]
+    require(generations == sorted(set(generations)), 'nonmonotonic_generation')
+    require(bool(generations) and generations[-1] == job['generation'], 'stale_attempt')
+    require(all(a['reaped'] for a in job['attempts'][:-1]), 'owner_not_reaped')
+    return job['attempts'][-1]
+
+def publication(job, attempt, artifact, present_hashes, *, transport_owner):
+    current=active_attempt(job)
     require(job['state'] in ('running','cancel_requested'), 'invalid_transition')
-    require(attempt['generation']==job['generation']==artifact['generation'], 'stale_attempt')
-    require(artifact['job_id']==job['id'] and artifact['input_sha256']==job['input_sha256'], 'identity_substitution')
+    require(attempt == current and not current['reaped'], 'attempt_mismatch')
+    validate('artifact', artifact)
+    require(transport_owner == current['owner_id'], 'owner_mismatch')
+    for key, expected in dict(job_id=job['id'], attempt_id=current['id'], generation=job['generation'], input_sha256=job['input_sha256'], staging_id=current['staging_id'], owner_id=current['owner_id']).items():
+        require(artifact[key] == expected, 'attempt_mismatch')
     require(bool(artifact['asset_ids']) and all(x in present_hashes for x in artifact['asset_ids']), 'missing_media')
+
+def replacement(job, attempt, *, owner_dead):
+    old=active_attempt(job)
+    require(owner_dead and old['reaped'], 'owner_not_reaped')
+    validate('attempt', attempt)
+    require(attempt['generation'] == job['generation']+1 and attempt['id'] not in [a['id'] for a in job['attempts']] and attempt['staging_id'] not in [a['staging_id'] for a in job['attempts']] and not attempt['reaped'], 'invalid_replacement')
+
 
 def ripple(p, track_id, start, end, anchor, delta, ids):
     require(start<=anchor<=end, 'invalid_range')
     affected=[c for c in p['clips'] if c['track_id']==track_id and start<=c['start']<end]
     require(set(ids)=={c['id'] for c in affected} and len(ids)==len(affected), 'affected_ids_mismatch')
-    require(all(0<=c['start']+delta<=9007199254740991 for c in affected), 'invalid_range')
+    require(all(0<=c['start']+delta and c['start']+delta+c['out_tick']-c['in_tick']<=9007199254740991 for c in affected), 'invalid_range')
+    result=copy.deepcopy(p)
+    for clip in result['clips']:
+        if clip['id'] in ids: clip['start']+=delta
+    validate('project', result)
+    return result
 
 def immutable(before, after):
     require(before==after, 'immutable_identity')
@@ -120,15 +149,77 @@ def migration(report, *, source_root, destination_root, pending_policy='leave_le
     require(pending_policy=='leave_legacy', 'pending_jobs_not_importable')
     require(report['apply_allowed'], 'migration_not_approved')
 
-def worker_message(message, active_generation, allowed_assets):
+def worker_message(message, job, allowed_assets, *, transport_owner):
     validate('worker_message',message)
-    require(message['generation']==active_generation, 'stale_attempt')
+    attempt=active_attempt(job)
+    require(job['state'] in ('running','cancel_requested') and not attempt['reaped'], 'invalid_transition')
+    require(transport_owner == attempt['owner_id'], 'owner_mismatch')
+    expected=dict(job_id=job['id'],attempt_id=attempt['id'],generation=job['generation'],input_sha256=job['input_sha256'],staging_id=attempt['staging_id'],owner_id=attempt['owner_id'])
+    require(all(message[k]==v for k,v in expected.items()), 'attempt_mismatch')
     require(set(message['input_asset_ids'])<=set(allowed_assets), 'unmanaged_asset')
+    require(message['input_sha256']==plan_hash(message['plan']), 'input_mismatch')
+    require(message['plan']['operation']==job['operation'], 'input_mismatch')
+    require(message['identity']['requested']==message['plan']['request'].get('identity', message['identity']['requested']), 'identity_substitution')
+
+def frozen_plan(plan):
+    validate('project',plan['project'])
+    request=plan['request'];op=plan['operation']
+    assets={a['id']:a for a in plan['assets']}
+    versions={v['id']:v for v in plan['voice_versions']}
+    require(len(assets)==len(plan['assets']) and len(versions)==len(plan['voice_versions']), 'duplicate_id')
+    require(all(x in assets for v in versions.values() for x in v['reference_asset_ids']), 'reference_missing')
+    if op=='speech_generate':
+        require(request['voice_version_id'] in versions, 'voice_version_missing')
+        voice=versions[request['voice_version_id']]
+        require(all(request['identity'][k]==voice['identity'][k] for k in ('engine','model','bundle_sha256')), 'identity_substitution')
+    elif op=='voice_prepare':
+        require(request['asset_id'] in assets, 'missing_media')
+        asset=assets[request['asset_id']]
+        require(request['in_tick']<request['out_tick']<=ticks(Decimal(asset['frames'])/asset['sample_rate']), 'invalid_trim')
+    elif op=='project_render':
+        p=plan['project']
+        require(request['project_id']==p['id'] and request['expected_revision']==p['revision'], 'revision_conflict')
+        require(all(assets.get(a['id'])==a for a in p['assets']), 'missing_media')
+        require(all(versions.get(v['id'])==v for v in p['voice_versions']), 'voice_version_missing')
+        renderable(p,request['policy'])
+
+def plan_hash(plan):
+    validate('worker_plan',plan)
+    return hashlib.sha256(json.dumps(plan,ensure_ascii=False,sort_keys=True,separators=(',', ':'),allow_nan=False).encode()).hexdigest()
+
+def intrinsic(value):
+    if isinstance(value, dict):
+        if {'requested','effective','fallback','reason','profile_id'} <= value.keys(): resolution(value)
+        for child in value.values(): intrinsic(child)
+    elif isinstance(value,list):
+        for child in value: intrinsic(child)
+
+def upload(request):
+    validate('asset_upload_request',request)
+    try: data=base64.b64decode(request['content_base64'],validate=True)
+    except (ValueError, base64.binascii.Error): raise ContractError('invalid_bytes')
+    require(len(data)==request['bytes'] and len(data)<=16777216, 'invalid_size')
+    require(hashlib.sha256(data).hexdigest()==request['content_sha256'], 'invalid_hash')
+    return data
+
+def content(data, request, *, authorized):
+    validate('content_request',request)
+    require(authorized, 'forbidden')
+    start,end=request['start'],request['end_exclusive']
+    require(0<=start<end<=len(data) and end-start<=16777216, 'invalid_range')
+    result=dict(schema_version='1.1.0',asset_id=request['asset_id'],total_bytes=len(data),start=start,end_exclusive=end,content_sha256=hashlib.sha256(data).hexdigest(),content_base64=base64.b64encode(data[start:end]).decode())
+    validate('content_result',result)
+    return result
+
 
 def edit_semantics(before, after, operation):
     """Validate non-interference on snapshots; consumers still implement atomic edits."""
     validate('project',before);validate('project',after)
     require(after['id']==before['id'] and after['revision']==before['revision']+1, 'revision_conflict')
+    for group in ('takes','assets','voice_versions'):
+        new={x['id']:x for x in after[group]}
+        for old in before[group]:
+            require(new.get(old['id']) == old, 'immutable_identity')
     if operation in ('block_text','blocks_reorder','candidate_arrival'):
         require(before['clips']==after['clips'] and before['tracks']==after['tracks'], 'implicit_arrangement')
     if operation=='candidate_arrival':

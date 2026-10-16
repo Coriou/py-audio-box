@@ -6151,7 +6151,8 @@
       "version_ids": [
         "vv0"
       ],
-      "archived": false
+      "archived": false,
+      "revision": 1
     },
     {
       "id": "voice.1",
@@ -6161,7 +6162,8 @@
       "version_ids": [
         "vv1"
       ],
-      "archived": false
+      "archived": false,
+      "revision": 1
     },
     {
       "id": "voice.2",
@@ -6171,7 +6173,8 @@
       "version_ids": [
         "vv2"
       ],
-      "archived": false
+      "archived": false,
+      "revision": 1
     }
   ],
   "voice_versions": [

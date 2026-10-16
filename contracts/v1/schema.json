@@ -230,13 +230,19 @@
         },
         "archived": {
           "type": "boolean"
+        },
+        "revision": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
         }
       },
       "required": [
         "id",
         "aliases",
         "version_ids",
-        "archived"
+        "archived",
+        "revision"
       ],
       "additionalProperties": false
     },
@@ -704,6 +710,18 @@
         },
         "identity": {
           "$ref": "#/$defs/resolution"
+        },
+        "attempt_id": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+        },
+        "owner_id": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+        },
+        "staging_id": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
         }
       },
       "required": [
@@ -714,7 +732,10 @@
         "input_sha256",
         "project_revision",
         "manifest_sha256",
-        "identity"
+        "identity",
+        "attempt_id",
+        "owner_id",
+        "staging_id"
       ],
       "additionalProperties": false
     },
@@ -1085,19 +1106,24 @@
         "bytes": {
           "type": "integer",
           "minimum": 0,
-          "maximum": 9007199254740991
+          "maximum": 16777216
         },
         "source": {
           "enum": [
             "upload",
             "microphone"
           ]
+        },
+        "content_base64": {
+          "type": "string",
+          "maxLength": 22369624
         }
       },
       "required": [
         "content_sha256",
         "bytes",
-        "source"
+        "source",
+        "content_base64"
       ],
       "additionalProperties": false
     },
@@ -1886,7 +1912,7 @@
       "type": "object",
       "properties": {
         "protocol_version": {
-          "const": "1.0.0"
+          "const": "1.1.0"
         },
         "kind": {
           "enum": [
@@ -1942,6 +1968,13 @@
             "type": "string",
             "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
           }
+        },
+        "owner_id": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+        },
+        "plan": {
+          "$ref": "#/$defs/worker_plan"
         }
       },
       "required": [
@@ -1956,7 +1989,9 @@
         "identity",
         "deadline",
         "stage",
-        "result_asset_ids"
+        "result_asset_ids",
+        "owner_id",
+        "plan"
       ],
       "additionalProperties": false
     },
@@ -1995,6 +2030,12 @@
             "type": "string",
             "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
           }
+        },
+        "recorded": {
+          "$ref": "#/$defs/recorded_edit"
+        },
+        "snapshot": {
+          "$ref": "#/$defs/project"
         }
       },
       "required": [
@@ -2004,7 +2045,9 @@
         "operation_id",
         "actor_id",
         "state_sha256",
-        "changed_ids"
+        "changed_ids",
+        "recorded",
+        "snapshot"
       ],
       "additionalProperties": false
     },
@@ -2111,6 +2154,659 @@
         "limit"
       ],
       "additionalProperties": false
+    },
+    "content_request": {
+      "type": "object",
+      "properties": {
+        "asset_id": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+        },
+        "start": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "end_exclusive": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        }
+      },
+      "required": [
+        "asset_id",
+        "start",
+        "end_exclusive"
+      ],
+      "additionalProperties": false
+    },
+    "content_result": {
+      "type": "object",
+      "properties": {
+        "schema_version": {
+          "const": "1.1.0"
+        },
+        "asset_id": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+        },
+        "total_bytes": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "start": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "end_exclusive": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "content_sha256": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "content_base64": {
+          "type": "string",
+          "maxLength": 22369624
+        }
+      },
+      "required": [
+        "schema_version",
+        "asset_id",
+        "total_bytes",
+        "start",
+        "end_exclusive",
+        "content_sha256",
+        "content_base64"
+      ],
+      "additionalProperties": false
+    },
+    "voice_candidate": {
+      "type": "object",
+      "properties": {
+        "schema_version": {
+          "const": "1.1.0"
+        },
+        "id": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+        },
+        "job_id": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+        },
+        "version": {
+          "$ref": "#/$defs/voice_version"
+        },
+        "audition_asset_id": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+        }
+      },
+      "required": [
+        "schema_version",
+        "id",
+        "job_id",
+        "version",
+        "audition_asset_id"
+      ],
+      "additionalProperties": false
+    },
+    "voice_results": {
+      "type": "object",
+      "properties": {
+        "schema_version": {
+          "const": "1.1.0"
+        },
+        "job_id": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+        },
+        "candidates": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/voice_candidate"
+          },
+          "maxItems": 100
+        }
+      },
+      "required": [
+        "schema_version",
+        "job_id",
+        "candidates"
+      ],
+      "additionalProperties": false
+    },
+    "voice_results_request": {
+      "type": "object",
+      "properties": {
+        "job_id": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+        }
+      },
+      "required": [
+        "job_id"
+      ],
+      "additionalProperties": false
+    },
+    "voice_version_get_request": {
+      "type": "object",
+      "properties": {
+        "voice_version_id": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+        }
+      },
+      "required": [
+        "voice_version_id"
+      ],
+      "additionalProperties": false
+    },
+    "recorded_edit": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "operation": {
+              "const": "block_text"
+            },
+            "request": {
+              "$ref": "#/$defs/block_text_request"
+            }
+          },
+          "required": [
+            "operation",
+            "request"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "operation": {
+              "const": "blocks_reorder"
+            },
+            "request": {
+              "$ref": "#/$defs/blocks_reorder_request"
+            }
+          },
+          "required": [
+            "operation",
+            "request"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "operation": {
+              "const": "speaker_assign"
+            },
+            "request": {
+              "$ref": "#/$defs/speaker_assign_request"
+            }
+          },
+          "required": [
+            "operation",
+            "request"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "operation": {
+              "const": "clip_put"
+            },
+            "request": {
+              "$ref": "#/$defs/clip_put_request"
+            }
+          },
+          "required": [
+            "operation",
+            "request"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "operation": {
+              "const": "clip_split"
+            },
+            "request": {
+              "$ref": "#/$defs/clip_split_request"
+            }
+          },
+          "required": [
+            "operation",
+            "request"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "operation": {
+              "const": "clip_delete"
+            },
+            "request": {
+              "$ref": "#/$defs/clip_delete_request"
+            }
+          },
+          "required": [
+            "operation",
+            "request"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "operation": {
+              "const": "track_put"
+            },
+            "request": {
+              "$ref": "#/$defs/track_put_request"
+            }
+          },
+          "required": [
+            "operation",
+            "request"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "operation": {
+              "const": "take_select"
+            },
+            "request": {
+              "$ref": "#/$defs/take_select_request"
+            }
+          },
+          "required": [
+            "operation",
+            "request"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "operation": {
+              "const": "project_assemble"
+            },
+            "request": {
+              "$ref": "#/$defs/project_assemble_request"
+            }
+          },
+          "required": [
+            "operation",
+            "request"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "operation": {
+              "const": "project_ripple"
+            },
+            "request": {
+              "$ref": "#/$defs/project_ripple_request"
+            }
+          },
+          "required": [
+            "operation",
+            "request"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "operation": {
+              "const": "project_restore"
+            },
+            "request": {
+              "$ref": "#/$defs/project_restore_request"
+            }
+          },
+          "required": [
+            "operation",
+            "request"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "operation": {
+              "const": "blocks_put"
+            },
+            "request": {
+              "$ref": "#/$defs/blocks_put_request"
+            }
+          },
+          "required": [
+            "operation",
+            "request"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "operation": {
+              "const": "blocks_delete"
+            },
+            "request": {
+              "$ref": "#/$defs/blocks_delete_request"
+            }
+          },
+          "required": [
+            "operation",
+            "request"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "operation": {
+              "const": "track_delete"
+            },
+            "request": {
+              "$ref": "#/$defs/track_delete_request"
+            }
+          },
+          "required": [
+            "operation",
+            "request"
+          ],
+          "additionalProperties": false
+        }
+      ]
+    },
+    "history": {
+      "type": "object",
+      "properties": {
+        "schema_version": {
+          "const": "1.1.0"
+        },
+        "project_id": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+        },
+        "revisions": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/revision"
+          },
+          "maxItems": 100
+        },
+        "next_cursor": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "schema_version",
+        "project_id",
+        "revisions",
+        "next_cursor"
+      ],
+      "additionalProperties": false
+    },
+    "revision_get_request": {
+      "type": "object",
+      "properties": {
+        "project_id": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+        },
+        "revision": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        }
+      },
+      "required": [
+        "project_id",
+        "revision"
+      ],
+      "additionalProperties": false
+    },
+    "worker_plan": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "schema_version": {
+              "const": "1.1.0"
+            },
+            "operation": {
+              "const": "voice_prepare"
+            },
+            "request": {
+              "$ref": "#/$defs/voice_prepare_request"
+            },
+            "project": {
+              "$ref": "#/$defs/project"
+            },
+            "voice_versions": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/voice_version"
+              }
+            },
+            "assets": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/asset"
+              }
+            },
+            "synthesis_settings": {
+              "$ref": "#/$defs/synthesis_settings"
+            }
+          },
+          "required": [
+            "schema_version",
+            "operation",
+            "request",
+            "project",
+            "voice_versions",
+            "assets",
+            "synthesis_settings"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "schema_version": {
+              "const": "1.1.0"
+            },
+            "operation": {
+              "const": "voice_design"
+            },
+            "request": {
+              "$ref": "#/$defs/voice_design_request"
+            },
+            "project": {
+              "$ref": "#/$defs/project"
+            },
+            "voice_versions": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/voice_version"
+              }
+            },
+            "assets": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/asset"
+              }
+            },
+            "synthesis_settings": {
+              "$ref": "#/$defs/synthesis_settings"
+            }
+          },
+          "required": [
+            "schema_version",
+            "operation",
+            "request",
+            "project",
+            "voice_versions",
+            "assets",
+            "synthesis_settings"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "schema_version": {
+              "const": "1.1.0"
+            },
+            "operation": {
+              "const": "speech_generate"
+            },
+            "request": {
+              "$ref": "#/$defs/speech_generate_request"
+            },
+            "project": {
+              "$ref": "#/$defs/project"
+            },
+            "voice_versions": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/voice_version"
+              }
+            },
+            "assets": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/asset"
+              }
+            },
+            "synthesis_settings": {
+              "$ref": "#/$defs/synthesis_settings"
+            }
+          },
+          "required": [
+            "schema_version",
+            "operation",
+            "request",
+            "project",
+            "voice_versions",
+            "assets",
+            "synthesis_settings"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "schema_version": {
+              "const": "1.1.0"
+            },
+            "operation": {
+              "const": "project_render"
+            },
+            "request": {
+              "$ref": "#/$defs/project_render_request"
+            },
+            "project": {
+              "$ref": "#/$defs/project"
+            },
+            "voice_versions": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/voice_version"
+              }
+            },
+            "assets": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/asset"
+              }
+            },
+            "synthesis_settings": {
+              "$ref": "#/$defs/synthesis_settings"
+            }
+          },
+          "required": [
+            "schema_version",
+            "operation",
+            "request",
+            "project",
+            "voice_versions",
+            "assets",
+            "synthesis_settings"
+          ],
+          "additionalProperties": false
+        }
+      ]
+    },
+    "synthesis_settings": {
+      "type": "object",
+      "properties": {
+        "language": {
+          "type": "string",
+          "maxLength": 64
+        },
+        "seed": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 2147483647
+        },
+        "temperature": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 2
+        },
+        "top_p": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "top_k": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 1000
+        },
+        "repetition_penalty": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "maximum": 10
+        },
+        "max_new_tokens": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 32768
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "language",
+        "seed",
+        "temperature",
+        "top_p",
+        "top_k",
+        "repetition_penalty",
+        "max_new_tokens"
+      ]
     }
-  }
+  },
+  "$comment": "Contract pack revision 1.1.0; persisted project schema remains 1.0.0."
 }
