@@ -1162,7 +1162,8 @@ def _prefix_receipt_namespace(receipts, intents):
     for intent in intents:
         prefix='p1-recovery-'+intent['id']
         allowed.update(prefix+suffix for suffix in ('.intent.json','.journal','.certificate.json',
-            '.snapshot.intent.json','.manifest.intent.json','.original-journal.intent.json'))
+            '.snapshot.intent.json','.manifest.intent.json','.original-journal.intent.json',
+            '.snapshot.bundle','.bundle.intent.json'))
     used=count=0; deadline=time.monotonic()+2
     with os.scandir(receipts) as entries:
         for entry in entries:
@@ -1207,6 +1208,17 @@ def _pending_through_evidence(roots, scope, intent, observation, *, now=None, sn
         accepted_path=receipts/('p1-recovery-'+intent['id']+'.intent.json')
         marker_raw=encode(marker).encode(); fence_raw=encode(fence).encode(); accepted_raw=encode(intent).encode()
         _prefix_receipt_namespace(receipts,[*data['p1_recoveries'],intent])
+        # All completed predecessors remain immutable even after their fence is
+        # superseded. Derive exact receipt documents from validated SQL history.
+        for prior in data['p1_recoveries']:
+            if prior['id']==intent['id']: continue
+            chain=[dict(recovery_id=prior['id'],**e,lane=prior['new_lane'],epoch=prior['new_epoch']) for e in prior['expected'][:4]]
+            certificate=_certificate(prior,chain[-1])
+            prefix='p1-recovery-'+prior['id']
+            certificate_raw=encode(dict(certificate=certificate,steps=chain)).encode()
+            if len(certificate_raw)>65536: raise ValueError('b2_prefix_receipt_budget')
+            _prefix_exact(receipts/(prefix+'.certificate.json'),certificate_raw)
+            _prefix_exact(receipts/(prefix+'.journal'),bytes.fromhex(prior['before']['journal']['bytes_hex']))
         accepted=accepted_path.exists()
         if existing is not None and not fence_path.exists(): raise ValueError('b2_prefix_receipt_quarantine')
         previous_fence=False
@@ -1233,7 +1245,19 @@ def _pending_through_evidence(roots, scope, intent, observation, *, now=None, sn
             raise ValueError('b2_prefix_journal_changed')
         names={kind:root/name for name,kind in archive_names(intent).items()}
         if names['certificate'].exists() or (receipts/('p1-recovery-'+intent['id']+'.certificate.json')).exists(): raise ValueError('b2_prefix_premature_certificate')
+        bundle=receipts/('p1-recovery-'+intent['id']+'.snapshot.bundle')
+        bundle_intent=receipts/('p1-recovery-'+intent['id']+'.bundle.intent.json')
+        bundle_descriptor=encode(dict(revision=1,recovery_id=intent['id'],intent_digest=digest(intent),
+            source_digest=intent['source_digest'],snapshot_digest=intent['expected'][1]['output']['snapshot_digest'])).encode()
         snapshot_raw=snapshot_bytes
+        if bundle_intent.exists():
+            _prefix_exact(bundle_intent,bundle_descriptor)
+            if not bundle.exists(): raise ValueError('b2_prefix_missing_bundle_quarantine')
+            snapshot_raw=read_file(bundle,MAX_BYTES)
+            _prefix_exact(bundle,snapshot_raw)
+            if snapshot_bytes is not None and snapshot_bytes!=snapshot_raw: raise ValueError('b2_prefix_snapshot_changed')
+        elif bundle.exists() or bundle.is_symlink() or existing is not None:
+            raise ValueError('b2_prefix_unrecorded_bundle_quarantine')
         if snapshot_raw is not None:
             if not isinstance(snapshot_raw,bytes) or len(snapshot_raw)>MAX_BYTES or hashlib.sha256(snapshot_raw).hexdigest()!=intent['expected'][1]['output']['snapshot_digest']:
                 raise ValueError('b2_prefix_snapshot_changed')
@@ -1287,6 +1311,17 @@ def _pending_through_evidence(roots, scope, intent, observation, *, now=None, sn
             _prefix_file(pending,fence_raw,fault,'fence')
             os.replace(pending,fence_path); sync_dir(receipts); fault('fence-replace-parent')
         elif not fence_path.exists(): _prefix_file(fence_path,fence_raw,fault,'fence')
+        if not bundle_intent.exists():
+            if snapshot_raw is None: raise ValueError('b2_prefix_missing_bundle_quarantine')
+            # Immutable creation intent precedes the exact original bytes. Once
+            # recorded, missing/partial output quarantines; never recapture it.
+            _prefix_file(bundle_intent,bundle_descriptor,fault,'bundle-intent')
+            fault('bundle-intent-recorded')
+            _prefix_file(bundle,snapshot_raw,fault,'bundle')
+        _prefix_exact(bundle_intent,bundle_descriptor)
+        _prefix_exact(bundle,snapshot_raw)
+        # Charge the new durable restart input against the receipt population.
+        _prefix_receipt_namespace(receipts,[*data['p1_recoveries'],intent])
         if existing is None:
             _prefix_transaction(db,lambda:db.execute('INSERT INTO p1_recoveries VALUES(?,?,?,?)',
                 (intent['id'],intent['plan_id'],encode(intent),digest(intent))),fault,'core-intent')

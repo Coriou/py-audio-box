@@ -1102,7 +1102,7 @@ def test_b22_prefix_crash_resume(installation,point):
         if at==point:raise OSError('injected-'+point)
     with pytest.raises(OSError,match='injected'):
         recovery._pending_through_evidence(roots,scope,intent,observation,now=102,snapshot_bytes=evidence,fault=crash)
-    assert recovery._pending_through_evidence(roots,scope,intent,observation,now=1000,snapshot_bytes=evidence)['status']=='pending-through-evidence'
+    assert recovery._pending_through_evidence(roots,scope,intent,observation,now=1000)['status']=='pending-through-evidence'
     assert (roots['receipts']/'journal.json').read_bytes()==journal
 
 
@@ -1243,18 +1243,20 @@ def test_b22_prefix_real_allocated_work_is_not_transitioned(installation):
 
 
 @pytest.mark.parametrize('barrier',['file','parent'])
-def test_b22_prefix_actual_barrier_failure_preserves_output(installation,monkeypatch,barrier):
+@pytest.mark.parametrize('kind',['snapshot','bundle'])
+def test_b22_prefix_actual_barrier_failure_preserves_output(installation,monkeypatch,barrier,kind):
     roots,scope,_,_=installation;intent,observation,evidence=prefix_fixture(installation)
     original_fsync=recovery.os.fsync;original_sync=recovery.sync_dir
     def failed(*args):raise OSError('actual-barrier-failure')
     def arm(point):
-        if point==('snapshot-write' if barrier=='file' else 'snapshot-fsync'):
+        if point==(kind+'-write' if barrier=='file' else kind+'-fsync'):
             if barrier=='file':monkeypatch.setattr(recovery.os,'fsync',failed)
             else:monkeypatch.setattr(recovery,'sync_dir',failed)
     with pytest.raises(OSError,match='actual-barrier-failure'):
         recovery._pending_through_evidence(roots,scope,intent,observation,now=102,snapshot_bytes=evidence,fault=arm)
     monkeypatch.setattr(recovery.os,'fsync',original_fsync);monkeypatch.setattr(recovery,'sync_dir',original_sync)
-    path=next(roots['control'].glob('core/p1-recovery-*.sqlite'));identity=path.stat().st_ino;raw=path.read_bytes()
+    path=next(roots['control'].glob('core/p1-recovery-*.sqlite')) if kind=='snapshot' else next(roots['receipts'].glob('*.snapshot.bundle'))
+    identity=path.stat().st_ino;raw=path.read_bytes()
     recovery._pending_through_evidence(roots,scope,intent,observation,now=1000,snapshot_bytes=evidence)
     assert path.stat().st_ino==identity and path.read_bytes()==raw
 
@@ -1309,3 +1311,94 @@ def test_b22_prefix_receipt_only_resume_without_new_identity(installation,point)
         assert db.execute('SELECT count(*) FROM p1_recoveries').fetchone()==(0,)
     result=recovery._pending_through_evidence(roots,scope,intent,observation,now=1000)
     assert result['recovery_id']==intent['id'] and result['lane']==intent['new_lane']
+
+
+@pytest.mark.parametrize('point',['core-intent-commit','pending-receipt-commit'])
+def test_b22_correction_process_death_owned_restart(installation,point):
+    import os
+    roots,scope,_,_=installation
+    intent,observation,_=prefix_fixture(installation)
+    pid=os.fork()
+    if pid==0:
+        recovery._pending_through_evidence(roots,scope,intent,observation,now=102,
+            fault=lambda at:os._exit(73) if at==point else None)
+        os._exit(74)
+    _,status=os.waitpid(pid,0)
+    assert os.waitstatus_to_exitcode(status)==73
+    del intent,observation
+    path=next(roots['receipts'].glob('p1-recovery-*.intent.json'))
+    owned=json.loads(path.read_bytes())
+    from worker.runtime_journal import Journal
+    for _ in range(2):
+        with pytest.raises(ValueError,match='pending'):Core(roots['control']/'core',historical_local=True)
+        with pytest.raises(ValueError,match='pending'):Journal(roots['receipts'])
+        result=recovery._pending_through_evidence(roots,scope,owned,owned['proof']['observation'],now=1000)
+        assert result==dict(status='pending-through-evidence',recovery_id=owned['id'],lane=owned['new_lane'],epoch=owned['new_epoch'])
+    with sqlite3.connect(roots['control']/'core'/'core.sqlite') as db:
+        assert db.execute('SELECT count(*) FROM p1_recoveries').fetchone()==(1,)
+        assert db.execute('SELECT count(*) FROM p1_recovery_steps').fetchone()==(2,)
+    assert len(list((roots['control']/'core').glob('p1-recovery-*.sqlite')))==1
+
+
+@pytest.mark.parametrize('suffix',['.journal','.certificate.json'])
+@pytest.mark.parametrize('damage',['changed','missing','none'])
+def test_b22_correction_prior_receipts_every_resume(installation,suffix,damage):
+    roots,scope,_,_=installation
+    first=b2_intent(installation,complete=True);b2_receipt(roots,first,complete=True)
+    second=b2_intent(installation,complete=True,recovery_id='7'*32,archive_id='6'*32)
+    b2_receipt(roots,second,complete=True)
+    intent=b2_intent(installation,prepare_only=True,recovery_id='5'*32,archive_id='4'*32)
+    result=recovery._pending_through_evidence(roots,scope,intent,intent['proof']['observation'],now=102)
+    path=roots['receipts']/('p1-recovery-'+first['id']+suffix)
+    if damage=='changed':path.write_bytes(b'X'+path.read_bytes()[1:])
+    elif damage=='missing':path.unlink()
+    for _ in range(2):
+        if damage=='none':
+            assert recovery._pending_through_evidence(roots,scope,intent,intent['proof']['observation'],now=1000)==result
+        else:
+            with pytest.raises((ValueError,FileNotFoundError)):
+                recovery._pending_through_evidence(roots,scope,intent,intent['proof']['observation'],now=1000)
+
+
+@pytest.mark.parametrize('point',['bundle-intent-create','bundle-intent-write','bundle-intent-fsync','bundle-intent-parent','bundle-intent-recorded','bundle-create','bundle-write','bundle-fsync','bundle-parent'])
+def test_b22_correction_bundle_boundaries(installation,point):
+    roots,scope,_,_=installation;intent,observation,_=prefix_fixture(installation)
+    def crash(at):
+        if at==point:raise OSError('bundle-boundary')
+    with pytest.raises(OSError,match='bundle-boundary'):
+        recovery._pending_through_evidence(roots,scope,intent,observation,now=102,fault=crash)
+    originals={p:(p.stat().st_ino,p.read_bytes()) for p in roots['receipts'].glob('p1-recovery-*')}
+    if point in ('bundle-write','bundle-fsync','bundle-parent'):
+        recovery._pending_through_evidence(roots,scope,intent,observation,now=1000)
+    else:
+        with pytest.raises((ValueError,FileNotFoundError)):
+            recovery._pending_through_evidence(roots,scope,intent,observation,now=1000)
+        with sqlite3.connect(roots['control']/'core'/'core.sqlite') as db:
+            assert db.execute('SELECT count(*) FROM p1_recoveries').fetchone()==(0,)
+    assert all((p.stat().st_ino,p.read_bytes())==value for p,value in originals.items())
+
+
+@pytest.mark.parametrize('damage',['missing','changed','descriptor','mode','symlink','hardlink','oversize'])
+def test_b22_correction_bundle_damage_no_repair(installation,damage):
+    roots,scope,_,_=installation;intent,observation,evidence=prefix_fixture(installation)
+    def crash(at):
+        if at=='core-intent-commit':raise OSError('accepted')
+    with pytest.raises(OSError):recovery._pending_through_evidence(roots,scope,intent,observation,now=102,fault=crash)
+    bundle=next(roots['receipts'].glob('*.snapshot.bundle'))
+    if damage=='missing':bundle.unlink()
+    elif damage=='changed':bundle.write_bytes(b'X'+bundle.read_bytes()[1:])
+    elif damage=='descriptor':next(roots['receipts'].glob('*.bundle.intent.json')).write_bytes(b'{}')
+    elif damage=='mode':bundle.chmod(0o644)
+    elif damage=='symlink':
+        bundle.unlink();bundle.symlink_to(roots['receipts']/'journal.json')
+    elif damage=='hardlink':
+        import os
+        os.link(bundle,roots['receipts']/'extra-link')
+    else:
+        with bundle.open('r+b') as stream:stream.truncate(recovery.MAX_BYTES+1)
+    for _ in range(2):
+        with pytest.raises((ValueError,FileNotFoundError,OSError)):
+            recovery._pending_through_evidence(roots,scope,intent,observation,now=1000,snapshot_bytes=evidence)
+    with sqlite3.connect(roots['control']/'core'/'core.sqlite') as db:
+        assert db.execute('SELECT count(*) FROM p1_recoveries').fetchone()==(1,)
+        assert db.execute('SELECT count(*) FROM p1_recovery_steps').fetchone()==(0,)
