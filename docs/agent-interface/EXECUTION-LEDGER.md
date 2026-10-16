@@ -20,7 +20,7 @@
 | --- | --- | --- |
 | Launch preparation | Complete | Planning baseline `2c1adaa`; source base `ae67cd6`; integration branch `feat/agent-voice-workspace`. |
 | 0A Contract/compatibility pack | Integrated GO at E1 | Candidate `26f8e08` reviewed GO; integrated `bf66c30`, source equality verified. |
-| 0B Editor browser fixture | Narrow correction | R1 closed; R2 empty-string storage entry still bypasses recovery. |
+| 0B Editor browser fixture | Review round 3 | Narrow candidate `b62261e`; storage-entry browser recheck running. |
 | 0C Integration skeleton/acceptance ledger | Pending | 0A boundaries; integrate component decision after 0B. |
 | Phase 0 gate | Not evaluated | Integrated contracts, browser evidence, packaging boundary and relevant checks. |
 
@@ -123,3 +123,8 @@ Record failures and missing evidence; do not replace them with a successful late
 
 - [R2 review](reviews/0B-r2-sol.md): NO-GO, R1 closed; malformedJSON/replay-invalid cases fixed but present empty string bypasses UI read restoration and can be overwritten without Reset.8tests/build and browser regressions confirmed.
 - Narrow next correction to absent-key versus present-string boundary and direct entry tests; no redesign/Astra escalation needed for this explicit small defect. Request `pab-phase0b-fix-r2-20261016`, independent exact-candidate re-review follows. No integration/waiver.
+
+## Lot 0B narrow candidate / review round 3
+
+- Candidate `b62261e4ebb37fd9e0d1840c599b92846fcadb96`, isolated `/Users/ben/.txcode/worktrees/py-audio-box/t3-badfaf5f`, branch `t3/empty-string-restoration`; implementer reports clean,2focused/8fulltests/build and nativebrowser empty-string recovery proof. Root inspected correction scope; no integration.
+- Independent Sol-low task suffix `pab-phase0b-review-r3-20261016`, report `reviews/0B-r3-sol.md`. Full previous findings/brief provided; exact storage-boundary recheck plus preserved regressions. No0B/Phase0GO.
