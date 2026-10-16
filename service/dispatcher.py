@@ -22,7 +22,8 @@ from worker.lifecycle import State
 
 
 class Dispatcher:
-    def __init__(self, root, *, ipc='/ipc', staging='/staging', runtime=None, fault=lambda _:None, budget=None, profiles=None):
+    def __init__(self, root, *, ipc='/ipc', staging='/staging', runtime=None, fault=lambda _:None, budget=None, profiles=None, persistent_registration=None):
+        self.persistent_registration = persistent_registration
         self.root, self.staging = Path(root), Path(staging)
         self.runtime = runtime or SupervisorRuntime(ipc)
         self.fault = fault
@@ -47,7 +48,14 @@ class Dispatcher:
     def _run(self):
         core=None
         try:
+            if self.persistent_registration is not None:
+                from service.recovery import enrollment_gate
+                from service.admission import DEFAULT_BUDGET
+                enrollment_gate(self.root, self.persistent_registration,
+                    self.runtime.call('hello', {}), self.current_profiles,
+                    DEFAULT_BUDGET if self.budget is None else self.budget)
             core=self.core=Core(self.root)
+            self.enrolled=bool(core.db.execute("SELECT 1 FROM sqlite_master WHERE name='p1_installation'").fetchone())
             self.admission=Admission(core,self.staging,self.budget)
             self.store=DispatchStore(core,self.admission)
             self.pool=ThreadPoolExecutor(max_workers=1,thread_name_prefix='bounded-lifecycle')
@@ -76,7 +84,7 @@ class Dispatcher:
             self.integrity_fault = self.integrity['blocked']
             with core.transaction():
                 for reservation in self.admission.store.rows():
-                    if not self.integrity_fault and not self.persistence_fault and reservation['state']=='queued' and core.job(reservation['id'])['state']=='cancelled':
+                    if not self.enrolled and not self.integrity_fault and not self.persistence_fault and reservation['state']=='queued' and core.job(reservation['id'])['state']=='cancelled':
                         self.admission.store.release_tx(reservation['id'],unstarted=True)
             self.initialized.set_result(True)
             while not self.stopping:
@@ -130,6 +138,7 @@ class Dispatcher:
                 reservations=self.admission.store.rows(), integrity=self.integrity,
                 integrity_fault=self.integrity_fault)
         if op=='cancel':
+            if self.enrolled: raise ValueError('persistent_activation_closed_until_C1')
             if self.integrity_fault and self.core.job(args[0])['state']=='queued':raise ValueError('integrity_blocks_release')
             job=self.core.request_cancel(*args,**kwargs,_cancel_unstarted=True,_admission=self.admission)
             self.next_poll=0
@@ -140,6 +149,7 @@ class Dispatcher:
                 if len(args)!=2 or not set(kwargs)<= {'retry_of','fixture','seconds'}:raise ValueError('closed_synthetic_command')
                 existing=self.core.db.execute("SELECT job FROM jobs WHERE principal=? AND operation='speech_generate' AND key=?",args).fetchone()
                 if existing:return json.loads(existing[0])
+            if self.enrolled: raise ValueError('persistent_activation_closed_until_C1')
             if not self.reconciled or self.quarantined or self.resource_fault or self.integrity_fault:raise ValueError('startup_or_quarantine')
             if op=='replace':
                 if self.pending or self.store.current():raise ValueError('lane_busy')
@@ -191,6 +201,7 @@ class Dispatcher:
         return False
 
     def _tick(self):
+        if self.enrolled: return  # B1 inspect-only; C1 activation closed.
         if getattr(self.core,'_publication_storage_failed',False):
             self.persistence_fault=self.quarantined=True
             return  # Exact reap preceded publication; storage needs reopen, no live retry.
@@ -339,7 +350,20 @@ class Dispatcher:
 def main():
     """Bounded installed diagnostic session; JSON lines, no public listener."""
     import sys
-    dispatcher=Dispatcher('/control/core')
+    import argparse
+    parser=argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--persistent-registration')
+    parser.add_argument('--persistent-config')
+    args=parser.parse_args()
+    if bool(args.persistent_registration)!=bool(args.persistent_config):
+        raise ValueError('explicit_persistent_configuration_required')
+    configuration={}
+    if args.persistent_config:
+        from service.persistent_init import read_file
+        configuration=json.loads(read_file(Path(args.persistent_config)))
+        if not isinstance(configuration,dict) or set(configuration)!={'profiles','budget'}:
+            raise ValueError('closed_persistent_configuration')
+    dispatcher=Dispatcher('/control/core',persistent_registration=args.persistent_registration,**configuration)
     try:
         for line in sys.stdin:
             value=json.loads(line)

@@ -20,6 +20,8 @@ from jsonschema.exceptions import ValidationError
 
 from service.core import encode
 from service import persistence
+
+# Approved B1-only exact-column adapter; no recovery/apply authority here.
 from service.worker_transport import Authority
 
 
@@ -30,6 +32,7 @@ TABLES = {
     'resource_faults', 'resource_monitor', 'resource_protocol',
     'p1_inventory_scans', 'p1_inventory_objects', 'p1_inventory_history', 'p1_integrity',
 }
+TABLES.update(persistence.B1_COLUMNS)
 DIAGNOSTICS = {'p1_inventory_scans', 'p1_inventory_objects', 'p1_inventory_history', 'p1_integrity'}
 
 COLUMNS = {
@@ -43,6 +46,8 @@ COLUMNS = {
     'resource_reservations': 'id category demand state', 'resource_accounting': 'id highwater',
     'resource_faults': 'reason', 'resource_monitor': 'id state', 'resource_protocol': 'id revision',
 }
+
+COLUMNS.update(persistence.B1_COLUMNS)
 
 
 def stable(info):
@@ -176,6 +181,44 @@ class Reconciliation:
                     value = json.loads(record[column])
                     if column == 'context': context(value, source)
                     else: walk(value, definition, source)
+                if table in persistence.B1_COLUMNS:
+                    from service.persistent_init import digest, validate_scope
+                    from service.recovery import validate_plan, validate_registration, closed
+                    value = json.loads(record['record'])
+                    if digest(value) != record['digest']:
+                        raise Incomplete('invalid_b1_digest')
+                    if table == 'p1_installation':
+                        closed(value, 'deployment_id revision scope host profile_budget_digest')
+                        validate_scope(value['host'])
+                        if (value['deployment_id'] != record['id'] or record['revision'] != 1 or
+                            value['revision'] != 1 or record['scope'] != 'owned-synthetic' or value['scope'] != 'owned-synthetic'):
+                            raise Incomplete('invalid_b1_installation')
+                    elif table == 'p1_registrations':
+                        validate_registration(value)
+                        if record['id'] != digest(value): raise Incomplete('invalid_b1_registration')
+                    else:
+                        validate_plan(value)
+                        if record['id'] != value['id']: raise Incomplete('invalid_b1_plan')
+                        # Typed references retain the referenced canonical documents.
+                        # Plan metadata/prose and arbitrary scalar strings are not assets.
+                        for job_id in value['affected']['jobs']:
+                            target = next((r for r in data.get('jobs', []) if r['id'] == job_id), None)
+                            if target is None: raise Incomplete('unknown_b1_job_reference')
+                            walk(json.loads(target['job']), 'job', source)
+                            context(json.loads(target['context']), source)
+                        for dispatch_id in value['affected']['dispatches']:
+                            target = next((r for r in data.get('dispatches', []) if r['seq'] == dispatch_id), None)
+                            if target is None: raise Incomplete('unknown_b1_dispatch_reference')
+                            authority = json.loads(target['authority'])
+                            walk(authority[0], 'job', source); context(authority[1], source); add(authority[2], source)
+                        for job_id in value['affected']['publications']:
+                            target = next((r for r in data.get('publications', []) if r['job_id'] == job_id), None)
+                            if target is None: raise Incomplete('unknown_b1_publication_reference')
+                            for column, definition in adapters['publications'].items():
+                                walk(json.loads(target[column]), definition, source)
+                    installations = data.get('p1_installation', [])
+                    if (len(installations) != 1 or value['deployment_id'] != installations[0]['id']):
+                        raise Incomplete('unknown_b1_deployment_reference')
                 if table == 'publication_work':
                     add(record['destination'], source)
                     walk(json.loads(record['binding']), 'artifact', source)

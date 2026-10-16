@@ -143,3 +143,31 @@ def initialize_integrity(core):
     with core.transaction():
         db.execute('CREATE TABLE p1_integrity(id INTEGER PRIMARY KEY, revision INTEGER NOT NULL, state TEXT NOT NULL, token TEXT)')
         db.execute('INSERT INTO p1_integrity VALUES(1,1,?,NULL)', ('unresolved' if populated else 'healthy',))
+
+
+# B1 records deliberately contain no resource epoch or cleanup authority.
+B1_COLUMNS = {
+    'p1_installation': 'id revision scope record digest',
+    'p1_registrations': 'id record digest',
+    'p1_recovery_plans': 'id record digest',
+}
+
+
+def initialize_enrollment(core, record):
+    """Only the create-only initializer calls this, after all predecessors exist."""
+    from service.core import encode
+    tables = {r[0] for r in core.db.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+    if tables & B1_COLUMNS.keys():
+        for table, columns in B1_COLUMNS.items():
+            if [r[1] for r in core.db.execute('PRAGMA table_info('+table+')')] != columns.split():
+                raise PublicationQuarantine('partial_enrollment_schema')
+        rows = core.db.execute('SELECT record,digest FROM p1_installation').fetchall()
+        if rows != [(encode(record), hashlib.sha256(encode(record).encode()).hexdigest())]:
+            raise PublicationQuarantine('enrollment_mismatch')
+        return
+    with core.transaction():
+        core.db.execute('CREATE TABLE p1_installation(id TEXT PRIMARY KEY, revision INTEGER NOT NULL, scope TEXT NOT NULL, record TEXT NOT NULL, digest TEXT NOT NULL)')
+        core.db.execute('CREATE TABLE p1_registrations(id TEXT PRIMARY KEY, record TEXT NOT NULL, digest TEXT NOT NULL)')
+        core.db.execute('CREATE TABLE p1_recovery_plans(id TEXT PRIMARY KEY, record TEXT NOT NULL, digest TEXT NOT NULL)')
+        core.db.execute('INSERT INTO p1_installation VALUES(?,1,?,?,?)',
+                        (record['deployment_id'], 'owned-synthetic', encode(record), hashlib.sha256(encode(record).encode()).hexdigest()))
