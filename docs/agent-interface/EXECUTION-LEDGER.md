@@ -263,3 +263,8 @@ Record failures and missing evidence; do not replace them with a successful late
 - Candidate`22e75ca2964d51b5b80ee91e9a14c7776c682d15`, app-owned`t3-3115080c`, branch`t3/resource-admission`. Root read completehandoff; unintegrated.
 - Claims155tests+35installedsteps, durabledeploymentreservations integratedsubmit/dispatch/cancel/reap/restart, actualmanaged/stagingaccounting andgrowthchecks. Genericcategories/profilebudgetsE1only; fixedsyntheticexecutor, P1/publicactivationclosed. Stagingparent1733->1777 accountingdelta explicitlyunderreview.
 - IndependentSol-low request/task suffix`pab-phase1a-r1-review-r1-20261022`, currenttask-IDprefix, report`reviews/R1-r1-sol.md`; originalbrief+remaininggates supplied, soleheavylane.
+
+## R1 review NO-GO / targeted correction
+
+- [IndependentR1 report](reviews/R1-r1-sol.md): NO-GO exact`22e75ca`;155tests+35installedsteps andsourceimageidentity confirmed. AdditionalE1probes reproduced F1 failedresourcefaultwrite loseslatch afterALIVEobservation, F2 transientviolationduringpendingI/O leavesstopunscheduled.
+- No integration/waiver. IsolatedSol-low request`pab-phase1a-r1-fix-r1-20261022`: failclosedlatchbeforefalliblepersistence + persistentstopobligation servicedafterI/O; mandatoryexactregressions/re-review. P1/fullactivationremainclosed.
