@@ -1,11 +1,11 @@
 # Implementation execution ledger
 
-2026-10-16. Planning/protocol preparation only. **Application implementation has not started.** This ledger records execution evidence; the [implementation plan](IMPLEMENTATION-PLAN.md) defines outcomes and the [orchestration protocol](ORCHESTRATION-PROTOCOL.md) defines roles/review/integration.
+2026-10-16. Launch preparation complete; Phase 0A is ready for delegation. **No application service/studio has been implemented.** This ledger records execution evidence; the [implementation plan](IMPLEMENTATION-PLAN.md) defines outcomes and the [orchestration protocol](ORCHESTRATION-PROTOCOL.md) defines roles/review/integration.
 
 ## Launch state
 
 - Inspected source HEAD: `ae67cd6a572e7105b7d41365aac0be4059d79584` (recheck before execution).
-- Working product/research documents are currently untracked. Curate/version the required planning baseline before isolated worktree tasks; uncommitted files will not be copied automatically.
+- Curated planning baseline committed as `2c1adaa94840ccec68a02317c46dc78a883abe97` on integration branch `feat/agent-voice-workspace`: 135 files, bounded documentation/source/receipts; no application-source changes. Downloads, compiled builds and unselected raw records remain local and untouched. Verbatim tool-evidence whitespace is scoped through an evaluation-only `.gitattributes`.
 - Live catalogue checked: Codex `gpt-6.1-sol` with `low` reasoning and `gpt-6-astra` are available. Record the actual launch settings/task IDs; availability is time-scoped.
 - No application implementation lots, their code-review tasks or implementation worktrees have been launched. Protocol-document reviews do not satisfy an implementation phase gate.
 
@@ -18,8 +18,8 @@
 
 | Lot | State | Dependency / next action |
 | --- | --- | --- |
-| Launch preparation | Pending | Preserve current work; curate planning baseline; record committed plan/source identity and integration branch. |
-| 0A Contract/compatibility pack | Pending | Launch preparation; Sol-low implementer then independent Sol-low review. |
+| Launch preparation | Complete | Planning baseline `2c1adaa`; source base `ae67cd6`; integration branch `feat/agent-voice-workspace`. |
+| 0A Contract/compatibility pack | Ready | [Ticket](lots/0A-contracts.md); launch from committed handoff, Sol-low implementer then separate Sol-low reviewer. |
 | 0B Editor browser fixture | Pending | Recorded 0A contract fixture; separate owned component slice and reviewer. |
 | 0C Integration skeleton/acceptance ledger | Pending | 0A boundaries; integrate component decision after 0B. |
 | Phase 0 gate | Not evaluated | Integrated contracts, browser evidence, packaging boundary and relevant checks. |

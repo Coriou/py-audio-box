@@ -19,7 +19,7 @@ Resolve model IDs/settings from the live orchestration catalogue at launch and r
 4. Create an integration branch and task-owned worktrees from the recorded baseline. App-owned isolated tasks start from committed parent state: **uncommitted planning files are not copied**. Verify required files exist in each checkout before launching implementation; do not copy an entire dirty tree.
 5. Assign one owner for shared schemas/migrations and one integration owner. Phase 0A establishes the contract pack; Phase 0B's editor work and Phase 0C's skeleton use its recorded fixture version. Minimum predecessor gates must exist before dependent lots begin.
 
-This preparation is a mechanical launch prerequisite, not a new product research phase. The present planning checkout has untracked product/research documents; a usable worktree baseline must therefore be prepared before isolated implementation starts.
+This preparation is a mechanical launch prerequisite, not a new product research phase. When this protocol was authored, the checkout had untracked product/research documents. The execution ledger records subsequent baseline preparation; verify its committed handoff before isolated implementation starts.
 
 ## One lot, one observable outcome
 

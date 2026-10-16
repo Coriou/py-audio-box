@@ -1,10 +1,10 @@
 # Speech workspace implementation plan
 
-2026-10-15 · **Canonical v1 delivery plan; implementation has not started.** This document supersedes earlier delivery sequences and mandatory-feature lists in [PLAN.md](PLAN.md) and the research reports. [PRODUCT.md](../../PRODUCT.md) records product direction; [IMPLEMENTATION-START.md](IMPLEMENTATION-START.md) is the agent entry point. The [fresh product review](review-fresh-product-astra.md) establishes GO to plan, not runtime or release acceptance. Inspected source baseline: `ae67cd6a572e7105b7d41365aac0be4059d79584`; recheck the implementation checkout before each lot.
+2026-10-15 · **Canonical v1 delivery plan.** Current execution status and accepted gates are recorded in [EXECUTION-LEDGER.md](EXECUTION-LEDGER.md). This document supersedes earlier delivery sequences and mandatory-feature lists in [PLAN.md](PLAN.md) and the research reports. [PRODUCT.md](../../PRODUCT.md) records product direction; [IMPLEMENTATION-START.md](IMPLEMENTATION-START.md) is the agent entry point. The [fresh product review](review-fresh-product-astra.md) establishes GO to plan, not runtime or release acceptance. Inspected source baseline: `ae67cd6a572e7105b7d41365aac0be4059d79584`; recheck the implementation checkout before each lot.
 
 The user confirmed the audience and capabilities below. Architecture, library choices, limits and sequencing are **working engineering defaults**, justified here and changeable through a bounded decision record. This plan authorizes no model download, paid resource, cloud provisioning, deployment or application change by itself.
 
-All phase artifacts and exit checks below are future implementation work. Writing this document completes planning only; no Phase 0 contract, prototype, dependency choice qualification or later gate is claimed complete.
+At plan authoring, all phase artifacts and exit checks below were future implementation work. The document itself never proves completion: only the execution ledger and recorded integrated evidence establish accepted gates.
 
 ## 1. Product outcome and boundaries
 
