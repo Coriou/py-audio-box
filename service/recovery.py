@@ -723,7 +723,7 @@ def _validate_evidence(r):
         job=jobs[action['job_id']]
         expected=('retain-terminal' if job['state'] in ('succeeded','failed','cancelled') else
                   'cancel-never-started' if not job['attempts'] else
-                  'cancel-requested' if job.get('cancel_requested') else 'fail')
+                  'cancel-requested' if job['state']=='cancel_requested' else 'fail')
         if action['before_digest']!=digest(job) or action['action']!=expected: raise ValueError('b2_action_before_binding')
     previous=r['before_digest']
     for descriptor in r['expected']:

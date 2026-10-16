@@ -491,16 +491,22 @@ def b2_intent(installation, *, complete=False,recovery_id='9'*32,archive_id='8'*
     snapshot_path=root/('p1-recovery-'+archive_id+'.sqlite')
     snapshot_path.write_bytes(snapshot_bytes);snapshot_path.chmod(0o600)
     jobs=[json.loads(row[6]) for row in source['data']['jobs']]
-    actions=[dict(job_id=j['id'],action=('retain-terminal' if j['state'] in ('succeeded','failed','cancelled') else 'cancel-never-started' if not j['attempts'] else 'fail'),before_digest=digest(j)) for j in jobs]
+    actions=[dict(job_id=j['id'],action=('retain-terminal' if j['state'] in ('succeeded','failed','cancelled') else 'cancel-never-started' if not j['attempts'] else 'cancel-requested' if j['state']=='cancel_requested' else 'fail'),before_digest=digest(j)) for j in jobs]
     r=dict(id=recovery_id,deployment_id=p['deployment_id'],plan_id=p['id'],plan_digest=digest(p),
         **{k:p[k] for k in ('source_digest','observation_digest','proof_digest','prior_epoch','new_epoch','old_lane','new_lane','affected','budget_before','budget_after','diagnostic_decisions')},
         proof_kind='E1-mock',before=before,proof=proof,before_digest=digest(before),
         monitor_digest=digest(source['data']['resource_monitor']),faults_digest=digest(source['data']['resource_faults']),
         highwater=source['data']['resource_accounting'][0][1],actions=actions,archive_id=archive_id,expected=[],created=101)
+    core_rows={k:copy.deepcopy(source['data'][k]) for k in recovery.CORE_OUTPUT_TABLES}
+    for row,action in zip(core_rows['jobs'],actions):
+        if action['action']=='retain-terminal':continue
+        job=json.loads(row[6]);job['state']='failed' if action['action']=='fail' else 'cancelled';row[6]=encode(job)
+    for row in core_rows['resource_reservations']:row[3]='retained'
+    core_rows['resource_monitor']=[[1,'healthy']];core_rows['resource_faults']=[]
     outputs=[dict(recovery_id=r['id'],plan_digest=r['plan_digest'],proof_digest=r['proof_digest'],before_digest=r['before_digest']),
         dict(archive_id=r['archive_id'],snapshot_digest=hashlib.sha256(snapshot_path.read_bytes()).hexdigest(),manifest_digest='0'*64,journal_state=p['journal_state'],journal_digest=p['journal_digest']),
         dict(old_lane=r['old_lane'],new_lane=r['new_lane'],journal=dict(version=1,lane=r['new_lane'],records=[])),
-        dict(before_digest=r['before_digest'],prior_epoch=r['prior_epoch'],new_epoch=r['new_epoch'],actions=actions,diagnostic_decisions=r['diagnostic_decisions'],highwater=r['highwater'],budget_after=r['budget_after'],monitor_state='healthy',rows={k:copy.deepcopy(source['data'][k]) for k in recovery.CORE_OUTPUT_TABLES})]
+        dict(before_digest=r['before_digest'],prior_epoch=r['prior_epoch'],new_epoch=r['new_epoch'],actions=actions,diagnostic_decisions=r['diagnostic_decisions'],highwater=r['highwater'],budget_after=r['budget_after'],monitor_state='healthy',rows=core_rows)]
     # Manifest does not hash itself or the completion certificate.
     r['expected']=[dict(output=output) for output in outputs]
     outputs[1]['manifest_digest']=digest(recovery.archive_manifest(r))
@@ -964,3 +970,28 @@ def test_b2_second_completion_retains_prior_evidence(installation,damage):
         with closing(sqlite3.connect(root/'core.sqlite')) as db,db:
             db.execute('DELETE FROM p1_recovery_plans')
     with pytest.raises((ValueError,OSError)):Core(root)
+
+
+
+def test_b2_cancel_requested_action_uses_frozen_job_state(installation):
+    from service.admission import Admission
+    from service.dispatch_store import DispatchStore
+    from tests.service.test_admission import fixture
+    roots,_,_,_=installation;root=roots['control']/'core'
+    core=Core(root)
+    try:
+        f=fixture();a=Admission(core,roots['staging']);store=DispatchStore(core,a)
+        job=core.submit_synthetic('p','cancel-contract',f['context'],_admission=a,_profiles=f['profiles'],_dispatch_settings=('silence',8))
+        store.allocate(f['profiles'],'silence',8)
+        core.request_cancel(job['id'])
+    finally:core.close()
+    intent=b2_intent(installation)
+    assert intent['actions'][0]['action']=='cancel-requested'
+    with recovery.offline(roots) as (checked,db):
+        recovery.validate_b2_database(db,root)
+    # Only the record is varied; no recovery transitions run in this fixture.
+    intent['actions'][0]['action']='fail'
+    with closing(sqlite3.connect(root/'core.sqlite')) as db,db:
+        db.execute('UPDATE p1_recoveries SET record=?,digest=?',(encode(intent),digest(intent)))
+    with closing(sqlite3.connect(root/'core.sqlite')) as db,pytest.raises(ValueError,match='action_before_binding'):
+        recovery.validate_b2_database(db,root)
