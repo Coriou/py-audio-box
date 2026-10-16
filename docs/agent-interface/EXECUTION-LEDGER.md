@@ -20,7 +20,7 @@
 | --- | --- | --- |
 | Launch preparation | Complete | Planning baseline `2c1adaa`; source base `ae67cd6`; integration branch `feat/agent-voice-workspace`. |
 | 0A Contract/compatibility pack | Integrated GO at E1 | Candidate `26f8e08` reviewed GO; integrated `bf66c30`, source equality verified. |
-| 0B Editor browser fixture | Correcting | R1 review NO-GO: unbounded ruler and misleading invalid-history startup state. |
+| 0B Editor browser fixture | Re-reviewing | Corrected `1a6bdd5`; independent resource/recovery browser checks running. |
 | 0C Integration skeleton/acceptance ledger | Pending | 0A boundaries; integrate component decision after 0B. |
 | Phase 0 gate | Not evaluated | Integrated contracts, browser evidence, packaging boundary and relevant checks. |
 
@@ -112,3 +112,9 @@ Record failures and missing evidence; do not replace them with a successful late
 - [Independent report](reviews/0B-r1-sol.md): NO-GO on `a7b7435`;6tests/build and ordinary browser workflows independently passed. Component decision and bounded split/replacement restrictions accepted for0B.
 - Required fixes: R1 large valid placement causes unbounded ruler allocation and persisted blank page; R2 malformed/replay-invalid saved history silently shows false saved state. Correct evidence label to E4browser.
 - Isolated Sol-low correction request `pab-phase0b-fix-r1-20261016`; independent re-review required before integration. No waiver or phase acceptance.
+
+## Lot 0B correction / review round 2
+
+- Corrected candidate `1a6bdd508b785cbe64200bd5762244494fe76f54`, isolated `/Users/ben/.txcode/worktrees/py-audio-box/t3-bdf5bf95`, branch `t3/bound-timeline-duration`. Root read response; candidate remains unintegrated.
+- Implementer reports8tests/build/nativebrowser proof: fixture-specific60second ceiling rejects new oversized edits, existing oversized history remains recoverable; corrupt history error preserves bytes until Reset. Claims await independent review.
+- Independent Sol-low task suffix `pab-phase0b-review-r2-20261016` (same full task-ID prefix above), report `reviews/0B-r2-sol.md`; original brief/findings supplied. Sole heavy/browser lane. No0B/Phase0GO.
