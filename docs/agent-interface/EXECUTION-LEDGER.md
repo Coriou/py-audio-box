@@ -288,3 +288,9 @@ Record failures and missing evidence; do not replace them with a successful late
 
 - Candidate`5ab47170c4c467cb3d3bef6075a0ff6480e8d56f`, app-owned`t3-f53dbe4c`, branch`t3/r1-fault-authority-round2`. Claims200tests43installedsteps; explicithealthy-scan-death quarantineavailabilitytradeoff. Root read response; unintegrated.
 - IndependentSol-low request/task suffix`pab-phase1a-r1-review-r3-20261022`, currenttask-IDprefix, report`reviews/R1-r3-sol.md`; allpriorfindings+fullAstraordering/matrix supplied. No waiver/R1acceptance; P1activationclosed.
+
+## R1 accepted integration / P1 scoping
+
+- [IndependentR3 report](reviews/R1-r3-sol.md): boundedGO exact`5ab4717`; F1closed/F2preserved,200tests43installedsteps independentlypassed withfullAstramatrix. Explicitscan-overlapquarantineavailabilitycost retained.
+- Root cherry-pickedoriginal+twocorrections, exactsource diffvsreviewedcandidate empty. Root exactimage200test regression running. No public/unattendedactivation/full1Aclaim.
+- TargetedAstra request`pab-phase1a-p1-design-20261022`: smallorderedP1implementationbriefs forpublicationdurability/reconciliation/operatorrecovery, no broadpartialtask or safetywaiver. R1GOdoesnotcloseP1.
