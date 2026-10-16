@@ -19,7 +19,7 @@
 | Lot | State | Dependency / next action |
 | --- | --- | --- |
 | Launch preparation | Complete | Planning baseline `2c1adaa`; source base `ae67cd6`; integration branch `feat/agent-voice-workspace`. |
-| 0A Contract/compatibility pack | Correction round 3 | R2 findings closed; R3-1 reusable settings and R3-2 output conformance remain. |
+| 0A Contract/compatibility pack | Review round 4 | Candidate `26f8e08`, revision 1.3.0; R3 corrections under independent review. |
 | 0B Editor browser fixture | Pending | Recorded 0A contract fixture; separate owned component slice and reviewer. |
 | 0C Integration skeleton/acceptance ledger | Pending | 0A boundaries; integrate component decision after 0B. |
 | Phase 0 gate | Not evaluated | Integrated contracts, browser evidence, packaging boundary and relevant checks. |
@@ -83,3 +83,9 @@ Record failures and missing evidence; do not replace them with a successful late
 - [Independent R3 report](reviews/0A-r3-sol.md): NO-GO on `ca0ad37`; exact-source match and 185 selected passing tests independently verified. Original R2-1/2/3 counterexamples now reject; prior F1/F3/F4/F5/F6 preserved.
 - Remaining R3-1: immutable reusable speech settings need typed retrievable preimage and publication validation, distinct from prepare/design generation settings. R3-2: output media format/subtype and render length/channels/rate must match frozen operation policy, with truthful synthetic verification evidence.
 - Correction request `pab-phase0a-fix-r3-20261016`, isolated Sol-low; bounded two-finding repair followed by independent review. No integration or waiver; all evidence E1.
+
+## Lot 0A correction round 3 / review round 4
+
+- Candidate `26f8e08ed9db4935dad1f5c4916e885d9b392645`, branch `t3/speech-output-boundary-fix`, isolated worktree `/Users/ben/.txcode/worktrees/py-audio-box/t3-66ad7ec3`. Root verified clean tree and read complete R3 response. Unintegrated.
+- Implementer reports revision1.3.0 and 214 final selected tests (143contract+71legacy), image `py-audio-box-0a-fix-r3-tests`,139copied files0mismatches. Immutable reuse settings preimage and operation-specific truthful output metadata tests added. E1 claims await independent verification.
+- Independent Sol-low review request/task suffix `pab-phase0a-review-r4-20261016`, report `reviews/0A-r4-sol.md`; full prior findings/Astra guidance supplied. Sole heavy test lane, read-only candidate. No 0A/Phase0 GO or waived findings.
