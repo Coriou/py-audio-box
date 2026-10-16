@@ -153,3 +153,8 @@ Record failures and missing evidence; do not replace them with a successful late
 - Partial candidate `a1a46685f7d2cc5be22e84ca5693e04bb5d30779`, isolated `/Users/ben/.txcode/worktrees/py-audio-box/t3-21d5add2`, branch `t3/durable-phase1a-core`, base`9cca8a5`. Five-file foundation; root read full CORE-1A handoff. Unintegrated.
 - Implementer reports29host+29networknoneLinux tests forSQLite/CAS/idempotentjobs/syntheticprocess/publicationfaultrecovery. Syntheticpreset-only trustedcalls; workerOSisolation/admission/render/registry/mutationidempotency andotherdeclaredcorework remain. Whole1A incomplete; no scope waiver.
 - IndependentSol-low task suffix `pab-phase1a-foundation-review-r1-20261016`, report `reviews/1A-foundation-r1-sol.md`; boundedfoundationreview plus actualdurabilitycounterexamples. Nextcontinuations: isolatedworker/resourcepolicy, fullwalkingcore/render/registry before1B/Cacceptance. Soleheavylane.
+
+## Foundation review execution failure / narrower functional review
+
+- `pab-phase1a-foundation-review-r1-20261016` failed with provider message: possible cybersecurity risk. No report exists; no review verdict/evidence obtained. Candidate remains unintegrated.
+- New request `pab-phase1a-foundation-review-r1b-20261016` limits work to read-only functional code review and existing local synthetic tests, excludes independent security probing. Report `reviews/1A-foundation-r1b-sol.md`. This narrower scope does not waive the remaining independent durability/adversarial acceptance requirements.
