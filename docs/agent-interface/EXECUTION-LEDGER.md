@@ -534,3 +534,9 @@ Record failures and missing evidence; do not replace them with a successful late
 
 - Candidate5bfaaa6587b5540dd7f5ac031d5209902af97b93 frozen0d1a894 app-ownedt3-dec21b4c; rootreadhandoff unintegrated. F4commonvalidator exactCorecreationdescriptor+actualcertificate EVERYfifthcompletedhistory, previousnoattemptstageexceptionspreserved.
 - Claims6REDfail2controls then116target/693focused/845passed18skipped finalfrozen. FreshSol-low request pab-phase1a-p1b22d-review-r5-20261022 report reviews/P1B22d-r5-sol.md fulloriginalbrief/priorfindings/responses supplied. Applyunavailable activationclosed no integration/waiver.
+
+## B2.2d bounded GO / integration / Astra kernel gate
+
+- R5review reviews/P1B22d-r5-sol.md boundedsource/E1GO exact5bfaaa65 F1-F4closed nonewblocker;693focused845passed18skipped independentlyconfirmed.
+- Rootintegratedall10implementationcommits oldestfirst end11b3184; exactsource diffvsreviewedcandidateempty. Root8F4tests passed22.37s553deselected exit0.
+- TargetedAstra request pab-phase1a-p1b2-kernel-astra-20261017 integratedB2.1/B2.2kernel gate plus concreteB2.3trustedhostproofbrief beforeexposingapply. NotfinalproductAstra/no publicactivation; applyunavailable A1inventory/C1C2remainingqualification retained.
