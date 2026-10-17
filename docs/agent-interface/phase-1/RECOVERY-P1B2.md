@@ -1008,3 +1008,62 @@ Corrected frozen FULL preservation result: **962 passed, 18 skipped in 577.81s (
 Final `git diff --check` passes. Source/test comparison to frozen `eb6e0c6` is empty. The entire **131,362-byte original recovery kernel prefix** from actual baseline `38b6221` remains byte-for-byte unchanged. Protected-path comparison excluding the exact four authorized paths is empty. Complete baseline-to-candidate path set is exactly the host script, recovery module, recovery tests and this appended handoff. No other worktree, root reviews/ledger, packaging/dependencies/contracts or research were changed. Final local sequence is initial implementation `4390c03` → reproduced clock-boundary correction `eb6e0c6` → report-only commit; that last exact candidate SHA accompanies the handoff. Working-tree/source identity is checked again after committing this report.
 
 Ready for parent-owned fresh independent Sol-low review of the exact candidate and root integration verification, **not self-approved**. B2.3b/c, B3, C1/C2, final global Astra, actual-host/installed qualification and public/unattended acceptance remain pending; A1 inventory drift remains unexplained/unqualified without cause or waiver. All apply remains unconditionally unavailable.
+
+## B2.3a round-1 F1/F2 topology correction — awaiting fresh independent review
+
+2026-10-17, implementation gpt-6.1-sol / low. Only `/Users/ben/.txcode/worktrees/py-audio-box/t3-c77b484f`, branch `t3/b23a-bind-mount-boundaries`, changed. Actual clean fresh-root baseline `aa72485` lacked the candidate. Inspected the complete `38b6221..05afbaec0c3d61f60bb2f430d9108da30f285d0c` chain and imported ALL three implementation/handoff commits oldest first: `4390c03`, `eb6e0c6`, `05afbaec`, locally `eb3843f`, `017dbb8`, `533aa67`. Range-diff reports all three patches equal. Root docs/reviews are preserved; no other checkout was edited.
+
+Read the full R1 report including its exact reproducer, minimal fixes and source boundaries; full P1B2-KERNEL-ASTRA trusted boundary/B2.3a exits; original P1B2-BOUNDARY-ASTRA decision; full RECOVERY-P1B2 original contracts, tranches, corrections, B2.3a response and caller-clock correction; orchestration protocol and R1 fault-authority context. No applicable ancestor/scoped AGENTS.md was found. A lightweight memory registry search returned no relevant B2 guidance; no historical result supplies current acceptance.
+
+Frozen source/tests: `37d2457` (full SHA recorded in final handoff). Correction source/test paths are only host operator, recovery and recovery tests. This appended report is the fourth authorized path. No kernel/preparation/apply wiring, packaging/dependencies/contracts/ledger/reviews or other path changes. The original 131,362-byte recovery prefix is byte-for-byte unchanged, SHA-256 `e4206e1a719dfa969fe73962cae8e67f98e6c1d7064dd0193c22e5cfa5ed6e64`. Every apply remains unconditionally unavailable and enrolled activation closed.
+
+### F1 response: conservative unsupported storage, before any stop
+
+No new host topology resolver is claimed. `_mount_touches` retains exact deployment-volume name, canonical lexical ancestor/descendant and root device/inode matches as positive consumer detections. These positives do NOT prove that any other source is disjoint. For EVERY remaining bind/volume source it now raises `unsupported_host_storage_disjointness`, including same-filesystem/different-inode sources and different-device sources. Missing/stat-unavailable sources also refuse. Thus an ordinary Linux ancestor bind alias with a descendant inode cannot be silently excluded. Different device alone is deliberately not a disjointness proof: nested mounts would require a reviewed complete filesystem-topology algorithm. Unrelated foreign bind/volume storage is unsupported in this envelope; there is no guessed same-filesystem disjoint case, allow-label/hash or wildcard trusted consumer.
+
+The rule runs in EVERY existing all-container inventory, including stopped containers: preflight; complete repeat immediately before any stop; final stopped inspection; repeated final inspection; and inspection after re-reading retained registration authority immediately before publication. The existing 128-container, 16-mount/container, fixed subprocess output/per-process/global bounds and repeated daemon/volume/enumeration checks remain. This correction adds no OS traversal, mount/proc operation, unbounded observation or dependency. It sacrifices availability for unproved foreign storage rather than asserting a topology proof. Exact known consumers still proceed to the unchanged strict incarnation/role/mode validator; direct-root aliases and unknown exact-name consumers still refuse.
+
+Sixteen F1 regressions cover LIVE/STOPPED exact R1 `/alias/staging/_data/retained-subdir` (device 7/inode 999), same-filesystem foreign storage, different-device unproved storage, and direct-root alias. Each appears either in the first inventory or ONLY in the repeated inventory immediately before stop. Required result: refusal, ZERO stop/wait, no invocation/capsule, unchanged logical SQL and all three retained containers with unknown running state unchanged. The inherited exact-name negatives and unchanged complete-owner/retained-registration positives remain.
+
+### F2 response: every observation rejects all fixed-role submounts
+
+`_host_authority_mount_observation` wraps the actual bounded kernel mount reader and rejects EVERY mount target below `/control`, `/staging`, `/receipts` or `/ipc`, including managed-file mounts. There is no submount exception in this lot. All THREE reader observations use this wrapper: initial topology, after protected capsule read, and after content/role identity validation. The separate fixed RO proof mount checks, proof alias/nesting refusal, role root presence/source/device/inode checks and full repeated mount-list equality remain intact.
+
+Twenty-four F2 cases add one foreign writable mount at a time, with unchanged base role identities and capsule bytes, at a directory and at the exact R1 destinations `/control/core`, `/receipts/journal.json`, `/staging/foreign`, `/ipc/lifecycle.sock`. Each variant is present from observation 1 or first appears at observation 2 or 3. All require `host_role_nested_mount`, exactly that observation reached, and unchanged capsule/logical SQL. The unchanged fake RO transport is established first in every case.
+
+### Actual RED/GREEN and frozen verification
+
+All pytest commands use the existing `/tmp/pab-0c-venv/bin/python`, `PYTHONDONTWRITEBYTECODE=1`, `-p no:cacheprovider`; no installs. Disposable synthetic roots only. Exact report probe extracted without changing its Python content to `/tmp/b23a-r1-exact.py`: first invocation failed importing `service` because file execution lacked repository PYTHONPATH. This setup failure is not defect evidence. Reissued with `PYTHONPATH=.` and bytecode disabled: exit 0, `/tmp/b23a-r1-exact-red2.log`, printing LIVE/STOPPED alias omitted/capsule published, all four nested roles accepted, and OS-expiry/no-caller-clock controls passed. These assertions demonstrate incorrect acceptance, not correctness.
+
+Before production edits:
+
+```sh
+PYTHONDONTWRITEBYTECODE=1 /tmp/pab-0c-venv/bin/python -m pytest -p no:cacheprovider tests/service/test_recovery.py -k b23a_r1 -q
+```
+
+**14 failed, 18 passed, 678 deselected in 9.61s**, exit 1, `/tmp/b23a-r1-correctness-red.log`. Six non-root-alias F1 negatives and eight stable first-observation F2 negatives reached missing-refusal assertions. Direct-root aliases already refused; mount drift on later observations already refused via equality. No setup failure counted as defect evidence.
+
+Initial combined B2.3 GREEN after production edits: **149 passed, 561 deselected in 14.22s**, `/tmp/b23a-r1-target-green.log`. Then strengthened only tests to inject F1 storage on the second inventory and require the specific F2 refusal on all observations. Final targeted command:
+
+```sh
+PYTHONDONTWRITEBYTECODE=1 /tmp/pab-0c-venv/bin/python -m pytest -p no:cacheprovider tests/service/test_recovery.py -k b23 -q
+```
+
+**157 passed, 561 deselected in 14.66s**, exit 0, `/tmp/b23a-r1-target-final.log`. Includes all 40 new cases and all 117 inherited host tests (clock, retained union, unique authenticated hello/proc binding, resume, subprocess bounds, stop/wait order and failures, fixed RO transport). No development failure followed the intended RED. Source/tests then frozen at `37d2457`; only this report changes during final sequential suites.
+
+```sh
+PYTHONDONTWRITEBYTECODE=1 /tmp/pab-0c-venv/bin/python -m pytest -p no:cacheprovider tests/service/test_recovery.py tests/service/test_packaged_lifecycle.py tests/service/test_admission.py tests/service/test_dispatcher.py -q
+PYTHONDONTWRITEBYTECODE=1 /tmp/pab-0c-venv/bin/python -m pytest -p no:cacheprovider tests/service tests/release -q
+```
+
+Frozen results follow below after completion. No redundant broad campaign is authorized by these receipts.
+
+### Preservation and qualification limits
+
+All retained-registration union, all-container including stopped enumeration, exact full IDs/image/start/finish/private PID/cgroup/hello binding/restart-no/volume roles/modes remain. Fixed shell-false bounded Docker operations, control-before-worker and successful wait, meaningful finish, repeated daemon/consumer inspections and failure without cleanup remain. Trusted fixed RO mount, OS clock, protected owner/0600/no-follow/single-link/bounded stable files and no force/environment/E1 bypass remain. Hashes bind content, not origin. No kernel, preparation, apply or packaging expansion occurred.
+
+E1 mocks only: fake Docker/OS boundaries are NOT actual-host authentication. No actual Docker/proc/mount operation, network/model/audio/paid/E2E runner, install, push/PR/deploy, prune or user cleanup; research and other worktrees preserved. Local Linux remains the selected supported provenance envelope; Desktop/remote refusal remains. Actual C1 host-admin/mapped UID/image/entrypoint/mount/launcher proof remains pending. All installed/platform skips remain unqualified. A1 global inventory drift remains unexplained and unqualified, with no cause or waiver. B2.3b/c, B3, C1/C2, parent integration, fresh independent review, final global Astra and public/unattended acceptance remain pending. No self-GO.
+
+Frozen focused result: **850 passed in 540.10s (9:00), exit 0**, `/tmp/b23a-r1-focused-frozen.log`, on unchanged `37d2457c73de6712534d237017336b37a9d6531e`. Frozen full result, sequential afterward: **1002 passed, 18 skipped in 578.07s (9:38), exit 0**, `/tmp/b23a-r1-full-frozen.log`, on the SAME source/tests. All 18 skips remain unqualified. No source/tests changed during or between these suites; only this handoff changed. No final-suite failure or redundant broad campaign occurred.
+
+Final `git diff --check` passes. Source/tests-to-frozen comparison is empty; frozen-to-final is report-only. Complete actual-root `aa72485` to candidate path set is exactly the four authorized paths. Protected comparison excluding these paths is empty. Imported three-commit chain is range-diff equal. The original 131,362-byte kernel prefix remains byte-for-byte unchanged. Final local sequence: imported `eb3843f` → `017dbb8` → `533aa67`, correction/frozen source `37d2457c73de6712534d237017336b37a9d6531e`, then report-only commit. Exact candidate SHA accompanies the handoff. Fresh independent review of that final candidate and parent integration verification remain required; no self-GO or actual-host/installed/public/unattended acceptance.
