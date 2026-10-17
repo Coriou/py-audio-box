@@ -568,3 +568,9 @@ Record failures and missing evidence; do not replace them with a successful late
 - R2review reviews/P1B23a-r2-sol.md boundedsource/E1GO exactee650cc F1/F2closed no newblocker;850focused1002passed18skipped confirmed. ConservativeANYunprovedforeignbindvolumestorage unsupported; actualhostqualificationpending.
 - Rootintegrated5commits endingad61e0c exactsource diffvsreviewedcandidateempty;157hosttests passed14.50s561deselected exit0.
 - NextisolatedSol-low request pab-phase1a-p1b23b-implementation-r1-20261017 productionpreparation only perAstra exact4source-testpaths+handoff resource_store measurementfactor amendment adopted. Allapplyunavailable unchangedbudget/conservativehighwater envelope no inflation; independentreviewrequired.
+
+## B2.3b incomplete candidate / accounting preparation arbitration
+
+- Candidate59c4a7373f899f1397277ba4a5a290390c3201bf frozena7d92dc app-ownedt3-277fefd5; rootreadhandoff unintegrated. Sharedmeasurement/refusalONLY no productionintentpositive; preparation ALWAYSrefuses.29target/1028passed18skipped claims notB2.3bcompletion.
+- Missingprovedterms SQLiteDB/WAL/SHMphysicalgrowth anddirectorygrowth; exampleM188608 H20971520 charges2097152 budget67108864 doesnotproveprefixdominance. No authority/accountinginflation.
+- TargetedAstra request pab-phase1a-p1b23b-accounting-astra-20261017 actualsource/candidate calculation review forconcreteboundedsolution orminimalreviewedkernelpremisechange. No integration/waiver/applyactivation; independentimplementationreviewstillrequired foranyretainedcode.
