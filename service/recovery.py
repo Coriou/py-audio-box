@@ -1681,6 +1681,9 @@ def _no_attempt_prefix(roots, db, intent, data, names, pending_raw):
     for prior in data['p1_recoveries']:
         if not any(s['recovery_id']==prior['id'] and s['step']=='receipt-complete' for s in data['p1_recovery_steps']):
             raise ValueError('b2_prefix_other_pending')
+    identities={r[k] for r in data['p1_recoveries'] for k in ('new_lane','new_epoch')}
+    if intent['new_lane'] in identities or intent['new_epoch'] in identities:
+        raise ValueError('b2_duplicate_epoch_lane')
     if any(_entry_present(p) for p in names.values()):raise ValueError('b2_prefix_recapture_attempt')
     # Common finite namespace check already rejects unknown names/temporaries.
     # Every current later-stage spelling it admits is forbidden at this stage.

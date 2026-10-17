@@ -4473,6 +4473,7 @@ recovery._capture_original_snapshot=different
 def test_kpre_capture_failures_burn_without_outputs(b23_host,installation,monkeypatch,failure):
     roots,scope,_,_=installation
     _kpre_accept(installation,b23_host,monkeypatch)
+    before_sql=logical(roots)
     before={p.name:p.read_bytes() for p in roots['receipts'].iterdir()}
     setup="def fail(*a,**kw):raise ValueError('modeled bounded failure')\n"
     if failure=='copy':setup+="recovery._capture_original_snapshot=fail"
@@ -4515,6 +4516,8 @@ recovery._validate_archives=oracle
     else:_kpre_fresh(roots,scope,refuse=True,setup=setup)
     assert before=={p.name:p.read_bytes() for p in roots['receipts'].iterdir()}
 
+    assert logical(roots)==before_sql
+
 
 def _kpre_predecessor(installation,h,monkeypatch):
     roots,scope,profiles,_=installation
@@ -4554,6 +4557,7 @@ def test_kpre_history_and_observational_replay(b23_host,installation,monkeypatch
     second=_kpre_accept(installation,b23_host,monkeypatch,point,population=False)
     before={p.name:p.read_bytes() for p in roots['receipts'].iterdir()}
     _kpre_fresh(roots,scope,target=first['id'],setup="""
+recovery.time.time=lambda:accepted['created']+1000
 def forbidden(*a,**kw):raise AssertionError('historical replay mutated/scanned/captured')
 recovery._capture_original_snapshot=forbidden
 recovery.snapshot=forbidden
@@ -4561,7 +4565,7 @@ recovery._prefix_file=forbidden
 recovery._prefix_transaction=forbidden
 """)
     assert before=={p.name:p.read_bytes() for p in roots['receipts'].iterdir()}
-    _kpre_fresh(roots,scope,target=second['id'])
+    _kpre_fresh(roots,scope,target=second['id'],setup="recovery.time.time=lambda:accepted['created']+1000")
     with closing(sqlite3.connect(roots['control']/'core'/'core.sqlite')) as db:
         assert db.execute('SELECT count(*) FROM p1_recoveries').fetchone()==(2,)
         assert db.execute('SELECT count(*) FROM p1_recovery_steps').fetchone()==(10,)
@@ -4754,4 +4758,34 @@ def test_kpre_each_no_attempt_window_rechecks(b23_host,installation,monkeypatch,
                 assert child.returncode!=0 and 'child_failed' in child.stderr
         finally:
             if lock is not None:lock.close()
+    assert before=={p.name:p.read_bytes() for p in roots['receipts'].iterdir()}
+
+
+@pytest.mark.parametrize('field',['new_epoch','new_lane'])
+def test_kpre_history_identity_collision_refuses_before_capture(b23_host,installation,monkeypatch,field):
+    roots,scope,_,_=installation
+    first=_kpre_predecessor(installation,b23_host,monkeypatch)
+    r=_kpre_accept(installation,b23_host,monkeypatch,population=False)
+    # A fully rehashed, closed plan/acceptance collision must fail before backup,
+    # not merely at the later frozen-snapshot/SQL oracle. No repair is requested.
+    r[field]=first['new_lane' if field=='new_epoch' else 'new_epoch']
+    with closing(sqlite3.connect(roots['control']/'core'/'core.sqlite')) as db,db:
+        plan=json.loads(db.execute('SELECT record FROM p1_abandon_plans WHERE id=?',(r['plan_id'],)).fetchone()[0])
+        plan[field]=r[field];recovery.validate_abandon_plan(plan)
+        r['plan_digest']=digest(plan)
+        db.execute('UPDATE p1_abandon_plans SET record=?,digest=? WHERE id=?',(encode(plan),digest(plan),plan['id']))
+    r['expected'][0]['output']['plan_digest']=r['plan_digest']
+    r['expected'][3]['output']['new_epoch']=r['new_epoch']
+    r['expected'][2]['output']['new_lane']=r['new_lane']
+    r['expected'][2]['output']['journal']['lane']=r['new_lane']
+    r['expected'][4]['output'].update(lane=r['new_lane'],epoch=r['new_epoch'])
+    previous=r['before_digest']
+    for descriptor in r['expected']:
+        if descriptor['step']=='receipt-complete':descriptor['output']['core_output_digest']=previous
+        descriptor['input_digest']=previous
+        descriptor['output_digest']=digest({k:v for k,v in descriptor.items() if k!='output_digest'});previous=descriptor['output_digest']
+    recovery.validate_b2_record('p1_recoveries',r)
+    accepted=roots['receipts']/('p1-recovery-'+r['id']+'.intent.json');accepted.write_text(encode(r))
+    before={p.name:p.read_bytes() for p in roots['receipts'].iterdir()}
+    _kpre_fresh(roots,scope,target=r['id'],refuse=True,setup="def forbidden(*a):raise AssertionError('identity collision captured')\nrecovery._capture_original_snapshot=forbidden")
     assert before=={p.name:p.read_bytes() for p in roots['receipts'].iterdir()}
