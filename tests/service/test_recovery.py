@@ -3190,3 +3190,15 @@ def test_b23_retained_owner_omission_and_boot_ambiguity(b23_host,fault):
 def test_b23_incarnation_times_preserve_nanosecond_order():
     assert recovery.host_timestamp('2026-10-17T00:00:00.000000001Z')<recovery.host_timestamp('2026-10-17T00:00:00.000000002Z')
     with pytest.raises(ValueError):recovery.host_timestamp('0001-01-01T00:00:00Z')
+
+
+def test_b23_expired_trusted_transport_cannot_override_os_clock(b23_host,monkeypatch):
+    h=b23_host;c=h['module'].freeze_host(h['observer'],h['state'],h['request'])
+    directory,_=_b23_fake_mount_transport(monkeypatch,h,c)
+    before=(directory/'capsule.json').read_bytes()
+    monkeypatch.setattr(recovery.time,'time',lambda:c['expires']+1)
+    with pytest.raises(ValueError,match='host_capsule_expired'):recovery.read_host_capsule()
+    # A supplied old clock must not make an expired, correctly mounted capsule
+    # acceptable. Tests fake the OS clock, never a production authorization flag.
+    with pytest.raises((ValueError,TypeError)):recovery.read_host_capsule(now=c['issued'])
+    assert (directory/'capsule.json').read_bytes()==before

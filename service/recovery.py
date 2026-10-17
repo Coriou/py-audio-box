@@ -2214,7 +2214,7 @@ def _host_role_identity(role):
     return st.st_dev,st.st_ino
 
 
-def read_host_capsule(*, now=None):
+def read_host_capsule():
     """Only the fixed C1 RO transport authenticates origin. No local fallback.
 
     C1 must qualify host-admin ownership separately and an explicit mapped UID
@@ -2252,7 +2252,7 @@ def read_host_capsule(*, now=None):
         if (capsule.get('invocation_id')!=mount['root'][len(prefix):] or
                 _host_file_identity(os.fstat(fd))!=_host_file_identity(before) or mounts!=_host_mount_topology()):
             raise ValueError('host_transport_changed')
-        validate_host_capsule(capsule,now=now)
+        validate_host_capsule(capsule)
         for volume in capsule['topology']['volumes']:
             role_mount=next(m for m in mounts if m['target']=='/'+volume['role'])
             device,inode=_host_role_identity(volume['role'])
