@@ -580,3 +580,9 @@ Record failures and missing evidence; do not replace them with a successful late
 - reviews/P1B23B-ACCOUNTING-ASTRA.md selects fixed4MiB hardRLIMIT_FSIZE dedicatedLinuxmaintenance/ext4/UnixVFS envelope plus exactflatnamespace formula U_all_early=M+3L+1MiB+2*64KiB <=existingH, unchangedH+charges<=budget. st_size metric notallocateddisk; counteddirectorydelta0 becauseonlyflatcontrolfiles. No accountingincrease/scan-equalitychange.
 - Orchestrator adopts explicitkernelamendment KthenP independentlyreviewed: Kprocessstorage/snapshot-handoff first, Pproductionpreparation second. Unknownunsupported/knowncapacityfailed refusals; capfailure mayleavepending no progressoverclaim. Existing59c4a7unintegrated/unapproved partialcandidate NOTadopted.
 - NextSol-low isolatedrequest pab-phase1a-p1b23k-implementation-r1-20261017 exact5path Kallowlist. No applyactivation/C1C2qualification A1inventorylimitretained.
+
+## K storage/snapshot candidate / independent review
+
+- Candidatecc3d790baead83d79117e372461668bfbda34076 frozen5d650eae app-ownedt3-3e867443; rootreadhandoff unintegrated. Exactly5authorizedpaths processcap/session/snapshot handoff plusunchangedmeasurementfactor/formula.
+- Claims34targetpass1skip/884focusedpass1skip/1036passed19skipped finalfrozen. ActualLinuxcaptestSKIPPEDmacOS pending; 18priorpeercredentialskips. ExplicitUnixVFSgapfixed beforehandoff earlierfocusedinterrupted notcomplete.
+- FreshSol-low request pab-phase1a-p1b23k-review-r1-20261017 report reviews/P1B23K-r1-sol.md fullAstraKbrief/assumptions/candidate supplied. KNOTPcompletion applyunavailable no integration/waiver/actualLinuxqualification.
