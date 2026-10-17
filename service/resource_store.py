@@ -201,6 +201,56 @@ class ResourceStore:
         self.db.execute("UPDATE resource_reservations SET state='retained' WHERE id=?",(identity,))
 
 
+MAINTENANCE_FILE_LIMIT = 4_194_304
+MAINTENANCE_SNAPSHOT_LIMIT = 1_048_576
+MAINTENANCE_DOCUMENT_LIMIT = 65_536
+
+
+def _measure_recovery_roots(roots):
+    """Existing bounded st_size loop: descendants included, roots excluded."""
+    import time
+    deadline=time.monotonic()+1;count=total=0
+    for root in roots:
+        root=Path(root)
+        if root.is_symlink() or not root.is_dir():raise ValueError('resource_root_missing')
+        for directory,dirs,files in os.walk(root,followlinks=False,onerror=lambda exc: (_ for _ in ()).throw(exc)):
+            for name in dirs+files:
+                count+=1
+                if count>2048 or time.monotonic()>deadline:raise ValueError('b2_resource_scan_budget')
+                info=(Path(directory)/name).lstat()
+                if info.st_uid!=os.getuid() or stat.S_ISLNK(info.st_mode) or not (stat.S_ISREG(info.st_mode) or stat.S_ISDIR(info.st_mode)):
+                    raise ValueError('resource_namespace_unknown')
+                total+=info.st_size
+                if total>2**53-1:raise ValueError('b2_resource_scan_budget')
+    return total
+
+
+def _maintenance_footprint(roots, highwater, charged, budget):
+    """Early fixed-envelope guard; no accounting authority or counter update."""
+    from service.admission import finite_budget
+    budget=finite_budget(budget)
+    if any(type(v) is not int or not 0<=v<=2**53-1 for v in (highwater,charged)):
+        raise ValueError('b2_maintenance_arithmetic')
+    roots=tuple(roots)
+    # Five is conservative even if WAL/SHM already exist: two sidecars,
+    # snapshot + manifest before scan, one later flat certificate.
+    count=0
+    import time
+    deadline=time.monotonic()+1
+    for root in roots:
+        for directory,dirs,files in os.walk(root,followlinks=False,onerror=lambda exc: (_ for _ in ()).throw(exc)):
+            count+=len(dirs)+len(files)
+            if count+5>2048 or time.monotonic()>deadline:raise ValueError('b2_resource_scan_budget')
+    measured=_measure_recovery_roots(roots)
+    upper=measured+3*MAINTENANCE_FILE_LIMIT+MAINTENANCE_SNAPSHOT_LIMIT+2*MAINTENANCE_DOCUMENT_LIMIT
+    if upper>2**53-1 or highwater+charged>2**53-1:raise ValueError('b2_maintenance_arithmetic')
+    if upper>highwater:raise ValueError('b2_maintenance_highwater')
+    if highwater+charged>budget['disk_bytes']:raise ValueError('disk_quota')
+    free=min(v.f_bavail*v.f_frsize for v in (os.statvfs(root) for root in roots))
+    if free<budget['free_bytes']+charged:raise ValueError('disk_free_reserve')
+    return dict(measured=measured,upper=upper,highwater=highwater,charged=charged)
+
+
 def _recovery_scan(db, roots, intent):
     """Private maintenance observation; caller holds both locks and pending proof.
 
@@ -216,19 +266,7 @@ def _recovery_scan(db, roots, intent):
     if row!=(encode(intent),digest(intent)):raise ValueError('b2_scan_pending_required')
     if db.in_transaction or db.execute("SELECT 1 FROM p1_recovery_steps WHERE recovery_id=? AND step='core-complete'",(intent['id'],)).fetchone():
         raise ValueError('b2_scan_pending_required')
-    deadline=time.monotonic()+1;count=total=0
-    for root in roots:
-        root=Path(root)
-        if root.is_symlink() or not root.is_dir():raise ValueError('resource_root_missing')
-        for directory,dirs,files in os.walk(root,followlinks=False,onerror=lambda exc: (_ for _ in ()).throw(exc)):
-            for name in dirs+files:
-                count+=1
-                if count>2048 or time.monotonic()>deadline:raise ValueError('b2_resource_scan_budget')
-                info=(Path(directory)/name).lstat()
-                if info.st_uid!=os.getuid() or stat.S_ISLNK(info.st_mode) or not (stat.S_ISREG(info.st_mode) or stat.S_ISDIR(info.st_mode)):
-                    raise ValueError('resource_namespace_unknown')
-                total+=info.st_size
-                if total>2**53-1:raise ValueError('b2_resource_scan_budget')
+    total=_measure_recovery_roots(roots)
     jobs={r[1]:json.loads(r[6]) for r in intent['before']['source']['data']['jobs']}
     for identity,category,raw,state in intent['before']['source']['data']['resource_reservations']:
         if state!='executing':continue

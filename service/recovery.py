@@ -114,11 +114,9 @@ def private_database(path):
 
 
 @contextmanager
-def offline(roots, *, write=False, journal_lock=True):
+def _locked_roots(roots, *, journal_lock=True):
     roots = roots_checked(roots)
     locks = []
-    db = None
-    private = None
     try:
         lock_paths=[roots['control']/'core'/'control.lock']
         if journal_lock: lock_paths.append(roots['receipts']/'lane.lock')
@@ -129,24 +127,353 @@ def offline(roots, *, write=False, journal_lock=True):
             if s.st_uid!=os.getuid() or s.st_nlink!=1: raise ValueError('foreign_lock')
             try: fcntl.flock(fd,fcntl.LOCK_EX | fcntl.LOCK_NB)
             except BlockingIOError: raise ValueError('maintenance_lock_busy') from None
-        path=roots['control']/'core'/'core.sqlite'
-        if path.is_symlink(): raise ValueError('foreign_database')
-        if not write:
-            private = private_database(path)
-            path = private.__enter__()
-        db=sqlite3.connect(path.as_uri()+('?mode=rw' if write else '?mode=ro'),uri=True,timeout=0,isolation_level=None)
-        db.execute('PRAGMA trusted_schema=OFF')
-        if write: db.execute('PRAGMA synchronous=FULL')
-        if not write: db.execute('PRAGMA query_only=ON')
-        end=time.monotonic()+2
-        db.set_progress_handler(lambda:int(time.monotonic()>end),1000)
-        yield roots,db
+        yield roots
     finally:
-        if db is not None: db.close()
+        for fd in reversed(locks): os.close(fd)
+
+
+@contextmanager
+def offline(roots, *, write=False, journal_lock=True):
+    with _locked_roots(roots,journal_lock=journal_lock) as roots:
+        db = None
+        private = None
         try:
-            if private is not None: private.__exit__(None,None,None)
+            path=roots['control']/'core'/'core.sqlite'
+            if path.is_symlink(): raise ValueError('foreign_database')
+            if not write:
+                private = private_database(path)
+                path = private.__enter__()
+            db=sqlite3.connect(path.as_uri()+('?mode=rw' if write else '?mode=ro'),uri=True,timeout=0,isolation_level=None)
+            db.execute('PRAGMA trusted_schema=OFF')
+            if write: db.execute('PRAGMA synchronous=FULL')
+            if not write: db.execute('PRAGMA query_only=ON')
+            end=time.monotonic()+2
+            db.set_progress_handler(lambda:int(time.monotonic()>end),1000)
+            yield roots,db
         finally:
-            for fd in reversed(locks): os.close(fd)
+            if db is not None: db.close()
+            if private is not None: private.__exit__(None,None,None)
+
+
+# K is an internal process/session foundation. No CLI or apply route calls it.
+from service.resource_store import (MAINTENANCE_FILE_LIMIT, MAINTENANCE_SNAPSHOT_LIMIT,
+    MAINTENANCE_DOCUMENT_LIMIT)
+
+
+_maintenance_child_pid = None
+
+
+def _maintenance_task_count():
+    with os.scandir('/proc/self/task') as tasks:
+        return len([entry.name for _,entry in zip(range(2),tasks)])
+
+
+class _MaintenanceProcess:
+    __slots__ = ('pid', 'used')
+
+    def __init__(self):
+        self.pid = os.getpid()
+        self.used = False
+
+    def verify(self):
+        import resource
+        import sys
+        import threading
+        if (sys.platform != 'linux' or self.pid != os.getpid() or
+                _maintenance_child_pid != os.getpid() or _maintenance_task_count()!=1 or
+                threading.active_count() != 1 or
+                resource.getrlimit(resource.RLIMIT_FSIZE) != (MAINTENANCE_FILE_LIMIT,)*2):
+            raise ValueError('b2_maintenance_envelope')
+
+
+def _install_maintenance_limit():
+    """Only called in the newly forked one-shot child; never restore/raise."""
+    import resource
+    import signal
+    import sys
+    import threading
+    if (sys.platform != 'linux' or threading.active_count() != 1 or
+            _maintenance_child_pid != os.getpid()):
+        raise ValueError('b2_maintenance_platform')
+    signal.signal(signal.SIGXFSZ, signal.SIG_IGN)  # EFBIG/SQLite errors are failures.
+    resource.setrlimit(resource.RLIMIT_FSIZE, (MAINTENANCE_FILE_LIMIT,)*2)
+    process = _MaintenanceProcess()
+    process.verify()
+    return process
+
+
+def _maintenance_filesystems(roots):
+    """Declared local ext4 only; C1 still pins the kernel/default Unix VFS build."""
+    if any(path!=Path('/'+role) for role,path in roots.items()):
+        raise ValueError('b2_maintenance_fixed_roots')
+    with open('/proc/self/mountinfo', 'rb') as stream:
+        raw = stream.read(HOST_CAPSULE_BYTES+1)
+    if len(raw)>HOST_CAPSULE_BYTES: raise ValueError('b2_maintenance_mount_budget')
+    mounts=[]
+    for line in raw.decode('ascii').splitlines():
+        fields=line.split(); split=fields.index('-')
+        target=re.sub(r'\\([0-7]{3})',lambda m:chr(int(m[1],8)),fields[4])
+        mounts.append((target,fields[split+1],fields[5].split(',')))
+        if len(mounts)>MAX_ROWS:raise ValueError('b2_maintenance_mount_budget')
+    for root in roots.values():
+        path=str(root)
+        covering=[m for m in mounts if path==m[0] or path.startswith(m[0].rstrip('/')+'/')]
+        if not covering:raise ValueError('b2_maintenance_filesystem')
+        mount=max(covering,key=lambda m:len(m[0]))
+        if mount[1]!='ext4' or 'rw' not in mount[2]:raise ValueError('b2_maintenance_filesystem')
+        # No hidden alternate filesystem within any authority root.
+        if any(m[0].startswith(path.rstrip('/')+'/') for m in mounts):
+            raise ValueError('b2_maintenance_submount')
+
+
+def _maintenance_files(root):
+    import stat
+    count=0; deadline=time.monotonic()+1
+    with os.scandir(root) as entries:
+        for entry in entries:
+            count+=1
+            if count>MAX_ROWS or time.monotonic()>deadline:raise ValueError('b2_maintenance_namespace')
+            if entry.name.startswith('core.sqlite') and entry.name not in ('core.sqlite','core.sqlite-wal','core.sqlite-shm'):
+                raise ValueError('b2_maintenance_sidecar')
+    for name in ('core.sqlite','core.sqlite-wal','core.sqlite-shm'):
+        path=root/name
+        try: info=path.lstat()
+        except FileNotFoundError:
+            if name=='core.sqlite':raise ValueError('b2_maintenance_database_missing') from None
+            continue
+        if (not stat.S_ISREG(info.st_mode) or info.st_uid!=os.getuid() or
+                info.st_nlink!=1 or info.st_size>MAINTENANCE_FILE_LIMIT):
+            raise ValueError('b2_maintenance_file')
+
+
+def _maintenance_connection(db, *, original=False):
+    db.enable_load_extension(False)
+    db.execute('PRAGMA trusted_schema=OFF')
+    db.execute('PRAGMA temp_store=MEMORY')
+    db.execute('PRAGMA mmap_size=0')
+    if original:
+        if db.execute('PRAGMA journal_mode').fetchone()!=('wal',):
+            raise ValueError('b2_maintenance_requires_wal')
+        db.execute('PRAGMA synchronous=FULL')
+        if db.execute('PRAGMA synchronous').fetchone()!=(2,):raise ValueError('b2_maintenance_sync')
+        db.execute('PRAGMA wal_autocheckpoint=0')
+    if db.execute("SELECT 1 FROM sqlite_master WHERE type='trigger' LIMIT 1").fetchone():
+        raise ValueError('b2_maintenance_trigger')
+    # SQLite's default Unix VFS is selected by our option-free fixed path. No
+    # ATTACH, extension or mmap escape through the connection handed to P.
+    def authorize(action, arg1, arg2, database, source):
+        if action in (sqlite3.SQLITE_ATTACH,sqlite3.SQLITE_DETACH,
+                sqlite3.SQLITE_CREATE_TRIGGER,sqlite3.SQLITE_CREATE_TEMP_TRIGGER,
+                sqlite3.SQLITE_CREATE_VTABLE):return sqlite3.SQLITE_DENY
+        if action==sqlite3.SQLITE_FUNCTION and (arg2 or '').lower()=='load_extension':return sqlite3.SQLITE_DENY
+        if action==sqlite3.SQLITE_PRAGMA and arg2 is not None and arg1.lower() not in (
+                'table_info','index_info','index_list','foreign_key_list','wal_checkpoint'):
+            if (arg1.lower(),str(arg2).lower()) not in {
+                ('trusted_schema','off'),('temp_store','memory'),('mmap_size','0'),
+                ('synchronous','full'),('wal_autocheckpoint','0')}:
+                return sqlite3.SQLITE_DENY
+        return sqlite3.SQLITE_OK
+    db.set_authorizer(authorize)
+
+
+def _capture_original_snapshot(roots, db, maximum):
+    """Actual committed original, including its current plan, never a shadow."""
+    from contextlib import closing
+    with tempfile.TemporaryDirectory(prefix='p1-evidence-') as temporary:
+        path=Path(temporary)/'snapshot.sqlite'
+        deadline=time.monotonic()+2
+        def progress(status,remaining,total):
+            if total*db.execute('PRAGMA page_size').fetchone()[0]>maximum or time.monotonic()>deadline:
+                raise ValueError('b2_prefix_snapshot_budget')
+        with private_database(roots['control']/'core'/'core.sqlite') as private_path:
+            with closing(sqlite3.connect(private_path.as_uri()+'?mode=ro',uri=True)) as source, closing(sqlite3.connect(path)) as target:
+                _maintenance_connection(source)
+                _maintenance_connection(target)
+                source.backup(target,pages=64,progress=progress)
+        return read_file(path,maximum)
+
+
+class _PreparedSnapshot:
+    __slots__ = ('_session','_raw','_plan_id','_plan_digest','_hash','_used')
+
+    def __init__(self, session, raw, plan_id, plan_digest):
+        import hashlib
+        self._session=session; self._raw=raw
+        self._plan_id=plan_id; self._plan_digest=plan_digest
+        self._hash=hashlib.sha256(raw).hexdigest(); self._used=False
+
+    @property
+    def sha256(self):return self._hash
+
+
+class _MaintenanceSession:
+    """Closed lifetime under BOTH locks; plumbing, never authorization."""
+    __slots__ = ('roots','db','scope','capsule','_process','_live','_prepared')
+
+    def __init__(self, roots, db, scope, capsule, process):
+        self.roots=roots; self.db=db; self.scope=scope; self.capsule=capsule
+        self._process=process; self._live=True; self._prepared=None
+
+    def _verify(self):
+        if not self._live:raise ValueError('b2_maintenance_session_closed')
+        self._process.verify()
+        _maintenance_files(self.roots['control']/'core')
+
+    def capture(self, plan_id, plan_digest):
+        self._verify()
+        if self._prepared is not None:raise ValueError('b2_maintenance_snapshot_once')
+        row=self.db.execute('SELECT record,digest FROM p1_abandon_plans WHERE id=?',(plan_id,)).fetchone()
+        if row is None or row[1]!=plan_digest or digest(json.loads(row[0]))!=plan_digest:
+            raise ValueError('b2_prefix_plan_changed')
+        if self.db.in_transaction or self.db.execute('SELECT 1 FROM p1_recoveries WHERE plan_id=?',(plan_id,)).fetchone():
+            raise ValueError('b2_maintenance_snapshot_order')
+        from service.resource_store import _maintenance_footprint
+        plan=json.loads(row[0]); validate_abandon_plan(plan)
+        highwater=self.db.execute('SELECT highwater FROM resource_accounting WHERE id=1').fetchone()[0]
+        charged=sum(json.loads(r[0])['disk_bytes'] for r in self.db.execute('SELECT demand FROM resource_reservations'))
+        _maintenance_footprint((self.roots['control']/'core',self.roots['staging']),
+            highwater,charged,plan['budget_before'])
+        raw=_capture_original_snapshot(self.roots,self.db,MAINTENANCE_SNAPSHOT_LIMIT)
+        prepared=_PreparedSnapshot(self,raw,plan_id,plan_digest)
+        self._prepared=prepared
+        return prepared
+
+    def continue_kernel(self, intent, *, prepared=None, fault=lambda point:None):
+        """Future P/B2.3c seam. No caller bytes/limit/proof override accepted."""
+        self._verify()
+        intent=json.loads(encode(intent)); validate_b2_record('p1_recoveries',intent)
+        proof=self.capsule['kernel_proof']
+        if intent['proof']!=proof or intent['proof_digest']!=self.capsule['kernel_proof_digest']:
+            raise ValueError('b2_maintenance_proof')
+        purpose=self.capsule['purpose']
+        if purpose['kind']!='pre-plan' and (purpose['plan_id'],purpose['plan_digest'])!=(intent['plan_id'],intent['plan_digest']):
+            raise ValueError('b2_maintenance_purpose')
+        raw=None
+        if prepared is not None:
+            if (type(prepared) is not _PreparedSnapshot or prepared is not self._prepared or
+                    prepared._session is not self or prepared._used or
+                    (prepared._plan_id,prepared._plan_digest)!=(intent['plan_id'],intent['plan_digest']) or
+                    prepared.sha256!=intent['expected'][1]['output']['snapshot_digest']):
+                raise ValueError('b2_maintenance_snapshot_owner')
+            prepared._used=True; raw=prepared._raw
+        else:
+            # Fresh process restart consumes owned durable inputs only. Initial
+            # acceptance cannot silently enter the fixture's recapture branch.
+            receipts=self.roots['receipts']; prefix='p1-recovery-'+intent['id']
+            if read_file(receipts/(prefix+'.intent.json'),MAX_BYTES)!=encode(intent).encode():
+                raise ValueError('b2_maintenance_accepted')
+            raw=read_file(receipts/(prefix+'.snapshot.bundle'),MAINTENANCE_SNAPSHOT_LIMIT)
+        import hashlib
+        if len(raw)>MAINTENANCE_SNAPSHOT_LIMIT or hashlib.sha256(raw).hexdigest()!=intent['expected'][1]['output']['snapshot_digest']:
+            raise ValueError('b2_prefix_snapshot_changed')
+        if (len(encode(archive_manifest(intent)).encode())>MAINTENANCE_DOCUMENT_LIMIT or
+                len(encode(_certificate(intent,dict(recovery_id=intent['id'],**intent['expected'][3],
+                    lane=intent['new_lane'],epoch=intent['new_epoch']))).encode())>MAINTENANCE_DOCUMENT_LIMIT):
+            raise ValueError('b2_maintenance_document')
+        core_step=dict(recovery_id=intent['id'],**intent['expected'][3],lane=intent['new_lane'],epoch=intent['new_epoch'])
+        receipt_certificate=dict(certificate=_certificate(intent,core_step),steps=[
+            dict(recovery_id=intent['id'],**e,lane=intent['new_lane'],epoch=intent['new_epoch']) for e in intent['expected'][:4]])
+        if (len(encode(intent).encode())>MAINTENANCE_FILE_LIMIT or
+                len(encode(receipt_certificate).encode())>MAINTENANCE_DOCUMENT_LIMIT):
+            raise ValueError('b2_maintenance_document')
+        # Any ambiguity or I/O failure burns this session; fresh invocation only.
+        try:
+            return _pending_prefix_locked(self.roots,self.db,self.scope,intent,proof['observation'],
+                now=time.time(),snapshot_bytes=raw,fault=fault,through_journal=True,
+                through_core=True,through_receipt=True)
+        finally:
+            self._live=False
+
+
+@contextmanager
+def _maintenance_session(roots, scope, process):
+    if type(process) is not _MaintenanceProcess or process.used:
+        raise ValueError('b2_maintenance_process')
+    process.verify(); process.used=True
+    with _locked_roots(roots) as roots:
+        process.verify(); _maintenance_filesystems(roots)
+        capsule=read_host_capsule()  # Fixed authenticated transport, independent of cap.
+        if capsule['scope']!=scope:raise ValueError('b2_maintenance_scope')
+        root=roots['control']/'core'; _maintenance_files(root)
+        from contextlib import closing
+        # Check retained full-owner coverage and WAL/schema on protected copies
+        # before the FIRST original writable connection.
+        with private_database(root/'core.sqlite') as private:
+            with closing(sqlite3.connect(private.as_uri()+'?mode=ro',uri=True)) as check:
+                _maintenance_connection(check)
+                if check.execute('PRAGMA journal_mode').fetchone()!=('wal',):raise ValueError('b2_maintenance_requires_wal')
+                registrations=check.execute('SELECT record FROM p1_registrations ORDER BY rowid LIMIT 2049').fetchall()
+                if len(registrations)>MAX_ROWS:raise ValueError('b2_maintenance_registration_budget')
+                retained=[json.loads(r[0]) for r in registrations]
+                if (host_registration_digest(retained)!=capsule['registration_digest'] or
+                        encode(retained)!=encode(capsule['registrations'])):
+                    raise ValueError('b2_maintenance_registrations')
+        process.verify(); _maintenance_files(root)
+        db=sqlite3.connect((root/'core.sqlite').as_uri()+'?mode=rw',uri=True,timeout=0,isolation_level=None)
+        session=None
+        try:
+            _maintenance_connection(db,original=True)
+            deadline=time.monotonic()+10
+            db.set_progress_handler(lambda:int(time.monotonic()>deadline),1000)
+            session=_MaintenanceSession(roots,db,scope,capsule,process)
+            yield session
+        finally:
+            if session is not None:session._live=False
+            # Close/checkpoints remain inside the limited child and both locks.
+            try:db.close()
+            finally:_maintenance_files(root)
+
+
+def _run_bounded_maintenance(roots, scope, operation):
+    """Internal one-shot child seam for P; no CLI wiring or caller enable flag.
+
+    The parent's normal Core/B1/shell resource limits never change. operation is
+    internal code, not a request field, executable name or serialized callback.
+    """
+    global _maintenance_child_pid
+    import select
+    import signal
+    import sys
+    import threading
+    if sys.platform!='linux' or threading.active_count()!=1:
+        raise ValueError('b2_maintenance_platform')
+    read_fd,write_fd=os.pipe()
+    pid=os.fork()
+    if pid==0:
+        _maintenance_child_pid=os.getpid()
+        os.close(read_fd)
+        try:
+            process=_install_maintenance_limit()
+            with _maintenance_session(roots,scope,process) as session:
+                result=operation(session)
+            raw=encode(dict(result=result)).encode()
+            if len(raw)>65536:raise ValueError('b2_maintenance_result_budget')
+            with os.fdopen(write_fd,'wb') as stream:
+                if stream.write(raw)!=len(raw):raise OSError('b2_maintenance_short_result')
+            os._exit(0)
+        except BaseException:
+            os._exit(74)  # Never report a failed/short write or SIGXFSZ as success.
+    os.close(write_fd)
+    raw=bytearray(); deadline=time.monotonic()+30
+    try:
+        while True:
+            remaining=deadline-time.monotonic()
+            if remaining<=0 or not select.select([read_fd],[],[],max(0,remaining))[0]:
+                raise ValueError('b2_maintenance_timeout')
+            chunk=os.read(read_fd,65537-len(raw))
+            if not chunk:break
+            raw.extend(chunk)
+            if len(raw)>65536:raise ValueError('b2_maintenance_result_budget')
+        _,status=os.waitpid(pid,0); pid=None
+        if status!=0:raise ValueError('b2_maintenance_child_failed')
+        return json.loads(raw)['result']
+    finally:
+        os.close(read_fd)
+        if pid is not None:
+            try:os.kill(pid,signal.SIGKILL)
+            except ProcessLookupError:pass
+            os.waitpid(pid,0)
+
 
 
 def snapshot(roots, db, scope, *, exclude_plan=None, exclude_abandon=None, transaction=True, _prefix=None, _journal_after=False, _core_after=False):
@@ -1355,262 +1682,265 @@ def _pending_prefix(roots, scope, intent, observation, *, now=None, snapshot_byt
     validate_scope(scope)
     if observation!=intent['proof']['observation'] or observation['scope']!=scope: raise ValueError('b2_prefix_proof_changed')
     with offline(roots,write=True) as (roots,db):
-        root=roots['control']/'core'; receipts=roots['receipts']
-        data=validate_b2_database(db,root,_uncertified=intent['id'] if through_core else None,_retained_receipts=receipts)
-        plan=next((p for p in data['p1_abandon_plans'] if p['id']==intent['plan_id']),None) if data else None
-        if plan is None or digest(plan)!=intent['plan_digest']: raise ValueError('b2_prefix_plan_changed')
-        for key in ('deployment_id','source_digest','observation_digest','proof_digest','prior_epoch','new_epoch','old_lane','new_lane','affected','budget_before','budget_after','diagnostic_decisions'):
-            if intent[key]!=plan[key]: raise ValueError('b2_prefix_plan_binding')
-        if intent['expected'][1]['output']['journal_state']!=plan['journal_state'] or intent['expected'][1]['output']['journal_digest']!=plan['journal_digest']:
-            raise ValueError('b2_prefix_plan_journal')
-        existing=next((r for r in data['p1_recoveries'] if r['id']==intent['id']),None)
-        if existing is not None and existing!=intent: raise ValueError('b2_prefix_intent_changed')
-        for prior in data['p1_recoveries']:
-            if prior['id']!=intent['id'] and any(s['recovery_id']==prior['id'] and s['step']=='receipt-complete' for s in data['p1_recovery_steps']):
-                _completed_prefix_receipts(roots,prior)
-                _verify_finished_receipt_evidence(roots,prior)
-        completed=any(r['recovery_id']==intent['id'] and r['step']=='core-complete' for r in data['p1_recovery_steps'])
-        certificate_path=next(root/n for n,k in archive_names(intent).items() if k=='certificate')
-        creation=receipts/('p1-recovery-'+intent['id']+'.core-certificate.intent.json')
-        if through_core and completed and (certificate_path.exists() or creation.exists()):
-            # Immutable completion is separate from current startup eligibility.
-            # Later ordinary rows/journal activity must never replay this epoch.
-            retained_names=_receipt_only_successor(db,roots,scope,data)
-            _prefix_receipt_namespace(receipts,data['p1_recoveries'],retained_names=retained_names)
-            for prior in data['p1_recoveries']:
-                if prior['id']==intent['id']:continue
-                stages={s['step'] for s in data['p1_recovery_steps'] if s['recovery_id']==prior['id']}
-                # A successor may still be pending. Its declared durable prefix
-                # requires its actual evidence, never a future receipt artifact.
-                if data['p1_recoveries'].index(prior)>data['p1_recoveries'].index(intent) and 'receipt-complete' not in stages:
-                    _retained_pending_receipts(roots,prior,stages)
-                else:
-                    chain=[dict(recovery_id=prior['id'],**e,lane=prior['new_lane'],epoch=prior['new_epoch']) for e in prior['expected'][:4]]
-                    _prefix_exact(receipts/('p1-recovery-'+prior['id']+'.certificate.json'),encode(dict(certificate=_certificate(prior,chain[-1]),steps=chain)).encode())
-                    _prefix_exact(receipts/('p1-recovery-'+prior['id']+'.journal'),bytes.fromhex(prior['before']['journal']['bytes_hex']))
-            if through_receipt and not any(s['recovery_id']==intent['id'] and s['step']=='receipt-complete' for s in data['p1_recovery_steps']):
-                # Core completion alone is not an immutable completed replay.
-                # Both locks exclude concurrent owners, but do not prove that a
-                # registered incarnation stayed stopped between invocations.
-                registrations=db.execute('SELECT * FROM p1_registrations ORDER BY rowid').fetchall()
-                if encode(registrations)!=encode(intent['before']['source']['data']['p1_registrations']):
-                    raise ValueError('b2_prefix_registrations_changed')
-                current=[json.loads(row[1]) for row in registrations]
-                for registration in current:validate_registration(registration)
-                check_consumers(dict(registrations=current,lane=intent['old_lane']),observation)
-            _completed_prefix_receipts(roots,intent)
-            if through_receipt and any(s['recovery_id']==intent['id'] and s['step']=='receipt-complete' for s in data['p1_recovery_steps']):
-                _verify_finished_receipt_evidence(roots,intent)
-                if data['p1_recoveries'][-1]['id']==intent['id'] and not retained_names:
-                    fence=dict(revision=1,**{k:intent[k] for k in ('deployment_id','plan_id','plan_digest','proof_digest','old_lane','new_lane')},recovery_id=intent['id'],step='complete',certificate=_core_result(intent)['certificate'])
-                    _retained_exact(receipts/'p1-maintenance.json',encode(fence).encode())
-                return dict(_core_result(intent),status='complete')
-            _core_certificate(root,receipts,intent,fault)
-            validate_b2_database(db,root,_retained_receipts=receipts)
-            return _finish_receipts(db,roots,intent,fault) if through_receipt else _core_result(intent)
-        if any(r['id']!=intent['id'] and not any(s['recovery_id']==r['id'] and s['step']=='core-complete' for s in data['p1_recovery_steps']) for r in data['p1_recoveries']):
-            raise ValueError('b2_prefix_other_pending')
-        steps=[s for s in data['p1_recovery_steps'] if s['recovery_id']==intent['id']]
-        if any(s['step'] not in STEPS[:4 if through_core else 3 if through_journal else 2] for s in steps): raise ValueError('b2_prefix_already_advanced')
-        marker=dict(revision=1,deployment_id=intent['deployment_id'])
-        fence=dict(revision=1,**{k:intent[k] for k in ('deployment_id','plan_id','plan_digest','proof_digest','old_lane','new_lane')},recovery_id=intent['id'],step='pending',certificate=None)
-        from worker.runtime_journal import maintenance_record
-        maintenance_record(fence)
-        marker_path=receipts/'p1-b2-required.json'; fence_path=receipts/'p1-maintenance.json'
-        accepted_path=receipts/('p1-recovery-'+intent['id']+'.intent.json')
-        marker_raw=encode(marker).encode(); fence_raw=encode(fence).encode(); accepted_raw=encode(intent).encode()
-        _prefix_receipt_namespace(receipts,[*data['p1_recoveries'],intent])
-        # All completed predecessors remain immutable even after their fence is
-        # superseded. Derive exact receipt documents from validated SQL history.
-        for prior in data['p1_recoveries']:
-            if prior['id']==intent['id']: continue
-            chain=[dict(recovery_id=prior['id'],**e,lane=prior['new_lane'],epoch=prior['new_epoch']) for e in prior['expected'][:4]]
-            certificate=_certificate(prior,chain[-1])
-            prefix='p1-recovery-'+prior['id']
-            certificate_raw=encode(dict(certificate=certificate,steps=chain)).encode()
-            if len(certificate_raw)>65536: raise ValueError('b2_prefix_receipt_budget')
-            _prefix_exact(receipts/(prefix+'.certificate.json'),certificate_raw)
-            _prefix_exact(receipts/(prefix+'.journal'),bytes.fromhex(prior['before']['journal']['bytes_hex']))
-        accepted=accepted_path.exists()
-        if existing is not None and not fence_path.exists(): raise ValueError('b2_prefix_receipt_quarantine')
-        previous_fence=False
-        if fence_path.exists() and read_file(fence_path,65536)!=fence_raw:
-            from worker.runtime_journal import read_maintenance
-            prior=read_maintenance(receipts)
-            if existing is not None or prior is None or prior!=intent['before']['prior_certificate'] or prior!=completion_binding(db,root):
-                raise ValueError('b2_prefix_previous_fence')
-            previous_fence=True
-        if accepted:
-            _prefix_exact(marker_path,marker_raw); _prefix_exact(accepted_path,accepted_raw)
-            if fence_path.exists() and not previous_fence: _prefix_exact(fence_path,fence_raw)
-        elif existing is not None or ((marker_path.exists() or fence_path.exists()) and not previous_fence):
-            raise ValueError('b2_prefix_receipt_quarantine')
-        if not accepted and not plan['created']<=now<plan['expires']: raise ValueError('expired_b2_plan')
-        # Exact own rows and derived archive labels only are removed from this
-        # projection. Every older plan/history, media identity and namespace stays.
-        rotation=receipts/('p1-recovery-'+intent['id']+'.rotation.intent.json')
-        from worker.runtime_journal import journal_bytes
-        new_raw=journal_bytes(intent['expected'][2]['output']['journal'])
-        rotation_raw=encode(dict(revision=1,recovery_id=intent['id'],intent_digest=digest(intent),
-            step=intent['expected'][2],before=intent['before']['journal'],sha256=hashlib.sha256(new_raw).hexdigest())).encode()
-        journal_after=False
-        if rotation.exists():
-            if not through_journal: raise ValueError('b2_prefix_already_advanced')
-            _prefix_exact(rotation,rotation_raw)
-            # A recorded attempt may only resume its exact output, never retry
-            # replacement from an absent/old/partial output.
-            _prefix_exact(receipts/'journal.json',new_raw)
-            journal_after=True
-        elif any(s['step']=='journal' for s in steps): raise ValueError('b2_missing_rotation_intent')
-        core_after=any(s['step']=='core-complete' for s in steps)
-        state=snapshot(roots,db,scope,exclude_abandon=plan['id'],transaction=False,_prefix=intent,_journal_after=journal_after,_core_after=core_after)
-        check_consumers(state,observation); _coherent_b2(state)
-        if encode(state['evidence_projection'])!=encode(intent['before']['source']): raise ValueError('b2_prefix_prestate_changed')
-        if {**state['affected'],'reservations':[r['job_id'] for r in state['reservations']]}!=plan['affected']:
-            raise ValueError('b2_prefix_affected_changed')
-        if not journal_after and intent['before']['journal']['state']!='missing' and read_file(receipts/'journal.json',1024**2).hex()!=intent['before']['journal']['bytes_hex']:
-            raise ValueError('b2_prefix_journal_changed')
-        names={kind:root/name for name,kind in archive_names(intent).items()}
-        if (names['certificate'].exists() and not core_after) or (receipts/('p1-recovery-'+intent['id']+'.certificate.json')).exists(): raise ValueError('b2_prefix_premature_certificate')
-        if core_after:
-            _completed_prefix_receipts(roots,intent)
-            _core_certificate(root,receipts,intent,fault)
-            validate_b2_database(db,root,_retained_receipts=receipts)
-            return _finish_receipts(db,roots,intent,fault) if through_receipt else _core_result(intent)
-        bundle=receipts/('p1-recovery-'+intent['id']+'.snapshot.bundle')
-        bundle_intent=receipts/('p1-recovery-'+intent['id']+'.bundle.intent.json')
-        bundle_descriptor=encode(dict(revision=1,recovery_id=intent['id'],intent_digest=digest(intent),
-            source_digest=intent['source_digest'],snapshot_digest=intent['expected'][1]['output']['snapshot_digest'])).encode()
-        snapshot_raw=snapshot_bytes
-        if bundle_intent.exists():
-            _prefix_exact(bundle_intent,bundle_descriptor)
-            if not bundle.exists(): raise ValueError('b2_prefix_missing_bundle_quarantine')
-            snapshot_raw=read_file(bundle,MAX_BYTES)
-            _prefix_exact(bundle,snapshot_raw)
-            if snapshot_bytes is not None and snapshot_bytes!=snapshot_raw: raise ValueError('b2_prefix_snapshot_changed')
-        elif bundle.exists() or bundle.is_symlink() or existing is not None:
-            raise ValueError('b2_prefix_unrecorded_bundle_quarantine')
-        if snapshot_raw is not None:
-            if not isinstance(snapshot_raw,bytes) or len(snapshot_raw)>MAX_BYTES or hashlib.sha256(snapshot_raw).hexdigest()!=intent['expected'][1]['output']['snapshot_digest']:
-                raise ValueError('b2_prefix_snapshot_changed')
-        if not accepted or (existing is None and snapshot_raw is None):
-            if any(p.exists() or p.is_symlink() for p in names.values()): raise ValueError('b2_prefix_foreign_archive')
-            # backup incorporates committed WAL into a bounded private snapshot;
-            # source is never restored or copied over the live authority database.
-            with tempfile.TemporaryDirectory(prefix='p1-evidence-') as temporary:
-                path=Path(temporary)/'snapshot.sqlite'
-                deadline=time.monotonic()+2
-                def progress(status,remaining,total):
-                    if total*db.execute('PRAGMA page_size').fetchone()[0]>MAX_BYTES or time.monotonic()>deadline:
-                        raise ValueError('b2_prefix_snapshot_budget')
-                with private_database(root/'core.sqlite') as private_path:
-                    with sqlite3.connect(private_path.as_uri()+'?mode=ro',uri=True) as source_db, sqlite3.connect(path) as target:
-                        source_db.backup(target,pages=64,progress=progress)
-                snapshot_raw=read_file(path,MAX_BYTES)
-                if hashlib.sha256(snapshot_raw).hexdigest()!=intent['expected'][1]['output']['snapshot_digest']:
-                    raise ValueError('b2_prefix_snapshot_changed')
-                (Path(temporary)/names['snapshot'].name).write_bytes(snapshot_raw)
-                manifest=Path(temporary)/names['manifest'].name
-                manifest.write_text(encode(archive_manifest(intent))); manifest.chmod(0o600)
-                (Path(temporary)/names['snapshot'].name).chmod(0o600)
-                witness=dict(recovery_id=intent['id'],**intent['expected'][1],lane=intent['new_lane'],epoch=intent['new_epoch'])
-                _validate_archives(Path(temporary),dict(p1_recoveries=[intent],p1_abandon_plans=[plan],p1_recovery_steps=[witness]),0,0)
-                with sqlite3.connect(path) as candidate:
-                    candidate.execute('INSERT INTO p1_recoveries VALUES(?,?,?,?)',(intent['id'],intent['plan_id'],encode(intent),digest(intent)))
-                    for descriptor in intent['expected'][:2]:
-                        step=dict(recovery_id=intent['id'],**descriptor,lane=intent['new_lane'],epoch=intent['new_epoch'])
-                        candidate.execute('INSERT INTO p1_recovery_steps VALUES(?,?,?,?)',(intent['id'],step['step'],encode(step),digest(step)))
-                    candidate.commit()
-                    used=len(snapshot_raw)+len(encode(intent).encode())
-                    for prior in data['p1_recoveries']:
-                        for name in archive_names(prior):
-                            raw=read_file(root/name,MAX_BYTES-used); used+=len(raw)
-                            target=Path(temporary)/name; target.write_bytes(raw); target.chmod(0o600)
-                    validate_b2_database(candidate,Path(temporary))
-        if not accepted:
-            if marker_path.exists(): _prefix_exact(marker_path,marker_raw)
-            else: _prefix_file(marker_path,marker_raw,fault,'marker')
-            _prefix_file(accepted_path,accepted_raw,fault,'accepted')
-        if snapshot_raw is not None:
-            with tempfile.TemporaryDirectory(prefix='p1-evidence-check-') as temporary:
-                for kind,raw in (('snapshot',snapshot_raw),('manifest',encode(archive_manifest(intent)).encode())):
-                    path=Path(temporary)/names[kind].name
-                    path.write_bytes(raw); path.chmod(0o600)
-                witness=dict(recovery_id=intent['id'],**intent['expected'][1],lane=intent['new_lane'],epoch=intent['new_epoch'])
-                _validate_archives(Path(temporary),dict(p1_recoveries=[intent],p1_abandon_plans=[plan],p1_recovery_steps=[witness]),0,0)
-        if previous_fence:
-            pending=receipts/'p1-maintenance.pending.json'
-            _prefix_file(pending,fence_raw,fault,'fence')
-            os.replace(pending,fence_path); sync_dir(receipts); fault('fence-replace-parent')
-        elif not fence_path.exists(): _prefix_file(fence_path,fence_raw,fault,'fence')
-        if not bundle_intent.exists():
-            if snapshot_raw is None: raise ValueError('b2_prefix_missing_bundle_quarantine')
-            # Immutable creation intent precedes the exact original bytes. Once
-            # recorded, missing/partial output quarantines; never recapture it.
-            _prefix_file(bundle_intent,bundle_descriptor,fault,'bundle-intent')
-            fault('bundle-intent-recorded')
-            _prefix_file(bundle,snapshot_raw,fault,'bundle')
-        _prefix_exact(bundle_intent,bundle_descriptor)
-        _prefix_exact(bundle,snapshot_raw)
-        # Charge the new durable restart input against the receipt population.
-        _prefix_receipt_namespace(receipts,[*data['p1_recoveries'],intent])
-        if existing is None:
-            _prefix_transaction(db,lambda:db.execute('INSERT INTO p1_recoveries VALUES(?,?,?,?)',
-                (intent['id'],intent['plan_id'],encode(intent),digest(intent))),fault,'core-intent')
-            sync_dir(root); fault('core-intent-parent')
-        def record(index):
-            descriptor=intent['expected'][index]
-            step=dict(recovery_id=intent['id'],**descriptor,lane=intent['new_lane'],epoch=intent['new_epoch'])
-            row=db.execute('SELECT record,digest FROM p1_recovery_steps WHERE recovery_id=? AND step=?',(intent['id'],step['step'])).fetchone()
-            if row is not None:
-                if row!=(encode(step),digest(step)): raise ValueError('b2_prefix_step_changed')
-                return
-            _prefix_transaction(db,lambda:db.execute('INSERT INTO p1_recovery_steps VALUES(?,?,?,?)',
-                (intent['id'],step['step'],encode(step),digest(step))),fault,step['step']+'-receipt')
-            sync_dir(root); fault(step['step']+'-receipt-parent')
-        record(0)
-        outputs=[(names['snapshot'],snapshot_raw,'snapshot'),
-                 (names['manifest'],encode(archive_manifest(intent)).encode(),'manifest'),
-                 (receipts/('p1-recovery-'+intent['id']+'.journal'),bytes.fromhex(intent['before']['journal']['bytes_hex']),'original-journal')]
-        for path,raw,kind in outputs:
-            creation=receipts/('p1-recovery-'+intent['id']+'.'+kind+'.intent.json')
-            expected_hash=intent['expected'][1]['output']['snapshot_digest'] if kind=='snapshot' else hashlib.sha256(raw).hexdigest()
-            descriptor=encode(dict(revision=1,recovery_id=intent['id'],kind=kind,sha256=expected_hash)).encode()
-            if creation.exists():
-                _prefix_exact(creation,descriptor)
-                if not path.exists(): raise ValueError('b2_prefix_missing_artifact_quarantine')
-            else:
-                if path.exists() or path.is_symlink(): raise ValueError('b2_prefix_unrecorded_artifact')
-                if raw is None: raise ValueError('b2_prefix_missing_snapshot_quarantine')
-                _prefix_file(creation,descriptor,fault,kind+'-intent')
-                fault(kind+'-intent-recorded')
-                _prefix_file(path,raw,fault,kind)
-            actual=read_file(path,MAX_BYTES)
-            if hashlib.sha256(actual).hexdigest()!=expected_hash: raise ValueError('b2_prefix_artifact_quarantine')
-            _prefix_exact(path,actual)
-        witness=dict(recovery_id=intent['id'],**intent['expected'][1],lane=intent['new_lane'],epoch=intent['new_epoch'])
-        _validate_archives(root,dict(p1_recoveries=[intent],p1_abandon_plans=[plan],p1_recovery_steps=[witness]),0,0)
-        record(1)
-        validate_b2_database(db,root)
-        if through_journal:
-            if not journal_after:
-                used,count=_prefix_receipt_namespace(receipts,[*data['p1_recoveries'],intent])
-                # Include the replacement temporary and immutable descriptor in
-                # the same finite receipt population before attempting creation.
-                if count+2>MAX_ROWS or used+len(rotation_raw)+len(new_raw)>MAX_BYTES:
-                    raise ValueError('b2_prefix_receipt_budget')
-                _prefix_file(rotation,rotation_raw,fault,'journal-intent')
-                fault('journal-intent-recorded')
-                from worker.runtime_journal import _maintenance_replace
-                _maintenance_replace(receipts,intent['expected'][2]['output']['journal'],fault=fault)
-            _prefix_exact(receipts/'journal.json',new_raw)
-            record(2)
-            validate_b2_database(db,root)
-        if through_core:
-            _complete_core(db,roots,intent,fault)
-            return _finish_receipts(db,roots,intent,fault) if through_receipt else _core_result(intent)
-        return dict(status='pending-through-journal' if through_journal else 'pending-through-evidence',recovery_id=intent['id'],lane=intent['new_lane'],epoch=intent['new_epoch'])
+        return _pending_prefix_locked(roots,db,scope,intent,observation,now=now,
+            snapshot_bytes=snapshot_bytes,fault=fault,through_journal=through_journal,
+            through_core=through_core,through_receipt=through_receipt)
 
+
+def _pending_prefix_locked(roots,db,scope,intent,observation,*,now,snapshot_bytes=None,
+        fault=lambda point:None,through_journal=False,through_core=False,through_receipt=False):
+    """Prescribed kernel, called only by an owning lock-held session."""
+    import hashlib
+    root=roots['control']/'core'; receipts=roots['receipts']
+    data=validate_b2_database(db,root,_uncertified=intent['id'] if through_core else None,_retained_receipts=receipts)
+    plan=next((p for p in data['p1_abandon_plans'] if p['id']==intent['plan_id']),None) if data else None
+    if plan is None or digest(plan)!=intent['plan_digest']: raise ValueError('b2_prefix_plan_changed')
+    for key in ('deployment_id','source_digest','observation_digest','proof_digest','prior_epoch','new_epoch','old_lane','new_lane','affected','budget_before','budget_after','diagnostic_decisions'):
+        if intent[key]!=plan[key]: raise ValueError('b2_prefix_plan_binding')
+    if intent['expected'][1]['output']['journal_state']!=plan['journal_state'] or intent['expected'][1]['output']['journal_digest']!=plan['journal_digest']:
+        raise ValueError('b2_prefix_plan_journal')
+    existing=next((r for r in data['p1_recoveries'] if r['id']==intent['id']),None)
+    if existing is not None and existing!=intent: raise ValueError('b2_prefix_intent_changed')
+    for prior in data['p1_recoveries']:
+        if prior['id']!=intent['id'] and any(s['recovery_id']==prior['id'] and s['step']=='receipt-complete' for s in data['p1_recovery_steps']):
+            _completed_prefix_receipts(roots,prior)
+            _verify_finished_receipt_evidence(roots,prior)
+    completed=any(r['recovery_id']==intent['id'] and r['step']=='core-complete' for r in data['p1_recovery_steps'])
+    certificate_path=next(root/n for n,k in archive_names(intent).items() if k=='certificate')
+    creation=receipts/('p1-recovery-'+intent['id']+'.core-certificate.intent.json')
+    if through_core and completed and (certificate_path.exists() or creation.exists()):
+        # Immutable completion is separate from current startup eligibility.
+        # Later ordinary rows/journal activity must never replay this epoch.
+        retained_names=_receipt_only_successor(db,roots,scope,data)
+        _prefix_receipt_namespace(receipts,data['p1_recoveries'],retained_names=retained_names)
+        for prior in data['p1_recoveries']:
+            if prior['id']==intent['id']:continue
+            stages={s['step'] for s in data['p1_recovery_steps'] if s['recovery_id']==prior['id']}
+            # A successor may still be pending. Its declared durable prefix
+            # requires its actual evidence, never a future receipt artifact.
+            if data['p1_recoveries'].index(prior)>data['p1_recoveries'].index(intent) and 'receipt-complete' not in stages:
+                _retained_pending_receipts(roots,prior,stages)
+            else:
+                chain=[dict(recovery_id=prior['id'],**e,lane=prior['new_lane'],epoch=prior['new_epoch']) for e in prior['expected'][:4]]
+                _prefix_exact(receipts/('p1-recovery-'+prior['id']+'.certificate.json'),encode(dict(certificate=_certificate(prior,chain[-1]),steps=chain)).encode())
+                _prefix_exact(receipts/('p1-recovery-'+prior['id']+'.journal'),bytes.fromhex(prior['before']['journal']['bytes_hex']))
+        if through_receipt and not any(s['recovery_id']==intent['id'] and s['step']=='receipt-complete' for s in data['p1_recovery_steps']):
+            # Core completion alone is not an immutable completed replay.
+            # Both locks exclude concurrent owners, but do not prove that a
+            # registered incarnation stayed stopped between invocations.
+            registrations=db.execute('SELECT * FROM p1_registrations ORDER BY rowid').fetchall()
+            if encode(registrations)!=encode(intent['before']['source']['data']['p1_registrations']):
+                raise ValueError('b2_prefix_registrations_changed')
+            current=[json.loads(row[1]) for row in registrations]
+            for registration in current:validate_registration(registration)
+            check_consumers(dict(registrations=current,lane=intent['old_lane']),observation)
+        _completed_prefix_receipts(roots,intent)
+        if through_receipt and any(s['recovery_id']==intent['id'] and s['step']=='receipt-complete' for s in data['p1_recovery_steps']):
+            _verify_finished_receipt_evidence(roots,intent)
+            if data['p1_recoveries'][-1]['id']==intent['id'] and not retained_names:
+                fence=dict(revision=1,**{k:intent[k] for k in ('deployment_id','plan_id','plan_digest','proof_digest','old_lane','new_lane')},recovery_id=intent['id'],step='complete',certificate=_core_result(intent)['certificate'])
+                _retained_exact(receipts/'p1-maintenance.json',encode(fence).encode())
+            return dict(_core_result(intent),status='complete')
+        _core_certificate(root,receipts,intent,fault)
+        validate_b2_database(db,root,_retained_receipts=receipts)
+        return _finish_receipts(db,roots,intent,fault) if through_receipt else _core_result(intent)
+    if any(r['id']!=intent['id'] and not any(s['recovery_id']==r['id'] and s['step']=='core-complete' for s in data['p1_recovery_steps']) for r in data['p1_recoveries']):
+        raise ValueError('b2_prefix_other_pending')
+    steps=[s for s in data['p1_recovery_steps'] if s['recovery_id']==intent['id']]
+    if any(s['step'] not in STEPS[:4 if through_core else 3 if through_journal else 2] for s in steps): raise ValueError('b2_prefix_already_advanced')
+    marker=dict(revision=1,deployment_id=intent['deployment_id'])
+    fence=dict(revision=1,**{k:intent[k] for k in ('deployment_id','plan_id','plan_digest','proof_digest','old_lane','new_lane')},recovery_id=intent['id'],step='pending',certificate=None)
+    from worker.runtime_journal import maintenance_record
+    maintenance_record(fence)
+    marker_path=receipts/'p1-b2-required.json'; fence_path=receipts/'p1-maintenance.json'
+    accepted_path=receipts/('p1-recovery-'+intent['id']+'.intent.json')
+    marker_raw=encode(marker).encode(); fence_raw=encode(fence).encode(); accepted_raw=encode(intent).encode()
+    _prefix_receipt_namespace(receipts,[*data['p1_recoveries'],intent])
+    # All completed predecessors remain immutable even after their fence is
+    # superseded. Derive exact receipt documents from validated SQL history.
+    for prior in data['p1_recoveries']:
+        if prior['id']==intent['id']: continue
+        chain=[dict(recovery_id=prior['id'],**e,lane=prior['new_lane'],epoch=prior['new_epoch']) for e in prior['expected'][:4]]
+        certificate=_certificate(prior,chain[-1])
+        prefix='p1-recovery-'+prior['id']
+        certificate_raw=encode(dict(certificate=certificate,steps=chain)).encode()
+        if len(certificate_raw)>65536: raise ValueError('b2_prefix_receipt_budget')
+        _prefix_exact(receipts/(prefix+'.certificate.json'),certificate_raw)
+        _prefix_exact(receipts/(prefix+'.journal'),bytes.fromhex(prior['before']['journal']['bytes_hex']))
+    accepted=accepted_path.exists()
+    if existing is not None and not fence_path.exists(): raise ValueError('b2_prefix_receipt_quarantine')
+    previous_fence=False
+    if fence_path.exists() and read_file(fence_path,65536)!=fence_raw:
+        from worker.runtime_journal import read_maintenance
+        prior=read_maintenance(receipts)
+        if existing is not None or prior is None or prior!=intent['before']['prior_certificate'] or prior!=completion_binding(db,root):
+            raise ValueError('b2_prefix_previous_fence')
+        previous_fence=True
+    if accepted:
+        _prefix_exact(marker_path,marker_raw); _prefix_exact(accepted_path,accepted_raw)
+        if fence_path.exists() and not previous_fence: _prefix_exact(fence_path,fence_raw)
+    elif existing is not None or ((marker_path.exists() or fence_path.exists()) and not previous_fence):
+        raise ValueError('b2_prefix_receipt_quarantine')
+    if not accepted and not plan['created']<=now<plan['expires']: raise ValueError('expired_b2_plan')
+    # Exact own rows and derived archive labels only are removed from this
+    # projection. Every older plan/history, media identity and namespace stays.
+    rotation=receipts/('p1-recovery-'+intent['id']+'.rotation.intent.json')
+    from worker.runtime_journal import journal_bytes
+    new_raw=journal_bytes(intent['expected'][2]['output']['journal'])
+    rotation_raw=encode(dict(revision=1,recovery_id=intent['id'],intent_digest=digest(intent),
+        step=intent['expected'][2],before=intent['before']['journal'],sha256=hashlib.sha256(new_raw).hexdigest())).encode()
+    journal_after=False
+    if rotation.exists():
+        if not through_journal: raise ValueError('b2_prefix_already_advanced')
+        _prefix_exact(rotation,rotation_raw)
+        # A recorded attempt may only resume its exact output, never retry
+        # replacement from an absent/old/partial output.
+        _prefix_exact(receipts/'journal.json',new_raw)
+        journal_after=True
+    elif any(s['step']=='journal' for s in steps): raise ValueError('b2_missing_rotation_intent')
+    core_after=any(s['step']=='core-complete' for s in steps)
+    state=snapshot(roots,db,scope,exclude_abandon=plan['id'],transaction=False,_prefix=intent,_journal_after=journal_after,_core_after=core_after)
+    check_consumers(state,observation); _coherent_b2(state)
+    if encode(state['evidence_projection'])!=encode(intent['before']['source']): raise ValueError('b2_prefix_prestate_changed')
+    if {**state['affected'],'reservations':[r['job_id'] for r in state['reservations']]}!=plan['affected']:
+        raise ValueError('b2_prefix_affected_changed')
+    if not journal_after and intent['before']['journal']['state']!='missing' and read_file(receipts/'journal.json',1024**2).hex()!=intent['before']['journal']['bytes_hex']:
+        raise ValueError('b2_prefix_journal_changed')
+    names={kind:root/name for name,kind in archive_names(intent).items()}
+    if (names['certificate'].exists() and not core_after) or (receipts/('p1-recovery-'+intent['id']+'.certificate.json')).exists(): raise ValueError('b2_prefix_premature_certificate')
+    if core_after:
+        _completed_prefix_receipts(roots,intent)
+        _core_certificate(root,receipts,intent,fault)
+        validate_b2_database(db,root,_retained_receipts=receipts)
+        return _finish_receipts(db,roots,intent,fault) if through_receipt else _core_result(intent)
+    bundle=receipts/('p1-recovery-'+intent['id']+'.snapshot.bundle')
+    bundle_intent=receipts/('p1-recovery-'+intent['id']+'.bundle.intent.json')
+    bundle_descriptor=encode(dict(revision=1,recovery_id=intent['id'],intent_digest=digest(intent),
+        source_digest=intent['source_digest'],snapshot_digest=intent['expected'][1]['output']['snapshot_digest'])).encode()
+    snapshot_raw=snapshot_bytes
+    if bundle_intent.exists():
+        _prefix_exact(bundle_intent,bundle_descriptor)
+        if not bundle.exists(): raise ValueError('b2_prefix_missing_bundle_quarantine')
+        snapshot_raw=read_file(bundle,MAX_BYTES)
+        _prefix_exact(bundle,snapshot_raw)
+        if snapshot_bytes is not None and snapshot_bytes!=snapshot_raw: raise ValueError('b2_prefix_snapshot_changed')
+    elif bundle.exists() or bundle.is_symlink() or existing is not None:
+        raise ValueError('b2_prefix_unrecorded_bundle_quarantine')
+    if snapshot_raw is not None:
+        if not isinstance(snapshot_raw,bytes) or len(snapshot_raw)>MAX_BYTES or hashlib.sha256(snapshot_raw).hexdigest()!=intent['expected'][1]['output']['snapshot_digest']:
+            raise ValueError('b2_prefix_snapshot_changed')
+    if not accepted or (existing is None and snapshot_raw is None):
+        if any(p.exists() or p.is_symlink() for p in names.values()): raise ValueError('b2_prefix_foreign_archive')
+        # Capture only if no frozen original exists. Supplied semantic-fixture
+        # bytes and owned session bytes pass the SAME archive/SQL oracle below.
+        with tempfile.TemporaryDirectory(prefix='p1-evidence-') as temporary:
+            path=Path(temporary)/'snapshot.sqlite'
+            if snapshot_raw is None:
+                snapshot_raw=_capture_original_snapshot(roots,db,MAX_BYTES)
+            if hashlib.sha256(snapshot_raw).hexdigest()!=intent['expected'][1]['output']['snapshot_digest']:
+                raise ValueError('b2_prefix_snapshot_changed')
+            path.write_bytes(snapshot_raw); path.chmod(0o600)
+            (Path(temporary)/names['snapshot'].name).write_bytes(snapshot_raw)
+            manifest=Path(temporary)/names['manifest'].name
+            manifest.write_text(encode(archive_manifest(intent))); manifest.chmod(0o600)
+            (Path(temporary)/names['snapshot'].name).chmod(0o600)
+            witness=dict(recovery_id=intent['id'],**intent['expected'][1],lane=intent['new_lane'],epoch=intent['new_epoch'])
+            _validate_archives(Path(temporary),dict(p1_recoveries=[intent],p1_abandon_plans=[plan],p1_recovery_steps=[witness]),0,0)
+            with sqlite3.connect(path) as candidate:
+                candidate.execute('INSERT INTO p1_recoveries VALUES(?,?,?,?)',(intent['id'],intent['plan_id'],encode(intent),digest(intent)))
+                for descriptor in intent['expected'][:2]:
+                    step=dict(recovery_id=intent['id'],**descriptor,lane=intent['new_lane'],epoch=intent['new_epoch'])
+                    candidate.execute('INSERT INTO p1_recovery_steps VALUES(?,?,?,?)',(intent['id'],step['step'],encode(step),digest(step)))
+                candidate.commit()
+                used=len(snapshot_raw)+len(encode(intent).encode())
+                for prior in data['p1_recoveries']:
+                    for name in archive_names(prior):
+                        raw=read_file(root/name,MAX_BYTES-used); used+=len(raw)
+                        target=Path(temporary)/name; target.write_bytes(raw); target.chmod(0o600)
+                validate_b2_database(candidate,Path(temporary))
+    if not accepted:
+        if marker_path.exists(): _prefix_exact(marker_path,marker_raw)
+        else: _prefix_file(marker_path,marker_raw,fault,'marker')
+        _prefix_file(accepted_path,accepted_raw,fault,'accepted')
+    if snapshot_raw is not None:
+        with tempfile.TemporaryDirectory(prefix='p1-evidence-check-') as temporary:
+            for kind,raw in (('snapshot',snapshot_raw),('manifest',encode(archive_manifest(intent)).encode())):
+                path=Path(temporary)/names[kind].name
+                path.write_bytes(raw); path.chmod(0o600)
+            witness=dict(recovery_id=intent['id'],**intent['expected'][1],lane=intent['new_lane'],epoch=intent['new_epoch'])
+            _validate_archives(Path(temporary),dict(p1_recoveries=[intent],p1_abandon_plans=[plan],p1_recovery_steps=[witness]),0,0)
+    if previous_fence:
+        pending=receipts/'p1-maintenance.pending.json'
+        _prefix_file(pending,fence_raw,fault,'fence')
+        os.replace(pending,fence_path); sync_dir(receipts); fault('fence-replace-parent')
+    elif not fence_path.exists(): _prefix_file(fence_path,fence_raw,fault,'fence')
+    if not bundle_intent.exists():
+        if snapshot_raw is None: raise ValueError('b2_prefix_missing_bundle_quarantine')
+        # Immutable creation intent precedes the exact original bytes. Once
+        # recorded, missing/partial output quarantines; never recapture it.
+        _prefix_file(bundle_intent,bundle_descriptor,fault,'bundle-intent')
+        fault('bundle-intent-recorded')
+        _prefix_file(bundle,snapshot_raw,fault,'bundle')
+    _prefix_exact(bundle_intent,bundle_descriptor)
+    _prefix_exact(bundle,snapshot_raw)
+    # Charge the new durable restart input against the receipt population.
+    _prefix_receipt_namespace(receipts,[*data['p1_recoveries'],intent])
+    if existing is None:
+        _prefix_transaction(db,lambda:db.execute('INSERT INTO p1_recoveries VALUES(?,?,?,?)',
+            (intent['id'],intent['plan_id'],encode(intent),digest(intent))),fault,'core-intent')
+        sync_dir(root); fault('core-intent-parent')
+    def record(index):
+        descriptor=intent['expected'][index]
+        step=dict(recovery_id=intent['id'],**descriptor,lane=intent['new_lane'],epoch=intent['new_epoch'])
+        row=db.execute('SELECT record,digest FROM p1_recovery_steps WHERE recovery_id=? AND step=?',(intent['id'],step['step'])).fetchone()
+        if row is not None:
+            if row!=(encode(step),digest(step)): raise ValueError('b2_prefix_step_changed')
+            return
+        _prefix_transaction(db,lambda:db.execute('INSERT INTO p1_recovery_steps VALUES(?,?,?,?)',
+            (intent['id'],step['step'],encode(step),digest(step))),fault,step['step']+'-receipt')
+        sync_dir(root); fault(step['step']+'-receipt-parent')
+    record(0)
+    outputs=[(names['snapshot'],snapshot_raw,'snapshot'),
+             (names['manifest'],encode(archive_manifest(intent)).encode(),'manifest'),
+             (receipts/('p1-recovery-'+intent['id']+'.journal'),bytes.fromhex(intent['before']['journal']['bytes_hex']),'original-journal')]
+    for path,raw,kind in outputs:
+        creation=receipts/('p1-recovery-'+intent['id']+'.'+kind+'.intent.json')
+        expected_hash=intent['expected'][1]['output']['snapshot_digest'] if kind=='snapshot' else hashlib.sha256(raw).hexdigest()
+        descriptor=encode(dict(revision=1,recovery_id=intent['id'],kind=kind,sha256=expected_hash)).encode()
+        if creation.exists():
+            _prefix_exact(creation,descriptor)
+            if not path.exists(): raise ValueError('b2_prefix_missing_artifact_quarantine')
+        else:
+            if path.exists() or path.is_symlink(): raise ValueError('b2_prefix_unrecorded_artifact')
+            if raw is None: raise ValueError('b2_prefix_missing_snapshot_quarantine')
+            _prefix_file(creation,descriptor,fault,kind+'-intent')
+            fault(kind+'-intent-recorded')
+            _prefix_file(path,raw,fault,kind)
+        actual=read_file(path,MAX_BYTES)
+        if hashlib.sha256(actual).hexdigest()!=expected_hash: raise ValueError('b2_prefix_artifact_quarantine')
+        _prefix_exact(path,actual)
+    witness=dict(recovery_id=intent['id'],**intent['expected'][1],lane=intent['new_lane'],epoch=intent['new_epoch'])
+    _validate_archives(root,dict(p1_recoveries=[intent],p1_abandon_plans=[plan],p1_recovery_steps=[witness]),0,0)
+    record(1)
+    validate_b2_database(db,root)
+    if through_journal:
+        if not journal_after:
+            used,count=_prefix_receipt_namespace(receipts,[*data['p1_recoveries'],intent])
+            # Include the replacement temporary and immutable descriptor in
+            # the same finite receipt population before attempting creation.
+            if count+2>MAX_ROWS or used+len(rotation_raw)+len(new_raw)>MAX_BYTES:
+                raise ValueError('b2_prefix_receipt_budget')
+            _prefix_file(rotation,rotation_raw,fault,'journal-intent')
+            fault('journal-intent-recorded')
+            from worker.runtime_journal import _maintenance_replace
+            _maintenance_replace(receipts,intent['expected'][2]['output']['journal'],fault=fault)
+        _prefix_exact(receipts/'journal.json',new_raw)
+        record(2)
+        validate_b2_database(db,root)
+    if through_core:
+        _complete_core(db,roots,intent,fault)
+        return _finish_receipts(db,roots,intent,fault) if through_receipt else _core_result(intent)
+    return dict(status='pending-through-journal' if through_journal else 'pending-through-evidence',recovery_id=intent['id'],lane=intent['new_lane'],epoch=intent['new_epoch'])
 
 RESOLUTION_TABLES=('dispatch_resolutions','p1_retired_publications','p1_integrity_resolutions')
 

@@ -715,3 +715,38 @@ def test_publication_intent_is_not_recovered_under_unresolved_authority(tmp_path
         assert c.db.execute('SELECT COUNT(*) FROM artifacts').fetchone()==(0,)
         assert list((root/'assets').iterdir())==[]
     finally:c.close()
+
+
+def test_lotk_measurement_counts_descendants_not_root_and_flat_growth(tmp_path, monkeypatch):
+    from service.resource_store import _measure_recovery_roots
+    roots=[tmp_path/'core',tmp_path/'staging']
+    for root in roots:root.mkdir()
+    descendant=roots[0]/'retained';descendant.mkdir()
+    (descendant/'old').write_bytes(b'old')
+    (roots[1]/'retained').write_bytes(b'static')
+    expected=descendant.lstat().st_size+3+6
+    original=Path.lstat
+    def lstat(path,*args,**kwargs):
+        assert path not in roots,'root directory size must never be measured'
+        return original(path,*args,**kwargs)
+    monkeypatch.setattr(Path,'lstat',lstat)
+    assert _measure_recovery_roots(roots)==expected
+    snapshot=roots[0]/('p1-recovery-'+'8'*32+'.sqlite')
+    manifest=roots[0]/('p1-recovery-'+'8'*32+'.manifest.json')
+    snapshot.write_bytes(b'snapshot');manifest.write_bytes(b'{}')
+    assert _measure_recovery_roots(roots)==expected+snapshot.stat().st_size+manifest.stat().st_size
+    assert (descendant/'old').read_bytes()==b'old' and (roots[1]/'retained').read_bytes()==b'static'
+
+
+def test_lotk_fixed_formula_keeps_highwater_and_all_charges(tmp_path):
+    from service.resource_store import _maintenance_footprint
+    roots=[tmp_path/'core',tmp_path/'staging']
+    for root in roots:root.mkdir()
+    (roots[0]/'static').write_bytes(b'x'*17)
+    high=20*1024**2;charged=2*1024**2
+    budget=dict(DEFAULT_BUDGET)
+    result=_maintenance_footprint(roots,high,charged,budget)
+    assert result==dict(measured=17,upper=17+3*4_194_304+1_048_576+2*65_536,highwater=high,charged=charged)
+    with pytest.raises(ValueError,match='maintenance_highwater'):_maintenance_footprint(roots,result['upper']-1,charged,budget)
+    with pytest.raises(ValueError,match='disk_quota'):_maintenance_footprint(roots,high,budget['disk_bytes'],budget)
+    with pytest.raises(ValueError,match='arithmetic'):_maintenance_footprint(roots,True,charged,budget)

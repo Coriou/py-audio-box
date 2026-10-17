@@ -3261,3 +3261,341 @@ def test_b23a_r1_reader_nested_role_mount_refuses(b23_host,monkeypatch,role,mana
     with pytest.raises(ValueError,match='host_role_nested_mount'):recovery.read_host_capsule()
     assert calls==observation
     assert (directory/'capsule.json').read_bytes()==before and logical(h['roots'])==sql
+
+
+def test_lotk_exact_supplied_snapshot_is_not_recaptured(installation, monkeypatch):
+    """A frozen actual snapshot must survive acceptance without a new backup."""
+    intent, observation, raw = prefix_fixture(installation)
+    from contextlib import contextmanager
+    @contextmanager
+    def forbidden_recapture(path):
+        raise AssertionError('frozen snapshot was recaptured')
+        yield
+    monkeypatch.setattr(recovery, 'private_database', forbidden_recapture)
+    roots, scope, _, _ = installation
+    result = recovery._pending_through_evidence(roots, scope, intent, observation,
+        now=102, snapshot_bytes=raw)
+    assert result['status'] == 'pending-through-evidence'
+    assert (roots['receipts']/('p1-recovery-'+intent['id']+'.snapshot.bundle')).read_bytes() == raw
+
+
+def _lotk_model(monkeypatch, roots, scope, intent):
+    """Explicit E1 OS/host model; NEVER calls setrlimit in the pytest process."""
+    import resource, sys
+    monkeypatch.setattr(sys, 'platform', 'linux')
+    monkeypatch.setattr(recovery, '_maintenance_filesystems', lambda roots: None)
+    monkeypatch.setattr(recovery, '_maintenance_task_count', lambda: 1)
+    monkeypatch.setattr(resource, 'setrlimit', lambda kind, limits: None)
+    monkeypatch.setattr(resource, 'getrlimit', lambda kind: (4_194_304,)*2)
+    with closing(sqlite3.connect(roots['control']/'core'/'core.sqlite')) as db:
+        regs=[json.loads(r[0]) for r in db.execute('SELECT record FROM p1_registrations ORDER BY rowid')]
+    capsule=dict(scope=scope, registrations=regs, registration_digest=recovery.host_registration_digest(regs),
+        kernel_proof=intent['proof'],kernel_proof_digest=intent['proof_digest'],
+        purpose=dict(kind='pre-plan',plan_id=None,plan_digest=None))
+    monkeypatch.setattr(recovery, 'read_host_capsule', lambda: capsule)
+    monkeypatch.setattr(recovery.time, 'time', lambda: 102)
+
+
+def test_lotk_same_lock_owned_snapshot_completes_without_recapture(installation, monkeypatch):
+    roots,scope,_,_=installation
+    intent,_,_=core_fixture(installation)
+    _lotk_model(monkeypatch,roots,scope,intent)
+    def operation(session):
+        import hashlib
+        from service.resource_store import _maintenance_footprint
+        bound=_maintenance_footprint((roots['control']/'core',roots['staging']),intent['highwater'],
+            sum(json.loads(r[2])['disk_bytes'] for r in intent['before']['source']['data']['resource_reservations']),intent['budget_before'])
+        owned=session.capture(intent['plan_id'],intent['plan_digest'])
+        assert owned.sha256==intent['expected'][1]['output']['snapshot_digest']
+        raw=owned._raw
+        stage_before={str(p.relative_to(roots['staging'])):(p.stat().st_mode,p.stat().st_size,p.stat().st_mtime_ns)
+            for p in roots['staging'].rglob('*')}
+        descendant_before={p:(p.stat().st_size,p.stat().st_mtime_ns) for p in (roots['control']/'core').rglob('*') if p.is_dir()}
+        writes=[];writer=recovery._prefix_file
+        def trace(path,*args):
+            writes.append(path)
+            assert path.parent in (roots['control']/'core',roots['receipts'])
+            return writer(path,*args)
+        recovery._prefix_file=trace
+        def forbidden(*args):raise AssertionError('owned frozen snapshot recaptured')
+        recovery._capture_original_snapshot=forbidden
+        result=session.continue_kernel(intent,prepared=owned)
+        assert result['status']=='complete'
+        assert writes
+        assert descendant_before=={p:(p.stat().st_size,p.stat().st_mtime_ns) for p in descendant_before}
+        assert stage_before=={str(p.relative_to(roots['staging'])):(p.stat().st_mode,p.stat().st_size,p.stat().st_mtime_ns)
+            for p in roots['staging'].rglob('*')}
+        assert {p.name for p in writes if p.parent==roots['control']/'core'}==set(recovery.archive_names(intent))
+        assert (roots['receipts']/('p1-recovery-'+intent['id']+'.snapshot.bundle')).read_bytes()==raw
+        assert (roots['control']/'core'/('p1-recovery-'+intent['archive_id']+'.sqlite')).read_bytes()==raw
+        assert hashlib.sha256(raw).hexdigest()==owned.sha256
+        with pytest.raises(ValueError,match='session_closed'):session.continue_kernel(intent,prepared=owned)
+        return dict(status=result['status'],upper=bound['upper'])
+    result=recovery._run_bounded_maintenance(roots,scope,operation)
+    assert result['status']=='complete' and result['upper']<=intent['highwater']
+
+
+@pytest.mark.parametrize('failure',['platform','readback','setlimit','host','control-lock','lane-lock','oversize','sidecar'])
+def test_lotk_refuses_before_original_writable_open(installation, monkeypatch, failure):
+    import resource, sys
+    roots,scope,_,_=installation
+    intent,_,_=core_fixture(installation)
+    _lotk_model(monkeypatch,roots,scope,intent)
+    path=roots['control']/'core'/'core.sqlite'
+    if failure=='platform':monkeypatch.setattr(sys,'platform','darwin')
+    if failure=='readback':monkeypatch.setattr(resource,'getrlimit',lambda kind:(4_194_305,)*2)
+    if failure=='setlimit':
+        def fail(*args):raise OSError('limit refused')
+        monkeypatch.setattr(resource,'setrlimit',fail)
+    if failure=='host':
+        def fail():raise ValueError('host_trusted_mount_absent')
+        monkeypatch.setattr(recovery,'read_host_capsule',fail)
+    if failure=='oversize':
+        with (path.parent/'core.sqlite-wal').open('wb') as stream:stream.truncate(4_194_305)
+    if failure=='sidecar':(path.parent/'core.sqlite-journal').write_bytes(b'preserve')
+    before={p:p.read_bytes() for p in path.parent.iterdir() if p.is_file()}
+    original=recovery.sqlite3.connect
+    opened=path.parent.parent.parent/'unexpected-original-open'
+    def guarded(database,*args,**kwargs):
+        if str(database).startswith(path.as_uri()) and 'mode=rw' in str(database):
+            opened.write_text('attempted')
+            raise AssertionError('original writable open before verified envelope')
+        return original(database,*args,**kwargs)
+    monkeypatch.setattr(recovery.sqlite3,'connect',guarded)
+    fd=None
+    if failure.endswith('-lock'):
+        target=path.parent/'control.lock' if failure=='control-lock' else roots['receipts']/'lane.lock'
+        fd=os.open(target,os.O_RDONLY);fcntl.flock(fd,fcntl.LOCK_EX|fcntl.LOCK_NB)
+    try:
+        with pytest.raises(ValueError,match='maintenance'):
+            recovery._run_bounded_maintenance(roots,scope,lambda session:True)
+    finally:
+        if fd is not None:os.close(fd)
+    assert not opened.exists()
+    assert before=={p:p.read_bytes() for p in path.parent.iterdir() if p.is_file()}
+    assert not list(roots['receipts'].glob('p1-recovery-*'))
+
+
+@pytest.mark.parametrize('tamper',['byte','plan','source','caller-bytes','caller-object'])
+def test_lotk_owned_handoff_tamper_refuses_before_acceptance(installation, monkeypatch, tamper):
+    roots,scope,_,_=installation
+    intent,_,_=core_fixture(installation)
+    _lotk_model(monkeypatch,roots,scope,intent)
+    def operation(session):
+        owned=session.capture(intent['plan_id'],intent['plan_digest'])
+        if tamper=='byte':owned._raw=owned._raw[:-1]+bytes([owned._raw[-1]^1])
+        if tamper=='plan':session.db.execute("UPDATE p1_abandon_plans SET digest=? WHERE id=?",('0'*64,intent['plan_id']))
+        if tamper=='source':session.db.execute("UPDATE resource_monitor SET state='fault'")
+        supplied=owned._raw if tamper=='caller-bytes' else object() if tamper=='caller-object' else owned
+        with pytest.raises(ValueError):session.continue_kernel(intent,prepared=supplied)
+        assert not list(roots['receipts'].glob('p1-recovery-*'))
+        return True
+    assert recovery._run_bounded_maintenance(roots,scope,operation) is True
+
+
+def test_lotk_caller_capability_cannot_select_process_or_limit(installation):
+    roots,scope,_,_=installation
+    with pytest.raises(TypeError):recovery._run_bounded_maintenance(roots,scope,lambda s:True,limit=2**40)
+    with pytest.raises(TypeError):recovery._run_bounded_maintenance(roots,scope,lambda s:True,capability=True)
+    with pytest.raises(ValueError,match='maintenance_process'):
+        with recovery._maintenance_session(roots,scope,object()):pass
+
+
+@pytest.mark.skipif(__import__('sys').platform!='linux',reason='Actual Linux RLIMIT_FSIZE evidence PENDING; macOS E1 model is not proof')
+def test_lotk_actual_linux_child_file_and_sqlite_cap(tmp_path):
+    import subprocess, sys
+    script=r'''
+import errno, os, resource, sqlite3, sys
+from pathlib import Path
+from service import recovery
+recovery._maintenance_child_pid=os.getpid()
+p=recovery._install_maintenance_limit(); L=4_194_304
+root=Path(sys.argv[1])
+for operation in ('write','pwrite','truncate','ftruncate'):
+    path=root/operation
+    fd=os.open(path,os.O_CREAT|os.O_RDWR,0o600)
+    os.ftruncate(fd,L)
+    os.lseek(fd,L-1,0);assert os.write(fd,b'x')==1
+    assert os.pwrite(fd,b'x',L-1)==1
+    try:
+        if operation=='write':os.lseek(fd,L,0);os.write(fd,b'x')
+        elif operation=='pwrite':os.pwrite(fd,b'x',L)
+        elif operation=='truncate':os.truncate(path,L+1)
+        else:os.ftruncate(fd,L+1)
+    except OSError as exc:assert exc.errno==errno.EFBIG
+    else:raise AssertionError('extension succeeded')
+    assert path.stat().st_size==L
+    os.close(fd); p.verify()
+db=sqlite3.connect(root/'database.sqlite')
+assert db.execute('PRAGMA journal_mode=WAL').fetchone()==('wal',)
+db.execute('PRAGMA synchronous=FULL');db.execute('PRAGMA mmap_size=0')
+db.execute('CREATE TABLE bounded(data BLOB)');db.commit()
+failed=False
+for i in range(100):
+    try:db.execute('INSERT INTO bounded VALUES(?)',(b'x'*65536,));db.commit()
+    except sqlite3.Error:failed=True;break
+    for f in root.glob('database.sqlite*'):assert f.stat().st_size<=L
+assert failed
+for f in root.glob('database.sqlite*'):assert f.stat().st_size<=L
+try:db.rollback();db.execute('PRAGMA wal_checkpoint(TRUNCATE)')
+except sqlite3.Error:pass
+db.close();p.verify()
+for f in root.glob('database.sqlite*'):assert f.stat().st_size<=L
+'''
+    before=__import__('resource').getrlimit(__import__('resource').RLIMIT_FSIZE)
+    result=subprocess.run([sys.executable,'-c',script,str(tmp_path)],capture_output=True,text=True,timeout=30)
+    assert result.returncode==0,result.stderr
+    assert __import__('resource').getrlimit(__import__('resource').RLIMIT_FSIZE)==before
+
+
+@pytest.mark.parametrize('point',['bundle-parent','core-intent-commit'])
+def test_lotk_actual_death_fresh_owned_resume(installation,monkeypatch,point):
+    import subprocess,sys
+    roots,scope,_,_=installation
+    intent,_,_=core_fixture(installation)
+    _lotk_model(monkeypatch,roots,scope,intent)
+    identity=intent['id']
+    def operation(session):
+        owned=session.capture(intent['plan_id'],intent['plan_digest'])
+        def die(where):
+            if where==point:os._exit(73)
+        session.continue_kernel(intent,prepared=owned,fault=die)
+        raise AssertionError('death boundary not reached')
+    with pytest.raises(ValueError,match='child_failed'):recovery._run_bounded_maintenance(roots,scope,operation)
+    del intent
+    script=r'''
+import json,os,resource,sys
+from pathlib import Path
+from service import recovery
+v=json.load(sys.stdin);roots={k:Path(p) for k,p in v['roots'].items()};scope=v['scope'];identity=v['id']
+# Explicit macOS E1 OS/host model; no installed Linux enforcement claim.
+sys.platform='linux';resource.setrlimit=lambda *a:None;resource.getrlimit=lambda *a:(4_194_304,)*2
+recovery._maintenance_filesystems=lambda roots:None;recovery._maintenance_task_count=lambda:1
+recovery.time.time=lambda:1000
+accepted=json.loads(recovery.read_file(roots['receipts']/('p1-recovery-'+identity+'.intent.json')))
+regs=[json.loads(r[1]) for r in accepted['before']['source']['data']['p1_registrations']]
+capsule=dict(scope=scope,registrations=regs,registration_digest=recovery.host_registration_digest(regs),
+    kernel_proof=accepted['proof'],kernel_proof_digest=accepted['proof_digest'],
+    purpose=dict(kind='resume',plan_id=accepted['plan_id'],plan_digest=accepted['plan_digest']))
+recovery.read_host_capsule=lambda:capsule
+for _ in range(2):
+    def resume(session):
+        owned=json.loads(recovery.read_file(roots['receipts']/('p1-recovery-'+identity+'.intent.json')))
+        assert session.continue_kernel(owned)['status']=='complete'
+        return True
+    assert recovery._run_bounded_maintenance(roots,scope,resume)
+'''
+    result=subprocess.run([sys.executable,'-c',script],input=json.dumps(dict(roots={k:str(p) for k,p in roots.items()},scope=scope,id=identity)),capture_output=True,text=True,timeout=60)
+    assert result.returncode==0,result.stderr
+    with closing(sqlite3.connect(roots['control']/'core'/'core.sqlite')) as db:
+        assert db.execute('SELECT count(*) FROM p1_recoveries').fetchone()==(1,)
+        assert db.execute('SELECT count(*) FROM p1_recovery_steps').fetchone()==(5,)
+
+
+@pytest.mark.parametrize('point',['bundle-intent-recorded','core-complete-write','core-complete-commit'])
+def test_lotk_io_failure_burns_session_no_partial_healthy_authority(installation,monkeypatch,point):
+    roots,scope,_,_=installation
+    intent,_,_=core_fixture(installation)
+    _lotk_model(monkeypatch,roots,scope,intent)
+    def operation(session):
+        owned=session.capture(intent['plan_id'],intent['plan_digest']);fired=[]
+        def fail(where):
+            if where==point:fired.append(where);raise OSError('EFBIG-modeled')
+        with pytest.raises(OSError):session.continue_kernel(intent,prepared=owned,fault=fail)
+        assert fired==[point]
+        with pytest.raises(ValueError,match='session_closed'):session.continue_kernel(intent,prepared=owned)
+        return True
+    assert recovery._run_bounded_maintenance(roots,scope,operation)
+    with closing(sqlite3.connect(roots['control']/'core'/'core.sqlite')) as db:
+        healthy=db.execute("SELECT state FROM resource_monitor").fetchone()==('healthy',)
+        integrity=db.execute("SELECT state FROM p1_integrity").fetchone()==('healthy',)
+        completed=db.execute("SELECT 1 FROM p1_recovery_steps WHERE step='core-complete'").fetchone() is not None
+        assert healthy==integrity==completed
+        assert completed==(point=='core-complete-commit')
+    if point=='bundle-intent-recorded':
+        def resume(session):
+            with pytest.raises(FileNotFoundError):session.continue_kernel(intent)
+            return True
+        assert recovery._run_bounded_maintenance(roots,scope,resume)
+
+
+def test_lotk_private_connection_rejects_escape_and_preserves_wal(installation,monkeypatch):
+    roots,scope,_,_=installation
+    intent,_,_=core_fixture(installation)
+    _lotk_model(monkeypatch,roots,scope,intent)
+    def operation(session):
+        for sql in ("ATTACH ':memory:' AS foreign_db",'PRAGMA mmap_size=10000000',
+                'PRAGMA journal_mode=DELETE','PRAGMA max_page_count=10',"SELECT load_extension('foreign')"):
+            with pytest.raises(sqlite3.Error):session.db.execute(sql)
+        assert session.db.execute('PRAGMA journal_mode').fetchone()==('wal',)
+        assert session.db.execute('PRAGMA synchronous').fetchone()==(2,)
+        assert session.db.execute('PRAGMA temp_store').fetchone()==(2,)
+        assert session.db.execute('PRAGMA mmap_size').fetchone()==(0,)
+        return True
+    assert recovery._run_bounded_maintenance(roots,scope,operation)
+
+
+def test_lotk_old_archive_drift_refuses_owned_handoff(installation,monkeypatch):
+    roots,scope,_,_=installation
+    first,observation,_=core_fixture(installation)
+    recovery._complete_receipts(roots,scope,first,observation,now=102)
+    intent=b2_intent(installation,prepare_only=True,recovery_id='7'*32,archive_id='6'*32)
+    _lotk_model(monkeypatch,roots,scope,intent)
+    def operation(session):
+        owned=session.capture(intent['plan_id'],intent['plan_digest'])
+        old=roots['control']/'core'/next(n for n,k in recovery.archive_names(first).items() if k=='snapshot')
+        raw=old.read_bytes();old.write_bytes(raw[:-1]+bytes([raw[-1]^1]))
+        with pytest.raises(ValueError):session.continue_kernel(intent,prepared=owned)
+        assert not (roots['receipts']/('p1-recovery-'+intent['id']+'.intent.json')).exists()
+        return True
+    assert recovery._run_bounded_maintenance(roots,scope,operation)
+
+
+def test_lotk_fresh_unfinished_resume_reinstalls_fixed_cap(installation,monkeypatch):
+    import resource
+    roots,scope,_,_=installation
+    intent,_,_=core_fixture(installation)
+    _lotk_model(monkeypatch,roots,scope,intent)
+    def operation(session):
+        owned=session.capture(intent['plan_id'],intent['plan_digest'])
+        def fail(point):
+            if point=='core-intent-commit':raise OSError('interrupted')
+        with pytest.raises(OSError):session.continue_kernel(intent,prepared=owned,fault=fail)
+        return True
+    assert recovery._run_bounded_maintenance(roots,scope,operation)
+    before={p:p.read_bytes() for root in roots.values() for p in root.rglob('*') if p.is_file()}
+    monkeypatch.setattr(resource,'getrlimit',lambda kind:(2**40,)*2)
+    with pytest.raises(ValueError,match='child_failed'):
+        recovery._run_bounded_maintenance(roots,scope,lambda session:session.continue_kernel(intent))
+    assert before=={p:p.read_bytes() for root in roots.values() for p in root.rglob('*') if p.is_file()}
+
+
+def test_lotk_fixed_cap_setup_ignores_environment_and_parent_limit(installation,monkeypatch):
+    import resource
+    roots,scope,_,_=installation
+    intent,_,_=core_fixture(installation)
+    parent=resource.getrlimit(resource.RLIMIT_FSIZE)
+    _lotk_model(monkeypatch,roots,scope,intent)
+    calls=[]
+    monkeypatch.setattr(resource,'setrlimit',lambda kind,limits:calls.append((kind,limits)))
+    monkeypatch.setenv('P1_MAINTENANCE_LIMIT',str(2**40))
+    def operation(session):
+        assert calls==[(resource.RLIMIT_FSIZE,(4_194_304,4_194_304))]
+        return True
+    assert recovery._run_bounded_maintenance(roots,scope,operation)
+    assert calls==[]  # Child setup did not call the parent's resource API.
+    monkeypatch.undo()
+    assert resource.getrlimit(resource.RLIMIT_FSIZE)==parent
+
+
+@pytest.mark.parametrize('filesystem,nested',[('ext4',False),('overlay',False),('nfs',False),('fuse',False),('unknown',False),('ext4',True)])
+def test_lotk_declared_ext4_namespace_only(monkeypatch,filesystem,nested):
+    import builtins,io
+    roots={role:Path('/'+role) for role in ('control','staging','receipts','ipc')}
+    raw=''.join(f'{i+1} 0 1:{i} / /{role} rw - {filesystem} source rw\n' for i,role in enumerate(roots))
+    if nested:raw+='5 1 1:5 / /control/core rw - ext4 foreign rw\n'
+    original=builtins.open
+    monkeypatch.setattr(builtins,'open',lambda name,*a,**k:io.BytesIO(raw.encode()) if name=='/proc/self/mountinfo' else original(name,*a,**k))
+    if filesystem=='ext4' and not nested:recovery._maintenance_filesystems(roots)
+    else:
+        with pytest.raises(ValueError,match='maintenance_(filesystem|submount)'):recovery._maintenance_filesystems(roots)
