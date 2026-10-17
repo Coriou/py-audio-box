@@ -2214,6 +2214,16 @@ def _host_role_identity(role):
     return st.st_dev,st.st_ino
 
 
+def _host_authority_mount_observation():
+    mounts=_host_mount_topology()
+    # No submount contract exists for any fixed authority role, including file
+    # mounts. Check every observation, before using root identities as evidence.
+    for role in ('control','staging','receipts','ipc'):
+        if any(m['target'].startswith('/'+role+'/') for m in mounts):
+            raise ValueError('host_role_nested_mount')
+    return mounts
+
+
 def read_host_capsule():
     """Only the fixed C1 RO transport authenticates origin. No local fallback.
 
@@ -2222,7 +2232,7 @@ def read_host_capsule():
     Reading retains the evidence and grants no kernel/apply capability.
     """
     import stat
-    mounts=_host_mount_topology()
+    mounts=_host_authority_mount_observation()
     selected=[m for m in mounts if m['target']==HOST_CAPSULE_MOUNT]
     if len(selected)!=1: raise ValueError('host_trusted_mount_absent')
     mount=selected[0]
@@ -2250,7 +2260,7 @@ def read_host_capsule():
             if [entry.name for entry in entries] != ['capsule.json']: raise ValueError('host_invocation_namespace')
         capsule=_host_read_at(fd,'capsule.json',HOST_MAPPED_UID)
         if (capsule.get('invocation_id')!=mount['root'][len(prefix):] or
-                _host_file_identity(os.fstat(fd))!=_host_file_identity(before) or mounts!=_host_mount_topology()):
+                _host_file_identity(os.fstat(fd))!=_host_file_identity(before) or mounts!=_host_authority_mount_observation()):
             raise ValueError('host_transport_changed')
         validate_host_capsule(capsule)
         for volume in capsule['topology']['volumes']:
@@ -2260,6 +2270,6 @@ def read_host_capsule():
                     role_mount['device']!=str(os.major(device))+':'+str(os.minor(device)) or
                     (device,inode)!=(volume['device'],volume['inode'])):
                 raise ValueError('host_role_mount_changed')
-        if mounts!=_host_mount_topology(): raise ValueError('host_transport_changed')
+        if mounts!=_host_authority_mount_observation(): raise ValueError('host_transport_changed')
         return capsule
     finally: os.close(fd)

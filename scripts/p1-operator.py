@@ -132,7 +132,14 @@ def _mount_touches(mount,volumes):
     if any(canonical==v['source'] or canonical.startswith(v['source']+'/') or v['source'].startswith(canonical.rstrip('/')+'/') for v in volumes):
         return True
     st=os.stat(source)
-    return (st.st_dev,st.st_ino) in {(v['device'],v['inode']) for v in volumes}
+    if (st.st_dev,st.st_ino) in {(v['device'],v['inode']) for v in volumes}: return True
+    # Neither realpath nor a different root inode proves disjointness: an
+    # ancestor bind alias can reach a deployment descendant with another inode.
+    # No host filesystem-topology resolver is qualified in this lot. Refuse ALL
+    # remaining bind/volume sources, even a different device, before any stop.
+    # This rule runs on every bounded all-container inventory, including stopped
+    # containers; no source is silently excluded on incomplete OS evidence.
+    raise ValueError('unsupported_host_storage_disjointness')
 
 
 def _host_scope(observer,scope):

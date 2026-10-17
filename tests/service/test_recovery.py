@@ -3202,3 +3202,62 @@ def test_b23_expired_trusted_transport_cannot_override_os_clock(b23_host,monkeyp
     # acceptable. Tests fake the OS clock, never a production authorization flag.
     with pytest.raises((ValueError,TypeError)):recovery.read_host_capsule(now=c['issued'])
     assert (directory/'capsule.json').read_bytes()==before
+
+
+@pytest.mark.parametrize('inventory',[1,2])
+@pytest.mark.parametrize('live',[True,False])
+@pytest.mark.parametrize('source,device,inode',[
+    ('/alias/staging/_data/retained-subdir',7,999),
+    ('/unproved/foreign-storage',7,998),
+    ('/unproved/other-filesystem',88,997),
+    ('/direct-root-alias',7,4),
+])
+def test_b23a_r1_unknown_storage_refuses_before_stop(b23_host,monkeypatch,live,source,device,inode,inventory):
+    # E1 exact R1 ancestor-bind-alias descendant plus deliberately unsupported
+    # foreign storage. Different stat identities alone never prove disjointness.
+    from types import SimpleNamespace
+    h=b23_host;m=h['module'];before=logical(h['roots'])
+    u=copy.deepcopy(h['consumers'][1])
+    u.update(id='e'*64,running=live,pid=199 if live else 0,
+        finished='0001-01-01T00:00:00Z' if live else '2026-10-17T02:00:00Z')
+    u['mounts']=[dict(type='bind',name='',source=source,destination='/data',rw=True)]
+    read=h['read'];enumerations=0
+    def observed(argv):
+        nonlocal enumerations
+        if argv[:2]==['container','ls']:
+            enumerations+=1
+            if enumerations==2*inventory-1:h['consumers'].append(u)
+        return read(argv)
+    h['observer']._read=observed
+    real_stat=m.os.stat
+    def fake_stat(path,*a,**kw):
+        if str(path)==source:return SimpleNamespace(st_dev=device,st_ino=inode)
+        return real_stat(path,*a,**kw)
+    monkeypatch.setattr(m.os,'stat',fake_stat)
+    with pytest.raises(ValueError):m.freeze_host(h['observer'],h['state'],h['request'])
+    assert not any(a[1] in ('stop','wait') for a in h['calls'])
+    assert not (h['base']/'invocations').exists()
+    assert u['running']==live and len(h['consumers'])==3
+    assert logical(h['roots'])==before
+
+
+@pytest.mark.parametrize('role,managed',[
+    ('control','core'),('receipts','journal.json'),('staging','foreign'),('ipc','lifecycle.sock')])
+@pytest.mark.parametrize('destination',['directory','managed'])
+@pytest.mark.parametrize('observation',[1,2,3])
+def test_b23a_r1_reader_nested_role_mount_refuses(b23_host,monkeypatch,role,managed,destination,observation):
+    h=b23_host;c=h['module'].freeze_host(h['observer'],h['state'],h['request'])
+    directory,mounts=_b23_fake_mount_transport(monkeypatch,h,c)
+    before=(directory/'capsule.json').read_bytes();sql=logical(h['roots'])
+    assert recovery.read_host_capsule()==c
+    extra=dict(id='99',device='99:99',root='/foreign',
+        target='/'+role+'/'+('nested-directory' if destination=='directory' else managed),options=['rw'])
+    calls=0
+    def observed():
+        nonlocal calls
+        calls+=1
+        return copy.deepcopy(mounts+([extra] if calls>=observation else []))
+    monkeypatch.setattr(recovery,'_host_mount_topology',observed)
+    with pytest.raises(ValueError,match='host_role_nested_mount'):recovery.read_host_capsule()
+    assert calls==observation
+    assert (directory/'capsule.json').read_bytes()==before and logical(h['roots'])==sql
