@@ -2646,3 +2646,547 @@ def test_b22d_r3_receipt_only_marker_precedes_acceptance(installation,monkeypatc
     for _ in range(2):
         assert recovery._complete_receipts(roots,scope,a,observation,now=1000)==expected
         assert logical(roots)==before and retained_bytes(roots)==files
+
+
+# B2.3a E1: the Docker, /proc and mount transport boundaries below are explicitly
+# fake. No production option/flag turns a mock document into host authority.
+@pytest.fixture
+def b23_host(installation, tmp_path, monkeypatch):
+    import time
+    spec=importlib.util.spec_from_file_location('b23_operator',Path('scripts/p1-operator.py'))
+    module=importlib.util.module_from_spec(spec); spec.loader.exec_module(module)
+    roots,scope,_,_=installation
+    def forbidden(*a,**kw):pytest.fail('host authority must not call private kernel')
+    for name in ('_complete_receipts','_pending_through_core','_pending_through_journal','_pending_through_evidence'):
+        monkeypatch.setattr(recovery,name,forbidden)
+    r=registration(installation,'actual-host-inspection')
+    for index,c in enumerate(r['containers']): c['started']=f'2026-10-17T01:00:0{index}Z'
+    recovery.register(roots,scope,r)
+    state=module.host_state(roots,scope)
+    base=tmp_path/'fake-host-transport'; base.mkdir(mode=0o700)
+    monkeypatch.setattr(recovery,'HOST_AUTHORITY_DIRECTORY',str(base))
+    # Fake the host directory ancestor boundary (/tmp is deliberately not a
+    # production trusted ancestor). Real leaf/file ownership/mode checks remain.
+    def directory(path,*,create=False):
+        if create:
+            try: Path(path).mkdir(mode=0o700)
+            except FileExistsError: pass
+        fd=os.open(path,os.O_RDONLY|os.O_DIRECTORY|os.O_NOFOLLOW)
+        import stat
+        st=os.fstat(fd)
+        if st.st_uid!=os.getuid() or stat.S_IMODE(st.st_mode)!=0o700:
+            os.close(fd); raise ValueError('host_unsafe_directory')
+        return fd
+    monkeypatch.setattr(module,'_protected_directory',directory)
+    monkeypatch.setattr(module.sys,'platform','linux')
+    identities={f'/fake/docker/volumes/{role}/_data':(7,index+1) for index,role in enumerate(sorted(scope['volumes']))}
+    monkeypatch.setattr(module,'_volume_identity',lambda source:identities[source])
+    consumers=[]; proc=[]
+    for index,c in enumerate(r['containers']):
+        consumers.append(dict(id=c['id'],image=c['image'],started=c['started'],finished='0001-01-01T00:00:00Z',
+            running=True,restarting=False,pid=100+index,restart='no',pidmode='',privileged=False,capadd=None,cgroupns='private',mounts=[
+                dict(type='volume',name=scope['volumes'][role]['name'],source=f'/fake/docker/volumes/{role}/_data',
+                    destination='/'+role,rw=c['role']!='control' or role not in ('ipc','staging')) for role in c['volumes']]))
+        proc.append(dict(id=c['id'],image=c['image'],started=c['started'],pid=100+index,start_ticks=1000+index,
+            pid_namespace=10000+index,cgroup='/docker/'+c['id']))
+    def process(pid,identity,ipc):
+        p=next(p for p in proc if p['id']==identity)
+        assert pid==p['pid'] and Path(ipc)==roots['ipc']
+        return {k:p[k] for k in ('pid','start_ticks','pid_namespace','cgroup')}
+    monkeypatch.setattr(module,'_proc_observation',process)
+    ipc=roots['ipc'].stat()
+    provenance=dict(revision=1,kind='local-linux-proc-v1',registration_digest=digest(r),
+        ipc_identity=[ipc.st_dev,ipc.st_ino],hello={k:r[k] for k in ('lane','boot')},owners=proc)
+    module._host_write(base/('registration-'+digest(r)+'.json'),provenance)
+    calls=[]
+    observer=module.Docker(scope['context'])
+    def read(argv):
+        calls.append(argv)
+        if argv[:2]==['context','inspect']:
+            assert argv==['context','inspect',scope['context'],'--format','{{json .Endpoints.docker.Host}}']
+            return json.dumps('unix:///var/run/docker.sock')
+        if argv[0]=='info':
+            assert argv==['info','--format','{"id":{{json .ID}},"os":{{json .OSType}}}']
+            return encode(dict(id=scope['daemon'],os='linux'))
+        if argv[:2]==['volume','inspect']:
+            assert argv[3:]==['--format',module.VOLUME_FORMAT]
+            role=next(k for k,v in scope['volumes'].items() if v['name']==argv[2])
+            return encode(dict(**scope['volumes'][role],source=f'/fake/docker/volumes/{role}/_data',options=None))
+        if argv[:2]==['container','ls']:
+            assert argv==['container','ls','--all','--quiet','--no-trunc']
+            return '\n'.join(c['id'] for c in consumers)
+        c=next(c for c in consumers if c['id']==argv[-1 if argv[1] in ('stop','wait') else 2])
+        if argv[1]=='inspect':
+            assert argv==['container','inspect',c['id'],'--format',module.CONTAINER_FORMAT]
+            return encode(c)
+        if argv[1]=='stop':
+            assert argv==['container','stop','--time','2',c['id']]
+            if c['running']: c.update(running=False,pid=0,finished='2026-10-17T02:00:00Z')
+            return c['id']
+        assert argv==['container','wait',c['id']]
+        return '137'  # docker wait succeeds even when the container exited nonzero.
+    observer._read=read
+    request=dict(deployment_id=state['deployment_id'],scope=scope,
+        registration_digest=recovery.host_registration_digest(state['registrations']),
+        purpose=dict(kind='pre-plan',plan_id=None,plan_digest=None),original_invocation=None)
+    return dict(module=module,roots=roots,scope=scope,state=state,registration=r,observer=observer,request=request,
+        consumers=consumers,provenance=provenance,proc=proc,base=base,calls=calls,read=read)
+
+
+def test_b23_closed_capsule_freeze_and_apply_closed(b23_host):
+    h=b23_host; m=h['module']; before=logical(h['roots'])
+    _,_,preflight,_=m.host_preflight(h['observer'],h['state'],h['request'])
+    assert all(c['running'] for c in preflight['consumers'])
+    assert not any(c[1] in ('stop','wait') for c in h['calls'])
+    capsule=m.freeze_host(h['observer'],h['state'],h['request'])
+    assert recovery.validate_host_capsule(capsule,now=capsule['issued'])==capsule
+    assert capsule['kernel_proof_digest']==digest(capsule['kernel_proof'])
+    assert set(capsule['kernel_proof'])=={'kind','observation','prior_epoch','old_lane'}
+    assert capsule['waits']==[dict(id=c['id'],command_status=0,container_status=137) for c in h['registration']['containers']]
+    actions=[c for c in h['calls'] if c[1] in ('stop','wait')]
+    control,worker=h['registration']['containers']
+    assert actions==[['container','stop','--time','2',control['id']],['container','wait',control['id']],
+                     ['container','stop','--time','2',worker['id']],['container','wait',worker['id']]]
+    path=h['base']/'invocations'/capsule['invocation_id']/'capsule.json'
+    assert recovery.host_json(path.read_bytes())==capsule and path.stat().st_mode&0o777==0o600
+    assert logical(h['roots'])==before
+    with pytest.raises(NotImplementedError,match='P1B2_apply_unavailable'): recovery.apply(capsule)
+    assert len(h['consumers'])==2 and all(not c['running'] for c in h['consumers'])
+
+
+@pytest.mark.parametrize('fault',['context','daemon','volume','image','start','missing','unknown-live','unknown-stopped',
+    'duplicate-id','restart','pidmode','pid','privileged','capadd','cgroupns','extra-mount','mount-mode','mount-source','alias-volume','enum-drift',
+    'old-registration','ambiguous-registration','E1','scope-request','registration-digest','purpose','proc','cgroup','provenance-missing'])
+def test_b23_preflight_refusals_before_stop_or_mutation(b23_host,monkeypatch,fault):
+    h=b23_host; m=h['module']; r=h['registration']; cs=h['consumers']; read=h['read']; before=logical(h['roots'])
+    if fault=='context': h['observer'].context='other'
+    elif fault=='image': cs[0]['image']='sha256:'+'a'*64
+    elif fault=='start': cs[0]['started']='2026-10-17T01:30:00Z'
+    elif fault=='missing': cs.pop()
+    elif fault.startswith('unknown'):
+        c=copy.deepcopy(cs[1]);c['id']='e'*64
+        if fault=='unknown-stopped':c.update(running=False,pid=0,finished='2026-10-17T02:00:00Z')
+        cs.append(c)
+    elif fault=='restart':cs[0]['restart']='always'
+    elif fault=='pidmode':cs[0]['pidmode']='host'
+    elif fault=='pid':cs[0]['pid']=0
+    elif fault=='privileged':cs[0]['privileged']=True
+    elif fault=='capadd':cs[0]['capadd']=['SYS_ADMIN']
+    elif fault=='cgroupns':cs[0]['cgroupns']='host'
+    elif fault=='extra-mount':cs[0]['mounts'].append(dict(type='bind',name='',source='/other',destination='/other',rw=True))
+    elif fault=='mount-mode':cs[0]['mounts'][0]['rw']=False
+    elif fault=='mount-source':cs[0]['mounts'][0]['source']='/other'
+    elif fault in ('old-registration','ambiguous-registration'):
+        old=copy.deepcopy(r);old['boot']='f'*32
+        if fault=='old-registration':old['containers'][1]['id']='e'*64
+        else:old['containers'][1]['started']='2026-10-17T00:00:00Z'
+        h['state']['registrations'].append(old)
+        h['request']['registration_digest']=recovery.host_registration_digest(h['state']['registrations'])
+    elif fault=='E1':h['state']['registrations'][0]['evidence']='E1-mock';h['request']['registration_digest']=recovery.host_registration_digest(h['state']['registrations'])
+    elif fault=='scope-request':h['request']['scope']={**h['scope'],'daemon':'other'}
+    elif fault=='registration-digest':h['request']['registration_digest']='0'*64
+    elif fault=='purpose':h['request']['purpose']['argv']=['rm']
+    elif fault=='proc':monkeypatch.setattr(m,'_proc_observation',lambda *a:dict(pid=999,start_ticks=1,pid_namespace=2,cgroup='/docker/'+'c'*64))
+    elif fault=='cgroup':
+        h['provenance']['owners'][0]['cgroup']='/guessed/parent'
+        (h['base']/('registration-'+digest(r)+'.json')).write_text(encode(h['provenance']))
+    elif fault=='provenance-missing':(h['base']/('registration-'+digest(r)+'.json')).unlink()
+    counter=0
+    def changed(argv):
+        nonlocal counter
+        result=read(argv)
+        if fault=='daemon' and argv[0]=='info':return encode(dict(id='wrong',os='linux'))
+        if fault in ('volume','alias-volume') and argv[0]=='volume':
+            value=json.loads(result)
+            if fault=='volume':value['created']='wrong'
+            else:value['source']='/fake/docker/volumes/control/_data'
+            return encode(value)
+        if fault=='duplicate-id' and argv[1]=='ls':return result+'\n'+cs[0]['id']
+        if fault=='enum-drift' and argv[1]=='ls':
+            counter+=1
+            if counter%2==0:return result+'\n'+'f'*64
+        return result
+    h['observer']._read=changed
+    with pytest.raises((ValueError,OSError)):m.freeze_host(h['observer'],h['state'],h['request'])
+    assert not any(c[1] in ('stop','wait') for c in h['calls'])
+    assert not (h['base']/'invocations').exists() and logical(h['roots'])==before
+
+
+@pytest.mark.parametrize('fault',['wait-error','wait-timeout','wait-output','finish','restart-after-stop','final-drift','registration-drift','deadline'])
+def test_b23_freeze_failure_retains_containers_closed_authority(b23_host,monkeypatch,fault):
+    h=b23_host; m=h['module']; read=h['read']; before=logical(h['roots']); stopped=False; inspections=0
+    def fail(argv):
+        nonlocal stopped,inspections
+        if argv[1]=='wait' and fault in ('wait-error','wait-timeout'):raise ValueError(fault)
+        result=read(argv)
+        if argv[1]=='stop':stopped=True
+        if argv[1]=='wait' and fault=='wait-output':return 'not-status'
+        if stopped and argv[:2]==['container','inspect']:
+            inspections+=1;v=json.loads(result)
+            if fault=='finish':v['finished']=''
+            if fault=='restart-after-stop':v['started']='2026-10-17T01:50:00Z'
+            if fault=='final-drift' and inspections>=3:v['image']='sha256:'+'f'*64
+            return encode(v)
+        return result
+    h['observer']._read=fail
+    if fault=='registration-drift':
+        monkeypatch.setattr(m,'host_state',lambda *a:{**h['state'],'lane':'e'*32})
+    if fault=='deadline':h['observer'].deadline=0
+    with pytest.raises((ValueError,OSError)):m.freeze_host(h['observer'],h['state'],h['request'])
+    assert len(h['consumers'])==2 and logical(h['roots'])==before
+    assert not (h['base']/'invocations').exists()
+    assert all(c[1] not in ('rm','prune','create','restart','start') for c in h['calls'])
+
+
+def test_b23_fresh_resume_retains_original_proof_and_rejects_restarted_owner(b23_host):
+    h=b23_host;m=h['module']; original=m.freeze_host(h['observer'],h['state'],h['request'])
+    proof=copy.deepcopy(original['kernel_proof']); h['calls'].clear()
+    request={**h['request'],'original_invocation':original['invocation_id'],
+        'purpose':dict(kind='resume',plan_id='a'*32,plan_digest='b'*64)}
+    fresh=m.freeze_host(h['observer'],h['state'],request)
+    assert fresh['invocation_id']!=original['invocation_id'] and fresh['kernel_proof']==proof
+    assert fresh['kernel_proof_digest']==original['kernel_proof_digest']
+    assert fresh['issued']>=original['issued']
+    assert not any(c[1]=='stop' for c in h['calls']) and sum(c[1]=='wait' for c in h['calls'])==2
+    assert (h['base']/'invocations'/original['invocation_id']/'capsule.json').exists()
+    h['calls'].clear();h['consumers'][1].update(started='2026-10-17T03:00:00Z',finished='2026-10-17T04:00:00Z')
+    with pytest.raises(ValueError):m.freeze_host(h['observer'],h['state'],request)
+    assert not any(c[1] in ('stop','wait') for c in h['calls'])
+
+
+@pytest.mark.parametrize('fault',['unknown','nested','bool','nonfinite','duplicate-registration','missing-wait','duplicate-wait',
+    'wait-failed','E1','forged-hash','forged-label','omitted-provenance','bad-cgroup','same-pidns','expiry','oversize','duration','finished'])
+def test_b23_closed_capsule_negative_matrix(b23_host,fault):
+    h=b23_host;c=copy.deepcopy(h['module'].freeze_host(h['observer'],h['state'],h['request']))
+    if fault=='unknown':c['authorization']=True
+    elif fault=='nested':c['topology']['consumers'][0]['trusted_label']='yes'
+    elif fault=='bool':c['revision']=True
+    elif fault=='nonfinite':c['issued']=float('nan')
+    elif fault=='duplicate-registration':c['registrations']*=2
+    elif fault=='missing-wait':c['waits'].pop()
+    elif fault=='duplicate-wait':c['waits'][1]=c['waits'][0]
+    elif fault=='wait-failed':c['waits'][0]['command_status']=1
+    elif fault=='E1':c['kernel_proof']['kind']='E1-mock';c['kernel_proof_digest']=digest(c['kernel_proof'])
+    elif fault=='forged-hash':c['kernel_proof_digest']='0'*64
+    elif fault=='forged-label':c['kind']='actual-host-inspection'
+    elif fault=='omitted-provenance':c['provenance']=[]
+    elif fault=='bad-cgroup':c['provenance'][0]['owners'][0]['cgroup']='/parent'
+    elif fault=='same-pidns':c['provenance'][0]['owners'][1]['pid_namespace']=c['provenance'][0]['owners'][0]['pid_namespace']
+    elif fault=='expiry':c['expires']=c['issued']+301
+    elif fault=='oversize':c['kind']='x'*(recovery.HOST_CAPSULE_BYTES+1)
+    elif fault=='duration':c['collection_seconds']=121
+    elif fault=='finished':c['topology']['consumers'][0]['finished']=''
+    with pytest.raises((ValueError,TypeError)):recovery.validate_host_capsule(c,now=c['issued'])
+
+
+def _b23_fake_mount_transport(monkeypatch,h,capsule):
+    """Fake only Linux mount table/open-at-fixed-mount; real protected files."""
+    directory=h['base']/'invocations'/capsule['invocation_id']
+    device=directory.stat().st_dev
+    mounts=[dict(id='10',device=f'{os.major(device)}:{os.minor(device)}',
+        root=str(directory),target=recovery.HOST_CAPSULE_MOUNT,options=['ro'])]
+    volumes={v['role']:v for v in capsule['topology']['volumes']}
+    mounts += [dict(id=str(20+i),device=f"{os.major(volumes[role]['device'])}:{os.minor(volumes[role]['device'])}",
+        root=volumes[role]['source'],target='/'+role,options=['rw'])
+        for i,role in enumerate(('control','staging','receipts','ipc'))]
+    monkeypatch.setattr(recovery,'_host_role_identity',lambda role:(volumes[role]['device'],volumes[role]['inode']))
+    monkeypatch.setattr(recovery,'_host_mount_topology',lambda:copy.deepcopy(mounts))
+    # Explicit test OS mapping; no production owner option is exposed.
+    monkeypatch.setattr(recovery,'HOST_MAPPED_UID',os.getuid())
+    real_open=os.open
+    def mapped(path,*args,**kwargs):
+        if path==recovery.HOST_CAPSULE_MOUNT:path=directory
+        return real_open(path,*args,**kwargs)
+    monkeypatch.setattr(recovery.os,'open',mapped)
+    return directory,mounts
+
+
+def test_b23_reader_exact_fixed_ro_transport_retains_evidence(b23_host,monkeypatch):
+    h=b23_host;c=h['module'].freeze_host(h['observer'],h['state'],h['request'])
+    directory,_=_b23_fake_mount_transport(monkeypatch,h,c)
+    before=(directory/'capsule.json').read_bytes()
+    assert recovery.read_host_capsule()==c and recovery.read_host_capsule()==c
+    assert (directory/'capsule.json').read_bytes()==before
+    with pytest.raises(NotImplementedError):recovery.apply(c)
+
+
+@pytest.mark.parametrize('fault',['absent','rw','ordinary-path','alias','nested-mount','wrong-device','missing-role',
+    'owner','file-owner','directory-mode','mode','hardlink','symlink','oversize','duplicate-key','E1','mount-drift','file-replacement'])
+def test_b23_reader_refuses_untrusted_transport(b23_host,monkeypatch,fault):
+    h=b23_host;c=h['module'].freeze_host(h['observer'],h['state'],h['request'])
+    directory,mounts=_b23_fake_mount_transport(monkeypatch,h,c); path=directory/'capsule.json'
+    if fault=='absent':mounts.clear()
+    elif fault=='rw':mounts[0]['options']=['rw']
+    elif fault=='ordinary-path':mounts[0]['target']='/control/proof'
+    elif fault=='alias':mounts.append({**mounts[0],'id':'99','target':'/control/proof','options':['rw']})
+    elif fault=='nested-mount':mounts.append({**mounts[0],'id':'99','target':recovery.HOST_CAPSULE_MOUNT+'/capsule.json'})
+    elif fault=='wrong-device':mounts[0]['device']='999:999'
+    elif fault=='missing-role':mounts.pop()
+    elif fault=='owner':monkeypatch.setattr(recovery,'HOST_MAPPED_UID',os.getuid()+1)
+    elif fault=='file-owner':
+        original_fstat=os.fstat;inode=path.stat().st_ino
+        def foreign(fd):
+            st=original_fstat(fd)
+            if st.st_ino==inode:
+                values=list(st);values[4]=os.getuid()+1;return os.stat_result(values)
+            return st
+        monkeypatch.setattr(recovery.os,'fstat',foreign)
+    elif fault=='directory-mode':directory.chmod(0o755)
+    elif fault=='mode':path.chmod(0o644)
+    elif fault=='hardlink':os.link(path,directory.parent/'extra-hardlink')
+    elif fault=='symlink':path.rename(directory.parent/'saved');path.symlink_to(directory.parent/'saved')
+    elif fault=='oversize':path.write_bytes(b'x'*(recovery.HOST_CAPSULE_BYTES+1))
+    elif fault=='duplicate-key':path.write_bytes(b'{"revision":1,"revision":1}')
+    elif fault=='E1':c['kernel_proof']['kind']='E1-mock';path.write_text(encode(c))
+    elif fault=='mount-drift':
+        count=0
+        def changed():
+            nonlocal count
+            count+=1
+            return copy.deepcopy(mounts) if count==1 else []
+        monkeypatch.setattr(recovery,'_host_mount_topology',changed)
+    elif fault=='file-replacement':
+        original=recovery.host_json
+        def replace(raw):
+            value=original(raw);path.rename(directory.parent/'replaced');path.write_bytes(raw);path.chmod(0o600)
+            return value
+        monkeypatch.setattr(recovery,'host_json',replace)
+    with pytest.raises((ValueError,OSError)):recovery.read_host_capsule()
+    assert len(h['consumers'])==2
+
+
+def test_b23_shipped_reader_absent_mount_never_falls_back(monkeypatch):
+    monkeypatch.setattr(recovery,'_host_mount_topology',lambda:[])
+    monkeypatch.setenv('P1_HOST_AUTHORITY','actual-host-inspection')
+    monkeypatch.setenv('P1_FORCE','1')
+    with pytest.raises(ValueError,match='trusted_mount_absent'):recovery.read_host_capsule()
+    with pytest.raises(ValueError):recovery.host_json(b'{"a":1,"a":2}')
+    with pytest.raises(ValueError):recovery.host_json(b'{"a":NaN}')
+    with pytest.raises(ValueError):recovery.host_json(b'{"a":1e999}')
+
+
+@pytest.mark.parametrize('fault',['none','stdout','stderr','exit','process-timeout','global-timeout','spawn'])
+def test_b23_fixed_subprocess_bounds_and_sanitized_errors(monkeypatch,fault):
+    import time
+    spec=importlib.util.spec_from_file_location('b23_process',Path('scripts/p1-operator.py'))
+    m=importlib.util.module_from_spec(spec);spec.loader.exec_module(m)
+    observer=m.Docker('pinned-context');calls=[];processes=[]
+    class Process:
+        def __init__(self,argv,**kwargs):
+            calls.append((argv,kwargs))
+            assert argv==['docker','--context','pinned-context','container','wait','c'*64]
+            assert kwargs.get('shell',False) is False and kwargs['stdin']==m.subprocess.DEVNULL
+            self.returncode=1 if fault=='exit' else 0;self.killed=False;self.waited=False
+            kwargs['stdout'].write(b'x'*(1024*1024+1) if fault=='stdout' else b'137\n')
+            kwargs['stderr'].write(b'secret-'*10000 if fault=='stderr' else b'')
+            kwargs['stdout'].flush();kwargs['stderr'].flush();processes.append(self)
+        def poll(self):return None if fault=='process-timeout' and not self.killed else self.returncode
+        def kill(self):self.killed=True
+        def wait(self,timeout):assert timeout==2;self.waited=True;return self.returncode
+    def spawn(*a,**kw):
+        if fault=='spawn':raise OSError('secret-host-information')
+        return Process(*a,**kw)
+    monkeypatch.setattr(m.subprocess,'Popen',spawn)
+    if fault=='global-timeout':observer.deadline=0
+    if fault=='process-timeout':
+        clock=[observer.started]
+        def monotonic():clock[0]+=2;return clock[0]
+        monkeypatch.setattr(m.time,'monotonic',monotonic)
+        monkeypatch.setattr(m.time,'sleep',lambda _:None)
+    if fault=='none':assert observer._read(['container','wait','c'*64])=='137'
+    else:
+        with pytest.raises(ValueError) as error:observer._read(['container','wait','c'*64])
+        assert 'secret' not in str(error.value)
+    if fault=='global-timeout':assert calls==[]
+    if processes:assert processes[0].waited
+    if fault=='process-timeout':assert processes[0].killed
+
+
+def test_b23_registration_brackets_authenticated_hello(b23_host,monkeypatch):
+    from service.supervisor_runtime import SupervisorRuntime
+    h=b23_host;m=h['module'];r=h['registration'];events=[]
+    path=h['base']/('registration-'+digest(r)+'.json');path.unlink()
+    # Fake only the authenticated runtime transport; production register_host
+    # still performs both inventory/proc brackets and writes the protected file.
+    def hello(self,operation,args):
+        events.append('hello');assert operation=='hello' and args=={}
+        return dict(lane=r['lane'],boot=r['boot'],quarantined=False)
+    monkeypatch.setattr(SupervisorRuntime,'call',hello)
+    monkeypatch.setattr(recovery,'register',lambda *a:events.append('register') or digest(r))
+    assert m.register_host(h['observer'],h['roots'],h['scope'],r)==digest(r)
+    assert events==['hello','register']
+    assert recovery.host_json(path.read_bytes())==h['provenance']
+
+
+@pytest.mark.parametrize('fault',['hello-boot','hello-lane','hello-quarantine','proc-drift','host-drift','remote','desktop','shared-pidns'])
+def test_b23_registration_provenance_refuses_before_registration(b23_host,monkeypatch,fault):
+    from service.supervisor_runtime import SupervisorRuntime
+    h=b23_host;m=h['module'];r=h['registration'];path=h['base']/('registration-'+digest(r)+'.json');path.unlink()
+    def hello(self,*args):
+        value=dict(lane=r['lane'],boot=r['boot'],quarantined=False)
+        if fault=='hello-boot':value['boot']='a'*32
+        elif fault=='hello-lane':value['lane']='a'*32
+        elif fault=='hello-quarantine':value['quarantined']=True
+        elif fault=='host-drift':h['consumers'][1]['started']='2026-10-17T03:00:00Z'
+        return value
+    monkeypatch.setattr(SupervisorRuntime,'call',hello)
+    monkeypatch.setattr(recovery,'register',lambda *a:pytest.fail('unauthorized registration mutation'))
+    if fault=='proc-drift':
+        real=m._proc_observation;count=0
+        def changed(*args):
+            nonlocal count
+            count+=1;value=real(*args)
+            if count>2:value['start_ticks']+=1
+            return value
+        monkeypatch.setattr(m,'_proc_observation',changed)
+    if fault=='shared-pidns':h['proc'][1]['pid_namespace']=h['proc'][0]['pid_namespace']
+    if fault=='desktop':monkeypatch.setattr(m.sys,'platform','darwin')
+    if fault=='remote':
+        read=h['read']
+        def remote(argv):return json.dumps('ssh://remote') if argv[0]=='context' else read(argv)
+        h['observer']._read=remote
+    with pytest.raises((ValueError,OSError)):m.register_host(h['observer'],h['roots'],h['scope'],r)
+    assert not path.exists() and not any(c[1] in ('stop','wait') for c in h['calls'])
+
+
+def test_b23_closed_authority_entrypoints_exist():
+    spec=importlib.util.spec_from_file_location('b23_api',Path('scripts/p1-operator.py'))
+    m=importlib.util.module_from_spec(spec);spec.loader.exec_module(m)
+    assert callable(getattr(m,'freeze_host',None))
+    assert callable(getattr(m,'host_preflight',None))
+    assert callable(getattr(recovery,'read_host_capsule',None))
+
+
+def test_b23_retained_inventory_works_with_both_live_owner_locks(b23_host):
+    h=b23_host
+    with (h['roots']['control']/'core/control.lock').open('rb') as control, (h['roots']['receipts']/'lane.lock').open('rb') as worker:
+        fcntl.flock(control,fcntl.LOCK_EX|fcntl.LOCK_NB);fcntl.flock(worker,fcntl.LOCK_EX|fcntl.LOCK_NB)
+        before=logical(h['roots'])
+        assert h['module'].host_state(h['roots'],h['scope'])==h['state']
+        assert logical(h['roots'])==before
+
+
+def test_b23_resume_does_not_replace_original_lane_epoch_after_rotation(b23_host,monkeypatch):
+    h=b23_host;m=h['module'];c=m.freeze_host(h['observer'],h['state'],h['request'])
+    state={**h['state'],'lane':'e'*32,'prior_epoch':'f'*32,'unfinished':True}
+    monkeypatch.setattr(m,'host_state',lambda *a:state)
+    request={**h['request'],'original_invocation':c['invocation_id'],'purpose':dict(kind='resume',plan_id='a'*32,plan_digest='b'*64)}
+    fresh=m.freeze_host(h['observer'],state,request)
+    assert fresh['kernel_proof']==c['kernel_proof'] and fresh['kernel_proof']['old_lane']!=state['lane']
+
+
+@pytest.mark.parametrize('fault',['wrong-root','wrong-inode','wrong-device','role-alias'])
+def test_b23_reader_checks_actual_role_mounts(b23_host,monkeypatch,fault):
+    h=b23_host;c=h['module'].freeze_host(h['observer'],h['state'],h['request'])
+    _,mounts=_b23_fake_mount_transport(monkeypatch,h,c)
+    if fault=='wrong-root':mounts[1]['root']='/ordinary/service'
+    elif fault=='wrong-device':mounts[1]['device']='999:999'
+    elif fault=='role-alias':mounts[1]['root']=mounts[0]['root'];mounts[1]['device']=mounts[0]['device']
+    else:monkeypatch.setattr(recovery,'_host_role_identity',lambda role:(999,999))
+    with pytest.raises(ValueError):recovery.read_host_capsule()
+
+
+@pytest.mark.parametrize('fault',['none','foreign-cgroup','shared-namespace','child-namespace','child-escape','pid-reuse',
+    'ipc-alias','cgroup-symlink','oversize','deadline','no-cgroup-v2'])
+def test_b23_local_proc_tree_os_boundary(tmp_path,monkeypatch,fault):
+    """Synthetic procfs/cgroupfs only; no host process or daemon is inspected."""
+    import builtins
+    spec=importlib.util.spec_from_file_location('b23_proc',Path('scripts/p1-operator.py'))
+    m=importlib.util.module_from_spec(spec);spec.loader.exec_module(m)
+    real_path=Path;fake=tmp_path/'fake-linux';identity='d'*64
+    def mapped(value):
+        value=str(value)
+        if value.startswith('/proc') or value.startswith('/sys/fs/cgroup'):return fake/value.lstrip('/')
+        return real_path(value)
+    ipc=tmp_path/'ipc';ipc.mkdir()
+    for pid in ('100','101','self'):
+        root=mapped('/proc')/pid; (root/'ns').mkdir(parents=True)
+        (root/'ns/pid').write_text('namespace')
+        (root/'cgroup').write_text('0::/\n' if pid=='self' else '0::/docker/'+identity+'\n')
+        (root/'stat').write_text(pid+' (fake worker) '+' '.join(['S']+['0']*18+['1000']))
+    (mapped('/proc')/'101/ns/pid').unlink()
+    os.link(mapped('/proc')/'100/ns/pid',mapped('/proc')/'101/ns/pid')
+    (mapped('/proc')/'100/root').mkdir();(mapped('/proc')/'100/root/ipc').symlink_to(ipc,target_is_directory=True)
+    cgroup=mapped('/sys/fs/cgroup')/'docker'/identity;cgroup.mkdir(parents=True)
+    (cgroup/'cgroup.procs').write_text('100\n101\n')
+    mapped('/sys/fs/cgroup/cgroup.controllers').write_text('cpu memory')
+    monkeypatch.setattr(m,'Path',mapped);monkeypatch.setattr(m.sys,'platform','linux')
+    real_open=builtins.open;real_stat=os.stat
+    reads=0
+    def opened(path,*args,**kwargs):
+        nonlocal reads
+        path=mapped(path)
+        if fault=='pid-reuse' and path==mapped('/proc')/'100/stat':
+            reads+=1
+            if reads==2:path.write_text('100 (fake worker) '+' '.join(['S']+['0']*18+['2000']))
+        return real_open(path,*args,**kwargs)
+    monkeypatch.setattr(builtins,'open',opened)
+    monkeypatch.setattr(m.os,'stat',lambda path,*a,**kw:real_stat(mapped(path),*a,**kw))
+    if fault=='foreign-cgroup':(mapped('/proc')/'100/cgroup').write_text('0::/guessed/parent')
+    elif fault=='shared-namespace':
+        p=mapped('/proc')/'self/ns/pid';p.unlink();os.link(mapped('/proc')/'100/ns/pid',p)
+    elif fault=='child-namespace':
+        p=mapped('/proc')/'101/ns/pid';p.unlink();p.write_text('different-namespace')
+    elif fault=='child-escape':(mapped('/proc')/'101/cgroup').write_text('0::/another-container')
+    elif fault=='ipc-alias':
+        (mapped('/proc')/'100/root/ipc').unlink();(mapped('/proc')/'100/root/ipc').mkdir()
+    elif fault=='cgroup-symlink':(cgroup/'unknown').symlink_to(ipc,target_is_directory=True)
+    elif fault=='oversize':(mapped('/proc')/'100/cgroup').write_text('x'*65537)
+    elif fault=='deadline':
+        clock=[0]
+        def monotonic():clock[0]+=3;return clock[0]
+        monkeypatch.setattr(m.time,'monotonic',monotonic)
+    elif fault=='no-cgroup-v2':mapped('/sys/fs/cgroup/cgroup.controllers').unlink()
+    if fault=='none':
+        result=m._proc_observation(100,identity,ipc)
+        assert result==dict(pid=100,start_ticks=1000,pid_namespace=real_stat(mapped('/proc')/'100/ns/pid').st_ino,cgroup='/docker/'+identity)
+    else:
+        with pytest.raises((ValueError,OSError)):m._proc_observation(100,identity,ipc)
+
+
+def _b23_add_retained_registration(h,*,consumers=True,same_worker=False):
+    old=copy.deepcopy(h['registration']);old['boot']='f'*32
+    provenance=copy.deepcopy(h['provenance'])
+    if not same_worker:
+        for i,(c,p) in enumerate(zip(old['containers'],provenance['owners'])):
+            c.update(id=('e' if i==0 else 'f')*64,started='2026-10-17T00:00:00Z')
+            p.update(id=c['id'],started=c['started'],pid=200+i,pid_namespace=20000+i,cgroup='/docker/'+c['id'])
+            if consumers:
+                value=copy.deepcopy(h['consumers'][i]);value.update(id=c['id'],started=c['started'],
+                    running=False,pid=0,finished='2026-10-17T00:30:00Z')
+                h['consumers'].append(value)
+    provenance['registration_digest']=digest(old);provenance['hello']['boot']=old['boot']
+    h['module']._host_write(h['base']/('registration-'+digest(old)+'.json'),provenance)
+    recovery.register(h['roots'],h['scope'],old)
+    h['state']=h['module'].host_state(h['roots'],h['scope'])
+    h['request']['registration_digest']=recovery.host_registration_digest(h['state']['registrations'])
+    return old
+
+
+def test_b23_complete_retained_union_including_old_stopped_owners(b23_host):
+    h=b23_host;_b23_add_retained_registration(h)
+    old_finished={c['id']:c['finished'] for c in h['consumers'] if not c['running']}
+    capsule=h['module'].freeze_host(h['observer'],h['state'],h['request'])
+    assert len(capsule['registrations'])==2 and len(capsule['waits'])==4
+    assert {c['id'] for c in capsule['kernel_proof']['observation']['containers']}=={c['id'] for c in h['consumers']}
+    assert all(c['finished']==old_finished[c['id']] for c in capsule['topology']['consumers'] if c['id'] in old_finished)
+    stops=[c[-1] for c in h['calls'] if c[1]=='stop']
+    assert stops==['c'*64,'e'*64,'d'*64,'f'*64]
+
+
+@pytest.mark.parametrize('fault',['missing-old','same-worker-new-boot','duplicate-registration'])
+def test_b23_retained_owner_omission_and_boot_ambiguity(b23_host,fault):
+    h=b23_host
+    if fault=='duplicate-registration':
+        h['state']['registrations']*=2
+        h['request']['registration_digest']=recovery.host_registration_digest(h['state']['registrations'])
+    else:_b23_add_retained_registration(h,consumers=False,same_worker=fault=='same-worker-new-boot')
+    before=logical(h['roots'])
+    with pytest.raises(ValueError):h['module'].freeze_host(h['observer'],h['state'],h['request'])
+    assert not any(c[1] in ('stop','wait') for c in h['calls'])
+    assert logical(h['roots'])==before and not (h['base']/'invocations').exists()
+
+
+def test_b23_incarnation_times_preserve_nanosecond_order():
+    assert recovery.host_timestamp('2026-10-17T00:00:00.000000001Z')<recovery.host_timestamp('2026-10-17T00:00:00.000000002Z')
+    with pytest.raises(ValueError):recovery.host_timestamp('0001-01-01T00:00:00Z')

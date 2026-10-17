@@ -1927,3 +1927,339 @@ def _finish_receipts(db,roots,intent,fault):
 
 
 if __name__=='__main__': main()
+
+
+# B2.3a is deliberately independent of the private transition kernel above.
+# These constants describe the C1 launcher contract, not installed packaging.
+HOST_AUTHORITY_DIRECTORY = '/var/lib/py-audio-box/p1-host-authority'
+HOST_CAPSULE_MOUNT = '/run/p1-host-authority'
+HOST_MAPPED_UID = 0
+HOST_CAPSULE_BYTES = 1024 * 1024
+HOST_OWNER_LIMIT = 128
+HOST_COLLECTION_SECONDS = 120
+HOST_CAPSULE_KIND = 'p1-closed-host-authority-v1'
+
+
+def host_json(raw):
+    """Bound before parsing; duplicate JSON keys and nonfinite values refuse."""
+    if not isinstance(raw, bytes) or len(raw) > HOST_CAPSULE_BYTES:
+        raise ValueError('host_document_budget')
+    def pairs(items):
+        result = {}
+        for key, value in items:
+            if key in result: raise ValueError('host_duplicate_key')
+            result[key] = value
+        return result
+    def constant(_): raise ValueError('host_nonfinite')
+    def floating(value):
+        import math
+        result=float(value)
+        if not math.isfinite(result): raise ValueError('host_nonfinite')
+        return result
+    try: return json.loads(raw, object_pairs_hook=pairs, parse_constant=constant, parse_float=floating)
+    except (UnicodeError, RecursionError, json.JSONDecodeError):
+        raise ValueError('host_document_invalid') from None
+
+
+def _host_time(value):
+    import math
+    if type(value) not in (int, float) or not math.isfinite(value) or value <= 0:
+        raise ValueError('host_time')
+
+
+def _host_id(value):
+    if not isinstance(value, str) or not re.fullmatch('[0-9a-f]{32}', value):
+        raise ValueError('host_identity')
+
+
+def host_timestamp(value):
+    from datetime import datetime
+    if not isinstance(value, str) or not re.fullmatch(r'20[0-9]{2}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\.[0-9]{1,9})?(?:Z|[+-][0-9]{2}:[0-9]{2})', value):
+        raise ValueError('host_incarnation_time')
+    try: result = datetime.fromisoformat(value.replace('Z', '+00:00'))
+    except ValueError: raise ValueError('host_incarnation_time') from None
+    if result.tzinfo is None: raise ValueError('host_incarnation_time')
+    fraction=re.search(r'\.([0-9]{1,9})',value)
+    nanos=int(fraction[1].ljust(9,'0')) if fraction else 0
+    return result.replace(microsecond=0),nanos
+
+
+def host_registration_union(registrations, scope, deployment_id):
+    validate_scope(scope); _host_id(deployment_id)
+    if not isinstance(registrations, list) or not 1 <= len(registrations) <= HOST_OWNER_LIMIT:
+        raise ValueError('host_registration_budget')
+    if len(encode(registrations).encode()) > HOST_CAPSULE_BYTES:
+        raise ValueError('host_registration_budget')
+    known = {}; seen = set()
+    for registration in registrations:
+        validate_registration(registration)
+        if (registration['scope'] != scope or registration['deployment_id'] != deployment_id or
+                registration['evidence'] != 'actual-host-inspection'):
+            raise ValueError('host_registration_origin')
+        identity = digest(registration)
+        if identity in seen: raise ValueError('host_duplicate_registration')
+        seen.add(identity)
+        for owner in registration['containers']:
+            host_timestamp(owner['started'])
+            if owner['id'] in known and known[owner['id']] != owner:
+                raise ValueError('host_ambiguous_incarnation')
+            known[owner['id']] = owner
+    if len(known) > HOST_OWNER_LIMIT: raise ValueError('host_owner_budget')
+    return [known[k] for k in sorted(known)]
+
+
+def host_registration_digest(registrations):
+    return digest(sorted(registrations, key=digest))
+
+
+def validate_host_topology(topology, scope, owners, *, stopped):
+    closed(topology, 'scope volumes consumers')
+    if topology['scope'] != scope: raise ValueError('host_scope_changed')
+    volumes = topology['volumes']
+    if not isinstance(volumes, list) or len(volumes) != 4: raise ValueError('host_volume_coverage')
+    sources = set(); roles = set(); identities = set()
+    for volume in volumes:
+        closed(volume, 'role name driver created source device inode')
+        role = volume['role']
+        if role not in scope['volumes'] or role in roles: raise ValueError('host_volume_coverage')
+        if {k:volume[k] for k in ('name','driver','created')} != scope['volumes'][role]:
+            raise ValueError('host_volume_changed')
+        source = volume['source']
+        # Only ordinary local Linux Docker volumes. Options/plugins/aliases refuse.
+        if (volume['driver'] != 'local' or not isinstance(source, str) or
+                not source.startswith('/') or '..' in source.split('/') or
+                source in sources or any(source.startswith(s+'/') or s.startswith(source+'/') for s in sources)):
+            raise ValueError('host_volume_alias')
+        identity=(volume['device'],volume['inode'])
+        if any(type(n) is not int or not 1<=n<2**64 for n in identity) or identity in identities:
+            raise ValueError('host_volume_alias')
+        identities.add(identity); sources.add(source); roles.add(role)
+    consumers = topology['consumers']
+    if not isinstance(consumers, list) or len(consumers) != len(owners): raise ValueError('host_consumer_coverage')
+    expected = {c['id']:c for c in owners}; seen = set()
+    for current in consumers:
+        closed(current, 'id image started finished running restarting pid restart pidmode privileged capadd cgroupns mounts')
+        identity = current['id']
+        if not isinstance(identity,str) or identity not in expected or identity in seen:
+            raise ValueError('host_unknown_consumer')
+        seen.add(identity); owner = expected[identity]
+        if any(current[k] != owner[k] for k in ('id','image','started')):
+            raise ValueError('host_incarnation_changed')
+        start = host_timestamp(current['started'])
+        if (current['restart'] != 'no' or current['pidmode'] != '' or current['privileged'] is not False or
+                current['capadd'] not in (None,[]) or current['cgroupns'] not in ('','private') or
+                type(current['running']) is not bool or type(current['restarting']) is not bool or
+                current['restarting'] or type(current['pid']) is not int or not 0<=current['pid']<2**31):
+            raise ValueError('host_unsafe_topology')
+        if current['running'] != (current['pid'] > 0): raise ValueError('host_pid_state')
+        if not isinstance(current['finished'],str) or len(current['finished'])>128:
+            raise ValueError('host_finished_time')
+        if stopped or not current['running']:
+            if current['running'] or current['pid'] != 0 or host_timestamp(current['finished']) <= start:
+                raise ValueError('host_not_finished')
+        mounts = current['mounts']
+        if not isinstance(mounts,list) or len(mounts) != len(owner['volumes']): raise ValueError('host_mount_coverage')
+        mounted = set()
+        for mount in mounts:
+            closed(mount, 'type name source destination rw')
+            matches = [v for v in volumes if v['name'] == mount['name']]
+            if len(matches) != 1: raise ValueError('host_unknown_mount')
+            volume = matches[0]; role = volume['role']
+            if (role in mounted or role not in owner['volumes'] or mount['type'] != 'volume' or
+                    mount['source'] != volume['source'] or mount['destination'] != '/'+role or
+                    type(mount['rw']) is not bool or
+                    mount['rw'] != (owner['role'] != 'control' or role not in ('ipc','staging'))):
+                raise ValueError('host_mount_changed')
+            mounted.add(role)
+    return topology
+
+
+def validate_host_provenance(value, registration):
+    closed(value, 'revision kind registration_digest ipc_identity hello owners')
+    if (type(value['revision']) is not int or value['revision'] != 1 or
+            value['kind'] != 'local-linux-proc-v1' or value['registration_digest'] != digest(registration)):
+        raise ValueError('host_provenance_origin')
+    closed(value['hello'], 'lane boot')
+    if value['hello'] != {k:registration[k] for k in ('lane','boot')}: raise ValueError('host_hello_binding')
+    if (not isinstance(value['ipc_identity'],list) or len(value['ipc_identity']) != 2 or
+            any(type(n) is not int or not 1<=n<2**64 for n in value['ipc_identity'])): raise ValueError('host_ipc_identity')
+    owners = value['owners']
+    if not isinstance(owners,list) or len(owners) != len(registration['containers']): raise ValueError('host_proc_coverage')
+    expected = {c['id']:c for c in registration['containers']}; seen=set()
+    for owner in owners:
+        closed(owner, 'id image started pid start_ticks pid_namespace cgroup')
+        if not isinstance(owner['id'],str) or owner['id'] not in expected or owner['id'] in seen:
+            raise ValueError('host_proc_coverage')
+        seen.add(owner['id'])
+        if any(owner[k] != expected[owner['id']][k] for k in ('image','started')):
+            raise ValueError('host_proc_incarnation')
+        if any(type(owner[k]) is not int or not 1<=owner[k]<2**64 for k in ('pid','start_ticks','pid_namespace')) or owner['pid']>=2**31:
+            raise ValueError('host_proc_identity')
+        if owner['cgroup'] not in ('/docker/'+owner['id'], '/system.slice/docker-'+owner['id']+'.scope'):
+            raise ValueError('host_cgroup_association')
+    if len({o['pid_namespace'] for o in owners}) != len(owners): raise ValueError('host_shared_pid_namespace')
+
+
+def validate_host_capsule(capsule, *, now=None):
+    """Content validation only. It does not authenticate caller-supplied JSON."""
+    deadline=time.monotonic()+2
+    if len(encode(capsule).encode()) > HOST_CAPSULE_BYTES: raise ValueError('host_document_budget')
+    closed(capsule, 'revision kind invocation_id original_invocation deployment_id scope registrations registration_digest kernel_proof kernel_proof_digest purpose issued expires collection_seconds topology provenance waits')
+    if type(capsule['revision']) is not int or capsule['revision'] != 1 or capsule['kind'] != HOST_CAPSULE_KIND:
+        raise ValueError('host_capsule_kind')
+    _host_id(capsule['invocation_id'])
+    if capsule['original_invocation'] is not None:
+        _host_id(capsule['original_invocation'])
+        if capsule['original_invocation']==capsule['invocation_id']: raise ValueError('host_resume_identity')
+    owners = host_registration_union(capsule['registrations'], capsule['scope'], capsule['deployment_id'])
+    if capsule['registration_digest'] != host_registration_digest(capsule['registrations']):
+        raise ValueError('host_registration_digest')
+    proof = capsule['kernel_proof']; closed(proof, 'kind observation prior_epoch old_lane')
+    if proof['kind'] != 'host-admin-container-teardown-v1': raise ValueError('host_proof_kind')
+    _host_id(proof['prior_epoch']); _host_id(proof['old_lane'])
+    if capsule['kernel_proof_digest'] != digest(proof): raise ValueError('host_proof_digest')
+    check_consumers(dict(registrations=capsule['registrations'],lane=proof['old_lane']),proof['observation'])
+    validate_host_topology(capsule['topology'], capsule['scope'], owners, stopped=True)
+    observation = dict(scope=capsule['scope'],containers=owners,evidence='actual-host-inspection',
+        states=[{k:c[k] for k in ('id','running','restarting','pid','started','finished')} for c in capsule['topology']['consumers']])
+    if proof['observation'] != observation: raise ValueError('host_proof_topology_binding')
+    purpose=capsule['purpose']; closed(purpose, 'kind plan_id plan_digest')
+    if purpose['kind'] == 'pre-plan':
+        if purpose['plan_id'] is not None or purpose['plan_digest'] is not None: raise ValueError('host_preplan_purpose')
+    elif purpose['kind'] in ('initial','resume'):
+        _host_id(purpose['plan_id']); _hash(purpose['plan_digest'])
+    else: raise ValueError('host_purpose')
+    if (purpose['kind']=='resume') != (capsule['original_invocation'] is not None):
+        raise ValueError('host_resume_identity')
+    for k in ('issued','expires','collection_seconds'): _host_time(capsule[k])
+    if not 0 < capsule['expires']-capsule['issued'] <= TTL or capsule['collection_seconds'] > HOST_COLLECTION_SECONDS:
+        raise ValueError('host_capsule_expiry')
+    now = time.time() if now is None else now; _host_time(now)
+    if not capsule['issued'] <= now < capsule['expires']: raise ValueError('host_capsule_expired')
+    provenance = capsule['provenance']
+    if not isinstance(provenance,list) or len(provenance) != len(capsule['registrations']): raise ValueError('host_provenance_coverage')
+    by_digest = {digest(r):r for r in capsule['registrations']}; seen=set()
+    for value in provenance:
+        if not isinstance(value,dict) or value.get('registration_digest') not in by_digest or value['registration_digest'] in seen:
+            raise ValueError('host_provenance_coverage')
+        seen.add(value['registration_digest']); validate_host_provenance(value, by_digest[value['registration_digest']])
+    # A retained registration cannot vouch for two boot/lane identities of the
+    # same worker incarnation. No hash/label resolves that ambiguity.
+    worker_bindings={}
+    for registration in capsule['registrations']:
+        for owner in registration['containers']:
+            if owner['role'] == 'worker':
+                binding=(registration['lane'],registration['boot'])
+                if owner['id'] in worker_bindings and worker_bindings[owner['id']] != binding:
+                    raise ValueError('host_ambiguous_worker_boot')
+                worker_bindings[owner['id']]=binding
+    waits=capsule['waits']
+    if not isinstance(waits,list) or len(waits) != len(owners): raise ValueError('host_wait_coverage')
+    seen=set()
+    for wait in waits:
+        closed(wait, 'id command_status container_status')
+        if (not isinstance(wait['id'],str) or wait['id'] not in {o['id'] for o in owners} or wait['id'] in seen or
+                type(wait['command_status']) is not int or wait['command_status'] != 0 or
+                type(wait['container_status']) is not int or not 0 <= wait['container_status'] <= 255):
+            raise ValueError('host_wait_failed')
+        seen.add(wait['id'])
+    if time.monotonic()>deadline: raise ValueError('host_validation_deadline')
+    return capsule
+
+
+def _host_file_identity(st):
+    return (st.st_dev,st.st_ino,st.st_mode,st.st_uid,st.st_gid,st.st_nlink,st.st_size,st.st_mtime_ns,st.st_ctime_ns)
+
+
+def _host_read_at(directory_fd, name, owner):
+    import stat
+    fd=os.open(name,os.O_RDONLY|os.O_NOFOLLOW|os.O_NONBLOCK,dir_fd=directory_fd)
+    try:
+        before=os.fstat(fd)
+        if (not stat.S_ISREG(before.st_mode) or stat.S_IMODE(before.st_mode)!=0o600 or
+                before.st_uid!=owner or before.st_nlink!=1 or before.st_size>HOST_CAPSULE_BYTES):
+            raise ValueError('host_unsafe_file')
+        raw=os.read(fd,HOST_CAPSULE_BYTES+1)
+        if (len(raw)!=before.st_size or _host_file_identity(os.fstat(fd))!=_host_file_identity(before) or
+                _host_file_identity(os.stat(name,dir_fd=directory_fd,follow_symlinks=False))!=_host_file_identity(before)):
+            raise ValueError('host_file_changed')
+        value=host_json(raw)
+        if (_host_file_identity(os.fstat(fd))!=_host_file_identity(before) or
+                _host_file_identity(os.stat(name,dir_fd=directory_fd,follow_symlinks=False))!=_host_file_identity(before)):
+            raise ValueError('host_file_changed')
+        return value
+    finally: os.close(fd)
+
+
+def _host_mount_topology():
+    # OS boundary intentionally factored for E1 monkeypatching, never a CLI flag.
+    with open('/proc/self/mountinfo','rb') as stream: raw=stream.read(HOST_CAPSULE_BYTES+1)
+    if len(raw)>HOST_CAPSULE_BYTES: raise ValueError('host_mount_budget')
+    mounts=[]
+    for line in raw.decode('ascii').splitlines():
+        fields=line.split(); split=fields.index('-')
+        if len(fields)<10 or split<6: raise ValueError('host_mount_invalid')
+        def unescape(value):
+            return re.sub(r'\\([0-7]{3})',lambda m:chr(int(m[1],8)),value)
+        mounts.append(dict(id=fields[0],device=fields[2],root=unescape(fields[3]),
+            target=unescape(fields[4]),options=fields[5].split(',')))
+        if len(mounts)>MAX_ROWS: raise ValueError('host_mount_budget')
+    return mounts
+
+
+def _host_role_identity(role):
+    st=os.stat('/'+role,follow_symlinks=False)
+    import stat
+    if not stat.S_ISDIR(st.st_mode): raise ValueError('host_role_directory')
+    return st.st_dev,st.st_ino
+
+
+def read_host_capsule(*, now=None):
+    """Only the fixed C1 RO transport authenticates origin. No local fallback.
+
+    C1 must qualify host-admin ownership separately and an explicit mapped UID
+    0 maintenance/root ownership model. This reader never chowns existing data.
+    Reading retains the evidence and grants no kernel/apply capability.
+    """
+    import stat
+    mounts=_host_mount_topology()
+    selected=[m for m in mounts if m['target']==HOST_CAPSULE_MOUNT]
+    if len(selected)!=1: raise ValueError('host_trusted_mount_absent')
+    mount=selected[0]
+    prefix=HOST_AUTHORITY_DIRECTORY+'/invocations/'
+    if (not mount['root'].startswith(prefix) or not re.fullmatch('[0-9a-f]{32}',mount['root'][len(prefix):]) or
+            'ro' not in mount['options'] or 'rw' in mount['options']): raise ValueError('host_trusted_mount_invalid')
+    for other in mounts:
+        if other is mount: continue
+        if (other['target'].startswith(HOST_CAPSULE_MOUNT+'/') or
+                (other['device']==mount['device'] and
+                 (other['root']==mount['root'] or other['root'].startswith(mount['root']+'/') or
+                  mount['root'].startswith(other['root'].rstrip('/')+'/')))):
+            raise ValueError('host_proof_mount_alias')
+    # Require separate role mounts, and no proof path inside an ordinary role.
+    for role in ('control','staging','receipts','ipc'):
+        matches=[m for m in mounts if m['target']=='/'+role]
+        if len(matches)!=1 or matches[0]['id']==mount['id']: raise ValueError('host_role_mount_absent')
+    fd=os.open(HOST_CAPSULE_MOUNT,os.O_RDONLY|os.O_DIRECTORY|os.O_NOFOLLOW)
+    try:
+        before=os.fstat(fd)
+        if (before.st_uid!=HOST_MAPPED_UID or stat.S_IMODE(before.st_mode)!=0o700 or
+                mount['device']!=str(os.major(before.st_dev))+':'+str(os.minor(before.st_dev))):
+            raise ValueError('host_unsafe_directory')
+        with os.scandir(fd) as entries:
+            if [entry.name for entry in entries] != ['capsule.json']: raise ValueError('host_invocation_namespace')
+        capsule=_host_read_at(fd,'capsule.json',HOST_MAPPED_UID)
+        if (capsule.get('invocation_id')!=mount['root'][len(prefix):] or
+                _host_file_identity(os.fstat(fd))!=_host_file_identity(before) or mounts!=_host_mount_topology()):
+            raise ValueError('host_transport_changed')
+        validate_host_capsule(capsule,now=now)
+        for volume in capsule['topology']['volumes']:
+            role_mount=next(m for m in mounts if m['target']=='/'+volume['role'])
+            device,inode=_host_role_identity(volume['role'])
+            if (role_mount['root']!=volume['source'] or
+                    role_mount['device']!=str(os.major(device))+':'+str(os.minor(device)) or
+                    (device,inode)!=(volume['device'],volume['inode'])):
+                raise ValueError('host_role_mount_changed')
+        if mounts!=_host_mount_topology(): raise ValueError('host_transport_changed')
+        return capsule
+    finally: os.close(fd)
