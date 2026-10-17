@@ -552,3 +552,8 @@ Record failures and missing evidence; do not replace them with a successful late
 - Candidate05afbaec0c3d61f60bb2f430d9108da30f285d0c frozeneb6e0c6 app-ownedt3-c1fea5bd; rootreadhandoff unintegrated. Exactly4paths hostscript/recovery/tests/report frozenkernelunchanged claimed.
 - Claims117target/810focused/962passed18skipped correctedfinalfrozen. Callerclockoverrideboundary found/fixed beforehandoff; earlierfocusedinterrupted notcomplete. Hostevidence E1mocksONLY noactualDocker/installedauthqualification allapplyunavailable.
 - FreshSol-low request pab-phase1a-p1b23a-review-r1-20261017 report reviews/P1B23a-r1-sol.md fullAstraoriginalbrief/candidate/limits supplied. No integration/waiver/activation.
+
+## B2.3a round1 NO-GO / storage topology correction
+
+- R1review reviews/P1B23a-r1-sol.md NO-GO exact05afbaec;810focused962passed18skipped confirmed. F1aliaseddescendants evade allconsumercoverage permittingstop/capsule withunknownconsumer; F2nestedforeign mounts underauthorityroles acceptedreader. E1modeledOS only noactualDocker.
+- NextisolatedSol-low request pab-phase1a-p1b23a-fix-r1-20261017 verifiedmount/filesystemaliasdisjointness orconservativerefusal beforestops; rejectnestedrole mounts repeatedobservations. Applyunavailable no integration/waiver.
