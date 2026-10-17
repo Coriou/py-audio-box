@@ -557,3 +557,8 @@ Record failures and missing evidence; do not replace them with a successful late
 
 - R1review reviews/P1B23a-r1-sol.md NO-GO exact05afbaec;810focused962passed18skipped confirmed. F1aliaseddescendants evade allconsumercoverage permittingstop/capsule withunknownconsumer; F2nestedforeign mounts underauthorityroles acceptedreader. E1modeledOS only noactualDocker.
 - NextisolatedSol-low request pab-phase1a-p1b23a-fix-r1-20261017 verifiedmount/filesystemaliasdisjointness orconservativerefusal beforestops; rejectnestedrole mounts repeatedobservations. Applyunavailable no integration/waiver.
+
+## B2.3a corrected topology candidate / review round2
+
+- Candidateee650cc7920d1e237c21c6b795cb4cc6ac4573e5 frozen37d2457 app-ownedt3-c77b484f; rootreadresponse unintegrated. Conservativeunprovedstoragedisjointnessrefusal beforestops; nestedrole mountrefusal eachobservation. Kernelprefixpreserved.
+- Claims14REDfail18pass then157target/850focused/1002passed18skipped finalfrozen40newcases. FreshSol-low request pab-phase1a-p1b23a-review-r2-20261017 report reviews/P1B23a-r2-sol.md fulloriginalbrief/findings/responses supplied. E1mocksonly applyunavailable no integration/waiver.
