@@ -308,11 +308,11 @@ class _PreparedSnapshot:
 
 class _MaintenanceSession:
     """Closed lifetime under BOTH locks; plumbing, never authorization."""
-    __slots__ = ('roots','db','scope','capsule','_process','_live','_prepared')
+    __slots__ = ('roots','db','scope','capsule','_process','_live','_prepared','_prestate')
 
     def __init__(self, roots, db, scope, capsule, process):
         self.roots=roots; self.db=db; self.scope=scope; self.capsule=capsule
-        self._process=process; self._live=True; self._prepared=None
+        self._process=process; self._live=True; self._prepared=None; self._prestate=None
 
     def _verify(self):
         if not self._live:raise ValueError('b2_maintenance_session_closed')
@@ -386,7 +386,7 @@ class _MaintenanceSession:
 
 
 @contextmanager
-def _maintenance_session(roots, scope, process):
+def _maintenance_session(roots, scope, process, *, _prewrite=None):
     if type(process) is not _MaintenanceProcess or process.used:
         raise ValueError('b2_maintenance_process')
     process.verify(); process.used=True
@@ -408,6 +408,7 @@ def _maintenance_session(roots, scope, process):
                 if (host_registration_digest(retained)!=capsule['registration_digest'] or
                         encode(retained)!=encode(capsule['registrations'])):
                     raise ValueError('b2_maintenance_registrations')
+                prestate=_prewrite(roots,check,capsule) if _prewrite is not None else None
         process.verify(); _maintenance_files(root)
         db=sqlite3.connect((root/'core.sqlite').as_uri()+'?mode=rw&vfs=unix',uri=True,timeout=0,isolation_level=None)
         session=None
@@ -416,6 +417,7 @@ def _maintenance_session(roots, scope, process):
             deadline=time.monotonic()+10
             db.set_progress_handler(lambda:int(time.monotonic()>deadline),1000)
             session=_MaintenanceSession(roots,db,scope,capsule,process)
+            session._prestate=prestate
             yield session
         finally:
             if session is not None:session._live=False
@@ -424,7 +426,7 @@ def _maintenance_session(roots, scope, process):
             finally:_maintenance_files(root)
 
 
-def _run_bounded_maintenance(roots, scope, operation):
+def _run_bounded_maintenance(roots, scope, operation, *, _prewrite=None):
     """Internal one-shot child seam for P; no CLI wiring or caller enable flag.
 
     The parent's normal Core/B1/shell resource limits never change. operation is
@@ -444,7 +446,7 @@ def _run_bounded_maintenance(roots, scope, operation):
         os.close(read_fd)
         try:
             process=_install_maintenance_limit()
-            with _maintenance_session(roots,scope,process) as session:
+            with _maintenance_session(roots,scope,process,_prewrite=_prewrite) as session:
                 result=operation(session)
             raw=encode(dict(result=result)).encode()
             if len(raw)>65536:raise ValueError('b2_maintenance_result_budget')
@@ -476,7 +478,7 @@ def _run_bounded_maintenance(roots, scope, operation):
 
 
 
-def snapshot(roots, db, scope, *, exclude_plan=None, exclude_abandon=None, transaction=True, _prefix=None, _journal_after=False, _core_after=False):
+def snapshot(roots, db, scope, *, exclude_plan=None, exclude_abandon=None, transaction=True, _prefix=None, _journal_after=False, _core_after=False, _journal_observation=None):
     """Read-only transaction including WAL; never calls an observation fence."""
     validate_scope(scope)
     if transaction: db.execute('BEGIN')
@@ -525,8 +527,16 @@ def snapshot(roots, db, scope, *, exclude_plan=None, exclude_abandon=None, trans
         marker=json.loads(read_file(roots['receipts']/'p1-enrolled.json'))
         if marker!=dict(deployment_id=identity,digest=h): raise ValueError('incomplete_enrollment')
         journal_before=bytes.fromhex(_prefix['before']['journal']['bytes_hex']) if _journal_after else None
-        damaged=_prefix is not None and _prefix['before']['journal']['state']!='valid'
-        if damaged:
+        observed=_journal_observation
+        if observed is not None:
+            if type(observed) is not _JournalObservation:raise ValueError('b2_journal_observation')
+            observed.revalidate(roots['receipts'])
+        damaged=(_prefix is not None and _prefix['before']['journal']['state']!='valid') or (observed is not None and observed.state!='valid')
+        if observed is not None and damaged:
+            journal_raw=observed.raw
+            payload=dict(version=1,lane=observed.lane,records=[])
+            journal=dict(payload=payload,sha256=digest(payload))
+        elif damaged:
             try: journal_raw=journal_before if _journal_after else read_file(roots['receipts']/'journal.json',1024**2)
             except FileNotFoundError:
                 if _prefix['before']['journal']['state']!='missing': raise
@@ -545,8 +555,14 @@ def snapshot(roots, db, scope, *, exclude_plan=None, exclude_abandon=None, trans
         payload_keys='version lane records maintenance' if 'maintenance' in journal['payload'] else 'version lane records'
         closed(journal['payload'],payload_keys)
         from worker.runtime_journal import read_maintenance
-        receipt_completion=journal['payload'].get('maintenance') if _prefix is not None else read_maintenance(roots['receipts'])
-        if receipt_completion!=journal['payload'].get('maintenance'): raise ValueError('journal_maintenance_binding')
+        if observed is not None and damaged:
+            # A damaged current journal cannot carry a clean maintenance field.
+            # Ground the retained fence/certificate separately in actual history.
+            if read_maintenance(roots['receipts'])!=completion_binding(db,roots['control']/'core'):
+                raise ValueError('journal_maintenance_binding')
+        else:
+            receipt_completion=journal['payload'].get('maintenance') if _prefix is not None else read_maintenance(roots['receipts'])
+            if receipt_completion!=journal['payload'].get('maintenance'): raise ValueError('journal_maintenance_binding')
         payload=journal['payload']
         if digest(payload)!=journal['sha256'] or payload['version']!=1 or not isinstance(payload['records'],list) or len(payload['records'])>64:
             raise ValueError('journal_identity_unreadable')
@@ -1376,8 +1392,8 @@ def validate_b2_database(db, root=None, *, _uncertified=None, _retained_receipts
     finally: db.set_progress_handler(None,0)
 
 
-def _b2_state(roots,db,scope,exclude_plan=None):
-    return snapshot(roots,db,scope,exclude_abandon=exclude_plan,transaction=False)
+def _b2_state(roots,db,scope,exclude_plan=None,*,_journal_observation=None):
+    return snapshot(roots,db,scope,exclude_abandon=exclude_plan,transaction=False,_journal_observation=_journal_observation)
 
 
 def plan_abandon(roots,scope,observation,*,proof_digest,profiles,budget,now=None):
@@ -1476,7 +1492,9 @@ def verify_abandon_plan(roots,db,scope,observation,plan_id,expected_digest,*,pro
     if any(r['plan_id']==plan_id for r in data['p1_recoveries']): raise ValueError('b2_accepted_plan_requires_resume')
     if digest(value)!=expected_digest: raise ValueError('b2_plan_digest')
     if not value['created']<=now<value['expires']: raise ValueError('expired_b2_plan')
-    state=_b2_state(roots,db,scope,exclude_plan=plan_id); check_consumers(state,observation); _coherent_b2(state)
+    journal=_observe_b2_journal(roots['receipts'],value['old_lane'])
+    if journal.state!=value['journal_state'] or journal.sha256!=value['journal_digest']:raise ValueError('b2_plan_journal_changed')
+    state=_b2_state(roots,db,scope,exclude_plan=plan_id,_journal_observation=journal); check_consumers(state,observation); _coherent_b2(state)
     affected={**state['affected'],'reservations':[r['job_id'] for r in state['reservations']]}
     if (value['source_digest']!=state['source_digest'] or value['affected']!=affected or
         value['observation_digest']!=digest(observation) or value['proof_digest']!=proof_digest): raise ValueError('stale_b2_plan')
@@ -1851,10 +1869,9 @@ def _pending_prefix_locked(roots,db,scope,intent,observation,*,now,snapshot_byte
             from contextlib import closing
             with closing(sqlite3.connect(path.as_uri()+'?mode=rw&vfs=unix',uri=True)) as candidate:
                 _maintenance_connection(candidate)
-                candidate.execute('INSERT INTO p1_recoveries VALUES(?,?,?,?)',(intent['id'],intent['plan_id'],encode(intent),digest(intent)))
+                _insert_recovery(candidate,intent)
                 for descriptor in intent['expected'][:2]:
-                    step=dict(recovery_id=intent['id'],**descriptor,lane=intent['new_lane'],epoch=intent['new_epoch'])
-                    candidate.execute('INSERT INTO p1_recovery_steps VALUES(?,?,?,?)',(intent['id'],step['step'],encode(step),digest(step)))
+                    _insert_recovery_step(candidate,intent,descriptor)
                 candidate.commit()
                 used=len(snapshot_raw)+len(encode(intent).encode())
                 for prior in data['p1_recoveries']:
@@ -1890,8 +1907,7 @@ def _pending_prefix_locked(roots,db,scope,intent,observation,*,now,snapshot_byte
     # Charge the new durable restart input against the receipt population.
     _prefix_receipt_namespace(receipts,[*data['p1_recoveries'],intent])
     if existing is None:
-        _prefix_transaction(db,lambda:db.execute('INSERT INTO p1_recoveries VALUES(?,?,?,?)',
-            (intent['id'],intent['plan_id'],encode(intent),digest(intent))),fault,'core-intent')
+        _prefix_transaction(db,lambda:_insert_recovery(db,intent),fault,'core-intent')
         sync_dir(root); fault('core-intent-parent')
     def record(index):
         descriptor=intent['expected'][index]
@@ -1900,8 +1916,7 @@ def _pending_prefix_locked(roots,db,scope,intent,observation,*,now,snapshot_byte
         if row is not None:
             if row!=(encode(step),digest(step)): raise ValueError('b2_prefix_step_changed')
             return
-        _prefix_transaction(db,lambda:db.execute('INSERT INTO p1_recovery_steps VALUES(?,?,?,?)',
-            (intent['id'],step['step'],encode(step),digest(step))),fault,step['step']+'-receipt')
+        _prefix_transaction(db,lambda:_insert_recovery_step(db,intent,descriptor),fault,step['step']+'-receipt')
         sync_dir(root); fault(step['step']+'-receipt-parent')
     record(0)
     outputs=[(names['snapshot'],snapshot_raw,'snapshot'),
@@ -2100,43 +2115,14 @@ def _complete_core(db,roots,intent,fault):
     root=roots['control']/'core'
     # Full bounded inventory/prestate was just validated under BOTH locks. The
     # resource observation is separate from ordinary R1/A2 inherited tokens.
-    decisions={r['object_id']:r for r in intent['diagnostic_decisions']}
-    for row in intent['before']['source']['inventory']:
-        if row['classification'] in ('missing_hash_mismatched_terminal','adopted_orphan') and row['id'] not in decisions:
-            raise ValueError('b2_unresolved_diagnostic')
-    for old in intent['before']['source']['data']['p1_inventory_objects']:
-        row=json.loads(old[4])
-        if row['classification'] in ('unknown_foreign','unresolved_owner_receipt_reservation'):
-            # Dispatch mismatch is accounted by exact original dispatch history;
-            # arbitrary reservation/schema defects cannot be acknowledged away.
-            if row['classification']=='unknown_foreign' or row['namespace']!='dispatch' or not any(str(v)==row['name'] for v in intent['affected']['dispatches']):
-                raise ValueError('b2_unresolved_diagnostic')
-        elif row['classification'] in ('missing_hash_mismatched_terminal','adopted_orphan'):
-            decision=decisions.get(row['id'])
-            if not decision or decision['content_digest']!=diagnostic_digest(row):raise ValueError('b2_unresolved_diagnostic')
+    _validate_diagnostic_eligibility(intent['before']['source'],intent['affected'],intent['diagnostic_decisions'])
     used,count=_prefix_receipt_namespace(roots['receipts'],[json.loads(r[0]) for r in db.execute('SELECT record FROM p1_recoveries ORDER BY rowid')])
     certificate_raw=encode(_core_result(intent)['certificate']).encode()
     descriptor=encode(dict(revision=1,recovery_id=intent['id'],intent_digest=digest(intent),sha256=__import__('hashlib').sha256(certificate_raw).hexdigest())).encode()
     if count+1>MAX_ROWS or used+len(descriptor)>MAX_BYTES:raise ValueError('b2_prefix_receipt_budget')
     _recovery_scan(db,(root,roots['staging']),intent);fault('core-scan')
     if intent['budget_after']!=intent['budget_before']:raise ValueError('b2_budget_change_unsupported')
-    def write():
-        rows=intent['expected'][3]['output']['rows']
-        for row in rows['jobs']:
-            db.execute('UPDATE jobs SET job=? WHERE id=?',(row[6],row[1]))
-        db.execute("UPDATE resource_reservations SET state='retained'")
-        db.execute('UPDATE resource_accounting SET highwater=? WHERE id=1',(rows['resource_accounting'][0][1],))
-        db.execute('DELETE FROM resource_faults')
-        db.execute("UPDATE resource_monitor SET state='healthy' WHERE id=1")
-        db.execute("UPDATE p1_integrity SET state='healthy',token=NULL WHERE id=1 AND revision=1")
-        for table,records in _resolution_outputs(intent).items():
-            for r in records:
-                key=r.get('dispatch_seq',r.get('job_id',r.get('object_id')))
-                db.execute('INSERT INTO '+table+' VALUES(?,?,?,?)',(key,intent['id'],encode(r),digest(r)))
-        step=dict(recovery_id=intent['id'],**intent['expected'][3],lane=intent['new_lane'],epoch=intent['new_epoch'])
-        db.execute('INSERT INTO p1_recovery_steps VALUES(?,?,?,?)',(intent['id'],'core-complete',encode(step),digest(step)))
-        _verify_core_rows(db,intent)
-        validate_b2_database(db,root,_uncertified=intent['id'])
+    def write():_write_core_completion(db,root,intent)
     _prefix_transaction(db,write,fault,'core-complete')
     sync_dir(root);fault('core-complete-parent')
     _completed_prefix_receipts(roots,intent)
@@ -2253,7 +2239,7 @@ def _finish_receipts(db,roots,intent,fault):
             sync_dir(receipts);fault(kind+'-dirsync')
             _prefix_exact(path,raw)
     def write():
-        db.execute('INSERT INTO p1_recovery_steps VALUES(?,?,?,?)',(intent['id'],'receipt-complete',encode(step),digest(step)))
+        _insert_recovery_step(db,intent,intent['expected'][4])
         validate_b2_database(db,root)
     _prefix_transaction(db,write,fault,'receipt-complete')
     sync_dir(root);fault('receipt-complete-parent')
@@ -2607,3 +2593,301 @@ def read_host_capsule():
         if mounts!=_host_authority_mount_observation(): raise ValueError('host_transport_changed')
         return capsule
     finally: os.close(fd)
+
+
+def _write_core_completion(db,root,intent):
+    rows=intent['expected'][3]['output']['rows']
+    for row in rows['jobs']:
+        db.execute('UPDATE jobs SET job=? WHERE id=?',(row[6],row[1]))
+    db.execute("UPDATE resource_reservations SET state='retained'")
+    db.execute('UPDATE resource_accounting SET highwater=? WHERE id=1',(rows['resource_accounting'][0][1],))
+    db.execute('DELETE FROM resource_faults')
+    db.execute("UPDATE resource_monitor SET state='healthy' WHERE id=1")
+    db.execute("UPDATE p1_integrity SET state='healthy',token=NULL WHERE id=1 AND revision=1")
+    for table,records in _resolution_outputs(intent).items():
+        for r in records:
+            key=r.get('dispatch_seq',r.get('job_id',r.get('object_id')))
+            db.execute('INSERT INTO '+table+' VALUES(?,?,?,?)',(key,intent['id'],encode(r),digest(r)))
+    step=dict(recovery_id=intent['id'],**intent['expected'][3],lane=intent['new_lane'],epoch=intent['new_epoch'])
+    db.execute('INSERT INTO p1_recovery_steps VALUES(?,?,?,?)',(intent['id'],'core-complete',encode(step),digest(step)))
+    _verify_core_rows(db,intent)
+    validate_b2_database(db,root,_uncertified=intent['id'])
+
+
+
+def _validate_diagnostic_eligibility(source,affected,diagnostic_decisions):
+    """Pure, shared preparation/Core eligibility; never grants scan authority."""
+    _decisions(diagnostic_decisions)
+    decisions={r['object_id']:r for r in diagnostic_decisions}
+    for row in source['inventory']:
+        if row['classification'] in ('missing_hash_mismatched_terminal','adopted_orphan') and row['id'] not in decisions:
+            raise ValueError('b2_unresolved_diagnostic')
+    for old in source['data']['p1_inventory_objects']:
+        row=json.loads(old[4])
+        if row['classification'] in ('unknown_foreign','unresolved_owner_receipt_reservation'):
+            # Dispatch mismatch is accounted by exact original dispatch history;
+            # arbitrary reservation/schema defects cannot be acknowledged away.
+            if row['classification']=='unknown_foreign' or row['namespace']!='dispatch' or not any(str(v)==row['name'] for v in affected['dispatches']):
+                raise ValueError('b2_unresolved_diagnostic')
+        elif row['classification'] in ('missing_hash_mismatched_terminal','adopted_orphan'):
+            decision=decisions.get(row['id'])
+            if not decision or decision['content_digest']!=diagnostic_digest(row):raise ValueError('b2_unresolved_diagnostic')
+    required={row['id']:row for row in source['inventory']
+        if row['classification'] in ('missing_hash_mismatched_terminal','adopted_orphan')}
+    if set(required)!={d['object_id'] for d in diagnostic_decisions}:
+        raise ValueError('b2_diagnostic_coverage')
+    for decision in diagnostic_decisions:
+        row=required[decision['object_id']]
+        if (decision['reason']!=row['reason'] or decision['content_digest']!=diagnostic_digest(row) or
+                decision['availability']!=('unavailable' if row['classification']=='missing_hash_mismatched_terminal' else 'retained')):
+            raise ValueError('b2_diagnostic_before_binding')
+
+
+class _JournalObservation:
+    """Typed B2 read observation. Absence/corruption never means clean receipts."""
+    __slots__=('state','raw','lane','sha256')
+
+    def __init__(self,state,raw,lane):
+        import hashlib
+        self.state=state;self.raw=raw;self.lane=lane
+        self.sha256=digest(json.loads(raw)) if state=='valid' else hashlib.sha256(raw).hexdigest()
+
+    def revalidate(self,receipts):
+        other=_observe_b2_journal(receipts,self.lane)
+        if (self.state,self.raw,self.lane)!=(other.state,other.raw,other.lane):
+            raise ValueError('b2_journal_observation_changed')
+
+
+def _observe_b2_journal(receipts,lane):
+    _uuid(lane)
+    try:raw=read_file(receipts/'journal.json',1024**2)
+    except FileNotFoundError:return _JournalObservation('missing',b'',lane)
+    # Unsafe file identity/permissions and oversized content are NOT corruption
+    # acknowledgements. read_file has already rejected them.
+    try:
+        document=json.loads(raw);closed(document,'payload sha256')
+        payload=document['payload']
+        closed(payload,'version lane records maintenance' if 'maintenance' in payload else 'version lane records')
+        if (type(payload['version']) is not int or payload['version']!=1 or
+                not isinstance(payload['records'],list) or len(payload['records'])>64 or
+                digest(payload)!=document['sha256']):raise ValueError('b2_journal_envelope')
+        _uuid(payload['lane'])
+    except (ValueError,TypeError,KeyError,UnicodeError):
+        return _JournalObservation('unreadable',raw,lane)
+    if payload['lane']!=lane:raise ValueError('b2_journal_lane')
+    return _JournalObservation('valid',raw,lane)
+
+
+def _preparation_prestate(roots,db,scope,capsule,profiles,budget,diagnostic_decisions):
+    """Read-only before the original writer, repeated under the same locks."""
+    _budget(budget);_decisions(diagnostic_decisions)
+    if db.execute("SELECT 1 FROM sqlite_master WHERE type IN ('trigger','view') OR (type='index' AND sql IS NOT NULL) LIMIT 1").fetchone():
+        raise ValueError('b2_unknown_schema')
+    if capsule['purpose']!=dict(kind='pre-plan',plan_id=None,plan_digest=None):
+        raise ValueError('b2_preparation_purpose')
+    proof=capsule['kernel_proof']
+    if digest(proof)!=capsule['kernel_proof_digest']:raise ValueError('b2_maintenance_proof')
+    journal=_observe_b2_journal(roots['receipts'],proof['old_lane'])
+    state=snapshot(roots,db,scope,_journal_observation=journal)
+    if (state['prior_epoch'],state['lane'])!=(proof['prior_epoch'],proof['old_lane']):
+        raise ValueError('b2_preparation_proof_prestate')
+    if capsule['deployment_id']!=state['deployment_id']:raise ValueError('b2_preparation_deployment')
+    check_consumers(state,proof['observation']);_coherent_b2(state)
+    installation=json.loads(db.execute('SELECT record FROM p1_installation').fetchone()[0])
+    if installation['profile_budget_digest']!=digest(dict(profiles=profiles,budget=budget)):
+        raise ValueError('b2_configuration_mismatch')
+    source=json.loads(encode(state['evidence_projection']))
+    affected={**state['affected'],'reservations':[r['job_id'] for r in state['reservations']]}
+    _validate_diagnostic_eligibility(source,affected,diagnostic_decisions)
+    from service.resource_store import _maintenance_footprint
+    highwater=source['data']['resource_accounting'][0][1]
+    charged=sum(json.loads(r[2])['disk_bytes'] for r in source['data']['resource_reservations'])
+    _maintenance_footprint((roots['control']/'core',roots['staging']),highwater,charged,budget)
+    from service.persistence import check_recovery_open
+    check_recovery_open(db,roots['control']/'core')
+    histories=[json.loads(r[2]) for r in source['data'].get('p1_recoveries',[])]
+    for prior in histories:
+        _completed_prefix_receipts(roots,prior)
+        _verify_finished_receipt_evidence(roots,prior)
+    _prefix_receipt_namespace(roots['receipts'],histories)
+    return state,journal
+
+
+class _Preparation(dict):
+    """Four immutable documents; snapshot ownership never enters public JSON."""
+    __slots__=('_session','_snapshot')
+
+    def __init__(self,session,plan,intent,snapshot):
+        super().__init__(plan=plan,plan_digest=digest(plan),intent=intent,intent_digest=digest(intent))
+        self._session=session;self._snapshot=snapshot
+
+
+def _prepare_abandon(roots,scope,*,profiles,budget,diagnostic_decisions):
+    """Closed one-shot private production request. All apply remains closed.
+
+    The process result alone is NOT acceptance/restart authority. Same-lock
+    callers use _prepare_abandon_locked and retain its private owned snapshot.
+    """
+    profiles,budget,diagnostic_decisions=json.loads(encode([profiles,budget,diagnostic_decisions]))
+    def prewrite(roots,db,capsule):
+        state,_=_preparation_prestate(roots,db,scope,capsule,profiles,budget,diagnostic_decisions)
+        return encode(state['evidence_projection'])
+    return _run_bounded_maintenance(roots,scope,
+        lambda session:_prepare_abandon_locked(session,profiles=profiles,budget=budget,
+            diagnostic_decisions=diagnostic_decisions),_prewrite=prewrite)
+
+
+def _prepare_abandon_locked(session,*,profiles,budget,diagnostic_decisions):
+    """Owning bounded session only: no lock acquisition/nested transaction."""
+    if type(session) is not _MaintenanceSession:raise ValueError('b2_maintenance_session')
+    session._verify()
+    roots,db,scope=session.roots,session.db,session.scope
+    if db.in_transaction:raise ValueError('b2_preparation_transaction')
+    try:
+        if read_host_capsule()!=session.capsule:raise ValueError('b2_preparation_capsule_changed')
+        state,journal=_preparation_prestate(roots,db,scope,session.capsule,profiles,budget,diagnostic_decisions)
+        if session._prestate is None or encode(state['evidence_projection'])!=session._prestate:
+            raise ValueError('b2_preparation_prestate_changed')
+        from service.persistence import B2_DDL,b2_schema
+        if not b2_schema(db):
+            def schema():
+                for ddl in B2_DDL:db.execute(ddl)
+                db.execute('INSERT INTO p1_b2_format VALUES(1,1)')
+            _prefix_transaction(db,schema,lambda point:None,'preparation-schema')
+        # Schema is part of the source. No shadow snapshot can replace this.
+        state=_b2_state(roots,db,scope,_journal_observation=journal)
+        proof=json.loads(encode(session.capsule['kernel_proof']))
+        now=time.time();_time(now)
+        affected={**state['affected'],'reservations':[r['job_id'] for r in state['reservations']]}
+        p=dict(id=uuid.uuid4().hex,deployment_id=state['deployment_id'],revision=1,policy=POLICY,
+            source_digest=state['source_digest'],observation_digest=digest(proof['observation']),proof_digest=digest(proof),
+            affected=affected,prior_epoch=state['prior_epoch'],new_epoch=uuid.uuid4().hex,
+            old_lane=state['lane'],new_lane=uuid.uuid4().hex,journal_state=journal.state,
+            journal_digest=journal.sha256,budget_before=budget,budget_after=budget,
+            diagnostic_decisions=json.loads(encode(diagnostic_decisions)),count=sum(map(len,affected.values())),
+            bytes=state['bytes'],created=now,expires=now+TTL)
+        validate_abandon_plan(p)
+        _prefix_transaction(db,lambda:db.execute('INSERT INTO p1_abandon_plans VALUES(?,?,?)',
+            (p['id'],encode(p),digest(p))),lambda point:None,'preparation-plan')
+        sync_dir(roots['control']/'core');sync_dir(roots['control'])
+        verify_abandon_plan(roots,db,scope,proof['observation'],p['id'],digest(p),proof_digest=digest(proof))
+        frozen=session.capture(p['id'],digest(p))
+        source=json.loads(encode(state['evidence_projection']))
+        before=dict(source=source,prior_certificate=completion_binding(db,roots['control']/'core'),
+            journal=dict(state=journal.state,bytes_hex=journal.raw.hex()))
+        actions=[]
+        rows={key:json.loads(encode(source['data'][key])) for key in CORE_OUTPUT_TABLES}
+        for old,new in zip(source['data']['jobs'],rows['jobs']):
+            job=json.loads(old[6])
+            action=('retain-terminal' if job['state'] in ('succeeded','failed','cancelled') else
+                'cancel-never-started' if not job['attempts'] else
+                'cancel-requested' if job['state']=='cancel_requested' else 'fail')
+            actions.append(dict(job_id=job['id'],action=action,before_digest=digest(job)))
+            if action!='retain-terminal':
+                job['state']='failed' if action=='fail' else 'cancelled'
+                if job['attempts']:job['attempts'][-1]['reaped']=True
+                new[6]=encode(job)
+        for row in rows['resource_reservations']:row[3]='retained'
+        rows['resource_monitor']=[[1,'healthy']];rows['resource_faults']=[]
+        intent=dict(id=uuid.uuid4().hex,plan_id=p['id'],plan_digest=digest(p),
+            **{k:p[k] for k in ('deployment_id','source_digest','observation_digest','proof_digest','prior_epoch',
+                'new_epoch','old_lane','new_lane','affected','budget_before','budget_after','diagnostic_decisions')},
+            before=before,before_digest=digest(before),proof=proof,proof_kind=proof['kind'],
+            monitor_digest=digest(source['data']['resource_monitor']),faults_digest=digest(source['data']['resource_faults']),
+            highwater=source['data']['resource_accounting'][0][1],actions=actions,archive_id=uuid.uuid4().hex,expected=[],created=now)
+        evidence=dict(archive_id=intent['archive_id'],snapshot_digest=frozen.sha256,
+            journal_state=journal.state,journal_digest=journal.sha256)
+        # The manifest's closed nonrecursive fields are final before hashing any
+        # descriptor. No placeholder digest or self-hashing document is needed.
+        manifest=dict(revision=1,recovery_id=intent['id'],source_digest=intent['source_digest'],
+            before_digest=intent['before_digest'],proof_digest=intent['proof_digest'],
+            snapshot_digest=frozen.sha256,journal=before['journal'],journal_state=journal.state,journal_digest=journal.sha256)
+        evidence['manifest_digest']=digest(manifest)
+        outputs=[dict(recovery_id=intent['id'],plan_digest=intent['plan_digest'],proof_digest=intent['proof_digest'],before_digest=intent['before_digest']),
+            evidence,dict(old_lane=intent['old_lane'],new_lane=intent['new_lane'],journal=dict(version=1,lane=intent['new_lane'],records=[])),
+            dict(before_digest=intent['before_digest'],prior_epoch=intent['prior_epoch'],new_epoch=intent['new_epoch'],
+                actions=actions,diagnostic_decisions=intent['diagnostic_decisions'],highwater=intent['highwater'],
+                budget_after=budget,monitor_state='healthy',rows=rows)]
+        previous=intent['before_digest']
+        for step,output in zip(STEPS,outputs):
+            descriptor=dict(step=step,input_digest=previous,output=output)
+            previous=digest(descriptor);descriptor['output_digest']=previous;intent['expected'].append(descriptor)
+        output=dict(recovery_id=intent['id'],lane=intent['new_lane'],epoch=intent['new_epoch'],core_output_digest=previous)
+        descriptor=dict(step=STEPS[4],input_digest=previous,output=output)
+        descriptor['output_digest']=digest(descriptor);intent['expected'].append(descriptor)
+        validate_b2_record('p1_recoveries',intent)
+        result=_Preparation(session,p,intent,frozen)
+        # Retain K's finite child-result transport ceiling before a caller can
+        # consume the same-lock snapshot. Larger nested histories refuse.
+        if len(encode(dict(result=result)).encode())>65536:raise ValueError('b2_maintenance_result_budget')
+        if archive_manifest(intent)!=manifest:raise ValueError('b2_preparation_manifest')
+        _rehearse_preparation(session,p,intent,frozen)
+        # Recheck origin/OS expiry and original state after all private work.
+        if read_host_capsule()!=session.capsule:raise ValueError('b2_preparation_capsule_changed')
+        verify_abandon_plan(roots,db,scope,proof['observation'],p['id'],digest(p),proof_digest=digest(proof))
+        return result
+    except BaseException:
+        session._live=False
+        # A committed schema/plan remains immutable and unaccepted on late failure.
+        raise
+
+
+def _insert_recovery(db,intent):
+    db.execute('INSERT INTO p1_recoveries VALUES(?,?,?,?)',
+        (intent['id'],intent['plan_id'],encode(intent),digest(intent)))
+
+
+def _insert_recovery_step(db,intent,descriptor):
+    step=dict(recovery_id=intent['id'],**descriptor,lane=intent['new_lane'],epoch=intent['new_epoch'])
+    db.execute('INSERT INTO p1_recovery_steps VALUES(?,?,?,?)',(intent['id'],step['step'],encode(step),digest(step)))
+
+
+def _rehearse_preparation(session,plan,intent,frozen):
+    """Bounded protected copy; shared production SQL, no original acceptance."""
+    from contextlib import closing
+    import hashlib
+    roots=session.roots;root=roots['control']/'core'
+    if frozen._session is not session or frozen.sha256!=hashlib.sha256(frozen._raw).hexdigest():
+        raise ValueError('b2_maintenance_snapshot_owner')
+    chain=[dict(recovery_id=intent['id'],**e,lane=intent['new_lane'],epoch=intent['new_epoch']) for e in intent['expected'][:4]]
+    certificate=_certificate(intent,chain[-1])
+    manifest_raw=encode(archive_manifest(intent)).encode()
+    certificate_raw=encode(certificate).encode()
+    receipt_raw=encode(dict(certificate=certificate,steps=chain)).encode()
+    intent_raw=encode(intent).encode()
+    documents=[intent_raw,manifest_raw,certificate_raw,receipt_raw,bytes.fromhex(intent['before']['journal']['bytes_hex'])]
+    if (any(len(v)>MAINTENANCE_FILE_LIMIT for v in documents) or
+            any(len(v)>MAINTENANCE_DOCUMENT_LIMIT for v in (manifest_raw,certificate_raw,receipt_raw))):
+        raise ValueError('b2_maintenance_document')
+    histories=[json.loads(r[0]) for r in session.db.execute('SELECT record FROM p1_recoveries ORDER BY rowid')]
+    used,count=_prefix_receipt_namespace(roots['receipts'],histories)
+    # Fixed finite creation/rotation/finalization descriptors are each <=64KiB.
+    # This conservative reserve includes every new receipt, temporary and bundle.
+    if count+18>MAX_ROWS or used+len(frozen._raw)+sum(map(len,documents))+18*65536>MAX_BYTES:
+        raise ValueError('b2_prefix_receipt_budget')
+    with tempfile.TemporaryDirectory(prefix='p1-rehearsal-') as temporary:
+        private=Path(temporary)
+        def copy(name,raw):
+            if len(raw)>MAINTENANCE_FILE_LIMIT:raise ValueError('b2_maintenance_document')
+            target=private/name;target.write_bytes(raw);target.chmod(0o600)
+        copy('core.sqlite',frozen._raw)
+        for prior in histories:
+            for name in archive_names(prior):copy(name,read_file(root/name,MAINTENANCE_FILE_LIMIT))
+        names={kind:name for name,kind in archive_names(intent).items()}
+        copy(names['snapshot'],frozen._raw);copy(names['manifest'],manifest_raw)
+        witness=chain[1]
+        _validate_archives(private,dict(p1_recoveries=[intent],p1_abandon_plans=[plan],p1_recovery_steps=[witness]),0,0)
+        with closing(sqlite3.connect((private/'core.sqlite').as_uri()+'?mode=rw&vfs=unix',uri=True,timeout=0,isolation_level=None)) as db:
+            _maintenance_connection(db,original=True)
+            _prefix_transaction(db,lambda:_insert_recovery(db,intent),lambda point:None,'core-intent')
+            for descriptor in intent['expected'][:3]:
+                _prefix_transaction(db,lambda:_insert_recovery_step(db,intent,descriptor),lambda point:None,descriptor['step']+'-receipt')
+                validate_b2_database(db,private)
+            from service.resource_store import _recovery_scan
+            _recovery_scan(db,(private,roots['staging']),intent)
+            _prefix_transaction(db,lambda:_write_core_completion(db,private,intent),lambda point:None,'core-complete')
+            copy(names['certificate'],certificate_raw)
+            validate_b2_database(db,private)
+            _prefix_transaction(db,lambda:_insert_recovery_step(db,intent,intent['expected'][4]),lambda point:None,'receipt-complete')
+            validate_b2_database(db,private)
+            _verify_core_rows(db,intent)

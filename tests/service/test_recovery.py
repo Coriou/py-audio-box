@@ -3671,3 +3671,582 @@ def test_lotk_f1_all_private_connections_at_actual_use(installation,monkeypatch)
         return True
     monkeypatch.setattr(sqlite3,'connect',connect)
     assert recovery._run_bounded_maintenance(roots,scope,operation)
+
+
+# P production construction: no supplied intent/expected rows or b2_intent calls.
+def _lotp_population(installation,kind='queued',*,highwater=20*1024**2):
+    from service.admission import Admission
+    from service.dispatch_store import DispatchStore
+    from tests.service.test_admission import fixture
+    roots=installation[0];core=Core(roots['control']/'core')
+    try:
+        f=fixture();admission=Admission(core,roots['staging']);store=DispatchStore(core,admission)
+        job=core.submit_synthetic('p','production-P',f['context'],_admission=admission,
+            _profiles=f['profiles'],_dispatch_settings=('silence',8))
+        if kind!='queued':store.allocate(f['profiles'],'silence',8)
+        if kind=='cancel':core.request_cancel(job['id'])
+        # Declared retained test PRESTATE, before preparation/host freeze.
+        with core.transaction():
+            core.db.execute('UPDATE resource_accounting SET highwater=?',(highwater,))
+            core.db.execute("UPDATE resource_monitor SET state='checking'")
+            core.db.execute("UPDATE p1_integrity SET state='checking',token='inherited-A2'")
+    finally:core.close()
+    return job['id']
+
+
+def _lotp_transport(h,monkeypatch):
+    import resource
+    h['state']=h['module'].host_state(h['roots'],h['scope'])
+    c=h['module'].freeze_host(h['observer'],h['state'],h['request'])
+    _b23_fake_mount_transport(monkeypatch,h,c)
+    monkeypatch.setattr(recovery,'_maintenance_filesystems',lambda roots:None)
+    monkeypatch.setattr(recovery,'_maintenance_task_count',lambda:1)
+    monkeypatch.setattr(resource,'setrlimit',lambda kind,limits:None)
+    monkeypatch.setattr(resource,'getrlimit',lambda kind:(4_194_304,)*2)
+    # read_host_capsule remains the ACTUAL production reader, OS clock included.
+    assert recovery.read_host_capsule()==c
+    return c
+
+
+@pytest.mark.parametrize('kind',['queued','running','cancel'])
+@pytest.mark.parametrize('journal_state',['valid','missing','unreadable'])
+def test_lotp_production_nonempty_complete(b23_host,installation,monkeypatch,kind,journal_state,tmp_path):
+    import hashlib
+    from service.resource_store import _maintenance_footprint,_measure_recovery_roots
+    h=b23_host;roots,scope,profiles,_=installation
+    job_id=_lotp_population(installation,kind)
+    c=_lotp_transport(h,monkeypatch)
+    journal=roots['receipts']/'journal.json'
+    if journal_state=='missing':journal.unlink()
+    elif journal_state=='unreadable':journal.write_bytes(b'{bounded damaged journal')
+    old_journal=journal.read_bytes() if journal.exists() else b''
+    before=logical(roots)
+    early_bound=_maintenance_footprint((roots['control']/'core',roots['staging']),20*1024**2,2*1024**2,DEFAULT_BUDGET)
+    metrics=tmp_path/'production-metrics.json'
+    prepare=getattr(recovery,'_prepare_abandon_locked',None)
+    def finish(session,**request):
+        assert session.capsule['kernel_proof_digest']==digest(c['kernel_proof'])
+        result=prepare(session,**request)
+        assert set(result)=={'plan','plan_digest','intent','intent_digest'}
+        p,r=result['plan'],result['intent'];owned=result._snapshot
+        assert result._session is session
+        assert result['plan_digest']==digest(p) and result['intent_digest']==digest(r)
+        assert p['affected']['jobs']==[job_id] and r['actions']
+        assert p['proof_digest']==c['kernel_proof_digest']
+        assert r['before']['journal']==dict(state=journal_state,bytes_hex=old_journal.hex())
+        recovery.validate_b2_record('p1_recoveries',r)
+        assert recovery.verify_abandon_plan(roots,session.db,scope,c['kernel_proof']['observation'],
+            p['id'],digest(p),proof_digest=c['kernel_proof_digest'])==p
+        with recovery._archive_database(owned._raw) as archive:
+            assert archive.execute('SELECT record,digest FROM p1_abandon_plans WHERE id=?',(p['id'],)).fetchone()==(encode(p),digest(p))
+            assert archive.execute('SELECT count(*) FROM p1_recoveries').fetchone()==(0,)
+            assert archive.execute('SELECT count(*) FROM p1_recovery_steps').fetchone()==(0,)
+        assert not list(roots['receipts'].glob('p1-recovery-*'))
+        assert session.db.execute('SELECT count(*) FROM p1_recoveries').fetchone()==(0,)
+        charges=sum(json.loads(row[2])['disk_bytes'] for row in r['before']['source']['data']['resource_reservations'])
+        bound=_maintenance_footprint((roots['control']/'core',roots['staging']),r['highwater'],charges,r['budget_before'])
+        def forbidden(*args):raise AssertionError('production frozen snapshot recaptured')
+        recovery._capture_original_snapshot=forbidden
+        from service import resource_store
+        scan=resource_store._recovery_scan;observed_scans=[]
+        def observed(db,scan_roots,intent):
+            if scan_roots[0]==roots['control']/'core':observed_scans.append(_measure_recovery_roots(scan_roots))
+            return scan(db,scan_roots,intent)
+        resource_store._recovery_scan=observed
+        completed=session.continue_kernel(r,prepared=owned)
+        assert completed['status']=='complete' and len(observed_scans)==1
+        with closing(sqlite3.connect(roots['control']/'core'/'core.sqlite')) as db:
+            for table,rows in r['expected'][3]['output']['rows'].items():
+                assert encode(db.execute('SELECT * FROM '+table+' ORDER BY rowid').fetchall())==encode(rows)
+            for table in ('dispatches','dispatch_commands','events','assets','artifacts','publications','publication_work','p1_inventory_history'):
+                assert encode(db.execute('SELECT * FROM '+table+' ORDER BY rowid').fetchall())==encode(r['before']['source']['data'][table])
+            assert db.execute('SELECT count(*) FROM p1_recoveries').fetchone()==(1,)
+            assert db.execute('SELECT count(*) FROM p1_recovery_steps').fetchone()==(5,)
+            assert recovery.completion_binding(db,roots['control']/'core')['epoch']==p['new_epoch']
+        actual=_measure_recovery_roots((roots['control']/'core',roots['staging']))
+        assert max(actual,r['highwater'])==r['highwater']
+        assert charges==sum(json.loads(row[2])['disk_bytes'] for row in r['expected'][3]['output']['rows']['resource_reservations'])
+        assert r['budget_before']==r['budget_after']==DEFAULT_BUDGET
+        names=recovery.archive_names(r)
+        sizes={k:(roots['control']/'core'/n).stat().st_size for n,k in names.items()}
+        assert (roots['receipts']/('p1-recovery-'+r['id']+'.snapshot.bundle')).read_bytes()==owned._raw
+        assert hashlib.sha256(owned._raw).hexdigest()==r['expected'][1]['output']['snapshot_digest']
+        metrics.write_text(encode(dict(kind=kind,journal=journal_state,**bound,B=DEFAULT_BUDGET['disk_bytes'],
+            S=sizes['snapshot'],J=sizes['manifest'],K=sizes['certificate'],observed_all=actual,observed_scan=observed_scans[0],M_early=early_bound['measured'],U_early=early_bound['upper'])))
+        return result
+    monkeypatch.setattr(recovery,'_prepare_abandon_locked',finish,raising=False)
+    result=recovery._prepare_abandon(roots,scope,profiles=profiles,budget=DEFAULT_BUDGET,diagnostic_decisions=[])
+    assert result['intent']['actions'] and logical(roots)!=before
+    print(metrics.read_text())
+
+
+@pytest.mark.parametrize('failure',['low-H','quota','free','configuration','origin','foreign','schema','index','view','journal-symlink','journal-large','live','omitted','purpose','sidecar','sidecar-large'])
+def test_lotp_early_refusals_precede_original_writer(b23_host,installation,monkeypatch,failure,tmp_path):
+    h=b23_host;roots,scope,profiles,_=installation
+    _lotp_population(installation,highwater=(1024 if failure=='low-H' else 64*1024**2 if failure=='quota' else 20*1024**2))
+    c=_lotp_transport(h,monkeypatch)
+    root=roots['control']/'core'
+    if failure=='origin':
+        with closing(sqlite3.connect(root/'core.sqlite')) as db,db:db.execute("UPDATE resource_reservations SET state='executing'")
+    elif failure=='foreign':(roots['staging']/'foreign').write_bytes(b'unknown')
+    elif failure=='schema':
+        with closing(sqlite3.connect(root/'core.sqlite')) as db,db:db.execute('CREATE TABLE unknown_refs(id TEXT)')
+    elif failure in ('index','view'):
+        with closing(sqlite3.connect(root/'core.sqlite')) as db,db:
+            db.execute('CREATE INDEX foreign_index ON jobs(id)' if failure=='index' else 'CREATE VIEW foreign_view AS SELECT * FROM jobs')
+    elif failure=='journal-symlink':
+        (roots['receipts']/'journal.json').unlink();(roots['receipts']/'journal.json').symlink_to(roots['receipts']/'p1-init.json')
+    elif failure=='journal-large':(roots['receipts']/'journal.json').write_bytes(b'x'*(1024**2+1))
+    elif failure=='sidecar':(root/'core.sqlite-unknown').write_bytes(b'unknown')
+    elif failure=='sidecar-large':
+        with (root/'core.sqlite-wal').open('wb') as stream:stream.truncate(4_194_305)
+    elif failure=='free':
+        monkeypatch.setattr(recovery.os,'statvfs',lambda path:type('Free',(),dict(f_bavail=0,f_frsize=4096))())
+    elif failure in ('live','omitted','purpose'):
+        c=copy.deepcopy(c)
+        if failure=='live':c['kernel_proof']['observation']['states'][0]['running']=True
+        elif failure=='omitted':c['kernel_proof']['observation']['containers'].pop()
+        else:c['purpose']=dict(kind='initial',plan_id='a'*32,plan_digest='a'*64)
+        c['kernel_proof_digest']=digest(c['kernel_proof'])
+        directory=h['base']/'invocations'/c['invocation_id'];(directory/'capsule.json').write_text(encode(c))
+    before=logical(roots) if failure!='sidecar-large' else (root/'core.sqlite').read_bytes()
+    receipt_before={p.name:p.read_bytes() for p in roots['receipts'].iterdir() if not p.is_symlink()}
+    original=sqlite3.connect;trap=tmp_path/'unexpected-original-open'
+    def connect(database,*args,**kw):
+        if str(database)==(root/'core.sqlite').as_uri()+'?mode=rw&vfs=unix':
+            trap.write_text('original writable open before early refusal');raise AssertionError('original writer')
+        return original(database,*args,**kw)
+    monkeypatch.setattr(sqlite3,'connect',connect)
+    with pytest.raises(ValueError):
+        recovery._prepare_abandon(roots,scope,profiles=[] if failure=='configuration' else profiles,
+            budget=DEFAULT_BUDGET,diagnostic_decisions=[])
+    assert not trap.exists()
+    assert before==(logical(roots) if failure!='sidecar-large' else (root/'core.sqlite').read_bytes())
+    assert receipt_before=={p.name:p.read_bytes() for p in roots['receipts'].iterdir() if not p.is_symlink()}
+
+
+@pytest.mark.parametrize('failure',['rehearsal','snapshot','manifest','certificate','history'])
+def test_lotp_late_refusal_retains_unaccepted_plan(b23_host,installation,monkeypatch,failure):
+    h=b23_host;roots,scope,profiles,_=installation
+    _lotp_population(installation);_lotp_transport(h,monkeypatch)
+    if failure=='manifest':(roots['receipts']/'journal.json').write_bytes(b'x'*40000)
+    if failure=='rehearsal':
+        def fail(*args):raise sqlite3.OperationalError('modeled private capacity failure')
+        monkeypatch.setattr(recovery,'_write_core_completion',fail)
+    elif failure=='snapshot':monkeypatch.setattr(recovery,'MAINTENANCE_SNAPSHOT_LIMIT',1024)
+    elif failure=='certificate':
+        certificate=recovery._certificate
+        monkeypatch.setattr(recovery,'_certificate',lambda *args:{**certificate(*args),'oversize':'x'*65536})
+    elif failure=='history':
+        validate=recovery.validate_b2_database
+        def fail(db,*args,**kw):
+            if db.execute("SELECT 1 FROM sqlite_master WHERE name='p1_recoveries'").fetchone() and db.execute('SELECT 1 FROM p1_recoveries').fetchone():
+                raise ValueError('modeled prospective history ceiling')
+            return validate(db,*args,**kw)
+        monkeypatch.setattr(recovery,'validate_b2_database',fail)
+    with pytest.raises(ValueError):recovery._prepare_abandon(roots,scope,profiles=profiles,budget=DEFAULT_BUDGET,diagnostic_decisions=[])
+    assert not list(roots['receipts'].glob('p1-recovery-*'))
+    with closing(sqlite3.connect(roots['control']/'core'/'core.sqlite')) as db:
+        assert db.execute('SELECT count(*) FROM p1_abandon_plans').fetchone()==(1,)
+        assert db.execute('SELECT count(*) FROM p1_recoveries').fetchone()==(0,)
+        assert db.execute('SELECT count(*) FROM p1_recovery_steps').fetchone()==(0,)
+        assert db.execute('SELECT highwater FROM resource_accounting').fetchone()==(20*1024**2,)
+        assert db.execute('SELECT state FROM resource_monitor').fetchone()==('checking',)
+
+
+@pytest.mark.parametrize('tamper',['expected','source','later-plan','new-defect','journal','plan','snapshot'])
+def test_lotp_frozen_output_and_source_oracles(b23_host,installation,monkeypatch,tamper):
+    h=b23_host;roots,scope,profiles,_=installation
+    _lotp_population(installation,'running');_lotp_transport(h,monkeypatch)
+    prepare=recovery._prepare_abandon_locked
+    def inspect(session,**request):
+        result=prepare(session,**request);r=result['intent'];p=result['plan']
+        if tamper=='expected':
+            row=r['expected'][3]['output']['rows']['jobs'][0];job=json.loads(row[6]);job['attempts']=[];row[6]=encode(job)
+            previous=r['before_digest']
+            for descriptor in r['expected']:
+                if descriptor['step']=='receipt-complete':descriptor['output']['core_output_digest']=previous
+                descriptor['input_digest']=previous
+                descriptor['output_digest']=digest({k:v for k,v in descriptor.items() if k!='output_digest'});previous=descriptor['output_digest']
+        elif tamper=='source':session.db.execute("UPDATE resource_monitor SET state='fault'")
+        elif tamper=='later-plan':
+            other={**p,'id':'f'*32};session.db.execute('INSERT INTO p1_abandon_plans VALUES(?,?,?)',(other['id'],encode(other),digest(other)))
+        elif tamper=='new-defect':(roots['staging']/'new-foreign').write_bytes(b'new')
+        elif tamper=='journal':(roots['receipts']/'journal.json').write_bytes(b'new defect')
+        elif tamper=='plan':session.db.execute('DELETE FROM p1_abandon_plans')
+        else:result._snapshot._raw=b'changed'+result._snapshot._raw[7:]
+        with pytest.raises((ValueError,FileNotFoundError)):
+            session.continue_kernel(r,prepared=result._snapshot)
+        assert not list(roots['receipts'].glob('p1-recovery-*'))
+        assert session.db.execute('SELECT count(*) FROM p1_recoveries').fetchone()==(0,)
+        return result
+    monkeypatch.setattr(recovery,'_prepare_abandon_locked',inspect)
+    assert recovery._prepare_abandon(roots,scope,profiles=profiles,budget=DEFAULT_BUDGET,diagnostic_decisions=[])['intent']
+
+
+@pytest.mark.parametrize('point',['bundle-parent','core-intent-commit'])
+def test_lotp_production_intent_actual_death_fresh_resume(b23_host,installation,monkeypatch,point):
+    import subprocess,sys
+    h=b23_host;roots,scope,profiles,_=installation
+    _lotp_population(installation,'running');_lotp_transport(h,monkeypatch)
+    prepare=recovery._prepare_abandon_locked
+    def die(session,**request):
+        result=prepare(session,**request)
+        def fault(where):
+            if where==point:os._exit(73)
+        session.continue_kernel(result['intent'],prepared=result._snapshot,fault=fault)
+        raise AssertionError('death boundary not reached')
+    monkeypatch.setattr(recovery,'_prepare_abandon_locked',die)
+    with pytest.raises(ValueError,match='child_failed'):
+        recovery._prepare_abandon(roots,scope,profiles=profiles,budget=DEFAULT_BUDGET,diagnostic_decisions=[])
+    # No generated document or snapshot is passed to the NEW interpreter.
+    script=r'''
+import json,os,resource,sys
+from pathlib import Path
+from service import recovery
+v=json.load(sys.stdin);roots={k:Path(p) for k,p in v['roots'].items()};scope=v['scope']
+sys.platform='linux';resource.setrlimit=lambda *a:None;resource.getrlimit=lambda *a:(4_194_304,)*2
+recovery._maintenance_filesystems=lambda roots:None;recovery._maintenance_task_count=lambda:1
+path=next(roots['receipts'].glob('*.intent.json'))
+paths=list(roots['receipts'].glob('p1-recovery-*.intent.json'))
+paths=[p for p in paths if p.name.count('.')==2]
+assert len(paths)==1
+accepted=json.loads(recovery.read_file(paths[0]));identity=accepted['id']
+regs=[json.loads(r[1]) for r in accepted['before']['source']['data']['p1_registrations']]
+capsule=dict(scope=scope,registrations=regs,registration_digest=recovery.host_registration_digest(regs),
+    kernel_proof=accepted['proof'],kernel_proof_digest=accepted['proof_digest'],
+    purpose=dict(kind='resume',plan_id=accepted['plan_id'],plan_digest=accepted['plan_digest']))
+# Explicit E1 fresh transport model; durable authority itself is real owned data.
+recovery.read_host_capsule=lambda:capsule
+bundle=roots['receipts']/('p1-recovery-'+identity+'.snapshot.bundle');raw=bundle.read_bytes()
+for _ in range(2):
+    def resume(session):
+        owned=json.loads(recovery.read_file(paths[0]))
+        assert session.continue_kernel(owned)['status']=='complete'
+        return True
+    assert recovery._run_bounded_maintenance(roots,scope,resume)
+    assert bundle.read_bytes()==raw and recovery.read_file(paths[0])==recovery.encode(accepted).encode()
+'''
+    child=subprocess.run([sys.executable,'-c',script],input=encode(dict(roots={k:str(p) for k,p in roots.items()},scope=scope)),
+        capture_output=True,text=True,timeout=60)
+    assert child.returncode==0,child.stderr
+    with closing(sqlite3.connect(roots['control']/'core'/'core.sqlite')) as db:
+        assert db.execute('SELECT count(*) FROM p1_recoveries').fetchone()==(1,)
+        assert db.execute('SELECT count(*) FROM p1_recovery_steps').fetchone()==(5,)
+
+
+@pytest.mark.parametrize('decision_case',['exact','missing','extra','content','reason','availability'])
+def test_lotp_degraded_terminal_exact_decisions(b23_host,installation,monkeypatch,decision_case):
+    roots,scope,profiles,_=installation;h=b23_host
+    job_id=terminal_enrolled(installation);root=roots['control']/'core'
+    asset=next(p for p in (root/'assets').iterdir() if p.is_file());asset_id=asset.name;asset.unlink()
+    core=Core(root)
+    try:
+        assert Reconciliation(core,roots['staging']).reconcile_startup()['blocked']
+        row=next(json.loads(raw) for (raw,) in core.db.execute('SELECT record FROM p1_inventory_objects')
+            if json.loads(raw)['classification']=='missing_hash_mismatched_terminal')
+    finally:core.close()
+    # Seed retained H before preparation; no expected outputs or intent supplied.
+    with closing(sqlite3.connect(root/'core.sqlite')) as db,db:
+        db.execute('UPDATE resource_accounting SET highwater=?',(20*1024**2,))
+        terminal=db.execute('SELECT * FROM jobs WHERE id=?',(job_id,)).fetchone()
+    _lotp_transport(h,monkeypatch)
+    decision=dict(object_id=row['id'],reason=row['reason'],content_digest=recovery.diagnostic_digest(row),
+        decision='accept-degraded',availability='unavailable')
+    decisions=[decision]
+    if decision_case=='missing':decisions=[]
+    elif decision_case=='extra':decisions.append({**decision,'object_id':'e'*64})
+    elif decision_case=='content':decision['content_digest']='f'*64
+    elif decision_case=='reason':decision['reason']='changed'
+    elif decision_case=='availability':decision['availability']='retained'
+    before=logical(roots)
+    if decision_case!='exact':
+        with pytest.raises(ValueError):recovery._prepare_abandon(roots,scope,profiles=profiles,budget=DEFAULT_BUDGET,diagnostic_decisions=decisions)
+        assert logical(roots)==before
+        return
+    prepare=recovery._prepare_abandon_locked
+    def finish(session,**request):
+        result=prepare(session,**request)
+        assert session.continue_kernel(result['intent'],prepared=result._snapshot)['status']=='complete'
+        return result
+    monkeypatch.setattr(recovery,'_prepare_abandon_locked',finish)
+    result=recovery._prepare_abandon(roots,scope,profiles=profiles,budget=DEFAULT_BUDGET,diagnostic_decisions=decisions)
+    assert result['intent']['actions']==[dict(job_id=job_id,action='retain-terminal',before_digest=digest(json.loads(terminal[6])))]
+    for _ in range(2):
+        core=Core(root)
+        try:
+            assert core.db.execute('SELECT * FROM jobs WHERE id=?',(job_id,)).fetchone()==terminal
+            scan=Reconciliation(core,roots['staging']).reconcile_startup()
+            assert scan['complete'] and not scan['blocked']
+            with pytest.raises((ValueError,FileNotFoundError)):core.asset(asset_id)
+        finally:core.close()
+
+
+def test_lotp_single_immutable_plan_proof_first_and_preaccept_exit(b23_host,installation,monkeypatch,tmp_path):
+    import subprocess,sys
+    h=b23_host;roots,scope,profiles,_=installation
+    _lotp_population(installation,'running');capsule=_lotp_transport(h,monkeypatch)
+    original=sqlite3.connect;trace=tmp_path/'plan-trace';unaccepted=tmp_path/'unaccepted.json'
+    class Audit(sqlite3.Connection):
+        def execute(self,sql,*args,**kw):
+            if 'p1_abandon_plans' in sql and sql.startswith(('INSERT','UPDATE','DELETE')):
+                assert sql.startswith('INSERT')
+                value=json.loads(args[0][1]);assert value['proof_digest']==capsule['kernel_proof_digest']
+                with trace.open('a') as stream:stream.write('insert\n')
+            if sql.startswith('UPDATE resource_accounting'):raise AssertionError('preparation H update')
+            return super().execute(sql,*args,**kw)
+    def connect(database,*args,**kw):
+        if str(database)==(roots['control']/'core'/'core.sqlite').as_uri()+'?mode=rw&vfs=unix':kw['factory']=Audit
+        return original(database,*args,**kw)
+    monkeypatch.setattr(sqlite3,'connect',connect)
+    prepare=recovery._prepare_abandon_locked
+    def die(session,**request):
+        result=prepare(session,**request)
+        unaccepted.write_text(encode(result))
+        assert not list(roots['receipts'].glob('p1-recovery-*'))
+        os._exit(73)
+    monkeypatch.setattr(recovery,'_prepare_abandon_locked',die)
+    with pytest.raises(ValueError,match='child_failed'):
+        recovery._prepare_abandon(roots,scope,profiles=profiles,budget=DEFAULT_BUDGET,diagnostic_decisions=[])
+    assert trace.read_text()=='insert\n'
+    assert not list(roots['receipts'].glob('p1-recovery-*'))
+    # Fresh process has no snapshot authority. A physical recapture with changed
+    # bytes cannot remint the frozen intent hash, even if the SQL source is equal.
+    script=r'''
+import json,os,resource,sys
+from pathlib import Path
+from service import recovery
+v=json.load(sys.stdin);roots={k:Path(p) for k,p in v['roots'].items()};scope=v['scope']
+r=json.loads(Path(v['document']).read_text())['intent']
+sys.platform='linux';resource.setrlimit=lambda *a:None;resource.getrlimit=lambda *a:(4_194_304,)*2
+recovery._maintenance_filesystems=lambda roots:None;recovery._maintenance_task_count=lambda:1
+regs=[json.loads(row[1]) for row in r['before']['source']['data']['p1_registrations']]
+recovery.read_host_capsule=lambda:dict(scope=scope,registrations=regs,registration_digest=recovery.host_registration_digest(regs),
+    kernel_proof=r['proof'],kernel_proof_digest=r['proof_digest'],purpose=dict(kind='initial',plan_id=r['plan_id'],plan_digest=r['plan_digest']))
+def missing(session):
+    try:session.continue_kernel(r)
+    except FileNotFoundError:return True
+    raise AssertionError('unaccepted RAM document became restart authority')
+assert recovery._run_bounded_maintenance(roots,scope,missing)
+capture=recovery._capture_original_snapshot
+def changed(*args):
+    raw=bytearray(capture(*args));raw[24]^=1;return bytes(raw)
+recovery._capture_original_snapshot=changed
+def mismatch(session):
+    owned=session.capture(r['plan_id'],r['plan_digest'])
+    assert owned.sha256!=r['expected'][1]['output']['snapshot_digest']
+    try:session.continue_kernel(r,prepared=owned)
+    except ValueError:return True
+    raise AssertionError('hash mismatch accepted')
+assert recovery._run_bounded_maintenance(roots,scope,mismatch)
+assert not list(roots['receipts'].glob('p1-recovery-*'))
+'''
+    child=subprocess.run([sys.executable,'-c',script],input=encode(dict(roots={k:str(p) for k,p in roots.items()},scope=scope,document=str(unaccepted))),
+        capture_output=True,text=True,timeout=60)
+    assert child.returncode==0,child.stderr
+
+
+@pytest.mark.parametrize('point',['accepted-parent','bundle-intent-recorded','bundle-parent','core-intent-write',
+    'core-intent-commit','pending-receipt-commit','evidence-receipt-commit','journal-receipt-commit',
+    'core-complete-write','core-complete-commit','completion-fence-dirsync','receipt-complete-commit'])
+def test_lotp_production_intent_faults_no_partial_authority(b23_host,installation,monkeypatch,point):
+    h=b23_host;roots,scope,profiles,_=installation
+    _lotp_population(installation,'running');_lotp_transport(h,monkeypatch)
+    prepare=recovery._prepare_abandon_locked
+    fired=roots['control'].parent/'fault-fired'
+    def interrupt(session,**request):
+        result=prepare(session,**request)
+        def fault(where):
+            if where==point:
+                fired.write_text(where);raise OSError('modeled I/O interruption')
+        with pytest.raises(OSError):session.continue_kernel(result['intent'],prepared=result._snapshot,fault=fault)
+        with pytest.raises(ValueError,match='session_closed'):session.continue_kernel(result['intent'],prepared=result._snapshot)
+        return result
+    monkeypatch.setattr(recovery,'_prepare_abandon_locked',interrupt)
+    result=recovery._prepare_abandon(roots,scope,profiles=profiles,budget=DEFAULT_BUDGET,diagnostic_decisions=[])
+    assert fired.read_text()==point
+    with closing(sqlite3.connect(roots['control']/'core'/'core.sqlite')) as db:
+        completed=db.execute("SELECT 1 FROM p1_recovery_steps WHERE step='core-complete'").fetchone() is not None
+        assert completed==(point in ('core-complete-commit','completion-fence-dirsync','receipt-complete-commit'))
+        rows=result['intent']['expected'][3]['output']['rows'] if completed else result['intent']['before']['source']['data']
+        for table in recovery.CORE_OUTPUT_TABLES:
+            assert encode(db.execute('SELECT * FROM '+table+' ORDER BY rowid').fetchall())==encode(rows[table])
+
+
+@pytest.mark.parametrize('change',['none','delete','content','append'])
+def test_lotp_prior_history_exact_exclusion(b23_host,installation,monkeypatch,change):
+    h=b23_host;roots,scope,profiles,_=installation
+    _lotp_population(installation);c=_lotp_transport(h,monkeypatch)
+    prior=recovery.plan(roots,scope,c['kernel_proof']['observation'])['plan']
+    prepare=recovery._prepare_abandon_locked
+    def inspect(session,**request):
+        result=prepare(session,**request);p=result['plan'];r=result['intent']
+        assert len(r['before']['source']['data']['p1_recovery_plans'])==1
+        assert not r['before']['source']['data']['p1_abandon_plans']
+        if change=='delete':session.db.execute('DELETE FROM p1_recovery_plans')
+        elif change=='content':
+            old={**prior,'created':prior['created']+1,'expires':prior['expires']+1}
+            session.db.execute('UPDATE p1_recovery_plans SET record=?,digest=?',(encode(old),digest(old)))
+        elif change=='append':
+            old={**prior,'id':'a'*32};session.db.execute('INSERT INTO p1_recovery_plans VALUES(?,?,?)',(old['id'],encode(old),digest(old)))
+        def verify():return recovery.verify_abandon_plan(roots,session.db,scope,c['kernel_proof']['observation'],p['id'],digest(p),proof_digest=c['kernel_proof_digest'])
+        if change=='none':assert verify()==p
+        else:
+            with pytest.raises(ValueError):verify()
+        return result
+    monkeypatch.setattr(recovery,'_prepare_abandon_locked',inspect)
+    assert recovery._prepare_abandon(roots,scope,profiles=profiles,budget=DEFAULT_BUDGET,diagnostic_decisions=[])['intent']
+
+
+@pytest.mark.parametrize('argument',['actions','before','expected','snapshot_bytes','proof','now','highwater','limit','capability','budget_after'])
+def test_lotp_closed_request_cannot_supply_authority(installation,argument):
+    roots,scope,profiles,_=installation
+    before=logical(roots)
+    with pytest.raises(TypeError):recovery._prepare_abandon(roots,scope,profiles=profiles,budget=DEFAULT_BUDGET,diagnostic_decisions=[],**{argument:True})
+    assert logical(roots)==before
+
+
+@pytest.mark.parametrize('journal_state',['valid','missing','unreadable'])
+@pytest.mark.parametrize('damage',['none','old-archive','old-descriptor','result-budget'])
+def test_lotp_completed_history_preparation(b23_host,installation,monkeypatch,damage,journal_state):
+    h=b23_host;roots,scope,profiles,_=installation
+    # Small retained history stays within K's unchanged 64KiB result cap.
+    if damage=='result-budget':_lotp_population(installation)
+    with closing(sqlite3.connect(roots['control']/'core'/'core.sqlite')) as db,db:
+        db.execute('UPDATE resource_accounting SET highwater=?',(20*1024**2,))
+    _lotp_transport(h,monkeypatch)
+    prepare=recovery._prepare_abandon_locked
+    def finish(session,**request):
+        result=prepare(session,**request)
+        assert session.continue_kernel(result['intent'],prepared=result._snapshot)['status']=='complete'
+        return result
+    monkeypatch.setattr(recovery,'_prepare_abandon_locked',finish)
+    first=recovery._prepare_abandon(roots,scope,profiles=profiles,budget=DEFAULT_BUDGET,diagnostic_decisions=[])
+    # A distinct owner incarnation for the new lane; all old stopped owners and
+    # their protected registration provenance are retained in the host union.
+    reg=copy.deepcopy(h['registration']);reg['lane']=first['intent']['new_lane'];reg['boot']='e'*32
+    for index,owner in enumerate(reg['containers']):
+        owner['id']=('e' if index==0 else 'f')*64;owner['started']=f'2026-10-17T03:00:0{index}Z'
+    recovery.register(roots,scope,reg)
+    provenance=copy.deepcopy(h['provenance']);provenance['registration_digest']=digest(reg)
+    provenance['hello']={k:reg[k] for k in ('lane','boot')}
+    for owner,c in zip(provenance['owners'],reg['containers']):owner.update(id=c['id'],started=c['started'],cgroup='/docker/'+c['id'])
+    h['module']._host_write(h['base']/('registration-'+digest(reg)+'.json'),provenance)
+    for old,c in zip(copy.deepcopy(h['consumers']),reg['containers']):
+        old.update(id=c['id'],started=c['started'],finished='2026-10-17T04:00:00Z')
+        h['consumers'].append(old)
+    h['state']=h['module'].host_state(roots,scope)
+    h['request']['registration_digest']=recovery.host_registration_digest(h['state']['registrations'])
+    _lotp_transport(h,monkeypatch)
+    if journal_state=='missing':(roots['receipts']/'journal.json').unlink()
+    elif journal_state=='unreadable':(roots['receipts']/'journal.json').write_bytes(b'bounded damaged later journal')
+    if damage=='old-archive':next((roots['control']/'core').glob('*.manifest.json')).write_bytes(b'changed')
+    elif damage=='old-descriptor':next(roots['receipts'].glob('*.core-certificate.intent.json')).unlink()
+    before=logical(roots)
+    if damage!='none':
+        with pytest.raises(ValueError):recovery._prepare_abandon(roots,scope,profiles=profiles,budget=DEFAULT_BUDGET,diagnostic_decisions=[])
+        if damage=='result-budget':
+            with closing(sqlite3.connect(roots['control']/'core'/'core.sqlite')) as db:
+                assert db.execute('SELECT count(*) FROM p1_abandon_plans').fetchone()==(2,)
+                assert db.execute('SELECT count(*) FROM p1_recoveries').fetchone()==(1,)
+                assert db.execute('SELECT count(*) FROM p1_recovery_steps').fetchone()==(5,)
+        else:assert logical(roots)==before
+        return
+    second=recovery._prepare_abandon(roots,scope,profiles=profiles,budget=DEFAULT_BUDGET,diagnostic_decisions=[])
+    assert second['intent']['prior_epoch']==first['intent']['new_epoch']
+    assert second['intent']['old_lane']==first['intent']['new_lane']
+    with closing(sqlite3.connect(roots['control']/'core'/'core.sqlite')) as db:
+        assert db.execute('SELECT count(*) FROM p1_recoveries').fetchone()==(2,)
+        assert db.execute('SELECT count(*) FROM p1_recovery_steps').fetchone()==(10,)
+
+
+def test_lotp_rehearsal_connections_hardened_at_actual_use(b23_host,installation,monkeypatch):
+    roots,scope,profiles,_=installation;h=b23_host
+    _lotp_population(installation,'running');_lotp_transport(h,monkeypatch)
+    connect=sqlite3.connect;opened=[];inserts=[]
+    class Audit(sqlite3.Connection):
+        checked=False;reader_checked=False;explicitly_closed=False
+        def audit(self):
+            for sql in ("ATTACH ':memory:' AS extra_db",'DETACH extra_db','PRAGMA mmap_size=1048576',
+                'PRAGMA journal_mode=DELETE','PRAGMA max_page_count=10','PRAGMA query_only=OFF',"SELECT load_extension('foreign')"):
+                with pytest.raises(sqlite3.DatabaseError):super().execute(sql)
+            assert super().execute('PRAGMA trusted_schema').fetchone()==(0,)
+            assert super().execute('PRAGMA temp_store').fetchone()==(2,)
+            assert super().execute('PRAGMA mmap_size').fetchone()==(0,)
+        def execute(self,sql,*args,**kw):
+            if not self.checked and sql.startswith('INSERT INTO p1_recoveries '):
+                self.checked=True;self.audit();inserts.append(self)
+            if not self.reader_checked and (sql.lower().startswith('pragma table_info') or sql.startswith('SELECT record FROM p1_registrations')):
+                self.reader_checked=True;self.audit()
+            return super().execute(sql,*args,**kw)
+        def backup(self,target,*args,**kw):
+            self.reader_checked=True;self.audit();target.reader_checked=True;target.audit()
+            return super().backup(target,*args,**kw)
+        def close(self):
+            self.explicitly_closed=True;return super().close()
+    def audited(database,*args,**kw):
+        text=str(database)
+        if any(tag in text for tag in ('p1-evidence-','p1-inspect-','p1-rehearsal-')):
+            assert kw.get('uri') and 'vfs=unix' in text
+            kw['factory']=Audit;db=connect(database,*args,**kw);opened.append(db);return db
+        return connect(database,*args,**kw)
+    monkeypatch.setattr(sqlite3,'connect',audited)
+    prepare=recovery._prepare_abandon_locked
+    def finish(session,**request):
+        result=prepare(session,**request)
+        assert session.continue_kernel(result['intent'],prepared=result._snapshot)['status']=='complete'
+        assert len(inserts)==2  # concrete rehearsal + original kernel's prospective writer
+        assert opened and all(db.checked or db.reader_checked for db in opened)
+        for db in opened:
+            assert db.explicitly_closed
+            with pytest.raises(sqlite3.ProgrammingError):db.execute('SELECT 1')
+        return result
+    monkeypatch.setattr(recovery,'_prepare_abandon_locked',finish)
+    assert recovery._prepare_abandon(roots,scope,profiles=profiles,budget=DEFAULT_BUDGET,diagnostic_decisions=[])['intent']
+
+
+def test_lotp_preparation_alone_no_acceptance_or_ordinary_healing(b23_host,installation,monkeypatch):
+    from service.admission import Admission
+    h=b23_host;roots,scope,profiles,_=installation
+    _lotp_population(installation,'running');c=_lotp_transport(h,monkeypatch)
+    with closing(sqlite3.connect(roots['control']/'core'/'core.sqlite')) as db:
+        before={table:db.execute('SELECT * FROM '+table+' ORDER BY rowid').fetchall()
+            for table in (*recovery.CORE_OUTPUT_TABLES,'p1_integrity','dispatches','dispatch_commands','events')}
+    result=recovery._prepare_abandon(roots,scope,profiles=profiles,budget=DEFAULT_BUDGET,diagnostic_decisions=[])
+    assert set(result)=={'plan','plan_digest','intent','intent_digest'}
+    assert result['plan_digest']==digest(result['plan']) and result['intent_digest']==digest(result['intent'])
+    assert not list(roots['receipts'].glob('p1-recovery-*'))
+    assert not (roots['receipts']/'p1-b2-required.json').exists()
+    with recovery.offline(roots) as (_,db):
+        assert recovery.verify_abandon_plan(roots,db,scope,c['kernel_proof']['observation'],result['plan']['id'],result['plan_digest'],proof_digest=c['kernel_proof_digest'])==result['plan']
+        for table,rows in before.items():assert db.execute('SELECT * FROM '+table+' ORDER BY rowid').fetchall()==rows
+        assert db.execute('SELECT count(*) FROM p1_recoveries').fetchone()==(0,)
+        assert db.execute('SELECT count(*) FROM p1_recovery_steps').fetchone()==(0,)
+    for _ in range(2):
+        core=Core(roots['control']/'core')
+        try:
+            with pytest.raises(ValueError):Admission(core,roots['staging']).check()
+            assert Reconciliation(core,roots['staging']).reconcile_startup()['blocked']
+            assert core.db.execute('SELECT state FROM resource_monitor').fetchone()==('checking',)
+        finally:core.close()
+    with pytest.raises(NotImplementedError,match='P1B2_apply_unavailable'):recovery.apply(result)
+
+
+@pytest.mark.parametrize('failure',['expired','changed'])
+def test_lotp_final_capsule_revalidation_before_return(b23_host,installation,monkeypatch,failure):
+    h=b23_host;roots,scope,profiles,_=installation
+    _lotp_population(installation);c=_lotp_transport(h,monkeypatch)
+    rehearse=recovery._rehearse_preparation
+    def change(*args):
+        rehearse(*args)
+        altered=copy.deepcopy(c)
+        if failure=='expired':altered['issued']=0;altered['expires']=1
+        else:altered['collection_seconds']+=1
+        (h['base']/'invocations'/c['invocation_id']/'capsule.json').write_text(encode(altered))
+    monkeypatch.setattr(recovery,'_rehearse_preparation',change)
+    with pytest.raises(ValueError):recovery._prepare_abandon(roots,scope,profiles=profiles,budget=DEFAULT_BUDGET,diagnostic_decisions=[])
+    assert not list(roots['receipts'].glob('p1-recovery-*'))
+    with closing(sqlite3.connect(roots['control']/'core'/'core.sqlite')) as db:
+        assert db.execute('SELECT count(*) FROM p1_abandon_plans').fetchone()==(1,)
+        assert db.execute('SELECT count(*) FROM p1_recoveries').fetchone()==(0,)
+        assert db.execute('SELECT state FROM resource_monitor').fetchone()==('checking',)
