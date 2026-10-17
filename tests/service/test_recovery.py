@@ -3599,3 +3599,16 @@ def test_lotk_declared_ext4_namespace_only(monkeypatch,filesystem,nested):
     if filesystem=='ext4' and not nested:recovery._maintenance_filesystems(roots)
     else:
         with pytest.raises(ValueError,match='maintenance_(filesystem|submount)'):recovery._maintenance_filesystems(roots)
+
+
+def test_lotk_original_connection_pins_standard_unix_vfs(installation,monkeypatch):
+    roots,scope,_,_=installation
+    intent,_,_=core_fixture(installation)
+    _lotk_model(monkeypatch,roots,scope,intent)
+    original=recovery.sqlite3.connect;path=roots['control']/'core'/'core.sqlite'
+    def pinned(database,*args,**kwargs):
+        if str(database).startswith(path.as_uri()) and 'mode=rw' in str(database):
+            assert str(database).endswith('&vfs=unix'),'bounded original relied on an unknown default VFS'
+        return original(database,*args,**kwargs)
+    monkeypatch.setattr(recovery.sqlite3,'connect',pinned)
+    assert recovery._run_bounded_maintenance(roots,scope,lambda session:True)

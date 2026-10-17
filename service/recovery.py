@@ -286,7 +286,7 @@ def _capture_original_snapshot(roots, db, maximum):
             if total*db.execute('PRAGMA page_size').fetchone()[0]>maximum or time.monotonic()>deadline:
                 raise ValueError('b2_prefix_snapshot_budget')
         with private_database(roots['control']/'core'/'core.sqlite') as private_path:
-            with closing(sqlite3.connect(private_path.as_uri()+'?mode=ro',uri=True)) as source, closing(sqlite3.connect(path)) as target:
+            with closing(sqlite3.connect(private_path.as_uri()+'?mode=ro&vfs=unix',uri=True)) as source, closing(sqlite3.connect(path.as_uri()+'?mode=rwc&vfs=unix',uri=True)) as target:
                 _maintenance_connection(source)
                 _maintenance_connection(target)
                 source.backup(target,pages=64,progress=progress)
@@ -399,7 +399,7 @@ def _maintenance_session(roots, scope, process):
         # Check retained full-owner coverage and WAL/schema on protected copies
         # before the FIRST original writable connection.
         with private_database(root/'core.sqlite') as private:
-            with closing(sqlite3.connect(private.as_uri()+'?mode=ro',uri=True)) as check:
+            with closing(sqlite3.connect(private.as_uri()+'?mode=ro&vfs=unix',uri=True)) as check:
                 _maintenance_connection(check)
                 if check.execute('PRAGMA journal_mode').fetchone()!=('wal',):raise ValueError('b2_maintenance_requires_wal')
                 registrations=check.execute('SELECT record FROM p1_registrations ORDER BY rowid LIMIT 2049').fetchall()
@@ -409,7 +409,7 @@ def _maintenance_session(roots, scope, process):
                         encode(retained)!=encode(capsule['registrations'])):
                     raise ValueError('b2_maintenance_registrations')
         process.verify(); _maintenance_files(root)
-        db=sqlite3.connect((root/'core.sqlite').as_uri()+'?mode=rw',uri=True,timeout=0,isolation_level=None)
+        db=sqlite3.connect((root/'core.sqlite').as_uri()+'?mode=rw&vfs=unix',uri=True,timeout=0,isolation_level=None)
         session=None
         try:
             _maintenance_connection(db,original=True)
