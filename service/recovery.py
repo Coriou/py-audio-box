@@ -1905,7 +1905,9 @@ def _pending_prefix_locked(roots,db,scope,intent,observation,*,now,snapshot_byte
             fault('recapture-after')
     if _entry_present(bundle_intent):
         _prefix_exact(bundle_intent,bundle_descriptor)
-        if not bundle.exists(): raise ValueError('b2_prefix_missing_bundle_quarantine')
+        if not bundle.exists() and _session is None: raise ValueError('b2_prefix_missing_bundle_quarantine')
+        # Preserve the owning seam's missing-file refusal after an attempt.
+        # The protected bounded read must fail; this never selects recapture.
         snapshot_raw=read_file(bundle,MAINTENANCE_SNAPSHOT_LIMIT if _session is not None else MAX_BYTES)
         _prefix_exact(bundle,snapshot_raw)
         if snapshot_bytes is not None and snapshot_bytes!=snapshot_raw: raise ValueError('b2_prefix_snapshot_changed')
