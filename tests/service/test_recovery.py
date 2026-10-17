@@ -4250,3 +4250,33 @@ def test_lotp_final_capsule_revalidation_before_return(b23_host,installation,mon
         assert db.execute('SELECT count(*) FROM p1_abandon_plans').fetchone()==(1,)
         assert db.execute('SELECT count(*) FROM p1_recoveries').fetchone()==(0,)
         assert db.execute('SELECT state FROM resource_monitor').fetchone()==('checking',)
+
+
+def test_lotp_capacity_rehearsal_preserves_actual_wal_prestate(b23_host,installation,monkeypatch):
+    h=b23_host;roots,scope,profiles,_=installation
+    _lotp_population(installation,'running');_lotp_transport(h,monkeypatch)
+    rehearse=recovery._rehearse_preparation;insert=recovery._insert_recovery;original_files={};seen=[]
+    def capture(session,*args):
+        root=roots['control']/'core'
+        original_files.update({name:recovery.read_file(root/name,4_194_304)
+            for name in ('core.sqlite','core.sqlite-wal','core.sqlite-shm')})
+        assert len(original_files['core.sqlite-wal'])>32
+        return rehearse(session,*args)
+    def check(db,intent):
+        path=Path(db.execute('PRAGMA database_list').fetchone()[2])
+        if path.parent.name.startswith('p1-rehearsal-'):
+            assert path.read_bytes()==original_files['core.sqlite']
+            assert (path.parent/'core.sqlite-wal').read_bytes()==original_files['core.sqlite-wal']
+            assert (path.parent/'core.sqlite-shm').stat().st_size==len(original_files['core.sqlite-shm'])
+            seen.append(True)
+        return insert(db,intent)
+    monkeypatch.setattr(recovery,'_rehearse_preparation',capture)
+    monkeypatch.setattr(recovery,'_insert_recovery',check)
+    prepare=recovery._prepare_abandon_locked
+    def verify(session,**request):
+        result=prepare(session,**request)
+        assert seen==[True]
+        assert not list(roots['receipts'].glob('p1-recovery-*'))
+        return result
+    monkeypatch.setattr(recovery,'_prepare_abandon_locked',verify)
+    assert recovery._prepare_abandon(roots,scope,profiles=profiles,budget=DEFAULT_BUDGET,diagnostic_decisions=[])['intent']

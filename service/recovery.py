@@ -2870,7 +2870,13 @@ def _rehearse_preparation(session,plan,intent,frozen):
         def copy(name,raw):
             if len(raw)>MAINTENANCE_FILE_LIMIT:raise ValueError('b2_maintenance_document')
             target=private/name;target.write_bytes(raw);target.chmod(0o600)
-        copy('core.sqlite',frozen._raw)
+        # Capacity starts from the actual writer's physical DB/WAL/SHM, not
+        # the normalized archive backup (which would erase retained WAL length).
+        # The latter remains the immutable evidence/hash and is never reminted.
+        with private_database(root/'core.sqlite') as physical:
+            for name in ('core.sqlite','core.sqlite-wal','core.sqlite-shm'):
+                path=physical.parent/name
+                if path.exists():copy(name,read_file(path,MAINTENANCE_FILE_LIMIT))
         for prior in histories:
             for name in archive_names(prior):copy(name,read_file(root/name,MAINTENANCE_FILE_LIMIT))
         names={kind:name for name,kind in archive_names(intent).items()}
