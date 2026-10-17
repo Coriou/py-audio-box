@@ -601,3 +601,9 @@ Record failures and missing evidence; do not replace them with a successful late
 
 - R2review reviews/P1B23K-r2-sol.md boundedsource/E1GO exact6456ff42 F1closed no newblocker;35target/885focused/1037fullpassed19skipped confirmed. Rootintegrated5commits ending35d0cab exactsource diffvsreviewedcandidateempty;35targetpass1skip11.87s actualLinuxcapstillpending.
 - NextisolatedSol-low request pab-phase1a-p1b23p-implementation-r1-20261017 ONLYPfullproductionpreparation underreviewedK perACCOUNTING-ASTRA tenstepbrief decisiveproductionnonemptypositive required. No partialalwaysrefusing59c4a7adoption/applyactivation. Independentreview/C1C2/finalAstralimits retained.
+
+## P production preparation candidate / independent review
+
+- Candidate32e609b215f862392d04b0d1f22cd65bc69a6e17 frozenbb6bd051 app-ownedt3-c5b26ca8; rootreadhandoff unintegrated. Actual3pathsrecovery/tests/report; nonemptyproductiongeneratedintent completes5kernelsteps claimed notfixturebuilder.
+- Claims124targetpass1skip/974focusedpass1skip/1126passed19skipped finalfrozen89newPcases. ActualWALrehearsalprestate defectfound/fixed beforehandoff; limits Linux/hostE1modelsstillunqualified.
+- FreshSol-low request pab-phase1a-p1b23p-review-r1-20261017 report reviews/P1B23P-r1-sol.md fullAstraPbrief/candidate/limits supplied. Applyunavailable activationclosed no integration/waiver.
