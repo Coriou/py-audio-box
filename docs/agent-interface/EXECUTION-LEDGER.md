@@ -574,3 +574,9 @@ Record failures and missing evidence; do not replace them with a successful late
 - Candidate59c4a7373f899f1397277ba4a5a290390c3201bf frozena7d92dc app-ownedt3-277fefd5; rootreadhandoff unintegrated. Sharedmeasurement/refusalONLY no productionintentpositive; preparation ALWAYSrefuses.29target/1028passed18skipped claims notB2.3bcompletion.
 - Missingprovedterms SQLiteDB/WAL/SHMphysicalgrowth anddirectorygrowth; exampleM188608 H20971520 charges2097152 budget67108864 doesnotproveprefixdominance. No authority/accountinginflation.
 - TargetedAstra request pab-phase1a-p1b23b-accounting-astra-20261017 actualsource/candidate calculation review forconcreteboundedsolution orminimalreviewedkernelpremisechange. No integration/waiver/applyactivation; independentimplementationreviewstillrequired foranyretainedcode.
+
+## Astra accounting decision / K storage envelope launch
+
+- reviews/P1B23B-ACCOUNTING-ASTRA.md selects fixed4MiB hardRLIMIT_FSIZE dedicatedLinuxmaintenance/ext4/UnixVFS envelope plus exactflatnamespace formula U_all_early=M+3L+1MiB+2*64KiB <=existingH, unchangedH+charges<=budget. st_size metric notallocateddisk; counteddirectorydelta0 becauseonlyflatcontrolfiles. No accountingincrease/scan-equalitychange.
+- Orchestrator adopts explicitkernelamendment KthenP independentlyreviewed: Kprocessstorage/snapshot-handoff first, Pproductionpreparation second. Unknownunsupported/knowncapacityfailed refusals; capfailure mayleavepending no progressoverclaim. Existing59c4a7unintegrated/unapproved partialcandidate NOTadopted.
+- NextSol-low isolatedrequest pab-phase1a-p1b23k-implementation-r1-20261017 exact5path Kallowlist. No applyactivation/C1C2qualification A1inventorylimitretained.
