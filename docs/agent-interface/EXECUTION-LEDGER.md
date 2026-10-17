@@ -628,3 +628,9 @@ Record failures and missing evidence; do not replace them with a successful late
 - Candidatea5bdf7ba9ef929d7d6ca8cd01dd57dfe4ff574bd frozena21e4b3 app-ownedt3-ef74844b; rootreadhandoff unintegrated exact3paths. Closednoattemptsession classifier+FROZENhash/oracle capture afterfullpredicates, no order/schemachange.
 - Claims363targetpass1skip/1213fourB2pass1skip/1365fullpassed19skipped finalfrozen239newcases. Earlierexceptioncompatibilitypreservationfailure andidentitypredicateRED correctedbeforefinalfreeze; no waiver.
 - FreshSol-low request pab-phase1a-p1b23k-prebundle-review-r1-20261017 report reviews/P1B23K-PREBUNDLE-r1-sol.md fullAstraoriginalbrief/candidate/limits supplied. C WIPpreserved applyunavailable no integration/qualification.
+
+## K pre-bundle bounded GO / integrated restart proof / C resume
+
+- Independent review reviews/P1B23K-PREBUNDLE-r1-sol.md: bounded source/E1 GO on exact a5bdf7ba9ef929d7d6ca8cd01dd57dfe4ff574bd, no blocker; independently 363 targeted passed/1 skipped, 1213 four-B2 passed/1 skipped, 1365 full passed/19 skipped. Skipped mechanisms remain unqualified.
+- Root cherry-picked four commits ending 162234b; source equality against reviewed candidate verified with empty diff over service/worker/scripts/tests/contracts. Integrated targeted actual-death/fresh-resume subset: 7 passed, 1073 deselected in 18.80s using established interpreter/cache disabled.
+- Next isolated Sol-low C resume starts from this integrated baseline and replays only original C source/report 1fc069f/6cfe397, preserving original WIP worktree. Complete every pending C matrix row before final sequential campaigns and fresh independent review. C1 pinned host reader remains mandatory refusal; no host authentication, Linux-cap, installed, release or activation qualification. A1 global inventory drift remains unexplained and unqualified.
