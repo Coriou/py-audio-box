@@ -617,3 +617,8 @@ Record failures and missing evidence; do not replace them with a successful late
 
 - WIP6cfe3973f41db92679531e38660d88cf72ce27eb app-ownedt3-4a8727d4 unintegrated. Target47pass1fail accepted-parentactualdeath; nofullcampaign. Kcontinue_kernel unconditionallyrequiresbundle beforeitscreationattempt exists, lowerkernelcanresume noattemptprefix. No callerRAM/digestremint/bypass workaround adopted.
 - TargetedAstra request pab-phase1a-p1b23c-acceptance-astra-20261017 exactordering/handoffcontract amendment andsmallowningKcorrectionbrief beforeCcompletion. No integration/waiver/activation, C1pinnedlauncher mandatoryrefusal remainsunqualified.
+
+## Astra K pre-bundle contract amendment / correction launch
+
+- reviews/P1B23C-ACCEPTANCE-ASTRA.md selects boundedno-attemptexactrecapture preservingreceiptfirstorder/schema/names. ONLYexactprotectedacceptedrecord zeroCore/downstreamstate BOTHbundleentriesabsent fullsourcehistoryproofvalidated maycaptureactualoriginalonce andrequireFROZENhash+oracle beforeanynewwrite; afterANYattempt ownedbundlemandatory no remint.
+- Orchestrator adopts exact3path Kcorrection recovery/testsrecovery/handoff; C WIP6cfe3973 preservedUNINTEGRATED. Nextrequest pab-phase1a-p1b23k-prebundle-implementation-r1-20261017. Independentreview/integrationbeforefreshCstack. ActualpinnedC1contextstubrefusal nothostauthqualification; all19skips/A1inventorylimitretained.
