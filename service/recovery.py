@@ -1821,7 +1821,10 @@ def _pending_prefix_locked(roots,db,scope,intent,observation,*,now,snapshot_byte
                 chain=[dict(recovery_id=prior['id'],**e,lane=prior['new_lane'],epoch=prior['new_epoch']) for e in prior['expected'][:4]]
                 _prefix_exact(receipts/('p1-recovery-'+prior['id']+'.certificate.json'),encode(dict(certificate=_certificate(prior,chain[-1]),steps=chain)).encode())
                 _prefix_exact(receipts/('p1-recovery-'+prior['id']+'.journal'),bytes.fromhex(prior['before']['journal']['bytes_hex']))
-        if not any(s['recovery_id']==intent['id'] and s['step']=='receipt-complete' for s in data['p1_recovery_steps']):
+        if through_receipt and not any(s['recovery_id']==intent['id'] and s['step']=='receipt-complete' for s in data['p1_recovery_steps']):
+            # The already-certified fourth-only query below cannot create any
+            # output: its creation descriptor/output must both already exist.
+            # Finalization still needs the full unfinished current contract.
             # Fourth/certificate is still unfinished authority. Validate reached
             # finalization outputs before projecting the frozen original journal,
             # and validate ALL current outputs/source before any remaining write.

@@ -4988,3 +4988,37 @@ def test_kfifth_attempted_output_quarantines_before_writers(b23_host,installatio
 
 def _kfifth_fresh(roots,scope,**options):
     for _ in range(2):_kpre_fresh(roots,scope,attempts=1,**options)
+
+
+def test_kfifth_fourth_query_cannot_bypass_unfinished_finish(b23_host,installation,monkeypatch):
+    import subprocess,sys
+    roots,scope,_,_=installation
+    r=_kpre_attempt(installation,b23_host,monkeypatch,'core-certificate-parent')
+    (roots['staging']/'later-media').write_bytes(b'changed')
+    before=logical(roots);files=retained_bytes(roots)
+    # Existing private fourth-only query has no remaining output to create.
+    # Execute it under an actual bounded owning session, with writes forbidden.
+    script=_KPRE_FRESH.replace('result=session.continue_kernel(owned,fault=fault)',
+        "result=recovery._pending_prefix_locked(session.roots,session.db,scope,owned,owned['proof']['observation'],now=accepted['created']+1000,through_journal=True,through_core=True,_session=session)")
+    script=script.replace("assert result['status']=='complete'","assert result['status']=='core-complete-receipt-pending'")
+    setup="""
+from service import resource_store
+from service.reconciliation import Reconciliation
+def forbidden(*a,**k):raise AssertionError('fourth-only observation scanned or wrote')
+for name in ('snapshot','_unfinished_source','_prefix_file','_prefix_transaction','_capture_original_snapshot','_finish_receipts','_write_core_completion'):
+    setattr(recovery,name,forbidden)
+resource_store._recovery_scan=forbidden
+Reconciliation._collect=forbidden
+"""
+    for _ in range(2):
+        child=subprocess.run([sys.executable,'-c',script],input=encode(dict(
+            roots={k:str(p) for k,p in roots.items()},scope=scope,attempts=1,setup=setup)),
+            capture_output=True,text=True,timeout=90)
+        assert child.returncode==0,child.stderr
+        assert logical(roots)==before and retained_bytes(roots)==files
+    # Explicit completion still reconstructs current source and refuses BEFORE
+    # all writers. The observation minted neither fifth nor a new certificate.
+    _kfifth_fresh(roots,scope,refuse=True,setup=_KFIFTH_FORBID)
+    assert logical(roots)==before and retained_bytes(roots)==files
+    with closing(sqlite3.connect(roots['control']/'core'/'core.sqlite')) as db:
+        assert db.execute("SELECT count(*) FROM p1_recovery_steps WHERE step='receipt-complete'").fetchone()==(0,)
