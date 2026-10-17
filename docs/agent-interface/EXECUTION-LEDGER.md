@@ -622,3 +622,9 @@ Record failures and missing evidence; do not replace them with a successful late
 
 - reviews/P1B23C-ACCEPTANCE-ASTRA.md selects boundedno-attemptexactrecapture preservingreceiptfirstorder/schema/names. ONLYexactprotectedacceptedrecord zeroCore/downstreamstate BOTHbundleentriesabsent fullsourcehistoryproofvalidated maycaptureactualoriginalonce andrequireFROZENhash+oracle beforeanynewwrite; afterANYattempt ownedbundlemandatory no remint.
 - Orchestrator adopts exact3path Kcorrection recovery/testsrecovery/handoff; C WIP6cfe3973 preservedUNINTEGRATED. Nextrequest pab-phase1a-p1b23k-prebundle-implementation-r1-20261017. Independentreview/integrationbeforefreshCstack. ActualpinnedC1contextstubrefusal nothostauthqualification; all19skips/A1inventorylimitretained.
+
+## K pre-bundle candidate / independent review
+
+- Candidatea5bdf7ba9ef929d7d6ca8cd01dd57dfe4ff574bd frozena21e4b3 app-ownedt3-ef74844b; rootreadhandoff unintegrated exact3paths. Closednoattemptsession classifier+FROZENhash/oracle capture afterfullpredicates, no order/schemachange.
+- Claims363targetpass1skip/1213fourB2pass1skip/1365fullpassed19skipped finalfrozen239newcases. Earlierexceptioncompatibilitypreservationfailure andidentitypredicateRED correctedbeforefinalfreeze; no waiver.
+- FreshSol-low request pab-phase1a-p1b23k-prebundle-review-r1-20261017 report reviews/P1B23K-PREBUNDLE-r1-sol.md fullAstraoriginalbrief/candidate/limits supplied. C WIPpreserved applyunavailable no integration/qualification.
