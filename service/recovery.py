@@ -1760,6 +1760,25 @@ def _pending_prefix(roots, scope, intent, observation, *, now=None, snapshot_byt
             through_core=through_core,through_receipt=through_receipt)
 
 
+def _unfinished_source(roots,db,scope,intent,plan,observation,*,journal_after,core_after):
+    """Read-only current semantic contract, including verified after-image projection."""
+    if core_after:
+        for name in ('p1-maintenance.complete.tmp','p1-maintenance.journal.tmp'):
+            if _entry_present(roots['receipts']/name):raise ValueError('b2_receipt_temporary_quarantine')
+        registrations=db.execute('SELECT * FROM p1_registrations ORDER BY rowid').fetchall()
+        if encode(registrations)!=encode(intent['before']['source']['data']['p1_registrations']):
+            raise ValueError('b2_prefix_registrations_changed')
+        stages={s[0] for s in db.execute('SELECT step FROM p1_recovery_steps WHERE recovery_id=?',(intent['id'],))}
+        _retained_pending_receipts(roots,intent,stages)
+    state=snapshot(roots,db,scope,exclude_abandon=plan['id'],transaction=False,
+        _prefix=intent,_journal_after=journal_after,_core_after=core_after)
+    check_consumers(state,observation); _coherent_b2(state)
+    if encode(state['evidence_projection'])!=encode(intent['before']['source']):
+        raise ValueError('b2_prefix_prestate_changed')
+    if {**state['affected'],'reservations':[r['job_id'] for r in state['reservations']]}!=plan['affected']:
+        raise ValueError('b2_prefix_affected_changed')
+
+
 def _pending_prefix_locked(roots,db,scope,intent,observation,*,now,snapshot_bytes=None,
         fault=lambda point:None,through_journal=False,through_core=False,through_receipt=False,_session=None):
     """Prescribed kernel, called only by an owning lock-held session."""
@@ -1802,16 +1821,11 @@ def _pending_prefix_locked(roots,db,scope,intent,observation,*,now,snapshot_byte
                 chain=[dict(recovery_id=prior['id'],**e,lane=prior['new_lane'],epoch=prior['new_epoch']) for e in prior['expected'][:4]]
                 _prefix_exact(receipts/('p1-recovery-'+prior['id']+'.certificate.json'),encode(dict(certificate=_certificate(prior,chain[-1]),steps=chain)).encode())
                 _prefix_exact(receipts/('p1-recovery-'+prior['id']+'.journal'),bytes.fromhex(prior['before']['journal']['bytes_hex']))
-        if through_receipt and not any(s['recovery_id']==intent['id'] and s['step']=='receipt-complete' for s in data['p1_recovery_steps']):
-            # Core completion alone is not an immutable completed replay.
-            # Both locks exclude concurrent owners, but do not prove that a
-            # registered incarnation stayed stopped between invocations.
-            registrations=db.execute('SELECT * FROM p1_registrations ORDER BY rowid').fetchall()
-            if encode(registrations)!=encode(intent['before']['source']['data']['p1_registrations']):
-                raise ValueError('b2_prefix_registrations_changed')
-            current=[json.loads(row[1]) for row in registrations]
-            for registration in current:validate_registration(registration)
-            check_consumers(dict(registrations=current,lane=intent['old_lane']),observation)
+        if not any(s['recovery_id']==intent['id'] and s['step']=='receipt-complete' for s in data['p1_recovery_steps']):
+            # Fourth/certificate is still unfinished authority. Validate reached
+            # finalization outputs before projecting the frozen original journal,
+            # and validate ALL current outputs/source before any remaining write.
+            _unfinished_source(roots,db,scope,intent,plan,observation,journal_after=True,core_after=True)
         _completed_prefix_receipts(roots,intent)
         if through_receipt and any(s['recovery_id']==intent['id'] and s['step']=='receipt-complete' for s in data['p1_recovery_steps']):
             _verify_finished_receipt_evidence(roots,intent)
@@ -1877,11 +1891,7 @@ def _pending_prefix_locked(roots,db,scope,intent,observation,*,now,snapshot_byte
         journal_after=True
     elif any(s['step']=='journal' for s in steps): raise ValueError('b2_missing_rotation_intent')
     core_after=any(s['step']=='core-complete' for s in steps)
-    state=snapshot(roots,db,scope,exclude_abandon=plan['id'],transaction=False,_prefix=intent,_journal_after=journal_after,_core_after=core_after)
-    check_consumers(state,observation); _coherent_b2(state)
-    if encode(state['evidence_projection'])!=encode(intent['before']['source']): raise ValueError('b2_prefix_prestate_changed')
-    if {**state['affected'],'reservations':[r['job_id'] for r in state['reservations']]}!=plan['affected']:
-        raise ValueError('b2_prefix_affected_changed')
+    _unfinished_source(roots,db,scope,intent,plan,observation,journal_after=journal_after,core_after=core_after)
     if not journal_after and intent['before']['journal']['state']!='missing' and read_file(receipts/'journal.json',1024**2).hex()!=intent['before']['journal']['bytes_hex']:
         raise ValueError('b2_prefix_journal_changed')
     names={kind:root/name for name,kind in archive_names(intent).items()}

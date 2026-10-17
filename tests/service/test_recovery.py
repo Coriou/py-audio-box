@@ -4789,3 +4789,202 @@ def test_kpre_history_identity_collision_refuses_before_capture(b23_host,install
     before={p.name:p.read_bytes() for p in roots['receipts'].iterdir()}
     _kpre_fresh(roots,scope,target=r['id'],refuse=True,setup="def forbidden(*a):raise AssertionError('identity collision captured')\nrecovery._capture_original_snapshot=forbidden")
     assert before=={p.name:p.read_bytes() for p in roots['receipts'].iterdir()}
+
+
+# Certified unfinished K must validate current source before any remaining write.
+_KFIFTH_FORBID = """
+def forbidden(*args,**kwargs):raise AssertionError('unfinished drift reached writer')
+for name in ('_prefix_file','_prefix_transaction','_core_certificate','_finish_receipts','_capture_original_snapshot','_write_core_completion'):
+    setattr(recovery,name,forbidden)
+"""
+
+
+@pytest.mark.parametrize('repeat',range(2))
+def test_kfifth_actual_death_monitor_refuses_before_writers(b23_host,installation,monkeypatch,repeat):
+    roots,scope,_,_=installation
+    intent=_kpre_attempt(installation,b23_host,monkeypatch,'completion-fence-dirsync')
+    path=roots['control']/'core'/'core.sqlite'
+    with closing(sqlite3.connect(path)) as db:
+        assert db.execute("SELECT count(*) FROM p1_recovery_steps WHERE step='receipt-complete'").fetchone()==(0,)
+        db.execute("UPDATE resource_monitor SET state='fault' WHERE id=1");db.commit()
+        with pytest.raises(ValueError,match='b2_core_output_changed'):recovery._verify_core_rows(db,intent)
+        before=list(db.iterdump())
+    receipts={p.name:p.read_bytes() for p in roots['receipts'].iterdir() if p.is_file()}
+    _kfifth_fresh(roots,scope,refuse=True,setup=_KFIFTH_FORBID)
+    with closing(sqlite3.connect(path)) as db:
+        assert list(db.iterdump())==before
+        assert db.execute("SELECT state FROM resource_monitor WHERE id=1").fetchone()==('fault',)
+    assert {p.name:p.read_bytes() for p in roots['receipts'].iterdir() if p.is_file()}==receipts
+
+
+_KFIFTH_STAGES=['core-complete-commit','core-complete-parent','core-certificate-intent-recorded',
+    'core-certificate-parent','receipt-certificate-intent-recorded','receipt-certificate-parent',
+    'completion-journal-intent-recorded','completion-journal-replace','completion-journal-dirsync',
+    'completion-fence-intent-recorded','completion-fence-replace','completion-fence-dirsync']
+
+
+@pytest.mark.parametrize('point',_KFIFTH_STAGES)
+@pytest.mark.parametrize('damage',['none','monitor'])
+def test_kfifth_reached_actual_death_prefix(b23_host,installation,monkeypatch,point,damage):
+    roots,scope,_,_=installation
+    r=_kpre_attempt(installation,b23_host,monkeypatch,point)
+    # Intent-only attempts with missing/old targets quarantine, including when
+    # every earlier durable output is correct. No future-output prerequisites.
+    quarantine=point.endswith('intent-recorded') or damage!='none'
+    if damage=='monitor':
+        with closing(sqlite3.connect(roots['control']/'core'/'core.sqlite')) as db,db:
+            db.execute("UPDATE resource_monitor SET state='fault'")
+    before=logical(roots);files=retained_bytes(roots)
+    _kfifth_fresh(roots,scope,refuse=quarantine,setup=_KFIFTH_FORBID if quarantine else
+        "recovery.time.time=lambda:accepted['created']+1000")
+    if quarantine:assert logical(roots)==before and retained_bytes(roots)==files
+    else:
+        with closing(sqlite3.connect(roots['control']/'core'/'core.sqlite')) as db:
+            assert db.execute('SELECT count(*) FROM p1_recovery_steps').fetchone()==(5,)
+        assert (roots['receipts']/('p1-recovery-'+r['id']+'.intent.json')).read_bytes()==encode(r).encode()
+
+
+@pytest.mark.parametrize('damage',['jobs','resource_reservations','resource_monitor','resource_faults',
+    'resource_accounting','p1_integrity','dispatch_resolutions','p1_retired_publications',
+    'p1_integrity_resolutions','unaffected-sql','typed-ref','history','media','key','installation','volume'])
+@pytest.mark.parametrize('point',['core-certificate-parent','completion-fence-dirsync'])
+def test_kfifth_full_current_source_before_writers(b23_host,installation,monkeypatch,damage,point):
+    roots,scope,_,_=installation
+    r=_kpre_attempt(installation,b23_host,monkeypatch,point)
+    with closing(sqlite3.connect(roots['control']/'core'/'core.sqlite')) as db,db:
+        if damage in ('jobs','resource_reservations','dispatch_resolutions'):
+            assert db.execute('DELETE FROM '+damage).rowcount>0
+        elif damage=='resource_monitor':db.execute("UPDATE resource_monitor SET state='fault'")
+        elif damage=='resource_faults':db.execute("INSERT INTO resource_faults VALUES('new-fault')")
+        elif damage=='resource_accounting':db.execute('UPDATE resource_accounting SET highwater=highwater+1')
+        elif damage=='p1_integrity':db.execute("UPDATE p1_integrity SET state='checking'")
+        elif damage in ('p1_retired_publications','p1_integrity_resolutions'):
+            db.execute('INSERT INTO '+damage+' VALUES(?,?,?,?)',('unexpected',r['id'],'{}','0'*64))
+        elif damage=='typed-ref':
+            seq,raw=db.execute('SELECT seq,authority FROM dispatches LIMIT 1').fetchone()
+            value=json.loads(raw);value[0]['artifact_ids']=['unexpected-artifact']
+            db.execute('UPDATE dispatches SET authority=? WHERE seq=?',(encode(value),seq))
+        elif damage=='history':
+            assert db.execute("UPDATE events SET state='changed-history'").rowcount>0
+        elif damage=='unaffected-sql':
+            # SQLite's retained sequence is part of the exact source, too.
+            assert db.execute('UPDATE sqlite_sequence SET seq=seq+1').rowcount>0
+    if damage=='media':(roots['staging']/'new-defect').write_bytes(b'unexpected')
+    elif damage=='key':(roots['ipc']/'execution.key').write_bytes(b'0'*64)
+    elif damage=='installation':
+        p=roots['receipts']/'p1-init.json';v=json.loads(p.read_bytes());v['seed']='0'*32;p.write_text(encode(v))
+    elif damage=='volume':
+        p=roots['receipts']/'p1-init.json';v=json.loads(p.read_bytes());v['roots']['staging'][1]+=1;p.write_text(encode(v))
+    before=logical(roots);files=retained_bytes(roots)
+    _kfifth_fresh(roots,scope,refuse=True,setup=_KFIFTH_FORBID)
+    assert logical(roots)==before and retained_bytes(roots)==files
+
+
+def _kfifth_successor(installation,h,monkeypatch,point):
+    """Production P on a later history; no fixture expected rows or C routing."""
+    roots,scope,profiles,_=installation
+    _lotp_transport(h,monkeypatch)
+    prepare=recovery._prepare_abandon_locked
+    trace=roots['control'].parent/'kfifth-death.txt'
+    def die(session,**request):
+        result=prepare(session,**request)
+        def fault(where):
+            if where==point:trace.write_text(where);os._exit(73)
+        session.continue_kernel(result['intent'],prepared=result._snapshot,fault=fault)
+        raise AssertionError('death hook not reached')
+    with monkeypatch.context() as m:
+        m.setattr(recovery,'_prepare_abandon_locked',die)
+        with pytest.raises(ValueError,match='child_failed'):
+            recovery._prepare_abandon(roots,scope,profiles=profiles,budget=DEFAULT_BUDGET,diagnostic_decisions=[])
+    assert trace.read_text()==point
+    return max((json.loads(p.read_bytes()) for p in roots['receipts'].glob('p1-recovery-*.intent.json')
+        if p.name.count('.')==2),key=lambda r:r['created'])
+
+
+_KFIFTH_OBSERVE = """
+from service import resource_store
+from service.reconciliation import Reconciliation
+def forbidden(*args,**kwargs):raise AssertionError('completed history scanned or wrote')
+for name in ('snapshot','_unfinished_source','_prefix_file','_prefix_transaction','_capture_original_snapshot','_write_core_completion','_finish_receipts'):
+    setattr(recovery,name,forbidden)
+resource_store._recovery_scan=forbidden
+Reconciliation._collect=forbidden
+"""
+
+
+@pytest.mark.parametrize('point',['accepted-parent','fence-replace-parent','bundle-parent','core-intent-commit',
+    'pending-receipt-commit','snapshot-parent','manifest-parent','original-journal-parent',
+    'evidence-receipt-commit','journal-replace','journal-receipt-commit',*_KFIFTH_STAGES])
+def test_kfifth_production_history_actual_prefix(b23_host,installation,monkeypatch,point):
+    roots,scope,_,_=installation
+    a=_kpre_predecessor(installation,b23_host,monkeypatch)
+    b=_kfifth_successor(installation,b23_host,monkeypatch,point)
+    quarantine=point.endswith('intent-recorded')
+    before=logical(roots);files=retained_bytes(roots)
+    _kfifth_fresh(roots,scope,target=a['id'],refuse=quarantine,setup=_KFIFTH_OBSERVE)
+    assert logical(roots)==before and retained_bytes(roots)==files
+    _kfifth_fresh(roots,scope,target=b['id'],refuse=quarantine,
+        setup=_KFIFTH_FORBID if quarantine else "recovery.time.time=lambda:accepted['created']+1000")
+    if quarantine:assert logical(roots)==before and retained_bytes(roots)==files
+    else:
+        before=logical(roots);files=retained_bytes(roots)
+        for r in (a,b):_kfifth_fresh(roots,scope,target=r['id'],setup=_KFIFTH_OBSERVE)
+        assert logical(roots)==before and retained_bytes(roots)==files
+
+
+@pytest.mark.parametrize('kind',['bundle','snapshot','manifest','original-journal','rotation',
+    'core-certificate','receipt-certificate','completion-journal','completion-fence'])
+@pytest.mark.parametrize('damage',['missing','wrong','mode'])
+@pytest.mark.parametrize('direction',['older','newer'])
+def test_kfifth_every_completed_descriptor_both_directions(b23_host,installation,monkeypatch,kind,damage,direction):
+    roots,scope,_,_=installation
+    a=_kpre_predecessor(installation,b23_host,monkeypatch)
+    b=_kfifth_successor(installation,b23_host,monkeypatch,'completion-fence-dirsync')
+    _kfifth_fresh(roots,scope,target=b['id'])
+    victim,target=(a,b) if direction=='older' else (b,a)
+    p=roots['receipts']/('p1-recovery-'+victim['id']+'.'+kind+'.intent.json')
+    assert p.is_file()
+    if damage=='missing':p.unlink()
+    elif damage=='wrong':p.write_bytes(b'{}')
+    else:p.chmod(0o644)
+    before=logical(roots);files=retained_bytes(roots)
+    _kfifth_fresh(roots,scope,target=target['id'],refuse=True,setup=_KFIFTH_OBSERVE)
+    assert logical(roots)==before and retained_bytes(roots)==files
+
+
+def test_kfifth_completed_current_changes_observational(b23_host,installation,monkeypatch):
+    roots,scope,_,_=installation
+    r=_kpre_attempt(installation,b23_host,monkeypatch,'completion-fence-dirsync')
+    _kpre_fresh(roots,scope)
+    with closing(sqlite3.connect(roots['control']/'core'/'core.sqlite')) as db,db:
+        db.execute("UPDATE resource_monitor SET state='checking'")
+        db.execute('UPDATE resource_accounting SET highwater=highwater+1')
+    (roots['staging']/'later-ordinary-file').write_bytes(b'later')
+    (roots['receipts']/'journal.json').write_bytes(b'later ordinary journal')
+    before=logical(roots);files=retained_bytes(roots)
+    _kfifth_fresh(roots,scope,target=r['id'],setup=_KFIFTH_OBSERVE)
+    assert logical(roots)==before and retained_bytes(roots)==files
+
+
+@pytest.mark.parametrize('kind,point',[
+    ('core-certificate','core-certificate-parent'),('receipt-certificate','receipt-certificate-parent'),
+    ('completion-journal','completion-journal-dirsync'),('completion-fence','completion-fence-dirsync')])
+@pytest.mark.parametrize('damage',['missing','partial','wrong','descriptor','temporary'])
+def test_kfifth_attempted_output_quarantines_before_writers(b23_host,installation,monkeypatch,kind,point,damage):
+    roots,scope,_,_=installation
+    r=_kpre_attempt(installation,b23_host,monkeypatch,point)
+    prefix='p1-recovery-'+r['id']
+    if kind=='core-certificate':p=roots['control']/'core'/next(n for n,k in recovery.archive_names(r).items() if k=='certificate')
+    else:p=roots['receipts']/({'receipt-certificate':prefix+'.certificate.json','completion-journal':'journal.json','completion-fence':'p1-maintenance.json'}[kind])
+    if damage=='missing':p.unlink()
+    elif damage in ('partial','wrong'):p.write_bytes(b'{' if damage=='partial' else b'{}')
+    elif damage=='descriptor':(roots['receipts']/(prefix+'.'+kind+'.intent.json')).write_bytes(b'{}')
+    else:
+        p=roots['receipts']/'p1-maintenance.journal.tmp';p.write_bytes(b'leftover');p.chmod(0o600)
+    before=logical(roots);files=retained_bytes(roots)
+    _kfifth_fresh(roots,scope,refuse=True,setup=_KFIFTH_FORBID)
+    assert logical(roots)==before and retained_bytes(roots)==files
+
+
+def _kfifth_fresh(roots,scope,**options):
+    for _ in range(2):_kpre_fresh(roots,scope,attempts=1,**options)
