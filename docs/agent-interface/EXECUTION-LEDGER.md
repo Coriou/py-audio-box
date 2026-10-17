@@ -586,3 +586,8 @@ Record failures and missing evidence; do not replace them with a successful late
 - Candidatecc3d790baead83d79117e372461668bfbda34076 frozen5d650eae app-ownedt3-3e867443; rootreadhandoff unintegrated. Exactly5authorizedpaths processcap/session/snapshot handoff plusunchangedmeasurementfactor/formula.
 - Claims34targetpass1skip/884focusedpass1skip/1036passed19skipped finalfrozen. ActualLinuxcaptestSKIPPEDmacOS pending; 18priorpeercredentialskips. ExplicitUnixVFSgapfixed beforehandoff earlierfocusedinterrupted notcomplete.
 - FreshSol-low request pab-phase1a-p1b23k-review-r1-20261017 report reviews/P1B23K-r1-sol.md fullAstraKbrief/assumptions/candidate supplied. KNOTPcompletion applyunavailable no integration/waiver/actualLinuxqualification.
+
+## K round1 NO-GO / private connection envelope correction
+
+- R1review reviews/P1B23K-r1-sol.md NO-GO exactcc3d790. F1privateprospectivewriter sqlite3.connect(path) defaultVFS/nohardening permitsATTACH/mmap atfirstproductionINSERT; originalsessiondenies.34target/884focused/1036fullpassed19skipped confirmed.
+- NextisolatedSol-low request pab-phase1a-p1b23k-fix-r1-20261017 sharedfixedUnixVFS/config/authorizer+explicitclose allboundedrouteconnections relevantprivatewriters/readers. Applyunavailable no integration/waiver actualLinuxcapstillpending.
