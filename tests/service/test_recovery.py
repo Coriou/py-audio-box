@@ -4280,3 +4280,478 @@ def test_lotp_capacity_rehearsal_preserves_actual_wal_prestate(b23_host,installa
         return result
     monkeypatch.setattr(recovery,'_prepare_abandon_locked',verify)
     assert recovery._prepare_abandon(roots,scope,profiles=profiles,budget=DEFAULT_BUDGET,diagnostic_decisions=[])['intent']
+
+
+# K correction: production P acceptance, actual child death, owned fresh inputs.
+def _kpre_accept(installation, h, monkeypatch, point='accepted-parent', *, population=True):
+    roots,scope,profiles,_=installation
+    if population:_lotp_population(installation,'running')
+    _lotp_transport(h,monkeypatch)
+    trace=roots['control'].parent/'kpre-death.txt'
+    prepare=recovery._prepare_abandon_locked
+    def die(session,**request):
+        result=prepare(session,**request)
+        def fault(where):
+            if where==point:
+                trace.write_text(where);os._exit(73)
+        session.continue_kernel(result['intent'],prepared=result._snapshot,fault=fault)
+        raise AssertionError('death hook not reached')
+    monkeypatch.setattr(recovery,'_prepare_abandon_locked',die)
+    with pytest.raises(ValueError,match='child_failed'):
+        recovery._prepare_abandon(roots,scope,profiles=profiles,budget=DEFAULT_BUDGET,diagnostic_decisions=[])
+    assert trace.read_text()==point
+    paths=[p for p in roots['receipts'].glob('p1-recovery-*.intent.json') if p.name.count('.')==2]
+    paths.sort(key=lambda p:json.loads(p.read_bytes())['created'])
+    paths=[paths[-1]]
+    intent=json.loads(paths[0].read_bytes())
+    assert paths[0].read_bytes()==encode(intent).encode()
+    assert (roots['receipts']/'p1-b2-required.json').read_bytes()==encode(dict(revision=1,deployment_id=intent['deployment_id'])).encode()
+    with closing(sqlite3.connect(roots['control']/'core'/'core.sqlite')) as db:
+        assert db.execute('SELECT count(*) FROM p1_recoveries WHERE id=?',(intent['id'],)).fetchone()==(0,)
+        assert db.execute('SELECT count(*) FROM p1_recovery_steps WHERE recovery_id=?',(intent['id'],)).fetchone()==(0,)
+    assert not (roots['receipts']/('p1-recovery-'+intent['id']+'.bundle.intent.json')).exists()
+    assert not (roots['receipts']/('p1-recovery-'+intent['id']+'.snapshot.bundle')).exists()
+    return intent
+
+
+_KPRE_FRESH = r'''
+import hashlib,json,os,resource,sqlite3,sys
+from pathlib import Path
+from service import recovery
+v=json.load(sys.stdin);roots={k:Path(p) for k,p in v['roots'].items()};scope=v['scope']
+sys.platform='linux';resource.setrlimit=lambda *a:None;resource.getrlimit=lambda *a:(4_194_304,)*2
+recovery._maintenance_filesystems=lambda roots:None;recovery._maintenance_task_count=lambda:1
+paths=[p for p in roots['receipts'].glob('p1-recovery-*.intent.json') if p.name.count('.')==2]
+latest=max((json.loads(p.read_bytes()) for p in paths),key=lambda r:r['created'])
+if v.get('target'):paths=[p for p in paths if p.name=='p1-recovery-'+v['target']+'.intent.json']
+assert len(paths)==1
+accepted=json.loads(paths[0].read_bytes());identity=accepted['id']
+regs=[json.loads(r[1]) for r in latest['before']['source']['data']['p1_registrations']]
+# E1 OS transport model only; no caller snapshot/document is an input.
+recovery.read_host_capsule=lambda:dict(scope=scope,registrations=regs,
+    registration_digest=recovery.host_registration_digest(regs),kernel_proof=accepted['proof'],
+    kernel_proof_digest=accepted['proof_digest'],purpose=dict(kind='resume',plan_id=accepted['plan_id'],plan_digest=accepted['plan_digest']))
+exec(v.get('setup',''))
+for attempt in range(v.get('attempts',2)):
+    def resume(session):
+        owned=json.loads(paths[0].read_bytes())
+        try:
+            def fault(p):
+                if p==v.get('death'):
+                    Path(v['trace']).write_text(p);os._exit(73)
+            result=session.continue_kernel(owned,fault=fault)
+        except BaseException as exc:
+            if not isinstance(exc,(ValueError,OSError,sqlite3.Error)) or not v.get('refuse'):
+                import traceback
+                traceback.print_exc();raise
+            assert not session._live
+            try:session.continue_kernel(owned)
+            except ValueError as e:assert str(e)=='b2_maintenance_session_closed'
+            else:raise AssertionError('live retry')
+            return True
+        assert not v.get('refuse'),'unexpected success'
+        assert result['status']=='complete'
+        return True
+    assert recovery._run_bounded_maintenance(roots,scope,resume)
+exec(v.get('check',''))
+if not v.get('refuse'):
+    bundle=roots['receipts']/('p1-recovery-'+identity+'.snapshot.bundle')
+    assert hashlib.sha256(bundle.read_bytes()).hexdigest()==accepted['expected'][1]['output']['snapshot_digest']
+    archive=next(n for n,k in recovery.archive_names(accepted).items() if k=='snapshot')
+    assert (roots['control']/'core'/archive).read_bytes()==bundle.read_bytes()
+    assert recovery.read_file(paths[0])==recovery.encode(accepted).encode()
+'''
+
+
+def _kpre_fresh(roots,scope,**options):
+    import subprocess,sys
+    child=subprocess.run([sys.executable,'-c',_KPRE_FRESH],input=encode(dict(
+        roots={k:str(p) for k,p in roots.items()},scope=scope,**options)),capture_output=True,text=True,timeout=90)
+    assert child.returncode==0,child.stderr
+
+
+@pytest.mark.parametrize('point',['accepted-parent','fence-parent'])
+def test_kpre_actual_death_owned_fresh_resume(b23_host,installation,monkeypatch,point):
+    roots,scope,_,_=installation
+    intent=_kpre_accept(installation,b23_host,monkeypatch,point)
+    assert (roots['receipts']/'p1-maintenance.json').exists()==(point=='fence-parent')
+    _kpre_fresh(roots,scope)
+    with closing(sqlite3.connect(roots['control']/'core'/'core.sqlite')) as db:
+        assert db.execute('SELECT count(*) FROM p1_recoveries').fetchone()==(1,)
+        assert db.execute('SELECT count(*) FROM p1_recovery_steps').fetchone()==(5,)
+
+
+@pytest.mark.parametrize('point',['accepted-write','accepted-fsync','accepted-parent','fence-write','fence-fsync','fence-parent'])
+@pytest.mark.parametrize('journal_state',['valid','missing','unreadable'])
+def test_kpre_acceptance_barriers_journal(b23_host,installation,monkeypatch,point,journal_state):
+    roots,scope,_,_=installation
+    if journal_state=='missing':(roots['receipts']/'journal.json').unlink()
+    elif journal_state=='unreadable':(roots['receipts']/'journal.json').write_bytes(b'bounded damaged original journal')
+    intent=_kpre_accept(installation,b23_host,monkeypatch,point)
+    _kpre_fresh(roots,scope,setup="""
+clock=recovery.time.time
+recovery.time.time=lambda:accepted['created']+1000 # accepted TTL is irrelevant; transport explicitly modeled
+capture=recovery._capture_original_snapshot
+calls=[]
+def once(*args):
+    calls.append(1);assert len(calls)==1
+    assert args[2]==1_048_576
+    return capture(*args)
+recovery._capture_original_snapshot=once
+""",check="assert len(calls)==0 # captures occur only in bounded children")
+    with closing(sqlite3.connect(roots['control']/'core'/'core.sqlite')) as db:
+        assert db.execute('SELECT count(*) FROM p1_recovery_steps').fetchone()==(5,)
+    assert (roots['receipts']/('p1-recovery-'+intent['id']+'.journal')).read_bytes()==bytes.fromhex(intent['before']['journal']['bytes_hex'])
+
+
+@pytest.mark.parametrize('point',['recapture-before','recapture-after','recapture-hash','recapture-oracle','recapture-verified'])
+def test_kpre_recapture_actual_death_fresh_retry(b23_host,installation,monkeypatch,point):
+    import subprocess,sys
+    roots,scope,_,_=installation
+    _kpre_accept(installation,b23_host,monkeypatch)
+    before={p.name:p.read_bytes() for p in roots['receipts'].iterdir()}
+    child=subprocess.run([sys.executable,'-c',_KPRE_FRESH],input=encode(dict(
+        roots={k:str(p) for k,p in roots.items()},scope=scope,death=point,trace=str(roots['control'].parent/'recapture-death.txt'),attempts=1)),capture_output=True,text=True,timeout=60)
+    assert child.returncode!=0
+    assert (roots['control'].parent/'recapture-death.txt').read_text()==point
+    assert before=={p.name:p.read_bytes() for p in roots['receipts'].iterdir()}
+    _kpre_fresh(roots,scope)
+
+
+@pytest.mark.parametrize('damage',['snapshot','manifest','original-journal','rotation','core-certificate',
+    'receipt-certificate','completion-journal','completion-fence','bundle-descriptor','bundle-output',
+    'dangling-descriptor','dangling-bundle','mode','hardlink','oversize','extra','temporary','marker',
+    'accepted','fence','source','plan','later-plan','schema','media','journal','proof','physical-hash'])
+def test_kpre_no_attempt_closed_refusal_twice(b23_host,installation,monkeypatch,damage):
+    roots,scope,_,_=installation
+    r=_kpre_accept(installation,b23_host,monkeypatch)
+    receipts=roots['receipts'];prefix='p1-recovery-'+r['id'];root=roots['control']/'core'
+    if damage in ('snapshot','manifest','original-journal','rotation','core-certificate','receipt-certificate','completion-journal','completion-fence'):
+        (receipts/(prefix+'.'+damage+'.intent.json')).write_bytes(b'{}')
+    elif damage=='bundle-descriptor':(receipts/(prefix+'.bundle.intent.json')).write_text(encode(dict(revision=1,recovery_id=r['id'],intent_digest=digest(r),source_digest=r['source_digest'],snapshot_digest=r['expected'][1]['output']['snapshot_digest'])))
+    elif damage=='bundle-output':(receipts/(prefix+'.snapshot.bundle')).write_bytes(b'output without descriptor')
+    elif damage.startswith('dangling-'):(receipts/(prefix+('.bundle.intent.json' if damage.endswith('descriptor') else '.snapshot.bundle'))).symlink_to(receipts/'absent')
+    elif damage=='mode':(receipts/(prefix+'.intent.json')).chmod(0o644)
+    elif damage=='hardlink':os.link(receipts/(prefix+'.intent.json'),receipts/'extra-link')
+    elif damage=='oversize':(receipts/(prefix+'.snapshot.bundle')).write_bytes(b'x'*(1024**2+1))
+    elif damage=='extra':(receipts/'foreign').write_bytes(b'x')
+    elif damage=='temporary':(receipts/'p1-maintenance.pending.json').write_bytes(b'{}')
+    elif damage=='marker':(receipts/'p1-b2-required.json').unlink()
+    elif damage in ('accepted','proof'):
+        if damage=='proof':r['proof']['kind']='changed'
+        else:r['source_digest']='f'*64
+        (receipts/(prefix+'.intent.json')).write_text(encode(r))
+    elif damage=='fence':(receipts/'p1-maintenance.json').write_bytes(b'partial')
+    elif damage=='media':(roots['staging']/'new-defect').write_bytes(b'new')
+    elif damage=='journal':(receipts/'journal.json').write_bytes(b'changed')
+    elif damage!='physical-hash':
+        with closing(sqlite3.connect(root/'core.sqlite')) as db,db:
+            if damage=='source':db.execute("UPDATE resource_monitor SET state='fault'")
+            elif damage=='plan':db.execute('DELETE FROM p1_abandon_plans')
+            elif damage=='later-plan':
+                raw=json.loads(db.execute('SELECT record FROM p1_abandon_plans').fetchone()[0]);raw['id']='f'*32
+                db.execute('INSERT INTO p1_abandon_plans VALUES(?,?,?)',(raw['id'],encode(raw),digest(raw)))
+            elif damage=='schema':db.execute('CREATE TABLE foreign_table(id)')
+    # Measure after crash-WAL opening; no claim of zero SQLite physical churn.
+    before={p.name:(p.lstat().st_mode,p.read_bytes() if not p.is_symlink() else os.readlink(p)) for p in receipts.iterdir()}
+    setup="""
+def forbid(*a):raise AssertionError('capture before closed predicate')
+recovery._capture_original_snapshot=forbid
+"""
+    if damage=='physical-hash':setup="""
+capture=recovery._capture_original_snapshot
+def different(*args):
+    raw=bytearray(capture(*args));raw[24]^=1
+    return bytes(raw) # SQLite header change counter: logically equal, physically distinct
+recovery._capture_original_snapshot=different
+"""
+    _kpre_fresh(roots,scope,refuse=True,setup=setup)
+    assert before=={p.name:(p.lstat().st_mode,p.read_bytes() if not p.is_symlink() else os.readlink(p)) for p in receipts.iterdir()}
+
+
+@pytest.mark.parametrize('failure',['copy','budget','cap','readback','host','ceiling','vfs','read-io','oracle','prospective'])
+def test_kpre_capture_failures_burn_without_outputs(b23_host,installation,monkeypatch,failure):
+    roots,scope,_,_=installation
+    _kpre_accept(installation,b23_host,monkeypatch)
+    before={p.name:p.read_bytes() for p in roots['receipts'].iterdir()}
+    setup="def fail(*a,**kw):raise ValueError('modeled bounded failure')\n"
+    if failure=='copy':setup+="recovery._capture_original_snapshot=fail"
+    elif failure=='budget':setup+="import service.resource_store as store\nstore._maintenance_footprint=fail"
+    elif failure=='cap':setup+="recovery._MaintenanceProcess.verify=fail"
+    elif failure=='readback':setup+="resource.getrlimit=lambda *a:(4_194_303,)*2"
+    elif failure=='host':setup+="recovery.read_host_capsule=fail"
+    elif failure=='ceiling':setup+="recovery.MAINTENANCE_SNAPSHOT_LIMIT=1024"
+    elif failure=='vfs':setup+='''
+import sqlite3
+connect=sqlite3.connect
+def unavailable(path,*a,**kw):
+    if 'snapshot.sqlite?mode=rwc&vfs=unix' in str(path):raise sqlite3.OperationalError('modeled Unix VFS unavailable')
+    return connect(path,*a,**kw)
+sqlite3.connect=unavailable
+'''
+    elif failure=='read-io':setup+='''
+reader=recovery.read_file
+def denied(path,*a,**kw):
+    if path.name=='snapshot.sqlite':raise OSError('modeled snapshot read denied')
+    return reader(path,*a,**kw)
+recovery.read_file=denied
+'''
+    elif failure=='oracle':setup+='''
+validate=recovery._validate_archives
+def oracle(root,data,*a,**kw):
+    if not data['p1_recoveries']:return validate(root,data,*a,**kw)
+    path=next(root.glob('p1-recovery-*.sqlite'))
+    assert hashlib.sha256(path.read_bytes()).hexdigest()==accepted['expected'][1]['output']['snapshot_digest']
+    raise ValueError('exact hash still requires semantic oracle')
+recovery._validate_archives=oracle
+'''
+    else:setup+="recovery._insert_recovery=fail"
+    # Cap failure is before session creation and cannot be caught by operation.
+    if failure in ('cap','readback','host'):
+        import subprocess,sys
+        for _ in range(2):
+            child=subprocess.run([sys.executable,'-c',_KPRE_FRESH],input=encode(dict(roots={k:str(p) for k,p in roots.items()},scope=scope,setup=setup)),capture_output=True,text=True,timeout=60)
+            assert child.returncode!=0
+    else:_kpre_fresh(roots,scope,refuse=True,setup=setup)
+    assert before=={p.name:p.read_bytes() for p in roots['receipts'].iterdir()}
+
+
+def _kpre_predecessor(installation,h,monkeypatch):
+    roots,scope,profiles,_=installation
+    with closing(sqlite3.connect(roots['control']/'core'/'core.sqlite')) as db,db:
+        db.execute('UPDATE resource_accounting SET highwater=?',(20*1024**2,))
+    _lotp_transport(h,monkeypatch)
+    prepare=recovery._prepare_abandon_locked
+    def finish(session,**request):
+        result=prepare(session,**request)
+        assert session.continue_kernel(result['intent'],prepared=result._snapshot)['status']=='complete'
+        return result
+    monkeypatch.setattr(recovery,'_prepare_abandon_locked',finish)
+    first=recovery._prepare_abandon(roots,scope,profiles=profiles,budget=DEFAULT_BUDGET,diagnostic_decisions=[])
+    monkeypatch.setattr(recovery,'_prepare_abandon_locked',prepare)
+    reg=copy.deepcopy(h['registration']);reg['lane']=first['intent']['new_lane'];reg['boot']='e'*32
+    for index,owner in enumerate(reg['containers']):
+        owner['id']=('e' if index==0 else 'f')*64;owner['started']=f'2026-10-17T03:00:0{index}Z'
+    recovery.register(roots,scope,reg)
+    provenance=copy.deepcopy(h['provenance']);provenance['registration_digest']=digest(reg)
+    provenance['hello']={k:reg[k] for k in ('lane','boot')}
+    for owner,c in zip(provenance['owners'],reg['containers']):owner.update(id=c['id'],started=c['started'],cgroup='/docker/'+c['id'])
+    h['module']._host_write(h['base']/('registration-'+digest(reg)+'.json'),provenance)
+    for old,c in zip(copy.deepcopy(h['consumers']),reg['containers']):
+        old.update(id=c['id'],started=c['started'],finished='2026-10-17T04:00:00Z');h['consumers'].append(old)
+    h['state']=h['module'].host_state(roots,scope)
+    h['request']['registration_digest']=recovery.host_registration_digest(h['state']['registrations'])
+    return first['intent']
+
+
+@pytest.mark.parametrize('point',['accepted-write','accepted-fsync','accepted-parent','fence-replace-parent'])
+@pytest.mark.parametrize('journal_state',['valid','missing','unreadable'])
+def test_kpre_history_and_observational_replay(b23_host,installation,monkeypatch,point,journal_state):
+    roots,scope,_,_=installation
+    first=_kpre_predecessor(installation,b23_host,monkeypatch)
+    if journal_state=='missing':(roots['receipts']/'journal.json').unlink()
+    elif journal_state=='unreadable':(roots['receipts']/'journal.json').write_bytes(b'bounded later damaged journal')
+    second=_kpre_accept(installation,b23_host,monkeypatch,point,population=False)
+    before={p.name:p.read_bytes() for p in roots['receipts'].iterdir()}
+    _kpre_fresh(roots,scope,target=first['id'],setup="""
+def forbidden(*a,**kw):raise AssertionError('historical replay mutated/scanned/captured')
+recovery._capture_original_snapshot=forbidden
+recovery.snapshot=forbidden
+recovery._prefix_file=forbidden
+recovery._prefix_transaction=forbidden
+""")
+    assert before=={p.name:p.read_bytes() for p in roots['receipts'].iterdir()}
+    _kpre_fresh(roots,scope,target=second['id'])
+    with closing(sqlite3.connect(roots['control']/'core'/'core.sqlite')) as db:
+        assert db.execute('SELECT count(*) FROM p1_recoveries').fetchone()==(2,)
+        assert db.execute('SELECT count(*) FROM p1_recovery_steps').fetchone()==(10,)
+
+
+@pytest.mark.parametrize('damage',['absent-fence','old-bundle','old-core-descriptor','old-completion-descriptor','old-archive'])
+def test_kpre_predecessor_damage_no_capture(b23_host,installation,monkeypatch,damage):
+    roots,scope,_,_=installation
+    first=_kpre_predecessor(installation,b23_host,monkeypatch)
+    second=_kpre_accept(installation,b23_host,monkeypatch,population=False)
+    receipts=roots['receipts'];prefix='p1-recovery-'+first['id']
+    if damage=='absent-fence':(receipts/'p1-maintenance.json').unlink()
+    elif damage=='old-bundle':(receipts/(prefix+'.snapshot.bundle')).write_bytes(b'changed')
+    elif damage=='old-core-descriptor':(receipts/(prefix+'.core-certificate.intent.json')).unlink()
+    elif damage=='old-completion-descriptor':(receipts/(prefix+'.completion-fence.intent.json')).unlink()
+    else:next((roots['control']/'core'/n for n,k in recovery.archive_names(first).items() if k=='manifest')).write_bytes(b'changed')
+    before={p.name:p.read_bytes() for p in receipts.iterdir()}
+    _kpre_fresh(roots,scope,target=second['id'],refuse=True,setup="def forbid(*a):raise AssertionError('damaged history captured')\nrecovery._capture_original_snapshot=forbid")
+    assert before=={p.name:p.read_bytes() for p in receipts.iterdir()}
+
+
+def _kpre_attempt(installation,h,monkeypatch,point):
+    roots,scope,profiles,_=installation
+    _lotp_population(installation,'running');_lotp_transport(h,monkeypatch)
+    trace=roots['control'].parent/'kpre-death.txt'
+    prepare=recovery._prepare_abandon_locked
+    def die(session,**request):
+        result=prepare(session,**request)
+        def fault(where):
+            if where==point:
+                trace.write_text(where);os._exit(73)
+        session.continue_kernel(result['intent'],prepared=result._snapshot,fault=fault)
+        raise AssertionError('hook not reached')
+    monkeypatch.setattr(recovery,'_prepare_abandon_locked',die)
+    with pytest.raises(ValueError,match='child_failed'):
+        recovery._prepare_abandon(roots,scope,profiles=profiles,budget=DEFAULT_BUDGET,diagnostic_decisions=[])
+    assert trace.read_text()==point
+    paths=[p for p in roots['receipts'].glob('p1-recovery-*.intent.json') if p.name.count('.')==2]
+    assert len(paths)==1
+    r=json.loads(paths[0].read_bytes())
+    assert (roots['receipts']/('p1-recovery-'+r['id']+'.bundle.intent.json')).exists()
+    return r
+
+
+@pytest.mark.parametrize('point',['bundle-intent-create','bundle-intent-write','bundle-intent-fsync',
+    'bundle-intent-parent','bundle-intent-recorded','bundle-create','bundle-write','bundle-fsync','bundle-parent',
+    'core-intent-begin','core-intent-write','core-intent-commit','core-intent-parent',
+    'pending-receipt-commit','evidence-receipt-commit','journal-receipt-commit','core-complete-commit','receipt-complete-commit'])
+def test_kpre_after_attempt_never_recaptures(b23_host,installation,monkeypatch,point):
+    roots,scope,_,_=installation
+    _kpre_attempt(installation,b23_host,monkeypatch,point)
+    refuse=point in ('bundle-intent-create','bundle-intent-write','bundle-intent-fsync','bundle-intent-parent','bundle-intent-recorded','bundle-create')
+    _kpre_fresh(roots,scope,refuse=refuse,setup="def forbidden(*a):raise AssertionError('recapture after creation attempt')\nrecovery._capture_original_snapshot=forbidden")
+
+
+@pytest.mark.parametrize('point',['core-intent-commit','pending-receipt-commit','evidence-receipt-commit','receipt-complete-commit'])
+def test_kpre_deleted_bundle_sql_is_not_no_attempt(b23_host,installation,monkeypatch,point):
+    roots,scope,_,_=installation
+    r=_kpre_attempt(installation,b23_host,monkeypatch,point)
+    for suffix in ('.bundle.intent.json','.snapshot.bundle'):(roots['receipts']/('p1-recovery-'+r['id']+suffix)).unlink()
+    before={p.name:p.read_bytes() for p in roots['receipts'].iterdir()}
+    _kpre_fresh(roots,scope,refuse=True,setup="def forbidden(*a):raise AssertionError('deleted attempt recaptured')\nrecovery._capture_original_snapshot=forbidden")
+    assert before=={p.name:p.read_bytes() for p in roots['receipts'].iterdir()}
+
+
+def test_kpre_recapture_connections_at_actual_use_and_close(b23_host,installation,monkeypatch):
+    roots,scope,_,_=installation
+    _kpre_accept(installation,b23_host,monkeypatch)
+    _kpre_fresh(roots,scope,attempts=1,setup=r'''
+import sqlite3,urllib.parse
+connect=sqlite3.connect;opened=[];backups=[];inserts=[]
+class Audit(sqlite3.Connection):
+    checked=False;reader_checked=False;explicitly_closed=False
+    def audit(self):
+        assert resource.getrlimit(resource.RLIMIT_FSIZE)==(4_194_304,)*2
+        for sql in ("ATTACH ':memory:' AS extra_db",'DETACH extra_db','PRAGMA mmap_size=1048576',
+            'PRAGMA journal_mode=DELETE','PRAGMA max_page_count=10','PRAGMA query_only=OFF',"SELECT load_extension('foreign')"):
+            try:super().execute(sql)
+            except sqlite3.DatabaseError:pass
+            else:raise AssertionError(sql)
+        for key,value in [('trusted_schema',0),('temp_store',2),('mmap_size',0)]:
+            assert super().execute('PRAGMA '+key).fetchone()==(value,)
+    def execute(self,sql,*args,**kw):
+        if not self.checked and sql.startswith('INSERT INTO p1_recoveries '):
+            self.checked=True;self.audit();inserts.append(self)
+        if not self.reader_checked and (sql.lower().startswith('pragma table_info') or sql.startswith('SELECT record FROM p1_registrations')):
+            self.reader_checked=True;self.audit()
+        return super().execute(sql,*args,**kw)
+    def backup(self,target,*args,**kw):
+        self.reader_checked=True;self.audit();target.reader_checked=True;target.audit();backups.append(self)
+        return super().backup(target,*args,**kw)
+    def close(self):self.explicitly_closed=True;return super().close()
+def audited(database,*args,**kw):
+    text=str(database)
+    if any(tag in text for tag in ('p1-evidence-','p1-inspect-')):
+        assert kw.get('uri') and 'vfs=unix' in text
+        kw['factory']=Audit;db=connect(database,*args,**kw);opened.append(db);return db
+    return connect(database,*args,**kw)
+sqlite3.connect=audited
+continuation=recovery._MaintenanceSession.continue_kernel
+def audit_continuation(session,*a,**kw):
+    result=continuation(session,*a,**kw)
+    assert len(backups)==1 and len(inserts)==1
+    assert opened and all(db.checked or db.reader_checked for db in opened)
+    assert all(db.explicitly_closed for db in opened)
+    return result
+recovery._MaintenanceSession.continue_kernel=audit_continuation
+''')
+
+
+@pytest.mark.parametrize('role',['control','receipts'])
+def test_kpre_no_attempt_both_busy_locks(b23_host,installation,monkeypatch,role):
+    import fcntl,subprocess,sys
+    roots,scope,_,_=installation
+    _kpre_accept(installation,b23_host,monkeypatch)
+    lock=roots[role]/('core/control.lock' if role=='control' else 'lane.lock')
+    before={p.name:p.read_bytes() for p in roots['receipts'].iterdir()}
+    with lock.open('rb') as stream:
+        fcntl.flock(stream,fcntl.LOCK_EX|fcntl.LOCK_NB)
+        for _ in range(2):
+            child=subprocess.run([sys.executable,'-c',_KPRE_FRESH],input=encode(dict(roots={k:str(p) for k,p in roots.items()},scope=scope)),capture_output=True,text=True,timeout=60)
+            assert child.returncode!=0 and 'child_failed' in child.stderr
+    assert before=={p.name:p.read_bytes() for p in roots['receipts'].iterdir()}
+
+
+@pytest.mark.parametrize('damage',['multiple','foreign-fence','key','plan-content','control-output','journal-link','noncanonical','marker-partial'])
+def test_kpre_additional_closed_inputs(b23_host,installation,monkeypatch,damage):
+    roots,scope,_,_=installation
+    r=_kpre_accept(installation,b23_host,monkeypatch)
+    receipts=roots['receipts'];accepted=receipts/('p1-recovery-'+r['id']+'.intent.json')
+    if damage=='multiple':
+        other=copy.deepcopy(r);other['id']='f'*32
+        p=receipts/('p1-recovery-'+other['id']+'.intent.json');p.write_text(encode(other));p.chmod(0o600)
+    elif damage=='foreign-fence':
+        fence=dict(revision=1,**{k:r[k] for k in ('deployment_id','plan_id','plan_digest','proof_digest','old_lane','new_lane')},recovery_id='f'*32,step='pending',certificate=None)
+        p=receipts/'p1-maintenance.json';p.write_text(encode(fence));p.chmod(0o600)
+    elif damage=='key':(roots['ipc']/'lifecycle.key').write_bytes(b'changed')
+    elif damage=='plan-content':
+        with closing(sqlite3.connect(roots['control']/'core'/'core.sqlite')) as db,db:
+            plan=json.loads(db.execute('SELECT record FROM p1_abandon_plans').fetchone()[0]);plan['expires']-=1
+            db.execute('UPDATE p1_abandon_plans SET record=?,digest=?',(encode(plan),digest(plan)))
+    elif damage=='control-output':
+        p=roots['control']/'core'/next(iter(recovery.archive_names(r)));p.write_bytes(b'premature');p.chmod(0o600)
+    elif damage=='journal-link':
+        (receipts/'journal.json').unlink();(receipts/'journal.json').symlink_to(receipts/'absent')
+    elif damage=='noncanonical':accepted.write_text(json.dumps(r,indent=1))
+    else:(receipts/'p1-b2-required.json').write_bytes(b'partial')
+    before={p.name:p.read_bytes() if not p.is_symlink() else os.readlink(p) for p in receipts.iterdir()}
+    _kpre_fresh(roots,scope,target=r['id'],refuse=True,setup="def forbidden(*a):raise AssertionError('invalid predicate captured')\nrecovery._capture_original_snapshot=forbidden")
+    assert before=={p.name:p.read_bytes() if not p.is_symlink() else os.readlink(p) for p in receipts.iterdir()}
+
+
+@pytest.mark.parametrize('point',['fence-create','fence-write','fence-fsync','fence-parent'])
+def test_kpre_pending_replacement_temporary_quarantines(b23_host,installation,monkeypatch,point):
+    roots,scope,_,_=installation
+    first=_kpre_predecessor(installation,b23_host,monkeypatch)
+    second=_kpre_accept(installation,b23_host,monkeypatch,point,population=False)
+    assert (roots['receipts']/'p1-maintenance.pending.json').exists()
+    before={p.name:p.read_bytes() for p in roots['receipts'].iterdir()}
+    for r in (first,second):
+        _kpre_fresh(roots,scope,target=r['id'],refuse=True,setup="def forbidden(*a):raise AssertionError('temporary captured')\nrecovery._capture_original_snapshot=forbidden")
+    assert before=={p.name:p.read_bytes() for p in roots['receipts'].iterdir()}
+
+
+@pytest.mark.parametrize('history,point',[(False,p) for p in ('accepted-write','accepted-fsync','accepted-parent','fence-write','fence-fsync','fence-parent')]+[(True,p) for p in ('accepted-write','accepted-fsync','accepted-parent','fence-replace-parent')])
+@pytest.mark.parametrize('journal_state',['valid','missing','unreadable'])
+@pytest.mark.parametrize('failure',['source','capsule','control-lock','lane-lock'])
+def test_kpre_each_no_attempt_window_rechecks(b23_host,installation,monkeypatch,history,point,journal_state,failure):
+    import fcntl,subprocess,sys
+    roots,scope,_,_=installation
+    if history:_kpre_predecessor(installation,b23_host,monkeypatch)
+    if journal_state=='missing':(roots['receipts']/'journal.json').unlink()
+    elif journal_state=='unreadable':(roots['receipts']/'journal.json').write_bytes(b'bounded damaged journal')
+    r=_kpre_accept(installation,b23_host,monkeypatch,point,population=not history)
+    if failure=='source':
+        with closing(sqlite3.connect(roots['control']/'core'/'core.sqlite')) as db,db:
+            db.execute("UPDATE resource_monitor SET state='fault'")
+    before={p.name:p.read_bytes() for p in roots['receipts'].iterdir()}
+    setup="def forbidden(*a):raise AssertionError('unverified recapture')\nrecovery._capture_original_snapshot=forbidden\n"
+    if failure=='source':_kpre_fresh(roots,scope,target=r['id'],refuse=True,setup=setup)
+    else:
+        if failure=='capsule':setup+="def absent():raise ValueError('fresh trusted capsule unavailable')\nrecovery.read_host_capsule=absent"
+        lock=None
+        try:
+            if failure.endswith('lock'):
+                lock=(roots['control']/'core'/'control.lock' if failure=='control-lock' else roots['receipts']/'lane.lock').open('rb')
+                fcntl.flock(lock,fcntl.LOCK_EX|fcntl.LOCK_NB)
+            for _ in range(2):
+                child=subprocess.run([sys.executable,'-c',_KPRE_FRESH],input=encode(dict(roots={k:str(p) for k,p in roots.items()},scope=scope,target=r['id'],setup=setup)),capture_output=True,text=True,timeout=60)
+                assert child.returncode!=0 and 'child_failed' in child.stderr
+        finally:
+            if lock is not None:lock.close()
+    assert before=={p.name:p.read_bytes() for p in roots['receipts'].iterdir()}

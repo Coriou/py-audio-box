@@ -340,47 +340,46 @@ class _MaintenanceSession:
 
     def continue_kernel(self, intent, *, prepared=None, fault=lambda point:None):
         """Future P/B2.3c seam. No caller bytes/limit/proof override accepted."""
-        self._verify()
-        intent=json.loads(encode(intent)); validate_b2_record('p1_recoveries',intent)
-        proof=self.capsule['kernel_proof']
-        if intent['proof']!=proof or intent['proof_digest']!=self.capsule['kernel_proof_digest']:
-            raise ValueError('b2_maintenance_proof')
-        purpose=self.capsule['purpose']
-        if purpose['kind']!='pre-plan' and (purpose['plan_id'],purpose['plan_digest'])!=(intent['plan_id'],intent['plan_digest']):
-            raise ValueError('b2_maintenance_purpose')
-        raw=None
-        if prepared is not None:
-            if (type(prepared) is not _PreparedSnapshot or prepared is not self._prepared or
-                    prepared._session is not self or prepared._used or
-                    (prepared._plan_id,prepared._plan_digest)!=(intent['plan_id'],intent['plan_digest']) or
-                    prepared.sha256!=intent['expected'][1]['output']['snapshot_digest']):
-                raise ValueError('b2_maintenance_snapshot_owner')
-            prepared._used=True; raw=prepared._raw
-        else:
-            # Fresh process restart consumes owned durable inputs only. Initial
-            # acceptance cannot silently enter the fixture's recapture branch.
-            receipts=self.roots['receipts']; prefix='p1-recovery-'+intent['id']
-            if read_file(receipts/(prefix+'.intent.json'),MAX_BYTES)!=encode(intent).encode():
-                raise ValueError('b2_maintenance_accepted')
-            raw=read_file(receipts/(prefix+'.snapshot.bundle'),MAINTENANCE_SNAPSHOT_LIMIT)
-        import hashlib
-        if len(raw)>MAINTENANCE_SNAPSHOT_LIMIT or hashlib.sha256(raw).hexdigest()!=intent['expected'][1]['output']['snapshot_digest']:
-            raise ValueError('b2_prefix_snapshot_changed')
-        if (len(encode(archive_manifest(intent)).encode())>MAINTENANCE_DOCUMENT_LIMIT or
-                len(encode(_certificate(intent,dict(recovery_id=intent['id'],**intent['expected'][3],
-                    lane=intent['new_lane'],epoch=intent['new_epoch']))).encode())>MAINTENANCE_DOCUMENT_LIMIT):
-            raise ValueError('b2_maintenance_document')
-        core_step=dict(recovery_id=intent['id'],**intent['expected'][3],lane=intent['new_lane'],epoch=intent['new_epoch'])
-        receipt_certificate=dict(certificate=_certificate(intent,core_step),steps=[
-            dict(recovery_id=intent['id'],**e,lane=intent['new_lane'],epoch=intent['new_epoch']) for e in intent['expected'][:4]])
-        if (len(encode(intent).encode())>MAINTENANCE_FILE_LIMIT or
-                len(encode(receipt_certificate).encode())>MAINTENANCE_DOCUMENT_LIMIT):
-            raise ValueError('b2_maintenance_document')
-        # Any ambiguity or I/O failure burns this session; fresh invocation only.
         try:
+            self._verify()
+            intent=json.loads(encode(intent)); validate_b2_record('p1_recoveries',intent)
+            proof=self.capsule['kernel_proof']
+            if intent['proof']!=proof or intent['proof_digest']!=self.capsule['kernel_proof_digest']:
+                raise ValueError('b2_maintenance_proof')
+            purpose=self.capsule['purpose']
+            if purpose['kind']!='pre-plan' and (purpose['plan_id'],purpose['plan_digest'])!=(intent['plan_id'],intent['plan_digest']):
+                raise ValueError('b2_maintenance_purpose')
+            raw=None
+            if prepared is not None:
+                if (type(prepared) is not _PreparedSnapshot or prepared is not self._prepared or
+                        prepared._session is not self or prepared._used or
+                        (prepared._plan_id,prepared._plan_digest)!=(intent['plan_id'],intent['plan_digest']) or
+                        prepared.sha256!=intent['expected'][1]['output']['snapshot_digest']):
+                    raise ValueError('b2_maintenance_snapshot_owner')
+                prepared._used=True; raw=prepared._raw
+            else:
+                # Owned acceptance is mandatory. Snapshot selection belongs to
+                # the shared kernel after full source/history/stage validation.
+                receipts=self.roots['receipts']; prefix='p1-recovery-'+intent['id']
+                if read_file(receipts/(prefix+'.intent.json'),MAX_BYTES)!=encode(intent).encode():
+                    raise ValueError('b2_maintenance_accepted')
+            import hashlib
+            if raw is not None and (len(raw)>MAINTENANCE_SNAPSHOT_LIMIT or hashlib.sha256(raw).hexdigest()!=intent['expected'][1]['output']['snapshot_digest']):
+                raise ValueError('b2_prefix_snapshot_changed')
+            if (len(encode(archive_manifest(intent)).encode())>MAINTENANCE_DOCUMENT_LIMIT or
+                    len(encode(_certificate(intent,dict(recovery_id=intent['id'],**intent['expected'][3],
+                        lane=intent['new_lane'],epoch=intent['new_epoch']))).encode())>MAINTENANCE_DOCUMENT_LIMIT):
+                raise ValueError('b2_maintenance_document')
+            core_step=dict(recovery_id=intent['id'],**intent['expected'][3],lane=intent['new_lane'],epoch=intent['new_epoch'])
+            receipt_certificate=dict(certificate=_certificate(intent,core_step),steps=[
+                dict(recovery_id=intent['id'],**e,lane=intent['new_lane'],epoch=intent['new_epoch']) for e in intent['expected'][:4]])
+            if (len(encode(intent).encode())>MAINTENANCE_FILE_LIMIT or
+                    len(encode(receipt_certificate).encode())>MAINTENANCE_DOCUMENT_LIMIT):
+                raise ValueError('b2_maintenance_document')
+            # Any ambiguity or I/O failure burns this session; fresh invocation only.
             return _pending_prefix_locked(self.roots,self.db,self.scope,intent,proof['observation'],
                 now=time.time(),snapshot_bytes=raw,fault=fault,through_journal=True,
-                through_core=True,through_receipt=True)
+                through_core=True,through_receipt=True,_session=self)
         finally:
             self._live=False
 
@@ -1636,7 +1635,7 @@ def _receipt_only_successor(db, roots, scope, data):
     prior=dict(revision=1,**{k:latest[k] for k in ('deployment_id','plan_id','plan_digest','proof_digest','old_lane','new_lane')},recovery_id=latest['id'],step='complete',certificate=_core_result(latest)['certificate'])
     if fence not in (encode(pending).encode(),encode(prior).encode()):raise ValueError('b2_receipt_only_fence')
     _retained_exact(receipts/'p1-maintenance.json',fence)
-    _retained_exact(receipts/'journal.json',bytes.fromhex(intent['before']['journal']['bytes_hex']))
+    _original_journal_exact(receipts,intent)
     # Pre-Core can reach only acceptance, fence replacement and bundle creation.
     # Replacement temporaries remain quarantine, even complete, as on B resume.
     names={name};descriptor=receipts/(prefix+'.bundle.intent.json');bundle=receipts/(prefix+'.snapshot.bundle')
@@ -1661,6 +1660,57 @@ def _receipt_only_successor(db, roots, scope, data):
     elif exists(bundle):raise ValueError('b2_prefix_unrecorded_bundle_quarantine')
     if any(exists(root/n) for n in archive_names(intent)):raise ValueError('b2_receipt_only_premature_archive')
     return names
+
+
+def _entry_present(path):
+    """Directory-entry absence only; unsafe entries never count as absent."""
+    try:path.lstat()
+    except FileNotFoundError:return False
+    return True
+
+
+def _no_attempt_prefix(roots, db, intent, data, names, pending_raw):
+    """Closed pre-bundle stage, after common source/history validation."""
+    receipts=roots['receipts'];prefix='p1-recovery-'+intent['id']
+    if db.in_transaction:raise ValueError('b2_maintenance_snapshot_order')
+    for table,column in (('p1_recoveries','id'),('p1_recovery_steps','recovery_id'),
+            ('dispatch_resolutions','recovery_id'),('p1_retired_publications','recovery_id'),
+            ('p1_integrity_resolutions','recovery_id')):
+        if db.execute('SELECT 1 FROM '+table+' WHERE '+column+'=?',(intent['id'],)).fetchone():
+            raise ValueError('b2_prefix_recapture_attempt')
+    for prior in data['p1_recoveries']:
+        if not any(s['recovery_id']==prior['id'] and s['step']=='receipt-complete' for s in data['p1_recovery_steps']):
+            raise ValueError('b2_prefix_other_pending')
+    if any(_entry_present(p) for p in names.values()):raise ValueError('b2_prefix_recapture_attempt')
+    # Common finite namespace check already rejects unknown names/temporaries.
+    # Every current later-stage spelling it admits is forbidden at this stage.
+    for entry in receipts.iterdir():
+        if entry.name.startswith(prefix) and entry.name!=prefix+'.intent.json':
+            raise ValueError('b2_prefix_recapture_attempt')
+    _retained_exact(receipts/(prefix+'.intent.json'),encode(intent).encode())
+    _retained_exact(receipts/'p1-b2-required.json',encode(dict(revision=1,deployment_id=intent['deployment_id'])).encode())
+    fence=receipts/'p1-maintenance.json'
+    if data['p1_recoveries']:
+        latest=data['p1_recoveries'][-1]
+        if intent['before']['prior_certificate']!=_core_result(latest)['certificate']:
+            raise ValueError('b2_prefix_previous_fence')
+        prior=dict(revision=1,**{k:latest[k] for k in ('deployment_id','plan_id','plan_digest','proof_digest','old_lane','new_lane')},
+            recovery_id=latest['id'],step='complete',certificate=_core_result(latest)['certificate'])
+        raw=read_file(fence,65536)
+        if raw not in (pending_raw,encode(prior).encode()):raise ValueError('b2_prefix_previous_fence')
+        _retained_exact(fence,raw)
+    else:
+        if intent['before']['prior_certificate'] is not None:raise ValueError('b2_prefix_previous_fence')
+        if _entry_present(fence):_retained_exact(fence,pending_raw)
+    _original_journal_exact(receipts,intent)
+
+
+def _original_journal_exact(receipts, intent):
+    """Absence is a status, never an empty clean journal."""
+    journal=receipts/'journal.json'
+    if intent['before']['journal']['state']=='missing':
+        if _entry_present(journal):raise ValueError('b2_prefix_journal_changed')
+    else:_retained_exact(journal,bytes.fromhex(intent['before']['journal']['bytes_hex']))
 
 
 def _retained_exact(path, raw):
@@ -1708,9 +1758,14 @@ def _pending_prefix(roots, scope, intent, observation, *, now=None, snapshot_byt
 
 
 def _pending_prefix_locked(roots,db,scope,intent,observation,*,now,snapshot_bytes=None,
-        fault=lambda point:None,through_journal=False,through_core=False,through_receipt=False):
+        fault=lambda point:None,through_journal=False,through_core=False,through_receipt=False,_session=None):
     """Prescribed kernel, called only by an owning lock-held session."""
     import hashlib
+    if _session is not None:
+        if (type(_session) is not _MaintenanceSession or _session.db is not db or
+                _session.roots is not roots or _session.scope!=scope):
+            raise ValueError('b2_maintenance_session_owner')
+        _session._verify()
     root=roots['control']/'core'; receipts=roots['receipts']
     data=validate_b2_database(db,root,_uncertified=intent['id'] if through_core else None,_retained_receipts=receipts)
     plan=next((p for p in data['p1_abandon_plans'] if p['id']==intent['plan_id']),None) if data else None
@@ -1838,24 +1893,36 @@ def _pending_prefix_locked(roots,db,scope,intent,observation,*,now,snapshot_byte
     bundle_descriptor=encode(dict(revision=1,recovery_id=intent['id'],intent_digest=digest(intent),
         source_digest=intent['source_digest'],snapshot_digest=intent['expected'][1]['output']['snapshot_digest'])).encode()
     snapshot_raw=snapshot_bytes
-    if bundle_intent.exists():
+    no_attempt=False
+    if _session is not None:
+        if accepted and existing is None and not _entry_present(bundle_intent) and not _entry_present(bundle):
+            _no_attempt_prefix(roots,db,intent,data,names,fence_raw)
+            no_attempt=True
+            fault('recapture-before')
+            recovered=_session.capture(intent['plan_id'],intent['plan_digest'])
+            recovered._used=True
+            snapshot_raw=recovered._raw
+            fault('recapture-after')
+    if _entry_present(bundle_intent):
         _prefix_exact(bundle_intent,bundle_descriptor)
         if not bundle.exists(): raise ValueError('b2_prefix_missing_bundle_quarantine')
-        snapshot_raw=read_file(bundle,MAX_BYTES)
+        snapshot_raw=read_file(bundle,MAINTENANCE_SNAPSHOT_LIMIT if _session is not None else MAX_BYTES)
         _prefix_exact(bundle,snapshot_raw)
         if snapshot_bytes is not None and snapshot_bytes!=snapshot_raw: raise ValueError('b2_prefix_snapshot_changed')
-    elif bundle.exists() or bundle.is_symlink() or existing is not None:
+    elif _entry_present(bundle) or existing is not None:
         raise ValueError('b2_prefix_unrecorded_bundle_quarantine')
     if snapshot_raw is not None:
         if not isinstance(snapshot_raw,bytes) or len(snapshot_raw)>MAX_BYTES or hashlib.sha256(snapshot_raw).hexdigest()!=intent['expected'][1]['output']['snapshot_digest']:
             raise ValueError('b2_prefix_snapshot_changed')
-    if not accepted or (existing is None and snapshot_raw is None):
+    if no_attempt:fault('recapture-hash')
+    if not accepted or no_attempt or (existing is None and snapshot_raw is None):
         if any(p.exists() or p.is_symlink() for p in names.values()): raise ValueError('b2_prefix_foreign_archive')
         # Capture only if no frozen original exists. Supplied semantic-fixture
         # bytes and owned session bytes pass the SAME archive/SQL oracle below.
         with tempfile.TemporaryDirectory(prefix='p1-evidence-') as temporary:
             path=Path(temporary)/'snapshot.sqlite'
             if snapshot_raw is None:
+                if _session is not None:raise ValueError('b2_prefix_missing_bundle_quarantine')
                 snapshot_raw=_capture_original_snapshot(roots,db,MAX_BYTES)
             if hashlib.sha256(snapshot_raw).hexdigest()!=intent['expected'][1]['output']['snapshot_digest']:
                 raise ValueError('b2_prefix_snapshot_changed')
@@ -1866,6 +1933,7 @@ def _pending_prefix_locked(roots,db,scope,intent,observation,*,now,snapshot_byte
             (Path(temporary)/names['snapshot'].name).chmod(0o600)
             witness=dict(recovery_id=intent['id'],**intent['expected'][1],lane=intent['new_lane'],epoch=intent['new_epoch'])
             _validate_archives(Path(temporary),dict(p1_recoveries=[intent],p1_abandon_plans=[plan],p1_recovery_steps=[witness]),0,0)
+            if no_attempt:fault('recapture-oracle')
             from contextlib import closing
             with closing(sqlite3.connect(path.as_uri()+'?mode=rw&vfs=unix',uri=True)) as candidate:
                 _maintenance_connection(candidate)
@@ -1879,6 +1947,7 @@ def _pending_prefix_locked(roots,db,scope,intent,observation,*,now,snapshot_byte
                         raw=read_file(root/name,MAX_BYTES-used); used+=len(raw)
                         target=Path(temporary)/name; target.write_bytes(raw); target.chmod(0o600)
                 validate_b2_database(candidate,Path(temporary))
+    if no_attempt:fault('recapture-verified')
     if not accepted:
         if marker_path.exists(): _prefix_exact(marker_path,marker_raw)
         else: _prefix_file(marker_path,marker_raw,fault,'marker')
