@@ -546,3 +546,9 @@ Record failures and missing evidence; do not replace them with a successful late
 - reviews/P1B2-KERNEL-ASTRA.md sourcearchitecture boundedGO privatekernel only; no newprivatecontractblocker, NOdirectapplywiring. No Astratests,845passes attributedSolR5. Three sequentialB2.3a hostauthority/b productionpreparation/c closedwiring eachindependentlyreviewed.
 - Orchestrator adopts exactdecision: unchangedbudgetonly; conservativeexistinghighwater mustprovablydominatecompleteprefixfootprint elsepreacceptrefusal. Generalpreparation/budgetincrease outstanding, no accountinginflation. HostlocalLinuxproc/cgroup provenance only supportedifactualnamespaceassociation proved; DockerDesktop/remoteunsupportedmode refuses.
 - Approves exact B2.3b resource_store measurementfactor amendment ONLY noordinaryfence/scanequalitychange. NextisolatedSol-low request pab-phase1a-p1b23a-implementation-r1-20261017 originalexact4pathallowlist allapplyunavailable, no actualDockerexecution. A1inventory/C1C2/finalglobalAstralimits retained.
+
+## B2.3a candidate / independent review
+
+- Candidate05afbaec0c3d61f60bb2f430d9108da30f285d0c frozeneb6e0c6 app-ownedt3-c1fea5bd; rootreadhandoff unintegrated. Exactly4paths hostscript/recovery/tests/report frozenkernelunchanged claimed.
+- Claims117target/810focused/962passed18skipped correctedfinalfrozen. Callerclockoverrideboundary found/fixed beforehandoff; earlierfocusedinterrupted notcomplete. Hostevidence E1mocksONLY noactualDocker/installedauthqualification allapplyunavailable.
+- FreshSol-low request pab-phase1a-p1b23a-review-r1-20261017 report reviews/P1B23a-r1-sol.md fullAstraoriginalbrief/candidate/limits supplied. No integration/waiver/activation.
