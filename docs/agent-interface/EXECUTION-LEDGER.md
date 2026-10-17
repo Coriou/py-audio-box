@@ -591,3 +591,8 @@ Record failures and missing evidence; do not replace them with a successful late
 
 - R1review reviews/P1B23K-r1-sol.md NO-GO exactcc3d790. F1privateprospectivewriter sqlite3.connect(path) defaultVFS/nohardening permitsATTACH/mmap atfirstproductionINSERT; originalsessiondenies.34target/884focused/1036fullpassed19skipped confirmed.
 - NextisolatedSol-low request pab-phase1a-p1b23k-fix-r1-20261017 sharedfixedUnixVFS/config/authorizer+explicitclose allboundedrouteconnections relevantprivatewriters/readers. Applyunavailable no integration/waiver actualLinuxcapstillpending.
+
+## K corrected connection candidate / review round2
+
+- Candidate6456ff42ed8d588713d5c8d5530c86f70b9a174a frozen6518c948 app-ownedt3-38eac3cc; rootreadresponse unintegrated. SharedfixedUnixVFS/hardening/authorizer/explicitclose privatewriter+readers inventory.
+- Claims35targetpass1skip/885focusedpass1skip/1037passed19skipped finalfrozen; firstINSERTescapeREDGREEN. FreshSol-low request pab-phase1a-p1b23k-review-r2-20261017 report reviews/P1B23K-r2-sol.md fulloriginalbrief/finding/response supplied. ActualLinuxcap/hostpending applyunavailable no integration/waiver.
