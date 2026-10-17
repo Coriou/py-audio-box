@@ -259,8 +259,8 @@ def _maintenance_connection(db, *, original=False):
         db.execute('PRAGMA wal_autocheckpoint=0')
     if db.execute("SELECT 1 FROM sqlite_master WHERE type='trigger' LIMIT 1").fetchone():
         raise ValueError('b2_maintenance_trigger')
-    # SQLite's default Unix VFS is selected by our option-free fixed path. No
-    # ATTACH, extension or mmap escape through the connection handed to P.
+    # Callers explicitly pin the standard Unix VFS. No ATTACH, extension
+    # or mmap escape through original or private validation connections.
     def authorize(action, arg1, arg2, database, source):
         if action in (sqlite3.SQLITE_ATTACH,sqlite3.SQLITE_DETACH,
                 sqlite3.SQLITE_CREATE_TRIGGER,sqlite3.SQLITE_CREATE_TEMP_TRIGGER,
@@ -270,7 +270,7 @@ def _maintenance_connection(db, *, original=False):
                 'table_info','index_info','index_list','foreign_key_list','wal_checkpoint'):
             if (arg1.lower(),str(arg2).lower()) not in {
                 ('trusted_schema','off'),('temp_store','memory'),('mmap_size','0'),
-                ('synchronous','full'),('wal_autocheckpoint','0')}:
+                ('synchronous','full'),('wal_autocheckpoint','0'),('query_only','on')}:
                 return sqlite3.SQLITE_DENY
         return sqlite3.SQLITE_OK
     db.set_authorizer(authorize)
@@ -1144,8 +1144,10 @@ def _archive_database(raw):
         fd=os.open(path,os.O_WRONLY|os.O_CREAT|os.O_EXCL,0o600)
         with os.fdopen(fd,'wb') as stream:
             if stream.write(raw)!=len(raw):raise OSError('short_evidence_copy')
-        db=sqlite3.connect(path.as_uri()+'?mode=ro&immutable=1',uri=True)
-        try:yield db
+        db=sqlite3.connect(path.as_uri()+'?mode=ro&immutable=1&vfs=unix',uri=True)
+        try:
+            _maintenance_connection(db)
+            yield db
         finally:db.close()
 
 
@@ -1846,7 +1848,9 @@ def _pending_prefix_locked(roots,db,scope,intent,observation,*,now,snapshot_byte
             (Path(temporary)/names['snapshot'].name).chmod(0o600)
             witness=dict(recovery_id=intent['id'],**intent['expected'][1],lane=intent['new_lane'],epoch=intent['new_epoch'])
             _validate_archives(Path(temporary),dict(p1_recoveries=[intent],p1_abandon_plans=[plan],p1_recovery_steps=[witness]),0,0)
-            with sqlite3.connect(path) as candidate:
+            from contextlib import closing
+            with closing(sqlite3.connect(path.as_uri()+'?mode=rw&vfs=unix',uri=True)) as candidate:
+                _maintenance_connection(candidate)
                 candidate.execute('INSERT INTO p1_recoveries VALUES(?,?,?,?)',(intent['id'],intent['plan_id'],encode(intent),digest(intent)))
                 for descriptor in intent['expected'][:2]:
                     step=dict(recovery_id=intent['id'],**descriptor,lane=intent['new_lane'],epoch=intent['new_epoch'])

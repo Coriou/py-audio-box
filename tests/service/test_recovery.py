@@ -3612,3 +3612,62 @@ def test_lotk_original_connection_pins_standard_unix_vfs(installation,monkeypatc
         return original(database,*args,**kwargs)
     monkeypatch.setattr(recovery.sqlite3,'connect',pinned)
     assert recovery._run_bounded_maintenance(roots,scope,lambda session:True)
+
+
+def test_lotk_f1_all_private_connections_at_actual_use(installation,monkeypatch):
+    roots,scope,_,_=installation
+    intent,_,_=core_fixture(installation)
+    _lotk_model(monkeypatch,roots,scope,intent)
+    original=sqlite3.connect
+    opened=[]; first_inserts=[]
+    class Audited(sqlite3.Connection):
+        checked=False
+        reader_checked=False
+        explicitly_closed=False
+        def audit(self):
+            for sql in ("ATTACH ':memory:' AS extra_db",'DETACH extra_db',
+                    'PRAGMA mmap_size=1048576','PRAGMA journal_mode=DELETE',
+                    'PRAGMA max_page_count=10',"SELECT load_extension('foreign')"):
+                with pytest.raises(sqlite3.DatabaseError):
+                    super().execute(sql)
+            assert self.execute('PRAGMA trusted_schema').fetchone()==(0,)
+            assert self.execute('PRAGMA temp_store').fetchone()==(2,)
+            assert self.execute('PRAGMA mmap_size').fetchone()==(0,)
+        def execute(self,sql,*args,**kwargs):
+            if not self.checked and sql.startswith('INSERT INTO p1_recoveries '):
+                self.checked=True
+                self.audit()  # FIRST actual INSERT, after configuration opportunity.
+                first_inserts.append(self)
+            if not self.reader_checked and (sql.lower().startswith('pragma table_info') or sql.startswith('SELECT record FROM p1_registrations')):
+                self.reader_checked=True
+                self.audit()
+            return super().execute(sql,*args,**kwargs)
+        def backup(self,target,*args,**kwargs):
+            self.reader_checked=True; self.audit()
+            target.reader_checked=True; target.audit()
+            return super().backup(target,*args,**kwargs)
+        def close(self):
+            self.explicitly_closed=True
+            return super().close()
+    def connect(database,*args,**kwargs):
+        text=str(database)
+        if 'p1-evidence-' in text or 'p1-inspect-' in text:
+            kwargs['factory']=Audited
+            db=original(database,*args,**kwargs)
+            opened.append((text,kwargs.get('uri'),db))
+            return db
+        return original(database,*args,**kwargs)
+    def operation(session):
+        owned=session.capture(intent['plan_id'],intent['plan_digest'])
+        result=session.continue_kernel(intent,prepared=owned)
+        assert result['status']=='complete'
+        assert len(first_inserts)==1
+        assert opened
+        for uri,is_uri,db in opened:
+            assert is_uri and 'vfs=unix' in uri,uri
+            assert db.checked or db.reader_checked,uri
+            assert db.explicitly_closed,uri
+            with pytest.raises(sqlite3.ProgrammingError):db.execute('SELECT 1')
+        return True
+    monkeypatch.setattr(sqlite3,'connect',connect)
+    assert recovery._run_bounded_maintenance(roots,scope,operation)
