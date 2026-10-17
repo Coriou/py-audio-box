@@ -639,3 +639,8 @@ Record failures and missing evidence; do not replace them with a successful late
 
 - C resume candidate 58e3eb9f40a8db5ca162fe8f64922efb13f224c4, frozen cb700a30, t3-adbf212d remains UNINTEGRATED WIP. Original accepted-parent now green. New required-refusal RED twice via C and twice direct K: complete fence/pre-fifth current Core after-image drift still permits fifth insertion and C freeze_release=true; owning certified-Core branch identified. No workaround adopted.
 - Frozen bounded target26passed4failed; full C matrix incomplete, four-B2/full NOT RUN. Historical worktree preserved. Fresh readonly Sol-low task pab-phase1a-p1b23c-prefifth-review-r1-20261017 confirms provenance/owning scope and narrow fix requirements before correction. No qualification/activation waiver; C1 mandatory refusal and A1 unexplained inventory drift remain.
+
+## Pre-fifth independent F1 confirmed / owning K correction
+
+- reviews/P1B23C-PREFIFTH-r1-sol.md independently confirms NO-GO exact58e3eb9:26passed4failed38.94s, direct K and C both mint fifth after current after-image drift. C and original historical worktrees remain clean. Existing unfinished-vs-completed contract sufficient; no new waiver/product decision required.
+- Scope next isolated K correction: recovery.py, recovery tests, append handoff only. Certified unfinished continuation must validate stage-aware retained outputs plus complete exact after-image and reconstructed unaffected source BEFORE any remaining write; merely monitor check insufficient. Genuine fifth-completed history remains observational, F1-F4 and successor stage bounds preserved. C WIP remains unintegrated. Fresh independent review before integration and C resume.
