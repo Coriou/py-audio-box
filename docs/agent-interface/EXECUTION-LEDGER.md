@@ -685,3 +685,8 @@ Record failures and missing evidence; do not replace them with a successful late
 
 - reviews/P1B23-SUCCESSOR-COHERENCE-r1-sol.md exact6cf6236 independentlyconfirms actualAcoherencepositive and BtransportRED2fails7.57s measured94322/94316bytes>65536. Additional reviewerowned strictjoin/resolutionprobes1pass; noadditionalconcretesourceblockerestablished, NOTfullmatrixGO. MissingrequiredBcomposition/negatives/fullcampaigns keepintegrationNO-GO.
 - Astra pab-successor-transport-astra-20261022 remains decisionowner; awaitboundedtransport/historycapacitybrief beforeextendingimplementation. No duplicatework/ceilingbypass/integration or qualificationwaiver.
+
+## Astra transport decision adopted / T1 bounded owning follow-up
+
+- reviews/P1B23-SUCCESSOR-TRANSPORT-ASTRA.md selects fixed1048576-byte completecanonicalresult envelope, unchangedfourfieldproposal/compactsevenkeyconfirmation, fullhistory/source/snapshotownership, unchangedstorage/caps/Hformula. Harden boundedcodec/read/write/EOF/exitdeadline/reap; no genericcapincrease/historywaiver/refprotocol. Decision is scopeamendment, NOTimplementationGO.
+- Adopt T1 exactthreepath owningfollowup thenindependentreview/rootintegration and T2freshCcompletion. RequiredactualnonemptyA->B->C fifteensteps, fullnegative/capacity/transportmatrix and finiteactualhistoryrefusal beforefrozensequentialcampaigns. Preserve6cf6236 andallCWIPs. NewSol-low request pab-successor-transport-t1-implementation-r1-20261022 receivesAstraentirebrief andindependentWIPreview. No sourceintegration/qualificationwaiver.
