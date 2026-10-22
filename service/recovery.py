@@ -1555,7 +1555,12 @@ def _recovered_dispatches(data,validated):
         source=intent['before']['source']['data']
         job=next(r for r in data['jobs'] if r[1]==row[1])
         reservation=next(r for r in data['resource_reservations'] if r[0]==row[1])
-        if (digest(row)==resolution['original_digest'] and
+        # Job events are append-only provenance. Legitimate later events may
+        # be added, but a prior event bound to this recovered dispatch's job
+        # cannot be changed/deleted and then borrow the old resolution.
+        retained_events={encode(event) for event in data['events'] if event[1]==row[1]}
+        if (all(encode(event) in retained_events for event in source['events'] if event[1]==row[1]) and
+            digest(row)==resolution['original_digest'] and
             encode(row)==encode(next(r for r in source['dispatches'] if r[0]==row[0])) and
             encode(job)==encode(next(r for r in expected['jobs'] if r[1]==row[1])) and
             encode(reservation)==encode(next(r for r in expected['resource_reservations'] if r[0]==row[1]))):
@@ -1567,6 +1572,10 @@ def _allocation_coherent(data,validated=None):
     """Check provenance joins directly; inventory reasons can overwrite each other."""
     from service.worker_transport import Authority
     try:
+        # Revision is part of current integrity authority, not a diagnostic
+        # that any historical dispatch resolution can discharge.
+        integrity=data['p1_integrity']
+        if len(integrity)!=1 or tuple(integrity[0][:2])!=(1,1):return False
         recovered=_recovered_dispatches(data,validated)
         jobs={r[1]:(json.loads(r[6]),json.loads(r[7])) for r in data['jobs']}
         reservations={r[0]:r for r in data['resource_reservations']}
@@ -2930,6 +2939,11 @@ def _preparation_prestate(roots,db,scope,capsule,profiles,budget,diagnostic_deci
     check_recovery_open(db,roots['control']/'core')
     histories=[json.loads(r[2]) for r in source['data'].get('p1_recoveries',[])]
     for prior in histories:
+        # Core completion permits ordinary DB inspection, but an initial
+        # successor proposal requires the predecessor's actual fifth receipt.
+        # This does not add future-output demands to completed replay.
+        if not db.execute("SELECT 1 FROM p1_recovery_steps WHERE recovery_id=? AND step='receipt-complete'",(prior['id'],)).fetchone():
+            raise ValueError('b2_preparation_unfinished_history')
         _completed_prefix_receipts(roots,prior)
         _verify_finished_receipt_evidence(roots,prior)
     _prefix_receipt_namespace(roots['receipts'],histories)

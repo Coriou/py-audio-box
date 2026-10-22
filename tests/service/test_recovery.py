@@ -4110,7 +4110,7 @@ def test_lotp_closed_request_cannot_supply_authority(installation,argument):
 @pytest.mark.parametrize('damage',['none','old-archive','old-descriptor','result-budget'])
 def test_lotp_completed_history_preparation(b23_host,installation,monkeypatch,damage,journal_state):
     h=b23_host;roots,scope,profiles,_=installation
-    # Small retained history stays within K's unchanged 64KiB result cap.
+    # The result-budget branch isolates the adopted whole 1MiB UTF-8 envelope.
     if damage=='result-budget':_lotp_population(installation)
     with closing(sqlite3.connect(roots['control']/'core'/'core.sqlite')) as db,db:
         db.execute('UPDATE resource_accounting SET highwater=?',(20*1024**2,))
@@ -4143,9 +4143,36 @@ def test_lotp_completed_history_preparation(b23_host,installation,monkeypatch,da
     if damage=='old-archive':next((roots['control']/'core').glob('*.manifest.json')).write_bytes(b'changed')
     elif damage=='old-descriptor':next(roots['receipts'].glob('*.core-certificate.intent.json')).unlink()
     before=logical(roots)
+    if damage=='result-budget':
+        chunks=recovery._maintenance_result_chunks
+        def over_budget(result):
+            # Real B documents are validated first; only encoder budget is
+            # isolated. No caller padding becomes production history.
+            assert sum(map(len,chunks(result)))<recovery.MAINTENANCE_RESULT_LIMIT
+            yield from chunks('é'+ 'a'*(recovery.MAINTENANCE_RESULT_LIMIT-14))
+        monkeypatch.setattr(recovery,'_maintenance_result_chunks',over_budget)
+        writer_hit=roots['control'].parent/'result-budget-writer'
+        protocol_before=retained_bytes(roots)
+        def forbidden(*a,**k):
+            writer_hit.write_text('acceptance');raise AssertionError('oversize result reached acceptance')
+        for name in ('_rehearse_preparation','_prefix_file','_pending_prefix_locked'):
+            monkeypatch.setattr(recovery,name,forbidden)
+        burned=roots['control'].parent/'result-budget-burned'
+        def budget_refusal(session,**request):
+            try:return finish(session,**request)
+            except ValueError as exc:
+                assert str(exc)=='b2_maintenance_result_budget' and not session._live
+                with pytest.raises(ValueError,match='session_closed'):
+                    session.capture(first['plan']['id'],first['plan_digest'])
+                burned.write_text(str(exc));raise
+        monkeypatch.setattr(recovery,'_prepare_abandon_locked',budget_refusal)
     if damage!='none':
         with pytest.raises(ValueError):recovery._prepare_abandon(roots,scope,profiles=profiles,budget=DEFAULT_BUDGET,diagnostic_decisions=[])
         if damage=='result-budget':
+            assert not writer_hit.exists() and burned.exists()
+            assert [r for r in logical(roots) if 'INSERT INTO "p1_abandon_plans"' not in r]==[r for r in before if 'INSERT INTO "p1_abandon_plans"' not in r]
+            for name,raw in protocol_before.items():
+                if Path(name.split(':')[0]).name not in ('core.sqlite','core.sqlite-wal','core.sqlite-shm'):assert retained_bytes(roots)[name]==raw
             with closing(sqlite3.connect(roots['control']/'core'/'core.sqlite')) as db:
                 assert db.execute('SELECT count(*) FROM p1_abandon_plans').fetchone()==(2,)
                 assert db.execute('SELECT count(*) FROM p1_recoveries').fetchone()==(1,)
@@ -5540,3 +5567,646 @@ def test_t1_preparation_semantics_both_codec_ends(b23_host,installation,monkeypa
     with pytest.raises((ValueError,TypeError,KeyError)):recovery._validate_preparation_result(result)
     raw=recovery._maintenance_result_frame(result)
     with pytest.raises((ValueError,TypeError,KeyError)):recovery._decode_maintenance_result(raw,preparation=True)
+
+
+@pytest.mark.parametrize('size',[65536,65537,1048575,1048576])
+@pytest.mark.parametrize('seed',['é🙂','{"old":"\\\\\\\"é"}'])
+def test_t1_successful_exact_size_pipe_waitpid_eintr(monkeypatch,size,seed):
+    import resource
+    owned=_t1_pipe_model(monkeypatch)
+    prior=resource.getrlimit(resource.RLIMIT_FSIZE)
+    waitpid=os.waitpid;calls=[]
+    def interrupted(pid,flags):
+        calls.append(flags)
+        if len(calls)==1:raise InterruptedError()
+        return waitpid(pid,flags)
+    monkeypatch.setattr(os,'waitpid',interrupted)
+    value=seed+'a'*(size-len(encode(dict(result=seed)).encode()))
+    assert len(encode(dict(result=value)).encode())==size
+    assert recovery._run_bounded_maintenance({}, {},lambda s:value)==value
+    assert calls[0]==os.WNOHANG and resource.getrlimit(resource.RLIMIT_FSIZE)==prior
+    with pytest.raises(ChildProcessError):waitpid(owned[0],os.WNOHANG)
+
+
+def test_t1_real_blocked_pipe_backpressure_deadline(monkeypatch,tmp_path):
+    import select,time,resource
+    from types import SimpleNamespace
+    prior=resource.getrlimit(resource.RLIMIT_FSIZE)
+    owned=_t1_pipe_model(monkeypatch)
+    clock=time.monotonic;start=clock();select0=select.select;write=os.write
+    marker=tmp_path/'actual-EAGAIN'
+    monkeypatch.setattr(recovery,'time',SimpleNamespace(monotonic=lambda:start+(clock()-start)*100,time=time.time))
+    def select_blocked(r,w,x,timeout):
+        if r:
+            # Deliberately leave the real pipe unread until the child exhausts
+            # kernel capacity. The existing absolute deadline must still win.
+            time.sleep(timeout/100);return ([],[],[])
+        return select0(r,w,x,timeout/100)
+    def observed(fd,raw):
+        try:return write(fd,raw)
+        except BlockingIOError:
+            marker.write_text('kernel pipe full');raise
+    # Child select normally prevents EAGAIN; force readiness only to observe
+    # actual nonblocking backpressure, then let its absolute deadline expire.
+    def ready(r,w,x,timeout):
+        if w:return ([],w,[])
+        return select_blocked(r,w,x,timeout)
+    monkeypatch.setattr(select,'select',ready);monkeypatch.setattr(os,'write',observed)
+    with pytest.raises(ValueError,match='timeout'):
+        recovery._run_bounded_maintenance({}, {},lambda s:'a'*900000)
+    assert marker.read_text()=='kernel pipe full'
+    assert clock()-start<2 and resource.getrlimit(resource.RLIMIT_FSIZE)==prior
+    with pytest.raises(ChildProcessError):os.waitpid(owned[0],os.WNOHANG)
+
+
+@pytest.mark.parametrize('same_consumer',[False,True])
+@pytest.mark.parametrize('delta',[-1,0,1])
+def test_t1_isolated_canonical_preparation_boundary(b23_host,installation,monkeypatch,same_consumer,delta,tmp_path):
+    roots,scope,profiles,_=installation
+    _lotp_population(installation,'running');_lotp_transport(b23_host,monkeypatch)
+    chunks=recovery._maintenance_result_chunks;prepare=recovery._prepare_abandon_locked
+    size=recovery.MAINTENANCE_RESULT_LIMIT+delta
+    def boundary(result):
+        # Canonical UTF-8 framing fixture only, after real semantic validation.
+        # It is never returned as preparation authority or stored in history.
+        if type(result) is recovery._Preparation:
+            assert sum(map(len,chunks(result)))<size
+            yield from chunks('é'+'a'*(size-15))
+        else:yield from chunks(result)
+    # 13-byte outer string frame + 2-byte é.
+    monkeypatch.setattr(recovery,'_maintenance_result_chunks',boundary)
+    def consume(session,**request):
+        try:r=prepare(session,**request)
+        except ValueError:
+            assert delta==1 and not session._live
+            (tmp_path/'burned').write_text('yes');raise
+        assert delta<=0
+        if same_consumer:assert session.continue_kernel(r['intent'],prepared=r._snapshot)['status']=='complete'
+        return dict(r)
+    monkeypatch.setattr(recovery,'_prepare_abandon_locked',consume)
+    if delta==1:
+        def forbidden(*a,**k):raise AssertionError('over-budget reached writer')
+        for name in ('_rehearse_preparation','_prefix_file','_pending_prefix_locked'):
+            monkeypatch.setattr(recovery,name,forbidden)
+        with pytest.raises(ValueError):recovery._prepare_abandon(roots,scope,profiles=profiles,budget=DEFAULT_BUDGET,diagnostic_decisions=[])
+        assert (tmp_path/'burned').exists()
+    else:
+        r=recovery._prepare_abandon(roots,scope,profiles=profiles,budget=DEFAULT_BUDGET,diagnostic_decisions=[])
+        recovery._validate_preparation_result(r)
+    with closing(sqlite3.connect(roots['control']/'core'/'core.sqlite')) as db:
+        assert db.execute('SELECT count(*) FROM p1_abandon_plans').fetchone()==(1,)
+        assert db.execute('SELECT count(*) FROM p1_recoveries').fetchone()==(int(same_consumer and delta<=0),)
+        assert db.execute('SELECT count(*) FROM p1_recovery_steps').fetchone()==(5*int(same_consumer and delta<=0),)
+
+
+def _t1_completed_nonempty(installation,h,monkeypatch,generations=2):
+    roots,scope,profiles,_=installation
+    _lotp_population(installation,'running')
+    prepare=recovery._prepare_abandon_locked;histories=[]
+    for generation in range(generations):
+        if histories:_t1_next_owner(h,roots,scope,histories[-1],generation)
+        _lotp_transport(h,monkeypatch)
+        def finish(session,**request):
+            r=prepare(session,**request)
+            assert session.continue_kernel(r['intent'],prepared=r._snapshot)['status']=='complete'
+            return r
+        with monkeypatch.context() as m:
+            m.setattr(recovery,'_prepare_abandon_locked',finish)
+            histories.append(recovery._prepare_abandon(roots,scope,profiles=profiles,budget=DEFAULT_BUDGET,diagnostic_decisions=[])['intent'])
+    return histories
+
+
+_T1_CURRENT_UNION="""
+db=sqlite3.connect(roots['control']/'core'/'core.sqlite')
+try:regs=[json.loads(row[0]) for row in db.execute('SELECT record FROM p1_registrations ORDER BY rowid')]
+finally:db.close()
+"""
+
+
+@pytest.mark.parametrize('generation',[1,2])
+@pytest.mark.parametrize('point',['accepted-parent','fence-replace-parent','bundle-parent','core-intent-commit',
+    'pending-receipt-commit','snapshot-parent','manifest-parent','original-journal-parent',
+    'evidence-receipt-commit','journal-replace','journal-receipt-commit',*_KFIFTH_STAGES])
+def test_t1_nonempty_B_C_actual_prefix_history(b23_host,installation,monkeypatch,generation,point):
+    roots,scope,_,_=installation
+    histories=_t1_completed_nonempty(installation,b23_host,monkeypatch,generation)
+    _t1_next_owner(b23_host,roots,scope,histories[-1],generation)
+    later=_kfifth_successor(installation,b23_host,monkeypatch,point)
+    quarantine=point.endswith('intent-recorded')
+    before=logical(roots);files=retained_bytes(roots)
+    for old in histories:
+        _kfifth_fresh(roots,scope,target=old['id'],refuse=quarantine,setup=_KFIFTH_OBSERVE+_T1_CURRENT_UNION)
+        assert logical(roots)==before and retained_bytes(roots)==files
+    _kfifth_fresh(roots,scope,target=later['id'],refuse=quarantine,
+        setup=(_KFIFTH_FORBID if quarantine else "recovery.time.time=lambda:accepted['created']+1000")+_T1_CURRENT_UNION)
+    if quarantine:assert logical(roots)==before and retained_bytes(roots)==files
+    else:
+        before=logical(roots);files=retained_bytes(roots)
+        for old in histories+[later]:_kfifth_fresh(roots,scope,target=old['id'],setup=_KFIFTH_OBSERVE+_T1_CURRENT_UNION)
+        assert logical(roots)==before and retained_bytes(roots)==files
+
+
+@pytest.mark.parametrize('kind',['bundle','snapshot','manifest','original-journal','rotation',
+    'core-certificate','receipt-certificate','completion-journal','completion-fence'])
+@pytest.mark.parametrize('damage',['missing','wrong','mode'])
+def test_t1_every_ABC_descriptor_all_directions(b23_host,installation,monkeypatch,kind,damage):
+    roots,scope,_,_=installation
+    histories=_t1_completed_nonempty(installation,b23_host,monkeypatch,3)
+    for victim in histories:
+        p=roots['receipts']/('p1-recovery-'+victim['id']+'.'+kind+'.intent.json')
+        raw=p.read_bytes();mode=p.stat().st_mode & 0o777
+        if damage=='missing':p.unlink()
+        elif damage=='wrong':p.write_bytes(b'{}')
+        else:p.chmod(0o644)
+        before=logical(roots);files=retained_bytes(roots)
+        for target in histories:
+            _kfifth_fresh(roots,scope,target=target['id'],refuse=True,setup=_KFIFTH_OBSERVE+_T1_CURRENT_UNION)
+            assert logical(roots)==before and retained_bytes(roots)==files
+        # Restore only the deliberate test corruption to probe another history;
+        # no production recovery or authority repair is invoked.
+        p.write_bytes(raw);p.chmod(mode)
+    before=logical(roots);files=retained_bytes(roots)
+    for r in histories:_kfifth_fresh(roots,scope,target=r['id'],setup=_KFIFTH_OBSERVE+_T1_CURRENT_UNION)
+    assert logical(roots)==before and retained_bytes(roots)==files
+
+
+@pytest.mark.parametrize('point',['core-complete-commit','core-certificate-parent','receipt-certificate-parent',
+    'completion-journal-dirsync','completion-fence-dirsync'])
+@pytest.mark.parametrize('damage',['after-image','unaffected-source'])
+def test_t1_nonempty_C_current_source_before_any_writer(b23_host,installation,monkeypatch,point,damage):
+    roots,scope,_,_=installation
+    histories=_t1_completed_nonempty(installation,b23_host,monkeypatch,2)
+    _t1_next_owner(b23_host,roots,scope,histories[-1],2)
+    c=_kfifth_successor(installation,b23_host,monkeypatch,point)
+    with closing(sqlite3.connect(roots['control']/'core'/'core.sqlite')) as db,db:
+        if damage=='after-image':db.execute("UPDATE resource_monitor SET state='fault'")
+        else:db.execute('UPDATE sqlite_sequence SET seq=seq+1')
+    before=logical(roots);files=retained_bytes(roots)
+    _kfifth_fresh(roots,scope,target=c['id'],refuse=True,setup=_KFIFTH_FORBID+_T1_CURRENT_UNION)
+    assert logical(roots)==before and retained_bytes(roots)==files
+
+
+@pytest.mark.parametrize('damage',['new-fault','new-integrity','incomplete','old-resolution-malformed-receipt'])
+def test_t1_additional_successor_refusals(b23_host,installation,monkeypatch,damage):
+    roots,scope,profiles,_=installation
+    histories=_t1_completed_nonempty(installation,b23_host,monkeypatch,2)
+    _t1_next_owner(b23_host,roots,scope,histories[-1],2);_lotp_transport(b23_host,monkeypatch)
+    if damage=='new-fault':
+        # Resource faults are intentionally recoverable by a FRESH explicit
+        # source/plan. The strict negative is a fault added AFTER C acceptance:
+        # old A/B resolutions cannot consume this current-source mutation.
+        c=_kfifth_successor(installation,b23_host,monkeypatch,'core-certificate-parent')
+        with closing(sqlite3.connect(roots['control']/'core'/'core.sqlite')) as db,db:
+            db.execute("INSERT INTO resource_faults VALUES('new-unbound-fault')")
+        before=logical(roots);files=retained_bytes(roots)
+        _kfifth_fresh(roots,scope,target=c['id'],refuse=True,setup=_KFIFTH_FORBID+_T1_CURRENT_UNION)
+        assert logical(roots)==before and retained_bytes(roots)==files
+        return
+    with closing(sqlite3.connect(roots['control']/'core'/'core.sqlite')) as db,db:
+        if damage=='new-integrity':db.execute("UPDATE p1_integrity SET revision=2")
+        elif damage=='incomplete':db.execute("DELETE FROM p1_recovery_steps WHERE recovery_id=? AND step='receipt-complete'",(histories[-1]['id'],))
+        else:db.execute("UPDATE dispatches SET receipt='{}'")
+    before=logical(roots);files=retained_bytes(roots)
+    trap=roots['control'].parent/'unexpected-writer'
+    def forbidden(*a,**k):
+        trap.write_text('new defect reached writer');raise AssertionError('new defect reached writer')
+    with monkeypatch.context() as m:
+        for name in ('_prefix_file','_prefix_transaction','_pending_prefix_locked','_rehearse_preparation'):m.setattr(recovery,name,forbidden)
+        for _ in range(2):
+            with pytest.raises(ValueError):recovery._prepare_abandon(roots,scope,profiles=profiles,budget=DEFAULT_BUDGET,diagnostic_decisions=[])
+            assert not trap.exists(),trap.read_text() if trap.exists() else ''
+            assert logical(roots)==before
+            assert {n:v for n,v in retained_bytes(roots).items() if Path(n.split(':')[0]).name not in ('core.sqlite','core.sqlite-wal','core.sqlite-shm')}=={n:v for n,v in files.items() if Path(n.split(':')[0]).name not in ('core.sqlite','core.sqlite-wal','core.sqlite-shm')}
+
+
+@pytest.mark.parametrize('damage',['valid','missing','malformed'])
+def test_t1_genuine_terminal_receipt_control(b23_host,installation,monkeypatch,damage):
+    roots,scope,profiles,_=installation
+    job=terminal_enrolled(installation)
+    with closing(sqlite3.connect(roots['control']/'core'/'core.sqlite')) as db,db:
+        db.execute('UPDATE resource_accounting SET highwater=?',(20*1024**2,))
+        if damage!='valid':db.execute('UPDATE dispatches SET receipt=?',(None if damage=='missing' else '{}',))
+    _lotp_transport(b23_host,monkeypatch)
+    if damage=='valid':
+        r=recovery._prepare_abandon(roots,scope,profiles=profiles,budget=DEFAULT_BUDGET,diagnostic_decisions=[])
+        assert r['intent']['actions'][0]['job_id']==job and r['intent']['actions'][0]['action']=='retain-terminal'
+        return
+    before=logical(roots);files=retained_bytes(roots)
+    trap=roots['control'].parent/'unexpected-terminal-writer'
+    def forbidden(*a,**k):trap.write_text('write');raise AssertionError('terminal mismatch reached writer')
+    for name in ('_prefix_file','_prefix_transaction','_pending_prefix_locked','_rehearse_preparation'):monkeypatch.setattr(recovery,name,forbidden)
+    for _ in range(2):
+        with pytest.raises(ValueError):recovery._prepare_abandon(roots,scope,profiles=profiles,budget=DEFAULT_BUDGET,diagnostic_decisions=[])
+        assert not trap.exists() and logical(roots)==before and retained_bytes(roots)==files
+
+
+def _t1_assert_unaccepted(roots,plans):
+    with closing(sqlite3.connect(roots['control']/'core'/'core.sqlite')) as db:
+        tables={r[0] for r in db.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+        if 'p1_abandon_plans' in tables:
+            assert db.execute('SELECT count(*) FROM p1_abandon_plans').fetchone()==(plans,)
+            for t in ('p1_recoveries','p1_recovery_steps','dispatch_resolutions'):
+                assert db.execute('SELECT count(*) FROM '+t).fetchone()==(0,)
+        else:assert plans==0
+        assert db.execute('SELECT highwater FROM resource_accounting').fetchone()==(20*1024**2,)
+        assert db.execute('SELECT state FROM resource_monitor').fetchone()==('checking',)
+    assert not list(roots['receipts'].glob('p1-recovery-*'))
+
+
+@pytest.mark.parametrize('same_consumer',[False,True])
+@pytest.mark.parametrize('pages',[255,256,257])
+def test_t1_actual_sqlite_snapshot_capacity(b23_host,installation,monkeypatch,same_consumer,pages,tmp_path):
+    roots,scope,profiles,_=installation
+    _lotp_population(installation,'running');_lotp_transport(b23_host,monkeypatch)
+    capture=recovery._capture_original_snapshot;prepare=recovery._prepare_abandon_locked
+    target=pages*4096
+    def grown(roots,db,maximum):
+        assert maximum==1048576
+        # Valid SQLite freelist retained in the real original DB. Insert/delete
+        # leaves the complete logical population unchanged; backup is real.
+        before=list(db.iterdump());size=4088
+        while db.execute('PRAGMA page_count').fetchone()[0]<pages:
+            db.execute('INSERT INTO p1_registrations VALUES(?,?,?)',('capacity-only','x'*size,'x'))
+            db.execute("DELETE FROM p1_registrations WHERE id='capacity-only'")
+            db.execute('PRAGMA wal_checkpoint(TRUNCATE)')
+            size+=4088
+        assert db.execute('PRAGMA page_count').fetchone()[0]==pages
+        assert list(db.iterdump())==before
+        try:raw=capture(roots,db,maximum)
+        except ValueError:
+            assert pages==257;(tmp_path/'capacity').write_text('snapshot');raise
+        assert len(raw)==target
+        (tmp_path/'capacity').write_text(str(len(raw)));return raw
+    monkeypatch.setattr(recovery,'_capture_original_snapshot',grown)
+    def consume(session,**request):
+        try:r=prepare(session,**request)
+        except ValueError:
+            assert not session._live;raise
+        if same_consumer:assert session.continue_kernel(r['intent'],prepared=r._snapshot)['status']=='complete'
+        return r
+    monkeypatch.setattr(recovery,'_prepare_abandon_locked',consume)
+    if pages==257:
+        def forbidden(*a,**k):raise AssertionError('snapshot overflow reached acceptance')
+        for name in ('_prefix_file','_pending_prefix_locked','_rehearse_preparation'):monkeypatch.setattr(recovery,name,forbidden)
+        with pytest.raises(ValueError):recovery._prepare_abandon(roots,scope,profiles=profiles,budget=DEFAULT_BUDGET,diagnostic_decisions=[])
+        _t1_assert_unaccepted(roots,1)
+    else:
+        r=recovery._prepare_abandon(roots,scope,profiles=profiles,budget=DEFAULT_BUDGET,diagnostic_decisions=[])
+        recovery._validate_preparation_result(r)
+    assert (tmp_path/'capacity').exists()
+
+
+@pytest.mark.parametrize('same_consumer',[False,True])
+@pytest.mark.parametrize('size',[32489,32490,32768])
+def test_t1_actual_journal_document_capacity(b23_host,installation,monkeypatch,same_consumer,size,tmp_path):
+    roots,scope,profiles,_=installation
+    _lotp_population(installation,'running');_lotp_transport(b23_host,monkeypatch)
+    # Actual unreadable journal is retained byte-for-byte in the closed manifest;
+    # it is permitted degraded evidence, not arbitrary caller history padding.
+    (roots['receipts']/'journal.json').write_bytes(b'x'*size)
+    prepare=recovery._prepare_abandon_locked
+    def consume(session,**request):
+        try:r=prepare(session,**request)
+        except ValueError as e:
+            assert not session._live;(tmp_path/'error').write_text(str(e));raise
+        if same_consumer:assert session.continue_kernel(r['intent'],prepared=r._snapshot)['status']=='complete'
+        return r
+    monkeypatch.setattr(recovery,'_prepare_abandon_locked',consume)
+    # A closed manifest has 557 fixed UTF-8 bytes plus the even-length hex
+    # journal. Thus 65535/65537 are the adjacent attainable byte lengths;
+    # equality at 65536 is structurally unavailable for this document shape.
+    if size==32489:
+        r=recovery._prepare_abandon(roots,scope,profiles=profiles,budget=DEFAULT_BUDGET,diagnostic_decisions=[])
+        assert len(encode(recovery.archive_manifest(r['intent'])).encode())==65535
+        return
+    trap=tmp_path/'unexpected-writer'
+    def forbidden(*a,**k):trap.write_text('acceptance');raise AssertionError('large document reached acceptance')
+    for name in ('_prefix_file','_pending_prefix_locked'):monkeypatch.setattr(recovery,name,forbidden)
+    with pytest.raises(ValueError):recovery._prepare_abandon(roots,scope,profiles=profiles,budget=DEFAULT_BUDGET,diagnostic_decisions=[])
+    assert not trap.exists() and (tmp_path/'error').read_text()=='b2_maintenance_document'
+    _t1_assert_unaccepted(roots,1)
+
+
+@pytest.mark.parametrize('same_consumer',[False,True])
+@pytest.mark.parametrize('failure',['file-known','file-copy','rehearsal-sql','entries','receipt-unknown','free'])
+def test_t1_actual_capacity_refusal_both_routes(b23_host,installation,monkeypatch,same_consumer,failure,tmp_path):
+    roots,scope,profiles,_=installation
+    _lotp_population(installation,'running');_lotp_transport(b23_host,monkeypatch)
+    prepare=recovery._prepare_abandon_locked;root=roots['control']/'core'
+    if failure=='file-known':
+        with (root/'core.sqlite-wal').open('wb') as stream:stream.truncate(4194305)
+    elif failure=='entries':
+        for i in range(2049):(roots['staging']/('entry-'+str(i))).touch()
+    elif failure=='receipt-unknown':
+        for i in range(2049):(roots['receipts']/('entry-'+str(i))).touch()
+    elif failure=='free':
+        monkeypatch.setattr(recovery.os,'statvfs',lambda p:type('Free',(),dict(f_bavail=16777216+2097152-1,f_frsize=1))())
+    elif failure=='file-copy':
+        capture=recovery._capture_original_snapshot
+        def after_capture(*a):
+            raw=capture(*a)
+            # Real oversized physical sidecar, encountered independently by
+            # physical-copy admission; normalized snapshot remains unchanged.
+            with (root/'core.sqlite-shm').open('r+b') as stream:stream.truncate(4194305)
+            return raw
+        monkeypatch.setattr(recovery,'_capture_original_snapshot',after_capture)
+    else:
+        writer=recovery._write_core_completion
+        def full(db,path,intent):
+            # Actual SQLite max_page_count at the private prospective write.
+            db.execute('PRAGMA max_page_count=1')
+            db.execute('INSERT INTO p1_registrations VALUES(?,?,?)',('capacity','x'*4194304,'x'))
+            return writer(db,path,intent)
+        monkeypatch.setattr(recovery,'_write_core_completion',full)
+    def consume(session,**request):
+        try:r=prepare(session,**request)
+        except (ValueError,OSError,sqlite3.Error):
+            assert not session._live;(tmp_path/'burned').write_text('yes');raise
+        raise AssertionError('capacity failure returned proposal')
+    if same_consumer:monkeypatch.setattr(recovery,'_prepare_abandon_locked',consume)
+    trap=tmp_path/'unexpected-capacity-writer'
+    def forbidden(*a,**k):trap.write_text('write');raise AssertionError('capacity refusal reached original receipt/continuation')
+    for name in ('_prefix_file','_pending_prefix_locked'):monkeypatch.setattr(recovery,name,forbidden)
+    # Traps permit only preparation schema/immutable plan and private rehearsal
+    # transactions; original accepted authority must never be inserted.
+    with pytest.raises(ValueError):recovery._prepare_abandon(roots,scope,profiles=profiles,budget=DEFAULT_BUDGET,diagnostic_decisions=[])
+    assert not trap.exists()
+    if failure=='file-known':
+        # Deliberately corrupt WAL cannot be opened for an SQL comparison.
+        assert not list(roots['receipts'].glob('p1-recovery-*'))
+    else:_t1_assert_unaccepted(roots,int(failure in ('file-copy','rehearsal-sql')))
+    if same_consumer and failure in ('file-copy','rehearsal-sql'):assert (tmp_path/'burned').exists()
+
+
+@pytest.mark.parametrize('limit',[65536,1048576,4194304])
+@pytest.mark.parametrize('delta',[-1,0,1])
+def test_t1_real_private_file_inclusive_bound(tmp_path,limit,delta):
+    path=tmp_path/'bounded';path.write_bytes(b'x'*(limit+delta));path.chmod(0o600)
+    if delta>0:
+        with pytest.raises(ValueError):recovery.read_file(path,limit)
+    else:assert len(recovery.read_file(path,limit))==limit+delta
+
+
+@pytest.mark.parametrize('dimension',['entries','bytes'])
+@pytest.mark.parametrize('delta',[-1,0,1])
+def test_t1_actual_receipt_namespace_inclusive_bound(tmp_path,dimension,delta):
+    # Namespace guard fixture only: no accepted history is fabricated. Every
+    # supplied name is explicitly retained; production semantic checks remain.
+    count=2048+delta if dimension=='entries' else 1
+    names=[]
+    for i in range(count):
+        name='retained-'+str(i);names.append(name);p=tmp_path/name
+        p.write_bytes(b'x'*(16777216+delta) if dimension=='bytes' else b'');p.chmod(0o600)
+    if delta>0:
+        with pytest.raises(ValueError):recovery._prefix_receipt_namespace(tmp_path,[],retained_names=names)
+    else:
+        used,n=recovery._prefix_receipt_namespace(tmp_path,[],retained_names=names)
+        assert n==count and used==(16777216+delta if dimension=='bytes' else 0)
+
+
+@pytest.mark.parametrize('damage',[
+    'resolution-missing','resolution-wrong','resolution-extra','resolution-pending',
+    'dispatch-authority','dispatch-binding','dispatch-runtime','dispatch-phase','dispatch-receipt','dispatch-outcome','dispatch-ACK',
+    'job-principal','job-context','job-bundles','job-state','job-attempt','job-generation','job-deadline','job-reap',
+    'reservation-category','reservation-configuration','reservation-demand','reservation-state',
+    'history','archive','descriptor','media','typed-reference'])
+def test_t1_repeated_successor_strict_writers_observed(b23_host,installation,monkeypatch,damage):
+    roots,scope,profiles,_=installation
+    histories=_t1_completed_nonempty(installation,b23_host,monkeypatch,2)
+    a=histories[-1]
+    _t1_next_owner(b23_host,roots,scope,a,2)
+    _lotp_transport(b23_host,monkeypatch)
+    with closing(sqlite3.connect(roots['control']/'core'/'core.sqlite')) as db,db:
+        if damage=='resolution-missing':db.execute('DELETE FROM dispatch_resolutions')
+        elif damage=='resolution-wrong':db.execute("UPDATE dispatch_resolutions SET digest=?",('0'*64,))
+        elif damage=='resolution-extra':db.execute('INSERT INTO dispatch_resolutions VALUES(?,?,?,?)',(999,a['id'],'{}','0'*64))
+        elif damage=='resolution-pending':db.execute("DELETE FROM p1_recovery_steps WHERE step='core-complete'")
+        elif damage.startswith('dispatch-'):
+            column={'authority':'authority','binding':'binding','runtime':'runtime','phase':'phase','receipt':'receipt','outcome':'outcome','ACK':'acked'}[damage[9:]]
+            value={'authority':'[]','binding':'0'*64,'runtime':'changed','phase':'changed','receipt':'{}','outcome':'{}','acked':1}[column]
+            db.execute('UPDATE dispatches SET '+column+'=?',(value,))
+        elif damage.startswith('job-'):
+            if damage=='job-principal':db.execute("UPDATE jobs SET principal='changed'")
+            elif damage in ('job-context','job-bundles'):
+                value=json.loads(db.execute('SELECT context FROM jobs').fetchone()[0])
+                if damage=='job-context':value['plan']['changed']=True
+                else:value['bundles']=[]
+                db.execute('UPDATE jobs SET context=?',(encode(value),))
+            else:
+                value=json.loads(db.execute('SELECT job FROM jobs').fetchone()[0])
+                if damage=='job-state':value['state']='running'
+                elif damage=='job-attempt':value['attempts'][-1]['id']='0'*32
+                elif damage=='job-generation':value['generation']+=1
+                elif damage=='job-deadline':value['deadline']='2099-01-01T00:00:00Z'
+                elif damage=='job-reap':value['attempts'][-1]['reaped']=False
+                db.execute('UPDATE jobs SET job=?',(encode(value),))
+        elif damage.startswith('reservation-'):
+            if damage=='reservation-category':db.execute("UPDATE resource_reservations SET category='changed'")
+            elif damage=='reservation-state':db.execute("UPDATE resource_reservations SET state='executing'")
+            else:
+                value=json.loads(db.execute('SELECT demand FROM resource_reservations').fetchone()[0])
+                if damage=='reservation-configuration':value['configuration']='0'*64
+                else:value['disk_bytes']+=1
+                db.execute('UPDATE resource_reservations SET demand=?',(encode(value),))
+        elif damage=='history':db.execute("UPDATE events SET state='changed'")
+        elif damage=='typed-reference':
+            value=json.loads(db.execute('SELECT authority FROM dispatches').fetchone()[0]);value[0]['artifact_ids']=['new-reference']
+            db.execute('UPDATE dispatches SET authority=?',(encode(value),))
+    if damage=='archive':next((roots['control']/'core').glob('*.manifest.json')).write_bytes(b'{}')
+    elif damage=='descriptor':next(roots['receipts'].glob('*.core-certificate.intent.json')).write_bytes(b'{}')
+    elif damage=='media':(roots['staging']/'new-defect').write_bytes(b'new')
+    before=logical(roots);files=retained_bytes(roots)
+    trap=roots['control'].parent/'unexpected-writer'
+    def forbidden(*a,**k):
+        trap.write_text('strict refusal reached writer');raise AssertionError('strict refusal reached writer')
+    with monkeypatch.context() as m:
+        for name in ('_prefix_file','_prefix_transaction','_pending_prefix_locked','_rehearse_preparation'):
+            m.setattr(recovery,name,forbidden)
+        for _ in range(2):
+            with pytest.raises(ValueError):recovery._prepare_abandon(roots,scope,profiles=profiles,budget=DEFAULT_BUDGET,diagnostic_decisions=[])
+            assert not trap.exists()
+            assert logical(roots)==before
+            for name,raw in files.items():
+                if Path(name.split(':')[0]).name not in ('core.sqlite','core.sqlite-wal','core.sqlite-shm'):
+                    assert retained_bytes(roots)[name]==raw
+
+
+
+@pytest.mark.parametrize('same_consumer',[False,True])
+@pytest.mark.parametrize('population',[1,16])
+def test_t1_actual_population_certificate_capacity(b23_host,installation,monkeypatch,same_consumer,population,tmp_path):
+    from service.admission import Admission
+    from service.dispatch_store import DispatchStore
+    from tests.service.test_admission import fixture
+    roots,scope,profiles,_=installation
+    core=Core(roots['control']/'core')
+    try:
+        f=fixture();admission=Admission(core,roots['staging']);store=DispatchStore(core,admission)
+        for i in range(population):
+            core.submit_synthetic('p','capacity-job-'+str(i),f['context'],_admission=admission,
+                _profiles=f['profiles'],_dispatch_settings=('silence',8))
+        store.allocate(f['profiles'],'silence',8)
+        with core.transaction():
+            core.db.execute('UPDATE resource_accounting SET highwater=?',(20*1024**2,))
+            core.db.execute("UPDATE resource_monitor SET state='checking'")
+            core.db.execute("UPDATE p1_integrity SET state='checking',token='inherited-A2'")
+    finally:core.close()
+    _lotp_transport(b23_host,monkeypatch)
+    prepare=recovery._prepare_abandon_locked;rehearse=recovery._rehearse_preparation
+    def observed(session,plan,intent,frozen):
+        chain=[dict(recovery_id=intent['id'],**e,lane=intent['new_lane'],epoch=intent['new_epoch']) for e in intent['expected'][:4]]
+        cert=recovery._certificate(intent,chain[-1])
+        sizes=dict(manifest=len(encode(recovery.archive_manifest(intent)).encode()),
+            certificate=len(encode(cert).encode()),receipt=len(encode(dict(certificate=cert,steps=chain)).encode()))
+        (tmp_path/'documents.json').write_text(encode(sizes))
+        return rehearse(session,plan,intent,frozen)
+    monkeypatch.setattr(recovery,'_rehearse_preparation',observed)
+    trap=tmp_path/'unexpected-writer'
+    def forbidden(*a,**k):trap.write_text('acceptance');raise AssertionError('capacity reached acceptance')
+    def consume(session,**request):
+        try:r=prepare(session,**request)
+        except ValueError as e:
+            assert not session._live;(tmp_path/'error').write_text(str(e));raise
+        if same_consumer:assert session.continue_kernel(r['intent'],prepared=r._snapshot)['status']=='complete'
+        return r
+    monkeypatch.setattr(recovery,'_prepare_abandon_locked',consume)
+    if population==16:
+        for name in ('_prefix_file','_pending_prefix_locked'):monkeypatch.setattr(recovery,name,forbidden)
+        with pytest.raises(ValueError):recovery._prepare_abandon(roots,scope,profiles=profiles,budget=DEFAULT_BUDGET,diagnostic_decisions=[])
+        assert not trap.exists();_t1_assert_unaccepted(roots,1)
+        assert (tmp_path/'error').read_text()=='b2_maintenance_document'
+        assert max(json.loads((tmp_path/'documents.json').read_text()).values())>65536
+    else:
+        r=recovery._prepare_abandon(roots,scope,profiles=profiles,budget=DEFAULT_BUDGET,diagnostic_decisions=[])
+        assert max(json.loads((tmp_path/'documents.json').read_text()).values())<65536
+        recovery._validate_preparation_result(r)
+
+
+@pytest.mark.parametrize('same_consumer',[False,True])
+@pytest.mark.parametrize('delta',[-1,0,1])
+def test_t1_preparation_free_reserve_boundary(b23_host,installation,monkeypatch,same_consumer,delta,tmp_path):
+    roots,scope,profiles,_=installation
+    _lotp_population(installation,'running');_lotp_transport(b23_host,monkeypatch)
+    monkeypatch.setattr(recovery.os,'statvfs',lambda p:type('Free',(),dict(f_bavail=16777216+2097152+delta,f_frsize=1))())
+    prepare=recovery._prepare_abandon_locked
+    def consume(session,**request):
+        r=prepare(session,**request)
+        if same_consumer:assert session.continue_kernel(r['intent'],prepared=r._snapshot)['status']=='complete'
+        return r
+    monkeypatch.setattr(recovery,'_prepare_abandon_locked',consume)
+    if delta<0:
+        trap=tmp_path/'unexpected-writer'
+        def forbidden(*a,**k):trap.write_text('write');raise AssertionError('free reserve reached writer')
+        for name in ('_prefix_file','_prefix_transaction','_pending_prefix_locked'):monkeypatch.setattr(recovery,name,forbidden)
+        before=logical(roots);files=retained_bytes(roots)
+        with pytest.raises(ValueError):recovery._prepare_abandon(roots,scope,profiles=profiles,budget=DEFAULT_BUDGET,diagnostic_decisions=[])
+        assert not trap.exists() and logical(roots)==before and retained_bytes(roots)==files
+        _t1_assert_unaccepted(roots,0)
+    else:recovery._validate_preparation_result(recovery._prepare_abandon(roots,scope,profiles=profiles,budget=DEFAULT_BUDGET,diagnostic_decisions=[]))
+
+
+def test_t1_ABC_completed_later_activity_observational(b23_host,installation,monkeypatch):
+    roots,scope,_,_=installation
+    histories=_t1_completed_nonempty(installation,b23_host,monkeypatch,3)
+    with closing(sqlite3.connect(roots['control']/'core'/'core.sqlite')) as db,db:
+        db.execute("UPDATE resource_monitor SET state='checking'")
+        db.execute('UPDATE resource_accounting SET highwater=highwater+1')
+    (roots['staging']/'later-ordinary-file').write_bytes(b'later activity')
+    (roots['receipts']/'journal.json').write_bytes(b'later ordinary journal')
+    before=logical(roots);files=retained_bytes(roots)
+    for r in histories:_kfifth_fresh(roots,scope,target=r['id'],setup=_KFIFTH_OBSERVE+_T1_CURRENT_UNION)
+    assert logical(roots)==before and retained_bytes(roots)==files
+
+
+@pytest.mark.parametrize('same_consumer',[False,True])
+@pytest.mark.parametrize('dimension',['entries','bytes'])
+@pytest.mark.parametrize('delta',[-1,0,1])
+def test_t1_rehearsal_receipt_reserve_isolated_namespace(b23_host,installation,monkeypatch,same_consumer,dimension,delta,tmp_path):
+    roots,scope,profiles,_=installation
+    _lotp_population(installation,'running');_lotp_transport(b23_host,monkeypatch)
+    prepare=recovery._prepare_abandon_locked;rehearse=recovery._rehearse_preparation
+    namespace=recovery._prefix_receipt_namespace
+    directory=tmp_path/'isolated-retained-namespace';directory.mkdir()
+    trap=tmp_path/'unexpected-writer'
+    def observed(session,plan,intent,frozen):
+        chain=[dict(recovery_id=intent['id'],**e,lane=intent['new_lane'],epoch=intent['new_epoch']) for e in intent['expected'][:4]]
+        cert=recovery._certificate(intent,chain[-1])
+        documents=[encode(intent).encode(),encode(recovery.archive_manifest(intent)).encode(),encode(cert).encode(),
+            encode(dict(certificate=cert,steps=chain)).encode(),bytes.fromhex(intent['before']['journal']['bytes_hex'])]
+        required=len(frozen._raw)+sum(map(len,documents))+18*65536
+        count=2048-18+delta if dimension=='entries' else 1
+        names=[]
+        for i in range(count):
+            name='retained-'+str(i);names.append(name);p=directory/name
+            p.write_bytes(b'x'*(16777216-required+delta) if dimension=='bytes' else b'');p.chmod(0o600)
+        measured=namespace(directory,[],retained_names=names)
+        assert measured==((16777216-required+delta,1) if dimension=='bytes' else (0,count))
+        # Isolate only the namespace measurement at the REAL rehearsal guard.
+        # These files are never imported into source/history or acceptance.
+        # Actual production capacity failures are covered separately above.
+        with monkeypatch.context() as m:
+            m.setattr(recovery,'_prefix_receipt_namespace',lambda *a,**k:measured)
+            return rehearse(session,plan,intent,frozen)
+    monkeypatch.setattr(recovery,'_rehearse_preparation',observed)
+    def consume(session,**request):
+        try:r=prepare(session,**request)
+        except ValueError as e:
+            assert not session._live and str(e)=='b2_prefix_receipt_budget'
+            (tmp_path/'burned').write_text(str(e));raise
+        if same_consumer:assert session.continue_kernel(r['intent'],prepared=r._snapshot)['status']=='complete'
+        return r
+    monkeypatch.setattr(recovery,'_prepare_abandon_locked',consume)
+    if delta>0:
+        def forbidden(*a,**k):trap.write_text('acceptance');raise AssertionError('reserve failure reached acceptance')
+        for name in ('_prefix_file','_pending_prefix_locked'):monkeypatch.setattr(recovery,name,forbidden)
+        with pytest.raises(ValueError):recovery._prepare_abandon(roots,scope,profiles=profiles,budget=DEFAULT_BUDGET,diagnostic_decisions=[])
+        assert not trap.exists() and (tmp_path/'burned').exists();_t1_assert_unaccepted(roots,1)
+    else:recovery._validate_preparation_result(recovery._prepare_abandon(roots,scope,profiles=profiles,budget=DEFAULT_BUDGET,diagnostic_decisions=[]))
+
+
+def test_t1_actual_pipe_overflow_precedes_decoder(monkeypatch,tmp_path):
+    import resource
+    prior=resource.getrlimit(resource.RLIMIT_FSIZE);owned=_t1_pipe_model(monkeypatch)
+    size=1048577;value='a'*(size-13)
+    raw=encode(dict(result=value)).encode();assert len(raw)==size
+    # Fault injection at the sender boundary: receiver must independently cap.
+    monkeypatch.setattr(recovery,'_maintenance_result_frame',lambda result:bytearray(raw))
+    trap=tmp_path/'decoded-overflow'
+    def forbidden(*a,**k):trap.write_text('decode');raise AssertionError('overflow decoded')
+    monkeypatch.setattr(recovery,'_decode_maintenance_result',forbidden)
+    with pytest.raises(ValueError,match='result_budget'):recovery._run_bounded_maintenance({}, {},lambda s:value)
+    assert not trap.exists() and resource.getrlimit(resource.RLIMIT_FSIZE)==prior
+    with pytest.raises(ChildProcessError):os.waitpid(owned[0],os.WNOHANG)
+
+
+@pytest.mark.parametrize('delta',[-1,0,1])
+def test_t1_actual_file_stat_guard_boundary(tmp_path,delta):
+    p=tmp_path/'core.sqlite';p.write_bytes(b'x'*(4194304+delta));p.chmod(0o600)
+    # Physical file-length guard only; arbitrary bytes are NOT a SQLite or
+    # recovery semantic positive and create no authority.
+    if delta>0:
+        with pytest.raises(ValueError,match='maintenance_file'):recovery._maintenance_files(tmp_path)
+    else:recovery._maintenance_files(tmp_path)
+
+
+def test_t1_durable_completion_lost_result_no_false_success(b23_host,installation,monkeypatch,tmp_path):
+    roots,scope,profiles,_=installation
+    _lotp_population(installation,'running');_lotp_transport(b23_host,monkeypatch)
+    prepare=recovery._prepare_abandon_locked
+    def finish_then_lose(session,**request):
+        r=prepare(session,**request)
+        assert session.continue_kernel(r['intent'],prepared=r._snapshot)['status']=='complete'
+        (tmp_path/'durable-completion').write_text(r['intent']['id'])
+        def broken(*a):raise BrokenPipeError('modeled lost result pipe')
+        os.write=broken  # child only, AFTER all real durable completion writers
+        return r
+    monkeypatch.setattr(recovery,'_prepare_abandon_locked',finish_then_lose)
+    with pytest.raises(ValueError,match='child_failed'):
+        recovery._prepare_abandon(roots,scope,profiles=profiles,budget=DEFAULT_BUDGET,diagnostic_decisions=[])
+    identity=(tmp_path/'durable-completion').read_text()
+    with closing(sqlite3.connect(roots['control']/'core'/'core.sqlite')) as db:
+        assert db.execute('SELECT count(*) FROM p1_recoveries').fetchone()==(1,)
+        assert db.execute('SELECT count(*) FROM p1_recovery_steps').fetchone()==(5,)
+    before=logical(roots);files=retained_bytes(roots)
+    _kfifth_fresh(roots,scope,target=identity,setup=_KFIFTH_OBSERVE+_T1_CURRENT_UNION)
+    assert logical(roots)==before and retained_bytes(roots)==files
