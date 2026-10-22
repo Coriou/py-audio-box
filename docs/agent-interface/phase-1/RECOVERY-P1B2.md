@@ -1551,3 +1551,84 @@ Sanitized evidence index: `/tmp/kfifth-source-audit.json`, `/tmp/kfifth-preserve
 All evidence is bounded local E1 source/process/SQLite/filesystem behavior with explicit Linux/host transport models. No actual Linux 4 MiB soft/hard enforcement, ext4/Unix-VFS/SHM/peer-credential, pinned-launch/host-authentication, installed/clean-host, physical ENOSPC/power-loss/daemon/VM/controller, hardware/browser/listening or acoustic qualification. Skipped mechanisms are UNQUALIFIED, never passed. No agent/shell/pytest RLIMIT was lowered; disposable child limits are modeled and actual inherited parent limits are recorded before/after. Fixed process/connection guards remain source-identical.
 
 C1's pinned host reader remains mandatory production refusal in the untouched C WIP. No bypass or functionality claim is added. Freeze remains mandatory through host-observed fifth plus matching outputs; no automatic restart/freeze-release authority follows from historical replay. All apply remains unavailable and enrolled activation closed. A1 whole-Docker-inventory drift remains unexplained and unqualified with no inferred cause/waiver. C, B3, C1/C2, global Astra, actual hardware/browser/listening and public/unattended acceptance remain pending. Apple Silicon is preserved as documentation-only qualification scope; no implementation lane expansion.
+
+## Owning successor coherence correction — blocked transport boundary / narrow Astra handoff (2026-10-22)
+
+**BLOCKED WIP / NO-GO for integration or completion. No self-acceptance.** The minimal coherence correction makes the independent nonempty completed-A oracle coherent in two actual production setups. The required production B positive then reaches a second, unchanged finite boundary: its complete preparation result is larger than 65,536 bytes. No ceiling, identity, source projection or history was changed to bypass that refusal. Return this precise conflict to parent/Astra before extending implementation scope.
+
+### Provenance and exact scope
+
+Implementer gpt-6.1-sol / low. Fresh root-based worktree `/Users/ben/.txcode/worktrees/py-audio-box/owning-successor-coherence`, branch `fix/owning-successor-coherence`, baseline `682a179e78f7530071271789cd4c42e764a6a9ca`. Source/tests frozen in **`a11c4208b1db7220d9c401940b649f5693a0f6e9`**. Final candidate is the subsequent append-report-only commit. This is a recoverable diagnostic candidate, not a validated correction candidate.
+
+Exact writable allowlist remains `service/recovery.py`, append-only `tests/service/test_recovery.py`, append-only this RECOVERY-P1B2 handoff. AST comparison changes only `snapshot` and `_allocation_coherent`, adds only `_recovered_dispatches`; no definition removed. Baseline tests/report remain exact byte prefixes. No Reconciliation, persistence, Core, Journal, resource_store, schemas/contracts, dependencies, packaging, C source, scripts, dispatcher, supervisor, ledger or review changes. No C source/commit was imported. `git diff --check` passes.
+
+Read canonical orchestration/implementation plan/ledger, the entire P1B23-SUCCESSOR-r1-sol original finding, correction brief and exit matrix, KERNEL-ASTRA, C-ACCEPTANCE-ASTRA, C-PREFIFTH, K-PREFIFTH source and locked-environment reports, and C's handoff from 1717 onward. Inspected the owning snapshot/coherence, history/archive/resolution validators, Reconciliation's strict recovered-row consumption, production preparation/rehearsal and original P/K/F1–F4 test harnesses. No applicable AGENTS.md was found. Memory supplied only exact-checkout/evidence-boundary guidance, not acceptance evidence.
+
+READONLY historical preservation checks: C `t3-1e1cddba` remains clean at exact `a27f78b5e2e09a98940b9c543474337b511ce616`; `t3-adbf212d` and `t3-4a8727d4` remain clean. No root/research/historical worktree was reset, cleaned, pruned or changed. No delegation, push, PR, deploy, Docker/network/model/audio/install/paid E2E or remote runner occurred. No parent/shell/pytest resource limit was lowered.
+
+### Bounded source change, not acceptance
+
+`snapshot` retains the structured result of its existing `validate_b2_database` call and supplies it to allocation coherence. This does not add/remove schema/population/projection fields or bypass the existing canonical intent/source, actual archive/schema/table, original dispatch digest, all-history and complete expected-resolution-set checks.
+
+The small internal helper considers only Core-completed histories present in the actual/projected population. It follows validated history order and uses the latest completed resolution for each retained original dispatch. Eligibility additionally requires exact original dispatch/source bytes and digest, the entire current SQL job row (including context/principal/bundles) and reservation row equal to that completed history's accepted output. Current tuple eligibility does not require the whole current database to equal an old A output. Projected unfinished validation cannot borrow its own completion.
+
+Only the existing reservation/outcome and missing terminal receipt mismatch branches can consume that eligibility. Ordinary authority/generation/deadline/attempt, reservation coverage/category/demand/configuration, publication and real-receipt checks remain in place. A malformed real receipt still takes the ordinary validation branch. Raw matching resolution rows are never supplied by the snapshot caller as authority. No fake PID-1 receipt/outcome/ACK, evidence deletion, reservation release, resource reset, high-water/budget/proof/hash/identity change or new command was added.
+
+This design still requires the full independent adversarial matrix. The successful coherence assertion alone is not proof of strict negative preservation or composition through B completion.
+
+### Actual production RED and newly reached blocker
+
+Appended `test_successor_nonempty_production_composition[0,1]` uses `_lotp_population(...,'running')` followed by existing `_kpre_predecessor`: actual production P preparation and same-session owning K five-step A completion, then actual new owner registration and host capsule producer covering both generations. It imports no C source and supplies no fixture intent/expected rows or replacement snapshot/hash. The declared retained high-water is the existing P fixture prestate before preparation.
+
+Baseline RED, before any source repair: two independent setups pass `_verify_core_rows(A)`, empty inventory reasons, exactly three recovery-evidence entries, original dispatch `(receipt=None,outcome=None,ACK=0)`, retained reservation; both fail the desired `allocation_coherent` positive. This reproduces the independently reviewed owning defect without relying on C's boundary.
+
+With the correction, those same assertions including desired coherence pass twice. B proceeds through production preparation prestate and immutable plan construction, semantic intent validation and actual frozen snapshot construction. It then raises **`b2_maintenance_result_budget`** in `_prepare_abandon_locked` at its unchanged result-size check, before `_rehearse_preparation` and before B acceptance/continuation. `_run_bounded_maintenance` correctly wraps the failed child as `b2_maintenance_child_failed`; test-only exception diagnostics retain the exact internal cause and scalar sizes, not authority bytes.
+
+Measured current-result sizes from the actual local `result` at that exception:
+
+| Independent setup | Encoded intent bytes | Encoded plan bytes | Entire `encode({result: result})` bytes | Ceiling |
+| --- | ---: | ---: | ---: | ---: |
+| 0 | 92,875 | 1,256 | 94,325 | 65,536 |
+| 1 | 92,872 | 1,256 | 94,322 | 65,536 |
+
+The two digest strings each encode to 66 bytes. Differences are actual generated scalar/time encodings, not a claimed growth model. Each failure independently verifies A's exact Core output, original dispatch unchanged, **one accepted recovery / five steps / two plans**. No B accepted receipt, B recovery or B epoch was created. The committed unaccepted B plan remains immutable; it is not deleted or retried on the same root. The desired test remains RED, without skip/xfail/expected-refusal substitution.
+
+### Narrow decision needed before continuing
+
+The requested exit requires a nonempty production A→B positive, B rehearsal and completion with retained histories. Existing production preparation explicitly refuses nested results above 65,536 bytes **before a same-session consumer can use its owned snapshot**; the outer child transport independently has the same finite ceiling. The actual required B result is about 94 KiB. This is separate from the corrected allocation predicate and from the resource budget/high-water contract.
+
+Please settle a bounded owning follow-up for that result-transport/history-capacity conflict, or explicitly retain this population as unsupported and revise the required positive. This implementer does not choose either policy. Increasing the ceiling, compacting/removing retained source/history, changing the four-field preparation interface, skipping the check only for a same-session consumer or altering the result transport would exceed this assignment's **minimal coherence/validated-context factor only** scope. No such workaround is present. No new architectural waiver is needed for the coherence design itself; the newly measured transport conflict is the reason for this narrow escalation.
+
+### Commands and receipts
+
+All pytest commands ran from the new worktree with this exact prefix (no bridge/PYTHONPATH/dependency changes):
+
+```sh
+env -u PYTHONPATH -u PYTHONHOME -u PYTEST_ADDOPTS -u PYTEST_PLUGINS PYTHONDONTWRITEBYTECODE=1 TIKTOKEN_CACHE_DIR=/tmp/pab-k-prefifth-env-20261022/tokenizer-cache /tmp/pab-0c-venv/bin/python -m pytest -p no:cacheprovider tests/service/test_recovery.py
+```
+
+Actual interpreter verified CPython 3.14.7, MCP 1.30.0, pytest 9.1.1, tiktoken 0.14.0. Inherited RLIMIT_FSIZE `(9223372036854775807,9223372036854775807)`. Existing test child-only OS/limit substitutes remain E1 models, not Linux enforcement proof.
+
+- `/tmp/pab-successor-owning-red.log`, suffix `-k successor_nonempty_production_composition -q -rs`: **2 failed, 1244 deselected, 5.73s**, exit 1. Baseline executable source; desired allocation coherence assertion is the exact failure after the independent A oracles pass.
+- `/tmp/pab-successor-owning-green1.log`, same suffix: **2 failed, 1244 deselected, 6.73s**, exit 1. Coherence passes; child exception first exposes the next boundary, initially without internal cause diagnostics.
+- `/tmp/pab-successor-owning-green2.log`, same suffix: **2 failed, 1244 deselected, 6.95s**, exit 1. Test-only traceback diagnostics identify the unchanged result-budget check. No source weakening between these two attempts.
+- `/tmp/pab-successor-owning-budget.log`, same suffix: **2 failed, 1244 deselected, 6.79s**, exit 1. Final source/tests; exact sizes above and retained A/SQL assertions pass. Each attempt uses fresh pytest disposable installations.
+- `/tmp/pab-successor-owning-preservation.log`, suffix `-k 'lotp_production_nonempty_complete or kfifth_fourth_query or kfifth_actual_death_monitor or kpre_actual_death_owned_fresh_resume' -q -rs`: **17 passed, 1229 deselected, 27.53s**, exit 0. Final source/tests; focused existing nonempty P, original accepted restart, pre-fifth monitor refusal and protected fourth-query preservation only. No skips in this selection.
+
+No final broad campaign was started after the concrete required-positive blocker. Previous 1529/19 locked-root results remain attributed prerequisites, not this candidate's results.
+
+### Mandatory exit-matrix accounting
+
+1. **PARTIAL/RED:** actual nonempty A completed twice; baseline exact oracle/inventory PASS and coherence RED; corrected coherence GREEN; actual new registration/capsule covers both generations. Direct production B refuses at the next finite result boundary. B verify/rehearse/complete, repeated same-dispatch composition, optional C and both-history preservation therefore **NOT QUALIFIED**. Actual C boundary rerun remains parent-after-integration work; no C import occurred.
+2. **PENDING:** complete fresh strict-refusal matrix (pending/not-complete, wrong/missing/extra resolution sets; all dispatch/job/context/reservation/category/demand/configuration/receipt/outcome/ACK, new fault/integrity/source/history/archive/reference/media defects; valid terminal receipt and original missing-receipt controls). No full negative-matrix GO inferred from source inspection or existing passes.
+3. **PARTIAL:** selected existing accepted-parent, monitor pre-fifth refusal and protected fourth observational query pass unchanged. Complete reached-fourth/certificate/finalization/owner/TTL/quarantine/frozen-hash matrix **NOT RERUN** on this candidate.
+4. **PENDING:** all nonempty A/B actual SQL/receipt prefixes, all creation descriptor corruptions both directions, explicit unfinished B full validation, legitimate completed-current activity and no-future-B/no-scan/no-capture observation. Existing tests/source were not weakened; their full current preservation is not claimed.
+5. **BLOCKED / NOT RUN:** final frozen correction/KP/F1–F4 target, four B2 suites and full service/release, independent Sol-low review, parent integration/equality, fresh C stack/full qualification and final Astra. The 17 selected passes do not replace these gates.
+
+### Evidence identities and limits
+
+Frozen recovery SHA-256 `3dd97a21e43e6d812f2b578373a8d5f478deaf9a426754eab1b4ccbffe0eb903`; tests `c98dfccad9a610ac3f391956252a23a2c81e7cf62492db0e9b9cf666b6dea233`. Final budget log `9337fe64bbc98d47265e6af9e8f1c6004f6230e1f9fa92c3f433d32a69322774`; preservation log `155872742ca3335110ca2fb02e545e7df5b4150db830f3d7a64b58d114290327`. Temporary logs/disposable roots are retained and are not durable installed receipts.
+
+All 19 inherited Linux cap/peer-credential skips remain UNQUALIFIED; no new skip waiver. Actual Linux 4 MiB/ext4/Unix-VFS/SHM, pinned C1 host/authentication/provenance/launcher, C1/C2 installed/clean-host, B3/global Astra, hardware/browser/listening/acoustic, physical ENOSPC/power-loss/daemon/VM/controller durability and public activation remain pending. C1's mandatory pinned-context refusal is untouched. A1 whole-Docker-inventory drift remains unexplained/unqualified with no inferred cause or waiver. Apple Silicon remains documentation-only qualification scope. No full Phase 1 claim.
+
+**Return blocked WIP for narrow parent/Astra decision, not self-accepted implementation.** Keep the exact source/test commit and this append-only report recoverable; do not integrate as a complete correction or stack C over it until the new boundary and full required matrix are resolved.
