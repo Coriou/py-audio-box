@@ -644,3 +644,8 @@ Record failures and missing evidence; do not replace them with a successful late
 
 - reviews/P1B23C-PREFIFTH-r1-sol.md independently confirms NO-GO exact58e3eb9:26passed4failed38.94s, direct K and C both mint fifth after current after-image drift. C and original historical worktrees remain clean. Existing unfinished-vs-completed contract sufficient; no new waiver/product decision required.
 - Scope next isolated K correction: recovery.py, recovery tests, append handoff only. Certified unfinished continuation must validate stage-aware retained outputs plus complete exact after-image and reconstructed unaffected source BEFORE any remaining write; merely monitor check insufficient. Genuine fifth-completed history remains observational, F1-F4 and successor stage bounds preserved. C WIP remains unintegrated. Fresh independent review before integration and C resume.
+
+## 2026-10-22 resumption / interrupted K work / Apple Silicon
+
+- Previous K pre-fifth delegate terminated on provider usage limit, no validated final handoff. App-bound t3-38916671 is clean at00c50e0; recovered separate clean k-prefifth-validation at7d4370b contains5351324/7d4370b partial source/tests only, no report or final qualification. Preserve both; fresh isolated delegate must audit/replay and complete original brief, independent review still required.
+- User explicitly requested Apple Silicon. Phase2 plan now names native arm64 Docker CPU qualification separately from packaged macOS arm64 Metal/MPS qualification; support remains unqualified, CPU Intel gates retained.
