@@ -2958,6 +2958,16 @@ class _Preparation(dict):
         super().__init__(plan=plan,plan_digest=digest(plan),intent=intent,intent_digest=digest(intent))
         self._session=session;self._snapshot=snapshot
 
+    def __getitem__(self,key):
+        # A same-session consumer may inspect or attempt a modified document;
+        # that must not mutate the original validated proposal subsequently
+        # serialized to the strict parent reader. Snapshot ownership stays here.
+        value=super().__getitem__(key)
+        if key in ('plan','intent'):
+            from copy import deepcopy
+            return deepcopy(value)
+        return value
+
 
 def _prepare_abandon(roots,scope,*,profiles,budget,diagnostic_decisions):
     """Closed one-shot private production request. All apply remains closed.

@@ -6210,3 +6210,30 @@ def test_t1_durable_completion_lost_result_no_false_success(b23_host,installatio
     before=logical(roots);files=retained_bytes(roots)
     _kfifth_fresh(roots,scope,target=identity,setup=_KFIFTH_OBSERVE+_T1_CURRENT_UNION)
     assert logical(roots)==before and retained_bytes(roots)==files
+
+
+def test_t1_owned_proposal_reads_cannot_mutate_sender(b23_host,installation,monkeypatch,tmp_path):
+    roots,scope,profiles,_=installation
+    _lotp_population(installation,'running');_lotp_transport(b23_host,monkeypatch)
+    prepare=recovery._prepare_abandon_locked
+    def inspect(session,**request):
+        r=prepare(session,**request)
+        plan=r['plan'];intent=r['intent']
+        plan['new_epoch']='0'*32;intent['new_epoch']='0'*32
+        assert r['plan']['new_epoch']!=plan['new_epoch']
+        assert r['intent']['new_epoch']!=intent['new_epoch']
+        recovery._validate_preparation_result(r)
+        # Arbitrary mutation through the private dict storage is still rejected
+        # by the strict codec, rather than acquiring snapshot/plan authority.
+        bad=dict(r);bad['intent']=intent
+        with pytest.raises(ValueError):recovery._decode_maintenance_result(recovery._maintenance_result_frame(bad),preparation=True)
+        with pytest.raises(ValueError):session.continue_kernel(intent,prepared=r._snapshot)
+        assert not session._live
+        assert not list(roots['receipts'].glob('p1-recovery-*'))
+        (tmp_path/'original').write_text(digest(r['intent']))
+        return r
+    monkeypatch.setattr(recovery,'_prepare_abandon_locked',inspect)
+    result=recovery._prepare_abandon(roots,scope,profiles=profiles,budget=DEFAULT_BUDGET,diagnostic_decisions=[])
+    recovery._validate_preparation_result(result)
+    assert digest(result['intent'])==(tmp_path/'original').read_text()
+    _t1_assert_unaccepted(roots,1)
