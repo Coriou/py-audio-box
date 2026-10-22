@@ -659,3 +659,9 @@ Record failures and missing evidence; do not replace them with a successful late
 
 - reviews/P1B23K-PREFIFTH-r1-sol.md exact6130d1: bounded SOURCE inspection GO, no concrete blocker; full validation/integration NO-GO pending. Verified scope/AST/frozen equality, stage-aware current reconstruction and fourth-only read-only exception. Reviewer ran no pytest because prescribed env absent; attributed results remain unmet gates.
 - Dedicated locked-validation task remains owner of environment repair and sequential campaigns. Await its terminal receipt; do not duplicate broad tests or integrate source before required validation. Fresh C four original REDs/full matrix and final Astra remain subsequent gates.
+
+## K pre-fifth locked validation PASS / integrated bounded correction / C resume
+
+- Separate locked-validation report reviews/P1B23K-PREFIFTH-ENV-20261022.md: restored isolated original-compatible CPython3.14.7 hash-locked dependencies. Three former failures pass unchanged. Exact6130d1 targeted915passed1skip/fourB21377passed1skip/full1529passed19skipped; candidate unchanged. Combined independent source GO and runtime receipts satisfy bounded local correction gate, not installed/platform qualification.
+- Root integrated fivecommits endinga5e91c4. Exact executable diff vs6130d1 empty acrossservice/worker/scripts/tests/clients/contracts. Focused integrated actualdeath/currentdrift/fourthreadonly/completedreplay subset8passed1236deselected28.97s.
+- Next fresh isolated C resume replays only C-only fourcommit stack4d05f5d/24df5ee/cb700a30/58e3eb9 preserving both historical WIPs and reviewedK. Supersede original two RED dependencies with new-boundary green receipts, complete all pending Cmatrix before frozen campaigns/fresh independentreview. All19Linuxskips/unexplainedA1inventorydrift/C1pinnedreaderstub/B3C1C2/globalAstra remain unqualified or pending.
