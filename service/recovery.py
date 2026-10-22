@@ -488,8 +488,9 @@ def snapshot(roots, db, scope, *, exclude_plan=None, exclude_abandon=None, trans
             p1_inventory_objects='id first_observed last_observed scan_id record',
             p1_inventory_history='seq scan_id object_id observed record',
             p1_integrity='id revision state token',sqlite_sequence='name seq')
+        validated_b2=None
         if tables & B2_COLUMNS.keys():
-            validate_b2_database(db, roots['control']/'core', _uncertified=_prefix['id'] if _core_after else None)
+            validated_b2=validate_b2_database(db, roots['control']/'core', _uncertified=_prefix['id'] if _core_after else None)
             expected.update(B2_COLUMNS)
             deadline=time.monotonic()+2
             db.set_progress_handler(lambda:int(time.monotonic()>deadline),1000)
@@ -657,7 +658,7 @@ def snapshot(roots, db, scope, *, exclude_plan=None, exclude_abandon=None, trans
             dispatches=[dict(seq=r[0],job_id=r[1],binding=r[3],runtime_id=r[5],phase=r[6],receipt_digest=digest(json.loads(r[7])) if r[7] else None,acked=bool(r[9])) for r in data['dispatches']],
             jobs=[{k:v for k,v in json.loads(r[6]).items() if k in ('id','state','generation','deadline','attempts')} for r in data['jobs']],
             publications=[dict(job_id=r[0],manifest_digest=digest(json.loads(r[1]))) for r in data['publications']],
-            allocation_coherent=_allocation_coherent(state if _core_after else data),
+            allocation_coherent=_allocation_coherent(state if _core_after else data,validated_b2),
             inventory=dict(counts=dict(__import__('collections').Counter(r['classification'] for r in scanner.rows.values())),reasons=sorted(scanner.reasons)),
             journal_digest=journal_hash,lane=payload['lane'],
             journal_records=None if damaged else [dict(runtime_id=r['id'],boot=r['boot'],phase=r['phase'],binding=r['allocation']['binding']) for r in payload['records']],
@@ -1434,10 +1435,43 @@ def plan_abandon(roots,scope,observation,*,proof_digest,profiles,budget,now=None
         return dict(plan=value,digest=digest(value),evidence=observation['evidence'])
 
 
-def _allocation_coherent(data):
+def _recovered_dispatches(data,validated):
+    """Exact current recovered tuples, only from already validated history/archive.
+
+    Mirror Reconciliation's finite mismatch consumption. Later recoveries may
+    resolve the same retained dispatch; the latest completed resolution owns
+    its current tuple, while the caller validates every historical resolution.
+    Projected unfinished snapshots omit their own completion and resolutions.
+    """
+    if validated is None:return set()
+    completed={r[0] for r in data.get('p1_recovery_steps',[]) if r[1]=='core-complete'}
+    latest={}
+    for intent in validated['p1_recoveries']:
+        if intent['id'] not in completed:continue
+        for resolution in validated['dispatch_resolutions']:
+            if resolution['recovery_id']==intent['id']:
+                latest[resolution['dispatch_seq']]=(intent,resolution)
+    recovered=set()
+    for row in data['dispatches']:
+        if row[0] not in latest:continue
+        intent,resolution=latest[row[0]]
+        expected=intent['expected'][3]['output']['rows']
+        source=intent['before']['source']['data']
+        job=next(r for r in data['jobs'] if r[1]==row[1])
+        reservation=next(r for r in data['resource_reservations'] if r[0]==row[1])
+        if (digest(row)==resolution['original_digest'] and
+            encode(row)==encode(next(r for r in source['dispatches'] if r[0]==row[0])) and
+            encode(job)==encode(next(r for r in expected['jobs'] if r[1]==row[1])) and
+            encode(reservation)==encode(next(r for r in expected['resource_reservations'] if r[0]==row[1]))):
+            recovered.add(row[0])
+    return recovered
+
+
+def _allocation_coherent(data,validated=None):
     """Check provenance joins directly; inventory reasons can overwrite each other."""
     from service.worker_transport import Authority
     try:
+        recovered=_recovered_dispatches(data,validated)
         jobs={r[1]:(json.loads(r[6]),json.loads(r[7])) for r in data['jobs']}
         reservations={r[0]:r for r in data['resource_reservations']}
         if set(jobs)!=set(reservations): return False
@@ -1458,20 +1492,21 @@ def _allocation_coherent(data):
                 demand=json.loads(reservation[2])
                 if (reservation[1]!='inference' or demand['configuration']!=digest(authority.context['plan']['resolved']['identity']['effective']) or
                     demand['disk_bytes']<demand['attempt_disk_bytes']*len(job['attempts'])): return False
-                if not row[9] and (reservation[3] not in ('executing','retained') or bool(row[8])!=(reservation[3]=='retained')): return False
+                if not row[9] and (reservation[3] not in ('executing','retained') or
+                    (bool(row[8])!=(reservation[3]=='retained') and row[0] not in recovered)): return False
                 if row[7]:
                     receipt=json.loads(row[7])
                     if (receipt.get('runtime_id')!=row[5] or receipt.get('binding')!=row[3] or
                         receipt.get('original_deadline')!=job['deadline'] or receipt.get('reaped') is not True or
                         receipt.get('reap_method')!='pid1-waitpid-echild'): return False
-                elif row[8] or job['state'] in ('succeeded','failed','cancelled'): return False
+                elif (row[8] or job['state'] in ('succeeded','failed','cancelled')) and row[0] not in recovered: return False
                 for publication in data['publications']:
                     if publication[0]!=job_id: continue
                     artifact=json.loads(publication[2]); attempt=authority.job['attempts'][-1]
                     if any(artifact[k]!=(job['generation'] if k=='generation' else attempt['id' if k=='attempt_id' else k])
                            for k in ('attempt_id','owner_id','staging_id','generation')): return False
         return True
-    except (ValueError,KeyError,IndexError,TypeError):
+    except (ValueError,KeyError,IndexError,TypeError,StopIteration):
         return False
 
 

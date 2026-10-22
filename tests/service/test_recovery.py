@@ -5116,3 +5116,70 @@ with sqlite3.connect(roots['control']/'core'/'core.sqlite') as db:
 """
     _kfifth_fresh(roots,scope,target=r['id'],setup=setup)
     assert logical(roots)==before and retained_bytes(roots)==files
+
+
+# Owning successor coherence: real nonempty P/K histories, no C source imports.
+@pytest.mark.parametrize('independent_setup',range(2))
+def test_successor_nonempty_production_composition(b23_host,installation,monkeypatch,independent_setup):
+    roots,scope,profiles,_=installation
+    _lotp_population(installation,'running')
+    a=_kpre_predecessor(installation,b23_host,monkeypatch)
+    with recovery.offline(roots) as (_,db):
+        recovery._verify_core_rows(db,a)
+        state=recovery.snapshot(roots,db,scope)
+        assert state['inventory']['reasons']==[]
+        assert state['inventory']['counts']['recovery_evidence']==3
+        original=db.execute('SELECT * FROM dispatches').fetchone()
+        assert original[7:]==(None,None,0)
+        assert db.execute('SELECT state FROM resource_reservations').fetchone()==('retained',)
+        assert state['allocation_coherent']
+    evidence=retained_bytes(roots)
+    _lotp_transport(b23_host,monkeypatch)
+    prepare=recovery._prepare_abandon_locked
+    def finish(session,**request):
+        try:result=prepare(session,**request)
+        except BaseException as exc:
+            # Preserve the required positive RED and expose the exact next
+            # production boundary, without changing its transport ceiling.
+            trace=exc.__traceback__;sizes={}
+            while trace:
+                if trace.tb_frame.f_code.co_name=='_prepare_abandon_locked':
+                    local=trace.tb_frame.f_locals
+                    if 'result' in local:
+                        sizes={k:len(encode(v).encode()) for k,v in local['result'].items()}
+                        sizes['transport']=len(encode(dict(result=local['result'])).encode())
+                trace=trace.tb_next
+            (roots['control'].parent/'successor-error.txt').write_text(encode(dict(error=str(exc),bytes=sizes)))
+            raise
+        p,r=result['plan'],result['intent']
+        assert recovery.verify_abandon_plan(roots,session.db,scope,r['proof']['observation'],
+            p['id'],digest(p),proof_digest=p['proof_digest'])==p
+        assert session.continue_kernel(r,prepared=result._snapshot)['status']=='complete'
+        return result
+    with monkeypatch.context() as m:
+        m.setattr(recovery,'_prepare_abandon_locked',finish)
+        try:b=recovery._prepare_abandon(roots,scope,profiles=profiles,budget=DEFAULT_BUDGET,diagnostic_decisions=[])['intent']
+        except ValueError:
+            error=roots['control'].parent/'successor-error.txt'
+            if error.exists():
+                with recovery.offline(roots) as (_,db):
+                    recovery._verify_core_rows(db,a)
+                    assert db.execute('SELECT count(*) FROM p1_recoveries').fetchone()==(1,)
+                    assert db.execute('SELECT count(*) FROM p1_recovery_steps').fetchone()==(5,)
+                    assert db.execute('SELECT count(*) FROM p1_abandon_plans').fetchone()==(2,)
+                    assert db.execute('SELECT * FROM dispatches').fetchone()==original
+                raise AssertionError(error.read_text())
+            raise
+    with recovery.offline(roots) as (_,db):
+        validated=recovery.validate_b2_database(db,roots['control']/'core')
+        assert len(validated['p1_recoveries'])==2 and len(validated['p1_recovery_steps'])==10
+        assert len(validated['dispatch_resolutions'])==2
+        assert db.execute('SELECT * FROM dispatches').fetchone()==original
+        assert recovery.snapshot(roots,db,scope)['allocation_coherent']
+        for r in (a,b):
+            recovery._completed_prefix_receipts(roots,r)
+            recovery._verify_finished_receipt_evidence(roots,r)
+    for name,raw in evidence.items():
+        if 'p1-recovery-'+a['id'] in name:assert retained_bytes(roots)[name]==raw
+    _kfifth_fresh(roots,scope,target=a['id'],setup=_KFIFTH_OBSERVE)
+    _kfifth_fresh(roots,scope,target=b['id'],setup=_KFIFTH_OBSERVE)
