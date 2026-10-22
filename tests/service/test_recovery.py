@@ -5005,7 +5005,7 @@ def test_kfifth_fourth_query_cannot_bypass_unfinished_finish(b23_host,installati
 from service import resource_store
 from service.reconciliation import Reconciliation
 def forbidden(*a,**k):raise AssertionError('fourth-only observation scanned or wrote')
-for name in ('snapshot','_unfinished_source','_prefix_file','_prefix_transaction','_capture_original_snapshot','_finish_receipts','_write_core_completion'):
+for name in ('snapshot','_unfinished_source','_prefix_file','_prefix_transaction','_capture_original_snapshot','_core_certificate','_finish_receipts','_write_core_completion'):
     setattr(recovery,name,forbidden)
 resource_store._recovery_scan=forbidden
 Reconciliation._collect=forbidden
@@ -5022,3 +5022,67 @@ Reconciliation._collect=forbidden
     assert logical(roots)==before and retained_bytes(roots)==files
     with closing(sqlite3.connect(roots['control']/'core'/'core.sqlite')) as db:
         assert db.execute("SELECT count(*) FROM p1_recovery_steps WHERE step='receipt-complete'").fetchone()==(0,)
+
+
+@pytest.mark.parametrize('restart,point',[
+    ('same-container','completion-fence-dirsync'),
+    ('new-registration','completion-fence-dirsync'),
+    ('different-container','completion-fence-dirsync')])
+def test_kfifth_production_owner_changes_before_writers(b23_host,installation,monkeypatch,restart,point):
+    """Real P acceptance, then a retained new incarnation, then fresh direct K."""
+    import subprocess,sys
+    roots,scope,_,_=installation
+    r=_kpre_attempt(installation,b23_host,monkeypatch,point)
+    reg=json.loads(r['before']['source']['data']['p1_registrations'][0][1])
+    reg.update(boot='e'*32,lane=r['new_lane'])
+    if restart=='same-container':
+        from worker.runtime_journal import Journal
+        from worker.runtime_supervisor import RuntimeSupervisor
+        supervisor=RuntimeSupervisor.__new__(RuntimeSupervisor)
+        supervisor.journal=Journal(roots['receipts']);supervisor.boot=reg['boot']
+        supervisor.failed=False;supervisor.active=None;supervisor.launches=0
+        try:hello=supervisor.operation('hello',{})
+        finally:supervisor.journal.lock.close()
+        reg.update(lane=hello['lane'],boot=hello['boot'])
+    elif restart=='different-container':
+        reg['containers'][1].update(id='e'*64,started='restarted-worker')
+    recovery.register(roots,scope,reg)
+    before=logical(roots);files=retained_bytes(roots)
+    # Original capsule coverage no longer equals retained registrations. The
+    # owning session refuses before opening the original writable connection;
+    # do not manufacture a replacement proof or repair the original capsule.
+    for _ in range(2):
+        child=subprocess.run([sys.executable,'-c',_KPRE_FRESH],input=encode(dict(
+            roots={k:str(p) for k,p in roots.items()},scope=scope,attempts=1,
+            setup=_KFIFTH_FORBID)),capture_output=True,text=True,timeout=90)
+        assert child.returncode!=0 and 'b2_maintenance_child_failed' in child.stderr
+        assert logical(roots)==before and retained_bytes(roots)==files
+    with closing(sqlite3.connect(roots['control']/'core'/'core.sqlite')) as db:
+        assert db.execute("SELECT count(*) FROM p1_recovery_steps WHERE step='receipt-complete'").fetchone()==(0,)
+
+
+@pytest.mark.parametrize('missing',['descriptor','output','both'])
+def test_kfifth_fourth_query_missing_certificate_cannot_write(b23_host,installation,monkeypatch,missing):
+    import subprocess,sys
+    roots,scope,_,_=installation
+    r=_kpre_attempt(installation,b23_host,monkeypatch,'core-certificate-parent')
+    descriptor=roots['receipts']/('p1-recovery-'+r['id']+'.core-certificate.intent.json')
+    output=roots['control']/'core'/next(n for n,k in recovery.archive_names(r).items() if k=='certificate')
+    if missing in ('descriptor','both'):descriptor.unlink()
+    if missing in ('output','both'):output.unlink()
+    with closing(sqlite3.connect(roots['control']/'core'/'core.sqlite')) as db,db:
+        db.execute("UPDATE resource_monitor SET state='fault'")
+    before=logical(roots);files=retained_bytes(roots)
+    script=_KPRE_FRESH.replace('result=session.continue_kernel(owned,fault=fault)',
+        "result=recovery._pending_prefix_locked(session.roots,session.db,scope,owned,owned['proof']['observation'],now=accepted['created']+1000,through_journal=True,through_core=True,_session=session)")
+    # This direct private query does not own continue_kernel's session-burning
+    # wrapper; its refusal must still precede every writer.
+    start=script.index('            assert not session._live')
+    end=script.index('            return True',start)
+    script=script[:start]+script[end:]
+    for _ in range(2):
+        child=subprocess.run([sys.executable,'-c',script],input=encode(dict(
+            roots={k:str(p) for k,p in roots.items()},scope=scope,attempts=1,
+            refuse=True,setup=_KFIFTH_FORBID)),capture_output=True,text=True,timeout=90)
+        assert child.returncode==0,child.stderr
+        assert logical(roots)==before and retained_bytes(roots)==files
