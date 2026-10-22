@@ -5086,3 +5086,33 @@ def test_kfifth_fourth_query_missing_certificate_cannot_write(b23_host,installat
             refuse=True,setup=_KFIFTH_FORBID)),capture_output=True,text=True,timeout=90)
         assert child.returncode==0,child.stderr
         assert logical(roots)==before and retained_bytes(roots)==files
+
+
+def test_kfifth_production_completed_replay_after_valid_hello(b23_host,installation,monkeypatch):
+    from worker.runtime_journal import Journal,read_maintenance
+    from worker.runtime_supervisor import RuntimeSupervisor
+    roots,scope,_,_=installation
+    r=_kpre_attempt(installation,b23_host,monkeypatch,'completion-fence-dirsync')
+    _kfifth_fresh(roots,scope)
+    supervisor=RuntimeSupervisor.__new__(RuntimeSupervisor)
+    supervisor.journal=Journal(roots['receipts']);supervisor.boot='e'*32
+    supervisor.failed=False;supervisor.active=None;supervisor.launches=0
+    try:hello=supervisor.operation('hello',{})
+    finally:supervisor.journal.lock.close()
+    assert hello['maintenance']==read_maintenance(roots['receipts'])
+    reg=json.loads(r['before']['source']['data']['p1_registrations'][0][1])
+    reg.update(lane=hello['lane'],boot=hello['boot'])
+    recovery.register(roots,scope,reg)
+    with closing(sqlite3.connect(roots['control']/'core'/'core.sqlite')) as db,db:
+        db.execute("UPDATE resource_monitor SET state='checking'")
+        db.execute('UPDATE resource_accounting SET highwater=highwater+1')
+    before=logical(roots);files=retained_bytes(roots)
+    # Model the fresh transport's actual current registration union. The
+    # accepted intent/proof/hash remains byte-for-byte original. A completed
+    # historical read needs no current consumer observation or reconstruction.
+    setup=_KFIFTH_OBSERVE+"""
+with sqlite3.connect(roots['control']/'core'/'core.sqlite') as db:
+    regs=[json.loads(row[0]) for row in db.execute('SELECT record FROM p1_registrations ORDER BY rowid')]
+"""
+    _kfifth_fresh(roots,scope,target=r['id'],setup=setup)
+    assert logical(roots)==before and retained_bytes(roots)==files
