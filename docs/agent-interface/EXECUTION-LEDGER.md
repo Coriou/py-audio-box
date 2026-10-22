@@ -649,3 +649,8 @@ Record failures and missing evidence; do not replace them with a successful late
 
 - Previous K pre-fifth delegate terminated on provider usage limit, no validated final handoff. App-bound t3-38916671 is clean at00c50e0; recovered separate clean k-prefifth-validation at7d4370b contains5351324/7d4370b partial source/tests only, no report or final qualification. Preserve both; fresh isolated delegate must audit/replay and complete original brief, independent review still required.
 - User explicitly requested Apple Silicon. Phase2 plan now names native arm64 Docker CPU qualification separately from packaged macOS arm64 Metal/MPS qualification; support remains unqualified, CPU Intel gates retained.
+
+## K pre-fifth candidate / validation environment repair and independent review
+
+- Candidate6130d1fecce3d978671ed1bfd509693d3aab3c97 frozen44e00b94, t3-85d4bb33 baseline7916f17, exactthreepaths remains UNINTEGRATED.164correctioncases green under alternativeenv; requiredvalidation NO-GO:target913pass1skip1fail/fourB21376pass1skip1fail/fullcollectionmissingtokenizer/partial1526pass19skip2fail. Prescribedvenv absent; alternativePython/MCPversion mismatches explicitly disclosed, no waiver.
+- Dedicated Sol-low pab-k-prefifth-locked-validation-20261022 restores isolated hash-locked environment and proves focused failures before sequential frozen target/fourB2/full; no source edits. Independent readonly Sol-low pab-phase1a-p1b23k-prefifth-review-r1-20261022 audits exact candidate with separate source verdict/fullgate pending. Both reports required before integration. No broad concurrent campaigns. All qualification and historical preservation limits retained.
