@@ -5183,3 +5183,360 @@ def test_successor_nonempty_production_composition(b23_host,installation,monkeyp
         if 'p1-recovery-'+a['id'] in name:assert retained_bytes(roots)[name]==raw
     _kfifth_fresh(roots,scope,target=a['id'],setup=_KFIFTH_OBSERVE)
     _kfifth_fresh(roots,scope,target=b['id'],setup=_KFIFTH_OBSERVE)
+
+def _t1_next_owner(h,roots,scope,previous,generation):
+    reg=copy.deepcopy(h['registration']);reg.update(lane=previous['new_lane'],boot=str(generation)*32)
+    for index,owner in enumerate(reg['containers']):
+        owner.update(id=format(generation*2+index,'x')*64,started=f'2026-10-17T0{generation+3}:00:0{index}Z')
+    recovery.register(roots,scope,reg)
+    provenance=copy.deepcopy(h['provenance']);provenance['registration_digest']=digest(reg)
+    provenance['hello']={k:reg[k] for k in ('lane','boot')}
+    for owner,c in zip(provenance['owners'],reg['containers']):
+        owner.update(id=c['id'],started=c['started'],cgroup='/docker/'+c['id'])
+    h['module']._host_write(h['base']/('registration-'+digest(reg)+'.json'),provenance)
+    for old,c in zip(copy.deepcopy(h['consumers'][:2]),reg['containers']):
+        old.update(id=c['id'],started=c['started'],finished=f'2026-10-17T0{generation+4}:00:00Z');h['consumers'].append(old)
+    h['state']=h['module'].host_state(roots,scope)
+    h['request']['registration_digest']=recovery.host_registration_digest(h['state']['registrations'])
+
+
+@pytest.mark.parametrize('independent_setup',range(2))
+def test_t1_nonempty_third_production_generation(b23_host,installation,monkeypatch,independent_setup,tmp_path):
+    """Three production histories, then ONE predeclared D capacity attempt."""
+    import hashlib
+    from service import resource_store
+    roots,scope,profiles,_=installation
+    _lotp_population(installation,'running')
+    prepare=recovery._prepare_abandon_locked
+    capture=recovery._capture_original_snapshot
+    scan=resource_store._recovery_scan
+    histories=[];metrics=[];captures=[]
+    def counted(*a,**k):
+        raw=capture(*a,**k);captures.append(hashlib.sha256(raw).hexdigest());return raw
+    monkeypatch.setattr(recovery,'_capture_original_snapshot',counted)
+    for generation in range(3):
+        if histories:_t1_next_owner(b23_host,roots,scope,histories[-1],generation)
+        _lotp_transport(b23_host,monkeypatch)
+        def finish(session,**request):
+            from service.resource_store import _maintenance_footprint,_measure_recovery_roots
+            prior_capture=len(captures)
+            result=prepare(session,**request);r=result['intent'];owned=result._snapshot
+            assert len(captures)==prior_capture+1
+            assert captures[-1]==r['expected'][1]['output']['snapshot_digest']
+            bound=_maintenance_footprint((roots['control']/'core',roots['staging']),r['highwater'],
+                sum(json.loads(row[2])['disk_bytes'] for row in r['before']['source']['data']['resource_reservations']),r['budget_before'])
+            maxima={name:0 for name in ('core.sqlite','core.sqlite-wal','core.sqlite-shm')}
+            observed=[]
+            def observe(db,scan_roots,intent):
+                if scan_roots[0]==roots['control']/'core':observed.append(_measure_recovery_roots(scan_roots))
+                return scan(db,scan_roots,intent)
+            def fault(point):
+                for name in maxima:
+                    p=roots['control']/'core'/name
+                    if p.exists():maxima[name]=max(maxima[name],p.stat().st_size)
+            with monkeypatch.context() as m:
+                m.setattr(resource_store,'_recovery_scan',observe)
+                assert session.continue_kernel(r,prepared=owned,fault=fault)['status']=='complete'
+            assert len(captures)==prior_capture+1 and len(observed)==1
+            recovery._verify_core_rows(session.db,r)
+            for old in histories+[r]:
+                recovery._completed_prefix_receipts(roots,old)
+                recovery._verify_finished_receipt_evidence(roots,old)
+                bundle=roots['receipts']/('p1-recovery-'+old['id']+'.snapshot.bundle')
+                archive=next(n for n,k in recovery.archive_names(old).items() if k=='snapshot')
+                assert bundle.read_bytes()==(roots['control']/'core'/archive).read_bytes()
+                assert hashlib.sha256(bundle.read_bytes()).hexdigest()==old['expected'][1]['output']['snapshot_digest']
+            used,count=recovery._prefix_receipt_namespace(roots['receipts'],histories+[r])
+            certificate=dict(certificate=recovery._certificate(r,dict(recovery_id=r['id'],**r['expected'][3],lane=r['new_lane'],epoch=r['new_epoch'])),
+                steps=[dict(recovery_id=r['id'],**e,lane=r['new_lane'],epoch=r['new_epoch']) for e in r['expected'][:4]])
+            metrics.append(dict(generation=generation+1,frame=len(recovery._maintenance_result_frame(result)),
+                plan=len(encode(result['plan']).encode()),intent=len(encode(r).encode()),snapshot=len(owned._raw),
+                manifest=len(encode(recovery.archive_manifest(r)).encode()),receipt_certificate=len(encode(certificate).encode()),
+                sqlite_observed_maxima=maxima,receipts_bytes=used,receipts_count=count,bound=bound,
+                H=r['highwater'],budget=r['budget_before'],scan=observed[0],actual=_measure_recovery_roots((roots['control']/'core',roots['staging']))))
+            (tmp_path/f'generation-{generation}.json').write_text(encode(metrics[-1]))
+            return result
+        with monkeypatch.context() as m:
+            m.setattr(recovery,'_prepare_abandon_locked',finish)
+            result=recovery._prepare_abandon(roots,scope,profiles=profiles,budget=DEFAULT_BUDGET,diagnostic_decisions=[])
+        histories.append(result['intent'])
+        metrics.append(json.loads((tmp_path/f'generation-{generation}.json').read_text()))
+    with recovery.offline(roots) as (_,db):
+        validated=recovery.validate_b2_database(db,roots['control']/'core')
+        assert len(validated['p1_recoveries'])==3 and len(validated['p1_recovery_steps'])==15
+        assert len(validated['dispatch_resolutions'])==3
+        original=db.execute('SELECT * FROM dispatches').fetchone()
+        assert original[7:]==(None,None,0)
+        assert recovery.snapshot(roots,db,scope)['allocation_coherent']
+    # Predeclared bound: at most three further preparations (D/E/F), 30s each.
+    capacity=None
+    for generation in range(3,6):
+        _t1_next_owner(b23_host,roots,scope,histories[-1],generation)
+        _lotp_transport(b23_host,monkeypatch)
+        before=logical(roots);files=retained_bytes(roots)
+        def attempt(session):
+            try:result=prepare(session,profiles=profiles,budget=DEFAULT_BUDGET,diagnostic_decisions=[])
+            except (ValueError,OSError,sqlite3.Error) as exc:
+                assert not session._live
+                return dict(refused=str(exc))
+            assert session.continue_kernel(result['intent'],prepared=result._snapshot)['status']=='complete'
+            return dict(admitted=result['intent'])
+        def prewrite(roots,db,capsule):
+            state,_=recovery._preparation_prestate(roots,db,scope,capsule,profiles,DEFAULT_BUDGET,[])
+            return encode(state['evidence_projection'])
+        outcome=recovery._run_bounded_maintenance(roots,scope,attempt,_prewrite=prewrite)
+        if 'admitted' in outcome:
+            histories.append(outcome['admitted']);continue
+        capacity=dict(generation=generation+1,error=outcome['refused'],metrics=metrics)
+        (tmp_path/'capacity.json').write_text(encode(capacity))
+        after=logical(roots)
+        assert [line for line in after if 'INSERT INTO "p1_abandon_plans"' not in line]==[line for line in before if 'INSERT INTO "p1_abandon_plans"' not in line]
+        for name,raw in files.items():
+            if Path(name.split(':')[0]).name not in ('core.sqlite','core.sqlite-wal','core.sqlite-shm'):
+                assert retained_bytes(roots)[name]==raw
+        break
+    assert capacity is not None,'predeclared capacity witness bound exhausted'
+    (tmp_path/'capacity.json').write_text(encode(capacity))
+    current_union="""
+db=sqlite3.connect(roots['control']/'core'/'core.sqlite')
+try:regs=[json.loads(row[0]) for row in db.execute('SELECT record FROM p1_registrations ORDER BY rowid')]
+finally:db.close()
+"""
+    for r in histories:_kfifth_fresh(roots,scope,target=r['id'],setup=_KFIFTH_OBSERVE+current_union)
+    print(encode(capacity))
+
+
+@pytest.mark.parametrize('size',[65536,65537,recovery.MAINTENANCE_RESULT_LIMIT-1,recovery.MAINTENANCE_RESULT_LIMIT,recovery.MAINTENANCE_RESULT_LIMIT+1])
+@pytest.mark.parametrize('seed',['é🙂','{"older":"\\\\\\\"é"}'])
+def test_t1_exact_utf8_envelope(size,seed):
+    # Framing fixtures only: these strings are not preparation authority.
+    overhead=len(encode(dict(result=seed)).encode())
+    value=seed+'a'*(size-overhead)
+    assert len(encode(dict(result=value)).encode())==size
+    if size>recovery.MAINTENANCE_RESULT_LIMIT:
+        with pytest.raises(ValueError,match='result_budget'):recovery._maintenance_result_frame(value)
+    else:
+        raw=recovery._maintenance_result_frame(value)
+        assert len(raw)==size and raw==encode(dict(result=value)).encode()
+        assert recovery._decode_maintenance_result(raw)==value
+        with pytest.raises(ValueError):recovery._decode_maintenance_result(raw,preparation=True)
+
+
+@pytest.mark.parametrize('raw',[
+    b'',b'{',b'[]',b'{}',b'{"result":true,"extra":0}',b'{"result":1,"result":1}',
+    b'{"result":{"x":1,"x":1}}',b'{"result":NaN}',b'{"result":Infinity}',
+    b'{"result":1e999}',b'{"result":"\xff"}',b'{"result": 1}',b'{"result":1}\n',
+    b'{"result":1}{"result":1}',b'{"result":"\\u00e9"}',b'{"result":-0}',
+    b'{"result":"\\ud800"}',b'{"result":{"z":1,"a":2}}'])
+def test_t1_strict_closed_frame(raw):
+    with pytest.raises((ValueError,UnicodeError)):recovery._decode_maintenance_result(raw)
+
+
+def _t1_pipe_model(monkeypatch):
+    """Actual fork/pipe, only storage/host session modeled; no limits changed."""
+    import sys
+    from contextlib import contextmanager
+    monkeypatch.setattr(sys,'platform','linux')
+    monkeypatch.setattr(recovery,'_install_maintenance_limit',lambda:None)
+    @contextmanager
+    def session(*a,**k):yield None
+    monkeypatch.setattr(recovery,'_maintenance_session',session)
+    fork=os.fork;owned=[]
+    def tracked():
+        pid=fork()
+        if pid:owned.append(pid)
+        return pid
+    monkeypatch.setattr(os,'fork',tracked)
+    return owned
+
+
+@pytest.mark.parametrize('mode',['ordinary','fragment','short','write-EINTR','read-EINTR','EPIPE','zero-write',
+    'empty','partial','extra','second','nonzero','signal','post-EOF-alive','never-EOF','slow','backpressure','exact-T-alive'])
+def test_t1_actual_pipe_transport(monkeypatch,mode):
+    import resource,signal,time,select
+    from types import SimpleNamespace
+    prior=resource.getrlimit(resource.RLIMIT_FSIZE)
+    owned=_t1_pipe_model(monkeypatch)
+    write=os.write;read=os.read;waitpid=os.waitpid
+    original_time=time.monotonic;original_select=select.select
+    # Deadline behavior uses the same absolute 30 units, accelerated 100x in
+    # this small process test; select scales the remaining duration consistently.
+    start=original_time()
+    monkeypatch.setattr(recovery,'time',SimpleNamespace(monotonic=lambda:start+(original_time()-start)*100,time=time.time))
+    def scaled_select(r,w,x,timeout):return original_select(r,w,x,timeout/100)
+    monkeypatch.setattr(select,'select',scaled_select)
+    state={'write':0,'read':0}
+    def changed_write(fd,raw):
+        state['write']+=1
+        if mode=='write-EINTR' and state['write']==1:raise InterruptedError()
+        if mode=='EPIPE':raise BrokenPipeError()
+        if mode=='zero-write':return 0
+        if mode in ('fragment','short'):return write(fd,raw[:7])
+        if mode in ('nonzero','signal','post-EOF-alive','never-EOF','slow','backpressure','exact-T-alive'):
+            if mode=='slow':
+                write(fd,raw[:1]);time.sleep(1);os._exit(74)
+            if mode=='backpressure':
+                while True:write(fd,b'x'*65536)
+            # Write a complete valid frame, then exercise EOF/exit separation.
+            offset=0
+            while offset<len(raw):
+                try:offset+=write(fd,raw[offset:offset+4096])
+                except BlockingIOError:original_select([],[fd],[],0.01)
+            if mode=='nonzero':os._exit(74)
+            if mode=='signal':os.kill(os.getpid(),signal.SIGKILL)
+            if mode in ('post-EOF-alive','exact-T-alive'):os.close(fd)
+            time.sleep(1);os._exit(74)
+        if mode=='empty':os.close(fd);os._exit(0)
+        if mode=='partial':write(fd,b'{');os.close(fd);os._exit(0)
+        if mode in ('extra','second'):
+            write(fd,raw);write(fd,b' ' if mode=='extra' else raw);os.close(fd);os._exit(0)
+        return write(fd,raw)
+    def changed_read(fd,count):
+        assert count<=65536
+        state['read']+=1
+        if mode=='read-EINTR' and state['read']==1:raise InterruptedError()
+        return read(fd,count)
+    monkeypatch.setattr(os,'write',changed_write);monkeypatch.setattr(os,'read',changed_read)
+    value='a'*(recovery.MAINTENANCE_RESULT_LIMIT-len(encode(dict(result='')).encode())) if mode=='exact-T-alive' else 'é🙂'
+    began=original_time()
+    if mode in ('ordinary','fragment','short','write-EINTR','read-EINTR'):
+        assert recovery._run_bounded_maintenance({}, {},lambda session:value)==value
+    else:
+        with pytest.raises((ValueError,OSError)):recovery._run_bounded_maintenance({}, {},lambda session:value)
+    assert original_time()-began<2
+    assert resource.getrlimit(resource.RLIMIT_FSIZE)==prior
+    assert len(owned)==1
+    with pytest.raises(ChildProcessError):waitpid(owned[0],os.WNOHANG)
+
+
+def test_t1_fork_failure_closes_descriptors(monkeypatch):
+    _t1_pipe_model(monkeypatch)
+    pipe=os.pipe;ends=[]
+    def tracked():
+        result=pipe();ends.extend(result);return result
+    monkeypatch.setattr(os,'pipe',tracked)
+    def failed():raise OSError('fork unavailable')
+    monkeypatch.setattr(os,'fork',failed)
+    with pytest.raises(OSError):recovery._run_bounded_maintenance({}, {},lambda s:True)
+    for fd in ends:
+        with pytest.raises(OSError):os.fstat(fd)
+
+
+@pytest.mark.parametrize('damage',[
+    'resolution-missing','resolution-wrong','resolution-extra','resolution-pending',
+    'dispatch-authority','dispatch-binding','dispatch-runtime','dispatch-phase','dispatch-receipt','dispatch-outcome','dispatch-ACK',
+    'job-principal','job-context','job-bundles','job-state','job-attempt','job-generation','job-deadline','job-reap',
+    'reservation-category','reservation-configuration','reservation-demand','reservation-state',
+    'history','archive','descriptor','media','typed-reference'])
+def test_t1_successor_strict_refusal_twice(b23_host,installation,monkeypatch,damage):
+    roots,scope,profiles,_=installation
+    _lotp_population(installation,'running')
+    a=_kpre_predecessor(installation,b23_host,monkeypatch)
+    _lotp_transport(b23_host,monkeypatch)
+    with closing(sqlite3.connect(roots['control']/'core'/'core.sqlite')) as db,db:
+        if damage=='resolution-missing':db.execute('DELETE FROM dispatch_resolutions')
+        elif damage=='resolution-wrong':db.execute("UPDATE dispatch_resolutions SET digest=?",('0'*64,))
+        elif damage=='resolution-extra':db.execute('INSERT INTO dispatch_resolutions VALUES(?,?,?,?)',(999,a['id'],'{}','0'*64))
+        elif damage=='resolution-pending':db.execute("DELETE FROM p1_recovery_steps WHERE step='core-complete'")
+        elif damage.startswith('dispatch-'):
+            column={'authority':'authority','binding':'binding','runtime':'runtime','phase':'phase','receipt':'receipt','outcome':'outcome','ACK':'acked'}[damage[9:]]
+            value={'authority':'[]','binding':'0'*64,'runtime':'changed','phase':'changed','receipt':'{}','outcome':'{}','acked':1}[column]
+            db.execute('UPDATE dispatches SET '+column+'=?',(value,))
+        elif damage.startswith('job-'):
+            if damage=='job-principal':db.execute("UPDATE jobs SET principal='changed'")
+            elif damage in ('job-context','job-bundles'):
+                value=json.loads(db.execute('SELECT context FROM jobs').fetchone()[0])
+                if damage=='job-context':value['plan']['changed']=True
+                else:value['bundles']=[]
+                db.execute('UPDATE jobs SET context=?',(encode(value),))
+            else:
+                value=json.loads(db.execute('SELECT job FROM jobs').fetchone()[0])
+                if damage=='job-state':value['state']='running'
+                elif damage=='job-attempt':value['attempts'][-1]['id']='0'*32
+                elif damage=='job-generation':value['generation']+=1
+                elif damage=='job-deadline':value['deadline']='2099-01-01T00:00:00Z'
+                elif damage=='job-reap':value['attempts'][-1]['reaped']=False
+                db.execute('UPDATE jobs SET job=?',(encode(value),))
+        elif damage.startswith('reservation-'):
+            if damage=='reservation-category':db.execute("UPDATE resource_reservations SET category='changed'")
+            elif damage=='reservation-state':db.execute("UPDATE resource_reservations SET state='executing'")
+            else:
+                value=json.loads(db.execute('SELECT demand FROM resource_reservations').fetchone()[0])
+                if damage=='reservation-configuration':value['configuration']='0'*64
+                else:value['disk_bytes']+=1
+                db.execute('UPDATE resource_reservations SET demand=?',(encode(value),))
+        elif damage=='history':db.execute("UPDATE events SET state='changed'")
+        elif damage=='typed-reference':
+            value=json.loads(db.execute('SELECT authority FROM dispatches').fetchone()[0]);value[0]['artifact_ids']=['new-reference']
+            db.execute('UPDATE dispatches SET authority=?',(encode(value),))
+    if damage=='archive':next((roots['control']/'core').glob('*.manifest.json')).write_bytes(b'{}')
+    elif damage=='descriptor':next(roots['receipts'].glob('*.core-certificate.intent.json')).write_bytes(b'{}')
+    elif damage=='media':(roots['staging']/'new-defect').write_bytes(b'new')
+    before=logical(roots);files=retained_bytes(roots)
+    def forbidden(*a,**k):raise AssertionError('strict refusal reached writer')
+    with monkeypatch.context() as m:
+        for name in ('_prefix_file','_prefix_transaction','_pending_prefix_locked','_rehearse_preparation'):
+            m.setattr(recovery,name,forbidden)
+        for _ in range(2):
+            with pytest.raises(ValueError):recovery._prepare_abandon(roots,scope,profiles=profiles,budget=DEFAULT_BUDGET,diagnostic_decisions=[])
+            assert logical(roots)==before
+            for name,raw in files.items():
+                if Path(name.split(':')[0]).name not in ('core.sqlite','core.sqlite-wal','core.sqlite-shm'):
+                    assert retained_bytes(roots)[name]==raw
+
+
+@pytest.mark.parametrize('same_consumer',[False,True])
+def test_t1_preparation_budget_before_rehearsal_or_acceptance(b23_host,installation,monkeypatch,same_consumer,tmp_path):
+    roots,scope,profiles,_=installation
+    _lotp_population(installation,'running');_lotp_transport(b23_host,monkeypatch)
+    chunks=recovery._maintenance_result_chunks
+    # Isolated encoder-budget fault, no padded field admitted as real history.
+    def overflow(result):
+        yield from chunks(result)
+        yield b'x'*recovery.MAINTENANCE_RESULT_LIMIT
+    monkeypatch.setattr(recovery,'_maintenance_result_chunks',overflow)
+    def forbidden(*a,**k):raise AssertionError('over-budget preparation reached rehearsal/acceptance')
+    for name in ('_rehearse_preparation','_pending_prefix_locked','_prefix_file'):
+        monkeypatch.setattr(recovery,name,forbidden)
+    transaction=recovery._prefix_transaction
+    def preparation_only(db,operation,fault,label):
+        assert label in ('preparation-schema','preparation-plan')
+        return transaction(db,operation,fault,label)
+    monkeypatch.setattr(recovery,'_prefix_transaction',preparation_only)
+    prepare=recovery._prepare_abandon_locked
+    def consume(session,**request):
+        try:
+            prepared=prepare(session,**request)
+            forbidden(prepared)
+        except ValueError as exc:
+            assert str(exc)=='b2_maintenance_result_budget' and not session._live
+            (tmp_path/'burned').write_text(str(exc));raise
+    if same_consumer:monkeypatch.setattr(recovery,'_prepare_abandon_locked',consume)
+    before=logical(roots);files=retained_bytes(roots)
+    with pytest.raises(ValueError,match='child_failed'):
+        recovery._prepare_abandon(roots,scope,profiles=profiles,budget=DEFAULT_BUDGET,diagnostic_decisions=[])
+    if same_consumer:assert (tmp_path/'burned').read_text()=='b2_maintenance_result_budget'
+    with closing(sqlite3.connect(roots['control']/'core'/'core.sqlite')) as db:
+        assert db.execute('SELECT count(*) FROM p1_abandon_plans').fetchone()==(1,)
+        for table in ('p1_recoveries','p1_recovery_steps','dispatch_resolutions'):
+            assert db.execute('SELECT count(*) FROM '+table).fetchone()==(0,)
+        assert db.execute('SELECT * FROM resource_accounting').fetchall()==[(1,20*1024**2)]
+    assert not list(roots['receipts'].glob('p1-recovery-*'))
+
+
+@pytest.mark.parametrize('damage',['missing','extra','plan-type','intent-type','plan-digest','intent-digest','plan-binding'])
+def test_t1_preparation_semantics_both_codec_ends(b23_host,installation,monkeypatch,damage):
+    roots,scope,profiles,_=installation
+    _lotp_population(installation,'running');_lotp_transport(b23_host,monkeypatch)
+    result=recovery._prepare_abandon(roots,scope,profiles=profiles,budget=DEFAULT_BUDGET,diagnostic_decisions=[])
+    if damage=='missing':result.pop('plan')
+    elif damage=='extra':result['padding']='no'
+    elif damage=='plan-type':result['plan']=[]
+    elif damage=='intent-type':result['intent']=[]
+    elif damage=='plan-digest':result['plan_digest']='0'*64
+    elif damage=='intent-digest':result['intent_digest']='0'*64
+    elif damage=='plan-binding':
+        result['plan']['new_epoch']='0'*32;result['plan_digest']=digest(result['plan'])
+    with pytest.raises((ValueError,TypeError,KeyError)):recovery._validate_preparation_result(result)
+    raw=recovery._maintenance_result_frame(result)
+    with pytest.raises((ValueError,TypeError,KeyError)):recovery._decode_maintenance_result(raw,preparation=True)

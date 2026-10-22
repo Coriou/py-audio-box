@@ -20,6 +20,7 @@ from service.reconciliation import Reconciliation, COLUMNS
 MAX_ROWS = 2048
 MAX_BYTES = 16 * 1024**2
 TTL = 300
+MAINTENANCE_RESULT_LIMIT = 1_048_576
 HEX = re.compile(r'[0-9a-f]{64}')
 
 
@@ -425,6 +426,71 @@ def _maintenance_session(roots, scope, process, *, _prewrite=None):
             finally:_maintenance_files(root)
 
 
+def _maintenance_result_chunks(result):
+    """Canonical encoder chunks are inspected in bounded strict UTF-8 slices."""
+    encoder=json.JSONEncoder(ensure_ascii=False,sort_keys=True,separators=(',', ':'),allow_nan=False)
+    try:
+        for chunk in encoder.iterencode(dict(result=result)):
+            for start in range(0,len(chunk),16384):
+                yield chunk[start:start+16384].encode('utf-8',errors='strict')
+    except (MemoryError,RecursionError,UnicodeError) as exc:
+        raise ValueError('b2_maintenance_result_encoding') from exc
+
+
+def _maintenance_result_frame(result):
+    """One bounded accumulated frame, independent of existing file limits."""
+    raw=bytearray()
+    try:
+        for part in _maintenance_result_chunks(result):
+            if len(raw)+len(part)>MAINTENANCE_RESULT_LIMIT:
+                raise ValueError('b2_maintenance_result_budget')
+            raw.extend(part)
+    except MemoryError as exc:raise ValueError('b2_maintenance_result_encoding') from exc
+    return raw
+
+
+def _validate_preparation_result(result):
+    closed(result,'plan plan_digest intent intent_digest')
+    if type(result['plan']) is not dict or type(result['intent']) is not dict:
+        raise ValueError('b2_maintenance_result_shape')
+    validate_abandon_plan(result['plan'])
+    validate_b2_record('p1_recoveries',result['intent'])
+    if result['plan_digest']!=digest(result['plan']) or result['intent_digest']!=digest(result['intent']):
+        raise ValueError('b2_maintenance_result_digest')
+    plan=result['plan'];intent=result['intent']
+    if (intent['plan_id']!=plan['id'] or intent['plan_digest']!=result['plan_digest'] or
+            intent['created']!=plan['created'] or intent['before']['journal']['state']!=plan['journal_state'] or
+            intent['expected'][1]['output']['journal_digest']!=plan['journal_digest']):
+        raise ValueError('b2_maintenance_result_binding')
+    for key in ('deployment_id','source_digest','observation_digest','proof_digest','prior_epoch',
+            'new_epoch','old_lane','new_lane','affected','budget_before','budget_after','diagnostic_decisions'):
+        if intent[key]!=plan[key]:raise ValueError('b2_maintenance_result_binding')
+
+
+def _decode_maintenance_result(raw,*,preparation=False):
+    if len(raw)>MAINTENANCE_RESULT_LIMIT:raise ValueError('b2_maintenance_result_budget')
+    def pairs(items):
+        value={}
+        for key,item in items:
+            if key in value:raise ValueError('b2_maintenance_duplicate_key')
+            value[key]=item
+        return value
+    def nonfinite(value):raise ValueError('b2_maintenance_nonfinite')
+    try:
+        frame=json.loads(raw.decode('utf-8',errors='strict'),object_pairs_hook=pairs,parse_constant=nonfinite)
+        closed(frame,'result')
+        offset=0
+        for part in _maintenance_result_chunks(frame['result']):
+            if offset+len(part)>len(raw) or memoryview(raw)[offset:offset+len(part)]!=part:
+                raise ValueError('b2_maintenance_noncanonical')
+            offset+=len(part)
+        if offset!=len(raw):raise ValueError('b2_maintenance_noncanonical')
+        if preparation:_validate_preparation_result(frame['result'])
+        return frame['result']
+    except (MemoryError,RecursionError,UnicodeError) as exc:
+        raise ValueError('b2_maintenance_result_encoding') from exc
+
+
 def _run_bounded_maintenance(roots, scope, operation, *, _prewrite=None):
     """Internal one-shot child seam for P; no CLI wiring or caller enable flag.
 
@@ -438,8 +504,12 @@ def _run_bounded_maintenance(roots, scope, operation, *, _prewrite=None):
     import threading
     if sys.platform!='linux' or threading.active_count()!=1:
         raise ValueError('b2_maintenance_platform')
+    deadline=time.monotonic()+30
     read_fd,write_fd=os.pipe()
-    pid=os.fork()
+    try:pid=os.fork()
+    except BaseException:
+        os.close(read_fd);os.close(write_fd)
+        raise
     if pid==0:
         _maintenance_child_pid=os.getpid()
         os.close(read_fd)
@@ -447,33 +517,59 @@ def _run_bounded_maintenance(roots, scope, operation, *, _prewrite=None):
             process=_install_maintenance_limit()
             with _maintenance_session(roots,scope,process,_prewrite=_prewrite) as session:
                 result=operation(session)
-            raw=encode(dict(result=result)).encode()
-            if len(raw)>65536:raise ValueError('b2_maintenance_result_budget')
-            with os.fdopen(write_fd,'wb') as stream:
-                if stream.write(raw)!=len(raw):raise OSError('b2_maintenance_short_result')
+            raw=_maintenance_result_frame(result)
+            os.set_blocking(write_fd,False)
+            offset=0
+            while offset<len(raw):
+                remaining=deadline-time.monotonic()
+                if remaining<=0:raise ValueError('b2_maintenance_timeout')
+                try:
+                    if not select.select([],[write_fd],[],remaining)[1]:
+                        raise ValueError('b2_maintenance_timeout')
+                    count=os.write(write_fd,memoryview(raw)[offset:offset+65536])
+                    if count<=0:raise OSError('b2_maintenance_short_result')
+                    offset+=count
+                except (InterruptedError,BlockingIOError):continue
+            os.close(write_fd)
             os._exit(0)
         except BaseException:
-            os._exit(74)  # Never report a failed/short write or SIGXFSZ as success.
+            os._exit(74)
     os.close(write_fd)
-    raw=bytearray(); deadline=time.monotonic()+30
+    raw=bytearray()
     try:
         while True:
             remaining=deadline-time.monotonic()
-            if remaining<=0 or not select.select([read_fd],[],[],max(0,remaining))[0]:
-                raise ValueError('b2_maintenance_timeout')
-            chunk=os.read(read_fd,65537-len(raw))
+            if remaining<=0:raise ValueError('b2_maintenance_timeout')
+            try:
+                if not select.select([read_fd],[],[],remaining)[0]:
+                    raise ValueError('b2_maintenance_timeout')
+                chunk=os.read(read_fd,min(65536,MAINTENANCE_RESULT_LIMIT+1-len(raw)))
+            except InterruptedError:continue
             if not chunk:break
             raw.extend(chunk)
-            if len(raw)>65536:raise ValueError('b2_maintenance_result_budget')
-        _,status=os.waitpid(pid,0); pid=None
-        if status!=0:raise ValueError('b2_maintenance_child_failed')
-        return json.loads(raw)['result']
+            if len(raw)>MAINTENANCE_RESULT_LIMIT:raise ValueError('b2_maintenance_result_budget')
+        while True:
+            remaining=deadline-time.monotonic()
+            if remaining<=0:raise ValueError('b2_maintenance_timeout')
+            try:ended,status=os.waitpid(pid,os.WNOHANG)
+            except InterruptedError:continue
+            if ended:
+                pid=None
+                if not os.WIFEXITED(status) or os.WEXITSTATUS(status)!=0:
+                    raise ValueError('b2_maintenance_child_failed')
+                break
+            try:select.select([],[],[],min(0.01,remaining))
+            except InterruptedError:pass
+        return _decode_maintenance_result(raw)
     finally:
         os.close(read_fd)
         if pid is not None:
             try:os.kill(pid,signal.SIGKILL)
             except ProcessLookupError:pass
-            os.waitpid(pid,0)
+            while True:
+                try:os.waitpid(pid,0);break
+                except InterruptedError:continue
+
 
 
 
@@ -2859,9 +2955,11 @@ def _prepare_abandon(roots,scope,*,profiles,budget,diagnostic_decisions):
     def prewrite(roots,db,capsule):
         state,_=_preparation_prestate(roots,db,scope,capsule,profiles,budget,diagnostic_decisions)
         return encode(state['evidence_projection'])
-    return _run_bounded_maintenance(roots,scope,
+    result=_run_bounded_maintenance(roots,scope,
         lambda session:_prepare_abandon_locked(session,profiles=profiles,budget=budget,
             diagnostic_decisions=diagnostic_decisions),_prewrite=prewrite)
+    _validate_preparation_result(result)
+    return result
 
 
 def _prepare_abandon_locked(session,*,profiles,budget,diagnostic_decisions):
@@ -2944,9 +3042,10 @@ def _prepare_abandon_locked(session,*,profiles,budget,diagnostic_decisions):
         descriptor['output_digest']=digest(descriptor);intent['expected'].append(descriptor)
         validate_b2_record('p1_recoveries',intent)
         result=_Preparation(session,p,intent,frozen)
-        # Retain K's finite child-result transport ceiling before a caller can
-        # consume the same-lock snapshot. Larger nested histories refuse.
-        if len(encode(dict(result=result)).encode())>65536:raise ValueError('b2_maintenance_result_budget')
+        # The complete canonical envelope is checked even for a same-session
+        # consumer, before rehearsal or receipt acceptance.
+        _validate_preparation_result(result)
+        _maintenance_result_frame(result)
         if archive_manifest(intent)!=manifest:raise ValueError('b2_preparation_manifest')
         _rehearse_preparation(session,p,intent,frozen)
         # Recheck origin/OS expiry and original state after all private work.
