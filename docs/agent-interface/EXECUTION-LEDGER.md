@@ -675,3 +675,8 @@ Record failures and missing evidence; do not replace them with a successful late
 
 - reviews/P1B23-SUCCESSOR-r1-sol.md confirms fourproductionREDs and validcompletedA via independentcurrentroots/oracles. Firstfailureallocationcoherent1461 reservation/outcome join;1467 terminalreceipt issecondobstacle. Both mustconsumeonlyexactvalidatedcompletedresolution/currentrecoveredtuple; no blanketexemption. Existingcontract sufficient, no architecturalwaiver.
 - Next isolated Sol-low owningcorrection limitedrecovery/tests/handoff, rootbased withC WIPs preserved. Require actualnonemptyP A->Bpositive, exacthistorybinding and corruptionrefusals, unchangedK/F1F4 gates; independentreview beforeintegration thenCfullmatrix.
+
+## Successor coherence WIP / result transport escalation
+
+- Candidate6cf6236bd42750cd82a9f680fac18d7f523bbe51 sourcea11c4208 owning-successor-coherence baseline682a179 remainsunintegrated. Desiredcoherence nowpasses actualnonemptyA twice; productionB thenhits unchanged65536-byte resultbudget actual94325/94322bytes.17focusedpreservationpasses; required2positiveRED fullmatrix/broadNOTRUN. No ceiling/source/history bypass adopted.
+- Request targetedAstra boundedtransport/historycapacity decision and independentSol-low WIPreview; preserveallWIPs and strictsource/evidence/finitebudget requirements. No qualification or unsupported-population waiver inferred.
