@@ -1459,3 +1459,7 @@ ONEprobe r25 completes1.08s helperstoppedexit0;196sourcehashes match/readable, c
 ### 2026-10-23 — Diagnostic accepted; clean initialization/visibility repair
 
 Parent accepts r26 bounded actualdiagnosticGO: currentstrictfreshnessfailure proven, inheritedimage/tmp lock population stronglysupported notoriginaltraceback proof. SOURCE+HOST pab-clean-init-observability-fix-r27-20261023 assigned sharedBUILDclean dedicated/tmp beforeseed, unchangedstrictchecks, boundednonzerocapture+stoppedreconciliation bothlifecycles, affectedHOSTonly. Parallel freshAstra pab-runtime-version-disposition-astra-r27-20261023 traces3.14.7vscommitted3.14.8 authority; no runtimepin change/provisioning/actual/cleanup authorized. Alloldobjects/lane retained.
+
+### 2026-10-23 — Astra runtime disposition adopted explicitly
+
+Parent adopts Astra r27: next bounded P1B23 Linux diagnosis selects CPython3.14.8 in existing immutable Linuxbase/explicitfrozen clean derivative, unchanged repository hashlocks and actual runtime/dependency identity checks. Original accepted Dockerpackaging pins3.14.8;3.14.7 is historicalDarwinvalidation identity, not universalLinux/product prerequisite. Supersedes generalized3.14.7 prerequisite in current diagnostic handoff only; historicalreceipts unchanged, no equivalence/nativeclearance/productreleaseGO. No newinterpreterprovisioning/lockchange needed. Inflight cleaninit/observabilityimplementation remains unapproved pendingindependentreview; oldheldlane/objects must be explicitly resolved before another actual.
