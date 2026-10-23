@@ -301,3 +301,21 @@ Executable commit `f60176302113e21212d525526f81e27b1395d045`. No executable edit
 - `host-check.py`: `88514eee4d48b7a89adc6627bf28814a6df1b312a05a01c659ac684691d585d9`
 - `qualification-host-check.py`: `98ec74e369d2f15f3aab628d4d3b5ce974f88dbfdf9e56fdf8c419f5b4482dad`
 - `source-manifest.json`: `23cc4d3da39f9ec783efe4ed20ecf7ce5f015170f388351f286dfc0036412d43`
+
+
+## r53 B packaging/control runner SOURCE + stdlib HOST freeze — 2026-10-24
+
+Reconstruction base `5d2fe5e1e7c40bc479f02f616f03da76ca8d886a` (exec `4e36ed22bf8edac67bde8affd0a0ca339212a6c6`), own t3-1521cb66 / prep/b-controls-runner. Parent accepts independent r52 combined SOURCE GO; actual remains HOLD. No delegation or applicable AGENTS. Scope is refreshed guard/control mapped hashes plus one new copied runner derivative, new runner/HOST/PLAN, and appends to the three EXISTING diagnostics/p-one-node handoffs (the requested docs/p-one-node path does not exist). No frozen source/proof/launcher changes.
+
+Final affected HOST selection frozen before execution: source/inventory, separate campaign command/security binding, exact pre-fixture selection, ordered100/first-red/partial retention/exhausted deadline/residual-descendant refusal, unchanged finite capture binary/16MiB overflow/timeout against fake Popen/selector. Stdlib only; subprocess/run/system/fork/kill/killpg denied except explicit finite fake Popen boundary. Hard30s total; stop first unexpected failure. No runtime admission, pytest import/collection, product import or DB.
+
+Earlier retained PASS receipts: `/private/tmp/pab-B-controls-HOST-lbdac641/HOST-receipt.json` (initial four groups) and `/private/tmp/pab-B-controls-HOST-fcxmscaz/HOST-receipt.json` (five groups after separate command binding/partial hash/residual check). Final run justified by added private umask, exhausted campaign deadline and residual-descendant HOST cases. No RED was erased and no actual was retried.
+
+- `diagnostics/b-controls/runner.py`: `2191bf4807433404946551ae9959ac6351137029cd392a0e6adb94ab46f33cf7`
+- `diagnostics/b-controls/HOST.py`: `5b1d709ca3e4aaf4a0a368c7ec764686fca183e61209182cdb59595de6b64862`
+- `diagnostics/p-one-node/source-manifest.json`: `da8ec4f9e19e9d13c472978b7ceb1cf80978cbfb50a2af1364f6010cc5208e57`
+
+
+### r53 final executable and HOST result
+
+Executable `2a266f3f496351e98a2a410071a135e0a935d707`; no executable edits after final HOST PASS5/5. Final receipt `/private/tmp/pab-B-controls-HOST-glpw6zw3/HOST-receipt.json` SHA256 `fbe5be54a4aadb2c37b1c3d3ee5c2e47ad1f6817cf6bf90c00aa926b490d323c`. Source/private-inventory verification `/private/tmp/pab-B-controls-source-verification-3jewu83e/verification.json` SHA256 `2e2b102ce53b3b43f70a947ddcc308db6de6c8a1fe9d9f7bd9e138637d1cc545`. Full exact source pins/coverage/retention and limitations are in current r53 HANDOFF and PLAN. No pytest/runtime/Docker/product/DB/native work or old proof/lock cleanup. All100/P211/preservation and actual74 remain pending. Following docs-only commit does not self-approve this preparation.
