@@ -1023,3 +1023,8 @@ Record failures and missing evidence; do not replace them with a successful late
 
 - Pc17af4fbd0ad88fee955c0d2455152e950e1bcc2 frozen53ee3d74 t3-e141d8ee registersfinalizerBEFOREmutation undoBEFOREassert/evidence, intentionalmissingdonepreserved; earlysetupfailurecontrol addsstatic210prospectiveitems UNEXECUTED.
 - pab-p-cleanup-review-runtime-r4-20261023 independentSOURCEreviewFIRST fullpriorF/R2-1/R3-1; parentpreauthorizesONEexacthandofffinite210selectionONLYifsourceGOrecordedbeforetest. StrictsameLinuxcaps/livetarverifiedretention/no retryfix; actualreceiptgatebeforeacceptance/assembly/broad. Hgate/Ssourcefixseparateactive.
+
+## S final two boundary controls frozen / source review r3
+
+- S98fbff2a45b18bce2ca53a60a945ce9bc1e52319 frozenfc8fba40 s-source-narrowf3-r3-20261023 adds2explicitlySYNTHETICdirectedboundarycontrols, 167staticappendedrows UNEXECUTED;76priorcontrols/recoverytarget preserved. No runtime.
+- pab-s-witness-source-review-r3-20261023 independentSOURCEONLY fullpriorbrief/F3successfulfirstintent+originalinode/source-impossibility+projectionlimits. No nativepositivecredit fromsynthetics; sourceGOthenparentserializedruntimegate needed. H/Pconditionalgatesseparateactive.
