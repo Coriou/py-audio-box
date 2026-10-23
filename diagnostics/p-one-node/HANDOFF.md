@@ -66,3 +66,15 @@ Input hashes below are frozen full documents, preserving original findings/respo
 - P1B23-P-RESTORATION-SOURCE-r5-sol.md: `24c54b15cdd4788d284f8fec5ed51b034f05af88acab96e4e0a3744c250603d6`
 
 - P1B23-P-WITNESS-SOURCE-r3-sol.md: `91fe1243674d3b4d6362fb6b4f5ed6797c47b67534ded8d54110b74d1b97a61a`
+
+## Launcher preparation handoff — 2026-10-23
+
+Launcher/source freeze commit `e941c7a` on branch `p-one-node-launcher-20261023`, fresh owned worktree `/Users/ben/.txcode/worktrees/py-audio-box/p-one-node-launcher-20261023`, reconstructed at exact observer documentation8d5aba5fc702719843d055b7d3f693c407deb0e9 / executable d5f493e63909d31e00680c81e8aefbcf3fcd5162. Subsequent changes are this documentation append only. Complete root observer SOURCE-r1 review and actual-receipt audit were read; original observer brief remains above. Their bounded SOURCE GO is not launcher or runtime acceptance.
+
+Authorized scope: SOURCEONLY launcher preparation, diagnostics/p-one-node only; no observer/entry/guard/attestor changes, root integration, push or delegation. Preserve one exact entry command, Linux3.14.8/SQLite3.40.1/libsqlite3-0/link hash/all42 pins, existing base69bd9216 via inspected owned local tag, COPY-only networkless no-pull build, atomic owned lane, bounded resource controls/admission/deadline, private binary-safe live export before owned cleanup, strict observation binding and expected RED. No runtime authority follows from preparation.
+
+Added launcher.py, runtime-identity.py, source-manifest.json and FREEZE.md with source hashes, proposed exact argv/proof layout, finite deadline and HOLD/cleanup semantics. Prior /tmp/pab-s-final-one-node-r2-20261023/run.py and identity-code.txt were read only as templates; no retained proof was modified or secret copied. The launcher deliberately stops after structural schema checks for independent actual caller/runner offset, process-local type interpretation and guard/report binding. Unknown/missing/partial/extra/changed-phase proof cannot receive acceptance. This is a review candidate, not a claim of verified launcher behavior or complete actual-receipt binding.
+
+Host AST parse/compile without execution/import/pyc passed for the two new Python sources. Byte comparisons against d5f493e confirm unchanged entire guard, observer and entry. git diff --check passed. No launcher execution, Docker call/build, pytest/collection, candidate import, probe, database open or runtime cleanup occurred; no lane/container/image/runtime HOLD acquired. A missing `python` host alias on the source-edit helper was resolved with python3; neither invocation executed candidate source.
+
+Fresh independent review of the exact frozen launcher/source-manifest recipe is REQUIRED before separate parent authority for future ONE execution. Reviewer must assess runtime identity completeness, admission, finite cleanup budget, all failure/HOLD paths and exact offset binding; no self-GO is asserted. Original historical PID229 active final exception remains UNKNOWN; no test acceptance or other gate credit follows.
