@@ -805,3 +805,8 @@ Record failures and missing evidence; do not replace them with a successful late
 
 - Candidate4ff625669024c33b0eeb3ecad40f26a2a71bfc99 source52337e49 childwaitguard-g1g2-20261023 retainsproduction4259415d. G1G2implementedbutNO frozenGREEN: ordinaryfreshhelperSIGSEGV-11 beforephase/maintenance receipt stoppedvalidation immediately; no retry/broadcampaign. CauseUNRESOLVED andnotattributedCorefork/lifetime. PreserveexactproofseparatefromearlierV1V2V3.
 - Owning64slotCoreimplementationpab-core-ownership-implementation-r1-20261023 nowrunningperadoptedAstra; guardqualificationhold nointegration/fullT2claim. No diagnosticretryfollowingproviderrejection, no env/runtimeworkaround inferred.
+
+## Bounded ownership WIP / Python collection crash environment gate
+
+- Candidatef0bfcc1f750c17ed126fdcf6c3ac620ce71f18cf source9d09a627 lifetime-bounded-core-20261023 remainsincompleteunintegrated.30developmentCorepasses1harnessfailure correctedunrerun; nextpytestCOLLECTIONnativeSIGSEGV stoppedallruntimework. RequiredRED/matrixmissing noGO.
+- Newordinaryenvironmenthealth lane inventorieslockedPython/runtime/packageintegrity andsmallstartup/import/collection controls, no crashgeneration/heap/allocator/GC/forkdiagnosis orblindbroadretry. No productionchanges/newversionacceptedbydefault. Preserveallnativeevidence/sourcepins; guard4ff62566alsoHOLDfreshhelperSIGSEGV.
