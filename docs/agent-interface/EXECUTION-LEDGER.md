@@ -1048,3 +1048,10 @@ Record failures and missing evidence; do not replace them with a successful late
 
 - Hfinaldiagnosis b3a163c8/61d73141 h-final-diagnosis-20261023 ONEactualnode REDHaHsnoHf:actualcaller/sameexceptionattrs/all12framecodeoffsetmatch; FIRSTexitCALLliteralcheckLOAD_CONST74false. Host3.14.7LOAD_SMALL_INT74 corroboration live3.14.8opcodeNOTrecorded no cachecauseclaim. RawLIVEproofverified cleanupcomplete.
 - pab-h-exit-literal-fix-r4-20261023 reviewedNONdiagnostic62af510abase onlynarrowcapturedos._exitCALL1literal74recognizer+directedcallsite/literalcontrols. Construction-onlypinnedLinuxdisassemblyproofauthorized NOmaintenance/SQL/Core/pytestnode; noactualHgateuntilnewreview. Fullstrictobject/shape/routeunchanged.
+
+
+### 2026-10-23 — H/P results and S runtime stop
+
+S frozen 98fbff2a: finite 255-node runtime gate stopped at 4 PASS, 1 FAIL plus teardown; first core-intent-full False produced Sa/Ss without Sf. Native refusal seam attested; final predicate unresolved. Evidence retained at /tmp/pab-s-runtime-r1-20261023; no retry/integration. Report P1B23-S-WITNESS-RUNTIME-r1-20261023.md.
+
+H literal candidate 6c588a59 (docs 9207a41) stopped at its first isolated construction positive; no H gate or retained exact live opcode proof. P restoration candidate 3546b1dd (docs 0f8c88c9) is static-only, runtime unqualified. Fresh independent Sol-low READONLY source reviews launched: pab-h-literal-source-review-r4-20261023, pab-p-restoration-source-review-r5-20261023; targeted S source diagnosis pab-s-final-source-diagnosis-r1-20261023. All three prohibit runtime/fixes and write only named review reports. No executable integration or activation.
