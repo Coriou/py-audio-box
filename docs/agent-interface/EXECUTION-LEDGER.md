@@ -1109,3 +1109,8 @@ Independent audit confirms146PASS1FAIL1teardownERROR64NOTRUN; exact211selection/
 ### 2026-10-23 — H actual audit confirms failed control premise; Astra decision
 
 Independent H construction audit verifies retainedsource/actualsite/controlfailure/hasharchive/recordedcleanup. Actualcapturedrunner recognized, ASTrebuiltpositive not equivalent; compiler and marshal-digest divergence causes UNKNOWN. Parent accepts boundedobservations only, no H readiness/acceptance. One SOURCEONLY Astra design lane pab-h-exact-context-control-design-astra-20261023 now selects sound exact-context controls before implementation; no further compile/retry campaign, recognizer weakening or H gate authorized.
+
+
+### 2026-10-23 — S single-node diagnostic identifies actual rejection
+
+ONE frozen observational False node expectedRED1FAIL1teardownERROR SaSs raw74. Report actualbranch3/detail1zeroLOAD_CONST74 candidates; executingLinuxmetadata LOAD_SMALL_INT74/CALL1. Sameobject/attrs/burn and exact8route/inner matched later OBSERVATIONALLY, not originalacceptance. No historicalPID49cause or Sacceptance inferred. Privateproof/export/ownedcleanup retained; freshindependent actual review pab-s-final-one-node-actual-review-r2-20261023 launched before correctiondecision. H Astra controlmodel and blockedpipe observer separate.
