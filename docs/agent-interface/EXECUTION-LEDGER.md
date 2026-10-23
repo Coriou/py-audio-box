@@ -765,3 +765,8 @@ Record failures and missing evidence; do not replace them with a successful late
 
 - reviews/P1B23-LIFETIME-r1-sol.md exact4259415d NO-GO: nominalfailedFutureorderingcorrect/L1L3positive; actual5sconstructortimeout permits nextstartup_read whilepreviousCoreclosepaused, nextCoreeventuallycontrol_busytoo late. IndependentrealSQLitewitness;39focusedpass do notclosecontract.
 - Narrowfollowup mustexclude subsequentstartupreadBEFOREtouchingsource whilepreviouscontrolowner/cleanupactive, retain5s/no retry/no unlimitedjoin/no capchanges. Testactualtimeoutbarrierandnextstartup exclusion thenrelease. Guardcompletionlaneindependentstilltest-only; finalcombine/reviewbeforeintegration.
+
+## Lifetime startup exclusion candidate / round2
+
+- Candidatec8e94cf42dbe7724e6a9b27b5cc08e0195c924aa frozenfa63b460 lifetime-f1-final-20261023 implementscontrollockexclusionbeforestartupcopy,5stimeoutunchanged. ClaimedactualRED->GREEN40focused89CoreDispatch32recovery; no integration/nativeclearance. Parallelguardlaneunchanged.
+- FreshreadonlySol-low pab-lifetime-review-r2-20261023 receivesfulloriginalAstra/r1F1/response andauditsentirelifetimecandidate inclcrossprocesslock/reentrance/releasebeforeDBclose/secondbinding andreal5stimeoutbarrier. Finalsource+guardcombinevalidation/review/T2/nativeV1V2V3/finalAstra remainopen.
