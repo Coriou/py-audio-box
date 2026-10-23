@@ -1010,3 +1010,854 @@ Path(SENTINEL).write_text('continued')
         if mode == 'wrong-final-caller': expected += ['caller-predicate-mutated']
         expected += ['final-accepted' if positive or mode in ('missing-markers', 'signal11') else 'final-rejected']
         assert child == expected
+
+
+# B r44 directed controls. APPEND ONLY. Run under --noconftest in a separately
+# authorized control lane: the frozen singleton Observer rejects other nodes.
+# No test below is executed by authoring/compiling this file.
+B_CONTROL_NODE = 'tests/service/test_recovery.py::test_t1_real_blocked_pipe_backpressure_deadline'
+B_CONTROL_PARSER = (
+    '74', '9-no-f', '9-f', 'missing-a', 'missing-e', 'missing-f',
+    'missing-t', 'missing-k', 'duplicate', 'partial', 'order', 'overflow',
+    'legacy', 'exit0', 'arbitrary74', 'signal11', 'overlap-P',
+)
+B_CONTROL_SEAMS = (
+    'original74-real-observer', 'collected-control', 'missing-obj', 'wrong-obj',
+    'wrong-node', 'parameter', 'wrong-code', 'closure', 'operation',
+    'wrong-errno', 'subclass', 'missing-eagain', 'fd-other', 'fd-reuse',
+    'fd-witness-alias', 'fd-read-access', 'raw-budget', 'offset', 'view-owner',
+    'view-slice', 'premature', 'route561', 'raise-offset', 'call-offset',
+    'absent-route', 'extra-route', 'reordered-route', 'wrong-args',
+    'replacement', 'same-object-extra-frame', 'trace-disabled', 'writer-failure',
+    'direct-exit74', 'actual-overflow', 'schedule9-no-f', 'schedule9-f',
+    'previous-trace', 'setup-failure', 'fixture-undo',
+)
+
+
+def _B_refused_launches(guard, tmp_path):
+    """Demand the existing two latch consumers; never launch after refusal."""
+    # The guard's real installed wrapper is supplied by the isolated seam
+    # process below. Parser-only controls use a source projection of its exact
+    # preflight because installing it requires an observer/production import.
+    import ast
+    source = Path(harness.__file__).read_text()
+    tree = ast.parse(source)
+    install = next(n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name == 'install')
+    run = next(n for n in install.body if isinstance(n, ast.FunctionDef) and n.name == 'guarded_run')
+    preflight = run.body[0]
+    assert ast.unparse(preflight) == 'if guard.failures:\n    pytest.exit(guard.failures[0], returncode=2)'
+    # Exact source, no rewritten predicate and no call into production.
+    with pytest.raises(pytest.exit.Exception) as stopped:
+        exec(compile(ast.Module(body=[preflight], type_ignores=[]), harness.__file__, 'exec'),
+             {'guard': guard, 'pytest': pytest})
+    assert str(stopped.value) == guard.failures[0]
+    with harness.activate(guard, tmp_path/'refused-helpers'):
+        with pytest.raises(RuntimeError) as helper:
+            harness.fresh_run([sys.executable, '-c', 'raise AssertionError("must not launch")'])
+        assert str(helper.value) == guard.failures[0]
+    assert list((tmp_path/'refused-helpers').iterdir()) == []
+
+
+@pytest.mark.parametrize('control', B_CONTROL_PARSER, ids=lambda c: 'B-T-'+c)
+def test_B_closed_transcript_source_predicate(tmp_path, control):
+    """Synthetic raw statuses/parser inputs; no child/kill/timeout certificate."""
+    cls = harness.BlockedPipeWitness_B
+    baseline = b'B:a;B:e;B:f;B:t;'
+    assert cls.transcript(baseline, 74 << 8)
+    assert cls.transcript(b'B:a;B:e;B:t;B:k;', 9)
+    assert cls.transcript(baseline+b'B:k;', 9)
+    witness, status = baseline, 74 << 8
+    if control == '9-no-f': witness, status = b'B:a;B:e;B:t;B:k;', 9
+    elif control == '9-f': witness, status = baseline+b'B:k;', 9
+    elif control.startswith('missing-'):
+        token = ('B:'+control[-1]+';').encode()
+        witness = (baseline+b'B:k;' if control == 'missing-k' else baseline).replace(token, b'')
+        if control == 'missing-k': status = 9
+        assert token not in witness
+    elif control == 'duplicate': witness += b'B:f;'
+    elif control == 'partial': witness = baseline[:-1]
+    elif control == 'order': witness = b'B:a;B:f;B:e;B:t;'
+    elif control == 'overflow': witness = baseline+b'x'*257
+    elif control == 'legacy': witness = b'V:session;V:operation;'
+    elif control == 'exit0': status = 0
+    elif control == 'arbitrary74': witness = b'B:a;'
+    elif control == 'signal11': status = 11
+    positive = control in ('74', '9-no-f', '9-f')
+    assert cls.transcript(witness, status) is (positive or control == 'overlap-P')
+    guard = harness.MaintenanceWaitGuard(SimpleNamespace(nodeid='B-source-parser',
+        originalname='B-source-parser'), SimpleNamespace(shouldstop=False))
+    guard.owned.add(123)
+    raw = (123, status)
+    assert guard.observe(raw, witness=witness, armed_B=True, armed_P=control == 'overlap-P',
+        expected_exit=74, expected_signal=status) is raw
+    assert guard.receipts == [raw] and not guard.owned
+    if positive:
+        assert guard.failures == [] and guard.session.shouldstop is False
+    else:
+        assert len(guard.failures) == 1
+        assert guard.failures[0].endswith('incomplete or invalid armed B contract')
+        assert guard.session.shouldstop == guard.failures[0]
+        _B_refused_launches(guard, tmp_path)
+
+
+# This program runs only when a separately authorized test invokes it. The
+# control process owns every substitution. The guard source is imported intact.
+_B_SEAM_PROGRAM = r'''
+import errno, os, sys, types, stat, pytest
+from pathlib import Path
+import _maintenance_wait_guard as h
+from service import recovery
+mode, root = CONTROL, Path(ROOT)
+root.mkdir(mode=0o700)
+steps = []
+owner = os.getpid()
+def evidence(label):
+    global owner, steps
+    if owner != os.getpid(): owner, steps = os.getpid(), []
+    assert label not in steps and len(steps) < 24
+    steps.append(label)
+    h.atomic(root/(str(os.getpid())+'.json'), dict(control=mode, steps=steps))
+import one_node_observer as observer
+observer0 = observer.Observer
+import atexit
+def restore_observer():
+    observer.Observer = observer0
+    assert observer.Observer is observer0
+atexit.register(restore_observer)
+class InertObserver:
+    # Observational sink ONLY: a real distinct regular FD remains available for
+    # B's pipe-exclusion check. No certificate/predicate/guard is replaced.
+    def __init__(self, request, code):
+        self.fd = os.open(root/'inert-observer', os.O_WRONLY|os.O_CREAT|os.O_EXCL, 0o600)
+        request.addfinalizer(self.close)
+    def sample(self, *a, **kw): pass
+    def close(self):
+        fd, self.fd = self.fd, None
+        if fd is not None: os.close(fd)
+if mode != 'original74-real-observer': observer.Observer = InertObserver
+def previous_trace(frame, event, arg): return None
+if mode == 'previous-trace': sys.settrace(previous_trace)
+cls = h.BlockedPipeWitness_B
+original = {name: getattr(cls, name) for name in
+    ('__init__', 'eagain', 'trace_B', 'final_child', 'terminal', 'clear')}
+guards, reports = [], []
+predicate_e = {'wrong-errno', 'subclass', 'raw-budget', 'offset', 'view-owner', 'view-slice'}
+predicate_f = {'premature', 'route561', 'raise-offset', 'call-offset',
+    'absent-route', 'extra-route', 'reordered-route', 'wrong-args'}
+admission = {'missing-obj', 'wrong-obj', 'wrong-node', 'parameter', 'wrong-code', 'closure', 'operation'}
+def probe_e(w, exc, frame):
+    saved = w.__dict__.copy()
+    try: return original['eagain'](w, exc, frame)
+    finally: w.__dict__.clear(); w.__dict__.update(saved)
+def extra(exc): raise exc
+class Plugin:
+    def pytest_runtest_makereport(self, item, call):
+        reports.append((call.when, call.excinfo is None))
+        if call.when == 'setup':
+            assert call.excinfo is None or (mode == 'setup-failure' and
+                call.excinfo.type is OSError and call.excinfo.value.args == (errno.ENOSPC, 'B setup control'))
+        if mode == 'setup-failure' and call.when == 'call':
+            assert call.excinfo is not None and call.excinfo.type is OSError
+            assert call.excinfo.value.args == (errno.ENOSPC, 'B setup control')
+            evidence('invocation-setup-failure-classified')
+        if call.when == 'call' and call.excinfo is None: evidence('original-assertions-completed')
+    @pytest.fixture(autouse=True)
+    def directed(self, request):
+        import gc, weakref
+        patch = pytest.MonkeyPatch()
+        witness_refs = []
+        bind0 = cls.bind_hooks
+        trace0 = sys.gettrace()
+        hooks0 = (os.fork, os.waitpid, os.write, os._exit, recovery._run_bounded_maintenance)
+        node = request.node
+        assert node.nodeid == NODE and callable(node.obj)
+        assert node.obj is sys.modules['test_recovery'].test_t1_real_blocked_pipe_backpressure_deadline
+        guard = h.MaintenanceWaitGuard(node, types.SimpleNamespace(shouldstop=False))
+        guards.append(guard)
+        observe0 = guard.observe
+        def observe(result, **kw):
+            assert result[1] == (9 if mode.startswith('schedule9-') else 74 << 8)
+            if mode == 'actual-overflow': expected = b'B:overflow;'
+            elif mode in admission | predicate_e or mode.startswith('fd-') or mode == 'missing-eagain': expected = b'B:a;'
+            elif mode in predicate_f or mode in {'replacement', 'same-object-extra-frame',
+                    'trace-disabled', 'writer-failure', 'direct-exit74'}: expected = b'B:a;B:e;'
+            elif mode == 'schedule9-no-f': expected = b'B:a;B:e;B:t;B:k;'
+            elif mode == 'schedule9-f': expected = b'B:a;B:e;B:f;B:t;B:k;'
+            else: expected = b'B:a;B:e;B:f;B:t;'
+            assert kw['armed_B'] and kw['witness'] == expected
+            assert observe0(result, **kw) is result
+            assert guard.receipts[-1] == result and result[0] not in guard.owned
+            evidence('exact-terminal-readback')
+            return result
+        patch.setattr(guard, 'observe', observe)
+        finals = []
+        def finish():
+            # Target's MonkeyPatch fixture may already have undone its hooks.
+            # Our stack never records any target-owned observed closure.
+            patch.undo()
+            for final in reversed(finals): final()
+            assert sys.gettrace() is trace0
+            assert (os.fork, os.waitpid, os.write, os._exit, recovery._run_bounded_maintenance) == hooks0
+            assert all(getattr(cls, n) is f for n, f in original.items())
+            assert cls.bind_hooks is bind0
+            if mode != 'setup-failure':
+                gc.collect()
+                assert all(ref() is None for ref in witness_refs)
+            evidence('hooks-restored')
+        request.addfinalizer(finish)
+        proxy = types.SimpleNamespace(node=node, addfinalizer=finals.append)
+        h.install(proxy, patch, guard)
+        wrapped_run = recovery._run_bounded_maintenance
+        def init(w, *a, **kw):
+            # Establish admission first; then mutate and reconstruct on the same
+            # real target caller. Missing obj is never recovered from the module.
+            original['__init__'](w, *a, **kw)
+            witness_refs.append(weakref.ref(w))
+            assert w.eligible and w.valid
+            evidence('admission-baseline')
+            if mode in admission:
+                a = list(a); n = a[0]
+                if mode == 'missing-obj':
+                    n = types.SimpleNamespace(nodeid=node.nodeid, originalname=node.originalname)
+                    assert not hasattr(n, 'obj')
+                elif mode == 'wrong-obj':
+                    n = types.SimpleNamespace(nodeid=node.nodeid, originalname=node.originalname, obj=lambda: None)
+                    assert n.obj is not node.obj
+                elif mode == 'wrong-node':
+                    n = types.SimpleNamespace(nodeid='foreign::'+node.nodeid, originalname=node.originalname, obj=node.obj)
+                    assert n.nodeid != node.nodeid
+                elif mode == 'parameter':
+                    n = types.SimpleNamespace(nodeid=node.nodeid, originalname=node.originalname,
+                        obj=node.obj, callspec=types.SimpleNamespace(params={'foreign': True}))
+                    assert n.callspec.params
+                elif mode == 'wrong-code':
+                    a[1] = lambda *a: None
+                    assert a[1].__code__ is not w.runner
+                elif mode == 'operation':
+                    a[2] = lambda value: 'foreign'
+                    assert a[2].__code__ is not w.operation.__code__
+                elif mode == 'closure':
+                    frame = a[3]; real = frame.f_locals['observed']
+                    def cell(value): return (lambda: value).__closure__[0]
+                    cells = tuple(cell((lambda *a: 1) if name == 'write' else
+                        cls.closure(real)[name]) for name in real.__code__.co_freevars)
+                    clone = types.FunctionType(real.__code__, real.__globals__, closure=cells)
+                    assert clone.__code__ is real.__code__ and cls.closure(clone)['write'] is not w.writer
+                    frame.f_locals['observed'] = clone
+                    assert frame.f_locals['observed'] is clone
+                a[0] = n
+                original['__init__'](w, *a, **kw)
+                assert w.eligible and not w.valid
+                evidence('admission-mutated-rejected')
+        patch.setattr(cls, '__init__', init)
+        def eagain(w, exc, frame):
+            assert probe_e(w, exc, frame), 'EAGAIN prerequisite absent; never negative PASS'
+            evidence('real-eagain-baseline')
+            if mode.startswith('fd-'):
+                fd = frame.f_locals['write_fd']; old = w.identity(fd)[0]
+                assert old == w.pipe and old[:2] != w.identity(w.witness_fd)[0][:2]
+                if mode == 'fd-witness-alias': other = os.dup(w.witness_fd)
+                elif mode == 'fd-other': other = os.open('/dev/null', os.O_WRONLY)
+                else:
+                    r, v = os.pipe(); other = r if mode == 'fd-read-access' else v
+                    os.close(v if mode == 'fd-read-access' else r)
+                replacement = w.identity(other)[0]
+                try:
+                    if mode == 'fd-reuse': os.close(fd)
+                    os.dup2(other, fd)
+                    assert w.identity(fd)[0] == replacement and replacement[:2] != old[:2]
+                    assert replacement[3] == (os.O_RDONLY if mode == 'fd-read-access' else os.O_WRONLY)
+                    if mode == 'fd-witness-alias': assert replacement[:2] == w.identity(w.witness_fd)[0][:2]
+                finally: os.close(other)
+                with pytest.raises(OSError) as closed: os.fstat(other)
+                assert closed.value.errno == errno.EBADF
+                evidence('actual-dup2-readback-temp-closed')
+            if mode in predicate_e:
+                inner = exc.__traceback__.tb_next.tb_frame
+                if mode == 'wrong-errno': exc.errno = errno.EPIPE; assert exc.errno == errno.EPIPE
+                elif mode == 'subclass':
+                    class Sub(BlockingIOError): pass
+                    exc = Sub(errno.EAGAIN, 'control').with_traceback(exc.__traceback__)
+                    assert type(exc) is Sub
+                elif mode == 'raw-budget':
+                    frame.f_locals['raw'] = bytearray(1048577)
+                    w.framed_id = id(frame.f_locals['raw'])
+                    offset = frame.f_locals['offset']
+                    inner.f_locals['raw'] = memoryview(frame.f_locals['raw'])[offset:offset+65536]
+                    assert len(frame.f_locals['raw']) == 1048577
+                    assert id(frame.f_locals['raw']) == w.framed_id
+                    assert inner.f_locals['raw'].obj is frame.f_locals['raw']
+                elif mode == 'offset':
+                    frame.f_locals['offset'] = -1; assert frame.f_locals['offset'] == -1
+                elif mode == 'view-owner':
+                    inner.f_locals['raw'] = memoryview(bytes(inner.f_locals['raw']))
+                    assert inner.f_locals['raw'].obj is not frame.f_locals['raw']
+                elif mode == 'view-slice':
+                    inner.f_locals['raw'] = memoryview(frame.f_locals['raw'])[:1]
+                    assert inner.f_locals['raw'].nbytes == 1
+                evidence('source-predicate-mutated')
+            answer = original['eagain'](w, exc, frame)
+            reject = mode.startswith('fd-') or mode in predicate_e or mode == 'missing-eagain'
+            if mode == 'missing-eagain': answer = False  # Withheld certificate control, no fake kernel EAGAIN.
+            assert answer is not reject
+            if mode.startswith('fd-'):
+                os.close(fd)
+                with pytest.raises(OSError) as closed_result: os.fstat(fd)
+                assert closed_result.value.errno == errno.EBADF
+                evidence('replacement-result-fd-closed')
+            evidence('eagain-rejected' if reject else 'eagain-accepted')
+            return answer
+        # Repeated EAGAIN retries must not create repeated evidence or mutations.
+        seen = [False]
+        def once_e(w, exc, frame):
+            if seen[0]: return original['eagain'](w, exc, frame)
+            seen[0] = True
+            return eagain(w, exc, frame)
+        patch.setattr(cls, 'eagain', once_e)
+        timeout_ids = [0, 0]
+        def trace(w, frame, event, arg):
+            answer = original['trace_B'](w, frame, event, arg)
+            if (mode == 'direct-exit74' and frame.f_code is w.runner and event == 'exception'
+                    and frame.f_locals.get('pid') == 0 and w.phase == 'backpressure' and w.valid):
+                evidence('unrelated-exit74-after-eagain')
+                os._exit(74)
+            if (mode == 'schedule9-no-f' and frame.f_code is w.runner and event == 'exception'
+                    and frame.f_locals.get('pid') == 0 and w.phase == 'backpressure' and w.valid):
+                # Scheduling intervention ONLY, after original trace emitted e.
+                evidence('scheduling-after-real-eagain')
+                import time
+                time.sleep(1)
+            if frame.f_code is w.runner and event == 'exception' and frame.f_locals.get('pid') == 0 and w.phase == 'timeout':
+                assert w.valid and w.timeout_id == id(arg[1])
+                timeout_ids[0] = id(arg[1])
+                evidence('actual-child558-timeout')
+                if mode == 'replacement':
+                    replacement = ValueError(*arg[1].args)
+                    assert replacement is not arg[1] and replacement.args == arg[1].args
+                    timeout_ids[1] = id(replacement)
+                    evidence('actual-replacement-raised')
+                    raise replacement
+                if mode == 'same-object-extra-frame':
+                    evidence('actual-same-object-reraise')
+                    extra(arg[1])
+                if mode == 'trace-disabled':
+                    sys.settrace(None); assert sys.gettrace() is None
+                    evidence('trace-disabled-readback')
+            return answer
+        patch.setattr(cls, 'trace_B', trace)
+        def final(w, caller):
+            if mode in admission or mode.startswith('fd-') or mode in predicate_e or mode == 'missing-eagain':
+                assert not original['final_child'](w, caller)
+                evidence('final-rejected'); return False
+            if mode in {'replacement', 'same-object-extra-frame', 'trace-disabled', 'direct-exit74'}:
+                if mode != 'direct-exit74':
+                    current = sys.exception()
+                    assert type(current) is ValueError and current.args == ('b2_maintenance_timeout',)
+                    assert id(current) == timeout_ids[1 if mode == 'replacement' else 0]
+                    route, tb = [], current.__traceback__
+                    while tb is not None:
+                        route.append(tb.tb_frame.f_code); tb = tb.tb_next
+                    if mode == 'replacement': assert trace.__code__ in route and timeout_ids[0] != timeout_ids[1]
+                    if mode == 'same-object-extra-frame': assert extra.__code__ in route
+                    if mode == 'trace-disabled': assert sys.gettrace() is None
+                    del current, tb, route
+                    evidence('active-exception-route-readback')
+                assert not original['final_child'](w, caller)
+                evidence('final-rejected'); return False
+            assert original['final_child'](w, caller), 'actual74 final prerequisite absent'
+            evidence('final-baseline')
+            if mode in predicate_f:
+                exc = sys.exception(); tb = exc.__traceback__
+                if mode == 'premature': w.deadline += 1000000; assert not w.expired(caller)
+                elif mode == 'route561':
+                    import dis
+                    site, = [i.offset for i in dis.get_instructions(w.runner)
+                        if i.opname == 'RAISE_VARARGS' and i.positions.lineno == 561]
+                    exc.__traceback__ = types.TracebackType(None, caller, site, 561)
+                    assert exc.__traceback__.tb_lasti == site and site not in w.raise_child
+                elif mode == 'raise-offset': w.raise_child = frozenset({-1}); assert tb.tb_lasti not in w.raise_child
+                elif mode == 'call-offset': w.exit_sites = frozenset({-1}); assert caller.f_lasti not in w.exit_sites
+                elif mode == 'absent-route': exc.__traceback__ = None; assert exc.__traceback__ is None
+                elif mode == 'extra-route':
+                    exc.__traceback__ = types.TracebackType(tb, caller, tb.tb_lasti, tb.tb_lineno)
+                    assert exc.__traceback__.tb_next is tb
+                elif mode == 'reordered-route':
+                    exc.__traceback__ = types.TracebackType(tb, sys._getframe(), 0, 1)
+                    assert exc.__traceback__.tb_frame is not caller
+                elif mode == 'wrong-args': exc.args = ('foreign',); assert exc.args == ('foreign',)
+                evidence('final-source-predicate-mutated')
+                assert not original['final_child'](w, caller)
+                evidence('final-rejected'); return False
+            if mode == 'writer-failure':
+                # Fail the captured B emitter at its final write, after the real
+                # final predicate. No observer or attestor result is substituted.
+                state = w.emit.__closure__
+                bindings = cls.closure(w.emit)
+                assert bindings['write'] is h._RAW_WRITE
+                def failed(fd, data):
+                    assert data == b'B:f;'; evidence('final-writer-failed')
+                    raise OSError(errno.ENOSPC, 'B final writer control')
+                for name, cell in zip(w.emit.__code__.co_freevars, state):
+                    if name == 'write': cell.cell_contents = failed
+                assert cls.closure(w.emit)['write'] is failed
+            if mode == 'actual-overflow':
+                w.emit(b'x'*257)
+                evidence('actual-overflow-written')
+            if mode == 'schedule9-f':
+                # Delay only captured exit, after the original observed_exit
+                # has emitted f. Guard/attestor and builtin kill stay intact.
+                exit_fn = os._exit
+                cells = dict(zip(exit_fn.__code__.co_freevars, exit_fn.__closure__))
+                exit0 = cells['exit0'].cell_contents
+                def delayed(code):
+                    assert code == 74
+                    evidence('scheduling-after-real-final-token')
+                    import time
+                    time.sleep(1)
+                    exit0(code)
+                cells['exit0'].cell_contents = delayed
+                assert cls.closure(exit_fn)['exit0'] is delayed
+            evidence('final-accepted'); return True
+        patch.setattr(cls, 'final_child', final)
+        def terminal(w, result, caller, enrolled, child_bytes):
+            answer = original['terminal'](w, result, caller, enrolled, child_bytes)
+            evidence('terminal-reached')
+            if mode in {'schedule9-no-f', 'schedule9-f'}:
+                assert result[1] == 9 and w.killed and caller.f_locals['killed'] is True
+                assert child_bytes == (b'B:e;' if mode == 'schedule9-no-f' else b'B:e;B:f;')
+                assert answer == b'B:t;B:k;'
+                evidence('actual-owned-kill-qualified')
+            elif mode not in admission | predicate_e | predicate_f and not mode.startswith('fd-') and mode not in {
+                'replacement', 'same-object-extra-frame', 'trace-disabled', 'writer-failure', 'missing-eagain'}:
+                assert result[1] == 74 << 8 and child_bytes == b'B:e;B:f;' and answer == b'B:t;'
+                evidence('actual74-parent-qualified')
+            return answer
+        patch.setattr(cls, 'terminal', terminal)
+        def clear(w):
+            assert not any(isinstance(value, (types.FrameType, types.TracebackType,
+                BaseException, memoryview)) for value in w.__dict__.values())
+            original['clear'](w)
+            assert w.__dict__ == {}
+            evidence('all-witness-references-cleared')
+        patch.setattr(cls, 'clear', clear)
+        if mode == 'setup-failure':
+            def fail_bind(w, *a):
+                assert os._exit is not hooks0[3]
+                evidence('setup-hooks-installed')
+                raise OSError(errno.ENOSPC, 'B setup control')
+            patch.setattr(cls, 'bind_hooks', fail_bind)
+        if mode == 'fixture-undo':
+            target = request.getfixturevalue('monkeypatch')
+            before = recovery._maintenance_result_frame
+            def owned(*a): raise AssertionError('must not run')
+            target.setattr(recovery, '_maintenance_result_frame', owned)
+            assert recovery._maintenance_result_frame is owned
+            target.undo()
+            assert recovery._maintenance_result_frame is before
+            evidence('target-fixture-undone')
+        yield
+        if guard.failures:
+            assert guard.session.shouldstop == guard.failures[-1]
+            assert any(s.endswith('incomplete or invalid armed B contract') for s in guard.failures)
+            with pytest.raises(pytest.exit.Exception): wrapped_run({}, {}, lambda value: True)
+            with h.activate(guard, root/'refused'):
+                with pytest.raises(RuntimeError): h.fresh_run([sys.executable, '-c', 'raise AssertionError("must not launch")'])
+                assert not list((root/'refused').iterdir())
+            evidence('both-next-launches-refused')
+result = pytest.main(['--noconftest', '-p', 'no:cacheprovider', '-q', '-x', NODE,
+    '--basetemp='+str(root/'pytest')], plugins=[Plugin()])
+assert len(guards) == 1
+g = guards[0]
+restore_observer()
+if mode == 'setup-failure':
+    # Failure is in invocation setup, so target call is RED, never a negative
+    # certificate. Restoration is the only expected success of this control.
+    assert result != 0 and not g.receipts and not g.owned
+    assert not g.failures and not g.session.shouldstop
+else:
+    positive = mode in {'original74-real-observer', 'collected-control', 'fixture-undo', 'previous-trace', 'schedule9-no-f', 'schedule9-f'}
+    assert result == 0, 'target assertions must complete even for guard negatives'
+    assert bool(g.failures) is not positive
+    assert len(g.receipts) == 1 and not g.owned
+    if positive:
+        assert g.receipts[0][1] == (9 if mode.startswith('schedule9-') else 74 << 8)
+        assert not g.session.shouldstop
+records = [h.metadata(p) for p in root.glob('[0-9]*.json')]
+parent, = [r['steps'] for r in records if 'hooks-restored' in r['steps']]
+assert 'all-witness-references-cleared' in parent
+if mode == 'setup-failure':
+    assert parent == ['admission-baseline', 'setup-hooks-installed',
+        'all-witness-references-cleared', 'invocation-setup-failure-classified', 'hooks-restored']
+if mode != 'setup-failure':
+    child, = [r['steps'] for r in records if 'final-rejected' in r['steps'] or 'final-accepted' in r['steps'] or 'scheduling-after-real-eagain' in r['steps']]
+    assert 'admission-baseline' in parent
+    if mode not in admission: assert 'real-eagain-baseline' in child
+    if mode in {'replacement', 'same-object-extra-frame', 'trace-disabled'}: assert 'actual-child558-timeout' in child
+    if mode in predicate_f: assert 'final-baseline' in child and 'final-source-predicate-mutated' in child
+    if not positive: assert 'both-next-launches-refused' in parent
+'''
+
+
+@pytest.mark.parametrize('control', B_CONTROL_SEAMS, ids=lambda c: 'B-S-'+c)
+def test_B_directed_isolated_seams(tmp_path, control):
+    """Original target, finite one-shot controls; scheduling failures stay RED."""
+    import subprocess
+    source = _B_SEAM_PROGRAM.replace('CONTROL', repr(control)).replace('ROOT', repr(str(tmp_path/'proof')))
+    source = source.replace('NODE', repr(B_CONTROL_NODE))
+    # Explicit path, no installed/runtime equivalence claim. No fresh_run here:
+    # real-observer bootstrap's missing addfinalizer is a recorded source block.
+    prefix = 'import sys; sys.path[:0] = '+repr([
+        str(Path(harness.__file__).parent), str(Path(harness.__file__).parent.parent/'diagnostics'/'p-one-node')])+'\n'
+    result = subprocess.run([sys.executable, '-B', '-c', prefix+source],
+        capture_output=True, text=True, timeout=30)
+    assert result.returncode == 0, result.stdout+result.stderr
+
+
+B_CONTROL_PARENT = (
+    '624', '627-positive-remaining', '74-kill-attempt', '9-no-f', '9-f',
+    '624-positive-remaining', '627-no-select', 'wrong-active', 'route636',
+    'route648', 'raw-nonempty', 'deadline', 'wrong-pid', 'unenrolled',
+    'wrong-caller', 'wrong-parent', 'kill-absent', 'kill-wrong-child',
+    'kill-wrong-signal', '74-no-f', 'child-owned-t', 'child-owned-a',
+    'child-owned-k',
+)
+
+
+def _B_method_ast(name):
+    import ast
+    tree = ast.parse(Path(harness.__file__).read_bytes())
+    cls = next(n for n in tree.body if isinstance(n, ast.ClassDef) and n.name == 'BlockedPipeWitness_B')
+    return next(n for n in cls.body if isinstance(n, ast.FunctionDef) and n.name == name)
+
+
+def _B_eval_source(expression, values):
+    """Exact AST expression projection, explicit synthetic inputs, no imports/IO."""
+    import ast
+    return eval(compile(ast.Expression(body=expression), harness.__file__, 'eval'), values)
+
+
+@pytest.mark.parametrize('control', B_CONTROL_PARENT, ids=lambda c: 'B-P-'+c)
+def test_B_parent_source_predicates(tmp_path, control):
+    """Synthetic predicate controls, NEVER terminal/kill scheduling evidence.
+
+    Extract the exact original terminal admission, route and kill expressions.
+    Capability/frame fixtures are synthetic. Real frame/active-handler/kill
+    behavior belongs to B-S controls; this projection only isolates dimensions.
+    """
+    import ast
+    import signal
+    method = _B_method_ast('terminal')
+    body = next(n for n in method.body if isinstance(n, ast.Try)).body
+    admission = next(n.test for n in body if isinstance(n, ast.If))
+    # The first expression is `not (all prerequisites)`: False admits.
+    assert isinstance(admission, ast.UnaryOp) and isinstance(admission.op, ast.Not)
+    status_if = next(n for n in body if isinstance(n, ast.If) and
+        isinstance(n.test, ast.BoolOp) and 'status == 74 << 8' in ast.unparse(n.test))
+    kill_test = status_if.orelse[0].test
+    expire = next(n.value for n in _B_method_ast('expired').body if isinstance(n, ast.Return))
+    # Skip the exception-path False reset; select the full opcode predicate.
+    kill_pending = next(n.value for n in ast.walk(_B_method_ast('trace_B'))
+        if isinstance(n, ast.Assign) and isinstance(n.value, ast.BoolOp) and
+        any(isinstance(t, ast.Attribute) and t.attr == 'kill_pending' for t in n.targets))
+    runner, reap, other = object(), object(), object()
+    parent = SimpleNamespace(f_code=runner, f_lasti=661, f_locals={})
+    caller = SimpleNamespace(f_code=reap, f_lasti=581, f_back=parent,
+        f_locals={'pid': 123, 'killed': True})
+    # Synthetic traceback is an INPUT to the extracted expression, not installed
+    # on a real exception and not presented to the complete attestor.
+    tb = SimpleNamespace(tb_frame=parent, tb_next=None, tb_lasti=624)
+    exc = ValueError('b2_maintenance_timeout')
+    local = dict(pid=123, original=exc, raw=bytearray(), deadline=10., remaining=-1.)
+    parent.f_locals = local
+    clock = lambda: 11.
+    w = SimpleNamespace(valid=True, hooks=lambda: True, trace_callback=object(),
+        reap=reap, runner=runner, runner_id=id(parent), reap_sites={661},
+        wait_first={581}, wait_last={604}, child=123, owner=os.getpid(),
+        timeout=harness.BlockedPipeWitness_B.timeout, raise_parent={624}, raise_empty={627},
+        empty_select=True, killed=False, deadline=10., clock=clock,
+        recovery=SimpleNamespace(time=SimpleNamespace(monotonic=clock)))
+    projected_sys = SimpleNamespace(gettrace=lambda: w.trace_callback, exception=lambda: exc)
+    values = dict(self=w, caller=caller, parent=parent, local=local, exc=exc, tb=tb,
+        result=(123, 74 << 8), enrolled={123}, child_bytes=b'B:e;B:f;',
+        sys=projected_sys, os=os, signal=signal, frame=parent, math=__import__('math'))
+    def expired(frame):
+        return _B_eval_source(expire, dict(values, frame=frame, deadline=frame.f_locals.get('deadline')))
+    w.expired = expired
+    assert _B_eval_source(admission, values) is False
+    assert expired(parent)
+    assert _B_eval_source(status_if.test, dict(values, status=74 << 8))
+    if control in ('627-positive-remaining', '627-no-select'):
+        tb.tb_lasti = 627; local['remaining'] = 2.
+        assert _B_eval_source(admission, values) is False
+        assert local['remaining'] > 0 and expired(parent)
+    if control in ('74-kill-attempt', '9-no-f', '9-f', 'kill-absent', 'kill-wrong-child', 'kill-wrong-signal'):
+        # Exact kill opcode predicate baseline, with all synthetic capabilities
+        # and owned caller established before a single independent mutation.
+        kill0 = os.kill
+        w.kill = kill0
+        killframe = SimpleNamespace(f_lasti=593, f_locals={'pid': 123, 'signal': signal},
+            f_globals={'os': os})
+        kv = dict(self=w, frame=killframe, parent=parent, os=os, signal=signal)
+        assert _B_eval_source(kill_pending, kv)
+        if control == 'kill-wrong-child':
+            killframe.f_locals['pid'] = 124
+            assert killframe.f_locals['pid'] != w.child
+        elif control == 'kill-wrong-signal':
+            killframe.f_locals['signal'] = SimpleNamespace(SIGKILL=15)
+            assert killframe.f_locals['signal'] is not signal
+        w.killed = control != 'kill-absent' and _B_eval_source(kill_pending, kv)
+        caller.f_lasti = 604
+        assert w.killed is (control not in ('kill-absent', 'kill-wrong-child', 'kill-wrong-signal'))
+    if control == '624-positive-remaining': local['remaining'] = 2.; assert local['remaining'] > 0
+    elif control == '627-no-select': w.empty_select = False; assert not w.empty_select
+    elif control == 'wrong-active':
+        active = ValueError(*exc.args)
+        projected_sys.exception = lambda: active
+        assert projected_sys.exception() is not local['original']
+    elif control in ('route636', 'route648'):
+        tb.tb_lasti = int(control[-3:]); assert tb.tb_lasti not in w.raise_parent | w.raise_empty
+    elif control == 'raw-nonempty': local['raw'].extend(b'x'); assert len(local['raw']) == 1
+    elif control == 'deadline': local['deadline'] = 12.; assert not expired(parent)
+    elif control == 'wrong-pid': values['result'] = (124, 74 << 8); assert values['result'][0] != w.child
+    elif control == 'unenrolled': values['enrolled'] = set(); assert w.child not in values['enrolled']
+    elif control == 'wrong-caller': caller.f_code = other; assert caller.f_code is not w.reap
+    elif control == 'wrong-parent': parent.f_code = other; assert parent.f_code is not w.runner
+    elif control == '74-no-f': values['child_bytes'] = b'B:e;'; assert b'B:f;' not in values['child_bytes']
+    elif control.startswith('child-owned-'):
+        values['child_bytes'] += ('B:'+control[-1]+';').encode()
+        assert values['child_bytes'] not in (b'B:e;', b'B:e;B:f;')
+    status = 9 if control.startswith('9-') or control.startswith('kill-') else 74 << 8
+    values['result'] = (values['result'][0], status)
+    if control == '9-no-f': values['child_bytes'] = b'B:e;'
+    admitted = not _B_eval_source(admission, values)
+    suffix = b''
+    if admitted:
+        if _B_eval_source(status_if.test, dict(values, status=status)): suffix = b'B:t;'
+        elif _B_eval_source(kill_test, dict(values, status=status)): suffix = b'B:t;B:k;'
+    positive = control in ('624', '627-positive-remaining', '74-kill-attempt', '9-no-f', '9-f')
+    assert bool(suffix) is positive
+    witness = b'B:a;'+values['child_bytes']+suffix
+    guard = harness.MaintenanceWaitGuard(SimpleNamespace(nodeid='B-parent-projection',
+        originalname='B-parent-projection'), SimpleNamespace(shouldstop=False))
+    guard.owned.add(123)
+    raw = (123, status)
+    assert guard.observe(raw, witness=witness, armed_B=True, expected_exit=74, expected_signal=9) is raw
+    assert guard.receipts == [raw] and not guard.owned
+    assert bool(guard.failures) is not positive
+    if not positive:
+        assert guard.failures[0].endswith('incomplete or invalid armed B contract')
+        _B_refused_launches(guard, tmp_path)
+
+
+@pytest.mark.parametrize('control', ('foreign-owner', 'missing-done'), ids=lambda c: 'B-O-'+c)
+def test_B_complete_receipt_ownership(tmp_path, control):
+    """Synthetic complete B receipt; precise aggregation error, no child claim."""
+    directory = tmp_path/'receipt'
+    directory.mkdir(mode=0o700)
+    expected = dict(pid=100, node=B_CONTROL_NODE, token='a'*32)
+    harness.atomic(directory/'ack.json', expected)
+    harness.atomic(directory/'done.json', expected)
+    enroll = dict(kind='enroll', owner=100, pid=123)
+    terminal = dict(kind='terminal', owner=100, pid=123, status=74 << 8,
+        accepted=True, phase='B:a;B:e;B:f;B:t;')
+    harness.atomic(directory/'100-1.json', enroll)
+    harness.atomic(directory/'100-2.json', terminal)
+    assert harness.aggregate(directory, expected) == [(123, 74 << 8)]
+    if control == 'foreign-owner':
+        enroll['owner'] = terminal['owner'] = 999
+        harness.atomic(directory/'100-1.json', enroll)
+        harness.atomic(directory/'100-2.json', terminal)
+        assert harness.metadata(directory/'100-1.json')['owner'] == harness.metadata(directory/'100-2.json')['owner'] == 999
+        with pytest.raises(ValueError) as caught: harness.aggregate(directory, expected)
+        assert str(caught.value) == 'foreign helper event owner'
+    else:
+        (directory/'done.json').unlink()
+        assert not (directory/'done.json').exists()
+        with pytest.raises(FileNotFoundError) as caught: harness.aggregate(directory, expected)
+        assert caught.value.filename == str(directory/'done.json')
+    # Project exact fresh_run aggregation-failure handler with the actual caught
+    # error. No simulated successful subprocess or forged helper is launched.
+    import ast
+    tree = ast.parse(Path(harness.__file__).read_bytes())
+    fresh = next(n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name == 'fresh_run')
+    handler = next(n for n in ast.walk(fresh) if isinstance(n, ast.ExceptHandler) and
+        'fresh helper receipt failure: ' in ast.unparse(n))
+    guard = harness.MaintenanceWaitGuard(SimpleNamespace(nodeid=B_CONTROL_NODE,
+        originalname=B_CONTROL_NODE.split('::')[-1]), SimpleNamespace(shouldstop=False))
+    exec(compile(ast.Module(body=handler.body, type_ignores=[]), harness.__file__, 'exec'),
+        dict(guard=guard, exc=caught.value))
+    assert guard.failures == [B_CONTROL_NODE+': fresh helper receipt failure: '+str(caught.value)[:1024]]
+    assert guard.session.shouldstop == guard.failures[0]
+    _B_refused_launches(guard, tmp_path)
+
+
+_B_HELPER_SINK = r'''
+# Control-process-only sitecustomize. Observer replacement, NOT an attestor.
+import atexit, os, tempfile
+import one_node_observer as _observer
+_original_observer = _observer.Observer
+class _ControlSink:
+    def __init__(self, request, code):
+        self.file = tempfile.TemporaryFile()
+        self.fd = self.file.fileno()
+        atexit.register(self.close)
+    def sample(self, *a, **kw): pass
+    def close(self):
+        self.file.close()
+        self.fd = None
+_observer.Observer = _ControlSink
+def _restore_observer():
+    _observer.Observer = _original_observer
+    assert _observer.Observer is _original_observer
+atexit.register(_restore_observer)
+'''
+
+_B_HELPER_BODY = r'''
+import os, sys, pytest
+from pathlib import Path
+import _maintenance_wait_guard as h
+from service import recovery
+mode = CONTROL
+steps = []
+class Plugin:
+    @pytest.fixture(autouse=True)
+    def bind(self, request):
+        patch = pytest.MonkeyPatch()
+        original = h.BlockedPipeWitness_B.__init__
+        def finish():
+            patch.undo()
+            assert not hasattr(h._CURRENT.node, 'obj')
+            assert h.BlockedPipeWitness_B.__init__ is original
+            steps.append('binding-restored')
+        request.addfinalizer(finish)
+        assert request.node.nodeid == NODE
+        collected = request.node.obj
+        assert callable(collected)
+        assert collected is sys.modules['test_recovery'].test_t1_real_blocked_pipe_backpressure_deadline
+        assert not hasattr(h._CURRENT.node, 'obj')
+        if mode == 'bound':
+            patch.setattr(h._CURRENT.node, 'obj', collected, raising=False)
+            assert h._CURRENT.node.obj is collected
+            steps.append('real-inner-item-bound')
+        else:
+            assert mode == 'withheld' and not hasattr(h._CURRENT.node, 'obj')
+            steps.append('binding-withheld')
+        def init(w, *a, **kw):
+            baseline = list(a)
+            baseline[0] = request.node
+            original(w, *baseline, **kw)
+            assert w.eligible and w.valid
+            steps.append('valid-collected-prerequisite')
+            original(w, *a, **kw)
+            assert w.eligible and w.valid is (mode == 'bound')
+            steps.append('admission-readback')
+        patch.setattr(h.BlockedPipeWitness_B, '__init__', init)
+        yield
+result = pytest.main(['--noconftest', '-p', 'no:cacheprovider', '-q', '-x', NODE,
+    '--basetemp='+BASE], plugins=[Plugin()])
+assert steps == [('real-inner-item-bound' if mode == 'bound' else 'binding-withheld'),
+    'valid-collected-prerequisite', 'admission-readback', 'binding-restored']
+g = h._CURRENT
+assert not g.owned and len(g.receipts) == 1
+if mode == 'withheld':
+    assert result != 0 and g.session.shouldstop
+    assert any(f.endswith('incomplete or invalid armed B contract') for f in g.failures)
+    with pytest.raises(pytest.exit.Exception): recovery._run_bounded_maintenance({}, {}, lambda value: True)
+    with pytest.raises(RuntimeError): h.fresh_run([sys.executable, '-c', 'raise AssertionError("must not launch")'])
+    raise SystemExit(86)
+assert result == 0 and not g.failures and not g.session.shouldstop
+assert g.receipts[0][1] == 74 << 8
+'''
+
+
+@pytest.mark.parametrize('control', ('bound', 'withheld'), ids=lambda c: 'B-H-'+c)
+def test_B_fresh_real_inner_binding_control_sink(tmp_path, control):
+    """Fresh bootstrap with isolated inert sink; no real-observer credit.
+
+    The unchanged real-observer bootstrap cannot satisfy addfinalizer. Keep that
+    source finding visible; this control does not repair or qualify that path.
+    """
+    import subprocess
+    custom = tmp_path/'control-site'
+    custom.mkdir(mode=0o700)
+    (custom/'sitecustomize.py').write_text(_B_HELPER_SINK)
+    paths = [str(custom), str(Path(harness.__file__).parent),
+        str(Path(harness.__file__).parent.parent/'diagnostics'/'p-one-node')]
+    body = _B_HELPER_BODY.replace('CONTROL', repr(control)).replace('NODE', repr(B_CONTROL_NODE))
+    body = body.replace('BASE', repr(str(tmp_path/'inner-helper')))
+    # This outer control process has no observer installation. Only its actual
+    # fresh_run child loads the explicitly private sitecustomize substitution.
+    outer = r'''
+import os, sys
+from pathlib import Path
+from types import SimpleNamespace
+import _maintenance_wait_guard as h
+g = h.MaintenanceWaitGuard(SimpleNamespace(nodeid=NODE,
+    originalname=NODE.split('::')[-1]), SimpleNamespace(shouldstop=False))
+env = dict(os.environ, PYTHONPATH=PATHS)
+with h.activate(g, Path(HELPERS)):
+    result = h.fresh_run([sys.executable, '-c', BODY], env=env,
+        capture_output=True, text=True, timeout=30)
+    assert result.returncode == (0 if CONTROL == 'bound' else 86), result.stdout+result.stderr
+    assert bool(g.failures) is (CONTROL == 'withheld')
+    if g.failures:
+        assert g.session.shouldstop == g.failures[0]
+        with __import__('pytest').raises(RuntimeError):
+            h.fresh_run([sys.executable, '-c', 'raise AssertionError("must not launch")'])
+directory, = Path(HELPERS).glob('helper-*')
+rows = [h.metadata(p) for p in directory.glob('[0-9]*.json')]
+terminal, = [r for r in rows if r['kind'] == 'terminal']
+assert terminal['status'] == 74 << 8
+assert terminal['accepted'] is (CONTROL == 'bound')
+assert terminal['phase'] == ('B:a;B:e;B:f;B:t;' if CONTROL == 'bound' else 'B:a;')
+expected = h.metadata(directory/'launch.json')['identity']
+if CONTROL == 'bound':
+    assert h.aggregate(directory, expected) == g.receipts
+else:
+    try: h.aggregate(directory, expected)
+    except ValueError as exc:
+        assert g.failures == [NODE+': fresh helper receipt failure: '+str(exc)[:1024]]
+    else: raise AssertionError('unaccepted B helper aggregated')
+'''
+    # Literal token replacement uses longest identifiers first; values are
+    # Python literals, never interpolated shell commands.
+    replacements = dict(HELPERS=str(tmp_path/'helpers'), PATHS=os.pathsep.join(paths),
+        BODY=body, CONTROL=control, NODE=B_CONTROL_NODE)
+    for token, value in replacements.items(): outer = outer.replace(token, repr(value))
+    prefix = 'import sys; sys.path.insert(0, '+repr(str(Path(harness.__file__).parent))+')\n'
+    result = subprocess.run([sys.executable, '-B', '-c', prefix+outer],
+        capture_output=True, text=True, timeout=40)
+    assert result.returncode == 0, result.stdout+result.stderr
+
+
+@pytest.mark.parametrize('control', ('class', 'subclass', 'args-count', 'args-type'),
+    ids=lambda c: 'B-X-'+c)
+def test_B_timeout_shape_source_predicate(tmp_path, control):
+    """Exact timeout shape only; no active handler or route certificate."""
+    cls = harness.BlockedPipeWitness_B
+    baseline = ValueError('b2_maintenance_timeout')
+    assert cls.timeout(baseline)
+    class SubTimeout(ValueError): pass
+    class Text(str): pass
+    if control == 'class':
+        changed = RuntimeError(*baseline.args)
+        assert changed.args == baseline.args and type(changed) is RuntimeError
+    elif control == 'subclass':
+        changed = SubTimeout(*baseline.args)
+        assert changed.args == baseline.args and isinstance(changed, ValueError)
+        assert type(changed) is not ValueError
+    elif control == 'args-count':
+        changed = ValueError(*baseline.args, 'extra')
+        assert len(changed.args) == 2
+    else:
+        changed = ValueError(Text(baseline.args[0]))
+        assert changed.args == baseline.args and type(changed.args[0]) is not str
+    assert not cls.timeout(changed)
+    guard = harness.MaintenanceWaitGuard(SimpleNamespace(nodeid='B-timeout-shape',
+        originalname='B-timeout-shape'), SimpleNamespace(shouldstop=False))
+    guard.owned.add(123)
+    raw = (123, 74 << 8)
+    assert guard.observe(raw, armed_B=True, witness=b'B:a;B:e;', expected_exit=74) is raw
+    assert guard.receipts == [raw] and not guard.owned
+    assert len(guard.failures) == 1 and guard.failures[0].endswith('incomplete or invalid armed B contract')
+    _B_refused_launches(guard, tmp_path)
