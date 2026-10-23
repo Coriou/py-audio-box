@@ -820,3 +820,8 @@ Record failures and missing evidence; do not replace them with a successful late
 
 - reviews/P1B23-ISOLATED-RUNTIME-20261023.md:42installedexpandedcachemapsmatch originalarchivesmissing; uvnoexactDarwin3.14.8entry officialpkgadminsystemscopeincompatible. No newruntime/healthcommands, no oldvenvchanges/nativeclearance.
 - Parent authorizesboundedSYNTHETICtest-onlyDockercomparison usingexistingprojectpinned3.14.8Linuximage, ownedcontainer/workspace only no usermounts/socket/serviceactivation/audio/model/GPU. Readonlypreflightavailabledisk/daemon thenboundedpullifneeded; hashlockedtestdeps/sourcecopy/exactpins, smallhealth/collection/focusedmatrix first stopunexpectederror. This is localruntimecomparison NOTC1/C2installedreleaseorDarwincausefix. No more productcodechangeswhileenvironmentcomparisonpending.
+
+## Pinned Linux health comparison PASS / owning matrix continuation
+
+- reviews/P1B23-LINUX-RUNTIME-COMPARISON-20261023.md exactimage3a921bd0 frompinnedPython3.14.8index48b13b linuxamd64:health/42hashlockedpins,root/WIPcollection and14project+1trivialtestsPASS no abnormalexit. NotDarwincauseclearance/C1C2/releaseGO. Ownedcontainerremoved imagereusable.
+- Parentauthorizesnewisolatedowningcontinuationf0bfcc1f onthisboundedLinuxruntime: finishmissingREDs/matrix/harnesscorrection andfocusedfrozenvalidation; no change/runtimewaiver. Reuseownedimage exactID CPU2RAM2g PID256 networknone/nohostmounts, sourcecopyhashes/read-onlyruntime/tempwrites/oneDockerlane. Stopunexpectedabnormalexit; allnativeV1V2V3retainhold. Freshindependentreview beforecombine/integration.
