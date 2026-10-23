@@ -1543,3 +1543,7 @@ r45 terminalresult explicitlyNOFILES/NOcommits/no concreteblocker afterreading; 
 ### 2026-10-24 — Guard source delivered; independent review and appended controls
 
 r46 candidate t3-a31af448 guard4f04cdbc51bc13081f09bc3dd2205deb4e55fc99 docsbe8a32ba1aca6073a9125e7e251b70565069d2d8 delivered2files/staticonly. Independentadversarial pab-b-guard-adversarial-r47-20261024 launchedfullr44sourceaudit. Parallelfreshsuccessor pab-b-controls-source-r47-20261024 authorsAPPENDONLYcontrols+handoff againstsameguard, no guardedits/runtime. Production/target/model/observer/manifestfrozen, staticproof≠positiveacceptance; actual74/control/preservationgatespending.
+
+### 2026-10-24 — B guard source NO-GO B1; independent capability origin fix
+
+r47independentreviewfindsB1 currentcollectedcode selfauthorizesnestedtargetcapabilities (clockconstant100->1000 pre-capturemutation example), nootherconcreteblocker establishedstatic. Parentassigns freshsuccessor pab-b-capability-origin-fix-r48-20261024 independentfrozen-source nestedcode/lambda +rewrite-awareouterprovenance guard-onlyfix, no controls/runtime/manifestchanges. Parallelcontrolscontinueimmutableoldguard andwillneedB1mutationcoverage/rebase later. No sourceGO/runtimeauthority; r44strictnessunchanged.
