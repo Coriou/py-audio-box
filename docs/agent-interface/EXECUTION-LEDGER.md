@@ -902,3 +902,8 @@ Record failures and missing evidence; do not replace them with a successful late
 
 - COMBINED-BROAD-VALIDATION-r2-20261023 exact6eb6cec5/frozen413b465b:811PASS1FAIL1teardownerror at lotp_late_refusal_retains_unaccepted_plan[rehearsal], actualowner34PID161raw18944phaseempty rejectedbyguard. No nativesignal established; fullNOTRUN. Allrawproof/livehashes retained; export-onlyhardlinkcorrection documented, cleanupcomplete sourceunchanged.
 - TargetedREADONLYSol-low pab-lotp-rehearsal-witness-diagnosis-20261023 inspectsinjectedOperationalError/source/witnessroute+proof; ifinsufficient ONEordinarytest-onlyobservationaldiagnostic failingnode authorized withunchangedguardassertions no global74acceptance, no nativecampaign. Nofix/broadretry untilprecisecause/narrowrecommendation; T2/fullintegrationpending.
+
+## Modeled rehearsal witness source gap / precise correction authorized
+
+- Diagnosis report LOTP-REHEARSAL-WITNESS-DIAGNOSIS-20261023 confirms injectedOperationalError bypassesValueError-onlychildmarkers; parentValueErrorcreatedafterwaitcannotattestchild. Sourceconfirmedgap, historicalinnerPID161exceptionunproven.155proofhashesverified/noexecution/sourcechanges.
+- Parentadoptsentireminimalcorrectionbrief+positive/negativecontrols; freshSol-low pab-lotp-rehearsal-witness-fix-r1-20261023 exactselectorbase6eb6cec5, testguard+controls+necessaryminimaltestidentity/sentinel only. Actualcode/privateDB/traceback/activeexceptionbinding required cleanupreplacementmustnotinheritmarker. No generic74/productionchange. Frozenfocusedguard+targetallparams first thenindependentreview; no broadretryyet.
