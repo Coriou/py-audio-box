@@ -472,6 +472,8 @@ def install(request, monkeypatch, guard):
     rehearsal0, transaction0 = recovery._rehearse_preparation, recovery._prefix_transaction
     pipe, read, write, close, exit0 = os.pipe, os.read, os.write, os.close, os._exit
     state = dict(active=False, read=None, write=None, witness=b'', enrolling=False)
+    from one_node_observer import Observer
+    diagnostic = Observer(request, run.__code__)
 
     def tracked_fork():
         enrolling = state['active'] and state['enrolling']
@@ -514,6 +516,7 @@ def install(request, monkeypatch, guard):
                 any(p in state['witness'] for p in (b'T:install-setlimit;', b'T:transport;', b'T:child-read-close;'))) else None
             guard.observe(result, witness=state['witness'], armed_P=state.get('armed_P', False),
                 expected_signal=signal.SIGKILL if cleanup_phase else _expected_cleanup_signal(request.node, cleanup), expected_exit=expected_exit)
+            diagnostic.sample(2, state['witness'], result[0], result[1], cleanup, len(guard.failures), len(guard.owned))
         return result
 
     def guarded_run(roots, scope, operation, **kwargs):
@@ -653,6 +656,8 @@ def install(request, monkeypatch, guard):
                         frame.f_locals.get('p') in {'recapture-before', 'recapture-after',
                             'recapture-hash', 'recapture-oracle', 'recapture-verified'}):
                     mark(b'D:' + frame.f_locals['p'].encode('ascii'))
+            if code == 74:
+                diagnostic.sample(1, state['witness'])
             exit0(code)
         try:
             with monkeypatch.context() as patch:
@@ -673,10 +678,12 @@ def install(request, monkeypatch, guard):
                     sys.settrace(lost_P.trace_P)
                 return run(roots, scope, observed_operation, **kwargs)
         finally:
+            diagnostic.sample(3, state['witness'], failures=len(guard.failures), owned=len(guard.owned))
             if lost_P.eligible: sys.settrace(trace_P)
             lost_P.clear_P()
             state['active'] = False
             close(r); close(w)
+            diagnostic.sample(4, state['witness'], failures=len(guard.failures), owned=len(guard.owned))
             if guard.owned:
                 guard.fail('missing terminal maintenance receipt')
             if guard.directory is not None and guard.failures:
