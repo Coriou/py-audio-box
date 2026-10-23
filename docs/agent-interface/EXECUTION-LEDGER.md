@@ -942,3 +942,8 @@ Record failures and missing evidence; do not replace them with a successful late
 
 - Correcteddiagnostic e047d608/final44a0508e s1-construction-20261023:constructionpreflightPASS ONEactualnode; nativeSQLiteFULL13atcore-intent BEFOREreceipts/scan/fullINSERT, sameexceptionat74 routeattestationfalse guardREDretained. Parentrefusal/countassertscompleted originalcompletionabsent; rawLIVEhashproofverified cleanupcomplete. No tuning/retry/Sacceptance.
 - FreshAstra pab-s1-premise-result-astra-20261023 decides revisedsourcefaithfulgenuinecapacitycontract fromactualearlyFULLproof, preservingparentunaccepted/source/burn assertions andexplicitcoverageboundary. H/Pcontractsretainedunimplemented. No nextruntimeauthorizeduntiladoption; no guessedpageallowance/authorizerwaiver.
+
+## Revised S1-core-intent scope explicitly adopted / grouped source-only implementation
+
+- Parentadoptsentire S1-CAPACITY-REVISED-ASTRA.md:renamefamilyrehearsal-core-intent-full, genuineengineFULL13atexactfirstprivateINSERT/prefixzero/nooriginalacceptance/burnFalseTrue. EarlierdiagnosticFAIL/same_routefalseunchanged; genuineenginecapacityatcompletionUNPROVENexplicitgap, notcreditedR/A/B. No guessedpageallowance/furtherdiagnostic/productionauthorizerchange. H/P/sharedgroupedcontractretained.
+- pab-grouped-hps-source-implementation-r1-20261023 freshSol-low sourceONLY exactc224a4aabase; allowlistedguard+3targets+appendedcontrols/handoff, completefinitefrozenmatrix/tokenboundproof. IndependentSOURCEreview BEFOREanyruntime; no Docker/pytest/SQLiteworkloadauthorizedinimplementation. Thenfocusedactualreceipts/reviewbeforebroad.
