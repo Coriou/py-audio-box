@@ -982,3 +982,8 @@ Record failures and missing evidence; do not replace them with a successful late
 
 - Hcandidate5494db4736f7dad427666dc60e0827d59ddb45e7 frozen1efddfdd t3-187c5f1d reportsF1–F5sourcecorrections/static15sitemarkercensus/preservation,64futureHcontrols+12originalparams UNEXECUTED. Original14asserts retained production/R unchanged. Route/fixturebinding actualrisks remain noGO.
 - pab-h-witness-source-review-r2-20261023 freshREADONLYsourceSol-low fulloriginalbrief/priorF1–F5/responses/unresolvedobjections; no runtimeuntilreadiness/parentgate. P/Sfixr2separateactive.
+
+## H source r2 GO accepted / first finite runtime gate
+
+- H-WITNESS-SOURCE-r2-sol exact5494db47/frozen1efddfdd F1–F5CLOSEDsource/no newblocker; CPythontrace/cache/collectedfixtureactualproofstillpending. ParentacceptsREADINESSonly.
+- pab-h-witness-runtime-gate-r1-20261023 READONLYONEouterselection original12historyparams thencompleteguardfile(existingR+64Hcontrols), samecaps/pinnedLinux/sourceCOPY/livetarverifiedproof, stopfirstunexpectedno retry/fix. ActualreceiptindependentreviewrequiredbeforeHacceptance/assembly/broad; P/Sfixr2separateactive.
