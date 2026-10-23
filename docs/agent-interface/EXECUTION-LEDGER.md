@@ -877,3 +877,8 @@ Record failures and missing evidence; do not replace them with a successful late
 
 - Combinedcandidatebd29d757995c98b8f87b596be9cffe80074dc997 frozen30a4130d626ef46cd031ad469d2a9eb75dc0b266 t3-70c69445. ProductionexactO; scopedG/capoverlays plussoleapprovedfreshEXECcompatibilitytest. Attributedfocused388PASS=1compat+61guard+128CoreDispatcher+198recovery. Livearchivesverifiedbeforeremoval;108actualmaintenancewaits distinguishedsyntheticcontrols; historicalpins/STT/evidencepreserved. No selfGO.
 - FreshSol-lowfullcombinedreview `pab-combined-ownership-guard-cap-review-r1-20261023` running READONLY exactcandidate; source/provenance/compatassertions/rawreceipt audit plusboundedindependentcrossboundarychecks. Remaining17/fourB2/full/T2/finalAstra notauthorizedyet; no integration/sourcechanges.
+
+## Combined review accepted / staged broad validation authorized
+
+- Parentaccepts boundedcombinedsource/focusedGO `reviews/P1B23-COMBINED-OWNERSHIP-GUARD-CAP-r1-sol.md` exactbd29d757/frozen30a4130d: no blockingfinding,27independentPASS;388priorpasses/rawarchives/340indexedfiles/1008preservationhashesaudited. Not integration/fullGO.
+- `pab-combined-broad-validation-r1-20261023` authorizedREADONLY staged original17entryselection(+newcapB), fourB2, thenfullservice/release ONLYifprecedingstagegreen. Samefrozenexistingimageef1fbbb4 resourcecaps/oneDockerlane/liveverifiedtarretention; stopfirstunexpected/no retry/fix/waiver. Solewrite validationreport. T2/finalAstra/platform/native/activationgates unchanged.
