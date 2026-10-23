@@ -247,3 +247,57 @@ Final SHA256 pins:
 AST parsing and git diff --check passed.193+2 mappings and actual bytes verified unchanged against ce708174, finite-driver/dummy byte equality checked. All four new HOST proof trees independently checked0700 directories/0600 regular leaves/no symlinks; final complete success evidence uses fixture identity only. Executable change is precisely five allowed source/manifest paths; documentation successor changes only FREEZE/HANDOFF/QUALIFICATION.
 
 Runtime BASE remains `sha256:69bd9216869374d87fa14702ef380b4124a12f03f5f88a2681957ea81ee274cb` pending parallel Astra explicit disposition. No3.14.7 container qualification is claimed; historical3.14.8 diagnostic identity is not that gate. No actual Docker query/build/tag/container/volume, native product import, DB/SQLite, pytest, pull/provisioning, old object cleanup/lock release, network, actual plan/authority creation or delegation occurred. No runtime resources acquired. P47 expected RED, historical PID229 UNKNOWN and all native/T2/platform/ext4/durability/release/activation gates remain unchanged. Parent owns independent Sol global review, runtime disposition and any separately authorized future execution; this handback advances no operational gate.
+
+## r36 cohesive SOURCE + affected HOST pre-run freeze — 2026-10-24
+
+Own checkout `/Users/ben/.txcode/worktrees/py-audio-box/t3-48db44e1`, reconstructed from `c06e2f49b48264b51d65b0a9d1506b973ee4f839`. Old t3-dc329cf6 and every old proof/lane/object remain untouched. Controlling full parent r36, r35 actual, r28 global and Astra r27 read. Selected existing Linux CPython3.14.8, unchanged42 locks; no 3.14.7 admission requirement. No actual authority.
+
+Fixed invocation: `python3.14 -B diagnostics/p-one-node/qualification-host-check.py --r36`; five affected groups in order: entry_bootstrap_and_selection, semantic_identity, failed_writer_retention, r36_product_contract, lifecycle_failures. Available19 groups; <=9s/group, <=120s total, first unexpected RED stops. No full/dummy/native/product campaign. External process, spawn, fork and signals are guarded; stdlib synthetic packages only. Expected pytest1/driver0 remains tested by original actual-writer scheduling seam and original scripted lifecycle. Receipts retained under fresh0700 HOST roots with0600 files; never overwrite RED. Changes after RED require new pins and a stated affected rerun.
+
+- `entry.py`: `f4c4862b000fc458e901b8f31f7c3e081550e35765e7d1cd04a19615a73443b9`
+- `runtime-identity.py`: `0cb0d4a3c4fea5463ed675cdbcfb4af66f85ee03e91218fc68bf745be0967dd5`
+- `identity_semantics.py`: `cd8655eed473792b12beb96f250cd22f3938ade45151509a2af4092ad93f1824`
+- `finite-driver.py`: `10dd30e393bfe79553d9ef3170c31662ab2774847f1bab4028dc4657e07e7e0f`
+- `launcher.py`: `3e2c7997ce9e0d9bbd1398176b6c0c4ea1b29f46153b1991f7366a29050a17df`
+- `host-check.py`: `88514eee4d48b7a89adc6627bf28814a6df1b312a05a01c659ac684691d585d9`
+- `qualification-host-check.py`: `4c236132a9127ddb592eaccea92eee0c7071e65a563f65ff4dedee69c49e2c65`
+- `source-manifest.json`: `d6b089f35b2477ace3ec54560bc393afb83dfbe2058546a139f91a3c99832f8e`
+
+### r36 first RED and changed-only repair pre-run freeze
+
+Retain `/private/tmp/pab-dummy-HOST-c_efnjkg/HOST-receipt.json`: bootstrap/identity PASS; failed_writer_retention RED due cap fake queue expecting commands after correctly refused overflowing capture. Fix only that queue; add identity malformed-field/type and actual checked-command function fixtures, strict command scalar types and failed-parser raw diagnostics. No bootstrap rerun. Fixed `--r36-repair`: semantic_identity, failed_writer_retention, r36_product_contract, lifecycle_failures, <=9s/group <=120s total first RED stop; no other campaigns.
+
+- `entry.py`: `f4c4862b000fc458e901b8f31f7c3e081550e35765e7d1cd04a19615a73443b9`
+- `runtime-identity.py`: `5639171dbba9a8c9affabc1cc80605c30d6b5909a52f5dd4fcfe7f790578c861`
+- `identity_semantics.py`: `fd2d1f6d40699aa258d9016996037e8f61875f9302b21f8a6700cac935f707de`
+- `finite-driver.py`: `10dd30e393bfe79553d9ef3170c31662ab2774847f1bab4028dc4657e07e7e0f`
+- `launcher.py`: `3e2c7997ce9e0d9bbd1398176b6c0c4ea1b29f46153b1991f7366a29050a17df`
+- `host-check.py`: `88514eee4d48b7a89adc6627bf28814a6df1b312a05a01c659ac684691d585d9`
+- `qualification-host-check.py`: `a0f793bddd04e476f9a6b677ccaaef8868310a6c68cb6b5a646f24aff9d8f613`
+- `source-manifest.json`: `176e3b0b5b48cbdd818ac66591dd912e5db20cfc32731e9ab9c7ad7c1d19dc1c`
+
+### r36 second RED and final affected pre-run freeze
+
+Retain `/private/tmp/pab-dummy-HOST-9dzin5_g/HOST-receipt.json`: semantic identity, all seven failure-transport cases and product contract PASS; lifecycle_failures RED before commands because its old dummy preparation correctly rejects stale qualify.py pins. qualify.py is outside assignment and remains unchanged. Parameterize existing lifecycle fixture to run only affected product12 cases, without dummy preparation; no production pin bypass. Add explicit failed-writer cleanup refusal and preserve non-ASCII failed-command bytes before decoding. Fixed `--r36-final`: semantic_identity, failed_writer_retention, r36_product_contract, r36_lifecycle_failures; <=9s/group <=120s total first RED stop. Bootstrap earlier PASS unchanged. No full/dummy campaign.
+
+- `entry.py`: `f4c4862b000fc458e901b8f31f7c3e081550e35765e7d1cd04a19615a73443b9`
+- `runtime-identity.py`: `eb5d3a7dbdf717a219163bfeaaa9bb8616a0ad7c7b2ec315aa0eb8b24504c034`
+- `identity_semantics.py`: `fd2d1f6d40699aa258d9016996037e8f61875f9302b21f8a6700cac935f707de`
+- `finite-driver.py`: `10dd30e393bfe79553d9ef3170c31662ab2774847f1bab4028dc4657e07e7e0f`
+- `launcher.py`: `348cc1097b267a734a763f8a56a940732abb8cb141c2f767744a91fcf835984c`
+- `host-check.py`: `88514eee4d48b7a89adc6627bf28814a6df1b312a05a01c659ac684691d585d9`
+- `qualification-host-check.py`: `98ec74e369d2f15f3aab628d4d3b5ce974f88dbfdf9e56fdf8c419f5b4482dad`
+- `source-manifest.json`: `23cc4d3da39f9ec783efe4ed20ecf7ce5f015170f388351f286dfc0036412d43`
+
+## r36 final executable freeze
+
+Executable commit `f60176302113e21212d525526f81e27b1395d045`. No executable edits after final PASS. Full receipt history, hashes, final pins, scope and remaining gates are in the current r36 HANDOFF section. Documentation commit follows separately.
+
+- `entry.py`: `f4c4862b000fc458e901b8f31f7c3e081550e35765e7d1cd04a19615a73443b9`
+- `runtime-identity.py`: `eb5d3a7dbdf717a219163bfeaaa9bb8616a0ad7c7b2ec315aa0eb8b24504c034`
+- `identity_semantics.py`: `fd2d1f6d40699aa258d9016996037e8f61875f9302b21f8a6700cac935f707de`
+- `finite-driver.py`: `10dd30e393bfe79553d9ef3170c31662ab2774847f1bab4028dc4657e07e7e0f`
+- `launcher.py`: `348cc1097b267a734a763f8a56a940732abb8cb141c2f767744a91fcf835984c`
+- `host-check.py`: `88514eee4d48b7a89adc6627bf28814a6df1b312a05a01c659ac684691d585d9`
+- `qualification-host-check.py`: `98ec74e369d2f15f3aab628d4d3b5ce974f88dbfdf9e56fdf8c419f5b4482dad`
+- `source-manifest.json`: `23cc4d3da39f9ec783efe4ed20ecf7ce5f015170f388351f286dfc0036412d43`
