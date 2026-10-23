@@ -907,3 +907,8 @@ Record failures and missing evidence; do not replace them with a successful late
 
 - Diagnosis report LOTP-REHEARSAL-WITNESS-DIAGNOSIS-20261023 confirms injectedOperationalError bypassesValueError-onlychildmarkers; parentValueErrorcreatedafterwaitcannotattestchild. Sourceconfirmedgap, historicalinnerPID161exceptionunproven.155proofhashesverified/noexecution/sourcechanges.
 - Parentadoptsentireminimalcorrectionbrief+positive/negativecontrols; freshSol-low pab-lotp-rehearsal-witness-fix-r1-20261023 exactselectorbase6eb6cec5, testguard+controls+necessaryminimaltestidentity/sentinel only. Actualcode/privateDB/traceback/activeexceptionbinding required cleanupreplacementmustnotinheritmarker. No generic74/productionchange. Frozenfocusedguard+targetallparams first thenindependentreview; no broadretryyet.
+
+## Precise rehearsal witness frozen /123 focused passes / independent review
+
+- Candidatec224a4aaedf4c15765c8a19540a77f2f221a59c5 frozen65eef52f t3-eb791eef reconstructsselector6eb6cec5. Newtest-onlyguardwitness+controls+minimaloriginalcompletion sentinel; production/deps/unrelatedrecoverybodiesassignments unchanged.123focusedPASS, actualrehearsalseam+finalR and14directednegatives withsyntheticstatus11distinguished. Livearchives/ownerbindings verifiedbeforecleanup. HistoricalPID161causeunproven.
+- FreshSol-low pab-lotp-rehearsal-witness-review-r1-20261023 fullnarrowdelta/source+rawproof+boundedindependentcontrols; checkespeciallystaletokenaftercleanupreplacement. No fourB2/fullretry/integrationuntilreviewacceptance.
