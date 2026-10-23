@@ -892,3 +892,8 @@ Record failures and missing evidence; do not replace them with a successful late
 
 - Candidate6eb6cec51e51ec0142bbbee2ab665a6ed168ee2c frozen413b465b t3-7cbc0fbe reconstructscombinedbd29d757exactbase. Onlycanonicalintentselector/uniqueness/coexistence+3controls new; BOTHrestartparams+controls5PASS. Production/allotherbodiesunchanged perhandoff; livearchiveverifiedbeforecleanup.
 - FreshindependentSol-low `pab-b22-intent-selection-review-r1-20261023` source/fullnarrowdelta and5caseLinux review running. No broadcontinuationuntilreviewacceptance; nohistoricalfailurewaiver/integration.
+
+## Selector correction accepted / four-B2 and full resumed on frozen tree
+
+- Parentaccepts `reviews/P1B23-B22-INTENT-SELECTION-r1-sol.md` boundedGO exact6eb6cec5/frozen413b465b, fresh5PASS/fulloldassertspreserved/productionunchanged/rawproofverified. Historicalbroadredunchanged; no fullGO.
+- `pab-combined-broad-validation-r2-20261023` READONLY exactcandidate: fourB2thenfullONLYifgreen, no17repeatneeded aftertest-onlyselectorchange. Sameimagea506dbfb resourcecaps/liveverifiedtarretention/perstageownedcontainer; stopfirstunexpected/no retry/fix/waiver. Integration/T2/finalAstra/platformnativegatespending.
