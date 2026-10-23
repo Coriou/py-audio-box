@@ -1385,3 +1385,8 @@ S r15plan verifies255exactoriginalnodeIDs/order zeroaddedcollectedconstructionhe
 ### 2026-10-23 — Storage policy proportionality decision adopted
 
 ParentadoptsAstra r16: ordinaryfreshDockerlocalpersistentvolume; metadata-inclusivehard1GiB/inodequota/backendUUID prereq removed asagent-derivedextra notproductcontract. Honestlogical/export/hostartifactthresholds+practicaldiskadmission/monitoring, no physicalquotaclaim. ProductL4MiB/allcapsunchanged; previouscapabilityauditfactspreserved. SOURCE+HOSTONLY pab-persistent-proof-p1-implementation-r17-20261023 selectedblockedpipefirst allowlistedfinitePID1/stoppedROexport/fullownership driver plus<=32HOSTcases; no actualDocker/volume/build/diagnosisyet. Globalindependentreview+oneactualdummy lifecyclequalification beforeoneproductdiagnosis remain. No humanpermissionneeded routineboundedengineeringdecision; nodeploy/install/reconfig/foreigncleanup.
+
+
+### 2026-10-23 — Persistent one-node proof lifecycle delivered for global review
+
+Implementer6allowlistedfiles delivereduncommitted; parentfrozeunchanged executable8364308c8f035bf65362247b201514a060c06730 docs87cec9a3ff9d2b829c04aa096e930d021b4fae83 p-one-storage-r16-20261023. Reports193payloadspreserved initial32HOSTRED retained scoped12/12and14/14repairs; noactualDocker. IndependentGLOBAL pab-persistent-proof-global-review-r17-20261023 launched allpolicyL1-L4/source/HOSTcoverage/ownership/limits/stdliblifecycle beforedummyqualification. No runtimeGO/selfacceptance.
