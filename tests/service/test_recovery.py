@@ -6434,6 +6434,8 @@ def test_t1_durable_completion_lost_result_no_false_success(b23_host,installatio
     def finish_then_lose(session,**request):
         r=prepare(session,**request)
         assert session.continue_kernel(r['intent'],prepared=r._snapshot)['status']=='complete'
+        assert r._snapshot._session is session and r._snapshot._used
+        assert len(r['intent']['id'])==32
         (tmp_path/'durable-completion').write_text(r['intent']['id'])
         def broken(*a):raise BrokenPipeError('modeled lost result pipe')
         os.write=broken  # child only, AFTER all real durable completion writers
@@ -6445,6 +6447,7 @@ def test_t1_durable_completion_lost_result_no_false_success(b23_host,installatio
     with closing(sqlite3.connect(roots['control']/'core'/'core.sqlite')) as db:
         assert db.execute('SELECT count(*) FROM p1_recoveries').fetchone()==(1,)
         assert db.execute('SELECT count(*) FROM p1_recovery_steps').fetchone()==(5,)
+        assert db.execute('SELECT id FROM p1_recoveries').fetchone()==(identity,)
     before=logical(roots);files=retained_bytes(roots)
     _kfifth_fresh(roots,scope,target=identity,setup=_KFIFTH_OBSERVE+_T1_CURRENT_UNION)
     assert logical(roots)==before and retained_bytes(roots)==files

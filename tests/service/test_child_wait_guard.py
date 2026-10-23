@@ -465,3 +465,180 @@ Path(SENTINEL).write_text('continued')
     else:
         assert harness._MODELED_REHEARSAL_FINAL.decode() not in terminal['phase']
         assert not terminal['accepted']
+
+
+# Family P only. Observer controls below are synthetic rejection evidence;
+# the separate fresh normal case executes the unchanged five-step fixture.
+@pytest.mark.parametrize('defect', ['normal', 'missing', 'no-seam', 'no-final',
+    'final-only', 'duplicate', 'truncated', 'overflow', 'wrong-order', 'exit0', 'signal11'])
+def test_P_ordered_armed_transcript(defect):
+    node = SimpleNamespace(nodeid='P-observer', originalname='P-observer')
+    guard = harness.MaintenanceWaitGuard(node, SimpleNamespace(shouldstop=False))
+    guard.owned.add(123)
+    tokens = b'P:a;P:s;P:f;'
+    witness = {'missing': b'V', 'no-seam': b'P:a;P:f;V',
+        'no-final': b'P:a;P:s;V', 'final-only': b'P:f;V',
+        'duplicate': tokens + b'P:f;', 'truncated': tokens[:-1],
+        'overflow': tokens + b'V'*257, 'wrong-order': b'P:a;P:f;P:s;'}.get(defect, tokens)
+    status = 0 if defect == 'exit0' else 11 if defect == 'signal11' else 74 << 8
+    raw = (123, status)
+    assert guard.observe(raw, witness=witness, armed_P=True, expected_exit=74,
+        expected_signal=11) is raw
+    assert guard.receipts == [raw] and not guard.owned
+    assert bool(guard.failures) == (defect != 'normal')
+    assert bool(guard.session.shouldstop) == (defect != 'normal')
+
+
+@pytest.mark.parametrize('mode', ['normal', 'wrong-class', 'subclass', 'wrong-args',
+    'real-EPIPE', 'wrong-code', 'wrong-node', 'wrong-collected', 'precompletion',
+    'durable-id', 'missing-sentinel', 'wrong-fd', 'reused-fd', 'witness-pipe',
+    'operation-failure', 'cleanup-value', 'cleanup-nonsemantic', 'cleanup-new-object',
+    'changed-route', 'changed-attributes', 'wrong-final-caller', 'bad-offset',
+    'bad-slice', 'frame-budget', 'pipe-mode', 'wrong-operation-code',
+    'missing-markers', 'signal11', 'foreign-owner', 'missing-done'])
+def test_P_durable_lost_result_fresh_contract(tmp_path, mode):
+    nodeid = 'tests/service/test_recovery.py::test_t1_durable_completion_lost_result_no_false_success'
+    node = SimpleNamespace(nodeid=nodeid, originalname=nodeid.split('::')[-1],
+        callspec=SimpleNamespace(params={}))
+    guard = harness.MaintenanceWaitGuard(node, SimpleNamespace(shouldstop=False))
+    sentinel = tmp_path/'continued-P'
+    # All mutations belong to this helper's scoped fixture. No signal is sent.
+    body = r'''
+import os, sys, types, errno, pytest
+from pathlib import Path
+from service import recovery
+import _maintenance_wait_guard as h
+mode = MODE
+class Plugin:
+    @pytest.fixture(autouse=True)
+    def fault_P(self, request, monkeypatch):
+        run = recovery._run_bounded_maintenance
+        trace0 = sys.gettrace()
+        original_seam = h.DurableLostResultWitness_P.at_seam_P
+        original_exit = h.DurableLostResultWitness_P.at_exit_P
+        original_trace = h.DurableLostResultWitness_P.trace_P
+        if mode == 'wrong-node': h._CURRENT.node.nodeid = 'foreign::' + NODE
+        if mode == 'wrong-collected':
+            h._CURRENT.node.obj = lambda: None
+        def seam(self, exc, frame):
+            if mode == 'durable-id' and self.completed is not None:
+                self.completed = (*self.completed[:2], '0'*32)
+            if mode == 'bad-offset': frame.f_locals['offset'] = len(frame.f_locals['raw'])
+            if mode == 'frame-budget': frame.f_locals['raw'] = bytearray(1048577)
+            if mode == 'bad-slice' and exc.__traceback__.tb_next is not None:
+                inner = exc.__traceback__.tb_next.tb_frame
+                inner.f_locals['a'] = (frame.f_locals['write_fd'], memoryview(b'wrong slice'))
+            if mode == 'pipe-mode' and self.result_identity is not None:
+                self.result_identity = (*self.result_identity[:3], os.O_RDONLY)
+            if mode == 'wrong-operation-code': self.prepare_code = seam.__code__
+            result = original_seam(self, exc, frame)
+            return result
+        monkeypatch.setattr(h.DurableLostResultWitness_P, 'at_seam_P', seam)
+        def final(self, exc, caller):
+            if mode == 'changed-attributes' and exc is not None: exc.args = ('changed',)
+            if mode == 'wrong-final-caller': caller = sys._getframe()
+            if mode in ('cleanup-value', 'cleanup-nonsemantic', 'cleanup-new-object', 'changed-route') and self.exception is not None:
+                # Actual raise/unwind after the seam, before final attestation.
+                # This is a test-owned exit observer cleanup, not a fabricated
+                # serialized record; sys.exception() exposes the replacement.
+                try:
+                    try: raise exc
+                    finally:
+                        if mode == 'cleanup-value': raise ValueError('P cleanup')
+                        if mode == 'cleanup-nonsemantic': raise RuntimeError('P cleanup')
+                        if mode == 'cleanup-new-object': raise BrokenPipeError(*exc.args)
+                except BaseException:
+                    if type(sys.exception()) is ValueError: self.emit_P(b'V')
+                    return original_exit(self, sys.exception(), caller)
+            return original_exit(self, exc, caller)
+        monkeypatch.setattr(h.DurableLostResultWitness_P, 'at_exit_P', final)
+        def changed_run(roots, scope, operation, **kw):
+            installed = recovery._prepare_abandon_locked
+            if mode in ('wrong-class', 'subclass', 'wrong-args', 'real-EPIPE', 'wrong-fd', 'reused-fd', 'witness-pipe', 'operation-failure', 'missing-sentinel'):
+                class SubPipe(BrokenPipeError): pass
+                def error(*args):
+                    broken_frame = sys._getframe(1)
+                    runner = broken_frame.f_back
+                    fd = runner.f_locals.get('write_fd')
+                    if mode == 'missing-sentinel':
+                        installed.__closure__[installed.__code__.co_freevars.index('tmp_path')].cell_contents.joinpath('durable-completion').unlink()
+                    if mode in ('wrong-fd', 'reused-fd', 'witness-pipe'):
+                        # Change the actual enrolled number's identity before
+                        # the modeled error; a numeric match must not suffice.
+                        if mode == 'wrong-fd':
+                            other = os.open('/dev/null', os.O_WRONLY)
+                        elif mode == 'witness-pipe':
+                            other = os.dup(sys.gettrace().__self__.witness_fd)
+                        else:
+                            r, other = os.pipe(); os.close(r)
+                        os.dup2(other, fd); os.close(other)
+                    if mode == 'wrong-class': return ValueError(*args)
+                    if mode == 'subclass': return SubPipe(*args)
+                    if mode == 'wrong-args': return BrokenPipeError('different')
+                    if mode == 'real-EPIPE': return BrokenPipeError(errno.EPIPE, 'modeled lost result pipe')
+                    return BrokenPipeError(*args)
+                changed = types.FunctionType(installed.__code__,
+                    {**installed.__globals__, 'BrokenPipeError': error},
+                    installed.__name__, installed.__defaults__, installed.__closure__)
+                monkeypatch.setattr(recovery, '_prepare_abandon_locked', changed)
+            if mode == 'wrong-code':
+                def wrong(*a, **k): raise ValueError('wrong installed operation')
+                monkeypatch.setattr(recovery, '_prepare_abandon_locked', wrong)
+            if mode in ('precompletion', 'operation-failure'):
+                def early(*a, **k): raise BrokenPipeError('modeled lost result pipe')
+                monkeypatch.setattr(recovery._MaintenanceSession, 'continue_kernel', early)
+            return run(roots, scope, operation, **kw)
+        monkeypatch.setattr(recovery, '_run_bounded_maintenance', changed_run)
+        if mode in ('missing-markers', 'signal11'):
+            observe = h._CURRENT.observe
+            def changed(result, **kw):
+                if mode == 'missing-markers': kw['witness'] = b'V'
+                if mode == 'signal11': result = (result[0], 11)  # synthetic observer only
+                return observe(result, **kw)
+            monkeypatch.setattr(h._CURRENT, 'observe', changed)
+        if mode == 'foreign-owner':
+            event = h._CURRENT.event
+            def foreign(kind, **data):
+                if kind in ('enroll', 'terminal'):
+                    h._CURRENT.sequence += 1
+                    h.atomic(h._CURRENT.directory/f'{os.getpid()}-{h._CURRENT.sequence}.json',
+                        dict(kind=kind, owner=os.getpid()+100000, **data))
+                else: event(kind, **data)
+            monkeypatch.setattr(h._CURRENT, 'event', foreign)
+        if mode == 'missing-done':
+            atomic = h.atomic
+            def missing(path, value):
+                if path.name != 'done.json': return atomic(path, value)
+            h.atomic = missing
+        yield
+        assert sys.gettrace() is trace0
+result = pytest.main(['--noconftest', '-p', 'no:cacheprovider', NODE,
+    '-q', '-rs', '-x', '--basetemp='+BASE], plugins=[Plugin()])
+if h._CURRENT.failures:
+    assert h._CURRENT.session.shouldstop
+    with pytest.raises(pytest.exit.Exception):
+        recovery._run_bounded_maintenance({}, {}, lambda value: True)
+    raise SystemExit(86)
+assert result == 0
+Path(SENTINEL).write_text('continued')
+'''.replace('MODE', repr(mode)).replace('NODE', repr(nodeid)).replace('BASE', repr(str(tmp_path/'inner-P'))).replace('SENTINEL', repr(str(sentinel)))
+    with harness.activate(guard, tmp_path/'helpers-P'):
+        result = harness.fresh_run([sys.executable, '-c', body], capture_output=True, text=True, timeout=30)
+        if mode == 'normal':
+            assert result.returncode == 0, result.stdout + result.stderr
+            assert sentinel.exists() and not guard.failures
+            # Actual lost-result wait plus actual successful observational replay.
+            assert [status for _, status in guard.receipts] == [74 << 8, 0]
+        else:
+            assert guard.failures and guard.session.shouldstop, result.stdout + result.stderr
+            with pytest.raises(RuntimeError):
+                harness.fresh_run([sys.executable, '-c', 'raise AssertionError("must not launch")'])
+    directory, = (tmp_path/'helpers-P').glob('helper-*')
+    events = [json.loads(p.read_text()) for p in directory.glob('[0-9]*.json')]
+    terminals = [e for e in events if e['kind'] == 'terminal']
+    if mode == 'normal':
+        assert [e['phase'] for e in terminals] == ['P:a;P:s;P:f;', '']
+        assert all(e['accepted'] for e in terminals)
+    if mode.startswith('cleanup-') or mode == 'changed-route':
+        assert 'P:s;' in terminals[0]['phase'] and 'P:f;' not in terminals[0]['phase']
+        assert not terminals[0]['accepted']

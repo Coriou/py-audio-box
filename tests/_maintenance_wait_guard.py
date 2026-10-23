@@ -41,7 +41,7 @@ class MaintenanceWaitGuard:
         self.session.shouldstop = message
         self.event("failure", message=message[:1024])
 
-    def observe(self, result, *, witness=b'', expected_signal=None, expected_exit=None):
+    def observe(self, result, *, witness=b'', expected_signal=None, expected_exit=None, armed_P=False):
         pid, status = result
         if pid not in self.owned or not (os.WIFEXITED(status) or os.WIFSIGNALED(status)):
             return result
@@ -55,7 +55,11 @@ class MaintenanceWaitGuard:
             try: _RAW_WRITE(fd, record.encode())
             finally: os.close(fd)
         error = None
-        if os.WIFSIGNALED(status):
+        if armed_P or b'P:' in witness:
+            if not (os.WIFEXITED(status) and os.WEXITSTATUS(status) == 74 and
+                    DurableLostResultWitness_P.transcript_P(witness)):
+                error = 'incomplete or invalid armed P contract'
+        elif os.WIFSIGNALED(status):
             if os.WTERMSIG(status) != expected_signal:
                 error = 'unexpected signal '+str(os.WTERMSIG(status))
         elif os.WEXITSTATUS(status) == 74:
@@ -262,9 +266,177 @@ class ModeledRehearsalCompletionWitness:
         return _MODELED_REHEARSAL_FINAL
 
 
+
+# Reserved grouped convention: A/H/P/S, then armed/seam/final. P emits 12 bytes.
+# The P invocation can additionally emit V, V:session;, V:operation; (23 bytes).
+# Future H/S triples of the same four-byte format plus P and these legacy phases
+# total 59 bytes; even all existing R/J/T/C alternatives together stay <=256
+# only under their existing mutually exclusive node declarations (see handoff).
+class DurableLostResultWitness_P:
+    armed, seam, final = b'P:a;', b'P:s;', b'P:f;'
+
+    def __init__(self, node, installed, runner, continuation, prepare_code, witness_fd, operation_code):
+        self.runner, self.continuation = runner, continuation
+        self.witness_fd = witness_fd
+        self.exception = self.route = self.completed = self.runner_frame = None
+        self.result_identity = self.sentinel_P = None
+        self.valid = True
+        module = sys.modules.get('test_recovery')
+        function = getattr(module, 'test_t1_durable_completion_lost_result_no_false_success', None)
+        self.eligible = (
+            node.originalname == 'test_t1_durable_completion_lost_result_no_false_success' and
+            node.nodeid == 'tests/service/test_recovery.py::test_t1_durable_completion_lost_result_no_false_success' and
+            operation_code is prepare_code and prepare_code is not None and
+            getattr(getattr(node, 'callspec', None), 'params', {}) == {})
+        self.finish = self.broken = None
+        if self.eligible and function is not None and getattr(node, 'obj', function) is function:
+            codes = [c for c in function.__code__.co_consts if isinstance(c, type(function.__code__)) and c.co_name == 'finish_then_lose']
+            if len(codes) == 1:
+                self.finish = codes[0]
+                codes = [c for c in self.finish.co_consts if isinstance(c, type(self.finish)) and c.co_name == 'broken']
+                if len(codes) == 1: self.broken = codes[0]
+        self.valid = self.finish is not None and self.broken is not None and getattr(installed, '__code__', None) is self.finish
+        # The exact _prepare_abandon lambda is the only allowed runner operation.
+        self.prepare_code = prepare_code
+        self.write_offsets = self.call_offsets(runner, 'write')
+        self.exit_offsets = self.call_offsets(runner, '_exit')
+        import dis
+        self.raise_offsets = frozenset(i.offset for i in dis.get_instructions(self.broken)
+            if i.opname == 'RAISE_VARARGS') if self.broken is not None else frozenset()
+
+    @staticmethod
+    def call_offsets(code, attribute):
+        import dis
+        instructions = list(dis.get_instructions(code, show_caches=True))
+        result = []
+        for i, instruction in enumerate(instructions):
+            if instruction.opname in ('LOAD_ATTR', 'LOAD_METHOD') and instruction.argval == attribute:
+                # The last _exit site is the captured runner's catch-all74;
+                # the earlier success _exit(0) is never final authority.
+                result = []
+                for j in range(i + 1, len(instructions)):
+                    if (instructions[j].opname.startswith('CALL') and
+                            instructions[j].positions.lineno == instruction.positions.lineno and
+                            instructions[j].positions.col_offset == instruction.positions.col_offset):
+                        result.append(instructions[j].offset)
+                        k = j + 1
+                        while k < len(instructions) and instructions[k].opname == 'CACHE':
+                            result.append(instructions[k].offset); k += 1
+                        break
+        return frozenset(result)
+
+    @staticmethod
+    def pipe_identity(fd):
+        import fcntl
+        info = os.fstat(fd)
+        return info.st_dev, info.st_ino, info.st_mode, fcntl.fcntl(fd, fcntl.F_GETFL) & os.O_ACCMODE
+
+    def trace_P(self, frame, event, arg):
+        if frame.f_code not in (self.runner, self.continuation, self.finish): return None
+        if frame.f_code is self.runner and event == 'line':
+            local = frame.f_locals
+            if local.get('pid') == 0 and self.runner_frame is None:
+                self.runner_frame = frame
+                fd = local.get('write_fd')
+                self.result_identity = local.get('identities', {}).get(fd)
+                if (self.result_identity is None or not stat.S_ISFIFO(self.result_identity[2]) or
+                        self.result_identity[3] != os.O_WRONLY or
+                        self.result_identity == self.pipe_identity(self.witness_fd)):
+                    self.valid = False
+        if event == 'return' and frame.f_code is self.continuation:
+            caller = frame.f_back
+            if caller is not None and caller.f_code is self.finish:
+                r = caller.f_locals.get('r')
+                session = caller.f_locals.get('session')
+                local = frame.f_locals
+                if (type(arg) is dict and arg.get('status') == 'complete' and r is not None and
+                        local.get('self') is session and local.get('prepared') is r._snapshot and
+                        r._snapshot._session is session and r._snapshot._used and
+                        local.get('intent') == r['intent'] and
+                        session.db.execute('SELECT count(*) FROM p1_recoveries').fetchone() == (1,) and
+                        session.db.execute('SELECT count(*) FROM p1_recovery_steps').fetchone() == (5,) and
+                        session.db.execute('SELECT id FROM p1_recoveries').fetchone() == (r['intent']['id'],) and
+                        arg.get('recovery_id') == r['intent']['id']):
+                    self.completed = (session, r, r['intent']['id'])
+                else: self.valid = False
+        if event == 'return' and frame.f_code is self.finish:
+            if self.completed is None or arg is not self.completed[1]: self.valid = False
+            else:
+                path = frame.f_locals.get('tmp_path')
+                self.sentinel_P = None if path is None else path / 'durable-completion'
+                if self.sentinel_P is None or self.sentinel_P.read_text() != self.completed[2]: self.valid = False
+        if event == 'exception' and frame.f_code is self.runner:
+            exc = arg[1]
+            if self.at_seam_P(exc, frame): self.emit_P(self.seam)
+        return self.trace_P
+
+    def at_seam_P(self, exc, frame):
+        if (not self.valid or self.exception is not None or self.completed is None or
+                frame is not self.runner_frame or type(exc) is not BrokenPipeError or
+                exc.args != ('modeled lost result pipe',) or exc.errno is not None): return False
+        try:
+            if self.sentinel_P is None or self.sentinel_P.read_text() != self.completed[2]: return False
+        except OSError: return False
+        trace = exc.__traceback__
+        if (trace is None or trace.tb_frame is not frame or trace.tb_lasti not in self.write_offsets or
+                trace.tb_next is None or trace.tb_next.tb_frame.f_code is not self.broken or
+                trace.tb_next.tb_lasti not in self.raise_offsets or
+                trace.tb_next.tb_next is not None): return False
+        local = frame.f_locals
+        fd, raw, offset = local.get('write_fd'), local.get('raw'), local.get('offset')
+        args = trace.tb_next.tb_frame.f_locals.get('a')
+        session, result, identity = self.completed
+        operation = local.get('operation')
+        if (getattr(operation, '__code__', None) is not self.prepare_code or
+                local.get('result') is not result or local.get('session') is not session or
+                result['intent']['id'] != identity or type(raw) is not bytearray or
+                not 0 < len(raw) <= 1048576 or type(offset) is not int or not 0 <= offset < len(raw) or
+                self.pipe_identity(fd) != self.result_identity or fd == self.witness_fd or
+                type(args) is not tuple or len(args) != 2 or args[0] != fd or
+                type(args[1]) is not memoryview or args[1].obj is not raw or
+                bytes(args[1]) != raw[offset:offset + 65536]): return False
+        self.exception = exc
+        self.route = ((trace.tb_frame, trace.tb_lasti), (trace.tb_next.tb_frame, trace.tb_next.tb_lasti))
+        return True
+
+    def at_exit_P(self, exc, caller):
+        if (exc is not self.exception or exc is None or not self.valid or
+                type(exc) is not BrokenPipeError or exc.args != ('modeled lost result pipe',) or
+                exc.errno is not None or caller is not self.runner_frame or
+                caller.f_lasti not in self.exit_offsets): return b''
+        route = []
+        trace = exc.__traceback__
+        while trace is not None:
+            route.append((trace.tb_frame, trace.tb_lasti)); trace = trace.tb_next
+        return self.final if tuple(route) == self.route else b''
+
+    def clear_P(self):
+        self.exception = self.route = self.completed = self.runner_frame = self.sentinel_P = None
+
+    @classmethod
+    def transcript_P(cls, witness):
+        # Closed grammar: exact ordered family tokens followed/interleaved only
+        # by the three existing semantic phases. Unknown/truncated data rejects.
+        family = []
+        remaining = witness
+        tokens = (cls.armed, cls.seam, cls.final, b'V:session;', b'V:operation;', b'V')
+        counts = {}
+        while remaining:
+            token = next((t for t in tokens if remaining.startswith(t)), None)
+            if token is None: return False
+            counts[token] = counts.get(token, 0) + 1
+            if counts[token] != 1: return False
+            if token in tokens[:3]: family.append(token)
+            remaining = remaining[len(token):]
+        return family == list(tokens[:3]) and len(witness) <= 256
+
+
 def install(request, monkeypatch, guard):
     from service import recovery
     run, fork, wait = recovery._run_bounded_maintenance, os.fork, os.waitpid
+    continuation_P = recovery._MaintenanceSession.continue_kernel.__code__
+    prepare_P = [c for c in recovery._prepare_abandon.__code__.co_consts
+        if isinstance(c, type(run.__code__)) and c.co_name == '<lambda>']
     rehearsal0, transaction0 = recovery._rehearse_preparation, recovery._prefix_transaction
     pipe, read, write, close, exit0 = os.pipe, os.read, os.write, os.close, os._exit
     state = dict(active=False, read=None, write=None, witness=b'', enrolling=False)
@@ -308,7 +480,7 @@ def install(request, monkeypatch, guard):
                 if cleanup_phase: state['witness'] = (state['witness'] + cleanup_phase)[:256]
             expected_exit = 74 if (any(p in state['witness'] for p in _BACKPRESSURE_PHASES) or
                 any(p in state['witness'] for p in (b'T:install-setlimit;', b'T:transport;', b'T:child-read-close;'))) else None
-            guard.observe(result, witness=state['witness'],
+            guard.observe(result, witness=state['witness'], armed_P=state.get('armed_P', False),
                 expected_signal=signal.SIGKILL if cleanup_phase else _expected_cleanup_signal(request.node, cleanup), expected_exit=expected_exit)
         return result
 
@@ -319,6 +491,10 @@ def install(request, monkeypatch, guard):
         os.set_blocking(r, False)
         state.update(active=True, read=r, write=w, witness=b'', enrolling=True)
         sent = set()
+        lost_P = DurableLostResultWitness_P(request.node, recovery._prepare_abandon_locked,
+            run.__code__, continuation_P, prepare_P[0] if len(prepare_P) == 1 else None, w,
+            getattr(operation, '__code__', None))
+        trace_P = sys.gettrace()
         completion = recovery._write_core_completion
         modeled = ModeledRehearsalCompletionWitness(request.node, roots,
             rehearsal0, transaction0)
@@ -332,6 +508,11 @@ def install(request, monkeypatch, guard):
             if data not in sent:
                 sent.add(data)
                 write(w, data)
+        lost_P.emit_P = mark
+        # Arm in the parent, before the child or any fault; the replay has no
+        # installed collected finish_then_lose and therefore stays unarmed.
+        state['armed_P'] = lost_P.eligible
+        if lost_P.eligible: state['witness'] = lost_P.armed
         # This witness is emitted only by the actual protected read, before the
         # original writer. No OSError from the enclosing session is accepted.
         open0 = os.open
@@ -403,6 +584,9 @@ def install(request, monkeypatch, guard):
                 params = getattr(getattr(request.node, 'callspec', None), 'params', {})
                 exc = sys.exception()
                 mode = params.get('mode')
+                if lost_P.eligible:
+                    final_P = lost_P.at_exit_P(exc, sys._getframe(1))
+                    if final_P: mark(final_P)
                 final = modeled.at_exit(exc)
                 if final: mark(final)
                 phase = backpressure_phase(request.node, exc)
@@ -444,8 +628,18 @@ def install(request, monkeypatch, guard):
                 patch.setattr(recovery, '_maintenance_result_frame', semantic_phase(frame_result))
                 patch.setattr(os, '_exit', observed_exit)
                 patch.setattr(os, 'open', journal_open)
+                # Bind the prescribed operation wrapper as well as the actual
+                # production lambda; retain its identity for the seam check.
+                if lost_P.eligible:
+                    lost_P.prepare_code = observed_operation.__code__
+                    original_operation_P = operation
+                    if getattr(original_operation_P, '__code__', None) not in prepare_P:
+                        lost_P.valid = False
+                    sys.settrace(lost_P.trace_P)
                 return run(roots, scope, observed_operation, **kwargs)
         finally:
+            if lost_P.eligible: sys.settrace(trace_P)
+            lost_P.clear_P()
             state['active'] = False
             close(r); close(w)
             if guard.owned:
