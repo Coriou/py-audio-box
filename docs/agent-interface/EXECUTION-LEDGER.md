@@ -1295,3 +1295,8 @@ Driver0dfbd74116a5bfbf17ad490d21713a24101a68a6 docse02de53038f221b14c32fa75bb9e1
 ### 2026-10-23 — S reviewed driver SOURCE GO; ONE exact attempt
 
 Independent r10SOURCEGO D1-D4closed at0dfbd741 appbd34b74 exact263manifest66e702e5 inputs52auditunchanged. ParentauthorizesONEexactrevieweddriver invocation pab-s-reviewed-driver-construction-r10-20261023 withimmutabledriver/Dockerfilehashes/source-review/privateauthorization allrequiredreadsBEFORElaunch. Noextraimport/recipe/buildpreflight/retry/fix/productDB/maintenance/255. Driverfinitecaps/resourceuncertainty/binaryretention/fullIDcleanup controlsunchanged. Freshactualreviewrequiredbeforeacceptance.
+
+
+### 2026-10-23 — S exact driver early host-path STOP
+
+ONEhostinvocationexit1 beforeANYexternaldispatch/checkout/lane/Docker/innerconstruction0of52. Mandated/tmp auth/evidence paths incompatiblewithreviewedNOFOLLOWreader becausemacOS/tmp symlinkprivate/tmp; finalinventorysamefailure. Partial2hostfilesretained no runtimeacquired. Parentownsincorrectargvpathselection, notSrecognizerfailure. Independent pab-s-host-path-actual-review-r10-20261023 auditsminimalcanonical/private/tmp argvproposal onunchangeddriver before anynextauthorization; no safetyweaken/codefix/retryauthorized.
