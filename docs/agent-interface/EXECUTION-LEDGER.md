@@ -1166,3 +1166,8 @@ Parent adopts blockedpipe Astra lifecycle DESIGN: finite serverPID1 plus persist
 ### 2026-10-23 — H F1–F3 successor frozen
 
 H75fbd8a922ea40adc03938f95e7415cf3e0602df docf23fc7580a021de414fbcc232ae0e827559eea53 h-r6-f123-source-20261023 delivered static-only with F1-F3responses. Independent closure/fullAstra source review pab-h-projection-source-review-r7-20261023 launched. No construction/runtime/Hacceptance authorized, guard/recovery/prodprefix reportedunchanged.
+
+
+### 2026-10-23 — Blocked-pipe storage capability STOP
+
+Bounded READONLY audit currentOrbStack daemon advertiseslocalonly;141existingvolumesemptyoptions noauthoritativehard1GiB/inode<=200000/backendoverhead/UIDinitialization contract. Parent records STORAGE-CAPABILITY STOP for this diagnosticlauncher path beforeimplementation/build/diagnosis. Genericpersistentvolumes notsufficient; nofallbackquotaabstraction/probe/install/reconfiguration authorized. This is a diagnostic infrastructure dependency, NOT a new productplatformrequirement or proofnootherbackendexists. PreserveP146prefixevidence64unrun historicalterminalcauseUNKNOWN. H/Ssource lanes continue; noautomaticresourcecreation or repeatedstorageaudit.
