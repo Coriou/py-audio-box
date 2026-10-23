@@ -1451,3 +1451,7 @@ SOURCE+HOST probe t3-586732a2 exec50e882e03dd6b194d4d42595fe19d71871205c2e docs0
 ### 2026-10-23 — Read-only probe review accepted; ONE actual diagnosis
 
 Independent r24 SOURCE+HOST GO verifies196expectedhashes/programargv/19fixtureobservations. Parent accepts with mandatory5calls using4templates (prestartinspect plusfinalinspect), global60s includingreap/journal/reservedinspection. ONEactual pab-readonly-probe-actual-r25-20261023 authorized immutable50e882e0/docs039cac1c existingimage/ROvolume, preserveoldwriter/lane no retry/cleanup/product. Actual evidence independently audited before causalrepair.
+
+### 2026-10-23 — Actual probe isolates nonfresh initialization predicate
+
+ONEprobe r25 completes1.08s helperstoppedexit0;196sourcehashes match/readable, current8.02GBfree, root/seed correct. Actualvolume additionally requirements.lock UID501GID0/0664/75753bytes; strict initialized exactnamesFALSE STOPnonfresh beforebody. Originaltraceback/origin stillunproven. Actualinterpreter3.14.8 observed, notrequired3.14.7 qualification. Independent pab-readonly-actual-cause-audit-r26-20261023 launched45leafreceipt/config/supervisor/cause/source audit and minimalsharedrecipe+observability repair recommendation. No extraDocker/cleanup/retry; allobjects/lane retained.
