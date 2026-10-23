@@ -967,3 +967,8 @@ Record failures and missing evidence; do not replace them with a successful late
 
 - Scandidateb7d8ea32310846375ce4b960b7b8923485269a78 frozen742cab3e t3-87bb88ab implementsSonly; staticASTcompile/preservation no runtime. RevisedearlycoreintentengineFULL13target/typedbool/privateconfig/hardener/finalroute/burn controls awaitproof; lateenginecompletioncapacityUNPROVEN unchanged.
 - pab-s-witness-source-review-r1-20261023 independentREADONLYsource review ofentireS/sharedcontract/predicatecontrols beforeanyruntime. H/Previewongoingseparate, noassembly/integration.
+
+## H source review NO-GO F1–F5 / bounded source fix round
+
+- H-WITNESS-SOURCE-r1-sol exact846fea57/frozen4658fd23 SOURCE NO-GO:validHfallsintolegacyreject; controlsfirst-vs-secondambiguity/wrapperoverwrites; missingindependentbindingcontrols; open transcriptgrammar; incompletelegacytokenboundproof. No runtime/candidatewrites.
+- pab-h-witness-source-fix-r2-20261023 freshSol-lowsourceONLY fulloriginalbrief/F1–F5 response, unchangedHscope/production/P/S/R; strictacceptbranch+closedgrammar+isolatedcontrols+completeboundproof, newfreeze/reviewbeforeanyruntime.
