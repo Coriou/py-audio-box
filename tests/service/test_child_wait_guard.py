@@ -495,7 +495,7 @@ def test_P_ordered_armed_transcript(defect):
     'operation-failure', 'cleanup-value', 'cleanup-nonsemantic', 'cleanup-new-object',
     'changed-route', 'changed-attributes', 'wrong-final-caller', 'bad-offset',
     'bad-slice', 'frame-budget', 'pipe-mode', 'wrong-operation-code',
-    'missing-markers', 'signal11', 'foreign-owner', 'missing-done', 'operation-value'])
+    'missing-markers', 'signal11', 'foreign-owner', 'missing-done', 'operation-value', 'setup-evidence-failure'])
 def test_P_durable_lost_result_fresh_contract(tmp_path, mode):
     nodeid = 'tests/service/test_recovery.py::test_t1_durable_completion_lost_result_no_false_success'
     node = SimpleNamespace(nodeid=nodeid, originalname=nodeid.split('::')[-1],
@@ -522,7 +522,19 @@ def evidence(label):
     assert label not in steps and len(steps) < 24
     steps.append(label)
     h.atomic(Path(PROOF)/(str(os.getpid())+'.json'), dict(mode=mode, steps=steps))
+setup_reports = []
 class Plugin:
+    def pytest_runtest_makereport(self, item, call):
+        if mode != 'setup-evidence-failure': return
+        setup_reports.append(call.when)
+        assert call.when in ('setup', 'teardown')  # No target call is allowed.
+        if call.when == 'setup':
+            assert call.excinfo is not None and call.excinfo.type is OSError
+            assert call.excinfo.value.args == (errno.ENOSPC, 'P directed setup evidence failure')
+            # The injected writer fails once; classification uses the original.
+            evidence('setup-failure-classified')
+        else:
+            assert call.excinfo is None
     @pytest.fixture(autouse=True)
     def fault_P(self, request):
         patch = pytest.MonkeyPatch()
@@ -538,6 +550,24 @@ class Plugin:
         predicate = {'durable-id', 'bad-offset', 'bad-slice', 'frame-budget', 'wrong-operation-code'}
         cleanup = {'cleanup-value', 'cleanup-nonsemantic', 'cleanup-new-object', 'changed-route'}
         fd_modes = {'wrong-fd', 'reused-fd', 'witness-pipe', 'pipe-mode'}
+        node0 = h._CURRENT.node
+        atomic0 = h.atomic
+        nodeid0 = node0.nodeid
+        def restore_P():
+            # Registered before ANY manual binding or patch mutation. Pytest
+            # runs this even when setup fails before the generator's yield.
+            patch.undo()
+            assert h._CURRENT.node is node0 and node0.nodeid == nodeid0
+            assert sys.gettrace() is trace0 and os.write is write0 and os._exit is exit0
+            assert cls.__init__ is original_init and cls.at_seam_P is original_seam
+            assert cls.at_exit_P is original_exit and cls.trace_P is original_trace and cls.clear_P is original_clear
+            assert recovery._MaintenanceSession.continue_kernel is original_continue
+            assert recovery._prepare_abandon_locked is original_locked
+            assert recovery._run_bounded_maintenance is run
+            assert not hasattr(h._CURRENT.node, 'obj')
+            if mode != 'missing-done': assert h.atomic is atomic0
+            evidence('hooks-restored')
+        request.addfinalizer(restore_P)
         # Bootstrap has no collected callable. Bind THIS inner pytest item
         # before its invocation; never recover authority from the module.
         assert not hasattr(h._CURRENT.node, 'obj')
@@ -552,7 +582,7 @@ class Plugin:
             patch.setattr(h._CURRENT.node, 'obj', collected, raising=False)
             assert h._CURRENT.node.obj is collected
         if mode == 'wrong-node':
-            h._CURRENT.node.nodeid = 'foreign::' + NODE
+            patch.setattr(h._CURRENT.node, 'nodeid', 'foreign::' + NODE)
             assert h._CURRENT.node.nodeid == 'foreign::' + NODE
             evidence('node-mutated')
         if mode == 'wrong-collected':
@@ -765,6 +795,21 @@ class Plugin:
                 operation = outer  # Actual callable, before parent arming.
             return run(roots, scope, operation, **kw)
         patch.setattr(recovery, '_run_bounded_maintenance', changed_run)
+        if mode == 'setup-evidence-failure':
+            assert h._CURRENT.node.obj is collected
+            assert cls.__init__ is init and cls.trace_P is trace
+            assert cls.at_seam_P is seam and cls.at_exit_P is final and cls.clear_P is clear
+            assert recovery._run_bounded_maintenance is changed_run
+            def failed_evidence(path, value):
+                assert path == Path(PROOF)/(str(os.getpid())+'.json')
+                assert value == dict(mode=mode, steps=['setup-evidence-attempt'])
+                # Leave later report/finalizer evidence writable, but keep this
+                # patch owned so undo must still restore the exact original.
+                patch.setattr(h, 'atomic', atomic0)
+                raise OSError(errno.ENOSPC, 'P directed setup evidence failure')
+            patch.setattr(h, 'atomic', failed_evidence)
+            evidence('setup-evidence-attempt')
+            raise AssertionError('setup evidence failure did not escape')
         if mode in ('missing-markers', 'signal11'):
             observe = h._CURRENT.observe
             def changed(result, **kw):
@@ -788,18 +833,16 @@ class Plugin:
             def missing(path, value):
                 if path.name != 'done.json': return atomic(path, value)
             h.atomic = missing  # Through bootstrap atexit; local helper only.
-        try: yield
-        finally:
-            patch.undo()
-            assert sys.gettrace() is trace0 and os.write is write0 and os._exit is exit0
-            assert cls.__init__ is original_init and cls.at_seam_P is original_seam
-            assert cls.at_exit_P is original_exit and cls.trace_P is original_trace and cls.clear_P is original_clear
-            assert recovery._MaintenanceSession.continue_kernel is original_continue
-            assert recovery._prepare_abandon_locked is original_locked
-            assert not hasattr(h._CURRENT.node, 'obj')
-            evidence('hooks-restored')
+        yield
 result = pytest.main(['--noconftest', '-p', 'no:cacheprovider', NODE,
     '-q', '-rs', '-x', '--basetemp='+BASE], plugins=[Plugin()])
+if mode == 'setup-evidence-failure':
+    assert result == pytest.ExitCode.TESTS_FAILED
+    assert setup_reports == ['setup', 'teardown']
+    assert steps == ['setup-evidence-attempt', 'setup-failure-classified', 'hooks-restored']
+    assert not h._CURRENT.receipts and not h._CURRENT.owned and not h._CURRENT.failures
+    assert not h._CURRENT.session.shouldstop and not hasattr(h._CURRENT.node, 'obj')
+    raise SystemExit(87)
 if h._CURRENT.failures:
     assert h._CURRENT.session.shouldstop
     with pytest.raises(pytest.exit.Exception):
@@ -812,7 +855,11 @@ Path(SENTINEL).write_text('continued')
     aggregation = mode in ('foreign-owner', 'missing-done')
     with harness.activate(guard, tmp_path/'helpers-P'):
         result = harness.fresh_run([sys.executable, '-c', body], capture_output=True, text=True, timeout=30)
-        if mode == 'normal':
+        if mode == 'setup-evidence-failure':
+            assert result.returncode == 87, result.stdout + result.stderr
+            assert not sentinel.exists() and not guard.receipts and not guard.owned and not guard.failures
+            assert not guard.session.shouldstop
+        elif mode == 'normal':
             assert result.returncode == 0, result.stdout + result.stderr
             assert sentinel.exists() and not guard.failures
             # _kfifth_fresh launches TWO genuine checked observational replays.
@@ -826,6 +873,16 @@ Path(SENTINEL).write_text('continued')
     directory, = (tmp_path/'helpers-P').glob('helper-*')
     events = [json.loads(p.read_text()) for p in directory.glob('[0-9]*.json')]
     terminals = [e for e in events if e['kind'] == 'terminal']
+    if mode == 'setup-evidence-failure':
+        assert events == [] and terminals == []
+        ack = json.loads((directory/'ack.json').read_text())
+        assert ack == json.loads((directory/'done.json').read_text())
+        assert json.loads((directory/'launch.json').read_text())['identity'] == ack
+        assert not list((directory/'nested').glob('helper-*'))
+        records = [json.loads(p.read_text()) for p in proof.glob('*.json')]
+        assert records == [dict(mode=mode, steps=[
+            'setup-evidence-attempt', 'setup-failure-classified', 'hooks-restored'])]
+        return  # Setup-only restoration control, never a P refusal receipt.
     assert len(terminals) == 1
     terminal, = terminals
     positive = mode == 'normal' or aggregation
