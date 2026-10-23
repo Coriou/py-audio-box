@@ -1089,3 +1089,8 @@ S observational harness bc5b4615cae7cd15c35af8f01e73fcc5c9c01699, docs d224f9012
 ### 2026-10-23 — P provider status contradicted by actual artifacts
 
 CORRECTION: prior claim no runtime occurred was unsupported and is contradicted by /tmp/pab-p-restoration-r5-20261023 actual artifacts. Requeue obeyed contrary-evidence STOP and launched nothing. Existing stdout records146PASS1FAIL1ERROR at real blocked-pipe deadline, PID229/raw18944, no V witness. Inventory only has not independently qualified receipts/export/source/cleanup. No duplicate or retry authorized. Independent READONLY actual-receipt/source audit pab-p-r5-actual-receipt-audit-r1-20261023 launched, sole report; all proof unchanged. Inventory report moved from mistaken root filename to canonical reviews directory without content change.
+
+
+### 2026-10-23 — H construction r5 STOP with exact site evidence
+
+ONE construction exited1 after0.677s. Actual captured runner site2576 recognized, retained LOAD_GLOBAL/LOAD_ATTR/PUSH_NULL/LOAD_SMALL_INT74/CALL1. Recompiled full-context positive site2546 lacks PUSH_NULL and fails first positional owner predicate. All-CALL singleton scan, nine rows and completion NOT reached. No H gate or retry. Two serialized actual-code digest strings differ, cause unknown. Raw proof/livehash archive/ownedcleanup retained; independent actual/source review pab-h-construction-actual-review-r5-20261023 launched to assess control premise and smallest bounded next step, no execution/fix authority.
