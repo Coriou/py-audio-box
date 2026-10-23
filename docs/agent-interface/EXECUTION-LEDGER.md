@@ -1559,3 +1559,7 @@ Parentacceptsr49 SOURCEGO guard920009f7/docs2319745a hashe6009824: independentca
 ### 2026-10-24 — Appended B controls delivered; independent control gate
 
 r47controlscandidate t3-b20efe6d exec51d3922e963d2ed05b424e9ed8a5689a6f93d7d9 docs41bcbb80d87d43804621a42763be9368a5f35f37 adds87PENDINGUNRUN/851lines original58632byteprefixpreserved, oldguard4f04cd unchanged. Reportsrealobserverbootstrap request.addfinalizer obstruction; isolatedinertsinks labelledevidenceonly. Independent pab-b-controls-review-r50-20261024 launchedfullcontrols/negativevalidseams/positive/restoration/sourceonlyaudit andcompatibility+missingB1controls againstacceptedguard920009f7. No merge/runtimeauthority beforeconcretefindingsresolved.
+
+### 2026-10-24 — Controls combined-source NO-GO C1/C2; narrow combined fix
+
+r50verifies87append-onlycontrolsbutcombinedNO-GO: C1helperobjbindingomitsrealnode.config requiredacceptedguard; C2B1precapture/sourceauthoritycontrolsabsent. Bootstrapaddfinalizerobstructionconfirmedpreexisting, notnegativePASS. Parentassignspab-b-combined-controls-fix-r51-20261024 freshacceptedguard2319745a+controls51d3922 only, fixappendedhelperconfig/restoration+appendfiniteB1controls; isolatedrequestadapteronlyAPPENDEDharnessauthorizedifneeded, oldbootstrap/observer/entryfrozen. Guardhashe6009824 bytepreserved/old58632prefixexact, no runtime/manifestupdate/P211change. Independentcombinedsourcegate next.
