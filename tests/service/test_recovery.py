@@ -6240,8 +6240,10 @@ def test_t1_owned_proposal_reads_cannot_mutate_sender(b23_host,installation,monk
 
 
 @pytest.mark.parametrize('repeat',range(2))
-@pytest.mark.parametrize('site',['parent-write','cleanup-read','fork-read','fork-write','child-read'])
-@pytest.mark.parametrize('timing',['before','after','reuse'])
+@pytest.mark.parametrize('site,timing',[(site,timing)
+    for site in ('parent-write','cleanup-read','fork-read','fork-write','child-read')
+    for timing in ('before','after','reuse','pipe-reuse')
+    if timing!='pipe-reuse' or site=='parent-write'])
 @pytest.mark.parametrize('failure',[InterruptedError,KeyboardInterrupt])
 def test_t1_close_ownership_cleanup(monkeypatch,tmp_path,repeat,site,timing,failure):
     """Injected close faults, not evidence of kernel EINTR behavior.
@@ -6252,17 +6254,20 @@ def test_t1_close_ownership_cleanup(monkeypatch,tmp_path,repeat,site,timing,fail
     import signal,time,resource
     prior=resource.getrlimit(resource.RLIMIT_FSIZE)
     owned=_t1_pipe_model(monkeypatch)
-    parent=os.getpid();pipe=os.pipe;close=os.close;fork=os.fork
-    ends=[];fired=[];sentinels=[];statuses=[]
+    parent=os.getpid();pipe=os.pipe;close=os.close;fstat=os.fstat
+    ends=[];fired=[];sentinels=[];statuses=[];pipe_id=[]
     marker=tmp_path/'operation-entered'
     def tracked_pipe():
-        pair=pipe();ends.extend(pair);return pair
+        pair=pipe();ends.extend(pair);pipe_id.append(fstat(pair[0]).st_ino);return pair
     def broken_close(fd):
         target=(os.getpid()!=parent and site=='child-read' and fd==ends[0]) or (
             os.getpid()==parent and site!='child-read' and fd==ends[0 if site in ('cleanup-read','fork-read') else 1])
         if target and not fired:
             fired.append(fd)
             if timing!='before':close(fd)
+            if timing=='pipe-reuse':
+                os.dup2(ends[1 if fd==ends[0] else 0],fd)
+                sentinels.append(fd)
             if timing=='reuse':
                 replacement=os.open(tmp_path/'sentinel',os.O_RDWR|os.O_CREAT,0o600)
                 if replacement!=fd:
@@ -6278,6 +6283,17 @@ def test_t1_close_ownership_cleanup(monkeypatch,tmp_path,repeat,site,timing,fail
     if site=='cleanup-read':
         def failed_read(*a):raise ValueError('injected read failure')
         monkeypatch.setattr(os,'read',failed_read)
+    if timing=='pipe-reuse':
+        # Linux pipe ends share inode identity. Model that identity on macOS;
+        # the descriptors, opposite access modes and dup2 remain actual.
+        fstat=os.fstat
+        def linux_pipe_identity(fd):
+            current=fstat(fd)
+            if fd in ends:
+                fields=list(current);fields[1]=pipe_id[0]
+                return os.stat_result(fields)
+            return current
+        monkeypatch.setattr(os,'fstat',linux_pipe_identity)
     waitpid=os.waitpid
     def tracked_waitpid(pid,flags):
         result=waitpid(pid,flags)
@@ -6296,7 +6312,8 @@ def test_t1_close_ownership_cleanup(monkeypatch,tmp_path,repeat,site,timing,fail
         assert resource.getrlimit(resource.RLIMIT_FSIZE)==prior
         for fd in ends:
             if fd in sentinels:
-                assert os.fstat(fd).st_ino==(tmp_path/'sentinel').stat().st_ino
+                if timing=='pipe-reuse':assert os.fstat(fd).st_ino==pipe_id[0]
+                else:assert os.fstat(fd).st_ino==(tmp_path/'sentinel').stat().st_ino
             else:
                 with pytest.raises(OSError):os.fstat(fd)
         for pid in owned:

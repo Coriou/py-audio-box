@@ -508,8 +508,11 @@ def _run_bounded_maintenance(roots, scope, operation, *, _prewrite=None):
     read_fd,write_fd=os.pipe()
     # Single-threaded ownership: an interrupted close may already have released
     # the number. Only finish a failed-before-close when fstat still identifies
-    # this exact pipe; a released/reused number must never be closed again.
+    # this exact pipe end (including access mode); never close a reused number.
     identities={}
+    def pipe_identity(fd):
+        info=os.fstat(fd)
+        return (info.st_dev,info.st_ino,info.st_mode,fcntl.fcntl(fd,fcntl.F_GETFL)&os.O_ACCMODE)
     def close_owned(which):
         nonlocal read_fd,write_fd
         fd=read_fd if which=='read' else write_fd
@@ -518,15 +521,14 @@ def _run_bounded_maintenance(roots, scope, operation, *, _prewrite=None):
         if fd is None:return
         try:os.close(fd)
         except BaseException:
-            try:current=os.fstat(fd)
+            try:current=pipe_identity(fd)
             except OSError:pass
             else:
-                original=identities.get(fd)
-                if original is not None and (current.st_dev,current.st_ino,current.st_mode)==(original.st_dev,original.st_ino,original.st_mode):
+                if current==identities.get(fd):
                     os.close(fd)
             raise
     try:
-        identities={fd:os.fstat(fd) for fd in (read_fd,write_fd)}
+        identities={fd:pipe_identity(fd) for fd in (read_fd,write_fd)}
         pid=os.fork()
     except BaseException:
         try:close_owned('read')
