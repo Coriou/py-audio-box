@@ -750,3 +750,8 @@ Record failures and missing evidence; do not replace them with a successful late
 ## Runtime R2 provider rejection / no diagnostic receipt
 
 - pab-runtime-causal-reduction-r2-20261023 terminalfailed providerautomaticflag possiblecybersecurityrisk; expectedreportabsent. No newcausalresult/reproducer/fix or acceptance inferred. Do not treat as runtimefailure or retry to evadeproviderreview. Existingruntimeevidence/candidatepins remainunchanged; separatelyrunningAstra lifetimeadvice remains pending. No runtime/source/dependency modification authorized by this event.
+
+## Astra actionable lifetime findings / narrow owning correction
+
+- reviews/P1B23-RUNTIME-LIFETIME-ASTRA.md confirmsL1private startupreaders transactioncontextswithoutclose, L3Coreconstructorpartialcleanupgap, L2DispatcherfailurepublishedbeforeCoreclose deterministicASTwitness. These sourcehazards actionable; nativecrashcausalityUNRESOLVED, notSQLite/GC/machineverdict. V2UTF8/V3SHM remaindistinct.
+- Solr2diagnostic wasproviderrejected/noreport; no duplicate diagnostic retry. ProceedONLYordinarysource-lifetimecorrection withdeterministicREDs perAstra plus test-onlyunexpectedchildsignalreportingguard. Newowningscope recoveryreaderclose/Coreconstructor/Dispatcherfailurecleanup/focusedtests/handoff; no GC/runtime/dependency/cap/forkarchitecture changes. Independentreview beforeintegration; correctedlifetimealoneNOTnativeclearance orT2campaignGO.
