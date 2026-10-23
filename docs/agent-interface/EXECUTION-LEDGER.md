@@ -736,3 +736,8 @@ Record failures and missing evidence; do not replace them with a successful late
 
 - T2 candidate1d741cb328228e67f99a096e9d6a9c1acd1f01b6 frozen355f5194 t3-48d615de baseline3d764b8 unintegrated.1295Cmatrixdevelopment incl2realpipeABCwitnesses green; frozencombinedtarget1021pass2fail1skip interrupted1431.33s. UntouchedowningT1positivepredecessorchildfailureunknowncause and distinctnativeSIGSEGVPreparedSnapshot.__init__; earlierGC/jsonschemaSIGSEGVunexplained. FourB2/fullNOTRUN noacceptance.
 - DedicatedreadonlySol-low pab-t2-runtime-diagnosis-20261023 ownsboundedfreshrepro/baseline/nativefork/resourceevidence; no blindbroadretry/sourceworkaround. SeparateadversarialSol-low pab-t2-source-review-r1-20261023 auditsentireCdelta andnarrowproofs withvalidationNO-GOpendingruntime. Preserveallsourcepins/research/caps/qualificationlimits.
+
+## T2 independent source assessment / added runtime observations
+
+- reviews/P1B23-T2-r1-sol.md exact1d741cb3 boundedSOURCE/E1wiringGO, validationNO-GO. Fresh95pass2fail73.40s; realpipeABC+independentarchives/codec auditpasses. No Cblockingproductiondefectestablished.
+- NewV2 lotc_production_half_startup_twice[core-pending-receipt-complete] failsbeforehook with SQLiteCouldnotdecodeUTF8record, preservedpytest109. NewV3 exactstartup[unavailable-0] privatecopycapture FileNotFoundcore.sqlite-shm beforeexpectedhello refusal. CausesUNASSIGNED; overlapwithruntimeprobe disclosednotcausalproof. Addtoowningruntimefailure dossier alongsideunknownpredecessorchildfailure/nativeSIGSEGV; no broadretry/exceptionwaiver/integration. Dedicateddiagnosisstillowner, nextbriefmustincludeV1V2V3.
