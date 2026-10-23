@@ -1265,3 +1265,8 @@ Srecipec181818b3dd6768751e6eaa916260339a3cc051a docbabbc81a27fd82436d94703a7e26d
 ### 2026-10-23 — S263 recipe review one stability gap
 
 Independent r7 confirmsliteral263selection/staticlocaldata closure/acquisition-awarerestoration/preservation. F1OPEN recipe missingSAMEfdpost-readfstat stablemetadata/readlength verification. NarrowSOURCEONLY pab-s-recipe-stable-read-fix-r8-20261023 launched recipe+handoffonly; no construction/import/recipeexecutionauthorized. Hactualgate remainsstorageSTOP.
+
+
+### 2026-10-23 — S recipe same-fd stability successor
+
+Recipebd34b74cc0634c6e3b65cabb373ecbad3ccc2521 docs116404c9a86302dbf2cffca7524b0f99995570e4 s-source-recipe-f1-r8-20261023 deliveredcleanstatic-only. Independent pab-s-recipe-stable-read-review-r8-20261023 launched F1closure/priorrecipepreservation, crossopeninodeidentityexplicitlyunclaimed. No recipe/constructionruntimeauthorized; Hactualgate storageSTOPunchanged.
