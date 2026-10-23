@@ -887,3 +887,8 @@ Record failures and missing evidence; do not replace them with a successful late
 
 - Report COMBINED-BROAD-VALIDATION-20261023:stage1 original17+capB18PASS; fourB2stopped254PASS1FAIL at test_b22_correction_process_death_owned_restart[core-intent-commit] KeyErrorproof. Broadglobcanselect.bundle.intent.jsondescriptor aswellasfullintent; bothretained. No nativecause/productiondefectestablished; fullNOTRUN. Rawarchives/livehashesverified cleanupcomplete candidateunchanged.
 - Parentauthorizesfreshnarrowtest-only `pab-b22-intent-selection-fix-r1-20261023`: exactclosed32lowerhexfullintentfilenamegrammar+exactlyoneassertion, notfirstglob/dictionaryguess; preservecallerintentdeletion andALLchild/resume/count/archiveasserts. Bothparams+directedselectorcontrols frozenfocusedgateonly, freshindependentreviewbeforefourB2resumption. Nootherselector/source changes.
+
+## Canonical intent selector frozen / focused5PASS / review
+
+- Candidate6eb6cec51e51ec0142bbbee2ab665a6ed168ee2c frozen413b465b t3-7cbc0fbe reconstructscombinedbd29d757exactbase. Onlycanonicalintentselector/uniqueness/coexistence+3controls new; BOTHrestartparams+controls5PASS. Production/allotherbodiesunchanged perhandoff; livearchiveverifiedbeforecleanup.
+- FreshindependentSol-low `pab-b22-intent-selection-review-r1-20261023` source/fullnarrowdelta and5caseLinux review running. No broadcontinuationuntilreviewacceptance; nohistoricalfailurewaiver/integration.
