@@ -548,7 +548,7 @@ def container(mode, status):
                            'SecurityOpt': ['no-new-privileges'], 'RestartPolicy': {'Name': 'no'},
                            'LogConfig': {'Type': 'none'}},
             'Mounts': [{'Type': 'volume', 'Name': VOL, 'Destination': '/tmp', 'RW': mode == 'writer'}],
-            'State': {'Status': status, 'Running': False, 'ExitCode': 0, 'Pid': 0, 'OOMKilled': False}}
+            'State': {'Status': status, 'Running': False, 'ExitCode': 0, 'Pid': 0, 'OOMKilled': False, 'Error': ''}}
 
 
 def lifecycle_script(failure=None):
@@ -578,6 +578,7 @@ def lifecycle_script(failure=None):
         add(L.create_argv(name, VOL, IMAGE, mode, OWNER), CID[mode].encode())
         obj(['docker', 'inspect', CID[mode]], container(mode, 'created'))
         add(['docker', 'start', '--attach', CID[mode]], archive if mode == 'archive' else mapraw if mode == 'hash' else b'')
+        add(['docker', 'wait', CID[mode]], b'0\n')
         obj(['docker', 'inspect', CID[mode]], container(mode, 'exited'))
     for mode in ('writer', 'archive', 'hash'):
         obj(['docker', 'inspect', CID[mode]], container(mode, 'exited'))
@@ -594,12 +595,14 @@ def lifecycle_script(failure=None):
             else:
                 mode = next(m for m in CID if CID[m] in target or any(m in a for a in target if a.startswith('pab-p-one-')))
                 identifier = CID[mode] if 'start' in target or 'rm' in target else 'pab-p-one-' + OWNER['invocation'] + '-' + mode
-                obj(['docker', 'inspect', identifier], container(mode, 'exited'))
+                if 'start' not in target:
+                    obj(['docker', 'inspect', identifier], container(mode, 'exited'))
         elif kind == 'nonzero':
             seq[index][1]['rc'] = 1
             # mutation failure -> one exact discovery, no retry
             if target[:2] == ['docker', 'start']:
                 mode = next(m for m in CID if CID[m] in target)
+                add(['docker', 'wait', CID[mode]], b'0\n')
                 obj(['docker', 'inspect', CID[mode]], container(mode, 'exited'))
         elif kind == 'wrong-state':
             mode = next(m for m in CID if CID[m] in target)
@@ -697,7 +700,7 @@ def _():
     r = fresh('context')
     context = L.prepare_context(D.parents[1], r, L.Budget(), OWNER)
     recipe = (context / 'Dockerfile').read_text()
-    check('COPY --chown=10001:10001' in recipe and 'RUN chown 10001:10001 /tmp' in recipe,
+    check('COPY --chown=10001:10001' in recipe and 'RUN rm -rf -- /tmp && mkdir -m 0700 /tmp && chown 10001:10001 /tmp' in recipe,
           'ownership recipe')
     check('install' not in recipe and recipe.startswith('FROM ' + L.base_reference(OWNER) + '\n'), 'unexpected build operation')
     L.validate_recipe(context, OWNER, L.base_steps(OWNER))

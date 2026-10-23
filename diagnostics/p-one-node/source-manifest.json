@@ -1,5 +1,5 @@
 {
-  "base_recipe_contract": "r20 successor: invocation-owned local tag FROM; full BASE ID separately inspected; fresh tag journaled and retained; no overwrite/retry",
+  "base_recipe_contract": "r26: shared invocation-owned local FROM; build-time clean replacement ONLY dedicated image /tmp including hidden entries and symlink before seed COPY, numeric 0700/10001:10001 and seed 0600 with exact seed-only assertion; narrow image construction hygiene extends old metadata-only recipe; no packages/runtime initializer/volume cleanup/network/pull",
   "commit": "8d5aba5fc702719843d055b7d3f693c407deb0e9",
   "derivative_files": {
     "diagnostics/p-one-node/finite-driver.py": "bdf424d31c54bacdf2d8b9406ee41c521beb8d28b8503a00620c3ff29b705732",

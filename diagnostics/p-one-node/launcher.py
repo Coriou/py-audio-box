@@ -75,7 +75,7 @@ class Real:
     free = staticmethod(lambda path: shutil.disk_usage(path).free)
 
 
-def call(root, label, argv, budget, adapter, *, deadline, cap=F.META, cwd=None):
+def call(root, label, argv, budget, adapter, *, deadline, cap=F.META, cwd=None, completed_nonzero=False):
     """Streaming binary capture; no leader-liveness shortcut on group failure."""
     F.require(re.fullmatch('[a-z0-9-]+', label) is not None, 'STOP call label')
     F.require(adapter.clock() < deadline, 'STOP command budget')
@@ -85,6 +85,7 @@ def call(root, label, argv, budget, adapter, *, deadline, cap=F.META, cwd=None):
     streams = []
     captures = []
     counts = [0, 0]
+    digests = [hashlib.sha256(), hashlib.sha256()]
     result = {'state': 'PENDING', 'argv': argv, 'exit': None, 'group_kill_attempted': False,
               'leader_reaped': False, 'remote_completion': False}
     error = None
@@ -109,10 +110,13 @@ def call(root, label, argv, budget, adapter, *, deadline, cap=F.META, cwd=None):
                     selector.unregister(key.fileobj)
                     continue
                 index = key.data
-                F.require(counts[index] + len(chunk) <= (cap if index == 0 else F.META), 'STOP capture overflow')
-                budget.charge(len(chunk))
-                F.require(captures[index].write(chunk) == len(chunk), 'STOP short capture')
-                counts[index] += len(chunk)
+                limit = cap if index == 0 else F.META
+                prefix = chunk[:max(0, limit - counts[index])]
+                budget.charge(len(prefix))
+                F.require(captures[index].write(prefix) == len(prefix), 'STOP short capture')
+                digests[index].update(prefix)
+                counts[index] += len(prefix)
+                F.require(len(prefix) == len(chunk), 'STOP capture overflow')
         result['exit'] = proc.wait(timeout=min(1, max(0.001, deadline - adapter.clock())))
         result['leader_reaped'] = True
         result['state'] = 'COMPLETE'
@@ -149,6 +153,7 @@ def call(root, label, argv, budget, adapter, *, deadline, cap=F.META, cwd=None):
                 result['state'] = 'UNKNOWN'
                 result['close_failure'] = type(exc).__name__
         result['bytes'] = counts
+        result['sha256'] = [h.hexdigest() for h in digests]
         result['descriptors_closed'] = all(s.closed for s in streams + captures)
         try:
             publish(root / (label + '.complete.json'), result, budget)
@@ -157,7 +162,7 @@ def call(root, label, argv, budget, adapter, *, deadline, cap=F.META, cwd=None):
             raise
     if error is not None:
         raise RuntimeError('STOP command incomplete: ' + label) from error
-    F.require(result['exit'] == 0, 'STOP command nonzero: ' + label)
+    F.require(completed_nonzero or result['exit'] == 0, 'STOP command nonzero: ' + label)
     return F.read_regular(root / (label + '.stdout'), min(cap, F.META)) if cap <= F.META else None
 
 
@@ -230,7 +235,7 @@ def container_binding(obj, owner, name, volume, image, mode):
 def stopped(obj):
     s = obj['State']
     F.require(s['Status'] == 'exited' and not any(s.get(k) for k in
-              ('Running', 'Restarting', 'Paused', 'Dead', 'OOMKilled')) and s['Pid'] == 0,
+              ('Running', 'Restarting', 'Paused', 'Dead')) and s['Pid'] == 0,
               'UNKNOWN remote workload unresolved')
 
 
@@ -355,10 +360,18 @@ def base_steps(owner):
 
 
 def base_recipe(owner):
+    # Fixed build-time image hygiene only; never a mounted-volume initializer.
+    program = ('import os,stat; p="/tmp"; s=os.lstat(p); '
+               'assert stat.S_ISDIR(s.st_mode) and stat.S_IMODE(s.st_mode)==0o700 '
+               'and (s.st_uid,s.st_gid)==(10001,10001); '
+               'assert os.listdir(p)==["pab-seed"]; s=os.lstat(p+"/pab-seed"); '
+               'assert stat.S_ISREG(s.st_mode) and stat.S_IMODE(s.st_mode)==0o600 '
+               'and (s.st_uid,s.st_gid)==(10001,10001); '
+               'assert open(p+"/pab-seed","rb").read()==bytes.fromhex("' + SEED.hex() + '")')
     return ('FROM ' + base_reference(owner) + '\nWORKDIR /app\nCOPY --chown=10001:10001 source/ /app/\n'
-            'COPY --chown=10001:10001 seed /tmp/pab-seed\n'
-            'RUN chown 10001:10001 /tmp && chmod 0700 /tmp && chmod 0600 /tmp/pab-seed\n'
-            'USER 10001:10001\n')
+            'RUN rm -rf -- /tmp && mkdir -m 0700 /tmp && chown 10001:10001 /tmp\n'
+            'COPY --chown=10001:10001 --chmod=0600 seed /tmp/pab-seed\n'
+            "RUN python -I -B -c '" + program + "'\nUSER 10001:10001\n")
 
 
 def validate_recipe(context, owner, steps):
@@ -444,7 +457,7 @@ class Lifecycle:
                      'operations': self.operations, 'objects': self.objects,
                      'volume': self.volume, 'image': self.image, 'host_bytes': self.budget.used})
 
-    def dispatch(self, label, argv, *, mutation=False, cap=F.META, seconds=60):
+    def dispatch(self, label, argv, *, mutation=False, cap=F.META, seconds=60, completed_nonzero=False):
         self.calls += 1
         F.require(self.calls <= 64, 'STOP command count')
         if mutation:
@@ -455,10 +468,10 @@ class Lifecycle:
             self.journal()
         try:
             raw = call(self.root, label, argv, self.budget, self.a,
-                       deadline=min(self.phase_end, self.a.clock() + seconds), cap=cap)
+                       deadline=min(self.phase_end, self.a.clock() + seconds), cap=cap, completed_nonzero=completed_nonzero)
         except BaseException:
             # One discovery observation, never a second mutation. Negative is not absence proof.
-            if mutation:
+            if mutation and not label.endswith('-start'):
                 try:
                     query = ['docker', 'volume', 'inspect', self.volume] if label == 'volume-create' else \
                             ['docker', 'inspect', self.objects.get(label.split('-')[0], {}).get('id',
@@ -519,16 +532,34 @@ class Lifecycle:
         if mode == 'writer':
             F.require(self.a.clock() <= self.start + 120, 'STOP prestart admission deadline')
             self.phase_end = phase_end
+        # Protect wait, stopped inspection and local reap within the original phase.
+        end = self.phase_end
+        F.require(end - self.a.clock() > 12, 'STOP lifecycle inspection reserve')
+        self.phase_end = end - 12
         self.dispatch(mode + '-start', ['docker', 'start', '--attach', cid], mutation=True, cap=cap,
-                      seconds=1350 if mode == 'writer' else 60)
+                      seconds=1350 if mode == 'writer' else 60, completed_nonzero=True)
+        self.phase_end = end - 6
+        wait = self.dispatch(mode + '-wait', ['docker', 'wait', cid], seconds=4, completed_nonzero=True)
+        self.phase_end = end
         obj = self.inspect(mode + '-stopped', cid)
-        container_binding(obj, self.owner, name, self.volume, self.image, mode)
+        F.require(container_binding(obj, self.owner, name, self.volume, self.image, mode) == cid,
+                  'STOP stopped full ID mismatch')
         stopped(obj)
-        F.require(obj['State']['ExitCode'] == 0, 'STOP finite mode failed')
         self.objects[mode]['state'] = 'STOPPED'
+        self.objects[mode]['stopped'] = obj
         self.operations[mode + '-start']['state'] = 'TERMINAL'
         self.journal()
+        self.lifecycle_status(mode, wait, obj)
         return cid
+
+    def lifecycle_status(self, mode, wait, obj):
+        # Full inspect was durably captured and identity checked before any status gate.
+        results = [json.loads(F.read_regular(self.root / (mode + suffix + '.complete.json'), F.META))
+                   for suffix in ('-start', '-wait')]
+        F.require(all(r['state'] == 'COMPLETE' and r['exit'] == 0 for r in results)
+                  and wait == b'0\n' and obj['State']['ExitCode'] == 0
+                  and obj['State']['OOMKilled'] is False and obj['State']['Error'] == '',
+                  'STOP lifecycle status: ' + mode)
 
     def retention(self):
         F.require(self.objects.get('writer', {}).get('state') == 'STOPPED', 'STOP no concurrent reader')

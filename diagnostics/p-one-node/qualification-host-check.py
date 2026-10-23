@@ -1,3 +1,4 @@
+import shutil
 """Frozen <=12 cases, <=9s each, <=120s HOST; exact fake externals only."""
 import ast
 import hashlib
@@ -95,8 +96,23 @@ def actual_initialization():
     r.chmod(0o755)
     reject(lambda: F.initialized(r, uid=os.getuid(), gid=r.stat().st_gid))
     r.chmod(0o700)
-    (r / 'extra').write_bytes(b'no')
-    reject(lambda: F.initialized(r, uid=os.getuid(), gid=r.stat().st_gid))
+    # HOST model of inherited ordinary/hidden junk and symlink replacement.
+    for kind in ('ordinary', 'hidden', 'symlink'):
+        tree = fresh('inherited-' + kind)
+        if kind == 'symlink':
+            tree.rmdir()
+            tree.symlink_to(r, target_is_directory=True)
+        else:
+            (tree / ('junk' if kind == 'ordinary' else '.junk')).write_bytes(b'old')
+        if tree.is_symlink():
+            tree.unlink()
+        else:
+            shutil.rmtree(tree)
+        tree.mkdir(mode=0o700)
+        with F.private(tree / 'pab-seed') as f: f.write(F.SEED)
+        F.initialized(tree, uid=os.getuid(), gid=tree.stat().st_gid)
+        (tree / '.residual').write_bytes(b'no')
+        reject(lambda: F.initialized(tree, uid=os.getuid(), gid=tree.stat().st_gid))
 
 
 @case
@@ -136,6 +152,9 @@ def actual_context():
     L.validate_recipe(c, O, proposal['prebuild'])
     (c / 'Dockerfile').write_text(L.base_recipe(O).replace(L.base_reference(O), L.BASE))
     reject(lambda: L.validate_recipe(c, O, proposal['prebuild']))
+    check((c / 'Dockerfile').read_text().replace(L.BASE, L.base_reference(O)) == recipe, 'both shared recipes')
+    check(recipe.index('RUN rm -rf -- /tmp') < recipe.index('seed /tmp/pab-seed'), 'clean before seed')
+    check('bytes.fromhex' in recipe and '--chmod=0600' in recipe, 'exact seed build assertion')
     check('COPY --chown=10001:10001' in recipe and 'USER 10001:10001' in recipe, 'ownership recipe')
     check(PLAN['profile'] == Q.PROFILE and PLAN['build'][2:4] == ['--pull=false', '--network=none'], 'frozen plan')
     OBS.append(dict(source_files=193, derivative_files=len(manifest['derivative_files']), context_charged=b.used))
@@ -217,20 +236,22 @@ def script(r, failure=None):
         add(Q.dummy_create(name, VOL, IMAGE, O) if mode == 'writer' else L.create_argv(name, VOL, IMAGE, mode, O), CID[mode].encode())
         obj(['docker', 'inspect', CID[mode]], container(mode, 'created'))
         if mode == 'writer':
-            add(['docker', 'start', CID[mode]], CID[mode].encode())
+            add(['docker', 'start', '--attach', CID[mode]], b'')
             add(['docker', 'wait', CID[mode]], b'0\n')
         else:
             add(['docker', 'start', '--attach', CID[mode]], archive if mode == 'archive' else mapraw)
+        if mode != 'writer':
+            add(['docker', 'wait', CID[mode]], b'0\n')
         obj(['docker', 'inspect', CID[mode]], container(mode, 'exited'))
     for mode in ('writer', 'archive', 'hash'):
         obj(['docker', 'inspect', CID[mode]], container(mode, 'exited'))
         add(['docker', 'rm', CID[mode]])
         add(['docker', 'ps', '-aq', '--no-trunc', '--filter', 'id=' + CID[mode]])
     if failure:
-        target = ['docker', 'start', '--attach', CID['archive']] if failure == 'export' else ['docker', 'start', CID['writer']]
+        target = ['docker', 'start', '--attach', CID['archive']] if failure == 'export' else ['docker', 'start', '--attach', CID['writer']]
         index = next(i for i, (a, _) in enumerate(seq) if a == target)
         seq = seq[:index] + [(target, OSError('FAKE lost acknowledgement'))]
-        obj(['docker', 'inspect', CID['archive'] if failure == 'export' else CID['writer']], container('archive' if failure == 'export' else 'writer', 'exited'))
+
     return seq, plan
 
 
@@ -283,7 +304,7 @@ def stopped_export_failure():
 def lost_start_ack():
     r, q, fake, ok = full('lost-start', 'start')
     check(not ok and q.operations['writer-start']['state'] == 'SENT-UNKNOWN', 'lost ack preserved')
-    check(len([a for a in fake.calls if a == ['docker', 'start', CID['writer']]]) == 1, 'no retry')
+    check(len([a for a in fake.calls if a == ['docker', 'start', '--attach', CID['writer']]]) == 1, 'no retry')
     check('archive' not in q.objects and q.lane.exists(), 'no readers on uncertainty')
 
 
@@ -402,15 +423,90 @@ def recipe_adapter_failures():
         OBS.append(dict(failure=failure, calls=fake.calls, operations=q.operations))
 
 
+@case
+def affected_product_transport():
+    for name, fn in H.CASES:
+        if name[:3] in ('04-', '05-', '06-', '07-', '09-', '23-'):
+            fn()
+
+
+@case
+def lifecycle_failures():
+    for product in (False, True):
+        for failure in ('attach', 'status', 'wait-cli', 'inspect', 'timeout', 'overflow', 'lost', 'deadline', 'inspect-deadline', 'oom', 'daemon-error', 'wrong-id'):
+            r = root(('product-' if product else 'dummy-') + failure)
+            seq, plan = script(r)
+            if product:
+                seq = H.lifecycle_script()
+            target = ['docker', 'start', '--attach', CID['writer']]
+            i = next(i for i, (a, _) in enumerate(seq) if a == target)
+            seq = seq[i-3:i+4]  # absence, create, binding, attach, wait, inspect, next absence
+            seq = seq[:6]
+            if failure == 'attach':
+                seq[3][1].update(raw=b'out\x00', err=b'trace\xff', rc=7)
+            if failure == 'status':
+                seq[4][1]['raw'] = b'1\n'
+                obj = json.loads(seq[5][1]['raw'])[0]
+                obj['State']['ExitCode'] = 1
+                seq[5][1]['raw'] = L.encode([obj])
+            if failure in ('oom', 'daemon-error'):
+                obj = json.loads(seq[5][1]['raw'])[0]
+                obj['State']['OOMKilled' if failure == 'oom' else 'Error'] = True if failure == 'oom' else 'daemon failure'
+                seq[5][1]['raw'] = L.encode([obj])
+            if failure == 'wrong-id':
+                obj = json.loads(seq[5][1]['raw'])[0]
+                obj['Id'] = 'f' * 64
+                seq[5][1]['raw'] = L.encode([obj])
+            if failure == 'wait-cli': seq[4][1].update(raw=b'wait-prefix', err=b'wait-error', rc=9)
+            if failure == 'inspect': seq[5][1]['rc'] = 1
+            if failure in ('timeout', 'overflow', 'lost'):
+                seq = seq[:4]
+                if failure == 'lost': seq[3] = (target, OSError('lost'))
+                elif failure == 'timeout': seq[3][1].update(raw=b'prefix', wait_failure=True)
+                else: seq[3][1].update(raw=b'x' * (F.META + 1))
+            if failure == 'deadline': seq = seq[:3]
+            if failure == 'inspect-deadline': seq = seq[:5]
+            fake = Fake(seq, r)
+            q = (L.Lifecycle(r, r / 'lane', IMAGE, O, fake) if product else Q.Qualification(r, r / 'lane', O, fake))
+            q.image = IMAGE
+            if failure in ('deadline', 'inspect-deadline'):
+                original = q.dispatch
+                def dispatch(label, argv, **kw):
+                    result = original(label, argv, **kw)
+                    if label == ('writer-binding' if failure == 'deadline' else 'writer-wait'):
+                        fake.t = (389 if not product else 1469) if failure == 'deadline' else (1000 if not product else 2000)
+                    return result
+                q.dispatch = dispatch
+            reject(lambda: q.run_container('writer', 1470) if product else q.dummy())
+            fake.done()
+            check(not any(a[:2] == ['docker', 'rm'] or 'archive' in str(a) for a in fake.calls), 'no downstream')
+            if failure in ('attach', 'status', 'wait-cli', 'oom', 'daemon-error'):
+                check(q.objects['writer']['state'] == 'STOPPED', 'stop recorded before rejection')
+                check(fake.calls[-1] == ['docker', 'inspect', CID['writer']], 'reserved inspect last')
+            else:
+                check(q.objects['writer']['state'] == 'CREATED', 'no fabricated stop')
+            if failure == 'attach':
+                receipt = json.loads((r / 'writer-start.complete.json').read_bytes())
+                check(receipt['sha256'] == [hashlib.sha256(b'out\x00').hexdigest(), hashlib.sha256(b'trace\xff').hexdigest()], 'stream hashes')
+                check((r / 'writer-start.stdout').read_bytes() == b'out\x00' and
+                      (r / 'writer-start.stderr').read_bytes() == b'trace\xff', 'exact nonzero streams')
+            if failure in ('timeout', 'overflow', 'lost'):
+                receipt = json.loads((r / 'writer-start.complete.json').read_bytes())
+                check(receipt['state'] == 'UNKNOWN' and not receipt['remote_completion'], 'honest unknown')
+                check(len(fake.calls) == 4, 'no unknown reconciliation/retry')
+                if failure != 'lost': check((r / 'writer-start.stdout').stat().st_size > 0, 'prefix retained')
+
+
 def main():
     global ROOT
     F.enabled()
     os.umask(0o077)
-    check(len(CASES) == 13, 'frozen matrix13')
+    check(len(CASES) == 15, 'frozen matrix13')
     selected = CASES
     if sys.argv[1:]:
-        check(sys.argv[1:] == ['--recipe-repair'], 'fixed HOST selection')
-        selected = [actual_context, recipe_adapter_failures, complete_success]
+        check(sys.argv[1:] in (['--recipe-repair'], ['--r26']), 'fixed HOST selection')
+        selected = ([actual_initialization, actual_context, lifecycle_failures, affected_product_transport, complete_success, lost_start_ack, private_capture_and_failure]
+                    if sys.argv[1:] == ['--r26'] else [actual_context, recipe_adapter_failures, complete_success])
     ROOT = Path(tempfile.mkdtemp(prefix='pab-dummy-HOST-', dir='/private/tmp'))
     ROOT.chmod(0o700)
     H.ROOT = ROOT
@@ -441,7 +537,7 @@ def main():
     for p in ROOT.rglob('*'):
         check(stat.S_IMODE(p.stat().st_mode) == (0o700 if p.is_dir() else 0o600), 'private evidence')
     receipt = dict(tier='HOST ONLY / FAKE EXTERNALS / NO PRODUCT CLAIM', hashes=hashes,
-                   maximum_cases=13, maximum_case_seconds=9, maximum_seconds=120,
+                   maximum_cases=15, maximum_case_seconds=9, maximum_seconds=120,
                    seconds=time.monotonic() - start, cases=results, observations=OBS,
                    fd_observations=H.OBSERVATIONS, actual_Docker_product_SQLite_pytest_network_Git_mutations=0,
                    result='PASS' if len(results) == len(selected) and all(r['result'] == 'PASS' for r in results) else 'RED')

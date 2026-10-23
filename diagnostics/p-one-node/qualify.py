@@ -21,10 +21,10 @@ DOCUMENTATION = 'fd0bc585d897818c66f3ae62d38c6a8eeda769b3'
 PROFILE = dict(total_seconds=600, build_seconds=300, writer_seconds=30,
                reader_seconds=60, readers=2, builds=1, writers=1, dummy_bytes=1048576,
                host_bytes=L.HOST, product_dispatch=False, physical_quota=False)
-PINS = {'launcher.py': '0ded93a96a7136112c163d546cb269d6fdcbff2b06e8e87fecc5db5e30616c29',
+PINS = {'launcher.py': 'dbc5d32afb11bfc4254deaa6945f94e8da7b5e6f65b20d0b4b36eaac2267eb7d',
         'finite-driver.py': 'bdf424d31c54bacdf2d8b9406ee41c521beb8d28b8503a00620c3ff29b705732',
-        'host-check.py': 'a78b2b0ba03dc6bc64bf42be5c1494b4dd94d38bb1aa37bc0c996cbc986f582d',
-        'source-manifest.json': '1d97c4f899de7a7cafe2d2137c917d7af6c9a17c037022ee93a478bd19ce219a'}
+        'host-check.py': '1b80c3d500dd58fdc0892aaaffc58eb570915965062ce0b0aa17e85f78c0fff0',
+        'source-manifest.json': '63773d57d7f1f255b3dee55be1687f5975a4bedcff872bb47dd14cb8a6fa2c94'}
 
 
 def source_pins():
@@ -91,7 +91,7 @@ def prepare(root, owner, budget):
                        'pab.owner=' + owner['token'], '--label', 'pab.invocation=' + owner['invocation'],
                        '--iidfile', str(root / 'image.id'), str(context)],
                 dummy_create=dummy_create(name, volume, image, owner),
-                dummy_start=['docker', 'start', '<FULL-WRITER-ID>'],
+                dummy_start=['docker', 'start', '--attach', '<FULL-WRITER-ID>'],
                 detached_wait=['docker', 'wait', '<FULL-WRITER-ID>'],
                 readers={m: L.create_argv('pab-p-one-' + owner['invocation'] + '-' + m,
                                           volume, image, m, owner) for m in ('archive', 'hash')},
@@ -210,22 +210,28 @@ class Qualification(L.Lifecycle):
         self.objects['writer'] = dict(id=cid, name=name, state='CREATED')
         self.journal()
         obj = self.inspect('writer-binding', cid)
-        dummy_binding(obj, self.owner, name, self.volume, self.image)
+        F.require(dummy_binding(obj, self.owner, name, self.volume, self.image) == cid,
+                  'STOP dummy full ID mismatch')
         F.require(obj['State']['Status'] == 'created' and not obj['State']['Running'], 'STOP dummy prestart')
-        self.dispatch('writer-start', ['docker', 'start', cid], mutation=True, seconds=10)
-        # start is detached. wait is a separate read-only CLI, not writer transport.
-        L.publish(self.root / 'detached-wait.json', dict(start_argv=['docker', 'start', cid],
+        end = self.phase_end
+        F.require(end - self.a.clock() > 12, 'STOP dummy inspection reserve')
+        self.phase_end = end - 12
+        self.dispatch('writer-start', ['docker', 'start', '--attach', cid], mutation=True,
+                      seconds=35, completed_nonzero=True)
+        L.publish(self.root / 'detached-wait.json', dict(start_argv=['docker', 'start', '--attach', cid],
                   wait_argv=['docker', 'wait', cid], independent_remote_alarm_seconds=30,
                   local_wait_cannot_extend_remote_deadline=True, actual_timing_unqualified=True), self.budget)
-        wait = self.dispatch('writer-wait', ['docker', 'wait', cid], seconds=40)
-        F.require(wait.strip() == b'0', 'STOP dummy wait status')
+        self.phase_end = end - 6
+        wait = self.dispatch('writer-wait', ['docker', 'wait', cid], seconds=4, completed_nonzero=True)
+        self.phase_end = end
         obj = self.inspect('writer-stopped', cid)
-        dummy_binding(obj, self.owner, name, self.volume, self.image)
+        F.require(dummy_binding(obj, self.owner, name, self.volume, self.image) == cid,
+                  'STOP dummy full ID mismatch')
         L.stopped(obj)
-        F.require(obj['State']['ExitCode'] == 0, 'STOP dummy exit')
-        self.objects['writer']['state'] = 'STOPPED'
+        self.objects['writer'].update(state='STOPPED', stopped=obj)
         self.operations['writer-start']['state'] = 'TERMINAL'
         self.journal()
+        self.lifecycle_status('writer', wait, obj)
     def retention(self):
         F.require(self.objects.get('writer', {}).get('state') == 'STOPPED', 'STOP concurrent reader')
         end = min(self.start + 510, self.a.clock() + 120)
@@ -312,7 +318,7 @@ def validate_plan(root, plan):
     F.require(plan['build'] == expected_build and plan['base'] == L.BASE, 'STOP fixed build argv')
     volume = 'pab-p-one-' + owner['invocation']
     F.require(plan['dummy_create'] == dummy_create(volume + '-writer', volume, '<BUILD-IIDFILE>', owner)
-              and plan['dummy_start'] == ['docker', 'start', '<FULL-WRITER-ID>']
+              and plan['dummy_start'] == ['docker', 'start', '--attach', '<FULL-WRITER-ID>']
               and plan['detached_wait'] == ['docker', 'wait', '<FULL-WRITER-ID>']
               and plan['readers'] == {m: L.create_argv(volume + '-' + m, volume, '<BUILD-IIDFILE>', m, owner)
                                       for m in ('archive', 'hash')}, 'STOP fixed lifecycle argv')
