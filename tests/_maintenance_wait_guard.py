@@ -487,6 +487,89 @@ class BlockedPipeWitness_B:
         return values[0]
 
     @staticmethod
+    def code_projection(code):
+        """Closed stored-code schema, including typed recursive constants.
+
+        No method/introspection inventory, ignored constants or line-only proof.
+        The bytecode and exception/position tables also close every outer site.
+        """
+        import types
+        def constant(value):
+            kind = type(value)
+            if kind is types.CodeType:
+                return (kind, BlockedPipeWitness_B.code_projection(value))
+            if kind is tuple:
+                return (kind, tuple(constant(v) for v in value))
+            if kind is frozenset:
+                return (kind, frozenset(constant(v) for v in value))
+            if kind not in (type(None), bool, int, float, complex, str, bytes, type(Ellipsis)):
+                raise ValueError('B unsupported code constant')
+            return (kind, value)
+        return (code.co_argcount, code.co_posonlyargcount, code.co_kwonlyargcount,
+            code.co_nlocals, code.co_stacksize, code.co_flags, code.co_code,
+            tuple(constant(v) for v in code.co_consts), code.co_names,
+            code.co_varnames, code.co_freevars, code.co_cellvars, code.co_filename,
+            code.co_name, code.co_qualname, code.co_firstlineno,
+            code.co_linetable, code.co_exceptiontable)
+
+    @classmethod
+    def target_source(cls, function, node):
+        """Independent frozen source authority, then actual code identity binding.
+
+        Reproduce pytest's AST transform before projecting the outer code; never
+        equate a rewritten item with its plain compile or erase assertion sites.
+        Preserve full module compilation context, including compiler globals.
+        Neither the target nor any compiled module is executed.
+        """
+        import ast, dis, hashlib
+        source_path = Path(__file__).parent / 'service' / 'test_recovery.py'
+        filename = function.__code__.co_filename
+        if Path(filename).resolve() != source_path.resolve():
+            raise ValueError('B wrong target source')
+        data = source_path.read_bytes()
+        if hashlib.sha256(data).hexdigest() != 'c236e4045a0c35836fc269fd5938c053ab3e97f1f2682f023470afe3a68dd211':
+            raise ValueError('B changed target source')
+        tree = ast.parse(data, filename=filename)
+        targets = [n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name == cls.name]
+        if len(targets) != 1: raise ValueError('B ambiguous target source')
+        target = targets[0]
+        plain = compile(data, filename, 'exec', dont_inherit=True)
+        original = cls.nested(plain, cls.name)
+        # AST parent roles distinguish the two same-named lambda code objects.
+        clock_call = [n for n in ast.walk(target) if isinstance(n, ast.Call) and
+            ast.unparse(n.func) == 'SimpleNamespace']
+        operation_call = [n for n in ast.walk(target) if isinstance(n, ast.Call) and
+            ast.unparse(n.func) == 'recovery._run_bounded_maintenance']
+        if len(clock_call) != 1 or len(operation_call) != 1:
+            raise ValueError('B ambiguous lambda parent')
+        clocks = [k.value for k in clock_call[0].keywords if k.arg == 'monotonic']
+        operations = operation_call[0].args[2:]
+        roles = {}
+        for role, nodes in (('clock', clocks), ('operation', operations)):
+            if len(nodes) != 1 or not isinstance(nodes[0], ast.Lambda):
+                raise ValueError('B missing lambda role')
+            n = nodes[0]
+            span = (n.lineno, n.end_lineno, n.col_offset, n.end_col_offset)
+            codes = [i.argval for i in dis.get_instructions(original) if
+                i.opname == 'LOAD_CONST' and isinstance(i.argval, type(original)) and
+                i.argval.co_name == '<lambda>' and tuple(i.positions) == span]
+            if len(codes) != 1: raise ValueError('B ambiguous lambda code')
+            roles[role] = codes[0]
+        mode = node.config.getoption('assertmode')
+        if mode == 'rewrite':
+            from _pytest.assertion.rewrite import rewrite_asserts
+            rewritten = ast.parse(data, filename=filename)
+            rewrite_asserts(rewritten, data, filename, node.config)
+            expected = cls.nested(compile(rewritten, filename, 'exec', dont_inherit=True), cls.name)
+        elif mode == 'plain':
+            expected = original
+        else:
+            raise ValueError('B unknown assertion mode')
+        if cls.code_projection(function.__code__) != cls.code_projection(expected):
+            raise ValueError('B changed collected target code')
+        return plain, original, roles, tree
+
+    @staticmethod
     def sites(code, expression, opname, tree=None):
         import ast, dis
         tree = ast.parse(Path(code.co_filename).read_bytes()) if tree is None else tree
@@ -548,11 +631,8 @@ class BlockedPipeWitness_B:
                     node.originalname == self.name and node.nodeid == self.nodeid and
                     getattr(getattr(node, 'callspec', None), 'params', {}) == {} and
                     caller.f_code is function.__code__ and function.__globals__ is caller.f_globals): return
-            # Pytest rewrites this function's original assertions. Resolve its
-            # actual collected code constants; plain compile equality would
-            # incorrectly reject that real item. No test code is executed here.
+            source, target_code, roles, target_tree = self.target_source(function, node)
             model = function.__globals__.get('_t1_pipe_model')
-            source = compile(Path(function.__code__.co_filename).read_bytes(), function.__code__.co_filename, 'exec')
             if not callable(model) or self.nested(source, '_t1_pipe_model') != model.__code__: return
             local = caller.f_locals
             self.observed = local['observed']; self.ready = local['ready']
@@ -569,9 +649,14 @@ class BlockedPipeWitness_B:
             if not all(type(f) is types.FunctionType for f in
                     (self.observed, self.ready, self.blocked, self.clock, operation, self.model_fork, self.limit)): return
             for name, actual in (('observed', self.observed), ('ready', self.ready), ('select_blocked', self.blocked)):
-                if actual.__code__ is not self.nested(function.__code__, name) or actual.__globals__ is not function.__globals__: return
+                if (actual.__code__ is not self.nested(function.__code__, name) or
+                        self.code_projection(actual.__code__) != self.code_projection(self.nested(target_code, name)) or
+                        actual.__globals__ is not function.__globals__): return
             lambdas = [c for c in function.__code__.co_consts if isinstance(c, types.CodeType) and c.co_name == '<lambda>']
-            if len(lambdas) != 2 or operation.__code__ not in lambdas or self.clock.__code__ not in lambdas or operation.__code__ is self.clock.__code__: return
+            if (len(lambdas) != 2 or not any(operation.__code__ is c for c in lambdas) or
+                    not any(self.clock.__code__ is c for c in lambdas) or operation.__code__ is self.clock.__code__): return
+            for role, actual in (('clock', self.clock), ('operation', operation)):
+                if self.code_projection(actual.__code__) != self.code_projection(roles[role]): return
             if (set(self.closure(self.observed)) != {'write', 'marker'} or
                     self.closure(self.observed).get('write') is not writer or
                     id(self.closure(self.observed).get('marker')) != self.marker_id or local['write'] is not writer or
@@ -615,7 +700,6 @@ class BlockedPipeWitness_B:
             if (self.nested(runner_module, '_run_bounded_maintenance') != self.runner or
                     self.nested(runner_module, '_maintenance_result_frame') != self.frame_result.__code__ or
                     run.__globals__ is not recovery.__dict__ or self.frame_result.__globals__ is not recovery.__dict__): return
-            target_tree = ast.parse(Path(function.__code__.co_filename).read_bytes())
             self.ready_sites = self.sites(self.runner, 'select.select([read_fd], [], [], remaining)', 'CALL', runner_tree)
             if not isinstance(self.kill, types.BuiltinFunctionType): return
             self.reap = self.nested(self.runner, 'reap_owned')
