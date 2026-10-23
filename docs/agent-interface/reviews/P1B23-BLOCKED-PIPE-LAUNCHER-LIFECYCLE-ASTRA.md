@@ -1,0 +1,105 @@
+# Blocked-pipe launcher lifecycle — bounded Astra design decision
+
+2026-10-23. **Select persistent, hard-bounded Docker proof storage and a finite server-side PID1 driver. Current launcher remains SOURCE NO-GO; no execution authority.** Implement this one path, then obtain fresh independent Sol source review. Do not iterate diagnoses to discover launcher defects.
+
+## Authority and source basis
+
+This is the requested ONE bounded SOURCEONLY adviser decision. Sole write is this root report; no commit. Candidate read at `/Users/ben/.txcode/worktrees/py-audio-box/p-one-node-launcher-20261023`, clean documentation HEAD `f93b7fef6cc461b756cd9e13ff14e88e243359a4`, executable freeze `e941c7aee7f53348905659904b8299d5500d1250`. The freeze-to-HEAD changed path is only `diagnostics/p-one-node/HANDOFF.md`.
+
+Read FULL root `P1B23-BLOCKED-PIPE-LAUNCHER-SOURCE-r1-sol.md`, `P1B23-BLOCKED-PIPE-OBSERVER-SOURCE-r1-sol.md`, and `P1B23-P-R5-ACTUAL-RECEIPT-AUDIT-r1-sol.md`. Read the current original brief verbatim in candidate HANDOFF, launcher preparation authority, FREEZE, entire launcher and entry, and the prior retained `/tmp/pab-s-final-one-node-r2-20261023/run.py` as source. Historical composite searches were supporting context, not a fresh complete audit of their appendices. No prior finding is waived. Scoped AGENTS searches/ancestor checks found no applicable instructions; a broad search was stopped, not represented as exhaustive. Memory search supplied no relevant launcher evidence.
+
+Only source/text/Git and host process inventory/termination of this review's overbroad read-only search were used. No candidate imports, pytest/collection, Docker calls/builds, SQLite opens, runtime/native probes, implementation fixes, delegation, push, integration or resource cleanup. Historical captures, candidate and root STT evidence remain untouched. No runtime resource was acquired.
+
+The prior driver is useful evidence for ownership labels, manifest/runtime identity checks, binary sentinel, safe archive/hash comparison and exact receipt retention. It also has local CLI timeouts, finite sleeping PID1, tmpfs HOLD and a retention retry. **Do not copy its lifecycle or retry.** Its successful nominal export is not proof of exceptional-path preservation.
+
+## Decision and explicit narrow adjustment
+
+Finite PID1 + volatile tmpfs + preservation after arbitrary export failure cannot all hold. A longer sleep merely moves evidence loss. Replace the diagnostic `/tmp` tmpfs with **one fresh Docker-managed persistent proof volume, hard limited to 1 GiB including lifecycle reserve**, mounted writable only by this invocation. Keep read-only root, CPU2, RAM2GiB, PID256, network none, UID/GID10001, cap-drop ALL and no-new-privileges. No bind/host mount, Docker socket, devices, secret, port or external service enters a container. No restart policy, auto-remove or `rm -v`.
+
+This expressly revises only storage medium, the old rejection of every volume mount, and the requirement to export before PID1 stops. Export instead reads the preserved, quiescent proof volume after the writer stops. It does not revise product acceptance, inner deadlines, clock, result/record caps or the outer1800s execution bound. Disk-backed `/tmp` can change timing and failure behavior: a future result qualifies only that declared environment and cannot explain historical PID229 by retroactive identity. Missing elapsed/assertion proof remains missing.
+
+**Hard admission prerequisite:** freeze one actual existing Docker-managed quota-capable storage backend and its exact supported provisioning/inspection contract before runtime approval. It must enforce an aggregate 1 GiB allocation ceiling, bounded inode allocation (at most200000), persistence after stop, and UID10001 usability without a privileged setup container, host bind, new service, plugin installation or daemon reconfiguration. A volume label, a free-space check, apparent `size` option, sparse-file length, application write counter or default unbounded local volume is not this guarantee. Backend metadata overhead must have a documented finite reservation included in admission accounting. There is no evidence in the inspected sources that this capability currently exists. If unavailable, report **STORAGE-CAPABILITY STOP before diagnosis**; do not substitute unbounded storage or silently raise caps. This is a concrete design dependency, not a claim that Docker universally supports volume quotas.
+
+Retain the stopped proof volume on both success and failure of the automated invocation. Retention duration is deliberately not timed: bytes and object count are bounded, with no resident workload. Expiry must not delete unexported proof. A hold can therefore block the lane indefinitely without consuming indefinite CPU/RAM. Later disposal requires a separate exact-owned action after independent receipt review; this launcher never deletes a volume. This also avoids pretending volume names have Docker container-style immutable IDs.
+
+## Small implementation surface and L1
+
+Keep changes within `diagnostics/p-one-node`: amend launcher/FREEZE/HANDOFF and add one task-specific finite driver with fixed writer/export/hash modes. Do not create a general orchestration framework. Keep entry, observer, guard, target, production, dependencies and attestors byte-identical. Extend the derivative manifest to cover the new driver, recording application observer pin and launcher freeze separately.
+
+Preserve private host staging0700/files0600. Generate numeric `COPY --chown=10001:10001 source/ /app/`, including manifest and all nested directories; explicitly ensure `/app` is traversable by10001. Container root remains read-only, so ownership does not allow runtime source edits. Volume initialization must produce a private UID10001-owned proof root and empty `/tmp` contents with the declared permissions, using the frozen image/volume initialization contract, never host chmod/chown or privileged repair. Construction checks must verify this contract. No install/pull; retain the exact inspected base `sha256:69bd9216869374d87fa14702ef380b4124a12f03f5f88a2681957ea81ee274cb` and source-only derivative recipe.
+
+## Server-side finite execution and L3
+
+Replace sleeping PID1 plus host `docker exec pytest` with the frozen driver as PID1. Its sole writer mode performs prechecks, launches exactly once the unchanged entry as its child, waits, performs postchecks, publishes terminal state and exits. The entry's actual command/cwd/env and singleton hook remain unchanged:
+
+```
+cwd=/app
+PYTHONDONTWRITEBYTECODE=1
+PYTHONPATH=/app/diagnostics/p-one-node
+PAB_MAINTENANCE_WAIT_LOG=/tmp/waits.jsonl
+python /app/diagnostics/p-one-node/entry.py --one-node
+```
+
+The child still invokes only `tests/service/test_recovery.py::test_t1_real_blocked_pipe_backpressure_deadline` with `-q -x --tb=short`. No collection-only run. A driver process outside pytest must not install hooks into the diagnostic or replace its reaper. Preserve pre/post Linux CPython3.14.8, all42 locked versions, SQLite3.40.1, exact package/source/linked-library identity and source hashes. A postcheck failure preserves proof and STOP, never acceptance.
+
+PID1 uses its own monotonic deadline and bounded child operations, independent of host attachment. The child gets the existing1200s outer test allowance, not a changed inner deadline. On expiry/error, issue a single TERM then KILL escalation within the reserved30s quiescence interval to owned descendants; reap them. Normal completion also requires no residual descendants. Do not certify quiescence from parent return or process-group signalling alone: forked/reparented descendants must be accounted for inside the private PID namespace. Require terminal child waits, no remaining workload processes and exact stopped-container inspection. A residual/uninterruptible process, failed reap, missing terminal receipt or OOM is STOP/UNKNOWN. PID1 exits at its hard phase deadline even if terminal cleanup cannot be certified; never wait forever for waitpid. Kernel/daemon failure can defeat wall-clock completion, so the honest result is retained uncertainty, not an absolute OS guarantee.
+
+No remote writer starts through `docker exec`. No second start after a lost response. Host CLI timeout records transport uncertainty only; it does not certify remote cancellation. Normal usable completion requires a token-bound driver terminal receipt plus daemon state showing the exact container stopped, with no restart/removal pending. Until then, do not export or start a helper. If uncertainty survives the reserved reconciliation window, leave volume/container/lane HOLD and stop local work.
+
+Use fixed phase ceilings totaling1800s, measured from host invocation start:
+
+| Phase | Maximum | Latest cumulative boundary |
+| --- | ---: | ---: |
+| Acquisition, inventory, create/start and admission transport |120s|120s|
+| Remote pre-import identity/source checks |60s|180s|
+| ONE entry child |1200s|1380s|
+| Descendant termination/reaping |30s|1410s|
+| Remote postchecks, terminal publication and writer exit |60s|1470s|
+| Retention helpers, transfer and host verification |180s|1650s|
+| Exact-resource reconciliation/cleanup or HOLD inventory |120s|1770s|
+| Final host publication |30s|1800s|
+
+Start only with enough remaining budget for the complete remaining schedule; no borrowing from cleanup/publication. Driver's own maximum is1350s from start (60+1200+30+60), with individual phase limits. Earlier failure advances directly to bounded quiescence/retention or HOLD. Setup overrun never launches pytest. Image construction is separately prepared and reviewed before this invocation, not charged invisibly after test admission. Its own finite construction-only plan is described below; no runtime build in the ONE driver.
+
+A small host supervisor owns the deadline and precreated journal, while bounded worker subprocesses perform Git, copying, parsing/hashing and Docker calls. It can stop local workers and publish UNKNOWN; it must never equate that with remote completion. All output readers enforce limits while streaming. Do not use unbounded check_output/read_bytes/getmembers before checking size. Ordinary exceptions, BaseException, signals, CLI timeout and worker failure converge on the same inventory path. Avoid assertions in finally that abort later publication.
+
+## Persistent proof, export and L2
+
+Reserve and preallocate a fixed1MiB lifecycle record area within the1GiB volume before starting the child; verify it and retain at least900MiB available at admission. Use fixed bounded slots/checksums for terminal metadata so a full proof filesystem does not require allocating a new file to record failure. This does not promise writes survive I/O failure or power loss. Initial intent plus absent/torn terminal means UNKNOWN. Host evidence0700/0600 has separately preallocated small intent/final slots; publication failure leaves the initial pending marker and lane in place.
+
+Record exact owner token, invocation UUID, source/driver/image digests, volume backend identity, writer full container ID (host binding), phase/child PID/raw exit, timeout/escalation, descendant status, pre/post checks and completion classification. Do not confuse driver exit0 with pytest success: expected original RED remains pytest exit1, including call/teardown rejection and explicitly unreached assertions. Reserve metadata fields rather than serializing arbitrary exceptions or secrets.
+
+After stopped-writer verification, use at most two sequential short-lived helper containers from the same frozen image: one binary archive reader and one independent regular-file hash reader. Both mount only the same proof volume **read-only**, have the same security/resource limits, and execute finite PID1 modes (each at most60s). The remaining60s of the180s retention budget covers create/start/inspect, transfer and host validation; slow operations fail closed. No concurrent writer/helper, no repeated export, no restart. An uncertain helper's state blocks the next helper and lane release. Keep each helper's full ID/token and stopped-state receipt.
+
+Archive ALL original `/tmp`, including lifecycle slots and raw reports; no extraction or database interpretation. Preserve binary sentinel NUL/FF/80 verification, unique safe relative paths, no symlink traversal, regular-file hash map equality, and symlinks as metadata. Enforce limits during traversal/streaming: at most200000 members, regular file at most64MiB, aggregate regular data at most1GiB, tar stream at most2GiB (header/hard-link expansion can otherwise exceed storage allocation), bounded path lengths and bounded map/metadata output. A hard-link expansion exceeding export limits is STOP with the volume preserved. Host proof allocation budget is at most4GiB including bounded streams/context/metadata, with existing6GiB free-space admission and bounded writes. No truncation may be reported as a complete archive.
+
+The independent map is collected from the still-present read-only proof, not calculated from the archive. Call it a quiescent-storage hash map; do not mislabel it a live running tmpfs hash. Exact equality plus terminal/state receipts authorizes a retention-success receipt, not cause acceptance. Missing export or map leaves the original volume intact after finite PID1 expiry. This preserves stored bytes, not an assertion of durability against host/daemon/storage failure.
+
+## Ownership, uncertainty and L4
+
+Before any acquisition, persist an intent with one random192-bit owner token, invocation UUID, exact planned names and operation list. Wrap proof-root/lane acquisition and every later step in the failure-publication boundary. After successful atomic lane mkdir, record its device/inode and publish owner.json exclusively; no Docker mutation before that owner record is complete. A partial mkdir/owner write records ACQUISITION-INCOMPLETE and leaves a blocked lane; never remove a path just because a boolean was not set. Pre-existing lane or resource is STOP, never adopted.
+
+Each operation has durable states NOT-SENT, SENT-UNKNOWN, CONFIRMED, TERMINAL/ABSENT. Set SENT-UNKNOWN before dispatch, including volume creation, build/tag during construction, container create, start, stop and remove. Never represent lost acknowledgement as absence. Names serve discovery only; reconcile by exact name plus token/UUID, expected image/command/config and backend identity, then capture full immutable container IDs. Future inspect/start/stop/remove use full IDs exclusively. Token labels are not proof against a malicious daemon; the boundary is exclusive owned lane and no foreign mutation.
+
+A timed-out create/build can finish after an empty list result. One negative lookup therefore cannot close an in-flight operation. Permit only a fixed bounded reconciliation pass within its reserved budget. If a conclusive server operation terminal receipt cannot be obtained, keep SENT-UNKNOWN, pending selectors and lane HOLD even if currently no resource is visible. No mutation retry, no force removal by name, no broad label cleanup, no prune, no automatic stale-lane takeover.
+
+Inventory all objects, not just the writer: lane inode/owner; proof root; volume name, token, backend immutable allocation identity and quota; derivative image ID and owned tags/build request; writer ID; both helper IDs; local workers and each unresolved daemon operation. Docker volumes have no universal immutable numeric/container-like ID: record the backend allocation UUID if available and never claim name alone is immutable. The launcher never removes/recreates the volume, including after successful export. No foreign resource is a cleanup candidate.
+
+Exact automatic cleanup allowlist: finite stop escalation on confirmed owned container IDs when needed; `docker rm <full-ID>` without force or `-v` only after confirmed stopped state and successful proof retention; verify full-ID absence. On failed retention, preserve stopped writer/helpers as inventory evidence, as well as volume. Do not remove image/tags/base/build cache or host proof. Publish them as retained artifacts with finite construction bounds. Never delete proof to gain space.
+
+Lane release requires all sent operations conclusively terminal, no active/unknown remote processes, complete exact object inventory, verified retention, and a durable handback naming the intentionally retained bounded volume/image/proof. Compare both lane inode and full owner record before release. Emit a release-intent before unlink/rmdir and a completed release receipt afterward; failed final publication is UNKNOWN, not claimed release. Any unresolved creation, foreign mismatch, stopped-state ambiguity, export failure or publication failure keeps the lane. This is a fail-closed handback, not endless retry. The parent must resolve HOLD before another acquisition; retained artifacts are not permission to accumulate repeated runs.
+
+## Sol-low steps and closure gates
+
+1. Implement only the task-specific launcher/driver/recipe/docs changes above. Freeze a concrete backend contract; if source/capability evidence cannot identify a hard-bounded persistent backend, hand back that exact prerequisite and stop. Do not implement a pretend portable quota abstraction. Preserve all historical inputs and pins.
+2. Static review L1: trace UID ownership/traversal through every copied manifest/source/driver path and volume initialization. Compare unchanged entry/observer/guard/product/test/locks byte-for-byte. No chmod of host proof to make the image work.
+3. Static review L2: trace every failure from acquisition through export to stopped-volume retention; no volatile-only proof, auto-remove, TTL deletion or live-HOLD claim. Check fixed reserve, streaming caps and explicit storage adjustment. Storage admission must reject unsupported quotas before any target start.
+4. Static review L3: inspect remote PID1 phase bounds and descendant completion, absence of writer exec, exact receipts, helper limits, host supervisor and protected120+30s cleanup/publication reserve. Review hangs, timeout before/after remote launch, OOM, output overflow, malformed archive and failed/torn publication. No local CLI-kill inference or unbounded wait loop.
+5. Static review L4: enumerate exceptions before/after mkdir, owner publication, each mutation dispatch/response, stopped create/start failure, late daemon completion, retained-success cleanup failure and release receipt failure. Every uncertain resource stays in inventory and blocks release. Full IDs for destructive container operations; no volume/image/foreign cleanup.
+6. Fresh independent Sol source review of the new executable freeze is mandatory before **any** construction execution. Existing observer SOURCE GO does not cover this new lifecycle. Review must leave explicit capability prerequisites, not call the new design runtime-proven.
+
+If required after source review and separate parent execution authority, permit **one predeclared finite construction-only qualification**, maximum1800s, no pytest/import of the target/product, no diagnosis, no retries. It may build the source-only image (one300s maximum attempt; uncertain completion holds lane), inspect exact image and quota contract, and exercise driver read/permission/sentinel/terminal/export behavior with fixed dummy bytes. Use a frozen finite checklist, hard output/context/image accounting, sequential containers and the same caps; do not fill storage to discover a quota or install a backend. Verify persistence by stopping the dummy writer before read-only export, and deliberately detach the host wait from a finite dummy worker to establish server-side terminal receipts. That is construction evidence only. Review receipts and remaining-resource inventory before any actual diagnosis. Construction failures are STOP, not permission for repeated smoke attempts. If backend quota enforcement cannot be established from authoritative capability plus actual allocation receipts without a prohibited probe, diagnosis remains blocked.
+
+Only after source/construction prerequisites and separate parent authority: **ONE actual node diagnosis**, original RED, no retry/tuning/211 run. Independently review actual47-field rows, selected-node/owner/enrolled-child/raw18944/empty-phase binding, actual caller/runner offsets/type/original-exception relation, EAGAIN marker, original reports/unreached assertions, finite server completion, archive/map and exact ownership/cleanup receipts. Unknown or changed phase stays STOP. A future timeout finding applies only to that run; historical PID229 remains UNKNOWN.
+
+This decision closes the design choice, not L1–L4 implementation findings. Independent actual-receipt review, parent acceptance and final Astra integration gates remain mandatory. No P/full211, attestor, H/S/shared/grouped, native/installed/platform/durability, T2/C1295, full-service/release or activation credit. Sole write is this report; no runtime GO, commit, candidate modification or acquired cleanup obligation.
