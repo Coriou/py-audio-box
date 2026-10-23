@@ -825,3 +825,8 @@ Record failures and missing evidence; do not replace them with a successful late
 
 - reviews/P1B23-LINUX-RUNTIME-COMPARISON-20261023.md exactimage3a921bd0 frompinnedPython3.14.8index48b13b linuxamd64:health/42hashlockedpins,root/WIPcollection and14project+1trivialtestsPASS no abnormalexit. NotDarwincauseclearance/C1C2/releaseGO. Ownedcontainerremoved imagereusable.
 - Parentauthorizesnewisolatedowningcontinuationf0bfcc1f onthisboundedLinuxruntime: finishmissingREDs/matrix/harnesscorrection andfocusedfrozenvalidation; no change/runtimewaiver. Reuseownedimage exactID CPU2RAM2g PID256 networknone/nohostmounts, sourcecopyhashes/read-onlyruntime/tempwrites/oneDockerlane. Stopunexpectedabnormalexit; allnativeV1V2V3retainhold. Freshindependentreview beforecombine/integration.
+
+## Bounded Core Linux matrix / review and precise compatibility amendment
+
+- Candidatee5d4df14deb49013ed7cc9f3435444c23eae1b39 source5619270d t3-0727f054 cleanunintegrated. FrozenLinux93matrix/128CoreDispatchpass; preservation38pass thenbackpressureexit74unattestedguardHOLD. No broadretry/nativeclearance.
+- IndependentSol-low reviewselectedregistry/lease/cleanupcontract andentiredelta next. ParentauthorizesONLYtest_b22c_denied_fault_update_inherited_checking_new_epoch fork-onlyCorechild->freshexecboundedJSONsamebody/query_only/checking/growth/exit73+ALLparentasserts, neededPIDcontract notpositive->negative. Implementlatercombinedcandidate withreview. GuardLinuxcontinuationtest-only separatelyaddressesknownG1G2 andprecisetransportfaultwitness no blanket74acceptance.
