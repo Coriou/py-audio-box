@@ -711,3 +711,8 @@ Record failures and missing evidence; do not replace them with a successful late
 
 - Candidatebdf9a6920964acd72ef108b2bf7516796f37e4be frozen35b2a288 t1-close-f1-20261023 rooteb1e593 retainsentireT1; correctiononly_run_bounded_maintenance plus64appendedcloseownershipcases/report. ClaimedoriginalreviewerRED2fails->green3probes,83focusedpass,target1268pass1skip/fourB21730pass1skip/full1882pass19skip frozen. No integration/selfGO.
 - FreshreadonlySol-low pab-t1-review-r2-20261023 receives originalfullbrief/F1report/implementationresponse andentirefinaldelta. Auditindependentcleanupobligations/FDidentityandaccessmode/reuse/closeEINTR/BaseException/exactchildreap pluspreservedsevenT1exits. Allqualification/T2/finalAstragates remain.
+
+## T1 round2 F1 closed / F2 reap interruption NO-GO
+
+- reviews/P1B23-T1-r2-sol.md exactbdf9a692: originalcloseF1closed; newF2cleanupkill/waitinterruptionescapesownedchildreap,4actualforkREDs. Fresh91passinclABC/capacity/realclock/closematrix; nointegrationGO.
+- NarrowSol-low followup mustretainexactchildownership throughsupportedkill/waitinterruptions, independentcleanupobligations, propagateinterruptonlyaftercleanup, handlebefore/afteractualsyscall withoutreusedPIDsignals/blindretry. PreserveallpreviousfullT1invariants/probes; freshreviewbeforeintegration.
