@@ -337,7 +337,59 @@ def validate_records(raw):
             'acceptance': False, 'rows': rows}
 
 
-def prepare_context(repo, root, budget):
+
+def base_reference(owner):
+    F.require(re.fullmatch('[0-9a-f]{48}', owner['token']) is not None
+              and str(uuid.UUID(owner['invocation'])) == owner['invocation'], 'STOP tag owner')
+    return 'pab-local-base/' + owner['invocation'] + ':' + owner['token']
+
+
+def base_steps(owner):
+    tag = base_reference(owner)
+    return dict(reference=tag, expected_id=BASE,
+                inspect=['docker', 'image', 'inspect', BASE],
+                absence=['docker', 'image', 'ls', '--no-trunc', '--format', '{{.ID}}',
+                         '--filter', 'reference=' + tag],
+                tag=['docker', 'image', 'tag', BASE, tag],
+                verify=['docker', 'image', 'inspect', tag], retained=True)
+
+
+def base_recipe(owner):
+    return ('FROM ' + base_reference(owner) + '\nWORKDIR /app\nCOPY --chown=10001:10001 source/ /app/\n'
+            'COPY --chown=10001:10001 seed /tmp/pab-seed\n'
+            'RUN chown 10001:10001 /tmp && chmod 0700 /tmp && chmod 0600 /tmp/pab-seed\n'
+            'USER 10001:10001\n')
+
+
+def validate_recipe(context, owner, steps):
+    F.require(steps == base_steps(owner), 'STOP pinned local tag steps')
+    F.require(F.read_regular(context / 'Dockerfile', 4096, 0o600) == base_recipe(owner).encode()
+              and F.read_regular(context / 'seed', 128, 0o600) == SEED,
+              'STOP fixed source metadata recipe')
+
+
+def admit_base(obj):
+    F.require(obj['Id'] == BASE and obj['Os'] == 'linux' and obj['Architecture'] == 'amd64',
+              'STOP retained base identity')
+    startup(obj['Config'])
+
+
+def fatal_build(root):
+    """Only an intact, reaped explicit BuildKit terminal solve is conclusive failure."""
+    try:
+        result = json.loads(F.read_regular(root / 'build.complete.json', F.META, 0o600))
+        err = F.read_regular(root / 'build.stderr', F.META, 0o600)
+        return (result['state'] == 'COMPLETE' and result['exit'] == 1
+                and result['leader_reaped'] and result['descriptors_closed']
+                and not result['group_kill_attempted'] and result['bytes'][1] == len(err)
+                and err.endswith(b'\n') and bool(err.splitlines())
+                and err.splitlines()[-1].startswith(b'ERROR: failed to build: failed to solve: ')
+                and len(err.splitlines()[-1]) > 48)
+    except (OSError, ValueError, KeyError, RuntimeError):
+        return False
+
+
+def prepare_context(repo, root, budget, owner):
     """No build or Git mutation; immutable payload admitted against historical manifest."""
     manifest = json.loads(F.read_regular(D / 'source-manifest.json', F.META))
     files = {**manifest['files'], **manifest['derivative_files']}
@@ -361,16 +413,14 @@ def prepare_context(repo, root, budget):
     with F.private(seed) as f:
         f.write(SEED)
     # No RUN chown of source needed; numeric COPY owns every private source component.
-    recipe = ('FROM ' + BASE + '\nWORKDIR /app\nCOPY --chown=10001:10001 source/ /app/\n'
-              'COPY --chown=10001:10001 seed /tmp/pab-seed\n'
-              'RUN chown 10001:10001 /tmp && chmod 0700 /tmp && chmod 0600 /tmp/pab-seed\n'
-              'USER 10001:10001\n')
+    recipe = base_recipe(owner)
     budget.charge(len(recipe.encode()))
     with F.private(context / 'Dockerfile') as f:
         f.write(recipe.encode())
-    publish(root / 'build-proposal.json', {'base': BASE, 'argv': ['docker', 'build', '--pull=false',
+    publish(root / 'build-proposal.json', {'base': BASE, 'prebuild': base_steps(owner), 'argv': ['docker', 'build', '--pull=false',
             '--network=none', str(context)], 'not_executed': True, 'metadata_only_tmp': True,
             'image_layer_cache_metadata_excluded_from_logical_5GiB_claim': True}, budget)
+    validate_recipe(context, owner, base_steps(owner))
     return context
 
 
@@ -678,7 +728,7 @@ def main():
     if args.prepare:
         budget = Budget()
         budget.charge(2 * F.SLOT)
-        prepare_context(D.parents[1], root, budget)
+        prepare_context(D.parents[1], root, budget, owner)
         print('SOURCE BUILD PROPOSAL ONLY', root)
         return 0
     lifecycle = Lifecycle(root, LANE, args.image, owner, Real())

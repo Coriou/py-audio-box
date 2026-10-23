@@ -695,11 +695,15 @@ def _():
 @case('29-actual-source-context-private-copy-no-build')
 def _():
     r = fresh('context')
-    context = L.prepare_context(D.parents[1], r, L.Budget())
+    context = L.prepare_context(D.parents[1], r, L.Budget(), OWNER)
     recipe = (context / 'Dockerfile').read_text()
     check('COPY --chown=10001:10001' in recipe and 'RUN chown 10001:10001 /tmp' in recipe,
           'ownership recipe')
-    check('install' not in recipe and 'FROM ' + L.BASE in recipe, 'unexpected build operation')
+    check('install' not in recipe and recipe.startswith('FROM ' + L.base_reference(OWNER) + '\n'), 'unexpected build operation')
+    L.validate_recipe(context, OWNER, L.base_steps(OWNER))
+    (context / 'Dockerfile').write_text(recipe.replace(L.base_reference(OWNER), L.BASE))
+    expect(lambda: L.validate_recipe(context, OWNER, L.base_steps(OWNER)))
+    (context / 'Dockerfile').write_text(recipe)
     for p in context.rglob('*'):
         check(stat.S_IMODE(p.stat().st_mode) == (0o700 if p.is_dir() else 0o600), 'context private modes')
 

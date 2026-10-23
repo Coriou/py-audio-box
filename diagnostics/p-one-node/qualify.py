@@ -21,10 +21,10 @@ DOCUMENTATION = 'fd0bc585d897818c66f3ae62d38c6a8eeda769b3'
 PROFILE = dict(total_seconds=600, build_seconds=300, writer_seconds=30,
                reader_seconds=60, readers=2, builds=1, writers=1, dummy_bytes=1048576,
                host_bytes=L.HOST, product_dispatch=False, physical_quota=False)
-PINS = {'launcher.py': 'f28c8785df17854ee120bffb4ff08bf5555e21e7dac316d56434d733ed640c80',
+PINS = {'launcher.py': '0ded93a96a7136112c163d546cb269d6fdcbff2b06e8e87fecc5db5e30616c29',
         'finite-driver.py': 'bdf424d31c54bacdf2d8b9406ee41c521beb8d28b8503a00620c3ff29b705732',
-        'host-check.py': 'dec48fd7274e887f223f898c8e66a628fbdec7ff246a545217606e681141339c',
-        'source-manifest.json': 'e0a228c16b83f9acbc1f640582bd240d3a701d2128b4047812aa261314a66035'}
+        'host-check.py': 'a78b2b0ba03dc6bc64bf42be5c1494b4dd94d38bb1aa37bc0c996cbc986f582d',
+        'source-manifest.json': '1d97c4f899de7a7cafe2d2137c917d7af6c9a17c037022ee93a478bd19ce219a'}
 
 
 def source_pins():
@@ -71,7 +71,7 @@ def dummy_binding(obj, owner, name, volume, image):
 
 def prepare(root, owner, budget):
     pins = source_pins()
-    context = L.prepare_context(D.parents[1], root, budget)
+    context = L.prepare_context(D.parents[1], root, budget, owner)
     dst = context / 'source/diagnostics/p-one-node/dummy-writer.py'
     raw = F.read_regular(D / 'dummy-writer.py', F.LEAF)
     budget.charge(len(raw))
@@ -86,7 +86,7 @@ def prepare(root, owner, budget):
     image = '<BUILD-IIDFILE>'
     name = 'pab-p-one-' + owner['invocation'] + '-writer'
     volume = 'pab-p-one-' + owner['invocation']
-    plan = dict(profile=PROFILE, owner=owner, inputs=pins, base=L.BASE,
+    plan = dict(profile=PROFILE, owner=owner, inputs=pins, base=L.BASE, prebuild=L.base_steps(owner),
                 build=['docker', 'build', '--pull=false', '--network=none', '--label',
                        'pab.owner=' + owner['token'], '--label', 'pab.invocation=' + owner['invocation'],
                        '--iidfile', str(root / 'image.id'), str(context)],
@@ -122,6 +122,10 @@ class Qualification(L.Lifecycle):
                 raw = L.call(self.root, label, argv, self.budget, self.a,
                              deadline=self.phase_end, cap=F.META)
             except BaseException:
+                if L.fatal_build(self.root):
+                    self.operations[label].update(state='TERMINAL', result='FAILED')
+                    self.journal()
+                    raise
                 # A labelled image observation never establishes absent/in-flight build completion.
                 try:
                     L.call(self.root, 'build-reconcile', ['docker', 'image', 'ls', '--no-trunc',
@@ -132,6 +136,16 @@ class Qualification(L.Lifecycle):
                     pass
                 self.journal()
                 raise
+            self.operations[label]['state'] = 'CONFIRMED'
+            self.journal()
+            return raw
+        if label == 'base-tag':
+            F.require(label not in self.operations, 'STOP no tag retry')
+            self.operations[label] = dict(state='NOT-SENT', argv=argv)
+            self.journal()
+            self.operations[label]['state'] = 'SENT-UNKNOWN'
+            self.journal()
+            raw = L.call(self.root, label, argv, self.budget, self.a, deadline=self.phase_end)
             self.operations[label]['state'] = 'CONFIRMED'
             self.journal()
             return raw
@@ -146,10 +160,18 @@ class Qualification(L.Lifecycle):
         L.publish(self.lane / 'owner.json', self.owner, self.budget)
         self.journal()
         self.phase_end = min(self.start + 330, self.a.clock() + 30)
-        base = json.loads(self.dispatch('base-inspect', ['docker', 'image', 'inspect', L.BASE]))[0]
-        F.require(base['Id'] == L.BASE and base['Os'] == 'linux' and base['Architecture'] == 'amd64',
-                  'STOP retained base identity')
-        L.startup(base['Config'])
+        steps = self.plan['prebuild']
+        F.require(steps == L.base_steps(self.owner), 'STOP prebuild plan drift')
+        L.admit_base(json.loads(self.dispatch('base-inspect', steps['inspect']))[0])
+        F.require(not self.dispatch('tag-absence', steps['absence']).strip(), 'STOP tag collision')
+        # Tag mutation is journaled, never overwritten/retried or removed.
+        self.dispatch('base-tag', steps['tag'], mutation=True)
+        self.objects['base_tag'] = dict(reference=steps['reference'], expected_id=L.BASE, retained=True)
+        L.admit_base(json.loads(self.dispatch('tag-inspect', steps['verify']))[0])
+        self.operations['base-tag']['state'] = 'TERMINAL'
+        self.journal()
+        L.validate_recipe(self.root / 'context', self.owner, steps)
+        L.admit_base(json.loads(self.dispatch('tag-prebuild', steps['verify']))[0])
         self.phase_end = min(self.start + 330, self.a.clock() + 300)
         self.budget.charge(128)  # reserve bounded Docker iidfile before sole build
         self.dispatch('build', self.plan['build'], mutation=True, seconds=300)
@@ -305,12 +327,7 @@ def validate_plan(root, plan):
     for name, digest in {**manifest['files'], **manifest['derivative_files']}.items():
         F.require(hashlib.sha256(F.read_regular(context / 'source' / name, F.LEAF, 0o600)).hexdigest() == digest,
                   'STOP context source drift')
-    recipe = ('FROM ' + L.BASE + '\nWORKDIR /app\nCOPY --chown=10001:10001 source/ /app/\n'
-              'COPY --chown=10001:10001 seed /tmp/pab-seed\n'
-              'RUN chown 10001:10001 /tmp && chmod 0700 /tmp && chmod 0600 /tmp/pab-seed\n'
-              'USER 10001:10001\n')
-    F.require(F.read_regular(context / 'Dockerfile', 4096, 0o600) == recipe.encode()
-              and F.read_regular(context / 'seed', 128, 0o600) == F.SEED, 'STOP fixed source metadata recipe')
+    L.validate_recipe(context, owner, plan['prebuild'])
     for p in context.rglob('*'):
         F.require(not p.is_symlink() and stat.S_IMODE(p.stat().st_mode) == (0o700 if p.is_dir() else 0o600),
                   'STOP context private mode')

@@ -1,4 +1,5 @@
 {
+  "base_recipe_contract": "r20 successor: invocation-owned local tag FROM; full BASE ID separately inspected; fresh tag journaled and retained; no overwrite/retry",
   "commit": "8d5aba5fc702719843d055b7d3f693c407deb0e9",
   "derivative_files": {
     "diagnostics/p-one-node/finite-driver.py": "bdf424d31c54bacdf2d8b9406ee41c521beb8d28b8503a00620c3ff29b705732",

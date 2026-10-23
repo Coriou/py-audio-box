@@ -115,6 +115,27 @@ def actual_context():
     for name, digest in {**manifest['files'], **manifest['derivative_files']}.items():
         check(L.stream_hash(r / 'context/source' / name) == digest, 'copied input hash')
     recipe = (r / 'context/Dockerfile').read_text()
+    check(recipe.startswith('FROM ' + L.base_reference(O) + '\n'), 'owned FROM')
+    for change in ('raw', 'tag', 'plan'):
+        altered = json.loads(json.dumps(PLAN))
+        if change == 'plan':
+            altered['prebuild']['expected_id'] = IMAGE
+        else:
+            (r / 'context/Dockerfile').write_text(recipe.replace(L.base_reference(O), L.BASE if change == 'raw' else 'foreign:tag'))
+        reject(lambda: Q.validate_plan(r, altered))
+        (r / 'context/Dockerfile').write_text(recipe)
+    prior_root = H.ROOT
+    H.ROOT = fresh('product-host29')
+    try:
+        next(fn for name, fn in H.CASES if name.startswith('29-'))()
+    finally:
+        H.ROOT = prior_root
+    product = fresh('product-context')
+    c = L.prepare_context(D.parents[1], product, L.Budget(), O)
+    proposal = json.loads((product / 'build-proposal.json').read_bytes())
+    L.validate_recipe(c, O, proposal['prebuild'])
+    (c / 'Dockerfile').write_text(L.base_recipe(O).replace(L.base_reference(O), L.BASE))
+    reject(lambda: L.validate_recipe(c, O, proposal['prebuild']))
     check('COPY --chown=10001:10001' in recipe and 'USER 10001:10001' in recipe, 'ownership recipe')
     check(PLAN['profile'] == Q.PROFILE and PLAN['build'][2:4] == ['--pull=false', '--network=none'], 'frozen plan')
     OBS.append(dict(source_files=193, derivative_files=len(manifest['derivative_files']), context_charged=b.used))
@@ -176,7 +197,12 @@ def script(r, failure=None):
     def add(argv, raw=b''): seq.append((argv, dict(raw=raw)))
     def obj(argv, value): add(argv, L.encode([value]))
     obj(['docker', 'image', 'inspect', L.BASE], dict(Id=L.BASE, Os='linux', Architecture='amd64', Config={}))
-    plan = dict(PLAN, build=list(PLAN['build']))
+    plan = Q.prepare(r, O, L.Budget())
+    steps = plan['prebuild']
+    add(steps['absence'])
+    add(steps['tag'])
+    for _ in range(2):
+        obj(steps['verify'], dict(Id=L.BASE, Os='linux', Architecture='amd64', Config={}))
     plan['build'][-2:] = [str(r / 'image.id'), str(r / 'context')]
     add(plan['build'])
     obj(['docker', 'image', 'inspect', IMAGE], dict(Id=IMAGE, Os='linux', Architecture='amd64',
@@ -235,6 +261,7 @@ def complete_success():
     r, q, fake, ok = full('success')
     check(ok and q.retained and not q.lane.exists(), 'complete retention/release')
     check(all(v['state'] == 'TERMINAL' for v in q.operations.values()), 'journal terminal')
+    check(q.objects['base_tag']['retained'] and q.objects['base_tag']['expected_id'] == L.BASE, 'tag retained')
     check(not any(a[:3] == ['docker', 'volume', 'rm'] for a in fake.calls), 'volume retained')
     check(len([a for a in fake.calls if a[:2] == ['docker', 'build']]) == 1, 'one build')
     check(json.loads((r / 'detached-wait.json').read_bytes())['local_wait_cannot_extend_remote_deadline'], 'detached receipt')
@@ -323,11 +350,67 @@ def independent_deadline_source():
     OBS.append(dict(detachment='SOURCE alarm + fake detached-start/wait routing; no actual timing claim'))
 
 
+@case
+def recipe_adapter_failures():
+    for failure in ('collision', 'wrong-id', 'startup', 'lost-tag', 'fatal', 'exit1', 'truncated', 'timeout', 'reverify-id', 'reverify-startup', 'recipe-tamper'):
+        r = root('repair-' + failure)
+        plan = Q.prepare(r, O, L.Budget())
+        steps = plan['prebuild']
+        base = dict(Id=L.BASE, Os='linux', Architecture='amd64', Config={})
+        seq = [(steps['inspect'], dict(raw=L.encode([base]))),
+               (steps['absence'], dict(raw=b'collision' if failure == 'collision' else b''))]
+        if failure != 'collision':
+            seq.append((steps['tag'], OSError('lost tag ack') if failure == 'lost-tag' else dict()))
+        if failure not in ('collision', 'lost-tag'):
+            bad = json.loads(json.dumps(base))
+            if failure == 'wrong-id': bad['Id'] = IMAGE
+            if failure == 'startup': bad['Config']['Entrypoint'] = ['unsafe']
+            seq.append((steps['verify'], dict(raw=L.encode([bad]))))
+        if failure in ('fatal', 'exit1', 'truncated', 'timeout', 'reverify-id', 'reverify-startup'):
+            final_base = json.loads(json.dumps(base))
+            if failure == 'reverify-id': final_base['Id'] = IMAGE
+            if failure == 'reverify-startup': final_base['Config']['Healthcheck'] = {'Test': ['unsafe']}
+            seq.append((steps['verify'], dict(raw=L.encode([final_base]))))
+        if failure in ('fatal', 'exit1', 'truncated', 'timeout'):
+            terminal = b'ERROR: failed to build: failed to solve: source metadata resolution failed\n'
+            response = dict(rc=1, err=terminal if failure == 'fatal' else
+                            terminal[:-1] if failure == 'truncated' else b'connection lost\n')
+            if failure == 'timeout': response = dict(wait_failure=True, rc=1)
+            seq.append((plan['build'], response))
+            if failure != 'fatal':
+                seq.append((['docker', 'image', 'ls', '--no-trunc', '--filter',
+                             'label=pab.owner=' + O['token'], '--filter',
+                             'label=pab.invocation=' + O['invocation']], dict()))
+        class RepairFake(H.Fake):
+            def spawn(self, argv, **kw):
+                proc = super().spawn(argv, **kw)
+                if failure == 'recipe-tamper' and argv == steps['verify']:
+                    (r / 'context/Dockerfile').write_text(L.base_recipe(O).replace(L.base_reference(O), L.BASE))
+                return proc
+        fake = RepairFake(seq)
+        q = Q.Qualification(r, r / 'lane', O, fake)
+        q.plan = plan
+        check(not q.run(), 'failure admitted')
+        fake.done()
+        check(not any(a[:2] in (['docker', 'volume'], ['docker', 'create'], ['docker', 'start'])
+                      for a in fake.calls), 'downstream after failure')
+        check(sum(a[:2] == ['docker', 'build'] for a in fake.calls) <= 1, 'retry')
+        if failure == 'lost-tag': check(q.operations['base-tag']['state'] == 'SENT-UNKNOWN', 'lost tag unknown')
+        if failure in ('fatal', 'exit1', 'truncated', 'timeout'):
+            check(q.operations['build']['state'] == ('TERMINAL' if failure == 'fatal' else 'SENT-UNKNOWN'),
+                  'terminal versus unknown')
+        OBS.append(dict(failure=failure, calls=fake.calls, operations=q.operations))
+
+
 def main():
     global ROOT
     F.enabled()
     os.umask(0o077)
-    check(len(CASES) == 12, 'frozen matrix12')
+    check(len(CASES) == 13, 'frozen matrix13')
+    selected = CASES
+    if sys.argv[1:]:
+        check(sys.argv[1:] == ['--recipe-repair'], 'fixed HOST selection')
+        selected = [actual_context, recipe_adapter_failures, complete_success]
     ROOT = Path(tempfile.mkdtemp(prefix='pab-dummy-HOST-', dir='/private/tmp'))
     ROOT.chmod(0o700)
     H.ROOT = ROOT
@@ -339,7 +422,7 @@ def main():
     with patch.object(subprocess, 'Popen', forbidden), patch.object(L.Real, 'spawn', forbidden), \
          patch.object(H.L.Real, 'spawn', forbidden), patch.object(os, 'system', forbidden), \
          patch.object(os, 'killpg', forbidden), patch.object(os, 'fork', forbidden):
-        for fn in CASES:
+        for fn in selected:
             check(time.monotonic() - start < 120, 'HOST total120')
             before = time.monotonic()
             try:
@@ -358,10 +441,10 @@ def main():
     for p in ROOT.rglob('*'):
         check(stat.S_IMODE(p.stat().st_mode) == (0o700 if p.is_dir() else 0o600), 'private evidence')
     receipt = dict(tier='HOST ONLY / FAKE EXTERNALS / NO PRODUCT CLAIM', hashes=hashes,
-                   maximum_cases=12, maximum_case_seconds=9, maximum_seconds=120,
+                   maximum_cases=13, maximum_case_seconds=9, maximum_seconds=120,
                    seconds=time.monotonic() - start, cases=results, observations=OBS,
                    fd_observations=H.OBSERVATIONS, actual_Docker_product_SQLite_pytest_network_Git_mutations=0,
-                   result='PASS' if len(results) == 12 and all(r['result'] == 'PASS' for r in results) else 'RED')
+                   result='PASS' if len(results) == len(selected) and all(r['result'] == 'PASS' for r in results) else 'RED')
     L.publish(ROOT / 'HOST-receipt.json', receipt, L.Budget())
     print(json.dumps(dict(root=str(ROOT), result=receipt['result'], cases=len(results))))
     return 0 if receipt['result'] == 'PASS' else 1
