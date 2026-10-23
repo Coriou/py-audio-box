@@ -1149,3 +1149,8 @@ H7db46089 docs c781fbe3 t3-f1009c90 implementerSOURCE-NO-GO: provisionalprojecti
 ### 2026-10-23 — Blocked-pipe launcher NO-GO L1–L4
 
 Independent source review blocks launcher: UID10001 source permissions; finitePID1 tmpfsHOLD evidence loss; CLI timeout/remotequiescence andcleanupbudget gaps; uncertaincreate/acquisition ownership gaps. No execution authorized. Bounded Astra source-only lifecycle design pab-blocked-pipe-launcher-lifecycle-astra-20261023 launched toselectsmallestcompatible correction beforeSolimplementation, explicitly resolve finiteHOLD/storageconstraint ratherthanpromiseunreliablepreservation. Observer remains unchanged and historicalcause UNKNOWN.
+
+
+### 2026-10-23 — H r6 NO-GO corrections and S source review
+
+H decoder acquisition gap closed by matchingretaineddis source; review r6 finds F1operand/flag validation,F2pre-assertactualresultdiagnostics,F3failurepathreference release missing. NarrowSOURCEONLY correction pab-h-projection-fix-r7-20261023 launched, guardunchanged. S8254bede docc68f13c9 delivered static-only; independent pab-s-literal-source-review-r3-20261023 launched with explicitchecks for samepitfalls, noqualificationtransfer. Neither construction/runtime authorized. Blockedpipe Astra lifecycle decision pending separately.
