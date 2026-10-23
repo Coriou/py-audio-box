@@ -495,7 +495,7 @@ def test_P_ordered_armed_transcript(defect):
     'operation-failure', 'cleanup-value', 'cleanup-nonsemantic', 'cleanup-new-object',
     'changed-route', 'changed-attributes', 'wrong-final-caller', 'bad-offset',
     'bad-slice', 'frame-budget', 'pipe-mode', 'wrong-operation-code',
-    'missing-markers', 'signal11', 'foreign-owner', 'missing-done', 'operation-value', 'setup-evidence-failure'])
+    'missing-markers', 'signal11', 'foreign-owner', 'missing-done', 'operation-value', 'setup-evidence-failure', 'cleanup-ordering'])
 def test_P_durable_lost_result_fresh_contract(tmp_path, mode):
     nodeid = 'tests/service/test_recovery.py::test_t1_durable_completion_lost_result_no_false_success'
     node = SimpleNamespace(nodeid=nodeid, originalname=nodeid.split('::')[-1],
@@ -523,9 +523,10 @@ def evidence(label):
     steps.append(label)
     h.atomic(Path(PROOF)/(str(os.getpid())+'.json'), dict(mode=mode, steps=steps))
 setup_reports = []
+setup_only = mode in {'setup-evidence-failure', 'cleanup-ordering'}
 class Plugin:
     def pytest_runtest_makereport(self, item, call):
-        if mode != 'setup-evidence-failure': return
+        if not setup_only: return
         setup_reports.append(call.when)
         assert call.when in ('setup', 'teardown')  # No target call is allowed.
         if call.when == 'setup':
@@ -546,6 +547,19 @@ class Plugin:
         original_seam, original_exit, original_trace = cls.at_seam_P, cls.at_exit_P, cls.trace_P
         original_continue = recovery._MaintenanceSession.continue_kernel
         original_locked = recovery._prepare_abandon_locked
+        # This slot owns only our exact installed wrapper. Never put the
+        # target's finish closure into the manual MonkeyPatch undo stack:
+        # its separate fixture can already have restored production by then.
+        locked_owner = [None]
+        def install_locked(value):
+            assert locked_owner[0] is None
+            locked_owner[0] = value
+            recovery._prepare_abandon_locked = value
+        def restore_locked():
+            owned = locked_owner[0]
+            if owned is not None and recovery._prepare_abandon_locked is owned:
+                recovery._prepare_abandon_locked = original_locked
+            locked_owner[0] = None
         replacements = {}
         predicate = {'durable-id', 'bad-offset', 'bad-slice', 'frame-budget', 'wrong-operation-code'}
         cleanup = {'cleanup-value', 'cleanup-nonsemantic', 'cleanup-new-object', 'changed-route'}
@@ -557,6 +571,7 @@ class Plugin:
             # Registered before ANY manual binding or patch mutation. Pytest
             # runs this even when setup fails before the generator's yield.
             patch.undo()
+            restore_locked()
             assert h._CURRENT.node is node0 and node0.nodeid == nodeid0
             assert sys.gettrace() is trace0 and os.write is write0 and os._exit is exit0
             assert cls.__init__ is original_init and cls.at_seam_P is original_seam
@@ -773,12 +788,12 @@ class Plugin:
                     {**installed.__globals__, 'BrokenPipeError': error},
                     installed.__name__, installed.__defaults__, installed.__closure__)
                 assert changed.__code__ is installed.__code__
-                patch.setattr(recovery, '_prepare_abandon_locked', changed)
+                install_locked(changed)
             if mode == 'wrong-code':
                 def wrong(*a, **k):
                     evidence('installed-operation-reached')
                     raise ValueError('wrong installed operation')
-                patch.setattr(recovery, '_prepare_abandon_locked', wrong)
+                install_locked(wrong)
             if mode == 'precompletion':
                 def early(session, intent, *, prepared):
                     assert prepared._session is session and not prepared._used
@@ -795,14 +810,53 @@ class Plugin:
                 operation = outer  # Actual callable, before parent arming.
             return run(roots, scope, operation, **kw)
         patch.setattr(recovery, '_run_bounded_maintenance', changed_run)
-        if mode == 'setup-evidence-failure':
+        if mode == 'cleanup-ordering':
+            # Use the SAME pytest fixture the target requests, and its real
+            # undo(), before our registered finalizer. No maintenance runs.
+            target_patch = request.getfixturevalue('monkeypatch')
+            def target_finish(*a, **kw): raise AssertionError('control must not run')
+            def owned_wrapper(*a, **kw): raise AssertionError('control must not run')
+            def foreign_wrapper(*a, **kw): raise AssertionError('control must not run')
+            assert recovery._prepare_abandon_locked is original_locked
+            target_patch.setattr(recovery, '_prepare_abandon_locked', target_finish)
+            install_locked(owned_wrapper)
+            assert recovery._prepare_abandon_locked is owned_wrapper
+            restore_locked()
+            assert recovery._prepare_abandon_locked is original_locked
+            evidence('owned-wrapper-restored')
+            target_patch.undo()
+            assert recovery._prepare_abandon_locked is original_locked
+            target_patch.setattr(recovery, '_prepare_abandon_locked', target_finish)
+            install_locked(owned_wrapper)
+            recovery._prepare_abandon_locked = foreign_wrapper
+            restore_locked()
+            assert recovery._prepare_abandon_locked is foreign_wrapper
+            evidence('foreign-owner-preserved')
+            target_patch.undo()
+            assert recovery._prepare_abandon_locked is original_locked
+            target_patch.setattr(recovery, '_prepare_abandon_locked', target_finish)
+            install_locked(owned_wrapper)
+            assert recovery._prepare_abandon_locked is owned_wrapper
+            evidence('target-wrapper-installed')
+            target_patch.undo()
+            assert recovery._prepare_abandon_locked is original_locked
+            assert locked_owner[0] is owned_wrapper
+            evidence('target-fixture-undone')
+            # Leave the ownership slot populated: the plugin finalizer must
+            # see production already restored and must not resurrect target_finish.
+        if setup_only:
             assert h._CURRENT.node.obj is collected
             assert cls.__init__ is init and cls.trace_P is trace
             assert cls.at_seam_P is seam and cls.at_exit_P is final and cls.clear_P is clear
             assert recovery._run_bounded_maintenance is changed_run
             def failed_evidence(path, value):
                 assert path == Path(PROOF)/(str(os.getpid())+'.json')
-                assert value == dict(mode=mode, steps=['setup-evidence-attempt'])
+                if mode == 'cleanup-ordering':
+                    assert value == dict(mode=mode, steps=['owned-wrapper-restored',
+                        'foreign-owner-preserved', 'target-wrapper-installed', 'target-fixture-undone',
+                        'setup-evidence-attempt'])
+                else:
+                    assert value == dict(mode=mode, steps=['setup-evidence-attempt'])
                 # Leave later report/finalizer evidence writable, but keep this
                 # patch owned so undo must still restore the exact original.
                 patch.setattr(h, 'atomic', atomic0)
@@ -836,10 +890,15 @@ class Plugin:
         yield
 result = pytest.main(['--noconftest', '-p', 'no:cacheprovider', NODE,
     '-q', '-rs', '-x', '--basetemp='+BASE], plugins=[Plugin()])
-if mode == 'setup-evidence-failure':
+if setup_only:
     assert result == pytest.ExitCode.TESTS_FAILED
     assert setup_reports == ['setup', 'teardown']
-    assert steps == ['setup-evidence-attempt', 'setup-failure-classified', 'hooks-restored']
+    if mode == 'cleanup-ordering':
+        assert steps == ['owned-wrapper-restored', 'foreign-owner-preserved',
+            'target-wrapper-installed', 'target-fixture-undone',
+            'setup-evidence-attempt', 'setup-failure-classified', 'hooks-restored']
+    else:
+        assert steps == ['setup-evidence-attempt', 'setup-failure-classified', 'hooks-restored']
     assert not h._CURRENT.receipts and not h._CURRENT.owned and not h._CURRENT.failures
     assert not h._CURRENT.session.shouldstop and not hasattr(h._CURRENT.node, 'obj')
     raise SystemExit(87)
@@ -855,7 +914,7 @@ Path(SENTINEL).write_text('continued')
     aggregation = mode in ('foreign-owner', 'missing-done')
     with harness.activate(guard, tmp_path/'helpers-P'):
         result = harness.fresh_run([sys.executable, '-c', body], capture_output=True, text=True, timeout=30)
-        if mode == 'setup-evidence-failure':
+        if mode == 'setup-evidence-failure' or mode == 'cleanup-ordering':
             assert result.returncode == 87, result.stdout + result.stderr
             assert not sentinel.exists() and not guard.receipts and not guard.owned and not guard.failures
             assert not guard.session.shouldstop
@@ -873,15 +932,20 @@ Path(SENTINEL).write_text('continued')
     directory, = (tmp_path/'helpers-P').glob('helper-*')
     events = [json.loads(p.read_text()) for p in directory.glob('[0-9]*.json')]
     terminals = [e for e in events if e['kind'] == 'terminal']
-    if mode == 'setup-evidence-failure':
+    if mode == 'setup-evidence-failure' or mode == 'cleanup-ordering':
         assert events == [] and terminals == []
         ack = json.loads((directory/'ack.json').read_text())
         assert ack == json.loads((directory/'done.json').read_text())
         assert json.loads((directory/'launch.json').read_text())['identity'] == ack
         assert not list((directory/'nested').glob('helper-*'))
         records = [json.loads(p.read_text()) for p in proof.glob('*.json')]
-        assert records == [dict(mode=mode, steps=[
-            'setup-evidence-attempt', 'setup-failure-classified', 'hooks-restored'])]
+        if mode == 'cleanup-ordering':
+            assert records == [dict(mode=mode, steps=['owned-wrapper-restored',
+                'foreign-owner-preserved', 'target-wrapper-installed', 'target-fixture-undone',
+                'setup-evidence-attempt', 'setup-failure-classified', 'hooks-restored'])]
+        else:
+            assert records == [dict(mode=mode, steps=[
+                'setup-evidence-attempt', 'setup-failure-classified', 'hooks-restored'])]
         return  # Setup-only restoration control, never a P refusal receipt.
     assert len(terminals) == 1
     terminal, = terminals
