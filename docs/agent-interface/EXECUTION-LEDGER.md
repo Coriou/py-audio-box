@@ -1248,3 +1248,8 @@ ONESconstructionexit1 after1pinsrecord,0decode/projections: executorcopied262Pyt
 ### 2026-10-23 — H construction evidence accepted with deviation
 
 Independent r9actualaudit boundedGO verifiescomplete57records9rows/allsourceidentity/runtime/staticactualdecode/projections/export/cleanup. Parent accepts technicalconstructionreceipt WITH disclosedFULLREADsequencingdeviation retained, NOT proceduralcompliance; noblindrepeat. Hacceptance stillopen. SOURCEONLY pab-h-finite-gate-plan-source-r10-20261023 freezesexactfullHnodeinventory/prereqs andexplicitlyassessesDBproofretentionagainststorageSTOP before anyruntimeauthority. No Hgate authorized.
+
+
+### 2026-10-23 — S copy failure independently audited; bounded correction
+
+Independent audit diagnosisGO confirmsmissingtrackedSCHEMA 262selection,secondarypre-capture restorationassert,363evidencehashes/export/cleanup. ParentacceptsdiagnosticfactsnotSconstruction. Adoptselectedfixed263regularfiles exactprior262+schema andacquisition-awaredecoderrestoration; SOURCEONLY pab-s-copy-closure-source-fix-r7-20261023 freezesexplicitrecipe/helper +narrowscriptassertion/handoff beforeindependentreview. No retry/import/build/constructionauthorized.
