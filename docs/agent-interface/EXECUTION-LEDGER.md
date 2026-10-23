@@ -1380,3 +1380,8 @@ Independent r14actualgate boundedGO verifies1440hashes/289commandpairs/263source
 ### 2026-10-23 — S255 plan complete; storage policy proportionality review
 
 S r15plan verifies255exactoriginalnodeIDs/order zeroaddedcollectedconstructionhelpers,829regularfiles vsH827explained; no runtime. BothH167/S255/blockedpipe shareSTORAGE-CAPABILITY STOP underagentderivedhardquota policy. Parentrequests freshAstra pab-storage-proportionality-unblock-astra-r16-20261023 totraceuser/committedauthorityvsagentinventedconstraints andselectsmallesthonestpersistentproofpath orconcreteuserdecision, no silentwaiver/nohardquotafiction/no productassertionrelaxation. SOURCEONLY noDocker/storagechanges/runtimeauthorized.
+
+
+### 2026-10-23 — Storage policy proportionality decision adopted
+
+ParentadoptsAstra r16: ordinaryfreshDockerlocalpersistentvolume; metadata-inclusivehard1GiB/inodequota/backendUUID prereq removed asagent-derivedextra notproductcontract. Honestlogical/export/hostartifactthresholds+practicaldiskadmission/monitoring, no physicalquotaclaim. ProductL4MiB/allcapsunchanged; previouscapabilityauditfactspreserved. SOURCE+HOSTONLY pab-persistent-proof-p1-implementation-r17-20261023 selectedblockedpipefirst allowlistedfinitePID1/stoppedROexport/fullownership driver plus<=32HOSTcases; no actualDocker/volume/build/diagnosisyet. Globalindependentreview+oneactualdummy lifecyclequalification beforeoneproductdiagnosis remain. No humanpermissionneeded routineboundedengineeringdecision; nodeploy/install/reconfig/foreigncleanup.
