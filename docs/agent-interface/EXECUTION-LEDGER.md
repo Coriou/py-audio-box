@@ -830,3 +830,8 @@ Record failures and missing evidence; do not replace them with a successful late
 
 - Candidatee5d4df14deb49013ed7cc9f3435444c23eae1b39 source5619270d t3-0727f054 cleanunintegrated. FrozenLinux93matrix/128CoreDispatchpass; preservation38pass thenbackpressureexit74unattestedguardHOLD. No broadretry/nativeclearance.
 - IndependentSol-low reviewselectedregistry/lease/cleanupcontract andentiredelta next. ParentauthorizesONLYtest_b22c_denied_fault_update_inherited_checking_new_epoch fork-onlyCorechild->freshexecboundedJSONsamebody/query_only/checking/growth/exit73+ALLparentasserts, neededPIDcontract notpositive->negative. Implementlatercombinedcandidate withreview. GuardLinuxcontinuationtest-only separatelyaddressesknownG1G2 andprecisetransportfaultwitness no blanket74acceptance.
+
+## Bounded Core independent review accepted within its scope
+
+- `reviews/P1B23-CORE-OWNERSHIP-r1-sol.md`: bounded source/local-matrix GO for exact `e5d4df14deb49013ed7cc9f3435444c23eae1b39`, frozen `5619270d5cdce0d305a17fd60be58f53c53f550a`. No blocking owning-contract finding. Fresh independent 12-test selection and actual SQLite/64-live-Core/65th-admission/retained-flock/clean-fork lease probes passed on pinned Linux. Candidate remains clean and unintegrated.
+- Combined validation/integration remains NO-GO: running guard Linux continuation must finish and receive independent review; then combine with reviewed ownership and the sole authorized fresh-exec test adaptation, validate exact combined source and review before integration. No duplicate Docker campaign while guard lane runs. Native Darwin causes, T2, C1/C2 and final Astra gates remain pending; Linux success does not clear them.
