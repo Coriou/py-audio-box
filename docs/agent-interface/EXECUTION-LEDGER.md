@@ -1499,3 +1499,7 @@ r34 independentlyverifies50inventory/20streams/authority/slots andsourceexpected
 ### 2026-10-24 — Failure files recovered; collection and nondeterministic identity defects isolated
 
 ONEr35 recoveryarchive/map8files agree, readersstoppedretained, oldroot/laneunchanged. RecoveredENTRYexit4 ImportError service.recovery beforetargetbody; identityprograms both pass3.14.8/42pins/SQLite/nativechecks butrawoutputs differonlylddloaderaddresses ->postcheckidentitydrift. Independent pab-recovered-failure-causal-audit-r36-20261024 launched79inventory/32streams/transportgate+sourceimportresolution/stableidentityfixlocalization. No testretry/newwriter/cleanup/productGO; exactoriginalexceptionrelation/witnesses unavailablebeforecollection.
+
+### 2026-10-24 — Recovery independently accepted; cohesive harness fixes assigned
+
+Parentaccepts r36 boundedtransportGO79inventory/32streams+archive8files; concreteENTRYmissingtrusted/apppath (servicefilespresent), rawASLRlddidentityfalsepositive, failedwriterretentionroutinggap confirmed. FreshSOURCE+affectedHOST pab-entry-identity-retention-fix-r37-20261024 assigned entrytrustedroot/originchecks+strictsemanticidentity/rawdiagnostics+stoppedfailurearchive/mapbeforeoriginalrejection. Product/tests/observer/witness/locks unchanged; changeddiagnosticcopyhashes explicit, futurefreshderivativerequired no newdummycampaign. No actual/retry/cleanup; oldlane/objects/proof retained.
