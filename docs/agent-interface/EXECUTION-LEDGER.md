@@ -917,3 +917,8 @@ Record failures and missing evidence; do not replace them with a successful late
 
 - Parentaccepts LOTP-REHEARSAL-WITNESS-r1-sol boundedGO exactc224a4aa/frozen65eef52f:30independentPASS,123attributedaudited, no blockingnarrowfinding; stalecleanupmarkerrejection verified. Productionunchanged historicalPID161unproven.
 - pab-combined-broad-validation-r3-20261023 READONLYfourB2thenfullONLYifgreen exactsameimage08d9f7ad, samecaps/liveverifiedhard-dereferencedtarexport/oneDockerlane; stopfirstunexpectedno retry/fix. Prior811prefix560MiBtmpfs/fullpeakunknown explicitlyassess; no capincrease/manualproofdeletion. Integration/T2/finalAstra/platformnativegatespending.
+
+## Broad r3 STOP864PASS / grouped remaining refusal witness audit
+
+- COMBINED-BROAD-VALIDATION-r3-20261023 exactc224a4aa/frozen65eef52f:864PASS1FAIL1teardown at lotp_completed_history_preparation[old-descriptor-valid], owner34PID255raw18944emptyphase; innerexceptionunproven/no nativesignal. CurrentrehearsalRpositive passed. FullNOTRUN. Raw585MiBproof/livehashesverified cleanupcomplete sourceclean.
+- pab-history-refusal-witness-audit-20261023 READONLYSol-low diagnosesexactmissingdescriptorroute ANDboundedinventoryofremainingexpectedmaintenance-refusaltestseams/currentwitnesscoverage togroupconfirmedgaps. No runtime/fix/broadretryauthorized; no generic74/OSErroracceptance. Separateminimalimplementation/reviewnext basedonfacts.
