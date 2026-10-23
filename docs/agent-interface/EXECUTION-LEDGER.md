@@ -1531,3 +1531,7 @@ ONEr42 actual correctedlauncherdriver0/pytest1 expecteddiagnosticRED, runtime/so
 ### 2026-10-24 — Exact timeout evidence accepted; Astra strict-witness design
 
 Parentaccepts r43 boundedACTUALevidenceGO158inventory/64streams/all4rows/actualoffsets/runtime/retentioncleanup verified. TeststillRED/acceptancefalse: existingparameterizedbackpressureattestor correctlyexcludessingletontimeout. Fullchildtraceback/two-site distinction remainsuncaptured. FreshAstra pab-blocked-pipe-witness-astra-r44-20261024 assigned preciseimplementabledesign orminimalobservation-onlycapture decision, strictFD/frame/EAGAIN/deadline/exceptionroute/parentoriginal/ownedchild/witness256B+negativecontrols, test-onlypreferred no generic74waiver. No source/runtimeauthorityyet/historicalPID229claim.
+
+### 2026-10-24 — Astra strict B witness design adopted; source-only implementation
+
+Parentadoptsr44 SOURCEdesignGO noextraobservationcampaign. ONE pab-b-witness-source-r45-20261024 freshsuccessor guard+B-onlytrace/parser+APPENDEDdirectedcontrols authorized, production/target/model/assertions/conftest/entry/observer/deps/runtime/launcher frozen. Exactchild558route+realFD/EAGAIN/frame/deadline, independentparent624/627 andownedreaper/kill, closed16/20Btranscripts257lookahead overflowreject<=256, no generic74/legacyfallback; restoration/reference/overlappreservation mandatory. Source-only no runtime/pytest/Docker, manifeststaleexplicit untillaterpackaging. IndependentSolreview then separatelyauthorizedactual74positive/negativecontrolgate; historicalRED/PID229/widergatesunchanged.
