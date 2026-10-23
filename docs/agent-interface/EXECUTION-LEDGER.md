@@ -932,3 +932,8 @@ Record failures and missing evidence; do not replace them with a successful late
 
 - Parentadoptsentire GROUPED-WITNESS-CAPACITY-ASTRA.md H/Pprecisecontracts/sharedarmed-seam-finalrules/finitegroupedmatrix andS1HOLD. No generalV/Jrewrite orproductionchange; H/Pnotyetimplemented.
 - AuthorizeONE S1diagnostic pab-s1-capacity-premise-diagnostic-20261023 exactrehearsal-sql,same_consumerFalse, samePRAGMA1movedtoexactprivateconnectionBEFOREunchangedhardeneronce; unchangedINSERT/caps/allasserts.16boundedphaseobservationsmax, realSQLITE_FULL13atintendedINSERT/samefinalexception/nooriginalcompletion required usablepremise; existingguardEXPECTEDREDnotwaived. Earlierfailure/differentcode/success=>STOPno tuning/retry. NoH/P/groupedruntime/broaduntilreceiptdecision.
+
+## S1 diagnostic construction failed before experiment / bounded harness repair
+
+- Priorharness162b6aae/finaldb6960b9 s1-premise-20261023:ONEselectedinvocationStopIteration constructorrunnerexitlookup BEFOREmaintenance/SQL/records. Noenginepremise/expected74receipt/assertionruntimeproof. RawexportLIVEhashverified cleanupcomplete immutableFAIL.
+- Parentauthorizes pab-s1-diagnostic-harness-repair-20261023 ONLYconstructorcodeidentity/callsitefix, construction-onlyLinuxpreflight withoutmaintenance/SQL, thenONEsameprospectivefrozenS1node. NoSQL/PRAGMA1/count/payload/authorizer/guardchange. Earliercapacityexperimentneverexecuted; no greenreclassification. ActualpremisefailureSTOPnoretuning. H/P/Sacceptance/fullremainpending.
