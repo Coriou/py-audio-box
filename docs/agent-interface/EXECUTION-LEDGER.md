@@ -800,3 +800,8 @@ Record failures and missing evidence; do not replace them with a successful late
 
 - reviews/P1B23-LIFETIME-RETENTION-ASTRA.md selects64full-lifetimeCore slots reservedbeforeacquisition, PID/Thread-bound explicitcleanup andregistryemptymaintenancepre-forklease. IncludesordinaryCore.close/Dispatchercleanupoutcome andnarrowdouble-failuretestamendment; no capconfig/eviction/unsafeunlock/atforkcleanup. Process-exitabandonmentbounded/explicit notnativeclearance.
 - NewSol-low owningimplementation perentiredecisionmatrix; noC/guardimports, sourcepinpreservation. Independentreview thencombinedsourceguardqualification beforeintegration/T2. AllnativeV1V2V3/platform/finalAstragates retained.
+
+## Guard G1/G2 WIP / fresh helper native stop
+
+- Candidate4ff625669024c33b0eeb3ecad40f26a2a71bfc99 source52337e49 childwaitguard-g1g2-20261023 retainsproduction4259415d. G1G2implementedbutNO frozenGREEN: ordinaryfreshhelperSIGSEGV-11 beforephase/maintenance receipt stoppedvalidation immediately; no retry/broadcampaign. CauseUNRESOLVED andnotattributedCorefork/lifetime. PreserveexactproofseparatefromearlierV1V2V3.
+- Owning64slotCoreimplementationpab-core-ownership-implementation-r1-20261023 nowrunningperadoptedAstra; guardqualificationhold nointegration/fullT2claim. No diagnosticretryfollowingproviderrejection, no env/runtimeworkaround inferred.
