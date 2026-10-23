@@ -1439,3 +1439,7 @@ Independent r21 SOURCE+HOST GO verifies complete shared fix,181evidencehashes, r
 ### 2026-10-23 — Owned-tag actual build succeeds; dummy exit1 retained
 
 ONE r22 prepare/execute: native localtag/build verified; fresh volume/writer created and detachedstarted; waitCLI0 stdoutcontainer1. Firstfailure STOP before stoppedinspect/readers/export/cleanup; retained image/tag/volume/writer/lane/privateproof. No persistence or product credit. Independent pab-dummy-exit1-actual-audit-r23-20261023 launched hashes/actual receipt plus source diagnosis and max4 bounded exact-object readonlyinspect; no restart/newhelper/cleanup/retry. Cause remains undetermined pending evidence.
+
+### 2026-10-23 — Dummy stopped non-OOM; missing failure diagnostics confirmed
+
+Independent r23 verifies81hashes/21receipts and3exact-object readonlyinspect: stoppedexit1/nonOOM/no daemonerror. Trigger unproven; proven driver loses traceback/skips stoppedinspect on nonzero. r22 blanket0600 statement corrected supplemental audit0644 under0700root, bytesunchanged. SOURCE+HOST pab-dummy-readonly-diagnostic-source-r24-20261023 prepares smallest finiteexistingimage/ROvolume metadata/sourcepermissions/free-space probe with exactargv, no writerretry/product/build. Fresh independent source review before ONEactualprobe; all existing objects/lane retained.
