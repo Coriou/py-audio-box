@@ -1208,3 +1208,8 @@ Sf81ff76df9bf0b8967beea944fcb284188cc6aad docs11c2724dd7c2310e26a7c50c34f9059999
 H ONEconstruction exit1 co_branches carrierfieldcomparison after7records: actualrawoperandflags/cache/singleton all59CALLs passed; zero projectionrows completed. Independentactual/source audit pab-h-carrier-actual-review-r8-20261023 launched. No retry/Hgate.
 
 S r5 SOURCEGO F1-F4closed atf81ff76, but parentwithholds construction pending newHcarrierAPI concern; S also iteratesdir(actual) andmustbechecked independently. SourceGO retained boundedreadiness only notruntime. No speculativeduplicateconstruction.
+
+
+### 2026-10-23 — Carrier API/data distinction independently diagnosed
+
+H actualaudit confirms7records/all59CALLs/source/export/cleanup andco_branchescomparisonfailure before0rows. OfficialmatchingCPythonregistersco_branchesmethod; source-derivedboundreceiverexplanation notobservedoperands. Parent adopts closed18storedfields+co_name+3knownmethods exactinventory, unknownfieldsSTOP. SeparateminimalSOURCEONLY H/Sfix lanes pab-h-closed-carrier-source-fix-20261023 andpab-s-closed-carrier-source-fix-20261023 launched. S callablefilteralreadyavoidsHfailure; tightenclosedcontract noSfailureclaim. No construction/runtimeuntilfreshsource review.
