@@ -1,4 +1,4 @@
-"""Fixed <=32 case /300s HOST matrix. FAKE EXTERNAL COMMANDS; NO PRODUCT CLAIM."""
+"""Fixed <=33 case /300s HOST matrix. FAKE EXTERNAL COMMANDS; NO PRODUCT CLAIM."""
 import contextlib
 import hashlib
 import importlib.util
@@ -554,7 +554,8 @@ def container(mode, status):
 def lifecycle_script(failure=None):
     tmp = fresh('fixture-' + uuid.uuid4().hex)
     terminal = {'state': 'TERMINAL', 'token': OWNER['token'], 'invocation': OWNER['invocation'],
-                'pytest_exit': 1, 'descendants': {'complete': True}, 'acceptance': False}
+                'pytest_exit': 1, 'expected_pytest_exit': 1, 'entry': F.ENTRY, 'node': F.NODE,
+                'descendants': {'complete': True}, 'acceptance': False}
     F.slot_create(tmp / 'terminal')
     F.slot_write(tmp / 'terminal', terminal)
     files = [('pab-terminal.slot', F.read_regular(tmp / 'terminal', F.SLOT)),
@@ -761,7 +762,7 @@ def writer_scheduling():
     _old_writer_case()
     # Execute the ACTUAL writer scheduling function; only environment/IO/child
     # boundaries are fixtures. No synthetic replacement writer terminal is used.
-    for scenario in ('child-limit', 'post-limit', 'source-limit', 'publication-limit', 'success'):
+    for scenario in ('child-limit', 'post-limit', 'source-limit', 'publication-limit', 'success', 'positive0', 'positive1', 'legacy0'):
         r = fresh('schedule-' + scenario)
         tick = [0.0]
         captures, publications, quiescence = [], [], []
@@ -779,7 +780,7 @@ def writer_scheduling():
                 tick[0] = deadline
                 F.require(tick[0] < deadline, 'STOP fixture child timeout')
             tick[0] += 1
-            return 1, 42
+            return (0 if scenario in ('positive0', 'legacy0') else 1), 42
         source_calls = []
         def verify():
             source_calls.append(tick[0])
@@ -808,30 +809,132 @@ def writer_scheduling():
                     (F, 'read_regular', lambda *a: b'identical'), (F, 'compare_identity', lambda *a: None), (F.threading, 'Thread', Thread),
                     (Path, 'read_text', read)]:
                 stack.enter_context(patch.object(obj, name, value))
-            result = F.writer(r, OWNER['token'], OWNER['invocation'])
+            result = F.writer(r, OWNER['token'], OWNER['invocation'],
+                              'original-positive' if scenario.startswith('positive') else 'diagnostic-red')
         check(captures[0] == ('child', 5.0, 1205.0), 'early precheck lent child time')
         check(quiescence[0] <= 1290 and quiescence[0] <= (1205 if scenario == 'child-limit' else 6) + 30,
               'quiesce allowance changed')
         if scenario not in ('source-limit',):
             post = captures[1]
             check(post[2] == min(post[1] + 60, 1350), 'early child lent postcheck time')
-        check(result == (0 if scenario == 'success' else 1), 'phase overrun accepted')
+        check(result == (0 if scenario in ('success', 'positive0') else 1), 'phase overrun accepted')
         if scenario in ('post-limit', 'source-limit'):
             check(len(publications) == 1, 'publication after postcheck deadline')
             check(not any(x.get('state') == 'TERMINAL' for x in publications), 'terminal after timeout')
+        if scenario == 'positive0':
+            L.validate_terminal(publications[-1], dict(OWNER, profile='original-positive'))
         OBSERVATIONS.append({'actual_writer_schedule': scenario, 'captures': captures,
                              'quiesce_deadlines': quiescence, 'return': result,
                              'publication_states': [x['state'] for x in publications]})
 CASES[-1] = (CASES[-1][0], writer_scheduling)
 
 
+@case('33-closed-positive-profile-retention-and-tamper')
+def positive_profile():
+    owner = dict(OWNER, profile='original-positive')
+    mode, expected, classification = F.profile_spec('original-positive')
+    state = dict(state='TERMINAL', token=owner['token'], invocation=owner['invocation'],
+        profile='original-positive', command=[mode, 'original-positive', owner['token'], owner['invocation']],
+        entry=F.ENTRY, node=F.NODE, expected_pytest_exit=expected, pytest_exit=0, child_pid=42,
+        classification=classification, descendants={'complete': True}, acceptance=False)
+    L.validate_terminal(state, owner)
+    for key, value in [('profile', 'diagnostic-red'), ('expected_pytest_exit', 1), ('pytest_exit', 1),
+                       ('command', ['writer']), ('node', F.NODE + '[wrong]'), ('token', '00' * 24),
+                       ('classification', F.PROFILES['diagnostic-red'][2])]:
+        expect(lambda key=key, value=value: L.validate_terminal(dict(state, **{key: value}), owner))
+    expect(lambda: L.command('writer', dict(owner, profile='unknown')))
+    legacy_state = dict(state, expected_pytest_exit=1, pytest_exit=1)
+    for key in ('profile', 'command'): del legacy_state[key]
+    L.validate_terminal(legacy_state, OWNER)
+    expect(lambda: L.validate_terminal(dict(legacy_state, expected_pytest_exit=0), OWNER))
+    # Exercise real CLI dispatch, not a recreated argument parser.
+    with patch.object(F, 'writer', lambda *a: a):
+        for args, profile in [(['writer-positive', 'original-positive'], 'original-positive'),
+                              (['writer'], None)]:
+            with patch.object(sys, 'argv', ['finite-driver.py', *args, OWNER['token'], OWNER['invocation']]):
+                got = F.main()
+                check(got[1:3] == (OWNER['token'], OWNER['invocation']) and
+                      got[3:] == ((profile,) if profile else ()), 'CLI profile dispatch')
+        for args in (['writer-positive'], ['writer-positive', 'diagnostic-red'],
+                     ['writer-positive', '0'], ['writer', 'original-positive']):
+            with patch.object(sys, 'argv', ['finite-driver.py', *args, OWNER['token'], OWNER['invocation']]):
+                expect(F.main)
+    legacy = L.command('writer', OWNER)
+    check(legacy == ['python', '/app/diagnostics/p-one-node/finite-driver.py', 'writer',
+                     OWNER['token'], OWNER['invocation']], 'legacy command drift')
+    for m in ('archive', 'hash'):
+        check(L.command(m, owner) == L.command(m, OWNER), 'reader command drift')
+    for m in ('writer', 'archive', 'hash'):
+        obj = container(m, 'created')
+        obj['Config']['Cmd'] = L.command(m, owner)
+        L.container_binding(obj, owner, obj['Name'][1:], VOL, IMAGE, m)
+        if m == 'writer':
+            check(L.create_argv(obj['Name'][1:], VOL, IMAGE, m, owner)[-6:] ==
+                  L.command(m, owner), 'positive create argv')
+            obj['Config']['Cmd'] = legacy
+            expect(lambda: L.container_binding(obj, owner, obj['Name'][1:], VOL, IMAGE, m))
+    rows = []
+    for stage in range(1, 5):
+        r = [0] * 47
+        r[:4] = [1, 1, stage, 42]
+        r[4:8] = [43 if stage == 1 else 42, 42, 43, 18944]
+        r[8] = int(stage == 2)
+        r[11] = 4 if stage == 1 else 16
+        if stage == 1: r[16] = r[26] = r[31] = 1
+        rows.append(r)
+    def records0(values):
+        return b''.join((','.join(map(str, r))+'\n').encode() for r in values)
+    wait = dict(node=F.NODE, owner=42, pid=43, status=18944, phase='B:a;B:e;B:f;B:t;')
+    slots = {'pab-p-one-node-observer/records': records0(rows),
+             'waits.jsonl': L.encode(wait)+b'\n', 'pytest.stdout': b'. [100%]\n1 passed in 0.12s\n'}
+    check(L.validate_positive(slots, state)['acceptance'] is False, 'self acceptance')
+    for key, value in [('status', 9), ('node', F.NODE+'[x]'), ('owner', 99), ('pid', 99),
+                       ('phase', 'B:a;B:e;B:t;'), ('phase', 'B:a;B:e;B:f;B:t;B:t;')]:
+        altered = dict(slots, **{'waits.jsonl': L.encode(dict(wait, **{key: value}))+b'\n'})
+        expect(lambda altered=altered: L.validate_positive(altered, state))
+    for key, raw in [('waits.jsonl', b''), ('pytest.stdout', b'1 failed in 0.12s\n'),
+                     ('pytest.stdout', b'1 passed in 0.12s\n')]:
+        expect(lambda key=key, raw=raw: L.validate_positive(dict(slots, **{key: raw}), state))
+    for index, field, value in [(1, 7, 9), (1, 9, 1), (3, 10, 1), (0, 4, 99)]:
+        changed = [r[:] for r in rows]
+        changed[index][field] = value
+        expect(lambda changed=changed: L.validate_positive(dict(slots,
+            **{'pab-p-one-node-observer/records': records0(changed)}), state))
+    # Full real private archive/map retention with fake reader boundaries.
+    root = lifecycle_root('positive-retention')
+    for leaf, body in [('pab-terminal.slot', state), ('pab-intent.slot', dict(state, state='PENDING'))]:
+        F.slot_create(root / leaf); F.slot_write(root / leaf, body)
+        slots[leaf] = F.read_regular(root / leaf, F.SLOT)
+    files = list(slots.items()) + [('retention-sentinel', owner['token'].encode()+b'\0\xff\x80\r\n')]
+    archive = tar_bytes(files)
+    obj = L.Lifecycle(root, root/'lane', IMAGE, owner, SimpleNamespace(clock=time.monotonic))
+    obj.objects = {'writer': {'state': 'STOPPED'}, 'volume': VOL}
+    def reader(mode, deadline):
+        raw = archive if mode == 'archive' else b''.join(L.encode(dict(name=n,
+            sha256=hashlib.sha256(b).hexdigest()))+b'\n' for n, b in files)
+        with F.private(root/(mode+'-start.stdout')) as stream: stream.write(raw)
+    with patch.object(obj, 'run_container', reader): obj.retention()
+    check((root/'original-positive-structural.json').exists(), 'positive retention missing')
+    obj.lane.mkdir(mode=0o700)
+    with F.private(obj.lane/'owner.json') as stream: stream.write(L.encode(owner))
+    info = obj.lane.stat(); obj.lane_inode = [info.st_dev, info.st_ino]
+    check(obj.finish(), 'positive final publication')
+    final = F.slot_read(F.read_regular(root/'final.slot', F.SLOT))
+    check(final['state'] == 'RETAINED-ORIGINAL-POSITIVE-ACTUAL-REVIEW-REQUIRED'
+          and final['acceptance'] is False and final['owner']['profile'] == 'original-positive',
+          'positive relabelled historical RED')
+
+
 def main():
     F.enabled()
     os.umask(0o077)
-    check(len(CASES) <= 32, 'matrix bound')
+    check(len(CASES) <= 33, 'matrix bound')
     selected = CASES
     prior = None
-    if sys.argv[1:]:
+    profile_only = sys.argv[1:] == ['--profile-scope']
+    if profile_only:
+        selected = [(n, fn) for n, fn in CASES if n.startswith(('23-', '26-', '29-', '30-', '32-', '33-'))]
+    elif sys.argv[1:]:
         check(len(sys.argv) == 3 and sys.argv[1] == '--repair-scope', 'HOST fixed repair arguments')
         prior = json.loads(F.read_regular(sys.argv[2], F.META))
         failed = {r['case'] for r in prior['cases'] if r['result'] == 'RED'}
@@ -883,8 +986,8 @@ def main():
           D / 'host-check.py', D / 'source-manifest.json')}, 'source changed during matrix')
     receipt = {'tier': 'HOST-ONLY / FAKE EXTERNAL COMMANDS / NO PRODUCT CLAIM', 'root': str(ROOT),
                'python': sys.version, 'optimize': sys.flags.optimize, 'debug': __debug__, 'hashes': frozen,
-               'maximum_scenarios': 32, 'maximum_seconds': 300, 'maximum_case_seconds': 9, 'cases': results, 'prior_receipt': sys.argv[2] if prior else None,
-               'scope': 'F1/F2 plus supervisor reserve, latest full success/failure, source binding; prior RED retained' if prior else 'full fixed32',
+               'maximum_scenarios': 33, 'maximum_seconds': 300, 'maximum_case_seconds': 9, 'cases': results, 'prior_receipt': sys.argv[2] if prior else None,
+               'scope': 'F1/F2 plus supervisor reserve, latest full success/failure, source binding; prior RED retained' if prior else 'affected closed-profile six groups' if profile_only else 'full fixed33',
                'seconds': time.monotonic() - start, 'fd_observations': OBSERVATIONS,
                'result': 'PASS' if all(r['result'] == 'PASS' for r in results) else 'RED',
                'actual_Docker_Git_mutations_product_imports_SQLite_pytest_network': 0,

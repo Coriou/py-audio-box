@@ -188,6 +188,11 @@ def volume_binding(obj, owner, name):
 
 
 def command(mode, owner):
+    profile = owner.get('profile', 'diagnostic-red')
+    writer_mode, _, _ = F.profile_spec(profile)
+    if mode == 'writer' and profile == 'original-positive':
+        return ['python', '/app/diagnostics/p-one-node/finite-driver.py', writer_mode, profile,
+                owner['token'], owner['invocation']]
     return ['python', '/app/diagnostics/p-one-node/finite-driver.py', mode,
             owner['token'], owner['invocation']]
 
@@ -239,7 +244,8 @@ def stopped(obj):
               'UNKNOWN remote workload unresolved')
 
 
-def parse_archive(path, output, budget, *, clock=time.monotonic, deadline=None):
+def parse_archive(path, output, budget, *, clock=time.monotonic, deadline=None, profile='diagnostic-red'):
+    F.profile_spec(profile)
     F.require(path.stat().st_size <= F.EXPORT, 'STOP archive stream cap')
     hashes, seen, slots = {}, set(), {}
     total = 0
@@ -286,7 +292,8 @@ def parse_archive(path, output, budget, *, clock=time.monotonic, deadline=None):
                     remaining -= len(b)
                     h.update(b)
                     if name in ('retention-sentinel', 'pab-terminal.slot', 'pab-intent.slot',
-                                'pab-p-one-node-observer/records'):
+                                'pab-p-one-node-observer/records') or (profile == 'original-positive' and
+                                name in ('waits.jsonl', 'pytest.stdout', 'pytest.stderr')):
                         F.require(len(small) + len(b) <= F.SLOT, 'STOP bounded retained metadata')
                         small.extend(b)
                 padding = (-m.size) % 512
@@ -341,6 +348,77 @@ def validate_records(raw):
     return {'structural': True, 'independent_offset_type_guard_report_review_required': True,
             'acceptance': False, 'rows': rows}
 
+
+
+def validate_profile_binding(state, owner):
+    profile = owner.get('profile', 'diagnostic-red')
+    mode, expected, _ = F.profile_spec(profile)
+    F.require(state.get('expected_pytest_exit') == expected
+              and type(state.get('expected_pytest_exit')) is int
+              and state.get('entry') == F.ENTRY and state.get('node') == F.NODE,
+              'STOP requested profile binding')
+    if profile == 'original-positive':
+        F.require(state.get('token') == owner['token'] and state.get('invocation') == owner['invocation']
+                  and state.get('profile') == profile
+                  and state.get('command') == [mode, profile, owner['token'], owner['invocation']],
+                  'STOP positive command/profile binding')
+    else:
+        F.require('profile' not in state and 'command' not in state, 'STOP legacy profile tamper')
+
+
+def validate_terminal(terminal, owner):
+    profile = owner.get('profile', 'diagnostic-red')
+    _, expected, classification = F.profile_spec(profile)
+    F.require(terminal['state'] == 'TERMINAL' and terminal['token'] == owner['token']
+              and terminal['invocation'] == owner['invocation'] and terminal['pytest_exit'] == expected
+              and type(terminal['pytest_exit']) is int
+              and terminal['descendants']['complete'] and terminal['acceptance'] is False,
+              'STOP writer terminal binding')
+    validate_profile_binding(terminal, owner)
+    if profile == 'original-positive':
+        F.require(terminal.get('classification') == classification and 'failure' not in terminal
+                  and 'terminal_failure' not in terminal, 'STOP positive terminal classification')
+
+
+def validate_positive(slots, terminal):
+    """Closed structural gate; actual offsets, restoration and parent proof need review."""
+    raw = slots['pab-p-one-node-observer/records']
+    F.require(0 < len(raw) <= 16384 and raw.endswith(b'\n'), 'STOP positive records cap')
+    rows = []
+    for line in raw.splitlines():
+        F.require(len(line) + 1 <= 512 and re.fullmatch(rb'-?[0-9]+(?:,-?[0-9]+){46}', line),
+                  'STOP positive 47-field schema')
+        rows.append([int(x) for x in line.split(b',')])
+    waits = slots['waits.jsonl']
+    F.require(0 < len(waits) <= 16384 and waits.endswith(b'\n'), 'STOP positive waits cap')
+    lines = waits.splitlines()
+    F.require(len(lines) == 1, 'STOP positive singleton wait')
+    wait = json.loads(lines[0])
+    owner, child = wait['owner'], wait['pid']
+    F.require(type(owner) is int and type(child) is int and owner == terminal['child_pid']
+              and owner > 1 and child > 1 and owner != child
+              and wait == dict(node=F.NODE, owner=owner, pid=child, status=18944,
+                               phase='B:a;B:e;B:f;B:t;'), 'STOP positive actual74 transcript')
+    # Positive rows are observations, not the historical four error-row predicate.
+    F.require({r[2] for r in rows} == {1, 2, 3, 4}
+              and all(r[:2] == [1, 1] and r[3] == owner and r[9] == 0 for r in rows),
+              'STOP positive observer stages/owner/failures')
+    children = [r for r in rows if r[2] == 1]
+    terminals = [r for r in rows if r[2] == 2]
+    F.require(len(children) == len(terminals) == 1, 'STOP positive child/wait count')
+    c, w = children[0], terminals[0]
+    F.require(c[4:6] == [child, owner] and c[16] == c[26] == c[31] == 1
+              and c[11] == 4 and c[12] == 0
+              and w[6:8] == [child, 18944] and w[8] == 1
+              and all(r[4] == owner and r[10:13] == [0, 16, 0] for r in rows if r[2] != 1),
+              'STOP positive raw owner/child/guard binding')
+    stdout = slots['pytest.stdout']
+    F.require(len(stdout) <= F.SLOT and re.search(rb'(?m)^\. +\[100%\] *$', stdout)
+              and re.search(rb'(?m)^1 passed in [0-9]+(?:\.[0-9]+)?s\s*$', stdout),
+              'STOP original pytest PASS summary')
+    return dict(profile='original-positive', structural=True, actual74=True, rows=rows, wait=wait,
+                original_selection_and_pytest0_required=True,
+                independent_parent_offsets_assertions_restoration_review_required=True, acceptance=False)
 
 
 def base_reference(owner):
@@ -571,7 +649,8 @@ class Lifecycle:
         self.phase_end = retention_end
         self.run_container('archive', retention_end)
         audit = parse_archive(self.root / 'archive-start.stdout', self.root / 'archive-inventory.jsonl', self.budget,
-                              clock=self.a.clock, deadline=retention_end)
+                              clock=self.a.clock, deadline=retention_end,
+                              profile=self.owner.get('profile', 'diagnostic-red'))
         self.run_container('hash', retention_end)
         F.require(parse_map(self.root / 'hash-start.stdout') == audit['hashes'], 'STOP quiescent hash mismatch')
         publish(self.root / 'retention.json', {'state': 'VERIFIED', 'volume': self.objects['volume'],
@@ -584,12 +663,18 @@ class Lifecycle:
             raise self.writer_status_error
         F.require(audit['sentinel'] == self.owner['token'].encode() + b'\x00\xff\x80\r\n', 'STOP sentinel')
         terminal = F.slot_read(audit['slots']['pab-terminal.slot'])
-        F.require(terminal['state'] == 'TERMINAL' and terminal['token'] == self.owner['token']
-                  and terminal['invocation'] == self.owner['invocation'] and terminal['pytest_exit'] == 1
-                  and terminal['descendants']['complete'] and terminal['acceptance'] is False,
-                  'STOP writer terminal binding')
-        publish(self.root / '47-field-structural.json', validate_records(
-                audit['slots']['pab-p-one-node-observer/records']), self.budget)
+        validate_terminal(terminal, self.owner)
+        profile = self.owner.get('profile', 'diagnostic-red')
+        if profile == 'original-positive':
+            intent = F.slot_read(audit['slots']['pab-intent.slot'])
+            validate_profile_binding(intent, self.owner)
+            F.require(intent.get('state') == 'PENDING' and intent.get('acceptance') is False,
+                      'STOP positive intent binding')
+            evidence = validate_positive(audit['slots'], terminal)
+            publish(self.root / 'original-positive-structural.json', evidence, self.budget)
+        else:
+            publish(self.root / '47-field-structural.json', validate_records(
+                    audit['slots']['pab-p-one-node-observer/records']), self.budget)
 
     def cleanup(self):
         F.require(self.retained and self.error is None and getattr(self, 'writer_status_error', None) is None,
@@ -637,7 +722,9 @@ class Lifecycle:
             (self.lane / 'owner.json').unlink()
             self.lane.rmdir()
             state['lane_released'] = True
-        state['state'] = 'RETAINED-EXPECTED-RED-REVIEW-REQUIRED' if success else 'STOP-OR-UNKNOWN-HOLD'
+        state['state'] = (('RETAINED-ORIGINAL-POSITIVE-ACTUAL-REVIEW-REQUIRED'
+                           if self.owner.get('profile', 'diagnostic-red') == 'original-positive'
+                           else 'RETAINED-EXPECTED-RED-REVIEW-REQUIRED') if success else 'STOP-OR-UNKNOWN-HOLD')
         self.budget.charge(F.SLOT)
         F.slot_write(self.root / 'final.slot', state)
         F.require(F.slot_read(F.read_regular(self.root / 'final.slot', F.SLOT)) == state, 'STOP final readback')
@@ -760,12 +847,15 @@ def main():
     import argparse
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument('--prepare', action='store_true')
+    p.add_argument('--profile', choices=tuple(F.PROFILES), default='diagnostic-red')
     p.add_argument('--image')
     p.add_argument('--review')
     p.add_argument('--authorization')
     args = p.parse_args()
     owner = {'token': os.urandom(24).hex(), 'invocation': str(uuid.uuid4()), 'source': SOURCE,
              'documentation': DOCUMENTATION, 'pid': os.getpid()}
+    if args.profile != 'diagnostic-red':
+        owner['profile'] = args.profile
     if not args.prepare:
         F.require(args.image is not None and re.fullmatch(r'sha256:[0-9a-f]{64}', args.image), 'STOP exact image')
         # Nonempty files are necessary provenance, not semantic self-approval.
@@ -787,7 +877,8 @@ def main():
     lifecycle = Lifecycle(root, LANE, args.image, owner, Real())
     lifecycle.budget.charge(2 * F.SLOT)
     ok = supervise(root, lifecycle.run)
-    print('RETAINED EXPECTED RED; INDEPENDENT REVIEW REQUIRED' if ok else 'STOP/UNKNOWN', root)
+    print(('RETAINED ORIGINAL POSITIVE; INDEPENDENT ACTUAL REVIEW REQUIRED' if args.profile == 'original-positive'
+           else 'RETAINED EXPECTED RED; INDEPENDENT REVIEW REQUIRED') if ok else 'STOP/UNKNOWN', root)
     return 0 if ok else 1
 
 

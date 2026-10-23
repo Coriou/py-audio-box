@@ -27,6 +27,17 @@ ENTRY = ['python', '/app/diagnostics/p-one-node/entry.py', '--one-node']
 NODE = 'tests/service/test_recovery.py::test_t1_real_blocked_pipe_backpressure_deadline'
 
 
+PROFILES = {'diagnostic-red': ('writer', 1,
+    'EXPECTED-RED-REQUIRES-INDEPENDENT-47-FIELD-REVIEW'),
+    'original-positive': ('writer-positive', 0,
+    'ORIGINAL-POSITIVE-REQUIRES-INDEPENDENT-ACTUAL-REVIEW')}
+
+
+def profile_spec(profile):
+    require(type(profile) is str and profile in PROFILES, 'STOP closed profile')
+    return PROFILES[profile]
+
+
 def require(ok, message):
     if not ok:
         raise RuntimeError(message)
@@ -341,7 +352,8 @@ def compare_identity(before, after):
     module.compare(before, after)
 
 
-def writer(root, token, invocation):
+def writer(root, token, invocation, profile='diagnostic-red'):
+    mode, expected, classification = profile_spec(profile)
     enabled()
     require(os.getpid() == 1 and os.getuid() == os.getgid() == 10001, 'STOP writer identity')
     require(re.fullmatch('[0-9a-f]{48}', token) is not None, 'STOP token')
@@ -351,6 +363,8 @@ def writer(root, token, invocation):
     signal.setitimer(signal.ITIMER_REAL, 1350)
     state = dict(state='PENDING', token=token, invocation=invocation, entry=ENTRY,
                  node=NODE, expected_pytest_exit=1, acceptance=False, physical_quota=False)
+    if profile == 'original-positive':
+        state.update(profile=profile, command=[mode, profile, token, invocation], expected_pytest_exit=expected)
     terminal = root / 'pab-terminal.slot'
     child = None
     monitor_stop = threading.Event()
@@ -412,9 +426,9 @@ def writer(root, token, invocation):
             require(time.monotonic() < post_deadline, 'STOP postcheck phase overrun')
             checked_program(['python', '-c', identity_program()], root / 'identity-after', post_deadline)
             compare_identity(read_regular(root / 'identity-before', META), read_regular(root / 'identity-after', META))
-            require(state.get('pytest_exit') == 1 and 'failure' not in state, 'STOP unexpected test lifecycle')
+            require(state.get('pytest_exit') == expected and 'failure' not in state, 'STOP unexpected test lifecycle')
             state['state'] = 'TERMINAL'
-            state['classification'] = 'EXPECTED-RED-REQUIRES-INDEPENDENT-47-FIELD-REVIEW'
+            state['classification'] = classification
         except BaseException as exc:
             state['state'] = 'UNKNOWN' if not state.get('descendants', {}).get('complete') else 'STOP'
             state['terminal_failure'] = type(exc).__name__ + ': ' + str(exc)[:256]
@@ -434,12 +448,15 @@ def writer(root, token, invocation):
 
 def main():
     enabled()
-    require(len(sys.argv) == 4 and sys.argv[1] in ('writer', 'archive', 'hash'), 'STOP fixed arguments')
-    mode, token, invocation = sys.argv[1:]
+    positive = len(sys.argv) == 5 and sys.argv[1:3] == ['writer-positive', 'original-positive']
+    require(positive or len(sys.argv) == 4 and sys.argv[1] in ('writer', 'archive', 'hash'), 'STOP fixed arguments')
+    mode, token, invocation = ([sys.argv[1], *sys.argv[3:]] if positive else sys.argv[1:])
     require(re.fullmatch('[0-9a-f]{48}', token) is not None, 'STOP token')
     import uuid
     require(str(uuid.UUID(invocation)) == invocation, 'STOP UUID')
     root = Path('/tmp')
+    if positive:
+        return writer(root, token, invocation, 'original-positive')
     if mode == 'writer':
         return writer(root, token, invocation)
     signal.signal(signal.SIGALRM, lambda *_: os._exit(124))
