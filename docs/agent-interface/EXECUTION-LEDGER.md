@@ -1467,3 +1467,7 @@ Parent adopts Astra r27: next bounded P1B23 Linux diagnosis selects CPython3.14.
 ### 2026-10-23 — Clean initialization and failure capture successor delivered
 
 Fresh t3-dc329cf6 executable84477f38b4b6de52994e21e6cf6f3bafec801db6 docsc06e2f49b48264b51d65b0a9d1506b973ee4f839 reports affectedHOST7/7/24failurecases, retainedRED;193payloads/finite-driver/dummy unchanged. IndependentGLOBAL pab-clean-init-global-review-r28-20261023 launched fullsharedrecipe/lifecycle/priorclosures/HOSTaudit. Candidate stale3.14.7pending wording explicitly superseded by adoptedAstra r27 Linux3.14.8 disposition; no newpin/provisioning. No actual/newdummy/cleanup; oldheldlane/resources retained pending explicitfinalization.
+
+### 2026-10-23 — Clean-init global GO adopted; old serialization finalization
+
+Independent r28 boundedSOURCE+HOSTGO verifies421inventoryentries/440streams/7groups andpriorclosures. Parentaccepts readinessONLY. ONE pab-old-dummy-lane-finalization-r29-20261023 authorized2exactreadonlyfreshstoppedinspects, retainedinventory/evidence and exactowner/inode releaseONLYoldlock; ALLoldcontainers/volume/images/tags/proof preserved, originaldummyFAILED notqualified. Newdummy notyetdispatched; nextactualafterrelease underLinux3.14.8 adoptedruntime.
