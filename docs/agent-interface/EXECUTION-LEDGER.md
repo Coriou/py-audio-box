@@ -706,3 +706,8 @@ Record failures and missing evidence; do not replace them with a successful late
 
 - reviews/P1B23-T1-r1-sol.md exact8294c946 NO-GO: parent initialwritefdclose beforetry canraise andskipreadfdcleanup/ownedchildreap. Revieweractualforkprobe2freshfailures; independent308targetpass plusstrictprobes andreal30sdeadlinepositive. OtherinspectedT1/coherence/capacityprogress retained, not acceptance. Similarcleanupclose/forkfailure/childinitialclose paths requireaudit.
 - FreshisolatedSol-low targetedfix mustpreservewholeWIP, establishindependentdescriptor/childcleanupobligations immediatelyafterfork, no blindretrypossiblyclosedfd; reproduce reviewerprobe andfailurecleanup/fork/childvariants. Fulloriginalbrief/remaininggates supplied; freshindependentreview beforeintegration.
+
+## T1 F1 corrected candidate / independent round2
+
+- Candidatebdf9a6920964acd72ef108b2bf7516796f37e4be frozen35b2a288 t1-close-f1-20261023 rooteb1e593 retainsentireT1; correctiononly_run_bounded_maintenance plus64appendedcloseownershipcases/report. ClaimedoriginalreviewerRED2fails->green3probes,83focusedpass,target1268pass1skip/fourB21730pass1skip/full1882pass19skip frozen. No integration/selfGO.
+- FreshreadonlySol-low pab-t1-review-r2-20261023 receives originalfullbrief/F1report/implementationresponse andentirefinaldelta. Auditindependentcleanupobligations/FDidentityandaccessmode/reuse/closeEINTR/BaseException/exactchildreap pluspreservedsevenT1exits. Allqualification/T2/finalAstragates remain.
