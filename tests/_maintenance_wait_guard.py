@@ -299,7 +299,7 @@ class DurableLostResultWitness_P:
         self.valid = (self.eligible and node.originalname == name and
             node.nodeid == 'tests/service/test_recovery.py::' + name and
             getattr(getattr(node, 'callspec', None), 'params', {}) == {} and
-            function is not None and getattr(node, 'obj', function) is function and
+            function is not None and getattr(node, 'obj', None) is function and
             self.finish is not None and self.broken is not None and
             getattr(installed, '__code__', None) is self.finish and
             prepare_code is not None and operation_code is prepare_code)

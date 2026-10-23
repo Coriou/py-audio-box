@@ -490,7 +490,7 @@ def test_P_ordered_armed_transcript(defect):
 
 
 @pytest.mark.parametrize('mode', ['normal', 'wrong-class', 'subclass', 'wrong-args',
-    'real-EPIPE', 'wrong-code', 'wrong-node', 'wrong-collected', 'precompletion',
+    'real-EPIPE', 'wrong-code', 'wrong-node', 'wrong-collected', 'missing-collected', 'precompletion',
     'durable-id', 'missing-sentinel', 'wrong-fd', 'reused-fd', 'witness-pipe',
     'operation-failure', 'cleanup-value', 'cleanup-nonsemantic', 'cleanup-new-object',
     'changed-route', 'changed-attributes', 'wrong-final-caller', 'bad-offset',
@@ -538,6 +538,19 @@ class Plugin:
         predicate = {'durable-id', 'bad-offset', 'bad-slice', 'frame-budget', 'wrong-operation-code'}
         cleanup = {'cleanup-value', 'cleanup-nonsemantic', 'cleanup-new-object', 'changed-route'}
         fd_modes = {'wrong-fd', 'reused-fd', 'witness-pipe', 'pipe-mode'}
+        # Bootstrap has no collected callable. Bind THIS inner pytest item
+        # before its invocation; never recover authority from the module.
+        assert not hasattr(h._CURRENT.node, 'obj')
+        assert request.node.nodeid == NODE
+        collected = request.node.obj
+        assert callable(collected)
+        assert collected is sys.modules['test_recovery'].test_t1_durable_completion_lost_result_no_false_success
+        if mode == 'missing-collected':
+            assert not hasattr(h._CURRENT.node, 'obj')
+            evidence('collected-withheld')
+        else:
+            patch.setattr(h._CURRENT.node, 'obj', collected, raising=False)
+            assert h._CURRENT.node.obj is collected
         if mode == 'wrong-node':
             h._CURRENT.node.nodeid = 'foreign::' + NODE
             assert h._CURRENT.node.nodeid == 'foreign::' + NODE
@@ -549,7 +562,9 @@ class Plugin:
         def init(witness, *a, **kw):
             original_init(witness, *a, **kw)
             assert witness.eligible
-            invalid = mode in {'wrong-code', 'wrong-node', 'wrong-collected', 'operation-failure', 'operation-value'}
+            if mode == 'missing-collected':
+                assert not hasattr(a[0], 'obj')
+            invalid = mode in {'wrong-code', 'wrong-node', 'wrong-collected', 'missing-collected', 'operation-failure', 'operation-value'}
             assert witness.valid is not invalid
             evidence('armed-invalid' if invalid else 'armed-valid')
         patch.setattr(cls, '__init__', init)
@@ -558,10 +573,10 @@ class Plugin:
                 evidence('continuation-enter')
             answer = original_trace(witness, frame, event, arg)
             if frame.f_code is witness.continuation and event == 'return' and witness.completed is not None:
-                assert witness.valid is (mode not in {'wrong-node', 'wrong-collected'})
+                assert witness.valid is (mode not in {'wrong-node', 'wrong-collected', 'missing-collected'})
                 evidence('completed')
             if frame.f_code is witness.finish and event == 'return' and witness.completed is not None:
-                assert witness.valid is (mode not in {'wrong-node', 'wrong-collected'})
+                assert witness.valid is (mode not in {'wrong-node', 'wrong-collected', 'missing-collected'})
                 assert witness.sentinel_P.read_text() == witness.completed[2]
                 evidence('finish')
             return trace.__get__(witness, cls) if answer is not None else None
@@ -624,7 +639,7 @@ class Plugin:
                 post_seam(exc)
             rejected = mode in predicate | fd_modes | {
                 'wrong-class', 'subclass', 'wrong-args', 'real-EPIPE', 'missing-sentinel',
-                'wrong-node', 'wrong-collected'}
+                'wrong-node', 'wrong-collected', 'missing-collected'}
             if rejected:
                 assert not result
                 evidence('seam-rejected')
@@ -668,6 +683,8 @@ class Plugin:
             evidence('references-cleared')
         patch.setattr(cls, 'clear_P', clear)
         def changed_run(roots, scope, operation, **kw):
+            if mode == 'missing-collected':
+                assert not hasattr(h._CURRENT.node, 'obj')
             installed = recovery._prepare_abandon_locked
             if mode in {'wrong-class', 'subclass', 'wrong-args', 'real-EPIPE', 'missing-sentinel'} | fd_modes:
                 class SubPipe(BrokenPipeError): pass
@@ -779,6 +796,7 @@ class Plugin:
             assert cls.at_exit_P is original_exit and cls.trace_P is original_trace and cls.clear_P is original_clear
             assert recovery._MaintenanceSession.continue_kernel is original_continue
             assert recovery._prepare_abandon_locked is original_locked
+            assert not hasattr(h._CURRENT.node, 'obj')
             evidence('hooks-restored')
 result = pytest.main(['--noconftest', '-p', 'no:cacheprovider', NODE,
     '-q', '-rs', '-x', '--basetemp='+BASE], plugins=[Plugin()])
@@ -849,8 +867,8 @@ Path(SENTINEL).write_text('continued')
     assert len(records) == 2 and all(r['mode'] == mode for r in records)
     parent, = [r['steps'] for r in records if 'hooks-restored' in r['steps']]
     child, = [r['steps'] for r in records if 'final-accepted' in r['steps'] or 'final-rejected' in r['steps']]
-    invalid = mode in ('wrong-code', 'wrong-node', 'wrong-collected', 'operation-failure', 'operation-value')
-    assert parent == (['node-mutated'] if mode == 'wrong-node' else ['collected-mutated'] if mode == 'wrong-collected' else []) + [('armed-invalid' if invalid else 'armed-valid')] + (['observer-mutated'] if mode in ('missing-markers', 'signal11') else []) + ['references-cleared', 'hooks-restored'] + ([] if positive else ['next-maintenance-refused'])
+    invalid = mode in ('wrong-code', 'wrong-node', 'wrong-collected', 'missing-collected', 'operation-failure', 'operation-value')
+    assert parent == (['node-mutated'] if mode == 'wrong-node' else ['collected-mutated'] if mode == 'wrong-collected' else ['collected-withheld'] if mode == 'missing-collected' else []) + [('armed-invalid' if invalid else 'armed-valid')] + (['observer-mutated'] if mode in ('missing-markers', 'signal11') else []) + ['references-cleared', 'hooks-restored'] + ([] if positive else ['next-maintenance-refused'])
     early = {'wrong-code': 'installed-operation-reached', 'operation-value': 'outer-operation-reached',
         'operation-failure': 'outer-operation-reached', 'precompletion': 'continuation-precompletion-reached'}
     if mode in early:
@@ -865,7 +883,7 @@ Path(SENTINEL).write_text('continued')
             expected += ['error-factory-reached'] + (['fd-mutated-and-temp-closed'] if mode in fd_modes else []) + ['error-mutated']
         if mode in predicates or cleanup: expected += ['baseline-seam']
         if mode in predicates: expected += ['predicate-mutated']
-        expected += ['seam-rejected' if mode in error_modes | predicates | {'wrong-node', 'wrong-collected'} else 'seam']
+        expected += ['seam-rejected' if mode in error_modes | predicates | {'wrong-node', 'wrong-collected', 'missing-collected'} else 'seam']
         if cleanup: expected += ['unwind-mutated', 'final-identity']
         if mode == 'changed-attributes': expected += ['attributes-mutated']
         if mode == 'wrong-final-caller': expected += ['caller-predicate-mutated']
