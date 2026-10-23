@@ -2020,3 +2020,66 @@ Before/after guard JSONs match byte-for-byte. Read-only historical inventory con
 All **19 Linux skips remain UNQUALIFIED**: one actual RLIMIT_FSIZE and eighteen peer-credential mechanisms (10+1+1+6). Actual Linux 4MiB/ext4/Unix-VFS/SHM, C1 pinned launcher/provenance/authentication and mandatory production refusal, installed C1/C2/clean host, B3, physical durability, hardware/browser/listening/acoustic and global Astra remain pending. A1 whole-inventory drift remains unexplained/unqualified; no inferred cause/waiver. Apple Silicon is documentation-only qualification scope. Host freeze/public activation stays closed; no completion/replay/transport failure grants automatic restart, rollback inference or current freeze release.
 
 No delegation, integration, Docker/network/model/audio/install/paid E2E, push/PR/deploy, reset/clean/prune/add-A, other-worktree mutation or resource/schema/dependency/C/host/worker change. **Return clean candidate for parent-owned fresh round-3 review of the entire final T1 delta; no self-acceptance.** T2 is not this assignment.
+
+
+## 2026-10-23 — Family P source-only implementation handoff
+
+Implementation prepared; independent source review and every runtime gate remain pending. No GO or runtime pass is claimed. Parent explicitly adopted both complete Astra contracts, with revised S superseding old S; this lane implements P only. Both entire reports were read. H/S/A/R are not implemented or redesigned here.
+
+Provenance and freeze:
+
+- Worktree: `/Users/ben/.txcode/worktrees/py-audio-box/t3-1cebb715`, branch `t3/family-p-durable-completion-witness`.
+- Root entry: `5ef14a18ba27e57dac6b74a30c086468060d4a07` (root T1 documents, not the later source candidate).
+- Immutable source: `c224a4aaedf4c15765c8a19540a77f2f221a59c5`, ABS `/Users/ben/.txcode/worktrees/py-audio-box/t3-eb791eef`; historical executable freeze `65eef52fe7579b7d357719134a04c47fcb384b2e`. Historical worktree was read only and remained clean at the exact source HEAD on final inspection.
+- Reconstructed baseline commit: `fbe4f111934ee49b280da0c7a324051cc214c82e`. All 426 committed non-document paths (exclude docs/ and *.md) were reconstructed by Git object bytes and explicitly compared equal before P edits. SHA256 of the ordered `sha256 + two spaces + path + newline` baseline manifest: `f83839103f046acb8b89af1f1eea6e56cc52d6f2fabd516f041f925ef7156ae9`.
+- Frozen P executable/test commit: `d00f49f9a16f3f0eac11ba4c62622ec1278cc176`. Its delta from reconstructed baseline is exactly the three allowed test files. Root documents are unchanged through that freeze. The following commit is this append-only handoff, with no executable change.
+- Final non-document diff against c224a4 names only tests/_maintenance_wait_guard.py, tests/service/test_recovery.py and tests/service/test_child_wait_guard.py. No production, dependency, conftest, aggregate, bootstrap, selector, receipt schema or process-management amendment belongs to P. Reconstruction is separately identified and must not be confused with new family delta.
+
+Concrete P implementation:
+
+`DurableLostResultWitness_P` and scoped install hooks capture the original production runner, original continuation, exact _prepare_abandon lambda, actual collected finish_then_lose and broken code objects. The parent's P armed flag and P:a; precede child execution. Missing collected identity or wrong installed code fails the armed invocation; arbitrary outer-name replay helpers do not arm. The actual production lambda and installed function are independently checked. The captured writer emits seam/final markers despite the child's os.write patch.
+
+A scoped trace observes only the runner, continuation and collected finish frames. It binds the actual prepared snapshot/session/intent, original continuation's complete result with matching recovery_id, one SQL recovery with the exact intent ID and five real SQL steps, and the durable-completion sentinel before accepting the result-write seam. No extra SQLite connection is opened by the observer. Parent target retains every original assertion and adds snapshot consumption, ID shape and exact SQL identity assertions. The real _kfifth_fresh replay remains exit0 with byte/logical equality assertions intact.
+
+The seam requires exact built-in BrokenPipeError, args ('modeled lost result pipe',), errno None; actual captured runner os.write CALL offset and collected broken RAISE_VARARGS offset; exact runner frame; enrolled result-pipe device/inode/mode/access identity distinct from witness pipe; bounded bytearray frame, integer offset and actual memoryview owner/slice and FD arguments. Real EPIPE, another pipe, reused FD, file or operation failure cannot satisfy that seam. At runner catch-all74, sys.exception() must be the retained actual object with unchanged attributes and the exact two ordered (actual frame, tb_lasti) pairs. Only the last captured _exit CALL site is final authority. There is no traceback, payload, SQL value or path serialization.
+
+The armed parent veto runs before legacy handling, including for exit0, expected_exit74 and synthetic signal11 with otherwise valid tokens. Closed token parsing rejects missing, duplicate, truncated, reordered, unknown and overflowing evidence. One exception/frame route is held per invocation and cleared in finally; the previous trace hook is restored. Existing R class/predicates/tokens remain byte-exact. Existing kernel wait, enrollment, latch, single reaper, session stop and helper ownership machinery are unchanged.
+
+Static token bound: P:a;/P:s;/P:f; are 4 bytes each, total12. Existing mutually possible semantic markers V (1), V:session; (10), V:operation; (12) add23, so this P invocation is at most35 bytes. Reserving the same 12-byte triples for both future H and S yields 12*3+23=59 <=256. R/J/T/C/D declarations have different exact nodes and cannot emit on this P invocation; legacy marker deduplication is unchanged. This is a static bound under the adopted short-token convention, not a claim that other family implementations have been reviewed. Explicit overlap/token-bound review is still required at combination.
+
+Static verification performed, without candidate imports:
+
+- Standard-library ast.parse and compile(source, filename, 'exec') on the three changed files; AST parse of the embedded fresh-helper source. No generated code was executed and no pyc was written.
+- AST-delimited exact-byte comparison of every preexisting out-of-scope top-level definition and every existing top-level non-definition statement in order. Only guard observe/install and the named P target differ; R and all unrelated recovery bodies remain identical. Guard tests preserve their complete original file as a byte-exact prefix. Original assertion AST multiplicities are retained.
+- git diff --check; source scope/name comparison to c224a4; exact historical HEAD/clean inspection. Static checking script was `/tmp/check_family_p.py`, output `/tmp/family-P-static.json` (ephemeral convenience files; complete durable results below).
+- One static syntax typo was found and corrected before freeze. A hash command initially addressed absent root requirements.lock; corrected pin is service/requirements.lock below. Neither command imported candidate code or exercised a runtime.
+
+Frozen hashes (SHA256):
+
+| Object | Old c224a4 | New frozen P |
+|---|---|---|
+| tests/_maintenance_wait_guard.py | `4842c9c9881841c876f48dea801b3e09862723da1a6b281c0df3de2d4546eaee` | `c28448dfca0406157bd07a1f768e211791ca285569cc251d7f69d9ac828af877` |
+| tests/service/test_recovery.py | `93297423794a1abcf496d898332129c0596e51d55ad50494c8a84cfe86c064ac` | `c236e4045a0c35836fc269fd5938c053ab3e97f1f2682f023470afe3a68dd211` |
+| tests/service/test_child_wait_guard.py | `6424d288a7bea6af55a4fc258d2252dffd2837f9dff2403c940cb355761abc18` | `cffbcf2e9bd75412e30f53be221b2ac58dbabc94f5653324db9f5b6bbb2ba62c` |
+| Exact P target definition, including source newline | `1bef1910986243e5fe75f468e1d616b35973fd30ac31da3dd3b9002d6386e474` | `11725409583de8133a93de2e8db0135250e76f5e0fe7048f97119c4c0c67393e` |
+
+Unchanged pins (SHA256):
+
+- service/recovery.py: `c314b2423b71c7d205b4558aee44d8c895e41394adbbb05a85458ef9bd7acf29`.
+- service/requirements.lock: `4ad7f2d9e6d4f03b7abb22d4946524f4372b5277b7b80c186332720f490909ea`.
+- tests/conftest.py: `d967baee72fa7fba3cb8974ac0406b2f44231a1c9d49fb7e7c088016f07cc7a3`.
+- poetry.lock: `2885f7f62d5a4b4a483e001622ba1d0d5ec4110578971664ecced01fbdfeb553`.
+
+Finite future P matrix — static enumeration only, not collected/executed counts:
+
+| Selection | Static cases | Purpose |
+|---|---:|---|
+| Original test_t1_durable_completion_lost_result_no_false_success | 1 | Real durable completion/lost result, SQL1/steps5, real fresh observational replay |
+| test_P_ordered_armed_transcript | 11 | normal; missing; no-seam; no-final; final-only; duplicate; truncated; overflow; wrong-order; exit0; synthetic signal11 |
+| test_P_durable_lost_result_fresh_contract | 30 | normal real fixture/fresh helper plus the directed cases below |
+
+Fresh cases: normal; wrong-class; subclass; wrong-args; real-EPIPE; wrong-code; wrong-node; wrong-collected; precompletion; durable-id; missing-sentinel; wrong-fd; reused-fd; witness-pipe; operation-failure; cleanup-value; cleanup-nonsemantic; cleanup-new-object; changed-route; changed-attributes; wrong-final-caller; bad-offset; bad-slice; frame-budget; pipe-mode; wrong-operation-code; missing-markers; signal11; foreign-owner; missing-done. The FD controls actually replace the enrolled numeric FD with a file, unrelated pipe or witness pipe. Cleanup controls raise/unwind at a test-owned final-observer cleanup boundary after seam capture, including ValueError with V marker, nonsemantic error and a fresh same-type object; they do not fabricate serialized receipts. Changed-route reraises the same object through extra actual frames. These controls and code paths have NOT run. Synthetic observer11 is explicitly synthetic and never native signal evidence. Foreign owner and missing-done exercise the existing fresh ownership channel; the fail latch and refusal of another launch are checked outside the target's pytest.raises.
+
+Required next steps, not authorized/executed by this handoff: parent independent frozen-source review first; then separately authorized finite P runtime/actual-receipt review with the real positive and replay, directed controls and required preservation selection. Combine only frozen family commits after explicit overlap review (observe/install are intentional shared edit sites); then independent full combined source review/full grouped gate. No delegation, integration, pytest/collection, candidate import, Docker, SQLite open, native experiment, runtime lane or production action occurred here. No owned runtime resource was acquired. Historical clean worktrees, STT untracked artifacts and raw proof were preserved. No synthetic case is counted as an actual positive, no tests are called passing, and no implementation self-GO follows from static checks.
+
+Mandatory C1 b2_pinned_launcher_context_unavailable, native Darwin causes/controls, A1 drift, all platform/19 mechanism and installed-durability obligations, T2/C1295, four-B2/full service/release, final global Astra, Apple-Silicon/browser/acoustic and activation remain pending. The revised S late genuine-completion capacity gap remains the other lane's explicit coverage gap; P does not resolve it or historical PID161/PID255 exceptions.
