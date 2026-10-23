@@ -12,7 +12,7 @@ import tempfile
 from types import SimpleNamespace
 import uuid
 
-from service.core import encode, sync_dir
+from service.core import encode, sync_dir, _core_maintenance_lease
 from service.persistent_init import digest, read_file, roots_checked, validate_scope
 from service.persistence import B1_COLUMNS, B2_COLUMNS
 from service.reconciliation import Reconciliation, COLUMNS
@@ -505,7 +505,13 @@ def _run_bounded_maintenance(roots, scope, operation, *, _prewrite=None):
     if sys.platform!='linux' or threading.active_count()!=1:
         raise ValueError('b2_maintenance_platform')
     deadline=time.monotonic()+30
-    read_fd,write_fd=os.pipe()
+    lease = _core_maintenance_lease()
+    lease.__enter__()
+    try:
+        read_fd,write_fd=os.pipe()
+    except BaseException:
+        lease.__exit__(*sys.exc_info())
+        raise
     # Single-threaded ownership: an interrupted close may already have released
     # the number. Only finish a failed-before-close when fstat still identifies
     # this exact pipe end (including access mode); never close a reused number.
@@ -531,9 +537,12 @@ def _run_bounded_maintenance(roots, scope, operation, *, _prewrite=None):
         identities={fd:pipe_identity(fd) for fd in (read_fd,write_fd)}
         pid=os.fork()
     except BaseException:
-        try:close_owned('read')
-        finally:close_owned('write')
+        try:
+            try:close_owned('read')
+            finally:close_owned('write')
+        finally:lease.__exit__(*sys.exc_info())
         raise
+    if pid!=0: lease.__exit__(None,None,None)
     if pid==0:
         _maintenance_child_pid=os.getpid()
         try:
@@ -941,32 +950,54 @@ def apply(*args,**kwargs):
 def enrollment_gate(root, registration_id, hello, profiles, budget):
     """Read-only pre-Core startup check. No Docker access or new health epoch."""
     path=Path(root).absolute()/'core.sqlite'
-    with private_database(path) as private_path, sqlite3.connect(private_path.as_uri()+'?mode=ro',uri=True,timeout=0) as db:
-        db.execute('PRAGMA query_only=ON')
-        deadline=time.monotonic()+2
-        db.set_progress_handler(lambda:int(time.monotonic()>deadline),1000)
-        count=size=0
-        for table,columns in B1_COLUMNS.items():
-            if [r[1] for r in db.execute('PRAGMA table_info('+table+')')] != columns.split(): raise ValueError('unsupported_enrollment_schema')
-            n,b=db.execute('SELECT count(*),coalesce(sum(length(record)),0) FROM '+table).fetchone()
-            count+=n; size+=b
-            if count>MAX_ROWS or size>MAX_BYTES: raise ValueError('enrollment_read_budget')
-        row=db.execute('SELECT record,digest FROM p1_installation').fetchall()
-        if len(row)!=1: raise ValueError('not_enrolled')
-        installation=json.loads(row[0][0])
-        closed(installation,'deployment_id revision scope host profile_budget_digest')
-        validate_scope(installation['host'])
-        if installation['revision']!=1 or installation['scope']!='owned-synthetic': raise ValueError('unsupported_enrollment')
-        if digest(installation)!=row[0][1] or installation['profile_budget_digest']!=digest(dict(profiles=profiles,budget=budget)):
-            raise ValueError('enrollment_configuration_mismatch')
-        row=db.execute('SELECT record,digest FROM p1_registrations WHERE id=?',(registration_id,)).fetchone()
-        if not row or len(row[0])>65536: raise ValueError('missing_registration')
-        record=json.loads(row[0]); validate_registration(record)
-        check_completion_hello(db,hello,Path(root))
-        if (digest(record)!=row[1] or row[1]!=registration_id or record['deployment_id']!=installation['deployment_id'] or
-            record['scope']!=installation['host'] or record['evidence']!='actual-host-inspection' or
-            record['lane']!=hello.get('lane') or record['boot']!=hello.get('boot') or hello.get('quarantined') is not False):
-            raise ValueError('persistent_registration_mismatch')
+    primary = None
+    try:
+        with private_database(path) as private_path:
+            db = None
+            try:
+                db = sqlite3.connect(private_path.as_uri()+'?mode=ro',uri=True,timeout=0)
+                with db:
+                    db.execute('PRAGMA query_only=ON')
+                    deadline=time.monotonic()+2
+                    db.set_progress_handler(lambda:int(time.monotonic()>deadline),1000)
+                    count=size=0
+                    for table,columns in B1_COLUMNS.items():
+                        if [r[1] for r in db.execute('PRAGMA table_info('+table+')')] != columns.split(): raise ValueError('unsupported_enrollment_schema')
+                        n,b=db.execute('SELECT count(*),coalesce(sum(length(record)),0) FROM '+table).fetchone()
+                        count+=n; size+=b
+                        if count>MAX_ROWS or size>MAX_BYTES: raise ValueError('enrollment_read_budget')
+                    row=db.execute('SELECT record,digest FROM p1_installation').fetchall()
+                    if len(row)!=1: raise ValueError('not_enrolled')
+                    installation=json.loads(row[0][0])
+                    closed(installation,'deployment_id revision scope host profile_budget_digest')
+                    validate_scope(installation['host'])
+                    if installation['revision']!=1 or installation['scope']!='owned-synthetic': raise ValueError('unsupported_enrollment')
+                    if digest(installation)!=row[0][1] or installation['profile_budget_digest']!=digest(dict(profiles=profiles,budget=budget)):
+                        raise ValueError('enrollment_configuration_mismatch')
+                    row=db.execute('SELECT record,digest FROM p1_registrations WHERE id=?',(registration_id,)).fetchone()
+                    if not row or len(row[0])>65536: raise ValueError('missing_registration')
+                    record=json.loads(row[0]); validate_registration(record)
+                    check_completion_hello(db,hello,Path(root))
+                    if (digest(record)!=row[1] or row[1]!=registration_id or record['deployment_id']!=installation['deployment_id'] or
+                        record['scope']!=installation['host'] or record['evidence']!='actual-host-inspection' or
+                        record['lane']!=hello.get('lane') or record['boot']!=hello.get('boot') or hello.get('quarantined') is not False):
+                        raise ValueError('persistent_registration_mismatch')
+            except BaseException as exc:
+                primary = exc
+                raise
+            finally:
+                try:
+                    if db is not None: db.close()
+                except BaseException as cleanup:
+                    if primary is None:
+                        primary = cleanup
+                        raise
+                    primary.add_note('reader close failed: '+type(cleanup).__name__)
+    except BaseException as cleanup:
+        if primary is not None and cleanup is not primary:
+            primary.add_note('private reader teardown failed: '+type(cleanup).__name__)
+            raise primary from cleanup
+        raise
     return installation['deployment_id']
 
 
@@ -1023,25 +1054,78 @@ def check_completion_hello(db,hello,root=None):
     return expected
 
 
+@contextmanager
+def _startup_read_lock(root):
+    """Discovery owns an existing control lock only; never creates a namespace.
+
+    False means no initialized database was observed, so callers must skip the
+    reader entirely. Core remains responsible for creating/validating fresh roots.
+    """
+    import stat
+    root = Path(root).absolute()
+    if root.is_symlink() or (root.exists() and (not root.is_dir() or root.stat().st_uid != os.getuid())):
+        raise ValueError('foreign_root')
+    fd = None
+    try:
+        try:
+            fd = os.open(root/'control.lock', os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+        except FileNotFoundError:
+            if (root/'core.sqlite').exists() or (root/'core.sqlite').is_symlink():
+                raise ValueError('missing_control_lock') from None
+            yield False
+            return
+        st = os.fstat(fd)
+        if not stat.S_ISREG(st.st_mode) or st.st_uid != os.getuid() or st.st_nlink != 1:
+            raise ValueError('foreign_lock')
+        try: fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError: raise ValueError('control_busy') from None
+        yield True
+    finally:
+        if fd is not None: os.close(fd)
+
+
 def startup_read(root):
     """Pre-Core copy, never opens the original SQLite namespace with SQLite."""
     path=Path(root).absolute()/'core.sqlite'
     if not path.exists(): return None
-    with private_database(path) as private_path, sqlite3.connect(private_path.as_uri()+'?mode=ro',uri=True,timeout=0) as db:
-        db.execute('PRAGMA query_only=ON')
-        end=time.monotonic()+2
-        db.set_progress_handler(lambda:int(time.monotonic()>end),1000)
-        tables={r[0] for r in db.execute("SELECT name FROM sqlite_master WHERE type='table'")}
-        if not tables & (set(B1_COLUMNS)|set(B2_COLUMNS)): return None
-        for table,columns in B1_COLUMNS.items():
-            if [r[1] for r in db.execute('PRAGMA table_info('+table+')')]!=columns.split(): raise ValueError('partial_enrollment_schema')
-        n,b=db.execute('SELECT count(*),coalesce(sum(length(record)),0) FROM p1_installation').fetchone()
-        if n!=1 or b>65536: raise ValueError('bounded_enrollment_required')
-        identity,raw,h=db.execute('SELECT id,record,digest FROM p1_installation').fetchone()
-        value=json.loads(raw)
-        closed(value,'deployment_id revision scope host profile_budget_digest'); validate_scope(value['host'])
-        if digest(value)!=h or identity!=value['deployment_id'] or value['revision']!=1 or value['scope']!='owned-synthetic': raise ValueError('invalid_enrollment')
-        return dict(deployment_id=identity,completion=completion_binding(db,Path(root)))
+    primary = None
+    try:
+        with private_database(path) as private_path:
+            db = None
+            try:
+                db = sqlite3.connect(private_path.as_uri()+'?mode=ro',uri=True,timeout=0)
+                with db:
+                    db.execute('PRAGMA query_only=ON')
+                    end=time.monotonic()+2
+                    db.set_progress_handler(lambda:int(time.monotonic()>end),1000)
+                    tables={r[0] for r in db.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+                    if not tables & (set(B1_COLUMNS)|set(B2_COLUMNS)): return None
+                    for table,columns in B1_COLUMNS.items():
+                        if [r[1] for r in db.execute('PRAGMA table_info('+table+')')]!=columns.split(): raise ValueError('partial_enrollment_schema')
+                    n,b=db.execute('SELECT count(*),coalesce(sum(length(record)),0) FROM p1_installation').fetchone()
+                    if n!=1 or b>65536: raise ValueError('bounded_enrollment_required')
+                    identity,raw,h=db.execute('SELECT id,record,digest FROM p1_installation').fetchone()
+                    value=json.loads(raw)
+                    closed(value,'deployment_id revision scope host profile_budget_digest'); validate_scope(value['host'])
+                    if digest(value)!=h or identity!=value['deployment_id'] or value['revision']!=1 or value['scope']!='owned-synthetic': raise ValueError('invalid_enrollment')
+                    return dict(deployment_id=identity,completion=completion_binding(db,Path(root)))
+            except BaseException as exc:
+                primary = exc
+                raise
+            finally:
+                try:
+                    if db is not None: db.close()
+                except BaseException as cleanup:
+                    if primary is None:
+                        primary = cleanup
+                        raise
+                    primary.add_note('reader close failed: '+type(cleanup).__name__)
+    except BaseException as cleanup:
+        if primary is not None and cleanup is not primary:
+            primary.add_note('private reader teardown failed: '+type(cleanup).__name__)
+            raise primary from cleanup
+        raise
+
 
 
 def main():
