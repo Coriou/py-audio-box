@@ -701,3 +701,8 @@ Record failures and missing evidence; do not replace them with a successful late
 
 - Candidate8294c946311701766e6acef2d733944d9aad548a frozenb91d51dc t3-99d25777 baseline7ae446c reportsallsevenlocalexitrows. Finalsequentialtarget1204passed1skip/fourB21666passed1skip/full1818passed19skipped samefrozenbytes. Threepathscope andapprovedlegacybranchamendment; no integration/selfGO.
 - FreshreadonlySol-low pab-successor-transport-t1-review-r1-20261023 receivesfullAstra/originalbrief/allpriorfindings andentirefinaldelta incldefensiveproposalcopy/newcoherenceeventguards/actualvsisolatedcapacityproof distinctions. RequireindependentactualABC/capacity/transportstrictjoinproof beforeboundedverdict; rootintegration/equality/focusedproof andT2freshC/finalAstra remainpending.
+
+## T1 independent round1 NO-GO / close cleanup correction
+
+- reviews/P1B23-T1-r1-sol.md exact8294c946 NO-GO: parent initialwritefdclose beforetry canraise andskipreadfdcleanup/ownedchildreap. Revieweractualforkprobe2freshfailures; independent308targetpass plusstrictprobes andreal30sdeadlinepositive. OtherinspectedT1/coherence/capacityprogress retained, not acceptance. Similarcleanupclose/forkfailure/childinitialclose paths requireaudit.
+- FreshisolatedSol-low targetedfix mustpreservewholeWIP, establishindependentdescriptor/childcleanupobligations immediatelyafterfork, no blindretrypossiblyclosedfd; reproduce reviewerprobe andfailurecleanup/fork/childvariants. Fulloriginalbrief/remaininggates supplied; freshindependentreview beforeintegration.
