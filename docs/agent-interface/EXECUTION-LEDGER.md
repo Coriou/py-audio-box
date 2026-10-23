@@ -785,3 +785,8 @@ Record failures and missing evidence; do not replace them with a successful late
 
 - Candidateb16a41f718fc83ee0561c4621017ff9ae8342c4e sourced3f3ddc3 lifetime-f2-20261023 unintegrated. F2desiredstartup-before-readrefusalGREEN,66targetpass1oldassertionfail (oldrequiresunlockafterfailedDBclose contraryamendment). Retentionindependentoftracebackimplemented, abandonedrecordsprocesslifetimetradeoff requiresreview notautomaticacceptance.
 - FreshindependentSol-low reviewentireL1L2L3/F1F2source +retentionboundedness/explicitrelease/repeatedfailurecontract andnarrowobsoleteassertionadaptation requirements. No arbitraryglobalquarantinewaiver/nativeclearance/integration. Guardreviewparallelstillpending.
+
+## Guard independent G1/G2 NO-GO / minimal test-only correction
+
+- reviews/P1B23-CHILDWAIT-GUARD-r1-sol.md exact5b698566 NO-GO. Freshisolatedjournal-symlink observedOSError inprotectednofollowjournalreadprewrite beforeoriginalwriter; historicalemptyphasecauseunproven. G1requires exactphase+class+symlinkcondition witness no blanketOSError/74allowance. G2completeforeignownerreceiptpair accepted; bindeventownerackPID+launchnodeidentity, boundack/donebeforeparse.24freshcontrolspass notacceptance.
+- Newtest-onlySol-lowfix retainsproduction/depsunchanged4259415d, preservesallWIPs; directedG1G2negatives/freshnestedhelpers thenguardedcampaignstoponfirstunattestedfailure, separatefreshreview. LifetimeF2retentionreviewparallelstillpending beforecombinedsourceguardqualification.
