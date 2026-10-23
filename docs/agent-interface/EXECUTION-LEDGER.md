@@ -897,3 +897,8 @@ Record failures and missing evidence; do not replace them with a successful late
 
 - Parentaccepts `reviews/P1B23-B22-INTENT-SELECTION-r1-sol.md` boundedGO exact6eb6cec5/frozen413b465b, fresh5PASS/fulloldassertspreserved/productionunchanged/rawproofverified. Historicalbroadredunchanged; no fullGO.
 - `pab-combined-broad-validation-r2-20261023` READONLY exactcandidate: fourB2thenfullONLYifgreen, no17repeatneeded aftertest-onlyselectorchange. Sameimagea506dbfb resourcecaps/liveverifiedtarretention/perstageownedcontainer; stopfirstunexpected/no retry/fix/waiver. Integration/T2/finalAstra/platformnativegatespending.
+
+## Broad r2 STOP811PASS / rehearsal witness diagnosis
+
+- COMBINED-BROAD-VALIDATION-r2-20261023 exact6eb6cec5/frozen413b465b:811PASS1FAIL1teardownerror at lotp_late_refusal_retains_unaccepted_plan[rehearsal], actualowner34PID161raw18944phaseempty rejectedbyguard. No nativesignal established; fullNOTRUN. Allrawproof/livehashes retained; export-onlyhardlinkcorrection documented, cleanupcomplete sourceunchanged.
+- TargetedREADONLYSol-low pab-lotp-rehearsal-witness-diagnosis-20261023 inspectsinjectedOperationalError/source/witnessroute+proof; ifinsufficient ONEordinarytest-onlyobservationaldiagnostic failingnode authorized withunchangedguardassertions no global74acceptance, no nativecampaign. Nofix/broadretry untilprecisecause/narrowrecommendation; T2/fullintegrationpending.
