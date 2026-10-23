@@ -1094,3 +1094,8 @@ CORRECTION: prior claim no runtime occurred was unsupported and is contradicted 
 ### 2026-10-23 — H construction r5 STOP with exact site evidence
 
 ONE construction exited1 after0.677s. Actual captured runner site2576 recognized, retained LOAD_GLOBAL/LOAD_ATTR/PUSH_NULL/LOAD_SMALL_INT74/CALL1. Recompiled full-context positive site2546 lacks PUSH_NULL and fails first positional owner predicate. All-CALL singleton scan, nine rows and completion NOT reached. No H gate or retry. Two serialized actual-code digest strings differ, cause unknown. Raw proof/livehash archive/ownedcleanup retained; independent actual/source review pab-h-construction-actual-review-r5-20261023 launched to assess control premise and smallest bounded next step, no execution/fix authority.
+
+
+### 2026-10-23 — S observer source GO; ONE diagnosis authorized
+
+Independent observer r2 bounded SOURCE GO atbc5b4615: acceptance AST/order preserved, numeric private observation only. Parent authorizes ONE original False-node diagnosis pab-s-final-one-node-diagnosis-r2-20261023, exact frozen plugin/source, expected RED retained, no retry/True/full255/fix. Unknown/partial/overflow proof STOP; independent actual-receipt review required. No S acceptance or integration authority.
