@@ -1471,3 +1471,7 @@ Fresh t3-dc329cf6 executable84477f38b4b6de52994e21e6cf6f3bafec801db6 docsc06e2f4
 ### 2026-10-23 — Clean-init global GO adopted; old serialization finalization
 
 Independent r28 boundedSOURCE+HOSTGO verifies421inventoryentries/440streams/7groups andpriorclosures. Parentaccepts readinessONLY. ONE pab-old-dummy-lane-finalization-r29-20261023 authorized2exactreadonlyfreshstoppedinspects, retainedinventory/evidence and exactowner/inode releaseONLYoldlock; ALLoldcontainers/volume/images/tags/proof preserved, originaldummyFAILED notqualified. Newdummy notyetdispatched; nextactualafterrelease underLinux3.14.8 adoptedruntime.
+
+### 2026-10-23 — Old-lane finalization scope corrected after noncritical config discrepancy
+
+r29 preservedHOLD afterwholeHostConfig comparison OomKillDisable falseprestart/nullpoststop; freshwriterbytes equalalreadyacceptedr23 stoppedcapture. Parentdispositions knownrepresentationdifference asnonblockingONLYserializationrelease, no normalization/productsecurityqualification. Wholeconfigequality exceededneededlockreleasegate. ONE pab-old-lane-quiescence-finalization-r30-20261023 authorizedfresh2inspects scopedfullidentity/owner/mount/stoppedstate matchingacceptedpoststoprecords, verbatimresidualconfig, exactowner/inodereleaseONLYlock andpreserveALLobjects/evidence. No newdummyuntilactualrelease.
