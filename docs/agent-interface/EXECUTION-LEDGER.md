@@ -1415,3 +1415,7 @@ Reports12/12HOSTPASS0.506s dummy9269bytes30salarm profile600 noDocker/product. I
 ### 2026-10-23 — Tiny dummy SOURCE+HOST GO; ONE actual qualification
 
 Independent r19GLOBALGO confirms12HOSThashes/preservedinputs nonproduct9269byte30sPID1 qualificationprofile600/readers/ownership/noadditionalblocker checkoutdeviationretained. ParentacceptsboundedreadinessandconditionallyauthorizesONEexactprepare+execute frozenactualdigest via pab-persistent-dummy-actual-qualification-r19-20261023 onebuild300 onefreshordinarylocalvolume onewriter2ROreaders. No productdispatch/retry/repair/volumedelete. FreshindependentactualreceiptreviewbeforeANYproductdiagnosis.
+
+### 2026-10-23 — Dummy actual stopped at invalid FROM reference
+
+ONE prepare/execute stopped at sole build: raw image ID in FROM was interpreted as registry reference; no volume/container/writer/readers/product ran. Proof and exact-owned lane retained; no retry/cleanup. Independent pab-dummy-build-actual-audit-r20-20261023 launched complete receipt/hash/terminal-build audit plus smallest safe lane reconciliation recommendation and cohesive qualification/product recipe correction scope. Dummy persistence remains unqualified.
