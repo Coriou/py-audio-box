@@ -1491,3 +1491,7 @@ Parent accepts r32 boundedMECHANISMGO:193inventory/74streams/archive4leaves equa
 ### 2026-10-24 — Product writer stopped exit1; retained internal evidence recovery pending
 
 ONEr33 launcher4.17s lifecyclewriterSTOP attach1/empty waitCLI0status1; fullstoppedinspect provesnonOOM/no daemonerror, volume/container/laneheld. No readers/cleanup/retry; runtimeidentity/node dispatch remainunverifieduntilinternalfilesrecovered. Independent pab-product-failure-audit-r34-20261024 launched50inventory/20streamspartialaudit+finitewritererrorpublication/sourcepath diagnosis+minimalexistingROarchive/hash recoveryproposal. No runtime/productcredit ornewwriterallowed.
+
+### 2026-10-24 — Partial product receipt accepted; ONE read-only failure-file recovery
+
+r34 independentlyverifies50inventory/20streams/authority/slots andsourceexpectedREDhandling; no unconditionalmanifestmismatch. ParentacceptspartialreceiptONLY andauthorizesONE pab-product-volume-recovery-r35-20261024 exactr34twoexistingROreadersfreshproofroot, ≤180s, sameoldimage/volume/owner, preflightstoppedbindings, archive/mapallregular equalitywithoutsuccessgate. No writerretry/product/cleanup/lanerelease; allhelpers/oldobjectsretained. Recoveredinternalidentity/terminal/pytest/observerbytes nextindependentaudit.
