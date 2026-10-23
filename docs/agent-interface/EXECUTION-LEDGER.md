@@ -1033,3 +1033,8 @@ Record failures and missing evidence; do not replace them with a successful late
 
 - H-FIXTURE-REVIEW-RUNTIME-r3-sol exact62af510a/0e4fe83f SOURCEGO thenONEgate6PASS1FAIL1teardown old-descriptor-valid raw[0,18944]HaHsNOHf. Safeparent/nativeerror/innerseam nowactuallyattested; finalobject/route/offsetpredicateunknown. RawLIVEproofverified cleanupcomplete no retry.
 - pab-h-final-predicate-diagnosis-20261023 freshsourceinspection thenIFneededONEexactnode max16boundedfinalpredicateobservations unchangedacceptance/controlflow. Needfirstfailedpredicate expectedactualcodeoffset/objectshape notcausalguess; nofix/routeweakening/broad. Pconditionalgate/Ssource-reviewseparateactive.
+
+## S source r3 GO accepted / first finite native runtime gate
+
+- S-WITNESS-SOURCE-r3-sol exact98fbff2a/fc8fba40 F1F2F3CLOSEDsource/no blocker,2newboundarycontrols explicitlySYNTHETIC. Parentacceptsreadinessonly nativeFalseTrue/coreintent13/finalroute/burn/config actualproofstillmandatory.
+- pab-s-witness-runtime-gate-r1-20261023 ONEoriginalcapacity12thencompleteguardfile static255expected freezeASTselectionbeforeexecution, sharedDockerlane serializedboundedwait neverforeignremove. Samecaps/pinnedLinux/liveverifiedproof/stopfirstunexpectedno retryfix. ActualreceiptindependentreviewbeforeSacceptance/groupassembly/broad. Hfinaldiagnosis/Pconditionalgate separate.
