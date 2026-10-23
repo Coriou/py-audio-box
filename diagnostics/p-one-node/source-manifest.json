@@ -1,5 +1,9 @@
 {
   "commit": "8d5aba5fc702719843d055b7d3f693c407deb0e9",
+  "derivative_files": {
+    "diagnostics/p-one-node/finite-driver.py": "03a76ee0a9776ffcbf529cadd632ea4a15638b9799b62ba2f8e0a25b38324fdf",
+    "diagnostics/p-one-node/runtime-identity.py": "81acbdbb70df0a9c2a5db1f9daf86373cb22ea3b92371d7dddd924420a60237c"
+  },
   "files": {
     "clients/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
     "clients/cli.py": "ffa8be94f1c3aee103018bfbe4e31dd5957c3760d8de4182a5d541cdb0aac547",
@@ -194,5 +198,8 @@
     "worker/supervised_synthetic.py": "49572c429d5fa8b1be2f84f5f31322c281412fa47fd8b7fc7c65f2660e9e33d4",
     "worker/synthetic.py": "2233233ebb091d58f06e2263e80abf3258d63db28b7062a5259c09add4b669fc",
     "worker/transport.py": "19f3445def62f61b29979e573d029d61c09c6d5590623a2d5d747460bc73f660"
-  }
+  },
+  "launcher_documentation_commit": "f93b7fef6cc461b756cd9e13ff14e88e243359a4",
+  "launcher_source_commit": "e941c7aee7f53348905659904b8299d5500d1250",
+  "policy": "P1B23-STORAGE-PROPORTIONALITY-ASTRA-r16: ordinary fresh Docker local volume; software logical thresholds only; no physical quota claim"
 }
