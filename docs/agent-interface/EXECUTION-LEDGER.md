@@ -1043,3 +1043,8 @@ Record failures and missing evidence; do not replace them with a successful late
 
 - P-CLEANUP-REVIEW-RUNTIME-r4-sol exactc17af4fb/53ee3d74 SOURCEGO thenONEgate89PASS1FAIL120NOTRUN wrong-class lacks hooks-restored. Actualoriginal+freshnormaldurable5step/lostresultPfulltokens/replay0+0 PASS; wrongclasscorrectlyrejectedafterintendedseam+nextlaunchlatch. Restorationproofmissinginnertraceunattested. RawLIVEproofverified cleanupcomplete no retry.
 - pab-p-restoration-order-fix-r5-20261023 sourceONLY appendedPplugin nestedmanual/targetmonkeypatchownership ordering fix+specificcontrol, keepPREmutationfinalizer/earlysetup/missingdone suppression/allrestorationasserts. Guard/recovery/produnchanged newsource-reviewbeforeruntime; Pacceptance/broadpending.
+
+## H final rejection isolated / narrow literal opcode correction
+
+- Hfinaldiagnosis b3a163c8/61d73141 h-final-diagnosis-20261023 ONEactualnode REDHaHsnoHf:actualcaller/sameexceptionattrs/all12framecodeoffsetmatch; FIRSTexitCALLliteralcheckLOAD_CONST74false. Host3.14.7LOAD_SMALL_INT74 corroboration live3.14.8opcodeNOTrecorded no cachecauseclaim. RawLIVEproofverified cleanupcomplete.
+- pab-h-exit-literal-fix-r4-20261023 reviewedNONdiagnostic62af510abase onlynarrowcapturedos._exitCALL1literal74recognizer+directedcallsite/literalcontrols. Construction-onlypinnedLinuxdisassemblyproofauthorized NOmaintenance/SQL/Core/pytestnode; noactualHgateuntilnewreview. Fullstrictobject/shape/routeunchanged.
