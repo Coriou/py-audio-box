@@ -987,3 +987,8 @@ Record failures and missing evidence; do not replace them with a successful late
 
 - H-WITNESS-SOURCE-r2-sol exact5494db47/frozen1efddfdd F1–F5CLOSEDsource/no newblocker; CPythontrace/cache/collectedfixtureactualproofstillpending. ParentacceptsREADINESSonly.
 - pab-h-witness-runtime-gate-r1-20261023 READONLYONEouterselection original12historyparams thencompleteguardfile(existingR+64Hcontrols), samecaps/pinnedLinux/sourceCOPY/livetarverifiedproof, stopfirstunexpectedno retry/fix. ActualreceiptindependentreviewrequiredbeforeHacceptance/assembly/broad; P/Sfixr2separateactive.
+
+## P correction r2 frozen / fresh source review r2
+
+- Pcandidate6a48ea3ff62a3ea72e8203e9a7931ae143b06df8 frozen8adc9c64 p-source-r2-20261023 reportsF1–F3sourcecorrections/staticpreservation, prospective208outeritems UNEXECUTED. Sourceactualtrace/frame/fixture risks remain.
+- pab-p-witness-source-review-r2-20261023 freshREADONLYSol-low fulloriginalbrief/F1–F3/responses/unresolvedobjections; no runtimeuntilreadiness+parentgate. Hfirstgate/Sfixr2separateactive.
