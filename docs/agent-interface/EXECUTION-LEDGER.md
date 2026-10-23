@@ -1563,3 +1563,7 @@ r47controlscandidate t3-b20efe6d exec51d3922e963d2ed05b424e9ed8a5689a6f93d7d9 do
 ### 2026-10-24 — Controls combined-source NO-GO C1/C2; narrow combined fix
 
 r50verifies87append-onlycontrolsbutcombinedNO-GO: C1helperobjbindingomitsrealnode.config requiredacceptedguard; C2B1precapture/sourceauthoritycontrolsabsent. Bootstrapaddfinalizerobstructionconfirmedpreexisting, notnegativePASS. Parentassignspab-b-combined-controls-fix-r51-20261024 freshacceptedguard2319745a+controls51d3922 only, fixappendedhelperconfig/restoration+appendfiniteB1controls; isolatedrequestadapteronlyAPPENDEDharnessauthorizedifneeded, oldbootstrap/observer/entryfrozen. Guardhashe6009824 bytepreserved/old58632prefixexact, no runtime/manifestupdate/P211change. Independentcombinedsourcegate next.
+
+### 2026-10-24 — Combined B source successor delivered; independent combined gate
+
+r51 t3-718ba0f4 executable4e36ed22bf8edac67bde8affd0a0ca339212a6c6 docs5d2fe5e1e7c40bc479f02f616f03da76ca8d886a exactacceptedguarde6009824+controls1095f740. C1bindsrealconfig/restoresobjconfig; C2addsB-C6/B-A7 ->100PENDINGUNRUN; original58632prefixpreserved. No realobserverhelperadapterselected/unselectedobstructiondisclosed, directrealobserverpositive retained. Independent pab-b-combined-source-gate-r52-20261024 launchedfullcombinedC1C2/programcompatibility/preservationgate; no runtime/packagingauthorityyet.
