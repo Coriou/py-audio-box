@@ -1721,3 +1721,115 @@ On exact frozen source/tests `8256f55ee7609315ad487e5ec7342cdc8d99a571`, `/tmp/p
 **105 passed, 3 failed, 1224 deselected in 160.44s, pytest exit1; no skips/xfails.** All 86 appended T1 cases pass, both retained successor composition cases pass, and 17 selected existing K/P preservation cases pass. The only three failures are the original obsolete `result-budget` expectations described above, all at original test line4147 (`DID NOT RAISE ValueError`). No assertion was weakened or marked expected-failure to obtain green. Full correction/K/P/F1–F4 target, four-B2 and service/release remain NOT RUN; no aggregate GO.
 
 Post-run SHA-256 guards still equal the frozen values above; only appended handoff bytes differ from the source/test freeze. Starting-baseline delta remains exactly the three authorized paths and original test/report prefixes remain intact. **Return this recoverable WIP and exact RED gate to parent; complete T1 is NOT delivered or accepted.**
+
+## Complete T1 owning continuation — frozen local candidate for independent review (2026-10-23)
+
+**Implementation candidate; no self-GO, integration, T2 or global acceptance.** This section supersedes the previous T1 WIP's pending local rows only to the extent of the fresh evidence below. The original WIP and its RED receipts remain historical evidence. Separate Sol-low review must inspect the entire final delta; parent owns integration/equality proof, T2 and final Astra.
+
+### Identity and preservation
+
+- ABS `/Users/ben/.txcode/worktrees/py-audio-box/t3-99d25777`, branch `t3/complete-t1-transport`; fresh root **`7ae446ccb81473cc82ae50ae5ea8305f1729eb4c`**, retaining the parent's explicit test-scope amendment. Original WIP baseline **`e7c5e2fec680c52a1fd9c57218b5a2130765a857`**; original candidate **`d03bc47472913880d32fd2e8b1b738806ade01a0`**, source **`8256f55ee7609315ad487e5ec7342cdc8d99a571`**, stays untouched in `t3-f0f283c4`.
+- Replayed only `e7c5e2f..d03bc47` oldest first: `348fe17`, `82db44f`, `8256f55`, `d03bc47` became `b2617b8`, `d3b146b`, `2373883`, `b3acb8e`. No root-base/C import. The fresh root's executable baseline equals reviewed K; root reviews, canonical documents and ledger remain unchanged.
+- First source/test freeze **`8788ecd7cfcd46822b0c117c13175079da501b75`** exposed an unchanged preservation-test conflict with mutable owned proposal reads. Corrected source/test candidate **`b91d51dc2bda5e7f013a6bd99426548e831a983d`** is the immutable basis of the three final campaigns. The final handoff commit is report-only; exact final HEAD is returned separately.
+- Writable baseline delta is exactly recovery.py, recovery tests and this appended handoff. All old recovery-test bytes outside the specifically amended result-budget function remain exact; inside it only the obsolete result-budget branch and its stale cap comment changed. All other original branch semantics remain. All seven local T1 rows are accounted for below, with actual and isolated boundary evidence distinguished. Handoff is append-only. No Core/persistence/reconciliation/resource_store/schema/admission/worker/dispatcher/supervisor/C/script/packaging/dependency/contract/ledger/review changes.
+- Recovery SHA-256 **`6da71f0870043e068c47464b81a2a40522a6246d2adbbe0bae8b088f5c0f72a1`**; tests **`06ceb9499582ba67d5b2634f72fb8e9029936b09471aa380153f8077b771e945`**. `/tmp/pab-t1-frozen-identity.json` records exact cwd, SHA, hashes, interpreter/packages and parent limit. Final source guards and historical-worktree inventory: `/tmp/pab-t1-final-guards.json` confirms clean frozen HEAD, exact source/test hashes, normal parent FSIZE, exact three-path scope, unchanged old-test/handoff prefixes except the approved branch, no removed definition and reviewed-K executable baseline equality. AST changes only `_run_bounded_maintenance`, `snapshot`, `_allocation_coherent`, `_preparation_prestate`, `_Preparation`, `_prepare_abandon`, `_prepare_abandon_locked`; adds only `_maintenance_result_chunks`, `_maintenance_result_frame`, `_validate_preparation_result`, `_decode_maintenance_result` and `_recovered_dispatches`. Historical READONLY checks in `/tmp/pab-t1-historical-inventory.json` all match exact clean pins:
+
+| Worktree | Exact clean HEAD |
+| --- | --- |
+| `t3-f0f283c4` | `d03bc47472913880d32fd2e8b1b738806ade01a0` |
+| `owning-successor-coherence` | `6cf6236bd42750cd82a9f680fac18d7f523bbe51` |
+| `t3-1e1cddba` | `a27f78b5e2e09a98940b9c543474337b511ce616` |
+| `t3-adbf212d` | `58e3eb9f40a8db5ca162fe8f64922efb13f224c4` |
+| `t3-4a8727d4` | `6cfe3973f41db92679531e38660d88cf72ce27eb` |
+| `t3-85d4bb33` | `6130d1fecce3d978671ed1bfd509693d3aab3c97` |
+
+Read the entire authoritative TRANSPORT-ASTRA, COHERENCE-r1-sol and original SUCCESSOR-r1-sol, canonical orchestration/implementation plan and current ledger, and the entire newest candidate T1 handoff. Prior memory supplied scope/evidence-tier guidance only, never test or acceptance evidence. No delegation or self-review was performed.
+
+### Actual source corrections and the original-test amendment
+
+The replayed fixed **T=1,048,576**, entire canonical UTF-8 `{"result":four_fields}`, remains independent of snapshot/document/file/history limits. Incremental encoding uses at most 16,384-character strict UTF-8 slices; parent reads at most 65,536 bytes and one overflow byte. One accumulated encoded frame per endpoint, no persistent serialization on `_Preparation`, no chunk list/compression/reference protocol. Decoder rejects duplicate/nonfinite/invalid/noncanonical/trailing/wrong-shape data; the production P entrypoint validates full preparation semantics/digests/bindings at both ends. Existing source parsing/object allocations remain separately bounded; this is not total RSS <= T or RLIMIT_AS qualification.
+
+The same absolute 30-second deadline covers operation, read, EOF and normal child exit; WNOHANG replaces post-EOF blocking wait, and failure/expiry closes descriptors and kills/reaps the exact owned child. EINTR does not reset the deadline; short/zero/error writes, EPIPE, abnormal exit, partial/extra frames and backpressure cannot return success. No retry, rollback inference or service restart. An actual completed recovery followed by lost result-pipe write returns no success, while a fresh completed lookup remains observational.
+
+Durable writer markers exposed three gaps that exception-only child-failure assertions could conceal. Narrow fixes require supported current integrity identity/revision, the actual fifth receipt before a new initial successor proposal, and retention of the recovered job's bound append-only event rows when consuming its latest completed resolution. Added events remain permitted; whole current DB equality with old A is not imposed. Original dispatch, whole job/context/reservation and latest completed selection remain exact. New resource faults are intentionally repairable by a fresh explicit plan; the strict new-fault negative injects after C acceptance and proves full current-source refusal before remaining writes, without combining unrelated corruption to manufacture refusal.
+
+The first frozen target found unchanged `test_lotp_frozen_output_and_source_oracles[expected]`: it mutates a candidate intent for a refused continuation, then returns the preparation. The strict parent correctly rejected the mutated proposal. `_Preparation` now returns defensive copies for plan/intent reads, preserving its original validated proposal while the invalid continuation still refuses and burns its session. The parent validator remains strict; an explicitly malformed raw result still refuses. No old assertion was inverted or amended for this finding.
+
+The **only** preexisting test amendment is the parent's approved `test_lotp_completed_history_preparation[result-budget-{valid,missing,unreadable}]` branch. It still expects refusal and retains two immutable plans / one recovery / five steps. Actual B is semantically validated and below T; a narrowly isolated encoder supplies a canonical UTF-8 framing fixture of **T+1** bytes, never caller padding in production history. Rehearsal/receipt/continuation traps, unchanged logical SQL except the one new plan, unchanged protocol bytes, and session-burn/no-retry checks are now explicit. The original historical bytes remain in d03bc47. Below/equal boundary fixtures and actual production B/C positives accompany this refusal. No skip/xfail/deletion/collection override.
+
+### Explicit seven-exit and pending-row accounting
+
+| Exit | Fresh exercised rows and limits |
+| --- | --- |
+| 1 — actual nonempty composition | Two independent real Core/Admission/DispatchStore running populations; production P preparation/rehearsal and same-session K A/B/C, fifteen steps and three repeated-dispatch resolutions each. Distinct actual registration/capsule-producer generations under explicit E1 OS/host models. Exact Core/archives/descriptors, original dispatch/null receipt/null outcome/ACK=0, retained reservation, H/charges/budget and once-captured original snapshot bytes checked. Numeric observations below. No fixture intent/output/hash substitution. |
+| 2 — canonical codec | 65,536/65,537/T-1/T/T+1 whole UTF-8 frames, multibyte and escaped retained-string fixtures; noncanonical/duplicate/unknown/nonfinite/encoding/trailing/shape/digest/binding negatives. Framing strings explicitly fail preparation semantics. Both consumers retain full real preparation validation before isolated encoder-budget checks; T-1/T positives and T+1 preaccept refusal. |
+| 3 — actual pipe/process | EOF empty/mid/exact, extra byte/second frame, fragments/short/zero writes, read/write/waitpid EINTR, injected EPIPE, signalled/nonzero children, post-EOF alive/never EOF/slow writer, real kernel-full backpressure, exact-size successful pipes through T, exact-T alive deadline, receiver T+1 refusal before decoder, fork-failure descriptor closure and exact-child reap. Durable-complete/lost-result control plus twice-fresh observational lookup. Parent FSIZE unchanged; accelerated deadline fixtures are E1 control-flow tests, not Linux enforcement. |
+| 4 — capacity and no authority | Both standalone and same-session routes. Real SQLite backups at 255/256/257 4KiB pages bracket the 1MiB cap; equality is a valid DB, while byte +/-1 is a file-reader guard fixture (valid SQLite sizes are page multiples). Real closed manifests at 65,535 and 65,537 bytes: the fixed 557 bytes plus hex journal make exact 65,536 unattainable for that shape. Actual one-job versus sixteen-job populations bracket receipt-certificate capacity; fixed closed core certificates cannot be padded into a semantic 64KiB positive. Physical known-oversize/copy and real private SQLite-full rehearsal refusals; file-reader/stat guards at 4MiB +/-1; modeled free-reserve equality/below/above with all other production prerequisites valid. Actual namespace-file guards at 2,048 entries and 16MiB +/-1, and an explicitly isolated real namespace measurement at the real rehearsal reserve guard (count+18 / bytes+snapshot+documents+18*65536) on both consumers. These namespace/reserve measurements are not fabricated accepted history or claims of a valid live population at every equality. Actual production capacity refusals and A/B/C/D/E witness are separate. Early refusals create no plan; late refusals retain one immutable unaccepted plan/schema, burn session, and create no recovery/step/resolution/fence/bundle/healthy epoch. Physical SQLite header/WAL/SHM churn is excluded from byte immutability, never from logical SQL checks. |
+| 5 — finite history | Predeclared at most D/E/F attempts, each under the same finite process deadline. Both installations complete D and first refuse E at unchanged `b2_prefix_snapshot_budget`; no F attempt, larger cap, deletion or credit. Exactly five plans, four recoveries, twenty steps and four resolutions after E: one unaccepted plan, no E authority. A/B/C/D completed lookups remain observational twice fresh with scan/capture/continuation writers trapped. No unlimited-history or universal-D promise. |
+| 6 — strict negatives | Original 28 A-based cases retained; 28 additional actual A/B repeated-resolution populations use durable writer markers, two fresh production refusals and unchanged logical SQL/protocol bytes. Missing/wrong/extra/pending sets; original dispatch authority/binding/runtime/phase/receipt/outcome/ACK; whole job principal/context/bundles/state/attempt/generation/deadline/reap; reservation category/configuration/demand/state; history/archive/descriptor/media/typed-reference. Added incomplete fifth, unsupported integrity revision, malformed real receipt with old resolution, accepted-C new fault, and genuine terminal receipt versus unresolved missing/malformed controls. No blanket terminal exemption or old-resolution fallback. |
+| 7 — F1/F2/F3/F4 and preservation | Actual nonempty B and C at every reached receipt-only/SQL/fourth/certificate/finalization/final-fence prefix, with asserted death hooks and fresh interpreter replay. Every A/B/C creation descriptor, missing/wrong/mode, in both directions (including self checks), actual protected files and twice-fresh refusals before scans/writers. C after-image and unaffected-source mutations at five reached fourth/finalization stages refuse before any remaining writer. Genuine A/B/C completed lookups tolerate later ordinary current activity, with no successor continuation, future-output demand, capture, scan, old-state restoration or current freeze release. The complete current K/P/b22/kpre/kfifth target freshly covers original owner union/incarnations, stage prerequisites, accepted TTL, exact no-attempt hash/oracle recapture, no recapture after attempts, session burn, Unix-VFS and both locks. No predecessor aggregate is borrowed. |
+
+### Fresh frozen production measurements
+
+`/tmp/pab-t1-target-r2-metrics.json`, source b91d51d, copies both actual target-run witnesses and independently checks their post-E SQL counts, original dispatch tuple fields, retained reservation, H and charges. These are actual local synthetic production paths with host/OS modeling, not installed-host/worker authentication evidence.
+
+| Setup / generation | Frame | Intent | Plan | Snapshot | Manifest | Receipt certificate | Receipt bytes / count | M / U_all | Scan / actual |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | --- | --- | --- |
+| 1 / A | 36,617 | 35,170 | 1,253 | 249,856 | 859 | 8,735 | 299,412 / 26 | 303,784 / 14,066,344 | 628,659 / 699,136 |
+| 1 / B | 94,322 | 92,872 | 1,256 | 294,912 | 1,763 | 8,746 | 700,084 / 39 | 587,296 / 14,349,856 | 1,032,291 / 1,082,168 |
+| 1 / C | 222,912 | 221,464 | 1,254 | 405,504 | 1,763 | 8,746 | 1,339,940 / 52 | 995,000 / 14,757,560 | 1,665,947 / 1,711,704 |
+| 2 / A | 36,617 | 35,170 | 1,253 | 249,856 | 859 | 8,735 | 299,412 / 26 | 303,784 / 14,066,344 | 628,659 / 699,136 |
+| 2 / B | 94,319 | 92,871 | 1,254 | 294,912 | 1,763 | 8,746 | 700,083 / 39 | 587,296 / 14,349,856 | 1,032,291 / 1,082,168 |
+| 2 / C | 222,909 | 221,461 | 1,254 | 405,504 | 1,763 | 8,746 | 1,339,936 / 52 | 995,000 / 14,757,560 | 1,665,947 / 1,711,704 |
+
+For all six A/B/C rows: H=20,971,520; retained charges=2,097,152; unchanged enrolled disk budget=67,108,864/free reserve=16,777,216; `max(actual,H)==H`. `U_all=M+13,762,560` is unchanged `M+3*4,194,304+1,048,576+2*65,536`. Observed DB/WAL/SHM maxima during actual continuation hooks, A/B/C respectively: 192,512/222,512/32,768; 294,912/206,032/32,768; 405,504/317,272/32,768 in both setups. These are sampled file observations, not continuous peaks, total heap/RSS or actual Linux cap/ext4/Unix-VFS/SHM qualification. Scalar time encodings explain small byte variation; no fixed recursive growth promise is inferred.
+
+### Commands, failures and final receipts
+
+All pytest commands use exactly this locked prefix from this worktree, wrapped by `/usr/bin/time -p` for final runs:
+
+```sh
+env -u PYTHONPATH -u PYTHONHOME -u PYTEST_ADDOPTS -u PYTEST_PLUGINS PYTHONDONTWRITEBYTECODE=1 TIKTOKEN_CACHE_DIR=/tmp/pab-k-prefifth-env-20261022/tokenizer-cache /tmp/pab-0c-venv/bin/python -m pytest -p no:cacheprovider
+```
+
+CPython3.14.7, pytest9.1.1, MCP1.30.0, tiktoken0.14.0. No installation/environment replacement. Actual parent FSIZE before/after remains `(9223372036854775807,9223372036854775807)`; no parent limit lowering.
+
+All three completed sequentially on b91d51d with exit0 and clean exact source/hash/limit guards before/after. No final-campaign failure or xfail. Full skip reasons: one actual Linux RLIMIT_FSIZE case and eighteen Linux peer-credential cases (10+1+1+6); every one remains unqualified.
+
+| Stage / log | Exact pytest suffix | Result | pytest / wrapper seconds | Exit |
+| --- | --- | --- | --- | --- |
+| `/tmp/pab-t1-final-target-r2.log` | `tests/service/test_recovery.py tests/service/test_admission.py -k 'kfifth or kpre or lotk or lotp or b22 or successor or t1_' -q -rs` | 1,204 passed / 1 skipped / 408 deselected | 2678.90 / 2679.83 | 0 |
+| `/tmp/pab-t1-final-four-b2.log` | `tests/service/test_recovery.py tests/service/test_packaged_lifecycle.py tests/service/test_admission.py tests/service/test_dispatcher.py -q -rs` | 1,666 passed / 1 skipped | 2894.26 / 2895.30 | 0 |
+| `/tmp/pab-t1-final-full.log` | `tests/service tests/release -q -rs` | 1,818 passed / 19 skipped | 2888.25 / 2889.47 | 0 |
+
+Receipt SHA-256:
+
+| File | SHA-256 |
+| --- | --- |
+| `/tmp/pab-t1-final-target-r2.log` | `60f17ead8d613d3a533f82b8b620d3566d90972ab8ce83e29444d63e0bda741f` |
+| `/tmp/pab-t1-final-four-b2.log` | `7fe1fd4e1a5aab0e0456aef68845342d65fa18106cd1b2b5138d915a6a47cafa` |
+| `/tmp/pab-t1-final-full.log` | `9961565f73dd60bc0ba7dd66edef9168f1b6120047568ac8e5a03c9adadc4552` |
+| `/tmp/pab-t1-target-r2-metrics.json` | `e22e56509c2a58c9f160076fef4ba2a28e47350e002447177b23b3c6f6a5e0d7` |
+| `/tmp/pab-t1-final-guards.json` | `ba951875c855fcbc2991254507406d8793bbbc8da5aed91ea9bd4b3ca00df823` |
+| `/tmp/pab-t1-historical-inventory.json` | `6e34b731755f6a19d1928a545eb6db376ce2a24391cb9899cdc26cbd6fa5d5d5` |
+
+Three-path diff against the fresh root before this final report:
+
+```text
+ docs/agent-interface/phase-1/RECOVERY-P1B2.md |  170 ++++
+ service/recovery.py                           |  208 ++++-
+ tests/service/test_recovery.py                | 1123 ++++++++++++++++++++++++-
+ 3 files changed, 1475 insertions(+), 26 deletions(-)
+```
+
+New development receipts are supporting diagnostics, not substitutes for those final frozen campaigns. `/tmp/pab-t1-complete-boundaries.log`:18 passed12.37s; capacity development6 failed/33 passed17.72s because the freelist fixture overshot its target, corrected real snapshot6 passed12.00s; history probes22 passed182.80s. Durable strict markers exposed3 failures/29 passes162.10s; focused guard correction17 passed46.29s. Certificate population4 passed9.32s; reserve/legacy15 passed20.47s; full new-history development83 passed1130.20s (source changed during development, not frozen evidence); other new matrix207 passed357.91s; final transport/legacy seams6 passed9.92s. The new-fault early-refusal development assumption was corrected to the actual postaccept drift invariant, not enforced by an unrelated corruption or a new blanket fault policy.
+
+The first frozen target on8788ecd was interrupted for inspection after **1 failed,520 passed,1 skipped,408 deselected in479.53s, exit2**; remaining selected tests were not run in that attempt. Failure was the unchanged mutable-owned-proposal test described above. `/tmp/pab-t1-owned-proposal-correction.log`:19 passed77.03s, including the unchanged failure, strict malformed-result negative, actual successor compositions and both finite production witnesses. The entire target was then restarted on b91d51d, followed sequentially by four-B2 and full. No failing test was skipped or weakened.
+
+Named logs, source identities and copied metrics remain in /tmp; ordinary pytest/temp-context retention is unchanged, with no manual evidence/worktree/research cleanup. Final source/test guards, `git diff --check`, scope and historical-worktree receipts accompany the final handoff. No post-validation executable change.
+
+### Remaining authority and qualification gates
+
+All **19 Linux cap/peer-credential skips remain UNQUALIFIED**, not passed. Actual Linux4MiB/ext4/Unix-VFS/SHM, pinned C1 launcher/host provenance/authentication and its mandatory production refusal, C1/C2 installed/clean-host, B3/global Astra, physical ENOSPC/power-loss/daemon/VM/controller durability, hardware/browser/listening/acoustic and public activation remain pending. A1 whole-inventory drift remains unexplained/unqualified; no cause or waiver inferred. Apple Silicon remains documentation-only qualification scope. Host freeze persists through host-observed fifth and matching outputs; no automatic service restart/freeze release follows from history lookup.
+
+No Docker, external network, model/hardware/audio campaign, paid E2E/remote script, install, limit lowering, push/PR/deploy, root-base/C import, other-worktree edits, reset/clean/prune/add-A or delegation. Apply/public/enrolled activation stays closed. **Return this clean candidate for separate Sol-low adversarial review of the entire final delta; no self-acceptance.**
