@@ -1124,3 +1124,8 @@ Source-only harness d5f493e63909d31e00680c81e8aefbcf3fcd5162 docs8d5aba5fc702719
 ### 2026-10-23 — S diagnosis independently qualified
 
 S-FINAL-ACTUAL-r2 independent diagnosis-ready GO:192sourcehashes/292evidencehashes, soleFalse owner55child60SaSs raw74, branch3/detail1zeroLOAD_CONST candidates, executingLOAD_SMALL_INT74 verified. Laterexact8route/attrs/inner observational only; nohistoricalcause/uninstrumentedacceptance inference. Parent accepts boundeddiagnostic evidence, Sacceptance remainsNO-GO. Narrow recognizer sourceproposal supported, but implementation deliberately awaits already-running Astra exact-context controlmodel to avoid unqualifiedHtransplant/repeatedcompilerpremise. No runtime/fix/full255 authorization added; blockedpipe observerreview separate.
+
+
+### 2026-10-23 — Astra exact-context design adopted; H/S source lanes
+
+Parent adopts P1B23-H-EXACT-CONTEXT-DESIGN-ASTRA.md: immutable identity-dispatched instruction projections plus independently unpatched actual decode, no runner recompilation/bytecode editing/recognizer broadening; local correlation labels instead of marshal authority. H allowlisted source-only implementation pab-h-projection-controls-implementation-r6-20261023 launched, guard unchanged. Separate S narrow proven literal-recognizer source correction pab-s-literal-recognizer-source-r3-20261023 launched on NONobservational original S, same projection evidence discipline, noqualification transfer. Both require fresh independent source review before construction; no runtime/fullgate/acceptance/integration authorized.
