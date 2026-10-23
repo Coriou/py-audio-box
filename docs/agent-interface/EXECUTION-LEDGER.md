@@ -770,3 +770,8 @@ Record failures and missing evidence; do not replace them with a successful late
 
 - Candidatec8e94cf42dbe7724e6a9b27b5cc08e0195c924aa frozenfa63b460 lifetime-f1-final-20261023 implementscontrollockexclusionbeforestartupcopy,5stimeoutunchanged. ClaimedactualRED->GREEN40focused89CoreDispatch32recovery; no integration/nativeclearance. Parallelguardlaneunchanged.
 - FreshreadonlySol-low pab-lifetime-review-r2-20261023 receivesfulloriginalAstra/r1F1/response andauditsentirelifetimecandidate inclcrossprocesslock/reentrance/releasebeforeDBclose/secondbinding andreal5stimeoutbarrier. Finalsource+guardcombinevalidation/review/T2/nativeV1V2V3/finalAstra remainopen.
+
+## Lifetime round2 F1 closed / F2 unresolved DB-close exclusion
+
+- reviews/P1B23-LIFETIME-r2-sol.md exactc8e94cf4 NO-GO: actualtimeoutF1closed crossprocess; newF2constructorDB.close raisesbeforeactualrelease butcleanupunconditionallyreleasesowner, nextstartupreaderenters. HarmlessactualSQLitewitnessconfirmed67otherfreshpasses. No naturalclosefailure/nativecausalityclaim.
+- Scopeamendment: exclusiontakesprecedenceoverindependentownerrelease whenDBreleaseunresolved. AttemptDBcleanupdeterministically/preserveprimaryfailure, retainenforceableowneruntilactualrelease established, no blindretry/unboundedjoin/newtimeout. NarrowCorecleanupfix+same/separateprocessregressions/eventualownedcleanupaccounting; finalreviewbeforecombine/integration. Guardlaneunchanged.
