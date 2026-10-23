@@ -775,3 +775,8 @@ Record failures and missing evidence; do not replace them with a successful late
 
 - reviews/P1B23-LIFETIME-r2-sol.md exactc8e94cf4 NO-GO: actualtimeoutF1closed crossprocess; newF2constructorDB.close raisesbeforeactualrelease butcleanupunconditionallyreleasesowner, nextstartupreaderenters. HarmlessactualSQLitewitnessconfirmed67otherfreshpasses. No naturalclosefailure/nativecausalityclaim.
 - Scopeamendment: exclusiontakesprecedenceoverindependentownerrelease whenDBreleaseunresolved. AttemptDBcleanupdeterministically/preserveprimaryfailure, retainenforceableowneruntilactualrelease established, no blindretry/unboundedjoin/newtimeout. NarrowCorecleanupfix+same/separateprocessregressions/eventualownedcleanupaccounting; finalreviewbeforecombine/integration. Guardlaneunchanged.
+
+## Fresh interpreter guard candidate / stopped semantic witness gap
+
+- Candidate5b698566aed6b52451a822e3e930c0a4824bf674 frozen145f2441 childwaitguard-20261023 productionidentical4259415d.17freshhelperbootstrap sites/nestedwaitreceipts/reportoutsidepytest.raises implemented.14guard85CoreDispatch177recoverypass;124waitsincl8fresh.
+- FourB2stoppedjournal-symlink ownedPID79524 raw18944exit74 emptyphase:769pass1skip1fail1teardownerror;49waitsincl4fresh. No unexpectedSIGSEGVreportedhere, butsemanticcauseNOTproven; fullNOTRUN/no retry. Newindependentguardreviewmust distinguishproperfailclosedwitnessgap fromproductiondefect, no blanket74allowance. LifetimeF2fix parallel stillpending thencombinedcandidate review.
