@@ -1171,3 +1171,8 @@ H75fbd8a922ea40adc03938f95e7415cf3e0602df docf23fc7580a021de414fbcc232ae0e827559
 ### 2026-10-23 — Blocked-pipe storage capability STOP
 
 Bounded READONLY audit currentOrbStack daemon advertiseslocalonly;141existingvolumesemptyoptions noauthoritativehard1GiB/inode<=200000/backendoverhead/UIDinitialization contract. Parent records STORAGE-CAPABILITY STOP for this diagnosticlauncher path beforeimplementation/build/diagnosis. Genericpersistentvolumes notsufficient; nofallbackquotaabstraction/probe/install/reconfiguration authorized. This is a diagnostic infrastructure dependency, NOT a new productplatformrequirement or proofnootherbackendexists. PreserveP146prefixevidence64unrun historicalterminalcauseUNKNOWN. H/Ssource lanes continue; noautomaticresourcecreation or repeatedstorageaudit.
+
+
+### 2026-10-23 — H r7 closes F1/F2; F3 remains
+
+Independent r7 closes selectedactualoperandvalidation andpreassertobservedresults atsourcelevel. F3stillopen: restorationfailurebypassesclear inprobe/script, retainedhelperfailureframesholdstreamparams. NarrowSOURCEONLY fix pab-h-failed-frame-release-fix-r8-20261023 launched coveringallappendedowningscopes, preservesF1F2/guard/production. No construction/runtimeauthorized.
