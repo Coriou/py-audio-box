@@ -1463,3 +1463,7 @@ Parent accepts r26 bounded actualdiagnosticGO: currentstrictfreshnessfailure pro
 ### 2026-10-23 — Astra runtime disposition adopted explicitly
 
 Parent adopts Astra r27: next bounded P1B23 Linux diagnosis selects CPython3.14.8 in existing immutable Linuxbase/explicitfrozen clean derivative, unchanged repository hashlocks and actual runtime/dependency identity checks. Original accepted Dockerpackaging pins3.14.8;3.14.7 is historicalDarwinvalidation identity, not universalLinux/product prerequisite. Supersedes generalized3.14.7 prerequisite in current diagnostic handoff only; historicalreceipts unchanged, no equivalence/nativeclearance/productreleaseGO. No newinterpreterprovisioning/lockchange needed. Inflight cleaninit/observabilityimplementation remains unapproved pendingindependentreview; oldheldlane/objects must be explicitly resolved before another actual.
+
+### 2026-10-23 — Clean initialization and failure capture successor delivered
+
+Fresh t3-dc329cf6 executable84477f38b4b6de52994e21e6cf6f3bafec801db6 docsc06e2f49b48264b51d65b0a9d1506b973ee4f839 reports affectedHOST7/7/24failurecases, retainedRED;193payloads/finite-driver/dummy unchanged. IndependentGLOBAL pab-clean-init-global-review-r28-20261023 launched fullsharedrecipe/lifecycle/priorclosures/HOSTaudit. Candidate stale3.14.7pending wording explicitly superseded by adoptedAstra r27 Linux3.14.8 disposition; no newpin/provisioning. No actual/newdummy/cleanup; oldheldlane/resources retained pending explicitfinalization.
