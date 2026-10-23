@@ -992,3 +992,8 @@ Record failures and missing evidence; do not replace them with a successful late
 
 - Pcandidate6a48ea3ff62a3ea72e8203e9a7931ae143b06df8 frozen8adc9c64 p-source-r2-20261023 reportsF1–F3sourcecorrections/staticpreservation, prospective208outeritems UNEXECUTED. Sourceactualtrace/frame/fixture risks remain.
 - pab-p-witness-source-review-r2-20261023 freshREADONLYSol-low fulloriginalbrief/F1–F3/responses/unresolvedobjections; no runtimeuntilreadiness+parentgate. Hfirstgate/Sfixr2separateactive.
+
+## P source r2 remaining identity blocker / narrow r3
+
+- P-WITNESS-SOURCE-r2-sol exact6a48ea3f/8adc9c64 SOURCE NO-GO R2-1:getattrnodeobjdefaultfunctionacceptsabsentcollectedidentity; bootstrapnodeindeedlacksobj. OriginalF1/F2closedsource; F3identitycoverageopen. No runtime.
+- pab-p-collected-identity-fix-r3-20261023 sourceONLY minimalPactualinnercollectedbinding/failclosedpredicate/missingcontrol, genericbootstrap/schemaunchanged; retainarmedinvalid/noVfallback andrealreplayunarmed. Newfreeze/source-reviewbeforeexecution. Hgate/Sfixseparateactive.
