@@ -606,6 +606,7 @@ def _run_bounded_maintenance(roots, scope, operation, *, _prewrite=None):
             first_error=ValueError('b2_maintenance_cleanup_interrupted')
         if first_error is not None:raise first_error
 
+    original=None
     try:
         close_owned('write')
         raw=bytearray()
@@ -640,8 +641,10 @@ def _run_bounded_maintenance(roots, scope, operation, *, _prewrite=None):
             try:select.select([],[],[],min(0.01,remaining))
             except InterruptedError:pass
         return _decode_maintenance_result(raw)
+    except BaseException as exc:
+        original=exc
+        raise
     finally:
-        original=sys.exception()
         cleanup_error=None
         try:close_owned('read')
         except BaseException as exc:cleanup_error=exc

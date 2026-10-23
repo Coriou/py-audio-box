@@ -6469,3 +6469,38 @@ def test_t1_cleanup_missing_process_receipts(monkeypatch,tmp_path,site):
                 try:kill(pid,signal.SIGKILL)
                 except ProcessLookupError:pass
                 wait(pid,0)
+
+
+@pytest.mark.parametrize('error_type',[InterruptedError,KeyboardInterrupt,BaseException])
+def test_t1_cleanup_refuses_inside_caller_exception_handler(monkeypatch,error_type):
+    """An already handled caller exception must not hide a new cleanup failure."""
+    import signal
+    owned=_t1_pipe_model(monkeypatch)
+    parent=os.getpid();pipe=os.pipe;close=os.close;wait=os.waitpid;kill=os.kill
+    ends=[];fired=[];interruption=error_type('read close after successful child')
+    def trackedpipe():
+        pair=pipe();ends.extend(pair);return pair
+    def badclose(fd):
+        if os.getpid()==parent and fd==ends[0] and not fired:
+            fired.append(fd);close(fd);raise interruption
+        return close(fd)
+    monkeypatch.setattr(os,'pipe',trackedpipe);monkeypatch.setattr(os,'close',badclose)
+    try:
+        try:raise ValueError('caller already handled this')
+        except ValueError:
+            with pytest.raises(BaseException) as caught:
+                recovery._run_bounded_maintenance({}, {},lambda session:True)
+            assert caught.value is interruption
+        assert fired and len(owned)==1
+        with pytest.raises(ChildProcessError):wait(owned[0],os.WNOHANG)
+        for fd in ends:
+            with pytest.raises(OSError):os.fstat(fd)
+    finally:
+        for fd in ends:
+            try:close(fd)
+            except OSError:pass
+        for pid in owned:
+            try:ended,_=wait(pid,os.WNOHANG)
+            except ChildProcessError:continue
+            if not ended:
+                kill(pid,signal.SIGKILL);wait(pid,0)
