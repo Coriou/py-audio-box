@@ -660,7 +660,7 @@ def _():
     rows = seq[idx][1]['raw'].splitlines()
     changed = json.loads(rows[0]); changed['sha256'] = '0' * 64
     seq[idx][1]['raw'] = L.encode(changed) + b'\n' + b'\n'.join(rows[1:]) + b'\n'
-    seq = seq[:idx + 2]  # Stopped hash receipt, then mismatch forbids cleanup.
+    seq = seq[:idx + 3]  # Stopped hash receipt, then mismatch forbids cleanup.
     fake = Fake(seq)
     obj = L.Lifecycle(r, r / 'lane', IMAGE, OWNER, fake)
     check(not obj.run() and not obj.retained and (r / 'lane').exists(), 'hash mismatch accepted')
@@ -805,7 +805,7 @@ def writer_scheduling():
                     (F, 'initialized', lambda *a: None), (F, 'slot_create', lambda *a: None),
                     (F, 'slot_write', write), (F, 'verify_source', verify),
                     (F, 'checked_program', checked), (F, 'capture', capture), (F, 'quiesce', quiet),
-                    (F, 'read_regular', lambda *a: b'identical'), (F.threading, 'Thread', Thread),
+                    (F, 'read_regular', lambda *a: b'identical'), (F, 'compare_identity', lambda *a: None), (F.threading, 'Thread', Thread),
                     (Path, 'read_text', read)]:
                 stack.enter_context(patch.object(obj, name, value))
             result = F.writer(r, OWNER['token'], OWNER['invocation'])

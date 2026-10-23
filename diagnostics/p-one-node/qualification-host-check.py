@@ -431,13 +431,11 @@ def affected_product_transport():
 
 
 @case
-def lifecycle_failures():
-    for product in (False, True):
+def lifecycle_failures(products=(False, True)):
+    for product in products:
         for failure in ('attach', 'status', 'wait-cli', 'inspect', 'timeout', 'overflow', 'lost', 'deadline', 'inspect-deadline', 'oom', 'daemon-error', 'wrong-id'):
             r = root(('product-' if product else 'dummy-') + failure)
-            seq, plan = script(r)
-            if product:
-                seq = H.lifecycle_script()
+            seq = H.lifecycle_script() if product else script(r)[0]
             target = ['docker', 'start', '--attach', CID['writer']]
             i = next(i for i, (a, _) in enumerate(seq) if a == target)
             seq = seq[i-3:i+4]  # absence, create, binding, attach, wait, inspect, next absence
@@ -497,20 +495,239 @@ def lifecycle_failures():
                 if failure != 'lost': check((r / 'writer-start.stdout').stat().st_size > 0, 'prefix retained')
 
 
+@case
+def entry_bootstrap_and_selection():
+    import types
+    import importlib
+    tree = ast.parse((D / 'entry.py').read_text())
+    functions = [n for n in tree.body if isinstance(n, (ast.FunctionDef, ast.ClassDef))]
+    namespace = dict(Path=Path, sys=sys, hashlib=hashlib, json=json, stat=stat,
+                     importlib=importlib, NODE=F.NODE,
+                     pytest=types.SimpleNamespace(hookimpl=lambda **kw: lambda f: f))
+    exec(compile(ast.Module(body=functions, type_ignores=[]), 'entry-model', 'exec'), namespace)
+    r = fresh('bootstrap')
+    diag = r / 'diagnostics/p-one-node'; diag.mkdir(parents=True)
+    entry = diag / 'entry.py'; entry.write_text('# synthetic entry')
+    (diag / 'synthetic_observer.py').write_text('witness = 47')
+    service = r / 'service'; service.mkdir()
+    (service / '__init__.py').write_text('# synthetic regular package')
+    (service / 'recovery.py').write_text('witness = 18944')
+    decoy = r / 'tests'; (decoy / 'service').mkdir(parents=True)
+    files = {n: hashlib.sha256((r / n).read_bytes()).hexdigest()
+             for n in ('service/__init__.py', 'service/recovery.py')}
+    (r / 'manifest.json').write_text(json.dumps(dict(files=files)))
+    check(not any(n == 'service' or n.startswith('service.') for n in sys.modules), 'HOST product already imported')
+    original_path = sys.path[:]
+    try:
+        sys.path[:] = [str(decoy), str(diag)] + original_path
+        namespace['bootstrap'](entry)
+        check(sys.path[:2] == [str(r), str(diag)], 'root priority')
+        with patch.dict(sys.modules):
+            module = importlib.import_module('service.recovery')
+            check(module.witness == 18944 and Path(module.__file__) == service / 'recovery.py', 'synthetic origin')
+            check(importlib.import_module('synthetic_observer').witness == 47, 'observer resolution')
+            reject(lambda: namespace['bootstrap'](entry))
+        for name in files:
+            p = r / name; raw = p.read_bytes(); p.unlink()
+            reject(lambda: namespace['bootstrap'](entry))
+            p.write_bytes(raw + b'\n')
+            reject(lambda: namespace['bootstrap'](entry))
+            p.write_bytes(raw)
+        class Conflict:
+            def find_spec(self, fullname, path=None, target=None):
+                if fullname == 'service': return importlib.util.spec_from_file_location(fullname, decoy / 'service/__init__.py')
+        with patch.object(sys, 'meta_path', [Conflict()] + sys.meta_path):
+            reject(lambda: namespace['bootstrap'](entry))
+    finally:
+        sys.path[:] = original_path
+    selection = namespace['Selection']()
+    item = types.SimpleNamespace(nodeid=F.NODE, obj=types.SimpleNamespace(__name__=F.NODE.split('::')[1]))
+    selection.pytest_collection_modifyitems(None, None, [item])
+    for items in ([], [item, item], [types.SimpleNamespace(nodeid='wrong', obj=item.obj)],
+                  [types.SimpleNamespace(nodeid=F.NODE, obj=types.SimpleNamespace(__name__='wrong'))]):
+        reject(lambda: selection.pytest_collection_modifyitems(None, None, items))
+    check(F.ENTRY == ['python', '/app/diagnostics/p-one-node/entry.py', '--one-node'], 'original entry argv')
+    argv = L.create_argv('n', VOL, IMAGE, 'writer', O)
+    check('PYTHONPATH=/app/diagnostics/p-one-node' in argv and 'PYTHONDONTWRITEBYTECODE=1' in argv, 'entry env')
+    OBS.append(dict(bootstrap='synthetic package only', selection='zero/multiple/wrong node/wrong object rejected'))
+
+
+def identity_fixture():
+    I = load('identity_model', 'identity_semantics.py')
+    raw = ('\tlinux-vdso.so.1 (0x00007f0000000000)\n'
+           '\tlibsqlite3.so.0 => /lib/x86_64-linux-gnu/libsqlite3.so.0 (0x00007f0010000000)\n'
+           '\tlibc.so.6 => /lib/x86_64-linux-gnu/libc.so.6 (0x00007f0020000000)\n'
+           '\t/lib64/ld-linux-x86-64.so.2 (0x00007f0030000000)\n')
+    value = dict(python='3.14.8 synthetic', implementation='cpython', version=[3,14,8,'final',0],
+                 optimization=0, assertions=True, pins=[[f'pin{i}', '1.0', '1.0'] for i in range(42)],
+                 sqlite='3.40.1', source_id='semantic hex df5c253c', compile_options=[['MAX=0x1234']],
+                 extension='/usr/local/lib/_sqlite3.so', ldd=I.parse_ldd(raw.encode()),
+                 library=dict(path='/usr/lib/libsqlite3.so.0.8.6', sha256='a'*64),
+                 dpkg='libsqlite3-0 3.40.1-2+deb12u2 amd64\n',
+                 commands={n: dict(returncode=0, stderr='') for n in ('ldd','dpkg')})
+    return I, dict(schema=1, semantic=value, raw_ldd=raw)
+
+
+@case
+def semantic_identity():
+    import copy
+    I, receipt = identity_fixture()
+    raw = L.encode(receipt)
+    after = copy.deepcopy(receipt); after['raw_ldd'] = after['raw_ldd'].replace('00007f', '00008f')
+    I.compare(raw, L.encode(after))
+    F.compare_identity(raw, L.encode(after))
+    check(receipt['raw_ldd'] != after['raw_ldd'] and b'00007f' in raw, 'raw retained')
+    for field in I.FIELDS:
+        changed = copy.deepcopy(receipt)
+        v = changed['semantic'][field]
+        if isinstance(v, str): changed['semantic'][field] += 'tamper'
+        elif field == 'assertions': changed['semantic'][field] = False
+        elif field == 'optimization': changed['semantic'][field] = 1
+        elif field == 'version': v[2] += 1
+        elif field == 'pins': v[0][1:] = ['2', '2']
+        elif field == 'compile_options': v[0][0] = 'MAX=0x5678'
+        elif field == 'ldd': v[1][2] += '-tamper'
+        elif field == 'library': v['sha256'] = 'b'*64
+        elif field == 'commands': v['ldd']['returncode'] = 1
+        reject(lambda: I.compare(raw, L.encode(changed)))
+    for old, new in [('libsqlite3.so.0 =>', 'libother.so.0 =>'),
+                     ('/lib/x86_64-linux-gnu/libsqlite3.so.0', '/other/libsqlite3.so.0'),
+                     ('/lib64/ld-linux-x86-64.so.2', '/other/ld-linux-x86-64.so.2')]:
+        changed = copy.deepcopy(receipt); changed['raw_ldd'] = changed['raw_ldd'].replace(old, new)
+        changed['semantic']['ldd'] = I.parse_ldd(changed['raw_ldd'].encode()) if 'libother' not in new else []
+        reject(lambda: I.compare(raw, L.encode(changed)))
+    for field, value in [('path','/other/libsqlite3.so.0.8.6'), ('sha256','b'*64)]:
+        changed = copy.deepcopy(receipt); changed['semantic']['library'][field] = value
+        reject(lambda: I.compare(raw, L.encode(changed)))
+    for old,new in [('libsqlite3-0','other-package'), ('3.40.1-2+deb12u2','3.40.1-2+deb12u3'), ('amd64','arm64')]:
+        changed = copy.deepcopy(receipt); changed['semantic']['dpkg'] = changed['semantic']['dpkg'].replace(old,new)
+        reject(lambda: I.compare(raw, L.encode(changed)))
+    for field in I.FIELDS:
+        changed = copy.deepcopy(receipt); del changed['semantic'][field]
+        reject(lambda: I.semantic(L.encode(changed)))
+        changed = copy.deepcopy(receipt); changed['semantic'][field] = None
+        reject(lambda: I.semantic(L.encode(changed)))
+    for bad in (b'unknown\n', receipt['raw_ldd'].encode() + b'unknown\n',
+                receipt['raw_ldd'].encode()*2, b'libsqlite3.so.0 => not found\n',
+                receipt['raw_ldd'].replace(' (0x00007f0010000000)', '').encode()):
+        reject(lambda: I.parse_ldd(bad))
+    for field, val in [('schema',2), ('extra',1)]:
+        changed = copy.deepcopy(receipt); changed[field] = val
+        reject(lambda: I.semantic(L.encode(changed)))
+    reject(lambda: I.semantic(b'{"schema":1,"schema":1}'))
+    for command in ('ldd','dpkg'):
+        changed = copy.deepcopy(receipt); changed['semantic']['commands'][command]['stderr'] = 'error'
+        reject(lambda: I.semantic(L.encode(changed)))
+    tree = ast.parse((D / 'runtime-identity.py').read_bytes())
+    checked_node = next(n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name == 'checked')
+    import types
+    for code, stderr in ((0,b''),(1,b''),(0,b'warning')):
+        commands = {}
+        ns = dict(commands=commands, subprocess=types.SimpleNamespace(run=lambda *a, **kw:
+                  types.SimpleNamespace(returncode=code, stderr=stderr, stdout=b'raw stdout')), I=I, json=json, sys=sys)
+        exec(compile(ast.Module(body=[checked_node], type_ignores=[]), 'checked-model', 'exec'), ns)
+        if code or stderr:
+            with patch.object(sys, 'stderr', io.StringIO()) as diagnostics:
+                reject(lambda: ns['checked']('ldd',['ldd','synthetic']))
+                check('726177207374646f7574' in diagnostics.getvalue(), 'failed command raw retained')
+        else: check(ns['checked']('ldd',['ldd','synthetic']) == 'raw stdout', 'checked success')
+        check(commands['ldd'] == dict(returncode=code, stderr=stderr.decode()), 'checked status retained')
+    OBS.append(dict(identity='all semantic fields tampered; addresses only pass; raw retained'))
+
+
+@case
+def failed_writer_retention():
+    for scenario in ('collection', 'reader', 'mismatch', 'cap', 'deadline', 'unknown', 'oom'):
+        r = H.lifecycle_root('r36-' + scenario)
+        seq = H.lifecycle_script()
+        writer_stop = next(i for i,(cmd,_) in enumerate(seq) if cmd == ['docker','inspect',CID['writer']] and i > 8)
+        start = next(i for i,(cmd,_) in enumerate(seq) if cmd == ['docker','start','--attach',CID['writer']])
+        seq[start][1]['rc'] = 1
+        seq[start+1][1]['raw'] = b'1\n'
+        obj = json.loads(seq[writer_stop][1]['raw'])[0]; obj['State']['ExitCode'] = 1
+        if scenario == 'unknown': obj['State'].update(Status='running', Running=True, Pid=42)
+        if scenario == 'oom': obj['State']['OOMKilled'] = True
+        seq[writer_stop][1]['raw'] = L.encode([obj])
+        archive_start = next(i for i,(cmd,_) in enumerate(seq) if cmd == ['docker','start','--attach',CID['archive']])
+        # A real failed collection terminal, with no observer files, in a complete synthetic archive.
+        tmp = fresh('r36-slot-' + scenario); F.slot_create(tmp / 'slot')
+        F.slot_write(tmp / 'slot', dict(state='STOP', token=O['token'], invocation=O['invocation'],
+                     pytest_exit=4, terminal_failure='RuntimeError: collection', descendants=dict(complete=True), acceptance=False))
+        files = [('pab-terminal.slot', (tmp/'slot').read_bytes()), ('pytest.stderr', b'collection failed\x00\xff')]
+        seq[archive_start][1]['raw'] = H.tar_bytes(files)
+        hash_start = next(i for i,(cmd,_) in enumerate(seq) if cmd == ['docker','start','--attach',CID['hash']])
+        seq[hash_start][1]['raw'] = b''.join(L.encode(dict(name=n,sha256=hashlib.sha256(b).hexdigest()))+b'\n' for n,b in files)
+        seq = seq[:hash_start+3]
+        if scenario in ('unknown','oom'): seq = seq[:writer_stop+1]
+        elif scenario == 'reader':
+            seq[archive_start][1]['rc'] = 1; seq = seq[:archive_start+3]
+        elif scenario == 'mismatch': seq[hash_start][1]['raw'] = seq[hash_start][1]['raw'].replace(hashlib.sha256(files[0][1]).hexdigest().encode(), b'0'*64)
+        elif scenario == 'cap': seq[archive_start][1]['raw'] = b'x' * (F.META+1); seq = seq[:archive_start+1]
+        elif scenario == 'deadline': seq = seq[:writer_stop+1]
+        fake = H.Fake(seq)
+        lifecycle = L.Lifecycle(r, r/'lane', IMAGE, O, fake)
+        if scenario == 'deadline':
+            original = lifecycle.retention
+            def late(): fake.t = 1651; return original()
+            lifecycle.retention = late
+        if scenario == 'cap':
+            # Exercise the archive cap check without writing a 2GiB fixture.
+            with patch.object(F, 'EXPORT', F.META): ok = lifecycle.run()
+        else: ok = lifecycle.run()
+        check(not ok and (r/'lane').exists(), 'failed writer released')
+        check(not any(cmd[:2] == ['docker','rm'] for cmd in fake.calls), 'failed writer cleanup')
+        check(lifecycle.retained == (scenario == 'collection'), 'transport validity')
+        if scenario == 'collection':
+            reject(lifecycle.cleanup)
+            check('STOP lifecycle status: writer' in lifecycle.error, 'original rejection lost')
+            check(json.loads((r/'retention.json').read_bytes())['all_regular_hashes_equal'], 'full map')
+            check((r/'archive-start.stdout').exists() and (r/'hash-start.stdout').exists(), 'both readers')
+        if scenario in ('unknown','oom','deadline'):
+            check(not any(CID['archive'] in cmd for cmd in fake.calls), 'reader after unsafe writer')
+        fake.done()
+        OBS.append(dict(failure_transport=scenario, retained=lifecycle.retained, error=lifecycle.error))
+
+
+@case
+def r36_product_contract():
+    for number in ('23-', '26-', '29-', '32-'):
+        next(fn for name, fn in H.CASES if name.startswith(number))()
+    manifest = json.loads((D / 'source-manifest.json').read_bytes())
+    original = F.read_regular
+    for name in ('service/__init__.py', 'service/recovery.py'):
+        for mode in ('missing', 'digest'):
+            changed = json.loads(json.dumps(manifest))
+            if mode == 'missing': del changed['files'][name]
+            else: changed['files'][name] = '0' * 64
+            def read(path, *args, **kw):
+                return L.encode(changed) if path == D / 'source-manifest.json' else original(path, *args, **kw)
+            with patch.object(F, 'read_regular', read):
+                reject(lambda: L.prepare_context(D.parents[1], fresh('bad-copy-' + name.split('/')[-1] + mode), L.Budget(), O))
+    r = fresh('exact-copy')
+    context = L.prepare_context(D.parents[1], r, L.Budget(), O)
+    expected = set(manifest['files']) | set(manifest['derivative_files']) | {'manifest.json'}
+    check({str(p.relative_to(context/'source')) for p in (context/'source').rglob('*') if p.is_file()} == expected, 'exact copy set')
+
+
+@case
+def r36_lifecycle_failures():
+    lifecycle_failures((True,))
+
+
 def main():
     global ROOT
     F.enabled()
     os.umask(0o077)
-    check(len(CASES) == 15, 'frozen matrix13')
+    check(len(CASES) == 20, 'frozen matrix13')
     selected = CASES
     if sys.argv[1:]:
-        check(sys.argv[1:] in (['--recipe-repair'], ['--r26']), 'fixed HOST selection')
-        selected = ([actual_initialization, actual_context, lifecycle_failures, affected_product_transport, complete_success, lost_start_ack, private_capture_and_failure]
+        check(sys.argv[1:] in (['--recipe-repair'], ['--r26'], ['--r36'], ['--r36-repair'], ['--r36-final']), 'fixed HOST selection')
+        selected = ([semantic_identity, failed_writer_retention, r36_product_contract, r36_lifecycle_failures] if sys.argv[1:] == ['--r36-final'] else [semantic_identity, failed_writer_retention, r36_product_contract, lifecycle_failures] if sys.argv[1:] == ['--r36-repair'] else [entry_bootstrap_and_selection, semantic_identity, failed_writer_retention, r36_product_contract, lifecycle_failures] if sys.argv[1:] == ['--r36'] else [actual_initialization, actual_context, lifecycle_failures, affected_product_transport, complete_success, lost_start_ack, private_capture_and_failure]
                     if sys.argv[1:] == ['--r26'] else [actual_context, recipe_adapter_failures, complete_success])
     ROOT = Path(tempfile.mkdtemp(prefix='pab-dummy-HOST-', dir='/private/tmp'))
     ROOT.chmod(0o700)
     H.ROOT = ROOT
-    hashes = {n: L.stream_hash(D / n) for n in (*Q.PINS, 'dummy-writer.py', 'qualify.py', 'qualification-host-check.py')}
+    hashes = {n: L.stream_hash(D / n) for n in (*Q.PINS, 'entry.py', 'runtime-identity.py', 'identity_semantics.py', 'dummy-writer.py', 'qualify.py', 'qualification-host-check.py')}
     start = time.monotonic()
     results = []
     def forbidden(*a, **kw): raise RuntimeError('HOST forbidden real external')
@@ -537,7 +754,7 @@ def main():
     for p in ROOT.rglob('*'):
         check(stat.S_IMODE(p.stat().st_mode) == (0o700 if p.is_dir() else 0o600), 'private evidence')
     receipt = dict(tier='HOST ONLY / FAKE EXTERNALS / NO PRODUCT CLAIM', hashes=hashes,
-                   maximum_cases=15, maximum_case_seconds=9, maximum_seconds=120,
+                   maximum_cases=20, maximum_case_seconds=9, maximum_seconds=120,
                    seconds=time.monotonic() - start, cases=results, observations=OBS,
                    fd_observations=H.OBSERVATIONS, actual_Docker_product_SQLite_pytest_network_Git_mutations=0,
                    result='PASS' if len(results) == len(selected) and all(r['result'] == 'PASS' for r in results) else 'RED')

@@ -406,6 +406,8 @@ def prepare_context(repo, root, budget, owner):
     """No build or Git mutation; immutable payload admitted against historical manifest."""
     manifest = json.loads(F.read_regular(D / 'source-manifest.json', F.META))
     files = {**manifest['files'], **manifest['derivative_files']}
+    F.require(len(manifest['files']) == 193 and all(n in manifest['files'] for n in
+              ('service/__init__.py', 'service/recovery.py')), 'STOP incomplete service mapping')
     context = root / 'context'
     context.mkdir(mode=0o700)
     source = context / 'source'
@@ -421,6 +423,8 @@ def prepare_context(repo, root, budget, owner):
             F.require(f.write(raw) == len(raw), 'STOP copy write')
         F.require(F.read_regular(dst, F.LEAF, 0o600) == raw, 'STOP copied bytes')
     publish(source / 'manifest.json', manifest, budget)
+    F.require({str(p.relative_to(source)) for p in source.rglob('*') if p.is_file()} ==
+              set(files) | {'manifest.json'}, 'STOP copied path set')
     seed = context / 'seed'
     budget.charge(len(SEED))
     with F.private(seed) as f:
@@ -568,12 +572,6 @@ class Lifecycle:
         self.run_container('archive', retention_end)
         audit = parse_archive(self.root / 'archive-start.stdout', self.root / 'archive-inventory.jsonl', self.budget,
                               clock=self.a.clock, deadline=retention_end)
-        F.require(audit['sentinel'] == self.owner['token'].encode() + b'\x00\xff\x80\r\n', 'STOP sentinel')
-        terminal = F.slot_read(audit['slots']['pab-terminal.slot'])
-        F.require(terminal['state'] == 'TERMINAL' and terminal['token'] == self.owner['token']
-                  and terminal['invocation'] == self.owner['invocation'] and terminal['pytest_exit'] == 1
-                  and terminal['descendants']['complete'] and terminal['acceptance'] is False,
-                  'STOP writer terminal binding')
         self.run_container('hash', retention_end)
         F.require(parse_map(self.root / 'hash-start.stdout') == audit['hashes'], 'STOP quiescent hash mismatch')
         publish(self.root / 'retention.json', {'state': 'VERIFIED', 'volume': self.objects['volume'],
@@ -581,12 +579,21 @@ class Lifecycle:
                 'archive_sha256': F.regular_hash(self.root / 'archive-start.stdout')
                     if (self.root / 'archive-start.stdout').stat().st_size <= F.LEAF else stream_hash(self.root / 'archive-start.stdout'),
                 'all_regular_hashes_equal': True, 'acceptance': False}, self.budget)
-        self.retained = True
+        self.retained = True  # Transport validity, independent of product terminal success.
+        if getattr(self, 'writer_status_error', None) is not None:
+            raise self.writer_status_error
+        F.require(audit['sentinel'] == self.owner['token'].encode() + b'\x00\xff\x80\r\n', 'STOP sentinel')
+        terminal = F.slot_read(audit['slots']['pab-terminal.slot'])
+        F.require(terminal['state'] == 'TERMINAL' and terminal['token'] == self.owner['token']
+                  and terminal['invocation'] == self.owner['invocation'] and terminal['pytest_exit'] == 1
+                  and terminal['descendants']['complete'] and terminal['acceptance'] is False,
+                  'STOP writer terminal binding')
         publish(self.root / '47-field-structural.json', validate_records(
                 audit['slots']['pab-p-one-node-observer/records']), self.budget)
 
     def cleanup(self):
-        F.require(self.retained, 'STOP preserve stopped containers and volume')
+        F.require(self.retained and self.error is None and getattr(self, 'writer_status_error', None) is None,
+                  'STOP preserve stopped containers and volume')
         self.phase_end = min(self.start + 1770, self.a.clock() + 120)
         for mode in ('writer', 'archive', 'hash'):
             obj = self.objects[mode]
@@ -642,7 +649,22 @@ class Lifecycle:
             self.acquire()
             # Admission transport ends at120; writer internally protects60/1200/30/60.
             F.require(self.a.clock() <= self.start + 120, 'STOP admission overrun')
-            self.run_container('writer', self.start + 1470)
+            try:
+                self.run_container('writer', self.start + 1470)
+            except RuntimeError as exc:
+                # Only a fully observed completed, stopped, non-OOM writer can export failure files.
+                writer = self.objects.get('writer', {})
+                results = [json.loads(F.read_regular(self.root / ('writer-' + n + '.complete.json'), F.META))
+                           for n in ('start', 'wait')] if writer.get('state') == 'STOPPED' else []
+                state = writer.get('stopped', {}).get('State', {})
+                wait = F.read_regular(self.root / 'writer-wait.stdout', F.META) if results else b''
+                if not (str(exc) == 'STOP lifecycle status: writer' and len(results) == 2
+                        and all(r['state'] == 'COMPLETE' for r in results)
+                        and state.get('OOMKilled') is False and state.get('Error') == ''
+                        and type(state.get('ExitCode')) is int
+                        and wait == (str(state['ExitCode']) + '\n').encode()):
+                    raise
+                self.writer_status_error = exc
             self.retention()
             self.cleanup()
         except BaseException as exc:

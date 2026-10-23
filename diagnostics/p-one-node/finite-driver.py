@@ -1,5 +1,6 @@
 """Task-specific finite PID1 and bounded proof readers; no product imports here."""
 import hashlib
+import importlib.util
 import contextlib
 import json
 import os
@@ -327,16 +328,17 @@ def verify_source(root='/app'):
 
 
 def identity_program():
-    # Original helper stays byte-identical; this bounded process adds the old launcher pins.
-    return """import sys,os
-if not __debug__ or sys.flags.optimize or os.environ.get('PYTHONOPTIMIZE'): raise SystemExit('STOP optimization')
-exec(compile(open('/app/diagnostics/p-one-node/runtime-identity.py','rb').read(), '/app/diagnostics/p-one-node/runtime-identity.py','exec'))
-assert sqlite3.sqlite_version=='3.40.1'
-assert hashlib.sha256(lib.read_bytes()).hexdigest()=='2e6eef9a727f081f0d453b4e5e6cbd8b9ef8b6f86cbf7681cbad444d3b0b55c8'
-assert subprocess.check_output(['dpkg-query','-W','-f=${Version} ${Architecture}','libsqlite3-0'],text=True)=='3.40.1-2+deb12u2 amd64'
-with sqlite3.connect(':memory:') as db: assert db.execute('select sqlite_source_id()').fetchone()[0]=='2022-12-28 14:03:47 df5c253c0b3dd24916e4ec7cf77d3db5294cc9fd45ae7b9c5e82ad8197f3alt1'
-print('assertion-enabled', __debug__, sys.flags.optimize)
+    return """import os,runpy
+if os.environ.get('PYTHONOPTIMIZE'): raise SystemExit('STOP optimization')
+runpy.run_path('/app/diagnostics/p-one-node/runtime-identity.py', run_name='__main__')
 """
+
+
+def compare_identity(before, after):
+    spec = importlib.util.spec_from_file_location('p_one_identity', Path(__file__).with_name('identity_semantics.py'))
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    module.compare(before, after)
 
 
 def writer(root, token, invocation):
@@ -391,7 +393,7 @@ def writer(root, token, invocation):
         require(not monitor_error, 'STOP monitor error')
         state['test_phase_finished'] = True
     except BaseException as exc:
-        state['failure'] = type(exc).__name__
+        state['failure'] = type(exc).__name__ + ': ' + str(exc)[:256]
     finally:
         # No namespace waitpid competes with pytest during its protected test phase.
         state['test_phase_finished'] = True
@@ -409,14 +411,13 @@ def writer(root, token, invocation):
             verify_source()
             require(time.monotonic() < post_deadline, 'STOP postcheck phase overrun')
             checked_program(['python', '-c', identity_program()], root / 'identity-after', post_deadline)
-            require(read_regular(root / 'identity-before', META) == read_regular(root / 'identity-after', META),
-                    'STOP identity drift')
+            compare_identity(read_regular(root / 'identity-before', META), read_regular(root / 'identity-after', META))
             require(state.get('pytest_exit') == 1 and 'failure' not in state, 'STOP unexpected test lifecycle')
             state['state'] = 'TERMINAL'
             state['classification'] = 'EXPECTED-RED-REQUIRES-INDEPENDENT-47-FIELD-REVIEW'
         except BaseException as exc:
             state['state'] = 'UNKNOWN' if not state.get('descendants', {}).get('complete') else 'STOP'
-            state['terminal_failure'] = type(exc).__name__
+            state['terminal_failure'] = type(exc).__name__ + ': ' + str(exc)[:256]
         try:
             # Publication belongs to the same phase, including failure publication.
             if 'post_deadline' not in locals():
