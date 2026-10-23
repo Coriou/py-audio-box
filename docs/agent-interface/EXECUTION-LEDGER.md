@@ -795,3 +795,8 @@ Record failures and missing evidence; do not replace them with a successful late
 
 - reviews/P1B23-LIFETIME-r3-sol.md exactb16a41f7 NO-GO: originalF2exclusionpasses even droppedtraceback, butglobaluncertaincleanupsetunbounded/no usabledead-threadrecovery. Fresh77pass1obsoleteassertfail+actualtimeoutpositive. Nocause/integrationGO.
 - TargetedAstra mustselectfinitebefore-resource-admission cleanupbudget, in-flight+retainedlifecycle/owning-threadrecovery-or-process-exitpolicy andmaintenanceforkimplications; nolatecap/eviction/unlock/GCfinalizer/bypass. Include narrowoldtestdoublefailureamendment preserveassertions andcontrolledown-threadrelease. Guardfixseparatelane continues.
+
+## Astra bounded Core ownership decision adopted
+
+- reviews/P1B23-LIFETIME-RETENTION-ASTRA.md selects64full-lifetimeCore slots reservedbeforeacquisition, PID/Thread-bound explicitcleanup andregistryemptymaintenancepre-forklease. IncludesordinaryCore.close/Dispatchercleanupoutcome andnarrowdouble-failuretestamendment; no capconfig/eviction/unsafeunlock/atforkcleanup. Process-exitabandonmentbounded/explicit notnativeclearance.
+- NewSol-low owningimplementation perentiredecisionmatrix; noC/guardimports, sourcepinpreservation. Independentreview thencombinedsourceguardqualification beforeintegration/T2. AllnativeV1V2V3/platform/finalAstragates retained.
