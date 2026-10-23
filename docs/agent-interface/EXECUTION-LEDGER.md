@@ -872,3 +872,8 @@ Record failures and missing evidence; do not replace them with a successful late
 
 - Parent accepts exact64ba8aed/frozen6068050c cap amendment based on R1sourceGO and `reviews/P1B23-SQLITE-CAP-WITNESS-r2-sol.md` source+evidenceGO. Singleauthorizedrepeat32PASS; live-tar raw2helpertriplets/fixtures ownerbound and livehashmatched BEFOREcleanup. E1closed fornewcollectiononly; historicalincompleteproof unchanged. No production/durability/fullplatformGO.
 - Authorize NEWisolatedcombinedcandidate: exact reviewedownershipe5d4 + reviewedguardf8822965 + acceptedcapdelta64ba8aed, resolveoverlapexplicitly, soleapprovedfreshEXECtest_b22c_denied_fault_update_inherited_checking_new_epoch adaptation samebody/exit73/allparentasserts. Freeze and focusedcombinedvalidation first, independentfullcombinedreview next, then remaining17/fourB2/full onlyseparatelyscheduled. No C/T2 imports/integration yet.
+
+## Combined candidate frozen /388 focused passes / independent review
+
+- Combinedcandidatebd29d757995c98b8f87b596be9cffe80074dc997 frozen30a4130d626ef46cd031ad469d2a9eb75dc0b266 t3-70c69445. ProductionexactO; scopedG/capoverlays plussoleapprovedfreshEXECcompatibilitytest. Attributedfocused388PASS=1compat+61guard+128CoreDispatcher+198recovery. Livearchivesverifiedbeforeremoval;108actualmaintenancewaits distinguishedsyntheticcontrols; historicalpins/STT/evidencepreserved. No selfGO.
+- FreshSol-lowfullcombinedreview `pab-combined-ownership-guard-cap-review-r1-20261023` running READONLY exactcandidate; source/provenance/compatassertions/rawreceipt audit plusboundedindependentcrossboundarychecks. Remaining17/fourB2/full/T2/finalAstra notauthorizedyet; no integration/sourcechanges.
