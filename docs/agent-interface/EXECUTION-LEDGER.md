@@ -846,3 +846,8 @@ Record failures and missing evidence; do not replace them with a successful late
 
 - `reviews/P1B23-CHILDWAIT-GUARD-r2-sol.md` grants bounded G1/G2/selected transport-witness GO for f8822965/source3f010b3a. Fresh independent61guard+42focused pass; candidate unchanged. All125retainedhashes checked;31helper triplets/47terminals independently owner-bound. No overall runtime/integration GO.
 - Cap test demands a SQLite error within100commits; absence of that error did not accompany an observed per-file cap overrun. Header/logical DB versus DB+WAL overlay requires evidence. Parent authorizes read-only bounded offline WAL salt/checksum/commit/pagecoverage analysis of retained tar bytes, no SQLite open of originals, no rerun/assertion/limit/journal amendment. Sol-low `pab-sqlite-cap-offline-analysis-20261023` running; report then decision. Remaining combined/17entry/fourB2/full/T2/Astra/platform gates retained.
+
+## Offline WAL analysis / targeted Astra contract decision
+
+- `reviews/P1B23-SQLITE-CAP-OFFLINE-20261023.md`:125hashes valid; checksum-valid current WAL798frames/44commits supports1615pages6615040logicalbytes with complete DB+WAL page coverage, while eachphysicalfile<=L. Stale219slots excluded. NoSQLiteopen/execution/retry; semanticintegrity/runtimecause not established. ExistingM+3L physicalbudget is distinct fromlogicalsize. Cap remains HOLD.
+- Fresh targeted Astra `pab-sqlite-cap-contract-astra-20261023` examines intended positive cap/failure contract, SQLite source/checkpoint semantics and offline evidence; selects defensible precise correction or single bounded ordinary diagnostic. No test/assertion/limit amendment or runtime retry authorized yet. Combinedcandidate/full/T2/finalreview remain pending.
