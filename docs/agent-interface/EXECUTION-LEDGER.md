@@ -1072,3 +1072,10 @@ S final source diagnosis r1 NO-GO: LOAD_CONST-only literal recognition is a sour
 ### 2026-10-23 — H runner-context controls frozen
 
 Fresh H control-only candidate 4fa9f460841d7c169037e6491b89a483d02bf110, docs c30f058b6d355ea887ba38cdab406b7c3684c87b, h-control-context-20261023: full runner lexical-context controls and pre-assert bounded proof; implementer reports guard/production/recovery byte-identical. Static-only; prior exact rejection cause remains unknown. Independent READONLY review delegated pab-h-context-control-source-review-r5-20261023. No construction/runtime authorized yet; P finite runtime and S observation harness remain separate lanes.
+
+
+### 2026-10-23 — H construction authorization; P provider capacity failure
+
+H context-control independent r5 SOURCE GO at4fa9f460: parent authorizes ONE60s construction-only Linux invocation via pab-h-context-construction-preflight-r5-20261023, no H maintenance gate. Actual receipt review remains required.
+
+P runtime-r5 returned provider error Selected model is at capacity, no report or test result. Single requeue pab-p-restoration-runtime-gate-r5-capacity-requeue1-20261023 retains exact211 gate, first verifies absence of prior runtime before proceeding. H/P Docker access serialized by exact-owner lane; no test retry authorized.
