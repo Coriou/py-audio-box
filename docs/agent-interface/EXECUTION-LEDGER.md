@@ -1186,3 +1186,8 @@ S1c72c3e8d22a2df5dec356ed840ac0e1b8d2ff04 doc1b6bd6e8128168332e4efbb10bec8aadacb
 ### 2026-10-23 — H final-reference correction frozen by parent
 
 Implementer delivered allowlisted uncommitted3files in h-r7-f3-source-20261023. Parent froze unchanged executablecfb0f56223d48d904bbfabedf40473dae1ea6c99 anddocs713e07103ab25236a3ec47cec0f3ffcb1d07d225. Independent pab-h-reference-source-review-r8-20261023 launched F3allownedfailurepaths andF1F2/Astrapreservation. No candidateexecution/constructionauthorized.
+
+
+### 2026-10-23 — S r4 closes F1/F2/F4; narrow F3 omissions
+
+Independent S r4 closes operandvalidation/preassertdiagnostics/independentfixeddeltas. RemainingF3 actualhelper raw/i aliases+projectmapping, scriptwitnessresetcanbypasslocalclear. NarrowSOURCEONLY pab-s-f3-alias-release-fix-r5-20261023 launched withguard/recognizerunchanged and52recordinventorypreserved. No construction/runtimeauthorized; H r8reviewpending separately.
