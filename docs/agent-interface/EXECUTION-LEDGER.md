@@ -1099,3 +1099,8 @@ ONE construction exited1 after0.677s. Actual captured runner site2576 recognized
 ### 2026-10-23 — S observer source GO; ONE diagnosis authorized
 
 Independent observer r2 bounded SOURCE GO atbc5b4615: acceptance AST/order preserved, numeric private observation only. Parent authorizes ONE original False-node diagnosis pab-s-final-one-node-diagnosis-r2-20261023, exact frozen plugin/source, expected RED retained, no retry/True/full255/fix. Unknown/partial/overflow proof STOP; independent actual-receipt review required. No S acceptance or integration authority.
+
+
+### 2026-10-23 — P actual receipt audit accepted as bounded evidence
+
+Independent audit confirms146PASS1FAIL1teardownERROR64NOTRUN; exact211selection/source191hashes, P positive/replay/directed34inclrestoration, retained2278regularhashes and recordedownedcleanup supported. Parent accepts this bounded evidence only, NOT fullP gate. Blockedpipe reached actualEAGAIN but activefinalexception UNKNOWN; separateTbackpressure attestor doesnotcoverthisnode. Source-only observer lane pab-blocked-pipe-observer-source-r1-20261023 launched for onefuturediagnosis, no runtime/attestorfix/fullrepeat authorized. Stale static.json oldfreeze field explicitly nonauthoritative against matchedsourcehashes.
