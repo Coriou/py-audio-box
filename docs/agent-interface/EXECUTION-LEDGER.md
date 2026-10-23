@@ -1038,3 +1038,8 @@ Record failures and missing evidence; do not replace them with a successful late
 
 - S-WITNESS-SOURCE-r3-sol exact98fbff2a/fc8fba40 F1F2F3CLOSEDsource/no blocker,2newboundarycontrols explicitlySYNTHETIC. Parentacceptsreadinessonly nativeFalseTrue/coreintent13/finalroute/burn/config actualproofstillmandatory.
 - pab-s-witness-runtime-gate-r1-20261023 ONEoriginalcapacity12thencompleteguardfile static255expected freezeASTselectionbeforeexecution, sharedDockerlane serializedboundedwait neverforeignremove. Samecaps/pinnedLinux/liveverifiedproof/stopfirstunexpectedno retryfix. ActualreceiptindependentreviewbeforeSacceptance/groupassembly/broad. Hfinaldiagnosis/Pconditionalgate separate.
+
+## P positive native witnesses obtained / first negative cleanup STOP
+
+- P-CLEANUP-REVIEW-RUNTIME-r4-sol exactc17af4fb/53ee3d74 SOURCEGO thenONEgate89PASS1FAIL120NOTRUN wrong-class lacks hooks-restored. Actualoriginal+freshnormaldurable5step/lostresultPfulltokens/replay0+0 PASS; wrongclasscorrectlyrejectedafterintendedseam+nextlaunchlatch. Restorationproofmissinginnertraceunattested. RawLIVEproofverified cleanupcomplete no retry.
+- pab-p-restoration-order-fix-r5-20261023 sourceONLY appendedPplugin nestedmanual/targetmonkeypatchownership ordering fix+specificcontrol, keepPREmutationfinalizer/earlysetup/missingdone suppression/allrestorationasserts. Guard/recovery/produnchanged newsource-reviewbeforeruntime; Pacceptance/broadpending.
