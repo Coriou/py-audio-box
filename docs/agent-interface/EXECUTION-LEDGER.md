@@ -1443,3 +1443,7 @@ ONE r22 prepare/execute: native localtag/build verified; fresh volume/writer cre
 ### 2026-10-23 — Dummy stopped non-OOM; missing failure diagnostics confirmed
 
 Independent r23 verifies81hashes/21receipts and3exact-object readonlyinspect: stoppedexit1/nonOOM/no daemonerror. Trigger unproven; proven driver loses traceback/skips stoppedinspect on nonzero. r22 blanket0600 statement corrected supplemental audit0644 under0700root, bytesunchanged. SOURCE+HOST pab-dummy-readonly-diagnostic-source-r24-20261023 prepares smallest finiteexistingimage/ROvolume metadata/sourcepermissions/free-space probe with exactargv, no writerretry/product/build. Fresh independent source review before ONEactualprobe; all existing objects/lane retained.
+
+### 2026-10-23 — Read-only diagnostic candidate delivered
+
+SOURCE+HOST probe t3-586732a2 exec50e882e03dd6b194d4d42595fe19d71871205c2e docs039cac1c982a30cbaac5a3f8273b524692f47543 delivered3newfiles. Reports stdlib fixturePASS; exactexistingimage/ROvolume,20sremotealarm/60shostproposal,196expectedhashes/permissions/seed/space observations. Independent pab-readonly-probe-review-r24-20261023 launched fullsource/exactargv/HOST/controlflow review. No actualprobe/newruntimeauthority, oldvolume/writer/lane unchanged.
