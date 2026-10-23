@@ -1330,3 +1330,8 @@ Independentactualaudit verifies22hashes+hostcaptures4Git0recipeDockerinner; obse
 ### 2026-10-23 — S checkout umask correction frozen
 
 Implementerdelivereduncommitteddriver+handoff; parentfrozeunchanged execb968691a50bde1cc7d4165bb3fa36e8ade1612ce docsff70ae6fb9bdf7f2d978649ac60078554d4abb74 s-driver-checkout-mode-r12-20261023. Scopedcheckout022/finallyrestore077 andexplicit0600capturecreation. Independent pab-s-checkout-umask-source-review-r12-20261023 launched exactminimalclosure/priorgates. No runtimeauthorized.
+
+
+### 2026-10-23 — S scoped checkout creation SOURCE GO; ONE attempt
+
+Independent r12boundedSOURCEGO scoped022/finally077/private0600capture exactdriverb968691a appbd34b74 preserved. ParentauthorizesONEfreshcanonical/private/tmp exactdriver pab-s-checkout-fixed-construction-r12-20261023 allreviewedpins/sourcecopy/env/caps/52proofretention/fullIDcleanup. No edits/retries/extraimports/productDB/maintenance/255; freshindependentactualreviewrequired.
