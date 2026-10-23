@@ -1390,3 +1390,8 @@ ParentadoptsAstra r16: ordinaryfreshDockerlocalpersistentvolume; metadata-inclus
 ### 2026-10-23 — Persistent one-node proof lifecycle delivered for global review
 
 Implementer6allowlistedfiles delivereduncommitted; parentfrozeunchanged executable8364308c8f035bf65362247b201514a060c06730 docs87cec9a3ff9d2b829c04aa096e930d021b4fae83 p-one-storage-r16-20261023. Reports193payloadspreserved initial32HOSTRED retained scoped12/12and14/14repairs; noactualDocker. IndependentGLOBAL pab-persistent-proof-global-review-r17-20261023 launched allpolicyL1-L4/source/HOSTcoverage/ownership/limits/stdliblifecycle beforedummyqualification. No runtimeGO/selfacceptance.
+
+
+### 2026-10-23 — Persistent lifecycle review two concrete blockers
+
+Independent r17GLOBALNO-GO F1remotechild/postphase deadlineslendunusedtime beyond1200/60;F2postspawnreceipt/selector/setup canleaveunownedcapturepipes host+remote. 193payloadpreservation/HOSTcontinuityverified policyordinarypersistence/materialL1-L4soundbutsourcegaps. SOURCE+HOST pab-persistent-proof-phase-capture-fix-r18-20261023 launched cohesivefix+controlledphaseclock/pre-rescuepipefailuretests withinexisting32groupmatrix, unchangedproductpayloads. No actualDocker/dummy/productdiagnosisauthorized.
