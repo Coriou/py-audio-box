@@ -947,3 +947,8 @@ Record failures and missing evidence; do not replace them with a successful late
 
 - Parentadoptsentire S1-CAPACITY-REVISED-ASTRA.md:renamefamilyrehearsal-core-intent-full, genuineengineFULL13atexactfirstprivateINSERT/prefixzero/nooriginalacceptance/burnFalseTrue. EarlierdiagnosticFAIL/same_routefalseunchanged; genuineenginecapacityatcompletionUNPROVENexplicitgap, notcreditedR/A/B. No guessedpageallowance/furtherdiagnostic/productionauthorizerchange. H/P/sharedgroupedcontractretained.
 - pab-grouped-hps-source-implementation-r1-20261023 freshSol-low sourceONLY exactc224a4aabase; allowlistedguard+3targets+appendedcontrols/handoff, completefinitefrozenmatrix/tokenboundproof. IndependentSOURCEreview BEFOREanyruntime; no Docker/pytest/SQLiteworkloadauthorizedinimplementation. Thenfocusedactualreceipts/reviewbeforebroad.
+
+## Grouped source implementation incomplete / split H P S source lanes
+
+- Groupedtaskreturnedunimplemented a11c8ab/f1a5491 exact426nondocbaseline, noHPSdelta/freeze/tokenproof/runtime. Unresolvedcompleteinstructionroute/cleanupcontrols; noGO/integration. Preservebaselinehandoff.
+- Parentdecomposes SAMEadoptedcontracts into3independentSol-lowSOURCEONLYownedworktrees: pab-h-witness-source-implementation-r1-20261023, pab-p-witness-source-implementation-r1-20261023, pab-s-witness-source-implementation-r1-20261023. EachONEfamilyguardhooks/target/appendedcontrols, staticfreeze/preservation/tokenproof; no runtime/production/generalredesign. Separateadversarialsource-review beforeexecution, explicitoverlapcombine/fullgroupedgate later. Contracts/remaininggatesunchanged.
