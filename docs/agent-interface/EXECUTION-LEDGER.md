@@ -912,3 +912,8 @@ Record failures and missing evidence; do not replace them with a successful late
 
 - Candidatec224a4aaedf4c15765c8a19540a77f2f221a59c5 frozen65eef52f t3-eb791eef reconstructsselector6eb6cec5. Newtest-onlyguardwitness+controls+minimaloriginalcompletion sentinel; production/deps/unrelatedrecoverybodiesassignments unchanged.123focusedPASS, actualrehearsalseam+finalR and14directednegatives withsyntheticstatus11distinguished. Livearchives/ownerbindings verifiedbeforecleanup. HistoricalPID161causeunproven.
 - FreshSol-low pab-lotp-rehearsal-witness-review-r1-20261023 fullnarrowdelta/source+rawproof+boundedindependentcontrols; checkespeciallystaletokenaftercleanupreplacement. No fourB2/fullretry/integrationuntilreviewacceptance.
+
+## Rehearsal witness review accepted / frozen broad r3 authorized
+
+- Parentaccepts LOTP-REHEARSAL-WITNESS-r1-sol boundedGO exactc224a4aa/frozen65eef52f:30independentPASS,123attributedaudited, no blockingnarrowfinding; stalecleanupmarkerrejection verified. Productionunchanged historicalPID161unproven.
+- pab-combined-broad-validation-r3-20261023 READONLYfourB2thenfullONLYifgreen exactsameimage08d9f7ad, samecaps/liveverifiedhard-dereferencedtarexport/oneDockerlane; stopfirstunexpectedno retry/fix. Prior811prefix560MiBtmpfs/fullpeakunknown explicitlyassess; no capincrease/manualproofdeletion. Integration/T2/finalAstra/platformnativegatespending.
