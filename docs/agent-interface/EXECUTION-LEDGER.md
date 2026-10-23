@@ -1067,3 +1067,8 @@ Independent P1B23-H-LITERAL-SOURCE-r4-sol.md finds no authority relaxation, but 
 P restoration review r5 SOURCE GO at 3546b1dd: R4-1 source ownership closed; parent authorizes ONE frozen211-item Linux gate via pab-p-restoration-runtime-gate-r5-20261023, stop first unexpected result, retained LIVE proof and separate actual-receipt review required. No runtime acceptance yet.
 
 S final source diagnosis r1 NO-GO: LOAD_CONST-only literal recognition is a source limitation, actual first failed predicate UNKNOWN. Source-only bounded observation harness delegated pab-s-final-observer-harness-r2-20261023; exact acceptance/order retained, no runtime authorized before independent harness review. H control correction remains separate. No integration or activation.
+
+
+### 2026-10-23 — H runner-context controls frozen
+
+Fresh H control-only candidate 4fa9f460841d7c169037e6491b89a483d02bf110, docs c30f058b6d355ea887ba38cdab406b7c3684c87b, h-control-context-20261023: full runner lexical-context controls and pre-assert bounded proof; implementer reports guard/production/recovery byte-identical. Static-only; prior exact rejection cause remains unknown. Independent READONLY review delegated pab-h-context-control-source-review-r5-20261023. No construction/runtime authorized yet; P finite runtime and S observation harness remain separate lanes.
