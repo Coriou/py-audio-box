@@ -962,3 +962,8 @@ Record failures and missing evidence; do not replace them with a successful late
 
 - Pcandidate478953d0cfa500d849c5222260a5fef05a8db2c8 frozend00f49f9 t3-1cebb715 implementsPonly; staticASTcompile/preservation no runtime. Future1original+11transcript+30freshcontrols unexecuted, noGO.
 - pab-p-witness-source-review-r1-20261023 READONLYsourceSol-low checksactualdurable5step/pipeidentity/armedveto/finalexception/cleanupunwinding/controlmatrix andfullscope beforeanyruntime. Hreview/Simplementationseparate active; noassembly/integration.
+
+## S family source frozen / independent source review
+
+- Scandidateb7d8ea32310846375ce4b960b7b8923485269a78 frozen742cab3e t3-87bb88ab implementsSonly; staticASTcompile/preservation no runtime. RevisedearlycoreintentengineFULL13target/typedbool/privateconfig/hardener/finalroute/burn controls awaitproof; lateenginecompletioncapacityUNPROVEN unchanged.
+- pab-s-witness-source-review-r1-20261023 independentREADONLYsource review ofentireS/sharedcontract/predicatecontrols beforeanyruntime. H/Previewongoingseparate, noassembly/integration.
