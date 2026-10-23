@@ -1,0 +1,71 @@
+# P1B23 entry, identity and failure transport — independent GLOBAL Sol r38
+
+2026-10-24. **Bounded SOURCE + affected HOST GO for parent-owned product preparation/build planning. No concrete blocking finding.** The cohesive r36 assignment is closed in the inspected source and retained affected HOST evidence. This is not product GO, operational authorization, a new dummy prerequisite or runtime provisioning authority. Parent owns old-lane finalization, the fresh changed-source build and any later ONE actual invocation.
+
+## Provenance and review boundary
+
+Immutable candidate `/Users/ben/.txcode/worktrees/py-audio-box/t3-48db44e1`: executable `f60176302113e21212d525526f81e27b1395d045`, documentation `ccf7ab3a7ec2f36c3460617351a634d2a1b9223c`, base `c06e2f49b48264b51d65b0a9d1506b973ee4f839`. Candidate clean. Documentation delta is exactly HANDOFF/FREEZE/QUALIFICATION. Reviewed complete controlling root r36 causal assignment/regressions, r35 actual, r28 global, Astra runtime r27 and storage r16; current candidate handoff/freeze/qualification and complete changed-source delta, producer/consumer and surrounding lifecycle. Inspected original L1–L4, r18 F1/F2 and r21/r28 closures relevant to this successor. Historical appendices remain history; current r36 sections control changed behavior.
+
+Read-only Git/text and stdlib AST/JSON/stat/hash inspection only. No candidate/product imports, preparation CLI, pytest/collection, Docker query/mutation, DB/SQLite, native campaign, HOST rerun, cleanup, old-lane change, source edit, commit or delegation. No concrete unresolved concern justified another HOST campaign. Scoped ancestor checks found no applicable AGENTS. Initial broader read-only file discovery was unnecessary and supplies no global absence claim. Memory registry search returned no relevant hit and supplies no authority. Sole root write is this report,0600. Existing STT artifacts and candidate/history/private evidence are preserved.
+
+## Entry and preservation
+
+`entry.py:bootstrap` runs before pytest import. It derives root and diagnostics from the resolved entry file, verifies the manifest-owned regular initializer/recovery files and their hashes, rejects every preloaded service/service.* module, places trusted root then diagnostics ahead of pytest test-directory roots, and rejects conflicting finder origin/search locations. It does not delete modules, transplant recovery, rename tests or modify product behavior. Assertion-enabled launch remains required by PID1 and identity admission. The declared immutable source tree and trusted daemon boundary remain the trust model, not a hostile administrator filesystem model.
+
+The original Selection class AST is independently identical to base; exact singleton argv, node/object checks and observer dispatch remain. Manifest contains193 payloads: only entry.py mapping changes,192 mappings/bytes are unchanged. Every current payload hash matches. Three derivative mappings bind runtime identity, finite driver and the new identity helper. All196 mapped source hashes match candidate bytes. Independently checked retained final HOST exact-copy context: precisely197 regular paths,196 mappings plus manifest, all mapped bytes matching. Regular service initializer/recovery are included. Product/tests/guard/observer/witness/locks have no delta.
+
+Earlier bootstrap PASS is retained in c_efnjkg and binds unchanged entry bytes. Its synthetic regular package, namespace decoy, diagnostics import, preloaded/conflicting-origin refusal, missing/changed service files and zero/multiple/wrong selection/object checks are meaningful; no host product import occurred. Final product-contract group exercises actual copying, missing mapping/digest rejection, original scripted success and actual writer scheduling seams. No target assertion or witness lock was relaxed.
+
+## Identity producer and consumer
+
+Reviewed runtime-identity.py and identity_semantics.py together with finite-driver.identity_program/compare_identity, not just fixtures. Producer is invoked by absolute runpy path under existing bounded pre/post processes; both producer and consumer load the helper by explicit sibling file location. They do not depend on cwd or `/app` being present on sys.path for helper resolution. verify_source includes all changed helper bytes before checks and after the test; the read-only image and exact new derivative are still required.
+
+Version1 JSON uses duplicate-key rejection and exact top-level/semantic field sets. It preserves full Python string/implementation/version, optimization/assertions,42 expected/installed lock versions, SQLite version/source ID/compile options, extension path, ordered SONAME/path and loader records, selected resolved library path/digest, dpkg package/version/architecture and command returncode/stderr fields. Producer retains prior exact CPython3.14.8,42 pins, SQLite3.40.1/source ID/native digest/dpkg and free-space assertions. It additionally binds selected ldd SQLite resolution to the digested library. Checked commands reject nonzero or any stderr; failed bytes are diagnosed before strict decoding.
+
+Only terminal addresses in three explicit Linux ldd forms are excluded from semantic records. Raw ldd text stays in each receipt; parser binds raw to ordered records and rejects unknown, malformed, duplicate, not-found and incomplete required linkage forms. Consumer compares every semantic field; additions/removals/changes do not normalize away. No broad hex stripping or ignored status. Missing fields, malformed scalar/container types, duplicate JSON and command errors STOP. Semantic equality is an observation comparison; it does not replace producer expected-value assertions or authenticate all installed package bytes against wheel contents. These are source properties plus synthetic HOST evidence, not a new native identity receipt.
+
+## Failure transport and global lifecycle
+
+Writer status rejection can defer only after exact existing full-ID/config/mount and stopped proof, COMPLETE attach/wait captures, nonOOM/empty daemon Error, integer inspect exit and exact wait/inspect exit agreement. Only the exact lifecycle-status rejection is caught. Unknown/running/timeout/overflow/wrong binding never grants readers. Completed CLI failure may permit evidence transport once remote stop is proven; it never supplies product success.
+
+Existing archive then hash readers remain sequential, same-image and RO. Each retains normal lifecycle status checks, protected inspection reserve and <=60s ceiling within original <=180s retention. Archive parsing covers all regular members; independent full-map equality and retention receipt precede the original writer rejection. `retained` means transport validity. Failed sentinel/terminal/observer validity cannot complete the product route. On writer failure the original status error is restored after successful transport; run returns false, acceptance=false, cleanup is explicitly refused and finish holds the lane. Reader/mismatch/cap/deadline failure retains its own error and original objects. Bounded exception reasons now survive terminal publication.
+
+L1 numeric source ownership and strict initialization remain. L2 persistent local volume outlives finite writer, without volume/image deletion. L3 PID1/watchdog/monitor, post-test descendant handling and stopped-state reader ordering remain; local cancellation never proves remote completion. L4 pre-mutation journal, full-ID binding, uncertain-response HOLD/no retry and exact owner/inode release remain. F1 dispatch-relative child/postcheck/publication deadlines and F2 immediate pipe ownership/closure remain in source. Logical1GiB/64MiB leaves/200000 entries, export2GiB, host4GiB including16MiB supervisor reserve,6GiB admission/2GiB pressure and phase deadlines are unchanged. No physical/inode quota, reservation, power-loss or ext4 durability claim follows. Kernel/daemon stalls, deleted-open bytes, concurrent growth and backend overhead remain residual limits, not new blockers.
+
+## Independently verified affected HOST evidence
+
+Final `/private/tmp/pab-dummy-HOST-lqpbbj7x/HOST-receipt.json` SHA256 `28a734bb23cef2bfe2668441dbbdd27e0cb0b2ff465d387338eff5413151c7df`: PASS4/4,1.846192767s,9s/group/120s total. Groups semantic_identity, failed_writer_retention, r36_product_contract and r36_lifecycle_failures. All receipt source hashes match candidate. Earlier unchanged bootstrap PASS is separate evidence, not a fifth final group or current full-matrix claim.
+
+Rehashed every completion-bound stream and evidence-hashes inventory entry in all three new trees:964 streams and2117 inventory entries, zero mismatch. Counts by tree: c_efnjkg148/373;9dzin5_g346/872; final470/872. Checked all407/1498/1838 regular leaves respectively and all directories:0600/0700,no symlinks.
+
+Both REDs remain meaningful and preserved:
+
+- c_efnjkg receipt `fa2d28b8b0a7e620b1daa22f9098c54e4520e100ee6921b76541db32082d3779`: bootstrap/identity PASS, then cap fixture had unconsumed expected commands after correctly refused overflowing capture. Removing those impossible downstream expectations preserves the production refusal.
+- 9dzin5_g receipt `cda126cce819b1bf6f1e844ff2cfc168b23063ae8ef565de9c40e4f6ff50e365`: semantic/failure transport/product contract PASS; old dummy preparation rejected stale qualify.py PINS. Final product-only parameterization exercises all12 affected product lifecycle failures without calling unrelated dummy preparation. It does not bypass source pins or remove product failure assertions.
+
+Seven failure-transport scenarios cover collection STOP/no observer, reader failure, full-map mismatch, overflow, deadline, running writer and OOM. Identity cases alter all fields, native paths/SONAME/loader, dpkg components, library digest/path, malformed/missing/duplicate/schema/status inputs, and preserve raw addresses. The harness denies real external spawn/system/fork/signals; real private IO/pipes/parsers/journal run against finite exact fake queues. Native PID1/process/Docker and product truth remain unqualified by HOST.
+
+## Concrete next product preparation/build proposal
+
+Historical qualify.py is byte-identical, SHA256 `6999a3e4aaeece2fdd9abd3a4f23d8fcd71dc5e6773a0ae69be20b59dce91626`. All four PINS entries now differ; source_pins correctly rejects this successor. Do not use its preparation/execution CLI, patch pins opportunistically or make a new dummy prerequisite. This does not block product preparation: launcher.py imports finite-driver directly and its --prepare/prepare_context/shared base_recipe path does not call qualify.py or source_pins.
+
+Concrete later preparation is assertion-enabled `PYTHONDONTWRITEBYTECODE=1 python3.14 -B diagnostics/p-one-node/launcher.py --prepare` from this immutable checkout, under parent scope. It writes `/private/tmp/pab-p-one-r16-<new UUID>/context` and `build-proposal.json`, without lane acquisition or Docker. A parent-frozen stdlib invocation of the same prepare_context with an explicitly current owner is also available. Legacy SOURCE/DOCUMENTATION constants are historical: parent authority must explicitly bind current executable/docs plus hashes; do not represent those constants as current provenance.
+
+Before operational build, freeze that concrete proposal/context/manifest/seed/recipe/owner/argv and authority digests. Under the existing lane and separate bounded parent build contract: inspect exact BASE Linux/amd64/startup; require fresh owned local tag absence; journal tag mutation; tag exact BASE; inspect/admit tag; validate recipe/steps; immediately reverify tag; perform one <=300s no-pull/network-none source build, capture full derivative IID and bind labels/config/source. Launcher proposes this work and does not implement a build executor; parent must freeze the bounded operational invocation and once-only journal, rather than treating --prepare as build authorization. No qualify CLI is necessary to use the shared reviewed recipe. New copied bytes REQUIRE a new derivative full image ID; old `sha256:60a969256c4fb44fd8e0b830eb13223a62e75f1bb9518eadaa91b466489273f5` cannot represent them.
+
+Required current byte pins:
+
+- entry.py `f4c4862b000fc458e901b8f31f7c3e081550e35765e7d1cd04a19615a73443b9`
+- runtime-identity.py `eb5d3a7dbdf717a219163bfeaaa9bb8616a0ad7c7b2ec315aa0eb8b24504c034`
+- identity_semantics.py `fd2d1f6d40699aa258d9016996037e8f61875f9302b21f8a6700cac935f707de`
+- finite-driver.py `10dd30e393bfe79553d9ef3170c31662ab2774847f1bab4028dc4657e07e7e0f`
+- launcher.py `348cc1097b267a734a763f8a56a940732abb8cb141c2f767744a91fcf835984c`
+- host-check.py `88514eee4d48b7a89adc6627bf28814a6df1b312a05a01c659ac684691d585d9`
+- qualification-host-check.py `98ec74e369d2f15f3aab628d4d3b5ce974f88dbfdf9e56fdf8c419f5b4482dad`
+- source-manifest.json `23cc4d3da39f9ec783efe4ed20ecf7ce5f015170f388351f286dfc0036412d43`
+
+BASE remains `sha256:69bd9216869374d87fa14702ef380b4124a12f03f5f88a2681957ea81ee274cb`; adopted r27 selects existing Linux3.14.8/unchanged42 locks. No new interpreter/package provisioning. Actual changed-image source/runtime checks remain admission obligations. AST parsing and base-to-doc diff --check passed.
+
+Before fresh build/actual, recommend only parent-owned minimal finalization of the exact held old lane `[16777223,1007146242]`: record accepted r35/r36 terminal disposition/residual inventory and handback, verify exact owner/quiescence bindings, then release only that lane if parent authorizes. Preserve original writer, both recovery readers, volume, images/tags, once markers and every proof tree. Current lstat independently confirms that inode; no fresh daemon existence/quiescence observation was made. If binding is unavailable, retain HOLD. No restart/removal/rewrite is proposed or executed here.
+
+Parent owns next operational admission and subsequent actual-receipt acceptance. Original singleton47-field/actual offsets/exact types/original exception/owner/enrollment/raw18944/empty-phase/EAGAIN/guard/call-teardown/unreached assertions remain mandatory; expected pytest1/driver0 never turns RED into product PASS. Historical PID229 remains UNKNOWN. H/S/fullsuite/native/T2/installed/platform/ext4/durability/release/activation do not advance. No cleanup or runtime resource obligation was acquired by this review.
