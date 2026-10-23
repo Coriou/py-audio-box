@@ -1455,3 +1455,7 @@ Independent r24 SOURCE+HOST GO verifies196expectedhashes/programargv/19fixtureob
 ### 2026-10-23 — Actual probe isolates nonfresh initialization predicate
 
 ONEprobe r25 completes1.08s helperstoppedexit0;196sourcehashes match/readable, current8.02GBfree, root/seed correct. Actualvolume additionally requirements.lock UID501GID0/0664/75753bytes; strict initialized exactnamesFALSE STOPnonfresh beforebody. Originaltraceback/origin stillunproven. Actualinterpreter3.14.8 observed, notrequired3.14.7 qualification. Independent pab-readonly-actual-cause-audit-r26-20261023 launched45leafreceipt/config/supervisor/cause/source audit and minimalsharedrecipe+observability repair recommendation. No extraDocker/cleanup/retry; allobjects/lane retained.
+
+### 2026-10-23 — Diagnostic accepted; clean initialization/visibility repair
+
+Parent accepts r26 bounded actualdiagnosticGO: currentstrictfreshnessfailure proven, inheritedimage/tmp lock population stronglysupported notoriginaltraceback proof. SOURCE+HOST pab-clean-init-observability-fix-r27-20261023 assigned sharedBUILDclean dedicated/tmp beforeseed, unchangedstrictchecks, boundednonzerocapture+stoppedreconciliation bothlifecycles, affectedHOSTonly. Parallel freshAstra pab-runtime-version-disposition-astra-r27-20261023 traces3.14.7vscommitted3.14.8 authority; no runtimepin change/provisioning/actual/cleanup authorized. Alloldobjects/lane retained.
