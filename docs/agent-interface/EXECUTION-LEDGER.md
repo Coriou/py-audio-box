@@ -1114,3 +1114,8 @@ Independent H construction audit verifies retainedsource/actualsite/controlfailu
 ### 2026-10-23 — S single-node diagnostic identifies actual rejection
 
 ONE frozen observational False node expectedRED1FAIL1teardownERROR SaSs raw74. Report actualbranch3/detail1zeroLOAD_CONST74 candidates; executingLinuxmetadata LOAD_SMALL_INT74/CALL1. Sameobject/attrs/burn and exact8route/inner matched later OBSERVATIONALLY, not originalacceptance. No historicalPID49cause or Sacceptance inferred. Privateproof/export/ownedcleanup retained; freshindependent actual review pab-s-final-one-node-actual-review-r2-20261023 launched before correctiondecision. H Astra controlmodel and blockedpipe observer separate.
+
+
+### 2026-10-23 — Blocked-pipe observer frozen for independent review
+
+Source-only harness d5f493e63909d31e00680c81e8aefbcf3fcd5162 docs8d5aba5fc702719843d055b7d3f693c407deb0e9 in p-one-node-observer-20261023 delivered; original terminal cause remains UNKNOWN. Independent source review pab-blocked-pipe-observer-review-r1-20261023 launched before any execution. No one-node diagnosis/fullgate/retry/attestorfix authorized. H Astra design and S actualreceipt audit remain independent lanes.
