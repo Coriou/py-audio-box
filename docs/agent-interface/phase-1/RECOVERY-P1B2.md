@@ -1925,3 +1925,98 @@ Final source guards verify clean unchanged historical pins: `t3-f0f283c4=d03bc47
 All **19 Linux mechanisms remain UNQUALIFIED**, including actual Linux 4 MiB/ext4/Unix-VFS/SHM and peer credentials. C1 host pin/provenance/authentication and mandatory `b2_pinned_launcher_context_unavailable` production refusal remain. Installed C1/C2/clean-host, B3, physical durability, hardware/browser/listening/acoustic and final global Astra remain pending. A1 Docker-inventory drift remains unexplained and unqualified; no inferred cause or waiver. Apple Silicon remains documentation-only qualification scope. Host freeze/public activation boundaries remain unchanged; no false freeze release, rollback inference or automatic restart.
 
 No delegation, Docker/network/model/audio/install/paid E2E, C/script/worker/resource/schema/dependency changes, push/PR/deploy, other-worktree edits or parent-limit lowering. T2 is not implemented here. Next: separate Sol-low independent review of the **whole final delta**, then parent acceptance/integration/equality/focused checks, fresh T2 and final Astra. **No self-GO.**
+
+
+## T1 round-2 F2 kill/reap interruption correction — frozen implementation handoff
+
+2026-10-23 · implementation owner gpt-6.1-sol / low, no delegation. **Correction implemented with fresh local GREEN receipts; NO self-GO, integration, T2, host or Phase 1 acceptance. Parent must arrange fresh round-3 separate Sol-low adversarial review of the entire final T1 candidate before integration, then source equality/focused integrated proof, fresh T2 and final integrated Astra.** All original seven T1 exits and qualification limits remain binding.
+
+### Identity, replay and exact scope
+
+Fresh ABS `/Users/ben/.txcode/worktrees/py-audio-box/t1-f2-cleanup-20261023`, branch `t1-f2-cleanup-20261023`, root base `eb1e5938c9c521f8f840cb8bcbd5328e86decdf6`. Original T1 baseline remains `7ae446ccb81473cc82ae50ae5ea8305f1729eb4c`. Preserved prior candidate `bdf9a6920964acd72ef108b2bf7516796f37e4be`, executable freeze `35b2a28816fb41ec9a5c690812f144dad4abb883`, remains clean at `t1-close-f1-20261023`.
+
+Inspected root-base..candidate log, then replayed ONLY its ten T1 commits oldest first, no conflicts: `af984b9→878a278`, `a4cad3d→a30e0ec`, `207882e→8d44504`, `d35e60b→db43813`, `5340a8a→0484e4d`, `173d14a→00e8883`, `2c1537d→b836968`, `084e67b→f4ef343`, `35b2a28→1c44a3f`, `bdf9a69→5ccf5a9`. Replayed tree equals exact bdf9a692 before correction. No root-base/C imports or replacement of reviews/ledger/research. Root-base executable paths still equal reviewed K `6130d1fecce3d978671ed1bfd509693d3aab3c97`.
+
+Correction source/test commits: `6f703be88489d9cccc0a86c6354f5f03184a5679`, then final freeze **`61d391c1ccf33aad1b37d7a7502692c7363c63d5`**. This append is the subsequent report-only commit; exact final candidate SHA is supplied in the final reply. No executable/test edits during or after the final campaigns.
+
+Against bdf9a692: recovery +67/-8, tests +171/-0 before this report. AST comparison changes ONLY `_run_bounded_maintenance`, adding no top-level definition and removing none. Existing tests are an exact byte prefix, including all 64 F1 close cases and the originally approved legacy result-budget branch. This document is append-only. Root-base-to-final writable scope remains exactly `service/recovery.py`, `tests/service/test_recovery.py`, `docs/agent-interface/phase-1/RECOVERY-P1B2.md`; all other paths, including canonical docs/reviews/ledger, remain root-base bytes. No applicable ancestor/scoped AGENTS.md found; diff-check passes.
+
+Read entire R2 and original R1 T1 reviews, exact F2/probes/source assessments and original F1, authoritative TRANSPORT-ASTRA/all seven exits, original SUCCESSOR and COHERENCE reviews, canonical orchestration/implementation plan and pertinent ledger chronology, and complete prior T1/fix handoffs. Memory supplied only checkout/evidence-boundary guidance, not acceptance evidence.
+
+Final executable SHA-256: recovery `5540c380fa6a44e5a18ca9ffc81c77d7cb8b0a31eba3136eebea6d298e2c55d0`; tests `f026142e5024675e8e577f3add8729f4d9fc9da5b726f71ee000f2ec16e9d969`.
+
+### F2 response and boundary audit
+
+The cleanup factor retains the local owned PID until successful exact-child wait or ECHILD resolves the obligation. Before EVERY cleanup signal, exact `waitpid(pid,WNOHANG)` checks ownership: a reaped child clears PID; ECHILD clears it without signalling; an interrupted probe is resolved by another probe. An unreaped child/zombie retains its PID. A failed-before-kill interruption does not skip wait: independent nonblocking reap is attempted, then ownership is rechecked before another signal. A successful SIGKILL is followed by wait; an interruption after actual kill or before/after actual wait is resolved through the next ownership probe. No signal follows a lost successful reap. ESRCH alone is not a reap receipt: wait remains required. This is single-threaded child ownership, not an API for competing SIGCHLD reapers.
+
+Cleanup retains its first interruption, completes the supported cleanup path, then propagates the invocation's original refusal/interrupt in preference to cleanup errors. Explicit invocation-local exception tracking prevents an already handled caller exception from suppressing a new cleanup refusal. A cleanup failure on an otherwise successful result cannot become success.
+
+Normal WNOHANG EINTR-before-syscall remains retryable within the original absolute deadline. If a wait actually reaped and its result was lost to InterruptedError, subsequent ECHILD clears PID and propagates that original interruption: lost exit status cannot authorize success. Normal KeyboardInterrupt/BaseException also reaches independent descriptor/child cleanup, including after actual reap. No operation retry/restart, result/freeze-release success on refusal, or rollback inference is introduced.
+
+The original absolute 30-second operation/read/EOF/normal-exit deadline is not reset or extended. Cleanup has a finite 64-round interruption guard rather than the former unbounded EINTR loop; blocking wait is used only after SIGKILL/ESRCH, never after a failed-before-kill. No global interrupt suppression. This does not claim successful cleanup against endless external interference or a hard wall-clock bound for an uninterruptible kernel syscall; exhaustion remains refusal, never authority. Actual Linux syscall/kill latency qualification is still pending.
+
+F1 descriptor identity/access-mode and independent close/fork cleanup remain unchanged: initial parent close inside ownership try; child initial close sanitized before operation; independent read-close and child cleanup; no blind close of a released/reused fd. Audit covers cleanup ownership probes, kill, wait, normal WNOHANG lost results, ECHILD/ESRCH, original-exception precedence and caller exception context, alongside the existing close/fork/child boundaries.
+
+Appended 53 cases: 48 = two repetitions × InterruptedError/KeyboardInterrupt/BaseException × before/after actual syscall × kill/cleanup blocking wait/cleanup ownership probe/normal wait; two ESRCH/ECHILD controls; three caller-handler cleanup-refusal controls. Actual fork/pipe/fds, exact already-reaped assertion before escape, actual unrelated sleeping child, no signal after an injected actual reap (PID-reuse countercase), fsync-completed operation marker before cleanup and exactly one operation entry, descriptor closure, elapsed bounds and unchanged FSIZE. Each new harness owns finally cleanup, probes before signalling, and releases only its own children/fds even on RED. These are fault-injected E1 control-flow tests, not real Linux EINTR qualification.
+
+### RED/GREEN, actual development failures and commands
+
+Common exact locked prefix, cwd this fresh ABS:
+
+```sh
+env -u PYTHONPATH -u PYTHONHOME -u PYTEST_ADDOPTS -u PYTEST_PLUGINS \
+  PYTHONDONTWRITEBYTECODE=1 \
+  TIKTOKEN_CACHE_DIR=/tmp/pab-k-prefifth-env-20261022/tokenizer-cache \
+  /tmp/pab-0c-venv/bin/python -m pytest -p no:cacheprovider
+```
+
+Verified CPython 3.14.7, pytest 9.1.1, MCP 1.30.0, tiktoken 0.14.0. Parent FSIZE before/after and campaign receipts `(9223372036854775807,9223372036854775807)`; no lowering/install/hermesbridge/environment replacement.
+
+- Exact reviewer `/tmp/test_pab_t1_r2_negative.py` replay changes ONLY the imported test path, saved as `/tmp/test_pab_t1_f2_replay.py`. Baseline suffix `... -k test_r2_cleanup_reap_interrupt -q -rs -s`: `/tmp/pab-f2-red.log`, **4 failed/1603 deselected, 0.58s, exit 1**. Both kill-before children live/unreaped; both wait-keyboard children killed but waitable. Harness cleanup ran. Initial correction: `/tmp/pab-f2-reviewer-green.log`, **4 passed/1603 deselected, 0.44s, exit 0**; final frozen replay below supersedes it.
+- `/tmp/pab-f2-focused.log`: **23 failed/118 passed/1506 deselected, 25.83s, exit 1**. Fixture observed marker existence before buffered child contents flushed, so cleanup could kill before marker contents became visible. Corrected only new fixtures to flush/fsync marker, then publish separate ready marker. `/tmp/pab-f2-focused-r2.log`: **141 passed/1506 deselected, 3.97s, exit 0**.
+- Source audit exposed first correction's `sys.exception()` caller-context defect. `/tmp/pab-f2-caller-context-red.log`: **3 failed/1647 deselected, 2.11s, exit 1**, new cleanup exception incorrectly suppressed. Fixed with invocation-local primary-exception tracking, preserving these exact tests. First campaign driver was interrupted before broad stages; `/tmp/pab-f2-campaign-driver.log` has KeyboardInterrupt and no completed receipt, `/tmp/pab-f2-final-reviewer-frozen.log` has no completed summary. Neither is counted as proof. The final freeze below is a new source reason, not a blind broad repeat.
+- Final focused suffix `tests/service/test_recovery.py -k 'reap_interruption_ownership or cleanup_missing_process_receipts or cleanup_refuses_inside_caller_exception_handler or close_ownership_cleanup or actual_pipe_transport or successful_exact_size_pipe_waitpid_eintr or fork_failure_closes_descriptors' -q -rs`: `/tmp/pab-f2-focused-final.log`, **144 passed/1506 deselected, 4.03s, exit 0**, including every F1 close case and all new regressions.
+
+### Final frozen sequential receipts
+
+`/tmp/pab-f2-campaigns-frozen.py` checks clean status and exact executable hashes before/after each stage; `/tmp/pab-f2-frozen-campaign-receipts.json` records exact argv, wrapper seconds, exit, log SHA-256 and source/limit guards. All stages exit 0, no failures/xfails, executed sequentially on 61d391c:
+
+- `/tmp/pab-f2-frozen-reviewer-frozen.log`: **7 passed, 1653 deselected in 30.50s**; wrapper 31.264s. Exact suffix: `/tmp/test_pab_t1_f2_replay.py -k test_r2_cleanup_reap_interrupt or reviewer_parent_close_interruption or reviewer_real_clock -q -rs -s`. SHA-256 `5ba7ac2957d88c34d50eb8b37760a52ee8e767dfd71f2b3ce55fe28310383448`.
+
+- `/tmp/pab-f2-frozen-target.log`: **1321 passed, 1 skipped, 408 deselected in 2672.48s (0:44:32)**; wrapper 2673.467s. Exact suffix: `tests/service/test_recovery.py tests/service/test_admission.py -k kfifth or kpre or lotk or lotp or b22 or successor or t1_ -q -rs`. SHA-256 `ebe968dbfedfb1402b9fe59370cf740918b538ecbed030543482668fb5478d50`.
+
+- `/tmp/pab-f2-frozen-four-b2.log`: **1783 passed, 1 skipped in 2844.96s (0:47:24)**; wrapper 2846.379s. Exact suffix: `tests/service/test_recovery.py tests/service/test_packaged_lifecycle.py tests/service/test_admission.py tests/service/test_dispatcher.py -q -rs`. SHA-256 `e2eea2b53f6b077bfee4ec69dcb0dff6ec34d8c2d540a1638a81bccb9eb443fa`.
+
+- `/tmp/pab-f2-frozen-full.log`: **1935 passed, 19 skipped in 2888.57s (0:48:08)**; wrapper 2890.036s. Exact suffix: `tests/service tests/release -q -rs`. SHA-256 `365c20fee196d9015fecfaed51af4e468476a37cda645fc3eb67984ca92b3031`.
+
+Frozen reviewer replay includes original F1 twice (already reaped/read fd closed), all four R2 REDs now already reaped, and real-clock valid-frame/EOF-with-live-child refusal at **30.006412633s**, followed by exact reap and unchanged FSIZE. Original reviewer files are preserved. All 64 close cases are fresh in focused/target/four/full.
+
+The target/four/full retain the whole seven-exit proof: actual production A/B/C and finite D/E, closed canonical whole 1MiB frames and bounded buffers, all EOF/exit/deadline cases, independent existing storage/population/capacity guards, strict exact completed-history/current tuple joins, and all owner/no-attempt/current-before-any-unfinished-write/F1–F4/history/session/locks/Unix-VFS preservation. Outside cleanup plumbing, original codec/coherence/K/P/capacity source is byte-preserved. No old test definition or approved legacy branch changed. Prior **1882 passed/19 skipped** remains attributed predecessor evidence, not this run.
+
+Six current production witness roots (pytest-85/86/87, two per campaign) copied into `/tmp/pab-f2-frozen-production-witnesses.json`. Full-run setup 0/1 both record A/B/C frames **36,617 / 94,319 / 222,909** and snapshots **249,856 / 294,912 / 405,504**. Existing tests assert original snapshot/archive bytes, complete descriptors/Core oracle and fifteen steps/three histories before finite continuation. All six complete D then first refuse E at unchanged `b2_prefix_snapshot_budget`, with five plans/four recoveries/twenty steps/four resolutions, original receipt/outcome null/ACK=0, retained charges 2,097,152, H=20,971,520, disk budget 67,108,864/free reserve 16,777,216. Read-only post-run audit freshly checks those SQL counts and original receipt/outcome/ACK plus recorded limits. These are implementer executions/recorded observations, not independent review or continuous physical/RSS/Linux enforcement maxima.
+
+Post-run audit development had two script assertions: pytest current symlinks double-counted roots (9 instead of 6), then complete budget mapping was incorrectly compared to a scalar. Corrected only temporary inventory/audit code; final `/tmp/pab-f2-witnesses.py` exits 0 with six unique roots. Notes `/tmp/pab-f2-witness-audit-development.txt`; no production/test changes or campaign repeat.
+
+Additional receipt SHA-256:
+
+- `/tmp/pab-f2-red.log`: `b5748d9500407899147bb42b0de7cfa6350f74f72866f547964b84544a872444`.
+
+- `/tmp/test_pab_t1_f2_replay.py`: `1ab75403cfa2496d822b5325ae65aa2068b09bc251448fb46dda57853a62df4d`.
+
+- `/tmp/pab-f2-focused-final.log`: `be9e5abf07e22fe09e796dfef782d5a4b3f42438e69aa98c6dfea7f8aa7eed50`.
+
+- `/tmp/pab-f2-frozen-campaign-receipts.json`: `576c7b062b6c91c2777ea6160231d7d399961562ddfc04c1cdcacce7236961ac`.
+
+- `/tmp/pab-f2-frozen-guards-before.json`: `4169b036ce9a47e492729290d4870ed12c0c6ca5cf63053097603660c832f955`.
+
+- `/tmp/pab-f2-frozen-guards-after.json`: `4169b036ce9a47e492729290d4870ed12c0c6ca5cf63053097603660c832f955`.
+
+- `/tmp/pab-f2-frozen-production-witnesses.json`: `072d69cc22e6eb35073eb130040833f70f549490c6c08166b15102ce5925bc9b`.
+
+### Preservation, limits and parent handoff
+
+Before/after guard JSONs match byte-for-byte. Read-only historical inventory confirms exact clean pins: prior F1 `bdf9a692`, original T1 `8294c946`, original WIP `d03bc474`, coherence `6cf6236b`, C `a27f78b5`, historical C `58e3eb9f`/`6cfe3973`, reviewed K `6130d1fe`, root-base checkout `eb1e5938`. No historical WIP/research/review/ledger mutation. Final campaign runner exited; new harnesses assert exact owned reaping and preserve unrelated children. Temporary logs/probes remain; ordinary pytest retention is unchanged, no manual evidence cleanup.
+
+All **19 Linux skips remain UNQUALIFIED**: one actual RLIMIT_FSIZE and eighteen peer-credential mechanisms (10+1+1+6). Actual Linux 4MiB/ext4/Unix-VFS/SHM, C1 pinned launcher/provenance/authentication and mandatory production refusal, installed C1/C2/clean host, B3, physical durability, hardware/browser/listening/acoustic and global Astra remain pending. A1 whole-inventory drift remains unexplained/unqualified; no inferred cause/waiver. Apple Silicon is documentation-only qualification scope. Host freeze/public activation stays closed; no completion/replay/transport failure grants automatic restart, rollback inference or current freeze release.
+
+No delegation, integration, Docker/network/model/audio/install/paid E2E, push/PR/deploy, reset/clean/prune/add-A, other-worktree mutation or resource/schema/dependency/C/host/worker change. **Return clean candidate for parent-owned fresh round-3 review of the entire final T1 delta; no self-acceptance.** T2 is not this assignment.
