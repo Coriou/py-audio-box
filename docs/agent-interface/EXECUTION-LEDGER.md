@@ -972,3 +972,8 @@ Record failures and missing evidence; do not replace them with a successful late
 
 - H-WITNESS-SOURCE-r1-sol exact846fea57/frozen4658fd23 SOURCE NO-GO:validHfallsintolegacyreject; controlsfirst-vs-secondambiguity/wrapperoverwrites; missingindependentbindingcontrols; open transcriptgrammar; incompletelegacytokenboundproof. No runtime/candidatewrites.
 - pab-h-witness-source-fix-r2-20261023 freshSol-lowsourceONLY fulloriginalbrief/F1–F5 response, unchangedHscope/production/P/S/R; strictacceptbranch+closedgrammar+isolatedcontrols+completeboundproof, newfreeze/reviewbeforeanyruntime.
+
+## P and S source reviews NO-GO / bounded separate corrections
+
+- S-WITNESS-SOURCE-r1-sol b7d8ea32/742cab3e:3blockers transientcontextmanagertracebudgetvetoesvalidroute; controlsinterposehardenerinvalidatingprereqs; missingindependentpredicate/nativeconfigproof. P-WITNESS-SOURCE-r1-sol478953d0/d00f49f9:3blockers malformedoperationunarmslegacyfallback; cleanupcontrolssupplypredicateargsratherthanrealcatchallreplacement; unverifieddirectedpremises. No runtime/reviewsourcewrites.
+- FreshSol-lowsourceONLY pab-s-witness-source-fix-r2-20261023 andpab-p-witness-source-fix-r2-20261023 fulloriginalbrief+F1–F3, exactfamilybases/scopes. Hfixr2continuesindependently. No assertionpolicyweakening/runtime/integrationuntilnewsource-review.
