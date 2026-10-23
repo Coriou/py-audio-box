@@ -1060,3 +1060,10 @@ H literal candidate 6c588a59 (docs 9207a41) stopped at its first isolated constr
 ### 2026-10-23 — H literal r4 independent NO-GO
 
 Independent P1B23-H-LITERAL-SOURCE-r4-sol.md finds no authority relaxation, but isolated construction positive remains RED. Captured runner identity is satisfied; precise instruction mismatch unproven. Earlier actual-runner recognizer assertions completed, no detailed opcode receipt emitted. No H runtime retry authorized. Source-only fresh Sol-low control/evidence correction delegated as pab-h-construction-control-fix-r5-20261023; recognizer remains frozen, nine control dimensions and strict final route preserved. Independent source review required before a separately bounded construction preflight.
+
+
+### 2026-10-23 — P source closure and S diagnostic boundary
+
+P restoration review r5 SOURCE GO at 3546b1dd: R4-1 source ownership closed; parent authorizes ONE frozen211-item Linux gate via pab-p-restoration-runtime-gate-r5-20261023, stop first unexpected result, retained LIVE proof and separate actual-receipt review required. No runtime acceptance yet.
+
+S final source diagnosis r1 NO-GO: LOAD_CONST-only literal recognition is a source limitation, actual first failed predicate UNKNOWN. Source-only bounded observation harness delegated pab-s-final-observer-harness-r2-20261023; exact acceptance/order retained, no runtime authorized before independent harness review. H control correction remains separate. No integration or activation.
