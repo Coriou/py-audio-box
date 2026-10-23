@@ -1419,3 +1419,7 @@ Independent r19GLOBALGO confirms12HOSThashes/preservedinputs nonproduct9269byte3
 ### 2026-10-23 — Dummy actual stopped at invalid FROM reference
 
 ONE prepare/execute stopped at sole build: raw image ID in FROM was interpreted as registry reference; no volume/container/writer/readers/product ran. Proof and exact-owned lane retained; no retry/cleanup. Independent pab-dummy-build-actual-audit-r20-20261023 launched complete receipt/hash/terminal-build audit plus smallest safe lane reconciliation recommendation and cohesive qualification/product recipe correction scope. Dummy persistence remains unqualified.
+
+### 2026-10-23 — Failed solve conclusively terminal; cohesive recipe repair
+
+Parent accepts independent r20 actual audit: complete fatal BuildKit solve/exit/reap establishes terminal FAILED, historical SENT-UNKNOWN preserved. Authorize separately assigned exact owner/inode supplemental finalization and release ONLY held lane, retain all proof/cache. Shared raw-ID FROM defect affects launcher preparation and qualification validation/HOST. SOURCE+HOST successor repair authorized owned local tag + pinned ID verification/journal and affected meaningful fake-adapter cases; no real tag/build/new dummy/product dispatch. Fresh independent source/HOST review before next actual.
