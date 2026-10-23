@@ -1320,3 +1320,8 @@ Independent r11closeshostlanegap c445017a/docs384af0b5 verifiesphysicalparent/so
 ### 2026-10-23 — S canonical attempt source-mode admission STOP
 
 ONEhostexit1 after4Gitdispatches before recipe/Docker/inner0of52. Privateworktree HEADcorrect/bytescorrect butrecipe/list0600 vsGit0644; driverumask077 precedescheckoutcreation sourceconsistent. No lane/container/image acquired, privateevidence+registeredcheckoutretained. Independent pab-s-checkout-mode-actual-audit-r11-20261023 launched failure/hash/sourceaudit inclremainingpreparationmode assumptions andminimal scopedumaskproposal, no retry/fixauthorized.
+
+
+### 2026-10-23 — S checkout mode diagnosis accepted; scoped creation fix
+
+Independentactualaudit verifies22hashes+hostcaptures4Git0recipeDockerinner; observed0600 correctbytes sourceconsistentumask077. Remaininghostpreparationmodeaudit foundnootherdemonstratedsameclassblocker. ParentadoptscheckoutONLY022/guaranteedrestore077 withexplicit0600capturecreation, unchangedprivate0700boundary/Gitmodeadmission. SOURCEONLY pab-s-checkout-umask-source-fix-r12-20261023 launched driver+handoffonly no runtimeauthorized.
