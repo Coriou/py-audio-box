@@ -41,7 +41,7 @@ class MaintenanceWaitGuard:
         self.session.shouldstop = message
         self.event("failure", message=message[:1024])
 
-    def observe(self, result, *, witness=b'', expected_signal=None, expected_exit=None, armed_P=False):
+    def observe(self, result, *, witness=b'', expected_signal=None, expected_exit=None, armed_P=False, armed_B=False):
         pid, status = result
         if pid not in self.owned or not (os.WIFEXITED(status) or os.WIFSIGNALED(status)):
             return result
@@ -55,7 +55,10 @@ class MaintenanceWaitGuard:
             try: _RAW_WRITE(fd, record.encode())
             finally: os.close(fd)
         error = None
-        if armed_P or b'P:' in witness:
+        if armed_B or b'B:' in witness:
+            if armed_P or not BlockedPipeWitness_B.transcript(witness, status):
+                error = 'incomplete or invalid armed B contract'
+        elif armed_P or b'P:' in witness:
             if not (os.WIFEXITED(status) and os.WEXITSTATUS(status) == 74 and
                     DurableLostResultWitness_P.transcript_P(witness)):
                 error = 'incomplete or invalid armed P contract'
@@ -462,9 +465,418 @@ class DurableLostResultWitness_P:
         return family == list(tokens[:3]) and len(witness) <= 256
 
 
+class BlockedPipeWitness_B:
+    """Invocation-local singleton certificate. Never owns a frame or exception.
+
+    Source positions select statements; executing code/disassembly select sites.
+    All event arguments are transient. Only primitives and callable capabilities
+    survive a callback. No result pipe reads, probe writes, signals or reaps.
+    """
+    name = 'test_t1_real_blocked_pipe_backpressure_deadline'
+    nodeid = 'tests/service/test_recovery.py::' + name
+
+    @staticmethod
+    def closure(function):
+        return dict(zip(function.__code__.co_freevars,
+            (cell.cell_contents for cell in (function.__closure__ or ()))))
+
+    @staticmethod
+    def nested(code, name):
+        values = [c for c in code.co_consts if isinstance(c, type(code)) and c.co_name == name]
+        if len(values) != 1: raise ValueError('B ambiguous code capability')
+        return values[0]
+
+    @staticmethod
+    def sites(code, expression, opname, tree=None):
+        import ast, dis
+        tree = ast.parse(Path(code.co_filename).read_bytes()) if tree is None else tree
+        nodes = [n for n in ast.walk(tree) if isinstance(n, (ast.Call, ast.Raise)) and
+            ast.unparse(n) == expression and code.co_firstlineno <= n.lineno and
+            n.lineno <= max(i.positions.end_lineno or 0 for i in dis.get_instructions(code))]
+        if len(nodes) != 1: raise ValueError('B ambiguous source site')
+        node = nodes[0]
+        instructions = list(dis.get_instructions(code, show_caches=True))
+        offsets = set()
+        for index, instruction in enumerate(instructions):
+            p = instruction.positions
+            if (instruction.opname.startswith(opname) and p.lineno == node.lineno and
+                    p.end_lineno == node.end_lineno and p.col_offset == node.col_offset and
+                    p.end_col_offset == node.end_col_offset):
+                offsets.add(instruction.offset)
+                for cache in instructions[index + 1:]:
+                    if cache.opname != 'CACHE': break
+                    offsets.add(cache.offset)
+        if not offsets: raise ValueError('B unresolved instruction site')
+        return frozenset(offsets)
+
+    @staticmethod
+    def identity(fd):
+        import fcntl
+        info = os.fstat(fd)
+        flags = fcntl.fcntl(fd, fcntl.F_GETFL)
+        return (info.st_dev, info.st_ino, info.st_mode, flags & os.O_ACCMODE), flags
+
+    @staticmethod
+    def timeout(exc):
+        return (type(exc) is ValueError and type(exc.args) is tuple and len(exc.args) == 1 and
+            type(exc.args[0]) is str and exc.args[0] == 'b2_maintenance_timeout')
+
+    def __init__(self, node, run, operation, caller, recovery, writer, fork, wait,
+            witness_fd, observer_fd, emit, originals):
+        function = getattr(sys.modules.get('test_recovery'), self.name, None)
+        self.eligible = (node.originalname == self.name or node.nodeid == self.nodeid or
+            function is not None and getattr(node, 'obj', None) is function)
+        self.valid = False
+        self.phase = 'armed'
+        self.child = self.owner = self.runner_id = self.raw_id = self.result_id = 0
+        self.offset = self.raw_length = self.timeout_id = self.parent_id = self.framed_id = 0
+        self.deadline = None
+        self.pipe = self.read_pipe = None
+        self.empty_select = self.kill_pending = self.killed = self.parent_checked = False
+        self.emit = emit
+        self.trace_callback = self.trace_B
+        self.runner = run.__code__
+        self.operation = operation
+        self.writer, self.fork, self.wait = writer, fork, wait
+        self.witness_fd, self.observer_fd = witness_fd, observer_fd
+        self.recovery = recovery
+        if not self.eligible: return
+        try:
+            import ast, types, math, select
+            self.owner = os.getpid()
+            if not (callable(function) and getattr(node, 'obj', None) is function and
+                    node.originalname == self.name and node.nodeid == self.nodeid and
+                    getattr(getattr(node, 'callspec', None), 'params', {}) == {} and
+                    caller.f_code is function.__code__ and function.__globals__ is caller.f_globals): return
+            # Pytest rewrites this function's original assertions. Resolve its
+            # actual collected code constants; plain compile equality would
+            # incorrectly reject that real item. No test code is executed here.
+            model = function.__globals__.get('_t1_pipe_model')
+            source = compile(Path(function.__code__.co_filename).read_bytes(), function.__code__.co_filename, 'exec')
+            if not callable(model) or self.nested(source, '_t1_pipe_model') != model.__code__: return
+            local = caller.f_locals
+            self.observed = local['observed']; self.ready = local['ready']
+            self.blocked = local['select_blocked']
+            self.clock = recovery.time.monotonic
+            self.real_clock = local['clock']; self.start = local['start']
+            self.select0 = local['select0']
+            self.time_module = local['time']
+            self.sleep = self.time_module.sleep
+            self.marker_id = id(local['marker'])
+            self.session = recovery._maintenance_session
+            self.limit = recovery._install_maintenance_limit
+            self.model_fork = os.fork
+            if not all(type(f) is types.FunctionType for f in
+                    (self.observed, self.ready, self.blocked, self.clock, operation, self.model_fork, self.limit)): return
+            for name, actual in (('observed', self.observed), ('ready', self.ready), ('select_blocked', self.blocked)):
+                if actual.__code__ is not self.nested(function.__code__, name) or actual.__globals__ is not function.__globals__: return
+            lambdas = [c for c in function.__code__.co_consts if isinstance(c, types.CodeType) and c.co_name == '<lambda>']
+            if len(lambdas) != 2 or operation.__code__ not in lambdas or self.clock.__code__ not in lambdas or operation.__code__ is self.clock.__code__: return
+            if (set(self.closure(self.observed)) != {'write', 'marker'} or
+                    self.closure(self.observed).get('write') is not writer or
+                    id(self.closure(self.observed).get('marker')) != self.marker_id or local['write'] is not writer or
+                    not isinstance(writer, types.BuiltinFunctionType) or writer is not _RAW_WRITE or
+                    self.closure(self.ready) != {'select_blocked': self.blocked} or
+                    self.closure(self.blocked) != {'select0': self.select0, 'time': self.time_module} or
+                    self.closure(self.clock) != {'clock': self.real_clock, 'start': self.start} or
+                    operation.__closure__ is not None or operation.__globals__ is not function.__globals__ or
+                    self.clock.__globals__ is not function.__globals__ or
+                    type(self.start) is not float or not math.isfinite(self.start) or
+                    self.real_clock is not self.time_module.monotonic or
+                    (self.real_clock, self.select0, self.sleep, os.kill) != originals or
+                    not isinstance(self.sleep, types.BuiltinFunctionType) or
+                    not isinstance(self.real_clock, types.BuiltinFunctionType) or
+                    not isinstance(self.select0, types.BuiltinFunctionType) or
+                    select.select is not self.ready or os.write is not self.observed): return
+            if (self.limit.__code__ is not self.nested(model.__code__, '<lambda>') or
+                    self.limit.__closure__ is not None or self.limit.__globals__ is not function.__globals__ or
+                    self.model_fork.__globals__ is not function.__globals__ or
+                    getattr(self.session, '__wrapped__', None) is None or
+                    self.session.__wrapped__.__code__ is not self.nested(model.__code__, 'session') or
+                    self.session.__code__ is not self.nested(contextmanager.__code__, 'helper') or
+                    self.closure(self.session) != {'func': self.session.__wrapped__} or
+                    self.session.__wrapped__.__globals__ is not function.__globals__ or
+                    self.session.__wrapped__.__closure__ is not None or
+                    self.model_fork.__code__ is not self.nested(model.__code__, 'tracked') or
+                    self.closure(self.model_fork).get('fork') is not fork or
+                    not isinstance(self.closure(fork).get('fork'), types.BuiltinFunctionType) or
+                    not isinstance(self.closure(wait).get('wait'), types.BuiltinFunctionType) or
+                    self.closure(self.model_fork).get('owned') is not local['owned'] or
+                    os.waitpid is not wait): return
+            self.owned_id = id(local['owned'])
+            self.frame_result = recovery._maintenance_result_frame
+            self.hook_functions = (self.observed, self.ready, self.blocked, self.clock, self.operation,
+                self.limit, self.model_fork, self.session.__wrapped__, self.frame_result)
+            self.hook_codes = tuple(f.__code__ for f in self.hook_functions)
+            self.kill = os.kill
+            runner_source = Path(self.runner.co_filename).read_bytes()
+            runner_tree = ast.parse(runner_source)
+            runner_module = compile(runner_source, self.runner.co_filename, 'exec')
+            if (self.nested(runner_module, '_run_bounded_maintenance') != self.runner or
+                    self.nested(runner_module, '_maintenance_result_frame') != self.frame_result.__code__ or
+                    run.__globals__ is not recovery.__dict__ or self.frame_result.__globals__ is not recovery.__dict__): return
+            target_tree = ast.parse(Path(function.__code__.co_filename).read_bytes())
+            self.ready_sites = self.sites(self.runner, 'select.select([read_fd], [], [], remaining)', 'CALL', runner_tree)
+            if not isinstance(self.kill, types.BuiltinFunctionType): return
+            self.reap = self.nested(self.runner, 'reap_owned')
+            self.write_sites = self.sites(self.runner, 'os.write(write_fd, memoryview(raw)[offset:offset + 65536])', 'CALL', runner_tree)
+            self.observed_sites = self.sites(self.observed.__code__, 'write(fd, raw)', 'CALL', target_tree)
+            # The repeated timeout statements are selected by AST parent shape.
+            self.raise_child, self.raise_parent, self.raise_empty = self.timeout_sites(self.runner, runner_tree)
+            self.exit_sites = self.sites(self.runner, 'os._exit(74)', 'CALL', runner_tree)
+            self.reap_sites = self.sites(self.runner, 'reap_owned()', 'CALL', runner_tree)
+            self.wait_first = self.sites(self.reap, 'os.waitpid(pid, os.WNOHANG)', 'CALL', runner_tree)
+            self.wait_last = self.sites(self.reap, 'os.waitpid(pid, 0 if killed else os.WNOHANG)', 'CALL', runner_tree)
+            self.kill_sites = self.sites(self.reap, 'os.kill(pid, signal.SIGKILL)', 'CALL', runner_tree)
+            self.valid = True
+        except BaseException:
+            self.valid = False
+
+    @staticmethod
+    def timeout_sites(code, tree=None):
+        import ast, dis
+        tree = ast.parse(Path(code.co_filename).read_bytes()) if tree is None else tree
+        function = next(n for n in tree.body if isinstance(n, ast.FunctionDef) and n.lineno == code.co_firstlineno)
+        child = next(n for n in ast.walk(function) if isinstance(n, ast.While) and ast.unparse(n.test) == 'offset < len(raw)')
+        parent = next(n for n in ast.walk(function) if isinstance(n, ast.While) and
+            ast.unparse(n.test) == 'True' and any(isinstance(s, ast.Try) and
+                any(isinstance(q, ast.Assign) and ast.unparse(q.value).startswith('os.read(') for q in ast.walk(s)) for s in n.body))
+        statements = (child.body[1].body[0], parent.body[1].body[0], parent.body[2].body[0].body[0])
+        result = []
+        for statement in statements:
+            if not isinstance(statement, ast.Raise) or ast.unparse(statement) != "raise ValueError('b2_maintenance_timeout')":
+                raise ValueError('B timeout source shape')
+            offsets = frozenset(i.offset for i in dis.get_instructions(code) if
+                i.opname == 'RAISE_VARARGS' and i.positions.lineno == statement.lineno and
+                i.positions.col_offset == statement.col_offset)
+            if len(offsets) != 1: raise ValueError('B timeout instruction shape')
+            result.append(offsets)
+        return tuple(result)
+
+    def bind_hooks(self, session, limit, framing):
+        self.session_wrapper, self.limit_wrapper, self.framing_wrapper = session, limit, framing
+        self.wrapper_codes = (session.__code__, session.__wrapped__.__code__, limit.__code__, framing.__code__)
+
+    def hooks(self):
+        import select
+        return (all(f.__code__ is code for f, code in zip(self.hook_functions, self.hook_codes)) and
+            (self.session_wrapper.__code__, self.session_body.__code__, self.limit_wrapper.__code__,
+                self.framing_wrapper.__code__) == self.wrapper_codes and
+            os.fork is self.model_fork and os.waitpid is self.wait and
+            self.closure(self.model_fork).get('fork') is self.fork and
+            id(self.closure(self.model_fork).get('owned')) == self.owned_id and
+            os.write is self.observed and select.select is self.ready and
+            self.recovery._maintenance_session is self.session_wrapper and
+            self.closure(self.session_wrapper).get('func') is self.session_body and
+            self.closure(self.session_body).get('session') is self.session and
+            self.recovery._install_maintenance_limit is self.limit_wrapper and
+            self.closure(self.limit_wrapper).get('function') is self.limit and
+            self.recovery._maintenance_result_frame is self.framing_wrapper and
+            self.closure(self.framing_wrapper).get('function') is self.frame_result and
+            self.recovery.time.monotonic is self.clock and
+            self.time_module.monotonic is self.real_clock and self.time_module.sleep is self.sleep and
+            set(self.closure(self.observed)) == {'write', 'marker'} and
+            self.closure(self.observed).get('write') is self.writer and
+            id(self.closure(self.observed).get('marker')) == self.marker_id and
+            self.closure(self.ready) == {'select_blocked': self.blocked} and
+            self.closure(self.blocked) == {'select0': self.select0, 'time': self.time_module} and
+            self.closure(self.clock) == {'clock': self.real_clock, 'start': self.start})
+
+    def bound_raw(self, frame):
+        local = frame.f_locals
+        raw, offset = local.get('raw'), local.get('offset')
+        return (id(frame) == self.runner_id and type(raw) is bytearray and id(raw) == self.raw_id and
+            len(raw) == self.raw_length and type(offset) is int and offset == self.offset and
+            local.get('write_fd') == self.fd and local.get('deadline') == self.deadline)
+
+    def expired(self, frame):
+        import math
+        deadline = frame.f_locals.get('deadline')
+        return (type(deadline) in (int, float) and math.isfinite(deadline) and deadline == self.deadline and
+            self.recovery.time.monotonic is self.clock and self.clock() >= deadline)
+
+    def eagain(self, exc, frame):
+        tb = exc.__traceback__
+        if not (type(exc) is BlockingIOError and exc.errno == errno.EAGAIN and tb is not None and
+                tb.tb_frame is frame and tb.tb_lasti in self.write_sites and tb.tb_next is not None and
+                tb.tb_next.tb_frame.f_code is self.observed.__code__ and
+                tb.tb_next.tb_lasti in self.observed_sites and tb.tb_next.tb_next is None): return False
+        local = frame.f_locals
+        inner = tb.tb_next.tb_frame.f_locals
+        raw, offset, fd = local.get('raw'), local.get('offset'), local.get('write_fd')
+        view = inner.get('raw')
+        identity, flags = self.identity(fd)
+        if not (identity == self.pipe and stat.S_ISFIFO(identity[2]) and identity[3] == os.O_WRONLY and
+                flags & os.O_NONBLOCK and identity[:2] != self.identity(self.witness_fd)[0][:2] and
+                identity[:2] != self.identity(self.observer_fd)[0][:2] and
+                os.write is self.observed and self.closure(self.observed).get('write') is self.writer and
+                self.hooks() and type(fd) is int and inner.get('fd') == fd and type(raw) is bytearray and
+                id(raw) == self.framed_id and
+                0 < len(raw) <= 1048576 and type(offset) is int and 0 <= offset < len(raw) and
+                type(view) is memoryview and view.obj is raw and view.ndim == 1 and view.c_contiguous and
+                view.itemsize == 1 and view.format == 'B' and view.nbytes == len(raw[offset:offset + 65536]) and
+                view == raw[offset:offset + 65536] and id(local.get('result')) == self.result_id and
+                local.get('operation') is self.wrapper and self.closure(self.wrapper).get('operation') is self.operation): return False
+        if self.phase == 'armed':
+            self.raw_id, self.raw_length, self.offset, self.fd = id(raw), len(raw), offset, fd
+            self.phase = 'backpressure'
+        return self.phase == 'backpressure' and self.bound_raw(frame)
+
+    def trace_B(self, frame, event, arg):
+        if not self.valid: return None
+        code = frame.f_code
+        if code not in (self.runner, self.reap, self.observed.__code__, self.ready.__code__,
+                self.blocked.__code__, self.operation.__code__, self.frame_result.__code__): return None
+        token = b''
+        try:
+            if code is self.runner:
+                local = frame.f_locals
+                if event == 'call':
+                    self.runner_id = id(frame)
+                    if not self.hooks(): self.valid = False
+                if event == 'line':
+                    if 'deadline' in local and self.deadline is None:
+                        import math
+                        value = local['deadline']
+                        if type(value) not in (int, float) or not math.isfinite(value): self.valid = False
+                        else: self.deadline = value
+                    if local.get('identities') and self.pipe is None:
+                        self.pipe = local['identities'].get(local.get('write_fd'))
+                        self.read_pipe = local['identities'].get(local.get('read_fd'))
+                        if (self.pipe is None or self.read_pipe is None or self.pipe[:3] != self.read_pipe[:3] or
+                                not stat.S_ISFIFO(self.pipe[2]) or self.pipe[3] != os.O_WRONLY or
+                                self.read_pipe[3] != os.O_RDONLY or
+                                self.identity(local['read_fd'])[0] != self.read_pipe or
+                                self.identity(local['write_fd'])[0] != self.pipe or
+                                self.pipe[:2] == self.identity(self.witness_fd)[0][:2] or
+                                self.pipe[:2] == self.identity(self.observer_fd)[0][:2]): self.valid = False
+                    if self.phase in ('backpressure', 'timeout') and not self.bound_raw(frame): self.valid = False
+                if event == 'exception':
+                    exc = arg[1]
+                    if type(exc) is BlockingIOError and self.phase in ('armed', 'backpressure'):
+                        first = self.phase == 'armed'
+                        if not self.eagain(exc, frame): self.valid = False
+                        elif first: token = b'B:e;'
+                    elif self.timeout(exc):
+                        tb = exc.__traceback__
+                        if local.get('pid') == 0:
+                            if not (self.phase == 'backpressure' and self.bound_raw(frame) and
+                                    local.get('remaining', 1) <= 0 and self.expired(frame) and tb is not None and
+                                    tb.tb_frame is frame and tb.tb_lasti in self.raise_child and tb.tb_next is None): self.valid = False
+                            else: self.timeout_id, self.phase = id(exc), 'timeout'
+                        elif not (tb is not None and tb.tb_frame is frame and tb.tb_next is None and
+                                (tb.tb_lasti in self.raise_parent and local.get('remaining', 1) <= 0 or
+                                 tb.tb_lasti in self.raise_empty and self.empty_select) and self.expired(frame)):
+                            self.valid = False
+                    elif self.phase != 'armed' or local.get('pid') != 0:
+                        self.valid = False
+            elif code is self.operation.__code__ and event == 'return': self.result_id = id(arg)
+            elif code is self.frame_result.__code__ and event == 'return':
+                self.framed_id = id(arg)
+                if type(arg) is not bytearray or frame.f_locals.get('result') is None or id(frame.f_locals['result']) != self.result_id:
+                    self.valid = False
+            elif code is self.observed.__code__ and event == 'return' and self.phase == 'backpressure' and arg is not None:
+                self.valid = False  # Any post-certificate successful write/progress.
+            elif code is self.blocked.__code__ and event == 'return' and frame.f_locals.get('r'):
+                caller = frame.f_back
+                self.empty_select = (caller is not None and caller.f_code is self.ready.__code__ and
+                    caller.f_back is not None and caller.f_back.f_code is self.runner and
+                    caller.f_back.f_lasti in self.ready_sites and self.hooks() and
+                    frame.f_locals.get('r') == caller.f_locals.get('r') and
+                    type(arg) is tuple and len(arg) == 3 and all(type(x) is list and not x for x in arg))
+            elif code is self.reap:
+                if event == 'call': frame.f_trace_opcodes = True
+                if event == 'exception': self.kill_pending = False
+                if event == 'opcode':
+                    if self.kill_pending:
+                        self.killed = True; self.kill_pending = False
+                    if frame.f_lasti in self.kill_sites:
+                        parent = frame.f_back
+                        self.kill_pending = (os.kill is self.kill and frame.f_locals.get('pid') == self.child and
+                            self.child > 0 and frame.f_globals.get('os') is os and
+                            frame.f_locals.get('signal') is signal and signal.SIGKILL == 9 and parent is not None and parent.f_code is self.runner and
+                            parent.f_lasti in self.reap_sites and parent.f_locals.get('pid') == self.child)
+        except BaseException:
+            self.valid = False
+        finally:
+            # In particular no event arg/frame/view/exception is captured by IO.
+            frame = arg = local = exc = tb = inner = raw = view = caller = parent = None
+        if token and self.valid:
+            try: self.emit(token)
+            except BaseException: self.valid = False
+        return self.trace_callback if self.valid else None
+
+    def live_write(self):
+        identity, flags = self.identity(self.fd)
+        return identity == self.pipe and flags & os.O_NONBLOCK
+
+    def final_child(self, caller):
+        exc = tb = None
+        try:
+            exc = sys.exception()
+            tb = exc.__traceback__ if exc is not None else None
+            return (self.valid and self.hooks() and sys.gettrace() is self.trace_callback and self.phase == 'timeout' and
+                id(exc) == self.timeout_id and self.timeout(exc) and self.bound_raw(caller) and self.live_write() and
+                caller.f_code is self.runner and caller.f_lasti in self.exit_sites and
+                tb is not None and tb.tb_frame is caller and tb.tb_lasti in self.raise_child and
+                tb.tb_next is None and self.expired(caller))
+        except BaseException:
+            self.valid = False
+            return False
+        finally: exc = tb = caller = None
+
+    def terminal(self, result, caller, enrolled, child_bytes):
+        exc = tb = parent = None
+        try:
+            parent = caller.f_back
+            local = parent.f_locals if parent is not None else {}
+            exc = local.get('original'); tb = exc.__traceback__ if exc is not None else None
+            if not (self.valid and self.hooks() and sys.gettrace() is self.trace_callback and caller.f_code is self.reap and
+                    caller.f_lasti in self.wait_first | self.wait_last and parent is not None and
+                    parent.f_code is self.runner and id(parent) == self.runner_id and parent.f_lasti in self.reap_sites and
+                    type(result) is tuple and len(result) == 2 and type(result[0]) is int and type(result[1]) is int and
+                    result[0] == self.child == caller.f_locals.get('pid') == local.get('pid') and self.child in enrolled and
+                    os.getpid() == self.owner and exc is sys.exception() and self.timeout(exc) and
+                    type(local.get('raw')) is bytearray and len(local['raw']) == 0 and self.expired(parent) and
+                    tb is not None and tb.tb_frame is parent and tb.tb_next is None and
+                    (tb.tb_lasti in self.raise_parent and local.get('remaining', 1) <= 0 or
+                     tb.tb_lasti in self.raise_empty and self.empty_select) and
+                    child_bytes in (b'B:e;', b'B:e;B:f;')): return b''
+            status = result[1]
+            if status == 74 << 8 and child_bytes == b'B:e;B:f;': suffix = b'B:t;'
+            elif status == signal.SIGKILL and self.killed and caller.f_lasti in self.wait_last and caller.f_locals.get('killed') is True:
+                suffix = b'B:t;B:k;'
+            else: return b''
+            self.parent_id, self.parent_checked = id(exc), True
+            return suffix
+        except BaseException:
+            self.valid = False
+            return b''
+        finally: exc = tb = parent = caller = local = None
+
+    def escaping(self, exc, wrapper):
+        tb = exc.__traceback__
+        return (self.valid and sys.gettrace() is self.trace_callback and self.hooks() and
+            self.parent_checked and id(exc) == self.parent_id and self.timeout(exc) and
+            tb is not None and tb.tb_frame.f_code is wrapper and tb.tb_next is not None and
+            tb.tb_next.tb_frame.f_code is self.runner and id(tb.tb_next.tb_frame) == self.runner_id and
+            tb.tb_next.tb_lasti in self.raise_parent | self.raise_empty and tb.tb_next.tb_next is None)
+
+    @staticmethod
+    def transcript(witness, status):
+        return (status == 74 << 8 and witness == b'B:a;B:e;B:f;B:t;' or
+            status == signal.SIGKILL and witness in (b'B:a;B:e;B:t;B:k;', b'B:a;B:e;B:f;B:t;B:k;'))
+
+    def clear(self):
+        # Break callback/self and installed-hook references even after failed setup.
+        self.__dict__.clear()
+
+
 def install(request, monkeypatch, guard):
     from service import recovery
     run, fork, wait = recovery._run_bounded_maintenance, os.fork, os.waitpid
+    import select, time
+    originals_B = (time.monotonic, select.select, time.sleep, os.kill)
     original_locked_P = recovery._prepare_abandon_locked
     continuation_P = recovery._MaintenanceSession.continue_kernel.__code__
     prepare_P = [c for c in recovery._prepare_abandon.__code__.co_consts
@@ -480,6 +892,8 @@ def install(request, monkeypatch, guard):
         state['enrolling'] = False
         pid = fork()
         if enrolling and pid:
+            if state.get('armed_B'):
+                state['blocked_B'].child = pid
             guard.owned.add(pid)
             guard.event('enroll', pid=pid)
         return pid
@@ -487,8 +901,23 @@ def install(request, monkeypatch, guard):
     def tracked_wait(pid, flags):
         result = wait(pid, flags)
         if result[0] in guard.owned:
-            try: state['witness'] = (state['witness'] + read(state['read'], 256))[:256]
-            except BlockingIOError: pass
+            if state.get('armed_B'):
+                blocked = state['blocked_B']
+                try: child_bytes = read(state['read'], 257)
+                except BlockingIOError: child_bytes = b''
+                combined = state['witness'] + child_bytes
+                if len(combined) > 256:
+                    blocked.valid = False
+                    state['witness'] = b'B:overflow;'
+                else:
+                    suffix = blocked.terminal(result, sys._getframe(1), guard.owned, child_bytes)
+                    if len(combined) + len(suffix) > 256:
+                        blocked.valid = False
+                        state['witness'] = b'B:overflow;'
+                    else: state['witness'] = combined + suffix
+            else:
+                try: state['witness'] = (state['witness'] + read(state['read'], 256))[:256]
+                except BlockingIOError: pass
             frame = sys._getframe(1)
             cleanup = False
             while frame is not None:
@@ -515,6 +944,7 @@ def install(request, monkeypatch, guard):
             expected_exit = 74 if (any(p in state['witness'] for p in _BACKPRESSURE_PHASES) or
                 any(p in state['witness'] for p in (b'T:install-setlimit;', b'T:transport;', b'T:child-read-close;'))) else None
             guard.observe(result, witness=state['witness'], armed_P=state.get('armed_P', False),
+                armed_B=state.get('armed_B', False),
                 expected_signal=signal.SIGKILL if cleanup_phase else _expected_cleanup_signal(request.node, cleanup), expected_exit=expected_exit)
             diagnostic.sample(2, state['witness'], result[0], result[1], cleanup, len(guard.failures), len(guard.owned))
         return result
@@ -526,140 +956,163 @@ def install(request, monkeypatch, guard):
             request.node.nodeid == 'tests/service/test_recovery.py::test_t1_durable_completion_lost_result_no_false_success') and DurableLostResultWitness_P.replay_P(
                 operation, recovery._prepare_abandon_locked, original_locked_P, sys._getframe(1))
         r, w = pipe()
-        os.set_blocking(r, False)
-        state.update(active=True, read=r, write=w, witness=b'', enrolling=True)
-        sent = set()
-        lost_P = DurableLostResultWitness_P(request.node, recovery._prepare_abandon_locked,
-            run.__code__, continuation_P, prepare_P[0] if len(prepare_P) == 1 else None, w,
-            getattr(operation, '__code__', None), replay=replay_P)
+        blocked_B = None
         trace_P = sys.gettrace()
-        completion = recovery._write_core_completion
-        modeled = ModeledRehearsalCompletionWitness(request.node, roots,
-            rehearsal0, transaction0)
-        def observed_completion(*args):
-            try: return completion(*args)
-            except BaseException as exc:
-                if modeled.at_seam(exc, completion, observed_completion.__code__, sys._getframe(1)):
-                    mark(b'R:modeled-private-rehearsal-completion-seam;')
-                raise
-        def mark(data):
-            if data not in sent:
-                sent.add(data)
-                write(w, data)
-        lost_P.emit_P = mark
-        # Arm designation before risk even when validation has already failed.
-        # Only the positively bound checked replay is excluded above.
-        state['armed_P'] = lost_P.eligible
-        if lost_P.eligible: state['witness'] = lost_P.armed
-        # This witness is emitted only by the actual protected read, before the
-        # original writer. No OSError from the enclosing session is accepted.
-        open0 = os.open
-        def journal_open(path, flags, *args, **kw):
-            params = getattr(getattr(request.node, 'callspec', None), 'params', {})
-            eligible = (request.node.originalname == 'test_lotp_early_refusals_precede_original_writer'
-                and request.node.nodeid.endswith('::test_lotp_early_refusals_precede_original_writer[journal-symlink]')
-                and params.get('failure') == 'journal-symlink'
-                and path == roots['receipts'] / 'journal.json'
-                and flags == os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
-            before = None
-            if eligible:
-                route = []
-                frame = sys._getframe(1)
-                while frame is not None and len(route) < 5:
-                    route.append(frame.f_code)
-                    frame = frame.f_back
-                del frame
-                prewrite_codes = [c for c in recovery._prepare_abandon.__code__.co_consts
-                    if isinstance(c, type(recovery._prepare_abandon.__code__)) and c.co_name == 'prewrite']
-                eligible = len(prewrite_codes) == 1 and route == [
-                    recovery.read_file.__code__, recovery._observe_b2_journal.__code__,
-                    recovery._preparation_prestate.__code__, prewrite_codes[0], session.__wrapped__.__code__]
-                if eligible:
-                    try: before = os.lstat(path)
-                    except OSError: pass
-            try:
-                return open0(path, flags, *args, **kw)
-            except OSError as exc:
-                if eligible and type(exc) is OSError and exc.errno == errno.ELOOP:
-                    after = os.lstat(path)
-                    if (before is not None and stat.S_ISLNK(before.st_mode) and
-                            stat.S_ISLNK(after.st_mode) and
-                            (before.st_dev, before.st_ino, before.st_ctime_ns) ==
-                            (after.st_dev, after.st_ino, after.st_ctime_ns)):
-                        mark(b'J:prewrite-journal-nofollow-ELOOP;')
-                raise
-        session = recovery._maintenance_session
-        install = recovery._install_maintenance_limit
-        frame_result = recovery._maintenance_result_frame
-        def semantic_phase(function):
-            def observed(*args, **kw):
-                try: return function(*args, **kw)
-                except ValueError:
-                    mark(b'V')
-                    raise
-                except OSError:
-                    params = getattr(getattr(request.node, 'callspec', None), 'params', {})
-                    if (function is install and
-                            request.node.originalname == 'test_lotk_refuses_before_original_writable_open' and
-                            params.get('failure') == 'setlimit'):
-                        mark(b'T:install-setlimit;')
-                    raise
-            return observed
-        @contextmanager
-        def observed_session(*args, **kw):
-            try:
-                with session(*args, **kw) as value: yield value
-            except ValueError:
-                mark(b'V:session;')  # bounded test-only phase; no exception payload
-                raise
-        def observed_operation(value):
-            try: return operation(value)
-            except ValueError:
-                mark(b'V:operation;')
-                raise
-        def observed_exit(code):
-            if code == 74:
-                params = getattr(getattr(request.node, 'callspec', None), 'params', {})
-                exc = sys.exception()
-                mode = params.get('mode')
-                if lost_P.eligible:
-                    final_P = lost_P.at_exit_P(exc, sys._getframe(1))
-                    if final_P: mark(final_P)
-                final = modeled.at_exit(exc)
-                if final: mark(final)
-                phase = backpressure_phase(request.node, exc)
-                if phase: mark(phase)
-                if request.node.originalname == 'test_t1_actual_pipe_transport':
-                    types = {'EPIPE': BrokenPipeError, 'zero-write': OSError,
-                        'extra': BrokenPipeError, 'second': BrokenPipeError}
-                    if ((mode in ('nonzero', 'slow') and exc is None) or
-                            (mode in types and isinstance(exc, types[mode]))):
-                        mark(b'T:transport;')
-                if (request.node.originalname == 'test_t1_close_ownership_cleanup' and
-                        params.get('site') == 'child-read' and
-                        isinstance(exc, (InterruptedError, KeyboardInterrupt))):
-                    mark(b'T:child-read-close;')
-            if code == 73:
-                frame = sys._getframe(1)
-                if (frame.f_code.co_filename.endswith('/tests/service/test_recovery.py') and
-                        frame.f_code.co_qualname in _DEATH_PHASES and
-                        (frame.f_code.co_qualname.split('.<locals>')[0] == request.node.originalname or
-                         request.node.originalname in _HELPER_DEATH_NODES) and
-                        (frame.f_locals.get('where') == frame.f_locals.get('point') or
-                         frame.f_code.co_qualname == 'test_lotp_single_immutable_plan_proof_first_and_preaccept_exit.<locals>.die')):
-                    phase = frame.f_locals.get('where', 'preaccept')
-                    mark(b'D:' + str(phase).encode('ascii')[:128])
-                elif (request.node.originalname == 'test_kpre_recapture_actual_death_fresh_retry' and
-                        frame.f_code.co_filename == '<string>' and
-                        frame.f_code.co_qualname == 'resume.<locals>.fault' and
-                        frame.f_locals.get('p') == request.node.callspec.params.get('point') and
-                        frame.f_locals.get('p') in {'recapture-before', 'recapture-after',
-                            'recapture-hash', 'recapture-oracle', 'recapture-verified'}):
-                    mark(b'D:' + frame.f_locals['p'].encode('ascii'))
-            if code == 74:
-                diagnostic.sample(1, state['witness'])
-            exit0(code)
+        lost_P = None
         try:
+            os.set_blocking(r, False)
+            state.update(active=True, read=r, write=w, witness=b'', enrolling=True)
+            sent = set()
+            lost_P = DurableLostResultWitness_P(request.node, recovery._prepare_abandon_locked,
+                run.__code__, continuation_P, prepare_P[0] if len(prepare_P) == 1 else None, w,
+                getattr(operation, '__code__', None), replay=replay_P)
+            trace_P = sys.gettrace()
+            blocked_B = None
+            state['armed_B'] = False
+            completion = recovery._write_core_completion
+            modeled = ModeledRehearsalCompletionWitness(request.node, roots,
+                rehearsal0, transaction0)
+            def observed_completion(*args):
+                try: return completion(*args)
+                except BaseException as exc:
+                    if modeled.at_seam(exc, completion, observed_completion.__code__, sys._getframe(1)):
+                        mark(b'R:modeled-private-rehearsal-completion-seam;')
+                    raise
+            def mark(data):
+                if data not in sent:
+                    sent.add(data)
+                    count = write(w, data)
+                    if data.startswith(b'B:') and count != len(data):
+                        raise RuntimeError('incomplete B witness write')
+            lost_P.emit_P = mark
+            # Arm designation before risk even when validation has already failed.
+            # Only the positively bound checked replay is excluded above.
+            state['armed_P'] = lost_P.eligible
+            if lost_P.eligible: state['witness'] = lost_P.armed
+            # This witness is emitted only by the actual protected read, before the
+            # original writer. No OSError from the enclosing session is accepted.
+            open0 = os.open
+            def journal_open(path, flags, *args, **kw):
+                params = getattr(getattr(request.node, 'callspec', None), 'params', {})
+                eligible = (request.node.originalname == 'test_lotp_early_refusals_precede_original_writer'
+                    and request.node.nodeid.endswith('::test_lotp_early_refusals_precede_original_writer[journal-symlink]')
+                    and params.get('failure') == 'journal-symlink'
+                    and path == roots['receipts'] / 'journal.json'
+                    and flags == os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+                before = None
+                if eligible:
+                    route = []
+                    frame = sys._getframe(1)
+                    while frame is not None and len(route) < 5:
+                        route.append(frame.f_code)
+                        frame = frame.f_back
+                    del frame
+                    prewrite_codes = [c for c in recovery._prepare_abandon.__code__.co_consts
+                        if isinstance(c, type(recovery._prepare_abandon.__code__)) and c.co_name == 'prewrite']
+                    eligible = len(prewrite_codes) == 1 and route == [
+                        recovery.read_file.__code__, recovery._observe_b2_journal.__code__,
+                        recovery._preparation_prestate.__code__, prewrite_codes[0], session.__wrapped__.__code__]
+                    if eligible:
+                        try: before = os.lstat(path)
+                        except OSError: pass
+                try:
+                    return open0(path, flags, *args, **kw)
+                except OSError as exc:
+                    if eligible and type(exc) is OSError and exc.errno == errno.ELOOP:
+                        after = os.lstat(path)
+                        if (before is not None and stat.S_ISLNK(before.st_mode) and
+                                stat.S_ISLNK(after.st_mode) and
+                                (before.st_dev, before.st_ino, before.st_ctime_ns) ==
+                                (after.st_dev, after.st_ino, after.st_ctime_ns)):
+                            mark(b'J:prewrite-journal-nofollow-ELOOP;')
+                    raise
+            session = recovery._maintenance_session
+            install = recovery._install_maintenance_limit
+            frame_result = recovery._maintenance_result_frame
+            def semantic_phase(function):
+                def observed(*args, **kw):
+                    try: return function(*args, **kw)
+                    except ValueError:
+                        mark(b'V')
+                        raise
+                    except OSError:
+                        params = getattr(getattr(request.node, 'callspec', None), 'params', {})
+                        if (function is install and
+                                request.node.originalname == 'test_lotk_refuses_before_original_writable_open' and
+                                params.get('failure') == 'setlimit'):
+                            mark(b'T:install-setlimit;')
+                        raise
+                return observed
+            @contextmanager
+            def observed_session(*args, **kw):
+                try:
+                    with session(*args, **kw) as value: yield value
+                except ValueError:
+                    mark(b'V:session;')  # bounded test-only phase; no exception payload
+                    raise
+            def observed_operation(value):
+                try: return operation(value)
+                except ValueError:
+                    mark(b'V:operation;')
+                    raise
+            def observed_exit(code):
+                if state.get('armed_B'):
+                    diagnostic.sample(1, state['witness'])
+                    final_B = code == 74 and blocked_B.final_child(sys._getframe(1))
+                    if final_B:
+                        try: mark(b'B:f;')
+                        except BaseException: blocked_B.valid = False
+                    exit0(code)
+                    return
+                if code == 74:
+                    params = getattr(getattr(request.node, 'callspec', None), 'params', {})
+                    exc = sys.exception()
+                    mode = params.get('mode')
+                    if lost_P.eligible:
+                        final_P = lost_P.at_exit_P(exc, sys._getframe(1))
+                        if final_P: mark(final_P)
+                    final = modeled.at_exit(exc)
+                    if final: mark(final)
+                    phase = backpressure_phase(request.node, exc)
+                    if phase: mark(phase)
+                    if request.node.originalname == 'test_t1_actual_pipe_transport':
+                        types = {'EPIPE': BrokenPipeError, 'zero-write': OSError,
+                            'extra': BrokenPipeError, 'second': BrokenPipeError}
+                        if ((mode in ('nonzero', 'slow') and exc is None) or
+                                (mode in types and isinstance(exc, types[mode]))):
+                            mark(b'T:transport;')
+                    if (request.node.originalname == 'test_t1_close_ownership_cleanup' and
+                            params.get('site') == 'child-read' and
+                            isinstance(exc, (InterruptedError, KeyboardInterrupt))):
+                        mark(b'T:child-read-close;')
+                if code == 73:
+                    frame = sys._getframe(1)
+                    if (frame.f_code.co_filename.endswith('/tests/service/test_recovery.py') and
+                            frame.f_code.co_qualname in _DEATH_PHASES and
+                            (frame.f_code.co_qualname.split('.<locals>')[0] == request.node.originalname or
+                             request.node.originalname in _HELPER_DEATH_NODES) and
+                            (frame.f_locals.get('where') == frame.f_locals.get('point') or
+                             frame.f_code.co_qualname == 'test_lotp_single_immutable_plan_proof_first_and_preaccept_exit.<locals>.die')):
+                        phase = frame.f_locals.get('where', 'preaccept')
+                        mark(b'D:' + str(phase).encode('ascii')[:128])
+                    elif (request.node.originalname == 'test_kpre_recapture_actual_death_fresh_retry' and
+                            frame.f_code.co_filename == '<string>' and
+                            frame.f_code.co_qualname == 'resume.<locals>.fault' and
+                            frame.f_locals.get('p') == request.node.callspec.params.get('point') and
+                            frame.f_locals.get('p') in {'recapture-before', 'recapture-after',
+                                'recapture-hash', 'recapture-oracle', 'recapture-verified'}):
+                        mark(b'D:' + frame.f_locals['p'].encode('ascii'))
+                if code == 74:
+                    diagnostic.sample(1, state['witness'])
+                exit0(code)
+            blocked_B = BlockedPipeWitness_B(request.node, run, operation, sys._getframe(1),
+                recovery, write, tracked_fork, tracked_wait, w, diagnostic.fd, mark, originals_B)
+            state['blocked_B'] = blocked_B
+            state['armed_B'] = blocked_B.eligible
+            if blocked_B.eligible:
+                state['witness'] = b'B:a;'
+                if lost_P.eligible: blocked_B.valid = False
+                blocked_B.wrapper = observed_operation
             with monkeypatch.context() as patch:
                 if modeled.fail_code(completion) is not None:
                     patch.setattr(recovery, '_write_core_completion', observed_completion)
@@ -670,19 +1123,33 @@ def install(request, monkeypatch, guard):
                 patch.setattr(os, 'open', journal_open)
                 # Bind the prescribed operation wrapper as well as the actual
                 # production lambda; retain its identity for the seam check.
-                if lost_P.eligible:
+                if blocked_B.eligible:
+                    blocked_B.session_body = observed_session.__wrapped__
+                    blocked_B.bind_hooks(observed_session, recovery._install_maintenance_limit,
+                        recovery._maintenance_result_frame)
+                    sys.settrace(blocked_B.trace_callback)
+                elif lost_P.eligible:
                     lost_P.prepare_code = observed_operation.__code__
                     original_operation_P = operation
                     if getattr(original_operation_P, '__code__', None) not in prepare_P:
                         lost_P.valid = False
                     sys.settrace(lost_P.trace_P)
-                return run(roots, scope, observed_operation, **kwargs)
+                try:
+                    return run(roots, scope, observed_operation, **kwargs)
+                except BaseException as exc:
+                    if blocked_B.eligible and not blocked_B.escaping(exc, guarded_run.__code__):
+                        guard.fail('incomplete or invalid escaping B parent contract')
+                    raise
         finally:
             diagnostic.sample(3, state['witness'], failures=len(guard.failures), owned=len(guard.owned))
-            if lost_P.eligible: sys.settrace(trace_P)
-            lost_P.clear_P()
+            if state.get('armed_B') or lost_P is not None and lost_P.eligible: sys.settrace(trace_P)
+            if blocked_B is not None: blocked_B.clear()
+            state.pop('blocked_B', None)
+            state['armed_B'] = False
+            if lost_P is not None: lost_P.clear_P()
             state['active'] = False
-            close(r); close(w)
+            try: close(r)
+            finally: close(w)
             diagnostic.sample(4, state['witness'], failures=len(guard.failures), owned=len(guard.owned))
             if guard.owned:
                 guard.fail('missing terminal maintenance receipt')
