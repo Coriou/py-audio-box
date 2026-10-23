@@ -558,6 +558,54 @@ def _run_bounded_maintenance(roots, scope, operation, *, _prewrite=None):
             os._exit(0)
         except BaseException:
             os._exit(74)
+    def reap_owned():
+        nonlocal pid
+        first_error=None
+        # A wait interrupted after its syscall may already have reaped the child.
+        # Probe ownership before EVERY signal: ECHILD releases the obligation;
+        # a waitable child (including a zombie) cannot have its PID reused yet.
+        # Single-threaded callers must not install a competing child reaper.
+        # Bound repeated injected/asynchronous interruptions, without masking
+        # interrupts globally or claiming cleanup under endless interference.
+        for _ in range(64):
+            try:
+                ended,_status=os.waitpid(pid,os.WNOHANG)
+            except ChildProcessError:
+                pid=None
+                break
+            except BaseException as exc:
+                if first_error is None:first_error=exc
+                continue
+            if ended:
+                pid=None
+                break
+            killed=False
+            try:
+                os.kill(pid,signal.SIGKILL)
+                killed=True
+            except ProcessLookupError:
+                # ESRCH is not a reap receipt. Still wait for our exact child.
+                killed=True
+            except BaseException as exc:
+                if first_error is None:first_error=exc
+            try:
+                # Only block after SIGKILL/ESRCH, never after a failed-before-kill.
+                # Kill and wait are independent; a lost wait result is resolved
+                # by the next ownership probe, never by blindly signalling again.
+                ended,_status=os.waitpid(pid,0 if killed else os.WNOHANG)
+            except ChildProcessError:
+                pid=None
+                break
+            except BaseException as exc:
+                if first_error is None:first_error=exc
+            else:
+                if ended:
+                    pid=None
+                    break
+        if pid is not None and first_error is None:
+            first_error=ValueError('b2_maintenance_cleanup_interrupted')
+        if first_error is not None:raise first_error
+
     try:
         close_owned('write')
         raw=bytearray()
@@ -572,11 +620,18 @@ def _run_bounded_maintenance(roots, scope, operation, *, _prewrite=None):
             if not chunk:break
             raw.extend(chunk)
             if len(raw)>MAINTENANCE_RESULT_LIMIT:raise ValueError('b2_maintenance_result_budget')
+        wait_interruption=None
         while True:
             remaining=deadline-time.monotonic()
             if remaining<=0:raise ValueError('b2_maintenance_timeout')
             try:ended,status=os.waitpid(pid,os.WNOHANG)
-            except InterruptedError:continue
+            except InterruptedError as exc:
+                wait_interruption=exc
+                continue
+            except ChildProcessError:
+                pid=None
+                if wait_interruption is not None:raise wait_interruption
+                raise
             if ended:
                 pid=None
                 if not os.WIFEXITED(status) or os.WEXITSTATUS(status)!=0:
@@ -586,14 +641,15 @@ def _run_bounded_maintenance(roots, scope, operation, *, _prewrite=None):
             except InterruptedError:pass
         return _decode_maintenance_result(raw)
     finally:
+        original=sys.exception()
+        cleanup_error=None
         try:close_owned('read')
-        finally:
-            if pid is not None:
-                try:os.kill(pid,signal.SIGKILL)
-                except ProcessLookupError:pass
-                while True:
-                    try:os.waitpid(pid,0);break
-                    except InterruptedError:continue
+        except BaseException as exc:cleanup_error=exc
+        try:
+            if pid is not None:reap_owned()
+        except BaseException as exc:
+            if cleanup_error is None:cleanup_error=exc
+        if original is None and cleanup_error is not None:raise cleanup_error
 
 
 

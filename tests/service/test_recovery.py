@@ -6333,3 +6333,139 @@ def test_t1_close_ownership_cleanup(monkeypatch,tmp_path,repeat,site,timing,fail
             except ProcessLookupError:pass
             try:waitpid(pid,0)
             except ChildProcessError:pass
+
+
+@pytest.mark.parametrize('repeat',range(2))
+@pytest.mark.parametrize('error_type',[InterruptedError,KeyboardInterrupt,BaseException])
+@pytest.mark.parametrize('phase',['before','after'])
+@pytest.mark.parametrize('site',['kill','cleanup-wait','cleanup-probe','normal-wait'])
+def test_t1_reap_interruption_ownership(monkeypatch,tmp_path,repeat,error_type,phase,site):
+    """Actual children/fds; injected control flow, not Linux syscall qualification."""
+    import signal,time,resource
+    parent=os.getpid();fork=os.fork;kill=os.kill;wait=os.waitpid;close=os.close;pipe=os.pipe
+    unrelated=fork()
+    if unrelated==0:
+        time.sleep(60);os._exit(0)
+    owned=[];ends=[];fired=[];released=[]
+    marker=tmp_path/'operation';original=ValueError('original close refusal')
+    interruption=error_type('injected '+site+' '+phase)
+    prior=resource.getrlimit(resource.RLIMIT_FSIZE)
+    try:
+        owned=_t1_pipe_model(monkeypatch)
+        def tracked_pipe():
+            pair=pipe();ends.extend(pair);return pair
+        def badclose(fd):
+            if os.getpid()==parent and fd==ends[1] and site!='normal-wait':
+                until=time.monotonic()+3
+                while not marker.with_suffix('.ready').exists() and time.monotonic()<until:time.sleep(.001)
+                assert marker.with_suffix('.ready').exists(),'sleeping child must enter operation before cleanup'
+                close(fd);raise original
+            return close(fd)
+        def badkill(pid,sig):
+            assert pid!=unrelated and not released,'never signal after an actual reap'
+            if site=='kill' and not fired:
+                fired.append(site)
+                if phase=='after':kill(pid,sig)
+                raise interruption
+            return kill(pid,sig)
+        def badwait(pid,flags):
+            assert pid!=unrelated
+            target=(site=='normal-wait' or (site=='cleanup-wait' and flags==0) or
+                    (site=='cleanup-probe' and flags==os.WNOHANG))
+            if os.getpid()==parent and target and not fired:
+                fired.append(site)
+                if phase=='after':
+                    if site=='cleanup-probe':kill(pid,signal.SIGKILL)
+                    result=wait(pid,0)
+                    assert result[0]==pid
+                    released.append(pid)
+                raise interruption
+            return wait(pid,flags)
+        monkeypatch.setattr(os,'pipe',tracked_pipe)
+        monkeypatch.setattr(os,'close',badclose)
+        monkeypatch.setattr(os,'kill',badkill)
+        monkeypatch.setattr(os,'waitpid',badwait)
+        def operation(session):
+            with marker.open('a') as stream:
+                stream.write('entered\n');stream.flush();os.fsync(stream.fileno())
+            marker.with_suffix('.ready').write_text('ready')
+            if site!='normal-wait':time.sleep(60)
+            return True
+        start=time.monotonic()
+        if site=='normal-wait' and phase=='before' and error_type is InterruptedError:
+            assert recovery._run_bounded_maintenance({}, {},operation) is True
+        else:
+            with pytest.raises(BaseException) as caught:
+                recovery._run_bounded_maintenance({}, {},operation)
+            assert caught.value is (interruption if site=='normal-wait' else original)
+        assert fired==[site] and len(owned)==1 and time.monotonic()-start<5
+        assert marker.read_text()=='entered\n' and resource.getrlimit(resource.RLIMIT_FSIZE)==prior
+        for fd in ends:
+            with pytest.raises(OSError):os.fstat(fd)
+        with pytest.raises(ChildProcessError):wait(owned[0],os.WNOHANG)
+        assert wait(unrelated,os.WNOHANG)==(0,0),'unrelated child remains owned by harness'
+    finally:
+        for fd in ends:
+            try:close(fd)
+            except OSError:pass
+        # Ownership probe precedes every harness signal too, including RED paths.
+        for pid in owned+[unrelated]:
+            try:ended,_=wait(pid,os.WNOHANG)
+            except ChildProcessError:continue
+            if not ended:
+                try:kill(pid,signal.SIGKILL)
+                except ProcessLookupError:pass
+                try:wait(pid,0)
+                except ChildProcessError:pass
+
+
+@pytest.mark.parametrize('site',['kill-ESRCH','cleanup-ECHILD'])
+def test_t1_cleanup_missing_process_receipts(monkeypatch,tmp_path,site):
+    import signal,time
+    owned=_t1_pipe_model(monkeypatch)
+    parent=os.getpid();pipe=os.pipe;close=os.close;kill=os.kill;wait=os.waitpid
+    ends=[];fired=[];reaped=[];original=KeyboardInterrupt('original parent interruption')
+    marker=tmp_path/'operation'
+    def trackedpipe():
+        pair=pipe();ends.extend(pair);return pair
+    def badclose(fd):
+        if os.getpid()==parent and fd==ends[1]:
+            until=time.monotonic()+3
+            while not marker.with_suffix('.ready').exists() and time.monotonic()<until:time.sleep(.001)
+            assert marker.with_suffix('.ready').exists()
+            close(fd);raise original
+        return close(fd)
+    def badkill(pid,sig):
+        assert not reaped,'ECHILD must prevent PID reuse signalling'
+        result=kill(pid,sig)
+        if site=='kill-ESRCH' and not fired:
+            fired.append(site);raise ProcessLookupError()
+        return result
+    def badwait(pid,flags):
+        if flags==0 and site=='cleanup-ECHILD' and not fired:
+            fired.append(site);wait(pid,flags);reaped.append(pid);raise ChildProcessError()
+        return wait(pid,flags)
+    monkeypatch.setattr(os,'pipe',trackedpipe);monkeypatch.setattr(os,'close',badclose)
+    monkeypatch.setattr(os,'kill',badkill);monkeypatch.setattr(os,'waitpid',badwait)
+    def operation(session):
+        with marker.open('a') as stream:
+            stream.write('once');stream.flush();os.fsync(stream.fileno())
+        marker.with_suffix('.ready').write_text('ready')
+        time.sleep(60)
+    try:
+        with pytest.raises(KeyboardInterrupt) as caught:recovery._run_bounded_maintenance({}, {},operation)
+        assert caught.value is original and fired==[site] and marker.read_text()=='once'
+        with pytest.raises(ChildProcessError):wait(owned[0],os.WNOHANG)
+        for fd in ends:
+            with pytest.raises(OSError):os.fstat(fd)
+    finally:
+        for fd in ends:
+            try:close(fd)
+            except OSError:pass
+        for pid in owned:
+            try:ended,_=wait(pid,os.WNOHANG)
+            except ChildProcessError:continue
+            if not ended:
+                try:kill(pid,signal.SIGKILL)
+                except ProcessLookupError:pass
+                wait(pid,0)
