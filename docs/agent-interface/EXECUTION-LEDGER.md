@@ -1028,3 +1028,8 @@ Record failures and missing evidence; do not replace them with a successful late
 
 - S98fbff2a45b18bce2ca53a60a945ce9bc1e52319 frozenfc8fba40 s-source-narrowf3-r3-20261023 adds2explicitlySYNTHETICdirectedboundarycontrols, 167staticappendedrows UNEXECUTED;76priorcontrols/recoverytarget preserved. No runtime.
 - pab-s-witness-source-review-r3-20261023 independentSOURCEONLY fullpriorbrief/F3successfulfirstintent+originalinode/source-impossibility+projectionlimits. No nativepositivecredit fromsynthetics; sourceGOthenparentserializedruntimegate needed. H/Pconditionalgatesseparateactive.
+
+## H safe fixture source GO / runtime HaHs STOP / final predicate diagnosis
+
+- H-FIXTURE-REVIEW-RUNTIME-r3-sol exact62af510a/0e4fe83f SOURCEGO thenONEgate6PASS1FAIL1teardown old-descriptor-valid raw[0,18944]HaHsNOHf. Safeparent/nativeerror/innerseam nowactuallyattested; finalobject/route/offsetpredicateunknown. RawLIVEproofverified cleanupcomplete no retry.
+- pab-h-final-predicate-diagnosis-20261023 freshsourceinspection thenIFneededONEexactnode max16boundedfinalpredicateobservations unchangedacceptance/controlflow. Needfirstfailedpredicate expectedactualcodeoffset/objectshape notcausalguess; nofix/routeweakening/broad. Pconditionalgate/Ssource-reviewseparateactive.
