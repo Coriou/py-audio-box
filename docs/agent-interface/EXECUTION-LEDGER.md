@@ -1355,3 +1355,8 @@ Driver/harness1fa414bcd8b49ce7bea6bd8891b023ffa3c346e2 docs559b0d333d495da38d281
 ### 2026-10-23 — Global S review F1–F4 closed; one HOST observation gap
 
 Independentglobalr13 confirms84latestdistinctPASS/rawproof/freezecontinuity allF1-F4 addressed noadditionaldemonstratedfataldriverbug. H1BLOCKER harnessrescuesprocesspipesbeforeclosedassert/census, so driverownedclosure notdiscriminating. Parentauthorizesnarrowharness-only pab-s-host-preteardown-closure-fix-r14-20261023 +scopedHOSTaffectedwrappervariants/fullsuccess+failure proof pre-rescue observation, unchangeddriver noDocker/product. Freshindependentreviewbeforeconstruction, no runtimeauthorized.
+
+
+### 2026-10-23 — Discriminating HOST pipe closure response
+
+Harnesspre-rescuepipeobservationcorrection reports20/20scopedHOSTPASS OSexit0/5.771s unchangeddriver/app. Parentfrozeunchangeddeliveredworkingbytes executable692b1dfad0aea966dc0622c51d03e2311e17427b docs96806ef78500a59d26f513274dcb20095c53d2cc s-driver-h1-host-r13-20261023. IndependentGLOBAL pab-s-host-closure-global-review-r14-20261023 launched H1actualproof+fullF1-F4/sourcecontinuity. No constructionruntimeauthorized.
