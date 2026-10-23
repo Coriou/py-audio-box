@@ -1495,3 +1495,7 @@ ONEr33 launcher4.17s lifecyclewriterSTOP attach1/empty waitCLI0status1; fullstop
 ### 2026-10-24 — Partial product receipt accepted; ONE read-only failure-file recovery
 
 r34 independentlyverifies50inventory/20streams/authority/slots andsourceexpectedREDhandling; no unconditionalmanifestmismatch. ParentacceptspartialreceiptONLY andauthorizesONE pab-product-volume-recovery-r35-20261024 exactr34twoexistingROreadersfreshproofroot, ≤180s, sameoldimage/volume/owner, preflightstoppedbindings, archive/mapallregular equalitywithoutsuccessgate. No writerretry/product/cleanup/lanerelease; allhelpers/oldobjectsretained. Recoveredinternalidentity/terminal/pytest/observerbytes nextindependentaudit.
+
+### 2026-10-24 — Failure files recovered; collection and nondeterministic identity defects isolated
+
+ONEr35 recoveryarchive/map8files agree, readersstoppedretained, oldroot/laneunchanged. RecoveredENTRYexit4 ImportError service.recovery beforetargetbody; identityprograms both pass3.14.8/42pins/SQLite/nativechecks butrawoutputs differonlylddloaderaddresses ->postcheckidentitydrift. Independent pab-recovered-failure-causal-audit-r36-20261024 launched79inventory/32streams/transportgate+sourceimportresolution/stableidentityfixlocalization. No testretry/newwriter/cleanup/productGO; exactoriginalexceptionrelation/witnesses unavailablebeforecollection.
