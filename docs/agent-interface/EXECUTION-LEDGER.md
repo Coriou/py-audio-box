@@ -755,3 +755,8 @@ Record failures and missing evidence; do not replace them with a successful late
 
 - reviews/P1B23-RUNTIME-LIFETIME-ASTRA.md confirmsL1private startupreaders transactioncontextswithoutclose, L3Coreconstructorpartialcleanupgap, L2DispatcherfailurepublishedbeforeCoreclose deterministicASTwitness. These sourcehazards actionable; nativecrashcausalityUNRESOLVED, notSQLite/GC/machineverdict. V2UTF8/V3SHM remaindistinct.
 - Solr2diagnostic wasproviderrejected/noreport; no duplicate diagnostic retry. ProceedONLYordinarysource-lifetimecorrection withdeterministicREDs perAstra plus test-onlyunexpectedchildsignalreportingguard. Newowningscope recoveryreaderclose/Coreconstructor/Dispatcherfailurecleanup/focusedtests/handoff; no GC/runtime/dependency/cap/forkarchitecture changes. Independentreview beforeintegration; correctedlifetimealoneNOTnativeclearance orT2campaignGO.
+
+## Lifetime candidate / focused green / guard coverage completion
+
+- Candidate4259415d t3-5d6bc116 frozen254ef56d baseline0c71e1bc L1L2L3fourdefinitionschanged withfocusedtests.85CoreDispatch+177recoverypass,116terminalwaits no unexpectedsignal. FourB2/fullNOTRUN becausefreshpython-c helpersbypassprospectiveguard. NativeV1V2V3 unresolved; noT2GO/integration.
+- SeparateSol-low readonlylifetimereview andisolatedtestguardcompletion lane: sourcechangesnotallowedinguardlane; coverfreshinterpreters withoutproductioninstrumentation/dependency/GC/runtimechanges thenfrozenappropriatecampaigns orpreciseruntimefailure. ReviewmustassessDispatcherexisting5stimeout/cleanupcontract notinferallcleanupbounded.
