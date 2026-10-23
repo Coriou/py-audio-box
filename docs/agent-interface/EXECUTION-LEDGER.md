@@ -725,3 +725,9 @@ Record failures and missing evidence; do not replace them with a successful late
 ## T1 round3 provider capacity failure / one retry
 
 - pab-t1-review-r3-20261023 terminalfailed selectedmodelatcapacity; no reviewreport produced, no sourceverdict. Candidate7b9cafdc remainsunintegrated. OnefreshsameSol-low retry pab-t1-review-r3-retry1-20261023 carriesentireoriginalbrief/R1F1/R2F2/responseandremaininggates. No duplicatedactivework or acceptanceinferred.
+
+## T1 bounded GO / root integration / T2 launch
+
+- reviews/P1B23-T1-r3-sol.md exact7b9cafdc boundedlocalE1GO F1/F2closed,271freshpasses nofail/skips.64roundcleanupinterferenceexhaustion limitationexplicit; no universalcleanup/kernelwallclockclaim. Full1935pass19skip remainsfrozenimplementerreceipt, allLinuxmechanismsunqualified.
+- Rootcherry-picked13T1commits eb1e593..7b9cafdc oldestfirst ending8d5ce5f; exactexecutable diffagainstreviewedcandidateempty acrossservice/worker/scripts/tests/clients/contracts. IntegratednonemptyABC/capacity/close/reap/callerhandler subset119passed1531deselected51.63s.
+- Next freshT2Sol-low startsfromintegratedroot replaysonly6Ccommits3dd545f..a27f78b preservingallreviewedT1prefixes andhistoricalWIPs; completesCshared1MiBproposal boundedoutput/fullmatrix/finalcampaigns beforefreshindependentreview. C1mandatoryrefusal andB3C1C2/finalAstra/A1unexplainedinventory/platformqualificationlimitsretained.
