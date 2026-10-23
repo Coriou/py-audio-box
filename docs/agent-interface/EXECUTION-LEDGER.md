@@ -977,3 +977,8 @@ Record failures and missing evidence; do not replace them with a successful late
 
 - S-WITNESS-SOURCE-r1-sol b7d8ea32/742cab3e:3blockers transientcontextmanagertracebudgetvetoesvalidroute; controlsinterposehardenerinvalidatingprereqs; missingindependentpredicate/nativeconfigproof. P-WITNESS-SOURCE-r1-sol478953d0/d00f49f9:3blockers malformedoperationunarmslegacyfallback; cleanupcontrolssupplypredicateargsratherthanrealcatchallreplacement; unverifieddirectedpremises. No runtime/reviewsourcewrites.
 - FreshSol-lowsourceONLY pab-s-witness-source-fix-r2-20261023 andpab-p-witness-source-fix-r2-20261023 fulloriginalbrief+F1–F3, exactfamilybases/scopes. Hfixr2continuesindependently. No assertionpolicyweakening/runtime/integrationuntilnewsource-review.
+
+## H correction r2 frozen / fresh source review r2
+
+- Hcandidate5494db4736f7dad427666dc60e0827d59ddb45e7 frozen1efddfdd t3-187c5f1d reportsF1–F5sourcecorrections/static15sitemarkercensus/preservation,64futureHcontrols+12originalparams UNEXECUTED. Original14asserts retained production/R unchanged. Route/fixturebinding actualrisks remain noGO.
+- pab-h-witness-source-review-r2-20261023 freshREADONLYsourceSol-low fulloriginalbrief/priorF1–F5/responses/unresolvedobjections; no runtimeuntilreadiness/parentgate. P/Sfixr2separateactive.
