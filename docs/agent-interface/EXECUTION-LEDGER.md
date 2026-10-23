@@ -1055,3 +1055,8 @@ Record failures and missing evidence; do not replace them with a successful late
 S frozen 98fbff2a: finite 255-node runtime gate stopped at 4 PASS, 1 FAIL plus teardown; first core-intent-full False produced Sa/Ss without Sf. Native refusal seam attested; final predicate unresolved. Evidence retained at /tmp/pab-s-runtime-r1-20261023; no retry/integration. Report P1B23-S-WITNESS-RUNTIME-r1-20261023.md.
 
 H literal candidate 6c588a59 (docs 9207a41) stopped at its first isolated construction positive; no H gate or retained exact live opcode proof. P restoration candidate 3546b1dd (docs 0f8c88c9) is static-only, runtime unqualified. Fresh independent Sol-low READONLY source reviews launched: pab-h-literal-source-review-r4-20261023, pab-p-restoration-source-review-r5-20261023; targeted S source diagnosis pab-s-final-source-diagnosis-r1-20261023. All three prohibit runtime/fixes and write only named review reports. No executable integration or activation.
+
+
+### 2026-10-23 — H literal r4 independent NO-GO
+
+Independent P1B23-H-LITERAL-SOURCE-r4-sol.md finds no authority relaxation, but isolated construction positive remains RED. Captured runner identity is satisfied; precise instruction mismatch unproven. Earlier actual-runner recognizer assertions completed, no detailed opcode receipt emitted. No H runtime retry authorized. Source-only fresh Sol-low control/evidence correction delegated as pab-h-construction-control-fix-r5-20261023; recognizer remains frozen, nine control dimensions and strict final route preserved. Independent source review required before a separately bounded construction preflight.
