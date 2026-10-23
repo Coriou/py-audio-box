@@ -815,3 +815,8 @@ Record failures and missing evidence; do not replace them with a successful late
 
 - reviews/P1B23-ENV-HEALTH-20261023.md sixboundedcommandsPASS all42pins/1713RECORDhashesmatch; no observedversion/packagecorruption. ThisisNOTnativeclearance orpermissionblindcampaignretry. Originalartifactarchiveprovenance incomplete.
 - Proceedisolatedprovenanceaudit andcomparisonvenv usingprojectDocker-pinnedCPython3.14.8 whereavailable, current3.14.7venvretaineduntouched. Necessaryowneddependency/interpreterprovisioningauthorizedundercurrenttask; no globals/locks/sourcechanges, no packagecrossminorloading. RecorddifferentDarwinbuildNOTsameLinuxDockerreceipt. Onlyordinaryhealth/collectioncontrols initially; no productacceptancecausalclaim.
+
+## Isolated Darwin provisioning unavailable / pinned Linux container comparison
+
+- reviews/P1B23-ISOLATED-RUNTIME-20261023.md:42installedexpandedcachemapsmatch originalarchivesmissing; uvnoexactDarwin3.14.8entry officialpkgadminsystemscopeincompatible. No newruntime/healthcommands, no oldvenvchanges/nativeclearance.
+- Parent authorizesboundedSYNTHETICtest-onlyDockercomparison usingexistingprojectpinned3.14.8Linuximage, ownedcontainer/workspace only no usermounts/socket/serviceactivation/audio/model/GPU. Readonlypreflightavailabledisk/daemon thenboundedpullifneeded; hashlockedtestdeps/sourcecopy/exactpins, smallhealth/collection/focusedmatrix first stopunexpectederror. This is localruntimecomparison NOTC1/C2installedreleaseorDarwincausefix. No more productcodechangeswhileenvironmentcomparisonpending.
