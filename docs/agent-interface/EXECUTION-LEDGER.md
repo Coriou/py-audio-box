@@ -957,3 +957,8 @@ Record failures and missing evidence; do not replace them with a successful late
 
 - Hcandidate846fea5722ed7e9d98a8347bffc19259400f84b3 frozen4658fd23 t3-fb9a7c9c implementsHonly, staticchecks/no runtime. Explicitcontrolcoveragegapsinhand-off filename-only/parentidentity/archive-vs-recoveryID/finalattributes androute/fixtureordering verification remain. NoGOclaimed.
 - pab-h-witness-source-review-r1-20261023 READONLYsource-onlySol-low verifiesentireH/sharedcontract andacknowledgedgaps beforeanyruntime. P/Ssourceimplementationcontinuesseparately; noassembly/integration.
+
+## P family source frozen / independent source review
+
+- Pcandidate478953d0cfa500d849c5222260a5fef05a8db2c8 frozend00f49f9 t3-1cebb715 implementsPonly; staticASTcompile/preservation no runtime. Future1original+11transcript+30freshcontrols unexecuted, noGO.
+- pab-p-witness-source-review-r1-20261023 READONLYsourceSol-low checksactualdurable5step/pipeidentity/armedveto/finalexception/cleanupunwinding/controlmatrix andfullscope beforeanyruntime. Hreview/Simplementationseparate active; noassembly/integration.
