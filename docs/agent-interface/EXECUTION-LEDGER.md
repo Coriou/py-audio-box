@@ -882,3 +882,8 @@ Record failures and missing evidence; do not replace them with a successful late
 
 - Parentaccepts boundedcombinedsource/focusedGO `reviews/P1B23-COMBINED-OWNERSHIP-GUARD-CAP-r1-sol.md` exactbd29d757/frozen30a4130d: no blockingfinding,27independentPASS;388priorpasses/rawarchives/340indexedfiles/1008preservationhashesaudited. Not integration/fullGO.
 - `pab-combined-broad-validation-r1-20261023` authorizedREADONLY staged original17entryselection(+newcapB), fourB2, thenfullservice/release ONLYifprecedingstagegreen. Samefrozenexistingimageef1fbbb4 resourcecaps/oneDockerlane/liveverifiedtarretention; stopfirstunexpected/no retry/fix/waiver. Solewrite validationreport. T2/finalAstra/platform/native/activationgates unchanged.
+
+## Broad validation stopped at ambiguous intent test selector
+
+- Report COMBINED-BROAD-VALIDATION-20261023:stage1 original17+capB18PASS; fourB2stopped254PASS1FAIL at test_b22_correction_process_death_owned_restart[core-intent-commit] KeyErrorproof. Broadglobcanselect.bundle.intent.jsondescriptor aswellasfullintent; bothretained. No nativecause/productiondefectestablished; fullNOTRUN. Rawarchives/livehashesverified cleanupcomplete candidateunchanged.
+- Parentauthorizesfreshnarrowtest-only `pab-b22-intent-selection-fix-r1-20261023`: exactclosed32lowerhexfullintentfilenamegrammar+exactlyoneassertion, notfirstglob/dictionaryguess; preservecallerintentdeletion andALLchild/resume/count/archiveasserts. Bothparams+directedselectorcontrols frozenfocusedgateonly, freshindependentreviewbeforefourB2resumption. Nootherselector/source changes.
