@@ -506,14 +506,36 @@ def _run_bounded_maintenance(roots, scope, operation, *, _prewrite=None):
         raise ValueError('b2_maintenance_platform')
     deadline=time.monotonic()+30
     read_fd,write_fd=os.pipe()
-    try:pid=os.fork()
+    # Single-threaded ownership: an interrupted close may already have released
+    # the number. Only finish a failed-before-close when fstat still identifies
+    # this exact pipe; a released/reused number must never be closed again.
+    identities={}
+    def close_owned(which):
+        nonlocal read_fd,write_fd
+        fd=read_fd if which=='read' else write_fd
+        if which=='read':read_fd=None
+        else:write_fd=None
+        if fd is None:return
+        try:os.close(fd)
+        except BaseException:
+            try:current=os.fstat(fd)
+            except OSError:pass
+            else:
+                original=identities.get(fd)
+                if original is not None and (current.st_dev,current.st_ino,current.st_mode)==(original.st_dev,original.st_ino,original.st_mode):
+                    os.close(fd)
+            raise
+    try:
+        identities={fd:os.fstat(fd) for fd in (read_fd,write_fd)}
+        pid=os.fork()
     except BaseException:
-        os.close(read_fd);os.close(write_fd)
+        try:close_owned('read')
+        finally:close_owned('write')
         raise
     if pid==0:
         _maintenance_child_pid=os.getpid()
-        os.close(read_fd)
         try:
+            close_owned('read')
             process=_install_maintenance_limit()
             with _maintenance_session(roots,scope,process,_prewrite=_prewrite) as session:
                 result=operation(session)
@@ -530,13 +552,13 @@ def _run_bounded_maintenance(roots, scope, operation, *, _prewrite=None):
                     if count<=0:raise OSError('b2_maintenance_short_result')
                     offset+=count
                 except (InterruptedError,BlockingIOError):continue
-            os.close(write_fd)
+            close_owned('write')
             os._exit(0)
         except BaseException:
             os._exit(74)
-    os.close(write_fd)
-    raw=bytearray()
     try:
+        close_owned('write')
+        raw=bytearray()
         while True:
             remaining=deadline-time.monotonic()
             if remaining<=0:raise ValueError('b2_maintenance_timeout')
@@ -562,13 +584,14 @@ def _run_bounded_maintenance(roots, scope, operation, *, _prewrite=None):
             except InterruptedError:pass
         return _decode_maintenance_result(raw)
     finally:
-        os.close(read_fd)
-        if pid is not None:
-            try:os.kill(pid,signal.SIGKILL)
-            except ProcessLookupError:pass
-            while True:
-                try:os.waitpid(pid,0);break
-                except InterruptedError:continue
+        try:close_owned('read')
+        finally:
+            if pid is not None:
+                try:os.kill(pid,signal.SIGKILL)
+                except ProcessLookupError:pass
+                while True:
+                    try:os.waitpid(pid,0);break
+                    except InterruptedError:continue
 
 
 

@@ -6237,3 +6237,82 @@ def test_t1_owned_proposal_reads_cannot_mutate_sender(b23_host,installation,monk
     recovery._validate_preparation_result(result)
     assert digest(result['intent'])==(tmp_path/'original').read_text()
     _t1_assert_unaccepted(roots,1)
+
+
+@pytest.mark.parametrize('repeat',range(2))
+@pytest.mark.parametrize('site',['parent-write','cleanup-read','fork-read','fork-write','child-read'])
+@pytest.mark.parametrize('timing',['before','after','reuse'])
+@pytest.mark.parametrize('failure',[InterruptedError,KeyboardInterrupt])
+def test_t1_close_ownership_cleanup(monkeypatch,tmp_path,repeat,site,timing,failure):
+    """Injected close faults, not evidence of kernel EINTR behavior.
+
+    Actual fork/fds, bounded child reap, durable child-operation marker, and
+    a reused fd sentinel distinguish release from a blind close retry.
+    """
+    import signal,time,resource
+    prior=resource.getrlimit(resource.RLIMIT_FSIZE)
+    owned=_t1_pipe_model(monkeypatch)
+    parent=os.getpid();pipe=os.pipe;close=os.close;fork=os.fork
+    ends=[];fired=[];sentinels=[];statuses=[]
+    marker=tmp_path/'operation-entered'
+    def tracked_pipe():
+        pair=pipe();ends.extend(pair);return pair
+    def broken_close(fd):
+        target=(os.getpid()!=parent and site=='child-read' and fd==ends[0]) or (
+            os.getpid()==parent and site!='child-read' and fd==ends[0 if site in ('cleanup-read','fork-read') else 1])
+        if target and not fired:
+            fired.append(fd)
+            if timing!='before':close(fd)
+            if timing=='reuse':
+                replacement=os.open(tmp_path/'sentinel',os.O_RDWR|os.O_CREAT,0o600)
+                if replacement!=fd:
+                    os.dup2(replacement,fd);close(replacement)
+                sentinels.append(fd)
+            raise failure('injected close failure '+timing)
+        return close(fd)
+    if site.startswith('fork-'):
+        def failed_fork():raise OSError('injected fork failure')
+        monkeypatch.setattr(os,'fork',failed_fork)
+    monkeypatch.setattr(os,'pipe',tracked_pipe)
+    monkeypatch.setattr(os,'close',broken_close)
+    if site=='cleanup-read':
+        def failed_read(*a):raise ValueError('injected read failure')
+        monkeypatch.setattr(os,'read',failed_read)
+    waitpid=os.waitpid
+    def tracked_waitpid(pid,flags):
+        result=waitpid(pid,flags)
+        if result[0]:statuses.append(result[1])
+        return result
+    monkeypatch.setattr(os,'waitpid',tracked_waitpid)
+    def operation(session):
+        marker.write_text('operation entered')
+        if site!='cleanup-read':time.sleep(60)
+        return dict(success=True)
+    start=time.monotonic()
+    try:
+        with pytest.raises((failure,OSError,ValueError)):
+            recovery._run_bounded_maintenance({}, {},operation)
+        assert time.monotonic()-start<5
+        assert resource.getrlimit(resource.RLIMIT_FSIZE)==prior
+        for fd in ends:
+            if fd in sentinels:
+                assert os.fstat(fd).st_ino==(tmp_path/'sentinel').stat().st_ino
+            else:
+                with pytest.raises(OSError):os.fstat(fd)
+        for pid in owned:
+            with pytest.raises(ChildProcessError):waitpid(pid,os.WNOHANG)
+        if site=='child-read':
+            assert not marker.exists()
+            assert len(statuses)==1 and os.WIFEXITED(statuses[0]) and os.WEXITSTATUS(statuses[0])==74
+        if site.startswith('fork-'):assert not owned and not marker.exists()
+    finally:
+        # Harness owns these exact fd numbers throughout; never opens anything
+        # after the call except the deliberate sentinel, which it also owns.
+        for fd in ends:
+            try:close(fd)
+            except OSError:pass
+        for pid in owned:
+            try:os.kill(pid,signal.SIGKILL)
+            except ProcessLookupError:pass
+            try:waitpid(pid,0)
+            except ChildProcessError:pass
