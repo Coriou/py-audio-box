@@ -1129,3 +1129,8 @@ S-FINAL-ACTUAL-r2 independent diagnosis-ready GO:192sourcehashes/292evidencehash
 ### 2026-10-23 — Astra exact-context design adopted; H/S source lanes
 
 Parent adopts P1B23-H-EXACT-CONTEXT-DESIGN-ASTRA.md: immutable identity-dispatched instruction projections plus independently unpatched actual decode, no runner recompilation/bytecode editing/recognizer broadening; local correlation labels instead of marshal authority. H allowlisted source-only implementation pab-h-projection-controls-implementation-r6-20261023 launched, guard unchanged. Separate S narrow proven literal-recognizer source correction pab-s-literal-recognizer-source-r3-20261023 launched on NONobservational original S, same projection evidence discipline, noqualification transfer. Both require fresh independent source review before construction; no runtime/fullgate/acceptance/integration authorized.
+
+
+### 2026-10-23 — Blocked-pipe observer source GO; launcher still required
+
+Independent observer r1 bounded SOURCE GO, noacceptancechange found; actualcause UNKNOWN. Review explicitly requires frozenownedlauncher/source manifest review before execution. Source-only launcher lane pab-blocked-pipe-launcher-source-r1-20261023 launched, observer/entry/guard unchanged. No diagnostic runtime authorized yet. H/S sourceimplementation continues separately.
