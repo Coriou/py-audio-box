@@ -1527,3 +1527,7 @@ r41 ZEROlauncher/product/Dockerinvocations: outeragent-addedexactenvironmentNAME
 ### 2026-10-24 — Original singleton executes; exact timeout/empty witness observed
 
 ONEr42 actual correctedlauncherdriver0/pytest1 expecteddiagnosticRED, runtime/source/semanticidentity pass. Four47fieldrows capture exactbuiltinValueError b2_maintenance_timeout child17/parent16, stage2activeisrunneroriginal; raw18944/emptyphase andactualkernelpipefull, guardcall+teardownfailures remain, followingassertionsunreached. Archive11regularmap verified/3containerscleanup/lane released, allproofretained. Independent pab-singleton-actual-semantic-gate-r43-20261024 launched158inventory/64streams+alltypes/offsets/owner/wait/guardaudit beforestrictwitnessdesign/Astraadvice. No generic74waiver/testPASS/historicalPID229causeclaim.
+
+### 2026-10-24 — Exact timeout evidence accepted; Astra strict-witness design
+
+Parentaccepts r43 boundedACTUALevidenceGO158inventory/64streams/all4rows/actualoffsets/runtime/retentioncleanup verified. TeststillRED/acceptancefalse: existingparameterizedbackpressureattestor correctlyexcludessingletontimeout. Fullchildtraceback/two-site distinction remainsuncaptured. FreshAstra pab-blocked-pipe-witness-astra-r44-20261024 assigned preciseimplementabledesign orminimalobservation-onlycapture decision, strictFD/frame/EAGAIN/deadline/exceptionroute/parentoriginal/ownedchild/witness256B+negativecontrols, test-onlypreferred no generic74waiver. No source/runtimeauthorityyet/historicalPID229claim.
