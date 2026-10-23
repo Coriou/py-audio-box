@@ -927,3 +927,8 @@ Record failures and missing evidence; do not replace them with a successful late
 
 - HISTORY-REFUSAL-WITNESS-AUDIT-20261023 confirms H1missingolderdescriptorstatENOENT witnessgap(3journalstates), P1modeledlostresultBrokenPipeError witnessgap, S1rehearsal-sqltestpremise defect authorizerdeniesPRAGMA beforeactualcapacity. PID255innerexceptionhistoricallyunproven. Finite88testcaller inventory/sourceonly/proofchecked noexecution.
 - FreshAstra pab-grouped-witness-capacity-astra-20261023 selectssecuregroupedH/P/Scontract andgenuineSQLcapacitypositiveunderunchangedproductionauthorizer/caps, exactallowlist/negativecontrols/finitefocusedmatrix. No implementation/runtime/broadretryauthorizeduntiladoption. AvoidAUTH-as-capacity/generic74/OSexceptionwaiver. PrioracceptedR/O/G/cap/selector retained.
+
+## Astra grouped contract adopted with S1 premise hold
+
+- Parentadoptsentire GROUPED-WITNESS-CAPACITY-ASTRA.md H/Pprecisecontracts/sharedarmed-seam-finalrules/finitegroupedmatrix andS1HOLD. No generalV/Jrewrite orproductionchange; H/Pnotyetimplemented.
+- AuthorizeONE S1diagnostic pab-s1-capacity-premise-diagnostic-20261023 exactrehearsal-sql,same_consumerFalse, samePRAGMA1movedtoexactprivateconnectionBEFOREunchangedhardeneronce; unchangedINSERT/caps/allasserts.16boundedphaseobservationsmax, realSQLITE_FULL13atintendedINSERT/samefinalexception/nooriginalcompletion required usablepremise; existingguardEXPECTEDREDnotwaived. Earlierfailure/differentcode/success=>STOPno tuning/retry. NoH/P/groupedruntime/broaduntilreceiptdecision.
