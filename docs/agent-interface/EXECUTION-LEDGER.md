@@ -1084,3 +1084,8 @@ P runtime-r5 returned provider error Selected model is at capacity, no report or
 ### 2026-10-23 — S final observation harness frozen
 
 S observational harness bc5b4615cae7cd15c35af8f01e73fcc5c9c01699, docs d224f9012f01bffbf20606596baea89ddcce8ef8, s-final-observation-20261023 delivered static-only. Actual cause remains UNKNOWN. Independent READONLY Sol-low review pab-s-final-observer-source-review-r2-20261023 launched before any ONE-node diagnostic authorization. No S runtime or acceptance change authorized. H construction and P finite gate remain separate serialized runtime lanes.
+
+
+### 2026-10-23 — P provider status contradicted by actual artifacts
+
+CORRECTION: prior claim no runtime occurred was unsupported and is contradicted by /tmp/pab-p-restoration-r5-20261023 actual artifacts. Requeue obeyed contrary-evidence STOP and launched nothing. Existing stdout records146PASS1FAIL1ERROR at real blocked-pipe deadline, PID229/raw18944, no V witness. Inventory only has not independently qualified receipts/export/source/cleanup. No duplicate or retry authorized. Independent READONLY actual-receipt/source audit pab-p-r5-actual-receipt-audit-r1-20261023 launched, sole report; all proof unchanged. Inventory report moved from mistaken root filename to canonical reviews directory without content change.
