@@ -1724,9 +1724,14 @@ class Plugin:
     def bind(self, request):
         patch = pytest.MonkeyPatch()
         original = h.BlockedPipeWitness_B.__init__
+        helper_node = h._CURRENT.node
+        saved = {name: (hasattr(helper_node, name), getattr(helper_node, name, None))
+                 for name in ('obj', 'config')}
         def finish():
             patch.undo()
-            assert not hasattr(h._CURRENT.node, 'obj')
+            for name, (present, value) in saved.items():
+                assert hasattr(helper_node, name) is present
+                if present: assert getattr(helper_node, name) is value
             assert h.BlockedPipeWitness_B.__init__ is original
             steps.append('binding-restored')
         request.addfinalizer(finish)
@@ -1735,6 +1740,8 @@ class Plugin:
         assert callable(collected)
         assert collected is sys.modules['test_recovery'].test_t1_real_blocked_pipe_backpressure_deadline
         assert not hasattr(h._CURRENT.node, 'obj')
+        patch.setattr(helper_node, 'config', request.node.config, raising=False)
+        assert helper_node.config is request.node.config
         if mode == 'bound':
             patch.setattr(h._CURRENT.node, 'obj', collected, raising=False)
             assert h._CURRENT.node.obj is collected
@@ -1861,3 +1868,163 @@ def test_B_timeout_shape_source_predicate(tmp_path, control):
     assert guard.receipts == [raw] and not guard.owned
     assert len(guard.failures) == 1 and guard.failures[0].endswith('incomplete or invalid armed B contract')
     _B_refused_launches(guard, tmp_path)
+
+
+# Combined successor C2: finite pre-capture controls. These isolated inert-sink
+# processes are guard controls, never real-observer diagnostic qualification.
+B_CONTROL_B1 = ('clock1000', 'observed', 'ready', 'select_blocked', 'operation', 'outer-binding')
+
+
+def _B_precapture_program(control):
+    """Derive only the appended control harness; frozen target bytes stay fixed."""
+    source = _B_SEAM_PROGRAM
+    source = source.replace("admission = {", "admission = {"+repr(control)+", ", 1)
+    anchor = "        guard = h.MaintenanceWaitGuard(node, types.SimpleNamespace(shouldstop=False))"
+    setup = r'''
+        import ast
+        function = node.obj
+        code0 = function.__code__
+        plain, authority, roles, tree = cls.target_source(function, node)
+        assert cls.code_projection(code0) == cls.code_projection(function.__code__)
+        # Restoration is registered before changing the real collected object.
+        def restore_code():
+            function.__code__ = code0
+            assert node.obj is function and function.__code__ is code0
+        request.addfinalizer(restore_code)
+        if mode == 'outer-binding':
+            target = next(n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name == cls.name)
+            call, = [n for n in ast.walk(target) if isinstance(n, ast.Call) and
+                ast.unparse(n.func) == 'recovery._run_bounded_maintenance']
+            assert isinstance(call.args[0], ast.Dict) and not call.args[0].keys
+            call.args[0] = ast.copy_location(ast.Dict(keys=[ast.Constant('B1')],
+                values=[ast.Constant(None)]), call.args[0])
+            ast.fix_missing_locations(tree)
+            if node.config.getoption('assertmode') == 'rewrite':
+                from _pytest.assertion.rewrite import rewrite_asserts
+                data = Path(code0.co_filename).read_bytes()
+                rewrite_asserts(tree, data, code0.co_filename, node.config)
+            changed = cls.nested(compile(tree, code0.co_filename, 'exec', dont_inherit=True), cls.name)
+            nested = { (c.co_name, c.co_firstlineno): c for c in code0.co_consts if isinstance(c, types.CodeType) }
+            changed = changed.replace(co_consts=tuple(nested.get((c.co_name, c.co_firstlineno), c)
+                if isinstance(c, types.CodeType) else c for c in changed.co_consts))
+            assert all(any(c is v for c in changed.co_consts) for v in nested.values())
+            assert changed.co_code != code0.co_code
+        else:
+            name = {'clock1000': '<lambda>', 'operation': '<lambda>'}.get(mode, mode)
+            candidates = [c for c in code0.co_consts if isinstance(c, types.CodeType) and c.co_name == name]
+            if name == '<lambda>':
+                role = roles['clock' if mode == 'clock1000' else 'operation']
+                selected, = [c for c in candidates if cls.code_projection(c) == cls.code_projection(role)]
+            else: selected, = candidates
+            if mode == 'clock1000':
+                assert selected.co_consts == (100,)
+                mutated = selected.replace(co_consts=(1000,))
+                assert mutated.co_code == selected.co_code
+                assert tuple(mutated.co_positions()) == tuple(selected.co_positions())
+                assert mutated.co_freevars == selected.co_freevars
+            else:
+                # Inert extra typed constant changes code authority while keeping
+                # the actual original capability behavior and FD/hooks intact.
+                mutated = selected.replace(co_consts=selected.co_consts+('B1-pre-capture',))
+            changed = code0.replace(co_consts=tuple(mutated if c is selected else c for c in code0.co_consts))
+            assert any(c is mutated for c in changed.co_consts)
+            assert not any(c is selected for c in changed.co_consts)
+        function.__code__ = changed
+        assert node.obj is function and function.__code__ is changed and changed is not code0
+        assert cls.code_projection(changed) != cls.code_projection(code0)
+        with pytest.raises(ValueError, match='^B changed collected target code$'):
+            cls.target_source(function, node)
+        evidence('pre-capture-source-readback')
+'''
+    assert source.count(anchor) == 1
+    source = source.replace(anchor, setup+'\n'+anchor)
+    old = """            assert w.eligible and w.valid
+            evidence('admission-baseline')
+            if mode in admission:"""
+    new = """            assert a[0].obj is function and a[3].f_code is changed
+            assert a[3].f_globals is function.__globals__
+            local = a[3].f_locals
+            assert os.write is local['observed'] and recovery.time.monotonic.__code__ in changed.co_consts
+            assert local['write'] is a[5] and os.waitpid is a[7]
+            assert cls.identity(a[8])[0] != cls.identity(a[9])[0]
+            assert w.eligible and not w.valid
+            evidence('admission-baseline')
+            evidence('admission-mutated-rejected')
+            return
+            if mode in admission:"""
+    assert source.count(old) == 1
+    return source.replace(old, new)
+
+
+@pytest.mark.parametrize('control', B_CONTROL_B1, ids=lambda c: 'B-C-'+c)
+def test_B_precapture_same_collected_function(tmp_path, control):
+    """Valid collected invocation first, then same-object pre-capture refusal.
+
+    Both processes must complete original assertions. The baseline is an
+    independent invocation, not an invalid constructor relabelled as positive.
+    """
+    import subprocess
+    (tmp_path/'baseline').mkdir()
+    test_B_directed_isolated_seams(tmp_path/'baseline', 'collected-control')
+    source = _B_precapture_program(control).replace('CONTROL', repr(control))
+    source = source.replace('ROOT', repr(str(tmp_path/'mutated-proof'))).replace('NODE', repr(B_CONTROL_NODE))
+    prefix = 'import sys; sys.path[:0] = '+repr([str(Path(harness.__file__).parent),
+        str(Path(harness.__file__).parent.parent/'diagnostics'/'p-one-node')])+'\n'
+    result = subprocess.run([sys.executable, '-B', '-c', prefix+source],
+        capture_output=True, text=True, timeout=30)
+    assert result.returncode == 0, result.stdout+result.stderr
+
+
+B_CONTROL_AUTHORITY = ('wrong-source', 'wrong-digest', 'filename', 'qualname',
+    'flags', 'typed-constant', 'lambda-roles')
+
+
+@pytest.mark.parametrize('control', B_CONTROL_AUTHORITY, ids=lambda c: 'B-A-'+c)
+def test_B_independent_authority_source_predicates(monkeypatch, control):
+    """Baseline-first exact source predicates; no child/transport/latch credit."""
+    import ast, types
+    cls = harness.BlockedPipeWitness_B
+    path = Path(harness.__file__).parent/'service'/'test_recovery.py'
+    data = path.read_bytes()
+    module = compile(data, str(path), 'exec', dont_inherit=True)
+    code = cls.nested(module, cls.name)
+    # No module execution or product import: a function is only a code carrier.
+    function = types.FunctionType(code, {})
+    monkeypatch.setattr(function, '__code__', code)  # Register restoration first.
+    config = SimpleNamespace(getoption=lambda name: 'plain' if name == 'assertmode' else None)
+    node = SimpleNamespace(config=config)
+    _, original, roles, _ = cls.target_source(function, node)
+    assert cls.code_projection(original) == cls.code_projection(code)
+    roles = {name: next(c for c in code.co_consts if isinstance(c, types.CodeType) and
+        cls.code_projection(c) == cls.code_projection(role)) for name, role in roles.items()}
+    assert roles['clock'] is not roles['operation']
+    assert cls.code_projection(roles['clock']) != cls.code_projection(roles['operation'])
+    if control == 'wrong-source':
+        function.__code__ = code.replace(co_filename=str(path.parent/'foreign.py'))
+        with pytest.raises(ValueError, match='^B wrong target source$'): cls.target_source(function, node)
+    elif control == 'wrong-digest':
+        read = Path.read_bytes
+        with monkeypatch.context() as patch:
+            patch.setattr(Path, 'read_bytes', lambda self: data+b'\n' if self == path else read(self))
+            with pytest.raises(ValueError, match='^B changed target source$'): cls.target_source(function, node)
+        assert path.read_bytes() == data
+    else:
+        if control == 'filename': changed = code.replace(co_filename=str(path.parent/'..'/'service'/'test_recovery.py'))
+        elif control == 'qualname': changed = code.replace(co_qualname=code.co_qualname+'.foreign')
+        elif control == 'flags': changed = code.replace(co_flags=code.co_flags ^ 0x1000000)
+        elif control == 'typed-constant':
+            clock = roles['clock']; assert clock.co_consts == (100,)
+            changed_clock = clock.replace(co_consts=(100.0,))
+            assert changed_clock.co_consts == clock.co_consts
+            assert cls.code_projection(changed_clock) != cls.code_projection(clock)
+            changed = code.replace(co_consts=tuple(changed_clock if c is clock else c for c in code.co_consts))
+        else:
+            assert control == 'lambda-roles'
+            changed = code.replace(co_consts=tuple(roles['operation'] if c is roles['clock'] else
+                roles['clock'] if c is roles['operation'] else c for c in code.co_consts))
+        assert cls.code_projection(changed) != cls.code_projection(code)
+        function.__code__ = changed
+        assert function.__code__ is changed
+        with pytest.raises(ValueError, match='^B changed collected target code$'): cls.target_source(function, node)
+    function.__code__ = code
+    assert cls.code_projection(cls.target_source(function, node)[1]) == cls.code_projection(code)
