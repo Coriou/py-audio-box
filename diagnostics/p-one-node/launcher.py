@@ -29,6 +29,7 @@ SOURCE = 'e941c7aee7f53348905659904b8299d5500d1250'
 DOCUMENTATION = 'f93b7fef6cc461b756cd9e13ff14e88e243359a4'
 LANE = Path('/private/tmp/pab-worker-w1-docker-lane.lock')
 HOST = 4 * F.GIB
+SUPERVISOR_RESERVE = F.META
 SCHEDULE = (120, 60, 1200, 30, 60, 180, 120, 30)
 ID = re.compile('[0-9a-f]{64}')
 SEED = F.SEED
@@ -92,11 +93,11 @@ def call(root, label, argv, budget, adapter, *, deadline, cap=F.META, cwd=None):
             captures.append(F.private(root / (label + suffix)))
         proc = adapter.spawn(argv, cwd=cwd, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                              stdin=subprocess.DEVNULL, start_new_session=True, close_fds=True)
+        streams = [proc.stdout, proc.stderr]
         publish(root / (label + '.spawn.json'), {'state': 'SPAWNED', 'local_pid': proc.pid,
                 'owned_session': proc.pid, 'remote_completion': False}, budget)
         selector = selectors.DefaultSelector()
-        for index, stream in enumerate((proc.stdout, proc.stderr)):
-            streams.append(stream)
+        for index, stream in enumerate(streams):
             os.set_blocking(stream.fileno(), False)
             selector.register(stream, selectors.EVENT_READ, index)
         while selector.get_map() or proc.poll() is None:
@@ -134,7 +135,12 @@ def call(root, label, argv, budget, adapter, *, deadline, cap=F.META, cwd=None):
         result['state'] = 'UNKNOWN'
     finally:
         if selector is not None:
-            selector.close()
+            try:
+                selector.close()
+            except BaseException as exc:
+                error = error or exc
+                result['state'] = 'UNKNOWN'
+                result['close_failure'] = type(exc).__name__
         for stream in streams + captures:
             try:
                 stream.close()
@@ -371,7 +377,7 @@ def prepare_context(repo, root, budget):
 class Lifecycle:
     def __init__(self, root, lane, image, owner, adapter):
         self.root, self.lane, self.image, self.owner, self.a = root, lane, image, owner, adapter
-        self.budget = Budget()
+        self.budget = Budget(HOST - SUPERVISOR_RESERVE)
         self.start = adapter.clock()
         self.phase_end = self.start + 120
         self.operations = {}
@@ -526,7 +532,8 @@ class Lifecycle:
         publish(self.root / 'evidence-hashes.json', {'files': inventory,
                 'exclusions': ['intent.slot', 'final.slot', 'evidence-hashes.json',
                                'handback.json', 'release-intent.json', 'supervisor-complete.json'],
-                'host_logical_charged': self.budget.used}, self.budget)
+                'host_logical_charged': self.budget.used,
+                'supervisor_reserved': SUPERVISOR_RESERVE, 'invocation_cap': HOST}, self.budget)
         F.require(self.a.clock() < final_end, 'STOP final publication budget')
         success = self.error is None and self.retained and all(o['state'] == 'TERMINAL' for o in self.operations.values())
         state = {'state': 'FINALIZATION-PENDING', 'owner': self.owner, 'objects': self.objects,
@@ -637,7 +644,7 @@ def supervise(root, target, *, factory=ForkWorker, clock=time.monotonic,
         # Spawn receipts preserve every observed local CLI PID/session; no remote inference.
         outcome['local_cli_spawn_receipts'] = sorted(p.name for p in root.glob('*.spawn.json'))
     try:
-        publish(root / 'supervisor-complete.json', outcome, Budget(F.META))
+        publish(root / 'supervisor-complete.json', outcome, Budget(SUPERVISOR_RESERVE))
     except BaseException:
         print(json.dumps(dict(outcome, state='SUPERVISOR-PUBLICATION-FAILED')), file=sys.stderr)
         return False

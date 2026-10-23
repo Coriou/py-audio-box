@@ -281,12 +281,15 @@ def capture(argv, outputs, deadline, *, env=None, observe=lambda: None):
         files = [stack.enter_context(private(p)) for p in outputs]
         p = subprocess.Popen(argv, cwd='/app', env=env, stdout=subprocess.PIPE,
                              stderr=subprocess.PIPE, start_new_session=True)
-        sel = stack.enter_context(selectors.DefaultSelector())
-        for index, stream in enumerate((p.stdout, p.stderr)):
+        # Own BOTH pipes before any fallible selector setup.
+        streams = [p.stdout, p.stderr]
+        for stream in streams:
             stack.callback(stream.close)
-            os.set_blocking(stream.fileno(), False)
-            sel.register(stream, selectors.EVENT_READ, index)
         try:
+            sel = stack.enter_context(selectors.DefaultSelector())
+            for index, stream in enumerate(streams):
+                os.set_blocking(stream.fileno(), False)
+                sel.register(stream, selectors.EVENT_READ, index)
             while sel.get_map() or p.poll() is None:
                 require(time.monotonic() < deadline, 'STOP remote capture timeout')
                 observe()
@@ -303,11 +306,11 @@ def capture(argv, outputs, deadline, *, env=None, observe=lambda: None):
             # Namespace descendant cleanup is performed by writer only after test ends.
             try:
                 os.killpg(p.pid, signal.SIGKILL)
-            except ProcessLookupError:
+            except BaseException:
                 pass
             try:
                 p.wait(timeout=0.1)
-            except subprocess.TimeoutExpired:
+            except BaseException:
                 pass
             raise
 
@@ -381,8 +384,9 @@ def writer(root, token, invocation):
                    PAB_MAINTENANCE_WAIT_LOG='/tmp/waits.jsonl')
         def observe():
             require(not monitor_error, 'STOP monitor error')
+        child_deadline = min(time.monotonic() + 1200, start + 1260)
         rc, pid = capture(ENTRY, [root / 'pytest.stdout', root / 'pytest.stderr'],
-                          start + 1260, env=env, observe=observe)
+                          child_deadline, env=env, observe=observe)
         state['child_pid'], state['pytest_exit'] = pid, rc
         require(not monitor_error, 'STOP monitor error')
         state['test_phase_finished'] = True
@@ -394,14 +398,17 @@ def writer(root, token, invocation):
         try:
             state['descendants'] = quiesce(min(start + 1290, time.monotonic() + 30))
             require(state['descendants']['complete'], 'STOP unresolved descendants')
+            post_deadline = min(time.monotonic() + 60, start + 1350)
             monitor_stop.set()
             if 'thread' in locals():
                 thread.join(timeout=1)
                 require(not thread.is_alive(), 'STOP unresolved monitor')
+            require(time.monotonic() < post_deadline, 'STOP postcheck phase overrun')
             state['maxima'] = maxima
             require(not monitor_error, 'STOP incomplete census')
             verify_source()
-            checked_program(['python', '-c', identity_program()], root / 'identity-after', start + 1350)
+            require(time.monotonic() < post_deadline, 'STOP postcheck phase overrun')
+            checked_program(['python', '-c', identity_program()], root / 'identity-after', post_deadline)
             require(read_regular(root / 'identity-before', META) == read_regular(root / 'identity-after', META),
                     'STOP identity drift')
             require(state.get('pytest_exit') == 1 and 'failure' not in state, 'STOP unexpected test lifecycle')
@@ -411,8 +418,13 @@ def writer(root, token, invocation):
             state['state'] = 'UNKNOWN' if not state.get('descendants', {}).get('complete') else 'STOP'
             state['terminal_failure'] = type(exc).__name__
         try:
+            # Publication belongs to the same phase, including failure publication.
+            if 'post_deadline' not in locals():
+                post_deadline = min(time.monotonic() + 60, start + 1350)
+            require(time.monotonic() < post_deadline, 'STOP publication phase overrun')
             state['elapsed'] = time.monotonic() - start
             slot_write(terminal, state)
+            require(time.monotonic() < post_deadline, 'STOP publication phase overrun')
         except BaseException:
             # Preallocated PENDING/torn slot remains authoritative uncertainty.
             state['state'] = 'UNKNOWN'

@@ -263,6 +263,56 @@ def _():
     fake.done()
 
 
+# F2 additions remain in the existing capture scenario group09.
+_old_capture_case = CASES[-1][1]
+def capture_setup_failures():
+    _old_capture_case()
+    for mode in ('spawn-publication', 'selector-constructor', 'first-register', 'set-blocking'):
+        r = fresh('host-setup-' + mode)
+        fake = Fake([(['FAKE', 'setup'], {'open_pipe': True})])
+        original = L.publish
+        def publication(path, value, budget):
+            if path.name.endswith('.spawn.json'):
+                raise OSError('FAKE spawn publication')
+            return original(path, value, budget)
+        hook = (patch.object(L, 'publish', publication) if mode == 'spawn-publication' else
+                patch.object(L.selectors, 'DefaultSelector', side_effect=OSError('FAKE constructor'))
+                if mode == 'selector-constructor' else
+                patch.object(L.selectors.DefaultSelector, 'register', side_effect=OSError('FAKE register'))
+                if mode == 'first-register' else
+                patch.object(os, 'set_blocking', side_effect=OSError('FAKE blocking')))
+        with hook:
+            expect(lambda: invoke(r, 'setup', fake))
+        receipt = json.loads((r / 'setup.complete.json').read_bytes())
+        check(receipt['state'] == 'UNKNOWN' and receipt['group_kill_attempted']
+              and receipt['leader_reaped'] and not receipt['remote_completion'], 'host failure latch')
+        check(len(fake.kills) == 1, 'host kill count')
+        fake.done()
+    for mode in ('selector-constructor', 'first-register', 'set-blocking'):
+        r = fresh('remote-setup-' + mode)
+        proc = Proc(open_pipe=True)
+        kills, waits = [], []
+        original_wait = proc.wait
+        def wait(timeout):
+            waits.append(timeout)
+            return original_wait(timeout)
+        hook = (patch.object(F.selectors, 'DefaultSelector', side_effect=OSError('FAKE constructor'))
+                if mode == 'selector-constructor' else
+                patch.object(F.selectors.DefaultSelector, 'register', side_effect=OSError('FAKE register'))
+                if mode == 'first-register' else
+                patch.object(os, 'set_blocking', side_effect=OSError('FAKE blocking')))
+        with patch.object(F.subprocess, 'Popen', return_value=proc), hook, \
+             patch.object(F.os, 'killpg', side_effect=lambda pid, sig: kills.append((pid, int(sig)))), \
+             patch.object(proc, 'wait', side_effect=wait):
+            expect(lambda: F.capture(['FAKE'], [r / 'out'], 10), message='FAKE')
+        check(kills == [(proc.pid, int(signal.SIGKILL))] and waits == [0.1], 'remote kill/reap')
+        observation = proc.observe()
+        OBSERVATIONS.append({'remote_setup': mode, 'kills': kills, 'waits': waits,
+                             'pre_rescue_fd_observations': [observation]})
+        proc.rescue()
+CASES[-1] = (CASES[-1][0], capture_setup_failures)
+
+
 @case('10-capture-write-failure')
 def _():
     r = fresh('writefail')
@@ -699,6 +749,75 @@ def _():
     check(not list(r.iterdir()), 'writer mutation before PID1 admission')
 
 
+_old_writer_case = CASES[-1][1]
+def writer_scheduling():
+    _old_writer_case()
+    # Execute the ACTUAL writer scheduling function; only environment/IO/child
+    # boundaries are fixtures. No synthetic replacement writer terminal is used.
+    for scenario in ('child-limit', 'post-limit', 'source-limit', 'publication-limit', 'success'):
+        r = fresh('schedule-' + scenario)
+        tick = [0.0]
+        captures, publications, quiescence = [], [], []
+        def now(): return tick[0]
+        def checked(argv, output, deadline):
+            if output.name == 'identity-before':
+                tick[0] = 5.0
+            else:
+                captures.append(('post', tick[0], deadline))
+                tick[0] += 60 if scenario == 'post-limit' else 1
+                F.require(tick[0] < deadline, 'STOP fixture checked timeout')
+        def capture(argv, outputs, deadline, **kw):
+            captures.append(('child', tick[0], deadline))
+            if scenario == 'child-limit':
+                tick[0] = deadline
+                F.require(tick[0] < deadline, 'STOP fixture child timeout')
+            tick[0] += 1
+            return 1, 42
+        source_calls = []
+        def verify():
+            source_calls.append(tick[0])
+            if len(source_calls) == 2 and scenario == 'source-limit': tick[0] += 61
+        def quiet(deadline):
+            quiescence.append(deadline)
+            return {'complete': True}
+        def write(path, state):
+            publications.append(dict(state))
+            if path.name == 'pab-terminal.slot' and scenario == 'publication-limit': tick[0] += 61
+        class Thread:
+            def __init__(self, **kw): pass
+            def start(self): pass
+            def join(self, timeout): check(timeout == 1, 'join bound')
+            def is_alive(self): return False
+        original_read = Path.read_text
+        def read(path, *a, **kw):
+            return 'MemAvailable: 8388608 kB' if str(path) == '/proc/meminfo' else original_read(path, *a, **kw)
+        with contextlib.ExitStack() as stack:
+            for obj, name, value in [(F.os, 'getpid', lambda: 1), (F.os, 'getuid', lambda: 10001),
+                    (F.os, 'getgid', lambda: 10001), (F.time, 'monotonic', now),
+                    (F.signal, 'signal', lambda *a: None), (F.signal, 'setitimer', lambda *a: None),
+                    (F, 'initialized', lambda *a: None), (F, 'slot_create', lambda *a: None),
+                    (F, 'slot_write', write), (F, 'verify_source', verify),
+                    (F, 'checked_program', checked), (F, 'capture', capture), (F, 'quiesce', quiet),
+                    (F, 'read_regular', lambda *a: b'identical'), (F.threading, 'Thread', Thread),
+                    (Path, 'read_text', read)]:
+                stack.enter_context(patch.object(obj, name, value))
+            result = F.writer(r, OWNER['token'], OWNER['invocation'])
+        check(captures[0] == ('child', 5.0, 1205.0), 'early precheck lent child time')
+        check(quiescence[0] <= 1290 and quiescence[0] <= (1205 if scenario == 'child-limit' else 6) + 30,
+              'quiesce allowance changed')
+        if scenario not in ('source-limit',):
+            post = captures[1]
+            check(post[2] == min(post[1] + 60, 1350), 'early child lent postcheck time')
+        check(result == (0 if scenario == 'success' else 1), 'phase overrun accepted')
+        if scenario in ('post-limit', 'source-limit'):
+            check(len(publications) == 1, 'publication after postcheck deadline')
+            check(not any(x.get('state') == 'TERMINAL' for x in publications), 'terminal after timeout')
+        OBSERVATIONS.append({'actual_writer_schedule': scenario, 'captures': captures,
+                             'quiesce_deadlines': quiescence, 'return': result,
+                             'publication_states': [x['state'] for x in publications]})
+CASES[-1] = (CASES[-1][0], writer_scheduling)
+
+
 def main():
     F.enabled()
     os.umask(0o077)
@@ -709,17 +828,12 @@ def main():
         check(len(sys.argv) == 3 and sys.argv[1] == '--repair-scope', 'HOST fixed repair arguments')
         prior = json.loads(F.read_regular(sys.argv[2], F.META))
         failed = {r['case'] for r in prior['cases'] if r['result'] == 'RED'}
-        # Explicit changed fix scope: corrected GID semantics and refreshed context binding.
-        affected = {'18-logical-accounting-exact-and-overflow', '20-monitor-deadline-error-pressure',
-                    '29-actual-source-context-private-copy-no-build',
-                    '17-host-low-space-no-dispatch',
-                    '21-stream-tar-valid-duplicate-escape-link-UID-truncation',
+        # F1/F2 plus supervisor budget reservation and fresh source binding.
+        affected = {'09-selector-failure', '32-writer-refuses-non-PID1-before-mutations',
                     '23-full-scripted-success-real-retention-and-handback',
-                    '24-lost-volume-create-ack-no-retry-hold',
-                    '25-lost-writer-start-ack-no-reader',
                     '26-stopped-writer-export-failure-preserves-volume',
-                    '27-remove-uncertainty-and-active-state',
                     '28-final-publication-failure-keeps-pending',
+                    '29-actual-source-context-private-copy-no-build',
                     '31-bounded-post-test-descendant-cleanup-fixtures'}
         selected = [(n, fn) for n, fn in CASES if n in failed | affected]
 
@@ -763,7 +877,7 @@ def main():
     receipt = {'tier': 'HOST-ONLY / FAKE EXTERNAL COMMANDS / NO PRODUCT CLAIM', 'root': str(ROOT),
                'python': sys.version, 'optimize': sys.flags.optimize, 'debug': __debug__, 'hashes': frozen,
                'maximum_scenarios': 32, 'maximum_seconds': 300, 'maximum_case_seconds': 9, 'cases': results, 'prior_receipt': sys.argv[2] if prior else None,
-               'scope': 'failed plus changed GID/copy binding cases' if prior else 'full fixed32',
+               'scope': 'F1/F2 plus supervisor reserve, latest full success/failure, source binding; prior RED retained' if prior else 'full fixed32',
                'seconds': time.monotonic() - start, 'fd_observations': OBSERVATIONS,
                'result': 'PASS' if all(r['result'] == 'PASS' for r in results) else 'RED',
                'actual_Docker_Git_mutations_product_imports_SQLite_pytest_network': 0,
