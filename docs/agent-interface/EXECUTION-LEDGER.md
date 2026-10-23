@@ -810,3 +810,8 @@ Record failures and missing evidence; do not replace them with a successful late
 
 - Candidatef0bfcc1f750c17ed126fdcf6c3ac620ce71f18cf source9d09a627 lifetime-bounded-core-20261023 remainsincompleteunintegrated.30developmentCorepasses1harnessfailure correctedunrerun; nextpytestCOLLECTIONnativeSIGSEGV stoppedallruntimework. RequiredRED/matrixmissing noGO.
 - Newordinaryenvironmenthealth lane inventorieslockedPython/runtime/packageintegrity andsmallstartup/import/collection controls, no crashgeneration/heap/allocator/GC/forkdiagnosis orblindbroadretry. No productionchanges/newversionacceptedbydefault. Preserveallnativeevidence/sourcepins; guard4ff62566alsoHOLDfreshhelperSIGSEGV.
+
+## Environment sanity PASS / isolated exact-version comparison preparation
+
+- reviews/P1B23-ENV-HEALTH-20261023.md sixboundedcommandsPASS all42pins/1713RECORDhashesmatch; no observedversion/packagecorruption. ThisisNOTnativeclearance orpermissionblindcampaignretry. Originalartifactarchiveprovenance incomplete.
+- Proceedisolatedprovenanceaudit andcomparisonvenv usingprojectDocker-pinnedCPython3.14.8 whereavailable, current3.14.7venvretaineduntouched. Necessaryowneddependency/interpreterprovisioningauthorizedundercurrenttask; no globals/locks/sourcechanges, no packagecrossminorloading. RecorddifferentDarwinbuildNOTsameLinuxDockerreceipt. Onlyordinaryhealth/collectioncontrols initially; no productacceptancecausalclaim.
