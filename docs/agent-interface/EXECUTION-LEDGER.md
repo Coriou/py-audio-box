@@ -1547,3 +1547,7 @@ r46 candidate t3-a31af448 guard4f04cdbc51bc13081f09bc3dd2205deb4e55fc99 docsbe8a
 ### 2026-10-24 — B guard source NO-GO B1; independent capability origin fix
 
 r47independentreviewfindsB1 currentcollectedcode selfauthorizesnestedtargetcapabilities (clockconstant100->1000 pre-capturemutation example), nootherconcreteblocker establishedstatic. Parentassigns freshsuccessor pab-b-capability-origin-fix-r48-20261024 independentfrozen-source nestedcode/lambda +rewrite-awareouterprovenance guard-onlyfix, no controls/runtime/manifestchanges. Parallelcontrolscontinueimmutableoldguard andwillneedB1mutationcoverage/rebase later. No sourceGO/runtimeauthority; r44strictnessunchanged.
+
+### 2026-10-24 — Independent-origin successor delivered; parent source gate
+
+r48 successor t3-eca7b725 exec920009f77521ea34fee8e277360708118110f391 docs2319745a372738b8558e8c14f1f13a7f1aef8903 guardhashe6009824 reports frozen-sourceallcapability+rewrite-awareouterprojection andstaticmutationrejection. ImplementernestedreviewGOreportedwithoutparentrootreceipt; parentdoesnotselfacceptclaim. Freshparentowned pab-b-origin-global-review-r49-20261024 launchedfullB1/positivecompatibility/preservationgate. Controls r47 stillworkingindifferentcheckout; no runtimeauthority.
