@@ -495,107 +495,268 @@ def test_P_ordered_armed_transcript(defect):
     'operation-failure', 'cleanup-value', 'cleanup-nonsemantic', 'cleanup-new-object',
     'changed-route', 'changed-attributes', 'wrong-final-caller', 'bad-offset',
     'bad-slice', 'frame-budget', 'pipe-mode', 'wrong-operation-code',
-    'missing-markers', 'signal11', 'foreign-owner', 'missing-done'])
+    'missing-markers', 'signal11', 'foreign-owner', 'missing-done', 'operation-value'])
 def test_P_durable_lost_result_fresh_contract(tmp_path, mode):
     nodeid = 'tests/service/test_recovery.py::test_t1_durable_completion_lost_result_no_false_success'
     node = SimpleNamespace(nodeid=nodeid, originalname=nodeid.split('::')[-1],
         callspec=SimpleNamespace(params={}))
     guard = harness.MaintenanceWaitGuard(node, SimpleNamespace(shouldstop=False))
     sentinel = tmp_path/'continued-P'
-    # All mutations belong to this helper's scoped fixture. No signal is sent.
+    proof = tmp_path/'directed-P'
+    proof.mkdir(mode=0o700)
+    # Evidence is bounded, test-owned, and separate from the receipt schema.
+    # Predicate-only: bad-offset/slice/frame-budget, durable-id,
+    # wrong-operation-code/final-caller. Real-route representatives remain below.
     body = r'''
-import os, sys, types, errno, pytest
+import os, sys, types, errno, stat, pytest
 from pathlib import Path
 from service import recovery
 import _maintenance_wait_guard as h
 mode = MODE
+steps = []
+proof_owner = os.getpid()
+def evidence(label):
+    global proof_owner, steps
+    if proof_owner != os.getpid():
+        proof_owner, steps = os.getpid(), []
+    assert label not in steps and len(steps) < 24
+    steps.append(label)
+    h.atomic(Path(PROOF)/(str(os.getpid())+'.json'), dict(mode=mode, steps=steps))
 class Plugin:
     @pytest.fixture(autouse=True)
-    def fault_P(self, request, monkeypatch):
+    def fault_P(self, request):
+        patch = pytest.MonkeyPatch()
         run = recovery._run_bounded_maintenance
         trace0 = sys.gettrace()
-        original_seam = h.DurableLostResultWitness_P.at_seam_P
-        original_exit = h.DurableLostResultWitness_P.at_exit_P
-        original_trace = h.DurableLostResultWitness_P.trace_P
-        if mode == 'wrong-node': h._CURRENT.node.nodeid = 'foreign::' + NODE
+        write0, exit0 = os.write, os._exit
+        cls = h.DurableLostResultWitness_P
+        original_init, original_clear = cls.__init__, cls.clear_P
+        original_seam, original_exit, original_trace = cls.at_seam_P, cls.at_exit_P, cls.trace_P
+        original_continue = recovery._MaintenanceSession.continue_kernel
+        original_locked = recovery._prepare_abandon_locked
+        replacements = {}
+        predicate = {'durable-id', 'bad-offset', 'bad-slice', 'frame-budget', 'wrong-operation-code'}
+        cleanup = {'cleanup-value', 'cleanup-nonsemantic', 'cleanup-new-object', 'changed-route'}
+        fd_modes = {'wrong-fd', 'reused-fd', 'witness-pipe', 'pipe-mode'}
+        if mode == 'wrong-node':
+            h._CURRENT.node.nodeid = 'foreign::' + NODE
+            assert h._CURRENT.node.nodeid == 'foreign::' + NODE
+            evidence('node-mutated')
         if mode == 'wrong-collected':
             h._CURRENT.node.obj = lambda: None
-        def seam(self, exc, frame):
-            if mode == 'durable-id' and self.completed is not None:
-                self.completed = (*self.completed[:2], '0'*32)
-            if mode == 'bad-offset': frame.f_locals['offset'] = len(frame.f_locals['raw'])
-            if mode == 'frame-budget': frame.f_locals['raw'] = bytearray(1048577)
-            if mode == 'bad-slice' and exc.__traceback__.tb_next is not None:
+            assert h._CURRENT.node.obj.__code__ is not sys.modules['test_recovery'].test_t1_durable_completion_lost_result_no_false_success.__code__
+            evidence('collected-mutated')
+        def init(witness, *a, **kw):
+            original_init(witness, *a, **kw)
+            assert witness.eligible
+            invalid = mode in {'wrong-code', 'wrong-node', 'wrong-collected', 'operation-failure', 'operation-value'}
+            assert witness.valid is not invalid
+            evidence('armed-invalid' if invalid else 'armed-valid')
+        patch.setattr(cls, '__init__', init)
+        def trace(witness, frame, event, arg):
+            if frame.f_code is witness.continuation and event == 'call':
+                evidence('continuation-enter')
+            answer = original_trace(witness, frame, event, arg)
+            if frame.f_code is witness.continuation and event == 'return' and witness.completed is not None:
+                assert witness.valid is (mode not in {'wrong-node', 'wrong-collected'})
+                evidence('completed')
+            if frame.f_code is witness.finish and event == 'return' and witness.completed is not None:
+                assert witness.valid is (mode not in {'wrong-node', 'wrong-collected'})
+                assert witness.sentinel_P.read_text() == witness.completed[2]
+                evidence('finish')
+            return trace.__get__(witness, cls) if answer is not None else None
+        patch.setattr(cls, 'trace_P', trace)
+        def probe(witness, exc, frame):
+            saved = witness.exception, witness.route
+            try: return original_seam(witness, exc, frame)
+            finally: witness.exception, witness.route = saved
+        def post_seam(exc):
+            # This raise escapes the trace callback into the ORIGINAL runner's
+            # catch-all. It occurs after the genuine result-write seam, after
+            # session exit. It deliberately invalidates the route even when the
+            # same object is reraised; no arbitrary-route acceptance is added.
+            try: raise exc
+            finally:
+                if mode != 'changed-route': raise replacements['final']
+        def seam(witness, exc, frame):
+            if frame.f_locals.get('pid') != 0:
+                assert not original_seam(witness, exc, frame)
+                return False  # Parent refusal is not the child's write seam.
+            assert frame is witness.runner_frame
+            if mode in {'wrong-code', 'operation-failure', 'operation-value', 'precompletion'}:
+                assert witness.completed is None and witness.exception is None
+                assert type(exc) is (ValueError if mode in {'wrong-code', 'operation-value'} else BrokenPipeError)
+                assert not original_seam(witness, exc, frame)
+                evidence('early-seam-rejected')
+                return False
+            if mode in predicate or mode in cleanup:
+                assert probe(witness, exc, frame)
+                evidence('baseline-seam')
+            if mode == 'durable-id':
+                witness.completed = (*witness.completed[:2], '0'*32)
+                assert witness.completed[2] != witness.completed[1]['intent']['id']
+            if mode == 'bad-offset':
+                frame.f_locals['offset'] = len(frame.f_locals['raw'])
+                assert frame.f_locals['offset'] == len(frame.f_locals['raw'])
+            if mode == 'frame-budget':
+                frame.f_locals['raw'] = bytearray(1048577)
+                assert len(frame.f_locals['raw']) == 1048577
+            if mode == 'bad-slice':
                 inner = exc.__traceback__.tb_next.tb_frame
                 inner.f_locals['a'] = (frame.f_locals['write_fd'], memoryview(b'wrong slice'))
-            if mode == 'pipe-mode' and self.result_identity is not None:
-                self.result_identity = (*self.result_identity[:3], os.O_RDONLY)
-            if mode == 'wrong-operation-code': self.prepare_code = seam.__code__
-            result = original_seam(self, exc, frame)
+                assert bytes(inner.f_locals['a'][1]) == b'wrong slice'
+                assert inner.f_locals['a'][1].obj is not frame.f_locals['raw']
+            if mode == 'wrong-operation-code':
+                witness.prepare_code = seam.__code__
+                assert witness.prepare_code is not frame.f_locals['operation'].__code__
+            if mode in predicate: evidence('predicate-mutated')
+            result = original_seam(witness, exc, frame)
+            if mode in cleanup:
+                assert result and witness.exception is exc
+                witness.emit_P(witness.seam)
+                evidence('seam')
+                replacements['original'] = exc
+                replacements['final'] = (ValueError('P cleanup') if mode == 'cleanup-value' else
+                    RuntimeError('P cleanup') if mode == 'cleanup-nonsemantic' else
+                    BrokenPipeError(*exc.args) if mode == 'cleanup-new-object' else exc)
+                assert (replacements['final'] is exc) == (mode == 'changed-route')
+                evidence('unwind-mutated')
+                post_seam(exc)
+            rejected = mode in predicate | fd_modes | {
+                'wrong-class', 'subclass', 'wrong-args', 'real-EPIPE', 'missing-sentinel',
+                'wrong-node', 'wrong-collected'}
+            if rejected:
+                assert not result
+                evidence('seam-rejected')
+            else:
+                assert result
+                evidence('seam')
             return result
-        monkeypatch.setattr(h.DurableLostResultWitness_P, 'at_seam_P', seam)
-        def final(self, exc, caller):
-            if mode == 'changed-attributes' and exc is not None: exc.args = ('changed',)
-            if mode == 'wrong-final-caller': caller = sys._getframe()
-            if mode in ('cleanup-value', 'cleanup-nonsemantic', 'cleanup-new-object', 'changed-route') and self.exception is not None:
-                # Actual raise/unwind after the seam, before final attestation.
-                # This is a test-owned exit observer cleanup, not a fabricated
-                # serialized record; sys.exception() exposes the replacement.
-                try:
-                    try: raise exc
-                    finally:
-                        if mode == 'cleanup-value': raise ValueError('P cleanup')
-                        if mode == 'cleanup-nonsemantic': raise RuntimeError('P cleanup')
-                        if mode == 'cleanup-new-object': raise BrokenPipeError(*exc.args)
-                except BaseException:
-                    if type(sys.exception()) is ValueError: self.emit_P(b'V')
-                    return original_exit(self, sys.exception(), caller)
-            return original_exit(self, exc, caller)
-        monkeypatch.setattr(h.DurableLostResultWitness_P, 'at_exit_P', final)
+        patch.setattr(cls, 'at_seam_P', seam)
+        def final(witness, exc, caller):
+            # observed_exit reads sys.exception itself; this audit only verifies
+            # that real active object/caller, except the labelled predicate probe.
+            assert sys.exception() is exc and caller is witness.runner_frame
+            if mode in cleanup:
+                assert exc is replacements['final']
+                assert (exc is witness.exception) == (mode == 'changed-route')
+                if mode == 'changed-route':
+                    route, tb = [], exc.__traceback__
+                    while tb is not None:
+                        route.append((tb.tb_frame, tb.tb_lasti)); tb = tb.tb_next
+                    assert tuple(route) != witness.route
+                evidence('final-identity')
+            if mode == 'changed-attributes':
+                assert exc is witness.exception and exc.args == ('modeled lost result pipe',)
+                exc.args = ('changed',)
+                assert exc.args == ('changed',)
+                evidence('attributes-mutated')
+            if mode == 'wrong-final-caller':
+                assert original_exit(witness, exc, caller) == witness.final
+                caller = sys._getframe()  # Predicate-only; changed-route is real.
+                evidence('caller-predicate-mutated')
+            answer = original_exit(witness, exc, caller)
+            accepted = mode in {'normal', 'missing-markers', 'signal11', 'foreign-owner', 'missing-done'}
+            assert answer == (witness.final if accepted else b'')
+            evidence('final-accepted' if accepted else 'final-rejected')
+            return answer
+        patch.setattr(cls, 'at_exit_P', final)
+        def clear(witness):
+            original_clear(witness)
+            assert witness.exception is witness.route is witness.completed is witness.runner_frame is witness.sentinel_P is None
+            replacements.clear()
+            evidence('references-cleared')
+        patch.setattr(cls, 'clear_P', clear)
         def changed_run(roots, scope, operation, **kw):
             installed = recovery._prepare_abandon_locked
-            if mode in ('wrong-class', 'subclass', 'wrong-args', 'real-EPIPE', 'wrong-fd', 'reused-fd', 'witness-pipe', 'operation-failure', 'missing-sentinel'):
+            if mode in {'wrong-class', 'subclass', 'wrong-args', 'real-EPIPE', 'missing-sentinel'} | fd_modes:
                 class SubPipe(BrokenPipeError): pass
                 def error(*args):
                     broken_frame = sys._getframe(1)
                     runner = broken_frame.f_back
-                    fd = runner.f_locals.get('write_fd')
+                    witness = sys.gettrace().__self__
+                    assert runner is witness.runner_frame and witness.valid
+                    assert witness.completed is not None and witness.sentinel_P.read_text() == witness.completed[2]
+                    fd = runner.f_locals['write_fd']
+                    old = witness.pipe_identity(fd)
+                    witness_identity = witness.pipe_identity(witness.witness_fd)
+                    assert old == witness.result_identity and old != witness_identity
+                    assert runner.f_locals['identities'][fd] == old
+                    write_args = broken_frame.f_locals['a']
+                    assert write_args[0] == fd and write_args[1].obj is runner.f_locals['raw']
+                    assert bytes(write_args[1]) == runner.f_locals['raw'][runner.f_locals['offset']:runner.f_locals['offset']+65536]
+                    evidence('error-factory-reached')
                     if mode == 'missing-sentinel':
-                        installed.__closure__[installed.__code__.co_freevars.index('tmp_path')].cell_contents.joinpath('durable-completion').unlink()
-                    if mode in ('wrong-fd', 'reused-fd', 'witness-pipe'):
-                        # Change the actual enrolled number's identity before
-                        # the modeled error; a numeric match must not suffice.
-                        if mode == 'wrong-fd':
-                            other = os.open('/dev/null', os.O_WRONLY)
-                        elif mode == 'witness-pipe':
-                            other = os.dup(sys.gettrace().__self__.witness_fd)
+                        witness.sentinel_P.unlink()
+                        assert not witness.sentinel_P.exists()
+                    if mode in fd_modes:
+                        if mode == 'wrong-fd': other = os.open('/dev/null', os.O_WRONLY)
+                        elif mode == 'witness-pipe': other = os.dup(witness.witness_fd)
                         else:
-                            r, other = os.pipe(); os.close(r)
-                        os.dup2(other, fd); os.close(other)
-                    if mode == 'wrong-class': return ValueError(*args)
-                    if mode == 'subclass': return SubPipe(*args)
-                    if mode == 'wrong-args': return BrokenPipeError('different')
-                    if mode == 'real-EPIPE': return BrokenPipeError(errno.EPIPE, 'modeled lost result pipe')
-                    return BrokenPipeError(*args)
+                            read, write = os.pipe()
+                            other = read if mode == 'pipe-mode' else write
+                            os.close(write if mode == 'pipe-mode' else read)
+                        try:
+                            replacement = witness.pipe_identity(other)
+                            assert replacement != old
+                            assert replacement[3] == (os.O_RDONLY if mode == 'pipe-mode' else os.O_WRONLY)
+                            assert stat.S_ISCHR(replacement[2]) if mode == 'wrong-fd' else stat.S_ISFIFO(replacement[2])
+                            assert (replacement == witness_identity) == (mode == 'witness-pipe')
+                            os.dup2(other, fd)
+                            assert witness.pipe_identity(fd) == replacement
+                            assert (replacement[:2] != old[:2])
+                            assert witness.result_identity == old
+                            assert witness.pipe_identity(witness.witness_fd) == witness_identity
+                        finally: os.close(other)
+                        with pytest.raises(OSError) as closed: os.fstat(other)
+                        assert closed.value.errno == errno.EBADF
+                        evidence('fd-mutated-and-temp-closed')
+                    replacement = (ValueError(*args) if mode == 'wrong-class' else
+                        SubPipe(*args) if mode == 'subclass' else
+                        BrokenPipeError('different') if mode == 'wrong-args' else
+                        BrokenPipeError(errno.EPIPE, 'modeled lost result pipe') if mode == 'real-EPIPE' else
+                        BrokenPipeError(*args))
+                    if mode == 'wrong-class': assert type(replacement) is ValueError
+                    if mode == 'subclass': assert type(replacement) is SubPipe
+                    if mode == 'wrong-args': assert replacement.args == ('different',)
+                    if mode == 'real-EPIPE': assert replacement.errno == errno.EPIPE
+                    evidence('error-mutated')
+                    return replacement
                 changed = types.FunctionType(installed.__code__,
                     {**installed.__globals__, 'BrokenPipeError': error},
                     installed.__name__, installed.__defaults__, installed.__closure__)
-                monkeypatch.setattr(recovery, '_prepare_abandon_locked', changed)
+                assert changed.__code__ is installed.__code__
+                patch.setattr(recovery, '_prepare_abandon_locked', changed)
             if mode == 'wrong-code':
-                def wrong(*a, **k): raise ValueError('wrong installed operation')
-                monkeypatch.setattr(recovery, '_prepare_abandon_locked', wrong)
-            if mode in ('precompletion', 'operation-failure'):
-                def early(*a, **k): raise BrokenPipeError('modeled lost result pipe')
-                monkeypatch.setattr(recovery._MaintenanceSession, 'continue_kernel', early)
+                def wrong(*a, **k):
+                    evidence('installed-operation-reached')
+                    raise ValueError('wrong installed operation')
+                patch.setattr(recovery, '_prepare_abandon_locked', wrong)
+            if mode == 'precompletion':
+                def early(session, intent, *, prepared):
+                    assert prepared._session is session and not prepared._used
+                    evidence('continuation-precompletion-reached')
+                    raise BrokenPipeError('modeled lost result pipe')
+                patch.setattr(recovery._MaintenanceSession, 'continue_kernel', early)
+            if mode in {'operation-failure', 'operation-value'}:
+                def outer(value):
+                    assert value._live
+                    evidence('outer-operation-reached')
+                    if mode == 'operation-value': raise ValueError('malformed actual operation')
+                    raise BrokenPipeError('modeled lost result pipe')
+                assert outer.__code__ is not operation.__code__
+                operation = outer  # Actual callable, before parent arming.
             return run(roots, scope, operation, **kw)
-        monkeypatch.setattr(recovery, '_run_bounded_maintenance', changed_run)
+        patch.setattr(recovery, '_run_bounded_maintenance', changed_run)
         if mode in ('missing-markers', 'signal11'):
             observe = h._CURRENT.observe
             def changed(result, **kw):
+                assert result[1] == 74 << 8 and kw['witness'] == b'P:a;P:s;P:f;' and kw['armed_P']
                 if mode == 'missing-markers': kw['witness'] = b'V'
-                if mode == 'signal11': result = (result[0], 11)  # synthetic observer only
+                if mode == 'signal11': result = (result[0], 11)  # Synthetic observer only.
+                evidence('observer-mutated')
                 return observe(result, **kw)
-            monkeypatch.setattr(h._CURRENT, 'observe', changed)
+            patch.setattr(h._CURRENT, 'observe', changed)
         if mode == 'foreign-owner':
             event = h._CURRENT.event
             def foreign(kind, **data):
@@ -604,41 +765,109 @@ class Plugin:
                     h.atomic(h._CURRENT.directory/f'{os.getpid()}-{h._CURRENT.sequence}.json',
                         dict(kind=kind, owner=os.getpid()+100000, **data))
                 else: event(kind, **data)
-            monkeypatch.setattr(h._CURRENT, 'event', foreign)
+            patch.setattr(h._CURRENT, 'event', foreign)
         if mode == 'missing-done':
             atomic = h.atomic
             def missing(path, value):
                 if path.name != 'done.json': return atomic(path, value)
-            h.atomic = missing
-        yield
-        assert sys.gettrace() is trace0
+            h.atomic = missing  # Through bootstrap atexit; local helper only.
+        try: yield
+        finally:
+            patch.undo()
+            assert sys.gettrace() is trace0 and os.write is write0 and os._exit is exit0
+            assert cls.__init__ is original_init and cls.at_seam_P is original_seam
+            assert cls.at_exit_P is original_exit and cls.trace_P is original_trace and cls.clear_P is original_clear
+            assert recovery._MaintenanceSession.continue_kernel is original_continue
+            assert recovery._prepare_abandon_locked is original_locked
+            evidence('hooks-restored')
 result = pytest.main(['--noconftest', '-p', 'no:cacheprovider', NODE,
     '-q', '-rs', '-x', '--basetemp='+BASE], plugins=[Plugin()])
 if h._CURRENT.failures:
     assert h._CURRENT.session.shouldstop
     with pytest.raises(pytest.exit.Exception):
         recovery._run_bounded_maintenance({}, {}, lambda value: True)
+    evidence('next-maintenance-refused')
     raise SystemExit(86)
 assert result == 0
 Path(SENTINEL).write_text('continued')
-'''.replace('MODE', repr(mode)).replace('NODE', repr(nodeid)).replace('BASE', repr(str(tmp_path/'inner-P'))).replace('SENTINEL', repr(str(sentinel)))
+'''.replace('MODE', repr(mode)).replace('NODE', repr(nodeid)).replace('BASE', repr(str(tmp_path/'inner-P'))).replace('SENTINEL', repr(str(sentinel))).replace('PROOF', repr(str(proof)))
+    aggregation = mode in ('foreign-owner', 'missing-done')
     with harness.activate(guard, tmp_path/'helpers-P'):
         result = harness.fresh_run([sys.executable, '-c', body], capture_output=True, text=True, timeout=30)
         if mode == 'normal':
             assert result.returncode == 0, result.stdout + result.stderr
             assert sentinel.exists() and not guard.failures
-            # Actual lost-result wait plus actual successful observational replay.
-            assert [status for _, status in guard.receipts] == [74 << 8, 0]
+            # _kfifth_fresh launches TWO genuine checked observational replays.
+            assert [status for _, status in guard.receipts] == [74 << 8, 0, 0]
         else:
+            assert result.returncode == (0 if aggregation else 86), result.stdout + result.stderr
             assert guard.failures and guard.session.shouldstop, result.stdout + result.stderr
             with pytest.raises(RuntimeError):
                 harness.fresh_run([sys.executable, '-c', 'raise AssertionError("must not launch")'])
+            assert sentinel.exists() is aggregation
     directory, = (tmp_path/'helpers-P').glob('helper-*')
     events = [json.loads(p.read_text()) for p in directory.glob('[0-9]*.json')]
     terminals = [e for e in events if e['kind'] == 'terminal']
+    assert len(terminals) == 1
+    terminal, = terminals
+    positive = mode == 'normal' or aggregation
+    phase = ('P:a;P:s;P:f;' if positive or mode == 'signal11' else
+        'V' if mode == 'missing-markers' else
+        'P:a;V:operation;V:session;' if mode in ('wrong-code', 'operation-value') else
+        'P:a;P:s;' if mode.startswith('cleanup-') or mode in ('changed-route', 'changed-attributes', 'wrong-final-caller') else 'P:a;')
+    assert terminal['phase'] == phase
+    assert terminal['status'] == (11 if mode == 'signal11' else 74 << 8)
+    assert terminal['accepted'] is positive
     if mode == 'normal':
-        assert [e['phase'] for e in terminals] == ['P:a;P:s;P:f;', '']
-        assert all(e['accepted'] for e in terminals)
+        nested = list((directory/'nested').glob('helper-*'))
+        assert len(nested) == 2
+        for child in nested:
+            rows = [json.loads(p.read_text()) for p in child.glob('[0-9]*.json')]
+            wait, = [e for e in rows if e['kind'] == 'terminal']
+            assert wait['phase'] == '' and wait['status'] == 0 and wait['accepted']
+            assert json.loads((child/'ack.json').read_text()) == json.loads((child/'done.json').read_text())
     if mode.startswith('cleanup-') or mode == 'changed-route':
         assert 'P:s;' in terminals[0]['phase'] and 'P:f;' not in terminals[0]['phase']
         assert not terminals[0]['accepted']
+    if not positive:
+        failure, = [e for e in events if e['kind'] == 'failure']
+        assert failure['message'].endswith('incomplete or invalid armed P contract')
+    if mode == 'foreign-owner':
+        ack = json.loads((directory/'ack.json').read_text())
+        pair = [e for e in events if e['kind'] in ('enroll', 'terminal')]
+        assert len(pair) == 2 and {e['owner'] for e in pair} == {ack['pid']+100000}
+        assert {e['pid'] for e in pair} == {terminal['pid']}
+        assert (directory/'done.json').exists()
+        assert len(guard.failures) == 1 and guard.failures[0].endswith('fresh helper receipt failure: foreign helper event owner')
+    if mode == 'missing-done':
+        # Demand the precise unchanged aggregator failure, not an arbitrary RED.
+        assert not (directory/'done.json').exists()
+        with pytest.raises(FileNotFoundError) as absent:
+            harness.aggregate(directory, json.loads((directory/'ack.json').read_text()))
+        assert guard.failures == [nodeid + ': fresh helper receipt failure: ' + str(absent.value)[:1024]]
+    records = [json.loads(p.read_text()) for p in proof.glob('*.json')]
+    assert len(records) == 2 and all(r['mode'] == mode for r in records)
+    parent, = [r['steps'] for r in records if 'hooks-restored' in r['steps']]
+    child, = [r['steps'] for r in records if 'final-accepted' in r['steps'] or 'final-rejected' in r['steps']]
+    invalid = mode in ('wrong-code', 'wrong-node', 'wrong-collected', 'operation-failure', 'operation-value')
+    assert parent == (['node-mutated'] if mode == 'wrong-node' else ['collected-mutated'] if mode == 'wrong-collected' else []) + [('armed-invalid' if invalid else 'armed-valid')] + (['observer-mutated'] if mode in ('missing-markers', 'signal11') else []) + ['references-cleared', 'hooks-restored'] + ([] if positive else ['next-maintenance-refused'])
+    early = {'wrong-code': 'installed-operation-reached', 'operation-value': 'outer-operation-reached',
+        'operation-failure': 'outer-operation-reached', 'precompletion': 'continuation-precompletion-reached'}
+    if mode in early:
+        assert child == [early[mode], 'early-seam-rejected', 'final-rejected']
+    else:
+        expected = ['continuation-enter', 'completed', 'finish']
+        fd_modes = {'wrong-fd', 'reused-fd', 'witness-pipe', 'pipe-mode'}
+        error_modes = fd_modes | {'wrong-class', 'subclass', 'wrong-args', 'real-EPIPE', 'missing-sentinel'}
+        predicates = {'durable-id', 'bad-offset', 'bad-slice', 'frame-budget', 'wrong-operation-code'}
+        cleanup = mode.startswith('cleanup-') or mode == 'changed-route'
+        if mode in error_modes:
+            expected += ['error-factory-reached'] + (['fd-mutated-and-temp-closed'] if mode in fd_modes else []) + ['error-mutated']
+        if mode in predicates or cleanup: expected += ['baseline-seam']
+        if mode in predicates: expected += ['predicate-mutated']
+        expected += ['seam-rejected' if mode in error_modes | predicates | {'wrong-node', 'wrong-collected'} else 'seam']
+        if cleanup: expected += ['unwind-mutated', 'final-identity']
+        if mode == 'changed-attributes': expected += ['attributes-mutated']
+        if mode == 'wrong-final-caller': expected += ['caller-predicate-mutated']
+        expected += ['final-accepted' if positive or mode in ('missing-markers', 'signal11') else 'final-rejected']
+        assert child == expected

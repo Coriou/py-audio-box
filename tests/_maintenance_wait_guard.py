@@ -275,7 +275,7 @@ class ModeledRehearsalCompletionWitness:
 class DurableLostResultWitness_P:
     armed, seam, final = b'P:a;', b'P:s;', b'P:f;'
 
-    def __init__(self, node, installed, runner, continuation, prepare_code, witness_fd, operation_code):
+    def __init__(self, node, installed, runner, continuation, prepare_code, witness_fd, operation_code, *, replay=False):
         self.runner, self.continuation = runner, continuation
         self.witness_fd = witness_fd
         self.exception = self.route = self.completed = self.runner_frame = None
@@ -283,19 +283,26 @@ class DurableLostResultWitness_P:
         self.valid = True
         module = sys.modules.get('test_recovery')
         function = getattr(module, 'test_t1_durable_completion_lost_result_no_false_success', None)
-        self.eligible = (
-            node.originalname == 'test_t1_durable_completion_lost_result_no_false_success' and
-            node.nodeid == 'tests/service/test_recovery.py::test_t1_durable_completion_lost_result_no_false_success' and
-            operation_code is prepare_code and prepare_code is not None and
-            getattr(getattr(node, 'callspec', None), 'params', {}) == {})
+        name = 'test_t1_durable_completion_lost_result_no_false_success'
+        # Designation and validation are independent: malformed collected/node/
+        # operation identity cannot turn a designated failure into legacy V.
+        self.eligible = not replay and (node.originalname == name or
+            node.nodeid == 'tests/service/test_recovery.py::' + name or
+            getattr(node, 'obj', None) is function and function is not None)
         self.finish = self.broken = None
-        if self.eligible and function is not None and getattr(node, 'obj', function) is function:
+        if function is not None:
             codes = [c for c in function.__code__.co_consts if isinstance(c, type(function.__code__)) and c.co_name == 'finish_then_lose']
             if len(codes) == 1:
                 self.finish = codes[0]
                 codes = [c for c in self.finish.co_consts if isinstance(c, type(self.finish)) and c.co_name == 'broken']
                 if len(codes) == 1: self.broken = codes[0]
-        self.valid = self.finish is not None and self.broken is not None and getattr(installed, '__code__', None) is self.finish
+        self.valid = (self.eligible and node.originalname == name and
+            node.nodeid == 'tests/service/test_recovery.py::' + name and
+            getattr(getattr(node, 'callspec', None), 'params', {}) == {} and
+            function is not None and getattr(node, 'obj', function) is function and
+            self.finish is not None and self.broken is not None and
+            getattr(installed, '__code__', None) is self.finish and
+            prepare_code is not None and operation_code is prepare_code)
         # The exact _prepare_abandon lambda is the only allowed runner operation.
         self.prepare_code = prepare_code
         self.write_offsets = self.call_offsets(runner, 'write')
@@ -303,6 +310,30 @@ class DurableLostResultWitness_P:
         import dis
         self.raise_offsets = frozenset(i.offset for i in dis.get_instructions(self.broken)
             if i.opname == 'RAISE_VARARGS') if self.broken is not None else frozenset()
+
+    @staticmethod
+    def replay_P(operation, installed, original_locked, caller):
+        # Positive exclusion for the actual checked _kfifth_fresh subprocess.
+        # Compare its actual module-owned code constant to the unchanged source
+        # literal, not just a function name/filename or "not preparation".
+        if (installed is not original_locked or caller.f_code.co_name != '<module>' or
+                caller.f_globals.get('resume') is not operation or
+                getattr(operation, '__globals__', None) is not caller.f_globals or
+                not any(c is getattr(operation, '__code__', None) for c in caller.f_code.co_consts)):
+            return False
+        import ast
+        try:
+            source = Path(__file__).parent / 'service' / 'test_recovery.py'
+            tree = ast.parse(source.read_bytes())
+            literals = [n.value for n in tree.body if isinstance(n, ast.Assign) and
+                any(isinstance(t, ast.Name) and t.id == '_KPRE_FRESH' for t in n.targets)]
+            if len(literals) != 1: return False
+            # fresh_run prepends exactly one bootstrap source line.
+            code = compile('\n' + ast.literal_eval(literals[0]), '<string>', 'exec')
+            candidates = [c for c in code.co_consts if isinstance(c, type(code)) and c.co_name == 'resume']
+            return len(candidates) == 1 and operation.__code__ == candidates[0]
+        except (OSError, SyntaxError, ValueError, TypeError):
+            return False  # No replay exemption on unavailable/malformed source.
 
     @staticmethod
     def call_offsets(code, attribute):
@@ -434,6 +465,7 @@ class DurableLostResultWitness_P:
 def install(request, monkeypatch, guard):
     from service import recovery
     run, fork, wait = recovery._run_bounded_maintenance, os.fork, os.waitpid
+    original_locked_P = recovery._prepare_abandon_locked
     continuation_P = recovery._MaintenanceSession.continue_kernel.__code__
     prepare_P = [c for c in recovery._prepare_abandon.__code__.co_consts
         if isinstance(c, type(run.__code__)) and c.co_name == '<lambda>']
@@ -487,13 +519,16 @@ def install(request, monkeypatch, guard):
     def guarded_run(roots, scope, operation, **kwargs):
         if guard.failures:
             pytest.exit(guard.failures[0], returncode=2)
+        replay_P = (request.node.originalname == 'test_t1_durable_completion_lost_result_no_false_success' or
+            request.node.nodeid == 'tests/service/test_recovery.py::test_t1_durable_completion_lost_result_no_false_success') and DurableLostResultWitness_P.replay_P(
+                operation, recovery._prepare_abandon_locked, original_locked_P, sys._getframe(1))
         r, w = pipe()
         os.set_blocking(r, False)
         state.update(active=True, read=r, write=w, witness=b'', enrolling=True)
         sent = set()
         lost_P = DurableLostResultWitness_P(request.node, recovery._prepare_abandon_locked,
             run.__code__, continuation_P, prepare_P[0] if len(prepare_P) == 1 else None, w,
-            getattr(operation, '__code__', None))
+            getattr(operation, '__code__', None), replay=replay_P)
         trace_P = sys.gettrace()
         completion = recovery._write_core_completion
         modeled = ModeledRehearsalCompletionWitness(request.node, roots,
@@ -509,8 +544,8 @@ def install(request, monkeypatch, guard):
                 sent.add(data)
                 write(w, data)
         lost_P.emit_P = mark
-        # Arm in the parent, before the child or any fault; the replay has no
-        # installed collected finish_then_lose and therefore stays unarmed.
+        # Arm designation before risk even when validation has already failed.
+        # Only the positively bound checked replay is excluded above.
         state['armed_P'] = lost_P.eligible
         if lost_P.eligible: state['witness'] = lost_P.armed
         # This witness is emitted only by the actual protected read, before the
