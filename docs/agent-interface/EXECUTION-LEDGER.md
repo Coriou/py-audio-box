@@ -862,3 +862,8 @@ Record failures and missing evidence; do not replace them with a successful late
 
 - Candidate64ba8aed40638facb89b9aeba7347e25d9a42314 frozen6068050c t3-03fb4dda; reconstructedguardbase6b7b17f, productionunchanged. Newdelta A/B+adjacentcontrols only,253unrelateddefinitions preserved perhandoff. No runtimepasses: invalidDockerfile FROMrawimageID causedbuildfailurebeforecontainer/pytest. Originalevidence retained; lane released.
 - Parentauthorizes correctedtemporarysourceCOPYsetup with ownedlocaltag verifiedagainstexistingexactimagea3c9aa08 (no pull/install), and FIRST frozenA/B+controls gate by freshindependentSol-low `pab-sqlite-cap-witness-review-r1-20261023`. READONLYcandidate full-diffreview first; stopunexpectedtestresult/no retry/counttuning. Solewrite independentreport. Cap/integration HOLDpendingactualreceipts/review/acceptance; no broadcampaign yet.
+
+## Cap independent source GO / actual32PASS / receipt retention correction
+
+- `reviews/P1B23-SQLITE-CAP-WITNESS-r1-sol.md` exact64ba8aed/source6068050c: sourceGO,32testsPASS includingrealA COMMIT778after56commits andBfinalcheckpoint778after48+20rows, mandatorycleanupmarkers. No blockingcodefinding. AcceptanceNO-GO E1reviewerprocedure: docker cp /tmp missedmountedtmpfs andrawreceipts/fixtureslostafterremoval; stdoutpreservednotcompletepackage. No testfailure/nativeissue.
+- Parentauthorizes ONEsamefrozenselectionrepeat solelyrawreceiptcollection, `pab-sqlite-cap-receipt-gate-r2-20261023`: livecontainer tarstream, sentinelpreflight, archiveinventory/ownerbindings verifiedBEFOREremoval, no secondpytestinvocation/testchanges. Existingexactderivedimagee9ef5738 reused. Preserveoldincompleteproof; capacceptance/combinedbroadgates stillpending.
