@@ -746,3 +746,7 @@ Record failures and missing evidence; do not replace them with a successful late
 
 - reviews/P1B23-T2-RUNTIME-20261023.md confirms3nativeSIGSEGVexecutions inclboundedowning-only29case sequence status11; negativeexpectedValueError maskednativecrashaspytestPASS. Sixfresh2casecandidate/rootruns pass NOTclearance. Independentpositiveexit74causeunknown; rootsequence notyetexecutedafterstop. No source/envfix selected.
 - NextreadonlySol-low baselinefirst23row reduction +minimalwait-only signalstop/debugallocator diagnostic and V2UTF8/V3SHMlifetime evidence; no broadcampaign. TargetedAstra causal/lifetimeanalysis ofallreports/traces helpsselectresponsiblefixonlywithproof. No GCdisable/envswitch/exceptionbroadeningwaiver; candidate1d741cb remainsunintegratedNO-GO.
+
+## Runtime R2 provider rejection / no diagnostic receipt
+
+- pab-runtime-causal-reduction-r2-20261023 terminalfailed providerautomaticflag possiblecybersecurityrisk; expectedreportabsent. No newcausalresult/reproducer/fix or acceptance inferred. Do not treat as runtimefailure or retry to evadeproviderreview. Existingruntimeevidence/candidatepins remainunchanged; separatelyrunningAstra lifetimeadvice remains pending. No runtime/source/dependency modification authorized by this event.
