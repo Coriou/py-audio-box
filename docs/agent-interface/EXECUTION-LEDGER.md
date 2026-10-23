@@ -922,3 +922,8 @@ Record failures and missing evidence; do not replace them with a successful late
 
 - COMBINED-BROAD-VALIDATION-r3-20261023 exactc224a4aa/frozen65eef52f:864PASS1FAIL1teardown at lotp_completed_history_preparation[old-descriptor-valid], owner34PID255raw18944emptyphase; innerexceptionunproven/no nativesignal. CurrentrehearsalRpositive passed. FullNOTRUN. Raw585MiBproof/livehashesverified cleanupcomplete sourceclean.
 - pab-history-refusal-witness-audit-20261023 READONLYSol-low diagnosesexactmissingdescriptorroute ANDboundedinventoryofremainingexpectedmaintenance-refusaltestseams/currentwitnesscoverage togroupconfirmedgaps. No runtime/fix/broadretryauthorized; no generic74/OSErroracceptance. Separateminimalimplementation/reviewnext basedonfacts.
+
+## Grouped source audit / Astra H1 P1 S1 design gate
+
+- HISTORY-REFUSAL-WITNESS-AUDIT-20261023 confirms H1missingolderdescriptorstatENOENT witnessgap(3journalstates), P1modeledlostresultBrokenPipeError witnessgap, S1rehearsal-sqltestpremise defect authorizerdeniesPRAGMA beforeactualcapacity. PID255innerexceptionhistoricallyunproven. Finite88testcaller inventory/sourceonly/proofchecked noexecution.
+- FreshAstra pab-grouped-witness-capacity-astra-20261023 selectssecuregroupedH/P/Scontract andgenuineSQLcapacitypositiveunderunchangedproductionauthorizer/caps, exactallowlist/negativecontrols/finitefocusedmatrix. No implementation/runtime/broadretryauthorizeduntiladoption. AvoidAUTH-as-capacity/generic74/OSexceptionwaiver. PrioracceptedR/O/G/cap/selector retained.
