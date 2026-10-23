@@ -937,3 +937,8 @@ Record failures and missing evidence; do not replace them with a successful late
 
 - Priorharness162b6aae/finaldb6960b9 s1-premise-20261023:ONEselectedinvocationStopIteration constructorrunnerexitlookup BEFOREmaintenance/SQL/records. Noenginepremise/expected74receipt/assertionruntimeproof. RawexportLIVEhashverified cleanupcomplete immutableFAIL.
 - Parentauthorizes pab-s1-diagnostic-harness-repair-20261023 ONLYconstructorcodeidentity/callsitefix, construction-onlyLinuxpreflight withoutmaintenance/SQL, thenONEsameprospectivefrozenS1node. NoSQL/PRAGMA1/count/payload/authorizer/guardchange. Earliercapacityexperimentneverexecuted; no greenreclassification. ActualpremisefailureSTOPnoretuning. H/P/Sacceptance/fullremainpending.
+
+## Actual S1 premise disproved / revised Astra decision
+
+- Correcteddiagnostic e047d608/final44a0508e s1-construction-20261023:constructionpreflightPASS ONEactualnode; nativeSQLiteFULL13atcore-intent BEFOREreceipts/scan/fullINSERT, sameexceptionat74 routeattestationfalse guardREDretained. Parentrefusal/countassertscompleted originalcompletionabsent; rawLIVEhashproofverified cleanupcomplete. No tuning/retry/Sacceptance.
+- FreshAstra pab-s1-premise-result-astra-20261023 decides revisedsourcefaithfulgenuinecapacitycontract fromactualearlyFULLproof, preservingparentunaccepted/source/burn assertions andexplicitcoverageboundary. H/Pcontractsretainedunimplemented. No nextruntimeauthorizeduntiladoption; no guessedpageallowance/authorizerwaiver.
