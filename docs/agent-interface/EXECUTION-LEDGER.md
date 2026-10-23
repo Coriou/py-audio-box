@@ -997,3 +997,8 @@ Record failures and missing evidence; do not replace them with a successful late
 
 - P-WITNESS-SOURCE-r2-sol exact6a48ea3f/8adc9c64 SOURCE NO-GO R2-1:getattrnodeobjdefaultfunctionacceptsabsentcollectedidentity; bootstrapnodeindeedlacksobj. OriginalF1/F2closedsource; F3identitycoverageopen. No runtime.
 - pab-p-collected-identity-fix-r3-20261023 sourceONLY minimalPactualinnercollectedbinding/failclosedpredicate/missingcontrol, genericbootstrap/schemaunchanged; retainarmedinvalid/noVfallback andrealreplayunarmed. Newfreeze/source-reviewbeforeexecution. Hgate/Sfixseparateactive.
+
+## H first runtime STOP / single predicate diagnostic
+
+- H-WITNESS-RUNTIME-r1-20261023 exact5494db47/1efddfdd:6PASS1FAIL1teardown firstold-descriptor-valid raw[0,18944] phasesempty/HaONLY, noHsHf. Nativeinner/firstfailedpredicateunknown; sourceGOdoesnotwaive. AllrawLIVEproofverified cleanupcomplete unchangedsource.
+- pab-h-seam-predicate-diagnosis-20261023 freshownedSOURCEinspection thenIFneededONEexactold-descriptor-valid ordinarydiagnostic max16boundedrecords/types/booleans/codeoffsets, acceptancepredicates/controlflowunchanged. Freezeobservations/sourceidentity beforeexecution, retainRED. No fix/routeweakening/broadretry; parentprecisefixdecisionnext. Pidentityfix/Ssourcefixseparateactive.
