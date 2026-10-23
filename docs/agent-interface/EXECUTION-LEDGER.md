@@ -1447,3 +1447,7 @@ Independent r23 verifies81hashes/21receipts and3exact-object readonlyinspect: st
 ### 2026-10-23 — Read-only diagnostic candidate delivered
 
 SOURCE+HOST probe t3-586732a2 exec50e882e03dd6b194d4d42595fe19d71871205c2e docs039cac1c982a30cbaac5a3f8273b524692f47543 delivered3newfiles. Reports stdlib fixturePASS; exactexistingimage/ROvolume,20sremotealarm/60shostproposal,196expectedhashes/permissions/seed/space observations. Independent pab-readonly-probe-review-r24-20261023 launched fullsource/exactargv/HOST/controlflow review. No actualprobe/newruntimeauthority, oldvolume/writer/lane unchanged.
+
+### 2026-10-23 — Read-only probe review accepted; ONE actual diagnosis
+
+Independent r24 SOURCE+HOST GO verifies196expectedhashes/programargv/19fixtureobservations. Parent accepts with mandatory5calls using4templates (prestartinspect plusfinalinspect), global60s includingreap/journal/reservedinspection. ONEactual pab-readonly-probe-actual-r25-20261023 authorized immutable50e882e0/docs039cac1c existingimage/ROvolume, preserveoldwriter/lane no retry/cleanup/product. Actual evidence independently audited before causalrepair.
