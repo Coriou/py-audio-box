@@ -1335,3 +1335,8 @@ Implementerdelivereduncommitteddriver+handoff; parentfrozeunchanged execb968691a
 ### 2026-10-23 — S scoped checkout creation SOURCE GO; ONE attempt
 
 Independent r12boundedSOURCEGO scoped022/finally077/private0600capture exactdriverb968691a appbd34b74 preserved. ParentauthorizesONEfreshcanonical/private/tmp exactdriver pab-s-checkout-fixed-construction-r12-20261023 allreviewedpins/sourcecopy/env/caps/52proofretention/fullIDcleanup. No edits/retries/extraimports/productDB/maintenance/255; freshindependentactualreviewrequired.
+
+
+### 2026-10-23 — S driver API failure; global validation reset
+
+ONEr12hostexit1 before0externaldispatch/inner0of52: Path.open(opener=...) unsupported, publish/STOP/finalinventory fail; completehostcapture+3partialfilesretained no runtimeacquired. ExecutorobservedAPIissueprelaunchbutcontinued exactbytes; thiswasavoidable notcandidateproductfailure. ParentrequestscohesiveglobalAstra source/actualaudit pab-s-driver-global-adversarial-astra-r13-20261023 andmeaningfulhost-onlydrivermechanicsvalidationplan beforefurtherconstruction, replacinginsufficientAST-onlyserialmicrofix pattern. No fix/runtimeauthorizedinAstrareview; allhistoricalproofpreserved.
