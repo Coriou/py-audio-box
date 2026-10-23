@@ -760,3 +760,8 @@ Record failures and missing evidence; do not replace them with a successful late
 
 - Candidate4259415d t3-5d6bc116 frozen254ef56d baseline0c71e1bc L1L2L3fourdefinitionschanged withfocusedtests.85CoreDispatch+177recoverypass,116terminalwaits no unexpectedsignal. FourB2/fullNOTRUN becausefreshpython-c helpersbypassprospectiveguard. NativeV1V2V3 unresolved; noT2GO/integration.
 - SeparateSol-low readonlylifetimereview andisolatedtestguardcompletion lane: sourcechangesnotallowedinguardlane; coverfreshinterpreters withoutproductioninstrumentation/dependency/GC/runtimechanges thenfrozenappropriatecampaigns orpreciseruntimefailure. ReviewmustassessDispatcherexisting5stimeout/cleanupcontract notinferallcleanupbounded.
+
+## Lifetime independent F1 timeout exclusion NO-GO
+
+- reviews/P1B23-LIFETIME-r1-sol.md exact4259415d NO-GO: nominalfailedFutureorderingcorrect/L1L3positive; actual5sconstructortimeout permits nextstartup_read whilepreviousCoreclosepaused, nextCoreeventuallycontrol_busytoo late. IndependentrealSQLitewitness;39focusedpass do notclosecontract.
+- Narrowfollowup mustexclude subsequentstartupreadBEFOREtouchingsource whilepreviouscontrolowner/cleanupactive, retain5s/no retry/no unlimitedjoin/no capchanges. Testactualtimeoutbarrierandnextstartup exclusion thenrelease. Guardcompletionlaneindependentstilltest-only; finalcombine/reviewbeforeintegration.
