@@ -741,3 +741,8 @@ Record failures and missing evidence; do not replace them with a successful late
 
 - reviews/P1B23-T2-r1-sol.md exact1d741cb3 boundedSOURCE/E1wiringGO, validationNO-GO. Fresh95pass2fail73.40s; realpipeABC+independentarchives/codec auditpasses. No Cblockingproductiondefectestablished.
 - NewV2 lotc_production_half_startup_twice[core-pending-receipt-complete] failsbeforehook with SQLiteCouldnotdecodeUTF8record, preservedpytest109. NewV3 exactstartup[unavailable-0] privatecopycapture FileNotFoundcore.sqlite-shm beforeexpectedhello refusal. CausesUNASSIGNED; overlapwithruntimeprobe disclosednotcausalproof. Addtoowningruntimefailure dossier alongsideunknownpredecessorchildfailure/nativeSIGSEGV; no broadretry/exceptionwaiver/integration. Dedicateddiagnosisstillowner, nextbriefmustincludeV1V2V3.
+
+## Runtime diagnosis native sequence reproduced / causal reduction
+
+- reviews/P1B23-T2-RUNTIME-20261023.md confirms3nativeSIGSEGVexecutions inclboundedowning-only29case sequence status11; negativeexpectedValueError maskednativecrashaspytestPASS. Sixfresh2casecandidate/rootruns pass NOTclearance. Independentpositiveexit74causeunknown; rootsequence notyetexecutedafterstop. No source/envfix selected.
+- NextreadonlySol-low baselinefirst23row reduction +minimalwait-only signalstop/debugallocator diagnostic and V2UTF8/V3SHMlifetime evidence; no broadcampaign. TargetedAstra causal/lifetimeanalysis ofallreports/traces helpsselectresponsiblefixonlywithproof. No GCdisable/envswitch/exceptionbroadeningwaiver; candidate1d741cb remainsunintegratedNO-GO.
