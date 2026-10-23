@@ -1104,3 +1104,8 @@ Independent observer r2 bounded SOURCE GO atbc5b4615: acceptance AST/order prese
 ### 2026-10-23 — P actual receipt audit accepted as bounded evidence
 
 Independent audit confirms146PASS1FAIL1teardownERROR64NOTRUN; exact211selection/source191hashes, P positive/replay/directed34inclrestoration, retained2278regularhashes and recordedownedcleanup supported. Parent accepts this bounded evidence only, NOT fullP gate. Blockedpipe reached actualEAGAIN but activefinalexception UNKNOWN; separateTbackpressure attestor doesnotcoverthisnode. Source-only observer lane pab-blocked-pipe-observer-source-r1-20261023 launched for onefuturediagnosis, no runtime/attestorfix/fullrepeat authorized. Stale static.json oldfreeze field explicitly nonauthoritative against matchedsourcehashes.
+
+
+### 2026-10-23 — H actual audit confirms failed control premise; Astra decision
+
+Independent H construction audit verifies retainedsource/actualsite/controlfailure/hasharchive/recordedcleanup. Actualcapturedrunner recognized, ASTrebuiltpositive not equivalent; compiler and marshal-digest divergence causes UNKNOWN. Parent accepts boundedobservations only, no H readiness/acceptance. One SOURCEONLY Astra design lane pab-h-exact-context-control-design-astra-20261023 now selects sound exact-context controls before implementation; no further compile/retry campaign, recognizer weakening or H gate authorized.
