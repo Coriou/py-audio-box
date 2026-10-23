@@ -1300,3 +1300,8 @@ Independent r10SOURCEGO D1-D4closed at0dfbd741 appbd34b74 exact263manifest66e702
 ### 2026-10-23 — S exact driver early host-path STOP
 
 ONEhostinvocationexit1 beforeANYexternaldispatch/checkout/lane/Docker/innerconstruction0of52. Mandated/tmp auth/evidence paths incompatiblewithreviewedNOFOLLOWreader becausemacOS/tmp symlinkprivate/tmp; finalinventorysamefailure. Partial2hostfilesretained no runtimeacquired. Parentownsincorrectargvpathselection, notSrecognizerfailure. Independent pab-s-host-path-actual-review-r10-20261023 auditsminimalcanonical/private/tmp argvproposal onunchangeddriver before anynextauthorization; no safetyweaken/codefix/retryauthorized.
+
+
+### 2026-10-23 — S host-path audit residual lane spelling
+
+Independent audit confirms2partialhosthashes/0externaldispatch/0innerconstruction. Canonicalcaller/private/tmp correctsinputscope buthardcodedhostlane/tmp ownerNOFOLLOWreadwouldfailrelease. Parentadoptsnarrowcanonicalhostlanepath correction preservingSAMEphysicalgloballock, containers/tmpunchanged. SOURCEONLY pab-s-host-lane-canonical-fix-r11-20261023 launched driver+handoffonly; no runtimeattemptauthorized.
