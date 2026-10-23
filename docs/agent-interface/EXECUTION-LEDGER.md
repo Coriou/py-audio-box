@@ -1002,3 +1002,8 @@ Record failures and missing evidence; do not replace them with a successful late
 
 - H-WITNESS-RUNTIME-r1-20261023 exact5494db47/1efddfdd:6PASS1FAIL1teardown firstold-descriptor-valid raw[0,18944] phasesempty/HaONLY, noHsHf. Nativeinner/firstfailedpredicateunknown; sourceGOdoesnotwaive. AllrawLIVEproofverified cleanupcomplete unchangedsource.
 - pab-h-seam-predicate-diagnosis-20261023 freshownedSOURCEinspection thenIFneededONEexactold-descriptor-valid ordinarydiagnostic max16boundedrecords/types/booleans/codeoffsets, acceptancepredicates/controlflowunchanged. Freezeobservations/sourceidentity beforeexecution, retainRED. No fix/routeweakening/broadretry; parentprecisefixdecisionnext. Pidentityfix/Ssourcefixseparateactive.
+
+## S r2 and P r3 frozen / independent source reviews
+
+- S603fbf0d9e6ff00a8b97fd4fdda3d71f8c198401 frozenc256eb4d s-source-r2-20261023 F1–F3responses/staticpreservation; pab-s-witness-source-review-r2-20261023 sourceONLY fullpriorbrief/responses. No runtimeS.
+- Pa347eaebcf963fe9454908af873baed9c3daee3b frozenc99218d3 p-source-narrowr3-20261023 missingcollectedbindingcorrection+newcontrol/static209futureitems; pab-p-witness-source-review-r3-20261023 sourceONLY fullR2-1/priorFdispositions. No runtimeP. Hpredicate-diagnosisindependentactive; noassembly/integration.
