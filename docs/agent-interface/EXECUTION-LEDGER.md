@@ -1515,3 +1515,7 @@ Parentacceptsr38 boundedSOURCE+affectedHOSTGO with964streams/2117inventorybindin
 ### 2026-10-24 — Corrected diagnostic image built once; actual image gate
 
 r39 old3stoppedobjects preserved/exactoldlockreleased,ONElauncherprepare+sourcebuild completes newimagebc90e8c9cc6ccb13747184f3c8ab6c08ffb3cf2ab333bd7c656bd3bb0212ab63. Newbuildlane released, no product/containercreation; current196mappedsource/context199paths captured. Independent pab-corrected-image-actual-gate-r40-20261024 launched inventory/24streams/authority/oncebuild/context/source/fullID/oldnewfinalization audit. No actualproductauthority untilaccepted.
+
+### 2026-10-24 — Corrected image independently accepted; ONE original singleton
+
+Parentacceptsr40 boundedBUILDGO90inventory/24streams/199context+oldnewfinalizations verified. ONE pab-corrected-singleton-actual-r41-20261024 existinglauncherf6017630/docsccf7ab3 exactimagebc90e8c9 originalblockedpipe singleton authorized, Linux3.14.8/42locks/native+semanticidentity actualadmission/sourcebootstrap. No prepare/build/qualify/retry/campaign; existingfailuretransportretainsproof, independentactualgate next. Productreleaseacceptance remainsfalse.
