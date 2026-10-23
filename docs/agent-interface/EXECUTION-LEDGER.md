@@ -867,3 +867,8 @@ Record failures and missing evidence; do not replace them with a successful late
 
 - `reviews/P1B23-SQLITE-CAP-WITNESS-r1-sol.md` exact64ba8aed/source6068050c: sourceGO,32testsPASS includingrealA COMMIT778after56commits andBfinalcheckpoint778after48+20rows, mandatorycleanupmarkers. No blockingcodefinding. AcceptanceNO-GO E1reviewerprocedure: docker cp /tmp missedmountedtmpfs andrawreceipts/fixtureslostafterremoval; stdoutpreservednotcompletepackage. No testfailure/nativeissue.
 - Parentauthorizes ONEsamefrozenselectionrepeat solelyrawreceiptcollection, `pab-sqlite-cap-receipt-gate-r2-20261023`: livecontainer tarstream, sentinelpreflight, archiveinventory/ownerbindings verifiedBEFOREremoval, no secondpytestinvocation/testchanges. Existingexactderivedimagee9ef5738 reused. Preserveoldincompleteproof; capacceptance/combinedbroadgates stillpending.
+
+## Cap accepted within bounded source/runtime scope / combined candidate authorized
+
+- Parent accepts exact64ba8aed/frozen6068050c cap amendment based on R1sourceGO and `reviews/P1B23-SQLITE-CAP-WITNESS-r2-sol.md` source+evidenceGO. Singleauthorizedrepeat32PASS; live-tar raw2helpertriplets/fixtures ownerbound and livehashmatched BEFOREcleanup. E1closed fornewcollectiononly; historicalincompleteproof unchanged. No production/durability/fullplatformGO.
+- Authorize NEWisolatedcombinedcandidate: exact reviewedownershipe5d4 + reviewedguardf8822965 + acceptedcapdelta64ba8aed, resolveoverlapexplicitly, soleapprovedfreshEXECtest_b22c_denied_fault_update_inherited_checking_new_epoch adaptation samebody/exit73/allparentasserts. Freeze and focusedcombinedvalidation first, independentfullcombinedreview next, then remaining17/fourB2/full onlyseparatelyscheduled. No C/T2 imports/integration yet.
