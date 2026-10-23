@@ -1018,3 +1018,8 @@ Record failures and missing evidence; do not replace them with a successful late
 
 - H62af510adb66882cbaf990c8fd5a3d4e6dc05073 frozen0e4fe83f t3-cdfee02d safe0700ownedinodefixturebeforefirstprep+6parentcontrols, strictguardbytes/fullrouteunchanged original14asserts12paramsretained, staticonly.
 - pab-h-fixture-review-runtime-r3-20261023 independentSOURCEreviewFIRST; parentpreauthorizesONEoriginal12+completeguardfile gateONLYifsourceGOrecordedbeforetest, no sourcefix/retry. SamepinnedLinuxcaps/liverawproofretention. Stopfirstunexpected, no acceptance/assembly/broaduntilreceiptgate. P/Ssourcefixactive.
+
+## P all-path cleanup frozen / review then conditional finite gate
+
+- Pc17af4fbd0ad88fee955c0d2455152e950e1bcc2 frozen53ee3d74 t3-e141d8ee registersfinalizerBEFOREmutation undoBEFOREassert/evidence, intentionalmissingdonepreserved; earlysetupfailurecontrol addsstatic210prospectiveitems UNEXECUTED.
+- pab-p-cleanup-review-runtime-r4-20261023 independentSOURCEreviewFIRST fullpriorF/R2-1/R3-1; parentpreauthorizesONEexacthandofffinite210selectionONLYifsourceGOrecordedbeforetest. StrictsameLinuxcaps/livetarverifiedretention/no retryfix; actualreceiptgatebeforeacceptance/assembly/broad. Hgate/Ssourcefixseparateactive.
