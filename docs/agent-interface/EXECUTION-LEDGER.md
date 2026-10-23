@@ -1325,3 +1325,8 @@ ONEhostexit1 after4Gitdispatches before recipe/Docker/inner0of52. Privateworktre
 ### 2026-10-23 — S checkout mode diagnosis accepted; scoped creation fix
 
 Independentactualaudit verifies22hashes+hostcaptures4Git0recipeDockerinner; observed0600 correctbytes sourceconsistentumask077. Remaininghostpreparationmodeaudit foundnootherdemonstratedsameclassblocker. ParentadoptscheckoutONLY022/guaranteedrestore077 withexplicit0600capturecreation, unchangedprivate0700boundary/Gitmodeadmission. SOURCEONLY pab-s-checkout-umask-source-fix-r12-20261023 launched driver+handoffonly no runtimeauthorized.
+
+
+### 2026-10-23 — S checkout umask correction frozen
+
+Implementerdelivereduncommitteddriver+handoff; parentfrozeunchanged execb968691a50bde1cc7d4165bb3fa36e8ade1612ce docsff70ae6fb9bdf7f2d978649ac60078554d4abb74 s-driver-checkout-mode-r12-20261023. Scopedcheckout022/finallyrestore077 andexplicit0600capturecreation. Independent pab-s-checkout-umask-source-review-r12-20261023 launched exactminimalclosure/priorgates. No runtimeauthorized.
