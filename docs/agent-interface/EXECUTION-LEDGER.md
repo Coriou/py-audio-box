@@ -790,3 +790,8 @@ Record failures and missing evidence; do not replace them with a successful late
 
 - reviews/P1B23-CHILDWAIT-GUARD-r1-sol.md exact5b698566 NO-GO. Freshisolatedjournal-symlink observedOSError inprotectednofollowjournalreadprewrite beforeoriginalwriter; historicalemptyphasecauseunproven. G1requires exactphase+class+symlinkcondition witness no blanketOSError/74allowance. G2completeforeignownerreceiptpair accepted; bindeventownerackPID+launchnodeidentity, boundack/donebeforeparse.24freshcontrolspass notacceptance.
 - Newtest-onlySol-lowfix retainsproduction/depsunchanged4259415d, preservesallWIPs; directedG1G2negatives/freshnestedhelpers thenguardedcampaignstoponfirstunattestedfailure, separatefreshreview. LifetimeF2retentionreviewparallelstillpending beforecombinedsourceguardqualification.
+
+## Lifetime round3 exclusion corrected / bounded retention decision
+
+- reviews/P1B23-LIFETIME-r3-sol.md exactb16a41f7 NO-GO: originalF2exclusionpasses even droppedtraceback, butglobaluncertaincleanupsetunbounded/no usabledead-threadrecovery. Fresh77pass1obsoleteassertfail+actualtimeoutpositive. Nocause/integrationGO.
+- TargetedAstra mustselectfinitebefore-resource-admission cleanupbudget, in-flight+retainedlifecycle/owning-threadrecovery-or-process-exitpolicy andmaintenanceforkimplications; nolatecap/eviction/unlock/GCfinalizer/bypass. Include narrowoldtestdoublefailureamendment preserveassertions andcontrolledown-threadrelease. Guardfixseparatelane continues.
