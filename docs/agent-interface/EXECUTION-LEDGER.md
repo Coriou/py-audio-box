@@ -1007,3 +1007,9 @@ Record failures and missing evidence; do not replace them with a successful late
 
 - S603fbf0d9e6ff00a8b97fd4fdda3d71f8c198401 frozenc256eb4d s-source-r2-20261023 F1–F3responses/staticpreservation; pab-s-witness-source-review-r2-20261023 sourceONLY fullpriorbrief/responses. No runtimeS.
 - Pa347eaebcf963fe9454908af873baed9c3daee3b frozenc99218d3 p-source-narrowr3-20261023 missingcollectedbindingcorrection+newcontrol/static209futureitems; pab-p-witness-source-review-r3-20261023 sourceONLY fullR2-1/priorFdispositions. No runtimeP. Hpredicate-diagnosisindependentactive; noassembly/integration.
+
+## H parent-mode diagnosis / P lifecycle and S boundary corrections
+
+- Hdiagnostic a556282a h-diagnosis-20261023 ONEordinarynode:auth/history/absencepassed FIRST_H_parentNone; retainedreceiptsUID10001mode0777. HaonlyREDimmutable route/finalstillunproven. pab-h-safe-fixture-fix-r3-20261023 sourceONLY Hpositivefixture0700beforefirstprep+safeasserts, strictguardunchanged/controlprestatealigned.
+- P-WITNESS-SOURCE-r3-sol R2-1CLOSED/priorF1F2F3CLOSEDsource, newR3-1 manuallyMonkeyPatchcleanupregisteredtooLate setupfailurebeforeyieldcanleavebinding/hooks. pab-p-binding-cleanup-fix-r4-20261023 sourceONLY establishcleanupBEFOREfirstmutation+earlysetupcontrol, no bootstrap/schemachange.
+- S-WITNESS-SOURCE-r2-sol F1/F2CLOSEDsource F3OPENsuccessfulfirstintent/original-inodeindependentcontrols. pab-s-boundary-controls-fix-r3-20261023 sourceONLY2boundarycontrols/source-impossibilityproofifactualcounterpartincompatiblewithfixedpositiveprestate, declaredsyntheticnotnativeproof; no page/SQLtuning. Allneednewindependentsource-reviewbeforeruntime.
