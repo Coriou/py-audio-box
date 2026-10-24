@@ -1,0 +1,71 @@
+# P1B23 baseline receipt — independent adversarial SOURCE / retained inert HOST review r117 Sol
+
+2026-10-24. **Bounded GO for the r115 finite baseline SOURCE contract and retained inert HOST evidence at final source `608f21c1d92a43ce006c9d371a55b15dcd02d670`. No blocking new semantic defect found within that scope. Operations, actual baseline acceptance and all39/all100 qualification remain NO-GO.** This is independent review, not implementation self-approval or permission to build, invoke, retry, continue a lane or release resources.
+
+Reviewed candidate `/Users/ben/.txcode/worktrees/py-audio-box/t3-r116-sol`, clean at docs `df4f807b6cb6539a6ffa0a2292669651e6ec33d7`, against immutable base `8765e1884b2846bfaef348f533c88a10891ab900`. The docs successor adds only the r116 handoff beyond the three-file source change. Read full r115, including all39 rows, fixed schema and exact seven steps; full r114 cause/retention report; full r116 handoff (identical root/candidate copies); actual changed code and complete source diff; retained final check scripts, private validator and capture metadata/streams. Recovered focused reads where combined tool output truncated. No applicable AGENTS.md was present in the checked root/report ancestors.
+
+Only this root report was written. Read-only Git, filesystem reads and stdlib AST/hash/JSON inspection were used. No selected code, test, helper, validator or check script was executed; no product/guard import, Docker, build, volume access, delegation, commit or lane action occurred. The memory-registry search supplied no relevant technical premise. Existing root untracked material was left untouched.
+
+## Exact source and finite boundary
+
+Independently rehashed:
+
+- Frozen guard `tests/_maintenance_wait_guard.py`: `d3a011ffcc50e785f39abba54f07b51fe733b132425fff8dfc9a9848c92d254d`.
+- Controls `tests/service/test_child_wait_guard.py`: `422d470ed833f5d9cb0e7d7f6dca69ccf030b21873a726d582306bf6d40c41b3`.
+- Runner `diagnostics/b-controls/runner.py`: `c9ba54b9f1599ed075f2dbfb7603ac49d8e0714cd757590424c4bfc9ca2d7bd2`.
+- Manifest `diagnostics/p-one-node/source-manifest.json`: `b28c5b170194a7c543aa2cf1dbc25956632550682f473928d4892a7eb016b076`.
+- Target: `c236e4045a0c35836fc269fd5938c053ab3e97f1f2682f023470afe3a68dd211`.
+- Product: `c314b2423b71c7d205b4558aee44d8c895e41394adbbb05a85458ef9bd7acf29`; real Observer: `ee20c60ff9d5890ae6d9ceacf892443a4aea88dedf7a3952baf5bc98797de582`.
+
+Only controls have semantic edits. Runner changes exactly its CONTROLS literal; manifest changes exactly controls/runner digests. All197 current maps independently rehash (193 files plus4 derivatives). Target, product, Observer and guard are unchanged. Consequently guard shared stores, all15 final/24 hook operands, trace selection/callbacks, observed_exit, tracked_wait, original observe, transcript, escaping and clear remain byte-frozen. Target marker, elapsed<2, RLIMIT restoration and nonowning reap assertions remain intact.
+
+Controls1115–1126 select exactly017 `original74-real-observer` and018 `collected-control` through an immutable MappingProxyType. Only017 retains real Observer;018 retains the distinct real-FD InertObserver. Unknown modes fail before target setup. The finite known-mode assertion also permits existing B-C names; that does not make them baselines (the pre-existing `operation` name overlaps admission inventory).
+
+Independently compared disabled-diagnostic ASTs of the entire directed fixture and observe/terminal/clear/eagain/trace/final/init/evidence against base: equal. Init/EAGAIN/trace/final/finish remain unchanged; the latch body remains unchanged inside the added try/finally. Thus the other37 modes retain mutations, prerequisites, assertion order, ordinary evidence IO and refusal requirements. This is source preservation, not37 actual PASS results.
+
+## Seven-step receipt and failure contract
+
+1. Identity/schema preparation precedes target clock/fork.018 reuses the same64-byte shared mapping, child milestones and deferred parent IO. There is no new channel or negative-mode decoder.
+2. Controls1835–1856 invoke original terminal once, inline with the actual caller/enrolled/child arguments. No helper frame mediates caller authority. Wait delivery is recorded on entry. Original-terminal exceptions propagate; this wrapper introduces no observe-on-error path.
+3. Raw18944, child EF and suffix T comparisons execute inline with original left-to-right short circuit. Skipped slots remain NOT_REACHED. Saved comparisons supply qualification; diagnostics do not repeat that compound predicate. The original suffix returns even when qualification is false; terminal-reached is actual and parent-qualified requires true. No selected timed terminal assertion remains.
+4. Frozen tracked_wait still appends that suffix and reaches its sole natural observe point. Controls1548–1599 capture status and armed/witness at the original check positions. Armed false skips witness comparison. Removing earlier baseline AssertionError edges intentionally allows original observe after a false terminal/status/witness qualification. That is the r115 baseline failure-contract change, not transparent old failure behavior. Original observe gets unchanged arguments once; duplicate wrapper entry fails before another original call.
+5. Immediately after original observe returns, identity and receipt/ownership expressions are captured once against that state, before diagnostic bookkeeping. Deferred enforcement never rereads guard receipts/ownership or witness. The wrapper returns the original observed object. Exact readback milestone requires all five true. Exceptions from original observe before/after discharge, or operand evaluation, propagate; incomplete slots remain, with no retry or finally-observe. Qualification retains primitives, not frames, witnesses, exceptions, tracebacks, evaluators or kwargs.
+6. Natural target assertions and guard cleanup precede directed teardown enforcement. Snapshot and original latch/refused-launch block run first; narrow finally then enforces saved qualification, before registered finish. A latch failure remains visible through exception chaining if deferred qualification also raises. Registered finish still undoes hooks, runs registered finals, checks restoration and reaches weakref/collection checks on teardown failure. No real lifetime result is inferred from inert stand-ins.
+7. Saved assertions run terminal → observe_status → observe_witness → observe_return → receipt_owned; first non-true records FAILED/first_failed and stops later reads. Post-pytest result, positive/no-failure, one-receipt/owned-empty, status, child prerequisites and milestones remain mandatory. Added diagnostic publication/validation assertion prevents an otherwise green subprocess on failed publication. Handback finally restores binding and closes mapping.
+
+Raw9/E/TK and raw9/EF/TK are important counterexamples: frozen original transcript/observe may accept them and discharge ownership without a guard failure. Saved baseline terminal/status qualification still fails teardown and outer result. No manufactured ARMED_B latch is needed or introduced. No subsequent maintenance launch reuses a failed baseline guard. This is the intended separation between receipt acceptance and positive baseline qualification.
+
+## Schema and consumer assessment
+
+Controls1130–1195 and1343–1405 enforce the fixed qualification keys/policy, exact bool-or-NOT_REACHED values, exact integer0/1 call count (bool rejected), assertion enums and first-failure order. All-true PASSED additionally requires calls1/first_failed NONE; all-false or short-circuited defaults cannot pass. Evaluation exceptions leave incomplete qualification, not truth. Outcome and parent qualification must agree.
+
+Expected identity is an explicit finite validator parameter, matched across child, parent, outcome, exact target node and external private binding. Leaf self-declaration does not choose authority. Mixed017/018, old schema, unknown identities/fields, bool/int aliases and false PASSED fail. Child decoder is unchanged modulo expected-identity plumbing: complementary pairs, role, commit-last result, reserved/error bytes and milestone prefix rules remain. TRUE alone is not baseline PASS.
+
+COMPLETE means coherent diagnostics; coherent failed qualification can yield COMPLETE/test FAIL. PASS requires all five true/PASSED, setup/call/teardown PASSED, exit0, child TRUE/full five milestones, both snapshots receipt1/owned0/status18944/no failures/no stop. Missing/unknown/IO/incomplete state stays RED or raises rejection; exit0 with an unqualified result raises. The private consumer catches malformed diagnostics as incomplete rather than treating them as approval. Existing leaf names/caps and runner selection/caps remain unchanged. The validator-only extract consumes records, not operational files; it is not evidence of an independently prepared file-reading lifecycle.
+
+The exact source-builder token replacement avoids corrupting COLLECTED_CONTROL. Retained checks render/parse all39 directed programs with identity intact. The B-C builder has the same scoped replacement, but actual derived B-C programs remain blocked at the pre-existing anchor; no claim that six complete derived B-C programs now parse or run is accepted.
+
+## Retained inert HOST evidence and provenance limits
+
+Independently verified `/private/tmp/pab-r116-baseline-prep-20261024`: inventory exactly covers58 other leaves, each regular/single-link with recorded mode0600, size and SHA256; directory is0700. Full retained controls source equals candidate bytes. Source bindings, source pins, expected identities and origin validator hash agree. Exact extracted validator function ASTs agree with actual controls and private consumer. Private consumer SHA256 is `25a27558e8a4d05283d7c4139ee0d24cf093e21a95fecb485264a7bf3b9ef901`.
+
+Capture14 binds final controls hash and final host-check script `a1bd9b7daa805c8e215dfc0748c28567bd13799998a5dd9ac6eb32b781f96bdb`; retained argv is Python3.14 `-B` plus exact private script. OS0/COMPLETE, stdout52 bytes hash `c41c1bcdc6c8f176261f8842a468246aa64a487bdf8666d116d45708b372081b`, empty stderr, retained result count746 agree. Capture13 independently binds final controls and consumer-check script `4b1fb91ad7c6caf5eef331a62fac536da3904383a5d2467d0738f7f252d8538a`; OS0/COMPLETE, stdout63 bytes hash `6509e56d4095f2e8db26a92fbc12b7190467cb44ce78d2bf28ff53dde880ffa7`, empty stderr, count26 agree. These retained observations were not rerun.
+
+Read counter coverage: both baseline identities; five separate false operands; comparison/short-circuit counters; original terminal and observe exceptions; captured-state mutation; raw9 accepted receipt/baseline FAIL; deferred first-failure ordering; latch chaining; actual extracted finish with inert weakrefs; all37 residual fixture AST; external identity/node/binding and schema refusals; decoder torn/error/reserved/milestone cases; WAIT_UNOBSERVED read0 versus delivered read1 and finally restore/close. Final additions exercise actual extracted tracked_wait and original observe/transcript with inert wait/read/state. They do not exercise real FD, native admission, actual caller bytecode, fork visibility, Linux timing, target execution, real weakref lifetime or actual negative control outcomes. Some checks repeat a shared AST comparison under37 labels;746 is a finite check count, not746 independent runtime qualifications.
+
+Earlier provenance weaknesses remain disclosed: initial unwrapped driver failure stderr exists only by transcript provenance, not a retained raw file; earlier script revisions have hashes rather than each source snapshot. Captures02/03 retain missing-mode and incorrect source-map-count failures; capture11 retains B-C anchor failure. Final hashes/scripts/source and captures13/14 support their bounded claims without promoting earlier revisions or erasing failures.
+
+This private directory is validator preparation only: operation_prepared=false, approval=null, image=UNBOUNDIMAGE. It contains no operational lifecycle/run/dispatch authority, source-pinned image or approval. Absence of a fresh operational UUID/SUPRUN is appropriate here; it is not an operational namespace/staleness qualification. Complement NOT_APPLICABLE remains distinct from explicit future018 binding.
+
+## Critical findings and remaining gate
+
+No new blocking finding within finite017/018 SOURCE scope; no source fix is requested by this review. Two broader source conflicts remain **RED**:
+
+- **049/direct-exit74:** unchanged trace exits after EAGAIN; final rejects, so expected negative AE conflicts with terminal EF/T positive prerequisite. Both baseline and successor contain this conflict. Missing receipt/escaping does not replace mandatory ARMED_B semantics.
+- **All six B-C anchors:** unchanged `_B_precapture_program` expects admission assertion immediately followed by evidence, while baseline and successor insert diagnostic `_refusal` initialization there. Source proves the anchor cannot match on either revision; retained old/new counterchecks confirm all six. No repair or successful B-C run is credited.
+
+These are pre-existing, out-of-scope, untouched defects, not regressions introduced by r116. They can block a later all100 claim; they do not block this finite baseline-source disposition. No general new audit or Astra round is indicated without a concrete new semantic/design conflict.
+
+Next recommendation is parent acceptance of this bounded source/retained-HOST review, followed only under separate authority by source-pinned preparation and a bounded actual baseline validation with explicit identity binding. Real platform/timing/lifetime/receipt evidence remains necessary. Retain any first unexpected failure and STOP; no automatic retry or continuation019–099. This report supplies no build or operations authority.
+
+Carried evidence remains **17 PASS /018 FAIL /81 UNRUN**, with separately accepted017 PASS intact. First018 child cause UNKNOWN; nativeT2 UNKNOWN. No historical-cause resolution, all39/all100 green, campaign acceptance or resource release follows. All proofs, historical checkouts, images, containers, volume and lane remain HELD; acceptance=false, lane_released=false, cleanup=NONE.
