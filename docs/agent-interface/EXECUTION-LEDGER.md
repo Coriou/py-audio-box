@@ -2303,3 +2303,7 @@ r220 source NO-GO: missingrequired jobfields, impossibleduplicatejobs and invent
 ### 2026-10-24 — Retained history coherence correction enters review
 
 r221 source51133296/docsfbd63fc0 adds fullcontractdocument validation and knowncanonical schema/parameterizedrow constraint coherence beforemaps, no retainedSQLexecution.14 oldacceptance failures reproducedRED;179 exactpin tests reportedPASS. Parent commissioned independent Sol r222; graph/journal/walker unchanged. Restartunmerged actualqualificationpending.
+
+### 2026-10-24 — Restart history adopted; installed activation unit starts
+
+r222 bounded source GO closes retainedcoherence findings,179independentPASS plus7malformedprobesrefused. Parent mergedfbd63fc0 conflict-free; integrated179suite running session69348. Commissioned Sol-low r223 specifically post-Core checkedinstalledactivation/factoryAPI/worker mapping, packaging separate next. No actualLinux/speechclaim.
