@@ -1,3 +1,4 @@
+from _maintenance_wait_guard import fresh_run as _guarded_fresh_run
 import os
 """B1 E1 only: real disposable roots/SQLite/locks, mocked host projection."""
 import copy
@@ -1340,6 +1341,27 @@ def test_b22_prefix_receipt_only_resume_without_new_identity(installation,point)
     assert result['recovery_id']==intent['id'] and result['lane']==intent['new_lane']
 
 
+def _b22_complete_intent_path(candidates):
+    import re
+    complete=[p for p in candidates if re.fullmatch(r'p1-recovery-[0-9a-f]{32}\.intent\.json',p.name)]
+    assert len(complete)==1, 'expected exactly one canonical complete intent'
+    return complete[0]
+
+
+@pytest.mark.parametrize('case',['bundle-first','zero','multiple'])
+def test_b22_complete_intent_selection(case):
+    bundle=Path('p1-recovery-'+('9'*32)+'.bundle.intent.json')
+    full=Path('p1-recovery-'+('9'*32)+'.intent.json')
+    candidates=[bundle,Path('p1-recovery-'+('A'*32)+'.intent.json'),
+        Path('p1-recovery-'+('a'*31)+'.intent.json'),Path(full.name+'.extra')]
+    if case!='zero':candidates.append(full)
+    if case=='multiple':candidates.append(Path('p1-recovery-'+('a'*32)+'.intent.json'))
+    if case=='bundle-first':assert _b22_complete_intent_path(candidates)==full
+    else:
+        with pytest.raises(AssertionError,match='exactly one canonical complete intent'):
+            _b22_complete_intent_path(candidates)
+
+
 @pytest.mark.parametrize('point',['core-intent-commit','pending-receipt-commit'])
 def test_b22_correction_process_death_owned_restart(installation,point):
     import os
@@ -1354,7 +1376,10 @@ def test_b22_correction_process_death_owned_restart(installation,point):
     _,status=os.waitpid(pid,0)
     assert os.waitstatus_to_exitcode(status)==73
     del intent,observation
-    path=next(roots['receipts'].glob('p1-recovery-*.intent.json'))
+    candidates=list(roots['receipts'].glob('p1-recovery-*.intent.json'))
+    path=_b22_complete_intent_path(candidates)
+    assert path.name=='p1-recovery-'+('9'*32)+'.intent.json'
+    assert roots['receipts']/('p1-recovery-'+('9'*32)+'.bundle.intent.json') in candidates
     owned=json.loads(path.read_bytes())
     from worker.runtime_journal import Journal
     for _ in range(2):
@@ -1538,7 +1563,7 @@ with sqlite3.connect(roots['control']/'core'/'core.sqlite') as db:
     assert db.execute('SELECT step FROM p1_recovery_steps ORDER BY rowid').fetchall()==[('pending',),('evidence',),('journal',)]
 assert len(list((roots['control']/'core').glob('*.manifest.json')))==1
 '''
-    result=subprocess.run([sys.executable,'-c',script],input=json.dumps(dict(roots={k:str(v) for k,v in roots.items()},scope=scope,id=identity)),text=True,capture_output=True)
+    result=_guarded_fresh_run([sys.executable,'-c',script],input=json.dumps(dict(roots={k:str(v) for k,v in roots.items()},scope=scope,id=identity)),text=True,capture_output=True)
     assert result.returncode==0,result.stdout+result.stderr
 
 
@@ -1729,7 +1754,7 @@ with sqlite3.connect(roots['control']/'core'/'core.sqlite') as db:
  assert db.execute('SELECT count(*) FROM dispatch_resolutions').fetchone()==(1,)
  assert db.execute('SELECT count(*) FROM p1_recoveries').fetchone()==(1,)
 '''
-    child=subprocess.run([sys.executable,'-c',code],input=encode(dict(roots={k:str(p) for k,p in roots.items()},scope=scope,rid=rid,epoch=epoch)),text=True,capture_output=True,env={**os.environ,'PYTHONDONTWRITEBYTECODE':'1'})
+    child=_guarded_fresh_run([sys.executable,'-c',code],input=encode(dict(roots={k:str(p) for k,p in roots.items()},scope=scope,rid=rid,epoch=epoch)),text=True,capture_output=True,env={**os.environ,'PYTHONDONTWRITEBYTECODE':'1'})
     assert child.returncode==0,child.stderr
 
 
@@ -1912,19 +1937,34 @@ def test_b22c_completed_immutable_inputs_and_history_refuse(installation,damage)
 def test_b22c_denied_fault_update_inherited_checking_new_epoch(installation):
     from service.resource_store import ResourceStore
     roots,scope,_,_=installation;root=roots['control']/'core'
-    pid=os.fork()
-    if pid==0:
-        core=Core(root);store=ResourceStore(core,DEFAULT_BUDGET,(root,roots['staging']))
-        def observe():
-            assert store.state()=='checking'
-            core.db.execute('PRAGMA query_only=ON')
-            raise ValueError('transient-output-growth')
-        try:store.observe(observe)
-        except sqlite3.OperationalError:
-            # No close/finally/later loop can write a witness before death.
-            os._exit(73)
-        os._exit(74)
-    assert os.waitpid(pid,0)[1]==73<<8
+    import sys
+    # Finite test-owned JSON input; fresh exec imports its own empty registry.
+    payload=json.dumps(dict(root=str(root),staging=str(roots['staging']),budget=DEFAULT_BUDGET),separators=(',',':'))
+    assert len(payload.encode())<=16384
+    script="""
+import json,os,sqlite3,sys
+from pathlib import Path
+from service.core import Core
+from service.resource_store import ResourceStore
+raw=sys.stdin.buffer.read(16385)
+assert len(raw)<=16384
+inputs=json.loads(raw)
+assert set(inputs)=={'root','staging','budget'}
+root=Path(inputs['root']);roots={'staging':Path(inputs['staging'])};DEFAULT_BUDGET=inputs['budget']
+core=Core(root);store=ResourceStore(core,DEFAULT_BUDGET,(root,roots['staging']))
+def observe():
+    assert store.state()=='checking'
+    core.db.execute('PRAGMA query_only=ON')
+    raise ValueError('transient-output-growth')
+try:store.observe(observe)
+except sqlite3.OperationalError:
+    # No product close/finally/later loop writes a witness before exit.
+    # Normal interpreter exit permits only the existing bootstrap done receipt.
+    sys.exit(73)
+sys.exit(74)
+"""
+    result=_guarded_fresh_run([sys.executable,'-c',script],input=payload,text=True,capture_output=True,timeout=30)
+    assert result.returncode==73,(result.stdout,result.stderr)
     for _ in range(2):
         core=Core(root)
         try:
@@ -2085,7 +2125,7 @@ with sqlite3.connect(roots['control']/'core'/'core.sqlite') as db:
  assert db.execute('SELECT count(*) FROM p1_recoveries').fetchone()==(1,)
  assert db.execute('SELECT count(*) FROM dispatch_resolutions').fetchone()==(1,)
 '''
-    child=subprocess.run([sys.executable,'-c',code],input=encode(dict(roots={k:str(p) for k,p in roots.items()},scope=scope,rid=rid,epoch=epoch,lane=lane,quarantine=point.endswith('before-replace'))),text=True,capture_output=True,env={**os.environ,'PYTHONDONTWRITEBYTECODE':'1'})
+    child=_guarded_fresh_run([sys.executable,'-c',code],input=encode(dict(roots={k:str(p) for k,p in roots.items()},scope=scope,rid=rid,epoch=epoch,lane=lane,quarantine=point.endswith('before-replace'))),text=True,capture_output=True,env={**os.environ,'PYTHONDONTWRITEBYTECODE':'1'})
     assert child.returncode==0,child.stderr
 
 
@@ -2477,7 +2517,7 @@ for _ in range(2):
  assert recovery._complete_receipts(roots,v['scope'],a,a['proof']['observation'],now=1000)==expected
  assert logical(roots)==before and retained_bytes(roots)==files
 '''
-    child=subprocess.run([sys.executable,'-c',code],input=encode(dict(roots={k:str(p) for k,p in roots.items()},scope=scope,rid=rid)),text=True,capture_output=True,env={**os.environ,'PYTHONDONTWRITEBYTECODE':'1'})
+    child=_guarded_fresh_run([sys.executable,'-c',code],input=encode(dict(roots={k:str(p) for k,p in roots.items()},scope=scope,rid=rid)),text=True,capture_output=True,env={**os.environ,'PYTHONDONTWRITEBYTECODE':'1'})
     assert child.returncode==0,child.stderr
 
 
@@ -2621,7 +2661,7 @@ b=json.loads(candidates[0].read_bytes())
 assert recovery._complete_receipts(roots,v['scope'],b,b['proof']['observation'],now=1000)['status']=='complete'
 assert recovery._complete_receipts(roots,v['scope'],a,a['proof']['observation'],now=1000)==expected
 '''
-    child=subprocess.run([sys.executable,'-c',code],input=encode(dict(roots={k:str(p) for k,p in roots.items()},scope=scope,rid=rid)),text=True,capture_output=True,env={**os.environ,'PYTHONDONTWRITEBYTECODE':'1'})
+    child=_guarded_fresh_run([sys.executable,'-c',code],input=encode(dict(roots={k:str(p) for k,p in roots.items()},scope=scope,rid=rid)),text=True,capture_output=True,env={**os.environ,'PYTHONDONTWRITEBYTECODE':'1'})
     assert child.returncode==0,child.stderr
 
 
@@ -3401,51 +3441,236 @@ def test_lotk_caller_capability_cannot_select_process_or_limit(installation):
         with recovery._maintenance_session(roots,scope,object()):pass
 
 
-@pytest.mark.skipif(__import__('sys').platform!='linux',reason='Actual Linux RLIMIT_FSIZE evidence PENDING; macOS E1 model is not proof')
-def test_lotk_actual_linux_child_file_and_sqlite_cap(tmp_path):
-    import subprocess, sys
-    script=r'''
-import errno, os, resource, sqlite3, sys
+# Test-local physical-cap witness protocol; fabricated controls below are not SQLite positives.
+def _lotk_cap_validate(record, mode, returncode):
+    assert returncode == 0, ('helper exit', returncode)
+    assert record['cleanup'] == 'closed-and-observed'
+    assert record['errors'] == []
+    assert record['failure']['operation'] in (('INSERT', 'COMMIT') if mode == 'append' else ('checkpoint',))
+    assert record['failure']['code'] == 778
+    assert record['failure']['name'] == 'SQLITE_IOERR_WRITE'
+    assert record['committed'] > 0
+    assert record['checkpoint'] == ([0, 0, 0] if mode == 'append' else None)
+    assert record['rollback_count'] == record['close_count'] == 1
+    assert record['observations']
+    for observation in record['observations']:
+        assert observation['limits'] == [4_194_304, 4_194_304]
+        assert observation['token'] is True
+        files = observation['files']
+        assert 'database.sqlite' in files
+        assert set(files) <= {'database.sqlite', 'database.sqlite-wal', 'database.sqlite-shm'}
+        assert all(type(size) is int and 0 <= size <= 4_194_304 for size in files.values())
+    assert record['lengths'] == [65_536] * record['committed']
+    if mode == 'checkpoint':
+        assert record['committed'] == 68
+        assert record['seed_checkpoint'] == [0, 0, 0]
+        assert record['seed_logical'] < 4_194_304 < record['logical']
+        assert record['failure_db_size'] == 4_194_304
+
+
+_LOTK_CAP_SCRIPT = r'''
+import errno, json, os, resource, sqlite3, sys
 from pathlib import Path
 from service import recovery
 recovery._maintenance_child_pid=os.getpid()
 p=recovery._install_maintenance_limit(); L=4_194_304
-root=Path(sys.argv[1])
-for operation in ('write','pwrite','truncate','ftruncate'):
-    path=root/operation
-    fd=os.open(path,os.O_CREAT|os.O_RDWR,0o600)
-    os.ftruncate(fd,L)
-    os.lseek(fd,L-1,0);assert os.write(fd,b'x')==1
-    assert os.pwrite(fd,b'x',L-1)==1
+root=Path(sys.argv[1]); mode=sys.argv[2]
+record=dict(cleanup=None, errors=[], failure=None, committed=0, checkpoint=None,
+    rollback_count=0, close_count=0, observations=[], lengths=[])
+db=None; primary=None; cleanup_errors=[]
+def observe(operation):
+    p.verify()
+    limits=resource.getrlimit(resource.RLIMIT_FSIZE)
+    assert limits==(L,L)
+    files={f.name:f.stat().st_size for f in root.iterdir() if f.name.startswith('database.sqlite')}
+    record['observations'].append(dict(operation=operation,limits=list(limits),token=True,files=files))
+    assert 'database.sqlite' in files
+    assert set(files)<={'database.sqlite','database.sqlite-wal','database.sqlite-shm'}
+    assert all(size<=L for size in files.values())
+def sql(statement, parameters=()):
     try:
-        if operation=='write':os.lseek(fd,L,0);os.write(fd,b'x')
-        elif operation=='pwrite':os.pwrite(fd,b'x',L)
-        elif operation=='truncate':os.truncate(path,L+1)
-        else:os.ftruncate(fd,L+1)
-    except OSError as exc:assert exc.errno==errno.EFBIG
-    else:raise AssertionError('extension succeeded')
-    assert path.stat().st_size==L
-    os.close(fd); p.verify()
-db=sqlite3.connect(root/'database.sqlite')
-assert db.execute('PRAGMA journal_mode=WAL').fetchone()==('wal',)
-db.execute('PRAGMA synchronous=FULL');db.execute('PRAGMA mmap_size=0')
-db.execute('CREATE TABLE bounded(data BLOB)');db.commit()
-failed=False
-for i in range(100):
-    try:db.execute('INSERT INTO bounded VALUES(?)',(b'x'*65536,));db.commit()
-    except sqlite3.Error:failed=True;break
-    for f in root.glob('database.sqlite*'):assert f.stat().st_size<=L
-assert failed
-for f in root.glob('database.sqlite*'):assert f.stat().st_size<=L
-try:db.rollback();db.execute('PRAGMA wal_checkpoint(TRUNCATE)')
-except sqlite3.Error:pass
-db.close();p.verify()
-for f in root.glob('database.sqlite*'):assert f.stat().st_size<=L
+        return db.execute(statement, parameters).fetchall()
+    finally:
+        observe(statement)
+def commit():
+    try: db.commit()
+    finally: observe('COMMIT')
+def rollback():
+    record['rollback_count']+=1
+    try:
+        db.rollback()
+        assert not db.in_transaction
+    finally: observe('ROLLBACK')
+def failure(exc, operation):
+    record['failure']=dict(operation=operation,code=exc.sqlite_errorcode,name=exc.sqlite_errorname)
+    assert exc.sqlite_errorcode==778 and exc.sqlite_errorname=='SQLITE_IOERR_WRITE'
+def insert():
+    sql('INSERT INTO bounded VALUES(?)',(b'x'*65536,))
+    commit()
+    record['committed']+=1
+try:
+    if mode=='append':
+        for operation in ('write','pwrite','truncate','ftruncate'):
+            path=root/operation
+            fd=os.open(path,os.O_CREAT|os.O_RDWR,0o600)
+            os.ftruncate(fd,L)
+            os.lseek(fd,L-1,0);assert os.write(fd,b'x')==1
+            assert os.pwrite(fd,b'x',L-1)==1
+            try:
+                if operation=='write':os.lseek(fd,L,0);os.write(fd,b'x')
+                elif operation=='pwrite':os.pwrite(fd,b'x',L)
+                elif operation=='truncate':os.truncate(path,L+1)
+                else:os.ftruncate(fd,L+1)
+            except OSError as exc:assert exc.errno==errno.EFBIG
+            else:raise AssertionError('extension succeeded')
+            assert path.stat().st_size==L
+            os.close(fd); p.verify()
+    db=sqlite3.connect((root/'database.sqlite').as_uri()+'?vfs=unix',uri=True)
+    observe('OPEN')
+    if mode=='checkpoint':
+        sql('PRAGMA page_size=4096')
+        assert sql('PRAGMA page_size')==[(4096,)]
+    assert sql('PRAGMA journal_mode=WAL')==[('wal',)]
+    sql('PRAGMA synchronous=FULL'); assert sql('PRAGMA synchronous')==[(2,)]
+    sql('PRAGMA mmap_size=0'); assert sql('PRAGMA mmap_size')==[(0,)]
+    sql('PRAGMA wal_autocheckpoint=0'); assert sql('PRAGMA wal_autocheckpoint')==[(0,)]
+    record['page_size']=sql('PRAGMA page_size')[0][0]
+    sql('CREATE TABLE bounded(data BLOB)');commit()
+    if mode=='append':
+        for i in range(100):
+            operation='INSERT'
+            try:
+                sql('INSERT INTO bounded VALUES(?)',(b'x'*65536,))
+                operation='COMMIT';commit()
+            except sqlite3.Error as exc:
+                failure(exc,operation)
+                break
+            record['committed']+=1
+        assert record['failure'] is not None, 'missing append failure within 100 pairs'
+        assert record['committed']>0
+        rollback()
+        record['checkpoint']=list(sql('PRAGMA wal_checkpoint(TRUNCATE)')[0])
+        assert record['checkpoint']==[0,0,0]
+        record['logical']=sql('PRAGMA page_count')[0][0]*record['page_size']
+        record['lengths']=[r[0] for r in sql('SELECT length(data) FROM bounded')]
+        assert record['lengths']==[65536]*record['committed']
+    else:
+        assert mode=='checkpoint'
+        for i in range(48):insert()
+        record['seed_logical']=sql('PRAGMA page_count')[0][0]*record['page_size']
+        assert record['seed_logical']<L
+        record['seed_checkpoint']=list(sql('PRAGMA wal_checkpoint(TRUNCATE)')[0])
+        assert record['seed_checkpoint']==[0,0,0]
+        for i in range(20):insert()
+        record['lengths']=[r[0] for r in sql('SELECT length(data) FROM bounded')]
+        assert record['lengths']==[65536]*68
+        record['logical']=sql('PRAGMA page_count')[0][0]*record['page_size']
+        assert record['logical']>L and not db.in_transaction
+        try:
+            row=sql('PRAGMA wal_checkpoint(TRUNCATE)')
+        except sqlite3.Error as exc:failure(exc,'checkpoint')
+        else:raise AssertionError(('checkpoint did not raise',row))
+        record['failure_db_size']=(root/'database.sqlite').stat().st_size
+        assert record['failure_db_size']==L
+        rollback()
+except BaseException as exc:
+    primary=exc
+finally:
+    if db is not None:
+        # Exactly one rollback even if a prerequisite or primary assertion failed.
+        if not record['rollback_count']:
+            try:rollback()
+            except BaseException as exc:cleanup_errors.append(exc)
+        record['close_count']+=1
+        try:db.close()
+        except BaseException as exc:cleanup_errors.append(exc)
+        try:observe('CLOSE/final')
+        except BaseException as exc:cleanup_errors.append(exc)
+        if not cleanup_errors:record['cleanup']='closed-and-observed'
+    record['errors']=[repr(exc) for exc in ([primary] if primary is not None else [])+cleanup_errors]
+    print(json.dumps(record),flush=True)
+if primary is not None or cleanup_errors:
+    raise BaseExceptionGroup('cap primary and cleanup failures',([primary] if primary is not None else [])+cleanup_errors)
 '''
-    before=__import__('resource').getrlimit(__import__('resource').RLIMIT_FSIZE)
-    result=subprocess.run([sys.executable,'-c',script,str(tmp_path)],capture_output=True,text=True,timeout=30)
-    assert result.returncode==0,result.stderr
-    assert __import__('resource').getrlimit(__import__('resource').RLIMIT_FSIZE)==before
+
+
+def _lotk_cap_run(tmp_path, mode):
+    import resource, sys
+    before = resource.getrlimit(resource.RLIMIT_FSIZE)
+    failures = []
+    try:
+        result = _guarded_fresh_run([sys.executable, '-c', _LOTK_CAP_SCRIPT, str(tmp_path), mode],
+            capture_output=True, text=True, timeout=30)
+        assert result.returncode == 0, (result.returncode, result.stdout, result.stderr)
+        record = json.loads(result.stdout)
+        _lotk_cap_validate(record, mode, result.returncode)
+        print(json.dumps(dict(mode=mode, witness=record)))
+    except BaseException as exc:
+        failures.append(exc)
+    finally:
+        try:assert resource.getrlimit(resource.RLIMIT_FSIZE) == before
+        except BaseException as exc:failures.append(exc)
+    if failures:raise BaseExceptionGroup('cap helper and parent limits', failures)
+
+
+@pytest.mark.skipif(__import__('sys').platform!='linux',reason='Actual Linux RLIMIT_FSIZE evidence PENDING; macOS E1 model is not proof')
+def test_lotk_actual_linux_child_file_and_sqlite_cap(tmp_path):
+    _lotk_cap_run(tmp_path, 'append')
+
+
+@pytest.mark.skipif(__import__('sys').platform!='linux',reason='Actual Linux RLIMIT_FSIZE evidence PENDING; macOS E1 model is not proof')
+def test_lotk_actual_linux_sqlite_checkpoint_cap(tmp_path):
+    _lotk_cap_run(tmp_path, 'checkpoint')
+
+
+@pytest.mark.parametrize('mode', ['append', 'checkpoint'])
+@pytest.mark.parametrize('defect', ['missing-exception', 'wrong-operation', 'wrong-code', 'wrong-name',
+    'busy-row', 'zero-prefix', 'oversize', 'missing-db', 'unexpected-sidecar', 'missing-cleanup',
+    'changed-limits', 'nonzero-helper', 'signal-helper', 'cleanup-error'])
+def test_lotk_cap_witness_rejection_controls(mode, defect):
+    # Pure protocol records only: actual positive witnesses are the two guarded tests above.
+    record = dict(cleanup='closed-and-observed', errors=[],
+        failure=dict(operation='INSERT' if mode == 'append' else 'checkpoint', code=778, name='SQLITE_IOERR_WRITE'),
+        committed=1 if mode == 'append' else 68, checkpoint=[0, 0, 0] if mode == 'append' else None,
+        rollback_count=1, close_count=1, observations=[dict(limits=[4_194_304]*2, token=True,
+            files={'database.sqlite':4_194_304})], lengths=[65_536]*(1 if mode == 'append' else 68),
+        seed_checkpoint=[0, 0, 0], seed_logical=3_000_000, logical=4_500_000, failure_db_size=4_194_304)
+    _lotk_cap_validate(record, mode, 0)
+    status = 0
+    if defect == 'missing-exception':record['failure'] = None
+    elif defect == 'wrong-operation':record['failure']['operation'] = 'CLOSE'
+    elif defect == 'wrong-code':record['failure']['code'] = 13
+    elif defect == 'wrong-name':record['failure']['name'] = 'SQLITE_FULL'
+    elif defect == 'busy-row':record['checkpoint'] = [1, 2, 1]
+    elif defect == 'zero-prefix':record['committed'] = 0
+    elif defect == 'oversize':record['observations'][0]['files']['database.sqlite'] += 1
+    elif defect == 'missing-db':record['observations'][0]['files'] = {}
+    elif defect == 'unexpected-sidecar':record['observations'][0]['files']['database.sqlite-journal'] = 0
+    elif defect == 'missing-cleanup':record['cleanup'] = None
+    elif defect == 'changed-limits':record['observations'][0]['limits'][1] += 1
+    elif defect == 'nonzero-helper':status = 1
+    elif defect == 'signal-helper':status = -11
+    elif defect == 'cleanup-error':record['errors'] = ['close failed']
+    with pytest.raises((AssertionError, TypeError)):_lotk_cap_validate(record, mode, status)
+
+
+@pytest.mark.parametrize('helper_failure', ['exit', 'exception'])
+def test_lotk_cap_parent_limits_checked_on_helper_failure(tmp_path, monkeypatch, helper_failure):
+    import resource
+    from types import SimpleNamespace
+    calls = []
+    def limits(kind):
+        calls.append(kind)
+        return (100, 100) if len(calls) == 1 else (99, 100)
+    def helper(*args, **kwargs):
+        if helper_failure == 'exception':raise RuntimeError('fabricated helper failure')
+        return SimpleNamespace(returncode=1, stdout='', stderr='fabricated helper failure')
+    monkeypatch.setattr(resource, 'getrlimit', limits)
+    monkeypatch.setattr(__import__(__name__, fromlist=['_guarded_fresh_run']), '_guarded_fresh_run', helper)
+    with pytest.raises(BaseExceptionGroup) as caught:_lotk_cap_run(tmp_path, 'append')
+    assert len(calls) == 2
+    assert len(caught.value.exceptions) == 2
+    assert isinstance(caught.value.exceptions[-1], AssertionError)
 
 
 @pytest.mark.parametrize('point',['bundle-parent','core-intent-commit'])
@@ -3485,7 +3710,7 @@ for _ in range(2):
         return True
     assert recovery._run_bounded_maintenance(roots,scope,resume)
 '''
-    result=subprocess.run([sys.executable,'-c',script],input=json.dumps(dict(roots={k:str(p) for k,p in roots.items()},scope=scope,id=identity)),capture_output=True,text=True,timeout=60)
+    result=_guarded_fresh_run([sys.executable,'-c',script],input=json.dumps(dict(roots={k:str(p) for k,p in roots.items()},scope=scope,id=identity)),capture_output=True,text=True,timeout=60)
     assert result.returncode==0,result.stderr
     with closing(sqlite3.connect(roots['control']/'core'/'core.sqlite')) as db:
         assert db.execute('SELECT count(*) FROM p1_recoveries').fetchone()==(1,)
@@ -3830,6 +4055,14 @@ def test_lotp_late_refusal_retains_unaccepted_plan(b23_host,installation,monkeyp
     h=b23_host;roots,scope,profiles,_=installation
     _lotp_population(installation);_lotp_transport(h,monkeypatch)
     if failure=='manifest':(roots['receipts']/'journal.json').write_bytes(b'x'*40000)
+    completion_sentinel=roots['control']/'original-completion-called'
+    original_completion_code=recovery._write_core_completion.__code__
+    import sys
+    previous_profile=sys.getprofile()
+    def completion_profile(frame,event,arg):
+        if event=='call' and frame.f_code is original_completion_code:
+            completion_sentinel.write_text('original completion implementation called')
+        if previous_profile is not None:previous_profile(frame,event,arg)
     if failure=='rehearsal':
         def fail(*args):raise sqlite3.OperationalError('modeled private capacity failure')
         monkeypatch.setattr(recovery,'_write_core_completion',fail)
@@ -3844,7 +4077,12 @@ def test_lotp_late_refusal_retains_unaccepted_plan(b23_host,installation,monkeyp
                 raise ValueError('modeled prospective history ceiling')
             return validate(db,*args,**kw)
         monkeypatch.setattr(recovery,'validate_b2_database',fail)
-    with pytest.raises(ValueError):recovery._prepare_abandon(roots,scope,profiles=profiles,budget=DEFAULT_BUDGET,diagnostic_decisions=[])
+    if failure=='rehearsal':sys.setprofile(completion_profile)
+    try:
+        with pytest.raises(ValueError):recovery._prepare_abandon(roots,scope,profiles=profiles,budget=DEFAULT_BUDGET,diagnostic_decisions=[])
+    finally:
+        if failure=='rehearsal':sys.setprofile(previous_profile)
+    assert not completion_sentinel.exists()
     assert not list(roots['receipts'].glob('p1-recovery-*'))
     with closing(sqlite3.connect(roots['control']/'core'/'core.sqlite')) as db:
         assert db.execute('SELECT count(*) FROM p1_abandon_plans').fetchone()==(1,)
@@ -3927,7 +4165,7 @@ for _ in range(2):
     assert recovery._run_bounded_maintenance(roots,scope,resume)
     assert bundle.read_bytes()==raw and recovery.read_file(paths[0])==recovery.encode(accepted).encode()
 '''
-    child=subprocess.run([sys.executable,'-c',script],input=encode(dict(roots={k:str(p) for k,p in roots.items()},scope=scope)),
+    child=_guarded_fresh_run([sys.executable,'-c',script],input=encode(dict(roots={k:str(p) for k,p in roots.items()},scope=scope)),
         capture_output=True,text=True,timeout=60)
     assert child.returncode==0,child.stderr
     with closing(sqlite3.connect(roots['control']/'core'/'core.sqlite')) as db:
@@ -4041,7 +4279,7 @@ def mismatch(session):
 assert recovery._run_bounded_maintenance(roots,scope,mismatch)
 assert not list(roots['receipts'].glob('p1-recovery-*'))
 '''
-    child=subprocess.run([sys.executable,'-c',script],input=encode(dict(roots={k:str(p) for k,p in roots.items()},scope=scope,document=str(unaccepted))),
+    child=_guarded_fresh_run([sys.executable,'-c',script],input=encode(dict(roots={k:str(p) for k,p in roots.items()},scope=scope,document=str(unaccepted))),
         capture_output=True,text=True,timeout=60)
     assert child.returncode==0,child.stderr
 
@@ -4392,7 +4630,7 @@ if not v.get('refuse'):
 
 def _kpre_fresh(roots,scope,**options):
     import subprocess,sys
-    child=subprocess.run([sys.executable,'-c',_KPRE_FRESH],input=encode(dict(
+    child=_guarded_fresh_run([sys.executable,'-c',_KPRE_FRESH],input=encode(dict(
         roots={k:str(p) for k,p in roots.items()},scope=scope,**options)),capture_output=True,text=True,timeout=90)
     assert child.returncode==0,child.stderr
 
@@ -4437,7 +4675,7 @@ def test_kpre_recapture_actual_death_fresh_retry(b23_host,installation,monkeypat
     roots,scope,_,_=installation
     _kpre_accept(installation,b23_host,monkeypatch)
     before={p.name:p.read_bytes() for p in roots['receipts'].iterdir()}
-    child=subprocess.run([sys.executable,'-c',_KPRE_FRESH],input=encode(dict(
+    child=_guarded_fresh_run([sys.executable,'-c',_KPRE_FRESH],input=encode(dict(
         roots={k:str(p) for k,p in roots.items()},scope=scope,death=point,trace=str(roots['control'].parent/'recapture-death.txt'),attempts=1)),capture_output=True,text=True,timeout=60)
     assert child.returncode!=0
     assert (roots['control'].parent/'recapture-death.txt').read_text()==point
@@ -4538,7 +4776,7 @@ recovery._validate_archives=oracle
     if failure in ('cap','readback','host'):
         import subprocess,sys
         for _ in range(2):
-            child=subprocess.run([sys.executable,'-c',_KPRE_FRESH],input=encode(dict(roots={k:str(p) for k,p in roots.items()},scope=scope,setup=setup)),capture_output=True,text=True,timeout=60)
+            child=_guarded_fresh_run([sys.executable,'-c',_KPRE_FRESH],input=encode(dict(roots={k:str(p) for k,p in roots.items()},scope=scope,setup=setup)),capture_output=True,text=True,timeout=60)
             assert child.returncode!=0
     else:_kpre_fresh(roots,scope,refuse=True,setup=setup)
     assert before=={p.name:p.read_bytes() for p in roots['receipts'].iterdir()}
@@ -4713,7 +4951,7 @@ def test_kpre_no_attempt_both_busy_locks(b23_host,installation,monkeypatch,role)
     with lock.open('rb') as stream:
         fcntl.flock(stream,fcntl.LOCK_EX|fcntl.LOCK_NB)
         for _ in range(2):
-            child=subprocess.run([sys.executable,'-c',_KPRE_FRESH],input=encode(dict(roots={k:str(p) for k,p in roots.items()},scope=scope)),capture_output=True,text=True,timeout=60)
+            child=_guarded_fresh_run([sys.executable,'-c',_KPRE_FRESH],input=encode(dict(roots={k:str(p) for k,p in roots.items()},scope=scope)),capture_output=True,text=True,timeout=60)
             assert child.returncode!=0 and 'child_failed' in child.stderr
     assert before=={p.name:p.read_bytes() for p in roots['receipts'].iterdir()}
 
@@ -4781,7 +5019,7 @@ def test_kpre_each_no_attempt_window_rechecks(b23_host,installation,monkeypatch,
                 lock=(roots['control']/'core'/'control.lock' if failure=='control-lock' else roots['receipts']/'lane.lock').open('rb')
                 fcntl.flock(lock,fcntl.LOCK_EX|fcntl.LOCK_NB)
             for _ in range(2):
-                child=subprocess.run([sys.executable,'-c',_KPRE_FRESH],input=encode(dict(roots={k:str(p) for k,p in roots.items()},scope=scope,target=r['id'],setup=setup)),capture_output=True,text=True,timeout=60)
+                child=_guarded_fresh_run([sys.executable,'-c',_KPRE_FRESH],input=encode(dict(roots={k:str(p) for k,p in roots.items()},scope=scope,target=r['id'],setup=setup)),capture_output=True,text=True,timeout=60)
                 assert child.returncode!=0 and 'child_failed' in child.stderr
         finally:
             if lock is not None:lock.close()
@@ -5038,7 +5276,7 @@ resource_store._recovery_scan=forbidden
 Reconciliation._collect=forbidden
 """
     for _ in range(2):
-        child=subprocess.run([sys.executable,'-c',script],input=encode(dict(
+        child=_guarded_fresh_run([sys.executable,'-c',script],input=encode(dict(
             roots={k:str(p) for k,p in roots.items()},scope=scope,attempts=1,setup=setup)),
             capture_output=True,text=True,timeout=90)
         assert child.returncode==0,child.stderr
@@ -5079,7 +5317,7 @@ def test_kfifth_production_owner_changes_before_writers(b23_host,installation,mo
     # owning session refuses before opening the original writable connection;
     # do not manufacture a replacement proof or repair the original capsule.
     for _ in range(2):
-        child=subprocess.run([sys.executable,'-c',_KPRE_FRESH],input=encode(dict(
+        child=_guarded_fresh_run([sys.executable,'-c',_KPRE_FRESH],input=encode(dict(
             roots={k:str(p) for k,p in roots.items()},scope=scope,attempts=1,
             setup=_KFIFTH_FORBID)),capture_output=True,text=True,timeout=90)
         assert child.returncode!=0 and 'b2_maintenance_child_failed' in child.stderr
@@ -5108,7 +5346,7 @@ def test_kfifth_fourth_query_missing_certificate_cannot_write(b23_host,installat
     end=script.index('            return True',start)
     script=script[:start]+script[end:]
     for _ in range(2):
-        child=subprocess.run([sys.executable,'-c',script],input=encode(dict(
+        child=_guarded_fresh_run([sys.executable,'-c',script],input=encode(dict(
             roots={k:str(p) for k,p in roots.items()},scope=scope,attempts=1,
             refuse=True,setup=_KFIFTH_FORBID)),capture_output=True,text=True,timeout=90)
         assert child.returncode==0,child.stderr
@@ -6196,6 +6434,8 @@ def test_t1_durable_completion_lost_result_no_false_success(b23_host,installatio
     def finish_then_lose(session,**request):
         r=prepare(session,**request)
         assert session.continue_kernel(r['intent'],prepared=r._snapshot)['status']=='complete'
+        assert r._snapshot._session is session and r._snapshot._used
+        assert len(r['intent']['id'])==32
         (tmp_path/'durable-completion').write_text(r['intent']['id'])
         def broken(*a):raise BrokenPipeError('modeled lost result pipe')
         os.write=broken  # child only, AFTER all real durable completion writers
@@ -6207,6 +6447,7 @@ def test_t1_durable_completion_lost_result_no_false_success(b23_host,installatio
     with closing(sqlite3.connect(roots['control']/'core'/'core.sqlite')) as db:
         assert db.execute('SELECT count(*) FROM p1_recoveries').fetchone()==(1,)
         assert db.execute('SELECT count(*) FROM p1_recovery_steps').fetchone()==(5,)
+        assert db.execute('SELECT id FROM p1_recoveries').fetchone()==(identity,)
     before=logical(roots);files=retained_bytes(roots)
     _kfifth_fresh(roots,scope,target=identity,setup=_KFIFTH_OBSERVE+_T1_CURRENT_UNION)
     assert logical(roots)==before and retained_bytes(roots)==files
@@ -6504,3 +6745,260 @@ def test_t1_cleanup_refuses_inside_caller_exception_handler(monkeypatch,error_ty
             except ChildProcessError:continue
             if not ended:
                 kill(pid,signal.SIGKILL);wait(pid,0)
+
+
+@pytest.mark.parametrize('reader', ['startup_read', 'enrollment_gate'])
+@pytest.mark.parametrize('case', ['early', 'sql', 'schema', 'connect', 'success', 'double-failure'])
+def test_lifetime_private_reader_closes_before_teardown(tmp_path, monkeypatch, reader, case):
+    from contextlib import contextmanager
+    original_connect = sqlite3.connect
+    source = tmp_path/'core.sqlite'
+    with closing(original_connect(source)) as db:
+        if reader == 'startup_read' and case == 'early': db.execute('CREATE TABLE ordinary(id)')
+        else:
+            for table, columns in recovery.B1_COLUMNS.items():
+                db.execute('CREATE TABLE '+table+'('+','.join(c+' TEXT' for c in columns.split())+')')
+            host = dict()  # Validators below isolate ownership from enrollment policy.
+            installation = dict(deployment_id='a'*32, revision=1, scope='owned-synthetic', host=host,
+                profile_budget_digest=recovery.digest(dict(profiles=[], budget={})))
+            db.execute('INSERT INTO p1_installation(id,record,digest) VALUES(?,?,?)', ('a'*32, encode(installation), recovery.digest(installation)))
+            record = dict(deployment_id='a'*32, scope=host, evidence='actual-host-inspection', lane='b'*32, boot='c'*32)
+            db.execute('INSERT INTO p1_registrations(id,record,digest) VALUES(?,?,?)', (recovery.digest(record), encode(record), recovery.digest(record)))
+            if case == 'schema': db.execute('DROP TABLE p1_registrations')
+            if case == 'early' and reader == 'enrollment_gate': db.execute('DELETE FROM p1_installation')
+            db.commit()
+    before = {p.name:p.read_bytes() for p in tmp_path.iterdir()}
+    opened = []; events = []; primary = sqlite3.OperationalError('reader SQL failure')
+    class Connection(sqlite3.Connection):
+        def execute(self, sql, *args, **kwargs):
+            if case in ('sql', 'double-failure') and sql == 'PRAGMA query_only=ON': raise primary
+            return super().execute(sql, *args, **kwargs)
+        def close(self):
+            super().close(); events.append('closed')
+            if case == 'double-failure': raise RuntimeError('close failure')
+    def connect(path, **kwargs):
+        assert '?mode=ro' in path and str(source) not in path
+        if case == 'connect': raise primary
+        db = original_connect(path, factory=Connection, **kwargs); opened.append(db); return db
+    private_database = recovery.private_database
+    @contextmanager
+    def private(path):
+        with private_database(path) as target:
+            try: yield target
+            finally:
+                events.append('teardown')
+                for db in opened:
+                    with pytest.raises(sqlite3.ProgrammingError, match='closed'): original_execute(db, 'SELECT 1')
+                if case == 'double-failure': raise RuntimeError('private failure')
+    original_execute = sqlite3.Connection.execute
+    monkeypatch.setattr(recovery, 'private_database', private)
+    monkeypatch.setattr(recovery.sqlite3, 'connect', connect)
+    monkeypatch.setattr(recovery, 'validate_scope', lambda _:None)
+    monkeypatch.setattr(recovery, 'validate_registration', lambda _:None)
+    monkeypatch.setattr(recovery, 'check_completion_hello', lambda *a:None)
+    monkeypatch.setattr(recovery, 'completion_binding', lambda *a:None)
+    def run():
+        if reader == 'startup_read': return recovery.startup_read(tmp_path)
+        return recovery.enrollment_gate(tmp_path, recovery.digest(record), dict(lane='b'*32, boot='c'*32, quarantined=False), [], {})
+    if case == 'schema' or (case == 'early' and reader == 'enrollment_gate'):
+        with pytest.raises(ValueError, match='schema|not_enrolled'): run()
+    elif case in ('sql', 'connect', 'double-failure'):
+        with pytest.raises(sqlite3.OperationalError) as caught: run()
+        assert caught.value is primary
+    else:
+        result = run()
+        assert result == (None if reader == 'startup_read' and case == 'early' else
+            dict(deployment_id='a'*32, completion=None) if reader == 'startup_read' else 'a'*32)
+    assert events == (['teardown'] if case == 'connect' else ['closed', 'teardown'])
+    assert {p.name:p.read_bytes() for p in tmp_path.iterdir()} == before
+
+
+@pytest.mark.parametrize('case', ['semantic', 'death73', 'unrelated', 'signal', 'timeout', 'missing-semantic'])
+def test_lifetime_wait_guard_unit(case, maintenance_wait_guard):
+    from types import SimpleNamespace
+    MaintenanceWaitGuard = type(maintenance_wait_guard)
+    import signal
+    session = SimpleNamespace(shouldstop=False)
+    node = SimpleNamespace(nodeid='synthetic-owned-wait')
+    guard = MaintenanceWaitGuard(node, session); guard.owned.add(123)
+    pid = 456 if case == 'unrelated' else 123
+    status = signal.SIGSEGV if case == 'signal' else signal.SIGKILL if case == 'timeout' else (73 if case == 'death73' else 74)<<8
+    result = (pid, status)
+    assert guard.observe(result, witness=b'V' if case == 'semantic' else b'D' if case == 'death73' else b'',
+        expected_signal=signal.SIGKILL if case == 'timeout' else None) is result
+    assert bool(guard.failures) == (case in ('signal', 'missing-semantic'))
+    assert bool(session.shouldstop) == bool(guard.failures)
+    assert guard.receipts == ([] if case == 'unrelated' else [result])
+    assert guard.owned == ({123} if case == 'unrelated' else set())
+
+
+def test_lifetime_guard_real_semantic_refusal_and_unrelated_child(monkeypatch, maintenance_wait_guard):
+    import sys
+    monkeypatch.setattr(sys, 'platform', 'linux')
+    monkeypatch.setattr(recovery, '_install_maintenance_limit', lambda:None)
+    @__import__('contextlib').contextmanager
+    def session(*a, **k): yield None
+    monkeypatch.setattr(recovery, '_maintenance_session', session)
+    unrelated = os.fork()
+    if unrelated == 0: os._exit(0)
+    def refused(_): raise ValueError('synthetic semantic refusal')
+    with pytest.raises(ValueError, match='child_failed'):
+        recovery._run_bounded_maintenance({}, {}, refused)
+    assert os.waitpid(unrelated, 0) == (unrelated, 0)
+    assert not maintenance_wait_guard.failures
+    assert len(maintenance_wait_guard.receipts) == 1
+    assert maintenance_wait_guard.receipts[0][1] == 74<<8
+    assert not maintenance_wait_guard.owned
+
+
+def test_lifetime_guard_reporting_overrides_caught_negative(maintenance_wait_guard):
+    from types import SimpleNamespace
+    node = SimpleNamespace(nodeid='synthetic-negative', _maintenance_guard=None)
+    session = SimpleNamespace(shouldstop=False)
+    guard = type(maintenance_wait_guard)(node, session); node._maintenance_guard = guard
+    guard.owned.add(123)
+    with pytest.raises(ValueError):
+        guard.observe((123, 11))  # Synthetic SIGSEGV wait status; no signal is generated.
+        raise ValueError('sanitized child failure')
+    report = SimpleNamespace(when='call', outcome='passed', longrepr=None)
+    hook = maintenance_wait_guard.report_hook(node, None)
+    next(hook)
+    with pytest.raises(StopIteration) as result: hook.send(report)
+    assert result.value.value is report and report.outcome == 'failed'
+    assert session.shouldstop and 'status=11' in report.longrepr
+
+
+def test_lifetime_startup_lock_discovery_never_creates_paths(tmp_path):
+    from service.recovery import _startup_read_lock
+    root = tmp_path/'absent'
+    with _startup_read_lock(root) as readable: assert readable is False
+    assert not root.exists()
+    root.mkdir()
+    before = list(root.iterdir())
+    with _startup_read_lock(root) as readable: assert readable is False
+    assert list(root.iterdir()) == before
+    (root/'core.sqlite').write_bytes(b'not opened')
+    with pytest.raises(ValueError, match='missing_control_lock'):
+        with _startup_read_lock(root): pytest.fail('unchecked database')
+    assert (root/'core.sqlite').read_bytes() == b'not opened'
+
+
+def test_lifetime_startup_lock_release_does_not_unlock_other_owner(tmp_path):
+    import fcntl
+    from service.core import Core
+    from service.recovery import _startup_read_lock
+    core = Core(tmp_path/'core'); core.close()
+    with _startup_read_lock(core.root) as readable:
+        assert readable
+        with pytest.raises(ValueError, match='control_busy'): Core(core.root)
+    # The read-side/Core gap is not transfer: Core must independently acquire.
+    owner = Core(core.root)
+    try:
+        with pytest.raises(ValueError, match='control_busy'):
+            with _startup_read_lock(core.root): pytest.fail('reader bypass')
+        with pytest.raises(ValueError, match='control_busy'): Core(core.root)
+    finally: owner.close()
+    with _startup_read_lock(core.root) as readable: assert readable
+
+
+@pytest.mark.parametrize('state', ['constructing', 'live', 'closing', 'uncertain', 'owner-only'])
+@pytest.mark.parametrize('same_root', [False, True])
+def test_bounded_core_maintenance_refuses_before_effects(tmp_path, monkeypatch, state, same_root):
+    import threading, sys
+    from service import core as module
+    baseline = tuple(module._core_registry)
+    record = module._reserve_core(tmp_path/'held')
+    record.state = 'uncertain' if state == 'owner-only' else state
+    effects = []
+    monkeypatch.setattr(sys, 'platform', 'linux')
+    monkeypatch.setattr(threading, 'active_count', lambda: 1)
+    def forbidden(*a, **kw):
+        effects.append(True); raise AssertionError('pre-admission effect')
+    monkeypatch.setattr(os, 'pipe', forbidden)
+    monkeypatch.setattr(os, 'fork', forbidden)
+    monkeypatch.setattr(recovery, '_maintenance_session', forbidden)
+    try:
+        with pytest.raises(ValueError, match='b2_maintenance_core_ownership_busy'):
+            recovery._run_bounded_maintenance({'control': tmp_path/('held' if same_root else 'other')}, {}, forbidden, _prewrite=forbidden)
+        assert effects == []
+    finally:
+        record.state = 'constructing'; record.close()
+    assert tuple(module._core_registry) == baseline
+
+
+@pytest.mark.parametrize('failure', ['pipe', 'fork'])
+def test_bounded_core_prefork_lease_failure(tmp_path, monkeypatch, failure):
+    import threading, sys
+    from service import core as module
+    baseline = tuple(module._core_registry)
+    monkeypatch.setattr(sys, 'platform', 'linux')
+    monkeypatch.setattr(threading, 'active_count', lambda: 1)
+    pipe = os.pipe; ends = []; errors = []
+    def contender():
+        try: module._reserve_core(tmp_path/'concurrent')
+        except ValueError as e: errors.append(str(e))
+    def check():
+        with pytest.raises(ValueError, match='core_ownership_busy'): module._reserve_core(tmp_path/'nested')
+        before = len(errors)
+        thread = threading.Thread(target=contender); thread.start(); thread.join(2)
+        assert not thread.is_alive() and len(errors) == before+1
+    def piping():
+        check()
+        if failure == 'pipe': raise OSError('owned pipe failure')
+        pair = pipe(); ends.extend(pair); return pair
+    def forking():
+        check()
+        raise OSError('owned fork failure')
+    monkeypatch.setattr(os, 'pipe', piping); monkeypatch.setattr(os, 'fork', forking)
+    with pytest.raises(OSError, match='owned .* failure'):
+        recovery._run_bounded_maintenance({}, {}, lambda s: True)
+    for fd in ends:
+        with pytest.raises(OSError): os.fstat(fd)
+    r = module._reserve_core(tmp_path/'after'); r.close()
+    assert tuple(module._core_registry) == baseline
+
+
+def test_bounded_core_lease_parent_release_child_pid_refusal(monkeypatch, tmp_path):
+    from service import core as module
+    baseline = tuple(module._core_registry)
+    _t1_pipe_model(monkeypatch)
+    def operation(session):
+        # Actual one-shot child: PID guard must run before the locked mutex.
+        for action in (lambda: module._reserve_core(tmp_path/'child'),
+                       lambda: module._core_maintenance_lease().__enter__()):
+            try: action()
+            except ValueError as e: assert 'inherited_process' in str(e)
+            else: raise AssertionError('child inherited registry accepted')
+        return 'child refused inherited registry'
+    assert recovery._run_bounded_maintenance({}, {}, operation) == 'child refused inherited registry'
+    r = module._reserve_core(tmp_path/'parent'); r.close()
+    assert tuple(module._core_registry) == baseline
+
+
+def test_bounded_core_prefork_deterministic_parent_release(tmp_path, monkeypatch):
+    import select, threading, sys
+    from service import core as module
+    baseline = tuple(module._core_registry); effects = []; waits = []
+    pipe = os.pipe; ends = []; raw = iter([b'{"result":true}', b''])
+    monkeypatch.setattr(sys, 'platform', 'linux')
+    monkeypatch.setattr(threading, 'active_count', lambda: 1)
+    def piping():
+        with pytest.raises(ValueError, match='core_ownership_busy'): module._reserve_core(tmp_path/'at-pipe')
+        pair = pipe(); ends.extend(pair); effects.append('pipe'); return pair
+    def fork():
+        with pytest.raises(ValueError, match='core_ownership_busy'): module._reserve_core(tmp_path/'at-fork')
+        effects.append('fork'); return 987654
+    def read(*a):
+        # Parent releases immediately after successful fork, before any read.
+        r = module._reserve_core(tmp_path/'after-fork'); r.close()
+        return next(raw)
+    def wait(pid, flags): waits.append((pid, flags)); return pid, 0
+    monkeypatch.setattr(os, 'pipe', piping); monkeypatch.setattr(os, 'fork', fork)
+    monkeypatch.setattr(os, 'read', read); monkeypatch.setattr(os, 'waitpid', wait)
+    monkeypatch.setattr(select, 'select', lambda r, w, x, t: (r, w, x))
+    monkeypatch.setattr(os, 'kill', lambda *a: pytest.fail('successful double signalled'))
+    assert recovery._run_bounded_maintenance({}, {}, lambda s: pytest.fail('parent operation')) is True
+    assert effects == ['pipe', 'fork'] and waits == [(987654, os.WNOHANG)]
+    for fd in ends:
+        with pytest.raises(OSError): os.fstat(fd)
+    assert tuple(module._core_registry) == baseline

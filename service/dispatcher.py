@@ -29,6 +29,7 @@ class Dispatcher:
         self.fault = fault
         self.budget, self.current_profiles = budget, profiles
         self.commands=queue.Queue(64)
+        self._cleanup_failed = False
         self.initialized=Future()
         self.thread=threading.Thread(target=self._run,name='control-writer',daemon=True)
         self.thread.start()
@@ -42,26 +43,34 @@ class Dispatcher:
         return future.result(timeout=timeout)
 
     def close(self):
+        if self._cleanup_failed: raise RuntimeError('control_cleanup_failed')
         self.call('close');self.thread.join(timeout=4)
         if self.thread.is_alive():raise RuntimeError('control_close_timeout')
+        if self._cleanup_failed: raise RuntimeError('control_cleanup_failed')
 
     def _run(self):
         core=None
+        startup_error=None
         try:
-            from service.recovery import startup_read, check_completion_hello
-            startup = startup_read(self.root)
-            hello = None
-            if startup is not None or self.persistent_registration is not None:
-                hello = self.runtime.call('hello', {})
-                if startup is not None and hello.get('maintenance')!=startup['completion']:
-                    raise ValueError('b2_cross_volume_completion_mismatch')
-                if self.persistent_registration is None:
-                    raise ValueError('persistent_registration_required_before_startup')
-                from service.recovery import enrollment_gate
-                from service.admission import DEFAULT_BUDGET
-                enrollment_gate(self.root, self.persistent_registration,
-                    hello, self.current_profiles,
-                    DEFAULT_BUDGET if self.budget is None else self.budget)
+            from service.recovery import startup_read, check_completion_hello, _startup_read_lock
+            # Hold the old owner's exclusion through all private readers. Release
+            # before Core's independent acquisition (never double-acquire flock).
+            # A competing owner in that gap either makes Core refuse, or completes
+            # before Core repeats the deployment/completion/hello binding below.
+            with _startup_read_lock(self.root) as readable:
+                startup = startup_read(self.root) if readable else None
+                hello = None
+                if startup is not None or self.persistent_registration is not None:
+                    hello = self.runtime.call('hello', {})
+                    if startup is not None and hello.get('maintenance')!=startup['completion']:
+                        raise ValueError('b2_cross_volume_completion_mismatch')
+                    if self.persistent_registration is None:
+                        raise ValueError('persistent_registration_required_before_startup')
+                    from service.recovery import enrollment_gate
+                    from service.admission import DEFAULT_BUDGET
+                    enrollment_gate(self.root, self.persistent_registration,
+                        hello, self.current_profiles,
+                        DEFAULT_BUDGET if self.budget is None else self.budget)
             core=self.core=Core(self.root)
             if startup is not None:
                 if core.db.execute('SELECT id FROM p1_installation').fetchall()!=[(startup['deployment_id'],)]:
@@ -70,6 +79,8 @@ class Dispatcher:
                 check_completion_hello(core.db, second_hello)
                 if second_hello!=hello: raise ValueError('startup_hello_changed')
             self.enrolled=bool(core.db.execute("SELECT 1 FROM sqlite_master WHERE name='p1_installation'").fetchone())
+            if startup is None and self.enrolled:
+                raise ValueError('startup_deployment_changed')
             self.admission=Admission(core,self.staging,self.budget)
             self.store=DispatchStore(core,self.admission)
             self.pool=ThreadPoolExecutor(max_workers=1,thread_name_prefix='bounded-lifecycle')
@@ -120,11 +131,24 @@ class Dispatcher:
                     self.next_poll=time.monotonic()+.2
             if self.pending:self.pending[0].result(timeout=3)
         except BaseException as exc:
-            if not self.initialized.done():self.initialized.set_exception(exc)
+            if not self.initialized.done():startup_error=exc
             else:self.error=type(exc).__name__
         finally:
-            if hasattr(self,'pool'):self.pool.shutdown(wait=True,cancel_futures=True)
-            if core:core.close()
+            # Failed initialization is observable only after both owned cleanups.
+            # The constructor retains its existing five-second wait bound.
+            try:
+                if hasattr(self,'pool'):self.pool.shutdown(wait=True,cancel_futures=True)
+            except BaseException as cleanup:
+                self._cleanup_failed = True
+                if startup_error is not None: startup_error.add_note('startup pool cleanup failed: '+type(cleanup).__name__)
+            finally:
+                try:
+                    if core:core.close()
+                except BaseException as cleanup:
+                    self._cleanup_failed = True
+                    if startup_error is not None: startup_error.add_note('startup Core cleanup failed: '+type(cleanup).__name__)
+                finally:
+                    if startup_error is not None:self.initialized.set_exception(startup_error)
 
     def _command(self,op,*args,**kwargs):
         if op=='close':self.stopping=True;return None
