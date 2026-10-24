@@ -1727,3 +1727,7 @@ r90 firstlocalaction STOP6GiB admission beforeDocker/LOCKONLY/prepare/build;post
 ### 2026-10-24 — Exact approved cache cleanup dispatched
 
 r91 identifies sixpnpmmetadata/Electronzip/pipHTTP/Playwrightdownloadtrees1.664GiB underpriorusercleanupallowlist, currentfree6274297856. Parent authorizes pab-approved-cache-cleanup-r92-20261024 exactsixonly/freshidentity+activeusechecks/postfreebytes, preservesallproof/worktrees/Dockerobjects/stores/siblings. No fallbackdelete/r90retryauthority; actualheadroompostcheckbeforeparentnextaction.
+
+### 2026-10-24 — Approved cache cleanup restores headroom; unspent build renewed
+
+r92 exactsixcachetreesdeleted0errors/deferred,free8054173696(7.501GiB),observeddelta1788723200;proof/worktrees/Dockerobjectsuntouched. Parent disposesr90zerooperationdiskSTOPaftermaterialresourcechange andauthorizes pab-directed-build-resume-r93-20261024 freshsameadmission/LOCKONLY+ONEprepare/build+data-onlybinding, no diagnostic/cleanup. Failedr90preserved; independentactualreview follows.
