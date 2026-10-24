@@ -2143,3 +2143,7 @@ r189 source85eb3d41/docs3d19350c adds closed execution descriptor and local veri
 ### 2026-10-24 — Managed provisioning delivered for review
 
 r190 sourceef820eb1/docs68445434 implements operator-pinned Kokoro stage/resume/hash verification/immutable bundle and atomic active pointer,9 injected fixture tests PASS. No actualpins invented or downloads run. Parent commissioned independent Sol r192 including manifest seam compatibility awareness; r191 engine review continues. Source adoption and actual model/runtime qualification remain pending.
+
+### 2026-10-24 — Kokoro callable interface adopted
+
+r191 bounded source GO,6 tests plus inert checks PASS. Parent merged3d19350c conflict-free and reran6 engine tests PASS. Nonblocking mutable AudioResult bool/numeric metadata consistency observation retained for integration correction. No engine activation yet; authenticated descriptor/bundlemapping, runtime memory enforcement and actual audible checks remain. Provisioning r192 review active before shared manifest integration.
