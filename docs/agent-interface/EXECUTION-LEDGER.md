@@ -2327,3 +2327,7 @@ r226 source NO-GO R226-1: directcleanup task cancellation cancels asyncwrapper w
 ### 2026-10-24 — Thread-result responsibility correction enters review
 
 r227 source7dfbd639/docsd5bbabe7 stores executorresults in independentlyretainedconcurrentFuture and preservesunknownobligations whenobservercancelled/loopcallbackrejected.80focusedmethods reportedPASS,3directcleanupcancelregressionsREDold. Parent commissioned independent Sol r228. Dispatchergateordering unchanged; activationunmerged actualcleanupqualificationpending.
+
+### 2026-10-24 — Checked activation adopted; packaging/launcher starts
+
+r228 bounded source GO closes threadresponsibility,80independenttests+2probesPASS. Parent mergedd5bbabe7 conflict-free; integrated80suite session3082 running. Commissioned Sol-low r229 finitehostcommand/standalonepackage/releaseimages using reviewedgates. ActualDocker/install/Python3.11runtime/audiblequalification stillpending.
