@@ -61,8 +61,13 @@ import multiprocessing as mp
 import contextlib
 from dataclasses import dataclass
 from functools import partial
-from tts_backends.qwen import QwenBackend, checkpoint_capabilities, validate_checkpoint_request
-from tts_backends.contract import AudioResult, BackendError
+# Support both package-root headless imports and legacy lib-path CLI imports.
+if __package__:
+    from .tts_backends.qwen import QwenBackend, checkpoint_capabilities, validate_checkpoint_request
+    from .tts_backends.contract import AudioResult, BackendError
+else:
+    from tts_backends.qwen import QwenBackend, checkpoint_capabilities, validate_checkpoint_request
+    from tts_backends.contract import AudioResult, BackendError
 from importlib import metadata as importlib_metadata
 from pathlib import Path
 from typing import Any
@@ -661,7 +666,7 @@ def _has_flash_attn() -> bool:
         return False
 
 
-def _load_tts_model_local(model_name: str, num_threads: int, dtype_str: str = "auto", revision: str | None = None, offline: bool = False):
+def _load_tts_model_local(model_name: str, num_threads: int, dtype_str: str = "auto", revision: str | None = None, offline: bool = False, device: str | None = None, attention: str | None = None):
     """
     Load a Qwen3-TTS model targeting the best available device.
 
@@ -679,13 +684,35 @@ def _load_tts_model_local(model_name: str, num_threads: int, dtype_str: str = "a
       Otherwise → "sdpa"  (PyTorch fused SDPA, faster than "eager" on both CPU
         and CUDA, no extra dependencies).
     """
-    from qwen_tts import Qwen3TTSModel  # type: ignore
-    device = get_device()
+    explicit = device is not None or attention is not None
+    if explicit:
+        import re
+        if (type(device) is not str or not re.fullmatch(r"cpu|mps|cuda:(0|[1-9][0-9]{0,2})", device)
+                or dtype_str not in _DTYPE_MAP or dtype_str == 'auto'
+                or attention not in ('eager', 'sdpa', 'flash_attention_2')
+                or not offline or not revision or not Path(model_name).is_dir()):
+            raise ValueError('Invalid explicit local Qwen execution')
+        if device.startswith('cuda:'):
+            index = int(device.split(':')[1])
+            if not torch.cuda.is_available() or index >= torch.cuda.device_count():
+                raise ValueError('Requested CUDA device unavailable')
+        elif device == 'mps':
+            import platform
+            if platform.system() != 'Darwin' or platform.machine().lower() not in ('arm64', 'aarch64') or not torch.backends.mps.is_available():
+                raise ValueError('Requested native Metal device unavailable')
+        if ((device == 'cpu' and dtype_str != 'float32') or (device == 'mps' and dtype_str == 'bfloat16')
+                or (attention == 'flash_attention_2' and not device.startswith('cuda:'))):
+            raise ValueError('Unsupported explicit precision/attention')
+    else:
+        device = get_device()
     dtype  = best_dtype(device, dtype_str)
     torch.set_num_threads(num_threads)
+    from qwen_tts import Qwen3TTSModel  # type: ignore
 
     on_cuda = device.startswith("cuda")
-    if on_cuda and _has_flash_attn():
+    if explicit:
+        attn_impl = attention
+    elif on_cuda and _has_flash_attn():
         attn_impl = "flash_attention_2"
     else:
         attn_impl = "sdpa"
@@ -713,12 +740,15 @@ def _load_tts_model_local(model_name: str, num_threads: int, dtype_str: str = "a
 
 
 
-def load_tts_model(model_name: str, num_threads: int, dtype_str: str = "auto", *, revision: str | None = None, offline: bool | None = None):
+def load_tts_model(model_name: str, num_threads: int, dtype_str: str = "auto", *, revision: str | None = None, offline: bool | None = None, device: str | None = None, attention: str | None = None):
     """Lazy supervised model; set explicit revision for reproducible runs."""
     revision = revision or os.getenv("TTS_MODEL_REVISION") or None
     if offline is None:
         offline = env_flag_enabled("TTS_OFFLINE", False) or env_flag_enabled("HF_HUB_OFFLINE", False)
-    return QwenBackend(model_name=model_name, num_threads=num_threads, dtype_str=dtype_str, revision=revision, offline=offline)
+    settings = dict(model_name=model_name, num_threads=num_threads, dtype_str=dtype_str, revision=revision, offline=offline)
+    if device is not None or attention is not None:
+        settings.update(device=device, attention=attention)
+    return QwenBackend(**settings)
 
 
 def qwen_tts_package_version() -> str:

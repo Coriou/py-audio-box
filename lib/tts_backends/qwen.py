@@ -83,7 +83,10 @@ def _worker_impl(connection, settings):
         if settings.get("offline"):
             os.environ["HF_HUB_OFFLINE"] = "1"
             os.environ["TRANSFORMERS_OFFLINE"] = "1"
-        from tts import _load_tts_model_local
+        if __package__ == 'lib.tts_backends':
+            from ..tts import _load_tts_model_local
+        else:  # Legacy callers put lib itself on the import path.
+            from tts import _load_tts_model_local
         model = _load_tts_model_local(**settings)
         connection.send(('ready', {'revision': getattr(model, '_audio_box_revision', settings.get('revision'))}))
         while True:
@@ -94,7 +97,14 @@ def _worker_impl(connection, settings):
                 if seed is not None:
                     import torch
                     torch.manual_seed(seed)
-                value = getattr(model, method)(*args, **kwargs)
+                if method == '_service_clone':
+                    reference = kwargs.pop('ref_audio')
+                    ref_text = kwargs.pop('ref_text')
+                    x_vector_only = kwargs.pop('x_vector_only_mode')
+                    prompt = model.create_voice_clone_prompt(ref_audio=reference, ref_text=ref_text, x_vector_only_mode=x_vector_only)
+                    value = model.generate_voice_clone(**kwargs, voice_clone_prompt=prompt)
+                else:
+                    value = getattr(model, method)(*args, **kwargs)
                 if method == 'create_voice_clone_prompt':
                     # Attribute-compatible items preserve ref_text/ICL. Native
                     # Qwen dict prompts omit transcripts in qwen-tts 0.1.1.
@@ -275,7 +285,10 @@ class QwenBackend:
                 raise
 
     def create_voice_clone_prompt(self, *args, **kwargs):
-        from tts import bind_clone_prompt
+        if __package__ == 'lib.tts_backends':
+            from ..tts import bind_clone_prompt
+        else:
+            from tts import bind_clone_prompt
         prompt = self.invoke('create_voice_clone_prompt', args, kwargs)
         return bind_clone_prompt(prompt, model=self)
 
@@ -289,3 +302,17 @@ class QwenBackend:
         samples = wavs[0]
         channels = 1 if getattr(samples, 'ndim', 1) == 1 else samples.shape[1]
         return AudioResult(samples, sr, channels, {'backend': 'qwen', 'checkpoint': self.name_or_path, 'revision': self._audio_box_revision, 'offline': self.settings.get('offline', False)})
+
+    # Closed service methods. The legacy dynamic dispatcher remains private to
+    # legacy callers; no method name or arbitrary kwargs crosses this interface.
+    def synthesise_clone(self, params, reference, reference_text, x_vector_only, timeout_s):
+        return self.generate_audio('_service_clone', dict(params, ref_audio=reference,
+            ref_text=reference_text, x_vector_only_mode=x_vector_only), timeout_s)
+
+    def synthesise_preset(self, params, preset, instruct, timeout_s):
+        values = dict(params, speaker=preset)
+        if instruct is not None: values['instruct'] = instruct
+        return self.generate_audio('generate_custom_voice', values, timeout_s)
+
+    def synthesise_design(self, params, instruct, timeout_s):
+        return self.generate_audio('generate_voice_design', dict(params, instruct=instruct), timeout_s)
