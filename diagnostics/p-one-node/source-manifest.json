@@ -2,7 +2,7 @@
   "base_recipe_contract": "r26: shared invocation-owned local FROM; build-time clean replacement ONLY dedicated image /tmp including hidden entries and symlink before seed COPY, numeric 0700/10001:10001 and seed 0600 with exact seed-only assertion; narrow image construction hygiene extends old metadata-only recipe; no packages/runtime initializer/volume cleanup/network/pull",
   "commit": "8d5aba5fc702719843d055b7d3f693c407deb0e9",
   "derivative_files": {
-    "diagnostics/b-controls/runner.py": "a0db124986e18c0f3f09e1840e8b9d25b8be5903f494b73526b02363b61d5d6e",
+    "diagnostics/b-controls/runner.py": "f2777a2e908997ecc81aba5c6ef988eb5774c011c1ccc4b4a0378ba1a80b4a22",
     "diagnostics/p-one-node/finite-driver.py": "7dfe240517291b00c4ecb44832bef3678e47a0aaf8eb57b82b94d89f348c0b6e",
     "diagnostics/p-one-node/identity_semantics.py": "fd2d1f6d40699aa258d9016996037e8f61875f9302b21f8a6700cac935f707de",
     "diagnostics/p-one-node/runtime-identity.py": "eb5d3a7dbdf717a219163bfeaaa9bb8616a0ad7c7b2ec315aa0eb8b24504c034"
@@ -100,7 +100,7 @@
     "service/supervisor_runtime.py": "7235121ac9c94fa061e6df1351930bc100b1aaae94d91ef678f07ccf46b11196",
     "service/worker_supervisor.py": "762056f605d54e4be44de6a4c4cfd6661bc9815bfc780538f655e7484c714ec3",
     "service/worker_transport.py": "081ae6ef6b8bdbafa52d0443e43d738eb1d9a500c0ca091d587d11adf365b0d2",
-    "tests/_maintenance_wait_guard.py": "cb12d9a66f5a44f875ef9ffd3fc9197889f147a9d29466d4c7082ccb57e7f26e",
+    "tests/_maintenance_wait_guard.py": "d3a011ffcc50e785f39abba54f07b51fe733b132425fff8dfc9a9848c92d254d",
     "tests/conftest.py": "d967baee72fa7fba3cb8974ac0406b2f44231a1c9d49fb7e7c088016f07cc7a3",
     "tests/contracts/requirements.txt": "879a35747eca9a5aac9dcadddbf299b7c1aa8e217ec7a6a62bc62686f5c26de1",
     "tests/contracts/test_contracts.py": "3d8f3b99c09449c8a49f661e0313273c533298c6df48277a21523b320a3c82f3",
@@ -153,7 +153,7 @@
     "tests/service/conftest.py": "6a74f7594739d6fecd59db87642282ff8ea1ec78b3b79d89eef8d514b01fcc47",
     "tests/service/test_adapters.py": "40d4b249a7c2d7dc70fe1a30ed2f3faa712cbd006ff73165a978eacdc61a85dd",
     "tests/service/test_admission.py": "f822e2c9547ef9970612e2093155a7d2475141bd751e09e31ddb283bd395b8ec",
-    "tests/service/test_child_wait_guard.py": "e7a310859cb94236dbf1219d0a255bb19fb4aa0a299d590c3256eda7c69a6f5b",
+    "tests/service/test_child_wait_guard.py": "6fc82dc7bff6e7b4fad55e42f7eb0af0d0b884cd1e068ce08eef3f703c01fbb8",
     "tests/service/test_core.py": "d194eacaaeb3a0cca1a6c6a0969c537892aae19dd332f42c3e243797309a5a26",
     "tests/service/test_dispatcher.py": "c75dcd51b8287aaf602919daf476758d0c1bd2132eebd4ab0ca78c2ce94129b8",
     "tests/service/test_packaged_lifecycle.py": "3460fe5279eb3d97045fca71d2f2e1a24947656fb170728427465588c4bd6255",

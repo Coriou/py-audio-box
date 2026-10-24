@@ -17,6 +17,9 @@ import uuid
 
 _RAW_WRITE = os.write
 
+# Directed survival storage is fixture-owned, never witness-owned.
+_B_SURVIVAL = None
+
 
 class MaintenanceWaitGuard:
     """Only terminal waits of PIDs enrolled during an owned maintenance call."""
@@ -839,7 +842,19 @@ class BlockedPipeWitness_B:
         diagnostic = self.__dict__.get('_refusal')
         diagnostic = diagnostic if diagnostic and diagnostic['final_active'] else None
         hook_gate = 0
+        hook_returned = False
         try:
+            if _B_SURVIVAL is not None and diagnostic and diagnostic.get('child_role', False):
+                try:
+                    _B_SURVIVAL[15] = 0
+                    _B_SURVIVAL[14] = 1
+                    _B_SURVIVAL[15] = 255 - (1)
+                except BaseException:
+                    try:
+                        _B_SURVIVAL[34] = 1
+                        _B_SURVIVAL[35] = 254
+                    except BaseException:
+                        pass
             closure_0 = self.closure(self.model_fork)
             closure_1 = self.closure(self.session_wrapper)
             closure_2 = self.closure(self.session_body)
@@ -849,33 +864,405 @@ class BlockedPipeWitness_B:
             closure_6 = self.closure(self.ready)
             closure_7 = self.closure(self.blocked)
             closure_8 = self.closure(self.clock)
-            answer = (((not diagnostic or (hook_gate := 1)) and (all(f.__code__ is code for f, code in zip(self.hook_functions, self.hook_codes)))) and
-                ((not diagnostic or (hook_gate := 2)) and ((self.session_wrapper.__code__, self.session_body.__code__, self.limit_wrapper.__code__,
-                    self.framing_wrapper.__code__) == self.wrapper_codes)) and
-                ((not diagnostic or (hook_gate := 3)) and (os.fork is self.model_fork)) and ((not diagnostic or (hook_gate := 4)) and (os.waitpid is self.wait)) and
-                ((not diagnostic or (hook_gate := 5)) and (closure_0.get('fork') is self.fork)) and
-                ((not diagnostic or (hook_gate := 6)) and (id(closure_0.get('owned')) == self.owned_id)) and
-                ((not diagnostic or (hook_gate := 7)) and (os.write is self.observed)) and ((not diagnostic or (hook_gate := 8)) and (select.select is self.ready)) and
-                ((not diagnostic or (hook_gate := 9)) and (self.recovery._maintenance_session is self.session_wrapper)) and
-                ((not diagnostic or (hook_gate := 10)) and (closure_1.get('func') is self.session_body)) and
-                ((not diagnostic or (hook_gate := 11)) and (closure_2.get('session') is self.session)) and
-                ((not diagnostic or (hook_gate := 12)) and (self.recovery._install_maintenance_limit is self.limit_wrapper)) and
-                ((not diagnostic or (hook_gate := 13)) and (closure_3.get('function') is self.limit)) and
-                ((not diagnostic or (hook_gate := 14)) and (self.recovery._maintenance_result_frame is self.framing_wrapper)) and
-                ((not diagnostic or (hook_gate := 15)) and (closure_4.get('function') is self.frame_result)) and
-                ((not diagnostic or (hook_gate := 16)) and (self.recovery.time.monotonic is self.clock)) and
-                ((not diagnostic or (hook_gate := 17)) and (self.time_module.monotonic is self.real_clock)) and ((not diagnostic or (hook_gate := 18)) and (self.time_module.sleep is self.sleep)) and
-                ((not diagnostic or (hook_gate := 19)) and (set(closure_5) == {'write', 'marker'})) and
-                ((not diagnostic or (hook_gate := 20)) and (closure_5.get('write') is self.writer)) and
-                ((not diagnostic or (hook_gate := 21)) and (id(closure_5.get('marker')) == self.marker_id)) and
-                ((not diagnostic or (hook_gate := 22)) and (closure_6 == {'select_blocked': self.blocked})) and
-                ((not diagnostic or (hook_gate := 23)) and (closure_7 == {'select0': self.select0, 'time': self.time_module})) and
-                ((not diagnostic or (hook_gate := 24)) and (closure_8 == {'clock': self.real_clock, 'start': self.start})))
+            if _B_SURVIVAL is not None and diagnostic and diagnostic.get('child_role', False):
+                try:
+                    _B_SURVIVAL[15] = 0
+                    _B_SURVIVAL[14] = 2
+                    _B_SURVIVAL[15] = 255 - (2)
+                except BaseException:
+                    try:
+                        _B_SURVIVAL[34] = 1
+                        _B_SURVIVAL[35] = 254
+                    except BaseException:
+                        pass
+            evaluated = 1
+            if diagnostic: hook_gate = 1
+            if _B_SURVIVAL is not None and diagnostic and diagnostic.get('child_role', False):
+                try:
+                    _B_SURVIVAL[13] = 0
+                    _B_SURVIVAL[12] = 1
+                    _B_SURVIVAL[13] = 255 - (1)
+                except BaseException:
+                    try:
+                        _B_SURVIVAL[34] = 1
+                        _B_SURVIVAL[35] = 254
+                    except BaseException:
+                        pass
+            answer = all((f.__code__ is code for f, code in zip(self.hook_functions, self.hook_codes)))
+            if evaluated == 1 and answer:
+                evaluated = 2
+                if diagnostic: hook_gate = 2
+                if _B_SURVIVAL is not None and diagnostic and diagnostic.get('child_role', False):
+                    try:
+                        _B_SURVIVAL[13] = 0
+                        _B_SURVIVAL[12] = 2
+                        _B_SURVIVAL[13] = 255 - (2)
+                    except BaseException:
+                        try:
+                            _B_SURVIVAL[34] = 1
+                            _B_SURVIVAL[35] = 254
+                        except BaseException:
+                            pass
+                answer = (self.session_wrapper.__code__, self.session_body.__code__, self.limit_wrapper.__code__, self.framing_wrapper.__code__) == self.wrapper_codes
+            if evaluated == 2 and answer:
+                evaluated = 3
+                if diagnostic: hook_gate = 3
+                if _B_SURVIVAL is not None and diagnostic and diagnostic.get('child_role', False):
+                    try:
+                        _B_SURVIVAL[13] = 0
+                        _B_SURVIVAL[12] = 3
+                        _B_SURVIVAL[13] = 255 - (3)
+                    except BaseException:
+                        try:
+                            _B_SURVIVAL[34] = 1
+                            _B_SURVIVAL[35] = 254
+                        except BaseException:
+                            pass
+                answer = os.fork is self.model_fork
+            if evaluated == 3 and answer:
+                evaluated = 4
+                if diagnostic: hook_gate = 4
+                if _B_SURVIVAL is not None and diagnostic and diagnostic.get('child_role', False):
+                    try:
+                        _B_SURVIVAL[13] = 0
+                        _B_SURVIVAL[12] = 4
+                        _B_SURVIVAL[13] = 255 - (4)
+                    except BaseException:
+                        try:
+                            _B_SURVIVAL[34] = 1
+                            _B_SURVIVAL[35] = 254
+                        except BaseException:
+                            pass
+                answer = os.waitpid is self.wait
+            if evaluated == 4 and answer:
+                evaluated = 5
+                if diagnostic: hook_gate = 5
+                if _B_SURVIVAL is not None and diagnostic and diagnostic.get('child_role', False):
+                    try:
+                        _B_SURVIVAL[13] = 0
+                        _B_SURVIVAL[12] = 5
+                        _B_SURVIVAL[13] = 255 - (5)
+                    except BaseException:
+                        try:
+                            _B_SURVIVAL[34] = 1
+                            _B_SURVIVAL[35] = 254
+                        except BaseException:
+                            pass
+                answer = closure_0.get('fork') is self.fork
+            if evaluated == 5 and answer:
+                evaluated = 6
+                if diagnostic: hook_gate = 6
+                if _B_SURVIVAL is not None and diagnostic and diagnostic.get('child_role', False):
+                    try:
+                        _B_SURVIVAL[13] = 0
+                        _B_SURVIVAL[12] = 6
+                        _B_SURVIVAL[13] = 255 - (6)
+                    except BaseException:
+                        try:
+                            _B_SURVIVAL[34] = 1
+                            _B_SURVIVAL[35] = 254
+                        except BaseException:
+                            pass
+                answer = id(closure_0.get('owned')) == self.owned_id
+            if evaluated == 6 and answer:
+                evaluated = 7
+                if diagnostic: hook_gate = 7
+                if _B_SURVIVAL is not None and diagnostic and diagnostic.get('child_role', False):
+                    try:
+                        _B_SURVIVAL[13] = 0
+                        _B_SURVIVAL[12] = 7
+                        _B_SURVIVAL[13] = 255 - (7)
+                    except BaseException:
+                        try:
+                            _B_SURVIVAL[34] = 1
+                            _B_SURVIVAL[35] = 254
+                        except BaseException:
+                            pass
+                answer = os.write is self.observed
+            if evaluated == 7 and answer:
+                evaluated = 8
+                if diagnostic: hook_gate = 8
+                if _B_SURVIVAL is not None and diagnostic and diagnostic.get('child_role', False):
+                    try:
+                        _B_SURVIVAL[13] = 0
+                        _B_SURVIVAL[12] = 8
+                        _B_SURVIVAL[13] = 255 - (8)
+                    except BaseException:
+                        try:
+                            _B_SURVIVAL[34] = 1
+                            _B_SURVIVAL[35] = 254
+                        except BaseException:
+                            pass
+                answer = select.select is self.ready
+            if evaluated == 8 and answer:
+                evaluated = 9
+                if diagnostic: hook_gate = 9
+                if _B_SURVIVAL is not None and diagnostic and diagnostic.get('child_role', False):
+                    try:
+                        _B_SURVIVAL[13] = 0
+                        _B_SURVIVAL[12] = 9
+                        _B_SURVIVAL[13] = 255 - (9)
+                    except BaseException:
+                        try:
+                            _B_SURVIVAL[34] = 1
+                            _B_SURVIVAL[35] = 254
+                        except BaseException:
+                            pass
+                answer = self.recovery._maintenance_session is self.session_wrapper
+            if evaluated == 9 and answer:
+                evaluated = 10
+                if diagnostic: hook_gate = 10
+                if _B_SURVIVAL is not None and diagnostic and diagnostic.get('child_role', False):
+                    try:
+                        _B_SURVIVAL[13] = 0
+                        _B_SURVIVAL[12] = 10
+                        _B_SURVIVAL[13] = 255 - (10)
+                    except BaseException:
+                        try:
+                            _B_SURVIVAL[34] = 1
+                            _B_SURVIVAL[35] = 254
+                        except BaseException:
+                            pass
+                answer = closure_1.get('func') is self.session_body
+            if evaluated == 10 and answer:
+                evaluated = 11
+                if diagnostic: hook_gate = 11
+                if _B_SURVIVAL is not None and diagnostic and diagnostic.get('child_role', False):
+                    try:
+                        _B_SURVIVAL[13] = 0
+                        _B_SURVIVAL[12] = 11
+                        _B_SURVIVAL[13] = 255 - (11)
+                    except BaseException:
+                        try:
+                            _B_SURVIVAL[34] = 1
+                            _B_SURVIVAL[35] = 254
+                        except BaseException:
+                            pass
+                answer = closure_2.get('session') is self.session
+            if evaluated == 11 and answer:
+                evaluated = 12
+                if diagnostic: hook_gate = 12
+                if _B_SURVIVAL is not None and diagnostic and diagnostic.get('child_role', False):
+                    try:
+                        _B_SURVIVAL[13] = 0
+                        _B_SURVIVAL[12] = 12
+                        _B_SURVIVAL[13] = 255 - (12)
+                    except BaseException:
+                        try:
+                            _B_SURVIVAL[34] = 1
+                            _B_SURVIVAL[35] = 254
+                        except BaseException:
+                            pass
+                answer = self.recovery._install_maintenance_limit is self.limit_wrapper
+            if evaluated == 12 and answer:
+                evaluated = 13
+                if diagnostic: hook_gate = 13
+                if _B_SURVIVAL is not None and diagnostic and diagnostic.get('child_role', False):
+                    try:
+                        _B_SURVIVAL[13] = 0
+                        _B_SURVIVAL[12] = 13
+                        _B_SURVIVAL[13] = 255 - (13)
+                    except BaseException:
+                        try:
+                            _B_SURVIVAL[34] = 1
+                            _B_SURVIVAL[35] = 254
+                        except BaseException:
+                            pass
+                answer = closure_3.get('function') is self.limit
+            if evaluated == 13 and answer:
+                evaluated = 14
+                if diagnostic: hook_gate = 14
+                if _B_SURVIVAL is not None and diagnostic and diagnostic.get('child_role', False):
+                    try:
+                        _B_SURVIVAL[13] = 0
+                        _B_SURVIVAL[12] = 14
+                        _B_SURVIVAL[13] = 255 - (14)
+                    except BaseException:
+                        try:
+                            _B_SURVIVAL[34] = 1
+                            _B_SURVIVAL[35] = 254
+                        except BaseException:
+                            pass
+                answer = self.recovery._maintenance_result_frame is self.framing_wrapper
+            if evaluated == 14 and answer:
+                evaluated = 15
+                if diagnostic: hook_gate = 15
+                if _B_SURVIVAL is not None and diagnostic and diagnostic.get('child_role', False):
+                    try:
+                        _B_SURVIVAL[13] = 0
+                        _B_SURVIVAL[12] = 15
+                        _B_SURVIVAL[13] = 255 - (15)
+                    except BaseException:
+                        try:
+                            _B_SURVIVAL[34] = 1
+                            _B_SURVIVAL[35] = 254
+                        except BaseException:
+                            pass
+                answer = closure_4.get('function') is self.frame_result
+            if evaluated == 15 and answer:
+                evaluated = 16
+                if diagnostic: hook_gate = 16
+                if _B_SURVIVAL is not None and diagnostic and diagnostic.get('child_role', False):
+                    try:
+                        _B_SURVIVAL[13] = 0
+                        _B_SURVIVAL[12] = 16
+                        _B_SURVIVAL[13] = 255 - (16)
+                    except BaseException:
+                        try:
+                            _B_SURVIVAL[34] = 1
+                            _B_SURVIVAL[35] = 254
+                        except BaseException:
+                            pass
+                answer = self.recovery.time.monotonic is self.clock
+            if evaluated == 16 and answer:
+                evaluated = 17
+                if diagnostic: hook_gate = 17
+                if _B_SURVIVAL is not None and diagnostic and diagnostic.get('child_role', False):
+                    try:
+                        _B_SURVIVAL[13] = 0
+                        _B_SURVIVAL[12] = 17
+                        _B_SURVIVAL[13] = 255 - (17)
+                    except BaseException:
+                        try:
+                            _B_SURVIVAL[34] = 1
+                            _B_SURVIVAL[35] = 254
+                        except BaseException:
+                            pass
+                answer = self.time_module.monotonic is self.real_clock
+            if evaluated == 17 and answer:
+                evaluated = 18
+                if diagnostic: hook_gate = 18
+                if _B_SURVIVAL is not None and diagnostic and diagnostic.get('child_role', False):
+                    try:
+                        _B_SURVIVAL[13] = 0
+                        _B_SURVIVAL[12] = 18
+                        _B_SURVIVAL[13] = 255 - (18)
+                    except BaseException:
+                        try:
+                            _B_SURVIVAL[34] = 1
+                            _B_SURVIVAL[35] = 254
+                        except BaseException:
+                            pass
+                answer = self.time_module.sleep is self.sleep
+            if evaluated == 18 and answer:
+                evaluated = 19
+                if diagnostic: hook_gate = 19
+                if _B_SURVIVAL is not None and diagnostic and diagnostic.get('child_role', False):
+                    try:
+                        _B_SURVIVAL[13] = 0
+                        _B_SURVIVAL[12] = 19
+                        _B_SURVIVAL[13] = 255 - (19)
+                    except BaseException:
+                        try:
+                            _B_SURVIVAL[34] = 1
+                            _B_SURVIVAL[35] = 254
+                        except BaseException:
+                            pass
+                answer = set(closure_5) == {'write', 'marker'}
+            if evaluated == 19 and answer:
+                evaluated = 20
+                if diagnostic: hook_gate = 20
+                if _B_SURVIVAL is not None and diagnostic and diagnostic.get('child_role', False):
+                    try:
+                        _B_SURVIVAL[13] = 0
+                        _B_SURVIVAL[12] = 20
+                        _B_SURVIVAL[13] = 255 - (20)
+                    except BaseException:
+                        try:
+                            _B_SURVIVAL[34] = 1
+                            _B_SURVIVAL[35] = 254
+                        except BaseException:
+                            pass
+                answer = closure_5.get('write') is self.writer
+            if evaluated == 20 and answer:
+                evaluated = 21
+                if diagnostic: hook_gate = 21
+                if _B_SURVIVAL is not None and diagnostic and diagnostic.get('child_role', False):
+                    try:
+                        _B_SURVIVAL[13] = 0
+                        _B_SURVIVAL[12] = 21
+                        _B_SURVIVAL[13] = 255 - (21)
+                    except BaseException:
+                        try:
+                            _B_SURVIVAL[34] = 1
+                            _B_SURVIVAL[35] = 254
+                        except BaseException:
+                            pass
+                answer = id(closure_5.get('marker')) == self.marker_id
+            if evaluated == 21 and answer:
+                evaluated = 22
+                if diagnostic: hook_gate = 22
+                if _B_SURVIVAL is not None and diagnostic and diagnostic.get('child_role', False):
+                    try:
+                        _B_SURVIVAL[13] = 0
+                        _B_SURVIVAL[12] = 22
+                        _B_SURVIVAL[13] = 255 - (22)
+                    except BaseException:
+                        try:
+                            _B_SURVIVAL[34] = 1
+                            _B_SURVIVAL[35] = 254
+                        except BaseException:
+                            pass
+                answer = closure_6 == {'select_blocked': self.blocked}
+            if evaluated == 22 and answer:
+                evaluated = 23
+                if diagnostic: hook_gate = 23
+                if _B_SURVIVAL is not None and diagnostic and diagnostic.get('child_role', False):
+                    try:
+                        _B_SURVIVAL[13] = 0
+                        _B_SURVIVAL[12] = 23
+                        _B_SURVIVAL[13] = 255 - (23)
+                    except BaseException:
+                        try:
+                            _B_SURVIVAL[34] = 1
+                            _B_SURVIVAL[35] = 254
+                        except BaseException:
+                            pass
+                answer = closure_7 == {'select0': self.select0, 'time': self.time_module}
+            if evaluated == 23 and answer:
+                evaluated = 24
+                if diagnostic: hook_gate = 24
+                if _B_SURVIVAL is not None and diagnostic and diagnostic.get('child_role', False):
+                    try:
+                        _B_SURVIVAL[13] = 0
+                        _B_SURVIVAL[12] = 24
+                        _B_SURVIVAL[13] = 255 - (24)
+                    except BaseException:
+                        try:
+                            _B_SURVIVAL[34] = 1
+                            _B_SURVIVAL[35] = 254
+                        except BaseException:
+                            pass
+                answer = closure_8 == {'clock': self.real_clock, 'start': self.start}
 
             if answer: hook_gate = 0
+            hook_returned = True
+            if _B_SURVIVAL is not None and diagnostic and diagnostic.get('child_role', False):
+                try:
+                    _B_SURVIVAL[15] = 0
+                    _B_SURVIVAL[14] = 3 if hook_gate == 0 else 4
+                    _B_SURVIVAL[15] = 255 - (3 if hook_gate == 0 else 4)
+                except BaseException:
+                    try:
+                        _B_SURVIVAL[34] = 1
+                        _B_SURVIVAL[35] = 254
+                    except BaseException:
+                        pass
             return answer
         finally:
             if diagnostic: diagnostic['hook_gate'] = hook_gate
+            if not hook_returned:
+                if _B_SURVIVAL is not None and diagnostic and diagnostic.get('child_role', False):
+                    try:
+                        _B_SURVIVAL[15] = 0
+                        _B_SURVIVAL[14] = 5
+                        _B_SURVIVAL[15] = 255 - (5)
+                    except BaseException:
+                        try:
+                            _B_SURVIVAL[34] = 1
+                            _B_SURVIVAL[35] = 254
+                        except BaseException:
+                            pass
 
     def bound_raw(self, frame):
         local = frame.f_locals
@@ -951,7 +1338,18 @@ class BlockedPipeWitness_B:
                     if not self.hooks():
                         self.valid = False
                         diagnostic = self.__dict__.get('_refusal')
-                        if diagnostic and not diagnostic['first_site']: diagnostic['first_site'] = 1
+                        if diagnostic and not diagnostic['first_site']:
+                            diagnostic['first_site'] = 1
+                            if _B_SURVIVAL is not None and diagnostic and diagnostic.get('child_role', False):
+                                try:
+                                    _B_SURVIVAL[8] = 1
+                                    _B_SURVIVAL[9] = 255 - (1)
+                                except BaseException:
+                                    try:
+                                        _B_SURVIVAL[34] = 1
+                                        _B_SURVIVAL[35] = 254
+                                    except BaseException:
+                                        pass
                 if event == 'line':
                     if 'deadline' in local and self.deadline is None:
                         import math
@@ -959,7 +1357,18 @@ class BlockedPipeWitness_B:
                         if type(value) not in (int, float) or not math.isfinite(value):
                             self.valid = False
                             diagnostic = self.__dict__.get('_refusal')
-                            if diagnostic and not diagnostic['first_site']: diagnostic['first_site'] = 2
+                            if diagnostic and not diagnostic['first_site']:
+                                diagnostic['first_site'] = 2
+                                if _B_SURVIVAL is not None and diagnostic and diagnostic.get('child_role', False):
+                                    try:
+                                        _B_SURVIVAL[8] = 2
+                                        _B_SURVIVAL[9] = 255 - (2)
+                                    except BaseException:
+                                        try:
+                                            _B_SURVIVAL[34] = 1
+                                            _B_SURVIVAL[35] = 254
+                                        except BaseException:
+                                            pass
                         else: self.deadline = value
                     if local.get('identities') and self.pipe is None:
                         self.pipe = local['identities'].get(local.get('write_fd'))
@@ -973,11 +1382,33 @@ class BlockedPipeWitness_B:
                                 self.pipe[:2] == self.identity(self.observer_fd)[0][:2]):
                                     self.valid = False
                                     diagnostic = self.__dict__.get('_refusal')
-                                    if diagnostic and not diagnostic['first_site']: diagnostic['first_site'] = 3
+                                    if diagnostic and not diagnostic['first_site']:
+                                        diagnostic['first_site'] = 3
+                                        if _B_SURVIVAL is not None and diagnostic and diagnostic.get('child_role', False):
+                                            try:
+                                                _B_SURVIVAL[8] = 3
+                                                _B_SURVIVAL[9] = 255 - (3)
+                                            except BaseException:
+                                                try:
+                                                    _B_SURVIVAL[34] = 1
+                                                    _B_SURVIVAL[35] = 254
+                                                except BaseException:
+                                                    pass
                     if self.phase in ('backpressure', 'timeout') and not self.bound_raw(frame):
                         self.valid = False
                         diagnostic = self.__dict__.get('_refusal')
-                        if diagnostic and not diagnostic['first_site']: diagnostic['first_site'] = 4
+                        if diagnostic and not diagnostic['first_site']:
+                            diagnostic['first_site'] = 4
+                            if _B_SURVIVAL is not None and diagnostic and diagnostic.get('child_role', False):
+                                try:
+                                    _B_SURVIVAL[8] = 4
+                                    _B_SURVIVAL[9] = 255 - (4)
+                                except BaseException:
+                                    try:
+                                        _B_SURVIVAL[34] = 1
+                                        _B_SURVIVAL[35] = 254
+                                    except BaseException:
+                                        pass
                 if event == 'exception':
                     exc = arg[1]
                     if type(exc) is BlockingIOError and self.phase in ('armed', 'backpressure'):
@@ -985,39 +1416,118 @@ class BlockedPipeWitness_B:
                         if not self.eagain(exc, frame):
                             self.valid = False
                             diagnostic = self.__dict__.get('_refusal')
-                            if diagnostic and not diagnostic['first_site']: diagnostic['first_site'] = 5
+                            if diagnostic and not diagnostic['first_site']:
+                                diagnostic['first_site'] = 5
+                                if _B_SURVIVAL is not None and diagnostic and diagnostic.get('child_role', False):
+                                    try:
+                                        _B_SURVIVAL[8] = 5
+                                        _B_SURVIVAL[9] = 255 - (5)
+                                    except BaseException:
+                                        try:
+                                            _B_SURVIVAL[34] = 1
+                                            _B_SURVIVAL[35] = 254
+                                        except BaseException:
+                                            pass
                         elif first: token = b'B:e;'
                     elif self.timeout(exc):
                         tb = exc.__traceback__
                         if local.get('pid') == 0:
+                            diagnostic = self.__dict__.get('_refusal')
+                            first_child_role = diagnostic and not diagnostic.get('child_role', False)
+                            if diagnostic: diagnostic['child_role'] = True
+                            if first_child_role and _B_SURVIVAL is not None and diagnostic and diagnostic.get('child_role', False):
+                                try:
+                                    _B_SURVIVAL[4] = 1
+                                    _B_SURVIVAL[5] = 255 - (1)
+                                except BaseException:
+                                    try:
+                                        _B_SURVIVAL[34] = 1
+                                        _B_SURVIVAL[35] = 254
+                                    except BaseException:
+                                        pass
                             if not (self.phase == 'backpressure' and self.bound_raw(frame) and
                                     local.get('remaining', 1) <= 0 and self.expired(frame) and tb is not None and
                                     tb.tb_frame is frame and tb.tb_lasti in self.raise_child and tb.tb_next is None):
                                         self.valid = False
                                         diagnostic = self.__dict__.get('_refusal')
-                                        if diagnostic and not diagnostic['first_site']: diagnostic['first_site'] = 6
+                                        if diagnostic and not diagnostic['first_site']:
+                                            diagnostic['first_site'] = 6
+                                            if _B_SURVIVAL is not None and diagnostic and diagnostic.get('child_role', False):
+                                                try:
+                                                    _B_SURVIVAL[8] = 6
+                                                    _B_SURVIVAL[9] = 255 - (6)
+                                                except BaseException:
+                                                    try:
+                                                        _B_SURVIVAL[34] = 1
+                                                        _B_SURVIVAL[35] = 254
+                                                    except BaseException:
+                                                        pass
                             else: self.timeout_id, self.phase = id(exc), 'timeout'
                         elif not (tb is not None and tb.tb_frame is frame and tb.tb_next is None and
                                 (tb.tb_lasti in self.raise_parent and local.get('remaining', 1) <= 0 or
                                  tb.tb_lasti in self.raise_empty and self.empty_select) and self.expired(frame)):
                             self.valid = False
                             diagnostic = self.__dict__.get('_refusal')
-                            if diagnostic and not diagnostic['first_site']: diagnostic['first_site'] = 7
+                            if diagnostic and not diagnostic['first_site']:
+                                diagnostic['first_site'] = 7
+                                if _B_SURVIVAL is not None and diagnostic and diagnostic.get('child_role', False):
+                                    try:
+                                        _B_SURVIVAL[8] = 7
+                                        _B_SURVIVAL[9] = 255 - (7)
+                                    except BaseException:
+                                        try:
+                                            _B_SURVIVAL[34] = 1
+                                            _B_SURVIVAL[35] = 254
+                                        except BaseException:
+                                            pass
                     elif self.phase != 'armed' or local.get('pid') != 0:
                         self.valid = False
                         diagnostic = self.__dict__.get('_refusal')
-                        if diagnostic and not diagnostic['first_site']: diagnostic['first_site'] = 8
+                        if diagnostic and not diagnostic['first_site']:
+                            diagnostic['first_site'] = 8
+                            if _B_SURVIVAL is not None and diagnostic and diagnostic.get('child_role', False):
+                                try:
+                                    _B_SURVIVAL[8] = 8
+                                    _B_SURVIVAL[9] = 255 - (8)
+                                except BaseException:
+                                    try:
+                                        _B_SURVIVAL[34] = 1
+                                        _B_SURVIVAL[35] = 254
+                                    except BaseException:
+                                        pass
             elif code is self.operation.__code__ and event == 'return': self.result_id = id(arg)
             elif code is self.frame_result.__code__ and event == 'return':
                 self.framed_id = id(arg)
                 if type(arg) is not bytearray or frame.f_locals.get('result') is None or id(frame.f_locals['result']) != self.result_id:
                     self.valid = False
                     diagnostic = self.__dict__.get('_refusal')
-                    if diagnostic and not diagnostic['first_site']: diagnostic['first_site'] = 9
+                    if diagnostic and not diagnostic['first_site']:
+                        diagnostic['first_site'] = 9
+                        if _B_SURVIVAL is not None and diagnostic and diagnostic.get('child_role', False):
+                            try:
+                                _B_SURVIVAL[8] = 9
+                                _B_SURVIVAL[9] = 255 - (9)
+                            except BaseException:
+                                try:
+                                    _B_SURVIVAL[34] = 1
+                                    _B_SURVIVAL[35] = 254
+                                except BaseException:
+                                    pass
             elif code is self.observed.__code__ and event == 'return' and self.phase == 'backpressure' and arg is not None:
                 self.valid = False  # Any post-certificate successful write/progress.
                 diagnostic = self.__dict__.get('_refusal')
-                if diagnostic and not diagnostic['first_site']: diagnostic['first_site'] = 10
+                if diagnostic and not diagnostic['first_site']:
+                    diagnostic['first_site'] = 10
+                    if _B_SURVIVAL is not None and diagnostic and diagnostic.get('child_role', False):
+                        try:
+                            _B_SURVIVAL[8] = 10
+                            _B_SURVIVAL[9] = 255 - (10)
+                        except BaseException:
+                            try:
+                                _B_SURVIVAL[34] = 1
+                                _B_SURVIVAL[35] = 254
+                            except BaseException:
+                                pass
             elif code is self.blocked.__code__ and event == 'return' and frame.f_locals.get('r'):
                 caller = frame.f_back
                 self.empty_select = (caller is not None and caller.f_code is self.ready.__code__ and
@@ -1039,7 +1549,18 @@ class BlockedPipeWitness_B:
                         else:
                             self.valid = False
                             diagnostic = self.__dict__.get('_refusal')
-                            if diagnostic and not diagnostic['first_site']: diagnostic['first_site'] = 11
+                            if diagnostic and not diagnostic['first_site']:
+                                diagnostic['first_site'] = 11
+                                if _B_SURVIVAL is not None and diagnostic and diagnostic.get('child_role', False):
+                                    try:
+                                        _B_SURVIVAL[8] = 11
+                                        _B_SURVIVAL[9] = 255 - (11)
+                                    except BaseException:
+                                        try:
+                                            _B_SURVIVAL[34] = 1
+                                            _B_SURVIVAL[35] = 254
+                                        except BaseException:
+                                            pass
                         self.kill_pending = False
                         frame.f_trace_opcodes = False
                     if frame.f_lasti in self.kill_sites:
@@ -1051,7 +1572,18 @@ class BlockedPipeWitness_B:
         except BaseException:
             self.valid = False
             diagnostic = self.__dict__.get('_refusal')
-            if diagnostic and not diagnostic['first_site']: diagnostic['first_site'] = 12
+            if diagnostic and not diagnostic['first_site']:
+                diagnostic['first_site'] = 12
+                if _B_SURVIVAL is not None and diagnostic and diagnostic.get('child_role', False):
+                    try:
+                        _B_SURVIVAL[8] = 12
+                        _B_SURVIVAL[9] = 255 - (12)
+                    except BaseException:
+                        try:
+                            _B_SURVIVAL[34] = 1
+                            _B_SURVIVAL[35] = 254
+                        except BaseException:
+                            pass
         finally:
             # In particular no event arg/frame/view/exception is captured by IO.
             frame = arg = local = exc = tb = inner = raw = view = caller = parent = None
@@ -1060,7 +1592,18 @@ class BlockedPipeWitness_B:
             except BaseException:
                 self.valid = False
                 diagnostic = self.__dict__.get('_refusal')
-                if diagnostic and not diagnostic['first_site']: diagnostic['first_site'] = 13
+                if diagnostic and not diagnostic['first_site']:
+                    diagnostic['first_site'] = 13
+                    if _B_SURVIVAL is not None and diagnostic and diagnostic.get('child_role', False):
+                        try:
+                            _B_SURVIVAL[8] = 13
+                            _B_SURVIVAL[9] = 255 - (13)
+                        except BaseException:
+                            try:
+                                _B_SURVIVAL[34] = 1
+                                _B_SURVIVAL[35] = 254
+                            except BaseException:
+                                pass
         return self.trace_callback if self.valid else None
 
     def live_write(self):
@@ -1071,24 +1614,285 @@ class BlockedPipeWitness_B:
         diagnostic = self.__dict__.get('_refusal')
         gate = 0
         if diagnostic: diagnostic['final_active'] = True
+        if _B_SURVIVAL is not None and diagnostic and diagnostic.get('child_role', False):
+            try:
+                _B_SURVIVAL[6] = 1
+                _B_SURVIVAL[7] = 255 - (1)
+            except BaseException:
+                try:
+                    _B_SURVIVAL[34] = 1
+                    _B_SURVIVAL[35] = 254
+                except BaseException:
+                    pass
         exc = tb = None
         try:
             exc = sys.exception()
             tb = exc.__traceback__ if exc is not None else None
-            answer = (((not diagnostic or (gate := 1)) and (self.valid)) and ((not diagnostic or (gate := 2)) and (self.hooks())) and ((not diagnostic or (gate := 3)) and (sys.gettrace() is self.trace_callback)) and ((not diagnostic or (gate := 4)) and (self.phase == 'timeout')) and
-                ((not diagnostic or (gate := 5)) and (id(exc) == self.timeout_id)) and ((not diagnostic or (gate := 6)) and (self.timeout(exc))) and ((not diagnostic or (gate := 7)) and (self.bound_raw(caller))) and ((not diagnostic or (gate := 8)) and (self.live_write())) and
-                ((not diagnostic or (gate := 9)) and (caller.f_code is self.runner)) and ((not diagnostic or (gate := 10)) and (caller.f_lasti in self.exit_sites)) and
-                ((not diagnostic or (gate := 11)) and (tb is not None)) and ((not diagnostic or (gate := 12)) and (tb.tb_frame is caller)) and ((not diagnostic or (gate := 13)) and (tb.tb_lasti in self.raise_child)) and
-                ((not diagnostic or (gate := 14)) and (tb.tb_next is None)) and ((not diagnostic or (gate := 15)) and (self.expired(caller))))
+            evaluated = 1
+            if diagnostic: gate = 1
+            if _B_SURVIVAL is not None and diagnostic and diagnostic.get('child_role', False):
+                try:
+                    _B_SURVIVAL[11] = 0
+                    _B_SURVIVAL[10] = 1
+                    _B_SURVIVAL[11] = 255 - (1)
+                except BaseException:
+                    try:
+                        _B_SURVIVAL[34] = 1
+                        _B_SURVIVAL[35] = 254
+                    except BaseException:
+                        pass
+            answer = self.valid
+            if evaluated == 1 and answer:
+                evaluated = 2
+                if diagnostic: gate = 2
+                if _B_SURVIVAL is not None and diagnostic and diagnostic.get('child_role', False):
+                    try:
+                        _B_SURVIVAL[11] = 0
+                        _B_SURVIVAL[10] = 2
+                        _B_SURVIVAL[11] = 255 - (2)
+                    except BaseException:
+                        try:
+                            _B_SURVIVAL[34] = 1
+                            _B_SURVIVAL[35] = 254
+                        except BaseException:
+                            pass
+                answer = self.hooks()
+            if evaluated == 2 and answer:
+                evaluated = 3
+                if diagnostic: gate = 3
+                if _B_SURVIVAL is not None and diagnostic and diagnostic.get('child_role', False):
+                    try:
+                        _B_SURVIVAL[11] = 0
+                        _B_SURVIVAL[10] = 3
+                        _B_SURVIVAL[11] = 255 - (3)
+                    except BaseException:
+                        try:
+                            _B_SURVIVAL[34] = 1
+                            _B_SURVIVAL[35] = 254
+                        except BaseException:
+                            pass
+                answer = sys.gettrace() is self.trace_callback
+            if evaluated == 3 and answer:
+                evaluated = 4
+                if diagnostic: gate = 4
+                if _B_SURVIVAL is not None and diagnostic and diagnostic.get('child_role', False):
+                    try:
+                        _B_SURVIVAL[11] = 0
+                        _B_SURVIVAL[10] = 4
+                        _B_SURVIVAL[11] = 255 - (4)
+                    except BaseException:
+                        try:
+                            _B_SURVIVAL[34] = 1
+                            _B_SURVIVAL[35] = 254
+                        except BaseException:
+                            pass
+                answer = self.phase == 'timeout'
+            if evaluated == 4 and answer:
+                evaluated = 5
+                if diagnostic: gate = 5
+                if _B_SURVIVAL is not None and diagnostic and diagnostic.get('child_role', False):
+                    try:
+                        _B_SURVIVAL[11] = 0
+                        _B_SURVIVAL[10] = 5
+                        _B_SURVIVAL[11] = 255 - (5)
+                    except BaseException:
+                        try:
+                            _B_SURVIVAL[34] = 1
+                            _B_SURVIVAL[35] = 254
+                        except BaseException:
+                            pass
+                answer = id(exc) == self.timeout_id
+            if evaluated == 5 and answer:
+                evaluated = 6
+                if diagnostic: gate = 6
+                if _B_SURVIVAL is not None and diagnostic and diagnostic.get('child_role', False):
+                    try:
+                        _B_SURVIVAL[11] = 0
+                        _B_SURVIVAL[10] = 6
+                        _B_SURVIVAL[11] = 255 - (6)
+                    except BaseException:
+                        try:
+                            _B_SURVIVAL[34] = 1
+                            _B_SURVIVAL[35] = 254
+                        except BaseException:
+                            pass
+                answer = self.timeout(exc)
+            if evaluated == 6 and answer:
+                evaluated = 7
+                if diagnostic: gate = 7
+                if _B_SURVIVAL is not None and diagnostic and diagnostic.get('child_role', False):
+                    try:
+                        _B_SURVIVAL[11] = 0
+                        _B_SURVIVAL[10] = 7
+                        _B_SURVIVAL[11] = 255 - (7)
+                    except BaseException:
+                        try:
+                            _B_SURVIVAL[34] = 1
+                            _B_SURVIVAL[35] = 254
+                        except BaseException:
+                            pass
+                answer = self.bound_raw(caller)
+            if evaluated == 7 and answer:
+                evaluated = 8
+                if diagnostic: gate = 8
+                if _B_SURVIVAL is not None and diagnostic and diagnostic.get('child_role', False):
+                    try:
+                        _B_SURVIVAL[11] = 0
+                        _B_SURVIVAL[10] = 8
+                        _B_SURVIVAL[11] = 255 - (8)
+                    except BaseException:
+                        try:
+                            _B_SURVIVAL[34] = 1
+                            _B_SURVIVAL[35] = 254
+                        except BaseException:
+                            pass
+                answer = self.live_write()
+            if evaluated == 8 and answer:
+                evaluated = 9
+                if diagnostic: gate = 9
+                if _B_SURVIVAL is not None and diagnostic and diagnostic.get('child_role', False):
+                    try:
+                        _B_SURVIVAL[11] = 0
+                        _B_SURVIVAL[10] = 9
+                        _B_SURVIVAL[11] = 255 - (9)
+                    except BaseException:
+                        try:
+                            _B_SURVIVAL[34] = 1
+                            _B_SURVIVAL[35] = 254
+                        except BaseException:
+                            pass
+                answer = caller.f_code is self.runner
+            if evaluated == 9 and answer:
+                evaluated = 10
+                if diagnostic: gate = 10
+                if _B_SURVIVAL is not None and diagnostic and diagnostic.get('child_role', False):
+                    try:
+                        _B_SURVIVAL[11] = 0
+                        _B_SURVIVAL[10] = 10
+                        _B_SURVIVAL[11] = 255 - (10)
+                    except BaseException:
+                        try:
+                            _B_SURVIVAL[34] = 1
+                            _B_SURVIVAL[35] = 254
+                        except BaseException:
+                            pass
+                answer = caller.f_lasti in self.exit_sites
+            if evaluated == 10 and answer:
+                evaluated = 11
+                if diagnostic: gate = 11
+                if _B_SURVIVAL is not None and diagnostic and diagnostic.get('child_role', False):
+                    try:
+                        _B_SURVIVAL[11] = 0
+                        _B_SURVIVAL[10] = 11
+                        _B_SURVIVAL[11] = 255 - (11)
+                    except BaseException:
+                        try:
+                            _B_SURVIVAL[34] = 1
+                            _B_SURVIVAL[35] = 254
+                        except BaseException:
+                            pass
+                answer = tb is not None
+            if evaluated == 11 and answer:
+                evaluated = 12
+                if diagnostic: gate = 12
+                if _B_SURVIVAL is not None and diagnostic and diagnostic.get('child_role', False):
+                    try:
+                        _B_SURVIVAL[11] = 0
+                        _B_SURVIVAL[10] = 12
+                        _B_SURVIVAL[11] = 255 - (12)
+                    except BaseException:
+                        try:
+                            _B_SURVIVAL[34] = 1
+                            _B_SURVIVAL[35] = 254
+                        except BaseException:
+                            pass
+                answer = tb.tb_frame is caller
+            if evaluated == 12 and answer:
+                evaluated = 13
+                if diagnostic: gate = 13
+                if _B_SURVIVAL is not None and diagnostic and diagnostic.get('child_role', False):
+                    try:
+                        _B_SURVIVAL[11] = 0
+                        _B_SURVIVAL[10] = 13
+                        _B_SURVIVAL[11] = 255 - (13)
+                    except BaseException:
+                        try:
+                            _B_SURVIVAL[34] = 1
+                            _B_SURVIVAL[35] = 254
+                        except BaseException:
+                            pass
+                answer = tb.tb_lasti in self.raise_child
+            if evaluated == 13 and answer:
+                evaluated = 14
+                if diagnostic: gate = 14
+                if _B_SURVIVAL is not None and diagnostic and diagnostic.get('child_role', False):
+                    try:
+                        _B_SURVIVAL[11] = 0
+                        _B_SURVIVAL[10] = 14
+                        _B_SURVIVAL[11] = 255 - (14)
+                    except BaseException:
+                        try:
+                            _B_SURVIVAL[34] = 1
+                            _B_SURVIVAL[35] = 254
+                        except BaseException:
+                            pass
+                answer = tb.tb_next is None
+            if evaluated == 14 and answer:
+                evaluated = 15
+                if diagnostic: gate = 15
+                if _B_SURVIVAL is not None and diagnostic and diagnostic.get('child_role', False):
+                    try:
+                        _B_SURVIVAL[11] = 0
+                        _B_SURVIVAL[10] = 15
+                        _B_SURVIVAL[11] = 255 - (15)
+                    except BaseException:
+                        try:
+                            _B_SURVIVAL[34] = 1
+                            _B_SURVIVAL[35] = 254
+                        except BaseException:
+                            pass
+                answer = self.expired(caller)
             if diagnostic:
                 diagnostic['gate'] = gate if not answer else 0
                 diagnostic['kind'] = 'FALSE' if not answer else 'UNREACHED'
+            if _B_SURVIVAL is not None and diagnostic and diagnostic.get('child_role', False):
+                try:
+                    _B_SURVIVAL[16] = 3 if answer is True else 1 if answer is False else 0
+                    _B_SURVIVAL[17] = 2 if answer is True else 1 if answer is False else 0
+                    _B_SURVIVAL[18] = diagnostic['gate']
+                    _B_SURVIVAL[19] = diagnostic['hook_gate'] if diagnostic['gate'] == 2 else 0
+                    _B_SURVIVAL[20] = 2 if self.valid is True else 1 if self.valid is False else 3
+                    _B_SURVIVAL[21] = {'armed': 1, 'backpressure': 2, 'timeout': 3}.get(self.phase, 4)
+                    _B_SURVIVAL[22] = 0xA5
+                    _B_SURVIVAL[23] = 0x5A
+                except BaseException:
+                    try:
+                        _B_SURVIVAL[34] = 1
+                        _B_SURVIVAL[35] = 254
+                    except BaseException:
+                        pass
             return answer
         except BaseException:
             if diagnostic:
                 diagnostic['gate'] = gate
                 diagnostic['kind'] = 'CAUGHT_EXCEPTION'
             self.valid = False
+            if _B_SURVIVAL is not None and diagnostic and diagnostic.get('child_role', False):
+                try:
+                    _B_SURVIVAL[16] = 2
+                    _B_SURVIVAL[17] = 1
+                    _B_SURVIVAL[18] = gate
+                    _B_SURVIVAL[19] = diagnostic['hook_gate'] if gate == 2 else 0
+                    _B_SURVIVAL[20] = 2 if self.valid is True else 1 if self.valid is False else 3
+                    _B_SURVIVAL[21] = {'armed': 1, 'backpressure': 2, 'timeout': 3}.get(self.phase, 4)
+                    _B_SURVIVAL[22] = 0xA5
+                    _B_SURVIVAL[23] = 0x5A
+                except BaseException:
+                    try:
+                        _B_SURVIVAL[34] = 1
+                        _B_SURVIVAL[35] = 254
+                    except BaseException:
+                        pass
             return False
         finally:
             if diagnostic: diagnostic['final_active'] = False

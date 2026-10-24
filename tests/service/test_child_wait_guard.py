@@ -1115,7 +1115,7 @@ steps = []
 diagnostic_enabled = mode == 'original74-real-observer'
 NOT_REACHED = 'NOT_REACHED'
 def callback_record(role):
-    return dict(schema=1, control='ORIGINAL74_REAL_OBSERVER', role=role,
+    return dict(schema=2, control='ORIGINAL74_REAL_OBSERVER', role=role,
         first_site=0, kind='UNREACHED', gate=0, hook_gate=0,
         valid=NOT_REACHED, phase=NOT_REACHED, final_called=NOT_REACHED,
         final_result=NOT_REACHED, terminal_called=NOT_REACHED,
@@ -1127,7 +1127,7 @@ def callback_record(role):
         observe_return=NOT_REACHED, assertion=NOT_REACHED)
 
 CALLBACK_ENUMS = {
-    'schema': (1,), 'control': ('ORIGINAL74_REAL_OBSERVER',), 'role': ('CHILD','PARENT'),
+    'schema': (2,), 'control': ('ORIGINAL74_REAL_OBSERVER',), 'role': ('CHILD','PARENT'),
     'first_site': tuple(range(14)), 'gate': tuple(range(16)), 'hook_gate': tuple(range(25)),
     'kind': ('FALSE','CAUGHT_EXCEPTION','WRAPPER_ASSERT','UNREACHED'),
     'phase': (NOT_REACHED,'ARMED','BACKPRESSURE','TIMEOUT','OTHER'),
@@ -1147,14 +1147,112 @@ def validate_callback(record):
         else: valid = type(value) is bool or type(value) is str and value in (NOT_REACHED,'OTHER')
         if not valid: raise ValueError('diagnostic enum')
 
+# Exact v2 child-survival leaf; the historical filename does not imply refusal.
+MILESTONES = ('real-eagain-baseline', 'eagain-accepted', 'actual-child558-timeout',
+    'final-baseline', 'final-accepted')
+def decode_survival(raw, delivered):
+    record = dict(schema=2, control='ORIGINAL74_REAL_OBSERVER', role='CHILD',
+        wait='DELIVERED' if delivered else 'WAIT_UNOBSERVED',
+        raw=raw.hex() if raw is not None else None, state='UNKNOWN',
+        result_complete=False, first_site=0, final_gate=0, hook_gate=0,
+        hook_stage=0, milestones=[], error=0)
+    if not delivered:
+        if raw is not None: raise ValueError('read without original wait')
+        return record
+    if type(raw) is not bytes or len(raw) != 64: raise ValueError('survival length')
+    if raw[:4] != b'BDS\x02' or any(raw[36:]): return record
+    def pair(offset, maximum):
+        v, complement = raw[offset:offset+2]
+        if (v, complement) == (0, 0): return 0
+        return v if 1 <= v <= maximum and complement == 255-v else -1
+    role, entry, site = pair(4,1), pair(6,1), pair(8,13)
+    final, hook, stage, error = pair(10,15), pair(12,24), pair(14,5), pair(34,1)
+    record.update(first_site=max(site,0), final_gate=max(final,0),
+        hook_gate=max(hook,0), hook_stage=max(stage,0), error=max(error,0))
+    # Retain only the exact committed prefix, even when a later slot tears.
+    milestone_bad = False
+    ended = False
+    for index in range(5):
+        value = pair(24+2*index,5)
+        if value == index+1 and not ended: record['milestones'].append(MILESTONES[index])
+        else:
+            if value != 0: milestone_bad = True
+            ended = True
+    prefix = len(record['milestones'])
+    if role != 1 or site < 0 or error != 0: return record
+    if entry == 0 and (any(raw[10:24]) or prefix > 3): return record
+    if entry == 0:
+        if not milestone_bad: record['state'] = 'NOT_ENTERED_RECORDED'
+        return record
+    if entry < 0:
+        record['state'] = 'INCOMPLETE'
+        return record
+    # An entered final follows the three unchanged prerequisite milestones.
+    if prefix < 3: return record
+    if final < 0 or hook < 0 or stage < 0 or milestone_bad:
+        record['state'] = 'INCOMPLETE' if raw[22:24] != b'\xa5\x5a' else 'UNKNOWN'
+        return record
+    if (final < 2 and (hook or stage) or hook and stage == 0 or
+            stage == 1 and hook != 0 or stage == 3 and hook != 24 or
+            stage == 4 and not hook or final > 2 and stage != 3): return record
+    commit = raw[22:24]
+    if commit != b'\xa5\x5a':
+        # No payload prefix, including A5 alone, is a completed result.
+        if prefix > 3: return record
+        record['state'] = 'INCOMPLETE'
+        return record
+    kind, result, gate, detail, valid, phase = raw[16:22]
+    if valid not in (1,2) or phase not in (1,2,3): return record
+    if kind == 3:
+        legal = (result == 2 and gate == detail == 0 and final == 15 and
+            stage == 3 and hook == 24 and valid == 2 and phase == 3 and site == 0)
+        state = 'TRUE'
+    elif kind in (1,2):
+        legal = (result == 1 and 0 <= gate <= 15 and gate == final and
+            (kind != 1 or gate > 0) and (kind != 2 or valid == 1) and
+            (gate == 2 and detail == (0 if stage == 3 else hook) and stage in (3,4,5) or
+             gate != 2 and detail == 0) and prefix <= 3 and
+            (gate <= 4 or phase == 3))
+        if kind == 1:
+            legal = legal and (gate != 1 or valid == 1) and (gate <= 1 or valid == 2)
+            if gate == 2: legal = legal and stage == 4
+            if gate == 4: legal = legal and phase != 3
+            if gate > 1: legal = legal and site == 0
+        state = 'FALSE' if kind == 1 else 'CAUGHT_EXCEPTION'
+    else: return record
+    if legal: record.update(state=state, result_complete=True)
+    return record
+
+def validate_survival(record):
+    if type(record) is not dict or record.get('schema') != 2 or type(record['schema']) is not int:
+        raise ValueError('survival schema')
+    if record.get('wait') not in ('DELIVERED','WAIT_UNOBSERVED'): raise ValueError('survival wait')
+    encoded = record.get('raw')
+    if encoded is None: raw = None
+    elif type(encoded) is str and len(encoded) == 128 and all(c in '0123456789abcdef' for c in encoded):
+        raw = bytes.fromhex(encoded)
+    else: raise ValueError('survival bytes')
+    expected = decode_survival(raw, record['wait'] == 'DELIVERED')
+    # Type-exact comparison rejects bool/int aliases as well as extra fields.
+    import json
+    if json.dumps(record, sort_keys=True) != json.dumps(expected, sort_keys=True):
+        raise ValueError('survival crosscheck')
+
 child_diagnostic, parent_diagnostic = callback_record('CHILD'), callback_record('PARENT')
 diagnostic_io_failed = False
 teardown_snapshot = None
+survival = None
+binding0 = h._B_SURVIVAL
+wait_delivered = False
+child_steps = []
+parent_steps = []
+child_step_count = 0
 def publish_diagnostic(name, record):
     global diagnostic_io_failed
     if diagnostic_enabled:
         try:
-            if name != 'directed-outcome.json': validate_callback(record)
+            if name == 'child-refusal.json': validate_survival(record)
+            elif name != 'directed-outcome.json': validate_callback(record)
             h.atomic(root/name, record)
         except (OSError, RuntimeError, TypeError, ValueError): diagnostic_io_failed = True
 
@@ -1208,21 +1306,58 @@ def publish_outcome(exit_code):
         if name in missing: continue
         try:
             callback = h.metadata(root/name)
-            validate_callback(callback)
-            callback_other = callback_other or any(value == 'OTHER' for value in callback.values())
+            if name == 'child-refusal.json':
+                validate_survival(callback)
+                callback_other = callback_other or not callback['result_complete']
+            else:
+                validate_callback(callback)
+                callback_other = callback_other or any(value == 'OTHER' for value in callback.values())
         except (OSError, RuntimeError, TypeError, ValueError): callback_other = True
-    record = dict(schema=1, control='ORIGINAL74_REAL_OBSERVER', role='PARENT',
+    record = dict(schema=2, control='ORIGINAL74_REAL_OBSERVER', role='PARENT',
         pytest_exit=exit_code, phases=phases, duplicate_phase=duplicate,
         unknown_phase=unknown, teardown=teardown_snapshot if teardown_snapshot is not None else NOT_REACHED, final=snapshot if snapshot is not None else NOT_REACHED,
         io_failed=diagnostic_io_failed, callback_other=callback_other, missing_records=missing, diagnostic='RED')
     # These observations never change pytest/result/guard acceptance.
     if (not missing and not diagnostic_io_failed and not callback_other and not duplicate and not unknown and
             snapshot_complete(snapshot) and snapshot_complete(teardown_snapshot) and
-            all(value in ('PASSED','FAILED') for value in phases.values()) and exit_code != 'OTHER'): record['diagnostic'] = 'COMPLETE'
+            all(value in ('PASSED','FAILED') for value in phases.values()) and type(exit_code) is int): record['diagnostic'] = 'COMPLETE'
     publish_diagnostic('directed-outcome.json', record)
 owner = os.getpid()
+parent_owner = owner
 def evidence(label):
-    global owner, steps
+    global owner, steps, child_step_count
+    if diagnostic_enabled:
+        # Preserve the existing role observation, without a new identity probe.
+        current = os.getpid()
+        if owner != current:
+            owner, steps = current, []
+            child_step_count = 0
+        if current != parent_owner:
+            try:
+                assert label not in steps and len(steps) < 24
+                assert child_step_count < 5 and label == MILESTONES[child_step_count]
+            except BaseException:
+                try:
+                    survival[34] = 1
+                    survival[35] = 254
+                except BaseException: pass
+                raise
+            steps.append(label)
+            index = child_step_count
+            child_step_count += 1
+            try:
+                survival[24+2*index] = index+1
+                survival[25+2*index] = 254-index
+            except BaseException:
+                try:
+                    survival[34] = 1
+                    survival[35] = 254
+                except BaseException: pass
+            return
+        assert label not in steps and len(steps) < 24
+        steps.append(label)
+        parent_steps.append(label)
+        return
     if owner != os.getpid(): owner, steps = os.getpid(), []
     assert label not in steps and len(steps) < 24
     steps.append(label)
@@ -1294,7 +1429,7 @@ class Plugin:
                 else:
                     status_ok = False
                 parent_diagnostic['observe_status'] = status_ok
-                if not status_ok: publish_diagnostic('parent-callback.json', parent_diagnostic)
+                # Publication is deferred to handback.
                 assert status_ok
             else:
                 assert result[1] == (9 if mode.startswith('schedule9-') else 74 << 8)
@@ -1317,7 +1452,7 @@ class Plugin:
                 else:
                     parent_diagnostic['observe_armed'] = False
                     witness_ok = False
-                if not witness_ok: publish_diagnostic('parent-callback.json', parent_diagnostic)
+                # Publication is deferred to handback.
                 assert witness_ok
             else:
                 assert kw['armed_B'] and kw['witness'] == expected
@@ -1508,13 +1643,6 @@ class Plugin:
                 assert not original['final_child'](w, caller)
                 evidence('final-rejected'); return False
             answer = original['final_child'](w, caller)
-            if diagnostic_enabled:
-                witness_snapshot(w, child_diagnostic)
-                child_diagnostic['final_called'] = True
-                child_diagnostic['final_result'] = answer if type(answer) is bool else 'OTHER'
-                if not answer:
-                    child_diagnostic['assertion'] = 'FINAL_PREREQUISITE'
-                    publish_diagnostic('child-refusal.json', child_diagnostic)
             assert answer, 'actual74 final prerequisite absent'
             evidence('final-baseline')
             if mode in predicate_f:
@@ -1571,6 +1699,8 @@ class Plugin:
             evidence('final-accepted'); return True
         patch.setattr(cls, 'final_child', final)
         def terminal(w, result, caller, enrolled, child_bytes):
+            global wait_delivered
+            if diagnostic_enabled: wait_delivered = True
             answer = original['terminal'](w, result, caller, enrolled, child_bytes)
             if diagnostic_enabled:
                 witness_snapshot(w, parent_diagnostic)
@@ -1583,7 +1713,7 @@ class Plugin:
                 if not (parent_diagnostic['raw18944'] and parent_diagnostic['exact_ef'] and parent_diagnostic['exact_t']):
                     parent_diagnostic['kind'] = 'WRAPPER_ASSERT'
                     parent_diagnostic['assertion'] = 'TERMINAL_PREREQUISITE'
-                    publish_diagnostic('parent-callback.json', parent_diagnostic)
+                    # Publication is deferred to handback.
             evidence('terminal-reached')
             if mode in {'schedule9-no-f', 'schedule9-f'}:
                 assert result[1] == 9 and w.killed and caller.f_locals['killed'] is True
@@ -1623,7 +1753,7 @@ class Plugin:
         if diagnostic_enabled:
             global teardown_snapshot
             teardown_snapshot = guard_snapshot(guard)
-            publish_diagnostic('parent-callback.json', parent_diagnostic)
+            # Publication is deferred to handback.
         if guard.failures:
             assert guard.session.shouldstop == guard.failures[-1]
             assert any(s.endswith('incomplete or invalid armed B contract') for s in guard.failures)
@@ -1634,10 +1764,32 @@ class Plugin:
             evidence('both-next-launches-refused')
 result = 'ESCAPED'
 try:
+    if diagnostic_enabled:
+        import mmap
+        anon = mmap.MAP_ANON if hasattr(mmap, 'MAP_ANON') else mmap.MAP_ANONYMOUS
+        survival = mmap.mmap(-1, 64, flags=mmap.MAP_SHARED | anon,
+            prot=mmap.PROT_READ | mmap.PROT_WRITE)
+        survival[:] = b'BDS\x02' + bytes(60)
+        h._B_SURVIVAL = survival
     result = pytest.main(['--noconftest', '-p', 'no:cacheprovider', '-q', '-x', NODE,
         '--basetemp='+str(root/'pytest')], plugins=[Plugin()])
 finally:
-    publish_outcome(int(result) if type(result) is int or isinstance(result, int) else 'ESCAPED')
+    try:
+        if diagnostic_enabled:
+            # Never inspect the mapping unless the original wait was delivered.
+            raw_survival = bytes(survival[:]) if wait_delivered else None
+            child_diagnostic = decode_survival(raw_survival, wait_delivered)
+            child_steps = child_diagnostic['milestones']
+            publish_diagnostic('child-refusal.json', child_diagnostic)
+            publish_diagnostic('parent-callback.json', parent_diagnostic)
+            try:
+                h.atomic(root/(str(parent_owner)+'.json'), dict(control=mode, steps=parent_steps))
+            except (OSError, RuntimeError, TypeError, ValueError): diagnostic_io_failed = True
+        publish_outcome(int(result) if type(result) is int or isinstance(result, int) else 'ESCAPED')
+    finally:
+        h._B_SURVIVAL = binding0
+        if survival is not None: survival.close()
+        survival = None
 assert len(guards) == 1
 g = guards[0]
 restore_observer()
@@ -1661,7 +1813,10 @@ if mode == 'setup-failure':
     assert parent == ['admission-baseline', 'setup-hooks-installed',
         'all-witness-references-cleared', 'invocation-setup-failure-classified', 'hooks-restored']
 if mode != 'setup-failure':
-    child, = [r['steps'] for r in records if 'final-rejected' in r['steps'] or 'final-accepted' in r['steps'] or 'scheduling-after-real-eagain' in r['steps']]
+    if diagnostic_enabled:
+        child, = [child_steps] if 'final-accepted' in child_steps else []
+    else:
+        child, = [r['steps'] for r in records if 'final-rejected' in r['steps'] or 'final-accepted' in r['steps'] or 'scheduling-after-real-eagain' in r['steps']]
     assert 'admission-baseline' in parent
     if mode not in admission: assert 'real-eagain-baseline' in child
     if mode in {'replacement', 'same-object-extra-frame', 'trace-disabled'}: assert 'actual-child558-timeout' in child
