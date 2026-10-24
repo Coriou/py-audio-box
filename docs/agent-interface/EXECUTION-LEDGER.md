@@ -1731,3 +1731,7 @@ r91 identifies sixpnpmmetadata/Electronzip/pipHTTP/Playwrightdownloadtrees1.664G
 ### 2026-10-24 — Approved cache cleanup restores headroom; unspent build renewed
 
 r92 exactsixcachetreesdeleted0errors/deferred,free8054173696(7.501GiB),observeddelta1788723200;proof/worktrees/Dockerobjectsuntouched. Parent disposesr90zerooperationdiskSTOPaftermaterialresourcechange andauthorizes pab-directed-build-resume-r93-20261024 freshsameadmission/LOCKONLY+ONEprepare/build+data-onlybinding, no diagnostic/cleanup. Failedr90preserved; independentactualreview follows.
+
+### 2026-10-24 — Relative inventory root defect disposed; preflight then unspent build
+
+r93fresh6GiBadmission/source197maps passed butprivateinventoryrelativekey resolvedagainstcandidatecwd causedSTOP beforeDocker/mutex/prepare/build. Parent authorizes pab-directed-build-path-fix-r94-20261024 freshcorrectedexplicitinventoryroots+comprehensivereadonlypreflight BEFOREoperationalonce, thenoriginalLOCKONLY+ONEprepare/build/data-onlybinding; failedr90/r93proofimmutable. No weakenedchecks/runtime/cleanup, independentactualreviewaftercompletion.
