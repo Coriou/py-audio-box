@@ -2223,3 +2223,7 @@ r205 source4f282794/docs77894777 delivers fixed-policy Docker/proc/input/mount o
 ### 2026-10-24 — Host enumeration bound correction
 
 r206 source NO-GO R206-1: modelscandir materializes/sorts before4096/deadline checks; inert expireddeadline consumed10000 entries despite81 testsPASS. Parent commissioned targeted Sol r207 boundediteration/globalbudget regression. Observer unmerged; no actualhostqualification. Credential metadataopen/fstat allowed, contents remainunread/unhashed.
+
+### 2026-10-24 — Host enumeration correction enters re-review
+
+r207 source306089b2/docsd0fe258f replaces eager scan with deadline-checked global boundedentry enumeration. Four failguard regressions REDbefore/GREENafter;85 focused methods reported PASS. Parent commissioned independent Sol r208. Observer remains unmerged pendingreview, actualhost/registration/activation unqualified.
