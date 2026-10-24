@@ -2147,3 +2147,7 @@ r190 sourceef820eb1/docs68445434 implements operator-pinned Kokoro stage/resume/
 ### 2026-10-24 — Kokoro callable interface adopted
 
 r191 bounded source GO,6 tests plus inert checks PASS. Parent merged3d19350c conflict-free and reran6 engine tests PASS. Nonblocking mutable AudioResult bool/numeric metadata consistency observation retained for integration correction. No engine activation yet; authenticated descriptor/bundlemapping, runtime memory enforcement and actual audible checks remain. Provisioning r192 review active before shared manifest integration.
+
+### 2026-10-24 — Provisioning review blockers and manifest seam correction
+
+r192 source NO-GO: retry can activate unsealed writable bundle; managed acquisition/lock wait lack finite bounds. Also proven engine/provisioner revision and manifest digest mismatch. Parent commissioned Sol-low r193 recovery/bounds fixes and explicitly shared manifest alignment with injected provision-to-engine integration coverage. Candidate remains unmerged; real download/inference not run.
