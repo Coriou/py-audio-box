@@ -8,6 +8,7 @@ import hashlib
 import io
 import os
 import stat
+import struct
 import wave
 from uuid import uuid4
 
@@ -43,13 +44,63 @@ def open_directory(path):
         raise
 
 
+def _riff_pcm(stream, length):
+    """Validate classic PCM RIFF without reading declared payload lengths.
+
+    Exactly one fmt before one data; ancillary chunks may occur anywhere.
+    No trailing bytes, duplicate fmt/data, or extensible/float formats.
+    Padding must exist (its value is unspecified). At most 4096 chunks.
+    """
+    stream.seek(0)
+    header = stream.read(12)
+    oracle.require(len(header) == 12, 'invalid_audio')
+    kind, size, form = struct.unpack('<4sI4s', header)
+    oracle.require(kind == b'RIFF' and form == b'WAVE' and size + 8 == length,
+                   'invalid_audio')
+    offset = 12
+    fields = data_size = None
+    count = 0
+    while offset < length:
+        count += 1
+        oracle.require(count <= 4096 and length - offset >= 8, 'invalid_audio')
+        stream.seek(offset)
+        header = stream.read(8)
+        oracle.require(len(header) == 8, 'invalid_audio')
+        kind, size = struct.unpack('<4sI', header)
+        end = offset + 8 + size + (size & 1)
+        oracle.require(end <= length, 'invalid_audio')
+        if kind == b'fmt ':
+            oracle.require(fields is None and data_size is None and size in (16, 18),
+                           'invalid_audio')
+            raw = stream.read(size)
+            oracle.require(len(raw) == size, 'invalid_audio')
+            tag, channels, rate, byte_rate, align, bits = struct.unpack('<HHIIHH', raw[:16])
+            oracle.require(tag == 1 and bits in (16, 24, 32)
+                           and channels in (1, 2) and 8000 <= rate <= MAX_RATE
+                           and align == channels * (bits // 8)
+                           and byte_rate == rate * align
+                           and (size == 16 or raw[16:] == b'\x00\x00'), 'invalid_audio')
+            fields = channels, bits // 8, rate, align
+        elif kind == b'data':
+            oracle.require(fields is not None and data_size is None, 'invalid_audio')
+            oracle.require(size % fields[3] == 0, 'invalid_audio')
+            data_size = size
+        offset = end
+    oracle.require(offset == length and fields is not None and data_size is not None,
+                   'invalid_audio')
+    channels, width, rate, align = fields
+    return channels, width, rate, data_size // align
+
+
 def _audio(stream, length):
     try:
+        raw_fields = _riff_pcm(stream, length)
         stream.seek(0)
         # wave bounds its chunk reads; header/chunk sizes cannot allocate audio.
         with wave.open(stream, 'rb') as wav:
             channels, width, rate, frames = (wav.getnchannels(), wav.getsampwidth(),
                                              wav.getframerate(), wav.getnframes())
+            oracle.require((channels, width, rate, frames) == raw_fields, 'invalid_audio')
             oracle.require(wav.getcomptype() == 'NONE' and width in (2, 3, 4)
                            and channels in (1, 2) and 8000 <= rate <= MAX_RATE,
                            'invalid_audio')

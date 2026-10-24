@@ -23,6 +23,20 @@ def audio(frames=24000, rate=24000, channels=1, width=2):
     return out.getvalue()
 
 
+def chunk(kind, payload):
+    return kind + struct.pack('<I', len(payload)) + payload + b'\x00' * (len(payload) % 2)
+
+
+def riff(*chunks):
+    body = b'WAVE' + b''.join(chunks)
+    return b'RIFF' + struct.pack('<I', len(body)) + body
+
+
+def fmt(width=2, channels=1, rate=24000):
+    return chunk(b'fmt ', struct.pack('<HHIIHH', 1, channels, rate,
+                                     rate * channels * width, channels * width, width * 8))
+
+
 class IngestTests(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory(prefix='pab-h1-ingest-')
@@ -85,6 +99,68 @@ class IngestTests(unittest.TestCase):
         for value in ('/tmp/source.wav', Path('/tmp/source.wav'), {'principal_id': 'alice'}):
             with self.assertRaisesRegex(ValueError, 'invalid_request'): ingest_local(self.core, 'alice', value)
         self.empty()
+
+    def test_raw_pcm_frame_and_format_regressions(self):
+        partial = riff(fmt(), chunk(b'data', b'\x00' * 3))
+        cases = [partial, partial[:-2]]
+        for width, bits in ((2, 15), (3, 17), (4, 25)):
+            data = bytearray(audio(frames=2, width=width))
+            struct.pack_into('<H', data, 34, bits)
+            cases.append(bytes(data))
+        for offset, code, value in ((32, '<H', 7), (28, '<I', 1)):
+            data = bytearray(audio(frames=2))
+            struct.pack_into(code, data, offset, value)
+            cases.append(bytes(data))
+        for index, data in enumerate(cases):
+            with self.subTest(case=index):
+                with self.assertRaisesRegex(ValueError, 'invalid_audio'):
+                    ingest_local(self.core, 'alice', data)
+                self.empty()
+
+    def test_riff_extents_ordering_and_chunk_budget(self):
+        valid = riff(fmt(), chunk(b'data', b'\x00' * 4))
+        huge = b'JUNK' + struct.pack('<I', 0xffffffff)
+        odd = chunk(b'JUNK', b'x')
+        cases = [valid + b'x', valid[:-1],
+                 riff(fmt(), huge), riff(fmt(), odd[:-1]),
+                 riff(fmt(), chunk(b'data', b'\x00' * 4), huge),
+                 riff(fmt(), fmt(), chunk(b'data', b'\x00' * 4)),
+                 riff(fmt(), chunk(b'data', b'\x00' * 4), chunk(b'data', b'\x00' * 4)),
+                 riff(chunk(b'data', b'\x00' * 4), fmt()),
+                 riff(fmt(), chunk(b'JUNK', b'') * 4095, chunk(b'data', b'\x00' * 4))]
+        for tag in (3, 0xfffe):
+            header = bytearray(fmt())
+            struct.pack_into('<H', header, 8, tag)
+            cases.append(riff(bytes(header), chunk(b'data', b'\x00' * 4)))
+        for index, data in enumerate(cases):
+            with self.subTest(case=index):
+                with self.assertRaisesRegex(ValueError, 'invalid_audio'):
+                    ingest_local(self.core, 'alice', data)
+                self.empty()
+
+    def test_all_pcm_widths_channels_metadata_and_exact_byte_boundary(self):
+        for width in (2, 3, 4):
+            for channels in (1, 2):
+                data = riff(chunk(b'JUNK', b'x'), fmt(width, channels),
+                            chunk(b'LIST', b'INFO'),
+                            chunk(b'data', b'\x00' * (width * channels * 2)),
+                            chunk(b'JUNK', b'z'))
+                asset = ingest_local(self.core, 'alice', data)
+                self.assertEqual((asset['frames'], asset['channels'], asset['media_subtype']),
+                                 (2, channels, 'PCM_' + str(width * 8)))
+                self.assertEqual((self.root/'assets'/asset['id']).read_bytes(), data)
+                self.assertEqual(asset['sha256'], hashlib.sha256(data).hexdigest())
+        base = audio(frames=48000*60, rate=48000, channels=2, width=4)
+        data = riff(base[12:], chunk(b'JUNK', b'\x00' * (MAX_BYTES - len(base) - 8)))
+        self.assertEqual(len(data), MAX_BYTES)
+        asset = ingest_local(self.core, 'alice', data)
+        self.assertEqual(asset['frames'], 48000*60)
+        self.assertEqual(self.core.asset(asset['id']), asset)
+        with self.assertRaisesRegex(ValueError, 'resource_limit'):
+            ingest_local(self.core, 'alice', data + b'x')
+        self.assertEqual(len(list((self.root/'assets').iterdir())), 7)
+        self.assertEqual(self.core.db.execute('SELECT COUNT(*) FROM assets').fetchone()[0], 7)
+        self.assertEqual(list((self.root/'staging').iterdir()), [])
 
     def test_bounded_stream_and_mid_read_failure(self):
         class Oversize:
