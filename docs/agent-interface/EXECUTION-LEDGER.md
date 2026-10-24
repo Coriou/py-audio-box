@@ -2139,3 +2139,7 @@ r189 correctly notes existing synthetic snapshot has no model-bundle authority m
 ### 2026-10-24 — Kokoro callable engine delivered for review
 
 r189 source85eb3d41/docs3d19350c adds closed execution descriptor and local verified KokoroCPU adapter with measured bounded PCM16 WAV output,6 injected tests PASS. Parent commissioned independent Sol r191. No activation/inference claim; authenticated bundlemapping/lifecycle/service integration follows reviewed interface. Provisioning r190 continues independently.
+
+### 2026-10-24 — Managed provisioning delivered for review
+
+r190 sourceef820eb1/docs68445434 implements operator-pinned Kokoro stage/resume/hash verification/immutable bundle and atomic active pointer,9 injected fixture tests PASS. No actualpins invented or downloads run. Parent commissioned independent Sol r192 including manifest seam compatibility awareness; r191 engine review continues. Source adoption and actual model/runtime qualification remain pending.
