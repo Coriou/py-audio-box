@@ -2183,3 +2183,7 @@ r197 found persistent init/recovery hardcoded synthetic scope. Parent authorized
 ### 2026-10-24 — Installation ownership conflict checkpoint; targeted Astra unblock
 
 r197 retained no source: uniform-owner init/recovery readers conflict with required controlUID10001/rootPID1receipts topology. Parent commissioned targeted Astra r198 fixed-role installation adapter design and complete reader/operator caller inventory, preserving containment/enrollment/retainedevidence without newdiagnosticframework. Packaging implementation pending that concrete sharedboundary; no tests or actualinstall claimed.
+
+### 2026-10-24 — Installation ownership design settled; Lot A implementation
+
+r198 DESIGN GO: fixed split-owner rootful Linux Docker, finite trusted host launcher wrapping existing registration, role-aware readonly inspection, original DB writes only controlUID10001. Parent commissioned Sol-low r199 LotA ownership/enrollment/hosthandshake adapters with activation closed and legacy unchanged. LotB packaging/activation follows independent review. Initial target is compatible localLinuxDocker, not macOSDesktop/nativeMetal; those remain required separate qualification paths.
