@@ -3680,5 +3680,194 @@
       "coverage": "unchanged_legacy",
       "environment_controls": []
     }
-  ]
+  ],
+  "headless_operation_coverage": [
+    {
+      "status": "fixture_read",
+      "owner": "H2",
+      "operations": [
+        "discover",
+        "voices_list",
+        "asset_get",
+        "asset_content"
+      ],
+      "reason": "Existing HTTP/CLI/MCP synthetic reads; production auth/domain wiring remains required."
+    },
+    {
+      "status": "required_voice",
+      "owner": "H1/H2",
+      "operations": [
+        "voice_get",
+        "voice_prepare",
+        "voice_design",
+        "voice_save",
+        "voice_archive",
+        "voice_results",
+        "voice_version_get"
+      ],
+      "reason": "H0 provides register/get/version/versions/list/aliases/archive domain; H1 prepares candidates and saves through it; H2 exposes transport."
+    },
+    {
+      "status": "required_media_production",
+      "owner": "H1/H2",
+      "operations": [
+        "artifact_get",
+        "asset_upload",
+        "asset_acquire",
+        "speech_generate",
+        "project_create",
+        "project_get",
+        "block_text",
+        "blocks_generate",
+        "blocks_reorder",
+        "speaker_assign",
+        "take_select",
+        "project_assemble",
+        "project_render",
+        "blocks_put",
+        "blocks_delete",
+        "project_revision_get"
+      ],
+      "reason": "Headless scripts, exact revisions, takes, assembly and export remain required."
+    },
+    {
+      "status": "required_control",
+      "owner": "H2/H3/H4",
+      "operations": [
+        "job_get",
+        "job_cancel",
+        "job_retry",
+        "provision",
+        "migration_preview",
+        "migration_apply"
+      ],
+      "reason": "Preserve durable control semantics and explicit provisioning; no operational activation in H0."
+    },
+    {
+      "status": "deferred_editor_only",
+      "owner": "future web",
+      "operations": [
+        "clip_put",
+        "clip_split",
+        "clip_delete",
+        "track_put",
+        "track_delete",
+        "project_ripple",
+        "project_restore",
+        "project_history"
+      ],
+      "reason": "Visual multitrack gesture/edit-history scaffolding deferred; ordered headless assembly and immutable revision reads are retained above."
+    }
+  ],
+  "headless_missing_contracts": [
+    {
+      "operations": [
+        "voice_aliases",
+        "voice_versions_list",
+        "voice_import",
+        "voice_export",
+        "asset_segment",
+        "audio_export",
+        "job_list",
+        "job_wait",
+        "job_events",
+        "profile_detail"
+      ],
+      "status": "planned_required",
+      "owner": "H1 domain / H2 contracts and adapters",
+      "reason": "Finite missing transport contracts; names are requirements, not callable routes. H0 alias/version-list methods and schemas are domain-only."
+    }
+  ],
+  "headless_legacy_bridges": [
+    {
+      "source": "voice-synth",
+      "commands": [
+        "list-voices",
+        "list-speakers",
+        "capabilities",
+        "register-builtin",
+        "speak",
+        "design-voice",
+        "rename-voice",
+        "delete-voice",
+        "export-voice",
+        "import-voice"
+      ],
+      "bridge": "discover/profile detail; voice list/register/prepare/design/save/aliases/archive/import/export; speech_generate",
+      "owner": "H1/H2/H4"
+    },
+    {
+      "source": "voice-clone",
+      "commands": [
+        "migrate-registry",
+        "synth",
+        "prepare-ref",
+        "self-test"
+      ],
+      "bridge": "migration preview/apply; managed ingest/segment, voice_prepare, explicit audition via speech_generate and voice_save; self-test retained legacy smoke",
+      "owner": "H1/H2/H4"
+    },
+    {
+      "source": "voice-register",
+      "commands": [
+        "(one-shot)"
+      ],
+      "bridge": "managed ingest/prepare/audition/save; preserve explicit speaker, tones, reference selection and quality gates",
+      "owner": "H1/H2"
+    },
+    {
+      "source": "voice-split",
+      "commands": [
+        "(one-shot)"
+      ],
+      "bridge": "managed acquisition/segment selection and optional VAD/separation/transcription; direct clean reference remains supported",
+      "owner": "H1/H2"
+    },
+    {
+      "source": "voice-cpu",
+      "commands": [
+        "speak",
+        "batch"
+      ],
+      "bridge": "speech_generate and ordered jobs with explicit Pocket/Kokoro profiles; retain homogeneous model reuse",
+      "owner": "H1/H2/H4"
+    },
+    {
+      "source": "audio-export",
+      "commands": [
+        "(one-shot)"
+      ],
+      "bridge": "typed audio_export with managed IDs, rate/channels/PCM24/loudness; project assembly/render handles stitch",
+      "owner": "H1/H2"
+    },
+    {
+      "source": "job-runner",
+      "commands": [
+        "plan",
+        "enqueue",
+        "enqueue-beatsheet",
+        "compile",
+        "run",
+        "execute-manifest",
+        "status",
+        "result",
+        "report",
+        "history",
+        "retry",
+        "flush",
+        "package-status"
+      ],
+      "bridge": "required typed script plan/blocks/generate/assembly and job list/get/wait/events/retry/artifact reports; retain Redis CLI separately; flush is scoped administration with dependency refusal, never arbitrary DB clear",
+      "owner": "H1/H2/H3"
+    },
+    {
+      "source": "job-watcher",
+      "commands": [
+        "(daemon)"
+      ],
+      "bridge": "preserve Redis consumer, leases and monitoring as legacy compatibility; new service uses existing supervisor, no public daemon/argv bus",
+      "owner": "H3"
+    }
+  ],
+  "headless_control_policy": "All commands/defaults/environment controls already inventoried above remain unchanged legacy compatibility. Bridge all audio controls (profiles/tones/variants/ranking/chunking/QA/alignment, exact texts, refs, model revisions) as typed capabilities/settings or explicit unsupported_control; paths become managed IDs. Launchers/Redis admin and self-test remain independent compatibility workflows. No silent registry sync, pickle imports or default substitution."
 }
