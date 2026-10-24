@@ -1,4 +1,5 @@
 """Inert package/finite-coordinator tests. Docker/host observations are injected."""
+import ast
 import copy
 import json
 import os
@@ -262,6 +263,91 @@ class ArchiveTests(unittest.TestCase):
             imported=subprocess.run([sys.executable,'-I','-B','-c',code],cwd=tmp,
                 env={'PATH':os.defpath},capture_output=True,text=True,timeout=5)
             self.assertEqual(imported.returncode,0,imported.stderr)
+    def test_pocket_archive_bytes_and_isolated_dependency_closure(self):
+        modules = ('worker.runtime_conditioning', 'worker.engines.pocket',
+                   'worker.engines.pocket_execution')
+        manifest = json.loads((ROOT/'headless-dist-manifest.json').read_text())
+        files = set(manifest['files'])
+        # Inspect lazy imports too, without executing generation or housekeeping.
+        pending = list(modules) + ['worker.runtime_supervisor', 'worker.runtime_child']
+        visited = set()
+        while pending:
+            module = pending.pop()
+            if module in visited:
+                continue
+            visited.add(module)
+            name = module.replace('.', '/') + '.py'
+            if not (ROOT/name).is_file():
+                name = module.replace('.', '/') + '/__init__.py'
+            self.assertIn(name, files, module)
+            package = module.split('.') if name.endswith('/__init__.py') else module.split('.')[:-1]
+            for node in ast.walk(ast.parse((ROOT/name).read_bytes())):
+                dependencies = []
+                if isinstance(node, ast.Import):
+                    dependencies = [alias.name for alias in node.names]
+                elif isinstance(node, ast.ImportFrom):
+                    base = (package[:len(package)-node.level+1] if node.level else [])
+                    base += (node.module or '').split('.') if node.module else []
+                    prefix = '.'.join(base)
+                    dependencies = [prefix] + [prefix+'.'+alias.name for alias in node.names]
+                for dependency in dependencies:
+                    parts = dependency.split('.')
+                    for end in range(1, len(parts)+1):
+                        local = '.'.join(parts[:end])
+                        path = ROOT/local.replace('.', '/')
+                        if path.with_suffix('.py').is_file() or (path/'__init__.py').is_file():
+                            pending.append(local)
+        with tempfile.TemporaryDirectory() as tmp:
+            archive = Path(tmp)/'pocket.zip'
+            p.archive(ROOT, archive)
+            with zipfile.ZipFile(archive) as z:
+                self.assertEqual(set(z.namelist()),
+                    {'speech-box/'+name for name in files} | {'speech-box/speech-box'})
+                self.assertEqual(len(z.namelist()), len(files)+1)
+                for module in modules:
+                    name = module.replace('.', '/')+'.py'
+                    self.assertEqual(z.read('speech-box/'+name), (ROOT/name).read_bytes())
+                z.extractall(Path(tmp)/'extracted')
+            package = Path(tmp)/'extracted/speech-box'
+            for module in modules:
+                name = module.replace('.', '/')+'.py'
+                self.assertEqual((package/name).read_bytes(), (ROOT/name).read_bytes())
+            # Resolve the literal -m target from the archived supervisor, but never
+            # execute __main__, remove_empty, engine generation, or a backend.
+            code = """
+import ast, importlib, importlib.abc, importlib.util, pathlib, sys
+package = pathlib.Path(sys.argv[1])
+checkout = pathlib.Path(sys.argv[2])
+assert all(not pathlib.Path(p).is_relative_to(checkout) for p in sys.path if p)
+sys.path.insert(0, str(package))
+class ForbidHeavy(importlib.abc.MetaPathFinder):
+    def find_spec(self, fullname, path=None, target=None):
+        if fullname.split('.')[0] in {'torch', 'torchaudio', 'numpy', 'soundfile',
+                'pocket_tts', 'kokoro', 'transformers', 'huggingface_hub', 'onnxruntime'}:
+            raise AssertionError('heavy import forbidden: '+fullname)
+sys.meta_path.insert(0, ForbidHeavy())
+supervisor = importlib.import_module('worker.runtime_supervisor')
+tree = ast.parse(pathlib.Path(supervisor.__file__).read_bytes())
+assert any(isinstance(n, ast.List) and len(n.elts) >= 3
+    and isinstance(n.elts[1], ast.Constant) and n.elts[1].value == '-m'
+    and isinstance(n.elts[2], ast.Constant) and n.elts[2].value == 'worker.runtime_conditioning'
+    for n in ast.walk(tree))
+for name in ('worker.runtime_conditioning', 'worker.engines.pocket',
+             'worker.engines.pocket_execution', 'worker.runtime_child'):
+    spec = importlib.util.find_spec(name)
+    assert pathlib.Path(spec.origin).is_relative_to(package), name
+    importlib.import_module(name)
+for name, module in tuple(sys.modules.items()):
+    if name.split('.')[0] in {'worker', 'service', 'contracts', 'lib'}:
+        assert pathlib.Path(module.__file__).is_relative_to(package), name
+print('isolated Pocket archive closure')
+"""
+            result = subprocess.run([sys.executable, '-I', '-B', '-c', code,
+                str(package), str(ROOT)], cwd=tmp, env={'PATH': os.defpath},
+                capture_output=True, text=True, timeout=5)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertEqual(result.stdout.strip(), 'isolated Pocket archive closure')
+
     def test_manifest_exact_files_and_no_legacy_metadata_change(self):
         manifest=json.loads((ROOT/'headless-dist-manifest.json').read_text())
         self.assertEqual(len(manifest['files']),len(set(manifest['files'])))

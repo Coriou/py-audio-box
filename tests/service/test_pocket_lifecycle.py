@@ -26,23 +26,55 @@ from worker.runtime_protocol import execution, generated_source
 from worker.transport import Refused
 
 
-_product_demand = Admission.demand
-
-
-def _inert_adapter_demand(admission, context, profiles):
-    """Test-only lower-level seam; never evidence of product Pocket readiness."""
-    spec = execution(context)
-    # Retain real descriptor validation and resource/qualification checks, while
-    # isolating the blocked adapter regressions from the product readiness fence.
-    inert = SimpleNamespace(**{**vars(spec), 'engine': 'inert-pocket-adapter'})
-    with patch('worker.runtime_protocol.execution', return_value=inert):
-        return _product_demand(admission, context, profiles)
+def assert_configuration_mutations(test, state, journal):
+    """Mutate joined detached evidence coherently, leaving only demand stale."""
+    from service import recovery
+    from service.core import encode
+    from service.worker_transport import Authority
+    data=state['evidence_projection']['data']
+    context=json.loads(data['jobs'][0][7])
+    actual=json.loads(data['resource_reservations'][0][2])['configuration']
+    wrong=['0'*64]
+    if execution(context) is not None:
+        wrong.append(recovery.digest(context['plan']['resolved']['identity']['effective']))
+    for configuration in wrong:
+        test.assertNotEqual(configuration,actual)
+        dirty=copy.deepcopy(state);projection=dirty['evidence_projection'];rows=projection['data']
+        demand=json.loads(rows['resource_reservations'][0][2]);demand['configuration']=configuration
+        rows['resource_reservations'][0][2]=encode(demand)
+        dirty['reservations'][0]['demand']=demand
+        dirty['source_digest']=recovery.digest(projection)
+        test.assertFalse(recovery._allocation_coherent(rows))
+        with test.assertRaisesRegex(ValueError,'installed_history_snapshot_binding'):
+            recovery.installed_clean_history(dirty,journal)
+    if execution(context) is None:return
+    dirty=copy.deepcopy(state);modified_journal=copy.deepcopy(journal)
+    rows=dirty['evidence_projection']['data']
+    snapshot=json.loads(rows['dispatches'][0][2])
+    # Semantically valid descriptor-only mutation: same effective identity,
+    # different closed execution and Authority. Keep reservation digest frozen.
+    snapshot[1]['execution']['descriptor']['max_text_bytes']+=1
+    test.assertIsNotNone(execution(snapshot[1]))
+    authority=Authority(*snapshot)
+    rows['jobs'][0][7]=encode(authority.context)
+    rows['dispatches'][0][2]=encode(snapshot);rows['dispatches'][0][3]=authority.binding
+    receipt=json.loads(rows['dispatches'][0][7]);receipt['binding']=authority.binding
+    rows['dispatches'][0][7]=encode(receipt)
+    record=modified_journal['records'][0]
+    record['allocation'].update(snapshot=snapshot,binding=authority.binding)
+    record['receipt']=receipt
+    dirty['dispatches'][0].update(binding=authority.binding,receipt_digest=recovery.digest(receipt))
+    dirty['journal_records'][0]['binding']=authority.binding
+    dirty['journal_digest']=recovery.digest(dict(payload=modified_journal,sha256=recovery.digest(modified_journal)))
+    dirty['evidence_projection']['journal']=dirty['journal_digest']
+    dirty['source_digest']=recovery.digest(dirty['evidence_projection'])
+    test.assertFalse(recovery._allocation_coherent(rows))
+    with test.assertRaisesRegex(ValueError,'installed_history_snapshot_binding'):
+        recovery.installed_clean_history(dirty,modified_journal)
 
 
 class PocketLifecycleTests(unittest.TestCase):
     def setUp(self):
-        admission_seam = patch.object(Admission, 'demand', _inert_adapter_demand)
-        admission_seam.start(); self.addCleanup(admission_seam.stop)
         self.tmp = tempfile.TemporaryDirectory(); self.addCleanup(self.tmp.cleanup)
         self.root = Path(self.tmp.name).resolve()
         self.core = Core(self.root/'core'); self.addCleanup(lambda: self.core.close())
@@ -194,6 +226,20 @@ class PocketLifecycleTests(unittest.TestCase):
         self.assertEqual((namespace/'opaque').read_bytes(), b'retained')
         self.assertTrue(Reconciliation(self.core,self.stage).reconcile_startup()['blocked'])
 
+    def test_interrupted_wav_yaml_leftovers_stay_unknown(self):
+        from service.reconciliation import Reconciliation
+        from tests.worker.test_runtime_conditioning import filesystem_policy
+        from worker.runtime_conditioning import remove_empty
+        authority,proposal,stage=self.proposal()
+        for name in ('wrapper.wav','backend.wav','translated.yaml'):
+            sentinel=stage/'conditioning'/name;sentinel.write_bytes(b'opaque fixture')
+            with filesystem_policy(self.stage,stage):
+                with self.assertRaises(OSError):remove_empty(stage.name,20000)
+            self.assertEqual(sentinel.read_bytes(),b'opaque fixture')
+            summary=Reconciliation(self.core,self.stage).reconcile_startup()
+            self.assertTrue(summary['blocked']);self.assertIn('unknown_namespace',summary['reasons'])
+        self.assertTrue(Reconciliation(self.core,self.stage).reconcile_startup()['blocked'])
+
     def test_qualification_and_dispatch_dependency_recheck(self):
         self.profiles[0]['verification']='synthetic'
         with self.assertRaisesRegex(ValueError,'qualification'):self.submit()
@@ -234,28 +280,72 @@ class PocketLifecycleTests(unittest.TestCase):
         from worker.runtime_supervisor import RuntimeSupervisor
         s=RuntimeSupervisor.__new__(RuntimeSupervisor);s.bundles=a.context['execution']['bundles'];s.references={}
         body=dict(snapshot=json.loads(a._snapshot),binding=a.binding,fixture='pocket')
-        # Direct trusted integration is fenced even with valid mappings and
-        # asserted qualification. This uninitialized object has no journal: any
-        # allocation/journal access before refusal would fail the test.
-        for references in ({}, a.context['execution']['references']):
-            s.references=references
-            with patch('worker.engines.pocket.verify_inputs') as verify:
-                with self.assertRaisesRegex(Refused,'pocket_restart_repair_required'):
-                    s.operation('prepare',body)
-                verify.assert_not_called()
+        with self.assertRaisesRegex(Refused,'reference_mapping'):
+            s.operation('prepare',body)
+        s.references=a.context['execution']['references']
+        with patch('worker.engines.pocket.verify_inputs',side_effect=Refused('verified-before-journal')) as verify:
+            with self.assertRaisesRegex(Refused,'verified-before-journal'):s.operation('prepare',body)
+            verify.assert_called_once()
         body['fixture']='kokoro'
         with self.assertRaisesRegex(Refused,'dispatch'):s.operation('prepare',body)
 
-    def test_product_admission_refuses_before_reservation_without_bypass(self):
-        # Restore the real product boundary for this test; the rest of this
-        # class deliberately exercises the inert adapter seam above.
-        with patch.object(Admission, 'demand', _product_demand):
-            with patch.dict(os.environ, POCKET_RESTART_READY='1'):
-                with self.assertRaisesRegex(ValueError,'pocket_restart_repair_required'):
-                    self.submit()
-        self.assertEqual(self.core.jobs('alice'), [])
-        self.assertEqual(self.admission.store.rows(), [])
-        self.assertFalse(any(self.stage.iterdir()))
+    def assert_closed_history(self, root, runtime, history):
+        """Actual complete detached reader over the completed Pocket DB/inventory.
+
+        Supply test enrollment and injected ownership, without changing installed
+        configuration or any production reader. No historical/installed root.
+        """
+        import sqlite3
+        from service import recovery
+        from worker.runtime_journal import journal_bytes
+        import shutil
+        from service.reconciliation import Reconciliation
+        authority=runtime.authority
+        target=history.roots['control']/'core'
+        # Copy only this small owned fixture's DB and explicitly named assets;
+        # no production root is enrolled or altered for the reader test.
+        with sqlite3.connect(target/'core.sqlite') as enrolled:
+            enrollment={table:enrolled.execute('SELECT * FROM '+table).fetchall()
+                        for table in ('p1_installation','p1_registrations')}
+            schemas=[(n,sql) for n,sql in enrolled.execute("SELECT name,sql FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'")]
+            with sqlite3.connect(root/'core.sqlite') as db:db.backup(enrolled)
+            for name,sql in schemas:
+                if not enrolled.execute("SELECT 1 FROM sqlite_master WHERE name=?",(name,)).fetchone():enrolled.execute(sql)
+            for table,rows in enrollment.items():
+                enrolled.executemany('INSERT INTO '+table+' VALUES ('+','.join('?' for _ in rows[0])+')',rows)
+            receipt=json.loads(enrolled.execute('SELECT receipt FROM dispatches').fetchone()[0])
+            asset_ids=[r[0] for r in enrolled.execute('SELECT id FROM assets')]
+        for identity in asset_ids:
+            shutil.copyfile(root/'assets'/identity,target/'assets'/identity)
+            (target/'assets'/identity).chmod(0o600)
+        stage_id=authority.job['attempts'][-1]['staging_id']
+        stage=history.roots['staging']/stage_id;stage.mkdir(mode=0o770)
+        if (self.stage/stage_id/'output.wav').exists():
+            shutil.copyfile(self.stage/stage_id/'output.wav',stage/'output.wav')
+        journal=dict(version=1,lane=history.lane,records=[dict(id=self.history_runtime_id,
+            allocation=dict(snapshot=json.loads(authority._snapshot),binding=authority.binding,fixture='pocket'),
+            phase='terminal',acked=True,uid=20000,boot=history.hello['boot'],receipt=receipt,proposal=None)])
+        (history.roots['receipts']/'journal.json').write_bytes(journal_bytes(journal))
+        with patch.object(os,'getuid',return_value=10001):
+            core=Core(target)
+            try:
+                scan=Reconciliation(core,history.roots['staging'])
+                self.assertFalse(scan.reconcile_startup()['blocked'])
+                for identity,row in scan.rows.items():
+                    persisted=json.loads(core.db.execute('SELECT record FROM p1_inventory_objects WHERE id=?',(identity,)).fetchone()[0])
+                    latest=json.loads(core.db.execute('SELECT record FROM p1_inventory_history WHERE object_id=? ORDER BY seq DESC LIMIT 1',(identity,)).fetchone()[0])
+                    self.assertEqual(row,persisted);self.assertEqual(row,latest)
+            finally:core.close()
+        with patch.object(os,'getuid',return_value=10001), sqlite3.connect(target/'core.sqlite',isolation_level=None) as db:
+            from service import install_policy as ip
+            state=recovery.snapshot(history.roots,db,history.scope,policy=ip.SPLIT)
+        state=json.loads(json.dumps(state))
+        recovery._installed_detached_source(state,journal)
+        self.assertTrue(state['allocation_coherent'])
+        self.assertTrue(recovery.installed_clean_history(state,journal))
+        assert_configuration_mutations(self,state,journal)
+        recovery._validate_diagnostic_eligibility(state['evidence_projection'],state['affected'],[])
+        self.assertFalse(state['inventory']['reasons'])
 
     def test_dispatcher_generate_artifact_and_cancel_reap(self):
         from service.dispatcher import Dispatcher
@@ -271,15 +361,22 @@ class PocketLifecycleTests(unittest.TestCase):
                 return dict(quarantined=False) if op=='hello' else dict(acked=True)
             def prepare(inner,authority,fixture):
                 outer.assertEqual(fixture,'pocket');inner.authority=authority
-                return 'lane/boot/allocation'
+                outer.history_runtime_id=history.lane+'/'+history.hello['boot']+'/'+hashlib.sha256(authority.job['id'].encode()).hexdigest()[:32]
+                return outer.history_runtime_id
             def start(inner,identity):return dict(state='alive')
             def observe(inner,identity,timeout):
                 return Observation(identity,State.STOPPED if inner.finish.is_set() else State.ALIVE)
             def terminate(inner,identity,timeout):inner.cancel=True;inner.stopped.set()
             def collect(inner,authority,identity):
-                receipt=dict(runtime_id=identity,binding=authority.binding,reaped=True,engine_uid=os.getuid(),reap_method='pid1-waitpid-echild',timely=not inner.cancel,original_deadline=authority.job['deadline'])
-                if inner.cancel:return receipt,None
-                _,proposal,_=outer.proposal(authority=authority)
+                receipt=dict(runtime_id=identity,binding=authority.binding,reaped=True,engine_uid=20000,reap_method='pid1-waitpid-echild',reaped_children=0,timely=not inner.cancel,original_deadline=authority.job['deadline'])
+                from tests.worker.test_runtime_conditioning import filesystem_policy
+                from worker.runtime_conditioning import remove_empty
+                stage=outer.stage/authority.job['attempts'][-1]['staging_id']
+                if inner.cancel:
+                    with filesystem_policy(outer.stage,stage):remove_empty(stage.name,20000)
+                    return receipt,None
+                _,proposal,stage=outer.proposal(authority=authority)
+                with filesystem_policy(outer.stage,stage):remove_empty(stage.name,20000)
                 return receipt,TransportObservation('proposal','injected-test-only',message=proposal['message'],manifest=proposal['manifest'])
         def wait(predicate):
             end=time.monotonic()+5
@@ -291,10 +388,21 @@ class PocketLifecycleTests(unittest.TestCase):
         # Separate persistent owner root, seeded with one explicitly owned preset.
         from service.core import Core
         for cancel in (False,True):
-            # Independent roots: retained conditioning now deliberately blocks reopen.
+            # Enrollment is inert test support only; installed config stays Kokoro.
+            from tests.service.test_installed_registration import Registration
+            history=Registration();history.setUp()
+            self.addCleanup(history.doCleanups)
+            history.run_registration()
+            base_translate=history.fixture.translate
+            def engine_translate(info,path=None):
+                if path is not None and path.name=='output.wav' and self.stage in path.parents:
+                    return SimpleNamespace(**dict({k:getattr(info,k) for k in dir(info) if k.startswith('st_')},st_uid=20000,st_gid=20000))
+                return base_translate(info,path)
+            history.fixture.translate=engine_translate
+            # Each scenario reopens its exact completed root and staging root.
             self.stage=self.root/('stage-cancel' if cancel else 'stage-success')
             self.stage.mkdir()
-            root=self.root/('dispatcher-cancel' if cancel else 'dispatcher-success')
+            root=self.root/('dispatcher-cancel' if cancel else 'dispatcher-success')/'core'
             seed=Core(root);self.core.db.backup(seed.db);(seed.root/'assets'/self.asset['id']).write_bytes(self.raw);seed.close()
             runtime=Runtime()
             contexts=PocketContexts({'alice':self.context},self.mapping,self.refs)
@@ -306,18 +414,81 @@ class PocketLifecycleTests(unittest.TestCase):
                 wait(lambda:runtime.authority is not None)
                 self.assertEqual(dispatcher.call('status')['reservations'][-1]['state'],'executing')
                 if cancel:
+                    attempt_stage=self.stage/runtime.authority.job['attempts'][-1]['staging_id']
+                    attempt_stage.mkdir(mode=0o770);attempt_stage.chmod(0o770)
+                    namespace=attempt_stage/'conditioning';namespace.mkdir(mode=0o700)
                     dispatcher.call('production_cancel','alice',dict(job_id=result['job_id']),key='cancel-intent')
                     wait(runtime.stopped.is_set)
                     self.assertEqual(dispatcher.call('status')['reservations'][-1]['state'],'executing')
                     self.assertEqual(dispatcher.call('job',result['job_id'])['state'],'cancel_requested')
+                    self.assertTrue(namespace.is_dir())
                 runtime.finish.set()
-                job=wait(lambda:(j if (j:=dispatcher.call('job',result['job_id']))['state'] in ('succeeded','cancelled') else None))
-                self.assertEqual(job['state'],'cancelled' if cancel else 'succeeded')
+                job=wait(lambda:(j if (j:=dispatcher.call('job',result['job_id']))['state'] in ('succeeded','cancelled','failed') else None))
+                self.assertEqual(job['state'],'cancelled' if cancel else 'succeeded',job)
                 wait(lambda:dispatcher.call('status')['reservations'][-1]['state']=='retained')
+                wait(lambda:dispatcher.call('status')['phase']=='idle')
                 if not cancel:
                     artifact=dispatcher.call('production_artifact','alice',dict(artifact_id=job['artifact_ids'][0]))
                     self.assertEqual(len(artifact['asset_ids']),1)
             finally:dispatcher.close()
+            self.assert_closed_history(root, runtime, history)
+            reopened_runtime=Runtime()
+            reopened=Dispatcher(root,staging=self.stage,runtime=reopened_runtime,profiles=self.profiles,production_contexts=contexts)
+            try:
+                status=wait(lambda:(v if (v:=reopened.call('status'))['reconciled'] else None))
+                self.assertFalse(status['integrity_fault'],status)
+                self.assertEqual(reopened.call('job',result['job_id'])['state'],job['state'])
+                self.assertEqual(reopened.call('voice_version','alice',self.version['id']),self.version)
+                with self.assertRaises(ValueError):reopened.call('voice_version','bob',self.version['id'])
+                self.assertFalse((self.stage/runtime.authority.job['attempts'][-1]['staging_id']/'conditioning').exists())
+                if not cancel:
+                    self.assertEqual(reopened.call('production_artifact','alice',dict(artifact_id=job['artifact_ids'][0])),artifact)
+                next_job=reopened.call('production_generate','alice',self.context['plan']['request'],key='after-reopen')
+                self.assertNotEqual(next_job['job_id'],result['job_id'])
+                wait(lambda:reopened_runtime.authority is not None)
+                self.assertEqual(reopened.call('status')['reservations'][-1]['state'],'executing')
+            finally:reopened.close()
+            history.doCleanups()
+
+
+class ExecutionCleanHistoryTests(unittest.TestCase):
+    def setUp(self):
+        from tests.service.test_installed_restart import Restart
+        Restart.setUp(self)
+    def history(self, typed):
+        from service import recovery, host_install
+        from service.core import encode
+        from worker.runtime_journal import journal_bytes
+        f=self.f
+        if typed:
+            context=copy.deepcopy(f.config['contexts']['alice']);profiles=f.config['profiles'];fixture='kokoro'
+        else:
+            transcript=json.loads(Path('contracts/fixtures/v1/transcript-speech_generate.json').read_bytes())
+            context=transcript['context'];profiles=transcript['profiles'];fixture='silence'
+            for profile in profiles:profile.update(support='qualified',installation='installed',readiness='ready',verification='measured',qualification_receipt='legacy inert fixture')
+        with patch.object(os,'getuid',return_value=10001):
+            core=Core(f.roots['control']/'core')
+            try:
+                admission=Admission(core,f.roots['staging']);store=DispatchStore(core,admission)
+                job=core.submit_execution('p','clean-history',context,_admission=admission,_profiles=profiles,_dispatch_settings=(fixture,8))
+                row=store.allocate(profiles,fixture,8);authority=row['authority']
+                runtime=f.lane+'/'+f.hello['boot']+'/'+'d'*32
+                receipt=dict(runtime_id=runtime,binding=authority.binding,reaped=True,timely=False,
+                    original_deadline=authority.job['deadline'],engine_uid=20000,reap_method='pid1-waitpid-echild',reaped_children=0)
+                job=core.job(job['id']);job.update(state='failed',stage='failed');job['attempts'][-1]['reaped']=True
+                core._save(job)
+                with core.transaction():admission.store.release_tx(job['id'],confirmed_reap=True)
+                store.update(row,runtime=runtime,phase='acknowledged',receipt=encode(receipt),outcome=encode(job),acked=1)
+                journal=dict(version=1,lane=f.lane,records=[dict(id=runtime,
+                    allocation=dict(snapshot=json.loads(authority._snapshot),binding=authority.binding,fixture=fixture),
+                    phase='terminal',acked=True,uid=20000,boot=f.hello['boot'],receipt=receipt,proposal=None)])
+                (f.roots['receipts']/'journal.json').write_bytes(journal_bytes(journal))
+            finally:core.close()
+        state=json.loads(json.dumps(host_install._registration_snapshot(f.roots,f.scope)))
+        self.assertTrue(recovery.installed_clean_history(state,journal))
+        assert_configuration_mutations(self,state,journal)
+    def test_kokoro_exact_execution_configuration_clean_history(self):self.history(True)
+    def test_legacy_effective_identity_clean_history_unchanged(self):self.history(False)
 
 
 if __name__=='__main__':unittest.main()
