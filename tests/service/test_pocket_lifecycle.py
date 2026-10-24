@@ -147,6 +147,37 @@ class PocketLifecycleTests(unittest.TestCase):
         self.assertTrue(summary['blocked']);self.assertIn('unknown_namespace',summary['reasons'])
         self.assertTrue((stage/'conditioning'/'opaque').exists())
 
+    def test_empty_conditioning_persists_unknown_and_blocks_reopen(self):
+        from service.reconciliation import Reconciliation
+        authority, proposal, stage = self.proposal()
+        namespace = stage/'conditioning'
+        for nonempty in (False, True):
+            if nonempty:
+                (namespace/'opaque').write_bytes(b'retained')
+            scan = Reconciliation(self.core, self.stage)
+            summary = scan.reconcile_startup()
+            row, = [r for r in scan.rows.values() if r['name']=='conditioning']
+            self.assertEqual((row['classification'], row['reason']),
+                             ('unknown_foreign', 'unknown_namespace'))
+            self.assertTrue(summary['blocked'])
+            persisted = json.loads(self.core.db.execute(
+                'SELECT record FROM p1_inventory_objects WHERE id=?', (row['id'],)).fetchone()[0])
+            self.assertEqual(persisted, row)
+            history = json.loads(self.core.db.execute(
+                'SELECT record FROM p1_inventory_history WHERE object_id=? ORDER BY seq DESC LIMIT 1',
+                (row['id'],)).fetchone()[0])
+            self.assertEqual(history, row)
+            # Real recovery eligibility consumer, with the actual persisted row.
+            # UNKNOWN cannot be acknowledged as a retained asset/namespace.
+            from service.recovery import _validate_diagnostic_eligibility
+            source = dict(inventory=[row], data=dict(p1_inventory_objects=[
+                [row['id'], 0, 0, scan.scan_id, json.dumps(persisted)]]))
+            with self.assertRaisesRegex(ValueError, 'b2_unresolved_diagnostic'):
+                _validate_diagnostic_eligibility(source, dict(dispatches=[]), [])
+            self.assertTrue(namespace.is_dir())
+        self.assertEqual((namespace/'opaque').read_bytes(), b'retained')
+        self.assertTrue(Reconciliation(self.core,self.stage).reconcile_startup()['blocked'])
+
     def test_qualification_and_dispatch_dependency_recheck(self):
         self.profiles[0]['verification']='synthetic'
         with self.assertRaisesRegex(ValueError,'qualification'):self.submit()
@@ -232,9 +263,12 @@ class PocketLifecycleTests(unittest.TestCase):
             self.fail('bounded dispatcher wait expired')
         # Separate persistent owner root, seeded with one explicitly owned preset.
         from service.core import Core
-        root=self.root/'dispatcher'
-        seed=Core(root);self.core.db.backup(seed.db);(seed.root/'assets'/self.asset['id']).write_bytes(self.raw);seed.close()
         for cancel in (False,True):
+            # Independent roots: retained conditioning now deliberately blocks reopen.
+            self.stage=self.root/('stage-cancel' if cancel else 'stage-success')
+            self.stage.mkdir()
+            root=self.root/('dispatcher-cancel' if cancel else 'dispatcher-success')
+            seed=Core(root);self.core.db.backup(seed.db);(seed.root/'assets'/self.asset['id']).write_bytes(self.raw);seed.close()
             runtime=Runtime()
             contexts=PocketContexts({'alice':self.context},self.mapping,self.refs)
             dispatcher=Dispatcher(root,staging=self.stage,runtime=runtime,profiles=self.profiles,production_contexts=contexts)
