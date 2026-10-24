@@ -17,6 +17,12 @@ from service.catalogue import PRODUCTION_OPERATIONS, OPERATIONS
 
 
 class ProductionClientTests(ProductionAPIFixture,unittest.TestCase):
+    def test_preset_tool_is_named_closed_and_requires_key(self):
+        tool=next(t for t in mcp.tools() if t.name=='speech_voice_preset_register')
+        self.assertEqual(set(tool.inputSchema['properties']),{'preset','voice_id','expected_revision','idempotency_key'})
+        self.assertEqual(set(tool.inputSchema['required']),set(tool.inputSchema['properties']))
+        self.assertFalse(tool.inputSchema['additionalProperties'])
+
     def test_all_shipped_operations_and_reference_journey(self):
         outer=self
         class ASGIClient:

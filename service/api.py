@@ -132,7 +132,7 @@ def create_voice_app(dispatcher, *, credentials, upload_deadline=15.0, installed
         return await call_next(request)
 
     @production.get('/v1/capabilities')
-    def discovery(query: Annotated[EmptyQuery, Query()]):
+    def discovery(request: Request, query: Annotated[EmptyQuery, Query()]):
         body = capabilities()
         if installed is not None:
             import copy
@@ -140,19 +140,26 @@ def create_voice_app(dispatcher, *, credentials, upload_deadline=15.0, installed
             body['profiles'] = copy.deepcopy(installed['profiles'])
             body['engines'] = sorted({c['identity']['engine'] for p in installed['profiles'] for c in p['compatibility']})
             body['checked_at'] = datetime.now(timezone.utc).isoformat()
+            for profile in body['profiles']:
+                profile['next_action'] = 'Read /skeleton configured_presets; explicitly call voice_preset_register, then speech_generate. Clone preparation is unavailable.'
             if not dispatcher.call('status')['persistent_activation']:
                 for profile in body['profiles']: profile['readiness'] = 'not_ready'
         body['operations'] = list(dict.fromkeys(('discover', *VOICE_READS, *ASSET_OPERATIONS, *PRODUCTION_OPERATIONS)))
+        if installed is not None:
+            body['operations'] = [op for op in body['operations'] if op not in ('voice_prepare', 'voice_results', 'voice_save')]
         return body
 
     @production.get('/skeleton')
-    def production_status(query: Annotated[EmptyQuery, Query()]):
+    def production_status(request: Request, query: Annotated[EmptyQuery, Query()]):
         if installed is not None:
             from service.persistent_init import digest
             status = dispatcher.call('status')
             return dict(synthetic=False, ready_for_speech=status['persistent_activation'],
                         configuration_digest=digest(installed),
-                        profiles=installed['profiles'], store='installed-owner', status=status)
+                        profiles=installed['profiles'], store='installed-owner', status=status,
+                        configured_presets=dispatcher.call('configured_presets', request.state.principal),
+                        next_action='voice_preset_register → voices_list/voice_version_get → speech_generate',
+                        clone_prepare=False)
         return dict(synthetic=True, ready_for_speech=False, engine_qualification='none',
                     context_configuration='operator-required', store='borrowed-owner')
 
@@ -161,7 +168,10 @@ def create_voice_app(dispatcher, *, credentials, upload_deadline=15.0, installed
         if operation_id not in ('discover', *VOICE_READS, *ASSET_OPERATIONS, *PRODUCTION_OPERATIONS):
             raise Failure('not_found', 'Operation unavailable.', 'operation_id')
         op = OPERATIONS[operation_id]
-        return dict(fixture=False, availability='implemented' if op['http']['method'] == 'POST' else 'implemented_read', operation=op,
+        availability = 'implemented' if op['http']['method'] == 'POST' else 'implemented_read'
+        if installed is not None and operation_id in ('voice_prepare', 'voice_results', 'voice_save'):
+            availability = 'unavailable_configured_profile'
+        return dict(fixture=False, availability=availability, operation=op,
                     request_schema=schema(op['request']), response_schema=schema(op['response']))
 
     @production.get('/v1/voices')

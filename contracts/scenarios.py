@@ -106,3 +106,10 @@ def transcript(operation, project, profiles, requests, *, version=None, device='
     # Detach every nested wire object; there are deliberately no shared aliases.
     import json
     return json.loads(json.dumps(dict(evidence='E1 synthetic catalogue only',context=dict(plan=plan,bundles=bundles),profiles=[profile],authorized_assets=c.required_asset_ids(plan),job=job,message=message,artifact=artifact,verified_manifest=manifest,present_hashes={a['id']:a['sha256'] for a in outputs},exchanges=exchanges)))
+
+
+def preset_registration(preset, voice_id, expected_revision=0):
+    """Public preset bootstrap selects configured authority, never version metadata."""
+    request = dict(preset=preset, voice_id=voice_id, expected_revision=expected_revision)
+    c.validate('voice_preset_register_request', request)
+    return request

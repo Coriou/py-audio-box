@@ -220,6 +220,38 @@
       "reference_contract": "reference-roles-v1 staged; absent roles are synthetic fixture compatibility only; production activation requires domain/worker migration"
     },
     {
+      "id": "voice_preset_register",
+      "http": {
+        "method": "POST",
+        "route": "/v1/operations/voice_preset_register",
+        "input_location": "json"
+      },
+      "cli": "voice preset-register",
+      "mcp": "speech_voice_preset_register",
+      "request": "voice_preset_register_request",
+      "response": "voice_register_result",
+      "idempotency": true,
+      "scope": "production-write",
+      "headers": [
+        "Idempotency-Key"
+      ],
+      "errors": [
+        "invalid_request",
+        "forbidden",
+        "not_found",
+        "idempotency_conflict",
+        "not_ready",
+        "resource_limit",
+        "unsupported_control",
+        "revision_conflict",
+        "missing_media",
+        "voice_archived",
+        "version_conflict",
+        "alias_conflict"
+      ],
+      "description": "Explicitly register the principal-configured preset; no clone preparation or qualification. Discover configured selectors in /skeleton."
+    },
+    {
       "id": "voice_save",
       "http": {
         "method": "POST",

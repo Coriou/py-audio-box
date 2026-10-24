@@ -54,9 +54,6 @@ class ActivationTests(unittest.TestCase):
         self.enterContext(patch.object(os,'getgroups',return_value=[]))
         self.enterContext(patch.object(e,'local_incarnation',return_value=self.incarnation))
         self.contexts = KokoroContexts({'alice': self.context}, self.mapping)
-        seed = Core(self.root)
-        seed.voices.register('alice','register',self.context['plan']['voice_versions'][0],expected_revision=0)
-        seed.close()
         outer = self
         class Runtime:
             def __init__(inner):
@@ -83,6 +80,19 @@ class ActivationTests(unittest.TestCase):
                 _,proposal,_=outer.proposal(authority=authority)
                 return receipt,TransportObservation('proposal','INJECTED ONLY',message=proposal['message'],manifest=proposal['manifest'])
         self.runtime = Runtime()
+        if getattr(self, 'bootstrap', True):
+            bootstrap_owner = self.owner()
+            try:
+                self.wait(lambda:bootstrap_owner.call('status')['persistent_activation'])
+                from service.domain import production_call
+                saved = production_call(bootstrap_owner, 'alice', 'voice_preset_register',
+                    dict(preset=self.context['execution']['descriptor']['preset'],
+                         voice_id=self.context['plan']['voice_versions'][0]['voice_id'], expected_revision=0), 'register')
+                self.context = copy.deepcopy(self.context)
+                self.context['plan']['voice_versions'] = [saved['version']]
+                self.context['plan']['request']['voice_version_id'] = saved['version']['id']
+            finally: bootstrap_owner.close()
+            self.runtime.hellos = 0
 
     def owner(self):
         return Dispatcher(self.root,staging=self.stage,runtime=self.runtime,profiles=self.profiles,
@@ -397,7 +407,8 @@ class ActivationTests(unittest.TestCase):
                     status=(await client.get('/skeleton',headers=headers)).json()
                     self.assertTrue(status['ready_for_speech']);self.assertFalse(status['synthetic'])
                     caps=(await client.get('/v1/capabilities',headers=headers)).json()
-                    self.assertEqual(caps['profiles'],self.profiles)
+                    self.assertEqual(caps['profiles'][0]['qualification_receipt'],self.profiles[0]['qualification_receipt'])
+                    self.assertNotIn('voice_prepare',caps['operations'])
                     reply=await client.post('/v1/operations/speech_generate',headers=dict(headers,**{'idempotency-key':'activated'}),json=self.context['plan']['request'])
                     self.assertEqual(reply.status_code,200,reply.text)
                     job_id=reply.json()['job_id']

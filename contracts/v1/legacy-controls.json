@@ -3703,7 +3703,8 @@
         "voice_save",
         "voice_archive",
         "voice_results",
-        "voice_version_get"
+        "voice_version_get",
+        "voice_preset_register"
       ],
       "reason": "H0 provides register/get/version/versions/list/aliases/archive domain; H1 prepares candidates and saves through it; H2 exposes transport."
     },

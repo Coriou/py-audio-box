@@ -24,11 +24,11 @@ def input_schema(operation):
 def tools():
     items = [Tool(name=OPERATIONS[op]['mcp'],
         description=('Named HTTP operation; availability depends on configured service. ' +
-            ('Explicit opt-in bytes only; at most 3072 decoded bytes. Larger downloads: python -m clients.cli asset content ID --output FILE.' if op == 'asset_content' else op)),
+            ('Explicit opt-in bytes only; at most 3072 decoded bytes. Larger downloads: python -m clients.cli asset content ID --output FILE.' if op == 'asset_content' else 'Register the configured preset from speech_skeleton_status; generation only, no cloning or qualification.' if op == 'voice_preset_register' else op)),
         inputSchema=input_schema(op)) for op in dict.fromkeys((*IMPLEMENTED, *VOICE_READS, *PRODUCTION_OPERATIONS))]
     if os.environ.get('SPEECH_UPLOAD_ROOT'):
         items.append(Tool(name='speech_asset_upload_file', description='Upload a client-host WAV from an operator-authorized filesystem root (SPEECH_UPLOAD_ROOT). Grants host filesystem read permission within that root; relative no-follow paths only. Creates an asset, not a cloned voice. No inline audio.', inputSchema={'type':'object','properties':{'path':{'type':'string','minLength':1,'maxLength':4096}},'required':['path'],'additionalProperties':False}))
-    items += [Tool(name='speech_skeleton_status', description='Compact synthetic skeleton status and limitations.',
+    items += [Tool(name='speech_skeleton_status', description='Configured service status, preset selectors and next action; no discovery-time model loading.',
                    inputSchema={'type':'object','properties':{},'additionalProperties':False}),
               Tool(name='speech_operation_detail', description='Read one canonical operation schema and fixture availability; never executes it.',
                    inputSchema={'type':'object','properties':{'operation_id':{'type':'string','maxLength':128}},

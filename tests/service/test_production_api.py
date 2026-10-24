@@ -118,6 +118,15 @@ class ProductionAPIFixture:
 
 
 class ProductionAPITests(ProductionAPIFixture,unittest.TestCase):
+    def test_preset_registration_requires_installed_activation_and_closed_request(self):
+        payload=dict(preset='af_heart',voice_id='preset',expected_revision=0)
+        route='/v1/operations/voice_preset_register'
+        response=self.request('POST',route,payload=payload,key='preset')
+        self.assertEqual(response.json()['code'],'not_ready')
+        response=self.request('POST',route,payload=dict(payload,version={}),key='preset')
+        self.assertEqual(response.json()['code'],'invalid_request')
+        self.assertEqual(self.dispatcher.call('voice_list','alice'),[])
+
     def test_reference_prepare_select_save_generate_and_ownership(self):
         asset,payload,receipt,result=self.prepared(); job_id=receipt['job_id']
         before=self.dispatcher.call('status')['reservations']

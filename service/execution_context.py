@@ -47,7 +47,8 @@ class KokoroContexts:
         for principal, context in contexts.items():
             snapshot = copy.deepcopy(context)
             verify_local(snapshot, local_bundles)
-            if execution(snapshot) is None: raise Refused('execution_required')
+            spec = execution(snapshot)
+            if spec is None or spec.engine != 'kokoro': raise Refused('kokoro_execution_required')
             self._contexts[principal] = json.dumps(snapshot, allow_nan=False)
 
     def resolve(self, principal, operation, request):
@@ -57,6 +58,41 @@ class KokoroContexts:
         context['plan']['request'] = copy.deepcopy(request)
         execution(context)
         return context
+
+    def presets(self, principal):
+        if principal not in self._contexts: return []
+        context = json.loads(self._contexts[principal])
+        spec = execution(context)
+        return [dict(preset=spec.preset, engine=spec.engine, model=spec.checkpoint,
+                     language=spec.language, bundle_sha256=spec.manifest_sha256,
+                     supports=['voice_preset_register', 'speech_generate'], clone_prepare=False)]
+
+    def preset_version(self, principal, preset, voice_id):
+        from contracts import validate as oracle
+        from service.voice_store import _id
+        _id(voice_id)
+        if principal not in self._contexts: raise Refused('not_ready')
+        context = json.loads(self._contexts[principal])
+        spec = execution(context)
+        if spec.preset != preset: raise Refused('unsupported_control')
+        version = copy.deepcopy(context['plan']['voice_versions'][0])
+        version['voice_id'] = voice_id
+        version['id'] = 'preset-' + oracle.canonical_hash([principal, voice_id, version, spec.identity()])
+        return version
+
+    def resolve_registered(self, principal, request, version):
+        from contracts import validate as oracle
+        if principal not in self._contexts: raise Refused('not_ready')
+        template = json.loads(self._contexts[principal])
+        spec = execution(template)
+        expected = self.preset_version(principal, spec.preset, version['voice_id'])
+        expected['reference_asset_sha256'] = {}
+        if version != expected: raise Refused('unsupported_control')
+        template['plan']['voice_versions'] = [copy.deepcopy(version)]
+        template['plan']['request'] = copy.deepcopy(request)
+        oracle.validate('speech_generate_request', request)
+        execution(template)
+        return template
 
 
 def installed_configuration(path, *, policy):
