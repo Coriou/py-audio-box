@@ -39,6 +39,8 @@ class Registration(unittest.TestCase):
         class Observer:
             scope=test.scope;config=test.config
             policy=dict(roots={r:dict(source=str(p),device=p.stat().st_dev,inode=p.stat().st_ino) for r,p in test.roots.items()})
+            def current_owners(self,claims):
+                return copy.deepcopy(claims)
             def observe_owners(self,owners,public):
                 test.seen.append(copy.deepcopy(owners))
                 return dict(topology=dict(consumers=[dict(c,running=True) for c in owners]),processes=[])
@@ -158,7 +160,7 @@ class Registration(unittest.TestCase):
             for fd in h._registration_retained[start:]:os.close(fd)
             del h._registration_retained[start:]
 
-    def test_real_closed_observer_transaction(self):
+    def use_closed_observer(self):
         from tests.service import test_installed_host_policy as host_fixtures
         host=host_fixtures.InstalledHost();host.setUp();self.addCleanup(host.doCleanups)
         self.assertEqual(host.config,self.config)
@@ -168,8 +170,12 @@ class Registration(unittest.TestCase):
         for container in host.containers:
             for mount in container['mounts']:
                 if mount['type']=='volume':mount['source']=str(self.roots[mount['name']])
-        self.provenance_patch.stop();self.enrollment_patch.stop()
+        self.provenance_patch.__exit__(None,None,None);self.enrollment_patch.__exit__(None,None,None)
         self.observer=host.observer();self.observer.docker.context=self.scope["context"];self.owners=host.owners
+        return host
+
+    def test_real_closed_observer_transaction(self):
+        self.use_closed_observer()
         with patch.object(h.sys,'platform','linux'):
             rid=self.run_registration()
             self.assertEqual(self.run_registration(),rid)

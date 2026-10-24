@@ -830,6 +830,14 @@ class InstalledObserver:
         topology=self.inventory([])
         return dict(host=self.scope,roots={v['role']:[v['device'],v['inode']] for v in topology['volumes']},consumers=[])
 
+    def current_owners(self, claims):
+        """Inspect each retained ID; no caller-selected StartedAt projection."""
+        result=[]
+        for claim in claims:
+            actual=_installed_container(self.docker,claim['id'])
+            result.append(dict(claim,started=actual['started'],image=actual['image']))
+        return result
+
     def observe_owners(self, owners, enrollment):
         enrollment_digest=ip.host_enrollment(enrollment,self.policy,self.config,self.scope)
         first=self.inventory(owners)
@@ -1015,8 +1023,23 @@ def _registration_hello(hello,registration=None):
 
 
 def _installed_provenance(value,observer,public):
-    recovery.closed(value,'kind registration observation hello ipc_identity')
-    if value['kind']!='installed-registration-v1': raise ValueError('installed_provenance_kind')
+    version=value.get('kind')
+    recovery.closed(value,'kind registration observation hello ipc_identity'+(' history' if version=='installed-registration-v2' else ''))
+    if version not in ('installed-registration-v1','installed-registration-v2'): raise ValueError('installed_provenance_kind')
+    if version=='installed-registration-v2':
+        history=value['history']; recovery.closed(history,'predecessors state journal')
+        state=history['state']
+        recovery.closed(state,'prior_epoch deployment_id source_digest affected bytes evidence_projection monitor protocol integrity reservations faults dispatches jobs publications allocation_coherent inventory journal_digest lane journal_records registrations versions apply_available')
+        if (history['predecessors']!=sorted(digest(r) for r in state['registrations']) or
+                not history['predecessors'] or len(set(history['predecessors']))!=len(history['predecessors']) or
+                digest(state['evidence_projection'])!=state['source_digest'] or
+                state['deployment_id']!=public['deployment_id']):
+            raise ValueError('installed_history_linkage')
+        if digest(dict(payload=history['journal'],sha256=digest(history['journal'])))!=state['journal_digest']:
+            raise ValueError('installed_history_journal_binding')
+        if digest(value['registration']) in history['predecessors']:
+            raise ValueError('installed_history_self_link')
+        recovery.installed_clean_history(state,history['journal'])
     registration=value['registration']; recovery.validate_registration(registration)
     if (registration['deployment_id']!=public['deployment_id'] or registration['scope']!=observer.scope or
             registration['evidence']!='actual-host-inspection'):
@@ -1034,6 +1057,50 @@ def _installed_provenance(value,observer,public):
         observer.config,observer.policy,public)
     if any(c not in projection for c in registration['containers']): raise ValueError('installed_provenance_coverage')
     return value
+
+
+def _installed_history_read(observer, public, authority_fd, registrations):
+    """Validate retained historical claims, without pretending to inspect old boots."""
+    retained={digest(r):r for r in registrations}; provenance={}; identities={}; retained_bytes=0
+    with os.scandir(authority_fd) as entries:
+        for index,entry in enumerate(entries):
+            if index>=recovery.HOST_OWNER_LIMIT+2: raise ValueError('installed_authority_budget')
+            if entry.name in ('launch.lock','host-policy.json'): continue
+            if not re.fullmatch(r'registration-[0-9a-f]{64}\.json',entry.name):
+                raise ValueError('installed_unknown_authority_file')
+            raw,identity=_registration_read_at(authority_fd,entry.name)
+            retained_bytes+=len(raw)
+            if retained_bytes>recovery.HOST_CAPSULE_BYTES: raise ValueError('installed_provenance_budget')
+            value=_installed_provenance(recovery.host_json(raw),observer,public)
+            rid=digest(value['registration'])
+            if entry.name!='registration-'+rid+'.json' or raw!=encode(value).encode():
+                raise ValueError('installed_provenance_changed')
+            provenance[rid]=raw; retained[rid]=value['registration']
+            identities[rid]=identity
+    for raw in provenance.values():
+        value=recovery.host_json(raw)
+        if value['kind']=='installed-registration-v2':
+            history=value['history']
+            if any(digest(r) not in retained or retained[digest(r)]!=r
+                   for r in history['state']['registrations']):
+                raise ValueError('installed_history_missing_predecessor')
+    if any(digest(r) not in provenance for r in registrations):
+        raise ValueError('installed_missing_provenance')
+    return retained,provenance,identities,retained_bytes
+
+
+def _installed_current(observer, registrations, scope, deployment_id):
+    claims={}
+    for record in registrations:
+        for owner in record["containers"]:
+            if owner["id"] in claims and any(claims[owner["id"]][k]!=owner[k] for k in ("image","role","volumes")):
+                raise ValueError("installed_history_binding")
+            claims[owner["id"]]=owner
+    if len(claims)>recovery.HOST_OWNER_LIMIT: raise ValueError("host_owner_budget")
+    owners=observer.current_owners([claims[k] for k in sorted(claims)])
+    current=[dict(r,containers=[next(c for c in owners if c["id"]==old["id"]) for old in r["containers"]]) for r in registrations]
+    current=list({digest(r):r for r in current}.values())
+    return recovery.installed_history_current(registrations,scope,deployment_id,current)
 
 
 def _register_installed(observer,selected,authority_fd,check,*,child=_registration_child,fault=lambda _:None):
@@ -1059,45 +1126,61 @@ def _register_installed(observer,selected,authority_fd,check,*,child=_registrati
                 check(); before=_registration_snapshot(roots,observer.scope)
                 public=json.loads(before['evidence_projection']['data']['p1_installation'][0][3])
                 ip.host_enrollment(public,observer.policy,observer.config,observer.scope)
-                retained={digest(r):r for r in before['registrations']}; provenance={}; identities={}; retained_bytes=0
-                with os.scandir(authority_fd) as entries:
-                    for index,entry in enumerate(entries):
-                        if index>=recovery.HOST_OWNER_LIMIT+2: raise ValueError('installed_authority_budget')
-                        if entry.name in ('launch.lock','host-policy.json'): continue
-                        if not re.fullmatch(r'registration-[0-9a-f]{64}\.json',entry.name):
-                            raise ValueError('installed_unknown_authority_file')
-                        raw,identity=_registration_read_at(authority_fd,entry.name)
-                        retained_bytes+=len(raw)
-                        if retained_bytes>recovery.HOST_CAPSULE_BYTES: raise ValueError('installed_provenance_budget')
-                        value=_installed_provenance(recovery.host_json(raw),observer,public)
-                        rid=digest(value['registration'])
-                        if entry.name!='registration-'+rid+'.json' or raw!=encode(value).encode():
-                            raise ValueError('installed_provenance_changed')
-                        provenance[rid]=raw; retained[rid]=value['registration']
-                        identities[rid]=identity
-                if any(digest(r) not in provenance for r in before['registrations']):
-                    raise ValueError('installed_missing_provenance')
+                retained,provenance,identities,retained_bytes=_installed_history_read(observer,public,authority_fd,before['registrations'])
                 candidate=dict(deployment_id=public['deployment_id'],scope=observer.scope,containers=selected,
                                lane=before['lane'],boot='0'*32,evidence='actual-host-inspection')
                 recovery.validate_registration(candidate)
-                owners=recovery.host_registration_union(list(retained.values()),observer.scope,public['deployment_id']) if retained else []
-                known={c['id']:c for c in owners}
-                for owner in recovery.host_registration_union([candidate],observer.scope,public['deployment_id']):
-                    if owner['id'] in known and known[owner['id']]!=owner: raise ValueError('host_ambiguous_incarnation')
-                    known[owner['id']]=owner
-                owners=[known[k] for k in sorted(known)]
-                if len(owners)>recovery.HOST_OWNER_LIMIT: raise ValueError('host_owner_budget')
+                # Retained claims are immutable. Inspect the current identity for
+                # every ID before deriving the one current projection.
+                owners=_installed_current(observer,list({digest(r):r for r in [*retained.values(),candidate]}.values()),observer.scope,public['deployment_id'])
+                if any(c not in owners for c in selected): raise ValueError('installed_selected_not_current')
+                changed=any(c not in owners for r in retained.values() for c in r['containers'])
+                from worker.runtime_journal import read_snapshot
+                journal,maintenance=read_snapshot(roots['receipts'],policy=ip.SPLIT)
+                if maintenance is not None or len(journal['records'])>=64:
+                    raise ValueError('installed_history_lane_budget')
+                if digest(dict(payload=journal,sha256=digest(journal)))!=before['journal_digest']:
+                    raise ValueError('installed_history_journal_changed')
+                history=None
+                if changed:
+                    if any(digest(r) not in {digest(x) for x in before['registrations']} and
+                           any(c not in owners for c in r['containers']) for r in retained.values()):
+                        raise ValueError('installed_history_unregistered_provenance')
+                    recovery.installed_clean_history(before,journal)
+                    history=dict(predecessors=sorted(retained),state=before,journal=journal)
                 first=observer.observe_owners(owners,public);check()
                 live={c['id']:c for c in first['topology']['consumers'] if c['running']}
                 if (len(selected)!=2 or {c['role'] for c in selected}!={'control','worker'} or
                         any(c['id'] not in live for c in selected)):
                     raise ValueError('installed_registration_requires_live_pair')
+                if changed:
+                    for raw in provenance.values():
+                        old=recovery.host_json(raw)
+                        for process in old['observation']['processes']:
+                            actual=next((p for p in first['processes'] if p['id']==process['id']),None)
+                            if actual is not None and actual['started']!=process['started'] and (
+                                    actual['start_ticks']==process['start_ticks'] or actual['pid_namespace']==process['pid_namespace']):
+                                raise ValueError('installed_history_process_reused')
                 hello=_registration_hello(child('hello',dict(ipc_fd=fds['ipc']),(fds['ipc'],)))
                 if hello['lane']!=before['lane']: raise ValueError('installed_registration_lane')
                 candidate.update(lane=hello['lane'],boot=hello['boot']); rid=digest(candidate)
+                for old in retained.values():
+                    old_worker=next(c for c in old['containers'] if c['role']=='worker')
+                    new_worker=next(c for c in candidate['containers'] if c['role']=='worker')
+                    if old_worker==new_worker and old['boot']!=hello['boot']:
+                        raise ValueError('installed_history_boot_without_restart')
+                    if old_worker['id']==new_worker['id'] and old_worker['started']!=new_worker['started'] and old['boot']==hello['boot']:
+                        raise ValueError('installed_history_worker_boot')
+
                 if rid not in retained and len(retained)>=recovery.HOST_OWNER_LIMIT: raise ValueError('host_registration_budget')
                 value=dict(kind='installed-registration-v1',registration=candidate,observation=first,hello=hello,
                            ipc_identity=[public['roles']['ipc'][k] for k in ('device','inode')])
+                if rid in provenance:
+                    previous=recovery.host_json(provenance[rid])
+                    if previous['kind']=='installed-registration-v2':
+                        value.update(kind='installed-registration-v2',history=previous['history'])
+                elif history is not None:
+                    value.update(kind='installed-registration-v2',history=history)
                 _installed_provenance(value,observer,public)
                 if observer.observe_owners(owners,public)!=first: raise ValueError('installed_registration_prebracket_changed')
                 if _registration_hello(child('hello',dict(ipc_fd=fds['ipc']),(fds['ipc'],)),candidate)!=hello:
@@ -1176,7 +1259,13 @@ def _installed_handoff(observer, owners, rid, authority_fd, check, *, notify=Non
     if (digest(record) != rid or record['containers'] != owners or
             record not in state['registrations']):
         raise ValueError('installed_notification_registration')
-    all_owners = recovery.host_registration_union(state['registrations'],observer.scope,public['deployment_id'])
+    retained,provenance,identities,_=_installed_history_read(observer,public,authority_fd,state['registrations'])
+    all_owners = _installed_current(observer,list(retained.values()),observer.scope,public['deployment_id'])
+    def history_exact():
+        for identity,raw in provenance.items():
+            if _registration_read_at(authority_fd,'registration-'+identity+'.json')!=(raw,identities[identity]):
+                raise ValueError('installed_provenance_changed')
+    history_exact()
     if observer.observe_owners(all_owners,public) != value['observation']:
         raise ValueError('installed_notification_incarnation_changed')
     selected = {c['id'] for c in record['containers']}
@@ -1189,6 +1278,7 @@ def _installed_handoff(observer, owners, rid, authority_fd, check, *, notify=Non
     control = next(c['id'] for c in owners if c['role']=='control')
     (notify or _installed_notify)(observer.scope['context'],control,encode(gate).encode())
     check()
+    history_exact()
     if (_registration_read_at(authority_fd,name) != (raw,identity) or
             observer.observe_owners(all_owners,public) != value['observation']):
         raise ValueError('installed_notification_postbracket_changed')

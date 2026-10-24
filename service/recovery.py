@@ -2824,6 +2824,81 @@ def host_registration_union(registrations, scope, deployment_id):
     return [known[k] for k in sorted(known)]
 
 
+def installed_history_current(registrations, scope, deployment_id, current):
+    """Installed retained claims -> one independently inspected current per ID.
+
+    Historical StartedAt values are claims, never observations of dead processes.
+    The caller supplies a fresh complete host inspection, not a selected pair.
+    Legacy host_registration_union deliberately keeps its original semantics.
+    """
+    if not registrations:
+        return host_registration_union(current,scope,deployment_id)
+    # Reuse every legacy closed/origin/budget check separately; only cross-row
+    # incarnation ambiguity belongs to this explicit installed adapter.
+    if len(registrations)>HOST_OWNER_LIMIT or len(encode(registrations).encode())>HOST_CAPSULE_BYTES:
+        raise ValueError('host_registration_budget')
+    seen=set(); history={}; lanes=set()
+    for registration in registrations:
+        owners=host_registration_union([registration],scope,deployment_id)
+        rid=digest(registration)
+        if rid in seen: raise ValueError('host_duplicate_registration')
+        seen.add(rid); lanes.add(registration['lane'])
+        for owner in owners: history.setdefault(owner['id'],[]).append(owner)
+    if len(lanes)!=1: raise ValueError('installed_history_lane')
+    actual=host_registration_union(current,scope,deployment_id)
+    if {c['id'] for c in actual}!=set(history): raise ValueError('installed_history_container_coverage')
+    for owner in actual:
+        for old in history[owner['id']]:
+            if any(old[k]!=owner[k] for k in ('id','image','role','volumes')):
+                raise ValueError('installed_history_binding')
+            if host_timestamp(old['started'])>host_timestamp(owner['started']):
+                raise ValueError('installed_history_time')
+    return actual
+
+
+def installed_clean_history(state, journal):
+    """Proof of discharged obligations, never inferred from container exit."""
+    closed(journal,'version lane records')
+    if (journal['version']!=1 or journal['lane']!=state['lane'] or
+            state['faults'] or state['inventory']['reasons'] or not state['allocation_coherent'] or
+            len(journal['records'])>=64 or any(r['state']!='retained' for r in state['reservations']) or
+            any(j['state'] not in ('succeeded','failed','cancelled') or
+                any(a.get('reaped') is not True for a in j['attempts']) for j in state['jobs']) or
+            any(not d['acked'] or d['receipt_digest'] is None for d in state['dispatches'])):
+        raise ValueError('installed_history_unclean')
+    projection=state['evidence_projection']
+    closed(projection,'schema data inventory journal marker')
+    data=projection['data']
+    registrations=[]
+    for rid,raw,h in data['p1_registrations']:
+        record=host_json(raw.encode()); validate_registration(record)
+        if digest(record)!=rid or rid!=h: raise ValueError('installed_history_registration')
+        registrations.append(record)
+    jobs=[{k:v for k,v in json.loads(r[6]).items() if k in ('id','state','generation','deadline','attempts')} for r in data['jobs']]
+    reservations=[dict(zip(('job_id','category','demand','state'),(r[0],r[1],json.loads(r[2]),r[3]))) for r in data['resource_reservations']]
+    dispatches=[dict(seq=r[0],job_id=r[1],binding=r[3],runtime_id=r[5],phase=r[6],receipt_digest=digest(json.loads(r[7])) if r[7] else None,acked=bool(r[9])) for r in data['dispatches']]
+    if (registrations!=state['registrations'] or jobs!=state['jobs'] or reservations!=state['reservations'] or
+            dispatches!=state['dispatches'] or not _allocation_coherent(data) or
+            digest(projection)!=state['source_digest'] or projection['journal']!=state['journal_digest'] or
+            digest(dict(payload=journal,sha256=digest(journal)))!=state['journal_digest']):
+        raise ValueError('installed_history_snapshot_binding')
+    if any(r[3]!='returned' for r in data['dispatch_commands']):
+        raise ValueError('installed_history_uncertain_command')
+    runtime={d['runtime_id']:d for d in state['dispatches']}
+    if len(runtime)!=len(state['dispatches']) or set(runtime)!={r['id'] for r in journal['records']}:
+        raise ValueError('installed_history_allocation_coverage')
+    uids=set()
+    for row in journal['records']:
+        d=runtime[row['id']]; receipt=row.get('receipt',{})
+        if (row['phase']!='terminal' or row['acked'] is not True or
+                receipt.get('reaped') is not True or receipt.get('reap_method')!='pid1-waitpid-echild' or
+                digest(receipt)!=d['receipt_digest'] or row['allocation']['binding']!=d['binding'] or
+                row['uid']!=20000+len(uids) or row['uid'] in uids):
+            raise ValueError('installed_history_unconfirmed_reap_ack')
+        uids.add(row['uid'])
+    return True
+
+
 def host_registration_digest(registrations):
     return digest(sorted(registrations, key=digest))
 
