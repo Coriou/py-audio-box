@@ -1995,3 +1995,7 @@ r158 SOURCEinventory findsHTTP/CLI/MCPstillfixture-only, reallegacyTTS/clone/reg
 ### 2026-10-24 — Headless release plan adopted; feature H0 next
 
 Parent adopts r157 canonicalH0–H5 replan peruser: fullHTTP/CLI/MCP, cleanvoiceclone/management, workingCPU/CUDA/nativeAppleMetal REQUIRED; webUI/STTdeferred.81diagnosticcampaignoffcriticalpath withproduction-risk-equivalence/faulttestsrequiredrelease; no falsehistoricalclearance. H0durableimmutablevoicecatalogue source+focusedtests commissioned next; noHELDresource/build/modelauthority. r158currentfeatureinventory informslegacycoverage.
+
+### 2026-10-24 — H0 voice catalogue implemented; independent feature review
+
+r159 t3-e1b44469 sourcea6702296/reportc32744a5 implementsCore.voices immutableversions/aliases/archive/idempotency+managedassetownership/additivemigration/contractsmap;13isolatedunittestPASS usingtemporaryDB/media,no guardpytest/model/Docker. Parentcommissions pab-h0-voice-review-r160-20261024 adversarialproduct/source/localtestreview beforeadoption. PublicHTTPstillfixture,H1ingest/H2authtransport/H3installeddurability/H4hardware remainopen.
