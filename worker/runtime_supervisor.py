@@ -19,11 +19,12 @@ from worker.transport import canonical, Refused, Session
 
 
 class RuntimeSupervisor:
-    def __init__(self, root='/receipts', ipc='/ipc', *, bundles=None):
+    def __init__(self, root='/receipts', ipc='/ipc', *, bundles=None, references=None):
         if os.getpid() != 1:
             raise RuntimeError('pid1_required')
         from types import MappingProxyType
         self.bundles = MappingProxyType(dict(bundles or {}))
+        self.references = MappingProxyType(dict(references or {}))
         self.journal = Journal(root)
         self.ipc = Path(ipc)
         self.boot = secrets.token_hex(16)
@@ -81,7 +82,7 @@ class RuntimeSupervisor:
             if self.journal.maintenance is not None: value['maintenance']=self.journal.maintenance
             return value
         if op == 'prepare':
-            if set(body) != {'snapshot', 'binding', 'fixture'} or body['fixture'] not in ('silence', 'busy', 'descendants', 'permissions', 'kokoro'):
+            if set(body) != {'snapshot', 'binding', 'fixture'} or body['fixture'] not in ('silence', 'busy', 'descendants', 'permissions', 'kokoro', 'pocket'):
                 raise Refused('closed_prepare')
             snapshot = body['snapshot']
             if not isinstance(snapshot, list) or len(snapshot) != 4 or hashlib.sha256(canonical(snapshot)).hexdigest() != body['binding']:
@@ -89,11 +90,17 @@ class RuntimeSupervisor:
             from contracts import validate as oracle
             job, context, assets, profiles = snapshot
             oracle.stored_context(job, context)
-            from worker.runtime_protocol import execution
+            from worker.runtime_protocol import execution, dispatch_mode
             spec = execution(context)
-            if (body['fixture'] == 'kokoro') != (spec is not None): raise Refused('execution_dispatch_mismatch')
+            if (body['fixture'] in ('kokoro','pocket')) != (spec is not None) or (spec is not None and body['fixture'] != dispatch_mode(spec)): raise Refused('execution_dispatch_mismatch')
             if spec is not None and context['execution']['bundles'] != self.bundles:
                 raise Refused('unregistered_mount_mapping')
+            if spec is not None and spec.engine == 'pocket-tts':
+                if context['execution']['references'] != self.references:
+                    raise Refused('unregistered_reference_mapping')
+                # Independent full byte verification before journaling or launch.
+                from worker.engines.pocket import verify_inputs
+                verify_inputs(spec, self.bundles, self.references, owner_uid=10001)
             attempt = job['attempts'][-1]
             allocation = dict(snapshot=snapshot, binding=body['binding'], fixture=body['fixture'])
             for row in self.journal.value['records']:

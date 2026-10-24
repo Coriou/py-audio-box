@@ -25,16 +25,20 @@ def execution_session(secret, binding, uid, gid):
 
 
 def execution(context):
-    """Validate a private Kokoro snapshot against the complete frozen plan."""
+    """Validate a private engine snapshot against the complete frozen plan."""
     from worker.engines.execution import Execution
     value = context.get('execution')
     plan = context['plan']; profile = plan['resolved']['profile']
     if value is None:
-        if profile['id'] == 'kokoro-cpu': raise Refused('execution_required')
+        if profile['id'] in ('kokoro-cpu', 'pocket-cpu'): raise Refused('execution_required')
         return None
     if set(context) != {'plan', 'bundles', 'execution'}: raise Refused('closed_execution_context')
-    if type(value) is not dict or set(value) != {'descriptor', 'bundles'}:
+    if type(value) is not dict or set(value) not in ({'descriptor', 'bundles'}, {'descriptor', 'bundles', 'references'}):
         raise Refused('closed_execution_context')
+    if type(value['descriptor']) is not dict: raise Refused('closed_execution_required')
+    if value['descriptor'].get('engine') == 'pocket-tts':
+        return pocket_execution(context)
+    if set(value) != {'descriptor', 'bundles'}: raise Refused('closed_execution_context')
     spec = Execution.from_wire(value['descriptor'])
     if value['bundles'] != {spec.bundle_id: '/models/bundles/'+spec.bundle_id}:
         raise Refused('owned_mount_mapping')
@@ -67,4 +71,47 @@ def generated_source(context):
     spec = execution(context)
     if spec is None: raise Refused('execution_required')
     from worker.transport import canonical
-    return 'kokoro-execution-sha256:'+hashlib.sha256(canonical(spec.identity())).hexdigest()
+    return spec.engine+'-execution-sha256:'+hashlib.sha256(canonical(spec.identity())).hexdigest()
+
+
+def dispatch_mode(spec):
+    return {'kokoro': 'kokoro', 'pocket-tts': 'pocket'}[spec.engine]
+
+
+def pocket_execution(context):
+    from worker.engines.pocket_execution import PocketExecution
+    value = context['execution']; plan = context['plan']
+    if set(value) != {'descriptor', 'bundles', 'references'}:
+        raise Refused('closed_execution_context')
+    spec = PocketExecution.from_wire(value['descriptor'])
+    if (value['bundles'] != {spec.bundle_id: '/models/bundles/'+spec.bundle_id} or
+            value['references'] != {spec.reference_id: '/references/assets/'+spec.reference_id}):
+        raise Refused('owned_mount_mapping')
+    identity = dict(engine=spec.engine, model=spec.checkpoint, bundle_sha256=spec.manifest_sha256,
+                    device='cpu', precision='float32')
+    request = plan['request']; versions = plan['voice_versions']; assets = plan['assets']
+    if (plan['operation'] != 'speech_generate' or plan['resolved']['profile']['id'] != 'pocket-cpu' or
+            request['identity'] != identity or plan['resolved']['identity']['effective'] != identity or
+            request['fallback'] != 'forbid' or request['variants'] != 1 or request['reuse'] != 'never' or
+            len(versions) != 1 or len(assets) != 1):
+        raise Refused('execution_plan_mismatch')
+    version = versions[0]; asset = assets[0]
+    settings = dict(kind='pocket_clone', language=spec.language, seed=None)
+    if (request['voice_version_id'] != version['id'] or version['identity'] != identity or
+            version['origin'] != 'clone' or version['reference_asset_ids'] != [spec.reference_id] or
+            version.get('reference_asset_sha256') != {spec.reference_id: spec.reference_sha256} or
+            version['configuration'] != dict(mode='pocket_clone', language=spec.language, reference_asset_id=spec.reference_id) or
+            version['reference_text'] != '' or version['settings'] != settings or
+            plan['resolved']['settings'] != settings or
+            any(asset[k] != v for k,v in dict(id=spec.reference_id, sha256=spec.reference_sha256,
+                frames=spec.reference_frames, sample_rate=spec.reference_rate, channels=1,
+                media_format='wav', media_subtype='PCM_16').items())):
+        raise Refused('execution_reference_mismatch')
+    limits = plan['resolved']['profile']['limits']
+    if (spec.threads != limits['threads'] or spec.memory_bytes != limits['ram_bytes'] or
+            spec.max_frames*48000 > limits['decoded_ticks']*spec.sample_rate or
+            spec.max_output_bytes > limits['upload_bytes'] or
+            2*(spec.max_output_bytes+spec.reference_bytes) > limits['disk_bytes'] or
+            len(request['text'].encode('utf-8')) > spec.max_text_bytes):
+        raise Refused('execution_budget_mismatch')
+    return spec

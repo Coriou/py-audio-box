@@ -1,4 +1,4 @@
-"""Fixed synthetic engine child. No management capability or service imports."""
+"""Closed synthetic/Kokoro/Pocket child. No management capability or service imports."""
 import json
 import os
 from pathlib import Path
@@ -10,7 +10,7 @@ from worker.transport import receive
 from worker.isolated_synthetic import run
 
 
-def run_kokoro(connection, config, staging, cutoff, *, backend_factory=None):
+def run_generation(connection, config, staging, cutoff, *, backend_factory=None):
     """Authenticated one-shot execution; injected factory is an in-process test seam."""
     import hashlib
     from datetime import datetime, timezone
@@ -29,7 +29,21 @@ def run_kokoro(connection, config, staging, cutoff, *, backend_factory=None):
     message = receive(connection, cutoff)
     oracle.worker_message(message, job, config['allowed_assets'], transport_owner=attempt['owner_id'], context=context, current_profiles=config['profiles'])
     if message['kind'] != 'execute': raise Refused('unexpected_message')
-    result = execute(spec, context['plan']['request']['text'], context['execution']['bundles'], backend_factory=backend_factory)
+    if spec.engine == 'pocket-tts':
+        from worker.engines.pocket import execute
+        stage = attempt['staging_id']
+        if Path(stage).name != stage or stage in ('.', '..'): raise Refused('invalid_stage')
+        # Attempt-owned; never remove while descendants or death proof are unknown.
+        directory = os.open(Path(staging)/stage, os.O_RDONLY|os.O_DIRECTORY|os.O_NOFOLLOW)
+        try:
+            os.mkdir('conditioning', 0o700, dir_fd=directory)
+        finally:
+            os.close(directory)
+        result = execute(spec, context['plan']['request']['text'], context['execution']['bundles'],
+                         context['execution']['references'], reference_temp_dir=Path(staging)/stage/'conditioning',
+                         backend_factory=backend_factory, managed_owner_uid=10001)
+    else:
+        result = execute(spec, context['plan']['request']['text'], context['execution']['bundles'], backend_factory=backend_factory)
     if time.monotonic() >= cutoff: raise Refused('expired_result')
     stage = attempt['staging_id']
     if Path(stage).name != stage or stage in ('.', '..'): raise Refused('invalid_stage')
@@ -40,11 +54,15 @@ def run_kokoro(connection, config, staging, cutoff, *, backend_factory=None):
             output.write(result['data']); output.flush(); os.fsync(output.fileno())
     finally:
         os.close(directory)
-    asset = dict(id='asset-'+uuid4().hex, sha256=result['sha256'], frames=result['frames'], sample_rate=24000, channels=1, media_format='wav', media_subtype='PCM_16', provenance=dict(kind='generated', source_sha256=result['sha256'], source_id=generated_source(context), missing_fields=[]))
+    asset = dict(id='asset-'+uuid4().hex, sha256=result['sha256'], frames=result['frames'], sample_rate=spec.sample_rate, channels=1, media_format='wav', media_subtype='PCM_16', provenance=dict(kind='generated', source_sha256=result['sha256'], source_id=generated_source(context), missing_fields=[]))
     manifest = {k:message[k] for k in ('job_id','attempt_id','generation','owner_id','staging_id','input_sha256')}
     manifest.update(operation='speech_generate', artifact_id='artifact-'+uuid4().hex, outputs=[asset], candidates=[])
     message.update(kind='result', stage='completed', result_asset_ids=[asset['id']])
     send(connection, dict(message=message, manifest=manifest), cutoff)
+
+
+# Retain the existing private test/integration entry point.
+run_kokoro = run_generation
 
 
 def contain_kokoro(context):
@@ -54,7 +72,8 @@ def contain_kokoro(context):
     spec = execution(context)
     if spec is None: raise ValueError('execution_required')
     resource.setrlimit(resource.RLIMIT_AS, (spec.memory_bytes, spec.memory_bytes))
-    resource.setrlimit(resource.RLIMIT_FSIZE, (spec.max_output_bytes, spec.max_output_bytes))
+    file_limit = max(spec.max_output_bytes, getattr(spec, 'reference_bytes', 0))
+    resource.setrlimit(resource.RLIMIT_FSIZE, (file_limit, file_limit))
     resource.setrlimit(resource.RLIMIT_NPROC, (48, 48))
     for name in ('OMP_NUM_THREADS', 'OPENBLAS_NUM_THREADS', 'MKL_NUM_THREADS', 'NUMEXPR_NUM_THREADS'):
         os.environ[name] = str(spec.threads)
@@ -115,9 +134,11 @@ def main():
         else:
             raise RuntimeError('supervisor_signal_allowed')
         assert not any(int(p.name) > 2 and int(p.name) != connection.fileno() for p in Path('/proc/self/fd').iterdir() if p.name.isdigit() and Path(p).exists())
-    if mode == 'kokoro':
+    if mode in ('kokoro','pocket'):
+        from worker.runtime_protocol import execution, dispatch_mode
+        if dispatch_mode(execution(config['context'])) != mode: raise ValueError('execution_dispatch_mismatch')
         contain_kokoro(config['context'])
-        run_kokoro(connection, config, '/staging', time.monotonic()+30)
+        run_generation(connection, config, '/staging', time.monotonic()+30)
     else:
         from worker.runtime_protocol import execution
         if execution(config['context']) is not None: raise ValueError('execution_dispatch_mismatch')

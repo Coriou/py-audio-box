@@ -59,9 +59,9 @@ class DispatchStore:
                 self.admission.store.acquire_tx(job['id'],replacement=bool(replacement))
             attempt=dict(id=new_id('attempt'),generation=job['generation']+1,owner_id=new_id('owner'),staging_id=new_id('stage'),reaped=False)
             job.update(state='running',stage='synthetic',generation=attempt['generation'],attempts=[*job['attempts'],attempt],deadline=(datetime.now(timezone.utc)+timedelta(seconds=min(seconds,context['plan']['resolved']['profile']['limits']['deadline_seconds']))).isoformat())
-            from worker.runtime_protocol import execution
+            from worker.runtime_protocol import execution, dispatch_mode
             spec=execution(context)
-            if (fixture == 'kokoro') != (spec is not None): raise ValueError('execution_dispatch_mismatch')
+            if (fixture in ('kokoro','pocket')) != (spec is not None) or (spec is not None and fixture != dispatch_mode(spec)): raise ValueError('execution_dispatch_mismatch')
             authority=Authority(job,context,allowed_assets,profiles)
             authority.check(authority.message(),'execute')
             self.core._save(job)

@@ -1,6 +1,8 @@
 """Bounded generation only. Trusted mappings and namespace belong to integration.
 
 Caller reserves memory and owns namespace cleanup after confirmed forced reap.
+Managed owner UID is trusted integration input only (runtime fixes it to 10001);
+private conditioning snapshots always require the executing child UID.
 Mappings must name canonical paths (no symlink components) in immutable managed
 storage, stable throughout the call; this is not isolation from same-UID writers.
 No preparation, transcript interpretation, publication or qualification occurs.
@@ -19,7 +21,7 @@ from worker.transport import Refused
 from .pocket_execution import PocketExecution
 
 
-def _open(path, directory=False):
+def _open(path, directory=False, *, owner_uid=None):
     """Walk every component with no-follow, retaining directory descriptors."""
     path = Path(path).absolute()
     fd = os.open(path.anchor, os.O_RDONLY | os.O_DIRECTORY)
@@ -32,7 +34,7 @@ def _open(path, directory=False):
             os.close(fd)
             fd = nxt
         info = os.fstat(fd)
-        if info.st_uid != os.getuid() or info.st_mode & 0o022 or (not directory and (not stat.S_ISREG(info.st_mode) or info.st_nlink != 1)):
+        if info.st_uid != (os.getuid() if owner_uid is None else owner_uid) or info.st_mode & 0o022 or (not directory and (not stat.S_ISREG(info.st_mode) or info.st_nlink != 1)):
             raise Refused('file_ownership')
         return fd
     except BaseException:
@@ -40,8 +42,8 @@ def _open(path, directory=False):
         raise
 
 
-def _read(path, limit, digest=None):
-    fd = _open(path)
+def _read(path, limit, digest=None, *, owner_uid=None):
+    fd = _open(path, owner_uid=owner_uid)
     with os.fdopen(fd, 'rb') as stream:
         before = os.fstat(stream.fileno())
         if not 0 < before.st_size <= limit:
@@ -92,7 +94,7 @@ def _reference_pcm16(raw, rate, frames):
         raise Refused('reference_format')
 
 
-def execute(execution, text, bundles, references, *, reference_temp_dir, backend_factory=None, preset=None, instruct=None):
+def execute(execution, text, bundles, references, *, reference_temp_dir, backend_factory=None, preset=None, instruct=None, managed_owner_uid=None):
     if type(execution) is not PocketExecution:
         raise Refused('typed_execution_required')
     e = execution
@@ -100,50 +102,8 @@ def execute(execution, text, bundles, references, *, reference_temp_dir, backend
         raise Refused('unsupported_parameter')
     if type(text) is not str or not text or len(text.encode('utf-8')) > e.max_text_bytes:
         raise Refused('text_limit')
-    if e.bundle_id not in bundles or e.reference_id not in references:
-        raise Refused('unauthorized_identity')
+    reference = verify_inputs(e, bundles, references, owner_uid=managed_owner_uid)
     root = Path(bundles[e.bundle_id]).absolute()
-    fd = _open(root, True)
-    os.close(fd)
-    raw = _read(root/'manifest.json', 65536, e.manifest_sha256)
-    manifest = json.loads(raw)
-    if (manifest.get('schema_version'), manifest.get('backend'), manifest.get('checkpoint'), manifest.get('revision'), manifest.get('language')) != (1, 'pocket-tts', e.checkpoint, e.revision, e.language) or type(manifest.get('schema_version')) is not int:
-        raise Refused('bundle_identity')
-    entries = manifest.get('files')
-    if type(entries) is not list or not 1 <= len(entries) <= 128:
-        raise Refused('bundle_files')
-    names = set()
-    total = 0
-    for entry in entries:
-        if type(entry) is not dict or not {'path', 'sha256'} <= set(entry) <= {'path', 'sha256', 'bytes', 'origin', 'revision'}:
-            raise Refused('bundle_files')
-        name = entry['path']
-        if type(name) is not str or len(name) > 512 or any(p in ('', '.', '..') for p in name.split('/')) or Path(name).is_absolute() or name in names or Path(name).suffix not in ('.safetensors', '.yaml', '.json'):
-            raise Refused('bundle_files')
-        names.add(name)
-        # Hash large weights in bounded chunks, never materialize model bytes.
-        fd = _open(root/name)
-        with os.fdopen(fd, 'rb') as stream:
-            info = os.fstat(stream.fileno())
-            total += info.st_size
-            if not 0 < info.st_size <= 2*1024**3 or total > 4*1024**3 or ('bytes' in entry and (type(entry['bytes']) is not int or entry['bytes'] != info.st_size)):
-                raise Refused('bundle_limit')
-            digest = hashlib.sha256()
-            count = 0
-            for block in iter(lambda: stream.read(1024*1024), b''):
-                count += len(block)
-                if count > info.st_size:
-                    raise Refused('bundle_changed')
-                digest.update(block)
-            after = os.fstat(stream.fileno())
-            if count != info.st_size or (info.st_mtime_ns, info.st_ctime_ns) != (after.st_mtime_ns, after.st_ctime_ns) or digest.hexdigest() != entry['sha256']:
-                raise Refused('bundle_digest')
-    if 'config.yaml' not in names:
-        raise Refused('bundle_config')
-    reference = _read(references[e.reference_id], e.reference_bytes, e.reference_sha256)
-    if len(reference) != e.reference_bytes:
-        raise Refused('reference_size')
-    _reference_pcm16(reference, e.reference_rate, e.reference_frames)
     namespace = Path(reference_temp_dir).absolute()
     fd = _open(namespace, True)
     try:
@@ -188,3 +148,53 @@ def execute(execution, text, bundles, references, *, reference_temp_dir, backend
             return dict(data=output, frames=frames, size_bytes=size, sha256=hashlib.sha256(output).hexdigest(), identity=dict(e.identity(), text_sha256=hashlib.sha256(text.encode('utf-8')).hexdigest()))
         finally:
             backend.close()
+
+
+def verify_inputs(e, bundles, references, *, owner_uid=None):
+    """Inert verification shared by trusted integration; no backend import."""
+    if type(e) is not PocketExecution: raise Refused('typed_execution_required')
+    if e.bundle_id not in bundles or e.reference_id not in references:
+        raise Refused('unauthorized_identity')
+    root = Path(bundles[e.bundle_id]).absolute()
+    fd = _open(root, True, owner_uid=owner_uid)
+    os.close(fd)
+    raw = _read(root/'manifest.json', 65536, e.manifest_sha256, owner_uid=owner_uid)
+    manifest = json.loads(raw)
+    if (manifest.get('schema_version'), manifest.get('backend'), manifest.get('checkpoint'), manifest.get('revision'), manifest.get('language')) != (1, 'pocket-tts', e.checkpoint, e.revision, e.language) or type(manifest.get('schema_version')) is not int:
+        raise Refused('bundle_identity')
+    entries = manifest.get('files')
+    if type(entries) is not list or not 1 <= len(entries) <= 128:
+        raise Refused('bundle_files')
+    names = set()
+    total = 0
+    for entry in entries:
+        if type(entry) is not dict or not {'path', 'sha256'} <= set(entry) <= {'path', 'sha256', 'bytes', 'origin', 'revision'}:
+            raise Refused('bundle_files')
+        name = entry['path']
+        if type(name) is not str or len(name) > 512 or any(p in ('', '.', '..') for p in name.split('/')) or Path(name).is_absolute() or name in names or Path(name).suffix not in ('.safetensors', '.yaml', '.json'):
+            raise Refused('bundle_files')
+        names.add(name)
+        # Hash large weights in bounded chunks, never materialize model bytes.
+        fd = _open(root/name, owner_uid=owner_uid)
+        with os.fdopen(fd, 'rb') as stream:
+            info = os.fstat(stream.fileno())
+            total += info.st_size
+            if not 0 < info.st_size <= 2*1024**3 or total > 4*1024**3 or ('bytes' in entry and (type(entry['bytes']) is not int or entry['bytes'] != info.st_size)):
+                raise Refused('bundle_limit')
+            digest = hashlib.sha256()
+            count = 0
+            for block in iter(lambda: stream.read(1024*1024), b''):
+                count += len(block)
+                if count > info.st_size:
+                    raise Refused('bundle_changed')
+                digest.update(block)
+            after = os.fstat(stream.fileno())
+            if count != info.st_size or (info.st_mtime_ns, info.st_ctime_ns) != (after.st_mtime_ns, after.st_ctime_ns) or digest.hexdigest() != entry['sha256']:
+                raise Refused('bundle_digest')
+    if 'config.yaml' not in names:
+        raise Refused('bundle_config')
+    reference = _read(references[e.reference_id], e.reference_bytes, e.reference_sha256, owner_uid=owner_uid)
+    if len(reference) != e.reference_bytes:
+        raise Refused('reference_size')
+    _reference_pcm16(reference, e.reference_rate, e.reference_frames)
+    return reference

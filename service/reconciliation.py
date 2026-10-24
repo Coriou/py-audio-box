@@ -203,6 +203,9 @@ class Reconciliation:
                        (name in ('reference.wav','audition.wav') and
                         contexts.get(owner['job_id'],{}).get('plan',{}).get('reference_roles',{}).get('reference_kind')=='prepared_reference'))):
                 kind, reason = 'owned_synthetic_transient', 'attempt_record'
+            # Conditioning directories have no closed durable retained-namespace
+            # representation. Preserve UNKNOWN even when currently empty; stat
+            # identity alone cannot attest emptiness to detached history readers.
             if kind in ('unknown_foreign','missing_hash_mismatched_terminal','adopted_orphan'):
                 self.reasons.add(reason)
             self._row(namespace, name,
@@ -482,7 +485,7 @@ def typed_references(self, data, b2, _before, document):
                 raise Incomplete('unknown_reference_kind') from None
         elif set(value) != {'plan','bundles'}:
             self.reasons.add('unknown_reference_schema')
-        elif value['plan']['resolved']['profile']['id'] == 'kokoro-cpu':
+        elif value['plan']['resolved']['profile']['id'] in ('kokoro-cpu','pocket-cpu'):
             raise Incomplete('unknown_reference_kind')
         walk(value['plan'], 'worker_plan', source)
         for bundle in value['bundles']: walk(bundle, 'bundle_catalogue_entry', source)

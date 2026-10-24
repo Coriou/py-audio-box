@@ -36,7 +36,7 @@ class Admission:
         spec = execution(context)
         if spec is not None:
             if profiles is None: raise ValueError('no_authority')
-            selected = next(p for p in profiles if p['id']=='kokoro-cpu')
+            selected = next(p for p in profiles if p['id']==plan['resolved']['profile']['id'])
             if selected['verification'] != 'measured' or not selected['qualification_receipt'] or 'synthetic' in selected['qualification_receipt'].lower():
                 raise ValueError('real_qualification_required')
             return dict(configuration=oracle.canonical_hash(context['execution']),
@@ -94,7 +94,7 @@ class Admission:
                 spec=execution(context)
                 max_bytes=spec.max_output_bytes if spec else 9644
                 max_frames=spec.max_frames if spec else 4800
-                rate=24000 if spec else 48000
+                rate=spec.sample_rate if spec else 48000
                 output=stage/'output.wav'
                 if output.exists() and output.stat().st_size>max_bytes:raise ValueError('resource_output_bytes')
                 if output.exists() and publication:
