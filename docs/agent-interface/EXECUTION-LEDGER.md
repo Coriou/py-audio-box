@@ -2323,3 +2323,7 @@ r225 source20f40183/docs2f283a63 retains asyncpreparation/acquisition/cleanup re
 ### 2026-10-24 — Cleanup-task cancellation responsibility gap
 
 r226 source NO-GO R226-1: directcleanup task cancellation cancels asyncwrapper while threadcontinues, then dropsownerresponsibility/notification.75testsPASS caller-cancelcases; R224-2 gateordering closed. Parent commissioned r227 independentlyretainedthreadresults/obligations and directcleanup/wrappercancel regressions, no abruptloopdeath successclaim. Activationunmerged.
+
+### 2026-10-24 — Thread-result responsibility correction enters review
+
+r227 source7dfbd639/docsd5bbabe7 stores executorresults in independentlyretainedconcurrentFuture and preservesunknownobligations whenobservercancelled/loopcallbackrejected.80focusedmethods reportedPASS,3directcleanupcancelregressionsREDold. Parent commissioned independent Sol r228. Dispatchergateordering unchanged; activationunmerged actualcleanupqualificationpending.
