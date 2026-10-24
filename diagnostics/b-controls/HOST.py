@@ -299,3 +299,35 @@ def main():
 
 if __name__ == '__main__':
     raise SystemExit(main())
+
+
+def complement_checks(root):
+    """Focused stdlib delta: actual closed orchestration, no pytest or target."""
+    indexed = R.complement_selection()
+    assert [i for i, _ in indexed] == list(range(17)) + list(range(18, 100))
+    assert len(indexed) == 99 and sum(row['seconds'] for _, row in indexed) == 2340
+    assert len(R.inventory()) == 100 and R.directed_selection() == [(17, R.inventory()[17])]
+    for fail in (None, 18, 63):
+        directory = root/('pass' if fail is None else 'fail-%03d' % fail)
+        directory.mkdir(mode=0o700);calls=[];completed=[]
+        def capture(argv, outputs, deadline, *, env, observe):
+            index=int(argv[-2]);row=R.inventory()[index];calls.append(index)
+            assert index != 17 and deadline == 1 + row['seconds']
+            assert env['PYTEST_DISABLE_PLUGIN_AUTOLOAD']=='1'
+            node=directory/('%03d'%index)
+            for p,raw in zip(outputs,(b'FAILED AssertionError partial' if index==fail else b'PASS',b'\x00\xffstderr')):
+                with F.private(p) as stream:stream.write(raw)
+            emit(node/'selection.json',dict(node=row['node'],count=1,before_fixtures=True))
+            emit(node/'result.json',dict(node=row['node'],pytest_exit=int(index==fail),collected=True,accepted=index!=fail,reports=[['setup','passed'],['call','failed' if index==fail else 'passed'],['teardown','passed']]))
+            return int(index==fail),1000+index
+        try:
+            result=R.ordered(directory,F,capture=capture,clock=lambda:1,complement=True,completed=completed)
+        except RuntimeError:
+            assert fail is not None and calls==[i for i,_ in indexed][:len(calls)] and calls[-1]==fail
+            assert len(completed)==len(calls)-1
+            assert F.slot_read(F.read_regular(directory/('%03d'%fail)/'receipt.slot',F.SLOT))['state']=='STOP'
+            assert (directory/('%03d'%fail)/'stdout').read_bytes()==b'FAILED AssertionError partial'
+            assert not (directory/('%03d'%(fail+1))).exists()
+        else:
+            assert fail is None and len(result)==99 and calls==[i for i,_ in indexed]
+        assert not (directory/'017').exists()

@@ -30,6 +30,11 @@ TOTAL = 2600                 # 2375 node caps + pre60 + reap30 + post60 + margin
 DIRECTED_INDEX = 17
 DIRECTED_NODE = CONTROL + '::test_B_directed_isolated_seams[B-S-original74-real-observer]'
 DIRECTED_TOTAL = 260         # pre60 + node35 + reap30 + post60 + margin75
+COMPLEMENT_INDICES = tuple(range(17)) + tuple(range(18, 100))
+COMPLEMENT_ID = 'existing100-minus017-v1'
+# Caps are authenticated by inventory before this closed selection is consumed.
+COMPLEMENT_NODE_BUDGET = sum(count * cap for _, _, _, count, cap in GROUPS) - 35
+COMPLEMENT_TOTAL = 60 + COMPLEMENT_NODE_BUDGET + 30 + 60 + 75
 STREAM = 16 * 1024**2       # existing finite-driver capture cap, each stream
 
 
@@ -96,6 +101,16 @@ def directed_selection(root=ROOT):
     require(row == dict(id='B-S-original74-real-observer', node=DIRECTED_NODE, seconds=35),
             'closed directed017 selection')
     return [(DIRECTED_INDEX, row)]
+
+
+def complement_selection(root=ROOT):
+    rows = inventory(root)  # full source digest AND closed100 AST first
+    require(rows[17] == dict(id='B-S-original74-real-observer', node=DIRECTED_NODE, seconds=35),
+            'excluded017 identity')
+    selected = [(i, rows[i]) for i in COMPLEMENT_INDICES]
+    require(len(selected) == 99 and sum(row['seconds'] for _, row in selected)
+            == COMPLEMENT_NODE_BUDGET, 'closed complement caps')
+    return selected
 
 
 def environment(tmp):
@@ -175,13 +190,14 @@ def node(index, directory):
     return 0
 
 
-def ordered(root, finite, *, capture=None, clock=time.monotonic, observe=lambda: None, finished=lambda: None, directed=False):
+def ordered(root, finite, *, capture=None, clock=time.monotonic, observe=lambda: None, finished=lambda: None, directed=False, complement=False, completed=None):
     """Actual orchestration shared with HOST fake external boundary; no retries."""
     capture = finite.capture if capture is None else capture
-    indexed = directed_selection() if directed else list(enumerate(inventory()))
-    budget = 35 if directed else 2375
+    require(not (directed and complement), 'exclusive stage')
+    indexed = complement_selection() if complement else directed_selection() if directed else list(enumerate(inventory()))
+    budget = sum(row['seconds'] for _, row in indexed)
     start = clock()
-    completed = []
+    completed = [] if completed is None else completed
     for index, row in indexed:
         observe()
         require(clock() < start + budget, 'campaign deadline before dispatch')
@@ -223,7 +239,7 @@ def ordered(root, finite, *, capture=None, clock=time.monotonic, observe=lambda:
     return completed
 
 
-def campaign(token, invocation, *, directed=False):
+def campaign(token, invocation, *, directed=False, complement=False):
     f = helpers()
     f.enabled()
     require(sys.platform == 'linux' and ROOT == Path('/app') and os.getpid() == 1
@@ -232,10 +248,15 @@ def campaign(token, invocation, *, directed=False):
     os.umask(0o077)
     start = time.monotonic()
     signal.signal(signal.SIGALRM, lambda *_: os._exit(124))
-    signal.setitimer(signal.ITIMER_REAL, DIRECTED_TOTAL if directed else TOTAL)
+    require(not (directed and complement), 'exclusive stage')
+    node_budget = COMPLEMENT_NODE_BUDGET if complement else 35 if directed else 2375
+    total = COMPLEMENT_TOTAL if complement else DIRECTED_TOTAL if directed else TOTAL
+    signal.setitimer(signal.ITIMER_REAL, total)
     root = Path('/tmp')
     state = dict(state='PENDING', token=token, invocation=invocation,
-        expected=1 if directed else 100, acceptance=False, physical_quota=False)
+        expected=99 if complement else 1 if directed else 100, acceptance=False, physical_quota=False)
+    if complement:
+        state.update(selection_identity=COMPLEMENT_ID, selected_indices=list(COMPLEMENT_INDICES), completed=[])
     if directed:
         state.update(selected_index=DIRECTED_INDEX, selected_node=directed_selection()[0][1]['node'])
     stop = threading.Event()
@@ -268,17 +289,17 @@ def campaign(token, invocation, *, directed=False):
         thread.start()
         def observe():
             require(not errors, 'census failed')
-            require(time.monotonic() < start+(95 if directed else 2435), 'campaign outer deadline')
+            require(time.monotonic() < start+60+node_budget, 'campaign outer deadline')
         state['completed'] = ordered(controls, f, observe=observe,
-            finished=lambda: require(not f.namespace_pids(), 'descendants remain after control'), directed=directed)
-        require(len(state['completed']) == (1 if directed else 100), 'completed expected selection')
+            finished=lambda: require(not f.namespace_pids(), 'descendants remain after control'), directed=directed, complement=complement, completed=state['completed'] if complement else None)
+        require(len(state['completed']) == (99 if complement else 1 if directed else 100), 'completed expected selection')
     except BaseException as exc:
         state['failure'] = type(exc).__name__+': '+str(exc)[:256]
     finally:
         try:
             # No namespace wait races with an active test. After phase ends,
             # existing PID1 cleanup reaps namespace descendants once, no rerun.
-            state['descendants'] = f.quiesce(min(start+(125 if directed else 2465), time.monotonic()+30))
+            state['descendants'] = f.quiesce(min(start+60+node_budget+30, time.monotonic()+30))
             require(state['descendants']['complete'], 'unresolved descendants')
             stop.set()
             if 'thread' in locals():
@@ -286,7 +307,7 @@ def campaign(token, invocation, *, directed=False):
                 require(not thread.is_alive(), 'monitor unresolved')
             require(not errors, 'incomplete census')
             f.verify_source()
-            end = min(start+(185 if directed else 2525), time.monotonic()+60)
+            end = min(start+60+node_budget+30+60, time.monotonic()+60)
             f.checked_program(['python', '-c', f.identity_program()], root/'identity-after', end)
             f.compare_identity(f.read_regular(root/'identity-before', f.META), f.read_regular(root/'identity-after', f.META))
             require(time.monotonic() < end and 'failure' not in state, 'campaign/check failure')
@@ -294,21 +315,24 @@ def campaign(token, invocation, *, directed=False):
         except BaseException as exc:
             state.update(state='STOP' if state.get('descendants', {}).get('complete') else 'UNKNOWN',
                 terminal_failure=type(exc).__name__+': '+str(exc)[:256])
+        if complement:
+            state['completed_indices'] = list(COMPLEMENT_INDICES[:len(state['completed'])])
         state['elapsed'] = time.monotonic()-start
         try:
-            require(time.monotonic() < start+(DIRECTED_TOTAL if directed else TOTAL), 'publication deadline')
+            require(time.monotonic() < start+total, 'publication deadline')
             f.slot_write(terminal, state)
         except BaseException:
             state['state'] = 'UNKNOWN'
     return 0 if state['state'] == 'TERMINAL' else 1
 
 
-def campaign_command(token, invocation, *, directed=False):
+def campaign_command(token, invocation, *, directed=False, complement=False):
+    require(not (directed and complement), 'exclusive stage')
     require(re.fullmatch('[0-9a-f]{48}', token) and str(uuid.UUID(invocation)) == invocation, 'owner')
-    return ['python', '/app/diagnostics/b-controls/runner.py', 'directed017' if directed else 'campaign', token, invocation]
+    return ['python', '/app/diagnostics/b-controls/runner.py', 'complement099' if complement else 'directed017' if directed else 'campaign', token, invocation]
 
 
-def create_argv(name, volume, image, token, invocation, *, directed=False):
+def create_argv(name, volume, image, token, invocation, *, directed=False, complement=False):
     """Distinct campaign command binding; NEVER Lifecycle.create_argv(writer)."""
     require(re.fullmatch('[0-9a-f]{64}', image) is not None or
             re.fullmatch('sha256:[0-9a-f]{64}', image) is not None, 'full image ID')
@@ -320,10 +344,10 @@ def create_argv(name, volume, image, token, invocation, *, directed=False):
         '--log-driver', 'none', '--workdir', '/app', '--mount', 'type=volume,src='+volume+',dst=/tmp',
         '-e', 'PYTHONDONTWRITEBYTECODE=1', '-e', 'PYTHONPATH=/app:/app/tests:/app/diagnostics/p-one-node',
         '-e', 'PYTEST_DISABLE_PLUGIN_AUTOLOAD=1', '-e', 'PAB_MAINTENANCE_WAIT_LOG=/tmp/waits.jsonl',
-        '-e', 'TIKTOKEN_CACHE_DIR=/tokenizer-cache', image]+campaign_command(token, invocation, directed=directed)
+        '-e', 'TIKTOKEN_CACHE_DIR=/tokenizer-cache', image]+campaign_command(token, invocation, directed=directed, complement=complement)
 
 
-def inspect_campaign(obj, name, volume, image, token, invocation, *, directed=False):
+def inspect_campaign(obj, name, volume, image, token, invocation, *, directed=False, complement=False):
     """Read-only admission shape for a later separately authorized host owner.
 
     This does not dispatch anything or adapt the frozen singleton Lifecycle.
@@ -334,7 +358,7 @@ def inspect_campaign(obj, name, volume, image, token, invocation, *, directed=Fa
     require(re.fullmatch('[0-9a-f]{64}', obj['Id']) and obj['Name'] == '/'+name
         and obj['Image'] == image, 'container identity')
     require(cfg['Labels'] == {'pab.owner':token, 'pab.invocation':invocation}
-        and cfg['Cmd'] == campaign_command(token, invocation, directed=directed)
+        and cfg['Cmd'] == campaign_command(token, invocation, directed=directed, complement=complement)
         and cfg['User'] == '10001:10001' and cfg['WorkingDir'] == '/app', 'campaign command binding')
     require(not cfg.get('Entrypoint') and not cfg.get('Healthcheck') and not cfg.get('OnBuild') and not cfg.get('Volumes')
         and cfg.get('StopSignal', '') in ('', 'SIGTERM', '15'), 'startup shape')
@@ -367,8 +391,8 @@ def main():
         print(json.dumps(inventory(), indent=2))
         return 0
     require(len(sys.argv) == 4, 'fixed CLI')
-    if sys.argv[1] in ('campaign', 'directed017'):
-        return campaign(*sys.argv[2:], directed=sys.argv[1] == 'directed017')
+    if sys.argv[1] in ('campaign', 'directed017', 'complement099'):
+        return campaign(*sys.argv[2:], directed=sys.argv[1] == 'directed017', complement=sys.argv[1] == 'complement099')
     require(sys.argv[1] == 'node' and sys.argv[2].isdecimal(), 'node CLI')
     return node(int(sys.argv[2]), Path(sys.argv[3]))
 
