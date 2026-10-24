@@ -1803,3 +1803,7 @@ r109 admissionSTOP free6420115456 below6442450944 by22335488;Docker/LOCKONLY/pre
 ### 2026-10-24 — Managed cleanup clears hard gate; bounded-copy build resume
 
 r110 UVmanagedcleanexit0/+254664704observedbytes final6717054976 >6GiB by274604032,belowpreferred7GiB;otherapprovedtreesabsent/empty. Parent disposesr109zerooperationSTOP andauthorizes pab-complement-build-resume-r111-20261024 freshhardadmission/LOCKONLY+ONEbuild. ExplicitboundcopyONLYselected23+requiredmetadata, old878MBhistoryretainedinplaceviaoriginhashreferences notrecopied;16codebytesunchanged/independentactualreviewnext. No furthercleanup/controlsrun.
+
+### 2026-10-24 — Closed99 image built with minimal binding; actual gate
+
+r111 completesLOCKONLY/ONEpreparebuild/releases, IID36b96bf2750e09da6dd2489ae1f5ce2515d166b252d61fabc476232af80efa0e manifest e0eaa5a8. Bound29leaves627418bytes preserves16code429origins;old878MBhistoryintactinplace.16captures32streams/currenthardadmissionclear, no controlsrun. Independent pab-complement-build-bound-review-r112-20261024 actualbuild+minimaldatagate beforeONEclosed99.
