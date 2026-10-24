@@ -640,9 +640,26 @@ class Core:
         metadata=json.loads(row[0])
         oracle.validate('asset', metadata)
         oracle.require(metadata['id']==asset_id and '/' not in asset_id and asset_id not in ('.','..'), 'foreign_media')
-        fd=os.open(self.root/'assets'/metadata['id'],os.O_RDONLY|os.O_NOFOLLOW)
+        from service.ingest import MAX_BYTES, open_directory, reference_budget
+        budget = MAX_BYTES if reference_budget(metadata) else 1024*1024
+        directory = open_directory(self.root/'assets')
+        try:
+            fd=os.open(metadata['id'],os.O_RDONLY|os.O_NOFOLLOW,dir_fd=directory)
+        finally:
+            os.close(directory)
         with os.fdopen(fd,'rb') as stream:
             info=os.fstat(stream.fileno())
-            oracle.require(stat.S_ISREG(info.st_mode) and info.st_uid==os.getuid() and info.st_nlink==1 and info.st_size<=1024*1024, 'foreign_media')
-            oracle.require(hashlib.sha256(stream.read(1024*1024+1)).hexdigest()==metadata['sha256'], 'missing_media')
+            oracle.require(stat.S_ISREG(info.st_mode) and info.st_uid==os.getuid() and info.st_nlink==1 and info.st_size<=budget, 'foreign_media')
+            digest = hashlib.sha256()
+            length = 0
+            while True:
+                chunk = stream.read(min(65536, budget + 1 - length))
+                if not chunk: break
+                length += len(chunk)
+                oracle.require(length <= budget, 'foreign_media')
+                digest.update(chunk)
+            after = os.fstat(stream.fileno())
+            oracle.require((info.st_dev, info.st_ino, info.st_size, info.st_mtime_ns, info.st_ctime_ns) ==
+                           (after.st_dev, after.st_ino, after.st_size, after.st_mtime_ns, after.st_ctime_ns)
+                           and length == info.st_size and digest.hexdigest()==metadata['sha256'], 'missing_media')
         return metadata
