@@ -2003,3 +2003,7 @@ r159 t3-e1b44469 sourcea6702296/reportc32744a5 implementsCore.voices immutableve
 ### 2026-10-24 — H0 review finds schema compatibility defect; bounded fix
 
 r160 NO-GO adoption: same-columnexistingtables lackingPK/unique/FK/types orsame-namednooptriggers accepted;13isolatedtestsPASS butmissingnegativecoverage. Parentcommissions pab-h0-schema-fix-r161-20261024 voice_store+focusedtests only supportedDDL/constraints/triggerrefusalwithrowpreservation/sametransaction. H1referencecaps/compactmetadata/indexedownership deferrednamedseams; nooperations/resourcesunchanged.
+
+### 2026-10-24 — H0 schema fix delivered; independent adoption review
+
+r161 t3-91c6d46e fixcb9d8d4b/reportf82cc864 validatesfullownedDDL/table-index-triggeridentitywithinexistingtransaction/refusesunsupportedwithoutrepair;17isolatedtestsPASS incl19badlayouts/NULLseq/nooptriggers/rowpreservation. Parentcommissions pab-h0-schema-review-r162-20261024 focusedR160closure+carriedH0domain/source/localtests review beforeadoption. NoAPI/model/runtimeactivation/resourcesunchanged.
