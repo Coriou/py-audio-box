@@ -86,6 +86,7 @@ class NativeFixture:
         self.f.h.code=0;self.s.tick()
 
     def launch(self):
+        self.runtime.allocate_stage(self.a)
         rid=self.runtime.prepare(self.a)
         with patch('worker.native_child.parent_exchange',side_effect=self.exchange):
             self.runtime.start(rid);self.finish()
@@ -94,6 +95,73 @@ class NativeFixture:
 
 class NativeRuntimeTests(unittest.TestCase):
     def setUp(self): self.f=NativeFixture(self)
+
+    def test_owner_finalizes_stage_before_scanner_and_executor_under_0077(self):
+        from service.resource_store import ResourceStore
+        f=self.f;stage=f.stage/f.a.job['attempts'][-1]['staging_id']
+        from tests.service.test_pocket_preparation import PocketResourceRaceTests
+        owner=PocketResourceRaceTests();owner.setUp();self.addCleanup(owner.doCleanups)
+        owner.running_namespace()
+        b=owner.base;f.stage=b.stage.resolve();f.stage.chmod(0o770);f.runtime.staging=f.stage
+        stage=f.stage/f.a.job['attempts'][-1]['staging_id']
+        scanner=b.admission.store
+        real=os.fchmod; transitions=[]
+        def chmod(fd,mode):
+            transitions.append(os.fstat(fd).st_mode & 0o777)
+            self.assertEqual(transitions,[0o700])
+            return real(fd,mode)
+        mask=os.umask(0o077)
+        try:
+            # This is the owner detach seam, before any executor or owner scan.
+            with patch('service.native_runtime.os.fchmod',side_effect=chmod):
+                self.assertEqual(f.runtime.detach(f.a,None),b'')
+            b.admission.check()
+            before=b.core.db.execute('SELECT highwater FROM resource_accounting').fetchone()[0]
+            rid=f.runtime.prepare(f.a)
+            with patch('worker.native_child.parent_exchange',side_effect=f.exchange):
+                f.runtime.start(rid);f.finish()
+            opened=[];collected=[];real_open=os.open
+            def scan_open(path,flags,*args,**kwargs):
+                if path==stage.name and kwargs.get('dir_fd') is not None:
+                    opened.append(True)
+                    self.assertEqual(stage.stat().st_mode & 0o777,0o770)
+                    if not collected:collected.append(f.runtime.collect(f.a,rid))
+                return real_open(path,flags,*args,**kwargs)
+            with patch('service.native_runtime.os.chmod',side_effect=AssertionError('visible chmod')),patch('service.native_runtime.os.fchmod',side_effect=AssertionError('visible fchmod')),patch('service.resource_store.os.open',side_effect=scan_open):
+                b.admission.check()
+                receipt,result=collected[0]
+                after=b.core.db.execute('SELECT highwater FROM resource_accounting').fetchone()[0]
+            self.assertTrue(opened);self.assertTrue(receipt['reaped']);self.assertIsNotNone(result)
+            self.assertGreaterEqual(after,before)
+            self.assertGreaterEqual(scanner._measure_staging(f.stage),(stage/'output.wav').stat().st_size)
+            self.assertEqual(scanner.state(),'healthy')
+            self.assertEqual(b.core.db.execute('SELECT * FROM resource_faults').fetchall(),[])
+        finally: os.umask(mask)
+
+    def test_owner_stage_collision_and_fsync_uncertainty_retain_without_overwrite(self):
+        f=self.f;stage=f.stage/f.a.job['attempts'][-1]['staging_id']
+        with patch('service.native_runtime.os.fsync',side_effect=OSError('uncertain')):
+            with self.assertRaisesRegex(OSError,'uncertain'):f.runtime.detach(f.a,None)
+        self.assertEqual(stage.stat().st_mode & 0o777,0o770)
+        marker=stage/'retained';marker.write_bytes(b'evidence')
+        with self.assertRaises(FileExistsError):f.runtime.detach(f.a,None)
+        self.assertEqual(marker.read_bytes(),b'evidence');self.assertEqual(f.requests,[])
+
+    def test_executor_refuses_wrong_mode_and_substituted_stage(self):
+        f=self.f;rid=f.launch();stage=f.stage/f.a.job['attempts'][-1]['staging_id']
+        stage.chmod(0o700)
+        with self.assertRaises(Refused):f.runtime.collect(f.a,rid)
+        stage.chmod(0o770)
+        real_open=os.open
+        def replaced(path,flags,*args,**kwargs):
+            fd=real_open(path,flags,*args,**kwargs)
+            if path==stage:
+                stage.rename(stage.with_name(stage.name+'-retained'))
+                stage.mkdir(mode=0o770);stage.chmod(0o770)
+            return fd
+        with patch('service.native_runtime.os.open',side_effect=replaced):
+            with self.assertRaises(Refused):f.runtime.collect(f.a,rid)
+        self.assertFalse((stage/'output.wav').exists())
 
     def test_production_connector_uses_remaining_absolute_budget(self):
         f=self.f; now=[100.]; timeouts=[]; closed=[]; handshakes=[]
@@ -215,10 +283,10 @@ class NativeRuntimeTests(unittest.TestCase):
             return v
         f.mutate=linux
         with self.assertRaises(Refused):f.runtime.collect(f.a,rid)
-        self.assertEqual(list(f.stage.iterdir()),[])
+        self.assertEqual(list((f.stage/f.a.job['attempts'][-1]['staging_id']).iterdir()),[])
         f.mutate=lambda q,v:(dict(v,value=dict(v['value'],data='AAAA')) if q['op']=='get_output' else v)
         with self.assertRaises(Refused):f.runtime.collect(f.a,rid)
-        self.assertEqual(list(f.stage.iterdir()),[])
+        self.assertEqual(list((f.stage/f.a.job['attempts'][-1]['staging_id']).iterdir()),[])
         self.assertTrue(f.runtime.failed)
         with self.assertRaisesRegex(Refused,'uncertain'):f.make_runtime().prepare(f.a)
 
@@ -227,14 +295,14 @@ class NativeRuntimeTests(unittest.TestCase):
         f.before=lambda q:f.runtime.interrupt(rid) if q['op']=='get_output' else None
         receipt,observation=f.runtime.collect(f.a,rid)
         self.assertIsNone(observation);self.assertTrue(receipt['reaped'])
-        self.assertEqual(list(f.stage.iterdir()),[])
+        self.assertEqual(list((f.stage/f.a.job['attempts'][-1]['staging_id']).iterdir()),[])
 
     def test_local_import_uid_stage_symlink_and_conflict_refuse(self):
         f=self.f
         with self.assertRaisesRegex(Refused,'uid'):
             NativeRuntime(host='127.0.0.1',port=1,tls=None,peer_sha256=f.pin,native=f.native,
                 spool=f.spool,staging=f.stage,local_import_uid=os.getuid()+1,connector=f.connect)
-        rid=f.launch();stage=f.stage/f.a.job['attempts'][-1]['staging_id'];stage.mkdir(mode=0o770);stage.chmod(0o770)
+        rid=f.launch();stage=f.stage/f.a.job['attempts'][-1]['staging_id']
         target=stage/'output.wav';target.symlink_to(f.spool/'foreign')
         with self.assertRaises(OSError):f.runtime.collect(f.a,rid)
         self.assertTrue(target.is_symlink())
@@ -259,6 +327,7 @@ class NativeRuntimeTests(unittest.TestCase):
     def test_clone_detached_transfer_actual_child_and_repeated_start(self):
         f=self.f;raw=self.clone()
         f.f.fixture.backend.synthesise_clone.return_value.metadata=dict(checkpoint=str(f.f.fixture.bundle),revision=f.f.e.revision)
+        f.runtime.allocate_stage(f.a)
         rid=f.runtime.prepare(f.a,detached=raw)
         with patch('worker.native_child.parent_exchange',side_effect=f.exchange):
             f.runtime.start(rid)
@@ -291,7 +360,7 @@ class NativeRuntimeTests(unittest.TestCase):
         f.runtime.records[rid]['cutoff']=time.monotonic()-1
         receipt,observation=f.runtime.collect(f.a,rid)
         self.assertTrue(receipt['reaped']);self.assertIsNone(observation)
-        self.assertEqual(list(f.stage.iterdir()),[])
+        self.assertEqual(list((f.stage/f.a.job['attempts'][-1]['staging_id']).iterdir()),[])
         other=NativeFixture(self);rid=other.launch()
         first=other.runtime.collect(other.a,rid)
         other.runtime.records[rid]['cutoff']=time.monotonic()-1

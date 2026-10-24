@@ -181,7 +181,26 @@ class NativeRuntime:
             core.voices._asset(authority.job['principal_id'],spec.reference_id)
             data=managed_read(core.root/'assets'/spec.reference_id,spec.reference_bytes,spec.reference_sha256)
             _reference_pcm16(data,spec.reference_rate,spec.reference_frames)
+        self.allocate_stage(authority)
         return bytes(data)
+
+    def allocate_stage(self, authority):
+        """Owner only, serialized with resource observation; never adopt a collision.
+
+        Completion (including parent fsync) precedes executor submission. A failed
+        creation retains its evidence and cannot be retried as a fresh stage.
+        """
+        _directory(self.staging,0o770)
+        stage=self.staging/authority.job['attempts'][-1]['staging_id']
+        stage.mkdir(mode=0o770)
+        fd=os.open(stage,os.O_RDONLY|os.O_DIRECTORY|os.O_NOFOLLOW)
+        try:
+            os.fchmod(fd,0o770)
+            _directory(stage,0o770)
+            if os.fstat(fd)!=stage.stat(): raise Refused('native_control_storage')
+            os.fsync(fd)
+            _sync(self.staging)
+        finally: os.close(fd)
 
     def bind(self, authority, runtime_id):
         config=p.native_binding(authority.context)
@@ -349,30 +368,37 @@ class NativeRuntime:
                 self.failed=True
                 raise
         self._validate_output(authority,proposal,output,raw,spec)
-        if destination.exists():
-            _directory(destination.parent,0o770)
-            if _read(destination,1048576)!=raw: raise Refused('native_control_conflict')
-            return receipt,TransportObservation('proposal','native_owned_receipt',None,proposal['message'],proposal['manifest'],time.monotonic())
         stage=self.staging/authority.job['attempts'][-1]['staging_id']
-        if not stage.exists(): stage.mkdir(mode=0o770);stage.chmod(0o770);_sync(self.staging)
         _directory(stage,0o770)
-        destination=stage/'output.wav'
-        self._active(r,runtime_id)
-        if destination.exists() or destination.is_symlink():
+        expected_stage=stage.lstat()
+        stagefd=os.open(stage,os.O_RDONLY|os.O_DIRECTORY|os.O_NOFOLLOW)
+        def verify_stage():
+            _directory(stage,0o770)
+            def identity(info):
+                return info.st_dev,info.st_ino,info.st_mode,info.st_uid,info.st_gid
+            if not identity(expected_stage)==identity(os.fstat(stagefd))==identity(stage.lstat()):
+                raise Refused('native_control_storage')
+        try:
+            verify_stage()
+            destination=stage/'output.wav'
+            if destination.exists() or destination.is_symlink():
+                if _read(destination,1048576)!=raw: raise Refused('native_control_conflict')
+            else:
+                self._active(r,runtime_id)
+                temporary=directory/'import'
+                if temporary.exists(): self.failed=True;raise Refused('native_control_uncertain')
+                _write(temporary,raw)
+                # Atomic no-replace publication into staging; Core sees only complete
+                # bytes. Drop the private link and fsync before returning ownership.
+                os.link(temporary,'output.wav',dst_dir_fd=stagefd,follow_symlinks=False)
+                temporary.unlink()
+                _sync(directory);os.fsync(stagefd)
+                self._active(r,runtime_id)
             if _read(destination,1048576)!=raw: raise Refused('native_control_conflict')
-        else:
-            temporary=directory/'import'
-            if temporary.exists(): self.failed=True;raise Refused('native_control_uncertain')
-            _write(temporary,raw)
-            # Atomic no-replace publication into staging; Core sees only complete
-            # bytes. Drop the private link and fsync before returning ownership.
-            os.link(temporary,destination,follow_symlinks=False)
-            temporary.unlink()
-            _sync(directory);_sync(stage)
-        if _read(destination,1048576)!=raw: raise Refused('native_control_conflict')
-        self._active(r,runtime_id)
-        return receipt,TransportObservation('proposal','native_owned_receipt',None,
-            proposal['message'],proposal['manifest'],time.monotonic())
+            verify_stage()
+            return receipt,TransportObservation('proposal','native_owned_receipt',None,
+                proposal['message'],proposal['manifest'],time.monotonic())
+        finally: os.close(stagefd)
 
     @staticmethod
     def _validate_output(authority,proposal,output,raw,spec):
