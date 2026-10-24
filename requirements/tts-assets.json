@@ -10,7 +10,7 @@
     "required_inputs": [
       "independently reviewed expected byte sizes and SHA256 for model.onnx and voices.bin",
       "reviewed upstream origin and revision for each file",
-      "checkpoint and language identity",
+      "checkpoint, explicit immutable top-level model revision and language identity",
       "exact installed runtime package versions",
       "license and access acceptance metadata"
     ],

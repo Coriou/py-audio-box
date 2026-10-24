@@ -20,7 +20,7 @@ def verified_bundle(directory, backend):
         if directory.is_symlink() or (root / 'manifest.json').is_symlink():
             raise ValueError('Symlink bundle refused')
         manifest = json.loads((root / 'manifest.json').read_text())
-        if manifest['backend'] != backend or manifest['schema_version'] != 1:
+        if manifest['backend'] != backend or (type(manifest['schema_version']) is not int or manifest['schema_version'] != 1):
             raise ValueError('Wrong backend or bundle schema')
         if not manifest['files']:
             raise ValueError('Empty asset bundle')

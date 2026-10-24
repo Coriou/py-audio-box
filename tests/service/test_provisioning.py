@@ -6,7 +6,7 @@ from pathlib import Path
 import tempfile
 import unittest
 from unittest.mock import patch
-from service.provisioning import provision, identity, readiness_matches, validate_expected
+from service.provisioning import provision, identity, manifest_sha256, readiness_matches, validate_expected
 from lib.tts_backends.assets import verified_bundle
 
 
@@ -16,7 +16,7 @@ class ProvisioningTests(unittest.TestCase):
         self.addCleanup(self.cleanup)
         self.root = Path(self.temp.name) / 'models'
         self.data = {'model.onnx': b'model', 'voices.bin': b'voices'}
-        self.expected = dict(schema_version=1, backend='kokoro', language='en', checkpoint='fixture-kokoro',
+        self.expected = dict(schema_version=1, backend='kokoro', language='en', checkpoint='fixture-kokoro', revision='fixture-model-revision',
                              license='fixture only', access='fixture only; no real qualification',
                              versions={p: 'fixture' for p in ('kokoro-onnx', 'onnxruntime', 'espeakng-loader', 'phonemizer')},
                              files=[dict(path=n, bytes=len(b), sha256=hashlib.sha256(b).hexdigest(),
@@ -41,7 +41,7 @@ class ProvisioningTests(unittest.TestCase):
         bundle = self.run_provision()
         self.assertEqual(verified_bundle(bundle, 'kokoro')[1], self.expected)
         self.assertEqual(json.loads((self.root / 'active.json').read_text()),
-                         {'bundle': identity(self.expected), 'manifest_sha256': identity(self.expected)})
+                         {'bundle': identity(self.expected), 'manifest_sha256': manifest_sha256(self.expected)})
         before = {p.name: p.read_bytes() for p in bundle.iterdir()}
         self.assertEqual(self.run_provision(), bundle)
         self.assertEqual(len(self.calls), 2)
@@ -107,11 +107,11 @@ class ProvisioningTests(unittest.TestCase):
         self.assertEqual(self.calls, [])
 
     def test_symlink_and_unknown_staging_refuse(self):
-        self.root.mkdir()
+        self.root.mkdir(mode=0o700)
         stage = self.root / 'staging'
-        stage.mkdir()
+        stage.mkdir(mode=0o700)
         attempt = stage / identity(self.expected)
-        attempt.mkdir()
+        attempt.mkdir(mode=0o700)
         outside = Path(self.temp.name) / 'outside'
         outside.write_bytes(b'untouched')
         (attempt / 'model.onnx').symlink_to(outside)
@@ -143,7 +143,7 @@ class ProvisioningTests(unittest.TestCase):
 
     def test_readiness_invalidates_each_binding_and_synthetic(self):
         profile = {'backend': 'kokoro', 'checkpoint': self.expected['checkpoint'], 'device': 'cpu'}
-        receipt = dict(qualification='actual', manifest_sha256=identity(self.expected),
+        receipt = dict(qualification='actual', manifest_sha256=manifest_sha256(self.expected),
                        runtime_versions=self.expected['versions'], profile_sha256=identity(profile))
         def ready(e=self.expected, v=self.expected['versions'], p=profile):
             return readiness_matches(receipt, expected=e, runtime_versions=v, profile=p)
@@ -169,6 +169,129 @@ class ProvisioningTests(unittest.TestCase):
         (legacy / 'config.yaml').symlink_to(bundle / 'model.onnx')
         with self.assertRaises(Exception):
             verified_bundle(legacy, 'pocket-tts')
+
+
+class RecoveryAndBoundsTests(unittest.TestCase):
+    setUp = ProvisioningTests.setUp
+    cleanup = ProvisioningTests.cleanup
+    downloader = ProvisioningTests.downloader
+    run_provision = ProvisioningTests.run_provision
+
+    def test_final_directory_seal_failure_retry(self):
+        chmod = Path.chmod
+        def fail(path, mode, **kwargs):
+            if path.parent.name == 'bundles' and mode == 0o555:
+                raise OSError('inert final sealing failure')
+            return chmod(path, mode, **kwargs)
+        with patch.object(Path, 'chmod', fail):
+            with self.assertRaises(OSError): self.run_provision()
+        self.assertFalse((self.root / 'active.json').exists())
+        bundle = self.run_provision()
+        self.assertFalse(bundle.stat().st_mode & 0o222)
+        self.assertTrue(all(not p.stat().st_mode & 0o222 for p in bundle.iterdir()))
+
+    def test_partial_file_sealing_resumes_without_redownload(self):
+        chmod = Path.chmod
+        def fail(path, mode, **kwargs):
+            if path.name == 'voices.bin' and mode == 0o444:
+                raise OSError('inert partial seal')
+            return chmod(path, mode, **kwargs)
+        with patch.object(Path, 'chmod', fail):
+            with self.assertRaises(OSError): self.run_provision()
+        self.run_provision()
+        self.assertEqual(len(self.calls), 2)
+
+    def test_stream_expected_size_and_overflow_probe(self):
+        import io
+        from service.provisioning import _download_stream
+        for payload, success in ((b'12345', True), (b'1234', False), (b'x'*100, False)):
+            target = Path(self.temp.name) / 'transfer'
+            source = io.BytesIO(payload)
+            with patch('service.provisioning.urllib.request.urlopen', return_value=source):
+                if success: _download_stream('inert', target, 5)
+                else:
+                    with self.assertRaises(ValueError): _download_stream('inert', target, 5)
+            self.assertLessEqual(target.stat().st_size, 5)
+            target.unlink()
+
+    def test_real_transfer_deadline_and_cancellation_reap(self):
+        import time
+        import multiprocessing
+        from service.provisioning import download
+        def stalled(*args, **kwargs):
+            time.sleep(10)
+        before = {p.pid for p in multiprocessing.active_children()}
+        with patch('service.provisioning.urllib.request.urlopen', stalled):
+            for kwargs, error in ((dict(timeout=.03), TimeoutError), (dict(cancelled=lambda: True), InterruptedError)):
+                with self.assertRaises(error):
+                    download('inert', Path(self.temp.name) / 'unused', 5, **kwargs)
+        self.assertEqual({p.pid for p in multiprocessing.active_children()}, before)
+
+    def test_managed_carries_expected_bytes(self):
+        from service import provisioning as owner
+        sizes = []
+        def fake(url, target, size, **kwargs):
+            sizes.append(size)
+            self.downloader(url, target)
+        # Default callable binding is explicit here, preserving the trusted seam.
+        with patch.object(owner, 'download', fake):
+            provision(self.root, self.expected, runtime_versions=self.expected['versions'], downloader=fake)
+        self.assertEqual(sizes, [5, 6])
+
+    def test_lock_failure_closes_descriptor_and_wait_is_finite(self):
+        import os
+        from service import provisioning as owner
+        opened = []
+        original = os.open
+        def capture(*args):
+            fd = original(*args); opened.append(fd); return fd
+        for error in (OSError('inert flock failure'), BlockingIOError()):
+            with patch.object(owner.os, 'open', capture), patch.object(owner.fcntl, 'flock', side_effect=error):
+                with self.assertRaises((OSError, TimeoutError)):
+                    provision(self.root, self.expected, runtime_versions=self.expected['versions'], lock_timeout=.01, downloader=self.downloader)
+            with self.assertRaises(OSError): os.fstat(opened[-1])
+        self.assertEqual(self.calls, [])
+
+    def test_private_root_fifo_and_hardlink_admission(self):
+        import os
+        self.root.mkdir(mode=0o755)
+        with self.assertRaises(ValueError): self.run_provision()
+        self.root.chmod(0o700)
+        lock = self.root / '.provision.lock'
+        os.mkfifo(lock)
+        with self.assertRaises(ValueError): self.run_provision()
+        lock.unlink()
+        def stop(url, target): raise InterruptedError()
+        with self.assertRaises(InterruptedError): self.run_provision(downloader=stop)
+        stage = self.root / 'staging' / identity(self.expected)
+        outside = Path(self.temp.name) / 'outside'
+        outside.write_bytes(b'model')
+        os.link(outside, stage / 'model.onnx')
+        mode = outside.stat().st_mode
+        with self.assertRaises(ValueError): self.run_provision()
+        self.assertEqual(outside.stat().st_mode, mode)
+
+    def test_schema_bool_and_missing_model_revision_refuse(self):
+        for change in (dict(schema_version=True), dict(revision='')):
+            with self.assertRaises(ValueError): self.run_provision({**self.expected, **change})
+
+    def test_actual_managed_downloader_with_inert_urlopen(self):
+        import io
+        def source(url, **kwargs):
+            return io.BytesIO(self.data[url.rsplit('/', 1)[1]])
+        with patch('service.provisioning.urllib.request.urlopen', source):
+            bundle = provision(self.root, self.expected, runtime_versions=self.expected['versions'])
+        self.assertEqual(verified_bundle(bundle, 'kokoro')[1], self.expected)
+
+    def test_lock_cancellation_before_acquisition(self):
+        with self.assertRaises(InterruptedError):
+            provision(self.root, self.expected, runtime_versions=self.expected['versions'],
+                      downloader=self.downloader, cancelled=lambda: True)
+        self.assertEqual(self.calls, [])
+
+    def test_manifest_engine_read_limit(self):
+        bad = {**self.expected, 'revision': 'x' * 65536}
+        with self.assertRaises(ValueError): self.run_provision(bad)
 
 
 if __name__ == '__main__':
