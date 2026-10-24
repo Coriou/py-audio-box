@@ -1211,6 +1211,11 @@
         "reference_text": {
           "type": "string"
         },
+        "audition_text": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 10000
+        },
         "identity": {
           "$ref": "#/$defs/identity"
         }

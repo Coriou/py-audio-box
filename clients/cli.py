@@ -33,6 +33,7 @@ def main(argv=None):
         action = vsubs.add_parser(name)
         action.add_argument('--request', required=True, help='Canonical JSON request object.')
         action.add_argument('--idempotency-key', required=True)
+        if name == 'prepare': action.add_argument('--audition-text', help='Exact spoken audition text; required by configured Pocket preparation.')
     results = vsubs.add_parser('results'); results.add_argument('job_id')
     speech = commands.add_parser('speech').add_subparsers(dest='verb', required=True)
     generate = speech.add_parser('generate'); generate.add_argument('--request', required=True); generate.add_argument('--idempotency-key', required=True)
@@ -60,7 +61,11 @@ def main(argv=None):
         elif args.command == 'speech' or (args.command == 'voice' and args.verb in ('prepare','save','preset-register')):
             import json
             operation = 'speech_generate' if args.command == 'speech' else 'voice_'+args.verb.replace('-', '_')
-            result = http.call(operation, json.loads(args.request), key=args.idempotency_key)
+            payload = json.loads(args.request)
+            if operation == 'voice_prepare' and args.audition_text is not None:
+                if 'audition_text' in payload and payload['audition_text'] != args.audition_text: raise ValueError('conflicting_audition_text')
+                payload['audition_text'] = args.audition_text
+            result = http.call(operation, payload, key=args.idempotency_key)
         elif args.command == 'voice' and args.verb == 'results': result = http.call('voice_results',dict(job_id=args.job_id))
         elif args.command == 'job': result = http.call('job_'+args.verb,dict(job_id=args.job_id), **({'key':args.idempotency_key} if args.verb == 'cancel' else {}))
         elif args.command == 'artifact': result = http.call('artifact_get',dict(artifact_id=args.artifact_id))

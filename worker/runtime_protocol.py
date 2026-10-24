@@ -141,7 +141,8 @@ def pocket_preparation(context):
             resolved['reuse_configuration'] != dict(mode='pocket_clone', language=spec.language,
                 reference_asset_id=roles.get('reference_asset_id')) or
             roles.get('version') != 'reference-roles-v1' or roles.get('reference_kind') != 'prepared_reference' or
-            not roles.get('audition_text') or len(roles['audition_text'].encode('utf-8')) > spec.max_text_bytes):
+            not request.get('audition_text', '').strip() or roles.get('audition_text') != request['audition_text'] or
+            len(roles['audition_text'].encode('utf-8')) > spec.max_text_bytes):
         raise Refused('execution_plan_mismatch')
     asset = plan['assets'][0]
     if any(asset[k] != v for k,v in dict(id=spec.reference_id, sha256=spec.reference_sha256,

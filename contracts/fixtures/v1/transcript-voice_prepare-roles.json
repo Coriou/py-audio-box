@@ -9,6 +9,7 @@
         "in_tick": 0,
         "out_tick": 4800,
         "reference_text": "Exact reference.",
+        "audition_text": "example",
         "identity": {
           "engine": "qwen",
           "model": "Qwen3-TTS-12Hz-0.6B-Base",
@@ -121,7 +122,7 @@
         "reference_kind": "prepared_reference",
         "reference_asset_id": "reference-prepare",
         "audition_asset_id": "output-prepare",
-        "audition_text": "Explicit generated audition."
+        "audition_text": "example"
       }
     },
     "bundles": [
@@ -263,7 +264,7 @@
   "job": {
     "id": "job-prepare",
     "operation": "voice_prepare",
-    "input_sha256": "178302a11ea4e093f65eaa5b547a4a68d4860cba67b82ae92f9e78bec0a14b31",
+    "input_sha256": "350e12481db295d00d79245aad880a94c046888c4cdb81277dbdea7d849603d6",
     "principal_id": "principal1",
     "idempotency_key": "request-prepare",
     "state": "running",
@@ -287,7 +288,7 @@
     "job_id": "job-prepare",
     "attempt_id": "attempt-prepare",
     "generation": 1,
-    "input_sha256": "178302a11ea4e093f65eaa5b547a4a68d4860cba67b82ae92f9e78bec0a14b31",
+    "input_sha256": "350e12481db295d00d79245aad880a94c046888c4cdb81277dbdea7d849603d6",
     "input_asset_ids": [
       "impulse"
     ],
@@ -326,6 +327,7 @@
         "in_tick": 0,
         "out_tick": 4800,
         "reference_text": "Exact reference.",
+        "audition_text": "example",
         "identity": {
           "engine": "qwen",
           "model": "Qwen3-TTS-12Hz-0.6B-Base",
@@ -438,7 +440,7 @@
         "reference_kind": "prepared_reference",
         "reference_asset_id": "reference-prepare",
         "audition_asset_id": "output-prepare",
-        "audition_text": "Explicit generated audition."
+        "audition_text": "example"
       }
     }
   },
@@ -450,9 +452,9 @@
       "reference-prepare",
       "output-prepare"
     ],
-    "input_sha256": "178302a11ea4e093f65eaa5b547a4a68d4860cba67b82ae92f9e78bec0a14b31",
+    "input_sha256": "350e12481db295d00d79245aad880a94c046888c4cdb81277dbdea7d849603d6",
     "project_revision": 0,
-    "manifest_sha256": "7a50926d23a686de2f89b660216e55da488be53b9c05183991c17fe259f2ff63",
+    "manifest_sha256": "8019f400e8683b9ba55edb0fd6fae318a25b24ecabef6664383262548c471a00",
     "identity": {
       "requested": {
         "engine": "qwen",
@@ -483,7 +485,7 @@
     "generation": 1,
     "owner_id": "worker1",
     "staging_id": "stage-prepare",
-    "input_sha256": "178302a11ea4e093f65eaa5b547a4a68d4860cba67b82ae92f9e78bec0a14b31",
+    "input_sha256": "350e12481db295d00d79245aad880a94c046888c4cdb81277dbdea7d849603d6",
     "artifact_id": "artifact-prepare",
     "outputs": [
       {
@@ -619,7 +621,7 @@
                 "missing_fields": []
               }
             },
-            "text": "Explicit generated audition."
+            "text": "example"
           }
         }
       }
@@ -658,6 +660,7 @@
         "in_tick": 0,
         "out_tick": 4800,
         "reference_text": "Exact reference.",
+        "audition_text": "example",
         "identity": {
           "engine": "qwen",
           "model": "Qwen3-TTS-12Hz-0.6B-Base",
@@ -668,7 +671,7 @@
       },
       "response": {
         "job_id": "job-prepare",
-        "input_sha256": "178302a11ea4e093f65eaa5b547a4a68d4860cba67b82ae92f9e78bec0a14b31",
+        "input_sha256": "350e12481db295d00d79245aad880a94c046888c4cdb81277dbdea7d849603d6",
         "state": "queued",
         "status_url": "/v1/jobs/job-prepare"
       }
@@ -681,7 +684,7 @@
       "response": {
         "id": "job-prepare",
         "operation": "voice_prepare",
-        "input_sha256": "178302a11ea4e093f65eaa5b547a4a68d4860cba67b82ae92f9e78bec0a14b31",
+        "input_sha256": "350e12481db295d00d79245aad880a94c046888c4cdb81277dbdea7d849603d6",
         "principal_id": "principal1",
         "idempotency_key": "request-prepare",
         "state": "succeeded",
@@ -715,9 +718,9 @@
           "reference-prepare",
           "output-prepare"
         ],
-        "input_sha256": "178302a11ea4e093f65eaa5b547a4a68d4860cba67b82ae92f9e78bec0a14b31",
+        "input_sha256": "350e12481db295d00d79245aad880a94c046888c4cdb81277dbdea7d849603d6",
         "project_revision": 0,
-        "manifest_sha256": "7a50926d23a686de2f89b660216e55da488be53b9c05183991c17fe259f2ff63",
+        "manifest_sha256": "8019f400e8683b9ba55edb0fd6fae318a25b24ecabef6664383262548c471a00",
         "identity": {
           "requested": {
             "engine": "qwen",
@@ -894,7 +897,7 @@
                     "missing_fields": []
                   }
                 },
-                "text": "Explicit generated audition."
+                "text": "example"
               }
             }
           }

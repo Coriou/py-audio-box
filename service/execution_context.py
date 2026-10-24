@@ -116,24 +116,28 @@ def installed_mapping(configuration, *, policy):
 
 
 class PocketContexts:
-    """Trusted owner constructs principal preparation/generation templates and mappings.
+    """One trusted bundle/profile template per principal, reusable across voices.
 
-    No public JSON path or descriptor input. Production reloads the immutable
-    principal-owned catalogue record and binds the managed bytes before admission.
+    No public JSON path or descriptor input. The Core owner resolves uploads and
+    immutable versions at command time; Production rechecks before admission.
     This does not activate an installed worker or infer qualification.
     """
-    def __init__(self, contexts, local_bundles, local_references):
-        from worker.engines.pocket import verify_inputs
+    def __init__(self, contexts, local_bundles, local_references=None):
+        from worker.engines.pocket import verify_inputs, verify_bundle
         from worker.engines.pocket_execution import PocketExecution
         from worker.engines.pocket_prepare import PocketPreparation
         self._contexts = {}
+        self._bundles = copy.deepcopy(local_bundles)
         for principal, context in contexts.items():
             snapshot = copy.deepcopy(context)
             spec = execution(snapshot)
             if type(spec) not in (PocketExecution, PocketPreparation): raise Refused('pocket_execution_required')
-            if set(local_bundles) != {spec.bundle_id} or set(local_references) != {spec.reference_id}:
-                raise Refused('owned_mapping_required')
-            verify_inputs(spec, local_bundles, local_references)
+            if set(local_bundles) != {spec.bundle_id}: raise Refused('owned_mapping_required')
+            if local_references is None:
+                verify_bundle(spec, local_bundles)
+            else:
+                if set(local_references) != {spec.reference_id}: raise Refused('owned_mapping_required')
+                verify_inputs(spec, local_bundles, local_references)
             self._contexts[principal] = json.dumps(snapshot, allow_nan=False)
 
     def resolve(self, principal, operation, request):
@@ -148,6 +152,67 @@ class PocketContexts:
             raise Refused('saved_version_required')
         context['plan']['request'] = copy.deepcopy(request)
         execution(context)
+        return context
+
+
+    def capabilities(self, principal):
+        if principal not in self._contexts: return None
+        context = json.loads(self._contexts[principal])
+        return dict(engine='pocket-tts', profile=context['plan']['resolved']['profile'],
+                    operations=['voice_prepare', 'voice_results', 'voice_save', 'speech_generate', 'job_get', 'job_cancel', 'artifact_get'],
+                    installed=False, next_action='asset_upload → voice_prepare with audition_text → voice_results → voice_save → speech_generate')
+
+    def resolve_owned(self, core, principal, operation, request):
+        """Called only by the Core owner, using managed metadata and owned versions.
+
+        The configured template supplies bundle/profile/budgets, never the new
+        reference identity. Supervisor independently verifies its read-only root.
+        """
+        from contracts import validate as oracle
+        from worker.engines.pocket_execution import PocketExecution
+        from worker.engines.pocket_prepare import PocketPreparation
+        if principal not in self._contexts or operation not in ('voice_prepare', 'speech_generate'):
+            raise Refused('not_ready')
+        oracle.validate(operation+'_request', request)
+        context = json.loads(self._contexts[principal])
+        template = execution(context)
+        plan = context['plan']; resolved = plan['resolved']
+        descriptor = {k: v for k, v in template.identity().items()
+                      if k not in ('phase', 'transform', 'in_tick', 'out_tick')}
+        plan.update(operation=operation, request=copy.deepcopy(request))
+        plan.pop('reference_roles', None)
+        if operation == 'voice_prepare':
+            if request['reference_text'] != '': raise Refused('unsupported_parameter')
+            if not request.get('audition_text') or not request['audition_text'].strip():
+                raise Refused('explicit_audition_required')
+            reference_id = request['asset_id']
+            plan['voice_versions'] = []
+            settings = dict(kind='prepare', conditioning='pocket', output_format='wav_pcm16')
+            resolved.update(kind='prepare', reuse_settings=dict(kind='pocket_clone', language=template.language, seed=None),
+                            reuse_configuration=dict(mode='pocket_clone', language=template.language, reference_asset_id='pending'))
+            plan['reference_roles'] = dict(version='reference-roles-v1', reference_kind='prepared_reference',
+                reference_asset_id='pending', audition_asset_id='pending-audition', audition_text=request['audition_text'])
+        else:
+            version = core.voices.version(principal, request['voice_version_id'])
+            if len(version['reference_asset_ids']) != 1: raise Refused('execution_reference_mismatch')
+            reference_id = version['reference_asset_ids'][0]
+            plan['voice_versions'] = [version]
+            settings = dict(kind='pocket_clone', language=template.language, seed=None)
+            resolved.update(kind='speech', reuse_settings=None, reuse_configuration=None)
+        core.voices._asset(principal, reference_id)
+        asset = core.asset(reference_id)
+        path = core.root/'assets'/reference_id
+        descriptor.update(reference_id=reference_id, reference_sha256=asset['sha256'],
+                          reference_bytes=path.stat().st_size, reference_frames=asset['frames'], reference_rate=asset['sample_rate'])
+        spec = (PocketPreparation(**descriptor, in_tick=request['in_tick'], out_tick=request['out_tick'])
+                if operation == 'voice_prepare' else PocketExecution(**descriptor))
+        plan['assets'] = [asset]
+        resolved.update(settings=settings, settings_sha256=oracle.canonical_hash(settings))
+        context['execution'].update(descriptor=spec.identity(), references={reference_id:'/references/assets/'+reference_id})
+        execution(context)
+        # Full sealed bundle and reference byte/PCM verification, before admission.
+        from worker.engines.pocket import verify_inputs
+        verify_inputs(spec, self._bundles, {reference_id:path})
         return context
 
 

@@ -398,6 +398,7 @@ def frozen_plan(plan, bundles=None):
         require(not {roles['reference_asset_id'],roles['audition_asset_id']}&set(required_asset_ids(plan)), 'reference_mismatch')
         require((roles['reference_asset_id']!=roles['audition_asset_id'])==(op=='voice_prepare'), 'reference_audition_conflation')
         require(op!='voice_design' or roles['audition_text']==request['reference_text'], 'reference_transcript_mismatch')
+        require(op!='voice_prepare' or 'audition_text' not in request or roles['audition_text']==request['audition_text'], 'audition_transcript_mismatch')
     required=set(required_asset_ids(plan))
     if op=='speech_generate' and mode in ('qwen_clone','pocket_clone'):
         require(all(assets.get(k,{}).get('media_format')=='wav' for k in required), 'reference_format_mismatch')

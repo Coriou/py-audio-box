@@ -4,6 +4,10 @@
   "python": "3.11",
   "platform": "x86_64 Linux rootful local Docker cgroup-v2",
   "files": [
+    "clients/__init__.py",
+    "clients/cli.py",
+    "clients/http.py",
+    "clients/mcp.py",
     "contracts/__init__.py",
     "contracts/fixtures/v1/artifact.json",
     "contracts/fixtures/v1/capabilities.json",
