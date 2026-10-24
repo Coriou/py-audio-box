@@ -2043,3 +2043,7 @@ r169 fix54262e3e/report68504a21 addsnot_ready/resource_limitONLYthreevoicereadco
 ### 2026-10-24 — H1A adopted; hardware selection feature starts
 
 Parentacceptsr170 H1ASOURCE/localtestsGO, ancestrymerges12ff8385 withoutconflict; rootfocused16ingest+20voicestoretestsPASS. Managedreference+compactreadsourceintegrated, notpublicupload/installeddurability. NewboundedH4Asemanticshardwareprofile-selection/probeunit commissioned independentlyofpendingH2review; noMLprovision/model/runtimequalification.
+
+### 2026-10-24 — H2A adopted on H1A integration; authenticated upload next
+
+Parentacceptsr171 H2ASOURCE/localASGIGO andancestrymerges68504a21 withoutconflict; integrated4API+1Dispatcher+1clienttestsPASS againstcurrentH1store. AuthenticatedvoiceHTTPCLI-MCPreadslice nowinroot. Nextcohesiveupload+compact-readcontracts/owner/transport/clientlot, hardwareprofilesparallel; noinstalledactivation/modelclaim.
