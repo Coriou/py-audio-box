@@ -237,7 +237,14 @@ def response(value, *, request):
         if type(value['error']) is not str or value['error'] not in ERRORS: raise Refused('native_response')
         return value
     v, op = value['value'], request['op']
-    if op in ('start','stop','ack','put_input'): _closed(v, ())
+    if op in ('start','ack','put_input'): _closed(v, ())
+    elif op=='stop':
+        # Empty means cancellation accepted (or prepared cancellation completed).
+        # A frozen decision cannot acknowledge a new cancellation.
+        if v == {}: _closed(v, ())
+        else:
+            _closed(v, ('state','timely'))
+            if v['state'] not in ('committing','terminal') or type(v['timely']) is not bool: raise Refused('native_response')
     elif op in ('prepare','observe'):
         _closed(v, ('runtime_id','state'))
         if type(v['runtime_id']) is not str or v['state'] not in ('alive','stopped-and-reaped','unknown'): raise Refused('native_response')

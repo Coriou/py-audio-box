@@ -163,7 +163,7 @@ class NativeSupervisor:
         self.free_ram=free_ram
         self.free_bytes=free_bytes or (lambda: shutil.disk_usage(self.journal.root).free)
         self.lock=threading.RLock(); self.transfer=threading.Lock()
-        # Only exact live-handle selection, poll, identity and signals use this lock.
+        # Exact handle selection/signalling and the terminal decision use this lock.
         self.handle_lock=threading.Lock(); self.uncertain=set()
         self.active=None; self.failed=False; self.launches=0
         self.cutoffs={}; self.cancelled=set(); self.slots=threading.BoundedSemaphore(3)
@@ -222,7 +222,11 @@ class NativeSupervisor:
                 (q['binding'],q['boot'])!=(r['binding'],r['boot']) or q['boot']!=self.boot): raise Refused('native_session')
             with self.handle_lock:
                 if self.active and self.active['id']==r['id']:
-                    self.active['cancel']=True
+                    a=self.active
+                    if a.get('decision') is not None:
+                        if self.failed or r['id'] in self.uncertain: raise Refused('native_unknown')
+                        return dict(state='terminal' if r['phase']=='terminal' else 'committing',timely=a['decision'])
+                    a['cancel']=True
                     return {}
         with self.lock:
             if op=='hello':
@@ -246,6 +250,7 @@ class NativeSupervisor:
                 return {}
             if self.quarantined and op!='get_output': raise Refused('native_unknown')
             if op=='stop':
+                if r['phase']=='terminal': return dict(state='terminal',timely=r['receipt']['timely'])
                 if r['phase']=='prepared':
                     self.cancelled.add(r['id'])
                     if self.transfer.acquire(False):
@@ -463,10 +468,20 @@ class NativeSupervisor:
                 try: os.fsync(directory)
                 finally: os.close(directory)
                 output=dict(sha256=hashlib.sha256(data).hexdigest(),bytes=len(data))
-                timely=self.clock()<self.cutoffs[r['id']]
+            # Linearization point: stop either latched cancellation before this
+            # decision, or observes this immutable decision without acknowledging
+            # cancellation. All validation/output I/O precedes it; terminal journal
+            # I/O follows it without holding handle_lock. Ownership lasts through
+            # durable persistence, and failure never grants receipt authority.
+            with self.handle_lock:
+                timely=proposal is not None and self.clock()<self.cutoffs[r['id']]
+                if a['cancel']:
+                    timely=False; proposal=output=None
+                a['decision']=timely
             process=dict(role='model',spawn_token=a['token'],pid=h.pid,pgid=h.pid,start_identity=a['start_identity'],exit_code=a['exit'])
             self.terminal(r,[process],timely,proposal,output)
-            with self.handle_lock: self.active=None
+            with self.handle_lock:
+                self.active=None
         except Exception: self.failed=True
 
     def watchdog(self):
@@ -518,7 +533,7 @@ def serve(supervisor, context, host, port, *, proven_host_network=False,
                 threading.Thread(target=handle,daemon=True).start()
         finally:
             with supervisor.handle_lock:
-                if supervisor.active: supervisor.active['cancel']=True
+                if supervisor.active and supervisor.active.get('decision') is None: supervisor.active['cancel']=True
             end=time.monotonic()+2
             while supervisor.active and time.monotonic()<end: supervisor.tick(); time.sleep(.02)
             supervisor.shutdown_event.set(); watchdog.join(timeout=1)

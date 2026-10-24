@@ -505,3 +505,96 @@ class NativeSupervisorTests(unittest.TestCase):
         self.h.code=-15; self.s.tick(); self.s.tick()
         self.assertEqual(len(self.signals),1); self.assertEqual(self.h.waited,1)
         self.assertIsNone(self.s.dispatch(self.q('collect'))['receipt'])
+
+    def finalization_stop_barrier(self,stage):
+        from worker import native_child
+        import os
+        result=self.fixture.run_engine()
+        value=native_child.proposal(self.snapshot,result,self.e)
+        self.prepare()
+        with patch('worker.native_child.parent_exchange',return_value=(value,result['data'])):
+            self.s.dispatch(self.q('start')); self.s.active['receiver'].join(1)
+        active=self.s.active; self.h.code=0
+        entered=threading.Event(); release=threading.Event()
+        def barrier():
+            entered.set()
+            if not release.wait(2): raise RuntimeError('barrier timeout')
+        if stage=='validation':
+            original=native_child.validate_proposal
+            def blocked(*args): barrier(); return original(*args)
+            context=patch('worker.native_child.validate_proposal',blocked)
+        elif stage=='output':
+            original=os.fsync; first=[True]
+            def blocked(fd):
+                if first[0]: first[0]=False; barrier()
+                return original(fd)
+            context=patch('worker.native_supervisor.os.fsync',blocked)
+        else:
+            original=self.s.terminal
+            def blocked(*args):
+                if stage!='retirement': barrier()
+                if stage=='failure': raise OSError('terminal journal uncertain')
+                original(*args)
+                if stage=='retirement': barrier()
+            # Failure must pass through persist's uncertainty latch.
+            if stage=='failure':
+                def blocked(value): barrier(); raise OSError('terminal journal uncertain')
+                context=patch.object(self.s.journal,'save',blocked)
+            else: context=patch.object(self.s,'terminal',blocked)
+        with context:
+            thread=threading.Thread(target=self.s.tick); thread.start()
+            try:
+                self.assertTrue(entered.wait(1))
+                expected={} if stage in ('validation','output') else dict(state='terminal' if stage=='retirement' else 'committing',timely=True)
+                for _ in range(2):
+                    q=self.q('stop'); reply=self.s.dispatch(q)
+                    self.assertEqual(reply,expected)
+                    envelope={k:v for k,v in q.items() if k!='body'}
+                    p.response(dict(envelope,ok=True,value=reply),request=q)
+                self.assertEqual(active['cancel'],stage in ('validation','output'))
+                self.assertIs(self.s.active,active)
+                self.assertEqual(self.h.waited,1); self.assertTrue(active['closed'])
+                # Signal tick remains available while state I/O is blocked.
+                self.s.tick(); self.assertEqual(self.signals,[])
+            finally: release.set(); thread.join(2)
+        self.assertFalse(thread.is_alive())
+        if stage=='failure':
+            self.assertTrue(self.s.failed); self.assertIn(self.rid,self.s.uncertain)
+            with patch.object(self.s.journal,'save') as retry:
+                for _ in range(2):
+                    self.s.tick()
+                    self.assertEqual(self.s.dispatch(self.q('collect')),dict(receipt=None,proposal=None,output=None))
+                    self.assertEqual(self.s.dispatch(self.q('observe'))['state'],'unknown')
+                    for op in ('stop','start','ack'):
+                        with self.assertRaises(Refused): self.s.dispatch(self.q(op))
+                retry.assert_not_called()
+            self.assertIs(self.s.active,active)
+        else:
+            collected=self.s.dispatch(self.q('collect'))
+            timely=stage not in ('validation','output')
+            self.assertEqual(collected['receipt']['timely'],timely)
+            self.assertEqual(collected['proposal'] is not None,timely)
+            self.assertEqual(collected['output'] is not None,timely)
+            for _ in range(2):
+                self.assertEqual(self.s.dispatch(self.q('stop')),dict(state='terminal',timely=timely))
+                self.s.dispatch(self.q('start')); self.s.dispatch(self.q('ack'))
+                self.assertEqual(self.s.dispatch(self.q('collect')),collected)
+                if timely:
+                    out=collected['output']
+                    downloaded=self.s.dispatch(self.q('get_output',dict(sha256=out['sha256'],offset=0,bytes=out['bytes'])))
+                    self.assertEqual(base64.b64decode(downloaded['data']),result['data'])
+                else:
+                    with self.assertRaises(Refused): self.s.dispatch(self.q('get_output',dict(sha256='f'*64,offset=0,bytes=1)))
+            self.assertIsNone(self.s.active); self.assertEqual(len(self.calls),1)
+        self.assertEqual(self.h.waited,1)
+
+    def test_stop_during_validation_linearizes_before_decision(self): self.finalization_stop_barrier('validation')
+    def test_stop_during_output_fsync_linearizes_before_decision(self): self.finalization_stop_barrier('output')
+    def test_stop_during_terminal_persist_observes_decision(self): self.finalization_stop_barrier('persist')
+    def test_stop_before_retirement_observes_durable_terminal(self): self.finalization_stop_barrier('retirement')
+    def test_terminal_decision_journal_failure_stays_unknown(self): self.finalization_stop_barrier('failure')
+
+    def test_stop_decision_response_is_closed(self):
+        q=self.q('stop'); envelope={k:v for k,v in q.items() if k!='body'}
+        for value in (dict(state='committing',timely=1),dict(state='cancelled',timely=True),dict(state='terminal',timely=True,extra=0)):
+            with self.assertRaises(Refused): p.response(dict(envelope,ok=True,value=value),request=q)
