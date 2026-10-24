@@ -125,6 +125,9 @@ class ResourceStore:
         total=0
         for root in self.roots:
             if not root.is_dir() or root.is_symlink():raise ValueError('resource_root_missing')
+            if len(self.roots)>1 and root == self.roots[1]:
+                total += self._measure_staging(root)
+                continue
             for directory, dirs, files in os.walk(root, followlinks=False, onerror=lambda exc: (_ for _ in ()).throw(exc)):
                 for name in dirs+files:
                     s=(Path(directory)/name).lstat()
@@ -132,6 +135,80 @@ class ResourceStore:
                         raise ValueError('resource_namespace_unknown')
                     total += s.st_size
         return total
+
+    def _measure_staging(self, root):
+        """FD-bound scan; only exact Pocket empty-namespace removal may race.
+
+        The existing trusted supervisor removes only the empty conditioning name
+        after engine reap. An absent directory occupies no current bytes; sizes
+        already counted remain conservative, and highwater/reservations never
+        decrease. No file/private payload or arbitrary missing path is waived.
+        """
+        import time
+        from contracts import validate as oracle
+        from worker.runtime_protocol import execution
+        flags=os.O_RDONLY|os.O_DIRECTORY|os.O_NOFOLLOW
+        rootfd=os.open(root,flags)
+        root_info=os.fstat(rootfd)
+        deadline=time.monotonic()+1
+        count=0
+        def identity(info):
+            return info.st_dev,info.st_ino,info.st_mode,info.st_uid,info.st_gid
+        def removed(parent, path, name):
+            if name!='conditioning' or path.parent!=root:
+                return False
+            parent_info=os.fstat(parent)
+            if (not stat.S_ISDIR(parent_info.st_mode) or parent_info.st_uid!=os.getuid() or
+                    stat.S_IMODE(parent_info.st_mode)!=0o770 or parent_info.st_dev!=root_info.st_dev or
+                    identity(os.stat(path.name,dir_fd=rootfd,follow_symlinks=False))!=identity(parent_info)):
+                return False
+            rows=self.db.execute("SELECT id FROM resource_reservations WHERE state='executing' LIMIT 2").fetchall()
+            if len(rows)!=1:return False
+            job,context=self.core._load(rows[0][0])
+            oracle.stored_context(job,context)
+            spec=execution(context)
+            if (spec is None or spec.engine!='pocket-tts' or job['state'] not in ('running','cancel_requested') or
+                    not job['attempts'] or job['attempts'][-1]['staging_id']!=path.name):
+                return False
+            try:os.stat(name,dir_fd=parent,follow_symlinks=False)
+            except FileNotFoundError:return True
+            return False  # Substitution/reappearance is uncertainty, never absence.
+        def scan(fd,path):
+            nonlocal count
+            total=0
+            with os.scandir(fd) as entries:
+                for entry in entries:
+                    count+=1
+                    if count>2048 or time.monotonic()>deadline:raise ValueError('resource_scan_budget')
+                    # No-follow dirent observation precedes any absence exception.
+                    directory=entry.is_dir(follow_symlinks=False)
+                    try:info=os.stat(entry.name,dir_fd=fd,follow_symlinks=False)
+                    except FileNotFoundError:
+                        if directory and removed(fd,path,entry.name):continue
+                        raise
+                    if stat.S_ISLNK(info.st_mode) or not (stat.S_ISREG(info.st_mode) or stat.S_ISDIR(info.st_mode)):
+                        raise ValueError('resource_namespace_unknown')
+                    total+=info.st_size
+                    if stat.S_ISDIR(info.st_mode):
+                        try:child=os.open(entry.name,flags,dir_fd=fd)
+                        except FileNotFoundError:
+                            if removed(fd,path,entry.name):continue
+                            raise
+                        try:
+                            if identity(os.fstat(child))!=identity(info):raise ValueError('resource_namespace_changed')
+                            total+=scan(child,path/entry.name)
+                            try:after=os.stat(entry.name,dir_fd=fd,follow_symlinks=False)
+                            except FileNotFoundError:
+                                if not removed(fd,path,entry.name):raise
+                            else:
+                                if identity(after)!=identity(info):raise ValueError('resource_namespace_changed')
+                        finally:os.close(child)
+            return total
+        try:
+            total=scan(rootfd,root)
+            if identity(os.stat(root,follow_symlinks=False))!=identity(root_info):raise ValueError('resource_root_changed')
+            return total
+        finally:os.close(rootfd)
 
     def check_disk(self):
         if self._token is None:return self.observe(self.check_disk)

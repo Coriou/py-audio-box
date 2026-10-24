@@ -17,16 +17,30 @@ class Production:
         context = copy.deepcopy(context)
         plan = context['plan']
         oracle.require(plan['operation'] == 'voice_prepare', 'operation_mismatch')
+        from worker.runtime_protocol import execution, dispatch_mode
+        if context.get('execution', {}).get('descriptor', {}).get('phase') == 'prepare' and plan['request']['reference_text'] != '':
+            from worker.transport import Refused
+            raise Refused('unsupported_parameter')
         asset_id = plan['request']['asset_id']
         self.core.voices._asset(principal, asset_id)
         plan['assets'] = [self.core.asset(asset_id)]
         token = oracle.canonical_hash([principal, key, plan['request']])
         reference = 'reference-' + token
         plan['resolved']['reuse_configuration']['reference_asset_id'] = reference
+        if context.get('execution', {}).get('descriptor', {}).get('phase') == 'prepare':
+            oracle.require(bool(plan.get('reference_roles', {}).get('audition_text')), 'explicit_audition_required')
         audition_text=plan.get('reference_roles',{}).get('audition_text','Synthetic fixture audition.')
         plan['reference_roles'] = dict(version='reference-roles-v1', reference_kind='prepared_reference',
             reference_asset_id=reference, audition_asset_id='audition-'+token,
             audition_text=audition_text)
+        spec = execution(context)
+        if spec is not None:
+            from worker.engines.pocket import _read
+            from worker.engines.pocket_prepare import PocketPreparation, selected_reference
+            oracle.require(type(spec) is PocketPreparation, 'typed_preparation_required')
+            raw = _read(self.core.root/'assets'/spec.reference_id, spec.reference_bytes, spec.reference_sha256)
+            selected_reference(spec, raw)
+            _dispatch_settings = (dispatch_mode(spec), min(25, plan['resolved']['profile']['limits']['deadline_seconds']))
         return self.core.submit_execution(principal, key, context, _admission=_admission,
                                           _profiles=_profiles, _dispatch_settings=_dispatch_settings)
 

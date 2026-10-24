@@ -499,9 +499,11 @@ class Core:
             oracle.require(context['plan']['operation']=='voice_prepare' and roles['reference_kind']=='prepared_reference', 'result_mismatch')
             names={roles['reference_asset_id']:'reference.wav',roles['audition_asset_id']:'audition.wav'}
             oracle.require([o['id'] for o in manifest['outputs']]==list(names), 'result_mismatch')
-            from worker.synthetic import fixture_outputs
-            _, fixture_files=fixture_outputs(message)
-            fixtures=dict(fixture_files)
+            from worker.runtime_protocol import execution
+            if execution(context) is None:
+                from worker.synthetic import fixture_outputs
+                _, fixture_files=fixture_outputs(message)
+                fixtures=dict(fixture_files)
         else:
             oracle.require(len(manifest['outputs'])==1, 'result_mismatch')
             names={manifest['outputs'][0]['id']:'output.wav'}
@@ -514,7 +516,7 @@ class Core:
             oracle.require(not stage.is_symlink() and stage.stat().st_uid==os.getuid() and stat.S_IMODE(stage.stat().st_mode)==(0o770 if stage_root is not None else 0o700), 'foreign_stage')
             from worker.runtime_protocol import execution, generated_source
             spec=execution(context)
-            byte_limit=spec.max_output_bytes if spec else 1024*1024
+            byte_limit=(spec.reference_bytes+44 if filename=='reference.wav' else spec.max_output_bytes) if spec else 1024*1024
             fd=os.open(path, os.O_RDONLY|os.O_NOFOLLOW)
             with os.fdopen(fd,'rb') as stream:
                 info=os.fstat(stream.fileno())
@@ -530,6 +532,12 @@ class Core:
             elif spec is None:
                 expected=dict(kind='synthetic',source_sha256=measured['sha256'],source_id='phase-1a-silence',missing_fields=[])
                 oracle.require(output['provenance']==expected and measured['frames']==4800 and measured['sample_rate']==48000 and measured['channels']==1 and measured['media_subtype']=='PCM_16', 'synthetic_policy')
+            elif roles and filename=='reference.wav':
+                from worker.engines.pocket_prepare import selected_reference
+                from worker.engines.pocket import _read
+                raw=_read(self.root/'assets'/spec.reference_id,spec.reference_bytes,spec.reference_sha256)
+                prepared,frames=selected_reference(spec,raw)
+                oracle.require(data==prepared and measured['frames']==frames and measured['sample_rate']==spec.reference_rate, 'prepared_policy')
             else:
                 expected=dict(kind='generated',source_sha256=measured['sha256'],source_id=generated_source(context),missing_fields=[])
                 oracle.require(output['provenance']==expected and 0<measured['frames']<=spec.max_frames and measured['sample_rate']==spec.sample_rate and measured['channels']==1 and measured['media_subtype']=='PCM_16' and len(data)==44+2*measured['frames'], 'generated_policy')

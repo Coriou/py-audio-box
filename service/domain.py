@@ -240,10 +240,11 @@ def production_call(dispatcher, principal, operation, payload, key=None):
                 'unpublished_candidate':'not_ready','stale_candidate':'missing_media',
                 'foreign_media':'missing_media','asset_metadata_mismatch':'missing_media',
                 'invalid_trim':'invalid_request','invalid_range':'invalid_request',
-                'settings_mismatch':'unsupported_control','resource_input_limit':'resource_limit',
+                'settings_mismatch':'unsupported_control','unsupported_parameter':'unsupported_control','resource_input_limit':'resource_limit',
                 'resource_plan_limit':'resource_limit','plan_limit':'resource_limit',
                 'queue_full':'resource_limit','resource_runtime_unsupported':'unsupported_control'}.get(code, code)
         if code not in op['errors']: code = 'not_ready'
-        raise Failure(code, 'Production operation unavailable.', action='Check IDs, selection and operator configuration; do not automatically retry mutations.') from None
+        detail = 'Pocket reference_text is unsupported; use an empty string.' if str(exc) == 'unsupported_parameter' else 'Production operation unavailable.'
+        raise Failure(code, detail, action='Check IDs, selection and operator configuration; do not automatically retry mutations.') from None
     except (OSError, sqlite3.Error, TimeoutError, queue.Full):
         raise Failure('not_ready', 'Owner unavailable; mutation outcome may be unknown.', action='Do not automatically retry mutations.') from None

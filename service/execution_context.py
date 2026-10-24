@@ -80,7 +80,7 @@ def installed_mapping(configuration, *, policy):
 
 
 class PocketContexts:
-    """Trusted owner constructs principal/version templates and private mappings.
+    """Trusted owner constructs principal preparation/generation templates and mappings.
 
     No public JSON path or descriptor input. Production reloads the immutable
     principal-owned catalogue record and binds the managed bytes before admission.
@@ -89,23 +89,26 @@ class PocketContexts:
     def __init__(self, contexts, local_bundles, local_references):
         from worker.engines.pocket import verify_inputs
         from worker.engines.pocket_execution import PocketExecution
+        from worker.engines.pocket_prepare import PocketPreparation
         self._contexts = {}
         for principal, context in contexts.items():
             snapshot = copy.deepcopy(context)
             spec = execution(snapshot)
-            if type(spec) is not PocketExecution: raise Refused('pocket_execution_required')
+            if type(spec) not in (PocketExecution, PocketPreparation): raise Refused('pocket_execution_required')
             if set(local_bundles) != {spec.bundle_id} or set(local_references) != {spec.reference_id}:
                 raise Refused('owned_mapping_required')
             verify_inputs(spec, local_bundles, local_references)
             self._contexts[principal] = json.dumps(snapshot, allow_nan=False)
 
     def resolve(self, principal, operation, request):
-        if operation != 'speech_generate' or principal not in self._contexts:
+        if principal not in self._contexts:
             raise Refused('not_ready')
         context = json.loads(self._contexts[principal])
+        if operation != context['plan']['operation']: raise Refused('not_ready')
         from contracts import validate as oracle
-        oracle.validate('speech_generate_request', request)
-        if request.get('voice_version_id') != context['plan']['voice_versions'][0]['id']:
+        oracle.validate(operation+'_request', request)
+        if operation == 'voice_prepare' and request['reference_text'] != '': raise Refused('unsupported_parameter')
+        if operation == 'speech_generate' and request.get('voice_version_id') != context['plan']['voice_versions'][0]['id']:
             raise Refused('saved_version_required')
         context['plan']['request'] = copy.deepcopy(request)
         execution(context)
