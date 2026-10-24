@@ -173,4 +173,35 @@ class DispatcherEngineTests(unittest.TestCase):
                     self.assertEqual(len(artifact['asset_ids']),1)
             finally:dispatcher.close()
 
+
+class InstalledWorkerEntrypointTests(unittest.TestCase):
+    def test_explicit_policy_checked_mapping_passed_to_supervisor(self):
+        from contextlib import ExitStack
+        from worker import runtime_supervisor as supervisor
+        from service import install_policy as ip
+        mapping={'sealed-id':'/models/bundles/sealed-id'}
+        with ExitStack() as stack:
+            stack.enter_context(patch('sys.argv',['worker','--installed-policy',ip.POLICY,'--configuration-file','/explicit/install.json']))
+            for name,value in (('getuid',0),('geteuid',0),('getgid',10001),('getegid',10001)):
+                stack.enter_context(patch.object(os,name,return_value=value))
+            stack.enter_context(patch.object(os,'getgroups',return_value=[]))
+            config=stack.enter_context(patch('service.execution_context.installed_configuration',return_value={'injected':'closed-loader'}))
+            checked=stack.enter_context(patch('service.execution_context.installed_mapping',return_value=mapping))
+            stack.enter_context(patch.object(ip,'directory_identity'))
+            files=stack.enter_context(patch.object(ip,'read_private',return_value=b''))
+            runtime=stack.enter_context(patch.object(supervisor,'RuntimeSupervisor'))
+            supervisor.main()
+            config.assert_called_once_with('/explicit/install.json',policy=ip.SPLIT)
+            checked.assert_called_once_with({'injected':'closed-loader'},policy=ip.SPLIT)
+            runtime.assert_called_once_with(bundles=mapping)
+            runtime.return_value.serve.assert_called_once_with()
+            self.assertEqual(files.call_count,4)
+
+    def test_configuration_without_explicit_policy_refuses(self):
+        from worker import runtime_supervisor as supervisor
+        with patch('sys.argv',['worker','--configuration-file','/explicit/install.json']), patch.object(supervisor,'RuntimeSupervisor') as runtime:
+            with self.assertRaises(SystemExit) as caught:supervisor.main()
+            self.assertEqual(caught.exception.code,2);runtime.assert_not_called()
+
+
 if __name__=='__main__':unittest.main()

@@ -22,7 +22,8 @@ class RuntimeSupervisor:
     def __init__(self, root='/receipts', ipc='/ipc', *, bundles=None):
         if os.getpid() != 1:
             raise RuntimeError('pid1_required')
-        self.bundles = dict(bundles or {})
+        from types import MappingProxyType
+        self.bundles = MappingProxyType(dict(bundles or {}))
         self.journal = Journal(root)
         self.ipc = Path(ipc)
         self.boot = secrets.token_hex(16)
@@ -372,9 +373,31 @@ class RuntimeSupervisor:
 
 
 def main():
+    import argparse
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--installed-policy', choices=('docker-kokoro-split-v1',))
+    parser.add_argument('--configuration-file')
+    args = parser.parse_args()
     os.umask(0o077)
     try:
-        RuntimeSupervisor().serve()
+        bundles = None
+        if args.installed_policy is not None:
+            from service import install_policy as ip
+            from service.execution_context import installed_configuration, installed_mapping
+            if args.configuration_file is None: raise ValueError('installed_configuration_required')
+            if (os.getuid(), os.geteuid(), os.getgid(), os.getegid()) != (0, 0, 10001, 10001) or os.getgroups() not in ([], [10001]):
+                raise ValueError('installed_worker_identity')
+            config = installed_configuration(args.configuration_file, policy=ip.SPLIT)
+            bundles = installed_mapping(config, policy=ip.SPLIT)
+            ip.directory_identity('/receipts', policy=ip.SPLIT, role='receipts')
+            ip.directory_identity('/ipc', policy=ip.SPLIT, role='ipc')
+            for name, limit in (('lane.lock', 0), ('journal.json', 1024**2)):
+                ip.read_private(Path('/receipts')/name, limit, policy=ip.SPLIT, role='receipts')
+            for name in ('lifecycle.key', 'execution.key'):
+                ip.read_private(Path('/ipc')/name, 4096, policy=ip.SPLIT, role='ipc')
+        elif args.configuration_file is not None:
+            raise ValueError('explicit_fixed_install_policy_required')
+        RuntimeSupervisor(bundles=bundles).serve()
     except (OSError, ValueError, KeyError, TypeError):
         print('lifecycle supervisor unavailable; lane quarantined', flush=True)
         raise SystemExit(2)

@@ -1,7 +1,7 @@
 """Installed control's private launch notification boundary.
 
-No listener, Core owner, Docker authority, or public gate-publishing API lives
-here. Notification is corroborated against SQLite and live identity elsewhere.
+No listener or Docker authority lives here. The explicit ASGI factory owns
+Core only after corroborating the trusted notification with SQLite/live identity.
 """
 import argparse
 import json
@@ -19,6 +19,37 @@ from service.persistent_init import digest
 GATE_DIRECTORY = Path('/tmp/speech-box-activation')
 GATE_NAME = 'gate.json'
 GATE_LIMIT = 16384
+
+# Strong process-lifetime responsibility, including failed/unknown close outcomes.
+_INSTALLED_LIFECYCLES = {}
+
+
+class _ThreadResult:
+    """Thread-owned completion, independent of cancellable asyncio wrappers."""
+    def __init__(self, loop, function, completed):
+        from concurrent.futures import Future
+        self.result = Future()
+        def work():
+            try:
+                value = function()
+            except BaseException as exc:
+                self.result.set_exception(exc)
+            else:
+                self.result.set_result(value)
+            finally:
+                try:
+                    loop.call_soon_threadsafe(completed)
+                except RuntimeError:
+                    # Closed loop retains the result and unknown obligation.
+                    pass
+        submitted = loop.run_in_executor(None, work)
+        submitted.add_done_callback(lambda done: None if done.cancelled() else done.exception())
+        self.wrapper = loop.create_task(self.wait())
+        self.wrapper.add_done_callback(lambda done: None if done.cancelled() else done.exception())
+
+    async def wait(self):
+        import asyncio
+        return await asyncio.shield(asyncio.wrap_future(self.result))
 
 
 def projection(value):
@@ -209,6 +240,189 @@ def main():
     except (OSError,ValueError,TypeError,KeyError):
         # No raw request, credential, path, or protected provenance in logs.
         raise SystemExit('installed notification refused') from None
+
+
+
+class InstalledActivation:
+    """Internal startup dependency; public projection alone never activates."""
+    def __init__(self, waiting, configuration):
+        self.waiting = waiting
+        self.configuration = ip.configuration(configuration)
+        self.checked = None
+        self.prepared = None
+        self.started = False
+
+    def _configuration_matches(self, dispatcher):
+        if (dispatcher.current_profiles != self.configuration['profiles'] or
+                dispatcher.budget != self.configuration['budget'] or
+                dispatcher.production_contexts is None or dispatcher.persistent_registration is not None):
+            raise ValueError('installed_dispatch_configuration')
+
+    def prepare(self, runtime, root):
+        if self.prepared is not None: raise ValueError('installed_activation_reuse')
+        self.checked = checked_waiting_gate(self.waiting, self.configuration, runtime, root=root)
+        self.prepared = runtime, Path(root).absolute()
+
+    def precheck(self, dispatcher):
+        if self.started: raise ValueError('installed_activation_reuse')
+        self.started = True
+        self._configuration_matches(dispatcher)
+        if self.prepared is None: self.prepare(dispatcher.runtime, dispatcher.root)
+        if self.prepared != (dispatcher.runtime, dispatcher.root.absolute()):
+            raise ValueError('installed_activation_owner_binding')
+
+    def check_hello(self, hello):
+        gate = self.waiting.read()
+        if (set(hello) != {'lane', 'boot', 'quarantined', 'launches'} or
+                hello['quarantined'] is not False or type(hello['launches']) is not int or
+                not 0 <= hello['launches'] < 64 or
+                any(hello[k] != gate['registration'][k] for k in ('lane', 'boot'))):
+            raise ValueError('installed_unhealthy_hello')
+
+    def postcheck(self, dispatcher):
+        # Core holds its lifetime exclusion now. Reuse only the private reader;
+        # never reacquire its flock and never open protected receipts.
+        from service.recovery import installed_startup_read
+        _control_identity()
+        self._configuration_matches(dispatcher)
+        gate = self.waiting.read()
+        before = local_incarnation()
+        hello = dispatcher.runtime.call('hello', {})
+        checked = installed_startup_read(dispatcher.root, self.configuration, gate,
+                                        hello, before, policy=ip.SPLIT)
+        if (checked != self.checked or self.waiting.read() != gate or
+                dispatcher.runtime.call('hello', {}) != hello or local_incarnation() != before):
+            raise ValueError('installed_post_owner_binding_changed')
+
+
+def create_installed_app(*, configuration_file, credential_file, root='/control/core',
+                         staging='/staging', runtime=None, waiting=None):
+    """Factory-only ASGI entry, with one owner acquired/closed by lifespan.
+
+    No listener is created here. Explicit files and the trusted host notification
+    are required; no environment/default credential or synthetic fallback.
+    """
+    from contextlib import asynccontextmanager
+    import asyncio
+    from fastapi import FastAPI
+    from service.auth import installed_credentials
+    from service.execution_context import installed_configuration, installed_mapping, KokoroContexts
+    from service.dispatcher import Dispatcher
+    from service.supervisor_runtime import SupervisorRuntime
+    from service.api import create_voice_app
+    config = installed_configuration(configuration_file, policy=ip.SPLIT)
+    credentials = installed_credentials(credential_file, config['contexts'])
+    mapping = installed_mapping(config, policy=ip.SPLIT)
+    contexts = KokoroContexts(config['contexts'], mapping)
+    runtime = runtime or SupervisorRuntime('/ipc')
+    application = FastAPI(docs_url=None, redoc_url=None, openapi_url=None)
+
+    @asynccontextmanager
+    async def lifespan(app):
+        notification = waiting if waiting is not None else WaitingControl()
+        owner = None
+        preparation = acquisition = None
+        loop = asyncio.get_running_loop()
+        responsibility = dict(notification=notification, owner=None, task=None, error=None,
+                              operations={}, cleanup_requested=False, closed=False)
+        _INSTALLED_LIFECYCLES[id(responsibility)] = responsibility
+        app.state.installed_lifecycle = responsibility
+
+        def advance():
+            if not responsibility['cleanup_requested'] or responsibility['closed']:
+                return
+            task = responsibility['task']
+            if task is not None and not task.done():
+                return
+            if task is not None and not task.cancelled():
+                return  # Failed close is unknown, never automatically retried.
+            if loop.is_closed():
+                return
+            pending = responsibility.get('waiting_for')
+            if pending is not None and not pending.result.done():
+                return
+            close = responsibility['operations'].get('close')
+            if close is not None and close.result.done() and close.result.exception() is not None:
+                responsibility['error'] = close.result.exception()
+                return
+            responsibility['waiting_for'] = pending or acquisition or preparation
+            task = loop.create_task(cleanup())
+            responsibility['task'] = task
+            def finished(done):
+                if done.cancelled():
+                    advance()
+                else:
+                    done.exception()
+            task.add_done_callback(finished)
+
+        def operation(name, function):
+            op = _ThreadResult(loop, function, advance)
+            responsibility['operations'][name] = op
+            return op
+
+        async def cleanup():
+            op = acquisition if acquisition is not None else preparation
+            if op is not None:
+                responsibility['waiting_for'] = op
+                try:
+                    result = await op.wait()
+                except asyncio.CancelledError as exc:
+                    if asyncio.current_task().cancelling() or not op.result.done():
+                        raise
+                    responsibility['error'] = exc
+                except BaseException as exc:
+                    responsibility['error'] = exc
+                else:
+                    if acquisition is not None:
+                        responsibility['owner'] = result
+                        app.state.dispatcher = result
+            acquired = responsibility['owner']
+            if acquired is not None:
+                close = responsibility['operations'].get('close')
+                if close is None:
+                    close = operation('close', acquired.close)
+                responsibility['waiting_for'] = close
+                try:
+                    await close.wait()
+                except asyncio.CancelledError:
+                    raise
+                except BaseException as exc:
+                    responsibility['error'] = exc
+                    raise
+            try:
+                notification.close()
+            except BaseException as exc:
+                responsibility['error'] = exc
+                raise
+            responsibility['closed'] = True
+            _INSTALLED_LIFECYCLES.pop(id(responsibility), None)
+        try:
+            activation = InstalledActivation(notification, config)
+            # Waiting has its own 30-second budget and owns no Dispatcher/Core.
+            preparation = operation('preparation', lambda: activation.prepare(runtime, root))
+            await asyncio.shield(preparation.wrapper)
+            acquisition = operation('acquisition', lambda: Dispatcher(root, staging=staging, runtime=runtime,
+                profiles=config['profiles'], budget=config['budget'], production_contexts=contexts,
+                installed_activation=activation))
+            owner = await asyncio.shield(acquisition.wrapper)
+            responsibility['owner'] = owner
+            app.state.dispatcher = owner
+            deadline = time.monotonic()+3
+            while True:
+                status = await asyncio.to_thread(owner.call, 'status')
+                if status['reconciled']: break
+                if time.monotonic() >= deadline: raise ValueError('installed_reconciliation_timeout')
+                await asyncio.sleep(.02)
+            if not status['persistent_activation']: raise ValueError('installed_reconciliation_refused')
+            app.mount('/', create_voice_app(owner, credentials=credentials, installed=config))
+            app.state.dispatcher = owner
+            yield
+        finally:
+            responsibility['cleanup_requested'] = True
+            advance()
+            await asyncio.shield(responsibility['task'])
+    application.router.lifespan_context = lifespan
+    return application
 
 
 if __name__ == '__main__':
