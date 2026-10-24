@@ -235,6 +235,43 @@ def closed_inventory():
         rejection(lambda:R.inventory(root))
 
 
+def singleton_checks(root):
+    """Focused actual runner orchestration; finite capture/slot boundary only.
+
+    Caller supplies the reviewed stdlib finite IO surface. No node/pytest call.
+    """
+    rows = R.inventory()
+    assert len(rows) == 100 and R.directed_selection() == [(17, rows[17])]
+    assert rows[17]['node'] == R.DIRECTED_NODE and rows[17]['seconds'] == 35
+    assert R.TOTAL == 2600 and R.DIRECTED_TOTAL == 260
+    for mode in ('pass', 'fail', 'wrong-selection', 'unknown-capture'):
+        directory = root/mode; directory.mkdir(mode=0o700)
+        calls = []
+        def fake(argv, outputs, deadline, *, env, observe):
+            calls.append(argv)
+            assert argv == R.node_argv(17, directory/'017') and deadline == 35
+            assert env['TMPDIR'] == str(directory/'017/tmp')
+            observe()
+            for p, raw in zip(outputs, (b'FAILED AssertionError', b'stderr')):
+                with F.private(p) as out: out.write(raw)
+            if mode == 'unknown-capture': raise RuntimeError('UNKNOWN capture')
+            emit(directory/'017/selection.json', dict(node='wrong' if mode=='wrong-selection' else rows[17]['node'], count=1, before_fixtures=True))
+            emit(directory/'017/result.json', dict(node=rows[17]['node'], pytest_exit=int(mode=='fail'), collected=True,
+                reports=[['setup','passed'],['call','failed' if mode=='fail' else 'passed'],['teardown','passed']], accepted=mode!='fail'))
+            return int(mode=='fail'), 123
+        try: result = R.ordered(directory,F,capture=fake,clock=lambda:0.,directed=True)
+        except RuntimeError: assert mode != 'pass'
+        else: assert mode == 'pass' and result == [rows[17]['id']]
+        assert len(calls) == 1 and {p.name for p in directory.iterdir()} == {'017'}
+        receipt = F.slot_read(F.read_regular(directory/'017/receipt.slot',F.SLOT))
+        assert receipt['index'] == 17 and receipt['seconds'] == 35
+        assert receipt['state'] == ('PASS' if mode=='pass' else 'STOP')
+    token, invocation = 'a'*48, '00000000-0000-4000-8000-000000000001'
+    assert R.campaign_command(token,invocation)[2] == 'campaign'
+    assert R.campaign_command(token,invocation,directed=True) == ['python','/app/diagnostics/b-controls/runner.py','directed017',token,invocation]
+    assert len(R.inventory()) == 100
+
+
 def main():
     os.umask(0o077)
     root = Path(tempfile.mkdtemp(prefix='pab-B-controls-HOST-',dir='/private/tmp'))

@@ -2,7 +2,7 @@
   "base_recipe_contract": "r26: shared invocation-owned local FROM; build-time clean replacement ONLY dedicated image /tmp including hidden entries and symlink before seed COPY, numeric 0700/10001:10001 and seed 0600 with exact seed-only assertion; narrow image construction hygiene extends old metadata-only recipe; no packages/runtime initializer/volume cleanup/network/pull",
   "commit": "8d5aba5fc702719843d055b7d3f693c407deb0e9",
   "derivative_files": {
-    "diagnostics/b-controls/runner.py": "9efe46ccd59f458eb51918cc48fe0ed96e9a46fc63fbef82e96420edb580c974",
+    "diagnostics/b-controls/runner.py": "a0db124986e18c0f3f09e1840e8b9d25b8be5903f494b73526b02363b61d5d6e",
     "diagnostics/p-one-node/finite-driver.py": "7dfe240517291b00c4ecb44832bef3678e47a0aaf8eb57b82b94d89f348c0b6e",
     "diagnostics/p-one-node/identity_semantics.py": "fd2d1f6d40699aa258d9016996037e8f61875f9302b21f8a6700cac935f707de",
     "diagnostics/p-one-node/runtime-identity.py": "eb5d3a7dbdf717a219163bfeaaa9bb8616a0ad7c7b2ec315aa0eb8b24504c034"

@@ -27,6 +27,9 @@ GROUPS = (
     ('test_B_independent_authority_source_predicates', 'B-A-', 'B_CONTROL_AUTHORITY', 7, 10),
 )
 TOTAL = 2600                 # 2375 node caps + pre60 + reap30 + post60 + margin75
+DIRECTED_INDEX = 17
+DIRECTED_NODE = CONTROL + '::test_B_directed_isolated_seams[B-S-original74-real-observer]'
+DIRECTED_TOTAL = 260         # pre60 + node35 + reap30 + post60 + margin75
 STREAM = 16 * 1024**2       # existing finite-driver capture cap, each stream
 
 
@@ -84,6 +87,15 @@ def inventory_tree(tree):
     require(len(rows) == len({r['node'] for r in rows}) == 100, 'exact unique100')
     require(sum(r['seconds'] for r in rows) == 2375, 'node budget sum')
     return rows
+
+
+def directed_selection(root=ROOT):
+    # Authenticate the entire closed100 before selecting the sole approved row.
+    rows = inventory(root)
+    row = rows[DIRECTED_INDEX]
+    require(row == dict(id='B-S-original74-real-observer', node=DIRECTED_NODE, seconds=35),
+            'closed directed017 selection')
+    return [(DIRECTED_INDEX, row)]
 
 
 def environment(tmp):
@@ -163,15 +175,16 @@ def node(index, directory):
     return 0
 
 
-def ordered(root, finite, *, capture=None, clock=time.monotonic, observe=lambda: None, finished=lambda: None):
+def ordered(root, finite, *, capture=None, clock=time.monotonic, observe=lambda: None, finished=lambda: None, directed=False):
     """Actual orchestration shared with HOST fake external boundary; no retries."""
     capture = finite.capture if capture is None else capture
-    rows = inventory()
+    indexed = directed_selection() if directed else list(enumerate(inventory()))
+    budget = 35 if directed else 2375
     start = clock()
     completed = []
-    for index, row in enumerate(rows):
+    for index, row in indexed:
         observe()
-        require(clock() < start + 2375, 'campaign deadline before dispatch')
+        require(clock() < start + budget, 'campaign deadline before dispatch')
         directory = root/('%03d' % index)
         directory.mkdir(mode=0o700)
         tmp = directory/'tmp'
@@ -180,7 +193,7 @@ def ordered(root, finite, *, capture=None, clock=time.monotonic, observe=lambda:
         finite.slot_create(directory/'receipt.slot')
         finite.slot_write(directory/'receipt.slot', record)
         try:
-            deadline = min(start+2375, clock()+row['seconds'])
+            deadline = min(start+budget, clock()+row['seconds'])
             rc, pid = capture(node_argv(index, directory),
                 [directory/'stdout', directory/'stderr'], deadline,
                 env=environment(tmp), observe=observe)
@@ -210,7 +223,7 @@ def ordered(root, finite, *, capture=None, clock=time.monotonic, observe=lambda:
     return completed
 
 
-def campaign(token, invocation):
+def campaign(token, invocation, *, directed=False):
     f = helpers()
     f.enabled()
     require(sys.platform == 'linux' and ROOT == Path('/app') and os.getpid() == 1
@@ -219,10 +232,12 @@ def campaign(token, invocation):
     os.umask(0o077)
     start = time.monotonic()
     signal.signal(signal.SIGALRM, lambda *_: os._exit(124))
-    signal.setitimer(signal.ITIMER_REAL, TOTAL)
+    signal.setitimer(signal.ITIMER_REAL, DIRECTED_TOTAL if directed else TOTAL)
     root = Path('/tmp')
     state = dict(state='PENDING', token=token, invocation=invocation,
-        expected=100, acceptance=False, physical_quota=False)
+        expected=1 if directed else 100, acceptance=False, physical_quota=False)
+    if directed:
+        state.update(selected_index=DIRECTED_INDEX, selected_node=directed_selection()[0][1]['node'])
     stop = threading.Event()
     errors = []
     terminal = root/'pab-terminal.slot'
@@ -253,17 +268,17 @@ def campaign(token, invocation):
         thread.start()
         def observe():
             require(not errors, 'census failed')
-            require(time.monotonic() < start+2435, 'campaign outer deadline')
+            require(time.monotonic() < start+(95 if directed else 2435), 'campaign outer deadline')
         state['completed'] = ordered(controls, f, observe=observe,
-            finished=lambda: require(not f.namespace_pids(), 'descendants remain after control'))
-        require(len(state['completed']) == 100, 'completed100')
+            finished=lambda: require(not f.namespace_pids(), 'descendants remain after control'), directed=directed)
+        require(len(state['completed']) == (1 if directed else 100), 'completed expected selection')
     except BaseException as exc:
         state['failure'] = type(exc).__name__+': '+str(exc)[:256]
     finally:
         try:
             # No namespace wait races with an active test. After phase ends,
             # existing PID1 cleanup reaps namespace descendants once, no rerun.
-            state['descendants'] = f.quiesce(min(start+2465, time.monotonic()+30))
+            state['descendants'] = f.quiesce(min(start+(125 if directed else 2465), time.monotonic()+30))
             require(state['descendants']['complete'], 'unresolved descendants')
             stop.set()
             if 'thread' in locals():
@@ -271,7 +286,7 @@ def campaign(token, invocation):
                 require(not thread.is_alive(), 'monitor unresolved')
             require(not errors, 'incomplete census')
             f.verify_source()
-            end = min(start+2525, time.monotonic()+60)
+            end = min(start+(185 if directed else 2525), time.monotonic()+60)
             f.checked_program(['python', '-c', f.identity_program()], root/'identity-after', end)
             f.compare_identity(f.read_regular(root/'identity-before', f.META), f.read_regular(root/'identity-after', f.META))
             require(time.monotonic() < end and 'failure' not in state, 'campaign/check failure')
@@ -281,19 +296,19 @@ def campaign(token, invocation):
                 terminal_failure=type(exc).__name__+': '+str(exc)[:256])
         state['elapsed'] = time.monotonic()-start
         try:
-            require(time.monotonic() < start+TOTAL, 'publication deadline')
+            require(time.monotonic() < start+(DIRECTED_TOTAL if directed else TOTAL), 'publication deadline')
             f.slot_write(terminal, state)
         except BaseException:
             state['state'] = 'UNKNOWN'
     return 0 if state['state'] == 'TERMINAL' else 1
 
 
-def campaign_command(token, invocation):
+def campaign_command(token, invocation, *, directed=False):
     require(re.fullmatch('[0-9a-f]{48}', token) and str(uuid.UUID(invocation)) == invocation, 'owner')
-    return ['python', '/app/diagnostics/b-controls/runner.py', 'campaign', token, invocation]
+    return ['python', '/app/diagnostics/b-controls/runner.py', 'directed017' if directed else 'campaign', token, invocation]
 
 
-def create_argv(name, volume, image, token, invocation):
+def create_argv(name, volume, image, token, invocation, *, directed=False):
     """Distinct campaign command binding; NEVER Lifecycle.create_argv(writer)."""
     require(re.fullmatch('[0-9a-f]{64}', image) is not None or
             re.fullmatch('sha256:[0-9a-f]{64}', image) is not None, 'full image ID')
@@ -305,10 +320,10 @@ def create_argv(name, volume, image, token, invocation):
         '--log-driver', 'none', '--workdir', '/app', '--mount', 'type=volume,src='+volume+',dst=/tmp',
         '-e', 'PYTHONDONTWRITEBYTECODE=1', '-e', 'PYTHONPATH=/app:/app/tests:/app/diagnostics/p-one-node',
         '-e', 'PYTEST_DISABLE_PLUGIN_AUTOLOAD=1', '-e', 'PAB_MAINTENANCE_WAIT_LOG=/tmp/waits.jsonl',
-        '-e', 'TIKTOKEN_CACHE_DIR=/tokenizer-cache', image]+campaign_command(token, invocation)
+        '-e', 'TIKTOKEN_CACHE_DIR=/tokenizer-cache', image]+campaign_command(token, invocation, directed=directed)
 
 
-def inspect_campaign(obj, name, volume, image, token, invocation):
+def inspect_campaign(obj, name, volume, image, token, invocation, *, directed=False):
     """Read-only admission shape for a later separately authorized host owner.
 
     This does not dispatch anything or adapt the frozen singleton Lifecycle.
@@ -319,7 +334,7 @@ def inspect_campaign(obj, name, volume, image, token, invocation):
     require(re.fullmatch('[0-9a-f]{64}', obj['Id']) and obj['Name'] == '/'+name
         and obj['Image'] == image, 'container identity')
     require(cfg['Labels'] == {'pab.owner':token, 'pab.invocation':invocation}
-        and cfg['Cmd'] == campaign_command(token, invocation)
+        and cfg['Cmd'] == campaign_command(token, invocation, directed=directed)
         and cfg['User'] == '10001:10001' and cfg['WorkingDir'] == '/app', 'campaign command binding')
     require(not cfg.get('Entrypoint') and not cfg.get('Healthcheck') and not cfg.get('OnBuild') and not cfg.get('Volumes')
         and cfg.get('StopSignal', '') in ('', 'SIGTERM', '15'), 'startup shape')
@@ -352,8 +367,8 @@ def main():
         print(json.dumps(inventory(), indent=2))
         return 0
     require(len(sys.argv) == 4, 'fixed CLI')
-    if sys.argv[1] == 'campaign':
-        return campaign(*sys.argv[2:])
+    if sys.argv[1] in ('campaign', 'directed017'):
+        return campaign(*sys.argv[2:], directed=sys.argv[1] == 'directed017')
     require(sys.argv[1] == 'node' and sys.argv[2].isdecimal(), 'node CLI')
     return node(int(sys.argv[2]), Path(sys.argv[3]))
 
