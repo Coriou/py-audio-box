@@ -220,3 +220,111 @@ def receive(connection, cutoff, *, peer_sha256):
         return value
     except (ValueError, UnicodeError, TypeError, RecursionError):
         raise Refused('native_frame') from None
+
+
+ERRORS = frozenset(('native_refused', 'native_unknown', 'native_busy'))
+
+
+def response(value, *, request):
+    """Closed responses bind every reply to the originating session and nonce."""
+    if type(value) is not dict: raise Refused('native_response')
+    keys = ('version','deployment_id','configuration_sha256','lane','boot',
+            'request_id','runtime_id','binding','op')
+    _closed(value, (*keys,'ok','value') if value.get('ok') is True else (*keys,'ok','error'))
+    if type(value['ok']) is not bool or any(value[k] != request[k] for k in keys):
+        raise Refused('native_response_binding')
+    if not value['ok']:
+        if type(value['error']) is not str or value['error'] not in ERRORS: raise Refused('native_response')
+        return value
+    v, op = value['value'], request['op']
+    if op in ('start','ack','put_input'): _closed(v, ())
+    elif op=='stop':
+        # Empty means cancellation accepted (or prepared cancellation completed).
+        # A frozen decision cannot acknowledge a new cancellation.
+        if v == {}: _closed(v, ())
+        else:
+            _closed(v, ('state','timely'))
+            if v['state'] not in ('committing','terminal') or type(v['timely']) is not bool: raise Refused('native_response')
+    elif op in ('prepare','observe'):
+        _closed(v, ('runtime_id','state'))
+        if type(v['runtime_id']) is not str or v['state'] not in ('alive','stopped-and-reaped','unknown'): raise Refused('native_response')
+        if op=='prepare': runtime_id(v['runtime_id'],request['lane'],request['boot'])
+        elif v['runtime_id'] != request['runtime_id']: raise Refused('native_response')
+    elif op=='hello':
+        _closed(v, ('deployment_id','configuration_sha256','lane','boot','quarantined','launches','runtime_manifest_sha256','inventory'))
+        if (v['deployment_id'],v['configuration_sha256']) != (request['deployment_id'],request['configuration_sha256']): raise Refused('native_response')
+        for k in ('lane','boot'): _hex(v[k],32)
+        _hex(v['runtime_manifest_sha256'],64); _int(v['launches'],0,64)
+        if type(v['quarantined']) is not bool: raise Refused('native_response')
+        from worker.engines.qwen_execution import inventory_from_wire
+        inventory_from_wire(v['inventory'])
+    elif op=='get_output':
+        _closed(v, ('sha256','offset','data'))
+        if (v['sha256'],v['offset']) != (request['body']['sha256'],request['body']['offset']) or len(chunk(v['data'])) != request['body']['bytes']: raise Refused('native_response')
+    elif op=='collect':
+        _closed(v, ('receipt','proposal','output'))
+        if v['receipt'] is None:
+            if v['proposal'] is not None or v['output'] is not None: raise Refused('native_response')
+        else:
+            expected={k:request[k] for k in ('runtime_id','binding','deployment_id','configuration_sha256','lane','boot')}
+            expected['original_deadline']=v['receipt']['original_deadline']
+            receipt(v['receipt'],expected=expected)
+            if v['proposal'] is not None:
+                _closed(v['proposal'],('message','manifest'))
+                from contracts import validate as oracle
+                try:
+                    oracle.validate('worker_message',v['proposal']['message'])
+                    oracle.validate('result_manifest',v['proposal']['manifest'])
+                except Exception: raise Refused('native_response') from None
+                message,manifest=v['proposal']['message'],v['proposal']['manifest']
+                if message['kind']!='result' or any(message[k]!=manifest[k] for k in ('job_id','attempt_id','generation','owner_id','staging_id','input_sha256')) or len(manifest['outputs'])!=1 or manifest['candidates']: raise Refused('native_response')
+            if v['output'] is not None:
+                _closed(v['output'],('sha256','bytes')); _hex(v['output']['sha256'],64); _int(v['output']['bytes'],46,1048576)
+    return value
+
+
+def native_execution(context):
+    _closed(context,('plan','bundles','execution'))
+    from worker.engines.qwen_execution import QwenExecution, inventory_from_wire
+    value=context['execution']; plan=context['plan']; resolved=plan['resolved']
+    if set(value) != {'descriptor','bundles','references','hardware'}: raise Refused('closed_execution_context')
+    spec=QwenExecution.from_wire(value['descriptor'])
+    inventory_from_wire(value['hardware'])
+    if spec.task not in ('custom_voice','clone') or (spec.device,spec.dtype,spec.attention) != ('mps','float32','sdpa'): raise Refused('qwen_generation_only')
+    if value['bundles'] != {spec.bundle_id:'/models/bundles/'+spec.bundle_id}: raise Refused('owned_mount_mapping')
+    identity=dict(engine='qwen',model=spec.checkpoint,bundle_sha256=spec.manifest_sha256,device='metal',precision=spec.dtype)
+    if resolved['profile']['topology'] != 'packaged_native': raise Refused('native_topology')
+    request=plan['request']; versions=plan['voice_versions']
+    profile_id='qwen-mps'
+    if (plan['operation'] != 'speech_generate' or resolved['profile']['id'] != profile_id or
+        request['identity'] != identity or resolved['identity']['effective'] != identity or
+        request['fallback'] != 'forbid' or request['variants'] != 1 or request['reuse'] != 'never' or len(versions) != 1): raise Refused('execution_plan_mismatch')
+    v=versions[0]; mode='qwen_clone' if spec.task == 'clone' else 'qwen_preset'
+    settings=dict(kind=mode,language=spec.language,seed=None,instruction=spec.instruct,
+                  **{k:getattr(spec,k) for k in ('temperature','top_p','top_k','repetition_penalty','max_new_tokens')})
+    if (v['id'] != request['voice_version_id'] or v['id'] != spec.voice_revision or v['voice_id'] != spec.voice_id or
+        v['identity'] != identity or v['settings'] != settings or resolved['settings'] != settings): raise Refused('execution_voice_mismatch')
+    if spec.task == 'custom_voice':
+        if (v['origin'] != 'preset' or v['reference_asset_ids'] or plan['assets'] or value['references'] or
+            v['configuration'] != dict(mode=mode,speaker=spec.preset)): raise Refused('execution_preset_mismatch')
+    else:
+        expected=dict(path='/references/assets/'+spec.reference_id,voice_id=spec.voice_id,
+                      voice_revision=spec.voice_revision,checkpoint=spec.checkpoint,revision=spec.revision,text=spec.reference_text)
+        if (value['references'] != {spec.reference_id:expected} or v['origin'] != 'clone' or
+            v['reference_asset_ids'] != [spec.reference_id] or v.get('reference_asset_sha256') != {spec.reference_id:spec.reference_sha256} or
+            v['reference_text'] != spec.reference_text or v['configuration'] != dict(mode=mode,reference_asset_id=spec.reference_id,
+                reference_text=spec.reference_text,conditioning='x_vector' if spec.x_vector_only else 'icl') or len(plan['assets']) != 1): raise Refused('execution_reference_mismatch')
+        a=plan['assets'][0]
+        if any(a[k] != v for k,v in dict(id=spec.reference_id,sha256=spec.reference_sha256,frames=spec.reference_frames,
+                sample_rate=spec.reference_rate,channels=1,media_format='wav',media_subtype='PCM_16').items()): raise Refused('execution_reference_mismatch')
+    limits=resolved['profile']['limits']
+    if (spec.threads != limits['threads'] or spec.memory_bytes != limits['ram_bytes'] or
+        spec.max_frames*48000 > limits['decoded_ticks']*spec.sample_rate or spec.max_output_bytes > limits['upload_bytes'] or
+        2*(spec.max_output_bytes+spec.reference_bytes) > limits['disk_bytes'] or
+        len(request['text'].encode()) > spec.max_text_bytes): raise Refused('execution_budget_mismatch')
+    return spec
+
+
+def generated_source(context):
+    spec=native_execution(context)
+    return spec.engine+'-execution-sha256:'+hashlib.sha256(canonical(spec.identity())).hexdigest()
