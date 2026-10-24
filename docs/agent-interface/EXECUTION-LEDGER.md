@@ -1687,3 +1687,7 @@ Parent accepts r80 boundedACTUALrecoveryGO;17receiptedPASS/017FAIL/82UNRUN. Sour
 ### 2026-10-24 — Astra scope accepted; bounded directed017 instrumentation
 
 r81 confirms receipt-interruptionmechanism butfirstchildpredicateUNKNOWN; no automatic hook/trace/projectioncontradiction. Parent assigns pab-b100-directed-diagnostic-source-r82-20261024 freshcandidatebasedworktree, twofilepassiveopt-inprimitive refusalinstrumentation+fixed3record4096caps/controloutcomes, alloriginalassertions/predicateorderunchanged, boundedsyntheticHOST only. FreshSolreviewthenAstratargetedfinal beforelaterONEdiagnostic; no build/runtime/laneaction now.
+
+### 2026-10-24 — Directed instrumentation delivered; Sol adversarial review
+
+r82 t3-b7dca57d source428b8696/docsdb5df551 delivers passiveopt-in refusal/outcome schema,originalassertions/orderunchangedclaimed, mechanicalrunner2pins/manifest3hashes;647inertstdlibHOSTchecksPASS retained. Rootcopieshandoffbytesonly. Independent pab-b100-directed-diagnostic-review-r83-20261024 auditsexactdiff/semantics/schema/lifetime/receipts; Astratargetedfinal follows ifclosed. NoLinux/build/runtime/lanemutationauthority.
