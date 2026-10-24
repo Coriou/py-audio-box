@@ -494,33 +494,50 @@ class Core:
         owner=job['attempts'][-1]['owner_id'] # bound to the private socket inherited only by our child
         oracle.worker_message(message,job,self._input_assets(job['principal_id'], context['plan']),transport_owner=owner,context=context)
         oracle.validate('result_manifest',manifest)
-        oracle.require(len(manifest['outputs'])==1, 'result_mismatch')
-        output=manifest['outputs'][0]
-        path=(Path(stage_root) if stage_root is not None else self.root/'staging')/job['attempts'][-1]['staging_id']/'output.wav'
-        stage=path.parent
-        oracle.require(not stage.is_symlink() and stage.stat().st_uid==os.getuid() and stat.S_IMODE(stage.stat().st_mode)==(0o770 if stage_root is not None else 0o700), 'foreign_stage')
-        from worker.runtime_protocol import execution, generated_source
-        spec=execution(context)
-        byte_limit=spec.max_output_bytes if spec else 1024*1024
-        fd=os.open(path, os.O_RDONLY|os.O_NOFOLLOW)
-        with os.fdopen(fd,'rb') as stream:
-            info=os.fstat(stream.fileno())
-            oracle.require(stat.S_ISREG(info.st_mode) and info.st_uid==(engine_uid if stage_root is not None else os.getuid()) and info.st_nlink==1 and info.st_size<=byte_limit, 'foreign_media')
-            data=stream.read(byte_limit+1)
-        import io
-        with wave.open(io.BytesIO(data),'rb') as wav:
-            measured=dict(sha256=hashlib.sha256(data).hexdigest(),frames=wav.getnframes(),sample_rate=wav.getframerate(),channels=wav.getnchannels(),media_format='wav',media_subtype={2:'PCM_16',3:'PCM_24',4:'PCM_32'}.get(wav.getsampwidth(),'OTHER'))
-            oracle.require(len(wav.readframes(wav.getnframes()))==measured['frames']*measured['channels']*wav.getsampwidth(), 'missing_media')
-        oracle.require(measured=={k:output[k] for k in measured}, 'media_mismatch')
-        if spec is None:
-            expected=dict(kind='synthetic',source_sha256=measured['sha256'],source_id='phase-1a-silence',missing_fields=[])
-            oracle.require(output['provenance']==expected and measured['frames']==4800 and measured['sample_rate']==48000 and measured['channels']==1 and measured['media_subtype']=='PCM_16', 'synthetic_policy')
+        roles=context['plan'].get('reference_roles')
+        if roles:
+            oracle.require(context['plan']['operation']=='voice_prepare' and roles['reference_kind']=='prepared_reference', 'result_mismatch')
+            names={roles['reference_asset_id']:'reference.wav',roles['audition_asset_id']:'audition.wav'}
+            oracle.require([o['id'] for o in manifest['outputs']]==list(names), 'result_mismatch')
+            from worker.synthetic import fixture_outputs
+            _, fixture_files=fixture_outputs(message)
+            fixtures=dict(fixture_files)
         else:
-            expected=dict(kind='generated',source_sha256=measured['sha256'],source_id=generated_source(context),missing_fields=[])
-            oracle.require(output['provenance']==expected and 0<measured['frames']<=spec.max_frames and measured['sample_rate']==24000 and measured['channels']==1 and measured['media_subtype']=='PCM_16' and len(data)==44+2*measured['frames'], 'generated_policy')
-        artifact=dict(id=manifest['artifact_id'],job_id=job['id'],generation=job['generation'],asset_ids=[output['id']],input_sha256=job['input_sha256'],project_revision=0,manifest_sha256=oracle.canonical_hash(manifest),identity=context['plan']['resolved']['identity'],attempt_id=job['attempts'][-1]['id'],owner_id=owner,staging_id=job['attempts'][-1]['staging_id'])
-        oracle.publication(job,job['attempts'][-1],artifact,{output['id']:measured['sha256']},transport_owner=owner,context=context,manifest=manifest,verified_result=message,allowed_assets=self._input_assets(job['principal_id'], context['plan']))
-        return data,manifest,artifact,message
+            oracle.require(len(manifest['outputs'])==1, 'result_mismatch')
+            names={manifest['outputs'][0]['id']:'output.wav'}
+        oracle.require(len(manifest['outputs'])==len(names) and {o['id'] for o in manifest['outputs']}==set(names), 'result_mismatch')
+        data_by_id={};hashes={}
+        for output in manifest['outputs']:
+            filename=names[output['id']]
+            path=(Path(stage_root) if stage_root is not None else self.root/'staging')/job['attempts'][-1]['staging_id']/filename
+            stage=path.parent
+            oracle.require(not stage.is_symlink() and stage.stat().st_uid==os.getuid() and stat.S_IMODE(stage.stat().st_mode)==(0o770 if stage_root is not None else 0o700), 'foreign_stage')
+            from worker.runtime_protocol import execution, generated_source
+            spec=execution(context)
+            byte_limit=spec.max_output_bytes if spec else 1024*1024
+            fd=os.open(path, os.O_RDONLY|os.O_NOFOLLOW)
+            with os.fdopen(fd,'rb') as stream:
+                info=os.fstat(stream.fileno())
+                oracle.require(stat.S_ISREG(info.st_mode) and info.st_uid==(engine_uid if stage_root is not None else os.getuid()) and info.st_nlink==1 and info.st_size<=byte_limit, 'foreign_media')
+                data=stream.read(byte_limit+1)
+            import io
+            with wave.open(io.BytesIO(data),'rb') as wav:
+                measured=dict(sha256=hashlib.sha256(data).hexdigest(),frames=wav.getnframes(),sample_rate=wav.getframerate(),channels=wav.getnchannels(),media_format='wav',media_subtype={2:'PCM_16',3:'PCM_24',4:'PCM_32'}.get(wav.getsampwidth(),'OTHER'))
+                oracle.require(len(wav.readframes(wav.getnframes()))==measured['frames']*measured['channels']*wav.getsampwidth(), 'missing_media')
+            oracle.require(measured=={k:output[k] for k in measured}, 'media_mismatch')
+            if spec is None and roles:
+                oracle.require(data==fixtures[filename], 'synthetic_policy')
+            elif spec is None:
+                expected=dict(kind='synthetic',source_sha256=measured['sha256'],source_id='phase-1a-silence',missing_fields=[])
+                oracle.require(output['provenance']==expected and measured['frames']==4800 and measured['sample_rate']==48000 and measured['channels']==1 and measured['media_subtype']=='PCM_16', 'synthetic_policy')
+            else:
+                expected=dict(kind='generated',source_sha256=measured['sha256'],source_id=generated_source(context),missing_fields=[])
+                oracle.require(output['provenance']==expected and 0<measured['frames']<=spec.max_frames and measured['sample_rate']==24000 and measured['channels']==1 and measured['media_subtype']=='PCM_16' and len(data)==44+2*measured['frames'], 'generated_policy')
+            data_by_id[output['id']]=data
+            hashes[output['id']]=measured['sha256']
+        artifact=dict(id=manifest['artifact_id'],job_id=job['id'],generation=job['generation'],asset_ids=[o['id'] for o in manifest['outputs']],input_sha256=job['input_sha256'],project_revision=0,manifest_sha256=oracle.canonical_hash(manifest),identity=context['plan']['resolved']['identity'],attempt_id=job['attempts'][-1]['id'],owner_id=owner,staging_id=job['attempts'][-1]['staging_id'])
+        oracle.publication(job,job['attempts'][-1],artifact,hashes,transport_owner=owner,context=context,manifest=manifest,verified_result=message,allowed_assets=self._input_assets(job['principal_id'], context['plan']))
+        return (data_by_id if roles else data),manifest,artifact,message
 
     @persistence.storage_session
     def _publish(self, job_id, proposal, fault=None, *, stage_root=None, engine_uid=None):
@@ -533,23 +550,27 @@ class Core:
             raise
         if not self.p1:
             raise persistence.PublicationQuarantine('pre_p1_root')
-        temporary_name = new_id('adoption')
-        output=manifest['outputs'][0]
+        if isinstance(data,bytes): data={manifest['outputs'][0]['id']:data}
+        entries=[dict(destination=o['id'],temporary=new_id('adoption'),sha256=o['sha256'],byte_length=len(data[o['id']])) for o in manifest['outputs']]
+        # Preserve historical single-output rows byte-for-byte in shape.
+        e=entries[0]; columns=(e['destination'],e['temporary'],e['sha256'],e['byte_length'])
+        binding=encode(artifact if len(entries)==1 else dict(version='prepared-reference-adoption-v1',artifact=artifact,manifest=manifest,files=entries))
+        persistence.publication_intent((binding,*columns),job=job,context=self._load(job_id)[1])
         with self.transaction():
             self.db.execute('INSERT INTO publications VALUES (?,?,?,?)', (job_id,encode(manifest),encode(artifact),encode(message)))
-            self.db.execute('INSERT INTO publication_work VALUES (?,?,?,?,?,?)',
-                (job_id,encode(artifact),output['id'],temporary_name,hashlib.sha256(data).hexdigest(),len(data)))
-        sync_dir(self.root)  # Persist any newly created SQLite WAL/SHM names too.
+            self.db.execute('INSERT INTO publication_work VALUES (?,?,?,?,?,?)', (job_id,binding,*columns))
+        sync_dir(self.root)
         if fault: fault('before_adoption')
-        output=manifest['outputs'][0]
-        destination=self.root/'assets'/output['id']
-        # Same-filesystem atomic no-replace adoption. Keep crash orphans for review.
-        temporary=destination.parent/temporary_name
-        with open(temporary,'xb') as stream:
-            persistence.write_complete(stream, data)
-        os.link(temporary,destination,follow_symlinks=False)
-        if fault: fault('after_link')
-        # The same validated alias completion is used live and after restart.
+        for index,e in enumerate(entries):
+            if fault: fault('before_file_'+str(index))
+            destination=self.root/'assets'/e['destination']
+            temporary=destination.parent/e['temporary']
+            with open(temporary,'xb') as stream:
+                persistence.write_complete(stream, data[e['destination']])
+            if fault: fault('after_file_'+str(index))
+            os.link(temporary,destination,follow_symlinks=False)
+            if fault: fault('after_link_'+str(index))
+            if fault: fault('after_link')
         self._publication_barrier(job_id, manifest, artifact)
         if fault: fault('after_adoption')
         self._commit_publication(job_id)
@@ -561,41 +582,41 @@ class Core:
         row=self.db.execute('SELECT binding,destination,temporary,sha256,byte_length FROM publication_work WHERE job_id=?',(job_id,)).fetchone()
         if row is None:
             raise persistence.PublicationQuarantine('missing_publication_provenance')
-        binding,destination,temporary,digest,length=row
-        output=manifest['outputs'][0]
-        if (len(manifest['outputs'])!=1 or binding!=encode(artifact) or destination!=output['id']
-                or digest!=output['sha256'] or not temporary.startswith('adoption-')
-                or len(temporary)!=41 or any(c not in '0123456789abcdef' for c in temporary[9:])):
+        bound,entries=persistence.publication_intent(row,publication=dict(artifact=encode(artifact),manifest=encode(manifest)))
+        stored=json.loads(row[0])
+        if bound!=artifact or ('version' in stored and stored['manifest']!=manifest):
             raise persistence.PublicationQuarantine('publication_work_mismatch')
         job,context=self._load(job_id)
         attempt=job['attempts'][-1]
-        oracle.publication(job,attempt,artifact,{destination:digest},transport_owner=attempt['owner_id'],
+        oracle.publication(job,attempt,artifact,{e['destination']:e['sha256'] for e in entries},transport_owner=attempt['owner_id'],
             context=context,manifest=manifest,
             verified_result=json.loads(self.db.execute('SELECT message FROM publications WHERE job_id=?',(job_id,)).fetchone()[0]),allowed_assets=self._input_assets(job['principal_id'], context['plan']))
         directory=self.root/'assets'
-        path=directory/destination
-        try: path.lstat()
-        except FileNotFoundError:
-            raise ValueError('incomplete_adoption') from None
-        alias=directory/temporary
-        try: alias_info=alias.lstat()
-        except FileNotFoundError: alias_info=None
-        if alias_info is not None:
-            first=persistence.verify_file(path,digest,length,links=2)
-            second=persistence.verify_file(alias,digest,length,links=2)
-            if (first.st_dev,first.st_ino)!=(second.st_dev,second.st_ino):
-                raise persistence.PublicationQuarantine('foreign_publication_alias')
-            for (asset_id,) in self.db.execute('SELECT id FROM assets'):
-                try:
-                    other=(directory/asset_id).lstat()
-                except FileNotFoundError:
-                    raise persistence.PublicationQuarantine('unavailable_published_inode') from None
-                if (other.st_dev,other.st_ino)==(first.st_dev,first.st_ino):
-                    raise persistence.PublicationQuarantine('published_inode_alias')
-            alias.unlink()  # Only the exact recorded redundant protocol alias.
+        for e in entries:
+            destination,temporary,digest,length=(e[k] for k in ('destination','temporary','sha256','byte_length'))
+            path=directory/destination
+            try: path.lstat()
+            except FileNotFoundError:
+                raise ValueError('incomplete_adoption') from None
+            alias=directory/temporary
+            try: alias_info=alias.lstat()
+            except FileNotFoundError: alias_info=None
+            if alias_info is not None:
+                first=persistence.verify_file(path,digest,length,links=2)
+                second=persistence.verify_file(alias,digest,length,links=2)
+                if (first.st_dev,first.st_ino)!=(second.st_dev,second.st_ino):
+                    raise persistence.PublicationQuarantine('foreign_publication_alias')
+                for (asset_id,) in self.db.execute('SELECT id FROM assets'):
+                    try:
+                        other=(directory/asset_id).lstat()
+                    except FileNotFoundError:
+                        raise persistence.PublicationQuarantine('unavailable_published_inode') from None
+                    if (other.st_dev,other.st_ino)==(first.st_dev,first.st_ino):
+                        raise persistence.PublicationQuarantine('published_inode_alias')
+                alias.unlink()  # Only the exact recorded redundant protocol alias.
+                sync_dir(directory)
+            persistence.verify_file(path,digest,length,links=1)
             sync_dir(directory)
-        persistence.verify_file(path,digest,length,links=1)
-        sync_dir(directory)
 
     @persistence.storage_session
     def _commit_publication(self, job_id):

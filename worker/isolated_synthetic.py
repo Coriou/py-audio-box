@@ -33,34 +33,20 @@ def run(connection, config, staging, cutoff):
         raise Refused('synthetic_only')
     if plan['operation'] == 'speech_generate' and (request['variants'] != 1 or request['reuse'] != 'never'):
         raise Refused('synthetic_only')
-    # Fixed silence, irrespective of fixture Qwen identity. No engine is invoked.
-    buffer = io.BytesIO()
-    with wave.open(buffer, 'wb') as wav:
-        wav.setnchannels(1)
-        wav.setsampwidth(2)
-        wav.setframerate(48000)
-        wav.writeframes(b'\0' * 9600)
-    data = buffer.getvalue()
-    digest = hashlib.sha256(data).hexdigest()
+    from worker.synthetic import fixture_outputs, fixture_manifest
+    outputs, files = fixture_outputs(message)
     if Path(attempt['staging_id']).name != attempt['staging_id']:
         raise Refused('invalid_stage')
     directory = os.open(Path(staging) / attempt['staging_id'], os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
     try:
-        fd = os.open('output.wav', os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o640, dir_fd=directory)
-        with os.fdopen(fd, 'wb') as output:
-            output.write(data)
-            output.flush()
-            os.fsync(output.fileno())
+        for name, data in files:
+            fd = os.open(name, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o640, dir_fd=directory)
+            with os.fdopen(fd, 'wb') as output:
+                output.write(data);output.flush();os.fsync(output.fileno())
     finally:
         os.close(directory)
-    asset = dict(id=(plan['resolved']['reuse_configuration']['reference_asset_id'] if plan['operation']=='voice_prepare' else 'asset-'+uuid4().hex), sha256=digest, frames=4800, sample_rate=48000,
-                 channels=1, media_format='wav', media_subtype='PCM_16',
-                 provenance=dict(kind='synthetic', source_sha256=digest,
-                                 source_id='phase-1a-silence', missing_fields=[]))
-    manifest = {k: message[k] for k in ('job_id', 'attempt_id', 'generation', 'owner_id', 'staging_id', 'input_sha256')}
-    from worker.synthetic import candidates
-    manifest.update(operation=plan['operation'], artifact_id='artifact-'+uuid4().hex, outputs=[asset], candidates=candidates(message, asset))
-    message.update(kind='result', stage='completed', result_asset_ids=[asset['id']])
+    manifest = fixture_manifest(message, outputs)
+    message.update(kind='result', stage='completed', result_asset_ids=[a['id'] for a in outputs])
     send(connection, dict(message=message, manifest=manifest), cutoff)
 
 

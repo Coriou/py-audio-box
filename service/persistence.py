@@ -254,3 +254,73 @@ def check_operator_resolved(db,job_id):
     state=check_recovery_open(db)
     if state and any(a['job_id']==job_id for r in state['p1_recoveries'] for a in r['actions']):
         raise ValueError('operator_resolved_job')
+
+
+def publication_intent(row, *, publication=None, job=None, context=None):
+    """Decode only literal legacy work or an explicit, closed prepared pair.
+
+    No DDL migration. Scalar columns always corroborate the first actual file.
+    The complete manifest is retained before any filesystem write.
+    """
+    import json
+    from jsonschema.exceptions import ValidationError
+    from contracts import validate as oracle
+    binding,destination,temporary,digest,length=row
+    try:
+        value=json.loads(binding)
+        if 'version' not in value:
+            oracle.validate('artifact',value)
+            entries=[dict(destination=destination,temporary=temporary,sha256=digest,byte_length=length)]
+            artifact=value
+            if artifact['asset_ids']!=[destination]: raise ValueError()
+        else:
+            if set(value)!={'version','artifact','manifest','files'} or value['version']!='prepared-reference-adoption-v1': raise ValueError()
+            artifact=value['artifact'];manifest=value['manifest'];entries=value['files']
+            oracle.validate('artifact',artifact);oracle.validate('result_manifest',manifest)
+            if (type(entries)!=list or len(entries)!=2 or len(manifest['outputs'])!=2
+                    or manifest['operation']!='voice_prepare' or len(manifest['candidates'])!=1): raise ValueError()
+            roles=manifest['candidates'][0]['reference_roles']
+            if (roles['reference']['kind']!='prepared_reference' or
+                    [a['id'] for a in manifest['outputs']]!=[roles['reference']['asset']['id'],roles['audition']['asset']['id']] or
+                    roles['reference']['asset']!=manifest['outputs'][0] or roles['audition']['asset']!=manifest['outputs'][1] or
+                    roles['reference']['asset']['sha256']==roles['audition']['asset']['sha256']): raise ValueError()
+            if artifact['manifest_sha256']!=oracle.canonical_hash(manifest): raise ValueError()
+            for key in ('job_id','generation','attempt_id','owner_id','staging_id','input_sha256'):
+                if artifact[key]!=manifest[key]: raise ValueError()
+            if artifact['id']!=manifest['artifact_id'] or artifact['asset_ids']!=[a['id'] for a in manifest['outputs']]: raise ValueError()
+            for entry,output in zip(entries,manifest['outputs']):
+                if (entry['destination']!=output['id'] or entry['sha256']!=output['sha256'] or
+                        output['media_format']!='wav' or output['media_subtype']!='PCM_16' or
+                        entry['byte_length']!=44+output['frames']*output['channels']*2): raise ValueError()
+            if entries[0]!=dict(destination=destination,temporary=temporary,sha256=digest,byte_length=length): raise ValueError()
+        if publication is not None:
+            if artifact!=json.loads(publication['artifact']): raise ValueError()
+            if 'version' in value and value['manifest']!=json.loads(publication['manifest']): raise ValueError()
+        if job is not None:
+            attempt=job['attempts'][-1]
+            for key,expected in dict(job_id=job['id'],generation=job['generation'],input_sha256=job['input_sha256'],attempt_id=attempt['id'],owner_id=attempt['owner_id'],staging_id=attempt['staging_id']).items():
+                if artifact[key]!=expected: raise ValueError()
+        if context is not None and 'version' in value:
+            oracle.reference_roles(context['plan'],value['manifest']['candidates'][0],{a['id']:a for a in value['manifest']['outputs']})
+            if artifact['identity']!=context['plan']['resolved']['identity']: raise ValueError()
+        for e in entries:
+            if (set(e)!={'destination','temporary','sha256','byte_length'} or
+                    type(e['byte_length'])!=int or not 1<=e['byte_length']<=1048576 or
+                    not isinstance(e['temporary'],str) or not e['temporary'].startswith('adoption-') or
+                    len(e['temporary'])!=41 or any(c not in '0123456789abcdef' for c in e['temporary'][9:])): raise ValueError()
+        if len({e['destination'] for e in entries})!=len(entries) or len({e['temporary'] for e in entries})!=len(entries): raise ValueError()
+        return artifact,entries
+    except (ValueError,TypeError,KeyError,ValidationError,oracle.ContractError) as exc:
+        raise PublicationQuarantine('publication_work_mismatch') from exc
+
+
+def publication_record(record, data):
+    """Same cross-document binding for live and detached catalogue readers."""
+    import json
+    try:
+        publication=next(r for r in data['publications'] if r['job_id']==record['job_id'])
+        stored=next(r for r in data['jobs'] if r['id']==record['job_id'])
+        return publication_intent(tuple(record[k] for k in ('binding','destination','temporary','sha256','byte_length')),
+            publication=publication,job=json.loads(stored['job']),context=json.loads(stored['context']))
+    except (StopIteration,KeyError,IndexError,TypeError) as exc:
+        raise PublicationQuarantine('publication_work_mismatch') from exc

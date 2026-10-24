@@ -60,13 +60,13 @@ class SyntheticRuntime:
     def collect(self,a,identity):
         receipt=dict(runtime_id=identity,binding=a.binding,reaped=True,engine_uid=os.getuid(),reap_method='pid1-waitpid-echild',timely=not self.cancelled,original_deadline=a.job['deadline'])
         if self.cancelled: return receipt,None
-        message=a.message(); plan=message['plan']; data=audio(); digest=hashlib.sha256(data).hexdigest()
+        from worker.synthetic import fixture_outputs, fixture_manifest
+        message=a.message()
+        outputs,files=fixture_outputs(message)
         stage=self.staging/message['staging_id']; stage.mkdir(mode=0o770); stage.chmod(0o770)
-        (stage/'output.wav').write_bytes(data)
-        output=dict(id=plan['resolved']['reuse_configuration']['reference_asset_id'] if plan['operation']=='voice_prepare' else 'output-'+message['job_id'],sha256=digest,frames=4800,sample_rate=48000,channels=1,media_format='wav',media_subtype='PCM_16',provenance=dict(kind='synthetic',source_sha256=digest,source_id='phase-1a-silence',missing_fields=[]))
-        manifest={k:message[k] for k in ('job_id','attempt_id','generation','owner_id','staging_id','input_sha256')}
-        manifest.update(operation=plan['operation'],artifact_id='artifact-'+message['job_id'],outputs=[output],candidates=candidates(message,output))
-        message.update(kind='result',stage='completed',result_asset_ids=[output['id']])
+        for name,data in files: (stage/name).write_bytes(data)
+        manifest=fixture_manifest(message,outputs)
+        message.update(kind='result',stage='completed',result_asset_ids=[o['id'] for o in outputs])
         a.check(message,'result')
         return receipt,TransportObservation('proposal','E1 synthetic',message=message,manifest=manifest)
 
@@ -138,7 +138,7 @@ class ProductionAPITests(ProductionAPIFixture,unittest.TestCase):
         speech=self.submit('speech_generate',generation,'generate')
         self.wait(lambda:self.dispatcher.call('job',speech['job_id'])['state']=='succeeded')
         self.wait(lambda:self.dispatcher.call('status')['phase']=='idle')
-        self.assertEqual(self.runtime.authorities[-1].allowed_assets,(result['candidates'][0]['audition_asset_id'],))
+        self.assertEqual(self.runtime.authorities[-1].allowed_assets,(saved['version']['reference_asset_ids'][0],))
         self.assertEqual(self.runtime.authorities[-1].context['plan']['request']['text'],generation['text'])
         job=self.request('GET','/v1/jobs/'+speech['job_id']).json()
         artifact=self.request('GET','/v1/artifacts/'+job['artifact_ids'][0]).json()
