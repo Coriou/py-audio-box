@@ -2019,3 +2019,7 @@ r164 sourceinspectionSTOP no voiceDispatchercommands/no implementation. Parentau
 ### 2026-10-24 — H1A managed local ingest delivered; independent review
 
 r163 sourceb1dcda18/report34f84015 addsboundedPCMlocalingest24MiB60s/directownership/provenance/atomicpublish+streamingCore.assetconditionalcap/compactcataloguereads;13ingest+20voicestoreisolatedtestsPASS. Parentcommissions pab-h1-ingest-review-r166-20261024 adversarialmedia/path/publication/commitambiguity/limits/localtests review beforeadoption. H2authownerlanecontinuesdisjoint; noinstalled/model/releaseclaims.
+
+### 2026-10-24 — H2 authenticated voice reads delivered; independent review
+
+r165 source718a404/report2bc39a3 adds4explicitownerDispatcherreads/productionauthfactory/scopedlist-get-versionHTTPCLI-MCP/2KiBoutputcap;5focusedrealCore+ASGItestsPASS. Parentcommissions pab-h2-auth-review-r167-20261024 owner/auth/transport/clientadversarialreview beforeadoption. H1ingestreviewsparallel; publicmutations/jobs/hardware/installedqualificationremainopen.
