@@ -2187,3 +2187,7 @@ r197 retained no source: uniform-owner init/recovery readers conflict with requi
 ### 2026-10-24 — Installation ownership design settled; Lot A implementation
 
 r198 DESIGN GO: fixed split-owner rootful Linux Docker, finite trusted host launcher wrapping existing registration, role-aware readonly inspection, original DB writes only controlUID10001. Parent commissioned Sol-low r199 LotA ownership/enrollment/hosthandshake adapters with activation closed and legacy unchanged. LotB packaging/activation follows independent review. Initial target is compatible localLinuxDocker, not macOSDesktop/nativeMetal; those remain required separate qualification paths.
+
+### 2026-10-24 — Ownership primitives checkpoint; enrollment unit continues
+
+r199 sourceeaccc205/docsc60e49b5 retains fixed-role readers, exact operator extraction and fd-relative hello;11 new+29 legacy invocations reported PASS. LotA incomplete, activation closed, no root adoption. Parent commissioned sole successor r200 closed enrollment/create-only initializer/read-only recovery integration (items1-3), carrying checkpoint; host-observer/registration writer follows separate bounded unit. No redesign or actualLinuxpermission claim.
