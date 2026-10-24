@@ -1405,6 +1405,7 @@ def validate_baseline_records(records, expected, node, binding):
     return dict(diagnostic='COMPLETE' if complete else 'RED', test_status='PASS' if passed else 'FAIL')
 
 def publish_outcome(exit_code):
+    global diagnostic_io_failed
     if not diagnostic_enabled: return
     phases = dict.fromkeys(('setup','call','teardown'), NOT_REACHED)
     duplicate = unknown = False
