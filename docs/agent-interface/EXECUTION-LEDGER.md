@@ -2355,3 +2355,7 @@ r232 bounded source GO closes resultpublication,212independenttestsPASS. Parent 
 ### 2026-10-24 — Actual CPU inventory: MacVM and limited headroom
 
 r233 confirms IntelMac/OrbStack not supportedinstalledLinuxhost,3.9GiBhostfree, cached354MB Kokoroassets and candidatelegacyimage, manifestORT1.29 vs releaselock1.31. Actualinference NOTRUN. Parent commissioned read-only r234 exactasset streaminghash/imageidentity/headroom preflight, noDocker mutations/HELD resources. Integratedpackage212testsPASS59.821s.
+
+### 2026-10-24 — CPU bytes verified; headroom recovery within prior cache authorization
+
+r234 verifiesbothcachedassethashes/fulllegacyimageID but source/runtime/provider clearanceunknown and3.874GiBfree below6GiBfloor. Parent commissioned r236 boundedpreviouslyuserapproved managedUV/pip/pnpm/staledownloadcache cleanup only, excludingDocker/models/STT/HELD/worktrees. No executionwaiver; clonecontract r235 continues.
