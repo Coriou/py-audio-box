@@ -203,6 +203,22 @@ class Reconciliation:
                        (name in ('reference.wav','audition.wav') and
                         contexts.get(owner['job_id'],{}).get('plan',{}).get('reference_roles',{}).get('reference_kind')=='prepared_reference'))):
                 kind, reason = 'owned_synthetic_transient', 'attempt_record'
+            # Closed empty Pocket namespace only. Never inventory/adopt/delete
+            # opaque conditioning descendants; nonempty/uncertain stays UNKNOWN.
+            if (owner and namespace in ('internal_staging/'+owner['staging_id'],
+                                       'worker_staging/'+owner['staging_id']) and
+                    name == 'conditioning' and info.st_uid == os.getuid() and stat.S_ISDIR(info.st_mode) and
+                    stat.S_IMODE(info.st_mode) == 0o700 and
+                    contexts.get(owner['job_id'], {}).get('execution', {}).get('descriptor', {}).get('engine') == 'pocket-tts'):
+                child_fd = os.open(name, os.O_RDONLY|os.O_DIRECTORY|os.O_NOFOLLOW, dir_fd=directory_fd)
+                try:
+                    with os.scandir(child_fd) as children:
+                        empty = next(children, None) is None
+                    if stable(os.fstat(child_fd)) != stable(info): raise Incomplete('inventory_changed')
+                    if empty:
+                        kind, reason = 'committed_referenced', 'retained_conditioning_namespace'
+                finally:
+                    os.close(child_fd)
             if kind in ('unknown_foreign','missing_hash_mismatched_terminal','adopted_orphan'):
                 self.reasons.add(reason)
             self._row(namespace, name,
@@ -482,7 +498,7 @@ def typed_references(self, data, b2, _before, document):
                 raise Incomplete('unknown_reference_kind') from None
         elif set(value) != {'plan','bundles'}:
             self.reasons.add('unknown_reference_schema')
-        elif value['plan']['resolved']['profile']['id'] == 'kokoro-cpu':
+        elif value['plan']['resolved']['profile']['id'] in ('kokoro-cpu','pocket-cpu'):
             raise Incomplete('unknown_reference_kind')
         walk(value['plan'], 'worker_plan', source)
         for bundle in value['bundles']: walk(bundle, 'bundle_catalogue_entry', source)

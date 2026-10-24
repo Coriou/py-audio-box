@@ -364,9 +364,9 @@ class Core:
         if row:
             oracle.require(row[0] == fingerprint, 'idempotency_conflict')
             return json.loads(row[1])
-        from worker.runtime_protocol import execution
+        from worker.runtime_protocol import execution, dispatch_mode
         spec=execution(context)
-        if spec is not None and (_admission is None or _profiles is None or _dispatch_settings is None or _dispatch_settings[0]!='kokoro'):
+        if spec is not None and (_admission is None or _profiles is None or _dispatch_settings is None or _dispatch_settings[0]!=dispatch_mode(spec)):
             raise ValueError('authenticated_dispatch_required')
         if _admission is not None:
             _admission.demand(context,_profiles)
@@ -532,7 +532,7 @@ class Core:
                 oracle.require(output['provenance']==expected and measured['frames']==4800 and measured['sample_rate']==48000 and measured['channels']==1 and measured['media_subtype']=='PCM_16', 'synthetic_policy')
             else:
                 expected=dict(kind='generated',source_sha256=measured['sha256'],source_id=generated_source(context),missing_fields=[])
-                oracle.require(output['provenance']==expected and 0<measured['frames']<=spec.max_frames and measured['sample_rate']==24000 and measured['channels']==1 and measured['media_subtype']=='PCM_16' and len(data)==44+2*measured['frames'], 'generated_policy')
+                oracle.require(output['provenance']==expected and 0<measured['frames']<=spec.max_frames and measured['sample_rate']==spec.sample_rate and measured['channels']==1 and measured['media_subtype']=='PCM_16' and len(data)==44+2*measured['frames'], 'generated_policy')
             data_by_id[output['id']]=data
             hashes[output['id']]=measured['sha256']
         artifact=dict(id=manifest['artifact_id'],job_id=job['id'],generation=job['generation'],asset_ids=[o['id'] for o in manifest['outputs']],input_sha256=job['input_sha256'],project_revision=0,manifest_sha256=oracle.canonical_hash(manifest),identity=context['plan']['resolved']['identity'],attempt_id=job['attempts'][-1]['id'],owner_id=owner,staging_id=job['attempts'][-1]['staging_id'])

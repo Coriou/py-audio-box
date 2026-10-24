@@ -60,9 +60,17 @@ class Production:
         version = self.core.voices.version(principal, plan['request']['voice_version_id'])
         plan['voice_versions'] = [version]
         plan['assets'] = [self.core.asset(a) for a in version['reference_asset_ids']]
-        from worker.runtime_protocol import execution
+        from worker.runtime_protocol import execution, dispatch_mode
         spec = execution(context)
+        if spec is not None and spec.engine == 'pocket-tts':
+            # Core's owned managed asset is the only control-side reference path.
+            # Never accept a caller or template's local filesystem override.
+            from worker.engines.pocket import _read, _reference_pcm16
+            self.core.voices._asset(principal, spec.reference_id)
+            raw = _read(self.core.root/'assets'/spec.reference_id, spec.reference_bytes, spec.reference_sha256)
+            oracle.require(len(raw) == spec.reference_bytes, 'reference_size')
+            _reference_pcm16(raw, spec.reference_rate, spec.reference_frames)
         if spec is not None:
-            _dispatch_settings = ('kokoro', min(25, plan['resolved']['profile']['limits']['deadline_seconds']))
+            _dispatch_settings = (dispatch_mode(spec), min(25, plan['resolved']['profile']['limits']['deadline_seconds']))
         return self.core.submit_execution(principal, key, context, _admission=_admission,
                                           _profiles=_profiles, _dispatch_settings=_dispatch_settings)
