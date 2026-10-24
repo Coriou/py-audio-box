@@ -125,3 +125,27 @@ def current_hardware(spec, inventory):
         age=(datetime.now(timezone.utc)-datetime.fromisoformat(d.probed_at)).total_seconds()
         if not d.supported or not d.available or not 0 <= age <= 300: raise ValueError()
     except (StopIteration,ValueError,TypeError): raise Refused('stale_or_unavailable_device') from None
+
+
+def current_native_hardware(spec, inventory, *, now=None):
+    """Enrolled native snapshot only; never interprets the control host as Metal.
+
+    Call at each future native resolution/admission/prepare/start seam. Historical
+    decoding must continue to use inventory_from_wire without freshness expiry.
+    """
+    from datetime import datetime, timezone
+    from worker.hardware import DeviceFamily, topology_allows
+    inventory_wire(inventory)
+    if (type(spec) is not QwenExecution
+            or (spec.device, spec.dtype, spec.attention) != ('mps', 'float32', 'sdpa')
+            or spec.task not in ('custom_voice', 'clone')
+            or not topology_allows(inventory.host, DeviceFamily.MPS)):
+        raise Refused('native_execution_required')
+    instant = datetime.now(timezone.utc) if now is None else now
+    try:
+        device = next(d for d in inventory.devices if d.family == DeviceFamily.MPS and d.index == 0)
+        age = (instant - datetime.fromisoformat(device.probed_at)).total_seconds()
+        if device.supported is not True or device.available is not True or not 0 <= age <= 300:
+            raise ValueError()
+    except (StopIteration, ValueError, TypeError):
+        raise Refused('stale_or_unavailable_device') from None

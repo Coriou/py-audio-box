@@ -35,6 +35,79 @@ def isolated(root, legacy=False):
 
 
 class ImportSeamTests(unittest.TestCase):
+    def exercise_native(self, root):
+        # Enter the full loader, not an AST extraction or a fake loader.
+        with isolated(root), tempfile.TemporaryDirectory() as tmp:
+            events = []
+            torch = types.ModuleType('torch')
+            torch.dtype = str
+            torch.float32, torch.float16, torch.bfloat16 = 'fp32', 'fp16', 'bf16'
+            torch.backends = types.SimpleNamespace(mps=types.SimpleNamespace(is_available=lambda: True))
+            torch.set_num_threads = lambda n: events.append(('threads', n))
+            prompt = object()
+            def preset(**kw): events.append(('preset', kw)); return [[0.1, -0.1]], 24000
+            def create(**kw): events.append(('prompt', kw)); return prompt
+            def clone(**kw):
+                self.assertIs(kw['voice_clone_prompt'], prompt)
+                events.append(('clone', kw)); return [[0.2]], 24000
+            model = types.SimpleNamespace(generate_custom_voice=preset,
+                create_voice_clone_prompt=create, generate_voice_clone=clone)
+            def load(*args, **kw):
+                self.assertEqual(events[0], ('threads', 2))
+                self.assertEqual(__import__('os').environ['TOKENIZERS_PARALLELISM'], 'false')
+                events.append(('load', args, kw)); return model
+            factory = Mock(side_effect=load)
+            hub = types.SimpleNamespace(snapshot_download=Mock(side_effect=AssertionError('download')))
+            # Keep this import-isolation fixture entirely synthetic. Loading a
+            # real NumPy extension inside patch.dict(sys.modules) then removing
+            # it makes a second CPython 3.14 import invalid.
+            number, complex_type = object(), object()
+            numpy = types.SimpleNamespace(ndarray=type('ndarray', (), {}),
+                asarray=lambda value:types.SimpleNamespace(ndim=1, dtype=float, size=len(value)),
+                number=number, complexfloating=complex_type,
+                issubdtype=lambda dtype, family:family is number,
+                isfinite=lambda value:types.SimpleNamespace(all=lambda:True))
+            with patch.dict(sys.modules, dict(torch=torch, numpy=numpy,
+                    qwen_tts=types.SimpleNamespace(Qwen3TTSModel=types.SimpleNamespace(from_pretrained=factory)),
+                    huggingface_hub=hub)), patch.dict('os.environ'), \
+                    patch('platform.system', return_value='Darwin'), patch('platform.machine', return_value='arm64'), \
+                    patch('multiprocessing.get_context', side_effect=AssertionError('nested context')), \
+                    patch('multiprocessing.process.BaseProcess.start', side_effect=AssertionError('nested process')):
+                native = importlib.import_module('lib.tts_backends.qwen_native')
+                backend = native.NativeQwenBackend(model_name=tmp, num_threads=2,
+                    dtype_str='float32', revision='exact-revision', offline=True, device='mps', attention='sdpa')
+                params = dict(text='hello', language='English', temperature=.9, top_p=1.,
+                              top_k=50, repetition_penalty=1.05, max_new_tokens=2)
+                result = backend.synthesise_preset(params, 'Ryan', 'warm', 25)
+                contract = importlib.import_module('lib.tts_backends.contract')
+                self.assertIs(type(result), contract.AudioResult)
+                self.assertEqual(result.metadata, dict(backend='qwen', checkpoint=tmp,
+                    revision='exact-revision', offline=True))
+                backend.synthesise_clone(params, tmp+'/ref.wav', 'source', False, 25)
+                self.assertEqual([e[0] for e in events], ['threads','load','preset','prompt','clone'])
+                self.assertEqual(factory.call_args.kwargs, dict(device_map='mps', dtype='fp32',
+                    attn_implementation='sdpa', local_files_only=True))
+                self.assertFalse(hasattr(backend, 'invoke'))
+                self.assertFalse(hasattr(backend, 'synthesise_design'))
+                with self.assertRaises(ValueError): backend.synthesise_preset(dict(params, method='exec'), 'Ryan', None, 25)
+                with self.assertRaises(ValueError): backend.synthesise_preset(params, 'Ryan', None, 31)
+                backend.close()
+                with self.assertRaises(ValueError): backend.synthesise_preset(params, 'Ryan', None, 25)
+                hub.snapshot_download.assert_not_called()
+
+    def test_native_root_complete_loader(self):
+        self.exercise_native(ROOT)
+
+    def test_native_extracted_complete_loader(self):
+        with isolated(ROOT):
+            from service.package_install import archive
+            with tempfile.TemporaryDirectory() as tmp:
+                destination = Path(tmp)/'headless.zip'
+                archive(ROOT, destination)
+                with zipfile.ZipFile(destination) as z:
+                    z.extractall(Path(tmp)/'extracted')
+                self.exercise_native(Path(tmp)/'extracted/speech-box')
+
     def exercise(self, root, legacy=False):
         with isolated(root, legacy):
             class NoML(importlib.abc.MetaPathFinder):
