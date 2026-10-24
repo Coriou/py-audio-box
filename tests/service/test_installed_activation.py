@@ -215,7 +215,7 @@ class ActivationTests(unittest.TestCase):
             self.assertEqual(status['reservations'][-1]['state'],'queued')
         finally:owner.close()
 
-    def cancellation_case(self, phase, fail_close=False):
+    def cancellation_case(self, phase, fail_close=False, direct=False, wrapper=False, reject_callback=False):
         entered=threading.Event(); release=threading.Event(); captured=[]; closes=[]
         original_prepare=e.InstalledActivation.prepare
         def prepare(activation,*args):
@@ -229,9 +229,12 @@ class ActivationTests(unittest.TestCase):
             def close():
                 closes.append(True)
                 if fail_close:raise RuntimeError('injected_close_unknown')
+                if phase=='close':
+                    entered.set();self.assertTrue(release.wait(4))
                 original_close()
             owner.close=close
-            entered.set();self.assertTrue(release.wait(4))
+            if phase=='acquisition':
+                entered.set();self.assertTrue(release.wait(4))
             return owner
         closed=[];original_notification_close=self.waiting.close
         def notification_close():
@@ -242,15 +245,52 @@ class ActivationTests(unittest.TestCase):
             async def run():
                 context=app.router.lifespan_context(app)
                 startup=asyncio.create_task(context.__aenter__())
+                if phase=='close':
+                    await startup
+                    startup=asyncio.create_task(context.__aexit__(None,None,None))
                 self.assertTrue(await asyncio.to_thread(entered.wait,4))
                 startup.cancel()
                 await asyncio.sleep(.02)
                 startup.cancel()
                 with self.assertRaises(asyncio.CancelledError):await startup
                 self.assertFalse(closed)
-                release.set()
                 record=app.state.installed_lifecycle
                 task=record['task']
+                if direct:
+                    if wrapper:
+                        record['operations'][phase].wrapper.cancel()
+                    for _ in range(3):
+                        task.cancel()
+                        await asyncio.sleep(.01)
+                        self.assertFalse(closed)
+                        self.assertIn(id(record),e._INSTALLED_LIFECYCLES)
+                        self.assertTrue(task.cancelled())
+                        self.assertIs(record['task'],task)
+                    if phase=='acquisition':
+                        self.assertIs(record['operations'][phase].result.done(),False)
+                if reject_callback:
+                    loop=asyncio.get_running_loop()
+                    schedule=loop.call_soon_threadsafe
+                    def rejected(callback,*args,**kwargs):
+                        if getattr(callback,'__name__',None)=='advance':
+                            raise RuntimeError('event loop is closed')
+                        return schedule(callback,*args,**kwargs)
+                    with patch.object(loop,'call_soon_threadsafe',side_effect=rejected):
+                        release.set()
+                        op=record['operations'][phase]
+                        await asyncio.to_thread(self.wait,op.result.done)
+                        await asyncio.sleep(.02)
+                    self.assertIs(op.result.result(),captured[0])
+                    self.assertIn(id(record),e._INSTALLED_LIFECYCLES)
+                    self.assertFalse(closed)
+                    self.assertFalse(record['closed'])
+                    self.assertEqual(closes,[])
+                    e._INSTALLED_LIFECYCLES.pop(id(record),None)
+                    return
+                release.set()
+                if direct:
+                    await asyncio.to_thread(self.wait,lambda:id(record) not in e._INSTALLED_LIFECYCLES)
+                    task=record['task']
                 try:
                     if fail_close:
                         with self.assertRaisesRegex(RuntimeError,'injected_close_unknown'):
@@ -262,7 +302,7 @@ class ActivationTests(unittest.TestCase):
                         await asyncio.wait_for(asyncio.shield(task),4)
                         self.assertNotIn(id(record),e._INSTALLED_LIFECYCLES)
                         self.assertTrue(closed)
-                    self.assertEqual(len(closes),int(phase=='acquisition'))
+                    self.assertEqual(len(closes),int(phase!='preparation'))
                 finally:
                     for owner in captured:
                         if owner.thread.is_alive(): Dispatcher.close(owner)
@@ -283,6 +323,21 @@ class ActivationTests(unittest.TestCase):
 
     def test_cancelled_acquisition_close_failure_retains_obligations(self):
         self.cancellation_case('acquisition',fail_close=True)
+
+    def test_direct_cleanup_cancel_acquisition(self):
+        self.cancellation_case('acquisition',direct=True)
+
+    def test_direct_cleanup_cancel_preparation(self):
+        self.cancellation_case('preparation',direct=True)
+
+    def test_direct_cleanup_cancel_close_thread(self):
+        self.cancellation_case('close',direct=True)
+
+    def test_direct_acquisition_wrapper_and_cleanup_cancel(self):
+        self.cancellation_case('acquisition',direct=True,wrapper=True)
+
+    def test_callback_closed_retains_eventual_owner_obligation(self):
+        self.cancellation_case('acquisition',direct=True,reject_callback=True)
 
     def test_orphan_guard_prevents_activation(self):
         from service.production import Production

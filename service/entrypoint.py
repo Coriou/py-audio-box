@@ -24,6 +24,34 @@ GATE_LIMIT = 16384
 _INSTALLED_LIFECYCLES = {}
 
 
+class _ThreadResult:
+    """Thread-owned completion, independent of cancellable asyncio wrappers."""
+    def __init__(self, loop, function, completed):
+        from concurrent.futures import Future
+        self.result = Future()
+        def work():
+            try:
+                value = function()
+            except BaseException as exc:
+                self.result.set_exception(exc)
+            else:
+                self.result.set_result(value)
+            finally:
+                try:
+                    loop.call_soon_threadsafe(completed)
+                except RuntimeError:
+                    # Closed loop retains the result and unknown obligation.
+                    pass
+        submitted = loop.run_in_executor(None, work)
+        submitted.add_done_callback(lambda done: None if done.cancelled() else done.exception())
+        self.wrapper = loop.create_task(self.wait())
+        self.wrapper.add_done_callback(lambda done: None if done.cancelled() else done.exception())
+
+    async def wait(self):
+        import asyncio
+        return await asyncio.shield(asyncio.wrap_future(self.result))
+
+
 def projection(value):
     from service.recovery import closed, validate_registration
     closed(value, 'version registration_id registration configuration_digest enrollment_digest provenance_digest processes')
@@ -294,18 +322,89 @@ def create_installed_app(*, configuration_file, credential_file, root='/control/
         notification = waiting if waiting is not None else WaitingControl()
         owner = None
         preparation = acquisition = None
-        responsibility = dict(notification=notification, owner=None, task=None, error=None)
+        loop = asyncio.get_running_loop()
+        responsibility = dict(notification=notification, owner=None, task=None, error=None,
+                              operations={}, cleanup_requested=False, closed=False)
         _INSTALLED_LIFECYCLES[id(responsibility)] = responsibility
         app.state.installed_lifecycle = responsibility
+
+        def advance():
+            if not responsibility['cleanup_requested'] or responsibility['closed']:
+                return
+            task = responsibility['task']
+            if task is not None and not task.done():
+                return
+            if task is not None and not task.cancelled():
+                return  # Failed close is unknown, never automatically retried.
+            if loop.is_closed():
+                return
+            pending = responsibility.get('waiting_for')
+            if pending is not None and not pending.result.done():
+                return
+            close = responsibility['operations'].get('close')
+            if close is not None and close.result.done() and close.result.exception() is not None:
+                responsibility['error'] = close.result.exception()
+                return
+            responsibility['waiting_for'] = pending or acquisition or preparation
+            task = loop.create_task(cleanup())
+            responsibility['task'] = task
+            def finished(done):
+                if done.cancelled():
+                    advance()
+                else:
+                    done.exception()
+            task.add_done_callback(finished)
+
+        def operation(name, function):
+            op = _ThreadResult(loop, function, advance)
+            responsibility['operations'][name] = op
+            return op
+
+        async def cleanup():
+            op = acquisition if acquisition is not None else preparation
+            if op is not None:
+                responsibility['waiting_for'] = op
+                try:
+                    result = await op.wait()
+                except asyncio.CancelledError as exc:
+                    if asyncio.current_task().cancelling() or not op.result.done():
+                        raise
+                    responsibility['error'] = exc
+                except BaseException as exc:
+                    responsibility['error'] = exc
+                else:
+                    if acquisition is not None:
+                        responsibility['owner'] = result
+                        app.state.dispatcher = result
+            acquired = responsibility['owner']
+            if acquired is not None:
+                close = responsibility['operations'].get('close')
+                if close is None:
+                    close = operation('close', acquired.close)
+                responsibility['waiting_for'] = close
+                try:
+                    await close.wait()
+                except asyncio.CancelledError:
+                    raise
+                except BaseException as exc:
+                    responsibility['error'] = exc
+                    raise
+            try:
+                notification.close()
+            except BaseException as exc:
+                responsibility['error'] = exc
+                raise
+            responsibility['closed'] = True
+            _INSTALLED_LIFECYCLES.pop(id(responsibility), None)
         try:
             activation = InstalledActivation(notification, config)
             # Waiting has its own 30-second budget and owns no Dispatcher/Core.
-            preparation = asyncio.create_task(asyncio.to_thread(activation.prepare, runtime, root))
-            await asyncio.shield(preparation)
-            acquisition = asyncio.create_task(asyncio.to_thread(Dispatcher, root, staging=staging, runtime=runtime,
+            preparation = operation('preparation', lambda: activation.prepare(runtime, root))
+            await asyncio.shield(preparation.wrapper)
+            acquisition = operation('acquisition', lambda: Dispatcher(root, staging=staging, runtime=runtime,
                 profiles=config['profiles'], budget=config['budget'], production_contexts=contexts,
                 installed_activation=activation))
-            owner = await asyncio.shield(acquisition)
+            owner = await asyncio.shield(acquisition.wrapper)
             responsibility['owner'] = owner
             app.state.dispatcher = owner
             deadline = time.monotonic()+3
@@ -319,32 +418,9 @@ def create_installed_app(*, configuration_file, credential_file, root='/control/
             app.state.dispatcher = owner
             yield
         finally:
-            async def cleanup():
-                # This task is never awaited without a shield. Repeated caller
-                # cancellation cannot cancel a to_thread result or lose its owner.
-                try:
-                    if acquisition is not None:
-                        responsibility['owner'] = await acquisition
-                        app.state.dispatcher = responsibility['owner']
-                    elif preparation is not None:
-                        await preparation
-                except BaseException as exc:
-                    responsibility['error'] = exc
-                acquired = responsibility['owner']
-                if acquired is not None:
-                    try:
-                        await asyncio.to_thread(acquired.close)
-                    except BaseException as exc:
-                        responsibility['error'] = exc
-                        # Notification remains available to the retained owner.
-                        raise
-                notification.close()
-                _INSTALLED_LIFECYCLES.pop(id(responsibility), None)
-            task = asyncio.create_task(cleanup())
-            responsibility['task'] = task
-            # Retrieve background failures while retaining the record and owner.
-            task.add_done_callback(lambda done: None if done.cancelled() else done.exception())
-            await asyncio.shield(task)
+            responsibility['cleanup_requested'] = True
+            advance()
+            await asyncio.shield(responsibility['task'])
     application.router.lifespan_context = lifespan
     return application
 
