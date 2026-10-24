@@ -1707,3 +1707,7 @@ r85 boundedSOURCEGO closesR83-1/R83-2 exactr84/197maps/307HOSTreceipts, no newfi
 ### 2026-10-24 — Astra instrumentation GO; closed017 lifecycle preparation
 
 Parent accepts r86 boundedSOURCEGO/no furtherinstrumentationfix. Assigns pab-directed-singleton-preparation-r87-20261024 freshsuccessor runnerclosed017expected1/cap35+focusedHOST/mechanicalmanifest andprivatePAXlifecycle/snapshotbinding adaptation perexplicitallowlist. Preserveinstrumentedguard/controls/target/product/oldproof/lane. NoDocker/build/runtime/LOCKONLYauthority yet; exactsource/privatebundle independentreview next.
+
+### 2026-10-24 — Closed017/PAX preparation delivered; adversarial review
+
+r87 t3-b285df32 source99adb8b7/docs4671cb11 delivers closed017expected1/index17/cap35 runner andprivatePAXlifecycle with no cleanup/release; unboundimage freeze659e3dbd rejectsoperations.388HOSTfakechecksPASS afterretainedinitialexpectationfailure; ignoredownbytecodeleafdisclosed. Independent pab-directed-singleton-review-r88-20261024 auditsallsource/privatebundle/retainedreceipts beforeAstra conditionalfinal. No build/runtime/LOCKONLYauthority.
