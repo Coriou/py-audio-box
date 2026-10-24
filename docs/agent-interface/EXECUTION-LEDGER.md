@@ -2027,3 +2027,7 @@ r165 source718a404/report2bc39a3 adds4explicitownerDispatcherreads/productionaut
 ### 2026-10-24 — H1 review finds WAV validation gaps; bounded parser fix
 
 r166 NO-GO twoP2: wavefloorframes admitsmisaligned/truncatedremainder andceilwidthmislabels15/17/25bitPCM.13+20testsPASS insufficient. Parentcommissions pab-h1-wav-fix-r168-20261024 ingest+tests only boundedrawRIFFextent/padding/framealignment/exactfmtbits-align-byterate validation, preservebytes/publication/storesemantics. H2reviewcontinuesparallel/nooperations/resourcesunchanged.
+
+### 2026-10-24 — H2 review finds advertised error mismatch; contract-owner fix
+
+r167 NO-GO P2: threevoicereaddeclared errors omitactualresource_limit/not_ready;5testsPASS owner/authisolationnodefectfound. Parentsharedcontractownercommissions pab-h2-error-contract-fix-r169-20261024 operations.json+focusederror-membershiptests only, preservebounds/sanitization/no newcodes. H1WAVfixparallel; nooperations/resourcesunchanged.
