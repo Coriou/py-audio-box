@@ -81,7 +81,7 @@ if __name__ == '__main__':
     parser.add_argument('--backend', choices=['kokoro', 'pocket-tts'], required=True)
     parser.add_argument('--language', choices=['fr', 'en'], required=True)
     parser.add_argument('--dest', type=Path, required=True)
-    parser.add_argument('--expected-manifest', type=Path, help='Operator-reviewed expected Kokoro manifest; --dest becomes managed storage root')
+    parser.add_argument('--expected-manifest', type=Path, help='Operator-reviewed expected Kokoro manifest or Pocket descriptor; --dest becomes managed storage root')
     args = parser.parse_args()
     try:
         if args.expected_manifest:
