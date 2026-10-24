@@ -1739,3 +1739,7 @@ r93fresh6GiBadmission/source197maps passed butprivateinventoryrelativekey resolv
 ### 2026-10-24 — Directed image built and data bound; independent actual gate
 
 r94 completes oldLOCKONLY/freshONEpreparebuild/verifiedterminalownrelease, IID1d00af1660042b2e0d4de584cad9718aeebd4883c9b4ab47ad692403a4e98c35. Boundmanifest0fe1876e preserves13codebytes/hashes;19captures38streams/3209inventory claimed,modehistorydisclosed,r90/r93immutable. Independent pab-directed-build-bound-review-r95-20261024 auditsexactactualbuild+bounddata beforeparentONE017approval; no diagnosticexecuted.
+
+### 2026-10-24 — Bound image independently accepted; ONE017 actual
+
+Parent accepts r95 boundedACTUALbuild+DATA-GO exactimage1d00af16/boundmanifest0fe1876e/reportec0a3f3d;13codebytes and19captures38streams verified, modechronologylimitdisclosed. ONE pab-directed017-actual-r96-20261024 authorized exactreviewedliteral+freshpinnedapproval/closed017/35s/PAXretention; allnewobjects/laneheld/no retry/cleanup. Independentactualreview follows, firsthistoricalpredicateUNKNOWN.
