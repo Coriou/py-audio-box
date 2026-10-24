@@ -2111,3 +2111,7 @@ r184 bounded source GO. Parent merged9353a1b9 conflict-free and reran4service+1w
 ### 2026-10-24 — Production adapter reference admission scope resolved
 
 r185 ended before edits/tests: admission rejects asset-bearing plans and dispatch_store freezes empty input authority. Parent commissioned sole successor r186, explicitly authorizing narrow admission.py/dispatch_store.py reference support with verified ownership/media, exact frozen required input IDs and existing resource/execution fences. Original HTTP/CLI/MCP scope retained; no Core/worker rewrite or engine-readiness claim.
+
+### 2026-10-24 — r186 atomic production admission forwarding
+
+Parent authorized service/production.py explicit private _admission/_profiles/_dispatch_settings forwarding from trusted Dispatcher to existing Core submission, preserving direct-domain defaults and atomic reservations. No arbitrary keyword/public authority forwarding. Focused duplicate/refusal/reservation regressions required alongside existing domain coverage. Same r186 implementer continues.
