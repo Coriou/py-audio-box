@@ -2151,3 +2151,7 @@ r191 bounded source GO,6 tests plus inert checks PASS. Parent merged3d19350c con
 ### 2026-10-24 — Provisioning review blockers and manifest seam correction
 
 r192 source NO-GO: retry can activate unsealed writable bundle; managed acquisition/lock wait lack finite bounds. Also proven engine/provisioner revision and manifest digest mismatch. Parent commissioned Sol-low r193 recovery/bounds fixes and explicitly shared manifest alignment with injected provision-to-engine integration coverage. Candidate remains unmerged; real download/inference not run.
+
+### 2026-10-24 — Provisioning fixes and engine manifest seam enter review
+
+r193 sourcec826c0c6/docsfb2fec48 reproduces both prior defects, adds repeated sealing, bounded real transfer/lock lifetime, and shared raw manifest digest/revision semantics.27 distinct fixture tests reported PASS including provision-to-engine injection. Parent commissioned independent round2 Sol r194. Provisioner unmerged; fork-based acquisition not installedservice-qualified, no realdownloads/inference.
