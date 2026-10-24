@@ -198,6 +198,11 @@ def local_incarnation():
     """Current PID1 in the private PID/cgroup namespaces; no host /proc access."""
     if sys.platform != 'linux' or os.getpid() != 1:
         raise ValueError('installed_control_pid1_required')
+    return _read_pid1_incarnation()
+
+
+def _read_pid1_incarnation():
+    if sys.platform != 'linux': raise ValueError('installed_linux_required')
     def read(name):
         with open('/proc/1/'+name,'rb') as stream: raw = stream.read(65537)
         if len(raw)>65536: raise ValueError('installed_proc_budget')
@@ -423,6 +428,125 @@ def create_installed_app(*, configuration_file, credential_file, root='/control/
             await asyncio.shield(responsibility['task'])
     application.router.lifespan_context = lifespan
     return application
+
+
+STARTUP_NAME = 'startup.json'
+
+
+def _listener_ready(configuration_digest):
+    """Fixed local authenticated status probe; token/body never leave this helper."""
+    from http.client import HTTPConnection
+    from service.auth import private_input
+    from service.recovery import host_json
+    value=host_json(private_input(ip.CREDENTIAL_DESTINATION,mode=0o640,limit=48000))
+    token=value['credentials'][0]['token']
+    connection=HTTPConnection('127.0.0.1',8000,timeout=2)
+    try:
+        connection.request('GET','/skeleton',headers={'Authorization':'Bearer '+token})
+        response=connection.getresponse()
+        raw=response.read(65537)
+        if response.status!=200 or len(raw)>65536: return False
+        result=host_json(raw)
+        return (result.get('synthetic') is False and result.get('ready_for_speech') is True and
+                result.get('configuration_digest')==configuration_digest and
+                result.get('status',{}).get('persistent_activation') is True)
+    finally: connection.close()
+
+
+def launch_status():
+    """Fixed exec reader of a nonsecret, incarnation-bound startup result."""
+    _control_identity()
+    try: fd = _directory(GATE_DIRECTORY)
+    except FileNotFoundError:
+        print(encode(dict(phase='preparing'))); return
+    try:
+        try:
+            value = os.open(STARTUP_NAME, os.O_RDONLY|os.O_NOFOLLOW|os.O_NONBLOCK, dir_fd=fd)
+        except FileNotFoundError:
+            print(encode(dict(phase='waiting'))); return
+        try:
+            info = os.fstat(value)
+            if (not stat.S_ISREG(info.st_mode) or info.st_nlink != 1 or
+                    (info.st_uid,info.st_gid,stat.S_IMODE(info.st_mode)) != (10001,10001,0o600) or info.st_size>4096):
+                raise ValueError('installed_startup_file')
+            raw = os.read(value,4097)
+            if (len(raw)!=info.st_size or ip.identity(os.fstat(value)) != ip.identity(info) or
+                    ip.identity(os.stat(STARTUP_NAME,dir_fd=fd,follow_symlinks=False))!=ip.identity(info)):
+                raise ValueError('installed_startup_changed')
+            result = json.loads(raw)
+            from service.recovery import closed
+            closed(result,'phase registration_id incarnation')
+            if (result['phase']!='ready' or not re.fullmatch('[0-9a-f]{64}',result['registration_id']) or
+                    result['incarnation']!=_read_pid1_incarnation()):
+                raise ValueError('installed_startup_binding')
+            gate=decode_projection(ip.read_private(GATE_DIRECTORY/GATE_NAME,GATE_LIMIT,policy=ip.SPLIT,role='control'))
+            if gate['registration_id']!=result['registration_id']: raise ValueError('installed_startup_gate_binding')
+            if not _listener_ready(gate['configuration_digest']):
+                print(encode(dict(phase='not_ready'))); return
+            print(encode({k:result[k] for k in ('phase','registration_id')}))
+        finally: os.close(value)
+        _directory_stable(fd,GATE_DIRECTORY)
+    finally: os.close(fd)
+
+
+def _installed_server(config):
+    """Normal drain on TERM/INT, with no forced-exit escalation or re-raise.
+
+    Uvicorn's default signal context re-raises TERM after shutdown. The installed
+    command instead reports exit 0 only after its retained lifecycle is closed.
+    """
+    from contextlib import contextmanager
+    import signal
+    import uvicorn
+    class InstalledServer(uvicorn.Server):
+        @contextmanager
+        def capture_signals(self):
+            def stop(*_): self.should_exit = True
+            previous={sig:signal.signal(sig,stop) for sig in (signal.SIGTERM,signal.SIGINT)}
+            try: yield
+            finally:
+                for sig,handler in previous.items(): signal.signal(sig,handler)
+    return InstalledServer(config)
+
+
+def installed_main():
+    """PID1 command factory; Uvicorn listener follows checked owner acquisition."""
+    import asyncio
+    import uvicorn
+    _control_identity()
+    os.umask(0o077)
+    app = create_installed_app(configuration_file=ip.CONFIG_DESTINATION, credential_file=ip.CREDENTIAL_DESTINATION)
+    server = _installed_server(uvicorn.Config(app,host='0.0.0.0',port=8000,access_log=False,
+        log_level='critical',timeout_graceful_shutdown=10))
+
+    async def run():
+        serving = asyncio.create_task(server.serve())
+        try:
+            while not server.started:
+                if serving.done():
+                    await serving
+                    raise ValueError('installed_server_not_started')
+                await asyncio.sleep(.02)
+            lifecycle = app.state.installed_lifecycle
+            notification = lifecycle['notification']
+            gate = notification.read()
+            result = dict(phase='ready',registration_id=gate['registration_id'],incarnation=local_incarnation())
+            fd = os.open(STARTUP_NAME,os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW,0o600,dir_fd=notification.fd)
+            with os.fdopen(fd,'wb') as stream:
+                stream.write(encode(result).encode()); stream.flush(); os.fsync(stream.fileno())
+            os.fsync(notification.fd)
+            await serving
+            if not lifecycle['closed'] or lifecycle['error'] is not None:
+                raise ValueError('installed_shutdown_unknown')
+        finally:
+            # A startup-result failure requests ordinary shutdown, never cancels
+            # the owner task or treats an unfinished cleanup as completed.
+            server.should_exit = True
+            if not serving.done(): await asyncio.shield(serving)
+    try:
+        asyncio.run(run())
+    except BaseException:
+        raise SystemExit(2) from None
 
 
 if __name__ == '__main__':
