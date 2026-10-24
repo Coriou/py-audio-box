@@ -836,37 +836,46 @@ class BlockedPipeWitness_B:
 
     def hooks(self):
         import select
-        closure_0 = self.closure(self.model_fork)
-        closure_1 = self.closure(self.session_wrapper)
-        closure_2 = self.closure(self.session_body)
-        closure_3 = self.closure(self.limit_wrapper)
-        closure_4 = self.closure(self.framing_wrapper)
-        closure_5 = self.closure(self.observed)
-        closure_6 = self.closure(self.ready)
-        closure_7 = self.closure(self.blocked)
-        closure_8 = self.closure(self.clock)
-        return (all(f.__code__ is code for f, code in zip(self.hook_functions, self.hook_codes)) and
-            (self.session_wrapper.__code__, self.session_body.__code__, self.limit_wrapper.__code__,
-                self.framing_wrapper.__code__) == self.wrapper_codes and
-            os.fork is self.model_fork and os.waitpid is self.wait and
-            closure_0.get('fork') is self.fork and
-            id(closure_0.get('owned')) == self.owned_id and
-            os.write is self.observed and select.select is self.ready and
-            self.recovery._maintenance_session is self.session_wrapper and
-            closure_1.get('func') is self.session_body and
-            closure_2.get('session') is self.session and
-            self.recovery._install_maintenance_limit is self.limit_wrapper and
-            closure_3.get('function') is self.limit and
-            self.recovery._maintenance_result_frame is self.framing_wrapper and
-            closure_4.get('function') is self.frame_result and
-            self.recovery.time.monotonic is self.clock and
-            self.time_module.monotonic is self.real_clock and self.time_module.sleep is self.sleep and
-            set(closure_5) == {'write', 'marker'} and
-            closure_5.get('write') is self.writer and
-            id(closure_5.get('marker')) == self.marker_id and
-            closure_6 == {'select_blocked': self.blocked} and
-            closure_7 == {'select0': self.select0, 'time': self.time_module} and
-            closure_8 == {'clock': self.real_clock, 'start': self.start})
+        diagnostic = self.__dict__.get('_refusal')
+        diagnostic = diagnostic if diagnostic and diagnostic['final_active'] else None
+        hook_gate = 0
+        try:
+            closure_0 = self.closure(self.model_fork)
+            closure_1 = self.closure(self.session_wrapper)
+            closure_2 = self.closure(self.session_body)
+            closure_3 = self.closure(self.limit_wrapper)
+            closure_4 = self.closure(self.framing_wrapper)
+            closure_5 = self.closure(self.observed)
+            closure_6 = self.closure(self.ready)
+            closure_7 = self.closure(self.blocked)
+            closure_8 = self.closure(self.clock)
+            answer = (((not diagnostic or (hook_gate := 1)) and (all(f.__code__ is code for f, code in zip(self.hook_functions, self.hook_codes)))) and
+                ((not diagnostic or (hook_gate := 2)) and ((self.session_wrapper.__code__, self.session_body.__code__, self.limit_wrapper.__code__,
+                    self.framing_wrapper.__code__) == self.wrapper_codes)) and
+                ((not diagnostic or (hook_gate := 3)) and (os.fork is self.model_fork)) and ((not diagnostic or (hook_gate := 4)) and (os.waitpid is self.wait)) and
+                ((not diagnostic or (hook_gate := 5)) and (closure_0.get('fork') is self.fork)) and
+                ((not diagnostic or (hook_gate := 6)) and (id(closure_0.get('owned')) == self.owned_id)) and
+                ((not diagnostic or (hook_gate := 7)) and (os.write is self.observed)) and ((not diagnostic or (hook_gate := 8)) and (select.select is self.ready)) and
+                ((not diagnostic or (hook_gate := 9)) and (self.recovery._maintenance_session is self.session_wrapper)) and
+                ((not diagnostic or (hook_gate := 10)) and (closure_1.get('func') is self.session_body)) and
+                ((not diagnostic or (hook_gate := 11)) and (closure_2.get('session') is self.session)) and
+                ((not diagnostic or (hook_gate := 12)) and (self.recovery._install_maintenance_limit is self.limit_wrapper)) and
+                ((not diagnostic or (hook_gate := 13)) and (closure_3.get('function') is self.limit)) and
+                ((not diagnostic or (hook_gate := 14)) and (self.recovery._maintenance_result_frame is self.framing_wrapper)) and
+                ((not diagnostic or (hook_gate := 15)) and (closure_4.get('function') is self.frame_result)) and
+                ((not diagnostic or (hook_gate := 16)) and (self.recovery.time.monotonic is self.clock)) and
+                ((not diagnostic or (hook_gate := 17)) and (self.time_module.monotonic is self.real_clock)) and ((not diagnostic or (hook_gate := 18)) and (self.time_module.sleep is self.sleep)) and
+                ((not diagnostic or (hook_gate := 19)) and (set(closure_5) == {'write', 'marker'})) and
+                ((not diagnostic or (hook_gate := 20)) and (closure_5.get('write') is self.writer)) and
+                ((not diagnostic or (hook_gate := 21)) and (id(closure_5.get('marker')) == self.marker_id)) and
+                ((not diagnostic or (hook_gate := 22)) and (closure_6 == {'select_blocked': self.blocked})) and
+                ((not diagnostic or (hook_gate := 23)) and (closure_7 == {'select0': self.select0, 'time': self.time_module})) and
+                ((not diagnostic or (hook_gate := 24)) and (closure_8 == {'clock': self.real_clock, 'start': self.start})))
+
+            if answer: hook_gate = 0
+            return answer
+        finally:
+            if diagnostic: diagnostic['hook_gate'] = hook_gate
 
     def bound_raw(self, frame):
         local = frame.f_locals
@@ -939,12 +948,18 @@ class BlockedPipeWitness_B:
                 local = frame.f_locals
                 if event == 'call':
                     self.runner_id = id(frame)
-                    if not self.hooks(): self.valid = False
+                    if not self.hooks():
+                        self.valid = False
+                        diagnostic = self.__dict__.get('_refusal')
+                        if diagnostic and not diagnostic['first_site']: diagnostic['first_site'] = 1
                 if event == 'line':
                     if 'deadline' in local and self.deadline is None:
                         import math
                         value = local['deadline']
-                        if type(value) not in (int, float) or not math.isfinite(value): self.valid = False
+                        if type(value) not in (int, float) or not math.isfinite(value):
+                            self.valid = False
+                            diagnostic = self.__dict__.get('_refusal')
+                            if diagnostic and not diagnostic['first_site']: diagnostic['first_site'] = 2
                         else: self.deadline = value
                     if local.get('identities') and self.pipe is None:
                         self.pipe = local['identities'].get(local.get('write_fd'))
@@ -955,34 +970,54 @@ class BlockedPipeWitness_B:
                                 self.identity(local['read_fd'])[0] != self.read_pipe or
                                 self.identity(local['write_fd'])[0] != self.pipe or
                                 self.pipe[:2] == self.identity(self.witness_fd)[0][:2] or
-                                self.pipe[:2] == self.identity(self.observer_fd)[0][:2]): self.valid = False
-                    if self.phase in ('backpressure', 'timeout') and not self.bound_raw(frame): self.valid = False
+                                self.pipe[:2] == self.identity(self.observer_fd)[0][:2]):
+                                    self.valid = False
+                                    diagnostic = self.__dict__.get('_refusal')
+                                    if diagnostic and not diagnostic['first_site']: diagnostic['first_site'] = 3
+                    if self.phase in ('backpressure', 'timeout') and not self.bound_raw(frame):
+                        self.valid = False
+                        diagnostic = self.__dict__.get('_refusal')
+                        if diagnostic and not diagnostic['first_site']: diagnostic['first_site'] = 4
                 if event == 'exception':
                     exc = arg[1]
                     if type(exc) is BlockingIOError and self.phase in ('armed', 'backpressure'):
                         first = self.phase == 'armed'
-                        if not self.eagain(exc, frame): self.valid = False
+                        if not self.eagain(exc, frame):
+                            self.valid = False
+                            diagnostic = self.__dict__.get('_refusal')
+                            if diagnostic and not diagnostic['first_site']: diagnostic['first_site'] = 5
                         elif first: token = b'B:e;'
                     elif self.timeout(exc):
                         tb = exc.__traceback__
                         if local.get('pid') == 0:
                             if not (self.phase == 'backpressure' and self.bound_raw(frame) and
                                     local.get('remaining', 1) <= 0 and self.expired(frame) and tb is not None and
-                                    tb.tb_frame is frame and tb.tb_lasti in self.raise_child and tb.tb_next is None): self.valid = False
+                                    tb.tb_frame is frame and tb.tb_lasti in self.raise_child and tb.tb_next is None):
+                                        self.valid = False
+                                        diagnostic = self.__dict__.get('_refusal')
+                                        if diagnostic and not diagnostic['first_site']: diagnostic['first_site'] = 6
                             else: self.timeout_id, self.phase = id(exc), 'timeout'
                         elif not (tb is not None and tb.tb_frame is frame and tb.tb_next is None and
                                 (tb.tb_lasti in self.raise_parent and local.get('remaining', 1) <= 0 or
                                  tb.tb_lasti in self.raise_empty and self.empty_select) and self.expired(frame)):
                             self.valid = False
+                            diagnostic = self.__dict__.get('_refusal')
+                            if diagnostic and not diagnostic['first_site']: diagnostic['first_site'] = 7
                     elif self.phase != 'armed' or local.get('pid') != 0:
                         self.valid = False
+                        diagnostic = self.__dict__.get('_refusal')
+                        if diagnostic and not diagnostic['first_site']: diagnostic['first_site'] = 8
             elif code is self.operation.__code__ and event == 'return': self.result_id = id(arg)
             elif code is self.frame_result.__code__ and event == 'return':
                 self.framed_id = id(arg)
                 if type(arg) is not bytearray or frame.f_locals.get('result') is None or id(frame.f_locals['result']) != self.result_id:
                     self.valid = False
+                    diagnostic = self.__dict__.get('_refusal')
+                    if diagnostic and not diagnostic['first_site']: diagnostic['first_site'] = 9
             elif code is self.observed.__code__ and event == 'return' and self.phase == 'backpressure' and arg is not None:
                 self.valid = False  # Any post-certificate successful write/progress.
+                diagnostic = self.__dict__.get('_refusal')
+                if diagnostic and not diagnostic['first_site']: diagnostic['first_site'] = 10
             elif code is self.blocked.__code__ and event == 'return' and frame.f_locals.get('r'):
                 caller = frame.f_back
                 self.empty_select = (caller is not None and caller.f_code is self.ready.__code__ and
@@ -1001,7 +1036,10 @@ class BlockedPipeWitness_B:
                 if event == 'opcode':
                     if self.kill_pending and frame.f_lasti not in self.kill_sites:
                         if frame.f_lasti == self.kill_completion: self.killed = True
-                        else: self.valid = False
+                        else:
+                            self.valid = False
+                            diagnostic = self.__dict__.get('_refusal')
+                            if diagnostic and not diagnostic['first_site']: diagnostic['first_site'] = 11
                         self.kill_pending = False
                         frame.f_trace_opcodes = False
                     if frame.f_lasti in self.kill_sites:
@@ -1012,12 +1050,17 @@ class BlockedPipeWitness_B:
                             parent.f_lasti in self.reap_sites and parent.f_locals.get('pid') == self.child)
         except BaseException:
             self.valid = False
+            diagnostic = self.__dict__.get('_refusal')
+            if diagnostic and not diagnostic['first_site']: diagnostic['first_site'] = 12
         finally:
             # In particular no event arg/frame/view/exception is captured by IO.
             frame = arg = local = exc = tb = inner = raw = view = caller = parent = None
         if token and self.valid:
             try: self.emit(token)
-            except BaseException: self.valid = False
+            except BaseException:
+                self.valid = False
+                diagnostic = self.__dict__.get('_refusal')
+                if diagnostic and not diagnostic['first_site']: diagnostic['first_site'] = 13
         return self.trace_callback if self.valid else None
 
     def live_write(self):
@@ -1025,19 +1068,31 @@ class BlockedPipeWitness_B:
         return identity == self.pipe and flags & os.O_NONBLOCK
 
     def final_child(self, caller):
+        diagnostic = self.__dict__.get('_refusal')
+        gate = 0
+        if diagnostic: diagnostic['final_active'] = True
         exc = tb = None
         try:
             exc = sys.exception()
             tb = exc.__traceback__ if exc is not None else None
-            return (self.valid and self.hooks() and sys.gettrace() is self.trace_callback and self.phase == 'timeout' and
-                id(exc) == self.timeout_id and self.timeout(exc) and self.bound_raw(caller) and self.live_write() and
-                caller.f_code is self.runner and caller.f_lasti in self.exit_sites and
-                tb is not None and tb.tb_frame is caller and tb.tb_lasti in self.raise_child and
-                tb.tb_next is None and self.expired(caller))
+            answer = (((not diagnostic or (gate := 1)) and (self.valid)) and ((not diagnostic or (gate := 2)) and (self.hooks())) and ((not diagnostic or (gate := 3)) and (sys.gettrace() is self.trace_callback)) and ((not diagnostic or (gate := 4)) and (self.phase == 'timeout')) and
+                ((not diagnostic or (gate := 5)) and (id(exc) == self.timeout_id)) and ((not diagnostic or (gate := 6)) and (self.timeout(exc))) and ((not diagnostic or (gate := 7)) and (self.bound_raw(caller))) and ((not diagnostic or (gate := 8)) and (self.live_write())) and
+                ((not diagnostic or (gate := 9)) and (caller.f_code is self.runner)) and ((not diagnostic or (gate := 10)) and (caller.f_lasti in self.exit_sites)) and
+                ((not diagnostic or (gate := 11)) and (tb is not None)) and ((not diagnostic or (gate := 12)) and (tb.tb_frame is caller)) and ((not diagnostic or (gate := 13)) and (tb.tb_lasti in self.raise_child)) and
+                ((not diagnostic or (gate := 14)) and (tb.tb_next is None)) and ((not diagnostic or (gate := 15)) and (self.expired(caller))))
+            if diagnostic:
+                diagnostic['gate'] = gate if not answer else 0
+                diagnostic['kind'] = 'FALSE' if not answer else 'UNREACHED'
+            return answer
         except BaseException:
+            if diagnostic:
+                diagnostic['gate'] = gate
+                diagnostic['kind'] = 'CAUGHT_EXCEPTION'
             self.valid = False
             return False
-        finally: exc = tb = caller = None
+        finally:
+            if diagnostic: diagnostic['final_active'] = False
+            exc = tb = caller = None
 
     def terminal(self, result, caller, enrolled, child_bytes):
         exc = tb = parent = None

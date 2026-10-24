@@ -1110,6 +1110,111 @@ from service import recovery
 mode, root = CONTROL, Path(ROOT)
 root.mkdir(mode=0o700)
 steps = []
+
+# Schema and storage are prepared before target clock/trace installation.
+diagnostic_enabled = mode == 'original74-real-observer'
+NOT_REACHED = 'NOT_REACHED'
+def callback_record(role):
+    return dict(schema=1, control='ORIGINAL74_REAL_OBSERVER', role=role,
+        first_site=0, kind='UNREACHED', gate=0, hook_gate=0,
+        valid=NOT_REACHED, phase=NOT_REACHED, final_called=NOT_REACHED,
+        final_result=NOT_REACHED, terminal_called=NOT_REACHED,
+        terminal_result=NOT_REACHED, status=NOT_REACHED, child_bytes=NOT_REACHED,
+        suffix=NOT_REACHED, raw18944=NOT_REACHED, exact_ef=NOT_REACHED,
+        exact_t=NOT_REACHED, observe_entered=NOT_REACHED,
+        observe_completed=NOT_REACHED, observe_status=NOT_REACHED,
+        observe_armed=NOT_REACHED, observe_witness=NOT_REACHED,
+        observe_return=NOT_REACHED, assertion=NOT_REACHED)
+
+CALLBACK_ENUMS = {
+    'schema': (1,), 'control': ('ORIGINAL74_REAL_OBSERVER',), 'role': ('CHILD','PARENT'),
+    'first_site': tuple(range(14)), 'gate': tuple(range(16)), 'hook_gate': tuple(range(25)),
+    'kind': ('FALSE','CAUGHT_EXCEPTION','WRAPPER_ASSERT','UNREACHED'),
+    'phase': (NOT_REACHED,'ARMED','BACKPRESSURE','TIMEOUT','OTHER'),
+    'terminal_result': (NOT_REACHED,'EMPTY','T','TK','OTHER'),
+    'child_bytes': (NOT_REACHED,'EMPTY','E','EF','OTHER'),
+    'suffix': (NOT_REACHED,'EMPTY','T','TK','OTHER'),
+    'assertion': (NOT_REACHED,'FINAL_PREREQUISITE','TERMINAL_PREREQUISITE',
+        'OBSERVE_STATUS','OBSERVE_WITNESS','OBSERVE_RETURN')}
+CALLBACK_KEYS = frozenset(callback_record('CHILD'))
+def validate_callback(record):
+    if record.keys() != CALLBACK_KEYS: raise ValueError('diagnostic schema')
+    for key, value in record.items():
+        if key == 'status':
+            valid = type(value) is int and 0 <= value <= 65535 or type(value) is str and value in (NOT_REACHED,'OTHER')
+        elif key in CALLBACK_ENUMS:
+            valid = any(type(value) is type(allowed) and value == allowed for allowed in CALLBACK_ENUMS[key])
+        else: valid = type(value) is bool or type(value) is str and value in (NOT_REACHED,'OTHER')
+        if not valid: raise ValueError('diagnostic enum')
+
+child_diagnostic, parent_diagnostic = callback_record('CHILD'), callback_record('PARENT')
+diagnostic_io_failed = False
+teardown_snapshot = None
+def publish_diagnostic(name, record):
+    global diagnostic_io_failed
+    if diagnostic_enabled:
+        try:
+            if name != 'directed-outcome.json': validate_callback(record)
+            h.atomic(root/name, record)
+        except (OSError, RuntimeError, TypeError, ValueError): diagnostic_io_failed = True
+
+def witness_snapshot(w, record):
+    slot = w.__dict__.get('_refusal')
+    if slot:
+        for key in ('first_site', 'gate', 'hook_gate'): record[key] = slot[key]
+        if slot['kind'] != 'UNREACHED': record['kind'] = slot['kind']
+    record['valid'] = w.valid if type(w.valid) is bool else 'OTHER'
+    record['phase'] = {'armed':'ARMED', 'backpressure':'BACKPRESSURE', 'timeout':'TIMEOUT'}.get(w.phase, 'OTHER')
+
+def guard_snapshot(g):
+    forms = {NODE+': incomplete or invalid escaping B parent contract':'ESCAPING_B',
+        NODE+': missing terminal maintenance receipt':'MISSING_RECEIPT'}
+    for pid, status in g.receipts:
+        forms[NODE+': '+NODE+f': maintenance terminal wait pid={pid} status={status}: incomplete or invalid armed B contract'] = 'ARMED_B'
+    failures = [forms.get(value, 'OTHER') for value in g.failures[:8]]
+    stop = g.session.shouldstop
+    first = bool(g.failures) and stop == g.failures[0]
+    last = bool(g.failures) and stop == g.failures[-1]
+    statuses = [status if type(status) is int and status in (9,18944) else 'OTHER'
+        for pid, status in g.receipts[:2]]
+    return dict(failures=failures, failure_overflow=len(g.failures)>8,
+        shouldstop=('FALSE' if stop is False else 'MATCH_BOTH' if first and last else
+            'MATCH_FIRST' if first else 'MATCH_LAST' if last else 'OTHER'),
+        owned=min(len(g.owned),9), owned_overflow=len(g.owned)>9,
+        receipts=min(len(g.receipts),9), receipt_count_overflow=len(g.receipts)>9,
+        receipt_statuses=statuses, receipt_status_overflow=len(g.receipts)>2)
+
+def publish_outcome(exit_code):
+    if not diagnostic_enabled: return
+    phases = dict.fromkeys(('setup','call','teardown'), NOT_REACHED)
+    duplicate = unknown = False
+    for phase, passed in reports:
+        if phase not in phases: unknown = True; continue
+        if phases[phase] != NOT_REACHED: duplicate = True
+        phases[phase] = 'PASSED' if passed is True else 'FAILED' if passed is False else 'OTHER'
+    snapshot = guard_snapshot(guards[0]) if len(guards)==1 else None
+    if type(exit_code) is int and exit_code not in range(6): exit_code = 'OTHER'
+    missing = [name for name in ('child-refusal.json','parent-callback.json') if not (root/name).is_file()]
+    callback_other = False
+    for name in ('child-refusal.json','parent-callback.json'):
+        if name in missing: continue
+        try:
+            callback = h.metadata(root/name)
+            validate_callback(callback)
+            callback_other = callback_other or any(value == 'OTHER' for value in callback.values())
+        except (OSError, RuntimeError, TypeError, ValueError): callback_other = True
+    record = dict(schema=1, control='ORIGINAL74_REAL_OBSERVER', role='PARENT',
+        pytest_exit=exit_code, phases=phases, duplicate_phase=duplicate,
+        unknown_phase=unknown, teardown=teardown_snapshot if teardown_snapshot is not None else NOT_REACHED, final=snapshot if snapshot is not None else NOT_REACHED,
+        io_failed=diagnostic_io_failed, callback_other=callback_other, missing_records=missing, diagnostic='RED')
+    # These observations never change pytest/result/guard acceptance.
+    if (not missing and not diagnostic_io_failed and not callback_other and not duplicate and not unknown and
+            snapshot is not None and teardown_snapshot is not None and
+            all(value in ('PASSED','FAILED') for value in phases.values()) and exit_code != 'OTHER' and
+            all(not value for key,value in snapshot.items() if key.endswith('overflow')) and
+            'OTHER' not in snapshot['failures'] and snapshot['shouldstop'] != 'OTHER' and
+            'OTHER' not in snapshot['receipt_statuses']): record['diagnostic'] = 'COMPLETE'
+    publish_diagnostic('directed-outcome.json', record)
 owner = os.getpid()
 def evidence(label):
     global owner, steps
@@ -1176,6 +1281,11 @@ class Plugin:
         guards.append(guard)
         observe0 = guard.observe
         def observe(result, **kw):
+            if diagnostic_enabled:
+                parent_diagnostic['observe_entered'] = True
+                parent_diagnostic['assertion'] = 'OBSERVE_STATUS'
+                parent_diagnostic['observe_status'] = result[1] == 18944
+                if result[1] != 18944: publish_diagnostic('parent-callback.json', parent_diagnostic)
             assert result[1] == (9 if mode.startswith('schedule9-') else 74 << 8)
             if mode == 'actual-overflow': expected = b'B:overflow;'
             elif mode in admission | predicate_e or mode.startswith('fd-') or mode == 'missing-eagain': expected = b'B:a;'
@@ -1184,8 +1294,18 @@ class Plugin:
             elif mode == 'schedule9-no-f': expected = b'B:a;B:e;B:t;B:k;'
             elif mode == 'schedule9-f': expected = b'B:a;B:e;B:f;B:t;B:k;'
             else: expected = b'B:a;B:e;B:f;B:t;'
+            if diagnostic_enabled:
+                parent_diagnostic['assertion'] = 'OBSERVE_WITNESS'
+                parent_diagnostic['observe_armed'] = kw['armed_B'] if type(kw['armed_B']) is bool else 'OTHER'
+                parent_diagnostic['observe_witness'] = kw['witness'] == expected
+                if not (kw['armed_B'] and kw['witness'] == expected): publish_diagnostic('parent-callback.json', parent_diagnostic)
             assert kw['armed_B'] and kw['witness'] == expected
-            assert observe0(result, **kw) is result
+            observed = observe0(result, **kw)
+            if diagnostic_enabled:
+                parent_diagnostic['observe_completed'] = True
+                parent_diagnostic['observe_return'] = observed is result
+                parent_diagnostic['assertion'] = 'OBSERVE_RETURN'
+            assert observed is result
             assert guard.receipts[-1] == result and result[0] not in guard.owned
             evidence('exact-terminal-readback')
             return result
@@ -1214,6 +1334,8 @@ class Plugin:
             original['__init__'](w, *a, **kw)
             witness_refs.append(weakref.ref(w))
             assert w.eligible and w.valid
+            if diagnostic_enabled:
+                w._refusal = dict(first_site=0, kind='UNREACHED', gate=0, hook_gate=0, final_active=False)
             evidence('admission-baseline')
             if mode in admission:
                 a = list(a); n = a[0]
@@ -1364,7 +1486,15 @@ class Plugin:
                     evidence('active-exception-route-readback')
                 assert not original['final_child'](w, caller)
                 evidence('final-rejected'); return False
-            assert original['final_child'](w, caller), 'actual74 final prerequisite absent'
+            answer = original['final_child'](w, caller)
+            if diagnostic_enabled:
+                witness_snapshot(w, child_diagnostic)
+                child_diagnostic['final_called'] = True
+                child_diagnostic['final_result'] = answer if type(answer) is bool else 'OTHER'
+                if not answer:
+                    child_diagnostic['assertion'] = 'FINAL_PREREQUISITE'
+                    publish_diagnostic('child-refusal.json', child_diagnostic)
+            assert answer, 'actual74 final prerequisite absent'
             evidence('final-baseline')
             if mode in predicate_f:
                 exc = sys.exception(); tb = exc.__traceback__
@@ -1421,6 +1551,18 @@ class Plugin:
         patch.setattr(cls, 'final_child', final)
         def terminal(w, result, caller, enrolled, child_bytes):
             answer = original['terminal'](w, result, caller, enrolled, child_bytes)
+            if diagnostic_enabled:
+                witness_snapshot(w, parent_diagnostic)
+                parent_diagnostic.update(terminal_called=True,
+                    terminal_result='EMPTY' if answer == b'' else 'T' if answer == b'B:t;' else 'TK' if answer == b'B:t;B:k;' else 'OTHER',
+                    status=result[1] if type(result[1]) is int and 0 <= result[1] <= 65535 else 'OTHER',
+                    child_bytes={b'':'EMPTY',b'B:e;':'E',b'B:e;B:f;':'EF'}.get(child_bytes,'OTHER'),
+                    suffix={b'':'EMPTY',b'B:t;':'T',b'B:t;B:k;':'TK'}.get(answer,'OTHER'),
+                    raw18944=result[1] == 18944, exact_ef=child_bytes == b'B:e;B:f;', exact_t=answer == b'B:t;')
+                if not (parent_diagnostic['raw18944'] and parent_diagnostic['exact_ef'] and parent_diagnostic['exact_t']):
+                    parent_diagnostic['kind'] = 'WRAPPER_ASSERT'
+                    parent_diagnostic['assertion'] = 'TERMINAL_PREREQUISITE'
+                    publish_diagnostic('parent-callback.json', parent_diagnostic)
             evidence('terminal-reached')
             if mode in {'schedule9-no-f', 'schedule9-f'}:
                 assert result[1] == 9 and w.killed and caller.f_locals['killed'] is True
@@ -1434,6 +1576,7 @@ class Plugin:
             return answer
         patch.setattr(cls, 'terminal', terminal)
         def clear(w):
+            if diagnostic_enabled: witness_snapshot(w, parent_diagnostic)
             assert not any(isinstance(value, (types.FrameType, types.TracebackType,
                 BaseException, memoryview)) for value in w.__dict__.values())
             original['clear'](w)
@@ -1456,6 +1599,10 @@ class Plugin:
             assert recovery._maintenance_result_frame is before
             evidence('target-fixture-undone')
         yield
+        if diagnostic_enabled:
+            global teardown_snapshot
+            teardown_snapshot = guard_snapshot(guard)
+            publish_diagnostic('parent-callback.json', parent_diagnostic)
         if guard.failures:
             assert guard.session.shouldstop == guard.failures[-1]
             assert any(s.endswith('incomplete or invalid armed B contract') for s in guard.failures)
@@ -1464,8 +1611,12 @@ class Plugin:
                 with pytest.raises(RuntimeError): h.fresh_run([sys.executable, '-c', 'raise AssertionError("must not launch")'])
                 assert not list((root/'refused').iterdir())
             evidence('both-next-launches-refused')
-result = pytest.main(['--noconftest', '-p', 'no:cacheprovider', '-q', '-x', NODE,
-    '--basetemp='+str(root/'pytest')], plugins=[Plugin()])
+result = 'ESCAPED'
+try:
+    result = pytest.main(['--noconftest', '-p', 'no:cacheprovider', '-q', '-x', NODE,
+        '--basetemp='+str(root/'pytest')], plugins=[Plugin()])
+finally:
+    publish_outcome(int(result) if type(result) is int or isinstance(result, int) else 'ESCAPED')
 assert len(guards) == 1
 g = guards[0]
 restore_observer()
