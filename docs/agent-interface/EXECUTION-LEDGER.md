@@ -2275,3 +2275,7 @@ r215 sourcec8723da6/docs070ae984 preservesprimary/unreapedsentinel throughstdin/
 ### 2026-10-24 — Startup handoff adopted; clean restart history starts
 
 r216 bounded source GO closes cleanupmasking. Parent merged070ae984 conflict-free;147 integrated focused tests PASS. Commissioned Sol-low r217 installed-only historical/currentincarnation adapter preserving legacyunion, completehistory and confirmedterminal/reap obligations. Packagedlauncher/activation stillincomplete; no actualLinux/speechclaim.
+
+### 2026-10-24 — Installed restart history candidate enters review
+
+r217 sourcefbd0aff7/docs142a7e74 implements separate current/history projection, v2 immutable predecessor/snapshot/journal linkage and cleanterminal/reap/ACK requirements; legacyunion sourceidentical.169 distinct focused checks reported acrossfinalruns, fixturevalidator bypass corrected. Parent commissioned independent Sol r218 exactfullsuite/historysecurityreview. Candidateunmerged; actualrestart/packageactivationunqualified.
