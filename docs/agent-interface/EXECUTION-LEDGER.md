@@ -2119,3 +2119,7 @@ Parent authorized service/production.py explicit private _admission/_profiles/_d
 ### 2026-10-24 — r186 integrated catalogue reconciliation dependency
 
 Real Dispatcher integration revealed reconciliation rejects integrated H0 catalogue tables as unknown schema. Parent authorized narrow reconciliation.py exact schema/reference inventory plus focused fresh-owner/restart/reference-retention/unknown-schema regressions. Preserve fail-closed schema identity and media ownership, no repair/deletion or broad persistence redesign. Same r186 work continues.
+
+### 2026-10-24 — Agent production control candidate enters independent review
+
+r186 source48bcba33/docs6ce9e378 delivers authenticated prepare/results/save/generate/job/artifact controls with HTTPCLI MCP parity, trusted explicit synthetic contexts, reference admission/authority and exact catalogue reconciliation.30 focused unittest methods plus discovery/generator checks reported PASS. Parent commissioned independent Sol r187 across complete23file delta and approved dependencies. Candidate remains unmerged; actual installedruntime and engines/hardware remain unqualified.
