@@ -2227,3 +2227,7 @@ r206 source NO-GO R206-1: modelscandir materializes/sorts before4096/deadline ch
 ### 2026-10-24 — Host enumeration correction enters re-review
 
 r207 source306089b2/docsd0fe258f replaces eager scan with deadline-checked global boundedentry enumeration. Four failguard regressions REDbefore/GREENafter;85 focused methods reported PASS. Parent commissioned independent Sol r208. Observer remains unmerged pendingreview, actualhost/registration/activation unqualified.
+
+### 2026-10-24 — Host observer adopted; registration transaction starts
+
+r208 bounded source GO closes enumeration defect. Parent mergedd0fe258f conflict-free;85 integrated focused tests PASS. Commissioned Sol-low r209 protected host/hello/provenance/controlUID registration transaction using reviewed initializer/observer; activationnotification/packagedlaunch next. No actualLinux/speechqualification claimed.
