@@ -2371,3 +2371,7 @@ r235 sourcebf6fdf85/docs3879e3e2 separates ordinary preparedreference/generateda
 ### 2026-10-24 — Reference roles adopted; cohesive two-output migration starts
 
 r237 bounded source GO confirms185finalchecks and generatorcompatibility. Parent merged3879e3e2 conflict-free;7role+13production integratedmethodsPASS. Commissioned Sol-low r238 trustedprepare/synthetic/Coreatomic2output publication and savedreference restartreuse, preservingKokoro/legacyfences. Actualmodels blockedheadroom, no clonequalityclaim.
+
+### 2026-10-24 — Two-output durable adoption intent dependency
+
+Parent authorized r238 narrow persistence.py closedtwo-output adoptionintent + exactreconcileadapter preserving singleoutput/DDLcompatibility and atomicmetadata/retaineduncertainty. AnynewDDL requires explicitversion/allcanonicalreader update proposal beforeedit, no scalarencodingambiguity/CHECKweakening. Fault/restarttests peroutput andcommit required.
