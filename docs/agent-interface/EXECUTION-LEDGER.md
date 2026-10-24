@@ -2267,3 +2267,7 @@ r213 sourcec6d71b72/docs40a3aab1 retains private hostnotification and checked re
 ### 2026-10-24 — Startup notification uncertain-child cleanup correction
 
 r214 boundary NO-GO: pipeclosefailure masks unreapedsentinel and bypasses authorityexclusionretention.141 testsPASS misscombinedfault. Parent commissioned targeted Sol r215 preserveprimary acrossstdin/outputteardown plus wrapperlockretention regressions. Partialstartupunmerged; no actualinstall/activationclaim.
+
+### 2026-10-24 — Notification cleanup exclusion fix enters re-review
+
+r215 sourcec8723da6/docs070ae984 preservesprimary/unreapedsentinel throughstdin/outputteardown; sixcombinedfailure regressions and147 focused methods reported PASS. Parent commissioned independent Sol r216. Startupboundaryunmerged, activationclosed, actualDockerexecdeath notproved.
