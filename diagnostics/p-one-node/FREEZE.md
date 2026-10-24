@@ -593,3 +593,94 @@ held-lane release or automatic rerun follows. Parent acceptance then separate
 build provenance and ONE unchanged original ACTUAL on fresh volume remain gates;
 B100 is later/separate. Historical r42/r43 RED, PID229 UNKNOWN and all broader
 native/T2/installed/platform/durability/release gates remain unchanged.
+
+## r64 F1 finite pre-run freeze (2026-10-24)
+Own clean base ccd8128af5d9bb04b54a40b60b291a6dbdf40b0a reconstructed
+in t3-65b1e6b7; immutable t3-6e6d0983 untouched. ONE fresh affected invocation:
+/usr/local/bin/python3.14 -B diagnostics/b-controls/HOST.py, cwd this checkout,
+PYTHONDONTWRITEBYTECODE=1, PYTHONHASHSEED=0, assertions enabled, clean explicit
+stdlib environment. Outer timeout40s, inner30s, stdout/stderr each <=1MiB;
+first failure STOP, no repair/retry. Six ordered groups: source197 hashes,
+closed inventory, command binding, selection, fake ordering/firstRED/retention/
+deadline, fake capture caps. No HOST-overhead rerun. Private0700 evidence root,
+exclusive0600 raw streams, intent/source hashes before invocation and completion
+with OS exit/start/end/argv/cwd/environment and inventory after it. Existing
+HOST fake IO retained separately. No real external adapter or guard/product import.
+
+
+## r64 F1/F2 narrow successor handoff (2026-10-24)
+
+Prepared for independent Sol review; no self-GO. Own checkout t3-65b1e6b7,
+branch fix/r64-b100-inventory, reconstructed exact docs ccd8128af5d9bb04b54a40b60b291a6dbdf40b0a
+(exec fcb201b6aa700bb2c91a0fb8d0850a783d54f4cb). Immutable t3-6e6d0983
+untouched. Executable successor f5bc92a1098266c4b3f0565198727b6e38fd61a5.
+Read complete root r64 review and complete r62 concrete assignment. Scoped
+ancestor/repository AGENTS inventory found none. Memory supplied general scope
+and evidence-tier discipline only, no technical premise.
+
+F1: runner now pins current controls9ffeac79 and guardffa7900c. inventory first
+hashes complete controls bytes, then requires exact ordered eight original B
+groups plus exactly test_B_overhead_extracted_HOST_contract, whose complete
+attribute-free AST SHA256 is pinned separately. Only the eight original groups
+produce rows. No arbitrary extras/count relaxation/101st row. Existing GROUPS,
+IDs/order/budgets and all100 definitions/expectations unchanged. Entire116293-byte
+old prefix still hashes1095f7406ec185162c598da8aa7339eade14dc213492bc3b5e6aaf238175d079.
+HOST compares all resulting rows against AST of that exact original prefix plus
+the separate helper. Rejects unknown extra, reordered/missing groups, helper
+body alteration/duplication and changed full-source bytes. Digest bypass is
+not introduced: inventory_tree is the factored parser, not a runtime entry.
+
+ONE fresh affected /usr/local/bin/python3.14 -B diagnostics/b-controls/HOST.py
+run, OS exit0, PASS six ordered groups. No HOST-overhead rerun, pytest or actual
+B100. Evidence /private/tmp/pab-r64-F1-7r5rk92t contains exclusive raw stdout/
+stderr, pre-run intent (argv/cwd/explicit env/source freeze/start) and completion
+(end/exit/raw hashes/unchanged pins). completion SHA256
+846669add8d9a5309713d8ef158dd0fce84f0c984b53c8373ca576e7e8bf89b4.
+HOST receipt /private/tmp/pab-B-controls-HOST-zlbfzi4b/HOST-receipt.json SHA256
+6c1caab38fb4a6d6f27ac200d41f68ad62175da98c0032e3242223907a4d5561.
+Both trees checked0700 directories/0600 regular leaves/no symlinks; inventory
+receipts retained in outer tree. All197 mapped hashes checked by HOST. Exact100
+inventory canonical JSON (sorted keys, separators comma/colon) SHA256
+94c4b4aa2c91245277548f0c03e89c3ac83ecf08ae9e6cb0b5f9dda25111a992.
+Inner30s alarm/outer40s timeout; raw outputs were small. The stated1MiB outer
+stream ceiling was verified after completion, not enforced during capture;
+inner fake capture cap/overflow checks are separate and passed. No retry.
+
+Final SHA256 runner6a4274955504dae791e5562761601adcc8ca4ae27b6bd7cf487696eba0de791e;
+HOST e3e19fe557406684bc7dbe369d885311fe653608583004172a86331b199fcbaf;
+manifest5c4cbda64403d0d6b12f7102eae912af1318c5716e0b1c1153549caf10d22cba.
+Manifest remains193+4=197 mappings; only runner derivative hash changed.
+Guardffa7900cddb59dc903b8e0100bb6e1fc45ba82f94f51b2044a6a94297529a1a5
+and controls9ffeac79f38a5f6fe13799cee59b836d04b2aad8689f7fc871b39d9cdd304fa1
+are byte unchanged. All production/target/model/clock/assertion/observer/entry/
+profile/lock/runtime bytes unchanged. Scope only runner/HOST/PLAN, manifest and
+three handoffs. No new framework or dummy/adviser loop.
+
+F2 bounded recovery: read nominated ancestor handoffs, /private/tmp exact-name
+inventory, b-overhead-handoff.txt and edit-b-overhead.py hint; no raw receipt tree
+located. T3 title-filtered list identified original r63 task thread, then its
+37-item activity transcript was read. Original command entries at positions25
+(exec-73303c3b-885a-436c-a0ec-e7bf28ab5ff2) and27
+(exec-4f8c94f2-7eef-41cb-9e51-908a80d0e7f2) contain python3.14 invocation and
+PASS32 output, status completed, untruncated. Position27 contains source edits
+before its invocation; position26 records intermediate guard85e15c71, so these
+are distinct historical sources, not two receipts against finalffa7900c.
+Recovered original app transcript objects are retained as
+/private/tmp/pab-r64-F1-7r5rk92t/r63-tool-transcripts.json SHA256
+87dfb63467176062728097cc4a6fefe1ef10c63f1e248da497946e15a1c82b52.
+These are original tool transcript evidence, NOT independently retained binary
+stdout/stderr or OS exit/source-freeze receipt pairs. Separate raw stream bytes,
+OS exit integers and complete per-run source binding remain UNVERIFIED /
+NO RETAINED PROOF. No verified PASS32 claim is made here; older prose claims
+remain historical and are superseded by this evidence qualification. No broad
+session/secrets search and no replacement32 run.
+
+r64 restoration string/order checks are not lifecycle fault proof: full setup,
+rewrite, fixture undo and actual prior-trace restoration remain PENDING. Old
+r61 original positive remains FAILED2.234982034<2 with RLIMIT/reap assertions
+unreached; actual74 is not positive PASS. B100/P211/preservation actual subsets
+remain UNRUN; historical RED/UNKNOWN, held lane and all native/T2/installed/
+platform/durability/release gates unchanged. No timing attribution, Docker/DB/
+product/guard imports, profiling, campaign, cleanup or old lane operation.
+Independent Sol SOURCE/evidence review and parent acceptance are next gates;
+this handoff authorizes no build, actual dispatch or release.

@@ -212,3 +212,11 @@ The exact complete193+4 path/digest inventory is source-manifest.json (no omitte
 Final stdlib HOST receipt: `/private/tmp/pab-B-controls-HOST-glpw6zw3/HOST-receipt.json` SHA256 `fbe5be54a4aadb2c37b1c3d3ee5c2e47ad1f6817cf6bf90c00aa926b490d323c`, PASS5/5 in 1.252624s. Binary/cap checks use fake external processes and real private IO only. No pytest, service, sqlite/native or actual identity imports. Earlier receipts remain retained as recorded in FREEZE.
 
 P211 and already-declared P/J/R, transport/close/reap and semantic/report preservation subsets remain separate PENDING / UNRUN; B100 does not cover or replace them. Historical r42/r43 RED, PID229 UNKNOWN and native/T2/platform/installed/durability/release HOLD persist. Parent owns independent Sol source/HOST review and every subsequent actual assignment.
+
+
+## r64 closed inventory successor
+
+Current runner admits exact eight B groups plus one separately AST-authenticated
+HOST helper, excluded from100 rows. Current pins/evidence and F2 transcript-only
+limits are in the latest HANDOFF r64 section; they supersede historical runner
+unchanged and verified PASS32 implications. All100 remain UNRUN.
