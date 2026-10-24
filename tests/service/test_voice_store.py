@@ -307,7 +307,7 @@ class VoiceStoreTests(unittest.TestCase):
         requests=json.loads((FIXTURES/'operation-requests.json').read_text())
         self.assertEqual(set(requests),{o['id'] for o in operations})
         for operation in operations:
-            oracle.validate(operation['request'],requests[operation['id']])
+            oracle.validate(operation['request'],oracle.fixture_request(operation['request'],requests[operation['id']]))
         errors=json.loads((FIXTURES.parents[1]/'v1/errors.json').read_text())
         self.assertEqual(set(errors['http_status']),set(oracle.SCHEMA['$defs']['error']['properties']['code']['enum']))
 

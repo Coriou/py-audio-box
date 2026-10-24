@@ -58,7 +58,7 @@ def test_exact_text_ids_defaults_and_source_control_coverage():
 def test_determinism():
     paths=list(FIX.glob('*'));before={p.name:p.read_bytes() for p in paths}
     subprocess.run([sys.executable,'-m','contracts.generate'],cwd=ROOT,check=True)
-    assert before=={p.name:p.read_bytes() for p in paths}
+    assert before=={p.name:p.read_bytes() for p in FIX.glob('*')}
 
 def test_revision_idempotency():
     c.revision(3,3)
@@ -120,7 +120,7 @@ def test_operation_requests_jobs_artifacts_and_error_mapping():
     ops=json.loads((ROOT/'contracts/v1/operations.json').read_text())['operations']
     samples=load('operation-requests.json')
     assert set(samples)=={op['id'] for op in ops}
-    for op in ops:c.validate(op['request'],samples[op['id']])
+    for op in ops:c.validate(op['request'],c.fixture_request(op['request'],samples[op['id']]))
     c.validate('job',load('job.json'));c.validate('artifact',load('artifact.json'))
     errors=json.loads((ROOT/'contracts/v1/errors.json').read_text())
     assert set(errors['http_status'])==set(c.SCHEMA['$defs']['error']['properties']['code']['enum'])
@@ -137,3 +137,16 @@ def test_late_candidates_and_text_edits_cannot_rearrange_or_select(p):
     c.edit_semantics(p,after,'block_text')
     after['clips'][1]['start']+=4800
     with pytest.raises(c.ContractError,match='implicit_arrangement'):c.edit_semantics(p,after,'block_text')
+
+
+def test_binary_fixture_boundary():
+    sample=load('operation-requests.json')['asset_upload']
+    raw=c.fixture_request('asset_upload_request',sample)
+    assert type(raw) is bytes and raw==(FIX/'short.wav').read_bytes()
+    assert c.upload(raw) is raw
+    assert c.fixture_request('voice_versions_list_request',{'cursor':'','limit':1,'voice_id':'voice.0'})=={'cursor':'','limit':1,'voice_id':'voice.0'}
+    for value in (sample,{'content_base64':'YQ==','bytes':1,'content_sha256':'0'*64,'source':'upload'},'example',bytearray(raw),memoryview(raw)):
+        with pytest.raises(c.ContractError,match='invalid_bytes'):c.upload(value)
+    for value in ({}, {'$fixture_binary_base64':'!'}, {'$fixture_binary_base64':'YR=='}, {'$fixture_binary_base64':1}, {**sample,'extra':True}):
+        with pytest.raises(c.ContractError,match='invalid_binary_fixture'):c.fixture_request('asset_upload_request',value)
+    with pytest.raises(c.ContractError,match='invalid_size'):c.fixture_request('asset_upload_request',{'$fixture_binary_base64':''})
