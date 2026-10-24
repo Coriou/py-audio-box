@@ -1,42 +1,28 @@
 # syntax=docker/dockerfile:1
-FROM node:24.22.0-bookworm-slim@sha256:a5f4366e834695d5f363b920c104953a535d3a9864d1bdf74566a0ebe01daee5 AS studio
-WORKDIR /build
-COPY studio/package.json studio/package-lock.json ./studio/
-RUN npm ci --prefix studio --ignore-scripts
-COPY studio ./studio
-COPY contracts ./contracts
-RUN npm run build --prefix studio -- --base=/evaluation/
-
-FROM python:3.14.8-slim-bookworm@sha256:48b13b003dda20b16f9442b8475aa05fe21bf6579a8c881db92ffb4d8fd20f83 AS python-base
+FROM python:3.11-slim-bookworm@sha256:0a310eeecf4e1f5a0743f9a6520c90c88d089c903ca5fd283f501e3a805f5f89 AS control
 ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1
 WORKDIR /opt/speech
-
-FROM python-base AS worker
-COPY worker ./worker
-RUN mkdir -p /run/speech-ipc /staging /assets && chown -R 10001:10001 /run/speech-ipc /staging /assets
-USER 10001:10001
-CMD ["python", "-m", "worker.boundary"]
-
-FROM python-base AS control
-COPY service/requirements.lock ./requirements.lock
+COPY service/requirements.lock /opt/speech/requirements.lock
 RUN pip install --no-cache-dir --require-hashes -r requirements.lock
-COPY service ./service
-COPY clients ./clients
-COPY contracts ./contracts
-COPY --from=studio /build/studio/dist ./evaluation
-RUN mkdir -p /run/speech-ipc /staging /assets && chown -R 10001:10001 /run/speech-ipc /staging /assets
+COPY service /opt/speech/service
+COPY worker /opt/speech/worker
+COPY contracts /opt/speech/contracts
+COPY lib /opt/speech/lib
 USER 10001:10001
-EXPOSE 8780
-CMD ["python", "-m", "uvicorn", "service.api:app", "--host", "0.0.0.0", "--port", "8780", "--no-access-log"]
+EXPOSE 8000
+CMD ["python", "-I", "-B", "-c", "import sys;sys.path.insert(0,'/opt/speech');from service.entrypoint import installed_main;installed_main()"]
 
-FROM control AS tests
-USER root
-COPY tests/release/requirements.lock ./test-requirements.lock
-RUN pip install --no-cache-dir --require-hashes -r test-requirements.lock
-ENV TIKTOKEN_CACHE_DIR=/opt/speech/tokenizer-cache
-RUN python -c "import tiktoken; tiktoken.get_encoding('o200k_base')"
-COPY worker ./worker
-COPY tests/service ./tests/service
-COPY tests/release ./tests/release
-USER 10001:10001
-CMD ["python", "-m", "pytest", "tests/service", "tests/release", "-q", "-p", "no:cacheprovider"]
+FROM python:3.11-slim-bookworm@sha256:0a310eeecf4e1f5a0743f9a6520c90c88d089c903ca5fd283f501e3a805f5f89 AS worker
+ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 TORCH_DEVICE=cpu HF_HOME=/tmp/huggingface MALLOC_MMAP_THRESHOLD_=131072
+WORKDIR /opt/speech
+RUN apt-get update && apt-get install -y --no-install-recommends libsndfile1 espeak-ng ffmpeg && rm -rf /var/lib/apt/lists/*
+COPY requirements/kokoro.lock /opt/speech/kokoro.lock
+COPY requirements/tts-assets.json /opt/speech/requirements/tts-assets.json
+COPY service/requirements.lock /opt/speech/requirements.lock
+RUN pip install --no-cache-dir --require-hashes -r kokoro.lock -r requirements.lock --extra-index-url https://download.pytorch.org/whl/cpu
+COPY service /opt/speech/service
+COPY worker /opt/speech/worker
+COPY contracts /opt/speech/contracts
+COPY lib /opt/speech/lib
+USER 0:10001
+CMD ["python", "-I", "-B", "-c", "import sys;sys.path.insert(0,'/opt/speech');from worker.runtime_supervisor import main;main()", "--installed-policy", "docker-kokoro-split-v1", "--configuration-file", "/etc/speech-box/install.json"]

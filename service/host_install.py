@@ -869,8 +869,8 @@ def _root_authority_directory(path):
 def installed_launch_authority(config, scope):
     """Existing protected per-install policy + finite nonblocking exclusion.
 
-    Provisioning is parent-owned. No arbitrary policy path or metadata selection,
-    no creating locks, no policy repair. Hold through init/observation/registration.
+    Provisioning is separate and create-only. No arbitrary policy path or
+    metadata selection here, no creating locks, no policy repair. Hold through init/observation/registration.
     """
     if sys.platform!='linux' or os.getuid()!=0 or os.geteuid()!=0:
         raise ValueError('installed_linux_root_authority_required')
@@ -884,7 +884,7 @@ def installed_launch_authority(config, scope):
         def stable():
             s=os.fstat(lock)
             if (not stat.S_ISREG(s.st_mode) or s.st_nlink!=1 or s.st_uid!=0 or s.st_gid!=0 or
-                    stat.S_IMODE(s.st_mode)!=0o600 or ip.identity(s)!=ip.identity(original) or
+                    stat.S_IMODE(s.st_mode)!=0o600 or s.st_size!=0 or ip.identity(s)!=ip.identity(original) or
                     ip.identity(os.stat('launch.lock',dir_fd=fd,follow_symlinks=False))!=ip.identity(original)):
                 raise ValueError('installed_launch_lock_changed')
             current=_root_authority_directory(directory)
@@ -910,10 +910,114 @@ def installed_launch_authority(config, scope):
                             deadline=time.monotonic()+2)!=raw:
                 raise ValueError('installed_host_policy_changed')
         class HeldAuthority:
+            @property
+            def policy(self):
+                check(); return json.loads(encode(policy))
+            def _public(self):
+                roots={r:Path(v['source']) for r,v in observer.policy['roots'].items()}
+                raw=read_file(roots['receipts']/'p1-init.json',policy=ip.SPLIT,role='receipts')
+                private=recovery.host_json(raw)
+                ip.initialization(private)
+                public=private['public']
+                ip.host_enrollment(public,observer.policy,observer.config,observer.scope)
+                enrolled=recovery.host_json(read_file(roots['receipts']/'p1-enrolled.json',policy=ip.SPLIT,role='receipts'))
+                if enrolled != dict(deployment_id=public['deployment_id'],digest=digest(public)):
+                    raise ValueError('installed_enrollment_binding')
+                return roots,public
+            def preflight(self, owners):
+                check(); roots,public=self._public()
+                observer.inventory(owners,stopped=True)
+                with ip.locked_file(roots['control']/'core/control.lock',policy=ip.SPLIT,role='control'):
+                    with ip.locked_file(roots['receipts']/'lane.lock',policy=ip.SPLIT,role='receipts'):
+                        state=_registration_snapshot(roots,observer.scope)
+                        from worker.runtime_journal import read_snapshot
+                        journal,maintenance=read_snapshot(roots['receipts'],policy=ip.SPLIT)
+                        if maintenance is not None: raise ValueError('installed_maintenance_pending')
+                        recovery.installed_clean_history(state,journal)
+                        retained,_,_,_=_installed_history_read(observer,public,fd,state['registrations'])
+                        current=_installed_current(observer,list(retained.values()),observer.scope,public['deployment_id']) if retained else []
+                        if retained and sorted(current,key=lambda c:c['id'])!=sorted(owners,key=lambda c:c['id']):
+                            raise ValueError('installed_retained_owner_coverage')
+                check()
+            def clean_shutdown(self, owners):
+                # Live worker retains lane.lock. Stable read brackets plus healthy
+                # hello and exact stopped-control topology corroborate its idle
+                # terminal history; this is never a writable maintenance session.
+                check(); roots,public=self._public()
+                first=observer.inventory(owners)
+                by_id={c['id']:c for c in first['consumers']}
+                if any(by_id[c['id']]['running'] != (c['role']=='worker') for c in owners):
+                    raise ValueError('installed_shutdown_owner_state')
+                with ip.locked_file(roots['control']/'core/control.lock',policy=ip.SPLIT,role='control'):
+                    state=_registration_snapshot(roots,observer.scope)
+                    records=[r for r in state['registrations'] if r['containers']==owners]
+                    if len(records)!=1: raise ValueError('installed_shutdown_registration')
+                    with ip.parent_fd(roots['ipc']) as (parent,name):
+                        ipc=os.open(name,os.O_RDONLY|os.O_DIRECTORY|os.O_NOFOLLOW,dir_fd=parent)
+                    try:
+                        hello=_registration_hello(_registration_child('hello',dict(ipc_fd=ipc),(ipc,)),records[0])
+                        from worker.runtime_journal import read_snapshot
+                        journal,maintenance=read_snapshot(roots['receipts'],policy=ip.SPLIT)
+                        if maintenance is not None: raise ValueError('installed_maintenance_pending')
+                        recovery.installed_clean_history(state,journal)
+                        if (read_snapshot(roots['receipts'],policy=ip.SPLIT)!=(journal,maintenance) or
+                                _registration_hello(_registration_child('hello',dict(ipc_fd=ipc),(ipc,)),records[0])!=hello):
+                            raise ValueError('installed_shutdown_journal_changed')
+                    finally: os.close(ipc)
+                if observer.inventory(owners)!=first: raise ValueError('installed_shutdown_topology_changed')
+                check()
+            def observe_owners(self, owners, enrollment=None):
+                check()
+                if enrollment is None:
+                    roots,public=self._public()
+                else: public=enrollment
+                result=observer.observe_owners(owners,public)
+                check(); return result
             def initialize_authority(self):
                 check(); result=observer.initialize_authority(); check(); return result
-            def observe_owners(self, owners, enrollment):
-                check(); result=observer.observe_owners(owners,enrollment); check(); return result
+            def wait_worker(self):
+                check(); roots,public=self._public()
+                with ip.parent_fd(roots['ipc']) as (parent,name):
+                    ipc=os.open(name,os.O_RDONLY|os.O_DIRECTORY|os.O_NOFOLLOW,dir_fd=parent)
+                try:
+                    ip.check(os.fstat(ipc),ip.SPLIT,'ipc',directory=True)
+                    deadline=time.monotonic()+10
+                    while True:
+                        check()
+                        try:
+                            hello=_registration_hello(_registration_child('hello',dict(ipc_fd=ipc),(ipc,)))
+                            check(); return hello
+                        except ValueError:
+                            if time.monotonic()>=deadline: raise ValueError('installed_worker_wait_timeout') from None
+                            time.sleep(.05)
+                finally: os.close(ipc)
+            def confirm_ready(self, owners, rid):
+                check(); roots,public=self._public()
+                launch_ids=_installed_launcher_records(observer,fd)
+                if launch_ids is not None and launch_ids!={c['role']:c['id'] for c in owners}:
+                    raise ValueError('installed_readiness_owner_binding')
+                if not isinstance(rid,str) or not re.fullmatch('[0-9a-f]{64}',rid):
+                    raise ValueError('installed_readiness_registration')
+                name='registration-'+rid+'.json'
+                raw,identity=_registration_read_at(fd,name)
+                value=recovery.host_json(raw)
+                _installed_provenance(value,observer,public)
+                if digest(value['registration'])!=rid or value['registration']['containers']!=owners:
+                    raise ValueError('installed_readiness_registration')
+                first=observer.observe_owners(owners,public)
+                if first!=value['observation']: raise ValueError('installed_readiness_observation')
+                with ip.parent_fd(roots['ipc']) as (parent,leaf):
+                    ipc=os.open(leaf,os.O_RDONLY|os.O_DIRECTORY|os.O_NOFOLLOW,dir_fd=parent)
+                try:
+                    hello=_registration_hello(_registration_child('hello',dict(ipc_fd=ipc),(ipc,)),value['registration'])
+                    if any(hello[k]!=value['hello'][k] for k in ('lane','boot')):
+                        raise ValueError('installed_readiness_hello')
+                finally: os.close(ipc)
+                check()
+                if (_registration_read_at(fd,name)!=(raw,identity) or
+                        observer.observe_owners(owners,public)!=first):
+                    raise ValueError('installed_readiness_changed')
+                return rid
             def register(self, owners):
                 check()
                 return _register_installed(observer,owners,fd,check)
@@ -1061,13 +1165,41 @@ def _installed_provenance(value,observer,public):
     return value
 
 
+LAUNCH_DOCUMENTS = ('creation-intent.json','created-control.json','created-worker.json','containers.json')
+
+
+def _installed_launcher_records(observer, authority_fd):
+    values={}
+    for name in LAUNCH_DOCUMENTS:
+        try: raw,_=_registration_read_at(authority_fd,name)
+        except FileNotFoundError: continue
+        value=recovery.host_json(raw)
+        if raw!=encode(value).encode(): raise ValueError('installed_launch_document_changed')
+        values[name]=value
+    if not values: return None  # Earlier protected registration adapters unchanged.
+    if set(values)!=set(LAUNCH_DOCUMENTS): raise ValueError('installed_partial_creation')
+    expected=dict(version=1,configuration_digest=digest(observer.config))
+    if values['creation-intent.json']!=expected: raise ValueError('installed_creation_binding')
+    containers=values['containers.json']
+    recovery.closed(containers,'version configuration_digest containers')
+    if {k:containers[k] for k in expected}!=expected: raise ValueError('installed_creation_binding')
+    recovery.closed(containers['containers'],'control worker')
+    ids=containers['containers']
+    if len(set(ids.values()))!=2 or any(not isinstance(i,str) or not recovery.HEX.fullmatch(i) for i in ids.values()):
+        raise ValueError('installed_creation_identity')
+    for role in ('control','worker'):
+        if values['created-'+role+'.json']!=dict(id=ids[role]): raise ValueError('installed_creation_identity')
+    return ids
+
+
 def _installed_history_read(observer, public, authority_fd, registrations):
     """Validate retained historical claims, without pretending to inspect old boots."""
+    _installed_launcher_records(observer,authority_fd)
     retained={digest(r):r for r in registrations}; provenance={}; identities={}; retained_bytes=0
     with os.scandir(authority_fd) as entries:
         for index,entry in enumerate(entries):
-            if index>=recovery.HOST_OWNER_LIMIT+2: raise ValueError('installed_authority_budget')
-            if entry.name in ('launch.lock','host-policy.json'): continue
+            if index>=recovery.HOST_OWNER_LIMIT+2+len(LAUNCH_DOCUMENTS): raise ValueError('installed_authority_budget')
+            if entry.name in ('launch.lock','host-policy.json',*LAUNCH_DOCUMENTS): continue
             if not re.fullmatch(r'registration-[0-9a-f]{64}\.json',entry.name):
                 raise ValueError('installed_unknown_authority_file')
             raw,identity=_registration_read_at(authority_fd,entry.name)
@@ -1165,6 +1297,9 @@ def _register_installed(observer,selected,authority_fd,check,*,child=_registrati
     Provenance-only interruptions remain in the complete retained owner union.
     """
     selected=json.loads(encode(selected))
+    launch_ids=_installed_launcher_records(observer,authority_fd)
+    if launch_ids is not None and {c['role']:c['id'] for c in selected}!=launch_ids:
+        raise ValueError('installed_launch_container_binding')
     roots=ip.roots_checked({r:v['source'] for r,v in observer.policy['roots'].items()},policy=ip.SPLIT)
     with ip.locked_file(roots['control']/'core/control.lock',policy=ip.SPLIT,role='control') as lock_fd:
         with ExitStack() as stack:
@@ -1379,3 +1514,39 @@ def _installed_notify(context, control, raw):
         except BaseException as cleanup:
             if primary is None: raise
             primary.add_note('notification output close failed: '+type(cleanup).__name__)
+
+
+def create_installed_authority(config, scope, policy):
+    """One explicit create-only protected policy/lock provisioning boundary.
+
+    Inputs and named volumes must already be explicitly provisioned with their
+    required identities/modes. Never copy, read or log the credential contents.
+    Existing authority refuses; partial creation is retained for operator review.
+    """
+    if sys.platform!='linux' or os.getuid()!=0 or os.geteuid()!=0:
+        raise ValueError('installed_linux_root_authority_required')
+    config=ip.configuration(config); policy=ip.host_policy(policy,config,scope)
+    observer=InstalledObserver(Docker(scope['context']),config,scope,policy)
+    observer.initialize_authority()  # Exact inputs, empty consumer set, mount proof.
+    directory=Path(recovery.HOST_AUTHORITY_DIRECTORY)/'installed'/digest(scope)
+    for parent in reversed(directory.parents):
+        try: parent.mkdir(mode=0o700)
+        except FileExistsError: pass
+        with ip.parent_fd(parent/'__probe__') as (fd,_):
+            info=os.fstat(fd)
+            if info.st_uid!=0 or stat.S_IMODE(info.st_mode)&0o022:
+                raise ValueError('installed_unsafe_authority')
+    directory.mkdir(mode=0o700)  # No adoption of an existing installation leaf.
+    fd=_root_authority_directory(directory)
+    try:
+        _host_write(directory/'host-policy.json',policy)
+        lock=os.open('launch.lock',os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW,0o600,dir_fd=fd)
+        try:
+            info=os.fstat(lock)
+            if (info.st_uid,info.st_gid,stat.S_IMODE(info.st_mode),info.st_nlink)!=(0,0,0o600,1):
+                raise ValueError('installed_launch_lock_policy')
+            os.fsync(lock)
+        finally: os.close(lock)
+        os.fsync(fd)
+        recovery.sync_dir(directory.parent)
+    finally: os.close(fd)

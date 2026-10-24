@@ -50,3 +50,13 @@ markers = [
     "integration: tests that require external services and are opt-in",
     "redis_integration: tests that exercise real Redis stream/lock behavior",
 ]
+
+# Independent stdlib archive distribution; legacy Poetry project is unchanged.
+[tool.speech-box-headless]
+name = "speech-box"
+version = "0.1.0"
+manifest = "headless-dist-manifest.json"
+entrypoint = "service.package_install:main"
+requires-python = "==3.11.*"
+dependency-lock = "service/requirements.lock"
+archive-command = "python3 scripts/headless-install.py archive --output speech-box.zip"
