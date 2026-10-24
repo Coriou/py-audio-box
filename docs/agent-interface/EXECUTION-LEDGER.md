@@ -1999,3 +1999,7 @@ Parent adopts r157 canonicalH0–H5 replan peruser: fullHTTP/CLI/MCP, cleanvoice
 ### 2026-10-24 — H0 voice catalogue implemented; independent feature review
 
 r159 t3-e1b44469 sourcea6702296/reportc32744a5 implementsCore.voices immutableversions/aliases/archive/idempotency+managedassetownership/additivemigration/contractsmap;13isolatedunittestPASS usingtemporaryDB/media,no guardpytest/model/Docker. Parentcommissions pab-h0-voice-review-r160-20261024 adversarialproduct/source/localtestreview beforeadoption. PublicHTTPstillfixture,H1ingest/H2authtransport/H3installeddurability/H4hardware remainopen.
+
+### 2026-10-24 — H0 review finds schema compatibility defect; bounded fix
+
+r160 NO-GO adoption: same-columnexistingtables lackingPK/unique/FK/types orsame-namednooptriggers accepted;13isolatedtestsPASS butmissingnegativecoverage. Parentcommissions pab-h0-schema-fix-r161-20261024 voice_store+focusedtests only supportedDDL/constraints/triggerrefusalwithrowpreservation/sametransaction. H1referencecaps/compactmetadata/indexedownership deferrednamedseams; nooperations/resourcesunchanged.
