@@ -10,6 +10,7 @@ import time
 import unittest
 import wave
 from unittest.mock import patch
+from types import SimpleNamespace
 from contracts import validate as oracle
 from lib.tts_backends.contract import AudioResult
 from service.admission import Admission
@@ -25,8 +26,23 @@ from worker.runtime_protocol import execution, generated_source
 from worker.transport import Refused
 
 
+_product_demand = Admission.demand
+
+
+def _inert_adapter_demand(admission, context, profiles):
+    """Test-only lower-level seam; never evidence of product Pocket readiness."""
+    spec = execution(context)
+    # Retain real descriptor validation and resource/qualification checks, while
+    # isolating the blocked adapter regressions from the product readiness fence.
+    inert = SimpleNamespace(**{**vars(spec), 'engine': 'inert-pocket-adapter'})
+    with patch('worker.runtime_protocol.execution', return_value=inert):
+        return _product_demand(admission, context, profiles)
+
+
 class PocketLifecycleTests(unittest.TestCase):
     def setUp(self):
+        admission_seam = patch.object(Admission, 'demand', _inert_adapter_demand)
+        admission_seam.start(); self.addCleanup(admission_seam.stop)
         self.tmp = tempfile.TemporaryDirectory(); self.addCleanup(self.tmp.cleanup)
         self.root = Path(self.tmp.name).resolve()
         self.core = Core(self.root/'core'); self.addCleanup(lambda: self.core.close())
@@ -218,17 +234,28 @@ class PocketLifecycleTests(unittest.TestCase):
         from worker.runtime_supervisor import RuntimeSupervisor
         s=RuntimeSupervisor.__new__(RuntimeSupervisor);s.bundles=a.context['execution']['bundles'];s.references={}
         body=dict(snapshot=json.loads(a._snapshot),binding=a.binding,fixture='pocket')
-        with self.assertRaisesRegex(Refused,'reference_mapping'):s.operation('prepare',body)
-        s.references=a.context['execution']['references']
-        from worker.engines.pocket import verify_inputs as real_verify
-        def verify(spec,bundles,references,**kwargs):
-            self.assertEqual(kwargs,dict(owner_uid=10001));self.assertEqual(references,s.references)
-            real_verify(spec,self.mapping,self.refs)
-            raise Refused('inert_verified_before_journal')
-        with patch('worker.engines.pocket.verify_inputs',side_effect=verify):
-            with self.assertRaisesRegex(Refused,'inert_verified'):s.operation('prepare',body)
+        # Direct trusted integration is fenced even with valid mappings and
+        # asserted qualification. This uninitialized object has no journal: any
+        # allocation/journal access before refusal would fail the test.
+        for references in ({}, a.context['execution']['references']):
+            s.references=references
+            with patch('worker.engines.pocket.verify_inputs') as verify:
+                with self.assertRaisesRegex(Refused,'pocket_restart_repair_required'):
+                    s.operation('prepare',body)
+                verify.assert_not_called()
         body['fixture']='kokoro'
         with self.assertRaisesRegex(Refused,'dispatch'):s.operation('prepare',body)
+
+    def test_product_admission_refuses_before_reservation_without_bypass(self):
+        # Restore the real product boundary for this test; the rest of this
+        # class deliberately exercises the inert adapter seam above.
+        with patch.object(Admission, 'demand', _product_demand):
+            with patch.dict(os.environ, POCKET_RESTART_READY='1'):
+                with self.assertRaisesRegex(ValueError,'pocket_restart_repair_required'):
+                    self.submit()
+        self.assertEqual(self.core.jobs('alice'), [])
+        self.assertEqual(self.admission.store.rows(), [])
+        self.assertFalse(any(self.stage.iterdir()))
 
     def test_dispatcher_generate_artifact_and_cancel_reap(self):
         from service.dispatcher import Dispatcher
