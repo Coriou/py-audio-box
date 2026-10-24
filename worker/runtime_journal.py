@@ -23,14 +23,18 @@ class Journal:
             self.lock.close()
             raise
 
-    def _load(self):
-        self.maintenance = read_maintenance(self.root)
-        fd = os.open(self.root / 'journal.json', os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
-        with os.fdopen(fd, 'rb') as stream:
-            info=os.fstat(fd)
-            if not stat.S_ISREG(info.st_mode) or info.st_uid!=os.getuid() or info.st_nlink!=1 or info.st_size>MAX_BYTES:
-                raise ValueError('unsafe_journal_file')
-            encoded = stream.read(MAX_BYTES+1)
+    def _load(self, *, policy=None):
+        self.maintenance = read_maintenance(self.root,policy=policy)
+        if policy is not None:
+            from service.install_policy import read_private
+            encoded = read_private(self.root/'journal.json',MAX_BYTES,policy=policy,role='receipts')
+        else:
+            fd = os.open(self.root / 'journal.json', os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+            with os.fdopen(fd, 'rb') as stream:
+                info=os.fstat(fd)
+                if not stat.S_ISREG(info.st_mode) or info.st_uid!=os.getuid() or info.st_nlink!=1 or info.st_size>MAX_BYTES:
+                    raise ValueError('unsafe_journal_file')
+                encoded = stream.read(MAX_BYTES+1)
         if len(encoded) > MAX_BYTES:
             raise ValueError('journal_limit')
         envelope = json.loads(encoded)
@@ -43,10 +47,8 @@ class Journal:
                 len(self.value['records']) > MAX_RECORDS):
             raise ValueError('invalid_journal')
         if 'maintenance' in self.value and (self.maintenance is None or self.value['maintenance']!=self.maintenance):
-            self.lock.close()
             raise ValueError('missing_required_maintenance_fence')
         if self.maintenance is not None and self.value.get('maintenance')!=self.maintenance:
-            self.lock.close()
             raise ValueError('missing_journal_maintenance_binding')
         identities = set()
         for row in self.value['records']:
@@ -90,7 +92,6 @@ class Journal:
             elif row['acked'] or 'receipt' in row or 'proposal' in row:
                 raise ValueError('invalid_nonterminal_receipt')
         if self.maintenance is not None and self.value['lane']!=self.maintenance['lane']:
-            self.lock.close()
             raise ValueError('maintenance_journal_lane_mismatch')
         if len(canonical(self.value)) > MAX_BYTES:
             raise ValueError('journal_limit')
@@ -104,6 +105,29 @@ def journal_bytes(value):
     data=canonical(dict(payload=value,sha256=hashlib.sha256(canonical(value)).hexdigest()))
     if len(data)>MAX_BYTES: raise ValueError('journal_limit')
     return data
+
+
+def read_snapshot(root, *, policy):
+    """Detached validated read only; caller holds the existing lane lock.
+
+    Never construct Journal here: its ordinary constructor opens lane.lock for
+    writing. This shares the complete record/receipt validator with startup.
+    """
+    from service.install_policy import require, parent_fd, check, identity
+    require(policy)
+    root=Path(root)
+    with parent_fd(root) as (parent,name):
+        fd=os.open(name,os.O_RDONLY|os.O_DIRECTORY|os.O_NOFOLLOW,dir_fd=parent)
+        try:
+            before=os.fstat(fd);check(before,policy,'receipts',directory=True)
+            reader=Journal.__new__(Journal);reader.root=root
+            reader._load(policy=policy)
+            with parent_fd(root) as (current,leaf):
+                if (identity(os.fstat(fd))!=identity(before) or
+                        identity(os.stat(leaf,dir_fd=current,follow_symlinks=False))!=identity(before)):
+                    raise ValueError('installed_root_changed')
+            return reader.value,reader.maintenance
+        finally:os.close(fd)
 
 
 def _durable_save(root,value,*,fault=lambda point:None,exclusive=False):
@@ -160,11 +184,18 @@ def maintenance_record(value):
     return value
 
 
-def read_maintenance(root):
+def read_maintenance(root, *, policy=None):
     """Protected managed names only, bounded no-follow/nonblocking reads."""
     import stat
     root=Path(root)
+    if policy is not None:
+        from service.install_policy import require, read_private
+        require(policy)
     def read(name,limit=65536,*,document=True):
+        if policy is not None:
+            try:data=read_private(root/name,limit,policy=policy,role='receipts')
+            except FileNotFoundError:return None
+            return json.loads(data) if document else data
         try: fd=os.open(root/name,os.O_RDONLY|os.O_NOFOLLOW|os.O_NONBLOCK)
         except FileNotFoundError: return None
         with os.fdopen(fd,'rb') as stream:

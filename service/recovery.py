@@ -1,6 +1,6 @@
 """Bounded offline planning and private pending evidence prefix; apply unavailable."""
 import argparse
-from contextlib import contextmanager
+from contextlib import contextmanager, ExitStack, closing
 import fcntl
 import json
 import os
@@ -115,7 +115,33 @@ def private_database(path, *, policy=None):
 
 
 @contextmanager
-def _locked_roots(roots, *, journal_lock=True):
+def _locked_roots(roots, *, journal_lock=True, policy=None):
+    if policy is not None:
+        from service import install_policy
+        install_policy.require(policy)
+        roots = roots_checked(roots, policy=policy)
+        before = {k:install_policy.identity(p.stat(follow_symlinks=False)) for k,p in roots.items()}
+        core_before = install_policy.directory_identity(roots['control']/'core',policy=policy,role='control')
+        def revalidate():
+            checked = roots_checked(roots, policy=policy)
+            if before != {k:install_policy.identity(p.stat(follow_symlinks=False)) for k,p in checked.items()}:
+                raise ValueError('installed_root_changed')
+            if core_before != install_policy.directory_identity(roots['control']/'core',policy=policy,role='control'):
+                raise ValueError('installed_root_changed')
+        with ExitStack() as locks:
+            locks.enter_context(install_policy.locked_file(roots['control']/'core'/'control.lock', policy=policy, role='control'))
+            if journal_lock:
+                locks.enter_context(install_policy.locked_file(roots['receipts']/'lane.lock', policy=policy, role='receipts'))
+            revalidate()
+            try:
+                yield roots
+            except BaseException as primary:
+                try: revalidate()
+                except BaseException as cleanup: primary.add_note('root revalidation failed: '+str(cleanup))
+                raise
+            else:
+                revalidate()
+        return
     roots = roots_checked(roots)
     locks = []
     try:
@@ -134,16 +160,33 @@ def _locked_roots(roots, *, journal_lock=True):
 
 
 @contextmanager
-def offline(roots, *, write=False, journal_lock=True):
-    with _locked_roots(roots,journal_lock=journal_lock) as roots:
+def offline(roots, *, write=False, journal_lock=True, policy=None):
+    # This adapter is read-only for split ownership, even for a root caller.
+    # The future single-purpose dropped writer must not route through here.
+    if policy is not None:
+        from service.install_policy import require
+        require(policy)
+        if write: raise ValueError('installed_original_writer_required')
+    with _locked_roots(roots,journal_lock=journal_lock,policy=policy) as roots:
         db = None
         private = None
+        private_entered = False
+        primary = None
         try:
             path=roots['control']/'core'/'core.sqlite'
             if path.is_symlink(): raise ValueError('foreign_database')
+            if write:
+                _require_legacy_writer_scope(roots)
+                # Inspect a copy BEFORE SQLite can create an original sidecar.
+                with private_database(path) as check_path:
+                    with closing(sqlite3.connect(check_path.as_uri()+'?mode=ro',uri=True,timeout=0)) as check:
+                        check.execute('PRAGMA trusted_schema=OFF')
+                        check.execute('PRAGMA query_only=ON')
+                        _require_legacy_database(check)
             if not write:
-                private = private_database(path)
+                private = private_database(path,policy=policy)
                 path = private.__enter__()
+                private_entered = True
             db=sqlite3.connect(path.as_uri()+('?mode=rw' if write else '?mode=ro'),uri=True,timeout=0,isolation_level=None)
             db.execute('PRAGMA trusted_schema=OFF')
             if write: db.execute('PRAGMA synchronous=FULL')
@@ -151,9 +194,39 @@ def offline(roots, *, write=False, journal_lock=True):
             end=time.monotonic()+2
             db.set_progress_handler(lambda:int(time.monotonic()>end),1000)
             yield roots,db
+        except BaseException as exc:
+            primary = exc
+            raise
         finally:
-            if db is not None: db.close()
-            if private is not None: private.__exit__(None,None,None)
+            cleanup_errors = []
+            if db is not None:
+                try: db.close()
+                except BaseException as exc: cleanup_errors.append(exc)
+            if private_entered:
+                try: private.__exit__(None,None,None)
+                except BaseException as exc: cleanup_errors.append(exc)
+            if cleanup_errors:
+                if primary is None:
+                    primary = cleanup_errors.pop(0)
+                    for exc in cleanup_errors: primary.add_note('offline teardown failed: '+str(exc))
+                    raise primary
+                for exc in cleanup_errors: primary.add_note('offline teardown failed: '+str(exc))
+
+
+def _require_legacy_writer_scope(roots):
+    """Refusal only, never policy selection or installed enrollment authority."""
+    private=json.loads(read_file(Path(roots['receipts'])/'p1-init.json'))
+    if not isinstance(private,dict) or private.get('scope')!='owned-synthetic':
+        raise ValueError('legacy_recovery_scope_required')
+
+
+def _require_legacy_database(db):
+    rows=db.execute('SELECT scope,substr(record,1,65537) FROM p1_installation LIMIT 2').fetchall()
+    if len(rows)!=1 or rows[0][0]!='owned-synthetic' or len(rows[0][1])>65536:
+        raise ValueError('legacy_recovery_scope_required')
+    value=json.loads(rows[0][1])
+    if not isinstance(value,dict) or value.get('scope')!='owned-synthetic':
+        raise ValueError('legacy_recovery_scope_required')
 
 
 # K is an internal process/session foundation. No CLI or apply route calls it.
@@ -279,6 +352,7 @@ def _maintenance_connection(db, *, original=False):
 
 def _capture_original_snapshot(roots, db, maximum):
     """Actual committed original, including its current plan, never a shadow."""
+    _require_legacy_writer_scope(roots);_require_legacy_database(db)
     from contextlib import closing
     with tempfile.TemporaryDirectory(prefix='p1-evidence-') as temporary:
         path=Path(temporary)/'snapshot.sqlite'
@@ -387,6 +461,7 @@ class _MaintenanceSession:
 
 @contextmanager
 def _maintenance_session(roots, scope, process, *, _prewrite=None):
+    _require_legacy_writer_scope(roots)
     if type(process) is not _MaintenanceProcess or process.used:
         raise ValueError('b2_maintenance_process')
     process.verify(); process.used=True
@@ -401,6 +476,7 @@ def _maintenance_session(roots, scope, process, *, _prewrite=None):
         with private_database(root/'core.sqlite') as private:
             with closing(sqlite3.connect(private.as_uri()+'?mode=ro&vfs=unix',uri=True)) as check:
                 _maintenance_connection(check)
+                _require_legacy_database(check)
                 if check.execute('PRAGMA journal_mode').fetchone()!=('wal',):raise ValueError('b2_maintenance_requires_wal')
                 registrations=check.execute('SELECT record FROM p1_registrations ORDER BY rowid LIMIT 2049').fetchall()
                 if len(registrations)>MAX_ROWS:raise ValueError('b2_maintenance_registration_budget')
@@ -497,6 +573,7 @@ def _run_bounded_maintenance(roots, scope, operation, *, _prewrite=None):
     The parent's normal Core/B1/shell resource limits never change. operation is
     internal code, not a request field, executable name or serialized callback.
     """
+    _require_legacy_writer_scope(roots)
     global _maintenance_child_pid
     import select
     import signal
@@ -2058,6 +2135,7 @@ def _pending_prefix(roots, scope, intent, observation, *, now=None, snapshot_byt
     """
     import hashlib
     intent=json.loads(encode(intent))
+    _require_legacy_writer_scope(roots)
     validate_b2_record('p1_recoveries',intent)
     now=time.time() if now is None else now; _time(now)
     validate_scope(scope)
@@ -2090,6 +2168,7 @@ def _unfinished_source(roots,db,scope,intent,plan,observation,*,journal_after,co
 def _pending_prefix_locked(roots,db,scope,intent,observation,*,now,snapshot_bytes=None,
         fault=lambda point:None,through_journal=False,through_core=False,through_receipt=False,_session=None):
     """Prescribed kernel, called only by an owning lock-held session."""
+    _require_legacy_writer_scope(roots);_require_legacy_database(db)
     import hashlib
     if _session is not None:
         if (type(_session) is not _MaintenanceSession or _session.db is not db or
@@ -3143,6 +3222,7 @@ def _prepare_abandon(roots,scope,*,profiles,budget,diagnostic_decisions):
     The process result alone is NOT acceptance/restart authority. Same-lock
     callers use _prepare_abandon_locked and retain its private owned snapshot.
     """
+    _require_legacy_writer_scope(roots)
     profiles,budget,diagnostic_decisions=json.loads(encode([profiles,budget,diagnostic_decisions]))
     def prewrite(roots,db,capsule):
         state,_=_preparation_prestate(roots,db,scope,capsule,profiles,budget,diagnostic_decisions)
@@ -3159,6 +3239,7 @@ def _prepare_abandon_locked(session,*,profiles,budget,diagnostic_decisions):
     if type(session) is not _MaintenanceSession:raise ValueError('b2_maintenance_session')
     session._verify()
     roots,db,scope=session.roots,session.db,session.scope
+    _require_legacy_writer_scope(roots);_require_legacy_database(db)
     if db.in_transaction:raise ValueError('b2_preparation_transaction')
     try:
         if read_host_capsule()!=session.capsule:raise ValueError('b2_preparation_capsule_changed')
@@ -3262,6 +3343,7 @@ def _insert_recovery_step(db,intent,descriptor):
 
 def _rehearse_preparation(session,plan,intent,frozen):
     """Bounded protected copy; shared production SQL, no original acceptance."""
+    _require_legacy_writer_scope(session.roots);_require_legacy_database(session.db)
     from contextlib import closing
     import hashlib
     roots=session.roots;root=roots['control']/'core'

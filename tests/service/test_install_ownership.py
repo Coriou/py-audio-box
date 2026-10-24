@@ -1,5 +1,7 @@
 """Source/injected ownership observations; NOT real multi-UID permission evidence."""
 import os
+import fcntl
+import json
 from pathlib import Path
 import sqlite3
 import stat
@@ -10,6 +12,7 @@ from unittest.mock import patch
 
 from service import install_policy as policy
 from service import persistent_init, recovery
+from worker.runtime_journal import read_snapshot, journal_bytes
 
 
 class InstallOwnership(unittest.TestCase):
@@ -114,6 +117,165 @@ class InstallOwnership(unittest.TestCase):
         for path in roots.values(): path.mkdir(mode=0o700)
         with self.assertRaises(ValueError): persistent_init.roots_checked(roots, policy=policy.SPLIT)
         self.assertTrue(all(not list(path.iterdir()) for path in roots.values()))
+
+    def split_fixture(self):
+        # Real files and SQLite; only owner observations are translated to this
+        # unprivileged Mac test identity. No setuid/setgid/chown is performed.
+        roots = {role:self.root/role for role in policy.ROLES}
+        for path in roots.values():path.mkdir(mode=0o700)
+        (roots['control']/'core').mkdir(mode=0o700)
+        for role,path in roots.items():
+            path.chmod(policy.expectation(policy.SPLIT,role,directory=True)[2])
+        for path in (roots['control']/'core'/'control.lock',roots['receipts']/'lane.lock'):
+            path.touch(mode=0o600)
+        path=roots['control']/'core'/'core.sqlite'
+        with sqlite3.connect(path) as db:
+            db.execute('CREATE TABLE retained(value TEXT)')
+            db.execute('INSERT INTO retained VALUES(?)',('saved voice/artifact sentinel',))
+        path.chmod(0o600)
+        (roots['receipts']/'journal.json').write_bytes(journal_bytes(dict(version=1,lane='a'*32,records=[])))
+        (roots['receipts']/'journal.json').chmod(0o600)
+        return roots
+
+    def translated_roles(self):
+        fixed=policy.expectation
+        uid,gid=os.getuid(),os.getgid()
+        def observed(selected,role,**kwargs):
+            _,_,mode=fixed(selected,role,**kwargs)
+            return uid,gid,mode
+        return patch.object(policy,'expectation',side_effect=observed)
+
+    def retained_bytes(self,roots):
+        return {str(p):p.read_bytes() for root in roots.values() for p in root.rglob('*') if p.is_file()}
+
+    def test_split_offline_copy_restart_and_journal_are_read_only(self):
+        roots=self.split_fixture();before=self.retained_bytes(roots)
+        original_connect=sqlite3.connect;opened=[]
+        def connect(path,*args,**kwargs):
+            opened.append(str(path));return original_connect(path,*args,**kwargs)
+        with self.translated_roles(),patch.object(sqlite3,'connect',side_effect=connect):
+            for _ in range(2):
+                with recovery.offline(roots,policy=policy.SPLIT) as (_,db):
+                    self.assertEqual(db.execute('SELECT value FROM retained').fetchall(),[('saved voice/artifact sentinel',)])
+                    with self.assertRaises(sqlite3.OperationalError):db.execute('DELETE FROM retained')
+                    value,maintenance=read_snapshot(roots['receipts'],policy=policy.SPLIT)
+                    self.assertEqual(value,dict(version=1,lane='a'*32,records=[]));self.assertIsNone(maintenance)
+            self.assertTrue(opened)
+            self.assertTrue(all('p1-inspect-' in path for path in opened))
+        self.assertEqual(before,self.retained_bytes(roots))
+
+    def test_split_write_refuses_before_any_filesystem_access(self):
+        with patch.object(recovery,'_locked_roots',side_effect=AssertionError('opened roots')):
+            with self.assertRaisesRegex(ValueError,'installed_original_writer_required'):
+                with recovery.offline({},write=True,policy=policy.SPLIT):self.fail('entered')
+
+    def test_split_control_then_lane_exclusion_and_exact_modes(self):
+        roots=self.split_fixture();before=self.retained_bytes(roots)
+        for role,path in [('control',roots['control']/'core'/'control.lock'),('receipts',roots['receipts']/'lane.lock')]:
+            with self.subTest(role=role),path.open('rb') as lock,self.translated_roles():
+                fcntl.flock(lock,fcntl.LOCK_EX|fcntl.LOCK_NB)
+                with self.assertRaisesRegex(ValueError,'maintenance_lock_busy'):
+                    with recovery.offline(roots,policy=policy.SPLIT):self.fail('entered')
+        # Registration may omit only the lane lock, never control exclusion.
+        with (roots['receipts']/'lane.lock').open('rb') as lock,self.translated_roles():
+            fcntl.flock(lock,fcntl.LOCK_EX|fcntl.LOCK_NB)
+            with recovery.offline(roots,policy=policy.SPLIT,journal_lock=False):pass
+        path=roots['receipts']/'lane.lock';path.chmod(0o644)
+        with self.translated_roles(),self.assertRaisesRegex(ValueError,'installed_role_identity'):
+            with recovery.offline(roots,policy=policy.SPLIT):self.fail('entered')
+        path.chmod(0o600);self.assertEqual(before,self.retained_bytes(roots))
+
+    def test_split_lock_exchange_root_exchange_and_hardlink_refuse(self):
+        roots=self.split_fixture()
+        with self.translated_roles():
+            lock=roots['control']/'core'/'control.lock'
+            with self.assertRaisesRegex(ValueError,'snapshot_source_changed') as raised:
+                with recovery.offline(roots,policy=policy.SPLIT):
+                    lock.rename(lock.with_name('retained.lock'));lock.touch(mode=0o600)
+            self.assertIn('lock revalidation failed: installed_lock_changed',raised.exception.__notes__)
+            self.assertTrue(lock.with_name('retained.lock').exists())
+            with self.assertRaisesRegex(ValueError,'installed_root_changed'):
+                with recovery.offline(roots,policy=policy.SPLIT):
+                    roots['staging'].rename(self.root/'old-staging')
+                    roots['staging'].mkdir(mode=0o1733);roots['staging'].chmod(0o1733)
+            os.link(lock,lock.with_name('alias.lock'))
+            with self.assertRaisesRegex(ValueError,'installed_role_identity'):
+                with recovery.offline(roots,policy=policy.SPLIT):self.fail('entered')
+
+    def test_split_journal_reuses_closed_validator_and_preserves_partial(self):
+        roots=self.split_fixture();path=roots['receipts']/'journal.json'
+        partial=b'{partial';path.write_bytes(partial)
+        with self.translated_roles(),self.assertRaises(json.JSONDecodeError):
+            read_snapshot(roots['receipts'],policy=policy.SPLIT)
+        self.assertEqual(path.read_bytes(),partial)
+        value=dict(version=1,lane='a'*32,records=[dict(id='bad')])
+        path.write_bytes(journal_bytes(value));before=path.read_bytes()
+        with self.translated_roles(),self.assertRaisesRegex(ValueError,'invalid_record'):
+            read_snapshot(roots['receipts'],policy=policy.SPLIT)
+        self.assertEqual(path.read_bytes(),before)
+
+    def test_root_reader_reconciliation_uses_control_context_only(self):
+        from service.admission import DEFAULT_BUDGET
+        from service.reconciliation import Reconciliation
+        roots={role:self.root/role for role in policy.ROLES}
+        for path in roots.values():path.mkdir(mode=0o700)
+        scope=dict(daemon='d',context='c',volumes={role:dict(name=role,driver='local',created='now') for role in roots})
+        profiles=json.loads(Path('contracts/fixtures/v1/transcript-speech_generate.json').read_text())['profiles']
+        persistent_init.initialize(roots,scope,profiles,DEFAULT_BUDGET)
+        for role,path in roots.items():path.chmod(policy.expectation(policy.SPLIT,role,directory=True)[2])
+        # Legacy Core follows the caller umask; this fixture supplies installed
+        # modes explicitly. This is not a split initialization receipt.
+        for path in roots['control'].rglob('*'):path.chmod(0o700 if path.is_dir() else 0o600)
+        with self.translated_roles():
+            with recovery.offline(roots,policy=policy.SPLIT) as (_,db):
+                scanner=Reconciliation.__new__(Reconciliation)
+                scanner.core=SimpleNamespace(root=roots['control']/'core');scanner.db=db;scanner.staging=roots['staging']
+                scanner.entry_limit=2048;scanner.byte_limit=16*1024**2;scanner.seconds=1
+                # Simulated privileged caller sees real control-owned files.
+                with patch.object(os,'getuid',return_value=0):
+                    scanner._collect(policy=policy.SPLIT)
+                    self.assertEqual(scanner.reasons,set())
+                    scanner._collect()
+                    self.assertIn('unknown_control_namespace',scanner.reasons)
+
+    def test_legacy_maintenance_entry_refusals_do_not_open_or_spawn(self):
+        roots=self.split_fixture()
+        marker=roots['receipts']/'p1-init.json'
+        marker.write_text(json.dumps(dict(scope=policy.SCOPE)));marker.chmod(0o600)
+        before=self.retained_bytes(roots)
+        # These calls must refuse before reaching any HELD/maintenance work.
+        calls=[
+            lambda:recovery._capture_original_snapshot(roots,None,1),
+            lambda:recovery._maintenance_session(roots,{},None).__enter__(),
+            lambda:recovery._run_bounded_maintenance(roots,{},None),
+            lambda:recovery._pending_prefix(roots,{}, {},{}),
+            lambda:recovery._pending_prefix_locked(roots,None,{}, {},{},now=1),
+            lambda:recovery._prepare_abandon(roots,{},profiles=[],budget={},diagnostic_decisions=[]),
+            lambda:recovery._rehearse_preparation(SimpleNamespace(roots=roots,db=None),None,None,None),
+        ]
+        with patch.object(sqlite3,'connect',side_effect=AssertionError('SQLite opened')):
+            for call in calls:
+                with self.subTest(entry=call),self.assertRaisesRegex(ValueError,'legacy_recovery_scope_required'):call()
+            with self.translated_roles(),self.assertRaisesRegex(ValueError,'legacy_recovery_scope_required'):
+                with recovery.offline(roots,write=True):self.fail('entered')
+        self.assertEqual(before,self.retained_bytes(roots))
+
+    def test_legacy_writer_rejects_split_database_before_original_connection(self):
+        roots=self.split_fixture();path=roots['control']/'core'/'core.sqlite'
+        marker=roots['receipts']/'p1-init.json'
+        marker.write_text(json.dumps(dict(scope='owned-synthetic')));marker.chmod(0o600)
+        with sqlite3.connect(path) as db:
+            db.execute('CREATE TABLE p1_installation(scope TEXT,record TEXT)')
+            db.execute('INSERT INTO p1_installation VALUES(?,?)',(policy.SCOPE,json.dumps(dict(scope=policy.SCOPE))))
+        # The default legacy root validator requires uniform ownership only.
+        before=self.retained_bytes(roots);original=sqlite3.connect;opened=[]
+        def connect(path,*args,**kwargs):
+            opened.append(str(path));return original(path,*args,**kwargs)
+        with patch.object(sqlite3,'connect',side_effect=connect):
+            with self.assertRaisesRegex(ValueError,'legacy_recovery_scope_required'):
+                with recovery.offline(roots,write=True):self.fail('entered')
+        self.assertTrue(opened);self.assertTrue(all('p1-inspect-' in p for p in opened))
+        self.assertEqual(before,self.retained_bytes(roots))
 
 
 if __name__ == '__main__': unittest.main()

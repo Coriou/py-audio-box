@@ -8,6 +8,7 @@ from dataclasses import dataclass
 import os
 from pathlib import Path
 import stat
+import fcntl
 
 SCOPE = 'owned-kokoro-v1'
 POLICY = 'docker-kokoro-split-v1'
@@ -129,3 +130,56 @@ def roots_checked(roots, *, policy):
     if any(a in b.parents for a in result.values() for b in result.values() if a != b):
         raise ValueError('nested_volume_roles')
     return result
+
+
+def directory_identity(path, *, policy, role):
+    """Fixed role directory, including a literal no-follow ancestor walk."""
+    require(policy)
+    with parent_fd(path) as (parent,name):
+        fd=os.open(name,os.O_RDONLY|os.O_DIRECTORY|os.O_NOFOLLOW,dir_fd=parent)
+        try:
+            info=os.fstat(fd);check(info,policy,role,directory=True)
+            if identity(os.stat(name,dir_fd=parent,follow_symlinks=False))!=identity(info):
+                raise ValueError('installed_root_changed')
+            return identity(info)
+        finally:os.close(fd)
+
+
+@contextmanager
+def locked_file(path, *, policy, role):
+    """Existing role lock only. Keep exclusion through the final identity check.
+
+    No creation, ownership repair, or arbitrary UID exception. The caller owns
+    ordering when taking more than one lock (control before receipts).
+    """
+    require(policy)
+    with parent_fd(path) as (parent, name):
+        fd = os.open(name, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=parent)
+        try:
+            before = os.fstat(fd)
+            check(before, policy, role)
+            if identity(os.stat(name, dir_fd=parent, follow_symlinks=False)) != identity(before):
+                raise ValueError('installed_lock_changed')
+            try:
+                fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            except BlockingIOError:
+                raise ValueError('maintenance_lock_busy') from None
+            def revalidate():
+                check(os.fstat(fd), policy, role)
+                with parent_fd(path) as (current, leaf):
+                    if (identity(os.fstat(fd)) != identity(before) or
+                            identity(os.stat(leaf, dir_fd=current, follow_symlinks=False)) != identity(before)):
+                        raise ValueError('installed_lock_changed')
+            revalidate()
+            try:
+                yield fd
+            except BaseException as primary:
+                try:
+                    revalidate()
+                except BaseException as cleanup:
+                    primary.add_note('lock revalidation failed: '+str(cleanup))
+                raise
+            else:
+                revalidate()
+        finally:
+            os.close(fd)
