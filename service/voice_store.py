@@ -18,55 +18,80 @@ def _id(value):
     return value
 
 
-def initialize(core):
-    """Atomic additive migration; never enroll or un-fence a pre-P1 root."""
-    if not core.p1:
-        return
-    expected = {
-        'voice_catalogue_format': ['revision'],
-        'catalogue_voices': ['seq','principal','id','revision','archived'],
-        'catalogue_names': ['principal','name','voice_id'],
-        'catalogue_versions': ['seq','principal','id','voice_id','record'],
-        'catalogue_requests': ['principal','operation','key','fingerprint','result'],
-    }
-    tables = {r[0] for r in core.db.execute("SELECT name FROM sqlite_master WHERE type='table'")}
-    existing = tables & expected.keys()
-    if existing:
-        if existing != expected.keys():
-            raise ValueError('partial_voice_store_schema')
-        for table, columns in expected.items():
-            if [r[1] for r in core.db.execute('PRAGMA table_info('+table+')')] != columns:
-                raise ValueError('unsupported_voice_store_schema')
-        if core.db.execute('SELECT revision FROM voice_catalogue_format').fetchall() != [(1,)]:
-            raise ValueError('unsupported_voice_store_version')
-    with core.transaction():
-        core.db.execute('CREATE TABLE IF NOT EXISTS voice_catalogue_format(revision INTEGER NOT NULL)')
-        rows = core.db.execute('SELECT revision FROM voice_catalogue_format').fetchall()
-        if rows and rows != [(1,)]:
-            raise ValueError('unsupported_voice_store_version')
-        if not rows:
-            core.db.execute('INSERT INTO voice_catalogue_format VALUES(1)')
-        core.db.execute('''CREATE TABLE IF NOT EXISTS catalogue_voices(
+# One supported DDL declaration drives installation and schema validation.
+_TABLE_DDL = (
+    '''CREATE TABLE voice_catalogue_format(revision INTEGER NOT NULL)''',
+    '''CREATE TABLE catalogue_voices(
             seq INTEGER PRIMARY KEY, principal TEXT NOT NULL, id TEXT NOT NULL,
             revision INTEGER NOT NULL, archived INTEGER NOT NULL,
-            UNIQUE(principal,id))''')
-        core.db.execute('''CREATE TABLE IF NOT EXISTS catalogue_names(
+            UNIQUE(principal,id))''',
+    '''CREATE TABLE catalogue_names(
             principal TEXT NOT NULL, name TEXT NOT NULL, voice_id TEXT NOT NULL,
             PRIMARY KEY(principal,name), FOREIGN KEY(principal,voice_id)
-            REFERENCES catalogue_voices(principal,id))''')
-        core.db.execute('''CREATE TABLE IF NOT EXISTS catalogue_versions(
+            REFERENCES catalogue_voices(principal,id))''',
+    '''CREATE TABLE catalogue_versions(
             seq INTEGER PRIMARY KEY, principal TEXT NOT NULL, id TEXT NOT NULL,
             voice_id TEXT NOT NULL, record TEXT NOT NULL, UNIQUE(principal,id),
-            FOREIGN KEY(principal,voice_id) REFERENCES catalogue_voices(principal,id))''')
-        core.db.execute('''CREATE TABLE IF NOT EXISTS catalogue_requests(
+            FOREIGN KEY(principal,voice_id) REFERENCES catalogue_voices(principal,id))''',
+    '''CREATE TABLE catalogue_requests(
             principal TEXT NOT NULL, operation TEXT NOT NULL, key TEXT NOT NULL,
             fingerprint TEXT NOT NULL, result TEXT NOT NULL,
-            PRIMARY KEY(principal,operation,key))''')
-        # Defense against accidental UPDATE/DELETE by future domain code.
-        for action in ('UPDATE', 'DELETE'):
-            core.db.execute(f'''CREATE TRIGGER IF NOT EXISTS catalogue_versions_no_{action.lower()}
-                BEFORE {action} ON catalogue_versions BEGIN
-                SELECT RAISE(ABORT,'immutable_voice_version'); END''')
+            PRIMARY KEY(principal,operation,key))''',
+)
+_TRIGGER_DDL = tuple(
+    f"CREATE TRIGGER catalogue_versions_no_{action.lower()} "
+    f"BEFORE {action} ON catalogue_versions BEGIN "
+    "SELECT RAISE(ABORT,'immutable_voice_version'); END"
+    for action in ('UPDATE', 'DELETE')
+)
+_TABLES = frozenset(sql.split('(')[0].split()[-1] for sql in _TABLE_DDL)
+_SQL_TOKEN = re.compile(r"'(?:''|[^'])*'|\"(?:\"\"|[^\"])*\"|`(?:``|[^`])*`|\[[^]]*\]|[A-Za-z_][A-Za-z_0-9]*|[0-9]+|[^\s]")
+
+
+def _sql_identity(sql):
+    # Token identity preserves boundaries and quoted contents, unlike removing
+    # whitespace. Only unquoted keyword/identifier case is insignificant.
+    return tuple(token if token[0] in "'\"`[" else token.casefold()
+                 for token in _SQL_TOKEN.findall(sql or ''))
+
+
+def _schema_identity(db):
+    # Includes implicit constraint indexes and extra indexes/triggers on every
+    # owned table, while leaving unrelated Core schema objects outside scope.
+    return sorted((kind, name, table, _sql_identity(sql))
+                  for kind, name, table, sql in db.execute(
+                      'SELECT type,name,tbl_name,sql FROM sqlite_master')
+                  if table in _TABLES or name in _TABLES)
+
+
+def initialize(core):
+    """Atomically install or refuse the exact supported catalogue schema."""
+    if not core.p1:
+        return
+    import sqlite3
+    with core.transaction():
+        tables = {r[0] for r in core.db.execute(
+            "SELECT name FROM sqlite_master WHERE type='table'")}
+        existing = tables & _TABLES
+        if existing and existing != _TABLES:
+            raise ValueError('partial_voice_store_schema')
+        # SQLite derives the expected implicit indexes from our supported DDL.
+        # This memory-only reference never reads/modifies application rows.
+        reference = sqlite3.connect(':memory:')
+        try:
+            for sql in (*_TABLE_DDL, *_TRIGGER_DDL):
+                reference.execute(sql)
+            expected = _schema_identity(reference)
+        finally:
+            reference.close()
+        if not existing:
+            for sql in (*_TABLE_DDL, *_TRIGGER_DDL):
+                core.db.execute(sql)
+            core.db.execute('INSERT INTO voice_catalogue_format VALUES(1)')
+        if _schema_identity(core.db) != expected:
+            raise ValueError('unsupported_voice_store_schema')
+        if core.db.execute('SELECT revision FROM voice_catalogue_format').fetchall() != [(1,)]:
+            raise ValueError('unsupported_voice_store_version')
 
 
 class VoiceStore:

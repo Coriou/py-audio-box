@@ -157,6 +157,127 @@ class VoiceStoreTests(unittest.TestCase):
         self.assertEqual(self.store.get('alice',self.version['voice_id'])['revision'],1)
         self.assertEqual(self.core.db.execute('PRAGMA user_version').fetchone(),(1,))
 
+    def test_same_column_schema_refusal_preserves_all_rows(self):
+        self.register()
+        order = ('voice_catalogue_format', 'catalogue_voices', 'catalogue_names',
+                 'catalogue_versions', 'catalogue_requests')
+        ddl = {name: self.core.db.execute(
+            "SELECT sql FROM sqlite_master WHERE name=?", (name,)).fetchone()[0]
+               for name in order}
+        ddl = {name: ' '.join(sql.split()) for name, sql in ddl.items()}
+        triggers = [r[0] for r in self.core.db.execute(
+            "SELECT sql FROM sqlite_master WHERE type='trigger' AND tbl_name='catalogue_versions'")]
+        rows = {name: self.core.db.execute('SELECT * FROM '+name).fetchall() for name in order}
+        def snapshot():
+            return (self.core.db.execute('SELECT * FROM sqlite_master ORDER BY name').fetchall(),
+                    {name: self.core.db.execute('SELECT * FROM '+name).fetchall() for name in order},
+                    self.core.db.execute('SELECT * FROM revisions').fetchall())
+        with self.core.transaction():
+            self.core.db.execute("INSERT INTO revisions VALUES('prior',1,'{}')")
+        variants = []
+        for name in order:
+            variants.append((name+' wrong type', name, ddl[name].replace('INTEGER', 'BLOB', 1)
+                             if 'INTEGER' in ddl[name] else ddl[name].replace('TEXT', 'BLOB', 1)))
+            variants.append((name+' nullable', name, ddl[name].replace(' NOT NULL', '', 1)))
+        for name in ('catalogue_voices', 'catalogue_versions'):
+            variants.append((name+' missing PK', name, ddl[name].replace(' PRIMARY KEY', '', 1)))
+            variants.append((name+' missing unique', name, ddl[name].replace(', UNIQUE(principal,id)', '')))
+        for name in ('catalogue_names', 'catalogue_versions'):
+            variants.append((name+' missing FK', name, ddl[name][:ddl[name].index(', FOREIGN KEY')] + ')'))
+        for name, constraint in (('catalogue_names', 'PRIMARY KEY(principal,name)'),
+                                 ('catalogue_requests', 'PRIMARY KEY(principal,operation,key)')):
+            variants.append((name+' missing PK', name, ddl[name].replace(constraint+', ', '').replace(', '+constraint, '')))
+        # No CHECK is declared by H0. Added checks are incompatible too.
+        variants.append(('added check', 'catalogue_voices', ddl['catalogue_voices'].replace('archived INTEGER NOT NULL', 'archived INTEGER NOT NULL CHECK(archived=0)')))
+        for label, changed, replacement in variants:
+            with self.subTest(layout=label):
+                with self.core.transaction():
+                    for name in reversed(order):
+                        self.core.db.execute('DROP TABLE '+name)
+                    for name in order:
+                        self.core.db.execute(replacement if name == changed else ddl[name])
+                    # Missing parent uniqueness prevents FK inserts; retain the
+                    # parent/core rows and leave child tables empty in that case.
+                    for name in order:
+                        if 'missing unique' in label and name in ('catalogue_names', 'catalogue_versions'):
+                            continue
+                        for row in rows[name]:
+                            self.core.db.execute('INSERT INTO '+name+' VALUES('+','.join('?' for _ in row)+')', row)
+                    for sql in triggers:
+                        self.core.db.execute(sql)
+                before = snapshot()
+                with self.assertRaisesRegex(ValueError, 'unsupported_voice_store_schema'):
+                    initialize(self.core)
+                self.assertFalse(self.core.db.in_transaction)
+                self.assertEqual(snapshot(), before)
+        # Restore only our test fixture, then prove a valid schema reopens.
+        with self.core.transaction():
+            for name in reversed(order): self.core.db.execute('DROP TABLE '+name)
+            for name in order:
+                self.core.db.execute(ddl[name])
+                for row in rows[name]:
+                    self.core.db.execute('INSERT INTO '+name+' VALUES('+','.join('?' for _ in row)+')', row)
+            for sql in triggers: self.core.db.execute(sql)
+        self.reopen()
+        self.assertEqual(self.store.get('alice', self.version['voice_id'])['revision'], 1)
+
+    def test_r160_null_seq_counterexample_refused(self):
+        with self.core.transaction():
+            self.core.db.execute('DROP TABLE catalogue_versions')
+            self.core.db.execute('DROP TABLE catalogue_names')
+            self.core.db.execute('DROP TABLE catalogue_voices')
+            self.core.db.execute('CREATE TABLE catalogue_voices(seq INTEGER, principal TEXT, id TEXT, revision INTEGER, archived INTEGER, UNIQUE(principal,id))')
+            self.core.db.execute('CREATE TABLE catalogue_names(principal TEXT NOT NULL, name TEXT NOT NULL, voice_id TEXT NOT NULL, PRIMARY KEY(principal,name), FOREIGN KEY(principal,voice_id) REFERENCES catalogue_voices(principal,id))')
+            self.core.db.execute('CREATE TABLE catalogue_versions(seq INTEGER PRIMARY KEY, principal TEXT NOT NULL, id TEXT NOT NULL, voice_id TEXT NOT NULL, record TEXT NOT NULL, UNIQUE(principal,id), FOREIGN KEY(principal,voice_id) REFERENCES catalogue_voices(principal,id))')
+            for action in ('UPDATE', 'DELETE'):
+                self.core.db.execute(f"CREATE TRIGGER catalogue_versions_no_{action.lower()} BEFORE {action} ON catalogue_versions BEGIN SELECT RAISE(ABORT,'immutable_voice_version'); END")
+        # The already-held trusted store demonstrates why admission must refuse.
+        self.register()
+        self.assertEqual(self.core.db.execute('SELECT seq FROM catalogue_voices').fetchall(), [(None,)])
+        self.assertEqual(self.store.list('alice'), [])
+        before = list(self.core.db.iterdump())
+        with self.assertRaisesRegex(ValueError, 'unsupported_voice_store_schema'):
+            initialize(self.core)
+        self.assertEqual(list(self.core.db.iterdump()), before)
+        self.core.close()
+        with self.assertRaisesRegex(ValueError, 'unsupported_voice_store_schema'):
+            Core(self.root)
+
+    def test_trigger_and_index_identity_refusal(self):
+        self.register()
+        for action in ('update', 'delete'):
+            with self.subTest(action=action):
+                name = 'catalogue_versions_no_'+action
+                sql = self.core.db.execute('SELECT sql FROM sqlite_master WHERE name=?', (name,)).fetchone()[0]
+                with self.core.transaction():
+                    self.core.db.execute('DROP TRIGGER '+name)
+                    self.core.db.execute(f'CREATE TRIGGER {name} BEFORE {action} ON catalogue_versions BEGIN SELECT 1; END')
+                before = list(self.core.db.iterdump())
+                with self.assertRaisesRegex(ValueError, 'unsupported_voice_store_schema'): initialize(self.core)
+                self.assertEqual(list(self.core.db.iterdump()), before)
+                with self.core.transaction():
+                    self.core.db.execute('DROP TRIGGER '+name)
+                    self.core.db.execute(sql)
+        with self.core.transaction(): self.core.db.execute('CREATE UNIQUE INDEX extra_voice_constraint ON catalogue_voices(id)')
+        with self.assertRaisesRegex(ValueError, 'unsupported_voice_store_schema'): initialize(self.core)
+        with self.core.transaction(): self.core.db.execute('DROP INDEX extra_voice_constraint')
+        self.reopen()
+        self.assertEqual(self.store.version('alice', self.version['id'])['id'], self.version['id'])
+
+    def test_schema_tokens_accept_spacing_and_case_but_preserve_literals(self):
+        with self.core.transaction():
+            self.core.db.execute('DROP TRIGGER catalogue_versions_no_update')
+            self.core.db.execute("create trigger catalogue_versions_no_update before update on catalogue_versions begin select raise(abort, 'immutable_voice_version'); end")
+        initialize(self.core)
+        self.register()
+        with self.core.transaction():
+            self.core.db.execute('DROP TRIGGER catalogue_versions_no_update')
+            self.core.db.execute("CREATE TRIGGER catalogue_versions_no_update BEFORE UPDATE ON catalogue_versions BEGIN SELECT RAISE(ABORT,'immutable voice version'); END")
+        with self.assertRaisesRegex(ValueError, 'unsupported_voice_store_schema'): initialize(self.core)
+        with self.core.transaction(): self.core.db.execute('DROP TRIGGER catalogue_versions_no_update')
+        with self.assertRaisesRegex(ValueError, 'unsupported_voice_store_schema'): initialize(self.core)
+        self.assertIsNone(self.core.db.execute("SELECT name FROM sqlite_master WHERE name='catalogue_versions_no_update'").fetchone())
+
     def test_bounded_pages_no_hidden_ml_or_network_import(self):
         class Refuse(importlib.abc.MetaPathFinder):
             def find_spec(self, fullname, path=None, target=None):
