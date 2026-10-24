@@ -341,3 +341,55 @@ class InstalledHost(unittest.TestCase):
 
 
 if __name__=='__main__':unittest.main()
+
+
+class ModelEnumerationBounds(unittest.TestCase):
+    """Lazy iterators fail loudly if collection passes the expected stop point."""
+    def collect(self, *, root_names=None, deadline=10, clock=lambda: 0,
+                guard=4096):
+        from contextlib import nullcontext
+        consumed={}; opened=[]
+        directory=SimpleNamespace(st_mode=stat.S_IFDIR|0o555,st_uid=10001,st_gid=10001)
+        class Entries:
+            def __init__(self, path): self.path=path; self.index=0
+            def __enter__(self): return self
+            def __exit__(self,*args): pass
+            def __iter__(self): return self
+            def __next__(self):
+                if self.path == Path('/models') and root_names is not None:
+                    if self.index == len(root_names): raise StopIteration
+                    name=root_names[self.index]
+                else: name='entry'+str(self.index)
+                self.index+=1; consumed[self.path]=self.index
+                if self.index>guard: raise AssertionError('iterator consumed beyond failguard')
+                return SimpleNamespace(name=name)
+        def scan(path): opened.append(path); return Entries(path)
+        with patch.object(h,'_source_stat',return_value=directory), \
+             patch.object(ip,'identity',return_value=(1,2)), \
+             patch.object(ip,'parent_fd',side_effect=lambda path:nullcontext((0,path.name))), \
+             patch.object(h.os,'stat',return_value=directory), \
+             patch.object(h.os,'scandir',side_effect=scan), \
+             patch.object(h.time,'monotonic',side_effect=clock):
+            with self.assertRaisesRegex(ValueError,'^installed_source_budget$'):
+                h._model_tree(Path('/models'),{},deadline)
+        return consumed,opened
+
+    def test_lazy_oversized_stops_at_global_entry_bound(self):
+        consumed,opened=self.collect()
+        self.assertEqual(consumed,{Path('/models'):4096})
+        self.assertEqual(opened,[Path('/models')])
+
+    def test_already_expired_never_opens_or_consumes(self):
+        consumed,opened=self.collect(deadline=-1,guard=0)
+        self.assertEqual((consumed,opened),({},[]))
+
+    def test_nested_scan_uses_remaining_global_budget(self):
+        consumed,opened=self.collect(root_names=['a','b'],guard=4094)
+        self.assertEqual(consumed,{Path('/models'):2,Path('/models/b'):4094})
+        self.assertEqual(opened,[Path('/models'),Path('/models/b')])
+
+    def test_deadline_expiring_during_scan_stops_early(self):
+        calls=iter([0,0,0,11])
+        consumed,opened=self.collect(clock=lambda:next(calls,11),guard=1)
+        self.assertEqual(consumed,{Path('/models'):1})
+        self.assertEqual(opened,[Path('/models')])

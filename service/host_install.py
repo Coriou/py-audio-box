@@ -594,15 +594,26 @@ def _public_file(path, *, uid, gid, mode, limit, deadline):
 def _model_tree(path, config, deadline):
     """Bounded sealed tree inventory; hash every file, verify enrolled manifest."""
     records=[]; total=0; pending=[Path(path)]; files={}; directories=[]; file_identities=[]
+    entry_count=1  # Root plus every discovered child, including queued directories.
     while pending:
+        if time.monotonic()>deadline: raise ValueError('installed_source_budget')
         current=pending.pop(); before=_source_stat(current,directory=True)
         if (before.st_uid,before.st_gid,stat.S_IMODE(before.st_mode))!=(10001,10001,0o555):
             raise ValueError('installed_model_mode')
         directories.append((current,ip.identity(before)))
         records.append([str(current.relative_to(path)), 'directory', list(ip.identity(before))])
-        with os.scandir(current) as entries: names=sorted(e.name for e in entries)
-        if len(records)+len(names)>4096 or time.monotonic()>deadline:
-            raise ValueError('installed_source_budget')
+        if time.monotonic()>deadline: raise ValueError('installed_source_budget')
+        names=[]
+        with os.scandir(current) as entries:
+            iterator=iter(entries)
+            while True:
+                if time.monotonic()>deadline: raise ValueError('installed_source_budget')
+                try: entry=next(iterator)
+                except StopIteration: break
+                if time.monotonic()>deadline or entry_count>=4096:
+                    raise ValueError('installed_source_budget')
+                names.append(entry.name); entry_count+=1
+        names.sort()
         for name in names:
             child=current/name
             with ip.parent_fd(child) as (parent,leaf): s=os.stat(leaf,dir_fd=parent,follow_symlinks=False)
@@ -661,7 +672,7 @@ def _installed_sources(policy,config):
         identities[name]=ip.identity(s); paths.append(Path(record['source']))
     if len({(s[0],s[1]) for s in identities.values()})!=len(records) or any(a==b or a in b.parents or b in a.parents for i,a in enumerate(paths) for b in paths[i+1:]):
         raise ValueError('installed_source_overlap')
-    # Credential is stat-only: no open/read/hash, even in private provenance.
+    # Credential descriptor open/fstat is allowed; never read or hash its contents.
     raw=_public_file(policy['inputs']['config']['source'],uid=0,gid=10001,mode=0o440,
                      limit=65536,deadline=deadline)
     if (hashlib.sha256(raw).hexdigest()!=policy['inputs']['config']['sha256'] or
