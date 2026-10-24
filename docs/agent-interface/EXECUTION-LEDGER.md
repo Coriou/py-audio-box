@@ -2239,3 +2239,7 @@ r209 source4fd3d5af/docs5fc7581c implements protected host/hello/provenance/cont
 ### 2026-10-24 — Registration retained identity retry correction
 
 r210 source NO-GO: retry resets provenance inodebaseline after enumeration, accepts identicalbyte replacementbeforewriter; inert repro confirmed.112 exactcandidate tests PASS but misstimingwindow. Parent commissioned targeted Sol r211 descriptor-bound read/create identities and prewriter retryregression. Registration unmerged; no newdesign/activationgate.
+
+### 2026-10-24 — Registration provenance identity fix enters re-review
+
+r211 sourcedd526fa9/docs339f0946 binds bytes/identity to validated read/create descriptors and preserves retained retrybaselines. Fourprewriter/readoverlap regressions REDbeforeGREENafter;116 focused methods reported PASS. Parent commissioned independent Sol r212. Candidate remainsunmerged; noactualLinux or activationclaim.
