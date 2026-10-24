@@ -76,52 +76,167 @@ class CompletionObserver:
         return self.expired
 
 
+# One slot owns the entire lifetime, including construction and uncertain close.
+# Fixed cardinality only: this is not a whole-process FD or byte budget.
+CORE_OWNERSHIP_LIMIT = 64
+_core_registry_pid = os.getpid()
+_core_registry_mutex = threading.Lock()
+_core_registry = [None] * CORE_OWNERSHIP_LIMIT
+_CORE_ACTION = '; close Cores on their creating threads or restart the process'
+
+
+@contextmanager
+def _core_bookkeeping():
+    # In a fork child the inherited mutex may be locked. Never touch it there.
+    if os.getpid() != _core_registry_pid:
+        raise ValueError('core_ownership_inherited_process'+_CORE_ACTION)
+    if not _core_registry_mutex.acquire(blocking=False):
+        raise ValueError('core_ownership_busy'+_CORE_ACTION)
+    try:
+        yield
+    finally:
+        _core_registry_mutex.release()
+
+
+class _ConstructorCleanup:
+    """One process/thread-bound ownership record, never a Core or exception graph."""
+    __slots__ = ('db', 'owner', 'pid', 'thread', 'root_key', 'root_identity',
+                 'state', 'slot', 'constructor_failed')
+
+    def __init__(self, root_key, slot):
+        self.db = self.owner = None
+        self.pid, self.thread = os.getpid(), threading.current_thread()
+        self.root_key, self.root_identity = root_key, None
+        self.state, self.slot, self.constructor_failed = 'constructing', slot, False
+
+    def _identity(self):
+        if os.getpid() != self.pid or os.getpid() != _core_registry_pid:
+            raise ValueError('core_ownership_inherited_process'+_CORE_ACTION)
+        if threading.current_thread() is not self.thread:
+            raise RuntimeError('constructor_cleanup_requires_owning_thread')
+
+    def bind_root(self, identity):
+        self._identity()
+        with _core_bookkeeping():
+            if any(r is not None and r is not self and r.root_identity == identity
+                   for r in _core_registry):
+                raise ValueError('control_busy')
+            self.root_identity = identity
+
+    def close(self):
+        self._identity()  # PID before mutex, Thread before any resource calls.
+        with _core_bookkeeping():
+            if self.state == 'closed': return
+            if _core_registry[self.slot] is not self:
+                raise RuntimeError('core_ownership_stale_record')
+            if self.state == 'closing': raise ValueError('core_ownership_close_reentrant')
+            if self.state == 'live':
+                raise ValueError('live_owner_close')
+            self.state = 'closing'
+        try:
+            if self.db is not None:
+                self.db.close()
+                # Successful return is the sole DB-release proof.
+                with _core_bookkeeping(): self.db = None
+            if self.owner is not None:
+                self.owner.close()
+            with _core_bookkeeping():
+                if _core_registry[self.slot] is not self:
+                    raise RuntimeError('core_ownership_stale_record')
+                _core_registry[self.slot] = None
+                self.state = 'closed'
+        except BaseException:
+            # No resource operation or fallible diagnostic under this mutex.
+            # If bookkeeping is unavailable, closing remains conservatively held.
+            try:
+                with _core_bookkeeping(): self.state = 'uncertain'
+            except BaseException: pass
+            raise
+
+
+def _reserve_core(root):
+    key = os.path.normcase(os.path.abspath(root))
+    with _core_bookkeeping():
+        if any(r is not None and r.root_key == key for r in _core_registry):
+            raise ValueError('control_busy')
+        slot = next((i for i, r in enumerate(_core_registry) if r is None), None)
+        if slot is None:
+            raise ValueError('core_ownership_capacity'+_CORE_ACTION)
+        record = _ConstructorCleanup(key, slot)
+        _core_registry[slot] = record
+        return record
+
+
+@contextmanager
+def _core_maintenance_lease():
+    # Parent alone releases this lease. Child keeps the inherited locked mutex
+    # and rejects all registry entry points by PID before touching that mutex.
+    with _core_bookkeeping():
+        if any(r is not None for r in _core_registry):
+            raise ValueError('b2_maintenance_core_ownership_busy'+_CORE_ACTION)
+        yield
+
+
+# Read-only compatibility view for the existing F2 constructor probes. It owns
+# no additional records/resources; all retention is in the fixed registry.
+from collections.abc import Set as _AbstractSet
+class _FailedConstructorView(_AbstractSet):
+    def __iter__(self):
+        with _core_bookkeeping():
+            return iter(tuple(r for r in _core_registry if r is not None and r.constructor_failed))
+    def __len__(self): return sum(1 for _ in self)
+    def __contains__(self, record): return any(r is record for r in self)
+    def _from_iterable(self, values): return set(values)
+
+_failed_constructor_cleanup = _FailedConstructorView()
+
+
 class Core:
     def __init__(self, root: Path, *, historical_local=False):
         self.historical_local = historical_local
         self.root = Path(root).absolute()
-        fresh = not self.root.exists() or (self.root.is_dir() and not any(self.root.iterdir()))
-        persistence.mkdir_durable(self.root, sync_dir)
-        if self.root.is_symlink() or self.root.stat().st_uid != os.getuid():
-            raise ValueError('foreign_root')
-        if not fresh and not (self.root/'core.sqlite').is_file():
-            raise persistence.PublicationQuarantine('incomplete_core_initialization')
-        self.root.chmod(0o700)
-        self.owner = open(self.root / 'control.lock', 'a+b')
-        try: fcntl.flock(self.owner, fcntl.LOCK_EX | fcntl.LOCK_NB)
-        except BlockingIOError:
-            self.owner.close()
-            raise ValueError('control_busy') from None
-        for name in ('staging', 'assets', 'owners'):
-            path = self.root / name
-            if not fresh and not path.is_dir():
-                self.owner.close()
-                raise persistence.PublicationQuarantine('incomplete_core_namespace')
-            persistence.mkdir_durable(path, sync_dir)
-            if path.is_symlink() or path.stat().st_uid != os.getuid():
-                self.owner.close()
-                raise ValueError('foreign_namespace')
-            path.chmod(0o700)
-        database=self.root/'core.sqlite'
-        if fresh:
-            fd=os.open(database,os.O_WRONLY|os.O_CREAT|os.O_EXCL,0o600)
-            try: os.fsync(fd)
-            finally: os.close(fd)
-            sync_dir(self.root)
-        elif database.is_symlink() or database.stat().st_uid!=os.getuid():
-            self.owner.close()
-            raise persistence.PublicationQuarantine('foreign_database')
-        self.db = sqlite3.connect(self.root / 'core.sqlite', timeout=2, isolation_level=None)
-        self.db.execute('PRAGMA journal_mode=WAL')
-        self.db.execute('PRAGMA synchronous=FULL')
-        self.db.execute('PRAGMA foreign_keys=ON')
-        version = self.db.execute('PRAGMA user_version').fetchone()[0]
-        if version not in (0, 1): raise ValueError('unsupported_store_version')
-        if version == 0 and not fresh:
-            self.db.close();self.owner.close()
-            raise persistence.PublicationQuarantine('incomplete_core_schema')
-        if version == 0:
-            self.db.executescript('''BEGIN IMMEDIATE;
+        self._ownership = _reserve_core(self.root)
+        self.owner = self._db = None
+        try:
+            fresh = not self.root.exists() or (self.root.is_dir() and not any(self.root.iterdir()))
+            persistence.mkdir_durable(self.root, sync_dir)
+            if self.root.is_symlink() or self.root.stat().st_uid != os.getuid():
+                raise ValueError('foreign_root')
+            if not fresh and not (self.root/'core.sqlite').is_file():
+                raise persistence.PublicationQuarantine('incomplete_core_initialization')
+            info = self.root.stat()
+            self._ownership.bind_root((info.st_dev, info.st_ino))
+            self.root.chmod(0o700)
+            self.owner = self._ownership.owner = open(self.root / 'control.lock', 'a+b')
+            try: fcntl.flock(self.owner, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            except BlockingIOError:
+                raise ValueError('control_busy') from None
+            for name in ('staging', 'assets', 'owners'):
+                path = self.root / name
+                if not fresh and not path.is_dir():
+                    raise persistence.PublicationQuarantine('incomplete_core_namespace')
+                persistence.mkdir_durable(path, sync_dir)
+                if path.is_symlink() or path.stat().st_uid != os.getuid():
+                    raise ValueError('foreign_namespace')
+                path.chmod(0o700)
+            database=self.root/'core.sqlite'
+            if fresh:
+                fd=os.open(database,os.O_WRONLY|os.O_CREAT|os.O_EXCL,0o600)
+                try: os.fsync(fd)
+                finally: os.close(fd)
+                sync_dir(self.root)
+            elif database.is_symlink() or database.stat().st_uid!=os.getuid():
+                raise persistence.PublicationQuarantine('foreign_database')
+            self._db = self._ownership.db = sqlite3.connect(self.root / 'core.sqlite', timeout=2, isolation_level=None)
+            self.db.execute('PRAGMA journal_mode=WAL')
+            self.db.execute('PRAGMA synchronous=FULL')
+            self.db.execute('PRAGMA foreign_keys=ON')
+            version = self.db.execute('PRAGMA user_version').fetchone()[0]
+            if version not in (0, 1): raise ValueError('unsupported_store_version')
+            if version == 0 and not fresh:
+                raise persistence.PublicationQuarantine('incomplete_core_schema')
+            if version == 0:
+                self.db.executescript('''BEGIN IMMEDIATE;
             CREATE TABLE jobs(seq INTEGER PRIMARY KEY AUTOINCREMENT, id TEXT UNIQUE NOT NULL,
               principal TEXT NOT NULL, operation TEXT NOT NULL, key TEXT NOT NULL,
               fingerprint TEXT NOT NULL, job TEXT NOT NULL, context TEXT NOT NULL,
@@ -134,20 +249,37 @@ class Core:
             CREATE TABLE artifacts(id TEXT PRIMARY KEY, metadata TEXT NOT NULL);
             PRAGMA user_version=1;
             COMMIT;''')
-        self.p1 = persistence.initialize(self.db, fresh=fresh)
-        if not self.p1:
-            self.db.execute('PRAGMA query_only=ON')  # Also fence direct schema writers.
-        # SQLite FULL protects WAL commits; persist the database/WAL namespace too.
-        sync_dir(self.root)
-        sync_dir(self.root.parent)
-        self.active = None
-        self._publication_storage_failed = False
-        self._transaction_serial = 0
+            self.p1 = persistence.initialize(self.db, fresh=fresh)
+            if not self.p1:
+                self.db.execute('PRAGMA query_only=ON')  # Also fence direct schema writers.
+            # SQLite FULL protects WAL commits; persist the database/WAL namespace too.
+            sync_dir(self.root)
+            sync_dir(self.root.parent)
+            self.active = None
+            self._publication_storage_failed = False
+            self._transaction_serial = 0
+            with _core_bookkeeping(): self._ownership.state = 'live'
+        except BaseException as primary:
+            self._ownership.constructor_failed = True
+            try:
+                self._ownership.close()
+            except BaseException as secondary:
+                primary.add_note('constructor cleanup failed: '+type(secondary).__name__)
+            raise
+
+    @property
+    def db(self):
+        # A failed close makes the Core terminal even if SQLite is still live.
+        if self._ownership.state not in ('constructing', 'live', 'closed'):
+            raise sqlite3.ProgrammingError('Core closed for normal work')
+        return self._db
 
     def close(self):
+        self._ownership._identity()
         if self.active is not None: raise ValueError('live_owner_close')
-        self.db.close()
-        self.owner.close()
+        with _core_bookkeeping():
+            if self._ownership.state == 'live': self._ownership.state = 'permitted'
+        self._ownership.close()
 
     @contextmanager
     def transaction(self, *, _deferred=False):

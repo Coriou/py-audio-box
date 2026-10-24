@@ -1,0 +1,654 @@
+# One blocked-pipe node — SOURCEONLY implementation handoff
+
+2026-10-23. Frozen harness `d5f493e63909d31e00680c81e8aefbcf3fcd5162` in fresh owned `/Users/ben/.txcode/worktrees/py-audio-box/p-one-node-observer-20261023`, branch `p-one-node-observer-20261023`. Independent source review REQUIRED before execution. No runtime GO, execution, collection, candidate import, DB open, Docker/native/product execution, fork, delegation, push or root integration occurred. Host operations were source text, AST/compile-without-exec/pyc, hashes, regular tar-member reads and Git. No runtime resource/hold acquired. Historical worktree and retained proof unchanged.
+
+Base reconstructed at exact documentation commit `0f8c88c9f88d5d51f1d187eec34220d1903f7137` from `/Users/ben/.txcode/worktrees/py-audio-box/p-restoration-r4-1-20261023`; executable base `3546b1dd35bd18342ed911747ba9dc6dfca35fef`. The base worktree was clean. Pin-to-doc service/tests diff is empty. No applicable AGENTS.md was found in scoped repository inventories; this does not claim a new global filesystem audit.
+
+## Original current brief (verbatim)
+
+Userauthorized Sol low SOURCEONLY freshownedworktree, nohistoricalmutation/rootexecintegration. Read root P1B23-P-R5-ACTUAL-RECEIPT-AUDIT-r1-sol.md FULL plus P-RESTORATION-SOURCE-r5-sol andruntimeinventory/priorPbrief. Reconstruct exactcandidate3546b1dd35bd18342ed911747ba9dc6dfca35fef doc0f8c88c9f88d5d51f1d187eec34220d1903f7137 from /Users/ben/.txcode/worktrees/py-audio-box/p-restoration-r4-1-20261023. Audit146PASS then exact test_t1_real_blocked_pipe_backpressure_deadline PID229raw74emptyphase actual-EAGAIN marker only. Activefinalexception UNKNOWN, predictedtimeout notproven; previousTbackpressure differentnode cannotattest. Build separatelyfrozen minimal private observational harness for futureONEthisnode only, NO runtime now. Capture actualrunnercatchall activeexception exacttypeID/errno/type-of-args safe shape booleans (no arbitrarymessages), actualcode/frame/offset/phase plus parentrefusal/cleanup stage, selectednode/ownerPIDbinding; boundedfinite numeric schema<=16KiB mode0600private0700 noSQLpaths/rows/tracebackserializer. Keep acceptance/order/rawtokens, deadlines/clock/caps, testasserts, enrolledwait/reaper/latch/cleanup unchanged; observation cannot supplyacceptance orchangepropagation. No genericV/exit74whitelist or attestorfix. Avoid extra observedexception frames/references/hooks lasting beyondexistinglifecycle; sourceprovecleanup. First inspectretainedproofREADONLY noarchivedDBopen no needrerun toinventcause. HostASTcompiletextgitonly NOimports/pytest/collection/Docker/native/productexecution/fork. Freezeharness then docs-onlyhandoff originalbrief findingsresponse preservation hashes proposedONEexplicitnodecommanddeadline/retention/STOPs. Freshindependentsource review beforeexecution. No otherfamilies/delegation/push/unrelatedcleanup. Ifcannotpreservenoninterference returnpreciseblocker, don'tweaken.
+
+## Retained findings and response
+
+Read complete actual-receipt audit and r5 source review, runtime inventory, original P/shared contract and relevant prior P findings/response sections. Full prior r3 composite (including r1/r2 reviews, implementer responses and original/revised contracts) is preserved byte-for-byte under inputs, not represented as a new independent audit of every appendix. No prior objection is waived.
+
+Independently read retained pytest.stdout and regular archive members only (no extraction/DB interpretation): outer-reports has 147 calls, first146 PASS then this exact failed call; waits.jsonl has owner40/PID229/raw18944/phase empty. Actual-EAGAIN regular member equals `kernel pipe full`. Prior audit records one call failure plus teardown error, 64 NOT RUN of211. Active final exception remains UNKNOWN. Source-predicted timeout is not proof. Prior parameterized T backpressure node cannot attest this node. No retry or cause invention occurred.
+
+Response is observation only: seven additive guard lines instantiate a sink and call it at existing terminal wait, existing observed_exit immediately before original exit, and before/after existing guarded-run cleanup. No production, target assertions, clock, deadline, caps, acceptance/parser/phase predicates, mark/raw tokens, order, enrollment, wait/reaper, latch or existing cleanup instruction changes. No attestor or V/74 exemption. This derivative is deliberately usable for only the exact node; another node fails observer setup before target execution.
+
+## Noninterference and lifecycle argument for independent review
+
+Existing observed_exit still obtains and attests its own actual sys.exception() and actual runner caller. No wrapper is inserted between runner and observed_exit; no trace hook is added. Sink sample reads current sys.exception() transiently, finds the actual captured runner code in at most12 existing frames and records its actual instruction offset. It does not traverse exception tracebacks or serialize locals. Stage2 observes the runner's actual `original` local during cleanup if present, not a constructed/predicted exception. Stage3 observes the escaping parent exception after production cleanup. Stage4 certifies only that existing guard cleanup reached the following statement; later latch/SystemExit remains unchanged.
+
+Sample receives only numeric/scalar metadata and existing witness bytes, never a supplied exception. It never mutates any exception, runner frame/locals, guard state or receipt. Captured original raw writer writes a separate regular file, never the witness/result pipe. Missing/truncated/oversized observations are STOP, not admissibility or a reason to retry. Every observer-internal exception is swallowed within sample; its finally clears transient exception/args/frame/runner/code references. No additional observed exception traceback frames survive its return. No exception/frame is stored on Observer or in a global registry. Constructor registers the fixture finalizer before opening resources; close clears fd/run_code and attempts one captured close without propagating observer close errors. Process exit owns the inherited child descriptor. Parent finalizer releases its descriptor within the existing fixture lifecycle. No observer hook outlives that lifecycle.
+
+Observation adds finite work and regular-file IO; static review does not establish zero timing overhead, native IO latency, actual cleanup success or CPython propagation. No clock/deadline/cap compensations are allowed. Missing evidence or changed timing fails this ONE diagnostic. The reviewer must independently assess these source claims; this handoff is not self-approval.
+
+## Numeric schema and private bounds
+
+Fixed numeric node ID1 means exactly `tests/service/test_recovery.py::test_t1_real_blocked_pipe_backpressure_deadline`. Entry requires exact singleton selection before fixtures; constructor independently checks exact nodeid. Every CSV row has47 integer columns, no header or arbitrary string values. Boolean values are encoded0/1. Records: schema-version1, node1; stages1=child catch-all74,2=existing enrolled terminal wait after unchanged guard decision,3=guarded-run finally entry,4=existing cleanup completed. Owner PID captured before fork; current PID/PPID and stage2 enrolled child PID/raw status bind child/parent records. All identity integers are process-local observations, not portable authority or semantic type names.
+
+Column indices: 0 version;1 node;2 stage;3 owner;4 currentPID;5 PPID;6 terminal childPID;7 rawstatus;8 cleanup-stack boolean;9 guard failure count;10 owned count;11 witness length;12 witness empty;13 active exception present;14 active object ID;15 exact active type ID;16 exact ValueError;17 exact BlockingIOError;18 exact BrokenPipeError;19 exact OSError;20 errno bounded exact int;21 errno numeric or0;22 errno is None;23 args exact tuple;24 args count;25 exactly one exact str arg;26 exact known timeout shape;27 exact known child_failed shape;28 actual sample-caller code ID;29 code firstline;30 caller instruction offset;31 actual captured runner frame found;32 actual runner code ID;33 runner instruction offset;34 runner original present;35 original ID;36 original exact type ID;37 original exact ValueError;38 original is current active;39..46 exact types of first eight args (0 absent). More than8 args is explicit in count; no arg content is serialized. BaseException.args and OSError.errno builtin descriptors bypass arbitrary overridden properties. No exception/class/arg repr, SQL path/row, traceback or arbitrary message is emitted.
+
+Fresh fixed `/tmp/pab-p-one-node-observer` must not exist; mkdir0700 and exclusive nofollow regular single-link records0600. Setup mismatch STOPs. At most8 rows/process and512 bytes/row; target has one child and one owner, hence total<=8192 bytes (<16KiB). One write attempt/row, no retry/wait/clock. Partial/missing rows fail retention. IDs/booleans cannot establish an unknown type name, full traceback, or historical PID229 cause. Owner/child expected exactly one stage1, owner stage2/3/4 each once; different/missing/extra stage, identity, field count or truncation is STOP.
+
+## Proposed ONE command — NOT authorized/executed
+
+After fresh independent source review, separate parent execution authority and a separately frozen owned runtime launcher, use the existing pinned Linux runtime/source-copy/manifest verification procedure with this exact derivative. Do not run the original211 list or a prefix. Proposed in-container argv (working directory `/app`, observer directory is source-only PYTHONPATH):
+
+```
+PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=/app/diagnostics/p-one-node python /app/diagnostics/p-one-node/entry.py --one-node
+```
+
+Entry calls pytest exactly once with `-q -x --tb=short tests/service/test_recovery.py::test_t1_real_blocked_pipe_backpressure_deadline`; exact singleton equality is asserted in the same process before fixtures. No separate collection command. Existing outer subprocess deadline1800s retained (not a new timeout utility); original runner30s absolute deadline, test100x clock and <2s assertion remain unchanged. The launcher must retain CPU2, RAM2GiB, PID256, networknone, read-only root, user10001, cap-dropALL/no-new-privileges, private tmpfs1GiB and prior headroom/limits. Pin the actual derivative image and runtime identity; retained image69bd9216 is historical, not this harness. No image/launcher was built here.
+
+Capture unchanged guard wait log, pytest result/phase reports, owner token, exact selected node, runtime/source before/after manifests, observer records and owned resource receipts. Retain actual guard RED; a driver completing retention cannot turn RED into target PASS. First unexpected result, non-singleton, constructor collision, absent actual runner, unbound owner/PID, missing stage/fields, unknown/changed exception, cap/deadline violation, partial/oversized file or missing cleanup is STOP, no retry/repair/tuning. An observed known timeout is a finding for parent review only, never automatic attestor authority.
+
+Use retained binary-safe sentinel/export/live-hash comparison discipline before exact-owned graceful stop/inspect/remove/lane release. Retain the whole diagnostic directory with0600/0700 modes, raw waits and existing failure/teardown reports. No archived DB open. If proof retention fails, preserve the owned live resource under the existing HOLD policy; do not delete proof or claim cleanup. This source-only task created no runtime resource. Future receipt review and parent acceptance remain separate; all other family/shared/grouped/platform/release gates remain pending.
+
+## Static preservation and freeze
+
+AST/compile of three changed/new Python sources succeeded without execution/import/pyc. Removing precisely the seven additive lines reconstructs the entire base guard byte-for-byte. Every other existing executable/test path is unchanged. git diff --check passed. No runtime result is claimed for this harness.
+
+SHA256 at executable freeze:
+
+- tests/_maintenance_wait_guard.py: `6b57d29044324027d03dc414dd0b4a00adaa5263b4d51249bb9ff388ebb0918e`
+- diagnostics/p-one-node/one_node_observer.py: `ee20c60ff9d5890ae6d9ceacf892443a4aea88dedf7a3952baf5bc98797de582`
+- diagnostics/p-one-node/entry.py: `5e7eb11bf5b93f7dd7dabe19e3d6dcdc9f16f40ec88a898f011bac63238bf600`
+- retained pytest.stdout: `45a95e0d726611eedd82b3bbe7912b96f39f756520f79be15d34af358f692a6e`
+
+Input hashes below are frozen full documents, preserving original findings/responses; they do not promote historical source/runtime claims to fresh qualification.
+
+- P1B23-P-R5-ACTUAL-RECEIPT-AUDIT-r1-sol.md: `5cdc49548dce8bb42eb774a04a582fe6462f012e1893542fda7f967d011786dc`
+
+- P1B23-P-RESTORATION-RUNTIME-r5-20261023.md: `a111527ef9ac03c431297990c39e4f614e9431e9a396b6f2d40e2c1b823c50eb`
+
+- P1B23-P-RESTORATION-SOURCE-r5-sol.md: `24c54b15cdd4788d284f8fec5ed51b034f05af88acab96e4e0a3744c250603d6`
+
+- P1B23-P-WITNESS-SOURCE-r3-sol.md: `91fe1243674d3b4d6362fb6b4f5ed6797c47b67534ded8d54110b74d1b97a61a`
+
+## Launcher preparation handoff — 2026-10-23
+
+Launcher/source freeze commit `e941c7a` on branch `p-one-node-launcher-20261023`, fresh owned worktree `/Users/ben/.txcode/worktrees/py-audio-box/p-one-node-launcher-20261023`, reconstructed at exact observer documentation8d5aba5fc702719843d055b7d3f693c407deb0e9 / executable d5f493e63909d31e00680c81e8aefbcf3fcd5162. Subsequent changes are this documentation append only. Complete root observer SOURCE-r1 review and actual-receipt audit were read; original observer brief remains above. Their bounded SOURCE GO is not launcher or runtime acceptance.
+
+Authorized scope: SOURCEONLY launcher preparation, diagnostics/p-one-node only; no observer/entry/guard/attestor changes, root integration, push or delegation. Preserve one exact entry command, Linux3.14.8/SQLite3.40.1/libsqlite3-0/link hash/all42 pins, existing base69bd9216 via inspected owned local tag, COPY-only networkless no-pull build, atomic owned lane, bounded resource controls/admission/deadline, private binary-safe live export before owned cleanup, strict observation binding and expected RED. No runtime authority follows from preparation.
+
+Added launcher.py, runtime-identity.py, source-manifest.json and FREEZE.md with source hashes, proposed exact argv/proof layout, finite deadline and HOLD/cleanup semantics. Prior /tmp/pab-s-final-one-node-r2-20261023/run.py and identity-code.txt were read only as templates; no retained proof was modified or secret copied. The launcher deliberately stops after structural schema checks for independent actual caller/runner offset, process-local type interpretation and guard/report binding. Unknown/missing/partial/extra/changed-phase proof cannot receive acceptance. This is a review candidate, not a claim of verified launcher behavior or complete actual-receipt binding.
+
+Host AST parse/compile without execution/import/pyc passed for the two new Python sources. Byte comparisons against d5f493e confirm unchanged entire guard, observer and entry. git diff --check passed. No launcher execution, Docker call/build, pytest/collection, candidate import, probe, database open or runtime cleanup occurred; no lane/container/image/runtime HOLD acquired. A missing `python` host alias on the source-edit helper was resolved with python3; neither invocation executed candidate source.
+
+Fresh independent review of the exact frozen launcher/source-manifest recipe is REQUIRED before separate parent authority for future ONE execution. Reviewer must assess runtime identity completeness, admission, finite cleanup budget, all failure/HOLD paths and exact offset binding; no self-GO is asserted. Original historical PID229 active final exception remains UNKNOWN; no test acceptance or other gate credit follows.
+
+## r16 implementation handback — 2026-10-23
+
+**SOURCE CANDIDATE / HOST ONLY. No self-GO, no actual Docker, no product diagnosis.** Parent adopted the entire r16 ordinary-local-volume decision, explicitly replacing the old physical metadata-inclusive quota prerequisite. BLOCKEDPIPE only; no H/S batch. New detached successor `/Users/ben/.txcode/worktrees/py-audio-box/p-one-storage-r16-20261023` starts at exact original documentation `f93b7fef6cc461b756cd9e13ff14e88e243359a4` / executable `e941c7aee7f53348905659904b8299d5500d1250`. Parent workspace and historical candidate remain untouched. No commit/history rewrite, push, integration, delegation or old-proof cleanup.
+
+Read entire r16 decision, complete BLOCKED-PIPE-LAUNCHER-SOURCE-r1-sol/LIFECYCLE-ASTRA and S-DRIVER-GLOBAL-ASTRA-r13; combined output truncations were recovered by focused reads. Existing historical handoff/original briefs remain above. Applicable ancestor/scoped AGENTS checks found none; no global filesystem absence claim. Memory registry supplied no relevant hit and was not used as evidence.
+
+Changed ONLY launcher.py, finite-driver.py, host-check.py, source-manifest.json, FREEZE.md and this HANDOFF.md. Freeze records hashes and policy delta. All193 original payload hashes rechecked; original manifest files mapping/observer commit identical. Entry/observer/runtime helper compared directly to original executable Git blobs. Git diff outside the six-path allowlist is empty; guard/product/tests/locks/dependencies byte-identical to reconstructed pin.
+
+L1 proposed source closure: numeric COPY ownership of every nested private source/seed; metadata-only `/tmp` owner/mode recipe; real initialization/readability must still qualify. L2: proof in retained persistent local volume independent of finite PID1 stop; failed export holds original volume and stopped containers. L3: unchanged entry launched once by finite PID1, independent watchdog/monitor and post-test descendant cleanup; stopped-state and terminal checks before sequential readers; protected phase ceilings and host supervisor. L4: token/UUID journal before lane/resource mutation, conservative uncertain-response reconciliation, full-ID binding/mutations, exact owner/inode release, no foreign cleanup. These are implementer source traces, not independent closure or actual receipts.
+
+r13 F1–F4 response: explicit os.open/fdopen0600 rather than unsupported Path.open(opener); one owned group-kill attempt on timeout/overflow/capture error even after leader exit; explicit conditional optimize guard before acquisition and remote dispatch; fixed PENDING/checksummed terminal slots plus separate supervisor completion, finalization failure cannot be accepted from stale handback. Private077 and scoped022 context manager are exercised with real APIs. No recipe-fd bootstrap is used in this successor; immutable source payload is read/copied/admitted directly. Known fatal source issues were repaired before running HOST; no actual invocation was spent.
+
+### Retained HOST history (do not erase RED)
+
+All receipts say HOST-ONLY / FAKE EXTERNAL COMMANDS / NO PRODUCT CLAIM. CPython3.14.7 optimize0/debugTrue, stdlib only. Dedicated real0700 roots/0600 files; finite32-case matrix fixed before first run,9s/case and300s total. No actual external command, real signal to fake PID, product import, SQLite, pytest, network, Docker build/volume/container, native crash/fork campaign or Git mutation occurred in the harness. The supervisor's real fork branch is source-only; its control flow is exercised with a worker fixture.
+
+1. `/private/tmp/pab-p-one-r16-HOST-1hn1pii1/HOST-receipt.json`: **RED**,32 cases,0.441271865s, SHA256 `127154636fdda662792c7b0a51f9530a3d5e5f061ac8fa457d16468280b88a70`. Nine RED:03/16/17/23–28. Actual API failure: macOS lacks os.posix_fallocate; slots now initialized with bounded real writes/fsync. Actual fixture failure: /private/tmp children inherited GID0 rather than process primary20. Cases18/20 initially passed at the wrong early GID rejection; their explicit intended-error coverage was corrected and rerun, not represented as original coverage.
+2. `/private/tmp/pab-p-one-r16-HOST-lxq71z25/HOST-receipt.json`: **PASS**,12 scoped cases,0.605381135s, SHA256 `cda48d5d7f509c1f1570d946aa276bb2fdd8aa9a69a05139811233eb998046d7`. Nine failed + changed18/20 and29 derivative binding. No other passing case repeated.
+3. `/private/tmp/pab-p-one-r16-HOST-nhrnd5lv/HOST-receipt.json`: **PASS**,14 affected-scope cases,0.818234874s, SHA256 `1294fb4a203855063d5b5b4b1de0201ce56fbef9a475c9c7649b0449c69e30b7`. Subsequent source inspection found early completion could lend retention more than180s; corrected phase-local deadlines and added supervisor/actual reader/collision/hash-mismatch coverage. Scope is prior failed cases plus changed17/18/20/21/23–29/31 and source binding, as recorded in receipt. No unchanged full32 rerun.
+
+The final fixture union covers seven groups: private IO/API/umask; stable source/private reads/copies/slots; real pipe captures and exited-leader/error seams; optimize/startup/resource/volume admission; complete scripted handback with synthetic47 rows; collision/lost-ack/export/remove/pressure HOLDs; streaming binary tar/map and failed final publication. Per-case raw stdout/stderr/pending/spawn/completion captures are retained under the corresponding root, and receipts record pre-rescue fd closure before fake feeder cleanup. Fixture-generated terminal/47 rows are expressly synthetic. HOST does not execute the pinned recipe/image/entry or qualify native process behavior. The outer terminal output was recorded by the tool transcript, not retroactively fabricated as an evidence file; original per-command binary captures and structured harness receipts are the retained raw HOST proof.
+
+### Remaining review and actual gates
+
+Fresh independent **GLOBAL Sol source + HOST review** of the entire frozen successor is mandatory; parent must arrange it, this implementer did not delegate or self-approve. Inspect the actual fake adapter, complete final sources and all retained RED/scoped proof. In particular review host supervisor/local CLI uncertainty, phase accounting, source recipe/base-reference/COPY behavior and fixed-slot failure paths. A local worker timeout records spawn receipts and UNKNOWN; it does not establish that every detached CLI session or remote daemon operation terminated. Absolute kernel/daemon/storage completion is unqualified.
+
+No actual base availability/build/volume usability/population/free space/persistence/quiescence/resource configuration has been observed. No actual metadata/physical quota or durability is claimed. Deleted-open bytes, rapid growth, concurrent disk users, backend overhead and IO stalls remain residual risks. Exact usable initialization is unknown until the separately authorized finite dummy lifecycle qualification. This source includes actual writer/archive/hash modes, not a separately approved dummy campaign or alternate entry bypass; the parent qualification brief must freeze its tiny non-product writer/argv and reviewed image before dispatch. It must not invoke the product writer as a substitute for dummy qualification.
+
+After independent source/HOST review only, parent can authorize at most one metadata/source build (300s), one fresh finite UID10001 tiny dummy writer and two sequential RO readers, total<=600s, retaining volume and detached-wait/persistence evidence. Inspect that actual receipt before the one product invocation. No execution is authorized here, no retry/repair-after-red, no cleanup of retained resources. Actual diagnostic remains expected RED and requires independent47-field/offset/type/EAGAIN/guard/selection/call-teardown/unreached-assertion review; historical PID229 cause remains UNKNOWN. H/S construction52/57 and all other family/installed/native/platform/ext4/durability/T2/release/activation gates remain separate.
+
+### Final content pins and verification
+
+No executable edits after the final14-case scoped receipt. AST parsing, manifest193+derivative hash verification, receipt-to-current executable/hash binding and exact six-path diff passed. Documentation only was appended afterward. No commit was created.
+
+- finite-driver.py: `03a76ee0a9776ffcbf529cadd632ea4a15638b9799b62ba2f8e0a25b38324fdf`
+- host-check.py: `55b41a99b4d8f171ac41b4860bd76c2fe347a0fd9e56876658dc8033b6953c25`
+- launcher.py: `575867084bffa9507fb9c5a014bd5750661082c989bc80e0db1103cf014d77b2`
+- source-manifest.json: `7b447a9c4cf6958c11819eed6fe55e2177156bf6ce9d19c0a9a50d71080bead2`
+
+Full decision/review inputs read in this implementation (SHA256):
+
+- P1B23-STORAGE-PROPORTIONALITY-ASTRA-r16.md: `4216fcf3facb0f2edcb502c6df3f4d689451a1930dc833519518678e06d55070`
+- P1B23-BLOCKED-PIPE-LAUNCHER-SOURCE-r1-sol.md: `dca89cff992be204c95bdcf4c9a47c00f15a8ab5c4bc5cd7ce797b3ded678884`
+- P1B23-BLOCKED-PIPE-LAUNCHER-LIFECYCLE-ASTRA.md: `bd0884a333e5e0598a1f934f234a40627f8e21b6e60aa3de1d313704702a4598`
+- P1B23-S-DRIVER-GLOBAL-ASTRA-r13.md: `2a2fafd602ed6abeded9315785c6dd88875b2855f53b61b6983fddd8f5532767`
+
+
+## r18 cohesive F1/F2 implementation handback — 2026-10-23
+
+SOURCE CANDIDATE / HOST ONLY; no self-GO. Candidate `/Users/ben/.txcode/worktrees/py-audio-box/p-one-storage-r18-20261023`, detached base87cec9a3 (exec8364308c). The historical r16 worktree and all private proofs are unchanged. No commit created. Exact final executable/manifest hashes are in the r18 FREEZE section above and match final HOST receipt `/private/tmp/pab-p-one-r16-HOST-5xxexl3z/HOST-receipt.json` SHA256 `fa8ef7b0ee9c2e85845bda858f7ce5739394199aab8dd9e83fc9d6312fd3461d`. Documentation appends only follow that freeze.
+
+Read complete r17 GLOBAL review F1/F2 and r16 controlling policy, original briefs/prior responses in existing FREEZE/HANDOFF, old L1-L4 and r13 API/kill/optimization/final-publication lessons. The memory registry query had no relevant hit and supplies no evidence. Ancestor/scoped AGENTS search found none. Changed only launcher, finite-driver, host-check, manifest, FREEZE and HANDOFF. All193 original payload bytes remain identical, including entry/observer/identity/guard/product/tests/locks; no manifest hash cycle. Git diff outside allowlist empty.
+
+F1 response: actual writer computes child deadline at dispatch as min(now+1200,start+1260); postcheck phase begins immediately after quiescence and includes monitor join/sourceverify/identity/readback/publication under min(phaseStart+60,start+1350). No time is borrowed from early prechecks/child completion. Existing cumulative watchdog/quiesce30 remain. F2 response: both pipe objects are owned immediately after spawn, before all fallible setup; host/remote setup failures enter existing bounded kill/reap paths and close both streams. Selector close error cannot bypass host stream closure. Kill is independent of leader poll; remote error is rethrown and host stays UNKNOWN. No signal receipt is claimed to prove daemon completion. Supervisor publication has a reserved16MiB portion inside4GiB invocation logical accounting, actual byte charging before write, no hard quota claim.
+
+HOST coverage frozen before execution:32 existing scenario groups, max9s/group and300s total; affected scope09/23/26/28/29/31/32 only. Final7/7 PASS, 0.589028s, CPython3.14.7 optimize0/debugTrue. Group09 keeps prior selector failure and adds host spawn-receipt publication/selector constructor/first register/set_blocking failures, plus remote constructor/register/set_blocking. Both original pipe objects are checked closed before fake rescue; exact one kill and bounded reap asserted, host failure receipt UNKNOWN/remote_completion=false. Remote original failure is observed. Group32 keeps PID1 refusal and executes the ACTUAL writer scheduling function with controlled clock and external/environment seams: early prechecks5s+child reaches1205 timeout, early child6s+post60 timeout, slow source verification61s, terminal publication61s and valid success. It asserts real computed deadlines, return failure on overrun, no publication after expired postchecks, retained quiesce bound. Child/identity IO, admission, signals, monitor thread and terminal slot IO are fixtures in this scheduling scenario; it is control-flow proof, not native writer execution. Actual slot/private IO and capture IO remain exercised in existing groups.
+
+Group23 traverses latest complete synthetic handback/retention;26 preserves stopped-writer failed export and hash mismatch;28 final-publication failure leaves PENDING;29 copies actual193+derivative source through real context functions;31 exercises actual supervisor pressure and namespace cleanup with fake workers/PIDs. Synthetic47/terminal data in full routing success are still fixtures, never product evidence. All prior meaningful global cases remain in harness unchanged outside the explicit affected fixtures/scope; earlier receipts keep their own source hashes and are reused only for unaffected seams. Latest receipt records fd observations and actual scheduling observations, raw command captures retained; raw invocation stdout/stderr paths and hashes are in FREEZE. First r18 scoped green retained at `/private/tmp/pab-p-one-r16-HOST-xgbech_5/HOST-receipt.json`; second run was justified by changed publication guard/stronger assertion and accounting receipt, not an unchanged full rerun.
+
+Limits: cooperative phase checks and overall1350 watchdog do not prove kernel IO completion; a late terminal write returns nonzero and cannot pass host writer exit admission. No actual Docker/image/volume initialization/quiescence/persistence/CLI semantics, native signals/fork, physical quota/durability or product result qualified. Ordinary persistent volume, product caps/expected RED47/raw18944/EAGAIN/offset/type/guard/unreached assertions remain unchanged. Historical PID229 UNKNOWN. No actual dummy yet, no actual product attempt, no H/S/T2/platform/release credit. No runtime resource/lane cleanup obligation acquired. Parent must obtain fresh independent GLOBAL source+actual retained HOST review, then separately freeze dummy writer/argv/recipe and follow r16 bounded qualification/receipt review before any ONE diagnosis. No delegation or self-acceptance performed.
+
+
+## Tiny dummy qualification HOST handback — 2026-10-23
+
+SOURCE CANDIDATE + HOST ONLY, no self-GO. Used the existing clean designated detached successor at documentation fd0bc585d897818c66f3ae62d38c6a8eeda769b3, whose executable content is c3b966beafbb9cb861428e59a81b56adb3ccd127; did not create a worktree or change Git/history. Full r18/r16 reports and current launcher/finite-driver/HOST functions read, focused reads recovered truncated combined output. Memory search supplied no relevant hit and no evidence. Ancestor/scoped AGENTS inventory found none. Parent acceptance of r18 all-F closure is the preparation boundary, not actual authority.
+
+Added ONLY dummy-writer.py, qualify.py, qualification-host-check.py and QUALIFICATION.md; FREEZE/HANDOFF append only. Existing launcher, finite-driver, host-check, source-manifest, entry/observer/runtime identity and193 original payloads plus2 derivative hashes reverified byte-identical to supplied executable. No product writer mode was called. QUALIFICATION.md contains exact proposal/execution interfaces and obligations; no preparation CLI or actual execution CLI was run, only the HOST matrix. HOST executes prepare/context functions privately with fake Docker. No actual plan/authority artifact is presented as runtime-approved.
+
+Pre-HOST freeze in FREEZE binds all four new paths. Matrix fixed12 cases,9s/case,120s total before first run; first and sole run PASS12/12 in 0.5057634850090835s under CPython3.14.7 optimize0/debugTrue. No unchanged old matrix rerun, RED erasure, or repair/retry. Receipt `/private/tmp/pab-dummy-HOST-vxvsd480/HOST-receipt.json`, SHA256 `5011f482967e4bcece25b182cdfe2c9f96e2dcf05f79f9d1dd088b45eda08360`. Root0700/all regular evidence0600, including actual captures/pending/spawn/completion receipts and published HOST receipt. Receipt binds all7 executable/manifest inputs (four original plus three new Python files). AST parsing and git diff --check pass.
+
+Meaningful coverage: actual dummy binary/9269-byte counter/checksummed terminal IO and refusal before overflow; identity/authority CLI refusal before dispatch; actual initialized/census/private source193+3 copying and fixed-plan tamper rejection; product-command denial and distinct dummy command; fullID/security/volume refusal; complete finite build/writer/readers/retention/fullID cleanup/exact-owner release routing; stopped export failure preserving original volume/containers/lane and forbidding second reader; lost detached-start acknowledgement remaining SENT-UNKNOWN with no retry/readers; actual finite archive/hash readers preserving all bytes, USTAR parser and independent hash map/duplicate rejection; private binary capture overflow UNKNOWN; independent30s alarm/no-child source plus actual host supervisor function with fake worker/clock refusing at cutoff and publishing UNKNOWN. Existing reviewed Fake is exact finite argv/cwd/stdio queue, no fallback. Real subprocess/system/killpg/fork boundaries denied. Native PID1 identity is explicitly synthetic in routing fixtures; actual readers use HOST UID/GID for real local IO, not a Linux UID10001 claim.
+
+Reuse: narrow guarded launcher/finite-driver import, original source context/recipe, counters/publication/capture/journal, volume/stopped/config functions, actual unchanged archive/hash helpers, strict parsers and owner/inode finalization. Dummy-specific command/security binding, build intent and detached start/wait are separate. One build<=300, writer independent alarm<=30, two sequential readers<=60 each, cumulative330/390/510/570/600 and host supervisor570 cutoff/final600. Build lost response permits only bounded label discovery, never repeat build or absence inference. All uncertain branches retain state. No volume/image deletion or foreign cleanup. Dummy terminal total writes9269 bytes plus23-byte seeded volume content; fixed cap1MiB. Source/image/UID/config/mode/mount/volume/hash evidence map is specified; full proof remains ordinary persistence, not physical quota/durability.
+
+Execution remains UNRUN. No Docker query/build/container/volume, product import/entry/runtime-identity/DB/SQLite/pytest/network/native campaign, Git mutation/commit, delegation/push/integration or old-proof cleanup. No operational lane/resource acquired; HOST private roots retained. Native detached-wait timing, base/FROM usability, UID10001 source traversal/empty-volume population, actual resource/mount/config, stopped persistence and two-reader equality remain actual obligations. Fresh independent Sol GLOBAL review of these exact sources and retained HOST receipt is mandatory before separately authorized ONE actual dummy; then independent ACTUAL dummy receipt review before any ONE product invocation. No self-acceptance or product/gate credit.
+
+Full review input hashes:
+
+- P1B23-PERSISTENT-PROOF-GLOBAL-SOL-r18.md: `f1b17129234eeb0d0114c7751009d7f69634ea37d6944572ac102d303a45de4a`
+- P1B23-STORAGE-PROPORTIONALITY-ASTRA-r16.md: `4216fcf3facb0f2edcb502c6df3f4d689451a1930dc833519518678e06d55070`
+
+
+## r20 cohesive recipe repair successor — 2026-10-23
+
+SOURCE + HOST implementation only; NO self-GO. Fresh T3 worktree `/Users/ben/.txcode/worktrees/py-audio-box/t3-cc139bcf`, branch `t3/repair-dummy-build-recipe`, reconstructed by resetting only this owned branch from starting `03937811454881681ab989329e9649038db44079` to candidate `7df2dab65c710730dd87c1e36cae310fb82fb211`. Executable commit `a9c604aff77cce87cefd81baa5787fbcc6d41a5e`. Parent/root/history and old candidate `/Users/ben/.txcode/worktrees/py-audio-box/p-one-storage-r18-20261023` preserved; old candidate rechecked clean at exact7df2dab. No old lock access or release.
+
+Read complete parent r20 DUMMY-BUILD-ACTUAL-AUDIT, persistent dummy GLOBAL-SOL-r19 and STORAGE-PROPORTIONALITY-ASTRA-r16 before repair (focused recovery of combined output). No applicable AGENTS found. Lightweight memory registry search supplied no relevant evidence. Scope is five executable/manifest files and append-only FREEZE/HANDOFF/QUALIFICATION. Repository manifest's193 payload entries and both existing derivative entries are identical to7df2dab and every current payload hash was checked. finite-driver.py and dummy-writer.py are byte-identical. All other tracked bytes outside this scope are unchanged. No policy/deadline/quota/gate/product assertion expansion.
+
+Shared launcher helpers `base_reference`, `base_steps`, `base_recipe`, `validate_recipe` serve product preparation and dummy preparation/validation. FROM is deterministic `pab-local-base/<invocation-UUID>:<48hex-owner-token>`, a local repository/tag; full raw BASE remains a separate expected inspect ID, never a FROM or registry manifest digest. Both proposals disclose exact pinned-base inspect, fresh reference-filtered tag absence query, exact-ID tag argv, tag inspect argv, retained reference and expected ID. Dummy plan separately freezes existing build labels/argv and lifecycle commands. Existing legacy SOURCE/EXECUTABLE/DOCUMENTATION constants identify historical reviewed inputs; current actual program bytes are bound by updated PINS and plan inputs, never misrepresented as the new commit.
+
+Later authorized adapter order under the existing lane: base inspect/ID/Linux/amd64/startup -> exact fresh tag absence -> journal NOT-SENT/SENT-UNKNOWN -> tag pinned full BASE -> acknowledged CONFIRMED -> tag inspect/ID/Linux/amd64/startup -> TERMINAL tag operation with retained base_tag object -> recipe/steps revalidation -> immediate second tag inspect with same identity/startup admission -> sole `--pull=false --network=none` build. Collision refuses before tagging; no overwrite path, retry, tag removal, floating base or pull/install added. Lost tag response remains SENT-UNKNOWN with exact argv retained and no build/downstream dispatch; it is handed back for exact reconciliation, never retried. This assumes the existing trusted daemon/lane boundary, without claiming atomic compare-and-set against a malicious concurrent tag writer. Tag/image/cache bytes remain excluded backend overhead. Product launcher still only proposes build work; its proposal now discloses all prebuild tag obligations too.
+
+Complete fatal BuildKit response is classified only when capture is COMPLETE, exit1, leader reaped, descriptors closed, no group kill, captured stderr byte count matches, newline-terminated final stderr line explicitly starts `ERROR: failed to build: failed to solve: ` and contains a diagnostic. Then build journal is TERMINAL/result FAILED. Generic exit1, partial/nonterminal error, lost spawn/response, wait timeout, overflow or other UNKNOWN capture cannot qualify; one existing label observation does not establish absence/completion and never authorizes retry. Failure still returns false and preserves state/lane; this repair does not auto-release a failed run. Original r19 actual SENT-UNKNOWN journal, slots, once-marker, captures and reports are untouched; r20's separate terminal interpretation remains historical evidence, not rewritten success.
+
+Focused HOST command actually run: `PYTHONDONTWRITEBYTECODE=1 python3.14 -B diagnostics/p-one-node/qualification-host-check.py --recipe-repair`. CPython3.14.7, assertion enabled. Fixed affected selection3 groups /13 available groups,9s/group,120s total; final PASS3/3 in 3.034564911999041s. It executes actual product preparation/recipe validation, actual corrected host-check group29 (replacing the flawed raw-FROM green assertion), actual dummy preparation/full context/plan validation, rawFROM/foreign-tag/plan-step/build-argv rejection, actual Qualification adapter through eleven finite failure subscenarios: collision, wrong tag ID, unsafe startup, lost tag ack, complete fatal solve, generic exit1, truncated terminal, wait timeout, wrong immediate-reverify ID, unsafe immediate-reverify startup and post-tag recipe tamper. All assert no downstream volume/create/start/readers and at most one build; UNKNOWN and terminal states are checked. Affected successful build/tag lifecycle traverses existing writer/two-reader retention/cleanup/release and asserts retained tag/full pinned ID. Finite exact fake argv queue has no fallback; subprocess/Real.spawn/system/killpg/fork are denied; real private files/pipes/capture/parsers/journal/publication run. Native PID1 identity remains synthetic. No full unchanged lifecycle campaign was rerun; unchanged meaningful tests remain in the harness and old receipts keep their evidence boundaries.
+
+Final receipt `/private/tmp/pab-dummy-HOST-970m2p0t/HOST-receipt.json` SHA256 `ef2972bb751250473fc995c0e8ea28f4a8f2ad7d3cd8c17e5125a24653019a69`. It binds all seven current executable/manifest bytes listed below. Private roots retained0700/leaves0600, no runtime plan/authority or actual preparation CLI created outside HOST. First receipt `/private/tmp/pab-dummy-HOST-s5v99rnr/HOST-receipt.json` SHA256 `002d555f131d58a5cfa6ffcf2f3af0da5f2a5ebf7ee6a55ccf27fea68b18b349` is RED: intended timeout fixture's accelerated fake clock exhausted admission before build, leaving unconsumed commands. Earlier branches passed. Corrected to fake wait timeout at actual capture seam; this is HOST fixture repair, no real operational retry. Intermediate PASS receipts retained: ju_09cdp (corrected fixture),9unh8s_d (added affected success path),s50ggq8n (tightened final-line terminal classification and manifest contract),uj57v58i (added immediate reverify/tamper coverage). Final970m2p0t adds execution of corrected product HOST29. Each rerun followed an explicit changed fixture/assertion/source concern; no RED erased or production attempt repeated.
+
+Exact executable/source hashes:
+
+- `launcher.py`: `0ded93a96a7136112c163d546cb269d6fdcbff2b06e8e87fecc5db5e30616c29`
+- `qualify.py`: `9908fd5109a717edfce011b72f037edd62f16aeef581035fdc1510a71fc6af23`
+- `host-check.py`: `a78b2b0ba03dc6bc64bf42be5c1494b4dd94d38bb1aa37bc0c996cbc986f582d`
+- `qualification-host-check.py`: `89e8d3c127625c24701333a84128665d96b1af1ffd3046ceaf2cc89bf082a19f`
+- `source-manifest.json`: `1d97c4f899de7a7cafe2d2137c917d7af6c9a17c037022ee93a478bd19ce219a`
+- `finite-driver.py`: `bdf424d31c54bacdf2d8b9406ee41c521beb8d28b8503a00620c3ff29b705732`
+- `dummy-writer.py`: `858a605b9707e65577937f55f94af04f292b57fc77bfe70669b67b7187c0cf5a`
+
+AST parse and git diff --check passed. No real Docker queries/tags/builds/volumes/containers, product imports/entry/runtime identity, SQLite/DB, pytest, native crash campaign, network, actual dummy, execution plan, delegation, cleanup or old lock mutation. Only stdlib HOST temporary IO and authorized Git/source/document writes. No new runtime resource obligation. Local-tag native builder usability, actual initialization/stopped persistence/two-reader equality remain unqualified. P47 expected RED, historical PID229 UNKNOWN, all H/S/native/T2/platform/ext4/durability/release/activation gates unchanged.
+
+Handback: return this exact executable plus documentation successor for fresh independent Sol GLOBAL SOURCE + retained HOST review. No implementer GO or actual authority. After that review parent controls any separately authorized bounded new dummy and actual-receipt gate before product. Old failed build reconciliation/lock release belongs exclusively to parent and is not performed here.
+
+
+## r26 cohesive hygiene and observability successor — 2026-10-23
+
+Implementation handback for independent Sol GLOBAL review; no self-GO or actual execution authority. Executable commit `84477f38b4b6de52994e21e6cf6f3bafec801db6`, parent exact `ce70817437b4b24e0d35711e6450bf680f32e2d4`. Fresh owned T3 checkout `/Users/ben/.txcode/worktrees/py-audio-box/t3-dc329cf6`, branch `t3/diagnostic-capture-host-fix`; reset only that initially clean branch from3683745 to the immutable candidate. Original t3-cc139bcf independently rechecked clean at ce708174. Old candidates, objects, lane and all historical/private evidence preserved; no old lock access/release. Read full controlling root r26, r23, r21 and Astra r16; no applicable ancestor/scoped AGENTS. Memory registry used only for evidence-tier discipline, current source/receipts supply facts.
+
+Shared base_recipe used identically by both prepare paths now removes/recreates ONLY dedicated image /tmp before seed COPY, including inherited ordinary/hidden entries and a symlink at that path. New directory0700 numeric10001:10001; seed COPY numeric10001:10001/0600. Isolated assertion-enabled build Python asserts real directory, exact seed-only names, regular seed, exact modes/owner and exact seed bytes. This explicitly extends the OLD metadata-only contract with narrow image construction hygiene. No packages, runtime root initializer, mounted-volume repair/cleanup, junk allowlist, install, network or pull. Strict initialized/census, finite-driver, dummy body/counters and193 payload mappings/bytes plus2 original derivative mappings/bytes remain unchanged and rehashed.
+
+Dummy and product/reader lifecycle callers use bounded start --attach capture with exact binary stdout/stderr, per-stream lengths and incremental SHA256 in complete receipts. Default call still rejects completed nonzero commands; only explicit lifecycle attach/wait callers defer that gate. Completed attach (including nonzero) is followed by separate bounded wait and one reserved stopped inspect BEFORE CLI/workload status acceptance. Full inspect is captured; acknowledged full ID, image/owner/name/config/mount binding and stopped state are checked. STOPPED objects retain full inspect including ExitCode/OOMKilled/Error; start becomes TERMINAL only after proven stop. Nonzero attach, wait CLI, wait workload, OOM or daemon Error still STOP before readers/product/cleanup. Missing OOM/Error cannot pass acceptance. The stopped predicate establishes quiescence separately from failure acceptance.
+
+Original phase/global limits stay fixed. Within each lifecycle phase,12s is reserved beyond attach for wait/inspection/local reap; wait<=4s ends before protected last6s; inspection ends within original phase. Dummy attach<=35s while independent PID1 hard alarm remains30s; product finite alarm/dispatch schedule unchanged, reader phase still<=60s. Budget exhaustion refuses further dispatch. Attach timeout/overflow/lost acknowledgement kills/reaps only local CLI when owned, preserves capped prefixes and UNKNOWN remote state, with no retry/adoption/reconciliation or reader/cleanup. Inspection failure or exhaustion never fabricates STOPPED. Existing non-start mutation reconciliation remains unchanged. No daemon logs enabled.
+
+Affected command: `PYTHONDONTWRITEBYTECODE=1 python3.14 -B diagnostics/p-one-node/qualification-host-check.py --r26`. Host interpreter `3.14.7`, assertion enabled. Final PASS7/7 selected groups from15 available,9s/group/120s total. Final selection supersedes earlier pre-run prose saying14 available. Groups cover inherited ordinary/hidden/symlink clean-seed model and residual rejection; both actual prepare contexts and product HOST29;24 product+dummy failure subcases (completed attach nonzero/exact streams+hashes, wait CLI0/workload1, wait CLI nonzero, inspect failure, timeout, overflow, lost ack, pre-attach and pre-inspect exhaustion, OOM, daemon Error, wrong full ID); existing affected product real-pipe transport04/05/06/07/09 and full lifecycle23; full dummy success; lost-start HOLD; binary/overflow capture. Real private filesystem/pipe/capture/parser/journal/publication code runs against exact finite fake argv, guarded against real subprocess/Real.spawn/system/killpg/fork. These are HOST models, not actual Docker build/copy-up/remote timing qualification; cleanup assertions execute only against fake commands and owned HOST fixture trees.
+
+Retained progression:
+
+- `/private/tmp/pab-dummy-HOST-y0fu40dn/HOST-receipt.json`: PASS 6 groups/4.747253s; SHA256 `b2914117e7bfcf7b32e4c0844ea07f623109e6f5ccedf5941ee2a48cb0a88000`.
+- `/private/tmp/pab-dummy-HOST-l8jfrzrg/HOST-receipt.json`: RED 3 groups/2.434604s; SHA256 `7c4fab015fc69556a755b8bfdd4b583c094f3ec884034273f2fe482d911e00be`.
+- `/private/tmp/pab-dummy-HOST-e_rzh_w4/HOST-receipt.json`: PASS 7 groups/6.572917s; SHA256 `2b995609ce5b88d44e0fae3dffb559ab6ccb9cdb7e514e946695defeac89f1a6`.
+- `/private/tmp/pab-dummy-HOST-wxtoq4sw/HOST-receipt.json`: PASS 7 groups/7.063593s; SHA256 `aa6c9953ab5403f94058b83e028036e52bd774548f28082d5175f457432153f2`.
+
+Initial6-group PASS predates added incremental hashing/OOM/error/deadline/product transport coverage. Expanded RED l8jfrzrg stopped first at lifecycle_failures: inspection-deadline fixture truncated expected commands AFTER Fake copied the queue, leaving an unconsumed inspect. Moved truncation before Fake construction; no production behavior weakened. e_rzh_w4 then PASS7. Final wxtoq4sw follows explicit full-ID equality and required OOM/Error acceptance checks with wrong-ID fixture, PASS7. All receipts retained, no RED erased; final receipt hashes match current executable bytes. Each source/fixture revision had a pre-run freeze entry. No unchanged full campaign rerun. Original r20/r22/r25 receipts remain historical and untouched.
+
+Final SHA256 pins:
+
+- `launcher.py`: `dbc5d32afb11bfc4254deaa6945f94e8da7b5e6f65b20d0b4b36eaac2267eb7d`
+- `qualify.py`: `6999a3e4aaeece2fdd9abd3a4f23d8fcd71dc5e6773a0ae69be20b59dce91626`
+- `host-check.py`: `1b80c3d500dd58fdc0892aaaffc58eb570915965062ce0b0aa17e85f78c0fff0`
+- `qualification-host-check.py`: `48c32c03cdf0c51a4a0394d350120bed284f9c4d12ec257243766e4b015053ec`
+- `source-manifest.json`: `63773d57d7f1f255b3dee55be1687f5975a4bedcff872bb47dd14cb8a6fa2c94`
+- `finite-driver.py`: `bdf424d31c54bacdf2d8b9406ee41c521beb8d28b8503a00620c3ff29b705732`
+- `dummy-writer.py`: `858a605b9707e65577937f55f94af04f292b57fc77bfe70669b67b7187c0cf5a`
+
+AST parsing and git diff --check passed.193+2 mappings and actual bytes verified unchanged against ce708174, finite-driver/dummy byte equality checked. All four new HOST proof trees independently checked0700 directories/0600 regular leaves/no symlinks; final complete success evidence uses fixture identity only. Executable change is precisely five allowed source/manifest paths; documentation successor changes only FREEZE/HANDOFF/QUALIFICATION.
+
+Runtime BASE remains `sha256:69bd9216869374d87fa14702ef380b4124a12f03f5f88a2681957ea81ee274cb` pending parallel Astra explicit disposition. No3.14.7 container qualification is claimed; historical3.14.8 diagnostic identity is not that gate. No actual Docker query/build/tag/container/volume, native product import, DB/SQLite, pytest, pull/provisioning, old object cleanup/lock release, network, actual plan/authority creation or delegation occurred. No runtime resources acquired. P47 expected RED, historical PID229 UNKNOWN and all native/T2/platform/ext4/durability/release/activation gates remain unchanged. Parent owns independent Sol global review, runtime disposition and any separately authorized future execution; this handback advances no operational gate.
+
+## r36 cohesive implementation handoff — 2026-10-24 (current)
+
+SOURCE + affected HOST implementation complete for fresh independent Sol global review; no self-GO, actual authority or product acceptance. This section supersedes historical raw identity equality, unchanged-entry claims and success-only failure transport in older sections. Own checkout `/Users/ben/.txcode/worktrees/py-audio-box/t3-48db44e1`, branch `t3/runtime-identity-host`, reconstructed from immutable documentation `c06e2f49b48264b51d65b0a9d1506b973ee4f839`. Executable commit `f60176302113e21212d525526f81e27b1395d045`. Old `t3-dc329cf6` remains preserved; no old checkout/proof/lane/object writes or Docker queries/operations occurred. Root parent r36 audit is the controlling brief (read full, alongside r35 actual, r28 global and Astra runtime r27). No subdelegation.
+
+ENTRY derives the repository root from its own resolved file, verifies both manifest-owned regular service source hashes, rejects preloaded service modules and conflicting finder origins, and puts the root then diagnostics first before pytest import. Original Selection class AST and remaining dispatch/observer imports are unchanged. No module deletion/transplant, test-directory rename, product import on HOST or product/test edits.
+
+Identity is one versioned JSON receipt produced under the existing bounded pre/post processes. It retains Python implementation/version/optimization/assertions, all42 exact lock and installed versions, SQLite version/source ID/compile options, extension path, ordered SONAME/native path/loader records, selected resolved library path/digest, exact dpkg package/version/architecture and checked command statuses. All prior expected3.14.8/SQLite3.40.1/source ID/library digest/dpkg/free-space assertions remain. One small stdlib helper `identity_semantics.py` validates/compar​es the structure; raw ldd text is retained in each identity file. Only terminal addresses in three explicit ldd forms are omitted from semantic records; no broad hex stripping. Unknown/malformed/duplicate/not-found lines, malformed structure, nonzero/stderr and semantic drift STOP. Failed command raw bytes are hex-encoded for diagnostics before strict decoding; malformed ldd raw text is retained on failure. Native producer was not executed on HOST.
+
+Failed writer export is admitted only after full existing ID/config/stop proof, completed attach/wait, exact wait-to-inspect exit agreement, nonOOM and empty daemon Error. Unknown/running/timeout/overflow cannot acquire readers. Existing archive and hash readers execute sequentially with unchanged reserves/caps/deadlines; full regular-file map equality and transport receipt precede original writer status rejection. `retained` now means valid transport, independently of terminal product success. Failed terminal/sentinel/observer validity cannot become success. Failed writer cleanup is explicitly refused; run returns false and finish retains lane/objects, acceptance=false. Transport failure retains its own bounded error; successful failed-file transport returns original lifecycle status rejection. Driver terminal now retains bounded exception type and reason. Expected pytest1/driver0 and original47-field review gate remain unchanged.
+
+Manifest remains193 files; only entry.py changes in that mapping. Existing two derivatives updated and the one identity helper added (three derivatives). All192 other copied payloads, all product/tests/locks, observer, guard/body/witness files are byte-identical to base. Generated product context has exactly197 files:193 +3 derivatives +manifest; no missing initializer/recovery module or altered digest is accepted. Launcher and HOST harness are outside the copied manifest, as before. Source AST and diff whitespace checks passed.
+
+Affected HOST only: fixed9s/group and120s total, first unexpected RED stops. Final `python3.14 -B diagnostics/p-one-node/qualification-host-check.py --r36-final`: PASS4/4 in1.846192767s. Groups: semantic_identity, failed_writer_retention, r36_product_contract, r36_lifecycle_failures. Earlier unchanged bootstrap model PASS is retained from first run; it was not rerun without a change. All tests use stdlib synthetic package/namespace-decoy, command/process/adapter boundaries; no real service/DB/pytest/native campaign.
+
+Coverage includes zero/multiple/wrong singleton/object rejection; manifest missing initializer/module/digest refusal and exact copy set; address-only identity PASS/raw retention; every semantic field tamper plus library path/digest, dpkg package/version/architecture, native SONAME/path/loader, malformed/missing/duplicate/schema/command/error cases. Seven failure transport cases: completed stopped writer1 with failed collection terminal/no observer succeeds at transport only, reader status failure, full-map mismatch, capture cap, exhausted deadline, running writer and OOM. Existing product12 attach/status/wait/inspect/timeout/overflow/lost/deadline/OOM/Error/full-ID failures exercise existing reconciliation and no downstream dispatch. Original scripted product success and writer scheduling fixtures preserve pytest1/driver0. HOST external spawn/Popen/system/fork/killpg are guarded; no actual command fallback.
+
+Two RED receipts are preserved. First cap fixture expected wait/inspect after correctly refused overflowing capture; corrected only that fake queue. Second reached the historical dummy preparation and correctly rejected stale qualify.py pins; the affected lifecycle fixture was parameterized to run product only, without Q.prepare. qualify.py/dummy-writer.py remain unchanged and outside this assignment; historical qualification CLI still refuses changed source via old PINS. No pin bypass, new dummy/full campaign, build or actual admission is claimed. If a future operational plan needs qualification tooling, parent must explicitly own that separate source/pin scope; this task does not propose a new dummy prerequisite.
+
+- `/private/tmp/pab-dummy-HOST-c_efnjkg/HOST-receipt.json`: `fa2d28b8b0a7e620b1daa22f9098c54e4520e100ee6921b76541db32082d3779` (RED); checked 148 streams, 373 inventory entries, 407 regular leaves.
+- `/private/tmp/pab-dummy-HOST-9dzin5_g/HOST-receipt.json`: `cda126cce819b1bf6f1e844ff2cfc168b23063ae8ef565de9c40e4f6ff50e365` (RED); checked 346 streams, 872 inventory entries, 1498 regular leaves.
+- `/private/tmp/pab-dummy-HOST-lqpbbj7x/HOST-receipt.json`: `28a734bb23cef2bfe2668441dbbdd27e0cb0b2ff465d387338eff5413151c7df` (PASS); checked 470 streams, 872 inventory entries, 1838 regular leaves.
+
+Recomputed every available completion stream length/SHA256 and finalization inventory binding across all three new HOST trees, zero mismatch; checked0700 directories/0600 leaves/no symlinks. Combined964 stream checks and2117 inventory entries. Read-only verification receipt `/private/tmp/pab-r36-source-verification-4whmprps/verification.json` SHA256 `dea34eec7222004b7817e09b434eeb7960c9da9ee90a41c3503296b213060545`. It also verifies all196 mapped source hashes and exact unchanged Selection AST. These counts are HOST synthetic evidence, not Docker/runtime/product evidence.
+
+Final executable byte pins (unchanged since final HOST receipt):
+
+- `entry.py`: `f4c4862b000fc458e901b8f31f7c3e081550e35765e7d1cd04a19615a73443b9`
+- `runtime-identity.py`: `eb5d3a7dbdf717a219163bfeaaa9bb8616a0ad7c7b2ec315aa0eb8b24504c034`
+- `identity_semantics.py`: `fd2d1f6d40699aa258d9016996037e8f61875f9302b21f8a6700cac935f707de`
+- `finite-driver.py`: `10dd30e393bfe79553d9ef3170c31662ab2774847f1bab4028dc4657e07e7e0f`
+- `launcher.py`: `348cc1097b267a734a763f8a56a940732abb8cb141c2f767744a91fcf835984c`
+- `host-check.py`: `88514eee4d48b7a89adc6627bf28814a6df1b312a05a01c659ac684691d585d9`
+- `qualification-host-check.py`: `98ec74e369d2f15f3aab628d4d3b5ce974f88dbfdf9e56fdf8c419f5b4482dad`
+- `source-manifest.json`: `23cc4d3da39f9ec783efe4ed20ecf7ce5f015170f388351f286dfc0036412d43`
+
+Existing selected runtime is Linux CPython3.14.8 plus unchanged42 locks, per adopted Astra r27; no new3.14.7 gate/provisioning/reinstall. A future changed-source derivative needs its own newly frozen full image ID under separate parent authority; old derivative cannot represent this source. None built/tagged/queried here. Logical1GiB/export2GiB/host4GiB,16MiB supervisor reserve, phase deadlines and retained old lane remain as before. These are software bounds, not physical quota/durability claims.
+
+Next owner: fresh independent Sol global SOURCE + affected HOST receipt review on this exact executable and documentation commit. Parent owns acceptance and every build/actual/lane step. No cleanup/release/retry, product/native/T2/platform/installed/release/activation GO follows. Historical PID229 cause remains UNKNOWN; unchanged original47-field/offset/type/owner/enrollment/raw18944/empty-phase/EAGAIN/original-exception/guard/call-teardown/unreached-assertion obligations remain.
+
+
+## r53 B100 packaging / control runner handback — 2026-10-24
+
+SOURCE + stdlib HOST implementation prepared for fresh independent Sol review; no self-GO. Parent acceptance of r52 COMBINED SOURCE GO is an input, not runtime or operational authority. Executable commit `2a266f3f496351e98a2a410071a135e0a935d707`, reconstructed in own `/Users/ben/.txcode/worktrees/py-audio-box/t3-1521cb66`, branch `prep/b-controls-runner`, directly from exact docs `5d2fe5e1e7c40bc479f02f616f03da76ca8d886a` / combined executable `4e36ed22bf8edac67bde8affd0a0ca339212a6c6`. Immutable t3-718ba0f4 was rechecked clean at5d2fe5e1 after executable commit. Starting parent branch6f6353a was preserved by creating this new branch from the exact candidate; no historical checkout reset. Following documentation commit is reported separately at handback.
+
+Read full r52 including its four next steps, Astra r44, r49/r50, current combined guard/controls handoffs and relevant helper/control/product/observer/entry/launcher/identity source. No applicable ancestor/scoped AGENTS. Memory registry quick search returned no task-specific hit and supplied no technical premise. No delegation. The existing handoff paths are diagnostics/p-one-node/{FREEZE,HANDOFF,QUALIFICATION}.md; docs/p-one-node does not exist, so only these existing handoffs were appended.
+
+Delta is exactly NEW diagnostics/b-controls/{runner.py,HOST.py,PLAN.md}, refreshed source-manifest guard/control digests plus new runner derivative, and appends to these three handoffs. No projection: all193 existing payload paths already include original controls and dependencies. Three old derivative hashes are unchanged; fourth derivative is the runner. All197 mapped bytes verify; generated copy-set is198 including manifest.json (old copy-set197 plus one helper). HOST/PLAN stay outside the image. Historical manifest.commit/recipe provenance remains explicitly historical. Old source/locks/runtime/base/entry/observer/launcher are untouched; historical qualify.py pins still refuse changed sources and were not bypassed.
+
+Guard SHA256 remains `e6009824186b29585d597308806ae3e7925e161cc4043127550e6cb220a35829`; controls `1095f7406ec185162c598da8aa7339eade14dc213492bc3b5e6aaf238175d079`. Original58,632-byte prefix remains SHA256 `e22095b26c7219fd093f335baeaad3d8c7271cdf2bc30cb8aeef74b3f77c27cd`. Protected bytes (including production/original target/model/assertions/conftest/observer/entry/all launchers/finite driver/runtime identity) compare exactly to reconstruction base.
+
+PLAN.md contains the raw separate campaign create argv/security inspection shape, full ordered100 nodeids, concrete namespace decision, limits, exact reader/retention route and original qualification boundary. Runtime entry is `python /app/diagnostics/b-controls/runner.py campaign TOKEN UUID`; new explicit create_argv/inspect_campaign bind this command independently of frozen Lifecycle.create_argv. Same UID/caps/read-only root and ordinary fresh persistent /tmp, no new tmpfs/binds/root initializer. One fresh campaign volume suffices: exactly one B-S real-observer case, other authored guard-installing cases use their explicitly labelled isolated inert sinks. Original singleton qualification is separate on another fresh volume; no fixed namespace cleanup/reuse. The unchanged singleton writer's historical pytest1 expectation remains, so future pytest0 must not be relabelled as old writer terminal success.
+
+The control runner is stdlib-only until its explicit Linux node entry imports pytest. It uses existing finite capture/private slots/census/source/identity/quiesce helpers unchanged. One pytest subprocess per control; exact collection_finish before fixtures and all three phases PASS required, exit0 alone insufficient. Root/bootstrap/PYTHONPATH reach canonical service/tests for nested -c processes; original target filename/digest/real config/full assertion rewriting retained. Residual descendant prevents next dispatch; no competing namespace wait during a live test. Per-node caps10/35/45/65s sum2375; independent PID1 alarm2600s includes source/identity/reap/post/publication reserves. Original elapsed<2 assertion unchanged. Capture16MiB/stream, aggregate1GiB/leaf64MiB/count200000 and existing free/memory thresholds, bounded partial capture receipts, first unexpected failure stop, no automatic retry/repair/skips. Final acceptance=false and independent actual review required.
+
+HOST executes actual inventory/selection/ordered orchestration and unchanged finite capture against finite fake Popen/selector boundaries, with real private files/slots/binary bytes/hash readback. All real subprocess/run/system/fork/kill/killpg paths denied. Coverage: eight definitions/counts/ID lambda/order/unique100/all mapped hashes; exact argv/env/caps/volume command admission and refusals; zero/wrong/multiple selection refusal before fixtures, phase/skip/missing-call/exit refusal; ordered100 and exact per-node deadlines; first red at fourth node, no downstream dispatch; missing/wrong receipt, exhausted budget before dispatch, residual-descendant STOP; binary exact prefixes/16MiB overflow/timeout and partial stream hash retention. This is synthetic HOST evidence, not pytest collection or runtime behavior.
+
+Final command `PYTHONDONTWRITEBYTECODE=1 python3.14 -B diagnostics/b-controls/HOST.py`: PASS5/5 in1.252624s, hard30s total. Final retained receipt `/private/tmp/pab-B-controls-HOST-glpw6zw3/HOST-receipt.json` SHA256 `fbe5be54a4aadb2c37b1c3d3ee5c2e47ad1f6817cf6bf90c00aa926b490d323c`. Earlier two PASS receipts remain retained and their source changes are disclosed in FREEZE; no RED or actual was retried.
+
+Independent stdlib source/hash/private-inventory verification: `/private/tmp/pab-B-controls-source-verification-3jewu83e/verification.json`, SHA256 `2e2b102ce53b3b43f70a947ddcc308db6de6c8a1fe9d9f7bd9e138637d1cc545`. Verifies all197 mapped hashes, exact193 names/two mapped refreshes/three unchanged derivatives/prefix/protected bytes, final HOST pin equality and2289 entries across three new HOST trees (all dirs0700/regular leaves0600/no symlinks). New runner/HOST compile without exec; git diff --check passes. No actual build context or execution-once authorization generated. Static inventory and raw plan are review artifacts, not actual selection receipts.
+
+Final executable/source pins:
+
+- `diagnostics/b-controls/runner.py`: `2191bf4807433404946551ae9959ac6351137029cd392a0e6adb94ab46f33cf7`
+- `diagnostics/b-controls/HOST.py`: `5b1d709ca3e4aaf4a0a368c7ec764686fca183e61209182cdb59595de6b64862`
+- `diagnostics/b-controls/PLAN.md`: `edf38f9706ecae1671169d834decfb7014c79f316e49926be2440893800b8b19`
+- `diagnostics/p-one-node/source-manifest.json`: `da8ec4f9e19e9d13c472978b7ceb1cf80978cbfb50a2af1364f6010cc5208e57`
+
+No Docker query/build/tag/container/volume/cleanup, pytest import/collection/run, guard/product import, DB/native identity/campaign, old proof/lane/object modification or operational dispatch. No runtime resources acquired. All100 B cases and originalP211/declared P/J/R, transport/close/reap and semantic/report preservation subsets remain separately PENDING / UNRUN. At least one separately authorized unchanged real-observer actual74 complete e/f/t/original-assertions/restoration receipt is still required. Historical r42/r43 RED, PID229 UNKNOWN and native/T2/installed/platform/durability/release HOLD remain unchanged.
+
+Handback is ready for independent Sol SOURCE + retained HOST review on executable2a266f3 and following docs commit. Parent owns review acceptance, exact future actual provenance/host invocation and all operational stages. No implementer GO or actual authorization follows.
+
+## Original-positive closed profile handback — 2026-10-24
+
+Implementation only; **independent SOURCE/HOST review pending, ACTUAL HOLD**.
+Own checkout `/Users/ben/.txcode/worktrees/py-audio-box/t3-67aec9bf` was clean,
+then reconstructed detached from immutable t3-1521cb66 docs
+228a54691eacac7b7837b030332080a456f48dfd, executable
+2a266f3f496351e98a2a410071a135e0a935d707. Full root Sol r54 prerequisite
+and Astra r44 read. No delegation or self-GO. Executable successor is
+`0c058776d641503434de1c5eccb05ecb7ca51fcd`; this documentation commit
+follows it without further executable changes.
+
+`launcher.py --profile original-positive` is the sole new positive selection;
+default `--profile diagnostic-red` retains the original writer argv, entry argv,
+state shape, expected pytest1, historical classification, reader argv and
+historical47 parser. The closed positive driver command is exactly:
+`python /app/diagnostics/p-one-node/finite-driver.py writer-positive original-positive TOKEN UUID`.
+No free expected integer, accepted exit set, result detection or waiver exists.
+Wrong profile/arity, including writer-positive diagnostic-red or integer0,
+refuses before dispatch. Positive intent and terminal bind profile, exact
+command tail, token/UUID, entry, singleton node and requested expected0. Host
+terminal also requires pytest0 and the distinct positive classification;
+legacy requested expected1 is now explicitly checked against its existing
+state fields. Real historical writer state/commands remain byte compatible;
+malformed legacy expected/node/entry fields are refused. Full container
+command/security/image/volume binding uses the same command builder. Archive
+and hash commands remain profile independent; owner journal and retained writer
+slots bind the reader contents to the selected profile. Host final positive
+state is RETAINED-ORIGINAL-POSITIVE-ACTUAL-REVIEW-REQUIRED, acceptance=false.
+Historical RED is never reinterpreted as positive.
+
+Positive retention keeps full private archive/map equality, sentinel, stopped
+writer proof and existing lifecycle bounds. It explicitly parses one exact
+singleton wait: owner=pytest leader, distinct child, raw18944 (74<<8), transcript
+B:a;B:e;B:f;B:t;. Raw9 is refused here; B100 scheduling/SIGKILL controls remain
+separate. Unchanged47 rows must retain source-owned child catch-all, terminal
+wait, guarded finally and cleanup observations, coherent owner/child/raw status,
+zero guard failures and zero parent owned children. Unlike historical47 parsing,
+positive parsing does not demand empty witness or four active error rows. The
+source calls sample at all four stages even when the original test catches its
+expected parent timeout successfully. Child sample precedes final_child/f
+emission and sees only inherited B:a; (length4); completed parent rows see the
+full transcript (length16). Final token/raw wait, not that early child row alone,
+attests the final B route. All original47 schema and observer bytes stay intact.
+
+The unchanged entry's fail-before-fixture singleton Selection plus pytest0 and
+standard `.`/`1 passed in ...s` stdout evidence establishes original test
+completion, including original assertions and successful setup/call/teardown.
+There is no new report plugin/entry edit and no claim of separate phase receipt
+files: pytest0 for the exact unchanged single test is the available evidence.
+Missing PASS output refuses. Stdout/waits retained for positive parsing are
+bounded by existing512KiB metadata slot cap (wait parser16KiB); legacy parsing
+is unaffected. Full raw stdout/stderr and all observer/guard/private metadata
+remain in the equal-hash archive. Independent ACTUAL review must inspect the
+actual parent route/offsets, restoration/finalizer evidence, original assertions,
+limits/reap/elapsed<2, actual74 child final route and unchanged source/runtime
+identity. Structural retention is not that review or operational acceptance.
+
+No build, actual pytest invocation/collection, product import, DB, Docker call,
+native or runtime campaign occurred. Historical qualify.py pins/CLI remain stale,
+refusing and explicitly UNUSED; it is not a positive launcher or bypass. A new
+immutable image, independent review and parent operational authority remain
+required. All original failure transport, deadlines, unknown/HOLD preservation,
+r42/r43 RED, PID229 UNKNOWN and P211/P/J/R/native/platform/release boundaries
+remain. No guard/controls/product/target/model/assertion/conftest/observer/entry/
+runtime identity/lock/B100 runner change; no B100 rerun or new framework.
+
+## r56 F1/F2 bounded correction — pre-run freeze
+
+Own checkout reconstructed exactly from 24916a3d1602803dff6df76ae972fe04030998a4 (exec 0c058776d641503434de1c5eccb05ecb7ca51fcd); immutable t3-67aec9bf untouched. Controlling full r56 and r54 read. Only seven allowed paths may change. Baseline and corrected verification use existing --profile-scope six groups 23/26/29/30/32/33, max300s total /9s per group /33 available groups. Baseline adds actual writer child env/argv seam with hostile inherited addopts and positive duplicate3/4, reorder, missing/extra rows plus warning-bearing stdout refusal. Retain baseline RED; fix only its motivated F1/F2 causes. Unaffected groups reuse existing seams. No pytest/collection/product imports, Docker/DB/runtime/build/campaign/native/cleanup/delegation or self-GO.
+
+### r56 F1/F2 frozen implementation handback
+
+Executable commit `8254ab7fbe02c95ed222a82d361c4d9d26b0318c` on
+`fix/positive-f1-f2-r56`, own checkout
+`/Users/ben/.txcode/worktrees/py-audio-box/t3-1bc65cf1`.
+Documentation commit follows this executable and changes only these three handoffs.
+No executable edits after the final receipt.
+
+F1 response: original-positive alone freezes `PYTEST_ADDOPTS=-p no:cacheprovider`.
+Docker create explicitly supplies it; container startup/inspect require exactly one
+matching value and reject missing, duplicate or arbitrary appended options. Writer
+sets the same exact value in the actual ENTRY capture environment, replacing any
+inherited addopts, and binds `child_pytest_addopts` in PENDING/terminal state.
+Host profile validation requires that field. ENTRY argv, source/identity origins,
+entry pytest call, PASS summary predicate and legacy environment/default command
+remain unchanged. Readers retain their existing command/environment. This does
+not allow arbitrary inherited options through startup. HOST exercises actual writer
+capture argv/env with hostile inherited sentinel: positive overrides it, historical
+profile preserves it. Container/config and terminal tampering refuse. Warning-bearing
+`1 passed, 1 warning in 0.12s` remains refused; there is no stdout waiver.
+
+F2 response: positive stage sequence must equal exactly `[1,2,3,4]`.
+Existing group33 rejects duplicate3, duplicate4, reordered, missing and extra
+rows. No observer/schema change. Existing child/wait/raw18944/a/e/f/t/owner,
+PASS, guard, assertion and actual-review conditions remain in force.
+
+Baseline retained: `/private/tmp/pab-p-one-r16-HOST-4j1ln8kj/HOST-receipt.json`,
+SHA256 `9a2f44230b6453242295cb260a3b6f10ae5a240bf55a9a1f907b6b9254e6fe2d`,
+RED groups32/33, six groups,0.689344975s. Group32's new child-env assertion is
+caught by the real writer and produces its refusing lifecycle, then HOST reports
+phase-overrun/result mismatch; group33 reports missing expected rejection for
+extra stage3. Both RED causes motivate only the F1/F2 corrections above.
+No operational stage was executed or retried; no evidence was erased.
+
+Final retained: `/private/tmp/pab-p-one-r16-HOST-y7yeqqub/HOST-receipt.json`,
+SHA256 `499f40807f0f281548c613211972bdc49dfcde37e1c0f6ea4d71e6dd2285f1bb`,
+PASS6/6,0.536137542s, CPython3.14.7/assertions enabled. Exactly the frozen
+six groups; external commands fake, real private file/tar/hash/slot IO only.
+Final receipt pins match the four final files. Both private evidence trees were
+mechanically checked0700 directories/0600 leaves/no symlinks. Prior receipts
+remain historical, unmodified and unrerun. No full campaign.
+
+Final SHA256:
+- launcher.py `fd12abaafba7d07835327dd6bb88b81afdef21eaf25fd373875c6871a52cbe80`
+- finite-driver.py `7dfe240517291b00c4ecb44832bef3678e47a0aaf8eb57b82b94d89f348c0b6e`
+- host-check.py `01ef61ea3313635b55d0c44be64a92c15da8eb97d19b7d5316cb153c8d2a598d`
+- source-manifest.json `a4cb797fbebb5edb206babe506d5596e21ca8e6cbf678b77bf79473213c95fef`
+
+All197 mapped hashes mechanically verified; names193 payload +4 derivatives
+unchanged, only finite-driver derivative digest refreshed. All files outside the
+seven-path allowlist compare byte-exact to reconstruction base, including guard,
+controls, product, target/model/assertions, both conftests, observer, entry,
+runtime identity/semantic helper, locks and B100 runner. Historical provenance
+constants untouched. Changed Python sources compile without execution/pyc;
+diff --check passes. No pytest import/invocation/collection, product import,
+Docker/build/DB/runtime/native/campaign, cleanup, lock/resource acquisition,
+new framework/dummy/adviser or delegation. Historical diagnostic-red1 behavior,
+original-positive0 closed profile, deadlines/retention/unknown-HOLD and all
+independent actual conditions preserved. Historical RED/UNKNOWN remain.
+
+Implementation completion and synthetic HOST PASS are not independent SOURCE
+acceptance or self-GO. Fresh independent Sol review owns F1/F2 acceptance.
+Build, original actual74/assertion/restoration/performance, B100/P211 and declared
+preservation actual subsets remain HOLD/PENDING; no installed/native/T2/platform,
+durability/release credit. Parent owns every later authorization.
+
+## r62 overhead implementation handoff — SOURCE + bounded stdlib HOST
+
+2026-10-24. Implementation complete for independent Sol adversarial review;
+no self-GO or operational acceptance. Checkout:
+`/Users/ben/.txcode/worktrees/py-audio-box/t3-6e6d0983`, branch
+`implement/b-overhead-r62`. Reconstructed exact immutable base docs
+`d17d35a0cbfe3dd5c4050829bcc6dcf2645a39cb`, executable
+`8254ab7fbe02c95ed222a82d361c4d9d26b0318c`; executable successor
+`fcb201b6aa700bb2c91a0fb8d0850a783d54f4cb`. The following docs-only commit
+freezes this handoff. Original t3-1bc65cf1 and retained evidence/lane untouched.
+Read full root r62 and full Astra r44/r49 before implementation. No applicable
+AGENTS found. Memory registry search supplied no relevant technical premise.
+
+### Scope and source mechanism
+
+Only B/install existing guard definitions change. Installation prepares full
+independent frozen test source/plain+actual-config rewrite compilation, roles,
+runner source compilation, indexed sites and immutable instruction tables.
+Compiled modules/target are never executed by preparation. Normal guard use
+passes prepared facts explicitly; failed/undone preparation passes a refusal
+sentinel and cannot fall back to late preparation. Direct constructor API stays
+compatible with optional preparation; direct controls can still prepare locally.
+No global/disk/pyc cache. The installed scope is single-consumption: after one
+call facts are cleared; another call through that installation cannot inherit
+prior authority and designated B refuses. Fresh installation prepares afresh.
+
+The key binds exact source bytes/digest, exact executing filename/canonical path,
+actual config identity, assertion mode and enable_assertion_pass_hook, and exact
+outer execute-code identity (explicit `is`, not CodeType structural equality).
+Use re-reads/hashes frozen source, reads config anew, checks actual outer typed
+projection and exact nested capabilities/projections; runner source bytes,
+runner/frame-result executing identities and independent compiled bindings are
+also rechecked. Projection memoization uses identity with strong code references
+only in local preparation/use dictionaries. Mutable closure cells are never
+cached between checks: constructor closure calls11→8, hooks12→9, each closure
+snapshot reused only inside that one check. All live FD/fstat/F_GETFL, hook,
+raw/view/content, deadline/current-handler/trace and route predicates remain.
+EAGAIN uses one transient bounded raw slice for both length/content checks.
+
+Global trace selector dispatches seven prebound code identities; runner retains
+all line/state/progress/exception checks. Reap retains line/exception/return
+handling; the other five capabilities suppress lines and keep exception/return
+callbacks. Existing trace_B remains the event body (and existing control seam),
+with stable bound local callbacks returned by wrappers. Global active-trace
+checks still compare the installed selector at child final, parent terminal and
+escaping proof. Prior trace is restored only after escaping proof and patch
+unwind. No frame/exception/view/result is stored in prepared facts/callbacks.
+
+Reap opcodes are disabled over wait/loop bookkeeping. The source-selected kill
+statement line arms opcodes for its argument-load/CALL/cache/completion interval;
+this necessarily includes the short setup instructions on that same line, not
+only the CALL opcode. Pending success starts only at the resolved kill CALL/cache
+sites with the original full capability/owned-child predicate; success requires
+the exact next non-cache completion offset. Exception/return/line invalidates
+pending proof. This avoids treating reaching the line or an arbitrary later
+opcode as successful kill. Cache offsets are tolerated without premature success.
+
+Preparation clears on construction failure, partial hook-installation failure,
+invocation finalization, monkeypatch undo and request finalization. Undo removes
+the sole holder rather than restoring any old facts. Final clearing breaks
+self/bound-callback cycles. A stage3 observer exception now still enters prior
+trace/fact/callback/FD cleanup via finally. Full actual restoration remains
+unproved here; no observer schema/entry was changed.
+
+### Static accounting and preservation
+
+Successful installed B use performs zero module AST parses/compiles in the
+original target interval, versus2 test parses/compiles (rewrite mode) plus1
+runner parse/compile before. Those independent passes still occur once during
+installation; no authority was waived. Target AST role walks2→1. Sites reuse one
+module call/raise index per source tree and one instruction table per runner,
+reap and observed code. The two lambda role disassemblies become one table.
+The old8 site resolutions each disassembled for span and selection, and3 timeout
+raises each disassembled runner:21 enumerations including lambda roles become4
+in preparation. Timeout child/parent AST walk shares one function-node tuple.
+These are static source/pass counts, not measured event counts or seconds saved.
+P's two unconditional call-offset analyses are deliberately unchanged, as are P
+construction/semantics. Runner line callback frequency is unchanged; five
+capability classes lose line callbacks and global nonselected calls use only the
+small identity selector. Reap opcodes shrink to the kill statement interval.
+
+Before/after extracted source-predicate comparison on CPython3.14.7 found exact
+equality for all8 CALL/cache sets and3 timeout raise sets. Entire existing
+controls file116293 bytes is an exact prefix, including old58632 bytes and every
+B100 definition/expectation. One additive future pytest entry invokes only the
+new stdlib HOST; B100 inventory/runner remains unchanged. Top-level AST comparison
+found only B/install changed in the guard. Production/model/target/assertions,
+conftests, observer/entry/clocks100x/limits/runtime/locks, launcher/parser, B100
+runner, P/R/journal/transport/aggregation/bootstrap/fresh_run remain unchanged.
+Manifest changes exactly the two affected existing file hashes.
+
+### Frozen HOST result and evidence limits
+
+Pre-run matrix/cap and RED preservation are recorded above in FREEZE. Two
+invocations of `python3.14 diagnostics/b-controls/HOST-overhead.py` passed,
+initial then justified after narrowing cache transitions/cleanup and shared AST
+walks; no failed attempt or retry. Both output exactly:
+`HOST-overhead PASS 32 extracted/synthetic checks; full setup/fixture/trace restoration PENDING`.
+CPython3.14.7. Only selected source predicates and synthetic cleanup/event helpers
+are executed in memory; no real guard/module/product/pytest/rewriter execution.
+32 checks cover source/digest/path/config/mode/hook/code refusal (including equal
+but distinct code), baseline restoration, clearing/consecutive refusal,
+selector line/exception/return delivery, kill completion/cache/exception/line/
+capability transitions, cycle clearing and static restoration ordering.
+In-memory compile of changed Python and git diff --check passed.
+
+Full preparation/rewrite execution, partial installed setup/fixture undo and
+actual sys.settrace restoration cannot be qualified without executing guard or
+pytest; they remain explicit pending static-authored obligations. Extracted
+cleanup and event fixtures do not prove actual lifecycle, kernel EAGAIN, actual
+kill, traceback/current-handler or collected positive behavior. Appended pytest
+entry itself was not run. B-A/B-C/B-S/B-P/B-T and B100 remain UNRUN; originalP211
+and declared P/J/R/transport/close/reap/semantic-report actual preservation subsets
+remain UNRUN. No pytest/collection/product imports/Docker/DB/runtime/profiling/
+native campaign/cleanup/old-lane operations were performed.
+
+### Pins and next owner
+
+SHA256:
+- guard `ffa7900cddb59dc903b8e0100bb6e1fc45ba82f94f51b2044a6a94297529a1a5`
+- appended controls `9ffeac79f38a5f6fe13799cee59b836d04b2aad8689f7fc871b39d9cdd304fa1`
+- HOST-overhead.py `ba1128a211addcd427dde3f3e1854d1a68dccb60d75368c71b11d48e23366712`
+- manifest `74d27a5840b0a892714464b24cccf14bb48c097c50be1e05903fdf60483c0d84`
+Preserved recovery.py `c314b2423b71c7d205b4558aee44d8c895e41394adbbb05a85458ef9bd7acf29`,
+recovery tests `c236e4045a0c35836fc269fd5938c053ab3e97f1f2682f023470afe3a68dd211`,
+conftest `d967baee72fa7fba3cb8974ac0406b2f44231a1c9d49fb7e7c088016f07cc7a3`,
+observer `ee20c60ff9d5890ae6d9ceacf892443a4aea88dedf7a3952baf5bc98797de582`.
+
+Independent Sol adversarial SOURCE review is next, parent-owned, with this full
+brief and r44/r49/r62; no delegation/adviser loop was started here. It must assess
+prepared authority/freshness/config/code, live closure/FD/progress/exception
+predicates, callback/kill ranges, both parent routes/races, escaping proof,
+designation/latch/refusal, lifecycle clearing and unchanged negative controls.
+Original positive stays FAILED2.234982034<2; actual74 certificate is not a PASS,
+with RLIMIT/reap original assertions still unreached in that retained run.
+No timing attribution, threshold waiver, self-GO, build/actual authorization,
+held-lane release or automatic rerun follows. Parent acceptance then separate
+build provenance and ONE unchanged original ACTUAL on fresh volume remain gates;
+B100 is later/separate. Historical r42/r43 RED, PID229 UNKNOWN and all broader
+native/T2/installed/platform/durability/release gates remain unchanged.
+
+
+## r64 F1/F2 narrow successor handoff (2026-10-24)
+
+Prepared for independent Sol review; no self-GO. Own checkout t3-65b1e6b7,
+branch fix/r64-b100-inventory, reconstructed exact docs ccd8128af5d9bb04b54a40b60b291a6dbdf40b0a
+(exec fcb201b6aa700bb2c91a0fb8d0850a783d54f4cb). Immutable t3-6e6d0983
+untouched. Executable successor f5bc92a1098266c4b3f0565198727b6e38fd61a5.
+Read complete root r64 review and complete r62 concrete assignment. Scoped
+ancestor/repository AGENTS inventory found none. Memory supplied general scope
+and evidence-tier discipline only, no technical premise.
+
+F1: runner now pins current controls9ffeac79 and guardffa7900c. inventory first
+hashes complete controls bytes, then requires exact ordered eight original B
+groups plus exactly test_B_overhead_extracted_HOST_contract, whose complete
+attribute-free AST SHA256 is pinned separately. Only the eight original groups
+produce rows. No arbitrary extras/count relaxation/101st row. Existing GROUPS,
+IDs/order/budgets and all100 definitions/expectations unchanged. Entire116293-byte
+old prefix still hashes1095f7406ec185162c598da8aa7339eade14dc213492bc3b5e6aaf238175d079.
+HOST compares all resulting rows against AST of that exact original prefix plus
+the separate helper. Rejects unknown extra, reordered/missing groups, helper
+body alteration/duplication and changed full-source bytes. Digest bypass is
+not introduced: inventory_tree is the factored parser, not a runtime entry.
+
+ONE fresh affected /usr/local/bin/python3.14 -B diagnostics/b-controls/HOST.py
+run, OS exit0, PASS six ordered groups. No HOST-overhead rerun, pytest or actual
+B100. Evidence /private/tmp/pab-r64-F1-7r5rk92t contains exclusive raw stdout/
+stderr, pre-run intent (argv/cwd/explicit env/source freeze/start) and completion
+(end/exit/raw hashes/unchanged pins). completion SHA256
+846669add8d9a5309713d8ef158dd0fce84f0c984b53c8373ca576e7e8bf89b4.
+HOST receipt /private/tmp/pab-B-controls-HOST-zlbfzi4b/HOST-receipt.json SHA256
+6c1caab38fb4a6d6f27ac200d41f68ad62175da98c0032e3242223907a4d5561.
+Both trees checked0700 directories/0600 regular leaves/no symlinks; inventory
+receipts retained in outer tree. All197 mapped hashes checked by HOST. Exact100
+inventory canonical JSON (sorted keys, separators comma/colon) SHA256
+94c4b4aa2c91245277548f0c03e89c3ac83ecf08ae9e6cb0b5f9dda25111a992.
+Inner30s alarm/outer40s timeout; raw outputs were small. The stated1MiB outer
+stream ceiling was verified after completion, not enforced during capture;
+inner fake capture cap/overflow checks are separate and passed. No retry.
+
+Final SHA256 runner6a4274955504dae791e5562761601adcc8ca4ae27b6bd7cf487696eba0de791e;
+HOST e3e19fe557406684bc7dbe369d885311fe653608583004172a86331b199fcbaf;
+manifest5c4cbda64403d0d6b12f7102eae912af1318c5716e0b1c1153549caf10d22cba.
+Manifest remains193+4=197 mappings; only runner derivative hash changed.
+Guardffa7900cddb59dc903b8e0100bb6e1fc45ba82f94f51b2044a6a94297529a1a5
+and controls9ffeac79f38a5f6fe13799cee59b836d04b2aad8689f7fc871b39d9cdd304fa1
+are byte unchanged. All production/target/model/clock/assertion/observer/entry/
+profile/lock/runtime bytes unchanged. Scope only runner/HOST/PLAN, manifest and
+three handoffs. No new framework or dummy/adviser loop.
+
+F2 bounded recovery: read nominated ancestor handoffs, /private/tmp exact-name
+inventory, b-overhead-handoff.txt and edit-b-overhead.py hint; no raw receipt tree
+located. T3 title-filtered list identified original r63 task thread, then its
+37-item activity transcript was read. Original command entries at positions25
+(exec-73303c3b-885a-436c-a0ec-e7bf28ab5ff2) and27
+(exec-4f8c94f2-7eef-41cb-9e51-908a80d0e7f2) contain python3.14 invocation and
+PASS32 output, status completed, untruncated. Position27 contains source edits
+before its invocation; position26 records intermediate guard85e15c71, so these
+are distinct historical sources, not two receipts against finalffa7900c.
+Recovered original app transcript objects are retained as
+/private/tmp/pab-r64-F1-7r5rk92t/r63-tool-transcripts.json SHA256
+87dfb63467176062728097cc4a6fefe1ef10c63f1e248da497946e15a1c82b52.
+These are original tool transcript evidence, NOT independently retained binary
+stdout/stderr or OS exit/source-freeze receipt pairs. Separate raw stream bytes,
+OS exit integers and complete per-run source binding remain UNVERIFIED /
+NO RETAINED PROOF. No verified PASS32 claim is made here; older prose claims
+remain historical and are superseded by this evidence qualification. No broad
+session/secrets search and no replacement32 run.
+
+r64 restoration string/order checks are not lifecycle fault proof: full setup,
+rewrite, fixture undo and actual prior-trace restoration remain PENDING. Old
+r61 original positive remains FAILED2.234982034<2 with RLIMIT/reap assertions
+unreached; actual74 is not positive PASS. B100/P211/preservation actual subsets
+remain UNRUN; historical RED/UNKNOWN, held lane and all native/T2/installed/
+platform/durability/release gates unchanged. No timing attribution, Docker/DB/
+product/guard imports, profiling, campaign, cleanup or old lane operation.
+Independent Sol SOURCE/evidence review and parent acceptance are next gates;
+this handoff authorizes no build, actual dispatch or release.

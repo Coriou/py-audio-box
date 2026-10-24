@@ -413,3 +413,274 @@ def test_b2_explicit_startup_rechecks_hello_before_admission(installation,monkey
             assert dispatcher.call('status')['persistent_activation'] is False
             with pytest.raises(ValueError,match='persistent_activation_closed'):dispatcher.call('submit','p','closed')
         finally:dispatcher.close()
+
+
+@pytest.mark.parametrize('cleanup', ['core', 'pool'])
+def test_lifetime_failed_startup_publication_waits_for_cleanup(tmp_path, monkeypatch, cleanup):
+    from concurrent.futures import Future
+    from service import dispatcher as module
+    from service import recovery
+    entered = threading.Event(); release = threading.Event(); events = []
+    original = ValueError('startup refusal')
+    class DB:
+        def execute(self, *args): return self
+        def fetchone(self): return None
+    class Core:
+        db = DB()
+        def __init__(self, root): events.append('open')
+        def close(self):
+            if cleanup == 'core': entered.set(); assert release.wait(2)
+            events.append('closed')
+    class Pool:
+        def shutdown(self, **kwargs): entered.set(); assert release.wait(2); events.append('shutdown')
+    def admission(*args): raise original
+    monkeypatch.setattr(recovery, 'startup_read', lambda _:None)
+    monkeypatch.setattr(module, 'Core', Core)
+    monkeypatch.setattr(module, 'Admission', admission)
+    value = Dispatcher.__new__(Dispatcher)
+    value.root = tmp_path; value.persistent_registration = None
+    value.staging = tmp_path; value.budget = None; value.initialized = Future()
+    if cleanup == 'pool': value.pool = Pool()
+    thread = threading.Thread(target=value._run)
+    thread.start()
+    try:
+        assert entered.wait(2)
+        assert not value.initialized.done(), 'failure observable while owned cleanup pending'
+    finally:
+        release.set(); thread.join(2)
+    assert not thread.is_alive()
+    with pytest.raises(ValueError) as caught: value.initialized.result(timeout=.1)
+    assert caught.value is original and events[-1] == 'closed'
+    assert events == (['open', 'shutdown', 'closed'] if cleanup == 'pool' else ['open', 'closed'])
+
+
+def test_lifetime_real_core_refusal_has_no_next_startup_overlap(tmp_path, monkeypatch):
+    from service import dispatcher as module
+    from service.core import Core
+    entered = threading.Event(); release = threading.Event(); closed = threading.Event()
+    primary = ValueError('admission refusal')
+    close = Core.close
+    def paused(core):
+        entered.set()
+        assert release.wait(2)
+        close(core); closed.set()
+    def refuse(*args): raise primary
+    monkeypatch.setattr(module.Core, 'close', paused)
+    monkeypatch.setattr(module, 'Admission', refuse)
+    failures = []; done = threading.Event()
+    def caller():
+        try: Dispatcher(tmp_path/'core')
+        except BaseException as exc:
+            failures.append(exc)
+            assert closed.is_set()
+        finally: done.set()
+    thread = threading.Thread(target=caller); thread.start()
+    try:
+        assert entered.wait(2)
+        assert not done.wait(.05)
+    finally:
+        release.set(); thread.join(2)
+    assert not thread.is_alive() and failures == [primary]
+    # The caller's next owner can acquire the actual SQLite/control-lock pair.
+    monkeypatch.setattr(module.Core, 'close', close)
+    core = Core(tmp_path/'core'); core.close()
+
+
+@pytest.mark.parametrize('secondary', [False, True])
+def test_lifetime_actual_timeout_excludes_next_reader(tmp_path, monkeypatch, secondary):
+    import subprocess
+    import sqlite3
+    import sys
+    import time
+    from service import dispatcher as module, recovery
+    from service.core import Core
+    entered = threading.Event(); release = threading.Event()
+    owned = []; cores = []; reads = []; closed_checks = []
+    original_close = Core.close
+    original_read = recovery.startup_read
+    primary = ValueError('admission refusal')
+    def paused(core):
+        owned.append(threading.current_thread()); cores.append(core)
+        entered.set()
+        assert release.wait(10), 'test cleanup barrier deadline'
+        original_close(core)
+        try: core.db.execute('SELECT 1')
+        except sqlite3.ProgrammingError as exc: closed_checks.append('closed database' in str(exc))
+        if secondary: raise RuntimeError('secondary after real close')
+    def read(root):
+        reads.append(root)
+        return original_read(root)
+    def refuse(*args): raise primary
+    monkeypatch.setattr(Core, 'close', paused)
+    monkeypatch.setattr(module, 'Admission', refuse)
+    monkeypatch.setattr(recovery, 'startup_read', read)
+    root = tmp_path/'core'
+    try:
+        start = time.monotonic()
+        with pytest.raises(TimeoutError): Dispatcher(root)
+        assert 4.8 <= time.monotonic()-start < 8
+        assert entered.is_set()
+        before = len(reads)
+        with pytest.raises(ValueError, match='^control_busy$'): Dispatcher(root)
+        assert len(reads) == before
+        # A fresh harmless interpreter uses the identical read-side lock, with
+        # no SQLite open, inheritance of handles, model or maintenance operation.
+        code = """import sys
+from service.recovery import _startup_read_lock
+try:
+    with _startup_read_lock(sys.argv[1]): raise AssertionError('owner bypassed')
+except ValueError as exc:
+    assert str(exc) == 'control_busy'
+"""
+        subprocess.run([sys.executable, '-c', code, str(root)], check=True, timeout=3)
+    finally:
+        release.set()
+        for thread in owned: thread.join(3)
+    assert owned and all(not t.is_alive() for t in owned)
+    assert closed_checks == [True]
+    assert cores[0].owner.closed
+    if secondary: assert any('RuntimeError' in n for n in primary.__notes__)
+    monkeypatch.setattr(Core, 'close', original_close)
+    core = Core(root)
+    core.close()
+
+
+def test_lifetime_reader_core_gap_competing_owner_refuses_before_admission(tmp_path, monkeypatch):
+    from service import dispatcher as module
+    from service.core import Core
+    root = tmp_path/'core'
+    core = Core(root); core.close()
+    owned = []
+    def competed(path):
+        owner = Core(path)
+        owned.append(owner)
+        try: return Core(path)
+        finally: owner.close()
+    monkeypatch.setattr(module, 'Core', competed)
+    monkeypatch.setattr(module, 'Admission', lambda *a:pytest.fail('Admission after lock refusal'))
+    with pytest.raises(ValueError, match='^control_busy$'): Dispatcher(root)
+    assert owned and owned[0].owner.closed
+    core = Core(root); core.close()
+
+
+def test_lifetime_reader_core_gap_new_enrollment_refuses_before_admission(installation, monkeypatch):
+    from service import recovery
+    roots, scope, profiles, _ = installation
+    before = logical(roots)
+    # Model an unenrolled observation followed by a completed competing owner
+    # before Core acquisition. No registration/hello from that owner is borrowed.
+    monkeypatch.setattr(recovery, 'startup_read', lambda _:None)
+    monkeypatch.setattr('service.dispatcher.Admission', lambda *a:pytest.fail('Admission on changed enrollment'))
+    with pytest.raises(ValueError, match='startup_deployment_changed'):
+        Dispatcher(roots['control']/'core', staging=roots['staging'])
+    assert logical(roots) == before
+
+
+@pytest.mark.parametrize('startup', [False, True])
+@pytest.mark.parametrize('faults', ['pool', 'core', 'both'])
+def test_bounded_core_dispatcher_cleanup_outcome(tmp_path, monkeypatch, startup, faults):
+    from concurrent.futures import Future
+    from service import dispatcher as module
+    from service import recovery
+    from contextlib import nullcontext
+    events = []; primary = ValueError('original startup')
+    class DB:
+        def execute(self, *a): return self
+        def fetchone(self): return None
+    class Core:
+        db = DB()
+        def __init__(self, root): pass
+        def close(self):
+            events.append('core')
+            if faults in ('core', 'both'): raise RuntimeError('owned Core fault')
+    class Pool:
+        def shutdown(self, **kw):
+            events.append('pool')
+            if faults in ('pool', 'both'): raise RuntimeError('owned pool fault')
+    def admission(*a): raise primary
+    monkeypatch.setattr(module, 'Core', Core)
+    monkeypatch.setattr(recovery, '_startup_read_lock', lambda root: nullcontext(False))
+    monkeypatch.setattr(module, 'Admission', admission)
+    value = Dispatcher.__new__(Dispatcher)
+    value.root = tmp_path; value.staging = tmp_path; value.budget = None
+    value.persistent_registration = None; value.pool = Pool(); value._cleanup_failed = False
+    value.initialized = Future()
+    if not startup: value.initialized.set_result(True)
+    value.thread = threading.Thread(target=value._run)
+    value.thread.start(); value.thread.join(3)
+    assert not value.thread.is_alive() and events == ['pool', 'core']
+    assert value._cleanup_failed is True
+    # An already-dead writer must refuse before trying any queue/Future wait.
+    value.call = lambda *a: (_ for _ in ()).throw(AssertionError('dead writer enqueue'))
+    with pytest.raises(RuntimeError, match='control_cleanup_failed'): value.close()
+    if startup:
+        with pytest.raises(ValueError) as caught: value.initialized.result(.1)
+        assert caught.value is primary
+        assert len(primary.__notes__) == (2 if faults == 'both' else 1)
+
+
+def test_bounded_core_dispatcher_normal_stop_join_outcome(tmp_path, monkeypatch):
+    from service import dispatcher as module
+    close = module.Core.close
+    events = []
+    def failed(core):
+        close(core); events.append('closed')
+        raise RuntimeError('after actual successful Core close')
+    monkeypatch.setattr(module.Core, 'close', failed)
+    d = Dispatcher(tmp_path/'core', staging=tmp_path, runtime=Runtime(tmp_path))
+    with pytest.raises(RuntimeError, match='control_cleanup_failed'): d.close()
+    assert not d.thread.is_alive() and events == ['closed']
+    with pytest.raises(RuntimeError, match='control_cleanup_failed'): d.close()
+
+
+def test_bounded_core_dead_writer_isolated_process(tmp_path):
+    import subprocess, sys
+    script = r'''
+import sys, threading, sqlite3
+from pathlib import Path
+from service import core as module, recovery, dispatcher
+root = Path(sys.argv[1])
+connect = sqlite3.connect
+class DB(sqlite3.Connection):
+    def close(self): raise RuntimeError('owned before-close fault')
+module.sqlite3.connect = lambda *a, **k: connect(*a, factory=DB, **k)
+# The real Dispatcher constructs a real Core, then fails Admission; finally's
+# DB close fails and the actual owning writer terminates.
+primary = ValueError('original admission failure')
+def fail(*a): raise primary
+dispatcher.Admission = fail
+try: dispatcher.Dispatcher(root)
+except ValueError as e:
+    assert e is primary
+    e.__traceback__ = None
+else: raise AssertionError('startup should fail')
+records = [r for r in module._core_registry if r is not None]
+assert len(records) == 1
+record = records[0]
+record.thread.join(2)
+assert not record.thread.is_alive() and record.state == 'uncertain'
+primary = None
+try: record.close()
+except RuntimeError as e: assert 'owning_thread' in str(e)
+else: raise AssertionError('wrong thread cleanup')
+try: module.Core(root)
+except ValueError as e: assert str(e) == 'control_busy'
+else: raise AssertionError('abandoned exclusion lost')
+# Other roots retain the remaining 63 slots; no raw handles required.
+owned = [module._reserve_core(root.parent/str(i)) for i in range(63)]
+try:
+    try: module._reserve_core(root.parent/'overflow')
+    except ValueError as e: assert 'capacity' in str(e)
+    else: raise AssertionError('capacity overshot')
+finally:
+    for r in owned: r.close()
+sys.platform = 'linux'
+try: recovery._run_bounded_maintenance({}, {}, lambda s: True)
+except ValueError as e: assert 'core_ownership_busy' in str(e)
+else: raise AssertionError('abandoned maintenance admitted')
+assert [r for r in module._core_registry if r is not None] == records
+print('one abandoned record; 63 remaining slots; maintenance refused; normal interpreter exit')
+'''
+    child = subprocess.run([sys.executable, '-c', script, str(tmp_path/'dead')], capture_output=True, text=True, timeout=8)
+    assert child.returncode == 0, child.stderr
+    assert child.stdout.strip() == 'one abandoned record; 63 remaining slots; maintenance refused; normal interpreter exit'
