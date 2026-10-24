@@ -76,7 +76,7 @@ class Production:
         plan['assets'] = [self.core.asset(a) for a in version['reference_asset_ids']]
         from worker.runtime_protocol import execution, dispatch_mode
         spec = execution(context)
-        if spec is not None and spec.engine == 'pocket-tts':
+        if spec is not None and (spec.engine == 'pocket-tts' or (spec.engine == 'qwen' and spec.task == 'clone')):
             # Core's owned managed asset is the only control-side reference path.
             # Never accept a caller or template's local filesystem override.
             from worker.engines.pocket import _read, _reference_pcm16

@@ -1,4 +1,4 @@
-"""Post-reap Pocket housekeeping: one literal empty-directory removal only.
+"""Post-reap Pocket/Qwen housekeeping: one literal empty-directory removal only.
 
 Runs as the stage owner (10001), with the allocated child's primary group.
 The dead exclusive child and trusted control owner provide writer exclusion.

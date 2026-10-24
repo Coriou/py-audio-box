@@ -39,8 +39,12 @@ class Admission:
             selected = next(p for p in profiles if p['id']==plan['resolved']['profile']['id'])
             if selected['verification'] != 'measured' or not selected['qualification_receipt'] or 'synthetic' in selected['qualification_receipt'].lower():
                 raise ValueError('real_qualification_required')
+            if spec.engine == 'qwen':
+                from worker.engines.qwen_execution import current_hardware, inventory_from_wire
+                current_hardware(spec, inventory_from_wire(context['execution']['hardware']))
+                if spec.device.startswith('cuda:') and limits['vram_bytes'] <= 0: raise ValueError('cuda_memory_required')
             return dict(configuration=oracle.canonical_hash(context['execution']),
-                        slots=1,ram_bytes=spec.memory_bytes,vram_bytes=0,pids=48,
+                        slots=1,ram_bytes=spec.memory_bytes,vram_bytes=limits['vram_bytes'] if spec.engine == 'qwen' and spec.device.startswith('cuda:') else 0,pids=48,
                         disk_bytes=limits['disk_bytes'],attempt_disk_bytes=limits['disk_bytes'])
         # Closed installed runtime capability, not a general engine/profile adapter.
         if plan['resolved']['profile']['id']!='cpu-synthetic':

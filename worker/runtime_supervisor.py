@@ -19,12 +19,15 @@ from worker.transport import canonical, Refused, Session
 
 
 class RuntimeSupervisor:
-    def __init__(self, root='/receipts', ipc='/ipc', *, bundles=None, references=None):
+    def __init__(self, root='/receipts', ipc='/ipc', *, bundles=None, references=None, qwen_contexts=None, inventory=None, qwen_profiles=None):
         if os.getpid() != 1:
             raise RuntimeError('pid1_required')
         from types import MappingProxyType
         self.bundles = MappingProxyType(dict(bundles or {}))
-        self.references = MappingProxyType(dict(references or {}))
+        self.references = MappingProxyType(copy.deepcopy(references or {}))
+        self.qwen_contexts = copy.deepcopy(qwen_contexts or {})
+        self.inventory = copy.deepcopy(inventory)
+        self.qwen_profiles = copy.deepcopy(qwen_profiles or [])
         self.journal = Journal(root)
         self.ipc = Path(ipc)
         self.boot = secrets.token_hex(16)
@@ -82,7 +85,7 @@ class RuntimeSupervisor:
             if self.journal.maintenance is not None: value['maintenance']=self.journal.maintenance
             return value
         if op == 'prepare':
-            if set(body) != {'snapshot', 'binding', 'fixture'} or body['fixture'] not in ('silence', 'busy', 'descendants', 'permissions', 'kokoro', 'pocket'):
+            if set(body) != {'snapshot', 'binding', 'fixture'} or body['fixture'] not in ('silence', 'busy', 'descendants', 'permissions', 'kokoro', 'pocket', 'qwen'):
                 raise Refused('closed_prepare')
             snapshot = body['snapshot']
             if not isinstance(snapshot, list) or len(snapshot) != 4 or hashlib.sha256(canonical(snapshot)).hexdigest() != body['binding']:
@@ -92,7 +95,7 @@ class RuntimeSupervisor:
             oracle.stored_context(job, context)
             from worker.runtime_protocol import execution, dispatch_mode
             spec = execution(context)
-            if (body['fixture'] in ('kokoro','pocket')) != (spec is not None) or (spec is not None and body['fixture'] != dispatch_mode(spec)): raise Refused('execution_dispatch_mismatch')
+            if (body['fixture'] in ('kokoro','pocket','qwen')) != (spec is not None) or (spec is not None and body['fixture'] != dispatch_mode(spec)): raise Refused('execution_dispatch_mismatch')
             if spec is not None and context['execution']['bundles'] != self.bundles:
                 raise Refused('unregistered_mount_mapping')
             if spec is not None and spec.engine == 'pocket-tts':
@@ -101,6 +104,8 @@ class RuntimeSupervisor:
                 # Independent full byte verification before journaling or launch.
                 from worker.engines.pocket import verify_inputs
                 verify_inputs(spec, self.bundles, self.references, owner_uid=10001)
+            if spec is not None and spec.engine == 'qwen':
+                self.verify_qwen(context,profiles,job['principal_id'])
             attempt = job['attempts'][-1]
             allocation = dict(snapshot=snapshot, binding=body['binding'], fixture=body['fixture'])
             for row in self.journal.value['records']:
@@ -154,6 +159,10 @@ class RuntimeSupervisor:
                 return dict(runtime_id=row['id'], state=self.state(row))
             if self.failed or time.monotonic() >= self.active['cutoff']:
                 raise Refused('expired_or_quarantined')
+            context = row['allocation']['snapshot'][1]
+            from worker.runtime_protocol import execution
+            if (spec := execution(context)) is not None and spec.engine == 'qwen':
+                self.verify_qwen(context,row['allocation']['snapshot'][3],row['allocation']['snapshot'][0]['principal_id'])
             row = self.change(row, phase='started')  # Fence BEFORE any fork.
             job, context, assets, profiles = row['allocation']['snapshot']
             stage = job['attempts'][-1]['staging_id']
@@ -285,7 +294,7 @@ class RuntimeSupervisor:
             with self.tree_lock:
                 active['finalizing'] = True
             try:
-                if row['allocation']['fixture'] == 'pocket' and row['phase'] != 'prepared':
+                if row['allocation']['fixture'] in ('pocket','qwen') and row['phase'] != 'prepared':
                     self.conditioning(row)
                 # A stopped prepared allocation has never run stage setup.
                 self.change(row, phase='terminal', receipt=receipt, proposal=active['proposal'])
@@ -297,6 +306,23 @@ class RuntimeSupervisor:
                 # tick must not reinterpret its wait status as an engine receipt.
                 if not active.get('helper_unknown'):
                     self.active = None
+
+    def verify_qwen(self, context, profiles, principal):
+        from worker.engines.qwen_execution import current_hardware, inventory_wire
+        from worker.engines.qwen import verify_service_inputs
+        from worker.runtime_protocol import execution
+        from contracts import validate as oracle
+        spec=execution(context)
+        profile=context['plan']['resolved']['profile']
+        if (self.qwen_contexts.get((principal, profile['id'], context['plan']['request']['voice_version_id'])) != context['execution'] or
+            context['execution']['hardware'] != inventory_wire(self.inventory) or
+            profiles != self.qwen_profiles): raise Refused('unregistered_qwen_context')
+        oracle.admission(dict(operation='speech_generate',input_sha256=oracle.plan_hash(context['plan'])),context,self.qwen_profiles)
+        selected=next(p for p in self.qwen_profiles if p['id'] == profile['id'])
+        if selected['verification'] != 'measured' or not selected['qualification_receipt'] or 'synthetic' in selected['qualification_receipt'].lower(): raise Refused('real_qualification_required')
+        current_hardware(spec,self.inventory)
+        if context['execution']['references'] != self.references: raise Refused('unregistered_reference_mapping')
+        verify_service_inputs(spec,self.bundles,self.references,self.inventory,owner_uid=10001)
 
     def conditioning(self, row):
         stage = row['allocation']['snapshot'][0]['attempts'][-1]['staging_id']

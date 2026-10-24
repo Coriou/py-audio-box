@@ -30,12 +30,14 @@ def execution(context):
     value = context.get('execution')
     plan = context['plan']; profile = plan['resolved']['profile']
     if value is None:
-        if profile['id'] in ('kokoro-cpu', 'pocket-cpu'): raise Refused('execution_required')
+        if profile['id'] in ('kokoro-cpu', 'pocket-cpu', 'qwen-cpu', 'qwen-cuda'): raise Refused('execution_required')
         return None
     if set(context) != {'plan', 'bundles', 'execution'}: raise Refused('closed_execution_context')
-    if type(value) is not dict or set(value) not in ({'descriptor', 'bundles'}, {'descriptor', 'bundles', 'references'}):
+    if type(value) is not dict or set(value) not in ({'descriptor', 'bundles'}, {'descriptor', 'bundles', 'references'}, {'descriptor','bundles','references','hardware'}):
         raise Refused('closed_execution_context')
     if type(value['descriptor']) is not dict: raise Refused('closed_execution_required')
+    if value['descriptor'].get('engine') == 'qwen':
+        return qwen_execution(context)
     if value['descriptor'].get('engine') == 'pocket-tts':
         return pocket_preparation(context) if value['descriptor'].get('phase') == 'prepare' else pocket_execution(context)
     if set(value) != {'descriptor', 'bundles'}: raise Refused('closed_execution_context')
@@ -75,7 +77,7 @@ def generated_source(context):
 
 
 def dispatch_mode(spec):
-    return {'kokoro': 'kokoro', 'pocket-tts': 'pocket'}[spec.engine]
+    return {'kokoro': 'kokoro', 'pocket-tts': 'pocket', 'qwen': 'qwen'}[spec.engine]
 
 
 def pocket_execution(context):
@@ -157,4 +159,44 @@ def pocket_preparation(context):
             2*spec.max_output_bytes + 4*spec.reference_bytes + 2*prepared_bytes > limits['disk_bytes'] or
             len(roles['audition_text']) > limits['text_chars']):
         raise Refused('execution_budget_mismatch')
+    return spec
+
+
+def qwen_execution(context):
+    from worker.engines.qwen_execution import QwenExecution, inventory_from_wire
+    value=context['execution']; plan=context['plan']; resolved=plan['resolved']
+    if set(value) != {'descriptor','bundles','references','hardware'}: raise Refused('closed_execution_context')
+    spec=QwenExecution.from_wire(value['descriptor'])
+    inventory_from_wire(value['hardware'])
+    if spec.task not in ('custom_voice','clone') or spec.device == 'mps': raise Refused('qwen_generation_only')
+    if value['bundles'] != {spec.bundle_id:'/models/bundles/'+spec.bundle_id}: raise Refused('owned_mount_mapping')
+    identity=dict(engine='qwen',model=spec.checkpoint,bundle_sha256=spec.manifest_sha256,device='cuda' if spec.device.startswith('cuda:') else 'cpu',precision=spec.dtype)
+    request=plan['request']; versions=plan['voice_versions']
+    profile_id='qwen-cuda' if spec.device.startswith('cuda:') else 'qwen-cpu'
+    if (plan['operation'] != 'speech_generate' or resolved['profile']['id'] != profile_id or
+        request['identity'] != identity or resolved['identity']['effective'] != identity or
+        request['fallback'] != 'forbid' or request['variants'] != 1 or request['reuse'] != 'never' or len(versions) != 1): raise Refused('execution_plan_mismatch')
+    v=versions[0]; mode='qwen_clone' if spec.task == 'clone' else 'qwen_preset'
+    settings=dict(kind=mode,language=spec.language,seed=None,instruction=spec.instruct,
+                  **{k:getattr(spec,k) for k in ('temperature','top_p','top_k','repetition_penalty','max_new_tokens')})
+    if (v['id'] != request['voice_version_id'] or v['id'] != spec.voice_revision or v['voice_id'] != spec.voice_id or
+        v['identity'] != identity or v['settings'] != settings or resolved['settings'] != settings): raise Refused('execution_voice_mismatch')
+    if spec.task == 'custom_voice':
+        if (v['origin'] != 'preset' or v['reference_asset_ids'] or plan['assets'] or value['references'] or
+            v['configuration'] != dict(mode=mode,speaker=spec.preset)): raise Refused('execution_preset_mismatch')
+    else:
+        expected=dict(path='/references/assets/'+spec.reference_id,voice_id=spec.voice_id,
+                      voice_revision=spec.voice_revision,checkpoint=spec.checkpoint,revision=spec.revision,text=spec.reference_text)
+        if (value['references'] != {spec.reference_id:expected} or v['origin'] != 'clone' or
+            v['reference_asset_ids'] != [spec.reference_id] or v.get('reference_asset_sha256') != {spec.reference_id:spec.reference_sha256} or
+            v['reference_text'] != spec.reference_text or v['configuration'] != dict(mode=mode,reference_asset_id=spec.reference_id,
+                reference_text=spec.reference_text,conditioning='x_vector' if spec.x_vector_only else 'icl') or len(plan['assets']) != 1): raise Refused('execution_reference_mismatch')
+        a=plan['assets'][0]
+        if any(a[k] != v for k,v in dict(id=spec.reference_id,sha256=spec.reference_sha256,frames=spec.reference_frames,
+                sample_rate=spec.reference_rate,channels=1,media_format='wav',media_subtype='PCM_16').items()): raise Refused('execution_reference_mismatch')
+    limits=resolved['profile']['limits']
+    if (spec.threads != limits['threads'] or spec.memory_bytes != limits['ram_bytes'] or
+        spec.max_frames*48000 > limits['decoded_ticks']*spec.sample_rate or spec.max_output_bytes > limits['upload_bytes'] or
+        2*(spec.max_output_bytes+spec.reference_bytes) > limits['disk_bytes'] or
+        len(request['text'].encode()) > spec.max_text_bytes): raise Refused('execution_budget_mismatch')
     return spec

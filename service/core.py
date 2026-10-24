@@ -353,7 +353,7 @@ class Core:
         return after
 
     def submit_execution(self, principal: str, key: str, context: dict, *, retry_of: str | None = None, _dispatch_settings=None, _admission=None, _profiles=None) -> dict:
-        """One trusted submission transaction for synthetic and closed Kokoro contexts.
+        """One trusted submission transaction for synthetic and closed engine contexts.
 
         Resolve context in control before calling. Duplicate lookup precedes resolution.
         """

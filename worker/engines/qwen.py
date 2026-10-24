@@ -174,7 +174,7 @@ def execute(execution, text, bundles, references, inventory, *, reference_temp_d
         finally: os.close(fd)
     backend = backend_factory(model_name=str(root),num_threads=e.threads,dtype_str=e.dtype,revision=e.revision,offline=True,device=e.device,attention=e.attention)
     try:
-        params = dict(text=text,language=e.language)
+        params = dict(text=text,language=e.language, **{k:getattr(e,k) for k in ('temperature','top_p','top_k','repetition_penalty','max_new_tokens')})
         if e.task == 'clone':
             with tempfile.NamedTemporaryFile(suffix='.wav',dir=reference_temp_dir) as snapshot:
                 snapshot.write(reference); snapshot.flush()
@@ -217,3 +217,17 @@ def _encode(execution, text, result):
     if len(output) != size:
         raise Refused('output_size')
     return dict(data=output, frames=frames, size_bytes=len(output), sha256=hashlib.sha256(output).hexdigest(), identity=dict(execution.identity(), text_sha256=hashlib.sha256(text.encode()).hexdigest()))
+
+
+def verify_service_inputs(spec, bundles, references, inventory, *, owner_uid=None):
+    """Trusted managed service storage is sealed for the full attempt."""
+    owner = os.getuid() if owner_uid is None else owner_uid
+    if set(bundles) != {spec.bundle_id}: raise Refused('owned_mapping_required')
+    root = Path(bundles[spec.bundle_id])
+    for directory, dirs, files in os.walk(root, followlinks=False):
+        for path in [Path(directory), *(Path(directory)/n for n in dirs+files)]:
+            info = path.lstat()
+            if info.st_uid != owner or info.st_mode & 0o222 or path.is_symlink(): raise Refused('sealed_bundle_required')
+    expected = {spec.reference_id} if spec.task == 'clone' else set()
+    if set(references) != expected: raise Refused('owned_mapping_required')
+    return verify_inputs(spec,bundles,references,inventory,owner_uid=owner)
