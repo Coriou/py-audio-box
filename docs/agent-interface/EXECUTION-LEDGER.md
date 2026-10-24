@@ -2047,3 +2047,7 @@ Parentacceptsr170 H1ASOURCE/localtestsGO, ancestrymerges12ff8385 withoutconflict
 ### 2026-10-24 — H2A adopted on H1A integration; authenticated upload next
 
 Parentacceptsr171 H2ASOURCE/localASGIGO andancestrymerges68504a21 withoutconflict; integrated4API+1Dispatcher+1clienttestsPASS againstcurrentH1store. AuthenticatedvoiceHTTPCLI-MCPreadslice nowinroot. Nextcohesiveupload+compact-readcontracts/owner/transport/clientlot, hardwareprofilesparallel; noinstalledactivation/modelclaim.
+
+### 2026-10-24 — H4A profile selection delivered; independent review
+
+r172 source d1491b18403bb54bd75eda6ba4be89dcf8eef236, report 73673ef15f036e6ef83e2e4c9f3251bc367faa2e: pure hardware inventory/profile selection with explicit probes, identity-preserving eligibility/fallback and workload-specific ranking; 14 focused tests reported PASS. Parent commissioned independent Sol-low review pab-h4-profiles-review-r174-20261024. Candidate remains unmerged pending review. Actual CPU/CUDA/native Metal adapters and qualification remain required; r173 authenticated upload/control-plane implementation continues separately. No held-resource operations.
