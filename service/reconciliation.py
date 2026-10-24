@@ -190,7 +190,7 @@ class Reconciliation:
                         kind, reason = 'missing_hash_mismatched_terminal', 'unavailable'
                 elif name in work:
                     kind, reason = 'pending_adoption_known_alias', 'publication_work'
-                    owner = attempts.get(json.loads(work[name]['binding'])['staging_id'])
+                    owner = work_owner(name)
                     if (not regular or not control_owned(info) or info.st_nlink not in (1,2)
                         or (name == work[name]['destination'] and
                             (digest != work[name]['sha256'] or info.st_size != work[name]['byte_length']))):
@@ -199,7 +199,9 @@ class Reconciliation:
                     kind, reason = 'adopted_orphan', 'no_publication_provenance'
             elif (owner and (regular or stat.S_ISDIR(info.st_mode))
                   and (not regular or info.st_nlink == 1)
-                  and (namespace == 'owners' or namespace in ('internal_staging','worker_staging') or name == 'output.wav')):
+                  and (namespace == 'owners' or namespace in ('internal_staging','worker_staging') or name == 'output.wav' or
+                       (name in ('reference.wav','audition.wav') and
+                        contexts.get(owner['job_id'],{}).get('plan',{}).get('reference_roles',{}).get('reference_kind')=='prepared_reference'))):
                 kind, reason = 'owned_synthetic_transient', 'attempt_record'
             if kind in ('unknown_foreign','missing_hash_mismatched_terminal','adopted_orphan'):
                 self.reasons.add(reason)
@@ -610,8 +612,10 @@ def typed_references(self, data, b2, _before, document):
                     if target is None: raise Incomplete('unknown_b2_publication_reference')
                     for column, definition in adapters['publications'].items(): walk(json.loads(target[column]), definition, source)
             if table == 'publication_work':
-                add(record['destination'], source)
-                walk(json.loads(record['binding']), 'artifact', source)
+                from service.persistence import publication_record
+                artifact,entries=publication_record(record,data)
+                for entry in entries: add(entry['destination'], source)
+                walk(artifact, 'artifact', source)
             if table == 'dispatches':
                 authority = json.loads(record['authority'])
                 walk(authority[0], 'job', source)
@@ -640,8 +644,12 @@ def typed_references(self, data, b2, _before, document):
             owners[a['owner_id']] = owner
     work = {}
     for r in data.get('publication_work', []):
-        work[r['destination']] = r
-        work[r['temporary']] = r
+        from service.persistence import publication_record
+        artifact,entries=publication_record(r,data)
+        for entry in entries:
+            expanded=dict(r,**entry);expanded['binding']=json.dumps(artifact)
+            work[entry['destination']]=expanded
+            work[entry['temporary']]=expanded
     def job_owner(job_id):
         known = jobs.get(job_id, {}).get('attempts', [])
         return attempts.get(known[-1]['staging_id']) if known else None

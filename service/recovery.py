@@ -2968,7 +2968,9 @@ def _installed_detached_documents(data):
                 if any(row[column]!=job[field] for column,field in
                        (('id','id'),('principal','principal_id'),('operation','operation'),('key','idempotency_key'))):
                     raise ValueError('installed_history_job_identity')
-            elif table=='publication_work':oracle.validate('artifact',json.loads(row['binding']))
+            elif table=='publication_work':
+                from service.persistence import publication_record
+                publication_record(row,data)
             elif table=='dispatches':
                 authority=json.loads(row['authority'])
                 oracle.validate('job',authority[0]);context(authority[1])

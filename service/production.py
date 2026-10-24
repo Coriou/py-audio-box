@@ -20,7 +20,13 @@ class Production:
         asset_id = plan['request']['asset_id']
         self.core.voices._asset(principal, asset_id)
         plan['assets'] = [self.core.asset(asset_id)]
-        plan['resolved']['reuse_configuration']['reference_asset_id'] = 'audition-' + oracle.canonical_hash([principal, key, plan['request']])
+        token = oracle.canonical_hash([principal, key, plan['request']])
+        reference = 'reference-' + token
+        plan['resolved']['reuse_configuration']['reference_asset_id'] = reference
+        audition_text=plan.get('reference_roles',{}).get('audition_text','Synthetic fixture audition.')
+        plan['reference_roles'] = dict(version='reference-roles-v1', reference_kind='prepared_reference',
+            reference_asset_id=reference, audition_asset_id='audition-'+token,
+            audition_text=audition_text)
         return self.core.submit_execution(principal, key, context, _admission=_admission,
                                           _profiles=_profiles, _dispatch_settings=_dispatch_settings)
 
@@ -49,6 +55,7 @@ class Production:
     def generate(self, principal, key, context, *, _admission=None, _profiles=None, _dispatch_settings=None):
         context = copy.deepcopy(context)
         plan = context['plan']
+        plan.pop('reference_roles', None)
         oracle.require(plan['operation'] == 'speech_generate', 'operation_mismatch')
         version = self.core.voices.version(principal, plan['request']['voice_version_id'])
         plan['voice_versions'] = [version]
