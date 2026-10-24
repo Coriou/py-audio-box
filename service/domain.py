@@ -1,8 +1,7 @@
 """Domain entry points: retained 0C fixture reads and trusted 1A durable core.
 
-HTTP remains explicitly fixture-only until transport lot 1B.
+Fixture reads remain separate from the authenticated borrowed-owner adapter.
 """
-from service.core import Core as DurableCore
 import base64
 import hashlib
 from jsonschema.exceptions import ValidationError
@@ -43,3 +42,49 @@ def read(operation, payload):
                 'end_exclusive': end, 'total_bytes': len(data), 'content_sha256': asset['sha256'],
                 'content_base64': base64.b64encode(data[start:end]).decode('ascii')}
     return validate(op['response'], result)
+
+
+def voice_read(dispatcher, principal, operation, payload):
+    """Adapt declared reads through the borrowed owner; never access its Core."""
+    import queue
+    import sqlite3
+    from concurrent.futures import TimeoutError
+    from service.catalogue import VOICE_READS, VOICE_RESPONSE_BYTES, compact
+    if operation not in VOICE_READS:
+        raise Failure('not_found', 'Voice operation unavailable.', 'operation')
+    op = OPERATIONS[operation]
+    try:
+        validate(op['request'], payload)
+        if operation == 'voices_list':
+            cursor = payload['cursor']
+            if cursor and (not cursor.isascii() or not cursor.isdecimal() or len(cursor) > 16):
+                raise Failure('invalid_request', 'Use the returned numeric cursor.', 'cursor')
+            after = int(cursor or '0')
+            if after > 9007199254740991:
+                raise Failure('invalid_request', 'Cursor exceeds supported range.', 'cursor')
+            rows = dispatcher.call('voice_list', principal, after=after, limit=payload['limit'])
+            result = dict(items=[r['voice']['id'] for r in rows],
+                          next_cursor=str(rows[-1]['cursor']) if len(rows) == payload['limit'] else None)
+        elif operation == 'voice_get':
+            result = dispatcher.call('voice_get', principal, payload['voice_id'])
+        else:
+            result = dispatcher.call('voice_version', principal, payload['voice_version_id'])
+        if len(compact(result).encode('utf-8')) > VOICE_RESPONSE_BYTES:
+            raise Failure('resource_limit', 'Voice response exceeds the 2048-byte transport budget.',
+                          action='Use a smaller list page; oversized details require compact domain reads in a later service version.')
+        return validate(op['response'], result)
+    except (ValidationError, ContractError):
+        raise Failure('invalid_request', 'Request or response does not match the voice contract.', 'request') from None
+    except ValueError as exc:
+        code = str(exc) if str(exc) in ('not_found', 'invalid_request', 'resource_limit', 'voice_archived') else 'not_ready'
+        raise Failure(code, 'Voice read unavailable.', action='Check the requested ID and service readiness.') from None
+    except (sqlite3.Error, OSError, TimeoutError, queue.Full):
+        raise Failure('not_ready', 'Voice store temporarily unavailable.', action='Retry the read when the owner is available.') from None
+
+
+def __getattr__(name):
+    # Preserve the historical export without loading the owner on discovery.
+    if name == 'DurableCore':
+        from service.core import Core
+        return Core
+    raise AttributeError(name)

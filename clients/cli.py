@@ -1,4 +1,4 @@
-"""Small named fixture CLI; media goes to an exclusive local file, not stdout."""
+"""Small named HTTP read CLI; media goes to an exclusive local file, not stdout."""
 import argparse
 import base64
 import hashlib
@@ -10,8 +10,9 @@ from clients.http import HTTP
 
 
 def main(argv=None):
-    parser = argparse.ArgumentParser(description='0C synthetic fixture reads; no durable service')
+    parser = argparse.ArgumentParser(description='Named HTTP reads; capabilities describe configured service availability')
     parser.add_argument('--url', default=None)
+    parser.add_argument('--credential', default=None, help='Explicit bearer credential; prefer SPEECH_CREDENTIAL environment for process privacy.')
     commands = parser.add_subparsers(dest='command', required=True)
     commands.add_parser('discover')
     commands.add_parser('status')
@@ -20,6 +21,13 @@ def main(argv=None):
     voices = commands.add_parser('voices')
     vs = voices.add_subparsers(dest='verb', required=True).add_parser('list')
     vs.add_argument('--limit', type=int, default=20)
+    vs.add_argument('--cursor', default='')
+    voice = commands.add_parser('voice')
+    vsubs = voice.add_subparsers(dest='verb', required=True)
+    vg = vsubs.add_parser('get'); vg.add_argument('voice_id')
+    version = vsubs.add_parser('version')
+    vget = version.add_subparsers(dest='version_verb', required=True).add_parser('get')
+    vget.add_argument('voice_version_id')
     asset = commands.add_parser('asset')
     subs = asset.add_subparsers(dest='verb', required=True)
     get = subs.add_parser('get'); get.add_argument('asset_id')
@@ -27,14 +35,17 @@ def main(argv=None):
     download.add_argument('asset_id')
     download.add_argument('--output', type=Path, required=True)
     args = parser.parse_args(argv)
-    http = HTTP(args.url)
+    import os
+    http = HTTP(args.url, credential=args.credential or os.environ.get('SPEECH_CREDENTIAL'))
     try:
         if args.command == 'discover': result = http.call('discover', {})
         elif args.command == 'status': result = http.get('/skeleton')
         elif args.command == 'operation-detail':
             from urllib.parse import quote
             result = http.get('/skeleton/operations/' + quote(args.operation_id, safe=''))
-        elif args.command == 'voices': result = http.call('voices_list', {'limit': args.limit})
+        elif args.command == 'voices': result = http.call('voices_list', {'limit': args.limit, 'cursor': args.cursor})
+        elif args.command == 'voice':
+            result = http.call('voice_get', {'voice_id': args.voice_id}) if args.verb == 'get' else http.call('voice_version_get', {'voice_version_id': args.voice_version_id})
         elif args.verb == 'get': result = http.call('asset_get', {'asset_id': args.asset_id})
         else:
             asset = http.call('asset_get', {'asset_id': args.asset_id})

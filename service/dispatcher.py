@@ -36,7 +36,7 @@ class Dispatcher:
         self.initialized.result(timeout=5)
 
     def call(self, op, *args, timeout=3, **kwargs):
-        if op not in ('submit','job','jobs','events','artifact','asset','cancel','status','replace','inventory_page','reconcile_startup','close'):
+        if op not in ('submit','job','jobs','events','artifact','asset','cancel','status','replace','inventory_page','reconcile_startup','close','voice_list','voice_get','voice_version','voice_resolve'):
             raise ValueError('unknown_control_command')
         future=Future()
         self.commands.put_nowait((op,copy.deepcopy(args),copy.deepcopy(kwargs),future))
@@ -151,6 +151,10 @@ class Dispatcher:
                     if startup_error is not None:self.initialized.set_exception(startup_error)
 
     def _command(self,op,*args,**kwargs):
+        if op=='voice_list':return self.core.voices.list(*args,**kwargs)
+        if op=='voice_get':return self.core.voices.get(*args,**kwargs)
+        if op=='voice_version':return self.core.voices.version(*args,**kwargs)
+        if op=='voice_resolve':return self.core.voices.resolve(*args,**kwargs)
         if op=='close':self.stopping=True;return None
         if op=='reconcile_startup':
             if self.pending or self.store.current():raise ValueError('inventory_lane_busy')
