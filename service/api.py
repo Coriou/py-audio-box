@@ -1,4 +1,4 @@
-"""FastAPI 0C fixture host. No authentication, mutation, database or ML runtime."""
+"""Default 0C fixture host and an explicit borrowed-owner voice read factory."""
 import os
 from pathlib import Path
 from typing import Annotated
@@ -50,7 +50,7 @@ def discover(query: Annotated[EmptyQuery, Query()]):
 
 @app.get('/v1/voices')
 def voices(query: Annotated[VoicesQuery, Query()]):
-    return read('voices_list', query.model_dump(exclude_none=True))
+    return read('voices_list', dict(limit=query.limit, cursor=query.cursor or ''))
 
 @app.get('/v1/assets/{asset_id}')
 def asset(asset_id: str, query: Annotated[EmptyQuery, Query()]):
@@ -92,3 +92,56 @@ def index():
 ui = Path(os.environ.get('SPEECH_EVALUATION_UI', '/opt/speech/evaluation'))
 if ui.is_dir():
     app.mount('/evaluation', StaticFiles(directory=ui, html=True), name='synthetic-evaluation')
+
+
+def create_voice_app(dispatcher, *, credentials):
+    """Borrow an initialized Dispatcher. Caller retains sole close responsibility.
+
+    This factory starts no owner, worker, listener or persistent enrollment.
+    """
+    from service.domain import voice_read
+    from service.catalogue import VOICE_READS, schema
+    if not callable(getattr(credentials, 'resolve', None)):
+        raise ValueError('credential_resolver_required')
+    production = FastAPI(title='Authenticated voice catalogue reads', docs_url=None,
+                         redoc_url=None, openapi_url=None)
+    production.add_exception_handler(Failure, failure_handler)
+    production.add_exception_handler(RequestValidationError, invalid_handler)
+    production.add_exception_handler(HTTPException, http_handler)
+
+    @production.middleware('http')
+    async def authenticate(request, call_next):
+        try:
+            request.state.principal = credentials.resolve(request.headers.get('authorization'))
+        except Failure as exc:
+            return JSONResponse(exc.body, status_code=exc.status)
+        return await call_next(request)
+
+    @production.get('/v1/capabilities')
+    def discovery(query: Annotated[EmptyQuery, Query()]):
+        body = capabilities()
+        body['operations'] = ['discover', *VOICE_READS]
+        return body
+
+    @production.get('/skeleton/operations/{operation_id}')
+    def voice_detail(operation_id: str):
+        if operation_id not in ('discover', *VOICE_READS):
+            raise Failure('not_found', 'Operation unavailable.', 'operation_id')
+        op = OPERATIONS[operation_id]
+        return dict(fixture=False, availability='implemented_read', operation=op,
+                    request_schema=schema(op['request']), response_schema=schema(op['response']))
+
+    @production.get('/v1/voices')
+    def listing(request: Request, query: Annotated[VoicesQuery, Query()]):
+        return voice_read(dispatcher, request.state.principal, 'voices_list',
+                          dict(limit=query.limit, cursor=query.cursor or ''))
+
+    @production.get('/v1/voices/{voice_id}')
+    def metadata(voice_id: str, request: Request, query: Annotated[EmptyQuery, Query()]):
+        return voice_read(dispatcher, request.state.principal, 'voice_get', dict(voice_id=voice_id))
+
+    @production.get('/v1/voice-versions/{voice_version_id}')
+    def version(voice_version_id: str, request: Request, query: Annotated[EmptyQuery, Query()]):
+        return voice_read(dispatcher, request.state.principal, 'voice_version_get',
+                          dict(voice_version_id=voice_version_id))
+    return production

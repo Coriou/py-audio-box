@@ -1,5 +1,6 @@
 """MCP v1 maintenance SDK, stdio; named reads call HTTP, never a command bus."""
 import asyncio
+import os
 from urllib.parse import quote
 from jsonschema.exceptions import ValidationError
 from mcp.server import Server
@@ -7,16 +8,16 @@ from mcp.server.stdio import stdio_server
 from mcp.types import Tool, TextContent, CallToolResult
 from contracts.validate import ContractError, validate
 from clients.http import HTTP
-from service.catalogue import (DIRECT_BYTES, Failure, IMPLEMENTED, OPERATIONS, compact, problem, schema)
+from service.catalogue import (DIRECT_BYTES, Failure, IMPLEMENTED, VOICE_READS, OPERATIONS, compact, problem, schema)
 
 server = Server('speech-synthetic-0c')
 
 
 def tools():
     items = [Tool(name=OPERATIONS[op]['mcp'],
-        description=('Synthetic read-only fixture; no service store or ML. ' +
+        description=('Named HTTP read; availability depends on configured service. ' +
             ('Explicit opt-in bytes only; at most 3072 decoded bytes. Larger downloads: python -m clients.cli asset content ID --output FILE.' if op == 'asset_content' else op)),
-        inputSchema=schema(OPERATIONS[op]['request'])) for op in IMPLEMENTED]
+        inputSchema=schema(OPERATIONS[op]['request'])) for op in dict.fromkeys((*IMPLEMENTED, *VOICE_READS))]
     items += [Tool(name='speech_skeleton_status', description='Compact synthetic skeleton status and limitations.',
                    inputSchema={'type':'object','properties':{},'additionalProperties':False}),
               Tool(name='speech_operation_detail', description='Read one canonical operation schema and fixture availability; never executes it.',
@@ -39,7 +40,7 @@ async def call_tool(name, arguments):
     try:
         if not isinstance(arguments, dict):
             raise Failure('invalid_request', 'Expected named request fields.', 'request')
-        transport = HTTP()
+        transport = HTTP(credential=os.environ.get('SPEECH_CREDENTIAL'))
         if name == 'speech_skeleton_status':
             if arguments: raise Failure('invalid_request', 'No status arguments accepted.', 'request')
             body = await asyncio.to_thread(transport.get, '/skeleton')
@@ -48,7 +49,7 @@ async def call_tool(name, arguments):
                 raise Failure('invalid_request', 'Supply one operation_id.', 'operation_id')
             body = await asyncio.to_thread(transport.get, '/skeleton/operations/' + quote(arguments['operation_id'], safe=''))
         else:
-            operation = next((op for op in IMPLEMENTED if OPERATIONS[op]['mcp'] == name), None)
+            operation = next((op for op in dict.fromkeys((*IMPLEMENTED, *VOICE_READS)) if OPERATIONS[op]['mcp'] == name), None)
             if operation is None: raise Failure('not_found', 'Tool unavailable in the 0C skeleton.', 'tool')
             validate(OPERATIONS[operation]['request'], arguments)
             if operation == 'asset_content' and arguments['end_exclusive'] - arguments['start'] > DIRECT_BYTES:
