@@ -2255,3 +2255,7 @@ r213 requests split startup/enrollment reader. Parent authorized narrow recovery
 ### 2026-10-24 — Public startup gate projection across receipt boundary
 
 Parent authorized r213 bounded nonsecret gate projection via fixed trustedhost dockerexec to samewaitingcontrol private tmpfs after successful retained registration/postbrackets. ExactDB/enrollment/config and actualcontrolincarnation/authworkerhello corroboration required; digest/notificationalone notauthority. No receipt/key access or publicgate endpoint. Independentreview must cover channel and stale/replacement negatives.
+
+### 2026-10-24 — Installed clean-restart incarnation dependency
+
+r213 found historical union rejects retained samecontainer newStartedAt, preventing required stop/up. Parent authorized separate installed-only history/currentincarnation adapter recovery.py/host_install.py plus tests, preserving legacyunion and all dirty/nonterminal/provenance obligations. Working launchcheckpoint retained; successor commissioned after handoff, no actualrestart/activationwaiver.
