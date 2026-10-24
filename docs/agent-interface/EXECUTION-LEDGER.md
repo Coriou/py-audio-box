@@ -2287,3 +2287,7 @@ r218 source NO-GO reproduced malformedembedded snapshot/journal and cyclic/futur
 ### 2026-10-24 — Shared detached journal validation extraction
 
 Parent authorized r219 worker/runtime_journal.py solely pure extraction of existingcomplete record/receipt/proposal validation, reused by filesystem and detachedhistorical readers. Preserve limits/closedsemantics/errors/writes unchanged; equivalence+negative regressions required. No runtime or journalrepair authority.
+
+### 2026-10-24 — Shared typed snapshot validation extraction
+
+Parent authorized r219 reconciliation.py solely pure typed data/reference/owner validation extraction reused by live scanning/detachedhistory; live filesystem checks preserved, no historicalreobservation claim or permissive mode. Equivalence/nestedmalformation regressions required. No write/repair/migration authority.
