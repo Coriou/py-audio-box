@@ -2319,3 +2319,7 @@ r224 source NO-GO reproduced repeatedstartupcancellation losingliveowner/no clos
 ### 2026-10-24 — Activation cancellation/gate fixes enter re-review
 
 r225 source20f40183/docs2f283a63 retains asyncpreparation/acquisition/cleanup responsibility across repeatedcancel and defers queuedrelease untilhealthyreconcile. ThreeoldregressionsRED;75exactpin methods reportedPASS. Parent commissioned independent Sol r226; activationunmerged actualqualificationpending.
+
+### 2026-10-24 — Cleanup-task cancellation responsibility gap
+
+r226 source NO-GO R226-1: directcleanup task cancellation cancels asyncwrapper while threadcontinues, then dropsownerresponsibility/notification.75testsPASS caller-cancelcases; R224-2 gateordering closed. Parent commissioned r227 independentlyretainedthreadresults/obligations and directcleanup/wrappercancel regressions, no abruptloopdeath successclaim. Activationunmerged.
