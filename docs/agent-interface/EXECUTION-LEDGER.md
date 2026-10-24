@@ -1603,3 +1603,7 @@ r59 ONEprepareoriginal-positive+ONEbuild completesimagea6696a7ebcf647e2c18bfc864
 ### 2026-10-24 — Qualification image independently accepted; ONE original-positive actual
 
 Parentacceptsr60BUILDGO275inventory/18streams/197maps/context200/oncebuild/ownrelease verified. ONE pab-b-original-positive-actual-r61-20261024 existingclosedprofileoriginal-positive on8254ab7f/docsd17d35a0 exactimagea6696a7e authorizedfreshvolume/realobserver/unchangedtarget. Strictactual74fullBtranscript/fourrows/originalassertions/runtimeprepost required, no SIGKILLsubstitution/retry/waiver; failureprooftransportpreserved. IndependentACTUALgate beforeseparate100controls; no productreleaseacceptance.
+
+### 2026-10-24 — Original strict witness observed; unchanged elapsed assertion fails
+
+ONEr61 originalpositive failselapsed2.234982034<2 aftermarker. Actualraw18944/fullB:a/e/f/t/fourordered47rowsguardfailures0owned0 retained, no teardownerror; RLIMIToperandshortcircuited/reapassertionunreached. Reviewedfailuretransportarchive11regular/mapverified46streams, stopped3containers/volume/laneheld no cleanup/retry. Independent pab-b-original-timing-audit-r62-20261024 launched132inventory/actualroute/runtimeaudit+sourceavoidableguardoverhead analysis, no profilingcampaign/testthresholdedit. All100pending/no positiveGO.
