@@ -1631,3 +1631,7 @@ Parentacceptsr66boundedNEXTBUILDGO F1closed/fresh6HOSTverified; historicalPASS32
 ### 2026-10-24 — Unrecorded historical inode premise corrected; fresh owner-bound finalization
 
 r67STOPpreoperations ZERO Docker/prepare/build: oldslots/inventoryneverpersistedlaneinode. Parentcorrectsimpossibleagent-addedhistoricalcontinuityrequirement explicitly; no fabricatedhistory. Freshowner-boundLOCKONLYfinalization authorizedcurrentr67inode[16777223,1007183657]+authenticatedowner91e131a6/bothslots132inventory+fresh3stoppedidentitychecks, heldFDpath/inodeprotection, allobjects/proofpreserved, oldlaneownerentryremovalexplicitinventoryexception. ONE pab-b-owner-finalization-build-r68-20261024 thenunspentprepare/sourcebuild≤300/400 atf5bc92a1/docs7a53112d; no runtime/tests/retry/waiver.
+
+### 2026-10-24 — Old lock released; prepared build resumes after mode defect
+
+r68 completed owner-bound LOCKONLY release and ONE prepare; host dispatch stopped before lane acquisition/any Docker because agent-created freeze-build.py was0644. Parent preserves old evidence and explicitly authorizes fresh private0600 operational successor, reuse exact existing prepared context (no repeat prepare), ONE still-unspent Docker source build via pab-b-prepared-build-resume-r69-20261024. Candidate f5bc92a1/docs7a53112d unchanged; no timing/test acceptance. Independent actual image gate follows; original-positive and B100 pending.
