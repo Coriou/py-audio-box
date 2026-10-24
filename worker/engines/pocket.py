@@ -11,6 +11,7 @@ import json
 import os
 from pathlib import Path
 import stat
+import struct
 import tempfile
 import wave
 from numbers import Integral
@@ -52,6 +53,43 @@ def _read(path, limit, digest=None):
     if digest is not None and hashlib.sha256(data).hexdigest() != digest:
         raise Refused('file_digest')
     return data
+
+
+def _reference_pcm16(raw, rate, frames):
+    """Validate complete classic RIFF; bounded bytes were authenticated by _read.
+
+    Like ingest's chunk walker, require one fmt before one data and at most
+    4096 chunks. Keep this narrower worker policy independent of service imports.
+    Ancillary payloads and padding values are opaque; padding must exist.
+    """
+    if len(raw) < 12 or raw[:4] != b'RIFF' or raw[8:12] != b'WAVE' or struct.unpack_from('<I', raw, 4)[0] + 8 != len(raw):
+        raise Refused('reference_format')
+    offset = 12
+    seen_fmt = seen_data = False
+    count = 0
+    while offset < len(raw):
+        count += 1
+        if count > 4096 or len(raw) - offset < 8:
+            raise Refused('reference_format')
+        kind, size = struct.unpack_from('<4sI', raw, offset)
+        start = offset + 8
+        end = start + size + (size & 1)
+        if end > len(raw):
+            raise Refused('reference_format')
+        if kind == b'fmt ':
+            if seen_fmt or seen_data or size not in (16, 18):
+                raise Refused('reference_format')
+            # Extensible, float and all non-16-bit declarations are unsupported.
+            if struct.unpack_from('<HHIIHH', raw, start) != (1, 1, rate, rate*2, 2, 16) or (size == 18 and raw[start+16:start+18] != b'\x00\x00'):
+                raise Refused('reference_format')
+            seen_fmt = True
+        elif kind == b'data':
+            if not seen_fmt or seen_data or size % 2 or size != frames*2:
+                raise Refused('reference_format')
+            seen_data = True
+        offset = end
+    if offset != len(raw) or not seen_fmt or not seen_data:
+        raise Refused('reference_format')
 
 
 def execute(execution, text, bundles, references, *, reference_temp_dir, backend_factory=None, preset=None, instruct=None):
@@ -105,12 +143,7 @@ def execute(execution, text, bundles, references, *, reference_temp_dir, backend
     reference = _read(references[e.reference_id], e.reference_bytes, e.reference_sha256)
     if len(reference) != e.reference_bytes:
         raise Refused('reference_size')
-    try:
-        with wave.open(io.BytesIO(reference), 'rb') as wav:
-            if (wav.getnchannels(), wav.getsampwidth(), wav.getframerate(), wav.getnframes(), wav.getcomptype()) != (1, 2, e.reference_rate, e.reference_frames, 'NONE') or len(wav.readframes(e.reference_frames+1)) != e.reference_frames*2:
-                raise Refused('reference_format')
-    except (wave.Error, EOFError) as exc:
-        raise Refused('reference_format') from exc
+    _reference_pcm16(reference, e.reference_rate, e.reference_frames)
     namespace = Path(reference_temp_dir).absolute()
     fd = _open(namespace, True)
     try:

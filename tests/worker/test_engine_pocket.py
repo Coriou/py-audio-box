@@ -4,6 +4,7 @@ import hashlib
 import io
 import json
 import os
+import struct
 from pathlib import Path
 import tempfile
 import unittest
@@ -118,6 +119,88 @@ class PocketTests(unittest.TestCase):
             self.assertEqual(list(self.namespace.iterdir()), [])
         self.ref.write_bytes(self.reference); self.audio=object()
         with self.assertRaises(Refused): self.run_engine()
+
+    def reference_spec(self, raw):
+        self.ref.write_bytes(raw)
+        return dataclasses.replace(self.spec, reference_bytes=len(raw), reference_sha256=hashlib.sha256(raw).hexdigest())
+
+    def test_r241_header_mutations_before_factory(self):
+        for offset, fmt, value in ((34, '<H', 12), (32, '<H', 4), (40, '<I', 9), (4, '<I', 4096)):
+            with self.subTest(offset=offset):
+                raw = bytearray(self.reference)
+                struct.pack_into(fmt, raw, offset, value)
+                with self.assertRaisesRegex(Refused, 'reference_format'):
+                    self.run_engine(self.reference_spec(bytes(raw)))
+                self.assertEqual(self.calls, [])
+
+    @staticmethod
+    def riff(*chunks):
+        body = b'WAVE' + b''.join(chunks)
+        return b'RIFF' + struct.pack('<I', len(body)) + body
+
+    @staticmethod
+    def chunk(kind, data):
+        return kind + struct.pack('<I', len(data)) + data + b'\0'*(len(data) & 1)
+
+    def test_valid_ancillary_chunks_and_pcm_extension(self):
+        fmt = self.reference[20:36]
+        for fields in (fmt, fmt+b'\0\0'):
+            with self.subTest(fmt_size=len(fields)):
+                raw = self.riff(self.chunk(b'JUNK', b'odd'), self.chunk(b'fmt ', fields), self.chunk(b'LIST', b'info'), self.chunk(b'data', b'\0\0'*4), self.chunk(b'JUNK', b'x'))
+                result = self.run_engine(self.reference_spec(raw))
+                self.assertEqual(result['frames'], 3)
+                self.assertEqual(self.calls[-2][1], raw)
+
+    def test_invalid_riff_chunks_before_factory(self):
+        fmt = self.chunk(b'fmt ', self.reference[20:36])
+        data = self.chunk(b'data', b'\0\0'*4)
+        cases = {
+            'truncated_header': b'RIFF',
+            'truncated_chunk_header': self.riff(fmt, data, b'JUNK'),
+            'truncated_chunk_payload': self.riff(fmt, data, b'JUNK'+struct.pack('<I', 4)+b'x'),
+            'missing_odd_padding': self.riff(fmt, data, b'JUNK'+struct.pack('<I', 1)+b'x'),
+            'odd_data': self.riff(fmt, self.chunk(b'data', b'\0'*7)),
+            'duplicate_fmt': self.riff(fmt, fmt, data),
+            'duplicate_data': self.riff(fmt, data, data),
+            'data_before_fmt': self.riff(data, fmt),
+            'missing_fmt': self.riff(data),
+            'missing_data': self.riff(fmt),
+            'trailing_bytes': self.reference+b'x',
+            'chunk_count': self.riff(fmt, data, self.chunk(b'JUNK', b'')*4095),
+        }
+        for tag in (3, 0xfffe):
+            fields = bytearray(self.reference[20:36]); struct.pack_into('<H', fields, 0, tag)
+            cases['format_'+str(tag)] = self.riff(self.chunk(b'fmt ', bytes(fields)), data)
+        fields = bytearray(self.reference[20:36]); struct.pack_into('<I', fields, 8, 123)
+        cases['byte_rate'] = self.riff(self.chunk(b'fmt ', bytes(fields)), data)
+        cases['nonzero_extension'] = self.riff(self.chunk(b'fmt ', self.reference[20:36]+b'\x01\0'), data)
+        for label, raw in cases.items():
+            with self.subTest(label=label):
+                with self.assertRaisesRegex(Refused, 'reference_format'):
+                    self.run_engine(self.reference_spec(raw))
+                self.assertEqual(self.calls, [])
+
+    def test_snapshot_unlink_failure_prevents_success(self):
+        import tempfile as std_tempfile
+        original = std_tempfile.NamedTemporaryFile
+        sentinel = self.namespace/'caller'; sentinel.write_bytes(b'caller')
+        def snapshot(*args, **kwargs):
+            result = original(*args, **kwargs)
+            cleanup = result._closer.cleanup
+            def failed_unlink(path):
+                raise OSError('unlink failed')
+            # Exercise real stdlib close/cleanup with only unlink replaced.
+            result._closer.cleanup = lambda: cleanup(unlink=failed_unlink)
+            return result
+        with patch('worker.engines.pocket.tempfile.NamedTemporaryFile', side_effect=snapshot):
+            with self.assertRaisesRegex(OSError, 'unlink failed'):
+                self.run_engine()
+        self.assertEqual(self.calls[-1], 'closed')
+        retained = [p for p in self.namespace.iterdir() if p != sentinel]
+        self.assertEqual(len(retained), 1)
+        self.assertEqual(retained[0].read_bytes(), self.reference)
+        self.assertEqual(sentinel.read_bytes(), b'caller')
+        self.assertTrue(self.namespace.is_dir())
 
     def test_lifecycle_failures_retain_namespace(self):
         sentinel = self.namespace/'caller'; sentinel.write_bytes(b'caller')
