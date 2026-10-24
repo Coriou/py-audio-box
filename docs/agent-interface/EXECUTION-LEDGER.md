@@ -2263,3 +2263,7 @@ r213 found historical union rejects retained samecontainer newStartedAt, prevent
 ### 2026-10-24 — Startup handoff boundary checkpoint enters review
 
 r213 sourcec6d71b72/docs40a3aab1 retains private hostnotification and checked readonlystartup boundary;141 focused tests reported PASS. Fullpackagedlauncher/activation/restart notdelivered. Parent commissioned independent Sol r214 boundaryreview before adoption; authorizedhistoricalincarnation unit next, packaging stillpending. No actualinstallqualification.
+
+### 2026-10-24 — Startup notification uncertain-child cleanup correction
+
+r214 boundary NO-GO: pipeclosefailure masks unreapedsentinel and bypasses authorityexclusionretention.141 testsPASS misscombinedfault. Parent commissioned targeted Sol r215 preserveprimary acrossstdin/outputteardown plus wrapperlockretention regressions. Partialstartupunmerged; no actualinstall/activationclaim.
