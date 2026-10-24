@@ -18,6 +18,8 @@ def tools():
         description=('Named HTTP read; availability depends on configured service. ' +
             ('Explicit opt-in bytes only; at most 3072 decoded bytes. Larger downloads: python -m clients.cli asset content ID --output FILE.' if op == 'asset_content' else op)),
         inputSchema=schema(OPERATIONS[op]['request'])) for op in dict.fromkeys((*IMPLEMENTED, *VOICE_READS))]
+    if os.environ.get('SPEECH_UPLOAD_ROOT'):
+        items.append(Tool(name='speech_asset_upload_file', description='Upload a client-host WAV from an operator-authorized filesystem root (SPEECH_UPLOAD_ROOT). Grants host filesystem read permission within that root; relative no-follow paths only. Creates an asset, not a cloned voice. No inline audio.', inputSchema={'type':'object','properties':{'path':{'type':'string','minLength':1,'maxLength':4096}},'required':['path'],'additionalProperties':False}))
     items += [Tool(name='speech_skeleton_status', description='Compact synthetic skeleton status and limitations.',
                    inputSchema={'type':'object','properties':{},'additionalProperties':False}),
               Tool(name='speech_operation_detail', description='Read one canonical operation schema and fixture availability; never executes it.',
@@ -41,7 +43,13 @@ async def call_tool(name, arguments):
         if not isinstance(arguments, dict):
             raise Failure('invalid_request', 'Expected named request fields.', 'request')
         transport = HTTP(credential=os.environ.get('SPEECH_CREDENTIAL'))
-        if name == 'speech_skeleton_status':
+        if name == 'speech_asset_upload_file':
+            root = os.environ.get('SPEECH_UPLOAD_ROOT')
+            if not root: raise Failure('forbidden','Client-host filesystem upload is not configured.')
+            if set(arguments) != {'path'} or not isinstance(arguments['path'], str) or not 0 < len(arguments['path']) <= 4096:
+                raise Failure('invalid_request','Supply one relative client-local path.')
+            body = await asyncio.to_thread(transport.upload_file, arguments['path'], root=root)
+        elif name == 'speech_skeleton_status':
             if arguments: raise Failure('invalid_request', 'No status arguments accepted.', 'request')
             body = await asyncio.to_thread(transport.get, '/skeleton')
         elif name == 'speech_operation_detail':

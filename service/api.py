@@ -94,13 +94,13 @@ if ui.is_dir():
     app.mount('/evaluation', StaticFiles(directory=ui, html=True), name='synthetic-evaluation')
 
 
-def create_voice_app(dispatcher, *, credentials):
+def create_voice_app(dispatcher, *, credentials, upload_deadline=15.0):
     """Borrow an initialized Dispatcher. Caller retains sole close responsibility.
 
     This factory starts no owner, worker, listener or persistent enrollment.
     """
-    from service.domain import voice_read
-    from service.catalogue import VOICE_READS, schema
+    from service.domain import voice_read, asset_call
+    from service.catalogue import VOICE_READS, schema, ASSET_OPERATIONS
     if not callable(getattr(credentials, 'resolve', None)):
         raise ValueError('credential_resolver_required')
     production = FastAPI(title='Authenticated voice catalogue reads', docs_url=None,
@@ -108,6 +108,14 @@ def create_voice_app(dispatcher, *, credentials):
     production.add_exception_handler(Failure, failure_handler)
     production.add_exception_handler(RequestValidationError, invalid_handler)
     production.add_exception_handler(HTTPException, http_handler)
+
+    import asyncio
+    import io
+    import threading
+    from starlette.requests import ClientDisconnect
+    from service.ingest import MAX_BYTES
+    upload_slot = threading.BoundedSemaphore(1)
+    if not 0 < upload_deadline <= 60: raise ValueError('invalid_upload_deadline')
 
     @production.middleware('http')
     async def authenticate(request, call_next):
@@ -120,15 +128,15 @@ def create_voice_app(dispatcher, *, credentials):
     @production.get('/v1/capabilities')
     def discovery(query: Annotated[EmptyQuery, Query()]):
         body = capabilities()
-        body['operations'] = ['discover', *VOICE_READS]
+        body['operations'] = ['discover', *VOICE_READS, *ASSET_OPERATIONS]
         return body
 
     @production.get('/skeleton/operations/{operation_id}')
     def voice_detail(operation_id: str):
-        if operation_id not in ('discover', *VOICE_READS):
+        if operation_id not in ('discover', *VOICE_READS, *ASSET_OPERATIONS):
             raise Failure('not_found', 'Operation unavailable.', 'operation_id')
         op = OPERATIONS[operation_id]
-        return dict(fixture=False, availability='implemented_read', operation=op,
+        return dict(fixture=False, availability='implemented' if operation_id == 'asset_upload' else 'implemented_read', operation=op,
                     request_schema=schema(op['request']), response_schema=schema(op['response']))
 
     @production.get('/v1/voices')
@@ -144,4 +152,59 @@ def create_voice_app(dispatcher, *, credentials):
     def version(voice_version_id: str, request: Request, query: Annotated[EmptyQuery, Query()]):
         return voice_read(dispatcher, request.state.principal, 'voice_version_get',
                           dict(voice_version_id=voice_version_id))
+    @production.get('/v1/voices/{voice_id}/versions')
+    def versions(voice_id: str, request: Request, query: Annotated[VoicesQuery, Query()]):
+        return voice_read(dispatcher, request.state.principal, 'voice_versions_list',
+                          dict(voice_id=voice_id, limit=query.limit, cursor=query.cursor or ''))
+
+    @production.post('/v1/assets')
+    async def upload(request: Request, query: Annotated[EmptyQuery, Query()]):
+        principal = credentials.resolve(request.headers.get('authorization'), required_scope='production-write')
+        if request.headers.get('content-type', '').lower() != 'audio/wav':
+            raise Failure('invalid_request', 'Use raw audio/wav bytes.')
+        if len(request.headers.getlist('content-length')) > 1:
+            raise Failure('invalid_request', 'Multiple Content-Length headers are unavailable.')
+        length = request.headers.get('content-length')
+        if length is not None:
+            if not length.isascii() or not length.isdecimal() or len(length)>10:
+                raise Failure('invalid_request', 'Invalid Content-Length.')
+            length = int(length)
+            if length > MAX_BYTES: raise Failure('resource_limit', 'Upload exceeds 24 MiB.')
+        if not upload_slot.acquire(blocking=False):
+            raise Failure('resource_limit', 'Upload admission is occupied.')
+        release = True
+        try:
+            with io.BytesIO() as buffer:
+                total = 0
+                try:
+                    async with asyncio.timeout(upload_deadline):
+                        async for chunk in request.stream():
+                            total += len(chunk)
+                            if total > MAX_BYTES: raise Failure('resource_limit', 'Upload exceeds 24 MiB.')
+                            if len(chunk)>65536: raise Failure('resource_limit', 'Transport chunks must be at most 65536 bytes.')
+                            if length is not None and total > length: raise Failure('invalid_request', 'Content-Length mismatch.')
+                            buffer.write(chunk)
+                except (TimeoutError, ClientDisconnect):
+                    raise Failure('invalid_request', 'Upload incomplete or deadline exceeded.') from None
+                if total == 0 or (length is not None and total != length):
+                    raise Failure('invalid_request', 'Content-Length mismatch or empty body.')
+                # BytesIO.getvalue produces immutable bytes; network receive has ended.
+                release = False  # Cancellation/unknown owner outcome retains admission.
+                try:
+                    result = await asyncio.to_thread(asset_call, dispatcher, principal, 'asset_upload', buffer.getvalue())
+                    release = True
+                    return result
+                except Failure as exc:
+                    release = exc.body['code'] != 'not_ready'
+                    raise
+        finally:
+            if release: upload_slot.release()
+
+    @production.get('/v1/assets/{asset_id}')
+    def asset_metadata(asset_id: str, request: Request, query: Annotated[EmptyQuery, Query()]):
+        return asset_call(dispatcher, request.state.principal, 'asset_get', dict(asset_id=asset_id))
+
+    @production.get('/v1/assets/{asset_id}/content')
+    def asset_bytes(asset_id: str, request: Request, query: Annotated[ContentQuery, Query()]):
+        return asset_call(dispatcher, request.state.principal, 'asset_content', dict(asset_id=asset_id, **query.model_dump()))
     return production

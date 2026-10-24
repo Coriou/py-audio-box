@@ -32,7 +32,7 @@ class StaticCredentials:
         with self._lock:
             self._credentials = tuple(c for c in self._credentials if not hmac.compare_digest(c.token, token))
 
-    def resolve(self, authorization):
+    def resolve(self, authorization, *, required_scope="read"):
         token = authorization[7:] if isinstance(authorization, str) and authorization.startswith('Bearer ') else ''
         if not token.isascii() or len(token) > 4096:
             token = ''
@@ -41,6 +41,6 @@ class StaticCredentials:
             for record in self._credentials:
                 if hmac.compare_digest(record.token, token):
                     found = record
-        if found is None or 'read' not in found.scopes:
-            raise Failure('forbidden', 'A valid read credential is required.', action='Configure an active bearer credential with read scope.')
+        if found is None or not {'read', required_scope} <= found.scopes:
+            raise Failure('forbidden', 'A valid credential with the required scopes is required.', action='Configure an active bearer credential with read scope.')
         return found.principal

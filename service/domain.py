@@ -55,15 +55,16 @@ def voice_read(dispatcher, principal, operation, payload):
     op = OPERATIONS[operation]
     try:
         validate(op['request'], payload)
-        if operation == 'voices_list':
+        if operation in ('voices_list', 'voice_versions_list'):
             cursor = payload['cursor']
             if cursor and (not cursor.isascii() or not cursor.isdecimal() or len(cursor) > 16):
                 raise Failure('invalid_request', 'Use the returned numeric cursor.', 'cursor')
             after = int(cursor or '0')
             if after > 9007199254740991:
                 raise Failure('invalid_request', 'Cursor exceeds supported range.', 'cursor')
-            rows = dispatcher.call('voice_list', principal, after=after, limit=payload['limit'])
-            result = dict(items=[r['voice']['id'] for r in rows],
+            rows = (dispatcher.call('voice_summaries', principal, after=after, limit=payload['limit'])
+                    if operation == 'voices_list' else dispatcher.call('voice_version_summaries', principal, payload['voice_id'], after=after, limit=payload['limit']))
+            result = dict(items=[(r['voice']['id'] if operation == 'voices_list' else r['id']) for r in rows],
                           next_cursor=str(rows[-1]['cursor']) if len(rows) == payload['limit'] else None)
         elif operation == 'voice_get':
             result = dispatcher.call('voice_get', principal, payload['voice_id'])
@@ -73,7 +74,7 @@ def voice_read(dispatcher, principal, operation, payload):
             raise Failure('resource_limit', 'Voice response exceeds the 2048-byte transport budget.',
                           action='Use a smaller list page; oversized details require compact domain reads in a later service version.')
         return validate(op['response'], result)
-    except (ValidationError, ContractError):
+    except ValidationError:
         raise Failure('invalid_request', 'Request or response does not match the voice contract.', 'request') from None
     except ValueError as exc:
         code = str(exc) if str(exc) in ('not_found', 'invalid_request', 'resource_limit', 'voice_archived') else 'not_ready'
@@ -88,3 +89,77 @@ def __getattr__(name):
         from service.core import Core
         return Core
     raise AttributeError(name)
+
+
+def owned_asset(core, principal, asset_id, *, content=False, start=0, end_exclusive=0):
+    """Owner-only managed upload reads. No fixture or legacy ownership fallback.
+
+    Hash the same no-follow descriptor used for the bounded range; close before
+    returning detached bytes. No descriptor survives into the network response.
+    """
+    import os
+    import stat
+    from service.ingest import MAX_BYTES, open_directory
+    import json
+    row = core.db.execute('SELECT metadata FROM assets WHERE id=?', (asset_id,)).fetchone()
+    if row is None or json.loads(row[0]).get('principal_id') != principal:
+        raise ValueError('not_found')
+    metadata = core.asset(asset_id)
+    if metadata.get('principal_id') != principal:
+        raise ValueError('not_found')
+    if not content:
+        return metadata
+    if not 0 <= start < end_exclusive or end_exclusive-start > 65536:
+        raise ValueError('invalid_request')
+    directory = open_directory(core.root/'assets')
+    try:
+        fd = os.open(metadata['id'], os.O_RDONLY|os.O_NOFOLLOW, dir_fd=directory)
+    finally:
+        os.close(directory)
+    with os.fdopen(fd, 'rb') as stream:
+        before = os.fstat(stream.fileno())
+        if not stat.S_ISREG(before.st_mode) or before.st_uid != os.getuid() or before.st_nlink != 1 or before.st_size > MAX_BYTES:
+            raise ValueError('missing_media')
+        digest = hashlib.sha256()
+        total = 0
+        while True:
+            chunk = stream.read(min(65536, MAX_BYTES+1-total))
+            if not chunk: break
+            total += len(chunk)
+            if total > MAX_BYTES: raise ValueError('missing_media')
+            digest.update(chunk)
+        if digest.hexdigest() != metadata['sha256'] or end_exclusive > total:
+            raise ValueError('missing_media')
+        stream.seek(start)
+        data = stream.read(end_exclusive-start)
+        after = os.fstat(stream.fileno())
+        if (before.st_dev,before.st_ino,before.st_size,before.st_mtime_ns,before.st_ctime_ns) != (after.st_dev,after.st_ino,after.st_size,after.st_mtime_ns,after.st_ctime_ns) or len(data) != end_exclusive-start:
+            raise ValueError('missing_media')
+    return dict(schema_version='1.3.0', asset_id=asset_id, start=start,
+                end_exclusive=end_exclusive, total_bytes=total,
+                content_sha256=metadata['sha256'], content_base64=base64.b64encode(data).decode('ascii'))
+
+
+def asset_call(dispatcher, principal, operation, payload):
+    import queue
+    import sqlite3
+    op = OPERATIONS[operation]
+    try:
+        if operation == 'asset_upload':
+            if type(payload) is not bytes: raise ValueError('invalid_request')
+            result = dispatcher.call('asset_ingest', principal, payload)
+        else:
+            validate(op['request'], payload)
+            result = dispatcher.call('asset_metadata' if operation == 'asset_get' else 'asset_content', principal, **payload)
+        from service.catalogue import compact
+        if operation != 'asset_content' and len(compact(result).encode('utf-8')) > 2048:
+            raise Failure('resource_limit', 'Asset metadata exceeds compact response budget.')
+        return validate(op['response'], result)
+    except ValidationError:
+        raise Failure('invalid_request', 'Asset contract unavailable.') from None
+    except ValueError as exc:
+        code = {'invalid_audio':'invalid_media', 'foreign_media':'missing_media'}.get(str(exc), str(exc))
+        if code not in ('invalid_request','invalid_media','resource_limit','not_found','missing_media'): code='not_ready'
+        raise Failure(code, 'Asset operation unavailable.', action='Check media and service readiness; uploads are never automatically retried.') from None
+    except (OSError, sqlite3.Error, TimeoutError, queue.Full):
+        raise Failure('not_ready', 'Asset owner unavailable; upload outcome may be unknown.', action='Do not automatically retry uploads.') from None

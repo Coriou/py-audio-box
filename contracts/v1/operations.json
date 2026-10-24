@@ -82,7 +82,11 @@
       "errors": [
         "invalid_request",
         "forbidden",
-        "not_found"
+        "not_found",
+        "not_ready",
+        "resource_limit",
+        "invalid_media",
+        "missing_media"
       ]
     },
     {
@@ -109,28 +113,26 @@
       "id": "asset_upload",
       "http": {
         "method": "POST",
-        "route": "/v1/operations/asset_upload",
-        "input_location": "json"
+        "route": "/v1/assets",
+        "input_location": "binary"
       },
       "cli": "asset upload",
-      "mcp": "speech_asset_upload",
+      "mcp": "speech_asset_upload_file",
       "request": "asset_upload_request",
-      "response": "receipt",
-      "idempotency": true,
+      "response": "asset",
+      "idempotency": false,
       "scope": "production-write",
-      "headers": [
-        "Idempotency-Key"
-      ],
+      "headers": [],
       "errors": [
         "invalid_request",
         "forbidden",
         "not_found",
-        "idempotency_conflict",
         "not_ready",
         "resource_limit",
-        "unsupported_control"
+        "invalid_media",
+        "missing_media"
       ],
-      "transport": "JSON base64 decoded bytes; maximum 16777216; verify length and SHA256 before admission; idempotency includes exact bytes"
+      "transport": "Raw audio/wav body; maximum 25165824 bytes; chunks <=65536 bytes; finite body deadline and single concurrent admission. Requires read and production-write. No automatic retry. Creates asset only. MCP uses configured client-local root, never server paths."
     },
     {
       "id": "asset_acquire",
@@ -941,7 +943,11 @@
       "errors": [
         "invalid_request",
         "forbidden",
-        "not_found"
+        "not_found",
+        "not_ready",
+        "resource_limit",
+        "invalid_media",
+        "missing_media"
       ]
     },
     {
@@ -1004,6 +1010,28 @@
         "invalid_request",
         "forbidden",
         "not_found"
+      ]
+    },
+    {
+      "id": "voice_versions_list",
+      "http": {
+        "method": "GET",
+        "route": "/v1/voices/{voice_id}/versions",
+        "input_location": "query_and_path"
+      },
+      "cli": "voice versions",
+      "mcp": "speech_voice_versions_list",
+      "request": "voice_versions_list_request",
+      "response": "list",
+      "idempotency": false,
+      "scope": "read",
+      "headers": [],
+      "errors": [
+        "invalid_request",
+        "forbidden",
+        "not_found",
+        "not_ready",
+        "resource_limit"
       ]
     }
   ],

@@ -46,3 +46,18 @@ class VoiceDispatcherTests(VoiceDispatcherFixture, unittest.TestCase):
         for command in ('voices.register', 'voice_register', 'callback'):
             with self.assertRaisesRegex(ValueError, 'unknown_control_command'):
                 self.dispatcher.call(command)
+
+    def test_compact_owner_commands_avoid_full_get(self):
+        observed=[]
+        original=VoiceStore.summaries
+        def summaries(store,*args,**kwargs):
+            observed.append(threading.get_ident())
+            return original(store,*args,**kwargs)
+        with patch.object(VoiceStore,'summaries',summaries), patch.object(VoiceStore,'get',side_effect=AssertionError('full get')):
+            rows=self.dispatcher.call('voice_summaries','alice')
+            self.assertEqual(rows[0]['voice']['id'],self.version['voice_id'])
+            versions=self.dispatcher.call('voice_version_summaries','alice',self.version['voice_id'])
+            self.assertEqual(versions[0]['id'],self.version['id'])
+        self.assertEqual(observed,[self.dispatcher.thread.ident])
+        with self.assertRaisesRegex(ValueError,'invalid_request'):
+            self.dispatcher.call('asset_ingest','alice',object())
