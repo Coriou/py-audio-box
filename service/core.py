@@ -1,7 +1,7 @@
 """Phase 1A synthetic durable domain. Trusted control API, never an HTTP payload API.
 
 One Core owns a data root. Canonical dictionaries retain contract 1.3.0 exactly.
-Only preset speech (one variant, no reuse) is executable in this bounded lot.
+Synthetic prepare and speech (one variant, no reuse) use the same durable fences.
 """
 from __future__ import annotations
 import copy
@@ -372,13 +372,13 @@ class Core:
             if row:
                 oracle.require(row[0] == fingerprint, 'idempotency_conflict')
                 return json.loads(row[1])
-            if operation != 'speech_generate': raise NotImplementedError(operation)
+            if operation not in ('speech_generate', 'voice_prepare'): raise NotImplementedError(operation)
             if len(encode(context).encode()) > 48000: raise ValueError('plan_limit')
             oracle.plan_hash(plan)
             oracle.frozen_plan(plan, context['bundles'])
-            if plan['resolved']['settings']['kind'] not in ('qwen_preset','kokoro_preset') or plan['request']['variants'] != 1 or plan['request']['reuse'] != 'never':
-                raise NotImplementedError('only single synthetic preset without reuse')
-            if plan['assets']: raise NotImplementedError('synthetic preset has no inputs')
+            if operation == 'speech_generate' and (plan['request']['variants'] != 1 or plan['request']['reuse'] != 'never'):
+                raise NotImplementedError('only single synthetic result without reuse')
+            self._input_assets(principal, plan)
             if retry_of:
                 old, previous = self._load(retry_of)
                 oracle.require(old['state'] in ('failed','cancelled') and old['principal_id'] == principal and encode(previous) == encode(context)
@@ -425,9 +425,17 @@ class Core:
         finally: child.close()
         return job
 
+    def _input_assets(self, principal, plan):
+        ids = oracle.required_asset_ids(plan)
+        for asset in plan['assets']:
+            self.voices._asset(principal, asset['id'])
+            oracle.require(self.asset(asset['id']) == asset, 'asset_metadata_mismatch')
+        oracle.require(set(ids) == {a['id'] for a in plan['assets']}, 'asset_dependencies_mismatch')
+        return ids
+
     def _message(self, job, context, kind):
         a = job['attempts'][-1]
-        return dict(protocol_version='1.3.0',kind=kind,job_id=job['id'],attempt_id=a['id'],generation=a['generation'],input_sha256=job['input_sha256'],input_asset_ids=[],staging_id=a['staging_id'],owner_id=a['owner_id'],identity=context['plan']['resolved']['identity'],deadline=job['deadline'],stage='completed' if kind=='result' else 'loading',result_asset_ids=[],plan=context['plan'])
+        return dict(protocol_version='1.3.0',kind=kind,job_id=job['id'],attempt_id=a['id'],generation=a['generation'],input_sha256=job['input_sha256'],input_asset_ids=oracle.required_asset_ids(context['plan']),staging_id=a['staging_id'],owner_id=a['owner_id'],identity=context['plan']['resolved']['identity'],deadline=job['deadline'],stage='completed' if kind=='result' else 'loading',result_asset_ids=[],plan=context['plan'])
 
     def request_cancel(self, job_id: str, *, _cancel_unstarted=False, _admission=None) -> dict:
         with self.transaction():
@@ -476,7 +484,7 @@ class Core:
         message, manifest = proposal['message'], proposal['manifest']
         _,context=self._load(job['id'])
         owner=job['attempts'][-1]['owner_id'] # bound to the private socket inherited only by our child
-        oracle.worker_message(message,job,[],transport_owner=owner,context=context)
+        oracle.worker_message(message,job,self._input_assets(job['principal_id'], context['plan']),transport_owner=owner,context=context)
         oracle.validate('result_manifest',manifest)
         oracle.require(len(manifest['outputs'])==1, 'result_mismatch')
         output=manifest['outputs'][0]
@@ -497,7 +505,7 @@ class Core:
         expected=dict(kind='synthetic',source_sha256=measured['sha256'],source_id='phase-1a-silence',missing_fields=[])
         oracle.require(output['provenance']==expected and measured['frames']==4800 and measured['sample_rate']==48000 and measured['channels']==1 and measured['media_subtype']=='PCM_16', 'synthetic_policy')
         artifact=dict(id=manifest['artifact_id'],job_id=job['id'],generation=job['generation'],asset_ids=[output['id']],input_sha256=job['input_sha256'],project_revision=0,manifest_sha256=oracle.canonical_hash(manifest),identity=context['plan']['resolved']['identity'],attempt_id=job['attempts'][-1]['id'],owner_id=owner,staging_id=job['attempts'][-1]['staging_id'])
-        oracle.publication(job,job['attempts'][-1],artifact,{output['id']:measured['sha256']},transport_owner=owner,context=context,manifest=manifest,verified_result=message,allowed_assets=[])
+        oracle.publication(job,job['attempts'][-1],artifact,{output['id']:measured['sha256']},transport_owner=owner,context=context,manifest=manifest,verified_result=message,allowed_assets=self._input_assets(job['principal_id'], context['plan']))
         return data,manifest,artifact,message
 
     @persistence.storage_session
@@ -549,7 +557,7 @@ class Core:
         attempt=job['attempts'][-1]
         oracle.publication(job,attempt,artifact,{destination:digest},transport_owner=attempt['owner_id'],
             context=context,manifest=manifest,
-            verified_result=json.loads(self.db.execute('SELECT message FROM publications WHERE job_id=?',(job_id,)).fetchone()[0]),allowed_assets=[])
+            verified_result=json.loads(self.db.execute('SELECT message FROM publications WHERE job_id=?',(job_id,)).fetchone()[0]),allowed_assets=self._input_assets(job['principal_id'], context['plan']))
         directory=self.root/'assets'
         path=directory/destination
         try: path.lstat()
