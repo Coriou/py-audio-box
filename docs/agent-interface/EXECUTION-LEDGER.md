@@ -2279,3 +2279,7 @@ r216 bounded source GO closes cleanupmasking. Parent merged070ae984 conflict-fre
 ### 2026-10-24 — Installed restart history candidate enters review
 
 r217 sourcefbd0aff7/docs142a7e74 implements separate current/history projection, v2 immutable predecessor/snapshot/journal linkage and cleanterminal/reap/ACK requirements; legacyunion sourceidentical.169 distinct focused checks reported acrossfinalruns, fixturevalidator bypass corrected. Parent commissioned independent Sol r218 exactfullsuite/historysecurityreview. Candidateunmerged; actualrestart/packageactivationunqualified.
+
+### 2026-10-24 — Restart retained evidence/graph validation blockers
+
+r218 source NO-GO reproduced malformedembedded snapshot/journal and cyclic/futurepredecessor acceptance despite169testsPASS. Parent commissioned r219 completeclosed historicalvalidation + boundedDAG/preinsertclosure regressions. Also r218 verifies070ae984 ISancestor; r217NOTancestorclaim incorrect, historicalreportretained with correctionhere. Restartunmerged; no actualacceptance.
