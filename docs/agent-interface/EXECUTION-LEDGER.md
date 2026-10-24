@@ -1651,3 +1651,7 @@ r71 ONE actual reports original1passed/pytestwriterdriver0, fullstrictBchild74/f
 ### 2026-10-24 — Original-positive independently accepted; B100 campaign
 
 Parent accepts r72 bounded ONE Linux original-positive GO,178inventory/32completions64streams/archive/runtime/witness/cleanup independently verified. Exacttargetelapsed unrecorded; unchanged<2/RLIMIT/reap assertions PASS, exhaustive snapshots/platform/release limits remain. ONE pab-b100-controls-actual-r73-20261024 authorized exact reviewed100 runner on same14b0cf52 image/f5bc92a1, separate freshvolume/container, finitecaps/firstfailureSTOP/retention. No P211 or other preservationcampaign; independent actualreview follows.
+
+### 2026-10-24 — B100 stops at017; export format failure, recovery audit
+
+r73 ONE campaign stopped017callFAIL (setup/teardownPASS);000–016 onlysourcepathsupported untilreceiptsrecovered,018–099UNRUN. USTARreader thenfailed linkname too long; partial16896bytearchive/15members cannotestablishfullretention/runtimeequality/failurecause.104inventory/17completions34streams retained; stoppedwriter+archivereader/volume/laneheld, no retry/cleanup. Independent pab-b100-failure-retention-audit-r74-20261024 assigned read-onlyactualaudit andconcretefiniteROvolumerecoverydesign, noDocker/test/exportretryauthority yet.
