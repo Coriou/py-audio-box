@@ -2199,3 +2199,7 @@ r200 source45d69668/docsb53eff95 retains role-aware offline/reconcile/journal re
 ### 2026-10-24 — Executable split initializer delivered; combined security review
 
 r201 sourcee4f84148/docs8aa9a5d8 implements closed split enrollment, create-only initializer/drop-child code, quarantine/completion and validated private-copy inspection;82 invocations reported PASS with injectedMacidentity. Parent commissioned independent Sol r202 covering combined r199/r200/r201 source. No source adoption; actualLinuxUIDproof absent, hostobservation/registrationwriter and activation remainclosed.
+
+### 2026-10-24 — Split initializer path integration blocker
+
+r202 combined source NO-GO: SQLite canonicalizes inherited fd paths to root-only Docker ancestors, so dropped writer can strand partial Core.51 focused tests independently PASS but injected ordinarypaths missed boundary. Parent commissioned r203 realpath adapter correction, permitting private Linux mountnamespace fixedvalidatedbinds source only if needed; no hostpermission relaxation/rootDBwrites. Candidate unmerged, no actualprivileged execution.
