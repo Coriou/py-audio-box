@@ -1679,3 +1679,7 @@ Parent accepts r78 boundedGO exactmanifesta84c0dea/report2087ef19, allR1/R2/R3cl
 ### 2026-10-24 — Lossless recovery completes; actual audit and017 diagnosis
 
 r79 ONE ROrecovery reports OSexit0/transport+contentverified212paths/000–016PASS receipts/017callFAIL/018–099absent,103byteabsolutesymlink provesUSTARoffender.017nestedteardownassertionsuffix mismatch recovered butexactguardfailurestringunresolved. Allobjects/laneheld/cleanupNONE,oldproofunchanged. Independent pab-b100-recovered-actual-audit-r80-20261024 assignedfullactualaudit plusretainedproof/sourcecausaldiagnosis, nooperations/retry.
+
+### 2026-10-24 — Recovery independently accepted; Astra directed-control advice
+
+Parent accepts r80 boundedACTUALrecoveryGO;17receiptedPASS/017FAIL/82UNRUN. Source localizes directedcallback assertions interrupting receipt/ownership bookkeeping; firstchildpredicateUNKNOWN, suffix-onlychange forbidden. Targeted pab-b100-directed-diagnostic-astra-r81-20261024 assigned sourcecausality/minimalprimitiveinstrumentationdesign to unblock finiteSOURCEfix, nooperations/testretry/cleanup.
