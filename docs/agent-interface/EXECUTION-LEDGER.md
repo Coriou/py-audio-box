@@ -1959,3 +1959,7 @@ Parent accepts r148 boundedplan/accountingGO exact81/2135caps/35reviewmappedcomm
 ### 2026-10-24 — Source checkpoint merged in isolation; independent adoption gate
 
 r149 t3-410df38e merge0d54ed08 parentsa48f7d6+1685451c/tree3c84cf72 report5140964d;33candidateblobs/modesexact/rootdocsunionpreserved/no conflicts/nooperations. Parent commissions pab-source-integration-review-r150-20261024 ancestry/content/docs-preservation review beforeadoption. PARTIALdormant/validationpending/C-T2notimported/81unrun/resourcesHELD unchanged.
+
+### 2026-10-24 — Reviewed source checkpoint adopted
+
+Parent accepts r150 adoptionGO/PARTIALscope and merges reviewed5140964d into latestroot285621b; resultec78661fcb6fb9cbf4a569ea65cd3e446786702d. All33candidateblobs/modesexact; everyotherroottrackedpathpreserved exceptacceptedhistoricalRECOVERYappend; latestledger/reviews retained/no conflicts. No tests/runtime orreceiptSHArelabel. Nextclosed81narrowSOURCEunit, C/T2separate/resourcesHELD.
