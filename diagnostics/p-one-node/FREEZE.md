@@ -432,3 +432,164 @@ acceptance or self-GO. Fresh independent Sol review owns F1/F2 acceptance.
 Build, original actual74/assertion/restoration/performance, B100/P211 and declared
 preservation actual subsets remain HOLD/PENDING; no installed/native/T2/platform,
 durability/release credit. Parent owns every later authorization.
+
+## r62 overhead successor — pre-HOST freeze (2026-10-24)
+
+Authority: full root P1B23-B-ORIGINAL-TIMING-AUDIT-r62-sol.md assignments1–4,
+Astra r44 and r49. Base docs d17d35a0cbfe3dd5c4050829bcc6dcf2645a39cb,
+exec8254ab7fbe02c95ed222a82d361c4d9d26b0318c. Original candidate/retained lane
+untouched. Original positive remains FAILED:2.234982034<2 false; no attribution.
+
+Before running HOST-overhead.py: one stdlib-only invocation with CPython3.14.7,
+64-check ceiling; AST extraction/in-memory compile of predicates and synthetic
+helpers only, no guard/module/product/pytest/rewriter execution. Matrix: exact
+bytes/digest/path/config/mode/hook/code identity refusal; plain independent
+baseline; cleared/consecutive facts; identity selector lines/exception/return;
+kill call/completion/exception/line/capability events; callback-cycle clearing;
+static setup-clear and prior-trace ordering. First unexpected failure stops;
+retain its output and do not silently retry. Full setup/fixture undo/real trace
+restoration and rewritten execution are PENDING, not HOST acceptance claims.
+No pytest/collection/product imports/Docker/DB/runtime/profiling/native/cleanup.
+B100/P211 and all declared preservation actual subsets remain UNRUN. Historical
+REDs, PID229 UNKNOWN and all broader gates unchanged. No seconds-saved claim.
+
+## r62 overhead implementation handoff — SOURCE + bounded stdlib HOST
+
+2026-10-24. Implementation complete for independent Sol adversarial review;
+no self-GO or operational acceptance. Checkout:
+`/Users/ben/.txcode/worktrees/py-audio-box/t3-6e6d0983`, branch
+`implement/b-overhead-r62`. Reconstructed exact immutable base docs
+`d17d35a0cbfe3dd5c4050829bcc6dcf2645a39cb`, executable
+`8254ab7fbe02c95ed222a82d361c4d9d26b0318c`; executable successor
+`fcb201b6aa700bb2c91a0fb8d0850a783d54f4cb`. The following docs-only commit
+freezes this handoff. Original t3-1bc65cf1 and retained evidence/lane untouched.
+Read full root r62 and full Astra r44/r49 before implementation. No applicable
+AGENTS found. Memory registry search supplied no relevant technical premise.
+
+### Scope and source mechanism
+
+Only B/install existing guard definitions change. Installation prepares full
+independent frozen test source/plain+actual-config rewrite compilation, roles,
+runner source compilation, indexed sites and immutable instruction tables.
+Compiled modules/target are never executed by preparation. Normal guard use
+passes prepared facts explicitly; failed/undone preparation passes a refusal
+sentinel and cannot fall back to late preparation. Direct constructor API stays
+compatible with optional preparation; direct controls can still prepare locally.
+No global/disk/pyc cache. The installed scope is single-consumption: after one
+call facts are cleared; another call through that installation cannot inherit
+prior authority and designated B refuses. Fresh installation prepares afresh.
+
+The key binds exact source bytes/digest, exact executing filename/canonical path,
+actual config identity, assertion mode and enable_assertion_pass_hook, and exact
+outer execute-code identity (explicit `is`, not CodeType structural equality).
+Use re-reads/hashes frozen source, reads config anew, checks actual outer typed
+projection and exact nested capabilities/projections; runner source bytes,
+runner/frame-result executing identities and independent compiled bindings are
+also rechecked. Projection memoization uses identity with strong code references
+only in local preparation/use dictionaries. Mutable closure cells are never
+cached between checks: constructor closure calls11→8, hooks12→9, each closure
+snapshot reused only inside that one check. All live FD/fstat/F_GETFL, hook,
+raw/view/content, deadline/current-handler/trace and route predicates remain.
+EAGAIN uses one transient bounded raw slice for both length/content checks.
+
+Global trace selector dispatches seven prebound code identities; runner retains
+all line/state/progress/exception checks. Reap retains line/exception/return
+handling; the other five capabilities suppress lines and keep exception/return
+callbacks. Existing trace_B remains the event body (and existing control seam),
+with stable bound local callbacks returned by wrappers. Global active-trace
+checks still compare the installed selector at child final, parent terminal and
+escaping proof. Prior trace is restored only after escaping proof and patch
+unwind. No frame/exception/view/result is stored in prepared facts/callbacks.
+
+Reap opcodes are disabled over wait/loop bookkeeping. The source-selected kill
+statement line arms opcodes for its argument-load/CALL/cache/completion interval;
+this necessarily includes the short setup instructions on that same line, not
+only the CALL opcode. Pending success starts only at the resolved kill CALL/cache
+sites with the original full capability/owned-child predicate; success requires
+the exact next non-cache completion offset. Exception/return/line invalidates
+pending proof. This avoids treating reaching the line or an arbitrary later
+opcode as successful kill. Cache offsets are tolerated without premature success.
+
+Preparation clears on construction failure, partial hook-installation failure,
+invocation finalization, monkeypatch undo and request finalization. Undo removes
+the sole holder rather than restoring any old facts. Final clearing breaks
+self/bound-callback cycles. A stage3 observer exception now still enters prior
+trace/fact/callback/FD cleanup via finally. Full actual restoration remains
+unproved here; no observer schema/entry was changed.
+
+### Static accounting and preservation
+
+Successful installed B use performs zero module AST parses/compiles in the
+original target interval, versus2 test parses/compiles (rewrite mode) plus1
+runner parse/compile before. Those independent passes still occur once during
+installation; no authority was waived. Target AST role walks2→1. Sites reuse one
+module call/raise index per source tree and one instruction table per runner,
+reap and observed code. The two lambda role disassemblies become one table.
+The old8 site resolutions each disassembled for span and selection, and3 timeout
+raises each disassembled runner:21 enumerations including lambda roles become4
+in preparation. Timeout child/parent AST walk shares one function-node tuple.
+These are static source/pass counts, not measured event counts or seconds saved.
+P's two unconditional call-offset analyses are deliberately unchanged, as are P
+construction/semantics. Runner line callback frequency is unchanged; five
+capability classes lose line callbacks and global nonselected calls use only the
+small identity selector. Reap opcodes shrink to the kill statement interval.
+
+Before/after extracted source-predicate comparison on CPython3.14.7 found exact
+equality for all8 CALL/cache sets and3 timeout raise sets. Entire existing
+controls file116293 bytes is an exact prefix, including old58632 bytes and every
+B100 definition/expectation. One additive future pytest entry invokes only the
+new stdlib HOST; B100 inventory/runner remains unchanged. Top-level AST comparison
+found only B/install changed in the guard. Production/model/target/assertions,
+conftests, observer/entry/clocks100x/limits/runtime/locks, launcher/parser, B100
+runner, P/R/journal/transport/aggregation/bootstrap/fresh_run remain unchanged.
+Manifest changes exactly the two affected existing file hashes.
+
+### Frozen HOST result and evidence limits
+
+Pre-run matrix/cap and RED preservation are recorded above in FREEZE. Two
+invocations of `python3.14 diagnostics/b-controls/HOST-overhead.py` passed,
+initial then justified after narrowing cache transitions/cleanup and shared AST
+walks; no failed attempt or retry. Both output exactly:
+`HOST-overhead PASS 32 extracted/synthetic checks; full setup/fixture/trace restoration PENDING`.
+CPython3.14.7. Only selected source predicates and synthetic cleanup/event helpers
+are executed in memory; no real guard/module/product/pytest/rewriter execution.
+32 checks cover source/digest/path/config/mode/hook/code refusal (including equal
+but distinct code), baseline restoration, clearing/consecutive refusal,
+selector line/exception/return delivery, kill completion/cache/exception/line/
+capability transitions, cycle clearing and static restoration ordering.
+In-memory compile of changed Python and git diff --check passed.
+
+Full preparation/rewrite execution, partial installed setup/fixture undo and
+actual sys.settrace restoration cannot be qualified without executing guard or
+pytest; they remain explicit pending static-authored obligations. Extracted
+cleanup and event fixtures do not prove actual lifecycle, kernel EAGAIN, actual
+kill, traceback/current-handler or collected positive behavior. Appended pytest
+entry itself was not run. B-A/B-C/B-S/B-P/B-T and B100 remain UNRUN; originalP211
+and declared P/J/R/transport/close/reap/semantic-report actual preservation subsets
+remain UNRUN. No pytest/collection/product imports/Docker/DB/runtime/profiling/
+native campaign/cleanup/old-lane operations were performed.
+
+### Pins and next owner
+
+SHA256:
+- guard `ffa7900cddb59dc903b8e0100bb6e1fc45ba82f94f51b2044a6a94297529a1a5`
+- appended controls `9ffeac79f38a5f6fe13799cee59b836d04b2aad8689f7fc871b39d9cdd304fa1`
+- HOST-overhead.py `ba1128a211addcd427dde3f3e1854d1a68dccb60d75368c71b11d48e23366712`
+- manifest `74d27a5840b0a892714464b24cccf14bb48c097c50be1e05903fdf60483c0d84`
+Preserved recovery.py `c314b2423b71c7d205b4558aee44d8c895e41394adbbb05a85458ef9bd7acf29`,
+recovery tests `c236e4045a0c35836fc269fd5938c053ab3e97f1f2682f023470afe3a68dd211`,
+conftest `d967baee72fa7fba3cb8974ac0406b2f44231a1c9d49fb7e7c088016f07cc7a3`,
+observer `ee20c60ff9d5890ae6d9ceacf892443a4aea88dedf7a3952baf5bc98797de582`.
+
+Independent Sol adversarial SOURCE review is next, parent-owned, with this full
+brief and r44/r49/r62; no delegation/adviser loop was started here. It must assess
+prepared authority/freshness/config/code, live closure/FD/progress/exception
+predicates, callback/kill ranges, both parent routes/races, escaping proof,
+designation/latch/refusal, lifecycle clearing and unchanged negative controls.
+Original positive stays FAILED2.234982034<2; actual74 certificate is not a PASS,
+with RLIMIT/reap original assertions still unreached in that retained run.
+No timing attribution, threshold waiver, self-GO, build/actual authorization,
+held-lane release or automatic rerun follows. Parent acceptance then separate
+build provenance and ONE unchanged original ACTUAL on fresh volume remain gates;
+B100 is later/separate. Historical r42/r43 RED, PID229 UNKNOWN and all broader
+native/T2/installed/platform/durability/release gates remain unchanged.
