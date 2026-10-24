@@ -2067,3 +2067,7 @@ Independent r177 source GO closes r174 malformed-override finding. Parent merged
 ### 2026-10-24 — Upload review identifies transport and contract blockers
 
 r176 source NO-GO despite 15 focused tests PASS: per-ASGI-message64KiB rejection is incompatible with valid HTTP server batching; raw upload schema leaves retained contract oracle/tests inconsistent. Parent commissioned r178 bounded corrections, authorizing contracts/validate.py and affected contract-test migration alongside transport regression coverage. Preserve raw binary public semantics. Upload remains unmerged; actual listening transport qualification remains separate.
+
+### 2026-10-24 — Upload transport/oracle corrections delivered
+
+r178 source2963abc8/docs616723b4 removes ASGI-message size refusal while retaining total/body/admission bounds, and migrates binary upload oracle/tests plus non-idempotency handling. Regressions failed before correction; 15 focused methods and35 standalone contract cases reported PASS. Parent commissioned independent round2 Sol r179. Candidate remains unmerged pending review; actual installed HTTP and lifecycle qualification remain open.
