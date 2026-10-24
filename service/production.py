@@ -30,9 +30,9 @@ class Production:
         token = oracle.canonical_hash([principal, key, plan['request']])
         reference = 'reference-' + token
         plan['resolved']['reuse_configuration']['reference_asset_id'] = reference
+        audition_text=plan['request'].get('audition_text', plan.get('reference_roles',{}).get('audition_text','Synthetic fixture audition.'))
         if context.get('execution', {}).get('descriptor', {}).get('phase') == 'prepare':
-            oracle.require(bool(plan.get('reference_roles', {}).get('audition_text')), 'explicit_audition_required')
-        audition_text=plan.get('reference_roles',{}).get('audition_text','Synthetic fixture audition.')
+            oracle.require(bool(plan['request'].get('audition_text', '').strip()), 'explicit_audition_required')
         plan['reference_roles'] = dict(version='reference-roles-v1', reference_kind='prepared_reference',
             reference_asset_id=reference, audition_asset_id='audition-'+token,
             audition_text=audition_text)

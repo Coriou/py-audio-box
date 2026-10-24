@@ -161,6 +161,17 @@ def verify_inputs(e, bundles, references, *, owner_uid=None):
     if type(e) not in (PocketExecution, PocketPreparation): raise Refused('typed_execution_required')
     if e.bundle_id not in bundles or e.reference_id not in references:
         raise Refused('unauthorized_identity')
+    verify_bundle(e, bundles, owner_uid=owner_uid)
+    reference = _read(references[e.reference_id], e.reference_bytes, e.reference_sha256, owner_uid=owner_uid)
+    if len(reference) != e.reference_bytes:
+        raise Refused('reference_size')
+    _reference_pcm16(reference, e.reference_rate, e.reference_frames)
+    return reference
+
+
+def verify_bundle(e, bundles, *, owner_uid=None):
+    """Verify the configured bundle without requiring a preselected reference."""
+    if e.bundle_id not in bundles: raise Refused('unauthorized_identity')
     root = Path(bundles[e.bundle_id]).absolute()
     fd = _open(root, True, owner_uid=owner_uid)
     os.close(fd)
@@ -199,8 +210,3 @@ def verify_inputs(e, bundles, references, *, owner_uid=None):
                 raise Refused('bundle_digest')
     if 'config.yaml' not in names:
         raise Refused('bundle_config')
-    reference = _read(references[e.reference_id], e.reference_bytes, e.reference_sha256, owner_uid=owner_uid)
-    if len(reference) != e.reference_bytes:
-        raise Refused('reference_size')
-    _reference_pcm16(reference, e.reference_rate, e.reference_frames)
-    return reference

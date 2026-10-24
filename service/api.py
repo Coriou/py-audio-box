@@ -134,6 +134,10 @@ def create_voice_app(dispatcher, *, credentials, upload_deadline=15.0, installed
     @production.get('/v1/capabilities')
     def discovery(request: Request, query: Annotated[EmptyQuery, Query()]):
         body = capabilities()
+        configured = dispatcher.call('configured_capabilities', request.state.principal)
+        if configured:
+            body['profiles'] = [configured['profile']]
+            body['engines'] = [configured['engine']]
         if installed is not None:
             import copy
             from datetime import datetime, timezone
@@ -145,6 +149,8 @@ def create_voice_app(dispatcher, *, credentials, upload_deadline=15.0, installed
             if not dispatcher.call('status')['persistent_activation']:
                 for profile in body['profiles']: profile['readiness'] = 'not_ready'
         body['operations'] = list(dict.fromkeys(('discover', *VOICE_READS, *ASSET_OPERATIONS, *PRODUCTION_OPERATIONS)))
+        if configured:
+            body['operations'] = [op for op in body['operations'] if op not in PRODUCTION_OPERATIONS or op in configured['operations']]
         if installed is not None:
             body['operations'] = [op for op in body['operations'] if op not in ('voice_prepare', 'voice_results', 'voice_save')]
         return body
@@ -160,15 +166,23 @@ def create_voice_app(dispatcher, *, credentials, upload_deadline=15.0, installed
                         configured_presets=dispatcher.call('configured_presets', request.state.principal),
                         next_action='voice_preset_register → voices_list/voice_version_get → speech_generate',
                         clone_prepare=False)
+        configured = dispatcher.call('configured_capabilities', request.state.principal)
+        if configured:
+            return dict(synthetic=False, ready_for_speech=False, installed=False,
+                        configured_capabilities=configured, store='borrowed-owner',
+                        qualification='See configured profile; source configuration does not qualify installed execution.')
         return dict(synthetic=True, ready_for_speech=False, engine_qualification='none',
                     context_configuration='operator-required', store='borrowed-owner')
 
     @production.get('/skeleton/operations/{operation_id}')
-    def voice_detail(operation_id: str):
+    def voice_detail(operation_id: str, request: Request):
         if operation_id not in ('discover', *VOICE_READS, *ASSET_OPERATIONS, *PRODUCTION_OPERATIONS):
             raise Failure('not_found', 'Operation unavailable.', 'operation_id')
         op = OPERATIONS[operation_id]
         availability = 'implemented' if op['http']['method'] == 'POST' else 'implemented_read'
+        configured = dispatcher.call('configured_capabilities', request.state.principal)
+        if configured and operation_id in PRODUCTION_OPERATIONS and operation_id not in configured['operations']:
+            availability = 'unavailable_configured_profile'
         if installed is not None and operation_id in ('voice_prepare', 'voice_results', 'voice_save'):
             availability = 'unavailable_configured_profile'
         return dict(fixture=False, availability=availability, operation=op,

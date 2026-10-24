@@ -264,7 +264,8 @@ class ArchiveTests(unittest.TestCase):
                 env={'PATH':os.defpath},capture_output=True,text=True,timeout=5)
             self.assertEqual(imported.returncode,0,imported.stderr)
     def test_pocket_archive_bytes_and_isolated_dependency_closure(self):
-        modules = ('worker.runtime_conditioning', 'worker.engines.pocket',
+        modules = ('clients.cli', 'clients.http', 'clients.mcp', 'service.execution_context',
+                   'worker.runtime_conditioning', 'worker.engines.pocket',
                    'worker.engines.pocket_execution', 'worker.engines.pocket_prepare')
         manifest = json.loads((ROOT/'headless-dist-manifest.json').read_text())
         files = set(manifest['files'])
@@ -332,21 +333,27 @@ assert any(isinstance(n, ast.List) and len(n.elts) >= 3
     and isinstance(n.elts[1], ast.Constant) and n.elts[1].value == '-m'
     and isinstance(n.elts[2], ast.Constant) and n.elts[2].value == 'worker.runtime_conditioning'
     for n in ast.walk(tree))
-for name in ('worker.runtime_conditioning', 'worker.engines.pocket',
+for name in ('clients.cli', 'clients.http', 'clients.mcp', 'service.execution_context',
+             'worker.runtime_conditioning', 'worker.engines.pocket',
              'worker.engines.pocket_execution', 'worker.engines.pocket_prepare', 'worker.runtime_child'):
     spec = importlib.util.find_spec(name)
     assert pathlib.Path(spec.origin).is_relative_to(package), name
     importlib.import_module(name)
 for name, module in tuple(sys.modules.items()):
-    if name.split('.')[0] in {'worker', 'service', 'contracts', 'lib'}:
+    if name.split('.')[0] in {'clients', 'worker', 'service', 'contracts', 'lib'}:
         assert pathlib.Path(module.__file__).is_relative_to(package), name
-print('isolated Pocket archive closure')
+from clients import mcp
+schema = mcp.input_schema('voice_prepare')
+assert schema['properties']['audition_text']['maxLength'] == 10000
+assert schema['additionalProperties'] is False
+assert 'idempotency_key' in schema['required']
+print('isolated Pocket and authenticated client archive closure')
 """
             result = subprocess.run([sys.executable, '-I', '-B', '-c', code,
                 str(package), str(ROOT)], cwd=tmp, env={'PATH': os.defpath},
                 capture_output=True, text=True, timeout=5)
             self.assertEqual(result.returncode, 0, result.stderr)
-            self.assertEqual(result.stdout.strip(), 'isolated Pocket archive closure')
+            self.assertEqual(result.stdout.strip(), 'isolated Pocket and authenticated client archive closure')
 
     def test_manifest_exact_files_and_no_legacy_metadata_change(self):
         manifest=json.loads((ROOT/'headless-dist-manifest.json').read_text())

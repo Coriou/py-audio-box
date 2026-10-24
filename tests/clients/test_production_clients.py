@@ -17,6 +17,18 @@ from service.catalogue import PRODUCTION_OPERATIONS, OPERATIONS
 
 
 class ProductionClientTests(ProductionAPIFixture,unittest.TestCase):
+    def test_prepare_audition_is_bounded_named_and_closed(self):
+        from jsonschema import Draft202012Validator
+        from jsonschema.exceptions import ValidationError
+        tool=next(t for t in mcp.tools() if t.name=='speech_voice_prepare')
+        schema=tool.inputSchema
+        self.assertEqual(schema['properties']['audition_text'],dict(type='string',minLength=1,maxLength=10000))
+        self.assertFalse(schema['additionalProperties'])
+        payload=dict(self.prepare['plan']['request'],audition_text='  Exact\n audition! ',idempotency_key='key')
+        Draft202012Validator(schema).validate(payload)
+        for change in ({'audition_text':''},{'audition_text':'x'*10001},{'execution':{}},{'path':'/tmp/caller'}):
+            with self.assertRaises(ValidationError):Draft202012Validator(schema).validate(dict(payload,**change))
+
     def test_preset_tool_is_named_closed_and_requires_key(self):
         tool=next(t for t in mcp.tools() if t.name=='speech_voice_preset_register')
         self.assertEqual(set(tool.inputSchema['properties']),{'preset','voice_id','expected_revision','idempotency_key'})

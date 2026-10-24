@@ -56,7 +56,7 @@ def transcript(operation, project, profiles, requests, *, version=None, device='
         reference_id='reference-'+kind if kind=='prepare' else 'output-'+kind
         reuse_cfg['reference_asset_id']=reference_id
         resolved['reuse_configuration']=copy.deepcopy(reuse_cfg)
-        plan['reference_roles']=dict(version='reference-roles-v1',reference_kind='prepared_reference' if kind=='prepare' else 'generated_reference',reference_asset_id=reference_id,audition_asset_id='output-'+kind,audition_text='Explicit generated audition.' if kind=='prepare' else request['reference_text'])
+        plan['reference_roles']=dict(version='reference-roles-v1',reference_kind='prepared_reference' if kind=='prepare' else 'generated_reference',reference_asset_id=reference_id,audition_asset_id='output-'+kind,audition_text=request.get('audition_text','Explicit generated audition.') if kind=='prepare' else request['reference_text'])
     job=dict(id='job-'+kind,operation=operation,input_sha256=c.plan_hash(plan),principal_id='principal1',idempotency_key='request-'+kind,state='running',generation=1,attempts=[dict(id='attempt-'+kind,generation=1,owner_id='worker1',staging_id='stage-'+kind,reaped=False)],artifact_ids=[],stage='loading',deadline='2026-10-16T00:10:00Z')
     attempt=job['attempts'][0]
     output=copy.deepcopy(p['assets'][0]);output['id']='output-'+kind

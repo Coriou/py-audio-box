@@ -148,15 +148,19 @@ class DispatcherEngineTests(unittest.TestCase):
         # Separate persistent owner root, seeded with one explicitly owned preset.
         from service.core import Core
         root=Path(self.fixture.temp.name)/'dispatcher'
-        seed=Core(root);seed.voices.register('alice','register',self.version,expected_revision=0);seed.close()
+        from service.execution_context import KokoroContexts
+        contexts=KokoroContexts({'alice':self.context},self.mapping)
+        # Match r271's configured registration identity in this lower-level fixture.
+        version=contexts.preset_version('alice',self.context['execution']['descriptor']['preset'],self.version['voice_id'])
+        seed=Core(root);seed.voices.register('alice','register',version,expected_revision=0);seed.close()
+        request=dict(self.context['plan']['request'],voice_version_id=version['id'])
         for cancel in (False,True):
             runtime=Runtime()
-            contexts=__import__('service.execution_context',fromlist=['KokoroContexts']).KokoroContexts({'alice':self.context},self.mapping)
             dispatcher=Dispatcher(root,staging=self.stage,runtime=runtime,profiles=self.profiles,production_contexts=contexts)
             try:
                 wait(lambda:dispatcher.call('status')['reconciled'])
                 self.assertFalse(dispatcher.call('status')['integrity_fault'],dispatcher.call('status'))
-                result=dispatcher.call('production_generate','alice',self.context['plan']['request'],key='cancel' if cancel else 'success')
+                result=dispatcher.call('production_generate','alice',request,key='cancel' if cancel else 'success')
                 wait(lambda:runtime.authority is not None)
                 self.assertEqual(dispatcher.call('status')['reservations'][-1]['state'],'executing')
                 if cancel:

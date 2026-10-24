@@ -25,6 +25,7 @@
     "in_tick": 1,
     "out_tick": 1,
     "reference_text": "example",
+    "audition_text": "example",
     "identity": {
       "engine": "qwen",
       "model": "example",

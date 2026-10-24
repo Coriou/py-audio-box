@@ -16,6 +16,7 @@ import unittest
 import wave
 from unittest.mock import patch
 from contracts import validate as oracle
+from jsonschema.exceptions import ValidationError
 from lib.tts_backends.contract import AudioResult
 from service.admission import Admission
 from service.core import Core
@@ -41,7 +42,7 @@ class PreparationFixture(unittest.TestCase):
         self.spec=PocketPreparation(**dict(b.spec.identity(),reference_id=self.asset['id'],reference_sha256=self.asset['sha256'],reference_bytes=len(self.raw),reference_frames=8),in_tick=4,out_tick=12)
         self.context=copy.deepcopy(b.context);p=self.context['plan'];r=p['resolved']
         p.update(operation='voice_prepare',voice_versions=[],assets=[self.asset])
-        p['request']=dict(asset_id=self.asset['id'],in_tick=4,out_tick=12,reference_text='',identity=r['identity']['effective'])
+        p['request']=dict(asset_id=self.asset['id'],in_tick=4,out_tick=12,reference_text='',audition_text='  Exact audition.\nDeux phrases ! ',identity=r['identity']['effective'])
         settings=dict(kind='prepare',conditioning='pocket',output_format='wav_pcm16')
         r.update(kind='prepare',settings=settings,settings_sha256=oracle.canonical_hash(settings),reuse_settings=dict(kind='pocket_clone',language='fr',seed=None),reuse_configuration=dict(mode='pocket_clone',language='fr',reference_asset_id='pending'))
         p['reference_roles']=dict(version='reference-roles-v1',reference_kind='prepared_reference',reference_asset_id='pending',audition_asset_id='pending-audition',audition_text='  Exact audition.\nDeux phrases ! ')
@@ -125,6 +126,44 @@ class PocketPreparationTests(PreparationFixture):
         self.assertEqual(b.core.job(generation.job['id'])['state'],'succeeded')
         self.assertNotIn(audition['id'],generation.allowed_assets)
 
+    def test_dynamic_owner_and_independent_supervisor_refusals(self):
+        b=self.base
+        request=copy.deepcopy(self.context['plan']['request'])
+        resolve=lambda p='alice',r=request:self.contexts.resolve_owned(b.core,p,'voice_prepare',r)
+        context=resolve()
+        self.assertEqual(context['plan']['request'],request)
+        for principal,change in [('bob',{}),('alice',{'asset_id':'absent'}),
+                ('alice',{'audition_text':''}),('alice',{'audition_text':'   '}),
+                ('alice',{'identity':dict(request['identity'],model='foreign')})]:
+            with self.assertRaises((ValueError,OSError,ValidationError)):
+                resolve(principal,dict(request,**change))
+        foreign=ingest_local(b.core,'bob',self.raw)
+        with self.assertRaisesRegex(ValueError,'forbidden'):
+            resolve('alice',dict(request,asset_id=foreign['id']))
+        path=b.core.root/'assets'/self.asset['id'];raw=path.read_bytes()
+        path.write_bytes(raw[:-2]+b'xx')
+        with self.assertRaises(ValueError):resolve()
+        path.write_bytes(raw)
+        from worker.runtime_supervisor import RuntimeSupervisor
+        supervisor=RuntimeSupervisor.__new__(RuntimeSupervisor)
+        supervisor.bundles=b.mapping;supervisor.references={}
+        supervisor.pocket_reference_roots={'alice':b.core.root/'assets'}
+        supervisor.verify_pocket(context,'alice',owner_uid=os.getuid())
+        with self.assertRaisesRegex(ValueError,'reference_mapping'):
+            supervisor.verify_pocket(context,'bob',owner_uid=os.getuid())
+        bad=copy.deepcopy(context);bad['execution']['references'][self.asset['id']]='/tmp/caller'
+        with self.assertRaises(ValueError):supervisor.verify_pocket(bad,'alice',owner_uid=os.getuid())
+        path.write_bytes(raw[:-2]+b'xx')
+        with self.assertRaises(ValueError):supervisor.verify_pocket(context,'alice',owner_uid=os.getuid())
+        path.write_bytes(raw);path.rename(path.with_suffix('.retained'))
+        with self.assertRaisesRegex(ValueError,'missing_media'):resolve()
+        with self.assertRaises(OSError):supervisor.verify_pocket(context,'alice',owner_uid=os.getuid())
+        path.with_suffix('.retained').rename(path)
+        profiles=copy.deepcopy(self.profiles);profiles[0]['compatibility']=[c for c in profiles[0]['compatibility'] if c['operation']!='voice_prepare']
+        with self.assertRaises(ValueError):Production(b.core).prepare('alice','incompatible',context,_admission=b.admission,_profiles=profiles)
+        self.assertEqual(b.core.jobs('alice'),[])
+        self.assertEqual(b.admission.store.rows(),[])
+
     def test_refusals_before_reservation_and_closed_binding(self):
         b=self.base
         for principal,c in [('bob',self.context),('alice',dict(self.context))]:
@@ -152,8 +191,8 @@ class PocketPreparationTests(PreparationFixture):
 
     def test_explicit_audition_qualification_caps_and_supervisor_binding(self):
         b=self.base
-        for mutate in (lambda c:c['plan'].pop('reference_roles'),
-                       lambda c:c['plan']['reference_roles'].update(audition_text=''),
+        for mutate in (lambda c:c['plan']['request'].pop('audition_text'),
+                       lambda c:c['plan']['request'].update(audition_text=' '),
                        lambda c:c['execution']['references'].update({self.asset['id']:'/tmp/caller'}),
                        lambda c:c['execution']['descriptor'].update(max_output_bytes=1048577),
                        lambda c:c['execution']['descriptor'].update(threads=3)):
@@ -175,8 +214,11 @@ class PocketPreparationTests(PreparationFixture):
             self.assertEqual(verify.call_args.args[0],self.spec)
         from service.worker_transport import Authority
         changed=copy.deepcopy(a.context);changed['plan']['reference_roles']['audition_text']+='!'
-        with self.assertRaisesRegex(ValueError,'input_mismatch'):Authority(a.job,changed,a.allowed_assets,a.profiles)
-        changed_job=copy.deepcopy(a.job);changed_job['input_sha256']=oracle.plan_hash(changed['plan'])
+        with self.assertRaisesRegex(ValueError,'audition_transcript_mismatch'):Authority(a.job,changed,a.allowed_assets,a.profiles)
+        with self.assertRaisesRegex(ValueError,'audition_transcript_mismatch'):oracle.plan_hash(changed['plan'])
+        changed_job=copy.deepcopy(a.job)
+        changed['plan']['request']['audition_text']=changed['plan']['reference_roles']['audition_text']
+        changed_job['input_sha256']=oracle.plan_hash(changed['plan'])
         self.assertNotEqual(Authority(changed_job,changed,a.allowed_assets,a.profiles).binding,a.binding)
         self.assertEqual(self.calls,[])
 
@@ -240,7 +282,6 @@ class PocketPublicJourneyTests(PreparationFixture):
         from worker.runtime_conditioning import remove_empty
         outer=self;b=self.base
         root=b.root/'public';stage=b.root/'public-stage';stage.mkdir()
-        templates={}
         def remove_namespace(attempt_stage):
             # Inject identities only on the helper thread. The real owner scan
             # runs concurrently and must see actual fixture metadata.
@@ -252,16 +293,17 @@ class PocketPublicJourneyTests(PreparationFixture):
                     mocked=getattr(os,name);injected=mocked.side_effect
                     mocked.side_effect=lambda *args,_injected=injected,_original=original,**kw: (_injected if threading.get_ident()==helper else _original)(*args,**kw)
                 remove_empty(attempt_stage.name,20000)
-        class Contexts:
-            # Trusted fixture configuration is installed explicitly after managed
-            # upload/save; public JSON never supplies descriptor/path controls.
-            def resolve(inner,principal,operation,request):
-                return templates[operation].resolve(principal,operation,request)
         class Runtime:
             def __init__(inner):inner.authorities=[];inner.hold=False;inner.cancelled=False;inner.reaped=False
             def call(inner,op,body):return dict(quarantined=False) if op=='hello' else dict(acked=True)
             def prepare(inner,a,fixture):
-                outer.assertEqual(fixture,'pocket');inner.authorities.append(a);return 'inert/'+str(len(inner.authorities))
+                outer.assertEqual(fixture,'pocket')
+                from worker.runtime_supervisor import RuntimeSupervisor
+                supervisor=RuntimeSupervisor.__new__(RuntimeSupervisor)
+                supervisor.bundles=b.mapping;supervisor.references={}
+                supervisor.pocket_reference_roots={'alice':root/'assets'}
+                supervisor.verify_pocket(a.context,a.job['principal_id'],owner_uid=os.getuid())
+                inner.authorities.append(a);return 'inert/'+str(len(inner.authorities))
             def start(inner,identity):
                 if inner.hold:
                     attempt_stage=stage/inner.authorities[-1].job['attempts'][-1]['staging_id']
@@ -290,9 +332,10 @@ class PocketPublicJourneyTests(PreparationFixture):
                 remove_namespace(attempt_stage)
                 receipt=dict(runtime_id=identity,binding=a.binding,reaped=True,engine_uid=os.getuid(),reap_method='pid1-waitpid-echild',timely=True,original_deadline=a.job['deadline'])
                 return receipt,TransportObservation('proposal','INJECTED ONLY',message=sent[0]['message'],manifest=sent[0]['manifest'])
-        runtime=Runtime();owner=Dispatcher(root,staging=stage,runtime=runtime,profiles=self.profiles,production_contexts=Contexts())
+        configured=PocketContexts({'alice':self.context},b.mapping)
+        runtime=Runtime();owner=Dispatcher(root,staging=stage,runtime=runtime,profiles=self.profiles,production_contexts=configured)
         self.addCleanup(lambda current=owner: current.close() if current.thread.is_alive() else None)
-        credentials=StaticCredentials([Credential('writer','alice',frozenset({'read','production-write'}))])
+        credentials=StaticCredentials([Credential('writer','alice',frozenset({'read','production-write'})), Credential('reader','alice',frozenset({'read'})), Credential('foreign','bob',frozenset({'read','production-write'}))])
         app=create_voice_app(owner,credentials=credentials)
         def wait(predicate):
             end=time.monotonic()+5
@@ -324,58 +367,93 @@ class PocketPublicJourneyTests(PreparationFixture):
         wait(lambda:owner.call('status')['reconciled'])
         with patch('clients.http.httpx.Client',ASGIClient),patch.dict(os.environ,{'SPEECH_CREDENTIAL':'writer','SPEECH_UPLOAD_ROOT':b.tmp.name}):
             http=HTTP(credential='writer');path=b.root/'source.wav';path.write_bytes(self.raw)
-            asset=http.upload_file(path)
-            c=copy.deepcopy(self.context);c['plan']['assets']=[asset];c['plan']['request']['asset_id']=asset['id']
-            spec=replace(self.spec,reference_id=asset['id'])
-            c['execution'].update(descriptor=spec.identity(),references={asset['id']:'/references/assets/'+asset['id']})
-            templates['voice_prepare']=PocketContexts({'alice':c},b.mapping,{asset['id']:root/'assets'/asset['id']})
-            request=c['plan']['request']
-            bad=dict(request,reference_text='unsupported source transcript')
-            result=asyncio.run(mcp.call_tool(OPERATIONS['voice_prepare']['mcp'],dict(bad,idempotency_key='bad')))
-            self.assertTrue(result.isError);self.assertEqual(result.structuredContent['code'],'unsupported_control')
-            self.assertIn('reference_text',json.dumps(result.structuredContent))
-            self.assertEqual(owner.call('status')['reservations'],[])
-            receipt=cli(['voice','prepare','--request',json.dumps(request),'--idempotency-key','prep'])
-            self.assertEqual(tool('voice_prepare',request,'prep'),receipt)
-            self.assertEqual(http.call('voice_prepare',request,key='prep'),receipt)
-            wait(lambda:owner.call('job',receipt['job_id'])['state']=='succeeded');wait(lambda:owner.call('status')['phase']=='idle')
-            result=cli(['voice','results',receipt['job_id']]);self.assertEqual(result,tool('voice_results',dict(job_id=receipt['job_id'])))
-            candidate=result['candidates'][0];ref=candidate['reference_roles']['reference']['asset'];audition=candidate['reference_roles']['audition']['asset']
-            prepared,_=selected_reference(spec,self.raw)
-            self.assertEqual(self.calls[1],(c['plan']['reference_roles']['audition_text'],prepared))
-            self.assertEqual((root/'assets'/ref['id']).read_bytes(),prepared)
-            self.assertEqual(http.call('asset_get',dict(asset_id=audition['id']))['sha256'],audition['sha256'])
-            save=dict(job_id=receipt['job_id'],candidate_id=candidate['id'],voice_id='public-voice',expected_revision=0)
-            saved=cli(['voice','save','--request',json.dumps(save),'--idempotency-key','save'])
-            self.assertEqual(saved,tool('voice_save',save,'save'))
-            version=saved['version'];self.assertEqual(version['reference_asset_ids'],[ref['id']])
-            g=copy.deepcopy(b.context);g['plan'].update(voice_versions=[version],assets=[ref]);g['plan']['request']['voice_version_id']=version['id'];g['plan']['resolved']['profile']=oracle.profile_snapshot(self.profiles[0])
-            gs=replace(b.spec,reference_id=ref['id'],reference_sha256=ref['sha256'],reference_bytes=len(prepared),reference_frames=ref['frames'])
-            g['execution'].update(descriptor=gs.identity(),references={ref['id']:'/references/assets/'+ref['id']})
-            templates['speech_generate']=PocketContexts({'alice':g},b.mapping,{ref['id']:root/'assets'/ref['id']})
-            speech=cli(['speech','generate','--request',json.dumps(g['plan']['request']),'--idempotency-key','gen'])
-            self.assertEqual(speech,tool('speech_generate',g['plan']['request'],'gen'))
-            terminal=wait(lambda:(j if (j:=owner.call('job',speech['job_id']))['state'] in ('succeeded','failed','cancelled') else None))
-            self.assertEqual(terminal['state'],'succeeded',dict(job=terminal,status=owner.call('status')))
-            wait(lambda:owner.call('status')['phase']=='idle')
-            self.assertEqual(runtime.authorities[-1].allowed_assets,(ref['id'],))
-            self.assertEqual(self.calls[-2],(g['plan']['request']['text'],prepared))
+            from service.catalogue import Failure
+            self.assertEqual(http.call('voices_list',dict(limit=20,cursor=''))['items'],[])
+            caps=http.call('discover',{})
+            self.assertEqual(caps['engines'],['pocket-tts'])
+            self.assertIn('voice_prepare',caps['operations']);self.assertIn('job_get',caps['operations'])
+            self.assertNotIn('voice_preset_register',caps['operations'])
+            oracle.validate('capabilities',caps)
+            self.assertFalse(http.get('/skeleton')['synthetic'])
+            self.assertFalse(http.get('/skeleton')['installed'])
+            self.assertEqual(http.get('/skeleton/operations/voice_preset_register')['availability'],'unavailable_configured_profile')
+            voices=[]; frozen=[]; references=[]; preparations=[]
+            for index,audition_text in enumerate(('  First audition.\nExact! ', 'Deuxième audition distincte.')):
+                if index:
+                    raw=bytearray(self.raw);raw[50:52]=b'zz';path.write_bytes(raw)
+                asset=http.upload_file(path)
+                request=dict(self.context['plan']['request'], asset_id=asset['id'], audition_text=audition_text)
+                spec=replace(self.spec,reference_id=asset['id'],reference_sha256=asset['sha256'])
+                for credential in (None,'reader','foreign'):
+                    with self.assertRaises(Failure):HTTP(credential=credential).call('voice_prepare',request,key='denied')
+                for change in ({'audition_text':' '},{'path':'/tmp/caller'},{'asset_id':'missing'}):
+                    with self.assertRaises((Failure,ValidationError)):http.call('voice_prepare',dict(request,**change),key='invalid')
+                reservations=owner.call('status')['reservations']
+                bad=dict(request,reference_text='unsupported source transcript')
+                result=asyncio.run(mcp.call_tool(OPERATIONS['voice_prepare']['mcp'],dict(bad,idempotency_key='bad')))
+                self.assertTrue(result.isError);self.assertEqual(result.structuredContent['code'],'unsupported_control')
+                self.assertIn('reference_text',json.dumps(result.structuredContent))
+                self.assertEqual(owner.call('status')['reservations'],reservations)
+                receipt=cli(['voice','prepare','--request',json.dumps({k:v for k,v in request.items() if k!='audition_text'}),'--audition-text',audition_text,'--idempotency-key','prep'+str(index)])
+                self.assertEqual(tool('voice_prepare',request,'prep'+str(index)),receipt)
+                self.assertEqual(http.call('voice_prepare',request,key='prep'+str(index)),receipt)
+                preparations.append((copy.deepcopy(request),copy.deepcopy(receipt)))
+                with self.assertRaises(Failure):http.call('voice_prepare',dict(request,audition_text='changed'),key='prep'+str(index))
+                wait(lambda:owner.call('job',receipt['job_id'])['state']=='succeeded');wait(lambda:owner.call('status')['phase']=='idle')
+                result=cli(['voice','results',receipt['job_id']]);self.assertEqual(result,tool('voice_results',dict(job_id=receipt['job_id'])))
+                candidate=result['candidates'][0];ref=candidate['reference_roles']['reference']['asset'];audition=candidate['reference_roles']['audition']['asset']
+                prepared,_=selected_reference(spec,path.read_bytes())
+                self.assertEqual(self.calls[-2],(audition_text,prepared))
+                self.assertEqual((root/'assets'/ref['id']).read_bytes(),prepared)
+                self.assertEqual(http.call('asset_get',dict(asset_id=audition['id']))['sha256'],audition['sha256'])
+                save=dict(job_id=receipt['job_id'],candidate_id=candidate['id'],voice_id='public-voice'+str(index),expected_revision=0)
+                if index:
+                    with self.assertRaises(Failure) as conflict:http.call('voice_save',dict(save,voice_id='public-voice0'),key='stale-cas')
+                    self.assertEqual(conflict.exception.body['code'],'revision_conflict')
+                saved=cli(['voice','save','--request',json.dumps(save),'--idempotency-key','save'+str(index)])
+                self.assertEqual(saved,tool('voice_save',save,'save'+str(index)))
+                with self.assertRaises(Failure):http.call('voice_save',dict(save,expected_revision=1),key='save'+str(index))
+                with self.assertRaises(Failure):http.call('voice_save',save,key='cas'+str(index))
+                version=saved['version'];self.assertEqual(version['reference_asset_ids'],[ref['id']])
+                g=copy.deepcopy(b.context);g['plan']['request']['voice_version_id']=version['id']
+                speech=cli(['speech','generate','--request',json.dumps(g['plan']['request']),'--idempotency-key','gen'+str(index)])
+                self.assertEqual(speech,tool('speech_generate',g['plan']['request'],'gen'+str(index)))
+                terminal=wait(lambda:(j if (j:=owner.call('job',speech['job_id']))['state'] in ('succeeded','failed','cancelled') else None))
+                self.assertEqual(terminal['state'],'succeeded',dict(job=terminal,status=owner.call('status')))
+                wait(lambda:owner.call('status')['phase']=='idle')
+                self.assertEqual(runtime.authorities[-1].allowed_assets,(ref['id'],))
+                self.assertEqual(self.calls[-2],(g['plan']['request']['text'],prepared))
+                voices.append(copy.deepcopy(g['plan']['request']))
+                frozen.append(runtime.authorities[-1]._snapshot)
+                references.append(ref['sha256'])
+            self.assertNotEqual(references[0],references[1])
+            self.assertNotEqual(voices[0]['voice_version_id'],voices[1]['voice_version_id'])
+            with self.assertRaises(Failure):HTTP(credential='foreign').call('speech_generate',voices[0],key='foreign-version')
+            with self.assertRaises(Failure):http.call('speech_generate',dict(voices[0],voice_version_id='missing'),key='missing-version')
+            for index, generation in enumerate((voices[0], voices[1], voices[0])):
+                reply=http.call('speech_generate',generation,key='alternate'+str(index))
+                wait(lambda:owner.call('job',reply['job_id'])['state']=='succeeded')
+                wait(lambda:owner.call('status')['phase']=='idle')
+            self.assertEqual([a._snapshot for a in runtime.authorities if a._snapshot in frozen],frozen)
             job=http.call('job_get',dict(job_id=speech['job_id']));artifact=cli(['artifact','get',job['artifact_ids'][0]])
             self.assertEqual(artifact,tool('artifact_get',dict(artifact_id=artifact['id'])))
             owner.close()
-            owner=Dispatcher(root,staging=stage,runtime=Runtime(),profiles=self.profiles,production_contexts=Contexts())
+            owner=Dispatcher(root,staging=stage,runtime=Runtime(),profiles=self.profiles,production_contexts=configured)
             self.addCleanup(lambda current=owner: current.close() if current.thread.is_alive() else None);app=create_voice_app(owner,credentials=credentials)
             wait(lambda:owner.call('status')['reconciled'])
             self.assertFalse(owner.call('status')['integrity_fault'],owner.call('status'))
             self.assertEqual(http.call('voice_results',dict(job_id=receipt['job_id'])),result)
-            again=http.call('speech_generate',g['plan']['request'],key='after-restart')
-            wait(lambda:owner.call('job',again['job_id'])['state']=='succeeded')
-            wait(lambda:owner.call('status')['phase']=='idle')
+            for index,generation in enumerate(voices):
+                old_request,old_receipt=preparations[index]
+                self.assertEqual(http.call('voice_prepare',old_request,key='prep'+str(index)),old_receipt)
+                again=http.call('speech_generate',generation,key='after-restart'+str(index))
+                wait(lambda:owner.call('job',again['job_id'])['state']=='succeeded')
+                wait(lambda:owner.call('status')['phase']=='idle')
 
             cancelled_runtime=owner.runtime
             cancelled_runtime.hold=True
             cancel_job=http.call('voice_prepare',request,key='cancel-preparation')
-            wait(lambda:len(cancelled_runtime.authorities)==2)
+            wait(lambda:len(cancelled_runtime.authorities)==3)
             namespace=stage/cancelled_runtime.authorities[-1].job['attempts'][-1]['staging_id']/'conditioning'
             wait(namespace.is_dir)
             tool('job_cancel',dict(job_id=cancel_job['job_id']),'cancel-intent')
@@ -388,7 +466,7 @@ class PocketPublicJourneyTests(PreparationFixture):
             self.assertFalse(namespace.exists())
             self.assertEqual(owner.call('job',cancel_job['job_id'])['artifact_ids'],[])
             owner.close()
-            owner=Dispatcher(root,staging=stage,runtime=Runtime(),profiles=self.profiles,production_contexts=Contexts())
+            owner=Dispatcher(root,staging=stage,runtime=Runtime(),profiles=self.profiles,production_contexts=configured)
             self.addCleanup(lambda current=owner: current.close() if current.thread.is_alive() else None)
             app=create_voice_app(owner,credentials=credentials)
             wait(lambda:owner.call('status')['reconciled'])

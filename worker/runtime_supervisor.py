@@ -19,12 +19,13 @@ from worker.transport import canonical, Refused, Session
 
 
 class RuntimeSupervisor:
-    def __init__(self, root='/receipts', ipc='/ipc', *, bundles=None, references=None, qwen_contexts=None, inventory=None, qwen_profiles=None):
+    def __init__(self, root='/receipts', ipc='/ipc', *, bundles=None, references=None, qwen_contexts=None, inventory=None, qwen_profiles=None, pocket_reference_roots=None):
         if os.getpid() != 1:
             raise RuntimeError('pid1_required')
         from types import MappingProxyType
         self.bundles = MappingProxyType(dict(bundles or {}))
         self.references = MappingProxyType(copy.deepcopy(references or {}))
+        self.pocket_reference_roots = MappingProxyType(dict(pocket_reference_roots or {}))
         self.qwen_contexts = copy.deepcopy(qwen_contexts or {})
         self.inventory = copy.deepcopy(inventory)
         self.qwen_profiles = copy.deepcopy(qwen_profiles or [])
@@ -99,11 +100,7 @@ class RuntimeSupervisor:
             if spec is not None and context['execution']['bundles'] != self.bundles:
                 raise Refused('unregistered_mount_mapping')
             if spec is not None and spec.engine == 'pocket-tts':
-                if context['execution']['references'] != self.references:
-                    raise Refused('unregistered_reference_mapping')
-                # Independent full byte verification before journaling or launch.
-                from worker.engines.pocket import verify_inputs
-                verify_inputs(spec, self.bundles, self.references, owner_uid=10001)
+                self.verify_pocket(context, job['principal_id'])
             if spec is not None and spec.engine == 'qwen':
                 self.verify_qwen(context,profiles,job['principal_id'])
             attempt = job['attempts'][-1]
@@ -161,7 +158,10 @@ class RuntimeSupervisor:
                 raise Refused('expired_or_quarantined')
             context = row['allocation']['snapshot'][1]
             from worker.runtime_protocol import execution
-            if (spec := execution(context)) is not None and spec.engine == 'qwen':
+            spec = execution(context)
+            if spec is not None and spec.engine == 'pocket-tts':
+                self.verify_pocket(context, row['allocation']['snapshot'][0]['principal_id'])
+            if spec is not None and spec.engine == 'qwen':
                 self.verify_qwen(context,row['allocation']['snapshot'][3],row['allocation']['snapshot'][0]['principal_id'])
             row = self.change(row, phase='started')  # Fence BEFORE any fork.
             job, context, assets, profiles = row['allocation']['snapshot']
@@ -306,6 +306,31 @@ class RuntimeSupervisor:
                 # tick must not reinterpret its wait status as an engine receipt.
                 if not active.get('helper_unknown'):
                     self.active = None
+
+    def verify_pocket(self, context, principal, *, owner_uid=10001):
+        """Independent exact reference allowlist under operator-declared RO mounts.
+
+        Roots are supervisor configuration, never allocation/request paths. The
+        source fixture may map a managed assets directory read-only; installed
+        path/mount policy is a separate gate. No database access is granted.
+        """
+        from worker.runtime_protocol import execution
+        from worker.engines.pocket import verify_inputs, _open
+        spec = execution(context)
+        roots = getattr(self, 'pocket_reference_roots', {})
+        if principal in roots:
+            root = Path(roots[principal])
+            if not root.is_absolute() or '..' in root.parts: raise Refused('unregistered_reference_mapping')
+            fd = _open(root, directory=True, owner_uid=owner_uid)
+            os.close(fd)
+            expected = {spec.reference_id:'/references/assets/'+spec.reference_id}
+            if context['execution']['references'] != expected: raise Refused('unregistered_reference_mapping')
+            references = {spec.reference_id:root/spec.reference_id}
+        else:
+            if context['execution']['references'] != self.references:
+                raise Refused('unregistered_reference_mapping')
+            references = self.references
+        verify_inputs(spec, self.bundles, references, owner_uid=owner_uid)
 
     def verify_qwen(self, context, profiles, principal):
         from worker.engines.qwen_execution import current_hardware, inventory_wire
