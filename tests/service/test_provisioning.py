@@ -294,5 +294,129 @@ class RecoveryAndBoundsTests(unittest.TestCase):
         with self.assertRaises(ValueError): self.run_provision(bad)
 
 
+class PocketProvisioningTests(unittest.TestCase):
+    cleanup = ProvisioningTests.cleanup
+    downloader = ProvisioningTests.downloader
+    run_provision = ProvisioningTests.run_provision
+    def setUp(self):
+        ProvisioningTests.setUp(self)
+        from service.provisioning import manifest_bytes
+        self.data = {'model.safetensors': b'inert weights', 'tokenizer.json': b'{}'}
+        self.expected.update(backend='pocket-tts', revision='a'*40,
+                             versions={p: 'fixture' for p in ('pocket-tts', 'torch', 'tokenizers')},
+                             allowed_origins=['https://fixture.invalid'],
+                             config={'weights_path': 'https://fixture.invalid/model.safetensors',
+                                     'tokenizer': {'tokenizer_path': 'tokenizer.json'}})
+        config = manifest_bytes({'weights_path': 'model.safetensors', 'tokenizer': {'tokenizer_path': 'tokenizer.json'}})
+        self.expected['files'] = [dict(path=n, bytes=len(b), sha256=hashlib.sha256(b).hexdigest(),
+                                      origin='https://fixture.invalid/'+n, revision='a'*40)
+                                  for n, b in {**self.data, 'config.yaml': config}.items()]
+
+    # Kokoro-specific inherited tests remain in their original class.
+    def test_generated_bundle_consumed_by_real_adapter_and_worker_verifier(self):
+        import dataclasses
+        import io
+        import sys
+        import types
+        import wave
+        from service.provisioning import bundle_manifest
+        from worker.engines.pocket import verify_inputs
+        from worker.engines.pocket_execution import PocketExecution
+        from worker.transport import Refused
+        from lib.tts_backends.pocket_tts import PocketBackend
+        for language in ('fr', 'en'):
+            self.expected['language'] = language
+            bundle = self.run_provision()
+            self.assertEqual(verified_bundle(bundle, 'pocket-tts')[1], bundle_manifest(self.expected))
+            self.assertEqual(hashlib.sha256((bundle/'manifest.json').read_bytes()).hexdigest(), manifest_sha256(self.expected))
+            self.assertFalse(bundle.stat().st_mode & 0o222)
+            buffer = io.BytesIO()
+            with wave.open(buffer, 'wb') as wav:
+                wav.setnchannels(1); wav.setsampwidth(2); wav.setframerate(24000); wav.writeframes(b'\0\0'*4)
+            raw = buffer.getvalue()
+            ref = Path(self.temp.name)/'reference.wav'; ref.write_bytes(raw)
+            spec = PocketExecution('bundle', manifest_sha256(self.expected), self.expected['checkpoint'], self.expected['revision'], language,
+                                   2, 1024, 100, 244, 1024*1024, 'reference', hashlib.sha256(raw).hexdigest(), len(raw), 4, 24000, 24000)
+            self.assertEqual(verify_inputs(spec, {'bundle': bundle}, {'reference': ref}), raw)
+            for change in (dict(language='en' if language == 'fr' else 'fr'), dict(revision='b'*40), dict(checkpoint='other'), dict(manifest_sha256='0'*64)):
+                with self.assertRaises(Refused):
+                    verify_inputs(dataclasses.replace(spec, **change), {'bundle': bundle}, {'reference': ref})
+            seen = []
+            class Model:
+                @classmethod
+                def load_model(cls, config):
+                    compiled = json.loads(Path(config).read_text())
+                    seen.append(compiled)
+                    return cls()
+            with patch.dict(sys.modules, {'torch': types.SimpleNamespace(set_num_threads=lambda n: None),
+                                          'pocket_tts': types.SimpleNamespace(TTSModel=Model),
+                                          'yaml': types.SimpleNamespace(safe_load=json.loads, safe_dump=lambda v, f: json.dump(v, f))}):
+                backend = PocketBackend(bundle, language=language)
+                backend.close()
+            self.assertEqual(seen[0]['weights_path'], str(bundle/'model.safetensors'))
+            self.assertEqual(seen[0]['tokenizer']['tokenizer_path'], str(bundle/'tokenizer.json'))
+            calls = len(self.calls)
+            self.assertEqual(self.run_provision(), bundle)
+            self.assertEqual(len(self.calls), calls)
+
+    def test_closed_pocket_descriptor_negatives(self):
+        mutations = [dict(backend='unknown'), dict(language='de'), dict(revision='main'), dict(extra=True),
+                     dict(versions={'pocket-tts': 'fixture'}), dict(allowed_origins=['https://else.invalid']),
+                     dict(config={'weights_path': '../model.safetensors'}),
+                     dict(config={'weights_path': 'model.safetensors', 'language': 'fr'}),
+                     dict(config={'weights_path': 'model.safetensors', 'other': 'hf://repo/model'}),
+                     dict(config={'weights_path': 'model.safetensors', 'secret': 'https://user:password@host/model'})]
+        for change in mutations:
+            with self.subTest(change=change), self.assertRaises(ValueError):
+                self.run_provision({**self.expected, **change})
+        for field, value in (('path', '../escape'), ('path', 'model.pkl'), ('origin', 'https://user:secret@fixture.invalid/x'),
+                             ('revision', 'b'*40), ('bytes', 2*1024**3+1)):
+            bad = copy.deepcopy(self.expected); bad['files'][0][field] = value
+            with self.subTest(field=field), self.assertRaises(ValueError): self.run_provision(bad)
+        bad = copy.deepcopy(self.expected); bad['files'].append(bad['files'][0])
+        with self.assertRaises(ValueError): self.run_provision(bad)
+        self.assertEqual(self.calls, [])
+
+    def test_pocket_seal_retry_and_bad_transfer(self):
+        RecoveryAndBoundsTests.test_final_directory_seal_failure_retry(self)
+        pointer = (self.root/'active.json').read_bytes()
+        changed = {**self.expected, 'checkpoint': 'bad-transfer'}
+        with self.assertRaises(ValueError):
+            self.run_provision(changed, lambda url, target: target.write_bytes(b'x'*100))
+        self.assertEqual((self.root/'active.json').read_bytes(), pointer)
+
+    def test_pocket_transport_allowed_redirects_and_exact_caps(self):
+        import io
+        import urllib.request
+        from service.provisioning import _AllowedRedirects, _download_stream
+        handler = _AllowedRedirects(['https://fixture.invalid'])
+        request = urllib.request.Request('https://fixture.invalid/model')
+        for url in ('http://fixture.invalid/x', 'https://other.invalid/x', 'https://user:secret@fixture.invalid/x', 'https://fixture.invalid/x?token=secret'):
+            with self.assertRaises(ValueError): handler.redirect_request(request, None, 302, '', {}, url)
+        self.assertEqual(handler.redirect_request(request, None, 302, '', {}, 'https://fixture.invalid/next').full_url, 'https://fixture.invalid/next')
+        for data, succeeds in ((b'12345', True), (b'1234', False), (b'123456', False)):
+            target = Path(self.temp.name)/'bounded'
+            opener = type('Opener', (), {'open': lambda self, *a, **k: io.BytesIO(data)})()
+            with patch('service.provisioning.urllib.request.build_opener', return_value=opener):
+                if succeeds: _download_stream(request.full_url, target, 5, ['https://fixture.invalid'])
+                else:
+                    with self.assertRaises(ValueError): _download_stream(request.full_url, target, 5, ['https://fixture.invalid'])
+            self.assertLessEqual(target.stat().st_size, 5)
+            target.unlink()
+
+    def test_pocket_resume_and_preserve_active(self):
+        old = self.run_provision(); pointer = (self.root/'active.json').read_bytes()
+        changed = {**self.expected, 'checkpoint': 'second'}
+        def stop(url, target):
+            if target.name == 'tokenizer.json.part':
+                target.write_bytes(b'partial'); raise InterruptedError()
+            self.downloader(url, target)
+        with self.assertRaises(InterruptedError): self.run_provision(changed, stop)
+        self.assertEqual((self.root/'active.json').read_bytes(), pointer)
+        calls = self.calls.count('model.safetensors.part')
+        self.run_provision(changed)
+        self.assertEqual(self.calls.count('model.safetensors.part'), calls)
+        self.assertTrue(old.exists())
+
 if __name__ == '__main__':
     unittest.main()

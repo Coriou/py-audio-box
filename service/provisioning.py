@@ -12,6 +12,7 @@ import os
 from pathlib import Path
 import re
 import urllib.request
+from urllib.parse import urlsplit
 import multiprocessing
 import stat
 import time
@@ -29,25 +30,27 @@ def manifest_bytes(value):
 
 
 def manifest_sha256(value):
-    return hashlib.sha256(manifest_bytes(value)).hexdigest()
+    return hashlib.sha256(manifest_bytes(bundle_manifest(value))).hexdigest()
 
 
 def validate_expected(expected):
     if not isinstance(expected, dict):
         raise ValueError('Expected manifest object required')
     value = copy.deepcopy(expected)
-    if set(value) != {'schema_version', 'backend', 'language', 'checkpoint', 'revision', 'license', 'access', 'versions', 'files'}:
+    pocket = value.get('backend') == 'pocket-tts'
+    extra = {'config', 'allowed_origins'} if pocket else set()
+    if set(value) != extra | {'schema_version', 'backend', 'language', 'checkpoint', 'revision', 'license', 'access', 'versions', 'files'}:
         raise ValueError('Exact expected manifest fields required')
-    if type(value['schema_version']) is not int or value['schema_version'] != 1 or value['backend'] != 'kokoro' or value['language'] not in ('fr', 'en'):
-        raise ValueError('Managed provisioning currently supports Kokoro only')
+    if type(value['schema_version']) is not int or value['schema_version'] != 1 or value['backend'] not in ('kokoro', 'pocket-tts') or value['language'] not in ('fr', 'en'):
+        raise ValueError('Unsupported managed backend or language')
     for key in ('checkpoint', 'revision', 'license', 'access'):
         if not isinstance(value[key], str) or not value[key].strip():
             raise ValueError('Expected identity/license/access required')
     versions = value['versions']
-    if not isinstance(versions, dict) or set(versions) != {'kokoro-onnx', 'onnxruntime', 'espeakng-loader', 'phonemizer'} or not all(isinstance(v, str) and v for v in versions.values()):
+    if not isinstance(versions, dict) or set(versions) != ({'pocket-tts', 'torch', 'tokenizers'} if pocket else {'kokoro-onnx', 'onnxruntime', 'espeakng-loader', 'phonemizer'}) or not all(isinstance(v, str) and v for v in versions.values()):
         raise ValueError('Exact runtime versions required')
-    if not isinstance(value['files'], list) or len(value['files']) != 2:
-        raise ValueError('Exact Kokoro assets required')
+    if not isinstance(value['files'], list) or not (2 <= len(value['files']) <= 128 if pocket else len(value['files']) == 2):
+        raise ValueError('Exact backend assets required')
     names = []
     for entry in value['files']:
         if not isinstance(entry, dict) or set(entry) != {'path', 'sha256', 'bytes', 'origin', 'revision'}:
@@ -57,16 +60,112 @@ def validate_expected(expected):
             raise ValueError('Operator expected size and hash required')
         if not isinstance(entry['origin'], str) or not entry['origin'].startswith('https://') or not isinstance(entry['revision'], str) or not entry['revision']:
             raise ValueError('Reviewed origin and revision required')
-    if any(not isinstance(n, str) for n in names) or sorted(names) != ['model.onnx', 'voices.bin']:
+    if any(not isinstance(n, str) for n in names):
+        raise ValueError('Unsafe asset path')
+    if pocket:
+        _pocket_config(value)
+    elif sorted(names) != ['model.onnx', 'voices.bin']:
         raise ValueError('Unsafe or unexpected asset paths')
     if len(manifest_bytes(value)) > 65536:
         raise ValueError('Manifest exceeds engine byte limit')
     return value
 
 
-def _download_stream(url, target, expected_bytes):
+def _pocket_config(value):
+    """Compile explicit operator config; JSON is a safe YAML subset.
+
+    Origins are exact HTTPS authorities, without credentials or URL parameters.
+    No package defaults, hub lookup, model discovery or language inference occurs.
+    """
+    origins = value['allowed_origins']
+    if type(origins) is not list or not origins or len(origins) > 128 or not all(isinstance(o, str) for o in origins) or len(set(origins)) != len(origins):
+        raise ValueError('Explicit allowed HTTPS origins required')
+    def authority(url):
+        if not isinstance(url, str):
+            raise ValueError('HTTPS origin required')
+        parsed = urlsplit(url)
+        if parsed.scheme != 'https' or not parsed.hostname or parsed.username or parsed.password or parsed.query or parsed.fragment:
+            raise ValueError('Unsafe HTTPS origin')
+        return 'https://' + parsed.netloc
+    if any(authority(o) != o for o in origins):
+        raise ValueError('Allowed origins must be HTTPS authorities')
+    if len(value['checkpoint']) > 256 or not re.fullmatch('[0-9a-f]{40}', value['revision']):
+        raise ValueError('Immutable Pocket revision required')
+    names = set()
+    remote = {}
+    total = 0
+    for entry in value['files']:
+        name = entry['path']
+        if not re.fullmatch(r'[A-Za-z0-9_-][A-Za-z0-9_.-]{0,127}', name) or Path(name).suffix not in ('.safetensors', '.yaml', '.json') or name in names:
+            raise ValueError('Unsafe or duplicate Pocket asset')
+        names.add(name)
+        if authority(entry['origin']) not in origins or entry['origin'] in remote or entry['revision'] != value['revision']:
+            raise ValueError('Pocket origin or revision mismatch')
+        remote[entry['origin']] = name
+        total += entry['bytes']
+        if entry['bytes'] > 2 * 1024**3 or total > 4 * 1024**3:
+            raise ValueError('Pocket asset byte limit')
+    if 'config.yaml' not in names or not any(n.endswith('.safetensors') for n in names):
+        raise ValueError('Pocket config and safetensors required')
+    config = value['config']
+    if type(config) is not dict or not config or not isinstance(config.get('weights_path'), str):
+        raise ValueError('Explicit cloning weights config required')
+    def localize(item, key='', depth=0):
+        if depth > 32:
+            raise ValueError('Config nesting limit')
+        if key.endswith('_path'):
+            if item is None and key != 'weights_path':
+                return None
+            if not isinstance(item, str):
+                raise ValueError('Config path must be a string')
+            name = remote.get(item, item)
+            if name not in names or name == 'config.yaml':
+                raise ValueError('Config path outside authorized assets')
+            if key == 'weights_path' and not name.endswith('.safetensors'):
+                raise ValueError('Cloning requires safetensors')
+            return name
+        if type(item) is dict:
+            if not all(isinstance(k, str) for k in item):
+                raise ValueError('Config keys must be strings')
+            return {k: localize(v, k, depth+1) for k, v in item.items()}
+        if type(item) is list:
+            return [localize(v, depth=depth+1) for v in item]
+        if isinstance(item, str) and (':' in item or '/' in item or '\\' in item):
+            raise ValueError('Unbound config origin or path')
+        if item is not None and type(item) not in (str, int, float, bool):
+            raise ValueError('Invalid config value')
+        if type(item) is float and not math.isfinite(item):
+            raise ValueError('Invalid config number')
+        return item
+    if config.get('language', value['language']) != value['language'] or 'weights_path_without_voice_cloning' in config:
+        raise ValueError('Inconsistent language or non-cloning config')
+    raw = manifest_bytes(localize(config))
+    entry = next(e for e in value['files'] if e['path'] == 'config.yaml')
+    if len(raw) > 65536 or len(raw) != entry['bytes'] or hashlib.sha256(raw).hexdigest() != entry['sha256']:
+        raise ValueError('Generated config differs from operator pins')
+    return raw
+
+
+def bundle_manifest(expected):
+    """Descriptor-only policy/config never enters the runtime manifest."""
+    return {k: v for k, v in expected.items() if k not in ('config', 'allowed_origins')}
+
+
+class _AllowedRedirects(urllib.request.HTTPRedirectHandler):
+    def __init__(self, origins):
+        self.origins = origins
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        parsed = urlsplit(newurl)
+        if parsed.scheme != 'https' or parsed.username or parsed.password or parsed.query or parsed.fragment or 'https://' + parsed.netloc not in self.origins:
+            raise ValueError('Redirect outside allowed HTTPS origins')
+        return super().redirect_request(req, fp, code, msg, headers, newurl)
+
+
+def _download_stream(url, target, expected_bytes, allowed_origins=None):
     # At most expected bytes reach disk; one extra byte detects overflow.
-    with urllib.request.urlopen(url, timeout=10) as source, target.open('xb') as sink:
+    open_url = urllib.request.urlopen if allowed_origins is None else urllib.request.build_opener(_AllowedRedirects(allowed_origins)).open
+    with open_url(url, timeout=10) as source, target.open('xb') as sink:
         remaining = expected_bytes
         while True:
             block = source.read(min(1024 * 1024, remaining + 1))
@@ -82,9 +181,9 @@ def _download_stream(url, target, expected_bytes):
         os.fsync(sink.fileno())
 
 
-def _transfer_child(url, target, size):
+def _transfer_child(url, target, size, allowed_origins=None):
     try:
-        _download_stream(url, target, size)
+        _download_stream(url, target, size, allowed_origins)
     except BaseException:
         raise SystemExit(1)
 
@@ -94,7 +193,7 @@ def _budget(value):
         raise ValueError('Finite positive wait budget required')
 
 
-def download(url, target, expected_bytes=None, *, timeout=300, cancelled=lambda: False):
+def download(url, target, expected_bytes=None, *, timeout=300, cancelled=lambda: False, allowed_origins=None):
     """Managed transfer has a wall deadline including connect/read, and cancellation.
 
     A disposable POSIX child owns blocking network I/O. Deadline/cancel terminates
@@ -110,7 +209,8 @@ def download(url, target, expected_bytes=None, *, timeout=300, cancelled=lambda:
         worker = _legacy_transfer_child
     else:
         worker = _transfer_child
-    process = multiprocessing.get_context('fork').Process(target=worker, args=(url, target, expected_bytes))
+    args = (url, target, expected_bytes) if worker is _legacy_transfer_child else (url, target, expected_bytes, allowed_origins)
+    process = multiprocessing.get_context('fork').Process(target=worker, args=args)
     process.start()
     deadline = time.monotonic() + timeout
     try:
@@ -182,6 +282,10 @@ def provision(root, expected, *, runtime_versions, downloader=download, lock_tim
     expected = validate_expected(expected)
     if runtime_versions != expected['versions']:
         raise ValueError('Runtime identity mismatch')
+    manifest_expected = bundle_manifest(expected)
+    backend = expected['backend']
+    config_bytes = _pocket_config(expected) if backend == 'pocket-tts' else None
+    names = {e['path'] for e in expected['files']}
     root = Path(root).absolute()
     # Refuse symlink ancestors as well as leaf entries.
     if any(p.is_symlink() for p in (root, *root.parents)):
@@ -217,14 +321,14 @@ def provision(root, expected, *, runtime_versions, downloader=download, lock_tim
                 raise ValueError('Unsafe bundle directory')
             for path in bundle.iterdir():
                 _file(path)
-            _, manifest = verified_bundle(bundle, 'kokoro')
-            if {p.name for p in bundle.iterdir()} != {'manifest.json', 'model.onnx', 'voices.bin'}:
+            _, manifest = verified_bundle(bundle, backend)
+            if {p.name for p in bundle.iterdir()} != names | {'manifest.json'}:
                 raise ValueError('Unexpected immutable bundle entry')
-            if manifest != expected or (bundle / 'manifest.json').read_bytes() != manifest_bytes(expected):
+            if manifest != manifest_expected or (bundle / 'manifest.json').read_bytes() != manifest_bytes(manifest_expected):
                 raise ValueError('Immutable bundle identity mismatch')
         else:
             _directory(stage)
-            allowed = {'model.onnx', 'voices.bin', 'manifest.json', 'model.onnx.part', 'voices.bin.part'}
+            allowed = names | {n + '.part' for n in names} | {'manifest.json'}
             if any(p.name not in allowed or p.is_symlink() or not p.is_file() for p in stage.iterdir()):
                 raise ValueError('Unsafe staging entry')
             for path in stage.iterdir():
@@ -239,8 +343,10 @@ def provision(root, expected, *, runtime_versions, downloader=download, lock_tim
                         continue
                     target.unlink()
                 # Injected callables are trusted and responsible for their own bounds.
-                if downloader is download:
-                    downloader(entry['origin'], partial, entry['bytes'], timeout=transfer_timeout, cancelled=cancelled)
+                if entry['path'] == 'config.yaml' and config_bytes is not None:
+                    partial.write_bytes(config_bytes)
+                elif downloader is download:
+                    downloader(entry['origin'], partial, entry['bytes'], timeout=transfer_timeout, cancelled=cancelled, **({'allowed_origins': expected['allowed_origins']} if config_bytes is not None else {}))
                 else:
                     downloader(entry['origin'], partial)
                 _file(partial)
@@ -250,8 +356,8 @@ def provision(root, expected, *, runtime_versions, downloader=download, lock_tim
             manifest_path = stage / 'manifest.json'
             if manifest_path.exists():
                 manifest_path.unlink()
-            manifest_path.write_bytes(manifest_bytes(expected))
-            verified_bundle(stage, 'kokoro')
+            manifest_path.write_bytes(manifest_bytes(manifest_expected))
+            verified_bundle(stage, backend)
             for path in stage.iterdir():
                 _file(path)
                 path.chmod(0o444)
