@@ -909,6 +909,11 @@ def installed_launch_authority(config, scope):
             def register(self, owners):
                 check()
                 return _register_installed(observer,owners,fd,check)
+            def register_and_notify(self, owners):
+                # No notification after any failed/unknown registration outcome.
+                rid = self.register(owners)
+                check()
+                return _installed_handoff(observer, owners, rid, fd, check)
         try:
             yield HeldAuthority()
         except _RegistrationChildUnreaped:
@@ -1148,3 +1153,71 @@ def _register_installed(observer,selected,authority_fd,check,*,child=_registrati
 
 
 if __name__=='__main__': main()
+
+
+
+def _installed_handoff(observer, owners, rid, authority_fd, check, *, notify=None):
+    """Held root authority only: project successful retained registration to control.
+
+    Does not claim that an owner/listener started. Full provenance remains private.
+    No receipt keys, seed, credential contents or authority paths cross the exec.
+    """
+    from service.entrypoint import projection
+    if not isinstance(rid,str) or not re.fullmatch('[0-9a-f]{64}',rid):
+        raise ValueError('installed_notification_registration')
+    name = 'registration-'+rid+'.json'
+    check(); raw,identity = _registration_read_at(authority_fd,name)
+    value = recovery.host_json(raw)
+    roots = {r:Path(v['source']) for r,v in observer.policy['roots'].items()}
+    state = _registration_snapshot(roots,observer.scope)
+    public = json.loads(state['evidence_projection']['data']['p1_installation'][0][3])
+    _installed_provenance(value,observer,public)
+    record = value['registration']
+    if (digest(record) != rid or record['containers'] != owners or
+            record not in state['registrations']):
+        raise ValueError('installed_notification_registration')
+    all_owners = recovery.host_registration_union(state['registrations'],observer.scope,public['deployment_id'])
+    if observer.observe_owners(all_owners,public) != value['observation']:
+        raise ValueError('installed_notification_incarnation_changed')
+    selected = {c['id'] for c in record['containers']}
+    gate = projection(dict(version=1,registration_id=rid,registration=record,
+        configuration_digest=digest(observer.config),enrollment_digest=digest(public),
+        provenance_digest=digest(value),processes=[p for p in value['observation']['processes'] if p['id'] in selected]))
+    check()
+    if _registration_read_at(authority_fd,name) != (raw,identity):
+        raise ValueError('installed_notification_provenance_changed')
+    control = next(c['id'] for c in owners if c['role']=='control')
+    (notify or _installed_notify)(observer.scope['context'],control,encode(gate).encode())
+    check()
+    if (_registration_read_at(authority_fd,name) != (raw,identity) or
+            observer.observe_owners(all_owners,public) != value['observation']):
+        raise ValueError('installed_notification_postbracket_changed')
+    return rid  # Notification delivered only; never an installed-startup receipt.
+
+
+def _installed_notify(context, control, raw):
+    from service.entrypoint import decode_projection
+    decode_projection(raw)
+    Docker(context)  # Reuse closed context parser; no environment-selected daemon.
+    if not isinstance(control,str) or not recovery.HEX.fullmatch(control):
+        raise ValueError('installed_notification_control')
+    command = ['docker','--context',context,'exec','--user','10001:10001','-i',control,
+        'python','-I','-B','-c',
+        "import sys;sys.path.insert(0,'/opt/speech');from service.entrypoint import publish,GATE_LIMIT;publish(sys.stdin.buffer.read(GATE_LIMIT+1))"]
+    with tempfile.TemporaryFile() as output:
+        process = subprocess.Popen(command,stdin=subprocess.PIPE,stdout=output,stderr=subprocess.DEVNULL,
+                                   close_fds=True,env={'PATH':os.defpath},cwd='/')
+        try:
+            process.communicate(raw,timeout=5)
+        except BaseException as primary:
+            try: process.kill()
+            except BaseException as cleanup: primary.add_note('notification kill failed: '+type(cleanup).__name__)
+            try: process.wait(timeout=2)
+            except BaseException:
+                _registration_retained.append(process)
+                raise _RegistrationChildUnreaped('installed_notification_child_unreaped') from primary
+            raise
+        finally:
+            if process.stdin is not None: process.stdin.close()
+        if process.returncode != 0 or os.fstat(output.fileno()).st_size:
+            raise ValueError('installed_notification_failed')
