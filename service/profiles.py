@@ -106,6 +106,12 @@ class VoiceWorkRequest:
             raise ValueError('exact request identity required')
         if type(self.memory_available_bytes) is not int or self.memory_available_bytes <= 0 or type(self.concurrency) is not int or self.concurrency <= 0:
             raise ValueError('invalid request budget')
+        if self.device_override is not None:
+            override = self.device_override
+            if (not isinstance(override, tuple) or len(override) != 2 or
+                    not isinstance(override[0], DeviceFamily) or
+                    type(override[1]) is not int or override[1] < 0):
+                raise ValueError('invalid device override')
 
 
 @dataclass(frozen=True)

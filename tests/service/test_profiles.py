@@ -85,6 +85,29 @@ class SelectionTests(unittest.TestCase):
             self.assertEqual(result.reason, Reason.OVERRIDE_UNAVAILABLE)
         self.assertEqual(self.choose([profile()], request(profile_override='cpu')).reason, Reason.SELECTED_OVERRIDE)
 
+    def test_boolean_device_override_indices_rejected(self):
+        for index in (False, True):
+            with self.subTest(index=index), self.assertRaisesRegex(ValueError, 'invalid device override'):
+                request(device_override=(F.CPU, index))
+
+    def test_malformed_device_overrides_rejected(self):
+        for override in ((), (F.CPU,), (F.CPU, 0, 1), [F.CPU, 0],
+                         'cpu', 0, False, ('cpu', 0), (None, 0),
+                         (F.CPU, -1), (F.CPU, 0.0), (F.CPU, '0'), (F.CPU, None)):
+            with self.subTest(override=override), self.assertRaisesRegex(ValueError, 'invalid device override'):
+                request(device_override=override)
+
+    def test_valid_device_override_indices(self):
+        for index in (0, 1):
+            with self.subTest(index=index):
+                p = profile(device_index=index)
+                inv = discover(Host('linux', 'x86_64', 'native'),
+                               (Device(F.CPU, index, True, True, 'fake-probe'),))
+                result = self.choose([p], request(device_override=(F.CPU, index)), inv)
+                self.assertEqual(result.status, 'ready')
+                self.assertEqual(result.reason, Reason.SELECTED_OVERRIDE)
+                self.assertEqual(result.profile, p)
+
     def test_explicit_fallback_identity_only(self):
         self.assertEqual(self.choose([profile()], policy=SelectionPolicy(
             workload='fixture', preferred_device=F.CUDA)).status, 'not_ready')
