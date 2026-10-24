@@ -1,0 +1,45 @@
+# H0 schema refusal — independent r162 Sol review
+
+2026-10-24. **GO: R160-1 closed; complete H0 SOURCE/local-unittest adoption readiness.** No remaining concrete H0 adoption blocker found. Parent adoption remains required. This is not operation approval, installed durability qualification, phase/release GO or HTTP speech acceptance.
+
+## Pins, authority and review boundary
+
+Reviewed candidate `/Users/ben/.txcode/worktrees/py-audio-box/t3-91c6d46e`, branch `t3/voice-schema-refusal`, base `c32744a538f88b76031126aeeb98a672b3c542b3`, fix `cb9d8d4b40776d65865b3e69cd1d1378cad534a8`, report/HEAD `f82cc86432cb191fe5e28530e370786664ec014a`. Candidate status was clean before and after the authorized test. Base-to-HEAD changes exactly `service/voice_store.py`, `tests/service/test_voice_store.py`, and r161; Core, persistence, contracts and domain methods are unchanged.
+
+Read full r159, root r160 and r161, the actual H0 scope and handoff in IMPLEMENTATION-PLAN, the complete store and focused tests, both conftests, and Core initialization/transaction/constructor cleanup. Reviewed the two-file fix diff. R160's domain review is explicitly carried forward rather than claimed as a new broad re-audit. Sole write is this report in root. No code/test edit, commit, delegation, Docker, network, model, guard/native-fault/full-suite invocation, lane action, activation or resource cleanup. Normal cleanup occurred only for test-owned temporary DB/media roots. Historical proofs, STT and HELD resources are unchanged.
+
+## R160-1 closure
+
+The former P2 correctness/durability defect was concrete: accepted missing integer PK allowed successful registration with NULL seq and invisible list results; same-named no-op triggers defeated normal immutability. The minimal fix is now present, without changing registration or domain policy.
+
+One declaration supplies all five tables and both triggers for fresh installation and a memory-only SQLite reference. The reference derives the expected object set, including implicit PK/unique indexes whose SQL is NULL. Actual identity compares type, name, owning table and SQL tokens. NULL SQL becomes an empty token tuple on both sides, while object identity/count still matters. Objects whose table or name is one of the five owned tables are included: extra named indexes and triggers on any owned table cannot hide behind an unfamiliar object name. Unrelated Core tables/indexes/triggers are excluded. Missing required triggers, same-named no-ops, altered abort literals, extra indexes, changed types/nullability/PK/unique/FK/CHECK and partial layouts refuse.
+
+The tokenizer preserves quoted strings/identifiers, literal case/spacing, punctuation and token boundaries; only inter-token whitespace and unquoted case normalize. Comments are not discarded: their delimiters/content add tokens absent from the supported declaration, so they cannot erase a constraint or replace a trigger body while matching it. Quoted strings likewise cannot swallow structural SQL and match the expected token sequence. This is conservative DDL identity, not semantic equivalence. Alternate equivalent quoting/comments/constraint spellings, or object-name casing retained differently by SQLite, may refuse; that compatibility limit is documented in r161 and does not break the current H0 DDL. No general SQL parser or diagnostic framework is needed.
+
+Presence inspection, reference comparison, fresh DDL/format insertion, post-install identity and exact format-row check `[(1,)]` run inside existing Core BEGIN IMMEDIATE/commit/rollback. There is no executescript/autocommit boundary in this initializer. Existing complete schemas receive no repair writes; unsupported/partial schemas refuse with rows and schema preserved. Fresh failures roll back the additive catalogue installation. Pre-P1 returns before catalogue reads/writes and Core user_version remains 1.
+
+The reference connection is closed in `finally` after successful creation, including DDL/comparison exceptions; failure to connect creates no reference handle. An initializer failure in Core construction enters the unchanged BaseException cleanup, which closes the native DB and owner through the ownership record; transaction errors use the existing rollback path. No new reference/native connection leak or transaction escape was found in source. These are source conclusions plus ordinary focused execution, not injected native-close/fault qualification.
+
+## Focused verification and evidence honesty
+
+After reading both conftests, executed exactly once in the pinned candidate:
+
+`/private/tmp/pab-0c-venv/bin/python -m unittest discover -s tests/service -p test_voice_store.py -v`
+
+**17 tests PASS, exit 0, 0.640 s.** No unexpected fatal, native signal or retry. Actual Core/SQLite and managed media run only in exclusively owned `pab-h0-voice-*` temporary roots; unittest does not collect the pytest maintenance fixture. Candidate `git diff --check c32744a HEAD` passed.
+
+The 19-layout matrix covers wrong type and removed NOT NULL for each table, missing voices/versions integer PK and unique constraints, missing names/requests composite PK, missing names/versions FK, and added CHECK. Refusal preserves explicit full schema/row snapshots and prior Core revision rows, leaves no transaction open, and a restored valid fixture reopens. Missing parent uniqueness necessarily prevents child fixture inserts; those cases preserve the rows SQLite permits, rather than claiming impossible child data. The separate NULL-seq test reproduces invisible registration through an already-held store, then proves admission/reopen refusal and unchanged rows. Both no-op triggers, extra unique index, changed abort literal and missing trigger refuse; valid keyword-case/whitespace variation accepts. Extra arbitrary trigger names/comments/quoted-identifier variants are covered by source comparison reasoning, not separately executed negative cases.
+
+The unchanged tests retain restart/frozen metadata, idempotency, revisions, aliases/archive, principal/managed-reference validation, immutable rows/detached returns, additive migration and authorizer-denied rollback, repeated opens/user_version, partial schema, pre-P1 fence, pagination and additive contract checks.
+
+R161 honestly distinguishes its before-fix result (four assertion failures plus one fixture construction error), fixed-run snapshot fixture error, and final 17-test pass. Those earlier runs were not performed by this reviewer. The FK fixture/snapshot corrections do not waive a product assertion; independently failing NULL-seq/no-op/index cases supported the original defect, and the final matrix asserts refusal/preservation. No historical failed run is relabeled PASS.
+
+No pytest, guard import, affected existing Core/persistence regression module, full suite, native fault, installed upgrade/restore or power-loss campaign ran. The pre-P1 test flips an in-memory flag rather than qualifying an actual historical root; rollback uses SQLite authorizer denial, not power loss; revision competition is serialized, not a cross-process race. No hardware/audio/listening, installed or production claim follows.
+
+## Carried H0 findings and next owners
+
+Carry r160's sound domain findings: contract-validated exact authored identity/configuration/settings/provenance, detached immutable versions and verified reference hashes; actual managed-file validation and trusted principal ownership; atomic principal/operation/key idempotency; optimistic revisions; canonical-name/alias collision rollback; archive preserving names, versions and prior dependencies. No new acquisition, owner assignment, dispatcher or HTTP mutation exists. Immutability triggers protect normal accidental SQL mutation, not unrestricted trusted DDL. The finite operation map and existing voice_save prepared-candidate semantics remain unchanged.
+
+Material next seams remain H1/H2 work, not new H0 blockers: reconcile the existing 1 MiB Core reference verification cap with bounded real ingest; compact metadata/list responses and bound text/history/idempotency growth; replace versions' full-history get with a cheap existence check for paging; provide trusted direct ownership and indexed/backfilled legacy compatibility beyond the 1,024-artifact fallback cap; select authorized prepared candidates and freeze active selections; authenticate/revoke/derive principals, enforce scopes and translate domain/storage failures through bounded transport adapters. Shared contract changes remain parent-owned.
+
+Parent can now adopt the pinned H0 source/report, then commission bounded parallel H1 domain and H2 transport lots against this seam. Existing affected regression coverage remains explicitly unrun. H3 installed durability/upgrade/restore/fault acceptance and H4/H5 CPU/CUDA/packaged native Metal, real speech/listening and integrated journeys remain required. Historical native UNKNOWN, campaign accounting and HELD-resource gates are unchanged; this review authorizes no operational continuation or release.
