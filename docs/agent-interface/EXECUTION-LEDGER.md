@@ -2059,3 +2059,7 @@ r174 bounded source NO-GO: boolean explicit device indices alias integer indices
 ### 2026-10-24 — Upload control plane and hardware correction enter review
 
 r173 source ae104e3b/docs c8d418f4 delivers raw authenticated upload, authorized asset reads, compact voice history and HTTP/CLI/MCP parity; 15 local focused tests reported PASS. Independent Sol r176 reviews before adoption. r175 source 05366aab/docs 902e3410 rejects malformed device overrides, 13 profile +4 hardware tests reported PASS; independent round2 Sol r177 checks r174 closure. Both candidates remain unmerged. Installed transport, security/lifecycle and hardware qualification remain open.
+
+### 2026-10-24 — H4A reviewed selection foundation adopted
+
+Independent r177 source GO closes r174 malformed-override finding. Parent merged reviewed docs/source 902e3410 without conflicts; integrated root reran 13 profile +4 hardware tests PASS. Inventory, explicit probe seam and deterministic compatible selection are now integrated; adapters/jobs/provisioning/native packaging and actual CPU/CUDA/Metal qualification remain open. Upload r176 independent review continues.
