@@ -195,7 +195,10 @@ class InstalledHost(unittest.TestCase):
                 if args[:2]==['volume','inspect']:
                     r=args[2];return encode(dict(test.scope['volumes'][r],source=test.policy['roots'][r]['source'],options={}))
                 if args[:2]==['container','ls']:return '\n'.join(c['id'] for c in (test.containers if containers is None else containers))
-                if args[:2]==['container','inspect']:return encode(next(c for c in (test.containers if containers is None else containers) if c['id']==args[2]))
+                if args[:2]==['container','inspect']:
+                    current=next((c for c in (test.containers if containers is None else containers) if c['id']==args[2]),None)
+                    if current is None:raise ValueError('injected_missing_container')
+                    return encode(current)
                 raise AssertionError(args)
         return h.InstalledObserver(Docker(),self.config,self.scope,self.policy,mountinfo=lambda:copy.deepcopy(self.mounts),proc=lambda pid,identity,ipc:dict(pid=pid,start_ticks=100,pid_namespace=pid,cgroup='/docker/'+identity))
 

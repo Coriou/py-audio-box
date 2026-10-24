@@ -153,311 +153,8 @@ class Reconciliation:
                 data[table]=[dict(zip(COLUMNS[table].split(),r)) for r in _before['before']['source']['data'][table]]
             for table in RESOLUTION_TABLES:
                 data[table]=[r for r in data[table] if r['recovery_id']!=_before['id']]
-        completed={r['recovery_id'] for r in (b2 or {}).get('p1_recovery_steps',[]) if r['step']=='core-complete'}
-        resolved={r['dispatch_seq']:r for r in (b2 or {}).get('dispatch_resolutions',[]) if r['recovery_id'] in completed and (_before is None or r['recovery_id']!=_before['id'])}
-        refs = {}
-        # Closed contract locations, never scalar spelling or user-authored keys.
         document = json.loads(Path('contracts/v1/schema.json').read_text())
-        schema = document['$defs']
-        validator = Draft202012Validator(document)
-        reference_keys = {'asset_id','asset_ids','input_asset_ids','result_asset_ids',
-                          'audition_asset_id','reference_asset_id','reference_asset_ids'}
-        def add(value, source):
-            if isinstance(value, list):
-                for item in value: add(item, source)
-            elif isinstance(value, str):
-                refs.setdefault(value, set()).add(source if len(source)<=256 else source.split(':')[0]+':'+hashlib.sha256(source.encode()).hexdigest())
-            else: self.reasons.add('unknown_reference_kind')
-        def walk(value, definition, source):
-            if definition == 'asset' and isinstance(value, dict): add(value.get('id'), source)
-            node = schema[definition] if isinstance(definition, str) else definition
-            if '$ref' in node:
-                name = node['$ref'].split('/')[-1]
-                if name == 'asset' and isinstance(value, dict): add(value.get('id'), source)
-                return walk(value, name, source)
-            for union in ('oneOf', 'anyOf', 'allOf'):
-                if union in node:
-                    # Delegate type, $ref and discriminator applicability to the
-                    # same Draft 2020-12 implementation used by the contract oracle.
-                    branches = [n for n in node[union]
-                                if validator.evolve(schema=n).is_valid(value)]
-                    if union == 'oneOf' and len(branches) != 1:
-                        self.reasons.add('unknown_reference_kind')
-                    if union == 'allOf' and len(branches) != len(node[union]):
-                        self.reasons.add('unknown_reference_kind')
-                    if not branches: self.reasons.add('unknown_reference_kind')
-                    for branch in branches: walk(value, branch, source)
-                    return
-            if 'type' in node and not validator.evolve(schema={'type': node['type']}).is_valid(value):
-                self.reasons.add('unknown_reference_kind')
-                return
-            if not isinstance(value, (dict, list)) and not validator.evolve(schema=node).is_valid(value):
-                self.reasons.add('unknown_reference_kind')
-            if isinstance(value, list):
-                if 'items' in node:
-                    for item in value: walk(item, node['items'], source)
-            elif isinstance(value, dict):
-                properties = node.get('properties', {})
-                if set(value) - properties.keys(): self.reasons.add('unknown_reference_schema')
-                for key, item in value.items():
-                    if key not in properties: continue
-                    if key == 'reference_asset_sha256' and definition == 'voice_version':
-                        if validator.evolve(schema=properties[key]).is_valid(item): add(list(item), source)
-                        else: self.reasons.add('unknown_reference_kind')
-                    elif key in reference_keys:
-                        if validator.evolve(schema=properties[key]).is_valid(item): add(item, source)
-                        else: self.reasons.add('unknown_reference_kind')
-                    else: walk(item, properties[key], source)
-        def context(value, source):
-            if set(value) == {'plan','bundles','execution'}:
-                from worker.runtime_protocol import execution
-                try:
-                    if execution(value) is None: raise ValueError('execution_required')
-                except (ValueError, KeyError, TypeError):
-                    raise Incomplete('unknown_reference_kind') from None
-            elif set(value) != {'plan','bundles'}:
-                self.reasons.add('unknown_reference_schema')
-            elif value['plan']['resolved']['profile']['id'] == 'kokoro-cpu':
-                raise Incomplete('unknown_reference_kind')
-            walk(value['plan'], 'worker_plan', source)
-            for bundle in value['bundles']: walk(bundle, 'bundle_catalogue_entry', source)
-        def catalogue_version(value, principal, source):
-            from contracts import validate as oracle
-            try: oracle.validate('voice_version', value)
-            except (ValueError, ValidationError): raise Incomplete('unknown_reference_kind') from None
-            if not any(r['principal']==principal and r['id']==value['voice_id'] for r in data.get('catalogue_voices', [])):
-                raise Incomplete('unknown_reference_kind')
-            if set(value.get('reference_asset_sha256',{})) != set(value['reference_asset_ids']):
-                raise Incomplete('unknown_reference_kind')
-            for asset_id in value['reference_asset_ids']:
-                asset = next((json.loads(r['metadata']) for r in data.get('assets',[]) if r['id']==asset_id), None)
-                if asset is None: raise Incomplete('unknown_reference_kind')
-                owner = asset.get('principal_id')
-                if owner is None:
-                    producing = {r['principal'] for r in data.get('jobs',[]) for a in data.get('artifacts',[])
-                                 if json.loads(a['metadata'])['job_id']==r['id'] and asset_id in json.loads(a['metadata'])['asset_ids']}
-                    if producing != {principal}: raise Incomplete('unknown_reference_kind')
-                elif owner != principal: raise Incomplete('unknown_reference_kind')
-                if value.get('reference_asset_sha256',{}).get(asset_id) != asset['sha256']:
-                    raise Incomplete('unknown_reference_kind')
-            walk(value, 'voice_version', source)
-
-        adapters = {
-            'jobs': {'job':'job', 'context':None}, 'revisions': {'snapshot':'project'},
-            'assets': {'metadata':'asset'}, 'artifacts': {'metadata':'artifact'},
-            'publications': {'manifest':'result_manifest','artifact':'artifact','message':'worker_message'},
-        }
-        for table, records in data.items():
-            for index, record in enumerate(records):
-                source = table+':'+str(record.get('id', record.get('job_id', record.get('project', index))))+(':'+str(record['revision']) if 'revision' in record else '')
-                if table in persistence.B2_COLUMNS and table not in ('p1_b2_format','p1_abandon_plans','p1_recoveries'):
-                    source = table+':'+str(record.get('recovery_id'))+':'+str(record.get('step',record.get('dispatch_seq',record.get('job_id',record.get('object_id')))))
-                for column, definition in adapters.get(table, {}).items():
-                    value = json.loads(record[column])
-                    if column == 'context': context(value, source)
-                    else: walk(value, definition, source)
-                if table in CATALOGUE_TABLES - {'voice_catalogue_format'}:
-                    from service.voice_store import _id
-                    try:
-                        _id(record['principal'])
-                        for field in ('id','voice_id','name','key'):
-                            if field in record: _id(record[field])
-                    except ValueError: raise Incomplete('unknown_reference_kind') from None
-                if table == 'catalogue_voices':
-                    if type(record['revision']) is not int or record['revision'] < 1 or record['archived'] not in (0,1):
-                        raise Incomplete('unknown_reference_kind')
-                if table == 'catalogue_names':
-                    if not any(r['principal']==record['principal'] and r['id']==record['voice_id'] for r in data.get('catalogue_voices', [])):
-                        raise Incomplete('unknown_reference_kind')
-                if table == 'catalogue_versions':
-                    value = json.loads(record['record'])
-                    if value.get('id') != record['id'] or value.get('voice_id') != record['voice_id']:
-                        raise Incomplete('unknown_reference_kind')
-                    catalogue_version(value, record['principal'], source)
-                if table == 'catalogue_requests':
-                    if not re.fullmatch('[a-f0-9]{64}',record['fingerprint']): raise Incomplete('unknown_reference_kind')
-                    value = json.loads(record['result'])
-                    definitions = {'voice_register':'voice_register_result', 'voice_aliases':'voice',
-                                   'voice_archive':'voice', 'job_cancel':'job_cancel_request'}
-                    definition = definitions.get(record['operation'])
-                    if definition is None: raise Incomplete('unknown_reference_kind')
-                    from contracts import validate as oracle
-                    try: oracle.validate(definition, value)
-                    except (ValueError, ValidationError): raise Incomplete('unknown_reference_kind') from None
-                    if record['operation'] == 'voice_register': catalogue_version(value['version'],record['principal'],source)
-                    if record['operation'] == 'job_cancel':
-                        if not any(r['id']==value['job_id'] and r['principal']==record['principal'] for r in data.get('jobs', [])):
-                            raise Incomplete('unknown_reference_kind')
-                    walk(value, definition, source)
-                if table in persistence.B1_COLUMNS:
-                    from service.persistent_init import digest, validate_scope
-                    from service.recovery import validate_plan, validate_registration, closed
-                    value = json.loads(record['record'])
-                    if digest(value) != record['digest']:
-                        raise Incomplete('invalid_b1_digest')
-                    if table == 'p1_installation':
-                        from service.install_policy import installation
-                        installation(value)
-                        if (value['deployment_id'] != record['id'] or record['revision'] != 1 or
-                            value['revision'] != 1 or record['scope'] != value['scope']):
-                            raise Incomplete('invalid_b1_installation')
-                    elif table == 'p1_registrations':
-                        validate_registration(value)
-                        if record['id'] != digest(value): raise Incomplete('invalid_b1_registration')
-                    else:
-                        validate_plan(value)
-                        if record['id'] != value['id']: raise Incomplete('invalid_b1_plan')
-                        # Typed references retain the referenced canonical documents.
-                        # Plan metadata/prose and arbitrary scalar strings are not assets.
-                        for job_id in value['affected']['jobs']:
-                            target = next((r for r in data.get('jobs', []) if r['id'] == job_id), None)
-                            if target is None: raise Incomplete('unknown_b1_job_reference')
-                            walk(json.loads(target['job']), 'job', source)
-                            context(json.loads(target['context']), source)
-                        for dispatch_id in value['affected']['dispatches']:
-                            target = next((r for r in data.get('dispatches', []) if r['seq'] == dispatch_id), None)
-                            if target is None: raise Incomplete('unknown_b1_dispatch_reference')
-                            authority = json.loads(target['authority'])
-                            walk(authority[0], 'job', source); context(authority[1], source); add(authority[2], source)
-                        for job_id in value['affected']['publications']:
-                            target = next((r for r in data.get('publications', []) if r['job_id'] == job_id), None)
-                            if target is None: raise Incomplete('unknown_b1_publication_reference')
-                            for column, definition in adapters['publications'].items():
-                                walk(json.loads(target[column]), definition, source)
-                    installations = data.get('p1_installation', [])
-                    if (len(installations) != 1 or value['deployment_id'] != installations[0]['id']):
-                        raise Incomplete('unknown_b1_deployment_reference')
-                if table in persistence.B2_COLUMNS and table != 'p1_b2_format':
-                    value = json.loads(record['record'])
-                    # Follow only closed typed references. Resolutions have no
-                    # reconciliation effect until the later kernel lot.
-                    affected = value.get('affected', {})
-                    for job_id in set(affected.get('jobs', []) + affected.get('reservations', []) + ([value['job_id']] if 'job_id' in value else [])):
-                        target = next((r for r in data.get('jobs', []) if r['id']==job_id), None)
-                        if target is None: raise Incomplete('unknown_b2_job_reference')
-                        walk(json.loads(target['job']), 'job', source)
-                        context(json.loads(target['context']), source)
-                    for dispatch_id in affected.get('dispatches', []) + ([value['dispatch_seq']] if 'dispatch_seq' in value else []):
-                        target = next((r for r in data.get('dispatches', []) if r['seq']==dispatch_id), None)
-                        if target is None: raise Incomplete('unknown_b2_dispatch_reference')
-                        authority = json.loads(target['authority'])
-                        walk(authority[0], 'job', source); context(authority[1], source); add(authority[2], source)
-                    for job_id in affected.get('publications', []) + ([value['job_id']] if table=='p1_retired_publications' else []):
-                        target = next((r for r in data.get('publications', []) if r['job_id']==job_id), None)
-                        if target is None: raise Incomplete('unknown_b2_publication_reference')
-                        for column, definition in adapters['publications'].items(): walk(json.loads(target[column]), definition, source)
-                if table == 'publication_work':
-                    add(record['destination'], source)
-                    walk(json.loads(record['binding']), 'artifact', source)
-                if table == 'dispatches':
-                    authority = json.loads(record['authority'])
-                    walk(authority[0], 'job', source)
-                    context(authority[1], source)
-                    for profile in authority[3]: walk(profile, 'profile', source)
-                    add(authority[2], source)
-                    if record['outcome']: walk(json.loads(record['outcome']), 'job', source)
-                    if record['receipt']:
-                        receipt = json.loads(record['receipt'])
-                        if set(receipt) - {'runtime_id','binding','reaped','engine_uid','reap_method','reaped_children','timely','original_deadline'}:
-                            self.reasons.add('unknown_reference_schema')
-                if table == 'resource_reservations':
-                    if set(json.loads(record['demand'])) != {'configuration','slots','ram_bytes','vram_bytes','pids','disk_bytes','attempt_disk_bytes'}:
-                        self.reasons.add('unknown_reference_schema')
-        assets = {r['id']: json.loads(r['metadata']) for r in data.get('assets', [])}
-        jobs = {r['id']: json.loads(r['job']) for r in data.get('jobs', [])}
-        contexts = {r['id']: json.loads(r['context']) for r in data.get('jobs', [])}
-        attempts, owners = {}, {}
-        for job in jobs.values():
-            for a in job['attempts']:
-                owner = {k: a[k] for k in ('id', 'generation', 'owner_id', 'staging_id')}
-                owner.update(job_id=job['id'], input_sha256=job['input_sha256'])
-                if any(not isinstance(v,(str,int)) or len(str(v))>128 for v in owner.values()):
-                    raise Incomplete('invalid_owner_tuple')
-                attempts[a['staging_id']] = owner
-                owners[a['owner_id']] = owner
-        work = {}
-        for r in data.get('publication_work', []):
-            work[r['destination']] = r
-            work[r['temporary']] = r
-        def job_owner(job_id):
-            known = jobs.get(job_id, {}).get('attempts', [])
-            return attempts.get(known[-1]['staging_id']) if known else None
-        def work_owner(name):
-            return attempts.get(json.loads(work[name]['binding'])['staging_id']) if name in work else None
-        reservations = {r['id']: r for r in data.get('resource_reservations', [])}
-        dispatches = data.get('dispatches', [])
-        for r in dispatches:
-            if r['acked']: continue
-            dispatch_reasons = set()
-            try:
-                a = Authority(*json.loads(r['authority']))
-                job = jobs[r['job_id']]
-                if (a.binding != r['binding'] or a.job['id'] != job['id'] or
-                    a.job['attempts'][-1] != {**job['attempts'][-1], 'reaped': a.job['attempts'][-1]['reaped']} or
-                    a.job['generation'] != job['generation'] or a.context != contexts[job['id']] or
-                    a.job['deadline'] != job['deadline']):
-                    dispatch_reasons.add('dispatch_owner_mismatch')
-                if r['runtime'] is None: dispatch_reasons.add('unbound_dispatch')
-                reservation = reservations.get(job['id'])
-                if reservation:
-                    demand = json.loads(reservation['demand'])
-                    from worker.runtime_protocol import execution
-                    frozen_value = a.context['execution'] if execution(a.context) is not None else a.context['plan']['resolved']['identity']['effective']
-                    frozen_configuration = hashlib.sha256(encode(frozen_value).encode()).hexdigest()
-                    if (reservation['category'] != 'inference' or demand['configuration'] != frozen_configuration or
-                        demand['disk_bytes'] < demand['attempt_disk_bytes'] * len(job['attempts'])):
-                        dispatch_reasons.add('reservation_binding_mismatch')
-                if not reservation or reservation['state'] not in ('executing', 'retained'):
-                    dispatch_reasons.add('missing_or_invalid_reservation')
-                if reservation and ((reservation['state'] == 'retained' and not r['outcome']) or (reservation['state'] == 'executing' and r['outcome'])):
-                    dispatch_reasons.add('reservation_outcome_mismatch')
-                if r['receipt']:
-                    receipt = json.loads(r['receipt'])
-                    if (receipt.get('runtime_id') != r['runtime'] or receipt.get('binding') != a.binding or
-                        receipt.get('original_deadline') != a.job['deadline'] or receipt.get('reaped') is not True or
-                        receipt.get('reap_method') != 'pid1-waitpid-echild'):
-                        dispatch_reasons.add('receipt_mismatch')
-                elif r['outcome'] or job['state'] in ('succeeded','failed','cancelled'):
-                    dispatch_reasons.add('terminal_receipt_missing')
-                publication = next((p for p in data.get('publications', []) if p['job_id'] == job['id']), None)
-                if publication:
-                    artifact = json.loads(publication['artifact'])
-                    for key in ('attempt_id','owner_id','staging_id','generation'):
-                        expected = a.job['generation'] if key == 'generation' else a.job['attempts'][-1]['id' if key == 'attempt_id' else key]
-                        if artifact[key] != expected: dispatch_reasons.add('publication_owner_mismatch')
-            except (ValueError, ValidationError, KeyError, IndexError, TypeError, RecursionError):
-                dispatch_reasons.add('invalid_dispatch_identity')
-            resolution=resolved.get(r['seq'])
-            # Consume old mismatches only after independently checking all
-            # current joins. Allowed reasons cannot erase a new strict defect.
-            permitted = {'unbound_dispatch', 'reservation_outcome_mismatch', 'terminal_receipt_missing'}
-            if resolution:
-                accepted = next(v for v in b2['p1_recoveries'] if v['id'] == resolution['recovery_id'])
-                expected = accepted['expected'][3]['output']['rows']
-                job_row = next(v for v in expected['jobs'] if v[1] == r['job_id'])
-                reservation_row = next(v for v in expected['resource_reservations'] if v[0] == r['job_id'])
-                current_job_row = next(v for v in data['jobs'] if v['id'] == r['job_id'])
-                if (current_job_row != dict(zip(COLUMNS['jobs'].split(), job_row)) or
-                    reservation != dict(zip(COLUMNS['resource_reservations'].split(), reservation_row))):
-                    dispatch_reasons.add('recovered_job_reservation_mismatch')
-                if not dispatch_reasons - permitted:
-                    dispatch_reasons.difference_update(permitted)
-            if dispatch_reasons:
-                self.reasons.update(dispatch_reasons)
-                # Retain one stable object; summary retains every reason.
-                reason = sorted(dispatch_reasons - permitted or dispatch_reasons)[0]
-                self._row('dispatch', str(r['seq']), 'unresolved_owner_receipt_reservation', reason, owner=job_owner(r['job_id']))
-        if 'resource_reservations' in data:
-            for job_id in jobs.keys() - reservations.keys():
-                self.reasons.add('missing_reservation')
-                self._row('reservation', job_id, 'unresolved_owner_receipt_reservation', 'missing_reservation', owner=job_owner(job_id))
-        for reservation in reservations.values():
-            if reservation['id'] not in jobs:
-                self.reasons.add('reservation_job_missing')
-                self._row('reservation', reservation['id'], 'unresolved_owner_receipt_reservation', 'reservation_job_missing')
-            if reservation['state'] == 'executing' and not any(r['job_id']==reservation['id'] and not r['acked'] for r in dispatches):
-                self.reasons.add('unexplained_executing_reservation')
-                self._row('reservation', reservation['id'], 'unresolved_owner_receipt_reservation', 'unexplained_executing_reservation', owner=job_owner(reservation['id']))
+        (refs, assets, jobs, contexts, attempts, owners, work, job_owner, work_owner, reservations, dispatches) = typed_references(self, data, b2, _before, document)
         seen = set()
         def file_entry(directory_fd, name, namespace, owner=None):
             self._charge()
@@ -716,3 +413,312 @@ class Reconciliation:
             self.cursors[token] = offset+limit
         # No arbitrary host paths or giant metadata; exact private records remain in DB.
         return dict(scan_id=scan_id, entries=[dict({k:r[k] for k in ('id','classification','reason','owner')}, references=r['references'][:20]) for r in selected], next_cursor=token)
+
+
+def typed_references(self, data, b2, _before, document):
+    """Existing bounded typed joins; callbacks collect diagnostics, no filesystem."""
+    completed={r['recovery_id'] for r in (b2 or {}).get('p1_recovery_steps',[]) if r['step']=='core-complete'}
+    resolved={r['dispatch_seq']:r for r in (b2 or {}).get('dispatch_resolutions',[]) if r['recovery_id'] in completed and (_before is None or r['recovery_id']!=_before['id'])}
+    refs = {}
+    # Closed contract locations, never scalar spelling or user-authored keys.
+    schema = document['$defs']
+    validator = Draft202012Validator(document)
+    reference_keys = {'asset_id','asset_ids','input_asset_ids','result_asset_ids',
+                      'audition_asset_id','reference_asset_id','reference_asset_ids'}
+    def add(value, source):
+        if isinstance(value, list):
+            for item in value: add(item, source)
+        elif isinstance(value, str):
+            refs.setdefault(value, set()).add(source if len(source)<=256 else source.split(':')[0]+':'+hashlib.sha256(source.encode()).hexdigest())
+        else: self.reasons.add('unknown_reference_kind')
+    def walk(value, definition, source):
+        if definition == 'asset' and isinstance(value, dict): add(value.get('id'), source)
+        node = schema[definition] if isinstance(definition, str) else definition
+        if '$ref' in node:
+            name = node['$ref'].split('/')[-1]
+            if name == 'asset' and isinstance(value, dict): add(value.get('id'), source)
+            return walk(value, name, source)
+        for union in ('oneOf', 'anyOf', 'allOf'):
+            if union in node:
+                # Delegate type, $ref and discriminator applicability to the
+                # same Draft 2020-12 implementation used by the contract oracle.
+                branches = [n for n in node[union]
+                            if validator.evolve(schema=n).is_valid(value)]
+                if union == 'oneOf' and len(branches) != 1:
+                    self.reasons.add('unknown_reference_kind')
+                if union == 'allOf' and len(branches) != len(node[union]):
+                    self.reasons.add('unknown_reference_kind')
+                if not branches: self.reasons.add('unknown_reference_kind')
+                for branch in branches: walk(value, branch, source)
+                return
+        if 'type' in node and not validator.evolve(schema={'type': node['type']}).is_valid(value):
+            self.reasons.add('unknown_reference_kind')
+            return
+        if not isinstance(value, (dict, list)) and not validator.evolve(schema=node).is_valid(value):
+            self.reasons.add('unknown_reference_kind')
+        if isinstance(value, list):
+            if 'items' in node:
+                for item in value: walk(item, node['items'], source)
+        elif isinstance(value, dict):
+            properties = node.get('properties', {})
+            if set(value) - properties.keys(): self.reasons.add('unknown_reference_schema')
+            for key, item in value.items():
+                if key not in properties: continue
+                if key == 'reference_asset_sha256' and definition == 'voice_version':
+                    if validator.evolve(schema=properties[key]).is_valid(item): add(list(item), source)
+                    else: self.reasons.add('unknown_reference_kind')
+                elif key in reference_keys:
+                    if validator.evolve(schema=properties[key]).is_valid(item): add(item, source)
+                    else: self.reasons.add('unknown_reference_kind')
+                else: walk(item, properties[key], source)
+    def context(value, source):
+        if set(value) == {'plan','bundles','execution'}:
+            from worker.runtime_protocol import execution
+            try:
+                if execution(value) is None: raise ValueError('execution_required')
+            except (ValueError, KeyError, TypeError):
+                raise Incomplete('unknown_reference_kind') from None
+        elif set(value) != {'plan','bundles'}:
+            self.reasons.add('unknown_reference_schema')
+        elif value['plan']['resolved']['profile']['id'] == 'kokoro-cpu':
+            raise Incomplete('unknown_reference_kind')
+        walk(value['plan'], 'worker_plan', source)
+        for bundle in value['bundles']: walk(bundle, 'bundle_catalogue_entry', source)
+    def catalogue_version(value, principal, source):
+        from contracts import validate as oracle
+        try: oracle.validate('voice_version', value)
+        except (ValueError, ValidationError): raise Incomplete('unknown_reference_kind') from None
+        if not any(r['principal']==principal and r['id']==value['voice_id'] for r in data.get('catalogue_voices', [])):
+            raise Incomplete('unknown_reference_kind')
+        if set(value.get('reference_asset_sha256',{})) != set(value['reference_asset_ids']):
+            raise Incomplete('unknown_reference_kind')
+        for asset_id in value['reference_asset_ids']:
+            asset = next((json.loads(r['metadata']) for r in data.get('assets',[]) if r['id']==asset_id), None)
+            if asset is None: raise Incomplete('unknown_reference_kind')
+            owner = asset.get('principal_id')
+            if owner is None:
+                producing = {r['principal'] for r in data.get('jobs',[]) for a in data.get('artifacts',[])
+                             if json.loads(a['metadata'])['job_id']==r['id'] and asset_id in json.loads(a['metadata'])['asset_ids']}
+                if producing != {principal}: raise Incomplete('unknown_reference_kind')
+            elif owner != principal: raise Incomplete('unknown_reference_kind')
+            if value.get('reference_asset_sha256',{}).get(asset_id) != asset['sha256']:
+                raise Incomplete('unknown_reference_kind')
+        walk(value, 'voice_version', source)
+
+    adapters = {
+        'jobs': {'job':'job', 'context':None}, 'revisions': {'snapshot':'project'},
+        'assets': {'metadata':'asset'}, 'artifacts': {'metadata':'artifact'},
+        'publications': {'manifest':'result_manifest','artifact':'artifact','message':'worker_message'},
+    }
+    for table, records in data.items():
+        for index, record in enumerate(records):
+            source = table+':'+str(record.get('id', record.get('job_id', record.get('project', index))))+(':'+str(record['revision']) if 'revision' in record else '')
+            if table in persistence.B2_COLUMNS and table not in ('p1_b2_format','p1_abandon_plans','p1_recoveries'):
+                source = table+':'+str(record.get('recovery_id'))+':'+str(record.get('step',record.get('dispatch_seq',record.get('job_id',record.get('object_id')))))
+            for column, definition in adapters.get(table, {}).items():
+                value = json.loads(record[column])
+                if column == 'context': context(value, source)
+                else: walk(value, definition, source)
+            if table in CATALOGUE_TABLES - {'voice_catalogue_format'}:
+                from service.voice_store import _id
+                try:
+                    _id(record['principal'])
+                    for field in ('id','voice_id','name','key'):
+                        if field in record: _id(record[field])
+                except ValueError: raise Incomplete('unknown_reference_kind') from None
+            if table == 'catalogue_voices':
+                if type(record['revision']) is not int or record['revision'] < 1 or record['archived'] not in (0,1):
+                    raise Incomplete('unknown_reference_kind')
+            if table == 'catalogue_names':
+                if not any(r['principal']==record['principal'] and r['id']==record['voice_id'] for r in data.get('catalogue_voices', [])):
+                    raise Incomplete('unknown_reference_kind')
+            if table == 'catalogue_versions':
+                value = json.loads(record['record'])
+                if value.get('id') != record['id'] or value.get('voice_id') != record['voice_id']:
+                    raise Incomplete('unknown_reference_kind')
+                catalogue_version(value, record['principal'], source)
+            if table == 'catalogue_requests':
+                if not re.fullmatch('[a-f0-9]{64}',record['fingerprint']): raise Incomplete('unknown_reference_kind')
+                value = json.loads(record['result'])
+                definitions = {'voice_register':'voice_register_result', 'voice_aliases':'voice',
+                               'voice_archive':'voice', 'job_cancel':'job_cancel_request'}
+                definition = definitions.get(record['operation'])
+                if definition is None: raise Incomplete('unknown_reference_kind')
+                from contracts import validate as oracle
+                try: oracle.validate(definition, value)
+                except (ValueError, ValidationError): raise Incomplete('unknown_reference_kind') from None
+                if record['operation'] == 'voice_register': catalogue_version(value['version'],record['principal'],source)
+                if record['operation'] == 'job_cancel':
+                    if not any(r['id']==value['job_id'] and r['principal']==record['principal'] for r in data.get('jobs', [])):
+                        raise Incomplete('unknown_reference_kind')
+                walk(value, definition, source)
+            if table in persistence.B1_COLUMNS:
+                from service.persistent_init import digest, validate_scope
+                from service.recovery import validate_plan, validate_registration, closed
+                value = json.loads(record['record'])
+                if digest(value) != record['digest']:
+                    raise Incomplete('invalid_b1_digest')
+                if table == 'p1_installation':
+                    from service.install_policy import installation
+                    installation(value)
+                    if (value['deployment_id'] != record['id'] or record['revision'] != 1 or
+                        value['revision'] != 1 or record['scope'] != value['scope']):
+                        raise Incomplete('invalid_b1_installation')
+                elif table == 'p1_registrations':
+                    validate_registration(value)
+                    if record['id'] != digest(value): raise Incomplete('invalid_b1_registration')
+                else:
+                    validate_plan(value)
+                    if record['id'] != value['id']: raise Incomplete('invalid_b1_plan')
+                    # Typed references retain the referenced canonical documents.
+                    # Plan metadata/prose and arbitrary scalar strings are not assets.
+                    for job_id in value['affected']['jobs']:
+                        target = next((r for r in data.get('jobs', []) if r['id'] == job_id), None)
+                        if target is None: raise Incomplete('unknown_b1_job_reference')
+                        walk(json.loads(target['job']), 'job', source)
+                        context(json.loads(target['context']), source)
+                    for dispatch_id in value['affected']['dispatches']:
+                        target = next((r for r in data.get('dispatches', []) if r['seq'] == dispatch_id), None)
+                        if target is None: raise Incomplete('unknown_b1_dispatch_reference')
+                        authority = json.loads(target['authority'])
+                        walk(authority[0], 'job', source); context(authority[1], source); add(authority[2], source)
+                    for job_id in value['affected']['publications']:
+                        target = next((r for r in data.get('publications', []) if r['job_id'] == job_id), None)
+                        if target is None: raise Incomplete('unknown_b1_publication_reference')
+                        for column, definition in adapters['publications'].items():
+                            walk(json.loads(target[column]), definition, source)
+                installations = data.get('p1_installation', [])
+                if (len(installations) != 1 or value['deployment_id'] != installations[0]['id']):
+                    raise Incomplete('unknown_b1_deployment_reference')
+            if table in persistence.B2_COLUMNS and table != 'p1_b2_format':
+                value = json.loads(record['record'])
+                # Follow only closed typed references. Resolutions have no
+                # reconciliation effect until the later kernel lot.
+                affected = value.get('affected', {})
+                for job_id in set(affected.get('jobs', []) + affected.get('reservations', []) + ([value['job_id']] if 'job_id' in value else [])):
+                    target = next((r for r in data.get('jobs', []) if r['id']==job_id), None)
+                    if target is None: raise Incomplete('unknown_b2_job_reference')
+                    walk(json.loads(target['job']), 'job', source)
+                    context(json.loads(target['context']), source)
+                for dispatch_id in affected.get('dispatches', []) + ([value['dispatch_seq']] if 'dispatch_seq' in value else []):
+                    target = next((r for r in data.get('dispatches', []) if r['seq']==dispatch_id), None)
+                    if target is None: raise Incomplete('unknown_b2_dispatch_reference')
+                    authority = json.loads(target['authority'])
+                    walk(authority[0], 'job', source); context(authority[1], source); add(authority[2], source)
+                for job_id in affected.get('publications', []) + ([value['job_id']] if table=='p1_retired_publications' else []):
+                    target = next((r for r in data.get('publications', []) if r['job_id']==job_id), None)
+                    if target is None: raise Incomplete('unknown_b2_publication_reference')
+                    for column, definition in adapters['publications'].items(): walk(json.loads(target[column]), definition, source)
+            if table == 'publication_work':
+                add(record['destination'], source)
+                walk(json.loads(record['binding']), 'artifact', source)
+            if table == 'dispatches':
+                authority = json.loads(record['authority'])
+                walk(authority[0], 'job', source)
+                context(authority[1], source)
+                for profile in authority[3]: walk(profile, 'profile', source)
+                add(authority[2], source)
+                if record['outcome']: walk(json.loads(record['outcome']), 'job', source)
+                if record['receipt']:
+                    receipt = json.loads(record['receipt'])
+                    if set(receipt) - {'runtime_id','binding','reaped','engine_uid','reap_method','reaped_children','timely','original_deadline'}:
+                        self.reasons.add('unknown_reference_schema')
+            if table == 'resource_reservations':
+                if set(json.loads(record['demand'])) != {'configuration','slots','ram_bytes','vram_bytes','pids','disk_bytes','attempt_disk_bytes'}:
+                    self.reasons.add('unknown_reference_schema')
+    assets = {r['id']: json.loads(r['metadata']) for r in data.get('assets', [])}
+    jobs = {r['id']: json.loads(r['job']) for r in data.get('jobs', [])}
+    contexts = {r['id']: json.loads(r['context']) for r in data.get('jobs', [])}
+    attempts, owners = {}, {}
+    for job in jobs.values():
+        for a in job['attempts']:
+            owner = {k: a[k] for k in ('id', 'generation', 'owner_id', 'staging_id')}
+            owner.update(job_id=job['id'], input_sha256=job['input_sha256'])
+            if any(not isinstance(v,(str,int)) or len(str(v))>128 for v in owner.values()):
+                raise Incomplete('invalid_owner_tuple')
+            attempts[a['staging_id']] = owner
+            owners[a['owner_id']] = owner
+    work = {}
+    for r in data.get('publication_work', []):
+        work[r['destination']] = r
+        work[r['temporary']] = r
+    def job_owner(job_id):
+        known = jobs.get(job_id, {}).get('attempts', [])
+        return attempts.get(known[-1]['staging_id']) if known else None
+    def work_owner(name):
+        return attempts.get(json.loads(work[name]['binding'])['staging_id']) if name in work else None
+    reservations = {r['id']: r for r in data.get('resource_reservations', [])}
+    dispatches = data.get('dispatches', [])
+    for r in dispatches:
+        if r['acked']: continue
+        dispatch_reasons = set()
+        try:
+            a = Authority(*json.loads(r['authority']))
+            job = jobs[r['job_id']]
+            if (a.binding != r['binding'] or a.job['id'] != job['id'] or
+                a.job['attempts'][-1] != {**job['attempts'][-1], 'reaped': a.job['attempts'][-1]['reaped']} or
+                a.job['generation'] != job['generation'] or a.context != contexts[job['id']] or
+                a.job['deadline'] != job['deadline']):
+                dispatch_reasons.add('dispatch_owner_mismatch')
+            if r['runtime'] is None: dispatch_reasons.add('unbound_dispatch')
+            reservation = reservations.get(job['id'])
+            if reservation:
+                demand = json.loads(reservation['demand'])
+                from worker.runtime_protocol import execution
+                frozen_value = a.context['execution'] if execution(a.context) is not None else a.context['plan']['resolved']['identity']['effective']
+                frozen_configuration = hashlib.sha256(encode(frozen_value).encode()).hexdigest()
+                if (reservation['category'] != 'inference' or demand['configuration'] != frozen_configuration or
+                    demand['disk_bytes'] < demand['attempt_disk_bytes'] * len(job['attempts'])):
+                    dispatch_reasons.add('reservation_binding_mismatch')
+            if not reservation or reservation['state'] not in ('executing', 'retained'):
+                dispatch_reasons.add('missing_or_invalid_reservation')
+            if reservation and ((reservation['state'] == 'retained' and not r['outcome']) or (reservation['state'] == 'executing' and r['outcome'])):
+                dispatch_reasons.add('reservation_outcome_mismatch')
+            if r['receipt']:
+                receipt = json.loads(r['receipt'])
+                if (receipt.get('runtime_id') != r['runtime'] or receipt.get('binding') != a.binding or
+                    receipt.get('original_deadline') != a.job['deadline'] or receipt.get('reaped') is not True or
+                    receipt.get('reap_method') != 'pid1-waitpid-echild'):
+                    dispatch_reasons.add('receipt_mismatch')
+            elif r['outcome'] or job['state'] in ('succeeded','failed','cancelled'):
+                dispatch_reasons.add('terminal_receipt_missing')
+            publication = next((p for p in data.get('publications', []) if p['job_id'] == job['id']), None)
+            if publication:
+                artifact = json.loads(publication['artifact'])
+                for key in ('attempt_id','owner_id','staging_id','generation'):
+                    expected = a.job['generation'] if key == 'generation' else a.job['attempts'][-1]['id' if key == 'attempt_id' else key]
+                    if artifact[key] != expected: dispatch_reasons.add('publication_owner_mismatch')
+        except (ValueError, ValidationError, KeyError, IndexError, TypeError, RecursionError):
+            dispatch_reasons.add('invalid_dispatch_identity')
+        resolution=resolved.get(r['seq'])
+        # Consume old mismatches only after independently checking all
+        # current joins. Allowed reasons cannot erase a new strict defect.
+        permitted = {'unbound_dispatch', 'reservation_outcome_mismatch', 'terminal_receipt_missing'}
+        if resolution:
+            accepted = next(v for v in b2['p1_recoveries'] if v['id'] == resolution['recovery_id'])
+            expected = accepted['expected'][3]['output']['rows']
+            job_row = next(v for v in expected['jobs'] if v[1] == r['job_id'])
+            reservation_row = next(v for v in expected['resource_reservations'] if v[0] == r['job_id'])
+            current_job_row = next(v for v in data['jobs'] if v['id'] == r['job_id'])
+            if (current_job_row != dict(zip(COLUMNS['jobs'].split(), job_row)) or
+                reservation != dict(zip(COLUMNS['resource_reservations'].split(), reservation_row))):
+                dispatch_reasons.add('recovered_job_reservation_mismatch')
+            if not dispatch_reasons - permitted:
+                dispatch_reasons.difference_update(permitted)
+        if dispatch_reasons:
+            self.reasons.update(dispatch_reasons)
+            # Retain one stable object; summary retains every reason.
+            reason = sorted(dispatch_reasons - permitted or dispatch_reasons)[0]
+            self._row('dispatch', str(r['seq']), 'unresolved_owner_receipt_reservation', reason, owner=job_owner(r['job_id']))
+    if 'resource_reservations' in data:
+        for job_id in jobs.keys() - reservations.keys():
+            self.reasons.add('missing_reservation')
+            self._row('reservation', job_id, 'unresolved_owner_receipt_reservation', 'missing_reservation', owner=job_owner(job_id))
+    for reservation in reservations.values():
+        if reservation['id'] not in jobs:
+            self.reasons.add('reservation_job_missing')
+            self._row('reservation', reservation['id'], 'unresolved_owner_receipt_reservation', 'reservation_job_missing')
+        if reservation['state'] == 'executing' and not any(r['job_id']==reservation['id'] and not r['acked'] for r in dispatches):
+            self.reasons.add('unexplained_executing_reservation')
+            self._row('reservation', reservation['id'], 'unresolved_owner_receipt_reservation', 'unexplained_executing_reservation', owner=job_owner(reservation['id']))
+    return refs, assets, jobs, contexts, attempts, owners, work, job_owner, work_owner, reservations, dispatches
