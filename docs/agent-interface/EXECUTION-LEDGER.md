@@ -2159,3 +2159,7 @@ r193 sourcec826c0c6/docsfb2fec48 reproduces both prior defects, adds repeated se
 ### 2026-10-24 — Provisioning adopted; authenticated Kokoro lifecycle starts
 
 r194 source GO closes sealing/downloadbounds/manifest seam. Parent mergedfb2fec48 conflict-free;27 integrated tests PASS. Commissioned Sol-low r195 closedKokoro execution descriptor/verifiedbundle mapping through existing authority/admission/worker/publication lifecycle. No actualmodel inference/download or installedactivation in source lot; preserve synthetic and resource/reap fences.
+
+### 2026-10-24 — Generated audio provenance contract clarified
+
+r195 found provenance enum lacks real generated speech. Parent authorized minimal additive generated value in v1 schema with execution-descriptor/job/attempt binding and positive/tampered-source regressions. Existing provenance values and synthetic evidence labels remain; no actual inference claim from injected tests. Same lifecycle implementation continues.
