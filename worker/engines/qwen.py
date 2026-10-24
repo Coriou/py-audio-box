@@ -17,19 +17,77 @@ from .qwen_execution import QwenExecution
 from .pocket import _open, _read, _reference_pcm16
 
 
-def verify_inputs(e, bundles, references, inventory, *, owner_uid=None):
-    if type(e) is not QwenExecution: raise Refused('typed_execution_required')
-    family = DeviceFamily.CUDA if e.device.startswith('cuda:') else DeviceFamily(e.device)
-    index = int(e.device.split(':')[1]) if family == DeviceFamily.CUDA else 0
-    if type(inventory) is not HardwareInventory or not topology_allows(inventory.host, family): raise Refused('device_topology')
-    if not any(d.family == family and d.index == index and d.supported is True and d.available is True and d.probed_at for d in inventory.devices): raise Refused('device_unavailable')
-    if e.bundle_id not in bundles: raise Refused('unauthorized_bundle')
-    root = Path(bundles[e.bundle_id]).absolute()
+def validate_declarations(c, language):
+    """Pure operator declarations; never probes or manufactures hardware evidence."""
+    if type(c) is not dict or set(c) != {'sample_rate','languages','presets','devices'}: raise Refused('bundle_capabilities')
+    if type(c['sample_rate']) is not int or not 0 < c['sample_rate'] <= 192000: raise Refused('bundle_capabilities')
+    for key in ('languages', 'presets'):
+        values = c[key]
+        if type(values) is not list or len(values) > 256 or any(type(v) is not str or not v.strip() or len(v) > 256 for v in values) or len(set(values)) != len(values): raise Refused('bundle_capabilities')
+    if language not in c['languages']: raise Refused('bundle_capabilities')
+    if type(c['devices']) is not list or not 1 <= len(c['devices']) <= 256: raise Refused('bundle_capabilities')
+    seen = set()
+    import re
+    for d in c['devices']:
+        if type(d) is not dict or set(d) != {'device','dtype','attention'}: raise Refused('bundle_capabilities')
+        device, dtype, attention = d['device'], d['dtype'], d['attention']
+        if type(device) is not str or not re.fullmatch(r'cpu|mps|cuda:(0|[1-9][0-9]{0,2})', device) or dtype not in ('float32','float16','bfloat16') or attention not in ('eager','sdpa','flash_attention_2'): raise Refused('bundle_capabilities')
+        if (device == 'cpu' and dtype != 'float32') or (device == 'mps' and dtype == 'bfloat16') or (not device.startswith('cuda:') and attention == 'flash_attention_2'): raise Refused('bundle_capabilities')
+        key = (device,dtype,attention)
+        if key in seen: raise Refused('bundle_capabilities')
+        seen.add(key)
+
+
+def _managed_snapshot(root, manifest, names, caps, owner_uid):
+    """Bound local JSON and forbid executable/remote loader declarations.
+
+    Architecture/tensor semantics still belong to the actual upstream loader.
+    Config bytes are never rewritten or generated from a model-name guess.
+    """
+    if manifest['language'] not in ('English', 'French') or any(l not in ('English','French') for l in manifest['execution']['languages']): raise Refused('bundle_language')
+    if not {'tokenizer.json','tokenizer_config.json'} <= names: raise Refused('bundle_config')
+    if caps.modes != ('custom_voice',) and manifest['execution']['presets']: raise Refused('bundle_capabilities')
+    def inspect(value, key='', directory=''):
+        if key in ('auto_map', 'custom_pipelines') or key == 'trust_remote_code' and value is not False: raise Refused('remote_code')
+        if isinstance(value, dict):
+            for k, v in value.items(): inspect(v, k, directory)
+        elif isinstance(value, list):
+            for v in value: inspect(v, key, directory)
+        elif isinstance(value, str):
+            if '://' in value: raise Refused('remote_config')
+            if key.endswith(('_file', '_path')) and value:
+                if str(Path(directory)/value) not in names or Path(value).is_absolute() or '..' in Path(value).parts: raise Refused('unlisted_config_path')
+    for name in names:
+        if not name.endswith('.json'): continue
+        value = json.loads(_read(root/name, 16*1024*1024, owner_uid=owner_uid))
+        if type(value) is not dict: raise Refused('bundle_config')
+        inspect(value, directory=str(Path(name).parent) if Path(name).parent != Path('.') else '')
+        if name.endswith('.safetensors.index.json'):
+            weights = value.get('weight_map')
+            if type(weights) is not dict or not weights or any(type(v) is not str or str(Path(name).parent/v) not in names or not v.endswith('.safetensors') for v in weights.values()): raise Refused('bundle_config')
+    config = json.loads(_read(root/'config.json', 16*1024*1024, owner_uid=owner_uid))
+    talker = config.get('talker_config', {})
+    if type(talker) is not dict: raise Refused('bundle_config')
+    # When present upstream declarations are authoritative, never inferred pins.
+    languages = talker.get('lang_id')
+    if languages is not None:
+        if type(languages) is not dict or any(l.lower() not in languages for l in manifest['execution']['languages']): raise Refused('bundle_capabilities')
+    speakers = talker.get('spk_id')
+    if speakers is not None:
+        if type(speakers) is not dict or any(p.lower() not in speakers for p in manifest['execution']['presets']): raise Refused('bundle_capabilities')
+    for config_name in ('config.json', 'generation_config.json'):
+        value = json.loads(_read(root/config_name, 16*1024*1024, owner_uid=owner_uid))
+        if 'sample_rate' in value and value['sample_rate'] != manifest['execution']['sample_rate']: raise Refused('bundle_capabilities')
+
+
+def verify_bundle(root, manifest_digest, checkpoint, revision, language, *, owner_uid=None, execution=None):
+    """Local byte/config validation shared by provisioning and execution. No ML."""
+    root = Path(root).absolute()
     os.close(_open(root, True, owner_uid=owner_uid))
-    raw = _read(root/'manifest.json', 65536, e.manifest_sha256, owner_uid=owner_uid)
+    raw = _read(root/'manifest.json', 65536, manifest_digest, owner_uid=owner_uid)
     try:
         m = json.loads(raw)
-        if (m['schema_version'], m['backend'], m['checkpoint'], m['revision'], m['language']) != (1,'qwen',e.checkpoint,e.revision,e.language) or type(m['schema_version']) is not int: raise Refused('bundle_identity')
+        if (m['schema_version'], m['backend'], m['checkpoint'], m['revision'], m['language']) != (1,'qwen',checkpoint,revision,language) or type(m['schema_version']) is not int: raise Refused('bundle_identity')
         entries = m['files']
         if type(entries) is not list or not 1 <= len(entries) <= 256: raise Refused('bundle_files')
         names = set(); total = 0
@@ -60,15 +118,31 @@ def verify_inputs(e, bundles, references, inventory, *, owner_uid=None):
                 if p.is_symlink(): raise Refused('bundle_files')
             actual.update(str((Path(directory)/name).relative_to(root)) for name in files)
         if actual != names | {'manifest.json'}: raise Refused('bundle_files')
-        from lib.tts_backends.qwen import validate_checkpoint_request
-        validate_checkpoint_request(root, e.task, e.instruct)
+        from lib.tts_backends.qwen import checkpoint_capabilities, validate_checkpoint_request
+        caps = checkpoint_capabilities(root)
         c = m['execution']
-        if type(c) is not dict or set(c) != {'sample_rate','languages','presets','devices'}: raise Refused('bundle_capabilities')
-        if type(c['sample_rate']) is not int or c['sample_rate'] != e.sample_rate or type(c['languages']) is not list or e.language not in c['languages'] or type(c['presets']) is not list: raise Refused('bundle_capabilities')
-        if e.preset is not None and e.preset not in c['presets']: raise Refused('unsupported_preset')
-        if type(c['devices']) is not list or {'device':e.device,'dtype':e.dtype,'attention':e.attention} not in c['devices']: raise Refused('unsupported_execution')
+        validate_declarations(c, language)
+        if 'versions' in m:
+            _managed_snapshot(root, m, names, caps, owner_uid)
+        if execution is not None:
+            e = execution
+            validate_checkpoint_request(root, e.task, e.instruct)
+            if c['sample_rate'] != e.sample_rate: raise Refused('bundle_capabilities')
+            if e.preset is not None and e.preset not in c['presets']: raise Refused('unsupported_preset')
+            if {'device':e.device,'dtype':e.dtype,'attention':e.attention} not in c['devices']: raise Refused('unsupported_execution')
     except (KeyError, TypeError, ValueError) as exc:
         raise Refused('bundle_contract') from exc
+    return root, m
+
+
+def verify_inputs(e, bundles, references, inventory, *, owner_uid=None):
+    if type(e) is not QwenExecution: raise Refused('typed_execution_required')
+    family = DeviceFamily.CUDA if e.device.startswith('cuda:') else DeviceFamily(e.device)
+    index = int(e.device.split(':')[1]) if family == DeviceFamily.CUDA else 0
+    if type(inventory) is not HardwareInventory or not topology_allows(inventory.host, family): raise Refused('device_topology')
+    if not any(d.family == family and d.index == index and d.supported is True and d.available is True and d.probed_at for d in inventory.devices): raise Refused('device_unavailable')
+    if e.bundle_id not in bundles: raise Refused('unauthorized_bundle')
+    root, _ = verify_bundle(bundles[e.bundle_id], e.manifest_sha256, e.checkpoint, e.revision, e.language, owner_uid=owner_uid, execution=e)
     reference = None
     if e.task == 'clone':
         if e.reference_id not in references: raise Refused('unauthorized_reference')
