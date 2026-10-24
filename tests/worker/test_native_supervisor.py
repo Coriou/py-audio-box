@@ -230,10 +230,16 @@ class NativeSupervisorTests(unittest.TestCase):
         output=collected['output']
         data=self.s.dispatch(self.q('get_output',dict(sha256=output['sha256'],offset=0,bytes=output['bytes'])))
         self.assertEqual(hashlib.sha256(base64.b64decode(data['data'])).hexdigest(),output['sha256'])
-        old=self.q('collect'); ack=self.q('ack')
+        old=self.q('collect'); ack=self.q('ack'); download=self.q('get_output',dict(sha256=output['sha256'],offset=0,bytes=output['bytes']))
         self.s.journal.lock.close(); self.make()
         self.assertEqual(self.s.dispatch(old),collected)
+        self.assertEqual(self.s.dispatch(download),data)
         self.s.dispatch(ack); self.assertFalse(self.s.quarantined)
+        self.assertEqual(self.s.dispatch(download),data)
+        for change in ({'boot':self.s.boot},{'binding':'f'*64},{'configuration_sha256':'f'*64},
+                       {'body':dict(download['body'],sha256='f'*64)}):
+            with self.assertRaises(Refused): self.s.dispatch(dict(download,**change))
+        with self.assertRaises(Refused): self.s.dispatch(dict(ack,op='start'))
 
     def test_output_bad_hash_pcm_and_cap(self):
         from worker.native_child import proposal,validate_proposal
@@ -378,3 +384,124 @@ class NativeSupervisorTests(unittest.TestCase):
         result=self.s.dispatch(self.q('prepare',{'snapshot':snapshot}))
         self.assertEqual(result['state'],'alive');self.assertIn(self.s.boot,result['runtime_id'])
         self.assertEqual(len(self.s.journal.value['records']),2)
+
+    def active_after_history(self):
+        self.prepare(); self.s.dispatch(self.q('stop')); old=self.q('ack')
+        snapshot=copy.deepcopy(self.snapshot); snapshot[0]['id']='next-job'
+        binding=hashlib.sha256(canonical(snapshot)).hexdigest()
+        reg=copy.deepcopy(self.reg[self.binding]); reg['snapshot']=snapshot
+        self.s.registrations[binding]=reg
+        self.snapshot=snapshot; self.binding=binding
+        self.rid=self.s.dispatch(self.q('prepare',{'snapshot':snapshot}))['runtime_id']
+        with patch('worker.native_child.parent_exchange',return_value=None):
+            self.s.dispatch(self.q('start')); self.s.active['receiver'].join(1)
+        return old
+
+    def test_historical_ack_failure_active_cutoff_escalates(self):
+        old=self.active_after_history(); active=self.s.active
+        with patch.object(self.s.journal,'save',side_effect=OSError('permanent fsync')):
+            with self.assertRaises(Refused): self.s.dispatch(old)
+            self.t+=26; self.s.tick(); self.t+=.21; self.s.tick()
+            self.s.dispatch(self.q('stop'))
+            self.h.code=-9; self.s.tick()
+        self.assertEqual(self.signals,[(123,signal.SIGTERM),(123,signal.SIGKILL)])
+        self.assertIs(self.s.active,active); self.assertEqual(self.h.waited,1)
+        self.assertTrue(active['closed']); self.assertIsNone(self.s.dispatch(self.q('collect'))['receipt'])
+        with self.assertRaises(Refused): self.s.dispatch(self.q('start'))
+
+    def blocked_ack(self,cutoff):
+        old=self.active_after_history(); entered=threading.Event(); release=threading.Event(); errors=[]
+        save=self.s.journal.save
+        def blocked(value):
+            entered.set()
+            if not release.wait(2): raise RuntimeError('barrier timeout')
+            save(value)
+        def ack():
+            try: self.s.dispatch(old)
+            except Exception as exc: errors.append(exc)
+        with patch.object(self.s.journal,'save',blocked):
+            thread=threading.Thread(target=ack); thread.start()
+            try:
+                self.assertTrue(entered.wait(1))
+                if cutoff: self.t+=26
+                else: self.s.dispatch(self.q('stop'))
+                self.s.tick(); self.t+=.21; self.s.tick()
+                self.assertEqual(self.signals,[(123,signal.SIGTERM),(123,signal.SIGKILL)])
+            finally: release.set(); thread.join(2)
+        self.assertFalse(thread.is_alive()); self.assertEqual(errors,[])
+
+    def test_blocked_historical_ack_cutoff_independent(self): self.blocked_ack(True)
+
+    def test_blocked_historical_ack_stop_independent(self): self.blocked_ack(False)
+
+    def uncertain_stop(self,post_replace):
+        import os
+        self.prepare(); save=self.s.journal.save
+        if post_replace:
+            original=os.fsync
+            def fsync(fd):
+                import stat
+                if stat.S_ISDIR(os.fstat(fd).st_mode): raise OSError('directory fsync unknown')
+                return original(fd)
+            context=patch('worker.native_supervisor.os.fsync',fsync)
+        else: context=patch.object(self.s.journal,'save',side_effect=OSError('pre replace'))
+        with context:
+            with self.assertRaises(Refused): self.s.dispatch(self.q('stop'))
+        with patch.object(self.s.journal,'save',wraps=save) as retry:
+            for _ in range(3):
+                self.t+=26; self.s.tick()
+                self.assertEqual(self.s.dispatch(self.q('observe'))['state'],'unknown')
+                self.assertEqual(self.s.dispatch(self.q('collect')),dict(receipt=None,proposal=None,output=None))
+                for op in ('stop','start','ack'):
+                    with self.assertRaises(Refused): self.s.dispatch(self.q(op))
+            retry.assert_not_called()
+        self.assertTrue(self.s.quarantined); self.assertEqual(self.calls,[])
+        self.assertTrue((self.root/'native.json').exists())
+
+    def test_pre_replace_uncertainty_never_promotes(self): self.uncertain_stop(False)
+
+    def test_post_replace_directory_uncertainty_never_promotes(self): self.uncertain_stop(True)
+
+    def test_pair_failure_and_identity_mismatch_preserve_unknown(self):
+        self.prepare()
+        with patch.object(self.s,'pair',side_effect=OSError('pair')):
+            # Production connection handler quarantines unexpected launch errors.
+            with self.assertRaises(OSError): self.s.dispatch(self.q('start'))
+        self.assertEqual(self.calls,[])
+        self.s.failed=True; self.s.tick()
+        self.assertIsNone(self.s.dispatch(self.q('collect'))['receipt'])
+
+    def test_storage_failure_between_term_and_kill_receiver_unknown(self):
+        old=self.active_after_history(); self.s.dispatch(self.q('stop')); self.s.tick()
+        with patch.object(self.s.journal,'save',side_effect=OSError('permanent')):
+            with self.assertRaises(Refused): self.s.dispatch(old)
+            self.t+=.21; self.s.tick()
+            self.s.active['closed']=False; self.h.code=-9; self.s.tick(); self.s.tick()
+        self.assertEqual(self.signals,[(123,signal.SIGTERM),(123,signal.SIGKILL)])
+        self.assertEqual(self.h.waited,1); self.assertIsNotNone(self.s.active)
+        self.assertIsNone(self.s.dispatch(self.q('collect'))['receipt'])
+
+    def test_blocked_popen_registration_stop_and_identity_serialization(self):
+        self.prepare(); entered=threading.Event(); release=threading.Event(); errors=[]
+        def popen(*args,**kwargs):
+            entered.set()
+            if not release.wait(2): raise RuntimeError('barrier timeout')
+            return self.h
+        def start():
+            try: self.s.dispatch(self.q('start'))
+            except Exception as exc: errors.append(exc)
+        self.s.popen=popen
+        with patch('worker.native_child.parent_exchange',return_value=None):
+            thread=threading.Thread(target=start); thread.start()
+            try:
+                self.assertTrue(entered.wait(1)); self.s.dispatch(self.q('stop'))
+                self.t+=26; self.s.tick(); self.assertEqual(self.signals,[])
+            finally: release.set(); thread.join(2)
+            self.s.active['receiver'].join(1)
+        self.assertEqual(errors,[]); self.s.tick()
+        self.assertEqual(self.signals,[(123,signal.SIGTERM)])
+        self.s.identity=lambda h:'changed'; self.t+=.21; self.s.tick()
+        self.assertEqual(len(self.signals),1); self.assertTrue(self.s.quarantined)
+        self.h.code=-15; self.s.tick(); self.s.tick()
+        self.assertEqual(len(self.signals),1); self.assertEqual(self.h.waited,1)
+        self.assertIsNone(self.s.dispatch(self.q('collect'))['receipt'])

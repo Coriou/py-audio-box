@@ -163,6 +163,8 @@ class NativeSupervisor:
         self.free_ram=free_ram
         self.free_bytes=free_bytes or (lambda: shutil.disk_usage(self.journal.root).free)
         self.lock=threading.RLock(); self.transfer=threading.Lock()
+        # Only exact live-handle selection, poll, identity and signals use this lock.
+        self.handle_lock=threading.Lock(); self.uncertain=set()
         self.active=None; self.failed=False; self.launches=0
         self.cutoffs={}; self.cancelled=set(); self.slots=threading.BoundedSemaphore(3)
         self.shutdown_event=threading.Event(); self.transfer_slot=threading.BoundedSemaphore(1)
@@ -172,13 +174,14 @@ class NativeSupervisor:
         return self.failed or any(r['phase']!='terminal' and r['id'] not in self.cutoffs for r in self.journal.value['records'])
 
     def persist(self,r,**changes):
-        value=copy.deepcopy(self.journal.value)
-        target=next(x for x in value['records'] if x['id']==r['id']); target.update(changes)
-        try: self.journal.save(value)
-        except Exception:
-            self.failed=True
-            raise Refused('native_unknown') from None
-        return target
+        with self.lock:
+            value=copy.deepcopy(self.journal.value)
+            target=next(x for x in value['records'] if x['id']==r['id']); target.update(changes)
+            try: self.journal.save(value)
+            except Exception:
+                self.failed=True; self.uncertain.add(r['id'])
+                raise Refused('native_unknown') from None
+            return target
 
     def registration(self,r,verify=False):
         reg=self.registrations.get(r['binding'])
@@ -211,6 +214,16 @@ class NativeSupervisor:
         q=p.request(request)
         if q['deployment_id']!=self.journal.deployment or q['configuration_sha256']!=self.journal.configuration: raise Refused('native_session')
         op=q['op']
+        # Stop must reach the owned handle even while a previous ACK holds the
+        # state lock in fsync. Journal values are replaced, never edited in place.
+        if op=='stop':
+            r=next((r for r in self.journal.value['records'] if r['id']==q['runtime_id']),None)
+            if (q['lane']!=self.journal.value['lane'] or r is None or
+                (q['binding'],q['boot'])!=(r['binding'],r['boot']) or q['boot']!=self.boot): raise Refused('native_session')
+            with self.handle_lock:
+                if self.active and self.active['id']==r['id']:
+                    self.active['cancel']=True
+                    return {}
         with self.lock:
             if op=='hello':
                 from worker.engines.qwen_execution import inventory_wire
@@ -221,21 +234,26 @@ class NativeSupervisor:
             if op=='prepare': return self.prepare(q)
             r=next((r for r in self.journal.value['records'] if r['id']==q['runtime_id']),None)
             if r is None or (q['binding'],q['boot'])!=(r['binding'],r['boot']): raise Refused('native_session')
-            if op not in ('observe','collect','ack') and q['boot']!=self.boot: raise Refused('native_session')
+            if op not in ('observe','collect','ack','get_output') and q['boot']!=self.boot: raise Refused('native_session')
             if op=='observe': return dict(runtime_id=r['id'],state=self.state(r))
-            if op=='collect': return dict(receipt=r['receipt'],proposal=r['proposal'],output=r['output'])
+            if op=='collect':
+                if r['id'] in self.uncertain: return dict(receipt=None,proposal=None,output=None)
+                return dict(receipt=r['receipt'],proposal=r['proposal'],output=r['output'])
             if op=='ack':
+                if self.failed or r['id'] in self.uncertain: raise Refused('native_unknown')
                 if r['phase']!='terminal': raise Refused('native_state')
                 self.persist(r,acked=True) # Keep bounded transfer evidence; no automatic cleanup.
                 return {}
-            if self.quarantined: raise Refused('native_unknown')
+            if self.quarantined and op!='get_output': raise Refused('native_unknown')
             if op=='stop':
                 if r['phase']=='prepared':
                     self.cancelled.add(r['id'])
                     if self.transfer.acquire(False):
                         try: self.terminal(r,[],False)
                         finally: self.transfer.release()
-                elif self.active and self.active['id']==r['id']: self.active['cancel']=True
+                else:
+                    with self.handle_lock:
+                        if self.active and self.active['id']==r['id']: self.active['cancel']=True
                 return {}
         if op=='start': return self.start(r)
         # Transfer never holds the launch/watchdog lock while hashing or fsync.
@@ -247,7 +265,7 @@ class NativeSupervisor:
                     self.failed=True; raise Refused('native_unknown') from None
             if op=='get_output':
                 b=q['body']
-                if r['phase']!='terminal' or r['output'] is None or b['sha256']!=r['output']['sha256'] or b['offset']+b['bytes']>r['output']['bytes']: raise Refused('native_output')
+                if r['id'] in self.uncertain or r['phase']!='terminal' or r['output'] is None or b['sha256']!=r['output']['sha256'] or b['offset']+b['bytes']>r['output']['bytes']: raise Refused('native_output')
                 data=read_private(self.directory(r)/'output',1048576)
                 if hashlib.sha256(data).hexdigest()!=b['sha256']: self.failed=True; raise Refused('native_output')
                 return dict(sha256=b['sha256'],offset=b['offset'],data=base64.b64encode(data[b['offset']:b['offset']+b['bytes']]).decode())
@@ -255,6 +273,7 @@ class NativeSupervisor:
         raise Refused('native_protocol')
 
     def state(self,r):
+        if r['id'] in self.uncertain: return 'unknown'
         if r['phase']=='terminal': return 'stopped-and-reaped'
         if r['id'] in self.cutoffs and not self.failed: return 'alive'
         return 'unknown'
@@ -288,7 +307,7 @@ class NativeSupervisor:
             try: os.fsync(fd)
             finally: os.close(fd)
         except Exception:
-            self.failed=True; raise Refused('native_unknown') from None
+            self.failed=True; self.uncertain.add(r['id']); raise Refused('native_unknown') from None
         self.cutoffs[r['id']]=cutoff
         return dict(runtime_id=r['id'],state='alive')
 
@@ -338,10 +357,11 @@ class NativeSupervisor:
                 r=self.persist(r,phase='launch-intent')
                 parent,child=self.pair(); token=secrets.token_hex(16)
                 a=dict(id=r['id'],handle=None,parent=parent,receiver=None,closed=False,result=None,token=token,cancel=False,term=None,killed=None,exit=None,start_identity=None)
-                self.active=a
+                with self.handle_lock: self.active=a
                 try:
                     handle=self.popen([self.python,'-I','-B',self.entry,str(child.fileno())],stdin=subprocess.DEVNULL,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL,close_fds=True,pass_fds=(child.fileno(),),start_new_session=True,env={'PYTHONNOUSERSITE':'1','TOKENIZERS_PARALLELISM':'false','HF_HUB_OFFLINE':'1','TRANSFORMERS_OFFLINE':'1'})
-                    a['handle']=handle; a['start_identity']=self.identity(handle); self.launches+=1
+                    with self.handle_lock:
+                        a['handle']=handle; a['start_identity']=self.identity(handle); self.launches+=1
                 except Exception:
                     self.failed=True
                     try: parent.close()
@@ -362,67 +382,92 @@ class NativeSupervisor:
         finally: self.transfer.release()
 
     def terminal(self,r,processes,timely,proposal=None,output=None):
+        if self.failed or r['id'] in self.uncertain: raise Refused('native_unknown')
         receipt=dict(self.journal.expected(r),version='native-receipt-v1',reaped=True,timely=timely,reap_method='darwin-owned-exec-v1',processes=processes,receiver_closed=True)
         self.persist(r,phase='terminal',receipt=receipt,proposal=proposal,output=output)
 
-    def tick(self):
-        with self.lock:
+    def signal_tick(self):
+        # No journal, hashing, Popen, receiver join or blocking wait here.
+        with self.handle_lock:
             a=self.active
-            if a is None:
-                for r in self.journal.value['records']:
-                    if r['phase']=='prepared' and r['id'] in self.cutoffs and (self.clock()>=self.cutoffs[r['id']] or r['id'] in self.cancelled):
-                        if self.transfer.acquire(False):
-                            try: self.terminal(r,[],False)
-                            except Exception: self.failed=True
-                            finally: self.transfer.release()
-                return
+            if a is None or a['handle'] is None: return
             h=a['handle']
-            if h is None: self.failed=True; return
-            r=next(r for r in self.journal.value['records'] if r['id']==a['id'])
             try:
-                if a['exit'] is None:
-                    status=h.poll()
-                    if status is not None:
-                        code=h.wait(timeout=1)
-                        if type(code) is not int or code!=status: raise Refused('native_wait')
-                        a['exit']=code
-                    elif not self.failed and (a['cancel'] or self.clock()>=self.cutoffs[r['id']]):
-                        if self.identity(h)!=a['start_identity']: raise Refused('native_identity')
-                        if a['term'] is None:
-                            self.signal_group(h.pid,signal.SIGTERM); a['term']=self.clock()
-                        elif self.clock()-a['term']>=.2 and a['killed'] is None:
-                            self.signal_group(h.pid,signal.SIGKILL); a['killed']=self.clock()
-                        elif a['killed'] is not None and self.clock()-a['killed']>=1:
-                            self.failed=True
-                if a['exit'] is None or self.failed: return
-                receiver=a['receiver']
-                receiver.join(timeout=0)
-                if receiver.is_alive():
-                    if self.clock()>self.cutoffs[r['id']]+1: self.failed=True
+                if a['exit'] is not None: return
+                status=h.poll()
+                if status is not None:
+                    a['exit']=status
                     return
-                if not a['closed']: self.failed=True; return
-                reg=self.registration(r); e=reg['execution']
-                if e.task=='clone':
-                    directory=private(self.directory(r)/'conditioning',True)
-                    if list(directory.iterdir()): self.failed=True; return
-                    directory.rmdir()
-                proposal=output=None
-                result=a['result']
-                timely=False
-                if result is not None and a['exit']==0 and not a['cancel']:
-                    proposal,data=result
-                    from worker.native_child import validate_proposal
-                    validate_proposal(r['snapshot'],proposal,data,e)
-                    fd=os.open(self.directory(r)/'output',os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW,0o600)
-                    with os.fdopen(fd,'wb') as stream: stream.write(data); stream.flush(); os.fsync(stream.fileno())
-                    directory=os.open(self.directory(r),os.O_RDONLY|os.O_DIRECTORY|os.O_NOFOLLOW)
-                    try: os.fsync(directory)
-                    finally: os.close(directory)
-                    output=dict(sha256=hashlib.sha256(data).hexdigest(),bytes=len(data))
-                    timely=self.clock()<self.cutoffs[r['id']]
-                process=dict(role='model',spawn_token=a['token'],pid=h.pid,pgid=h.pid,start_identity=a['start_identity'],exit_code=a['exit'])
-                self.terminal(r,[process],timely,proposal,output); self.active=None
+                if a['cancel'] or self.clock()>=self.cutoffs[a['id']]:
+                    if self.identity(h)!=a['start_identity']: raise Refused('native_identity')
+                    if a['term'] is None:
+                        self.signal_group(h.pid,signal.SIGTERM); a['term']=self.clock()
+                    elif self.clock()-a['term']>=.2 and a['killed'] is None:
+                        self.signal_group(h.pid,signal.SIGKILL); a['killed']=self.clock()
+                    elif a['killed'] is not None and self.clock()-a['killed']>=1:
+                        self.failed=True
             except Exception: self.failed=True
+
+    def tick(self):
+        self.signal_tick()
+        # A blocked durable operation never delays the next signalling pass.
+        if not self.lock.acquire(False): return
+        try: self.finish_tick()
+        finally: self.lock.release()
+
+    def finish_tick(self):
+        a=self.active
+        if a is None:
+            if self.failed: return
+            for r in self.journal.value['records']:
+                if r['phase']=='prepared' and r['id'] in self.cutoffs and (self.clock()>=self.cutoffs[r['id']] or r['id'] in self.cancelled):
+                    if self.transfer.acquire(False):
+                        try: self.terminal(r,[],False)
+                        except Exception: self.failed=True
+                        finally: self.transfer.release()
+            return
+        h=a['handle']
+        if h is None: return
+        r=next(r for r in self.journal.value['records'] if r['id']==a['id'])
+        try:
+            if a['exit'] is None: return
+            if not a.get('waited'):
+                if a.get('wait_attempted'): return
+                a['wait_attempted']=True
+                code=h.wait(timeout=1)
+                if type(code) is not int or code!=a['exit']: raise Refused('native_wait')
+                a['waited']=True
+            if self.failed: return
+            receiver=a['receiver']
+            if receiver is None: return
+            receiver.join(timeout=0)
+            if receiver.is_alive():
+                if self.clock()>self.cutoffs[r['id']]+1: self.failed=True
+                return
+            if not a['closed']: self.failed=True; return
+            reg=self.registration(r); e=reg['execution']
+            if e.task=='clone':
+                directory=private(self.directory(r)/'conditioning',True)
+                if list(directory.iterdir()): self.failed=True; return
+                directory.rmdir()
+            proposal=output=None
+            result=a['result']
+            timely=False
+            if result is not None and a['exit']==0 and not a['cancel']:
+                proposal,data=result
+                from worker.native_child import validate_proposal
+                validate_proposal(r['snapshot'],proposal,data,e)
+                fd=os.open(self.directory(r)/'output',os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW,0o600)
+                with os.fdopen(fd,'wb') as stream: stream.write(data); stream.flush(); os.fsync(stream.fileno())
+                directory=os.open(self.directory(r),os.O_RDONLY|os.O_DIRECTORY|os.O_NOFOLLOW)
+                try: os.fsync(directory)
+                finally: os.close(directory)
+                output=dict(sha256=hashlib.sha256(data).hexdigest(),bytes=len(data))
+                timely=self.clock()<self.cutoffs[r['id']]
+            process=dict(role='model',spawn_token=a['token'],pid=h.pid,pgid=h.pid,start_identity=a['start_identity'],exit_code=a['exit'])
+            self.terminal(r,[process],timely,proposal,output)
+            with self.handle_lock: self.active=None
+        except Exception: self.failed=True
 
     def watchdog(self):
         while not self.shutdown_event.wait(.02): self.tick()
@@ -472,7 +517,8 @@ def serve(supervisor, context, host, port, *, proven_host_network=False,
                     finally: connections.release()
                 threading.Thread(target=handle,daemon=True).start()
         finally:
-            if supervisor.active: supervisor.active['cancel']=True
+            with supervisor.handle_lock:
+                if supervisor.active: supervisor.active['cancel']=True
             end=time.monotonic()+2
             while supervisor.active and time.monotonic()<end: supervisor.tick(); time.sleep(.02)
             supervisor.shutdown_event.set(); watchdog.join(timeout=1)
