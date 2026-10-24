@@ -2259,3 +2259,7 @@ Parent authorized r213 bounded nonsecret gate projection via fixed trustedhost d
 ### 2026-10-24 — Installed clean-restart incarnation dependency
 
 r213 found historical union rejects retained samecontainer newStartedAt, preventing required stop/up. Parent authorized separate installed-only history/currentincarnation adapter recovery.py/host_install.py plus tests, preserving legacyunion and all dirty/nonterminal/provenance obligations. Working launchcheckpoint retained; successor commissioned after handoff, no actualrestart/activationwaiver.
+
+### 2026-10-24 — Startup handoff boundary checkpoint enters review
+
+r213 sourcec6d71b72/docs40a3aab1 retains private hostnotification and checked readonlystartup boundary;141 focused tests reported PASS. Fullpackagedlauncher/activation/restart notdelivered. Parent commissioned independent Sol r214 boundaryreview before adoption; authorizedhistoricalincarnation unit next, packaging stillpending. No actualinstallqualification.
