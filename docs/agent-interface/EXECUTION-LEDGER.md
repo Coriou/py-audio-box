@@ -2035,3 +2035,7 @@ r167 NO-GO P2: threevoicereaddeclared errors omitactualresource_limit/not_ready;
 ### 2026-10-24 — H1 WAV fixes delivered; independent adoption review
 
 r168 fix502f8317/docs12ff8385 validatesboundedrawRIFFextents/padding/framealignment/exactPCMfmtbitsalignbyterate beforewave;7prefixedacceptancebugsreproduced,16ingest+20voicestoretestsPASS. Parentcommissions pab-h1-wav-review-r170-20261024 focusedR166closure+carriedH1Aadoptionreview. H2contractfixparallel/nooperationsorinstalledqualification.
+
+### 2026-10-24 — H2 error contracts corrected; independent adoption review
+
+r169 fix54262e3e/report68504a21 addsnot_ready/resource_limitONLYthreevoicereadcontracts withactualASGIerror-membershipregressions/red-green;4API+1Dispatcher+1clienttestsPASS. Parentcommissions pab-h2-error-review-r171-20261024 focusedR167closure+carriedH2Areadsliceadoptionreview. H1WAVreviewparallel/publicuploadmutationsjobsstillnext/noops.
