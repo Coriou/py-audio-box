@@ -2063,3 +2063,7 @@ r173 source ae104e3b/docs c8d418f4 delivers raw authenticated upload, authorized
 ### 2026-10-24 — H4A reviewed selection foundation adopted
 
 Independent r177 source GO closes r174 malformed-override finding. Parent merged reviewed docs/source 902e3410 without conflicts; integrated root reran 13 profile +4 hardware tests PASS. Inventory, explicit probe seam and deterministic compatible selection are now integrated; adapters/jobs/provisioning/native packaging and actual CPU/CUDA/Metal qualification remain open. Upload r176 independent review continues.
+
+### 2026-10-24 — Upload review identifies transport and contract blockers
+
+r176 source NO-GO despite 15 focused tests PASS: per-ASGI-message64KiB rejection is incompatible with valid HTTP server batching; raw upload schema leaves retained contract oracle/tests inconsistent. Parent commissioned r178 bounded corrections, authorizing contracts/validate.py and affected contract-test migration alongside transport regression coverage. Preserve raw binary public semantics. Upload remains unmerged; actual listening transport qualification remains separate.
