@@ -27,8 +27,8 @@ GROUPS = (
     ('test_B_independent_authority_source_predicates', 'B-A-', 'B_CONTROL_AUTHORITY', 7, 10),
 )
 TOTAL = 2600                 # 2375 node caps + pre60 + reap30 + post60 + margin75
-DIRECTED_INDEX = 17
-DIRECTED_NODE = CONTROL + '::test_B_directed_isolated_seams[B-S-original74-real-observer]'
+DIRECTED_INDEX = 18
+DIRECTED_NODE = CONTROL + '::test_B_directed_isolated_seams[B-S-collected-control]'
 DIRECTED_TOTAL = 260         # pre60 + node35 + reap30 + post60 + margin75
 COMPLEMENT_INDICES = tuple(range(17)) + tuple(range(18, 100))
 COMPLEMENT_ID = 'existing100-minus017-v1'
@@ -98,14 +98,14 @@ def directed_selection(root=ROOT):
     # Authenticate the entire closed100 before selecting the sole approved row.
     rows = inventory(root)
     row = rows[DIRECTED_INDEX]
-    require(row == dict(id='B-S-original74-real-observer', node=DIRECTED_NODE, seconds=35),
-            'closed directed017 selection')
+    require(row == dict(id='B-S-collected-control', node=DIRECTED_NODE, seconds=35),
+            'closed directed018 selection')
     return [(DIRECTED_INDEX, row)]
 
 
 def complement_selection(root=ROOT):
     rows = inventory(root)  # full source digest AND closed100 AST first
-    require(rows[17] == dict(id='B-S-original74-real-observer', node=DIRECTED_NODE, seconds=35),
+    require(rows[17] == dict(id='B-S-original74-real-observer', node=CONTROL+'::test_B_directed_isolated_seams[B-S-original74-real-observer]', seconds=35),
             'excluded017 identity')
     selected = [(i, rows[i]) for i in COMPLEMENT_INDICES]
     require(len(selected) == 99 and sum(row['seconds'] for _, row in selected)
@@ -329,7 +329,7 @@ def campaign(token, invocation, *, directed=False, complement=False):
 def campaign_command(token, invocation, *, directed=False, complement=False):
     require(not (directed and complement), 'exclusive stage')
     require(re.fullmatch('[0-9a-f]{48}', token) and str(uuid.UUID(invocation)) == invocation, 'owner')
-    return ['python', '/app/diagnostics/b-controls/runner.py', 'complement099' if complement else 'directed017' if directed else 'campaign', token, invocation]
+    return ['python', '/app/diagnostics/b-controls/runner.py', 'complement099' if complement else 'directed018' if directed else 'campaign', token, invocation]
 
 
 def create_argv(name, volume, image, token, invocation, *, directed=False, complement=False):
@@ -391,8 +391,8 @@ def main():
         print(json.dumps(inventory(), indent=2))
         return 0
     require(len(sys.argv) == 4, 'fixed CLI')
-    if sys.argv[1] in ('campaign', 'directed017', 'complement099'):
-        return campaign(*sys.argv[2:], directed=sys.argv[1] == 'directed017', complement=sys.argv[1] == 'complement099')
+    if sys.argv[1] in ('campaign', 'directed018', 'complement099'):
+        return campaign(*sys.argv[2:], directed=sys.argv[1] == 'directed018', complement=sys.argv[1] == 'complement099')
     require(sys.argv[1] == 'node' and sys.argv[2].isdecimal(), 'node CLI')
     return node(int(sys.argv[2]), Path(sys.argv[3]))
 
