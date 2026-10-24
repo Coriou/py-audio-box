@@ -2155,3 +2155,7 @@ r192 source NO-GO: retry can activate unsealed writable bundle; managed acquisit
 ### 2026-10-24 — Provisioning fixes and engine manifest seam enter review
 
 r193 sourcec826c0c6/docsfb2fec48 reproduces both prior defects, adds repeated sealing, bounded real transfer/lock lifetime, and shared raw manifest digest/revision semantics.27 distinct fixture tests reported PASS including provision-to-engine injection. Parent commissioned independent round2 Sol r194. Provisioner unmerged; fork-based acquisition not installedservice-qualified, no realdownloads/inference.
+
+### 2026-10-24 — Provisioning adopted; authenticated Kokoro lifecycle starts
+
+r194 source GO closes sealing/downloadbounds/manifest seam. Parent mergedfb2fec48 conflict-free;27 integrated tests PASS. Commissioned Sol-low r195 closedKokoro execution descriptor/verifiedbundle mapping through existing authority/admission/worker/publication lifecycle. No actualmodel inference/download or installedactivation in source lot; preserve synthetic and resource/reap fences.
