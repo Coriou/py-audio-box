@@ -1971,3 +1971,7 @@ r151 t3-c19701a1 sourcefc9f987b/docs185021cb addsfixedclosed81/full100auth/order
 ### 2026-10-24 — CLOSED81 review F1; checker-only correction
 
 r152 NO-GO completeSOURCE+inertcheckpoint: deadlinefixture returnsresultpytest1beforeactualdeadlineguard, genericSTOPmaskscoverage; runnerselection/budgetnodefectfound. Parent commissions pab-closed81-deadline-check-fix-r153-20261024 checker-only exactreason/validresultatdeadline/mutation-sensitivity coverage, owningcodefrozen. Nooperations/81UNRUN/resourcesHELD.
+
+### 2026-10-24 — Deadline checker correction delivered; independent gate
+
+r153 checker86c7c744/docsc6354dd0 changesonlychecker: validresultatdeadline/exactreasonSTOP, oldbadreasonreproduced, uniqueguard-removalmutantdispatch020 detected, externalrawOS0/all197mapsunchanged. Parent commissions pab-closed81-deadline-review-r154-20261024 focusedF1closure+carriedr152source acceptanceaudit. Nooperations/private81bundle/81UNRUN/resourcesHELD.
