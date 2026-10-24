@@ -93,6 +93,10 @@ class RuntimeSupervisor:
             from worker.runtime_protocol import execution, dispatch_mode
             spec = execution(context)
             if (body['fixture'] in ('kokoro','pocket')) != (spec is not None) or (spec is not None and body['fixture'] != dispatch_mode(spec)): raise Refused('execution_dispatch_mismatch')
+            # Independent direct-integration fence, before allocation or journal
+            # mutation. Existing records remain observable/stoppable/collectable.
+            if spec is not None and spec.engine == 'pocket-tts':
+                raise Refused('pocket_restart_repair_required')
             if spec is not None and context['execution']['bundles'] != self.bundles:
                 raise Refused('unregistered_mount_mapping')
             if spec is not None and spec.engine == 'pocket-tts':
