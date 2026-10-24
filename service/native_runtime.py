@@ -27,6 +27,14 @@ from worker.transport import Refused, canonical
 QUOTA = 64 * 1024**2
 
 
+class PendingImport:
+    """Detached validated bytes; deliberately not a TransportObservation."""
+    def __init__(self, authority, runtime_id, receipt, proposal, raw, identity):
+        self.authority,self.runtime_id=authority,runtime_id
+        self.receipt,self.proposal,self.raw=receipt,proposal,raw
+        self.identity=identity
+
+
 def _identity(info):
     return (info.st_dev,info.st_ino,info.st_mode,info.st_uid,info.st_nlink,
             info.st_size,info.st_mtime_ns,info.st_ctime_ns)
@@ -101,6 +109,7 @@ class NativeRuntime:
         self.connector=connector or self._connect
         self.records={};self.lock=threading.RLock()
         self.lifecycle=threading.BoundedSemaphore(3);self.transfer=threading.BoundedSemaphore(1)
+        self.owner=threading.get_ident()
         self.failed=False
         self._account()
 
@@ -172,8 +181,13 @@ class NativeRuntime:
     def admission_open(self):
         return not self.failed
 
+    def attach_owner(self):
+        """Dispatcher startup/reopen transfers adapter ownership before I/O."""
+        self.owner=threading.get_ident()
+
     def detach(self, authority, core):
         """Owner-loop only: authenticate managed input, then freeze immutable bytes."""
+        if threading.get_ident()!=self.owner: raise Refused('native_owner_required')
         spec=p.native_execution(authority.context)
         data=b''
         if spec.task=='clone':
@@ -368,6 +382,33 @@ class NativeRuntime:
                 self.failed=True
                 raise
         self._validate_output(authority,proposal,output,raw,spec)
+        temporary=directory/'import'
+        destination=self.staging/authority.job['attempts'][-1]['staging_id']/'output.wav'
+        if not destination.exists() and not destination.is_symlink():
+            if temporary.exists() or temporary.is_symlink():
+                self.failed=True;raise Refused('native_control_uncertain')
+            self._active(r,runtime_id)
+            _write(temporary,raw)
+            identity=_identity(temporary.lstat())
+        else:
+            if _read(destination,1048576)!=raw: raise Refused('native_control_conflict')
+            identity=None
+        return PendingImport(authority,runtime_id,receipt,proposal,raw,identity)
+
+    def finalize_collect(self, pending):
+        """Sole owner, between resource observations; no network/hash/PCM work.
+
+        All private names remain stable during executor I/O. Only this finite
+        owner transition retires import. Failure retains uncertainty, never repair.
+        """
+        if threading.get_ident()!=self.owner: raise Refused('native_owner_required')
+        if not isinstance(pending,PendingImport): return pending
+        authority=pending.authority;runtime_id=pending.runtime_id
+        receipt=pending.receipt;proposal=pending.proposal;raw=pending.raw
+        r=self.records[runtime_id];directory=self.spool/authority.binding
+        def active():
+            if r['event'].is_set(): raise Refused('native_cancelled')
+            if time.monotonic()>=r['cutoff']: raise Refused('native_deadline')
         stage=self.staging/authority.job['attempts'][-1]['staging_id']
         _directory(stage,0o770)
         expected_stage=stage.lstat()
@@ -384,16 +425,16 @@ class NativeRuntime:
             if destination.exists() or destination.is_symlink():
                 if _read(destination,1048576)!=raw: raise Refused('native_control_conflict')
             else:
-                self._active(r,runtime_id)
+                active()
                 temporary=directory/'import'
-                if temporary.exists(): self.failed=True;raise Refused('native_control_uncertain')
-                _write(temporary,raw)
+                if pending.identity is None or _identity(temporary.lstat())!=pending.identity:
+                    raise Refused('native_control_storage')
                 # Atomic no-replace publication into staging; Core sees only complete
                 # bytes. Drop the private link and fsync before returning ownership.
                 os.link(temporary,'output.wav',dst_dir_fd=stagefd,follow_symlinks=False)
                 temporary.unlink()
                 _sync(directory);os.fsync(stagefd)
-                self._active(r,runtime_id)
+                active()
             if _read(destination,1048576)!=raw: raise Refused('native_control_conflict')
             verify_stage()
             return receipt,TransportObservation('proposal','native_owned_receipt',None,

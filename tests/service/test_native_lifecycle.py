@@ -82,7 +82,7 @@ class NativeLifecycleTests(unittest.TestCase):
                 old_runtime=f.runtime;old_id=next(iter(old_runtime.records));old_a=old_runtime.records[old_id]['authority']
                 original=f.s;original.journal.lock.close();f.f.make();f.s=f.f.s
                 f.s.utc=lambda:datetime.now(timezone.utc);f.s.clock=time.monotonic
-                self.assertEqual(old_runtime.collect(old_a,old_id)[0]['runtime_id'],old_id)
+                self.assertEqual(old_runtime.collect(old_a,old_id).receipt['runtime_id'],old_id)
                 self.context['execution']['native']['boot']=f.s.boot
                 f.native['boot']=f.s.boot
                 # Native trusted context metadata changed only through explicit

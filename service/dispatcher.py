@@ -61,6 +61,7 @@ class Dispatcher:
         core=None
         startup_error=None
         try:
+            if hasattr(self.runtime,'attach_owner'):self.runtime.attach_owner()
             from service.recovery import startup_read, check_completion_hello, _startup_read_lock
             # Hold the old owner's exclusion through all private readers. Release
             # before Core's independent acquisition (never double-acquire flock).
@@ -406,7 +407,10 @@ class Dispatcher:
             future,row,op,command=self.pending
             if not future.done():return
             self.pending=None
-            try:value=future.result()
+            try:
+                value=future.result()
+                if op=='collect' and hasattr(self.runtime,'finalize_collect'):
+                    value=self.runtime.finalize_collect(value)
             except Exception:
                 self.store.complete(command,False)
                 if op=='ack':self.next_poll=time.monotonic()+.2;return
