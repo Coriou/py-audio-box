@@ -1859,6 +1859,12 @@ class Plugin:
                 assert child_bytes == (b'B:e;' if mode == 'schedule9-no-f' else b'B:e;B:f;')
                 assert answer == b'B:t;B:k;'
                 evidence('actual-owned-kill-qualified')
+            elif mode == 'direct-exit74':
+                # The installed exit follows actual EAGAIN, but original final
+                # rejects it. Require the exact negative, never a certificate.
+                assert result[1] == 74 << 8
+                assert child_bytes == b'B:e;'
+                assert answer == b''
             elif mode not in admission | predicate_e | predicate_f and not mode.startswith('fd-') and mode not in {
                 'replacement', 'same-object-extra-frame', 'trace-disabled', 'writer-failure', 'missing-eagain'}:
                 assert result[1] == 74 << 8 and child_bytes == b'B:e;B:f;' and answer == b'B:t;'
@@ -2410,6 +2416,8 @@ def _B_precapture_program(control):
     assert source.count(anchor) == 1
     source = source.replace(anchor, setup+'\n'+anchor)
     old = """            assert w.eligible and w.valid
+            if diagnostic_enabled:
+                w._refusal = dict(first_site=0, kind='UNREACHED', gate=0, hook_gate=0, final_active=False)
             evidence('admission-baseline')
             if mode in admission:"""
     new = """            assert a[0].obj is function and a[3].f_code is changed
