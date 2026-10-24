@@ -1,0 +1,1051 @@
+{
+  "evidence": "E1 synthetic catalogue only",
+  "context": {
+    "plan": {
+      "schema_version": "1.3.0",
+      "operation": "voice_prepare",
+      "request": {
+        "asset_id": "impulse",
+        "in_tick": 0,
+        "out_tick": 4800,
+        "reference_text": "Exact reference.",
+        "identity": {
+          "engine": "qwen",
+          "model": "Qwen3-TTS-12Hz-0.6B-Base",
+          "bundle_sha256": "63e1fd8333a5024d06a7c82aaa3ce7790caec03c0684393d01d77a22acd535f0",
+          "device": "cpu",
+          "precision": "float32"
+        }
+      },
+      "project": null,
+      "voice_versions": [],
+      "assets": [
+        {
+          "media_subtype": "PCM_16",
+          "media_format": "wav",
+          "id": "impulse",
+          "sha256": "6de1d8cc4c678241ac609b81e8728a89850ce72a9cf736c4214a7ea9dc0943df",
+          "frames": 4800,
+          "sample_rate": 48000,
+          "channels": 1,
+          "provenance": {
+            "kind": "synthetic",
+            "source_sha256": "6de1d8cc4c678241ac609b81e8728a89850ce72a9cf736c4214a7ea9dc0943df",
+            "source_id": "impulse",
+            "missing_fields": []
+          }
+        }
+      ],
+      "resolved": {
+        "reuse_configuration": {
+          "mode": "qwen_clone",
+          "reference_asset_id": "reference-prepare",
+          "reference_text": "Exact reference.",
+          "conditioning": "icl"
+        },
+        "reuse_settings": {
+          "kind": "qwen_clone",
+          "language": "French",
+          "seed": 1,
+          "temperature": 0.9,
+          "top_p": 1,
+          "top_k": 50,
+          "repetition_penalty": 1.05,
+          "max_new_tokens": 2048,
+          "instruction": null
+        },
+        "reuse_identity": null,
+        "kind": "prepare",
+        "identity": {
+          "requested": {
+            "engine": "qwen",
+            "model": "Qwen3-TTS-12Hz-0.6B-Base",
+            "bundle_sha256": "63e1fd8333a5024d06a7c82aaa3ce7790caec03c0684393d01d77a22acd535f0",
+            "device": "cpu",
+            "precision": "float32"
+          },
+          "effective": {
+            "engine": "qwen",
+            "model": "Qwen3-TTS-12Hz-0.6B-Base",
+            "bundle_sha256": "63e1fd8333a5024d06a7c82aaa3ce7790caec03c0684393d01d77a22acd535f0",
+            "device": "cpu",
+            "precision": "float32"
+          },
+          "fallback": "forbid",
+          "reason": "",
+          "profile_id": "cpu-synthetic"
+        },
+        "profile": {
+          "id": "cpu-synthetic",
+          "config_revision": "config-1",
+          "device": "cpu",
+          "topology": "networkless_container",
+          "limits": {
+            "expensive_slots": 1,
+            "resident_models": 1,
+            "threads": 2,
+            "queue": 32,
+            "upload_bytes": 16777216,
+            "decoded_ticks": 28800000,
+            "text_chars": 10000,
+            "variants": 4,
+            "disk_bytes": 1073741824,
+            "deadline_seconds": 600,
+            "ram_bytes": 4294967296,
+            "vram_bytes": 0
+          },
+          "compatibility": [
+            {
+              "operation": "voice_prepare",
+              "mode": "prepare",
+              "identity": {
+                "engine": "qwen",
+                "model": "Qwen3-TTS-12Hz-0.6B-Base",
+                "bundle_sha256": "63e1fd8333a5024d06a7c82aaa3ce7790caec03c0684393d01d77a22acd535f0",
+                "device": "cpu",
+                "precision": "float32"
+              }
+            }
+          ]
+        },
+        "operator_fallback": "forbid",
+        "settings": {
+          "kind": "prepare",
+          "conditioning": "icl",
+          "output_format": "wav_pcm16"
+        },
+        "settings_sha256": "e0937642aa458c11cd68bb600b1af197bb4d2e63d9fd65c1e36a255a7ffd0b6d"
+      },
+      "reference_roles": {
+        "version": "reference-roles-v1",
+        "reference_kind": "prepared_reference",
+        "reference_asset_id": "reference-prepare",
+        "audition_asset_id": "output-prepare",
+        "audition_text": "Explicit generated audition."
+      }
+    },
+    "bundles": [
+      {
+        "instructions": true,
+        "engine": "qwen",
+        "model": "Qwen3-TTS-12Hz-1.7B-CustomVoice",
+        "mode": "qwen_preset",
+        "bundle_sha256": "cbe72b0955b3fceef5c4e22fa3f8ad318cfd7a4b75d96156bc42c7cf2139d070",
+        "languages": [
+          "French",
+          "English"
+        ],
+        "selectors": [
+          {
+            "value": "Vivian",
+            "languages": [
+              "French",
+              "English"
+            ]
+          },
+          {
+            "value": "Serena",
+            "languages": [
+              "French",
+              "English"
+            ]
+          }
+        ]
+      },
+      {
+        "instructions": false,
+        "engine": "qwen",
+        "model": "Qwen3-TTS-12Hz-0.6B-Base",
+        "mode": "qwen_clone",
+        "bundle_sha256": "63e1fd8333a5024d06a7c82aaa3ce7790caec03c0684393d01d77a22acd535f0",
+        "languages": [
+          "French",
+          "English"
+        ],
+        "selectors": []
+      },
+      {
+        "instructions": true,
+        "engine": "qwen",
+        "model": "Qwen3-TTS-12Hz-1.7B-VoiceDesign",
+        "mode": "qwen_design",
+        "bundle_sha256": "c9cdba559c10e84ff39673a8acc0c569d15d1c5d3b7ddc81027122788eaf5fd0",
+        "languages": [
+          "French",
+          "English"
+        ],
+        "selectors": []
+      },
+      {
+        "instructions": false,
+        "engine": "kokoro",
+        "model": "synthetic-kokoro",
+        "mode": "kokoro_preset",
+        "bundle_sha256": "a9d6af35e985eee68a4c30fddf7ac54ccff8f45e191b333e1c1c4d75135cf730",
+        "languages": [
+          "fr",
+          "en"
+        ],
+        "selectors": [
+          {
+            "value": "ff_siwis",
+            "languages": [
+              "fr"
+            ]
+          },
+          {
+            "value": "af_heart",
+            "languages": [
+              "en"
+            ]
+          }
+        ]
+      },
+      {
+        "instructions": false,
+        "engine": "pocket-tts",
+        "model": "synthetic-pocket-fr",
+        "mode": "pocket_clone",
+        "bundle_sha256": "0a3318e2a621f3668fd53beeda700df5992fab95f47111ec5cf7b539ee54aa38",
+        "languages": [
+          "fr"
+        ],
+        "selectors": []
+      }
+    ]
+  },
+  "profiles": [
+    {
+      "config_revision": "config-1",
+      "compatibility": [
+        {
+          "operation": "voice_prepare",
+          "mode": "prepare",
+          "identity": {
+            "engine": "qwen",
+            "model": "Qwen3-TTS-12Hz-0.6B-Base",
+            "bundle_sha256": "63e1fd8333a5024d06a7c82aaa3ce7790caec03c0684393d01d77a22acd535f0",
+            "device": "cpu",
+            "precision": "float32"
+          }
+        }
+      ],
+      "id": "cpu-synthetic",
+      "device": "cpu",
+      "topology": "networkless_container",
+      "support": "unqualified",
+      "installation": "absent",
+      "configuration": "valid",
+      "readiness": "not_ready",
+      "verification": "synthetic",
+      "checked_at": "2026-10-16T00:00:00Z",
+      "qualification_receipt": "",
+      "limits": {
+        "expensive_slots": 1,
+        "resident_models": 1,
+        "threads": 2,
+        "queue": 32,
+        "upload_bytes": 16777216,
+        "decoded_ticks": 28800000,
+        "text_chars": 10000,
+        "variants": 4,
+        "disk_bytes": 1073741824,
+        "deadline_seconds": 600,
+        "ram_bytes": 4294967296,
+        "vram_bytes": 0
+      },
+      "next_action": "Inventory host and qualify exact backend/model/precision before advertising support."
+    }
+  ],
+  "authorized_assets": [
+    "impulse"
+  ],
+  "job": {
+    "id": "job-prepare",
+    "operation": "voice_prepare",
+    "input_sha256": "178302a11ea4e093f65eaa5b547a4a68d4860cba67b82ae92f9e78bec0a14b31",
+    "principal_id": "principal1",
+    "idempotency_key": "request-prepare",
+    "state": "running",
+    "generation": 1,
+    "attempts": [
+      {
+        "id": "attempt-prepare",
+        "generation": 1,
+        "owner_id": "worker1",
+        "staging_id": "stage-prepare",
+        "reaped": false
+      }
+    ],
+    "artifact_ids": [],
+    "stage": "loading",
+    "deadline": "2026-10-16T00:10:00Z"
+  },
+  "message": {
+    "protocol_version": "1.3.0",
+    "kind": "result",
+    "job_id": "job-prepare",
+    "attempt_id": "attempt-prepare",
+    "generation": 1,
+    "input_sha256": "178302a11ea4e093f65eaa5b547a4a68d4860cba67b82ae92f9e78bec0a14b31",
+    "input_asset_ids": [
+      "impulse"
+    ],
+    "staging_id": "stage-prepare",
+    "owner_id": "worker1",
+    "identity": {
+      "requested": {
+        "engine": "qwen",
+        "model": "Qwen3-TTS-12Hz-0.6B-Base",
+        "bundle_sha256": "63e1fd8333a5024d06a7c82aaa3ce7790caec03c0684393d01d77a22acd535f0",
+        "device": "cpu",
+        "precision": "float32"
+      },
+      "effective": {
+        "engine": "qwen",
+        "model": "Qwen3-TTS-12Hz-0.6B-Base",
+        "bundle_sha256": "63e1fd8333a5024d06a7c82aaa3ce7790caec03c0684393d01d77a22acd535f0",
+        "device": "cpu",
+        "precision": "float32"
+      },
+      "fallback": "forbid",
+      "reason": "",
+      "profile_id": "cpu-synthetic"
+    },
+    "deadline": "2026-10-16T00:10:00Z",
+    "stage": "completed",
+    "result_asset_ids": [
+      "reference-prepare",
+      "output-prepare"
+    ],
+    "plan": {
+      "schema_version": "1.3.0",
+      "operation": "voice_prepare",
+      "request": {
+        "asset_id": "impulse",
+        "in_tick": 0,
+        "out_tick": 4800,
+        "reference_text": "Exact reference.",
+        "identity": {
+          "engine": "qwen",
+          "model": "Qwen3-TTS-12Hz-0.6B-Base",
+          "bundle_sha256": "63e1fd8333a5024d06a7c82aaa3ce7790caec03c0684393d01d77a22acd535f0",
+          "device": "cpu",
+          "precision": "float32"
+        }
+      },
+      "project": null,
+      "voice_versions": [],
+      "assets": [
+        {
+          "media_subtype": "PCM_16",
+          "media_format": "wav",
+          "id": "impulse",
+          "sha256": "6de1d8cc4c678241ac609b81e8728a89850ce72a9cf736c4214a7ea9dc0943df",
+          "frames": 4800,
+          "sample_rate": 48000,
+          "channels": 1,
+          "provenance": {
+            "kind": "synthetic",
+            "source_sha256": "6de1d8cc4c678241ac609b81e8728a89850ce72a9cf736c4214a7ea9dc0943df",
+            "source_id": "impulse",
+            "missing_fields": []
+          }
+        }
+      ],
+      "resolved": {
+        "reuse_configuration": {
+          "mode": "qwen_clone",
+          "reference_asset_id": "reference-prepare",
+          "reference_text": "Exact reference.",
+          "conditioning": "icl"
+        },
+        "reuse_settings": {
+          "kind": "qwen_clone",
+          "language": "French",
+          "seed": 1,
+          "temperature": 0.9,
+          "top_p": 1,
+          "top_k": 50,
+          "repetition_penalty": 1.05,
+          "max_new_tokens": 2048,
+          "instruction": null
+        },
+        "reuse_identity": null,
+        "kind": "prepare",
+        "identity": {
+          "requested": {
+            "engine": "qwen",
+            "model": "Qwen3-TTS-12Hz-0.6B-Base",
+            "bundle_sha256": "63e1fd8333a5024d06a7c82aaa3ce7790caec03c0684393d01d77a22acd535f0",
+            "device": "cpu",
+            "precision": "float32"
+          },
+          "effective": {
+            "engine": "qwen",
+            "model": "Qwen3-TTS-12Hz-0.6B-Base",
+            "bundle_sha256": "63e1fd8333a5024d06a7c82aaa3ce7790caec03c0684393d01d77a22acd535f0",
+            "device": "cpu",
+            "precision": "float32"
+          },
+          "fallback": "forbid",
+          "reason": "",
+          "profile_id": "cpu-synthetic"
+        },
+        "profile": {
+          "id": "cpu-synthetic",
+          "config_revision": "config-1",
+          "device": "cpu",
+          "topology": "networkless_container",
+          "limits": {
+            "expensive_slots": 1,
+            "resident_models": 1,
+            "threads": 2,
+            "queue": 32,
+            "upload_bytes": 16777216,
+            "decoded_ticks": 28800000,
+            "text_chars": 10000,
+            "variants": 4,
+            "disk_bytes": 1073741824,
+            "deadline_seconds": 600,
+            "ram_bytes": 4294967296,
+            "vram_bytes": 0
+          },
+          "compatibility": [
+            {
+              "operation": "voice_prepare",
+              "mode": "prepare",
+              "identity": {
+                "engine": "qwen",
+                "model": "Qwen3-TTS-12Hz-0.6B-Base",
+                "bundle_sha256": "63e1fd8333a5024d06a7c82aaa3ce7790caec03c0684393d01d77a22acd535f0",
+                "device": "cpu",
+                "precision": "float32"
+              }
+            }
+          ]
+        },
+        "operator_fallback": "forbid",
+        "settings": {
+          "kind": "prepare",
+          "conditioning": "icl",
+          "output_format": "wav_pcm16"
+        },
+        "settings_sha256": "e0937642aa458c11cd68bb600b1af197bb4d2e63d9fd65c1e36a255a7ffd0b6d"
+      },
+      "reference_roles": {
+        "version": "reference-roles-v1",
+        "reference_kind": "prepared_reference",
+        "reference_asset_id": "reference-prepare",
+        "audition_asset_id": "output-prepare",
+        "audition_text": "Explicit generated audition."
+      }
+    }
+  },
+  "artifact": {
+    "id": "artifact-prepare",
+    "job_id": "job-prepare",
+    "generation": 1,
+    "asset_ids": [
+      "reference-prepare",
+      "output-prepare"
+    ],
+    "input_sha256": "178302a11ea4e093f65eaa5b547a4a68d4860cba67b82ae92f9e78bec0a14b31",
+    "project_revision": 0,
+    "manifest_sha256": "7a50926d23a686de2f89b660216e55da488be53b9c05183991c17fe259f2ff63",
+    "identity": {
+      "requested": {
+        "engine": "qwen",
+        "model": "Qwen3-TTS-12Hz-0.6B-Base",
+        "bundle_sha256": "63e1fd8333a5024d06a7c82aaa3ce7790caec03c0684393d01d77a22acd535f0",
+        "device": "cpu",
+        "precision": "float32"
+      },
+      "effective": {
+        "engine": "qwen",
+        "model": "Qwen3-TTS-12Hz-0.6B-Base",
+        "bundle_sha256": "63e1fd8333a5024d06a7c82aaa3ce7790caec03c0684393d01d77a22acd535f0",
+        "device": "cpu",
+        "precision": "float32"
+      },
+      "fallback": "forbid",
+      "reason": "",
+      "profile_id": "cpu-synthetic"
+    },
+    "attempt_id": "attempt-prepare",
+    "owner_id": "worker1",
+    "staging_id": "stage-prepare"
+  },
+  "verified_manifest": {
+    "operation": "voice_prepare",
+    "job_id": "job-prepare",
+    "attempt_id": "attempt-prepare",
+    "generation": 1,
+    "owner_id": "worker1",
+    "staging_id": "stage-prepare",
+    "input_sha256": "178302a11ea4e093f65eaa5b547a4a68d4860cba67b82ae92f9e78bec0a14b31",
+    "artifact_id": "artifact-prepare",
+    "outputs": [
+      {
+        "media_subtype": "PCM_16",
+        "media_format": "wav",
+        "id": "reference-prepare",
+        "sha256": "6de1d8cc4c678241ac609b81e8728a89850ce72a9cf736c4214a7ea9dc0943df",
+        "frames": 4800,
+        "sample_rate": 48000,
+        "channels": 1,
+        "provenance": {
+          "kind": "synthetic",
+          "source_id": "impulse",
+          "source_sha256": "6de1d8cc4c678241ac609b81e8728a89850ce72a9cf736c4214a7ea9dc0943df",
+          "missing_fields": []
+        }
+      },
+      {
+        "media_subtype": "PCM_16",
+        "media_format": "wav",
+        "id": "output-prepare",
+        "sha256": "639dad0ac2923f5fe9e9ccfb99aa9b3084048e2e53317d1903e6e899a4f6296a",
+        "frames": 4800,
+        "sample_rate": 48000,
+        "channels": 1,
+        "provenance": {
+          "kind": "synthetic",
+          "source_sha256": "639dad0ac2923f5fe9e9ccfb99aa9b3084048e2e53317d1903e6e899a4f6296a",
+          "source_id": "E1-audition-silence",
+          "missing_fields": []
+        }
+      }
+    ],
+    "candidates": [
+      {
+        "schema_version": "1.3.0",
+        "id": "candidate-prepare",
+        "job_id": "job-prepare",
+        "version": {
+          "id": "prospective-prepare",
+          "voice_id": "voice.0",
+          "origin": "clone",
+          "reference_asset_ids": [
+            "reference-prepare"
+          ],
+          "reference_text": "Exact reference.",
+          "identity": {
+            "engine": "qwen",
+            "model": "Qwen3-TTS-12Hz-0.6B-Base",
+            "bundle_sha256": "63e1fd8333a5024d06a7c82aaa3ce7790caec03c0684393d01d77a22acd535f0",
+            "device": "cpu",
+            "precision": "float32"
+          },
+          "settings": {
+            "kind": "qwen_clone",
+            "language": "French",
+            "seed": 1,
+            "temperature": 0.9,
+            "top_p": 1,
+            "top_k": 50,
+            "repetition_penalty": 1.05,
+            "max_new_tokens": 2048,
+            "instruction": null
+          },
+          "settings_sha256": "16f6e4895b03418a85b032b485ab57aa74a6e9157949172e536c18801b512d44",
+          "provenance": {
+            "kind": "synthetic",
+            "source_id": "impulse",
+            "source_sha256": "6de1d8cc4c678241ac609b81e8728a89850ce72a9cf736c4214a7ea9dc0943df",
+            "missing_fields": []
+          },
+          "configuration": {
+            "mode": "qwen_clone",
+            "reference_asset_id": "reference-prepare",
+            "reference_text": "Exact reference.",
+            "conditioning": "icl"
+          },
+          "design_lineage": null
+        },
+        "audition_asset_id": "output-prepare",
+        "reference_roles": {
+          "version": "reference-roles-v1",
+          "reference": {
+            "kind": "prepared_reference",
+            "asset": {
+              "media_subtype": "PCM_16",
+              "media_format": "wav",
+              "id": "reference-prepare",
+              "sha256": "6de1d8cc4c678241ac609b81e8728a89850ce72a9cf736c4214a7ea9dc0943df",
+              "frames": 4800,
+              "sample_rate": 48000,
+              "channels": 1,
+              "provenance": {
+                "kind": "synthetic",
+                "source_id": "impulse",
+                "source_sha256": "6de1d8cc4c678241ac609b81e8728a89850ce72a9cf736c4214a7ea9dc0943df",
+                "missing_fields": []
+              }
+            },
+            "original": {
+              "media_subtype": "PCM_16",
+              "media_format": "wav",
+              "id": "impulse",
+              "sha256": "6de1d8cc4c678241ac609b81e8728a89850ce72a9cf736c4214a7ea9dc0943df",
+              "frames": 4800,
+              "sample_rate": 48000,
+              "channels": 1,
+              "provenance": {
+                "kind": "synthetic",
+                "source_sha256": "6de1d8cc4c678241ac609b81e8728a89850ce72a9cf736c4214a7ea9dc0943df",
+                "source_id": "impulse",
+                "missing_fields": []
+              }
+            },
+            "in_tick": 0,
+            "out_tick": 4800,
+            "transcript": "Exact reference."
+          },
+          "audition": {
+            "kind": "generated_audition",
+            "asset": {
+              "media_subtype": "PCM_16",
+              "media_format": "wav",
+              "id": "output-prepare",
+              "sha256": "639dad0ac2923f5fe9e9ccfb99aa9b3084048e2e53317d1903e6e899a4f6296a",
+              "frames": 4800,
+              "sample_rate": 48000,
+              "channels": 1,
+              "provenance": {
+                "kind": "synthetic",
+                "source_sha256": "639dad0ac2923f5fe9e9ccfb99aa9b3084048e2e53317d1903e6e899a4f6296a",
+                "source_id": "E1-audition-silence",
+                "missing_fields": []
+              }
+            },
+            "text": "Explicit generated audition."
+          }
+        }
+      }
+    ]
+  },
+  "present_hashes": {
+    "reference-prepare": "6de1d8cc4c678241ac609b81e8728a89850ce72a9cf736c4214a7ea9dc0943df",
+    "output-prepare": "639dad0ac2923f5fe9e9ccfb99aa9b3084048e2e53317d1903e6e899a4f6296a"
+  },
+  "exchanges": [
+    {
+      "operation": "asset_get",
+      "request": {
+        "asset_id": "impulse"
+      },
+      "response": {
+        "media_subtype": "PCM_16",
+        "media_format": "wav",
+        "id": "impulse",
+        "sha256": "6de1d8cc4c678241ac609b81e8728a89850ce72a9cf736c4214a7ea9dc0943df",
+        "frames": 4800,
+        "sample_rate": 48000,
+        "channels": 1,
+        "provenance": {
+          "kind": "synthetic",
+          "source_sha256": "6de1d8cc4c678241ac609b81e8728a89850ce72a9cf736c4214a7ea9dc0943df",
+          "source_id": "impulse",
+          "missing_fields": []
+        }
+      }
+    },
+    {
+      "operation": "voice_prepare",
+      "request": {
+        "asset_id": "impulse",
+        "in_tick": 0,
+        "out_tick": 4800,
+        "reference_text": "Exact reference.",
+        "identity": {
+          "engine": "qwen",
+          "model": "Qwen3-TTS-12Hz-0.6B-Base",
+          "bundle_sha256": "63e1fd8333a5024d06a7c82aaa3ce7790caec03c0684393d01d77a22acd535f0",
+          "device": "cpu",
+          "precision": "float32"
+        }
+      },
+      "response": {
+        "job_id": "job-prepare",
+        "input_sha256": "178302a11ea4e093f65eaa5b547a4a68d4860cba67b82ae92f9e78bec0a14b31",
+        "state": "queued",
+        "status_url": "/v1/jobs/job-prepare"
+      }
+    },
+    {
+      "operation": "job_get",
+      "request": {
+        "job_id": "job-prepare"
+      },
+      "response": {
+        "id": "job-prepare",
+        "operation": "voice_prepare",
+        "input_sha256": "178302a11ea4e093f65eaa5b547a4a68d4860cba67b82ae92f9e78bec0a14b31",
+        "principal_id": "principal1",
+        "idempotency_key": "request-prepare",
+        "state": "succeeded",
+        "generation": 1,
+        "attempts": [
+          {
+            "id": "attempt-prepare",
+            "generation": 1,
+            "owner_id": "worker1",
+            "staging_id": "stage-prepare",
+            "reaped": false
+          }
+        ],
+        "artifact_ids": [
+          "artifact-prepare"
+        ],
+        "stage": "completed",
+        "deadline": "2026-10-16T00:10:00Z"
+      }
+    },
+    {
+      "operation": "artifact_get",
+      "request": {
+        "artifact_id": "artifact-prepare"
+      },
+      "response": {
+        "id": "artifact-prepare",
+        "job_id": "job-prepare",
+        "generation": 1,
+        "asset_ids": [
+          "reference-prepare",
+          "output-prepare"
+        ],
+        "input_sha256": "178302a11ea4e093f65eaa5b547a4a68d4860cba67b82ae92f9e78bec0a14b31",
+        "project_revision": 0,
+        "manifest_sha256": "7a50926d23a686de2f89b660216e55da488be53b9c05183991c17fe259f2ff63",
+        "identity": {
+          "requested": {
+            "engine": "qwen",
+            "model": "Qwen3-TTS-12Hz-0.6B-Base",
+            "bundle_sha256": "63e1fd8333a5024d06a7c82aaa3ce7790caec03c0684393d01d77a22acd535f0",
+            "device": "cpu",
+            "precision": "float32"
+          },
+          "effective": {
+            "engine": "qwen",
+            "model": "Qwen3-TTS-12Hz-0.6B-Base",
+            "bundle_sha256": "63e1fd8333a5024d06a7c82aaa3ce7790caec03c0684393d01d77a22acd535f0",
+            "device": "cpu",
+            "precision": "float32"
+          },
+          "fallback": "forbid",
+          "reason": "",
+          "profile_id": "cpu-synthetic"
+        },
+        "attempt_id": "attempt-prepare",
+        "owner_id": "worker1",
+        "staging_id": "stage-prepare"
+      }
+    },
+    {
+      "operation": "asset_get",
+      "request": {
+        "asset_id": "output-prepare"
+      },
+      "response": {
+        "media_subtype": "PCM_16",
+        "media_format": "wav",
+        "id": "output-prepare",
+        "sha256": "639dad0ac2923f5fe9e9ccfb99aa9b3084048e2e53317d1903e6e899a4f6296a",
+        "frames": 4800,
+        "sample_rate": 48000,
+        "channels": 1,
+        "provenance": {
+          "kind": "synthetic",
+          "source_sha256": "639dad0ac2923f5fe9e9ccfb99aa9b3084048e2e53317d1903e6e899a4f6296a",
+          "source_id": "E1-audition-silence",
+          "missing_fields": []
+        }
+      }
+    },
+    {
+      "operation": "asset_get",
+      "request": {
+        "asset_id": "reference-prepare"
+      },
+      "response": {
+        "media_subtype": "PCM_16",
+        "media_format": "wav",
+        "id": "reference-prepare",
+        "sha256": "6de1d8cc4c678241ac609b81e8728a89850ce72a9cf736c4214a7ea9dc0943df",
+        "frames": 4800,
+        "sample_rate": 48000,
+        "channels": 1,
+        "provenance": {
+          "kind": "synthetic",
+          "source_id": "impulse",
+          "source_sha256": "6de1d8cc4c678241ac609b81e8728a89850ce72a9cf736c4214a7ea9dc0943df",
+          "missing_fields": []
+        }
+      }
+    },
+    {
+      "operation": "voice_results",
+      "request": {
+        "job_id": "job-prepare"
+      },
+      "response": {
+        "schema_version": "1.3.0",
+        "job_id": "job-prepare",
+        "candidates": [
+          {
+            "schema_version": "1.3.0",
+            "id": "candidate-prepare",
+            "job_id": "job-prepare",
+            "version": {
+              "id": "prospective-prepare",
+              "voice_id": "voice.0",
+              "origin": "clone",
+              "reference_asset_ids": [
+                "reference-prepare"
+              ],
+              "reference_text": "Exact reference.",
+              "identity": {
+                "engine": "qwen",
+                "model": "Qwen3-TTS-12Hz-0.6B-Base",
+                "bundle_sha256": "63e1fd8333a5024d06a7c82aaa3ce7790caec03c0684393d01d77a22acd535f0",
+                "device": "cpu",
+                "precision": "float32"
+              },
+              "settings": {
+                "kind": "qwen_clone",
+                "language": "French",
+                "seed": 1,
+                "temperature": 0.9,
+                "top_p": 1,
+                "top_k": 50,
+                "repetition_penalty": 1.05,
+                "max_new_tokens": 2048,
+                "instruction": null
+              },
+              "settings_sha256": "16f6e4895b03418a85b032b485ab57aa74a6e9157949172e536c18801b512d44",
+              "provenance": {
+                "kind": "synthetic",
+                "source_id": "impulse",
+                "source_sha256": "6de1d8cc4c678241ac609b81e8728a89850ce72a9cf736c4214a7ea9dc0943df",
+                "missing_fields": []
+              },
+              "configuration": {
+                "mode": "qwen_clone",
+                "reference_asset_id": "reference-prepare",
+                "reference_text": "Exact reference.",
+                "conditioning": "icl"
+              },
+              "design_lineage": null
+            },
+            "audition_asset_id": "output-prepare",
+            "reference_roles": {
+              "version": "reference-roles-v1",
+              "reference": {
+                "kind": "prepared_reference",
+                "asset": {
+                  "media_subtype": "PCM_16",
+                  "media_format": "wav",
+                  "id": "reference-prepare",
+                  "sha256": "6de1d8cc4c678241ac609b81e8728a89850ce72a9cf736c4214a7ea9dc0943df",
+                  "frames": 4800,
+                  "sample_rate": 48000,
+                  "channels": 1,
+                  "provenance": {
+                    "kind": "synthetic",
+                    "source_id": "impulse",
+                    "source_sha256": "6de1d8cc4c678241ac609b81e8728a89850ce72a9cf736c4214a7ea9dc0943df",
+                    "missing_fields": []
+                  }
+                },
+                "original": {
+                  "media_subtype": "PCM_16",
+                  "media_format": "wav",
+                  "id": "impulse",
+                  "sha256": "6de1d8cc4c678241ac609b81e8728a89850ce72a9cf736c4214a7ea9dc0943df",
+                  "frames": 4800,
+                  "sample_rate": 48000,
+                  "channels": 1,
+                  "provenance": {
+                    "kind": "synthetic",
+                    "source_sha256": "6de1d8cc4c678241ac609b81e8728a89850ce72a9cf736c4214a7ea9dc0943df",
+                    "source_id": "impulse",
+                    "missing_fields": []
+                  }
+                },
+                "in_tick": 0,
+                "out_tick": 4800,
+                "transcript": "Exact reference."
+              },
+              "audition": {
+                "kind": "generated_audition",
+                "asset": {
+                  "media_subtype": "PCM_16",
+                  "media_format": "wav",
+                  "id": "output-prepare",
+                  "sha256": "639dad0ac2923f5fe9e9ccfb99aa9b3084048e2e53317d1903e6e899a4f6296a",
+                  "frames": 4800,
+                  "sample_rate": 48000,
+                  "channels": 1,
+                  "provenance": {
+                    "kind": "synthetic",
+                    "source_sha256": "639dad0ac2923f5fe9e9ccfb99aa9b3084048e2e53317d1903e6e899a4f6296a",
+                    "source_id": "E1-audition-silence",
+                    "missing_fields": []
+                  }
+                },
+                "text": "Explicit generated audition."
+              }
+            }
+          }
+        ]
+      }
+    },
+    {
+      "operation": "voice_get",
+      "request": {
+        "voice_id": "voice.0"
+      },
+      "response": {
+        "id": "voice.0",
+        "aliases": [
+          "legacy_0"
+        ],
+        "version_ids": [
+          "vv0"
+        ],
+        "archived": false,
+        "revision": 1
+      }
+    },
+    {
+      "operation": "voice_save",
+      "request": {
+        "job_id": "job-prepare",
+        "candidate_id": "candidate-prepare",
+        "voice_id": "voice.0",
+        "expected_revision": 1
+      },
+      "response": {
+        "voice": {
+          "id": "voice.0",
+          "aliases": [
+            "legacy_0"
+          ],
+          "version_ids": [
+            "vv0",
+            "saved-prepare"
+          ],
+          "archived": false,
+          "revision": 2
+        },
+        "version": {
+          "id": "saved-prepare",
+          "voice_id": "voice.0",
+          "origin": "clone",
+          "reference_asset_ids": [
+            "reference-prepare"
+          ],
+          "reference_text": "Exact reference.",
+          "identity": {
+            "engine": "qwen",
+            "model": "Qwen3-TTS-12Hz-0.6B-Base",
+            "bundle_sha256": "63e1fd8333a5024d06a7c82aaa3ce7790caec03c0684393d01d77a22acd535f0",
+            "device": "cpu",
+            "precision": "float32"
+          },
+          "settings": {
+            "kind": "qwen_clone",
+            "language": "French",
+            "seed": 1,
+            "temperature": 0.9,
+            "top_p": 1,
+            "top_k": 50,
+            "repetition_penalty": 1.05,
+            "max_new_tokens": 2048,
+            "instruction": null
+          },
+          "settings_sha256": "16f6e4895b03418a85b032b485ab57aa74a6e9157949172e536c18801b512d44",
+          "provenance": {
+            "kind": "synthetic",
+            "source_id": "impulse",
+            "source_sha256": "6de1d8cc4c678241ac609b81e8728a89850ce72a9cf736c4214a7ea9dc0943df",
+            "missing_fields": []
+          },
+          "configuration": {
+            "mode": "qwen_clone",
+            "reference_asset_id": "reference-prepare",
+            "reference_text": "Exact reference.",
+            "conditioning": "icl"
+          },
+          "design_lineage": null
+        }
+      }
+    },
+    {
+      "operation": "voice_get",
+      "request": {
+        "voice_id": "voice.0"
+      },
+      "response": {
+        "id": "voice.0",
+        "aliases": [
+          "legacy_0"
+        ],
+        "version_ids": [
+          "vv0",
+          "saved-prepare"
+        ],
+        "archived": false,
+        "revision": 2
+      }
+    },
+    {
+      "operation": "voice_version_get",
+      "request": {
+        "voice_version_id": "saved-prepare"
+      },
+      "response": {
+        "id": "saved-prepare",
+        "voice_id": "voice.0",
+        "origin": "clone",
+        "reference_asset_ids": [
+          "reference-prepare"
+        ],
+        "reference_text": "Exact reference.",
+        "identity": {
+          "engine": "qwen",
+          "model": "Qwen3-TTS-12Hz-0.6B-Base",
+          "bundle_sha256": "63e1fd8333a5024d06a7c82aaa3ce7790caec03c0684393d01d77a22acd535f0",
+          "device": "cpu",
+          "precision": "float32"
+        },
+        "settings": {
+          "kind": "qwen_clone",
+          "language": "French",
+          "seed": 1,
+          "temperature": 0.9,
+          "top_p": 1,
+          "top_k": 50,
+          "repetition_penalty": 1.05,
+          "max_new_tokens": 2048,
+          "instruction": null
+        },
+        "settings_sha256": "16f6e4895b03418a85b032b485ab57aa74a6e9157949172e536c18801b512d44",
+        "provenance": {
+          "kind": "synthetic",
+          "source_id": "impulse",
+          "source_sha256": "6de1d8cc4c678241ac609b81e8728a89850ce72a9cf736c4214a7ea9dc0943df",
+          "missing_fields": []
+        },
+        "configuration": {
+          "mode": "qwen_clone",
+          "reference_asset_id": "reference-prepare",
+          "reference_text": "Exact reference.",
+          "conditioning": "icl"
+        },
+        "design_lineage": null
+      }
+    }
+  ]
+}

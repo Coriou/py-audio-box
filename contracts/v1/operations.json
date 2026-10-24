@@ -189,7 +189,8 @@
         "resource_limit",
         "unsupported_control",
         "missing_media"
-      ]
+      ],
+      "reference_contract": "reference-roles-v1 staged; absent roles are synthetic fixture compatibility only; production activation requires domain/worker migration"
     },
     {
       "id": "voice_design",
@@ -215,7 +216,8 @@
         "not_ready",
         "resource_limit",
         "unsupported_control"
-      ]
+      ],
+      "reference_contract": "reference-roles-v1 staged; absent roles are synthetic fixture compatibility only; production activation requires domain/worker migration"
     },
     {
       "id": "voice_save",

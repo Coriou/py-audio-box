@@ -2294,6 +2294,9 @@
         "audition_asset_id": {
           "type": "string",
           "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+        },
+        "reference_roles": {
+          "$ref": "#/$defs/reference_roles_v1"
         }
       },
       "required": [
@@ -2673,6 +2676,9 @@
             },
             "resolved": {
               "$ref": "#/$defs/resolved_execution"
+            },
+            "reference_roles": {
+              "$ref": "#/$defs/reference_role_plan_v1"
             }
           },
           "required": [
@@ -2722,6 +2728,9 @@
             },
             "resolved": {
               "$ref": "#/$defs/resolved_execution"
+            },
+            "reference_roles": {
+              "$ref": "#/$defs/reference_role_plan_v1"
             }
           },
           "required": [
@@ -4041,6 +4050,147 @@
         "cursor",
         "limit",
         "voice_id"
+      ],
+      "additionalProperties": false
+    },
+    "reference_role_plan_v1": {
+      "type": "object",
+      "properties": {
+        "version": {
+          "const": "reference-roles-v1"
+        },
+        "reference_kind": {
+          "enum": [
+            "prepared_reference",
+            "generated_reference"
+          ]
+        },
+        "reference_asset_id": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+        },
+        "audition_asset_id": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+        },
+        "audition_text": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "version",
+        "reference_kind",
+        "reference_asset_id",
+        "audition_asset_id",
+        "audition_text"
+      ],
+      "additionalProperties": false
+    },
+    "prepared_reference_v1": {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "const": "prepared_reference"
+        },
+        "asset": {
+          "$ref": "#/$defs/asset"
+        },
+        "original": {
+          "$ref": "#/$defs/asset"
+        },
+        "in_tick": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "out_tick": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "transcript": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind",
+        "asset",
+        "original",
+        "in_tick",
+        "out_tick",
+        "transcript"
+      ],
+      "additionalProperties": false
+    },
+    "generated_reference_v1": {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "const": "generated_reference"
+        },
+        "asset": {
+          "$ref": "#/$defs/asset"
+        },
+        "transcript": {
+          "type": "string",
+          "minLength": 1
+        },
+        "lineage": {
+          "$ref": "#/$defs/design_lineage"
+        }
+      },
+      "required": [
+        "kind",
+        "asset",
+        "transcript",
+        "lineage"
+      ],
+      "additionalProperties": false
+    },
+    "generated_audition_v1": {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "const": "generated_audition"
+        },
+        "asset": {
+          "$ref": "#/$defs/asset"
+        },
+        "text": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "kind",
+        "asset",
+        "text"
+      ],
+      "additionalProperties": false
+    },
+    "reference_roles_v1": {
+      "type": "object",
+      "properties": {
+        "version": {
+          "const": "reference-roles-v1"
+        },
+        "reference": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/prepared_reference_v1"
+            },
+            {
+              "$ref": "#/$defs/generated_reference_v1"
+            }
+          ]
+        },
+        "audition": {
+          "$ref": "#/$defs/generated_audition_v1"
+        }
+      },
+      "required": [
+        "version",
+        "reference",
+        "audition"
       ],
       "additionalProperties": false
     }
