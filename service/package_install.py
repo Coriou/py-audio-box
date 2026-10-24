@@ -264,9 +264,12 @@ def main(argv=None):
                     raise ValueError('initialization_digest_required')
                 result=initialize_split({r:v['source'] for r,v in policy['roots'].items()},scope,config,
                     authority=authority.initialize_authority,policy=ip.SPLIT,complete=args.initialization_digest)
-                print(json.dumps(dict(phase='initialized',result=result),sort_keys=True)); return
-            result=getattr(Launcher(config,scope,policy,authority,directory),args.command)()
-            print(json.dumps(result,sort_keys=True))
+                result=dict(phase='initialized',result=result)
+            else:
+                result=getattr(Launcher(config,scope,policy,authority,directory),args.command)()
+        # Context exit performs mandatory final authority/policy stability checks.
+        # Publish only after every held-context check and cleanup has succeeded.
+        print(json.dumps(result,sort_keys=True))
     except (Exception, KeyboardInterrupt):
         # Arbitrary backend errors can contain paths or secrets. Keep output fixed.
         raise SystemExit('speech-box refused; retained state requires review') from None

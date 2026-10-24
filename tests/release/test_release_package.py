@@ -170,6 +170,77 @@ class CoordinatorTests(unittest.TestCase):
         self.assertNotIn('TOP-SECRET',str(error.exception))
 
 
+class CLIResultPublicationTests(unittest.TestCase):
+    """Real CLI/public input parsing; held authority and operations are inert."""
+    def check_publication(self, command, fail_exit):
+        import contextlib
+        import io
+        from types import SimpleNamespace
+        f=host_fixtures.InstalledHost();f.setUp();self.addCleanup(f.doCleanups)
+        scope=f.root/'scope.json';scope.write_text(json.dumps(f.scope))
+        policy=f.root/'policy.json';policy.write_text(json.dumps(f.policy))
+        argv=[command,'--configuration',str(f.root/'install.json'),'--scope',str(scope)]
+        if command=='init':argv+=['--host-policy',str(policy)]
+        if command=='complete':argv+=['--initialization-digest','b'*64]
+        events=[]
+        class Output(io.StringIO):
+            def write(self, value):
+                if value:events.append('output')
+                return super().write(value)
+        output=Output()
+        # Retained state models an obligation that must survive exit refusal.
+        retained=f.root/'retained-obligation';retained.write_bytes(b'unchanged')
+        @contextlib.contextmanager
+        def held(config, scope):
+            self.assertEqual(config,f.config);self.assertEqual(scope,f.scope)
+            events.append('enter')
+            yield SimpleNamespace(policy=f.policy,initialize_authority=lambda:None)
+            events.append('exit-check')
+            if fail_exit:raise ValueError('installed_host_policy_changed PRIVATE-ERROR')
+            events.append('exited')
+        def operation(*args, **kwargs):
+            self.assertEqual(events,['enter'])
+            events.append('computed')
+            return dict(phase='stopped' if command=='stop' else 'ready',registration_id='a'*64)
+        # All transport is forbidden even if a CLI branch accidentally reaches it.
+        with patch.object(p.sys,'version_info',(3,11)), \
+             patch.object(h,'installed_launch_authority',side_effect=held), \
+             patch.object(h,'create_installed_authority') as create, \
+             patch('service.persistent_init.initialize_split',side_effect=operation) as initialize, \
+             patch.object(p.Launcher,command if command in ('up','stop','status') else 'up',side_effect=operation) as launch, \
+             patch.object(h.Docker,'_read',side_effect=AssertionError('transport forbidden')), \
+             contextlib.redirect_stdout(output):
+            original=os.umask(0o077)
+            try:
+                if fail_exit:
+                    with self.assertRaises(SystemExit) as error:p.main(argv)
+                    self.assertEqual(str(error.exception),'speech-box refused; retained state requires review')
+                else:self.assertIsNone(p.main(argv))
+            finally:os.umask(original)
+        self.assertEqual(retained.read_bytes(),b'unchanged')
+        self.assertEqual(initialize.call_count, int(command in ('init','complete')))
+        self.assertEqual(launch.call_count, int(command in ('up','stop','status')))
+        self.assertEqual(create.call_count,int(command=='init'))
+        if fail_exit:
+            self.assertEqual(output.getvalue(),'')
+            self.assertEqual(events,['enter','computed','exit-check'])
+        else:
+            value=json.loads(output.getvalue())
+            self.assertEqual(len(output.getvalue().splitlines()),1)
+            self.assertEqual(value['phase'],'initialized' if command in ('init','complete') else
+                             'stopped' if command=='stop' else 'ready')
+            self.assertEqual(events[:4],['enter','computed','exit-check','exited'])
+            self.assertTrue(events[4:]);self.assertEqual(set(events[4:]),{'output'})
+
+    def test_context_exit_failure_emits_no_result(self):
+        for command in ('status','up','stop','init','complete'):
+            with self.subTest(command=command):self.check_publication(command,True)
+
+    def test_success_is_published_only_after_context_exit(self):
+        for command in ('status','up','stop','init','complete'):
+            with self.subTest(command=command):self.check_publication(command,False)
+
+
 class ArchiveTests(unittest.TestCase):
     def test_deterministic_extracted_help_without_checkout(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -177,6 +248,8 @@ class ArchiveTests(unittest.TestCase):
             self.assertEqual(p.archive(ROOT,first),p.archive(ROOT,second))
             with zipfile.ZipFile(first) as z:
                 self.assertFalse(any('__pycache__' in n or '/tests/' in n or '/.git/' in n for n in z.namelist()))
+                for name in json.loads((ROOT/'headless-dist-manifest.json').read_text())['files']:
+                    self.assertEqual(z.read('speech-box/'+name),(ROOT/name).read_bytes(),name)
                 z.extractall(Path(tmp)/'extracted')
             package=Path(tmp)/'extracted/speech-box'
             result=subprocess.run([sys.executable,'-I','-B',str(package/'speech-box'),'--help'],cwd=tmp,
