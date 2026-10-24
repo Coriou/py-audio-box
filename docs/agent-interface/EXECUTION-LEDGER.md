@@ -2163,3 +2163,7 @@ r194 source GO closes sealing/downloadbounds/manifest seam. Parent mergedfb2fec4
 ### 2026-10-24 — Generated audio provenance contract clarified
 
 r195 found provenance enum lacks real generated speech. Parent authorized minimal additive generated value in v1 schema with execution-descriptor/job/attempt binding and positive/tampered-source regressions. Existing provenance values and synthetic evidence labels remain; no actual inference claim from injected tests. Same lifecycle implementation continues.
+
+### 2026-10-24 — Kokoro restart execution snapshot reconciliation
+
+r195 restart check requires explicit validated execution context/reservation hash adapter. Parent authorized narrow reconciliation.py context extension, canonical descriptor serialization and strict identity/digest checks with restart/tamper regressions. Existing synthetic checks remain unchanged; no generic context acceptance or repair.
