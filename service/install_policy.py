@@ -183,3 +183,110 @@ def locked_file(path, *, policy, role):
                 revalidate()
         finally:
             os.close(fd)
+
+
+def _closed(value, fields):
+    if type(value) is not dict or set(value) != set(fields.split()):
+        raise ValueError('closed_installed_record')
+
+
+def configuration(value):
+    """Detached public configuration. No local paths, credentials or seed."""
+    import json
+    import re
+    from service.core import encode
+    from service.admission import finite_budget
+    from contracts import validate as oracle
+    from worker.runtime_protocol import execution
+    _closed(value, 'version ownership_policy profiles budget contexts bundles images mounts')
+    if len(encode(value).encode()) > 48000:
+        raise ValueError('installed_configuration_budget')
+    value = json.loads(encode(value))
+    if type(value['version']) is not int or value['version'] != 1 or value['ownership_policy'] != POLICY:
+        raise ValueError('installed_configuration_version')
+    finite_budget(value['budget'])
+    profiles = value['profiles']
+    if type(profiles) is not list or len(profiles) != 1 or profiles[0]['id'] != 'kokoro-cpu':
+        raise ValueError('installed_profiles')
+    oracle.validate('profile', profiles[0])
+    if profiles[0]['device'] != 'cpu' or profiles[0]['topology'] != 'networkless_container':
+        raise ValueError('installed_profile_topology')
+    _closed(value['images'], 'control worker')
+    if any(not isinstance(v, str) or not re.fullmatch('sha256:[0-9a-f]{64}', v) for v in value['images'].values()):
+        raise ValueError('installed_image_digest')
+    if value['mounts'] != dict(control='/control', staging='/staging', receipts='/receipts', ipc='/ipc', models='/models'):
+        raise ValueError('installed_mount_mapping')
+    contexts = value['contexts']; bundles = value['bundles']
+    if type(contexts) is not dict or not 1 <= len(contexts) <= 32 or type(bundles) is not dict or len(bundles) != 1:
+        raise ValueError('installed_contexts')
+    for principal, context in contexts.items():
+        if not isinstance(principal, str) or not re.fullmatch('[a-zA-Z0-9_-]{1,128}', principal):
+            raise ValueError('installed_principal')
+        spec = execution(context)
+        if spec is None or context['plan']['resolved']['profile'] != oracle.profile_snapshot(profiles[0]):
+            raise ValueError('installed_context_profile')
+        oracle.frozen_plan(context['plan'], context['bundles'])
+        expected = dict(manifest_sha256=spec.manifest_sha256, checkpoint=spec.checkpoint,
+                        revision=spec.revision, path='/models/bundles/'+spec.bundle_id)
+        if bundles != {spec.bundle_id: expected}:
+            raise ValueError('installed_bundle_binding')
+        if (spec.memory_bytes > value['budget']['ram_bytes'] or
+                spec.max_output_bytes*2 > value['budget']['disk_bytes'] or value['budget']['pids'] < 48):
+            raise ValueError('installed_context_budget')
+    return value
+
+
+def installation(value):
+    """Shared closed parser; legacy remains byte/shape compatible."""
+    import re
+    from service.persistent_init import digest, validate_scope
+    if type(value) is not dict:
+        raise ValueError('closed_installation')
+    if value.get('scope') == 'owned-synthetic':
+        _closed(value, 'deployment_id revision scope host profile_budget_digest')
+        hashes = [value['profile_budget_digest']]
+    elif value.get('scope') == SCOPE:
+        _closed(value, 'deployment_id revision scope host configuration configuration_digest ownership_policy roles')
+        config = configuration(value['configuration'])
+        if value['ownership_policy'] != POLICY or value['configuration_digest'] != digest(config):
+            raise ValueError('installed_configuration_digest')
+        _closed(value['roles'], 'control staging receipts ipc')
+        seen = set()
+        for role, record in value['roles'].items():
+            _closed(record, 'device inode uid gid mode')
+            if (any(type(v) is not int or v < 0 for v in record.values()) or record['inode'] == 0 or
+                    (record['uid'], record['gid'], record['mode']) != expectation(SPLIT, role, directory=True)):
+                raise ValueError('installed_role_record')
+            key = record['device'], record['inode']
+            if key in seen: raise ValueError('distinct_volume_roles_required')
+            seen.add(key)
+        hashes = [value['configuration_digest']]
+    else:
+        raise ValueError('unsupported_enrollment')
+    validate_scope(value['host'])
+    if value['scope'] == SCOPE and any(v['driver'] != 'local' for v in value['host']['volumes'].values()):
+        raise ValueError('local_named_volumes_required')
+    if (type(value['revision']) is not int or value['revision'] != 1 or
+            not isinstance(value['deployment_id'], str) or not re.fullmatch('[0-9a-f]{32}', value['deployment_id']) or
+            any(not isinstance(h, str) or not re.fullmatch('[0-9a-f]{64}', h) for h in hashes)):
+        raise ValueError('invalid_installation_identity')
+    return value
+
+
+def role_records(roots):
+    result = {}
+    for role, path in roots_checked(roots, policy=SPLIT).items():
+        s = directory_identity(path, policy=SPLIT, role=role)
+        result[role] = dict(device=s[0], inode=s[1], uid=s[3], gid=s[4], mode=stat.S_IMODE(s[2]))
+    return result
+
+
+def initialization(value):
+    """Closed split private record, kept exclusively in receipts."""
+    import re
+    _closed(value, 'public seed')
+    installation(value['public'])
+    if (value['public']['scope'] != SCOPE or not isinstance(value['seed'],str) or
+            not re.fullmatch('[0-9a-f]{64}',value['seed'])):
+        raise ValueError('invalid_split_initialization')
+    return value

@@ -743,8 +743,14 @@ def _run_bounded_maintenance(roots, scope, operation, *, _prewrite=None):
 
 
 
-def snapshot(roots, db, scope, *, exclude_plan=None, exclude_abandon=None, transaction=True, _prefix=None, _journal_after=False, _core_after=False, _journal_observation=None):
+def snapshot(roots, db, scope, *, policy=None, exclude_plan=None, exclude_abandon=None, transaction=True, _prefix=None, _journal_after=False, _core_after=False, _journal_observation=None):
     """Read-only transaction including WAL; never calls an observation fence."""
+    from service import install_policy as ip
+    if policy is not None: ip.require(policy)
+    def read_file(path, limit=1024**2):
+        if policy is None: return globals()['read_file'](path, limit)
+        role = next((r for r,p in roots.items() if p == Path(path).parent), None)
+        return globals()['read_file'](path, limit, policy=policy, role=role)
     validate_scope(scope)
     if transaction: db.execute('BEGIN')
     try:
@@ -777,20 +783,30 @@ def snapshot(roots, db, scope, *, exclude_plan=None, exclude_abandon=None, trans
         if len(data['p1_installation'])!=1: raise ValueError('not_enrolled')
         identity,revision,kind,raw,h=data['p1_installation'][0]
         installation=json.loads(raw)
-        closed(installation,'deployment_id revision scope host profile_budget_digest')
-        if (digest(installation)!=h or identity!=installation['deployment_id'] or revision!=1 or kind!='owned-synthetic' or
-            installation['revision']!=1 or installation['scope']!='owned-synthetic' or installation['host']!=scope):
+        ip.installation(installation)
+        if (digest(installation)!=h or identity!=installation['deployment_id'] or revision!=1 or kind!=installation['scope'] or installation['host']!=scope):
             raise ValueError('deployment_scope_mismatch')
-        private=json.loads(read_file(roots['receipts']/'p1-init.json'))
-        closed(private,'deployment_id revision scope host profile_budget_digest roots seed')
-        if ({k:v for k,v in private.items() if k not in ('seed','roots')} != installation or
-            private['roots'] != {k:[p.stat().st_dev,p.stat().st_ino] for k,p in roots.items()}):
-            raise ValueError('volume_role_identity_mismatch')
+        private_raw=read_file(roots['receipts']/'p1-init.json')
+        private=json.loads(private_raw)
+        if policy is not None:
+            ip.initialization(private)
+            if private_raw != encode(private).encode() or raw != encode(installation):
+                raise ValueError('noncanonical_installed_record')
+            if (kind != ip.SCOPE or private['public'] != installation or ip.role_records(roots) != installation['roles']):
+                raise ValueError('volume_role_identity_mismatch')
+        else:
+            if kind != 'owned-synthetic': raise ValueError('explicit_fixed_install_policy_required')
+            closed(private,'deployment_id revision scope host profile_budget_digest roots seed')
+            if ({k:v for k,v in private.items() if k not in ('seed','roots')} != installation or
+                private['roots'] != {k:[p.stat().st_dev,p.stat().st_ino] for k,p in roots.items()}):
+                raise ValueError('volume_role_identity_mismatch')
         import hashlib
         for key in ('lifecycle','execution'):
             if read_file(roots['ipc']/(key+'.key'),64) != hashlib.sha256((private['seed']+key).encode()).hexdigest().encode():
                 raise ValueError('installation_key_missing_or_changed')
-        marker=json.loads(read_file(roots['receipts']/'p1-enrolled.json'))
+        marker_raw=read_file(roots['receipts']/'p1-enrolled.json')
+        marker=json.loads(marker_raw)
+        if policy is not None and marker_raw != encode(marker).encode(): raise ValueError('noncanonical_installed_record')
         if marker!=dict(deployment_id=identity,digest=h): raise ValueError('incomplete_enrollment')
         journal_before=bytes.fromhex(_prefix['before']['journal']['bytes_hex']) if _journal_after else None
         observed=_journal_observation
@@ -824,10 +840,10 @@ def snapshot(roots, db, scope, *, exclude_plan=None, exclude_abandon=None, trans
         if observed is not None and damaged:
             # A damaged current journal cannot carry a clean maintenance field.
             # Ground the retained fence/certificate separately in actual history.
-            if read_maintenance(roots['receipts'])!=completion_binding(db,roots['control']/'core'):
+            if read_maintenance(roots['receipts'], policy=policy)!=completion_binding(db,roots['control']/'core'):
                 raise ValueError('journal_maintenance_binding')
         else:
-            receipt_completion=journal['payload'].get('maintenance') if _prefix is not None else read_maintenance(roots['receipts'])
+            receipt_completion=journal['payload'].get('maintenance') if _prefix is not None else read_maintenance(roots['receipts'], policy=policy)
             if receipt_completion!=journal['payload'].get('maintenance'): raise ValueError('journal_maintenance_binding')
         payload=journal['payload']
         if digest(payload)!=journal['sha256'] or payload['version']!=1 or not isinstance(payload['records'],list) or len(payload['records'])>64:
@@ -885,7 +901,7 @@ def snapshot(roots, db, scope, *, exclude_plan=None, exclude_abandon=None, trans
         scanner=Reconciliation.__new__(Reconciliation)
         scanner.core=SimpleNamespace(root=roots['control']/'core'); scanner.db=db; scanner.staging=roots['staging']
         scanner.entry_limit=MAX_ROWS; scanner.byte_limit=MAX_BYTES; scanner.seconds=1
-        scanner._collect(_before=_prefix if _core_after else None)
+        scanner._collect(_before=_prefix if _core_after else None, policy=policy)
         if tables & B2_COLUMNS.keys():
             size += scanner.bytes + len(journal_raw)
             if size>MAX_BYTES or count+scanner.entries+len(payload['records'])>MAX_ROWS:
@@ -934,8 +950,8 @@ def snapshot(roots, db, scope, *, exclude_plan=None, exclude_abandon=None, trans
         if transaction: db.execute('ROLLBACK')
 
 
-def inspect(roots,scope):
-    with offline(roots) as (roots,db): return snapshot(roots,db,scope)
+def inspect(roots,scope, *, policy=None):
+    with offline(roots,policy=policy) as (roots,db): return snapshot(roots,db,scope,policy=policy)
 
 
 def check_consumers(state, observation):
@@ -1046,8 +1062,8 @@ def enrollment_gate(root, registration_id, hello, profiles, budget):
                     row=db.execute('SELECT record,digest FROM p1_installation').fetchall()
                     if len(row)!=1: raise ValueError('not_enrolled')
                     installation=json.loads(row[0][0])
-                    closed(installation,'deployment_id revision scope host profile_budget_digest')
-                    validate_scope(installation['host'])
+                    from service.install_policy import installation as parse_installation
+                    parse_installation(installation)
                     if installation['revision']!=1 or installation['scope']!='owned-synthetic': raise ValueError('unsupported_enrollment')
                     if digest(installation)!=row[0][1] or installation['profile_budget_digest']!=digest(dict(profiles=profiles,budget=budget)):
                         raise ValueError('enrollment_configuration_mismatch')
@@ -1183,7 +1199,8 @@ def startup_read(root):
                     if n!=1 or b>65536: raise ValueError('bounded_enrollment_required')
                     identity,raw,h=db.execute('SELECT id,record,digest FROM p1_installation').fetchone()
                     value=json.loads(raw)
-                    closed(value,'deployment_id revision scope host profile_budget_digest'); validate_scope(value['host'])
+                    from service.install_policy import installation as parse_installation
+                    parse_installation(value)
                     if digest(value)!=h or identity!=value['deployment_id'] or value['revision']!=1 or value['scope']!='owned-synthetic': raise ValueError('invalid_enrollment')
                     return dict(deployment_id=identity,completion=completion_binding(db,Path(root)))
             except BaseException as exc:

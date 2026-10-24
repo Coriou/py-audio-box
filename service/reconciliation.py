@@ -296,10 +296,10 @@ class Reconciliation:
                     if digest(value) != record['digest']:
                         raise Incomplete('invalid_b1_digest')
                     if table == 'p1_installation':
-                        closed(value, 'deployment_id revision scope host profile_budget_digest')
-                        validate_scope(value['host'])
+                        from service.install_policy import installation
+                        installation(value)
                         if (value['deployment_id'] != record['id'] or record['revision'] != 1 or
-                            value['revision'] != 1 or record['scope'] != 'owned-synthetic' or value['scope'] != 'owned-synthetic'):
+                            value['revision'] != 1 or record['scope'] != value['scope']):
                             raise Incomplete('invalid_b1_installation')
                     elif table == 'p1_registrations':
                         validate_registration(value)
