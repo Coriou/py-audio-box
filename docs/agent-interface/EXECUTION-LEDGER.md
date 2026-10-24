@@ -1583,3 +1583,7 @@ Parentacceptsr54B100SOURCE+retainedHOSTGO5groups,197mappedprotectedbytes exact/a
 ### 2026-10-24 — Explicit original-positive profile delivered; independent profile gate
 
 r55 t3-67aec9bf exec0c058776d641503434de1c5eccb05ecb7ca51fcd docs24916a3d1602803dff6df76ae972fe04030998a4 implementsclosedoriginal-positive0 vslegacydiagnostic-red1 withcommand/intent/terminal/retention bindings, positive47/wait/Btokens/PASS structuralchecks; reportsaffectedHOST6/6/all197hashes. Guard/controls/product/observerentry/B100runner unchanged. Independent pab-b-positive-profile-review-r56-20261024 launchedfullsource/actualsample-shapecompatibility/legacy/failuretransport/HOST audit. No build/runtimeauthority, all100pending.
+
+### 2026-10-24 — Positive profile NO-GO F1/F2; narrow correction
+
+r56 retainedHOST6/6verifiedbutSOURCE NO-GO: F1readonly/app pytestcachewarnings contradictwarningfreePASSsummary, F2positive47parserallowsduplicate3/4/orderextra. Parentassignspab-b-positive-profile-fix-r57-20261024 positive-onlyexplicitcache-disabledENTRYchildconfig+exactorderedfourrows andaffectedHOSTnegatives, legacyprofile/environment/entryobserver/guardcontrols/productfrozen. No build/runtimeauthority; no knownbrokenactualattemptspent.
