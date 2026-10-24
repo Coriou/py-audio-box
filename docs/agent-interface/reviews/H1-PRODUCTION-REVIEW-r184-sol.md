@@ -1,0 +1,35 @@
+# H1 production domain — independent first-round review r184
+
+Verdict: **bounded GO** for the commissioned trusted synthetic production-domain source slice. No blocking finding identified. This is not integrated H1 completion, installed activation, release approval, or real cloning/engine evidence. Parent owns integration/interface acceptance.
+
+## Pins and authority
+
+Reviewed candidate `/Users/ben/.txcode/worktrees/py-audio-box/t3-f525ccdd`, branch `t3/trusted-production-domain`, clean HEAD `9353a1b99a18f31cf0521dade76a5591ef3cd55e`. Verified source `8dd7e91fb682dba9b102f70e7ed9fec69184bed6` has sole parent/base `18b735ddd771989f3f93a041de6534c2fa1c78cd`; docs HEAD has sole parent source. Source diff contains exactly six files: service/production.py, service/core.py, worker/synthetic.py, worker/isolated_synthetic.py, tests/service/test_production.py, tests/worker/test_production_synthetic.py. Docs successor changes only r183. Root r182/r183 copies compare byte-identical to candidate copies.
+
+Read PRODUCT.md, canonical IMPLEMENTATION-PLAN.md H0/H1/H2/H4 and relevant integration boundaries, both reports, complete source diff, actual contract validation, Core publication path, VoiceStore and transport snapshot code. No AGENTS.md found in candidate or checked ancestor paths. Worker extension is authorized by the parent's commission supplied in this review brief; r183's wording attributing it directly to the user is not the authority relied upon here. No delegation.
+
+## Binding and trust-boundary assessment
+
+- `service/production.py:16-24`: prepare detaches caller context, checks operation, verifies principal ownership of the managed upload, replaces supplied asset metadata with managed metadata, and derives audition identity from principal/key/request. Resolved profile/bundle/settings context remains an explicitly trusted operator snapshot. This interface is not safe to expose as an arbitrary public context payload; it makes no such claim.
+- `service/core.py:355-397`: existing durable principal/operation/key fingerprint lookup and transaction admit the frozen request into the existing job store; schema/plan hash, frozen resolution, profile compatibility, settings, trim and exact dependencies are validated before new admission. No second scheduler or synthetic success-row shortcut was introduced. Duplicate lookup intentionally retains the original frozen resolution rather than resolving a new execution snapshot.
+- `service/core.py:428-438,484-510,544-600`: required input IDs now travel with the attempt. Owned asset bytes/metadata are rechecked at result validation and the publication barrier. Existing owner, attempt, generation, deadline/cancel lifecycle and adoption/commit fences remain in place. `contracts/validate.py:143-191,287-379` binds result/manifest/artifact to the frozen plan and active attempt, requires exactly one prepare candidate and published audition, exact reusable configuration/settings/reference text/conditioning, and engine/model/bundle identity. Speech resolves a compatible execution identity; device/precision may follow the explicit operator resolution rather than being silently treated as a different saved model.
+- `service/production.py:26-46`: results require owning principal, succeeded prepare state, publication row, job artifact membership, manifest hash and retrievable committed artifact media. Save accepts a candidate ID selected from that publication, not caller-authored version metadata; its stable version ID binds job/candidate/target voice. `service/voice_store.py:114-126,200-241` supplies durable request conflict/replay, revision CAS, immutable append-only version storage and verified principal-owned reference digests. Missing/unpublished/stale candidate paths fail closed within the declared managed-store boundary. This is not a claim to authenticate arbitrary hostile rewrites of trusted SQLite records.
+- `service/production.py:48-55`: generation detaches context and replaces supplied versions/assets with the principal's saved immutable version and managed references. Frozen-plan validation enforces selected version, settings hash, configuration, exact text and engine/model/bundle consistency. Asset verification detects unavailable or altered file bytes against managed hashes.
+- `worker/synthetic.py:18-33`: the shared candidate builder deep-copies identity/settings/configuration/provenance and uses frozen reference text; returned candidate mutation cannot retarget the input snapshot. Both worker paths use it. `service/worker_transport.py:18-46` separately serializes authority and returns detached accessors; isolated worker authenticates and validates the session/execute before proposing. No public HTTP or dispatcher activation is added.
+- `worker/synthetic.py:50-71`, `worker/isolated_synthetic.py:30-65`, and `service/core.py:495-506`: output remains fixed 4,800-frame 48 kHz mono PCM16 synthetic silence with explicit synthetic provenance. Candidate origin `clone` describes the contract configuration; it does not establish actual clone inference, acoustic quality or supported engine readiness. Existing preset speech remains admitted; the legacy preset lifecycle passes the focused test.
+
+## Executed checks and evidence limits
+
+With `PYTHONDONTWRITEBYTECODE=1`, ran only:
+
+- `/private/tmp/pab-0c-venv/bin/python -m unittest discover -s tests/service -p test_production.py -v`: **4 PASS**.
+- `/private/tmp/pab-0c-venv/bin/python -m unittest discover -s tests/worker -p test_production_synthetic.py -v`: **1 PASS**.
+- `git diff --check 18b735d 9353a1b`: PASS; candidate status remains clean.
+
+Service coverage uses real temporary SQLite/files and historical-local synthetic subprocesses: upload/prepare/publication/explicit save/restart/generate, frozen authored text, duplicate prepare/save, principal rejection, unpublished/missing candidate, revision and idempotency conflict, invalid settings hash, stale manifest binding, missing audition media, legacy preset. Worker coverage validates schema, exact reusable settings/configuration and nested settings mutation isolation. Additional boundary conclusions above are source review, not extra runtime qualification. No extra reproduction was necessary.
+
+Read both conftests without collecting them. No pytest, maintenance guard, full suite, Linux isolated runtime on Mac, Docker, network, model/ML, hardware or HELD operation. No source edits, commits or historical cleanup. Only ordinary test-owned temporary cleanup; sole persistent review write is this root report.
+
+## Remaining owner gates
+
+Parent integration/interface acceptance must preserve the trusted operator-context seam and review any later authenticated public adapter. Integrated installed lifecycle/transport and broader H1 journey acceptance remain outstanding at their existing scope. H4 actual capable-engine inference, advertised clone/design support and hardware-family qualification remain separate required evidence; these five synthetic tests do not satisfy them. No new broad gate is imposed by this review.
