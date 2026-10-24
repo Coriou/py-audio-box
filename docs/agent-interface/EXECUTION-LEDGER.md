@@ -2071,3 +2071,7 @@ r176 source NO-GO despite 15 focused tests PASS: per-ASGI-message64KiB rejection
 ### 2026-10-24 — Upload transport/oracle corrections delivered
 
 r178 source2963abc8/docs616723b4 removes ASGI-message size refusal while retaining total/body/admission bounds, and migrates binary upload oracle/tests plus non-idempotency handling. Regressions failed before correction; 15 focused methods and35 standalone contract cases reported PASS. Parent commissioned independent round2 Sol r179. Candidate remains unmerged pending review; actual installed HTTP and lifecycle qualification remain open.
+
+### 2026-10-24 — Upload transport cleared; canonical sample migration remains
+
+r179 closes R1 but retains R2 P2: canonical operation sample loop lacks voice_versions_list and binary fixture adaptation; generator determinism is also affected. Reported15+35 passes did not cover those consumers. Parent commissioned r180 explicitly authorizing bounded generator/sample/consumer migration with complete operation coverage and determinism checks, preserving raw public bytes and legacy-envelope rejection. Upload remains unmerged.
