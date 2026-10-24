@@ -1,4 +1,4 @@
-"""Internal authenticated execution dispatcher. Installed activation stays closed.
+"""Internal authenticated execution dispatcher with explicit installed activation.
 
 The owner loop alone uses Core/SQLite. A single executor performs bounded UDS I/O;
 its detached replies are consumed as commands on that loop, never as DB callbacks.
@@ -22,7 +22,10 @@ from worker.lifecycle import State
 
 
 class Dispatcher:
-    def __init__(self, root, *, ipc='/ipc', staging='/staging', runtime=None, fault=lambda _:None, budget=None, profiles=None, persistent_registration=None, production_contexts=None):
+    def __init__(self, root, *, ipc='/ipc', staging='/staging', runtime=None, fault=lambda _:None, budget=None, profiles=None, persistent_registration=None, production_contexts=None, installed_activation=None):
+        self.installed_activation = installed_activation
+        self.installed_checked = False
+        self.closing = False
         self.production_contexts = production_contexts
         self.persistent_registration = persistent_registration
         self.root, self.staging = Path(root), Path(staging)
@@ -34,7 +37,7 @@ class Dispatcher:
         self.initialized=Future()
         self.thread=threading.Thread(target=self._run,name='control-writer',daemon=True)
         self.thread.start()
-        self.initialized.result(timeout=5)
+        self.initialized.result(timeout=15 if installed_activation is not None else 5)
 
     def call(self, op, *args, timeout=3, **kwargs):
         if op not in ('submit','job','jobs','events','artifact','asset','cancel','status','replace','inventory_page','reconcile_startup','close','voice_list','voice_get','voice_version','voice_resolve','voice_summaries','voice_version_summaries','asset_ingest','asset_metadata','asset_content','production_prepare','production_generate','production_save','production_results','production_job','production_cancel','production_artifact'):
@@ -63,29 +66,39 @@ class Dispatcher:
             # before Core's independent acquisition (never double-acquire flock).
             # A competing owner in that gap either makes Core refuse, or completes
             # before Core repeats the deployment/completion/hello binding below.
-            with _startup_read_lock(self.root) as readable:
-                startup = startup_read(self.root) if readable else None
-                hello = None
-                if startup is not None or self.persistent_registration is not None:
-                    hello = self.runtime.call('hello', {})
-                    if startup is not None and hello.get('maintenance')!=startup['completion']:
-                        raise ValueError('b2_cross_volume_completion_mismatch')
-                    if self.persistent_registration is None:
-                        raise ValueError('persistent_registration_required_before_startup')
-                    from service.recovery import enrollment_gate
-                    from service.admission import DEFAULT_BUDGET
-                    enrollment_gate(self.root, self.persistent_registration,
-                        hello, self.current_profiles,
-                        DEFAULT_BUDGET if self.budget is None else self.budget)
+            if self.installed_activation is not None:
+                from service.entrypoint import InstalledActivation
+                if type(self.installed_activation) is not InstalledActivation:
+                    raise ValueError('checked_installed_activation_required')
+                self.installed_activation.precheck(self)
+                startup = None
+            else:
+                with _startup_read_lock(self.root) as readable:
+                    startup = startup_read(self.root) if readable else None
+                    hello = None
+                    if startup is not None or self.persistent_registration is not None:
+                        hello = self.runtime.call('hello', {})
+                        if startup is not None and hello.get('maintenance')!=startup['completion']:
+                            raise ValueError('b2_cross_volume_completion_mismatch')
+                        if self.persistent_registration is None:
+                            raise ValueError('persistent_registration_required_before_startup')
+                        from service.recovery import enrollment_gate
+                        from service.admission import DEFAULT_BUDGET
+                        enrollment_gate(self.root, self.persistent_registration,
+                            hello, self.current_profiles,
+                            DEFAULT_BUDGET if self.budget is None else self.budget)
             core=self.core=Core(self.root)
-            if startup is not None:
+            if self.installed_activation is not None:
+                self.installed_activation.postcheck(self)
+                self.installed_checked = True
+            elif startup is not None:
                 if core.db.execute('SELECT id FROM p1_installation').fetchall()!=[(startup['deployment_id'],)]:
                     raise ValueError('startup_deployment_changed')
                 second_hello = self.runtime.call('hello', {})
                 check_completion_hello(core.db, second_hello)
                 if second_hello!=hello: raise ValueError('startup_hello_changed')
             self.enrolled=bool(core.db.execute("SELECT 1 FROM sqlite_master WHERE name='p1_installation'").fetchone())
-            if startup is None and self.enrolled:
+            if startup is None and self.enrolled and not self.installed_checked:
                 raise ValueError('startup_deployment_changed')
             self.admission=Admission(core,self.staging,self.budget)
             self.store=DispatchStore(core,self.admission)
@@ -115,7 +128,7 @@ class Dispatcher:
             self.integrity_fault = self.integrity['blocked']
             with core.transaction():
                 for reservation in self.admission.store.rows():
-                    if not self.enrolled and not self.integrity_fault and not self.persistence_fault and reservation['state']=='queued' and core.job(reservation['id'])['state']=='cancelled':
+                    if self._activation_open() and not self.orphaned and not self.resource_fault and not self.integrity_fault and not self.persistence_fault and reservation['state']=='queued' and core.job(reservation['id'])['state']=='cancelled':
                         self.admission.store.release_tx(reservation['id'],unstarted=True)
             self.initialized.set_result(True)
             while not self.stopping:
@@ -156,6 +169,19 @@ class Dispatcher:
                 finally:
                     if startup_error is not None:self.initialized.set_exception(startup_error)
 
+    def _activation_open(self):
+        # One closed predicate for commands, scheduler and queued release.
+        return not self.enrolled or self.installed_checked
+
+    def _ready(self):
+        return (self._activation_open() and self.reconciled and not self.closing and
+                not self.orphaned and not self.quarantined and not self.resource_fault and
+                not self.persistence_fault and not self.integrity_fault and
+                (not self.installed_checked or all(
+                    p['support']=='qualified' and p['installation']=='installed' and
+                    p['readiness']=='ready' and p['verification']=='measured'
+                    for p in self.profiles)))
+
     def _production_command(self, op, principal, payload, *, key=None):
         from contracts import validate as oracle
         from service.production import Production
@@ -191,7 +217,8 @@ class Dispatcher:
                 if not row: self.core.db.execute('INSERT INTO catalogue_requests VALUES(?,?,?,?,?)', (principal,'job_cancel',key,fingerprint,encode(payload)))
             return self._command('cancel', payload['job_id'])
         if op == 'production_save':
-            if self.enrolled or self.integrity_fault or self.persistence_fault: raise ValueError('not_ready')
+            if self.installed_checked and not self._ready(): raise ValueError('not_ready')
+            if not self._activation_open() or self.closing or self.integrity_fault or self.persistence_fault: raise ValueError('not_ready')
             owned(payload['job_id'])
             return domain.save(principal, key, payload['job_id'], payload['candidate_id'], payload['voice_id'], expected_revision=payload['expected_revision'])
         # Duplicate lookup retains the original frozen identity and reservation.
@@ -200,7 +227,7 @@ class Dispatcher:
             oracle.require(row[0] == oracle.fingerprint(principal,operation,payload), 'idempotency_conflict')
             job = json.loads(row[1])
         else:
-            if self.enrolled or not self.reconciled or self.quarantined or self.resource_fault or self.integrity_fault:
+            if not self._activation_open() or self.closing or not self.reconciled or self.quarantined or self.resource_fault or self.integrity_fault:
                 raise ValueError('not_ready')
             if self.production_contexts is None: raise ValueError('not_ready')
             context = self.production_contexts.resolve(principal, operation, payload)
@@ -212,6 +239,7 @@ class Dispatcher:
     def _command(self,op,*args,**kwargs):
         if op.startswith('production_'): return self._production_command(op,*args,**kwargs)
         if op=='asset_ingest':
+            if self.installed_checked and not self._ready(): raise ValueError('not_ready')
             from service.ingest import ingest_local
             if len(args)!=2 or type(args[1]) is not bytes or kwargs: raise ValueError('invalid_request')
             return ingest_local(self.core,*args)
@@ -224,7 +252,14 @@ class Dispatcher:
         if op=='voice_get':return self.core.voices.get(*args,**kwargs)
         if op=='voice_version':return self.core.voices.version(*args,**kwargs)
         if op=='voice_resolve':return self.core.voices.resolve(*args,**kwargs)
-        if op=='close':self.stopping=True;return None
+        if op=='close':
+            if not self.installed_checked:
+                self.stopping=True
+                return None
+            self.closing=True
+            self.stop_obligation=True
+            if not self.pending and not self.store.current(): self.stopping=True
+            return None
         if op=='reconcile_startup':
             if self.pending or self.store.current():raise ValueError('inventory_lane_busy')
             if self.inventory is None:raise ValueError('inventory_unavailable')
@@ -243,13 +278,14 @@ class Dispatcher:
             except ValueError:row=None;self.error='dispatch_identity_unreadable'
             return dict(reconciled=self.reconciled,quarantined=self.quarantined,
                 phase=row['phase'] if row else 'idle',runtime_id=row['runtime'] if row else None,
-                resource_activation=False,persistent_activation=False,error=self.error,
+                resource_activation=self._ready(),persistent_activation=self.enrolled and self._ready(),error=self.error,
                 resource_fault=self.resource_fault,persistence_fault=self.persistence_fault,
                 stop_obligation=self.stop_obligation,
                 reservations=self.admission.store.rows(), integrity=self.integrity,
                 integrity_fault=self.integrity_fault)
         if op=='cancel':
-            if self.enrolled: raise ValueError('persistent_activation_closed_until_C1')
+            if not self._activation_open(): raise ValueError('persistent_activation_closed_until_C1')
+            if self.installed_checked and self.core.job(args[0])['state']=='queued' and not self._ready(): raise ValueError('not_ready')
             if self.integrity_fault and self.core.job(args[0])['state']=='queued':raise ValueError('integrity_blocks_release')
             job=self.core.request_cancel(*args,**kwargs,_cancel_unstarted=True,_admission=self.admission)
             self.next_poll=0
@@ -260,8 +296,9 @@ class Dispatcher:
                 if len(args)!=2 or not set(kwargs)<= {'retry_of','fixture','seconds'}:raise ValueError('closed_synthetic_command')
                 existing=self.core.db.execute("SELECT job FROM jobs WHERE principal=? AND operation='speech_generate' AND key=?",args).fetchone()
                 if existing:return json.loads(existing[0])
-            if self.enrolled: raise ValueError('persistent_activation_closed_until_C1')
-            if not self.reconciled or self.quarantined or self.resource_fault or self.integrity_fault:raise ValueError('startup_or_quarantine')
+            if not self._activation_open(): raise ValueError('persistent_activation_closed_until_C1')
+            if self.installed_checked: raise ValueError('installed_production_commands_required')
+            if self.closing or not self.reconciled or self.quarantined or self.resource_fault or self.integrity_fault:raise ValueError('startup_or_quarantine')
             if op=='replace':
                 if self.pending or self.store.current():raise ValueError('lane_busy')
                 job_id=args[0]
@@ -313,7 +350,7 @@ class Dispatcher:
         return False
 
     def _tick(self):
-        if self.enrolled: return  # B1 inspect-only; C1 activation closed.
+        if not self._activation_open(): return  # Legacy enrolled remains inspect-only.
         if getattr(self.core,'_publication_storage_failed',False):
             self.persistence_fault=self.quarantined=True
             return  # Exact reap preceded publication; storage needs reopen, no live retry.
@@ -374,12 +411,18 @@ class Dispatcher:
             if row['runtime'] is None:
                 self.quarantined=True;self.reconciled=True;return
             self._launch(row,'observe',lambda:self.runtime.observe(row['runtime'],1.5));return
+        if self.closing:
+            self.stopping=True
+            return
         if not self.reconciled:
             # Validate actual installed supervisor before admitting anything.
             if not hasattr(self,'hello'):
                 self.hello=self.pool.submit(self.runtime.call,'hello',{})
             if not self.hello.done():return
-            try: value=self.hello.result();self.quarantined=self.orphaned or self.resource_fault or bool(value['quarantined'])
+            try:
+                value=self.hello.result()
+                if self.installed_checked: self.installed_activation.check_hello(value)
+                self.quarantined=self.orphaned or self.resource_fault or bool(value['quarantined'])
             except Exception:self.quarantined=True
             self.reconciled=True;return
         if self.quarantined or self.integrity_fault:return

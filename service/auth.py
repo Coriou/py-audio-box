@@ -44,3 +44,49 @@ class StaticCredentials:
         if found is None or not {'read', required_scope} <= found.scopes:
             raise Failure('forbidden', 'A valid credential with the required scopes is required.', action='Configure an active bearer credential with read scope.')
         return found.principal
+
+
+def private_input(path, *, mode, limit):
+    """Read an explicit fixed-policy input without following any path symlink."""
+    import os
+    import stat
+    from pathlib import Path
+    from service import install_policy as ip
+    path = Path(path)
+    with ip.parent_fd(path) as (parent, name):
+        fd = os.open(name, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=parent)
+        try:
+            before = os.fstat(fd)
+            if (not stat.S_ISREG(before.st_mode) or
+                    (before.st_uid, before.st_gid, stat.S_IMODE(before.st_mode), before.st_nlink) != (0, 10001, mode, 1) or
+                    not 1 <= before.st_size <= limit):
+                raise ValueError('installed_input_policy')
+            raw = os.read(fd, limit+1)
+            if (len(raw) != before.st_size or ip.identity(os.fstat(fd)) != ip.identity(before) or
+                    ip.identity(os.stat(name, dir_fd=parent, follow_symlinks=False)) != ip.identity(before)):
+                raise ValueError('installed_input_changed')
+        finally:
+            os.close(fd)
+    with ip.parent_fd(path) as (parent, name):
+        if ip.identity(os.stat(name, dir_fd=parent, follow_symlinks=False)) != ip.identity(before):
+            raise ValueError('installed_input_changed')
+    return raw
+
+
+def installed_credentials(path, principals):
+    from service.recovery import host_json, closed
+    from re import fullmatch
+    value = host_json(private_input(path, mode=0o640, limit=48000))
+    closed(value, 'version credentials')
+    if type(value['version']) is not int or value['version'] != 1 or type(value['credentials']) is not list or not 1 <= len(value['credentials']) <= 32:
+        raise ValueError('invalid_credential_configuration')
+    records = []
+    for record in value['credentials']:
+        closed(record, 'token principal scopes')
+        if (type(record['token']) is not str or not fullmatch(r'[A-Za-z0-9._:-]{32,4096}', record['token']) or
+                record['principal'] not in principals or type(record['scopes']) is not list or
+                not record['scopes'] or len(set(record['scopes'])) != len(record['scopes']) or
+                not set(record['scopes']) <= {'read', 'production-write'} or 'read' not in record['scopes']):
+            raise ValueError('invalid_credential_configuration')
+        records.append(Credential(record['token'], record['principal'], frozenset(record['scopes'])))
+    return StaticCredentials(records)

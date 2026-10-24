@@ -9,7 +9,11 @@ from worker.runtime_protocol import execution
 from worker.transport import Refused
 
 
-def verify_local(context, local_bundles):
+def verify_local(context, local_bundles, *, policy=None):
+    if policy is not None:
+        from service import install_policy as ip
+        ip.require(policy)
+    owner = os.getuid() if policy is None else 10001
     spec = execution(context)
     if spec is None: return
     if set(local_bundles) != {spec.bundle_id}: raise Refused('owned_bundle_required')
@@ -19,7 +23,7 @@ def verify_local(context, local_bundles):
         raise Refused('owned_bundle_required')
     for path in (root, *root.iterdir()):
         info = path.lstat()
-        if (info.st_uid != os.getuid() or info.st_mode & 0o222 or
+        if (info.st_uid != owner or info.st_mode & 0o222 or
                 not (stat.S_ISDIR(info.st_mode) if path == root else stat.S_ISREG(info.st_mode) and info.st_nlink == 1)):
             raise Refused('sealed_bundle_required')
     with (root/'manifest.json').open('rb') as stream:
@@ -53,3 +57,23 @@ class KokoroContexts:
         context['plan']['request'] = copy.deepcopy(request)
         execution(context)
         return context
+
+
+def installed_configuration(path, *, policy):
+    from service import install_policy as ip
+    from service.auth import private_input
+    from service.recovery import host_json
+    ip.require(policy)
+    return ip.configuration(host_json(private_input(path, mode=0o440, limit=48000)))
+
+
+def installed_mapping(configuration, *, policy):
+    from service import install_policy as ip
+    ip.require(policy)
+    config = ip.configuration(configuration)
+    mapping = {key: value['path'] for key, value in config['bundles'].items()}
+    if any(context['execution']['bundles'] != mapping for context in config['contexts'].values()):
+        raise Refused('unregistered_mount_mapping')
+    # Verify every hash and immutable tree; no discovery or provisioning.
+    for context in config['contexts'].values(): verify_local(context, mapping, policy=policy)
+    return mapping

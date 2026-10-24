@@ -1,7 +1,7 @@
 """Installed control's private launch notification boundary.
 
-No listener, Core owner, Docker authority, or public gate-publishing API lives
-here. Notification is corroborated against SQLite and live identity elsewhere.
+No listener or Docker authority lives here. The explicit ASGI factory owns
+Core only after corroborating the trusted notification with SQLite/live identity.
 """
 import argparse
 import json
@@ -209,6 +209,121 @@ def main():
     except (OSError,ValueError,TypeError,KeyError):
         # No raw request, credential, path, or protected provenance in logs.
         raise SystemExit('installed notification refused') from None
+
+
+
+class InstalledActivation:
+    """Internal startup dependency; public projection alone never activates."""
+    def __init__(self, waiting, configuration):
+        self.waiting = waiting
+        self.configuration = ip.configuration(configuration)
+        self.checked = None
+        self.prepared = None
+        self.started = False
+
+    def _configuration_matches(self, dispatcher):
+        if (dispatcher.current_profiles != self.configuration['profiles'] or
+                dispatcher.budget != self.configuration['budget'] or
+                dispatcher.production_contexts is None or dispatcher.persistent_registration is not None):
+            raise ValueError('installed_dispatch_configuration')
+
+    def prepare(self, runtime, root):
+        if self.prepared is not None: raise ValueError('installed_activation_reuse')
+        self.checked = checked_waiting_gate(self.waiting, self.configuration, runtime, root=root)
+        self.prepared = runtime, Path(root).absolute()
+
+    def precheck(self, dispatcher):
+        if self.started: raise ValueError('installed_activation_reuse')
+        self.started = True
+        self._configuration_matches(dispatcher)
+        if self.prepared is None: self.prepare(dispatcher.runtime, dispatcher.root)
+        if self.prepared != (dispatcher.runtime, dispatcher.root.absolute()):
+            raise ValueError('installed_activation_owner_binding')
+
+    def check_hello(self, hello):
+        gate = self.waiting.read()
+        if (set(hello) != {'lane', 'boot', 'quarantined', 'launches'} or
+                hello['quarantined'] is not False or type(hello['launches']) is not int or
+                not 0 <= hello['launches'] < 64 or
+                any(hello[k] != gate['registration'][k] for k in ('lane', 'boot'))):
+            raise ValueError('installed_unhealthy_hello')
+
+    def postcheck(self, dispatcher):
+        # Core holds its lifetime exclusion now. Reuse only the private reader;
+        # never reacquire its flock and never open protected receipts.
+        from service.recovery import installed_startup_read
+        _control_identity()
+        self._configuration_matches(dispatcher)
+        gate = self.waiting.read()
+        before = local_incarnation()
+        hello = dispatcher.runtime.call('hello', {})
+        checked = installed_startup_read(dispatcher.root, self.configuration, gate,
+                                        hello, before, policy=ip.SPLIT)
+        if (checked != self.checked or self.waiting.read() != gate or
+                dispatcher.runtime.call('hello', {}) != hello or local_incarnation() != before):
+            raise ValueError('installed_post_owner_binding_changed')
+
+
+def create_installed_app(*, configuration_file, credential_file, root='/control/core',
+                         staging='/staging', runtime=None, waiting=None):
+    """Factory-only ASGI entry, with one owner acquired/closed by lifespan.
+
+    No listener is created here. Explicit files and the trusted host notification
+    are required; no environment/default credential or synthetic fallback.
+    """
+    from contextlib import asynccontextmanager
+    import asyncio
+    from fastapi import FastAPI
+    from service.auth import installed_credentials
+    from service.execution_context import installed_configuration, installed_mapping, KokoroContexts
+    from service.dispatcher import Dispatcher
+    from service.supervisor_runtime import SupervisorRuntime
+    from service.api import create_voice_app
+    config = installed_configuration(configuration_file, policy=ip.SPLIT)
+    credentials = installed_credentials(credential_file, config['contexts'])
+    mapping = installed_mapping(config, policy=ip.SPLIT)
+    contexts = KokoroContexts(config['contexts'], mapping)
+    runtime = runtime or SupervisorRuntime('/ipc')
+    application = FastAPI(docs_url=None, redoc_url=None, openapi_url=None)
+
+    @asynccontextmanager
+    async def lifespan(app):
+        notification = waiting if waiting is not None else WaitingControl()
+        owner = None
+        try:
+            activation = InstalledActivation(notification, config)
+            # Waiting has its own 30-second budget and owns no Dispatcher/Core.
+            preparation = asyncio.create_task(asyncio.to_thread(activation.prepare, runtime, root))
+            try:
+                await asyncio.shield(preparation)
+            except asyncio.CancelledError:
+                await preparation
+                raise
+            acquisition = asyncio.create_task(asyncio.to_thread(Dispatcher, root, staging=staging, runtime=runtime,
+                profiles=config['profiles'], budget=config['budget'], production_contexts=contexts,
+                installed_activation=activation))
+            try:
+                owner = await asyncio.shield(acquisition)
+            except asyncio.CancelledError:
+                owner = await acquisition
+                raise
+            deadline = time.monotonic()+3
+            while True:
+                status = await asyncio.to_thread(owner.call, 'status')
+                if status['reconciled']: break
+                if time.monotonic() >= deadline: raise ValueError('installed_reconciliation_timeout')
+                await asyncio.sleep(.02)
+            if not status['persistent_activation']: raise ValueError('installed_reconciliation_refused')
+            app.mount('/', create_voice_app(owner, credentials=credentials, installed=config))
+            app.state.dispatcher = owner
+            yield
+        finally:
+            try:
+                if owner is not None: await asyncio.to_thread(owner.close)
+            finally:
+                notification.close()
+    application.router.lifespan_context = lifespan
+    return application
 
 
 if __name__ == '__main__':

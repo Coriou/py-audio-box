@@ -94,7 +94,7 @@ if ui.is_dir():
     app.mount('/evaluation', StaticFiles(directory=ui, html=True), name='synthetic-evaluation')
 
 
-def create_voice_app(dispatcher, *, credentials, upload_deadline=15.0):
+def create_voice_app(dispatcher, *, credentials, upload_deadline=15.0, installed=None):
     """Borrow an initialized Dispatcher. Caller retains sole close responsibility.
 
     This factory starts no owner, worker, listener or persistent enrollment.
@@ -103,7 +103,13 @@ def create_voice_app(dispatcher, *, credentials, upload_deadline=15.0):
     from service.catalogue import VOICE_READS, schema, ASSET_OPERATIONS, PRODUCTION_OPERATIONS
     if not callable(getattr(credentials, 'resolve', None)):
         raise ValueError('credential_resolver_required')
-    production = FastAPI(title='Authenticated synthetic production control', docs_url=None,
+    if installed is not None:
+        from service import install_policy as ip
+        installed = ip.configuration(installed)
+        if (not dispatcher.installed_checked or
+                dispatcher.installed_activation.configuration != installed):
+            raise ValueError('checked_installed_activation_required')
+    production = FastAPI(title='Authenticated installed Kokoro control' if installed is not None else 'Authenticated synthetic production control', docs_url=None,
                          redoc_url=None, openapi_url=None)
     production.add_exception_handler(Failure, failure_handler)
     production.add_exception_handler(RequestValidationError, invalid_handler)
@@ -128,11 +134,25 @@ def create_voice_app(dispatcher, *, credentials, upload_deadline=15.0):
     @production.get('/v1/capabilities')
     def discovery(query: Annotated[EmptyQuery, Query()]):
         body = capabilities()
+        if installed is not None:
+            import copy
+            from datetime import datetime, timezone
+            body['profiles'] = copy.deepcopy(installed['profiles'])
+            body['engines'] = sorted({c['identity']['engine'] for p in installed['profiles'] for c in p['compatibility']})
+            body['checked_at'] = datetime.now(timezone.utc).isoformat()
+            if not dispatcher.call('status')['persistent_activation']:
+                for profile in body['profiles']: profile['readiness'] = 'not_ready'
         body['operations'] = list(dict.fromkeys(('discover', *VOICE_READS, *ASSET_OPERATIONS, *PRODUCTION_OPERATIONS)))
         return body
 
     @production.get('/skeleton')
     def production_status(query: Annotated[EmptyQuery, Query()]):
+        if installed is not None:
+            from service.persistent_init import digest
+            status = dispatcher.call('status')
+            return dict(synthetic=False, ready_for_speech=status['persistent_activation'],
+                        configuration_digest=digest(installed),
+                        profiles=installed['profiles'], store='installed-owner', status=status)
         return dict(synthetic=True, ready_for_speech=False, engine_qualification='none',
                     context_configuration='operator-required', store='borrowed-owner')
 
