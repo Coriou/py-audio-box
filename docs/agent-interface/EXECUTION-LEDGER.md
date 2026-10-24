@@ -1751,3 +1751,7 @@ r96 ONEinstrumented017 testFAIL/diagnosticRED child-refusalabsent;parentraw9/chi
 ### 2026-10-24 — Actual retention accepted; surviving child observation design
 
 r97 boundedACTUALGO validatesr96FAIL/RED andobserverstage1childobserved_exitbeforefinal; firstchildrefusalUNKNOWN. ForkCOW+lateJSONsurvivalgap established, IO/schedulingcausalityunmeasured. Parent assigns pab-directed-survival-astra-r98-20261024 minimalsharedprimitive record/preclock+postwaitpublicationdesign, no sourceimplementation/operations yet. Oldresources/laneheld; no retries.
+
+### 2026-10-24 — Astra shared-record design accepted; integrated source preparation
+
+r98 boundedGO selects64byteanonymousMAP_SHARED/child-onlyentry-progress-resultcommit+5milestones, postoriginalwaitparentdecode; selectedcallbackJSONdeferred, alloriginalassertions/observer/deadlinesunchanged. Parent assigns pab-directed-shared-survival-source-r99-20261024 freshsuccessor2codefiles+mechanicalpins/privatev2validatoronly, boundedHOST/inertnormalforksmokeauthorized, nooperations. Torn/unentered/incompleteRED/no hardwareatomicityclaim; freshSolreviewnext.
