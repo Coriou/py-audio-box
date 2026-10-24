@@ -1971,7 +1971,8 @@ if mode != 'setup-failure':
 def test_B_directed_isolated_seams(tmp_path, control):
     """Original target, finite one-shot controls; scheduling failures stay RED."""
     import subprocess
-    source = _B_SEAM_PROGRAM.replace('CONTROL', repr(control)).replace('ROOT', repr(str(tmp_path/'proof')))
+    source = _B_SEAM_PROGRAM.replace('mode, root = CONTROL, Path(ROOT)',
+        'mode, root = '+repr(control)+', Path('+repr(str(tmp_path/'proof'))+')')
     source = source.replace('NODE', repr(B_CONTROL_NODE))
     # Explicit path, no installed/runtime equivalence claim. No fresh_run here:
     # real-observer bootstrap's missing addfinalizer is a recorded source block.
