@@ -200,7 +200,16 @@ class Reconciliation:
                         else: self.reasons.add('unknown_reference_kind')
                     else: walk(item, properties[key], source)
         def context(value, source):
-            if set(value) != {'plan','bundles'}: self.reasons.add('unknown_reference_schema')
+            if set(value) == {'plan','bundles','execution'}:
+                from worker.runtime_protocol import execution
+                try:
+                    if execution(value) is None: raise ValueError('execution_required')
+                except (ValueError, KeyError, TypeError):
+                    raise Incomplete('unknown_reference_kind') from None
+            elif set(value) != {'plan','bundles'}:
+                self.reasons.add('unknown_reference_schema')
+            elif value['plan']['resolved']['profile']['id'] == 'kokoro-cpu':
+                raise Incomplete('unknown_reference_kind')
             walk(value['plan'], 'worker_plan', source)
             for bundle in value['bundles']: walk(bundle, 'bundle_catalogue_entry', source)
         def catalogue_version(value, principal, source):
@@ -383,7 +392,9 @@ class Reconciliation:
                 reservation = reservations.get(job['id'])
                 if reservation:
                     demand = json.loads(reservation['demand'])
-                    frozen_configuration = hashlib.sha256(encode(a.context['plan']['resolved']['identity']['effective']).encode()).hexdigest()
+                    from worker.runtime_protocol import execution
+                    frozen_value = a.context['execution'] if execution(a.context) is not None else a.context['plan']['resolved']['identity']['effective']
+                    frozen_configuration = hashlib.sha256(encode(frozen_value).encode()).hexdigest()
                     if (reservation['category'] != 'inference' or demand['configuration'] != frozen_configuration or
                         demand['disk_bytes'] < demand['attempt_disk_bytes'] * len(job['attempts'])):
                         dispatch_reasons.add('reservation_binding_mismatch')

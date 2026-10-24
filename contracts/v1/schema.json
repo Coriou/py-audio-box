@@ -86,6 +86,7 @@
         "kind": {
           "enum": [
             "synthetic",
+            "generated",
             "upload",
             "microphone",
             "https",

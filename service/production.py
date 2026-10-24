@@ -21,7 +21,7 @@ class Production:
         self.core.voices._asset(principal, asset_id)
         plan['assets'] = [self.core.asset(asset_id)]
         plan['resolved']['reuse_configuration']['reference_asset_id'] = 'audition-' + oracle.canonical_hash([principal, key, plan['request']])
-        return self.core.submit_synthetic(principal, key, context, _admission=_admission,
+        return self.core.submit_execution(principal, key, context, _admission=_admission,
                                           _profiles=_profiles, _dispatch_settings=_dispatch_settings)
 
     def results(self, principal, job_id):
@@ -53,5 +53,9 @@ class Production:
         version = self.core.voices.version(principal, plan['request']['voice_version_id'])
         plan['voice_versions'] = [version]
         plan['assets'] = [self.core.asset(a) for a in version['reference_asset_ids']]
-        return self.core.submit_synthetic(principal, key, context, _admission=_admission,
+        from worker.runtime_protocol import execution
+        spec = execution(context)
+        if spec is not None:
+            _dispatch_settings = ('kokoro', min(25, plan['resolved']['profile']['limits']['deadline_seconds']))
+        return self.core.submit_execution(principal, key, context, _admission=_admission,
                                           _profiles=_profiles, _dispatch_settings=_dispatch_settings)

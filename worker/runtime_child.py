@@ -10,6 +10,56 @@ from worker.transport import receive
 from worker.isolated_synthetic import run
 
 
+def run_kokoro(connection, config, staging, cutoff, *, backend_factory=None):
+    """Authenticated one-shot execution; injected factory is an in-process test seam."""
+    import hashlib
+    from datetime import datetime, timezone
+    from uuid import uuid4
+    from contracts import validate as oracle
+    from worker.transport import Session, Refused, authenticate, canonical, receive, send
+    from worker.runtime_protocol import execution, generated_source
+    from worker.engines.kokoro import execute
+    job, context = config['job'], config['context']
+    spec = execution(context)
+    if spec is None: raise Refused('execution_required')
+    attempt = job['attempts'][-1]
+    cutoff = min(cutoff, time.monotonic()+max(0, (datetime.fromisoformat(job['deadline'])-datetime.now(timezone.utc)).total_seconds()))
+    binding = hashlib.sha256(canonical([job, context, config['allowed_assets'], config['profiles']])).hexdigest()
+    authenticate(connection, Session(config['secret'], binding, config['control_uid'], config['gid']), cutoff, control=False)
+    message = receive(connection, cutoff)
+    oracle.worker_message(message, job, config['allowed_assets'], transport_owner=attempt['owner_id'], context=context, current_profiles=config['profiles'])
+    if message['kind'] != 'execute': raise Refused('unexpected_message')
+    result = execute(spec, context['plan']['request']['text'], context['execution']['bundles'], backend_factory=backend_factory)
+    if time.monotonic() >= cutoff: raise Refused('expired_result')
+    stage = attempt['staging_id']
+    if Path(stage).name != stage or stage in ('.', '..'): raise Refused('invalid_stage')
+    directory = os.open(Path(staging)/stage, os.O_RDONLY|os.O_DIRECTORY|os.O_NOFOLLOW)
+    try:
+        fd = os.open('output.wav', os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW, 0o640, dir_fd=directory)
+        with os.fdopen(fd, 'wb') as output:
+            output.write(result['data']); output.flush(); os.fsync(output.fileno())
+    finally:
+        os.close(directory)
+    asset = dict(id='asset-'+uuid4().hex, sha256=result['sha256'], frames=result['frames'], sample_rate=24000, channels=1, media_format='wav', media_subtype='PCM_16', provenance=dict(kind='generated', source_sha256=result['sha256'], source_id=generated_source(context), missing_fields=[]))
+    manifest = {k:message[k] for k in ('job_id','attempt_id','generation','owner_id','staging_id','input_sha256')}
+    manifest.update(operation='speech_generate', artifact_id='artifact-'+uuid4().hex, outputs=[asset], candidates=[])
+    message.update(kind='result', stage='completed', result_asset_ids=[asset['id']])
+    send(connection, dict(message=message, manifest=manifest), cutoff)
+
+
+def contain_kokoro(context):
+    """Linux child process ceilings; container-wide topology remains install-owned."""
+    import resource
+    from worker.runtime_protocol import execution
+    spec = execution(context)
+    if spec is None: raise ValueError('execution_required')
+    resource.setrlimit(resource.RLIMIT_AS, (spec.memory_bytes, spec.memory_bytes))
+    resource.setrlimit(resource.RLIMIT_FSIZE, (spec.max_output_bytes, spec.max_output_bytes))
+    resource.setrlimit(resource.RLIMIT_NPROC, (48, 48))
+    for name in ('OMP_NUM_THREADS', 'OPENBLAS_NUM_THREADS', 'MKL_NUM_THREADS', 'NUMEXPR_NUM_THREADS'):
+        os.environ[name] = str(spec.threads)
+
+
 def main():
     connection = socket.socket(fileno=int(sys.argv[1]))
     config = receive(connection, time.monotonic() + 2)
@@ -65,7 +115,13 @@ def main():
         else:
             raise RuntimeError('supervisor_signal_allowed')
         assert not any(int(p.name) > 2 and int(p.name) != connection.fileno() for p in Path('/proc/self/fd').iterdir() if p.name.isdigit() and Path(p).exists())
-    run(connection, config, '/staging', time.monotonic() + 30)
+    if mode == 'kokoro':
+        contain_kokoro(config['context'])
+        run_kokoro(connection, config, '/staging', time.monotonic()+30)
+    else:
+        from worker.runtime_protocol import execution
+        if execution(config['context']) is not None: raise ValueError('execution_dispatch_mismatch')
+        run(connection, config, '/staging', time.monotonic() + 30)
     os.chmod('/staging/'+config['job']['attempts'][-1]['staging_id']+'/output.wav', 0o644)
 
 
