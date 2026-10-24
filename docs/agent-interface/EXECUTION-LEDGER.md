@@ -2235,3 +2235,7 @@ r208 bounded source GO closes enumeration defect. Parent mergedd0fe258f conflict
 ### 2026-10-24 — Installed registration candidate enters independent review
 
 r209 source4fd3d5af/docs5fc7581c implements protected host/hello/provenance/controlUID originalDB registration and postcommitbrackets, noactivation.112 focused tests reported PASS before finalerrorcleanup,2 targeted at exactcommit. Parent commissioned independent Sol r210 exactcandidatefullsuite. ActualLinuxpeer/UID/mount/reapqualification pending, candidateunmerged.
+
+### 2026-10-24 — Registration retained identity retry correction
+
+r210 source NO-GO: retry resets provenance inodebaseline after enumeration, accepts identicalbyte replacementbeforewriter; inert repro confirmed.112 exactcandidate tests PASS but misstimingwindow. Parent commissioned targeted Sol r211 descriptor-bound read/create identities and prewriter retryregression. Registration unmerged; no newdesign/activationgate.
