@@ -60,7 +60,7 @@ def run_generation(connection, config, staging, cutoff, *, backend_factory=None)
         text = context['plan']['reference_roles']['audition_text'] if preparing else context['plan']['request']['text']
         result = execute(spec, text, context['execution']['bundles'],
                          context['execution']['references'], reference_temp_dir=Path(staging)/stage/'conditioning',
-                         backend_factory=backend_factory, managed_owner_uid=10001)
+                         backend_factory=backend_factory, managed_owner_uid=10001, reference_fd=config.get('reference_fd'))
     else:
         result = execute(spec, context['plan']['request']['text'], context['execution']['bundles'], backend_factory=backend_factory)
     if time.monotonic() >= cutoff: raise Refused('expired_result')

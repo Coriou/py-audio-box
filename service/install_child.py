@@ -105,7 +105,7 @@ def registration_writer(public, registration, prestate, control, lock_fd, *, fau
             os.getgroups()):
         raise ValueError('permanent_control_identity_required')
     ip.installation(public); recovery.validate_registration(registration)
-    if (public['scope'] != ip.SCOPE or registration['scope'] != public['host'] or
+    if (public['scope'] not in ip.SCOPES or registration['scope'] != public['host'] or
             registration['deployment_id'] != public['deployment_id'] or
             registration['evidence'] != 'actual-host-inspection'):
         raise ValueError('installed_registration_binding')
@@ -133,7 +133,7 @@ def registration_writer(public, registration, prestate, control, lock_fd, *, fau
         db.execute('BEGIN IMMEDIATE')
         try:
             rows=db.execute('SELECT id,revision,scope,record,digest FROM p1_installation LIMIT 2').fetchall()
-            expected=[(public['deployment_id'],1,ip.SCOPE,encode(public),digest(public))]
+            expected=[(public['deployment_id'],1,public['scope'],encode(public),digest(public))]
             if rows!=expected: raise ValueError('installed_writer_installation_changed')
             count,size=db.execute('SELECT count(*),coalesce(sum(length(record)),0) FROM p1_registrations').fetchone()
             if count>recovery.HOST_OWNER_LIMIT or size>recovery.HOST_CAPSULE_BYTES:

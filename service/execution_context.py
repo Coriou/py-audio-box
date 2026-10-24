@@ -31,7 +31,13 @@ def verify_local(context, local_bundles, *, policy=None):
     if len(raw)>65536 or hashlib.sha256(raw).hexdigest()!=spec.manifest_sha256:
         raise Refused('bundle_identity')
     from lib.tts_backends.assets import verified_bundle
-    _, manifest = verified_bundle(root, 'kokoro')
+    if spec.engine == 'pocket-tts':
+        from worker.engines.pocket import verify_bundle
+        verify_bundle(spec, local_bundles, owner_uid=owner)
+    _, manifest = verified_bundle(root, spec.engine)
+    if spec.engine == 'pocket-tts' and policy is not None:
+        from service.pocket_install import manifest as installed_manifest
+        installed_manifest(manifest)
     if (manifest.get('checkpoint'), manifest.get('revision'), manifest.get('language')) != (spec.checkpoint, spec.revision, spec.language):
         raise Refused('bundle_identity')
 
@@ -122,11 +128,12 @@ class PocketContexts:
     immutable versions at command time; Production rechecks before admission.
     This does not activate an installed worker or infer qualification.
     """
-    def __init__(self, contexts, local_bundles, local_references=None):
+    def __init__(self, contexts, local_bundles, local_references=None, *, installed=False):
         from worker.engines.pocket import verify_inputs, verify_bundle
         from worker.engines.pocket_execution import PocketExecution
         from worker.engines.pocket_prepare import PocketPreparation
         self._contexts = {}
+        self._installed = installed
         self._bundles = copy.deepcopy(local_bundles)
         for principal, context in contexts.items():
             snapshot = copy.deepcopy(context)
@@ -160,7 +167,7 @@ class PocketContexts:
         context = json.loads(self._contexts[principal])
         return dict(engine='pocket-tts', profile=context['plan']['resolved']['profile'],
                     operations=['voice_prepare', 'voice_results', 'voice_save', 'speech_generate', 'job_get', 'job_cancel', 'artifact_get'],
-                    installed=False, next_action='asset_upload → voice_prepare with audition_text → voice_results → voice_save → speech_generate')
+                    installed=self._installed, next_action='asset_upload → voice_prepare with audition_text → voice_results → voice_save → speech_generate')
 
     def resolve_owned(self, core, principal, operation, request):
         """Called only by the Core owner, using managed metadata and owned versions.
@@ -259,3 +266,12 @@ def verify_qwen_local(context, bundles, references, inventory, *, owner_uid=None
     if set(bundles) != {spec.bundle_id} or set(references) != set(context['execution']['references']): raise Refused('owned_mapping_required')
     from worker.engines.qwen import verify_service_inputs
     verify_service_inputs(spec,bundles,references,inventory,owner_uid=owner_uid)
+
+
+def installed_contexts(config, mapping):
+    """One explicitly selected installed engine; reference-free Pocket factory."""
+    from service import install_policy as ip
+    config = ip.configuration(config)
+    if ip.pocket(config):
+        return PocketContexts(config['contexts'], mapping, installed=True)
+    return KokoroContexts(config['contexts'], mapping)

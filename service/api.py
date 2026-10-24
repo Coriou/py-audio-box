@@ -109,7 +109,7 @@ def create_voice_app(dispatcher, *, credentials, upload_deadline=15.0, installed
         if (not dispatcher.installed_checked or
                 dispatcher.installed_activation.configuration != installed):
             raise ValueError('checked_installed_activation_required')
-    production = FastAPI(title='Authenticated installed Kokoro control' if installed is not None else 'Authenticated synthetic production control', docs_url=None,
+    production = FastAPI(title='Authenticated installed speech control' if installed is not None else 'Authenticated synthetic production control', docs_url=None,
                          redoc_url=None, openapi_url=None)
     production.add_exception_handler(Failure, failure_handler)
     production.add_exception_handler(RequestValidationError, invalid_handler)
@@ -145,13 +145,13 @@ def create_voice_app(dispatcher, *, credentials, upload_deadline=15.0, installed
             body['engines'] = sorted({c['identity']['engine'] for p in installed['profiles'] for c in p['compatibility']})
             body['checked_at'] = datetime.now(timezone.utc).isoformat()
             for profile in body['profiles']:
-                profile['next_action'] = 'Read /skeleton configured_presets; explicitly call voice_preset_register, then speech_generate. Clone preparation is unavailable.'
+                profile['next_action'] = configured['next_action'] if configured and configured['engine']=='pocket-tts' else 'Read /skeleton configured_presets; explicitly call voice_preset_register, then speech_generate. Clone preparation is unavailable.'
             if not dispatcher.call('status')['persistent_activation']:
                 for profile in body['profiles']: profile['readiness'] = 'not_ready'
         body['operations'] = list(dict.fromkeys(('discover', *VOICE_READS, *ASSET_OPERATIONS, *PRODUCTION_OPERATIONS)))
         if configured:
             body['operations'] = [op for op in body['operations'] if op not in PRODUCTION_OPERATIONS or op in configured['operations']]
-        if installed is not None:
+        if installed is not None and not (configured and configured['engine']=='pocket-tts'):
             body['operations'] = [op for op in body['operations'] if op not in ('voice_prepare', 'voice_results', 'voice_save')]
         return body
 
@@ -160,12 +160,20 @@ def create_voice_app(dispatcher, *, credentials, upload_deadline=15.0, installed
         if installed is not None:
             from service.persistent_init import digest
             status = dispatcher.call('status')
-            return dict(synthetic=False, ready_for_speech=status['persistent_activation'],
+            configured = dispatcher.call('configured_capabilities', request.state.principal)
+            clone = bool(configured and configured['engine']=='pocket-tts')
+            profile = configured['profile'] if clone else None
+            qualified = bool(profile and profile['support']=='qualified' and profile['readiness']=='ready' and
+                             profile['verification']=='measured' and profile['qualification_receipt'] and
+                             'synthetic' not in profile['qualification_receipt'].lower()) if clone else True
+            return dict(synthetic=False, ready_for_speech=status['persistent_activation'] and qualified,
                         configuration_digest=digest(installed),
                         profiles=installed['profiles'], store='installed-owner', status=status,
                         configured_presets=dispatcher.call('configured_presets', request.state.principal),
-                        next_action='voice_preset_register → voices_list/voice_version_get → speech_generate',
-                        clone_prepare=False)
+                        next_action=configured['next_action'] if clone else 'voice_preset_register → voices_list/voice_version_get → speech_generate',
+                        clone_prepare=clone, installed=True, configured_capabilities=configured,
+                        activation_ready=status['persistent_activation'],
+                        qualification='operator-declared configured profile; installation and registration do not qualify execution')
         configured = dispatcher.call('configured_capabilities', request.state.principal)
         if configured:
             return dict(synthetic=False, ready_for_speech=False, installed=False,

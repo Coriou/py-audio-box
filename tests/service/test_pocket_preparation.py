@@ -265,6 +265,36 @@ class PocketPreparationTests(PreparationFixture):
 
 
 class PocketPublicJourneyTests(PreparationFixture):
+    installed_journey = False
+
+    def journey_paths(self):
+        root=self.base.root/'public';stage=self.base.root/'public-stage';stage.mkdir()
+        return root,stage
+
+    def journey_hello(self):
+        return dict(quarantined=False)
+
+    def journey_identity(self, count):
+        return 'inert/'+str(count)
+
+    def journey_supervisor(self, supervisor, authority, root):
+        supervisor.pocket_reference_roots={'alice':root/'assets'}
+        supervisor.verify_pocket(authority.context,authority.job['principal_id'],owner_uid=os.getuid())
+
+    def journey_execute(self, runner, spec, text, bundles, references, kwargs):
+        return runner(spec,text,bundles,references,**kwargs)
+
+    def journey_contexts(self):
+        return PocketContexts({'alice':self.context},self.base.mapping)
+
+    def journey_owner(self, root, stage, runtime, configured):
+        from service.dispatcher import Dispatcher
+        return Dispatcher(root,staging=stage,runtime=runtime,profiles=self.profiles,production_contexts=configured)
+
+    def journey_app(self, owner, credentials):
+        from service.api import create_voice_app
+        return create_voice_app(owner,credentials=credentials)
+
     def test_http_cli_mcp_dispatcher_prepare_save_generate_and_reopen(self):
         import asyncio
         import contextlib
@@ -281,7 +311,7 @@ class PocketPublicJourneyTests(PreparationFixture):
         from tests.worker.test_runtime_conditioning import filesystem_policy
         from worker.runtime_conditioning import remove_empty
         outer=self;b=self.base
-        root=b.root/'public';stage=b.root/'public-stage';stage.mkdir()
+        root,stage=self.journey_paths()
         def remove_namespace(attempt_stage):
             # Inject identities only on the helper thread. The real owner scan
             # runs concurrently and must see actual fixture metadata.
@@ -295,15 +325,14 @@ class PocketPublicJourneyTests(PreparationFixture):
                 remove_empty(attempt_stage.name,20000)
         class Runtime:
             def __init__(inner):inner.authorities=[];inner.hold=False;inner.cancelled=False;inner.reaped=False
-            def call(inner,op,body):return dict(quarantined=False) if op=='hello' else dict(acked=True)
+            def call(inner,op,body):return outer.journey_hello() if op=='hello' else dict(acked=True)
             def prepare(inner,a,fixture):
                 outer.assertEqual(fixture,'pocket')
                 from worker.runtime_supervisor import RuntimeSupervisor
                 supervisor=RuntimeSupervisor.__new__(RuntimeSupervisor)
                 supervisor.bundles=b.mapping;supervisor.references={}
-                supervisor.pocket_reference_roots={'alice':root/'assets'}
-                supervisor.verify_pocket(a.context,a.job['principal_id'],owner_uid=os.getuid())
-                inner.authorities.append(a);return 'inert/'+str(len(inner.authorities))
+                outer.journey_supervisor(supervisor,a,root)
+                inner.authorities.append(a);return outer.journey_identity(len(inner.authorities))
             def start(inner,identity):
                 if inner.hold:
                     attempt_stage=stage/inner.authorities[-1].job['attempts'][-1]['staging_id']
@@ -323,7 +352,7 @@ class PocketPublicJourneyTests(PreparationFixture):
                 def engine(spec,text,bundles,references,**kw):
                     kw['managed_owner_uid']=os.getuid()
                     runner=execute if type(spec) is PocketPreparation else generate
-                    return runner(spec,text,b.mapping,refs,**kw)
+                    return outer.journey_execute(runner,spec,text,b.mapping,refs,kw)
                 config=dict(job=a.job,context=a.context,allowed_assets=list(a.allowed_assets),profiles=list(a.profiles),secret='a'*64,control_uid=os.getuid(),gid=os.getgid())
                 with patch('worker.transport.authenticate'),patch('worker.transport.receive',return_value=a.message()),patch('worker.transport.send',side_effect=lambda c,v,t:sent.append(v)),patch('worker.engines.pocket_prepare.execute',side_effect=engine),patch('worker.engines.pocket.execute',side_effect=engine):
                     run_generation(None,config,stage,time.monotonic()+5,backend_factory=outer.backend)
@@ -332,11 +361,11 @@ class PocketPublicJourneyTests(PreparationFixture):
                 remove_namespace(attempt_stage)
                 receipt=dict(runtime_id=identity,binding=a.binding,reaped=True,engine_uid=os.getuid(),reap_method='pid1-waitpid-echild',timely=True,original_deadline=a.job['deadline'])
                 return receipt,TransportObservation('proposal','INJECTED ONLY',message=sent[0]['message'],manifest=sent[0]['manifest'])
-        configured=PocketContexts({'alice':self.context},b.mapping)
-        runtime=Runtime();owner=Dispatcher(root,staging=stage,runtime=runtime,profiles=self.profiles,production_contexts=configured)
+        configured=self.journey_contexts()
+        runtime=Runtime();owner=self.journey_owner(root,stage,runtime,configured)
         self.addCleanup(lambda current=owner: current.close() if current.thread.is_alive() else None)
         credentials=StaticCredentials([Credential('writer','alice',frozenset({'read','production-write'})), Credential('reader','alice',frozenset({'read'})), Credential('foreign','bob',frozenset({'read','production-write'}))])
-        app=create_voice_app(owner,credentials=credentials)
+        app=self.journey_app(owner,credentials)
         def wait(predicate):
             end=time.monotonic()+5
             while time.monotonic()<end:
@@ -375,7 +404,7 @@ class PocketPublicJourneyTests(PreparationFixture):
             self.assertNotIn('voice_preset_register',caps['operations'])
             oracle.validate('capabilities',caps)
             self.assertFalse(http.get('/skeleton')['synthetic'])
-            self.assertFalse(http.get('/skeleton')['installed'])
+            self.assertEqual(http.get('/skeleton')['installed'],self.installed_journey)
             self.assertEqual(http.get('/skeleton/operations/voice_preset_register')['availability'],'unavailable_configured_profile')
             voices=[]; frozen=[]; references=[]; preparations=[]
             for index,audition_text in enumerate(('  First audition.\nExact! ', 'Deuxième audition distincte.')):
@@ -438,8 +467,8 @@ class PocketPublicJourneyTests(PreparationFixture):
             job=http.call('job_get',dict(job_id=speech['job_id']));artifact=cli(['artifact','get',job['artifact_ids'][0]])
             self.assertEqual(artifact,tool('artifact_get',dict(artifact_id=artifact['id'])))
             owner.close()
-            owner=Dispatcher(root,staging=stage,runtime=Runtime(),profiles=self.profiles,production_contexts=configured)
-            self.addCleanup(lambda current=owner: current.close() if current.thread.is_alive() else None);app=create_voice_app(owner,credentials=credentials)
+            owner=self.journey_owner(root,stage,Runtime(),configured)
+            self.addCleanup(lambda current=owner: current.close() if current.thread.is_alive() else None);app=self.journey_app(owner,credentials)
             wait(lambda:owner.call('status')['reconciled'])
             self.assertFalse(owner.call('status')['integrity_fault'],owner.call('status'))
             self.assertEqual(http.call('voice_results',dict(job_id=receipt['job_id'])),result)
@@ -466,9 +495,9 @@ class PocketPublicJourneyTests(PreparationFixture):
             self.assertFalse(namespace.exists())
             self.assertEqual(owner.call('job',cancel_job['job_id'])['artifact_ids'],[])
             owner.close()
-            owner=Dispatcher(root,staging=stage,runtime=Runtime(),profiles=self.profiles,production_contexts=configured)
+            owner=self.journey_owner(root,stage,Runtime(),configured)
             self.addCleanup(lambda current=owner: current.close() if current.thread.is_alive() else None)
-            app=create_voice_app(owner,credentials=credentials)
+            app=self.journey_app(owner,credentials)
             wait(lambda:owner.call('status')['reconciled'])
             self.assertFalse(owner.call('status')['integrity_fault'],owner.call('status'))
             self.assertEqual(http.call('job_get',dict(job_id=cancel_job['job_id']))['state'],'cancelled')

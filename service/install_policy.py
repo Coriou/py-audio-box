@@ -12,6 +12,17 @@ import fcntl
 
 SCOPE = 'owned-kokoro-v1'
 POLICY = 'docker-kokoro-split-v1'
+POCKET_POLICY = 'docker-pocket-split-v1'
+POCKET_SCOPE = 'owned-pocket-v1'
+SCOPES = (SCOPE, POCKET_SCOPE)
+
+
+def pocket(config):
+    return config['ownership_policy'] == POCKET_POLICY
+
+
+def scope_for(config):
+    return POCKET_SCOPE if pocket(config) else SCOPE
 ROLES = ('control', 'staging', 'receipts', 'ipc')
 
 
@@ -202,15 +213,17 @@ def configuration(value):
     if len(encode(value).encode()) > 48000:
         raise ValueError('installed_configuration_budget')
     value = json.loads(encode(value))
-    if type(value['version']) is not int or value['version'] != 1 or value['ownership_policy'] != POLICY:
+    if type(value['version']) is not int or value['version'] != 1 or value['ownership_policy'] not in (POLICY, POCKET_POLICY):
         raise ValueError('installed_configuration_version')
     finite_budget(value['budget'])
     profiles = value['profiles']
-    if type(profiles) is not list or len(profiles) != 1 or profiles[0]['id'] != 'kokoro-cpu':
+    if type(profiles) is not list or len(profiles) != 1 or profiles[0]['id'] != ('pocket-cpu' if pocket(value) else 'kokoro-cpu'):
         raise ValueError('installed_profiles')
     oracle.validate('profile', profiles[0])
     if profiles[0]['device'] != 'cpu' or profiles[0]['topology'] != 'networkless_container':
         raise ValueError('installed_profile_topology')
+    if pocket(value) and {(c['operation'], c['mode'], c['identity']['engine']) for c in profiles[0]['compatibility']} != {('voice_prepare','prepare','pocket-tts'),('speech_generate','pocket_clone','pocket-tts')}:
+        raise ValueError('installed_pocket_capabilities')
     _closed(value['images'], 'control worker')
     if any(not isinstance(v, str) or not re.fullmatch('sha256:[0-9a-f]{64}', v) for v in value['images'].values()):
         raise ValueError('installed_image_digest')
@@ -225,6 +238,11 @@ def configuration(value):
         spec = execution(context)
         if spec is None or context['plan']['resolved']['profile'] != oracle.profile_snapshot(profiles[0]):
             raise ValueError('installed_context_profile')
+        if pocket(value):
+            if spec.engine != 'pocket-tts' or context['execution']['references'] != {spec.reference_id:'/references/assets/'+spec.reference_id}:
+                raise ValueError('installed_pocket_context')
+        elif spec.engine != 'kokoro':
+            raise ValueError('installed_kokoro_context')
         oracle.frozen_plan(context['plan'], context['bundles'])
         expected = dict(manifest_sha256=spec.manifest_sha256, checkpoint=spec.checkpoint,
                         revision=spec.revision, path='/models/bundles/'+spec.bundle_id)
@@ -245,10 +263,10 @@ def installation(value):
     if value.get('scope') == 'owned-synthetic':
         _closed(value, 'deployment_id revision scope host profile_budget_digest')
         hashes = [value['profile_budget_digest']]
-    elif value.get('scope') == SCOPE:
+    elif value.get('scope') in SCOPES:
         _closed(value, 'deployment_id revision scope host configuration configuration_digest ownership_policy roles')
         config = configuration(value['configuration'])
-        if value['ownership_policy'] != POLICY or value['configuration_digest'] != digest(config):
+        if (value['scope'] != scope_for(config) or value['ownership_policy'] != config['ownership_policy'] or value['configuration_digest'] != digest(config)):
             raise ValueError('installed_configuration_digest')
         _closed(value['roles'], 'control staging receipts ipc')
         seen = set()
@@ -264,7 +282,7 @@ def installation(value):
     else:
         raise ValueError('unsupported_enrollment')
     validate_scope(value['host'])
-    if value['scope'] == SCOPE and any(v['driver'] != 'local' for v in value['host']['volumes'].values()):
+    if value['scope'] in SCOPES and any(v['driver'] != 'local' for v in value['host']['volumes'].values()):
         raise ValueError('local_named_volumes_required')
     if (type(value['revision']) is not int or value['revision'] != 1 or
             not isinstance(value['deployment_id'], str) or not re.fullmatch('[0-9a-f]{32}', value['deployment_id']) or
@@ -286,7 +304,7 @@ def initialization(value):
     import re
     _closed(value, 'public seed')
     installation(value['public'])
-    if (value['public']['scope'] != SCOPE or not isinstance(value['seed'],str) or
+    if (value['public']['scope'] not in SCOPES or not isinstance(value['seed'],str) or
             not re.fullmatch('[0-9a-f]{64}',value['seed'])):
         raise ValueError('invalid_split_initialization')
     return value
@@ -362,7 +380,7 @@ def host_enrollment(public, policy, config, scope):
     """Corroborate closed retained public enrollment against protected authority."""
     from service.persistent_init import digest
     installation(public); host_policy(policy,config,scope)
-    if (public['scope']!=SCOPE or public['host']!=scope or
+    if (public['scope']!=scope_for(config) or public['host']!=scope or
             public['configuration']!=config or public['configuration_digest']!=policy['configuration_digest']):
         raise ValueError('installed_expected_enrollment_binding')
     for role,source in policy['roots'].items():

@@ -595,6 +595,28 @@ def _public_file(path, *, uid, gid, mode, limit, deadline):
         finally: os.close(fd)
 
 
+def _sealed_model_digest(path, limit, deadline):
+    """Pocket weights: bounded streaming hash, never materialize model bytes."""
+    with ip.parent_fd(path) as (parent, name):
+        fd=os.open(name,os.O_RDONLY|os.O_NOFOLLOW|os.O_NONBLOCK,dir_fd=parent)
+        try:
+            before=os.fstat(fd)
+            if (not stat.S_ISREG(before.st_mode) or before.st_nlink!=1 or
+                    (before.st_uid,before.st_gid,stat.S_IMODE(before.st_mode))!=(10001,10001,0o444) or
+                    not 0 < before.st_size <= limit): raise ValueError('installed_model_policy')
+            hashed=hashlib.sha256();size=0
+            while size<=before.st_size:
+                if time.monotonic()>deadline: raise ValueError('installed_source_budget')
+                block=os.read(fd,min(1024**2,before.st_size+1-size))
+                if not block:break
+                hashed.update(block);size+=len(block)
+            if (size!=before.st_size or ip.identity(os.fstat(fd))!=ip.identity(before) or
+                    ip.identity(os.stat(name,dir_fd=parent,follow_symlinks=False))!=ip.identity(before)):
+                raise ValueError('installed_source_changed')
+            return hashed.hexdigest(),size
+        finally:os.close(fd)
+
+
 def _model_tree(path, config, deadline):
     """Bounded sealed tree inventory; hash every file, verify enrolled manifest."""
     records=[]; total=0; pending=[Path(path)]; files={}; directories=[]; file_identities=[]
@@ -623,14 +645,20 @@ def _model_tree(path, config, deadline):
             with ip.parent_fd(child) as (parent,leaf): s=os.stat(leaf,dir_fd=parent,follow_symlinks=False)
             if stat.S_ISDIR(s.st_mode): pending.append(child); continue
             file_before=ip.identity(_source_stat(child,directory=False))
-            raw=_public_file(child,uid=10001,gid=10001,mode=0o444,
-                             limit=min(512*1024**2,2*1024**3-total),deadline=deadline)
-            total+=len(raw); relative=str(child.relative_to(path)); hashed=hashlib.sha256(raw).hexdigest()
-            files[relative]=(hashed,len(raw))
+            relative=str(child.relative_to(path))
+            if ip.pocket(config) and child.name != 'manifest.json':
+                hashed,size=_sealed_model_digest(child, min(2*1024**3,4*1024**3-total),deadline)
+                raw=None
+            else:
+                raw=_public_file(child,uid=10001,gid=10001,mode=0o444,
+                                 limit=min(512*1024**2,(4 if ip.pocket(config) else 2)*1024**3-total),deadline=deadline)
+                hashed,size=hashlib.sha256(raw).hexdigest(),len(raw)
+            total+=size
+            files[relative]=(hashed,size)
             if ip.identity(_source_stat(child,directory=False))!=file_before:
                 raise ValueError('installed_source_changed')
             file_identities.append((child,file_before))
-            records.append([relative,hashed,len(raw),list(file_before)])
+            records.append([relative,hashed,size,list(file_before)])
             if child.name=='manifest.json':
                 if len(raw)>65536: raise ValueError('installed_manifest_budget')
                 files[relative]+=(recovery.host_json(raw),)
@@ -640,8 +668,11 @@ def _model_tree(path, config, deadline):
     allowed=set(expected)
     for name,bundle in expected.items():
         hashed,_,manifest=files[name]
-        if hashed!=bundle['manifest_sha256'] or manifest.get('backend')!='kokoro' or manifest.get('schema_version')!=1 or (manifest.get('checkpoint'),manifest.get('revision'))!=(bundle['checkpoint'],bundle['revision']):
+        if hashed!=bundle['manifest_sha256'] or manifest.get('backend')!=('pocket-tts' if ip.pocket(config) else 'kokoro') or manifest.get('schema_version')!=1 or (manifest.get('checkpoint'),manifest.get('revision'))!=(bundle['checkpoint'],bundle['revision']):
             raise ValueError('installed_model_manifest')
+        if ip.pocket(config):
+            from service.pocket_install import manifest as installed_manifest
+            installed_manifest(manifest)
         if not isinstance(manifest.get('files'),list) or not manifest['files']:
             raise ValueError('installed_model_manifest')
         for entry in manifest['files']:
@@ -749,11 +780,18 @@ def validate_installed_topology(topology, scope, owners, config, policy, *, stop
         if sorted(owner['volumes'])!=wanted_roles: raise ValueError('installed_authority_mounts')
         allowed={ '/models':policy['inputs']['models'], ip.CONFIG_DESTINATION:policy['inputs']['config'] }
         if role=='control': allowed[ip.CREDENTIAL_DESTINATION]=policy['inputs']['credential']
+        reference_source = policy['roots']['control']['source']+'/core/assets' if role=='worker' and ip.pocket(config) else None
+        reference_seen = False
         mounts=[]; seen=set(); tmp_seen=False
         for mount in current['mounts']:
             recovery.closed(mount,'type name source destination rw')
             destination=mount['destination']
-            if destination in allowed:
+            if destination == '/references/assets' and reference_source is not None:
+                if (reference_seen or mount['type']!='bind' or mount['name'] not in ('',None) or
+                        mount['source']!=reference_source or mount['rw'] is not False):
+                    raise ValueError('installed_reference_mount')
+                reference_seen = True
+            elif destination in allowed:
                 if (destination in seen or mount['type']!='bind' or mount['name'] not in ('',None) or
                         mount['source']!=allowed[destination]['source'] or mount['rw'] is not False):
                     raise ValueError('installed_input_mount')
@@ -764,6 +802,7 @@ def validate_installed_topology(topology, scope, owners, config, policy, *, stop
                 tmp_seen=True
             else: mounts.append(mount)
         # Docker versions may omit tmpfs from .Mounts; HostConfig.Tmpfs is exact.
+        if reference_source is not None and not reference_seen: raise ValueError('installed_reference_mount_coverage')
         if seen!=set(allowed): raise ValueError('installed_input_mount_coverage')
         legacy['mounts']=mounts; legacy['capadd']=[]
         for key in INSTALLED_FIELDS: legacy.pop(key)
@@ -792,6 +831,9 @@ class InstalledObserver:
         policy=self.policy
         if owners:
             ip.roots_checked({r:v['source'] for r,v in policy['roots'].items()},policy=ip.SPLIT)
+            if ip.pocket(self.config):
+                for suffix in ('core', 'core/assets'):
+                    ip.directory_identity(Path(policy['roots']['control']['source'])/suffix, policy=ip.SPLIT, role='control')
         mounts=self.mountinfo(); _installed_mount_proof(policy,mounts)
         before=_installed_sources(policy,self.config)
         security=_json_output(self.docker._read(['info','--format','{"security":{{json .SecurityOptions}},"cgroup":{{json .CgroupVersion}},"name":{{json .Name}},"os":{{json .OperatingSystem}}}']))
@@ -806,6 +848,7 @@ class InstalledObserver:
             raise ValueError('host_enumeration_budget')
         consumers=[]
         exact_inputs={r['source'] for r in policy['inputs'].values()}
+        if ip.pocket(self.config): exact_inputs.add(policy['roots']['control']['source']+'/core/assets')
         for identity in sorted(ids):
             c=_installed_container(self.docker,identity)
             if not isinstance(c['mounts'],list) or len(c['mounts'])>16: raise ValueError('host_mount_budget')

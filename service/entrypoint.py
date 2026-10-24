@@ -311,14 +311,14 @@ def create_installed_app(*, configuration_file, credential_file, root='/control/
     import asyncio
     from fastapi import FastAPI
     from service.auth import installed_credentials
-    from service.execution_context import installed_configuration, installed_mapping, KokoroContexts
+    from service.execution_context import installed_configuration, installed_mapping, installed_contexts
     from service.dispatcher import Dispatcher
     from service.supervisor_runtime import SupervisorRuntime
     from service.api import create_voice_app
     config = installed_configuration(configuration_file, policy=ip.SPLIT)
     credentials = installed_credentials(credential_file, config['contexts'])
     mapping = installed_mapping(config, policy=ip.SPLIT)
-    contexts = KokoroContexts(config['contexts'], mapping)
+    contexts = installed_contexts(config, mapping)
     runtime = runtime or SupervisorRuntime('/ipc')
     application = FastAPI(docs_url=None, redoc_url=None, openapi_url=None)
 
@@ -447,7 +447,7 @@ def _listener_ready(configuration_digest):
         raw=response.read(65537)
         if response.status!=200 or len(raw)>65536: return False
         result=host_json(raw)
-        return (result.get('synthetic') is False and result.get('ready_for_speech') is True and
+        return (result.get('synthetic') is False and (result.get('activation_ready',result.get('ready_for_speech')) is True) and
                 result.get('configuration_digest')==configuration_digest and
                 result.get('status',{}).get('persistent_activation') is True)
     finally: connection.close()

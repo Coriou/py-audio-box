@@ -30,6 +30,8 @@ def command(role, config, policy, scope):
     for name in (('control', 'ipc', 'staging') if role == 'control' else ('ipc', 'receipts', 'staging')):
         args += ['--mount', 'type=volume,source='+scope['volumes'][name]['name']+',destination=/'+name+
                  (',readonly' if role == 'control' and name in ('ipc','staging') else '')]
+    if role == 'worker' and ip.pocket(config):
+        args += ['--mount', 'type=bind,source='+policy['roots']['control']['source']+'/core/assets,destination=/references/assets,readonly']
     destinations = dict(models='/models', config=ip.CONFIG_DESTINATION, credential=ip.CREDENTIAL_DESTINATION)
     for name in (('models','config','credential') if role == 'control' else ('models','config')):
         source = policy['inputs'][name]['source']
@@ -40,7 +42,7 @@ def command(role, config, policy, scope):
              ('service.entrypoint import installed_main;installed_main()' if role == 'control' else
               "worker.runtime_supervisor import main;main()" )]
     if role == 'worker':
-        args += ['--installed-policy', ip.POLICY, '--configuration-file', ip.CONFIG_DESTINATION]
+        args += ['--installed-policy', config['ownership_policy'], '--configuration-file', ip.CONFIG_DESTINATION]
     return args
 
 

@@ -189,17 +189,39 @@ class InstalledWorkerEntrypointTests(unittest.TestCase):
             for name,value in (('getuid',0),('geteuid',0),('getgid',10001),('getegid',10001)):
                 stack.enter_context(patch.object(os,name,return_value=value))
             stack.enter_context(patch.object(os,'getgroups',return_value=[]))
-            config=stack.enter_context(patch('service.execution_context.installed_configuration',return_value={'injected':'closed-loader'}))
+            config=stack.enter_context(patch('service.execution_context.installed_configuration',return_value={'ownership_policy':ip.POLICY,'contexts':{'alice':{}}}))
             checked=stack.enter_context(patch('service.execution_context.installed_mapping',return_value=mapping))
             stack.enter_context(patch.object(ip,'directory_identity'))
             files=stack.enter_context(patch.object(ip,'read_private',return_value=b''))
             runtime=stack.enter_context(patch.object(supervisor,'RuntimeSupervisor'))
             supervisor.main()
             config.assert_called_once_with('/explicit/install.json',policy=ip.SPLIT)
-            checked.assert_called_once_with({'injected':'closed-loader'},policy=ip.SPLIT)
-            runtime.assert_called_once_with(bundles=mapping)
+            checked.assert_called_once_with({'ownership_policy':ip.POLICY,'contexts':{'alice':{}}},policy=ip.SPLIT)
+            runtime.assert_called_once_with(bundles=mapping,pocket_reference_roots=None,installed_pocket=False)
             runtime.return_value.serve.assert_called_once_with()
             self.assertEqual(files.call_count,4)
+
+    def test_pocket_policy_passes_principals_and_fixed_private_root(self):
+        from contextlib import ExitStack
+        from worker import runtime_supervisor as supervisor
+        from service import install_policy as ip
+        for selected in (ip.POCKET_POLICY,ip.POLICY):
+            with ExitStack() as stack:
+                stack.enter_context(patch('sys.argv',['worker','--installed-policy',selected,'--configuration-file','/explicit/install.json']))
+                for name,value in (('getuid',0),('geteuid',0),('getgid',10001),('getegid',10001)):
+                    stack.enter_context(patch.object(os,name,return_value=value))
+                stack.enter_context(patch.object(os,'getgroups',return_value=[]))
+                stack.enter_context(patch('service.execution_context.installed_configuration',return_value={'ownership_policy':ip.POCKET_POLICY,'contexts':{'alice':{},'bob':{}}}))
+                checked=stack.enter_context(patch('service.execution_context.installed_mapping',return_value={'bundle':'/models/bundles/bundle'}))
+                stack.enter_context(patch.object(ip,'directory_identity'))
+                stack.enter_context(patch.object(ip,'read_private',return_value=b''))
+                runtime=stack.enter_context(patch.object(supervisor,'RuntimeSupervisor'))
+                if selected==ip.POCKET_POLICY:
+                    supervisor.main()
+                    runtime.assert_called_once_with(bundles={'bundle':'/models/bundles/bundle'},pocket_reference_roots={'alice':'/references/assets','bob':'/references/assets'},installed_pocket=True)
+                else:
+                    with self.assertRaises(SystemExit):supervisor.main()
+                    checked.assert_not_called();runtime.assert_not_called()
 
     def test_configuration_without_explicit_policy_refuses(self):
         from worker import runtime_supervisor as supervisor
