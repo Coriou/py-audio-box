@@ -210,7 +210,8 @@ class NativeRuntimeTests(unittest.TestCase):
         pending=f.runtime.collect(f.a,rid)
         stage.chmod(0o700)
         with self.assertRaises(Refused):f.runtime.finalize_collect(pending)
-        stage.chmod(0o770)
+        f=NativeFixture(self);rid=f.launch();stage=f.stage/f.a.job['attempts'][-1]['staging_id']
+        pending=f.runtime.collect(f.a,rid)
         real_open=os.open
         def replaced(path,flags,*args,**kwargs):
             fd=real_open(path,flags,*args,**kwargs)
@@ -221,6 +222,67 @@ class NativeRuntimeTests(unittest.TestCase):
         with patch('service.native_runtime.os.open',side_effect=replaced):
             with self.assertRaises(Refused):f.runtime.finalize_collect(pending)
         self.assertFalse((stage/'output.wav').exists())
+
+    def owner_import_fault(self, point):
+        import stat
+        from service import native_runtime as module
+        f=self.f;rid=f.launch();pending=f.runtime.collect(f.a,rid)
+        directory=f.spool/f.a.binding;real_write=module._write;real_sync=module._sync;injected=[]
+        def write(path,data):
+            if point=='complete-write' and path==directory/'import-complete':
+                injected.append(point);raise OSError('single completion write uncertainty')
+            return real_write(path,data)
+        def sync(path):
+            if point=='complete-dir' and path==directory and (directory/'import-complete').exists() and not injected:
+                injected.append(point);raise OSError('single completion directory uncertainty')
+            return real_sync(path)
+        def link(*args,**kwargs):
+            injected.append(point);raise OSError('single prelink uncertainty')
+        with patch('service.native_runtime._write',side_effect=write),patch('service.native_runtime._sync',side_effect=sync):
+            if point=='prelink':
+                with patch('service.native_runtime.os.link',side_effect=link):
+                    with self.assertRaises(OSError):f.runtime.finalize_collect(pending)
+            else:
+                with self.assertRaises(OSError):f.runtime.finalize_collect(pending)
+        self.assertEqual(injected,[point]);self.assertTrue(f.runtime.failed)
+        retained={x.name:x.read_bytes() for x in directory.iterdir()}
+        for _ in range(5):
+            f.runtime.observe(rid);f.runtime.terminate(rid)
+            with self.assertRaisesRegex(Refused,'uncertain'):f.runtime.collect(f.a,rid)
+            with self.assertRaisesRegex(Refused,'uncertain'):f.runtime.finalize_collect(pending)
+            with self.assertRaisesRegex(Refused,'uncertain'):f.runtime.call('ack',dict(runtime_id=rid))
+        self.assertEqual(retained,{x.name:x.read_bytes() for x in directory.iterdir()})
+        reopened=f.make_runtime();self.assertFalse(reopened.admission_open);reopened.bind(f.a,rid)
+        with self.assertRaisesRegex(Refused,'uncertain'):reopened.collect(f.a,rid)
+        self.assertNotIn('ack',[q['op'] for q in f.requests])
+
+    def test_prelink_failure_is_closed_on_replay_and_reopen(self):self.owner_import_fault('prelink')
+    def test_completion_write_failure_is_closed_on_replay_and_reopen(self):self.owner_import_fault('complete-write')
+    def test_completion_directory_failure_is_closed_even_with_visible_complete(self):self.owner_import_fault('complete-dir')
+
+    def test_output_file_fsync_failure_is_closed_before_import(self):
+        import stat
+        f=self.f;rid=f.launch();real=os.fsync;injected=[]
+        def sync(fd):
+            if stat.S_ISREG(os.fstat(fd).st_mode) and not injected:
+                injected.append(True);raise OSError('single output file sync uncertainty')
+            return real(fd)
+        with patch('service.native_runtime.os.fsync',side_effect=sync):
+            with self.assertRaises(OSError):f.runtime.collect(f.a,rid)
+        self.assertEqual(injected,[True]);self.assertTrue(f.runtime.failed)
+        for _ in range(3):
+            f.runtime.terminate(rid);f.runtime.observe(rid)
+            with self.assertRaisesRegex(Refused,'uncertain'):f.runtime.collect(f.a,rid)
+        self.assertFalse(f.make_runtime().admission_open)
+        self.assertFalse((f.stage/f.a.job['attempts'][-1]['staging_id']/'output.wav').exists())
+
+    def test_completed_but_unhanded_off_reopen_is_conservative(self):
+        f=self.f;rid=f.launch();receipt,observation=f.runtime.finalize_collect(f.runtime.collect(f.a,rid))
+        self.assertIsNotNone(observation)
+        self.assertIsNotNone(f.runtime.finalize_collect(f.runtime.collect(f.a,rid))[1])
+        reopened=f.make_runtime();self.assertFalse(reopened.admission_open);reopened.bind(f.a,rid)
+        self.assertEqual(reopened.observe(rid).state.value,'stopped-and-reaped')
+        with self.assertRaisesRegex(Refused,'uncertain'):reopened.collect(f.a,rid)
 
     def test_production_connector_uses_remaining_absolute_budget(self):
         f=self.f; now=[100.]; timeouts=[]; closed=[]; handshakes=[]
@@ -347,6 +409,9 @@ class NativeRuntimeTests(unittest.TestCase):
         with self.assertRaises(Refused):f.runtime.finalize_collect(f.runtime.collect(f.a,rid))
         self.assertEqual(list((f.stage/f.a.job['attempts'][-1]['staging_id']).iterdir()),[])
         self.assertTrue(f.runtime.failed)
+        for _ in range(3):
+            f.runtime.terminate(rid);f.runtime.observe(rid)
+            with self.assertRaisesRegex(Refused,'uncertain'):f.runtime.collect(f.a,rid)
         with self.assertRaisesRegex(Refused,'uncertain'):f.make_runtime().prepare(f.a)
 
     def test_stop_and_cancel_during_output_import_are_not_death_proof(self):

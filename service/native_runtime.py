@@ -111,6 +111,7 @@ class NativeRuntime:
         self.lifecycle=threading.BoundedSemaphore(3);self.transfer=threading.BoundedSemaphore(1)
         self.owner=threading.get_ident()
         self.failed=False
+        self.import_closed=set();self.import_completed=set();self.reopened_imports={}
         self._account()
 
     @contextmanager
@@ -143,7 +144,7 @@ class NativeRuntime:
             p._hex(directory.name,64);_directory(directory,0o700);count+=1
             actual=0
             for file in directory.iterdir():
-                if file.name not in ('snapshot','input','output','complete','import'): raise Refused('native_control_storage')
+                if file.name not in ('snapshot','input','output','complete','import','import-intent','import-complete'): raise Refused('native_control_storage')
                 info=file.lstat()
                 if not stat.S_ISREG(info.st_mode) or info.st_uid!=os.getuid() or info.st_nlink!=1 or stat.S_IMODE(info.st_mode)!=0o600:
                     raise Refused('native_control_storage')
@@ -170,6 +171,29 @@ class NativeRuntime:
                 if final.exists() or final.is_symlink():
                     _directory(final.parent,0o770)
                     if _read(final,1048576)!=raw: self.failed=True
+            intent=directory/'import-intent';completed=directory/'import-complete'
+            if intent.exists():
+                marker=json.loads(_read(intent,512))
+                p._closed(marker,('version','binding','runtime_id','output'))
+                if marker['version']!='native-import-v1' or marker['binding']!=authority.binding:
+                    raise Refused('native_control_storage')
+                p.runtime_id(marker['runtime_id'],p.native_binding(authority.context)['lane'],p.native_binding(authority.context)['boot'])
+                if not (directory/'complete').exists() or canonical(marker['output'])!=_read(directory/'complete',256):
+                    raise Refused('native_control_storage')
+                if completed.exists() and _read(completed,512)!=canonical(marker):
+                    raise Refused('native_control_storage')
+                # Visibility of COMPLETE alone cannot prove its last fsync returned.
+                # Reopen requires the exact subsequent durable Core publication.
+                if authority.binding not in self.import_completed:
+                    self.import_closed.add(authority.binding)
+                    self.reopened_imports[authority.binding]=(authority,marker,completed.exists())
+            elif completed.exists():
+                raise Refused('native_control_storage')
+            elif (directory/'output').exists() and authority.binding not in self.import_completed:
+                self.import_closed.add(authority.binding)
+                if (directory/'complete').exists():
+                    # Legacy completed history needs the same exact Core proof.
+                    self.reopened_imports[authority.binding]=(authority,None,True)
             # Charge declared worst case, including detached input and output copy.
             total+=max(actual,2*spec.reference_bytes+3*min(spec.max_output_bytes,1048576)+96000)
             if (directory/'import').exists() or ((directory/'output').exists() and not (directory/'complete').exists()):
@@ -179,11 +203,37 @@ class NativeRuntime:
 
     @property
     def admission_open(self):
-        return not self.failed
+        return not self.failed and not self.import_closed
 
     def attach_owner(self):
         """Dispatcher startup/reopen transfers adapter ownership before I/O."""
         self.owner=threading.get_ident()
+
+    def import_uncertain(self, runtime_id):
+        r=self.records.get(runtime_id)
+        return bool(r and r['authority'].binding in self.import_closed)
+
+    def recover_imports(self, core):
+        """Owner startup only: Core intent proves a prior successful handoff.
+
+        No filesystem repair or marker retry. A bare COMPLETE is insufficient:
+        its file/dir fsync may have raised in the prior control session.
+        """
+        if threading.get_ident()!=self.owner: raise Refused('native_owner_required')
+        for binding,(a,marker,complete) in self.reopened_imports.items():
+            if not complete: continue
+            row=core.db.execute('SELECT authority,runtime,receipt FROM dispatches WHERE binding=?',(binding,)).fetchone()
+            if not row or row[0].encode()!=a._snapshot or not row[1] or not row[2]: continue
+            if marker is not None and row[1]!=marker['runtime_id']: continue
+            receipt=json.loads(row[2])
+            p.terminal_receipt(receipt,authority=a,runtime_id=row[1],local_import_uid=self.local_import_uid)
+            if not receipt['timely']: continue
+            publication=core.db.execute('SELECT artifact FROM publications WHERE job_id=?',(a.job['id'],)).fetchone()
+            if not publication: continue
+            artifact=json.loads(publication[0]);attempt=a.job['attempts'][-1]
+            if any(artifact[k]!=v for k,v in dict(job_id=a.job['id'],generation=a.job['generation'],
+                    attempt_id=attempt['id'],owner_id=attempt['owner_id'],staging_id=attempt['staging_id']).items()): continue
+            self.import_closed.discard(binding);self.import_completed.add(binding)
 
     def detach(self, authority, core):
         """Owner-loop only: authenticate managed input, then freeze immutable bytes."""
@@ -235,7 +285,7 @@ class NativeRuntime:
         if authority and any(config[k]!=self.native[k] for k in config if k!='boot'): raise Refused('native_configuration')
         cutoff=time.monotonic()+timeout
         if op in ('prepare','put_input','start','get_output'):
-            if self.failed: raise Refused('native_control_uncertain')
+            if self.failed or authority.binding in self.import_closed: raise Refused('native_control_uncertain')
             cutoff=min(cutoff,authority.cutoff(30))
         if cutoff<=time.monotonic(): raise Refused('native_deadline')
         q=dict(version=p.VERSION,deployment_id=config['deployment_id'],configuration_sha256=config['configuration_sha256'],
@@ -261,6 +311,7 @@ class NativeRuntime:
             return value
         if op!='ack' or set(body)!={'runtime_id'}: raise Refused('native_operation')
         r=self.records[body['runtime_id']]
+        if self.import_uncertain(body['runtime_id']): raise Refused('native_control_uncertain')
         self._rpc('ack',{},authority=r['authority'],runtime_id=body['runtime_id'],timeout=timeout)
         return dict(acked=True)
 
@@ -278,7 +329,7 @@ class NativeRuntime:
             pcm(detached,spec,True)
         directory=self.spool/authority.binding
         with self.lock:
-            if self.failed: raise Refused('native_control_uncertain')
+            if not self.admission_open: raise Refused('native_control_uncertain')
             if not directory.exists():
                 self._account(2*spec.reference_bytes+3*min(spec.max_output_bytes,1048576)+96000,new=True)
                 directory.mkdir(mode=0o700)
@@ -330,8 +381,17 @@ class NativeRuntime:
     kill=terminate
 
     def collect(self, authority, runtime_id):
+        if authority.binding in self.import_closed: raise Refused('native_control_uncertain')
         try: return self._collect(authority,runtime_id)
-        except Refused:
+        except OSError:
+            self.failed=True;self.import_closed.add(authority.binding)
+            raise
+        except Refused as exc:
+            # A retained import validation/storage refusal cannot turn into a
+            # receipt-only terminal handoff merely because stop/deadline follows.
+            if str(exc) not in ('native_cancelled','native_deadline') and (self.spool/authority.binding/'output').exists():
+                self.failed=True;self.import_closed.add(authority.binding)
+            if authority.binding in self.import_closed: raise
             r=self.records.get(runtime_id)
             if r and (r["event"].is_set() or time.monotonic()>=r["cutoff"]):
                 value=self._rpc("collect",{},authority=authority,runtime_id=runtime_id)
@@ -378,24 +438,45 @@ class NativeRuntime:
                 self._validate_output(authority,proposal,output,raw,spec)
                 self._active(r,runtime_id)
                 _write(complete,canonical(output))
-            except Exception:
+            except Exception as exc:
                 self.failed=True
+                if isinstance(exc,OSError): self.import_closed.add(authority.binding)
                 raise
         self._validate_output(authority,proposal,output,raw,spec)
         temporary=directory/'import'
         destination=self.staging/authority.job['attempts'][-1]['staging_id']/'output.wav'
         if not destination.exists() and not destination.is_symlink():
+            if authority.binding in self.import_completed: return receipt,None
             if temporary.exists() or temporary.is_symlink():
                 self.failed=True;raise Refused('native_control_uncertain')
             self._active(r,runtime_id)
-            _write(temporary,raw)
-            identity=_identity(temporary.lstat())
+            try:
+                marker=canonical(dict(version='native-import-v1',binding=authority.binding,runtime_id=runtime_id,output=output))
+                # Stable exclusive names: executor never retires a monitored name.
+                if (directory/'import-intent').exists(): raise Refused('native_control_uncertain')
+                _write(directory/'import-intent',marker)
+                _write(temporary,raw)
+                identity=_identity(temporary.lstat())
+            except Exception:
+                self.failed=True;self.import_closed.add(authority.binding)
+                raise
         else:
             if _read(destination,1048576)!=raw: raise Refused('native_control_conflict')
+            if authority.binding not in self.import_completed: self.import_closed.add(authority.binding);raise Refused('native_control_uncertain')
             identity=None
         return PendingImport(authority,runtime_id,receipt,proposal,raw,identity)
 
     def finalize_collect(self, pending):
+        if threading.get_ident()!=self.owner: raise Refused('native_owner_required')
+        if not isinstance(pending,PendingImport): return pending
+        binding=pending.authority.binding
+        if binding in self.import_closed: raise Refused('native_control_uncertain')
+        try: return self._finalize_collect(pending)
+        except Exception:
+            self.failed=True;self.import_closed.add(binding)
+            raise
+
+    def _finalize_collect(self, pending):
         """Sole owner, between resource observations; no network/hash/PCM work.
 
         All private names remain stable during executor I/O. Only this finite
@@ -423,6 +504,7 @@ class NativeRuntime:
             verify_stage()
             destination=stage/'output.wav'
             if destination.exists() or destination.is_symlink():
+                if authority.binding not in self.import_completed: raise Refused('native_control_uncertain')
                 if _read(destination,1048576)!=raw: raise Refused('native_control_conflict')
             else:
                 active()
@@ -437,6 +519,11 @@ class NativeRuntime:
                 active()
             if _read(destination,1048576)!=raw: raise Refused('native_control_conflict')
             verify_stage()
+            if authority.binding not in self.import_completed:
+                marker=_read(directory/'import-intent',512)
+                if (directory/'import-complete').exists(): raise Refused('native_control_uncertain')
+                _write(directory/'import-complete',marker)
+                self.import_completed.add(authority.binding)
             return receipt,TransportObservation('proposal','native_owned_receipt',None,
                 proposal['message'],proposal['manifest'],time.monotonic())
         finally: os.close(stagefd)

@@ -104,6 +104,67 @@ class NativeLifecycleTests(unittest.TestCase):
                 self.assertEqual(len(f.f.calls),2)
             finally:self.close()
 
+    def import_sync_failure(self, which):
+        import stat
+        from service import native_runtime as module
+        f=self.f;injected=[];real_sync=module._sync;real_fsync=os.fsync
+        def paths():
+            if not f.runtime.records:return None,None,None
+            r=next(iter(f.runtime.records.values()));a=r['authority']
+            directory=f.spool/a.binding
+            stage=f.stage/a.job['attempts'][-1]['staging_id']
+            return directory,stage,r
+        def ready():
+            directory,stage,r=paths()
+            return directory is not None and (stage/'output.wav').exists() and not (directory/'import').exists()
+        def sync(path):
+            directory,stage,r=paths()
+            if which=='private' and path==directory and ready() and not injected:
+                injected.append(which);raise OSError('single private post-unlink fsync uncertainty')
+            return real_sync(path)
+        def fsync(fd):
+            directory,stage,r=paths()
+            info=os.fstat(fd)
+            if which=='stage' and ready() and stat.S_ISDIR(info.st_mode) and info.st_ino==stage.stat().st_ino and not injected:
+                injected.append(which);raise OSError('single stage post-unlink fsync uncertainty')
+            return real_fsync(fd)
+        with patch('worker.native_child.parent_exchange',side_effect=f.exchange),patch('service.native_runtime._sync',side_effect=sync),patch('service.native_runtime.os.fsync',side_effect=fsync):
+            try:
+                d=self.open()
+                result=d.call('production_generate','alice',self.context['plan']['request'],key='uncertain-'+which)
+                self.wait(lambda:injected and f.runtime.import_closed)
+                rid=next(iter(f.runtime.records));a=f.runtime.records[rid]['authority']
+                before=sum(q['op']=='observe' for q in f.requests)
+                self.wait(lambda:sum(q['op']=='observe' for q in f.requests)>=before+6)
+                for _ in range(3):
+                    self.assertEqual(f.runtime.observe(rid).state.value,'stopped-and-reaped')
+                    f.runtime.terminate(rid)
+                    with self.assertRaisesRegex(Refused,'uncertain'):f.runtime.collect(a,rid)
+                    with self.assertRaisesRegex(Refused,'uncertain'):f.runtime.call('ack',dict(runtime_id=rid))
+                    self.assertEqual(d.call('job',result['job_id'])['artifact_ids'],[])
+                    self.assertEqual(d.call('status')['reservations'][0]['state'],'executing')
+                self.assertTrue(f.runtime.failed);self.assertEqual(injected,[which])
+                self.assertNotIn('ack',[q['op'] for q in f.requests])
+                self.assertFalse(f.s.journal.value['records'][0]['acked'])
+                self.close()
+                core=Core(self.root)
+                try:self.assertEqual(core.db.execute('SELECT * FROM publications').fetchall(),[])
+                finally:core.close()
+                f.runtime=f.make_runtime();self.assertFalse(f.runtime.admission_open)
+                d=self.open()
+                self.wait(lambda:sum(q['op']=='observe' for q in f.requests)>=before+9)
+                self.assertFalse(f.runtime.admission_open)
+                self.assertEqual(d.call('job',result['job_id'])['artifact_ids'],[])
+                self.assertEqual(d.call('status')['reservations'][0]['state'],'executing')
+                self.assertNotIn('ack',[q['op'] for q in f.requests])
+            finally:self.close()
+
+    def test_private_post_unlink_sync_uncertainty_never_hands_off(self):
+        self.import_sync_failure('private')
+
+    def test_stage_post_unlink_sync_uncertainty_never_hands_off(self):
+        self.import_sync_failure('stage')
+
     def test_stale_future_native_registration_and_historical_decode(self):
         for seconds in (-301,1):
             context=copy.deepcopy(self.context)
@@ -225,7 +286,10 @@ class NativeLifecycleTests(unittest.TestCase):
                 self.assertEqual(d.call('job',result['job_id'])['artifact_ids'],[])
                 self.assertFalse(f.s.journal.value['records'][0]['acked'])
                 self.close();self.extra_fault=None
+                f.runtime=f.make_runtime()
+                self.assertFalse(f.runtime.admission_open)
                 d=self.open()
+                self.assertTrue(f.runtime.admission_open)
                 job=self.wait(lambda:(j if (j:=d.call('job',result['job_id']))['state']=='succeeded' else None))
                 self.wait(lambda:d.call('status')['phase']=='idle')
                 self.assertEqual(d.call('status')['reservations'][0]['state'],'retained')

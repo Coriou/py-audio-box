@@ -103,6 +103,7 @@ class Dispatcher:
                 raise ValueError('startup_deployment_changed')
             self.admission=Admission(core,self.staging,self.budget,private_spool=getattr(self.runtime,'spool',None))
             self.store=DispatchStore(core,self.admission)
+            if hasattr(self.runtime,'recover_imports'):self.runtime.recover_imports(core)
             self.pool=ThreadPoolExecutor(max_workers=1,thread_name_prefix='bounded-lifecycle')
             self.pending=None;self.reconciled=False;self.quarantined=False
             # A former local/foundation attempt has no supervisor death proof.
@@ -432,7 +433,7 @@ class Dispatcher:
             elif op=='observe':
                 if value.runtime_id!=row['runtime']:raise ValueError('unbound_observation')
                 self.reconciled=True
-                self.quarantined=value.state==State.UNKNOWN or self.resource_fault
+                self.quarantined=value.state==State.UNKNOWN or self.resource_fault or (hasattr(self.runtime,'import_uncertain') and self.runtime.import_uncertain(row['runtime']))
                 if value.state==State.STOPPED:
                     if self.persistence_fault and row['receipt']:
                         if self.core.job(row['job_id'])['state'] not in ('succeeded','failed','cancelled'):
@@ -495,6 +496,9 @@ class Dispatcher:
         if getattr(self.core,'_publication_storage_failed',False):
             self.persistence_fault=self.quarantined=True
             return  # Only reopen may resolve publication storage ambiguity.
+        if hasattr(self.runtime,'import_uncertain') and self.runtime.import_uncertain(row['runtime']):
+            self.store.update(row,phase='unknown');self.quarantined=True
+            return
         authority=row['authority'];job=self.core.job(row['job_id'])
         from worker.native_protocol import terminal_receipt, frozen_native
         native=frozen_native(authority.context)
