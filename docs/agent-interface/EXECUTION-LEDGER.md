@@ -2083,3 +2083,7 @@ Inventory found tests/service/test_voice_store.py test_contract_fixtures also di
 ### 2026-10-24 — r180 generator test dependencies
 
 Actual generator determinism reached a missing NumPy/soundfile dependency in the dedicated temporary test venv. Parent authorized compatible binary-wheel installation of those two packages and necessary dependencies solely into /private/tmp/pab-0c-venv, with versions recorded; no global packages, source toolchain, models or other runtime operations. This narrowly amends the lane network restriction to finish the required existing check.
+
+### 2026-10-24 — Canonical binary samples and generator corrected
+
+r180 sourceba82cd44/docs26b01145 completes fixture-only binary decoding and both canonical consumer loops, preserving public rawbytes and all42 operation coverage. Reported56 contract cases including actual16-output generator determinism,20 voicestore and15 uploadclient tests PASS; onlyoperationrequests fixture changed. Independent adoption review r181 commissioned; upload remains unmerged.
