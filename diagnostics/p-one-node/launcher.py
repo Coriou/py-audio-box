@@ -166,13 +166,17 @@ def call(root, label, argv, budget, adapter, *, deadline, cap=F.META, cwd=None, 
     return F.read_regular(root / (label + '.stdout'), min(cap, F.META)) if cap <= F.META else None
 
 
-def startup(config):
+def startup(config, *, positive_writer=False):
     F.require(not any(config.get(k) for k in ('Entrypoint', 'OnBuild', 'Healthcheck', 'Volumes')),
               'STOP inherited startup config')
     env = config.get('Env') or []
     allowed = {'PATH', 'LANG', 'PYTHON_VERSION', 'PYTHON_SHA256', 'PYTHON_PIP_VERSION',
                'PYTHON_SETUPTOOLS_VERSION', 'PYTHON_GET_PIP_URL', 'PYTHON_GET_PIP_SHA256',
                'PYTHONDONTWRITEBYTECODE', 'PYTHONPATH', 'PAB_MAINTENANCE_WAIT_LOG', 'TIKTOKEN_CACHE_DIR'}
+    if positive_writer:
+        allowed.add('PYTEST_ADDOPTS')
+        F.require([x for x in env if x.startswith('PYTEST_ADDOPTS=')] ==
+                  ['PYTEST_ADDOPTS=' + F.POSITIVE_ADDOPTS], 'STOP positive container addopts')
     F.require(all(x.split('=', 1)[0] in allowed for x in env), 'STOP startup environment')
     F.require(not any(x.startswith(('PYTHONOPTIMIZE=', 'PYTHONHOME=', 'PYTHONSTARTUP=')) for x in env),
               'STOP startup override')
@@ -207,6 +211,8 @@ def create_argv(name, volume, image, mode, owner):
             '--mount', 'type=volume,src=' + volume + ',dst=/tmp' + (',readonly' if readonly else ''),
             '-e', 'PYTHONDONTWRITEBYTECODE=1', '-e', 'PYTHONPATH=/app/diagnostics/p-one-node',
             '-e', 'PAB_MAINTENANCE_WAIT_LOG=/tmp/waits.jsonl', '-e', 'TIKTOKEN_CACHE_DIR=/tokenizer-cache',
+            *(['-e', 'PYTEST_ADDOPTS=' + F.POSITIVE_ADDOPTS]
+              if mode == 'writer' and owner.get('profile') == 'original-positive' else []),
             image] + command(mode, owner)
 
 
@@ -215,7 +221,7 @@ def container_binding(obj, owner, name, volume, image, mode):
     F.require(ID.fullmatch(cid) is not None and obj['Name'] == '/' + name and obj['Image'] == image,
               'STOP container identity')
     cfg, hc = obj['Config'], obj['HostConfig']
-    startup(cfg)
+    startup(cfg, positive_writer=mode == 'writer' and owner.get('profile') == 'original-positive')
     F.require(cfg['Labels'] == {'pab.owner': owner['token'], 'pab.invocation': owner['invocation']}
               and cfg['User'] == '10001:10001' and cfg['Cmd'] == command(mode, owner)
               and cfg['WorkingDir'] == '/app', 'STOP container command binding')
@@ -360,10 +366,11 @@ def validate_profile_binding(state, owner):
     if profile == 'original-positive':
         F.require(state.get('token') == owner['token'] and state.get('invocation') == owner['invocation']
                   and state.get('profile') == profile
+                  and state.get('child_pytest_addopts') == F.POSITIVE_ADDOPTS
                   and state.get('command') == [mode, profile, owner['token'], owner['invocation']],
                   'STOP positive command/profile binding')
     else:
-        F.require('profile' not in state and 'command' not in state, 'STOP legacy profile tamper')
+        F.require('profile' not in state and 'command' not in state and 'child_pytest_addopts' not in state, 'STOP legacy profile tamper')
 
 
 def validate_terminal(terminal, owner):
@@ -400,7 +407,7 @@ def validate_positive(slots, terminal):
               and wait == dict(node=F.NODE, owner=owner, pid=child, status=18944,
                                phase='B:a;B:e;B:f;B:t;'), 'STOP positive actual74 transcript')
     # Positive rows are observations, not the historical four error-row predicate.
-    F.require({r[2] for r in rows} == {1, 2, 3, 4}
+    F.require([r[2] for r in rows] == [1, 2, 3, 4]
               and all(r[:2] == [1, 1] and r[3] == owner and r[9] == 0 for r in rows),
               'STOP positive observer stages/owner/failures')
     children = [r for r in rows if r[2] == 1]

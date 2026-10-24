@@ -776,6 +776,10 @@ def writer_scheduling():
                 F.require(tick[0] < deadline, 'STOP fixture checked timeout')
         def capture(argv, outputs, deadline, **kw):
             captures.append(('child', tick[0], deadline))
+            check(argv == F.ENTRY, 'entry argv drift')
+            check(kw['env'].get('PYTEST_ADDOPTS') ==
+                  ('-p no:cacheprovider' if scenario.startswith('positive') else '--inherited-host-sentinel'),
+                  'positive child cache configuration / legacy environment')
             if scenario == 'child-limit':
                 tick[0] = deadline
                 F.require(tick[0] < deadline, 'STOP fixture child timeout')
@@ -800,6 +804,7 @@ def writer_scheduling():
         def read(path, *a, **kw):
             return 'MemAvailable: 8388608 kB' if str(path) == '/proc/meminfo' else original_read(path, *a, **kw)
         with contextlib.ExitStack() as stack:
+            stack.enter_context(patch.dict(os.environ, {'PYTEST_ADDOPTS': '--inherited-host-sentinel'}))
             for obj, name, value in [(F.os, 'getpid', lambda: 1), (F.os, 'getuid', lambda: 10001),
                     (F.os, 'getgid', lambda: 10001), (F.time, 'monotonic', now),
                     (F.signal, 'signal', lambda *a: None), (F.signal, 'setitimer', lambda *a: None),
@@ -835,16 +840,18 @@ def positive_profile():
     mode, expected, classification = F.profile_spec('original-positive')
     state = dict(state='TERMINAL', token=owner['token'], invocation=owner['invocation'],
         profile='original-positive', command=[mode, 'original-positive', owner['token'], owner['invocation']],
+        child_pytest_addopts=F.POSITIVE_ADDOPTS,
         entry=F.ENTRY, node=F.NODE, expected_pytest_exit=expected, pytest_exit=0, child_pid=42,
         classification=classification, descendants={'complete': True}, acceptance=False)
     L.validate_terminal(state, owner)
     for key, value in [('profile', 'diagnostic-red'), ('expected_pytest_exit', 1), ('pytest_exit', 1),
+                       ('child_pytest_addopts', '-p no:cacheprovider --override-ini x=y'),
                        ('command', ['writer']), ('node', F.NODE + '[wrong]'), ('token', '00' * 24),
                        ('classification', F.PROFILES['diagnostic-red'][2])]:
         expect(lambda key=key, value=value: L.validate_terminal(dict(state, **{key: value}), owner))
     expect(lambda: L.command('writer', dict(owner, profile='unknown')))
     legacy_state = dict(state, expected_pytest_exit=1, pytest_exit=1)
-    for key in ('profile', 'command'): del legacy_state[key]
+    for key in ('profile', 'command', 'child_pytest_addopts'): del legacy_state[key]
     L.validate_terminal(legacy_state, OWNER)
     expect(lambda: L.validate_terminal(dict(legacy_state, expected_pytest_exit=0), OWNER))
     # Exercise real CLI dispatch, not a recreated argument parser.
@@ -867,10 +874,19 @@ def positive_profile():
     for m in ('writer', 'archive', 'hash'):
         obj = container(m, 'created')
         obj['Config']['Cmd'] = L.command(m, owner)
+        if m == 'writer': obj['Config']['Env'].append('PYTEST_ADDOPTS=' + F.POSITIVE_ADDOPTS)
         L.container_binding(obj, owner, obj['Name'][1:], VOL, IMAGE, m)
         if m == 'writer':
             check(L.create_argv(obj['Name'][1:], VOL, IMAGE, m, owner)[-6:] ==
                   L.command(m, owner), 'positive create argv')
+            for addopts in ([], ['PYTEST_ADDOPTS=-p no:cacheprovider -k bypass'],
+                            ['PYTEST_ADDOPTS=' + F.POSITIVE_ADDOPTS] * 2):
+                changed = json.loads(json.dumps(obj))
+                changed['Config']['Env'] = [x for x in changed['Config']['Env']
+                                            if not x.startswith('PYTEST_ADDOPTS=')] + addopts
+                expect(lambda: L.container_binding(changed, owner, changed['Name'][1:], VOL, IMAGE, m))
+            check('PYTEST_ADDOPTS=' + F.POSITIVE_ADDOPTS in
+                  L.create_argv(obj['Name'][1:], VOL, IMAGE, m, owner), 'create env binding')
             obj['Config']['Cmd'] = legacy
             expect(lambda: L.container_binding(obj, owner, obj['Name'][1:], VOL, IMAGE, m))
     rows = []
@@ -888,12 +904,17 @@ def positive_profile():
     slots = {'pab-p-one-node-observer/records': records0(rows),
              'waits.jsonl': L.encode(wait)+b'\n', 'pytest.stdout': b'. [100%]\n1 passed in 0.12s\n'}
     check(L.validate_positive(slots, state)['acceptance'] is False, 'self acceptance')
+    for changed in (rows + [rows[2]], rows + [rows[3]],
+                    [rows[1], rows[0], rows[2], rows[3]], rows[:-1], rows + [rows[0]]):
+        expect(lambda changed=changed: L.validate_positive(dict(slots,
+            **{'pab-p-one-node-observer/records': records0(changed)}), state))
     for key, value in [('status', 9), ('node', F.NODE+'[x]'), ('owner', 99), ('pid', 99),
                        ('phase', 'B:a;B:e;B:t;'), ('phase', 'B:a;B:e;B:f;B:t;B:t;')]:
         altered = dict(slots, **{'waits.jsonl': L.encode(dict(wait, **{key: value}))+b'\n'})
         expect(lambda altered=altered: L.validate_positive(altered, state))
     for key, raw in [('waits.jsonl', b''), ('pytest.stdout', b'1 failed in 0.12s\n'),
-                     ('pytest.stdout', b'1 passed in 0.12s\n')]:
+                     ('pytest.stdout', b'1 passed in 0.12s\n'),
+                     ('pytest.stdout', b'. [100%]\n1 passed, 1 warning in 0.12s\n')]:
         expect(lambda key=key, raw=raw: L.validate_positive(dict(slots, **{key: raw}), state))
     for index, field, value in [(1, 7, 9), (1, 9, 1), (3, 10, 1), (0, 4, 99)]:
         changed = [r[:] for r in rows]

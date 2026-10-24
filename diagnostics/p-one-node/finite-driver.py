@@ -24,6 +24,7 @@ META = 16 * 1024 ** 2
 SLOT = 512 * 1024
 SEED = b'pab-p-one-local-r16\x00\xff\x80\n'
 ENTRY = ['python', '/app/diagnostics/p-one-node/entry.py', '--one-node']
+POSITIVE_ADDOPTS = '-p no:cacheprovider'
 NODE = 'tests/service/test_recovery.py::test_t1_real_blocked_pipe_backpressure_deadline'
 
 
@@ -364,7 +365,8 @@ def writer(root, token, invocation, profile='diagnostic-red'):
     state = dict(state='PENDING', token=token, invocation=invocation, entry=ENTRY,
                  node=NODE, expected_pytest_exit=1, acceptance=False, physical_quota=False)
     if profile == 'original-positive':
-        state.update(profile=profile, command=[mode, profile, token, invocation], expected_pytest_exit=expected)
+        state.update(profile=profile, command=[mode, profile, token, invocation], expected_pytest_exit=expected,
+                     child_pytest_addopts=POSITIVE_ADDOPTS)
     terminal = root / 'pab-terminal.slot'
     child = None
     monitor_stop = threading.Event()
@@ -398,6 +400,8 @@ def writer(root, token, invocation, profile='diagnostic-red'):
         thread.start()
         env = dict(os.environ, PYTHONDONTWRITEBYTECODE='1', PYTHONPATH='/app/diagnostics/p-one-node',
                    PAB_MAINTENANCE_WAIT_LOG='/tmp/waits.jsonl')
+        if profile == 'original-positive':
+            env['PYTEST_ADDOPTS'] = POSITIVE_ADDOPTS
         def observe():
             require(not monitor_error, 'STOP monitor error')
         child_deadline = min(time.monotonic() + 1200, start + 1260)
