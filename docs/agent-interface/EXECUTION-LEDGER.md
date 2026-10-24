@@ -1867,3 +1867,7 @@ Parent accepts r125 SOURCE/retainedHOST GO zero blockers closingB1/B2/B3 exactr1
 ### 2026-10-24 — Authority handoff pre-dispatch STOP; consumer repair
 
 r126 detects nine draftentries read only frozenlocalINVALID authority, noexternalapproval seam; zerooperations/spentallowance. Parent disposes deterministicSTOP, commissions pab-authority-consumption-fix-r127-20261024 NEWprivateSOURCE/inertHOST externalpath+digest propagation with actualextractedgate/argv fakeboundary fullorderedflow verification. r125 missed thisconsumer defect; originals preserved, no operationalretry/cleanup or controlclaimchange.
+
+### 2026-10-24 — External authority consumer repair delivered; independent gate
+
+r127 newprivateeb6b77d0 inventory1c960b77/draftpins3effbe3e adds9externalpathdigestgates+nestedargv propagation;312focusedinertchecks plussealedinventoryconsumer,16codefrozen/nooperations. Parent commissions pab-authority-consumption-review-r128-20261024 concreteconsumer/auth/hashcycle/fullorderedfakeflow review beforefutureDATA-onlyparentapproval. Originalr124/r126 preserved; no controlclaimschange.
