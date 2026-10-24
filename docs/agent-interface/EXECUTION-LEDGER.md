@@ -2055,3 +2055,7 @@ r172 source d1491b18403bb54bd75eda6ba4be89dcf8eef236, report 73673ef15f036e6ef83
 ### 2026-10-24 — H4A independent review requests override fix
 
 r174 bounded source NO-GO: boolean explicit device indices alias integer indices despite device/profile exact-int invariants. All 14 focused tests pass but omit this case. Parent commissioned Sol-low r175 correction and focused regressions; candidate remains unmerged. Conservative missing-measurement fallback policy is a documented integration choice, not a second proven defect. Hardware qualification remains outstanding.
+
+### 2026-10-24 — Upload control plane and hardware correction enter review
+
+r173 source ae104e3b/docs c8d418f4 delivers raw authenticated upload, authorized asset reads, compact voice history and HTTP/CLI/MCP parity; 15 local focused tests reported PASS. Independent Sol r176 reviews before adoption. r175 source 05366aab/docs 902e3410 rejects malformed device overrides, 13 profile +4 hardware tests reported PASS; independent round2 Sol r177 checks r174 closure. Both candidates remain unmerged. Installed transport, security/lifecycle and hardware qualification remain open.
