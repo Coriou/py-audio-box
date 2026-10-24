@@ -1987,3 +1987,7 @@ r155 newprivatea7ee0cd2 inventory047d5b73/draftpinsd3eb59de supplies81orderedpre
 ### 2026-10-24 — CLOSED81 preparation accepted at source tier; headless release re-scope controls next work
 
 Parent records r156 boundedSOURCE/privateclosure/retainedinertGO exactr155 seal047d5b73/draftpinsd3eb59de, no blockers;81stillUNRUN/no build orruntimeauthority. Latestuserpriority supersedesweb-firstdelivery: fullAPI/CLI/MCP +workingCPU/CUDA/AppleSilicon+cleancloningmanagement, webUIdeferred. Noautomatic81operation; r157Astra canonicalreplan+r158Solfeatureinventory active, preservedusefulvalidationreadyforproduction-risk-basedgate decision. Allresources/proofsHELD/no cleanup.
+
+### 2026-10-24 — Headless feature inventory delivered
+
+r158 SOURCEinventory findsHTTP/CLI/MCPstillfixture-only, reallegacyTTS/clone/registry reusable, durableinternalCore notpubliclywired, noqualifiednativeAppleMetalpath. Proposedfeaturelots authenticateddurableHTTP/assets→realenginejobs+immutablevoices/hardwareprofiles→assembly+clientparity. Parentrecordsplanningevidence, notruntimeacceptance; r157Astra canonicalheadlessreplanactive. Noautomatic81operation; proceedfeatureswithproductionownership/persistence/securitygates retained.
