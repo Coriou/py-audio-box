@@ -2039,3 +2039,7 @@ r168 fix502f8317/docs12ff8385 validatesboundedrawRIFFextents/padding/framealignm
 ### 2026-10-24 — H2 error contracts corrected; independent adoption review
 
 r169 fix54262e3e/report68504a21 addsnot_ready/resource_limitONLYthreevoicereadcontracts withactualASGIerror-membershipregressions/red-green;4API+1Dispatcher+1clienttestsPASS. Parentcommissions pab-h2-error-review-r171-20261024 focusedR167closure+carriedH2Areadsliceadoptionreview. H1WAVreviewparallel/publicuploadmutationsjobsstillnext/noops.
+
+### 2026-10-24 — H1A adopted; hardware selection feature starts
+
+Parentacceptsr170 H1ASOURCE/localtestsGO, ancestrymerges12ff8385 withoutconflict; rootfocused16ingest+20voicestoretestsPASS. Managedreference+compactreadsourceintegrated, notpublicupload/installeddurability. NewboundedH4Asemanticshardwareprofile-selection/probeunit commissioned independentlyofpendingH2review; noMLprovision/model/runtimequalification.
