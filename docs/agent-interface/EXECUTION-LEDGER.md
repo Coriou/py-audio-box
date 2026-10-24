@@ -1863,3 +1863,7 @@ r124 newprivate037ba397 inventory9d44439a/draftpinsb59811a2 addressesB1unusedali
 ### 2026-10-24 — Cohesive preparation independently accepted; fresh ONE build authority
 
 Parent accepts r125 SOURCE/retainedHOST GO zero blockers closingB1/B2/B3 exactr124/inventory9d44439a/draftpinsb59811a2. Issues NEW pab-directed018-build-actual-r126-20261024 authority exactreviewedgatedrecipe: fresh6GiB/currentowner/quiescence→ONELOCKONLY→ONEprepare/sourcebuild→minimalDATA-onlybinding16codefrozen. Spentr122notreused; firstunexpectedfailureSTOPretain/no retrycleanup. IndependentACTUALbuild/boundreviewrequired before018; no controlinvocationauthorized.
+
+### 2026-10-24 — Authority handoff pre-dispatch STOP; consumer repair
+
+r126 detects nine draftentries read only frozenlocalINVALID authority, noexternalapproval seam; zerooperations/spentallowance. Parent disposes deterministicSTOP, commissions pab-authority-consumption-fix-r127-20261024 NEWprivateSOURCE/inertHOST externalpath+digest propagation with actualextractedgate/argv fakeboundary fullorderedflow verification. r125 missed thisconsumer defect; originals preserved, no operationalretry/cleanup or controlclaimchange.
