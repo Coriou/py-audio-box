@@ -1655,3 +1655,7 @@ Parent accepts r72 bounded ONE Linux original-positive GO,178inventory/32complet
 ### 2026-10-24 — B100 stops at017; export format failure, recovery audit
 
 r73 ONE campaign stopped017callFAIL (setup/teardownPASS);000–016 onlysourcepathsupported untilreceiptsrecovered,018–099UNRUN. USTARreader thenfailed linkname too long; partial16896bytearchive/15members cannotestablishfullretention/runtimeequality/failurecause.104inventory/17completions34streams retained; stoppedwriter+archivereader/volume/laneheld, no retry/cleanup. Independent pab-b100-failure-retention-audit-r74-20261024 assigned read-onlyactualaudit andconcretefiniteROvolumerecoverydesign, noDocker/test/exportretryauthority yet.
+
+### 2026-10-24 — Failure audit accepted; minimal recovery tooling preparation
+
+r74 independently verifies r73 boundedfailure/104leaves/17receipts34streams and concreteUSTAR100byte-link representabilitygap; exact017cause/offendinglink remainunknown. Parent accepts audit and authorizes pab-b100-recovery-transport-prep-r75-20261024 private tooling+boundedstdlibsyntheticHOST only, prefer minimal losslessPAX successor/existinghashreader over bespokeLP1 ifsafe. Exactselectedtransport must freezeandpassindependentreview beforeONE ROrecovery; noDocker/testretry/oldobjectmutation/lanerelease now.
