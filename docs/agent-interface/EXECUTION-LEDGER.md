@@ -1747,3 +1747,7 @@ Parent accepts r95 boundedACTUALbuild+DATA-GO exactimage1d00af16/boundmanifest0f
 ### 2026-10-24 — ONE017 diagnostic FAIL/RED; actual audit and observation-gap diagnosis
 
 r96 ONEinstrumented017 testFAIL/diagnosticRED child-refusalabsent;parentraw9/childE/suffixTK/WRAPPER_ASSERT/observeNOTREACHED, laterparenttrace8 notchildcause. Transportcontent/lifecyclecomplete/28captures56streams/29paths retained; allnewobjects/laneheld. Independent pab-directed017-actual-audit-r97-20261024 auditsactualevidence+minimalcausalnextscope, no rerun/cleanup; firsthistorical/currentchildpredicateUNKNOWN.
+
+### 2026-10-24 — Actual retention accepted; surviving child observation design
+
+r97 boundedACTUALGO validatesr96FAIL/RED andobserverstage1childobserved_exitbeforefinal; firstchildrefusalUNKNOWN. ForkCOW+lateJSONsurvivalgap established, IO/schedulingcausalityunmeasured. Parent assigns pab-directed-survival-astra-r98-20261024 minimalsharedprimitive record/preclock+postwaitpublicationdesign, no sourceimplementation/operations yet. Oldresources/laneheld; no retries.
