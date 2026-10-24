@@ -1683,3 +1683,7 @@ r79 ONE ROrecovery reports OSexit0/transport+contentverified212paths/000–016PA
 ### 2026-10-24 — Recovery independently accepted; Astra directed-control advice
 
 Parent accepts r80 boundedACTUALrecoveryGO;17receiptedPASS/017FAIL/82UNRUN. Source localizes directedcallback assertions interrupting receipt/ownership bookkeeping; firstchildpredicateUNKNOWN, suffix-onlychange forbidden. Targeted pab-b100-directed-diagnostic-astra-r81-20261024 assigned sourcecausality/minimalprimitiveinstrumentationdesign to unblock finiteSOURCEfix, nooperations/testretry/cleanup.
+
+### 2026-10-24 — Astra scope accepted; bounded directed017 instrumentation
+
+r81 confirms receipt-interruptionmechanism butfirstchildpredicateUNKNOWN; no automatic hook/trace/projectioncontradiction. Parent assigns pab-b100-directed-diagnostic-source-r82-20261024 freshcandidatebasedworktree, twofilepassiveopt-inprimitive refusalinstrumentation+fixed3record4096caps/controloutcomes, alloriginalassertions/predicateorderunchanged, boundedsyntheticHOST only. FreshSolreviewthenAstratargetedfinal beforelaterONEdiagnostic; no build/runtime/laneaction now.
