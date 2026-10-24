@@ -195,6 +195,66 @@ class Registration(unittest.TestCase):
         with self.assertRaisesRegex(ValueError,'provenance_changed'):self.run_registration()
         self.assertEqual(self.children,[])
 
+    def replace_provenance(self):
+        path=next(self.authority.glob('registration-*.json'))
+        before=path.stat().st_ino
+        replacement=self.authority/'replacement'
+        replacement.write_bytes(path.read_bytes());replacement.chmod(0o600)
+        os.replace(replacement,path)
+        self.assertNotEqual(path.stat().st_ino,before)
+
+    def retry_replacement(self,seam):
+        rid=self.run_registration();self.children=[];returned=[]
+        if seam=='hello':
+            original=self.child
+            def child(kind,request,fds):
+                result=original(kind,request,fds)
+                if self.children==['hello']:self.replace_provenance()
+                return result
+            self.child=child
+        elif seam=='observation':
+            original=self.observer.observe_owners;replaced=[]
+            def observe(*args):
+                result=original(*args)
+                if not replaced:
+                    self.replace_provenance();replaced.append(True)
+                return result
+            self.observer.observe_owners=observe
+        else:
+            original=h._registration_read_at;replaced=[]
+            def read(*args):
+                result=original(*args)
+                if not replaced:
+                    self.replace_provenance();replaced.append(True)
+                return result
+            self.enterContext(patch.object(h,'_registration_read_at',side_effect=read))
+        with self.assertRaisesRegex(ValueError,'provenance_changed'):
+            returned.append(self.run_registration())
+        self.assertEqual(returned,[]);self.assertNotIn('writer',self.children)
+        self.assertEqual([r[0] for r in self.rows()],[rid])
+
+    def test_retry_identical_replacement_during_prewrite_hello_refuses(self):
+        self.retry_replacement('hello')
+
+    def test_retry_identical_replacement_during_observation_refuses(self):
+        self.retry_replacement('observation')
+
+    def test_retry_identical_replacement_between_read_and_baseline_refuses(self):
+        self.retry_replacement('read')
+
+    def test_created_provenance_replacement_before_path_check_refuses(self):
+        original=os.fsync;replaced=[];returned=[]
+        def fsync(fd):
+            result=original(fd)
+            if fd==self.fd and not replaced:
+                self.replace_provenance();replaced.append(True)
+            return result
+        with patch.object(os,'fsync',side_effect=fsync):
+            with self.assertRaisesRegex(ValueError,'provenance_changed'):
+                returned.append(self.run_registration())
+        self.assertEqual(returned,[]);self.assertNotIn('writer',self.children)
+        self.assertEqual(self.rows(),[]);self.assertTrue(replaced)
+
     def test_provenance_identical_replacement_during_writer_refuses(self):
         original=self.child
         def child(kind,request,fds):

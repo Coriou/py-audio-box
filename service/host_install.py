@@ -981,7 +981,7 @@ def _registration_read_at(directory,name):
         if (len(raw)!=before.st_size or ip.identity(os.fstat(fd))!=ip.identity(before) or
                 ip.identity(os.stat(name,dir_fd=directory,follow_symlinks=False))!=ip.identity(before)):
             raise ValueError('installed_provenance_changed')
-        return raw
+        return raw,ip.identity(before)
     finally: os.close(fd)
 
 
@@ -1061,7 +1061,7 @@ def _register_installed(observer,selected,authority_fd,check,*,child=_registrati
                         if entry.name in ('launch.lock','host-policy.json'): continue
                         if not re.fullmatch(r'registration-[0-9a-f]{64}\.json',entry.name):
                             raise ValueError('installed_unknown_authority_file')
-                        raw=_registration_read_at(authority_fd,entry.name)
+                        raw,identity=_registration_read_at(authority_fd,entry.name)
                         retained_bytes+=len(raw)
                         if retained_bytes>recovery.HOST_CAPSULE_BYTES: raise ValueError('installed_provenance_budget')
                         value=_installed_provenance(recovery.host_json(raw),observer,public)
@@ -1069,7 +1069,7 @@ def _register_installed(observer,selected,authority_fd,check,*,child=_registrati
                         if entry.name!='registration-'+rid+'.json' or raw!=encode(value).encode():
                             raise ValueError('installed_provenance_changed')
                         provenance[rid]=raw; retained[rid]=value['registration']
-                        identities[rid]=ip.identity(os.stat(entry.name,dir_fd=authority_fd,follow_symlinks=False))
+                        identities[rid]=identity
                 if any(digest(r) not in provenance for r in before['registrations']):
                     raise ValueError('installed_missing_provenance')
                 candidate=dict(deployment_id=public['deployment_id'],scope=observer.scope,containers=selected,
@@ -1110,14 +1110,13 @@ def _register_installed(observer,selected,authority_fd,check,*,child=_registrati
                             raise ValueError('installed_provenance_identity')
                         if out.write(data)!=len(data): raise OSError('installed_provenance_short_write')
                         out.flush();os.fsync(out.fileno())
+                        identities[rid]=ip.identity(os.fstat(out.fileno()))
                     os.fsync(authority_fd)
-                identities[rid]=ip.identity(os.stat(name,dir_fd=authority_fd,follow_symlinks=False))
                 provenance[rid]=data
                 def retained_exact():
                     for identity,raw in provenance.items():
                         leaf='registration-'+identity+'.json'
-                        if (_registration_read_at(authority_fd,leaf)!=raw or
-                                ip.identity(os.stat(leaf,dir_fd=authority_fd,follow_symlinks=False))!=identities[identity]):
+                        if _registration_read_at(authority_fd,leaf)!=(raw,identities[identity]):
                             raise ValueError('installed_provenance_changed')
                 retained_exact();fault('provenance');check()
                 prestate=[list(r) for r in before['evidence_projection']['data']['p1_registrations']]
