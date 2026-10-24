@@ -2031,3 +2031,7 @@ r166 NO-GO twoP2: wavefloorframes admitsmisaligned/truncatedremainder andceilwid
 ### 2026-10-24 — H2 review finds advertised error mismatch; contract-owner fix
 
 r167 NO-GO P2: threevoicereaddeclared errors omitactualresource_limit/not_ready;5testsPASS owner/authisolationnodefectfound. Parentsharedcontractownercommissions pab-h2-error-contract-fix-r169-20261024 operations.json+focusederror-membershiptests only, preservebounds/sanitization/no newcodes. H1WAVfixparallel; nooperations/resourcesunchanged.
+
+### 2026-10-24 — H1 WAV fixes delivered; independent adoption review
+
+r168 fix502f8317/docs12ff8385 validatesboundedrawRIFFextents/padding/framealignment/exactPCMfmtbitsalignbyterate beforewave;7prefixedacceptancebugsreproduced,16ingest+20voicestoretestsPASS. Parentcommissions pab-h1-wav-review-r170-20261024 focusedR166closure+carriedH1Aadoptionreview. H2contractfixparallel/nooperationsorinstalledqualification.
