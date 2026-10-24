@@ -161,7 +161,9 @@ def publication(job, attempt, artifact, present_hashes, *, transport_owner, cont
     outputs=unique(manifest['outputs'])
     require(set(verified_result['result_asset_ids'])==set(outputs), 'result_mismatch')
     require(bool(outputs) and len(artifact['asset_ids'])==len(set(artifact['asset_ids'])) and set(artifact['asset_ids'])==set(outputs), 'result_mismatch')
-    require(len(outputs)==(plan['request']['variants'] if job['operation']=='speech_generate' else 1), 'result_mismatch')
+    expected_outputs=plan['request']['variants'] if job['operation']=='speech_generate' else 1
+    if plan.get('reference_roles',{}).get('reference_kind')=='prepared_reference':expected_outputs=2
+    require(len(outputs)==expected_outputs, 'result_mismatch')
     require(not set(outputs)&set(required_asset_ids(plan)), 'result_mismatch')
     require(all(present_hashes.get(k)==v['sha256'] for k,v in outputs.items()), 'missing_media')
     if job['operation'] in ('voice_prepare','voice_design'):
@@ -177,7 +179,13 @@ def publication(job, attempt, artifact, present_hashes, *, transport_owner, cont
             version=candidate['version'];voice_configuration(version,context['bundles'])
             cfg=version['configuration']
             require(version['origin']==('design' if job['operation']=='voice_design' else 'clone'), 'origin_mismatch')
-            require(cfg.get('reference_asset_id')==candidate['audition_asset_id'], 'reference_mismatch')
+            if 'reference_roles' in plan:
+                reference_roles(plan,candidate,outputs)
+            else:
+                # Historical silence fixtures are not a real clone contract.
+                require('reference_roles' not in candidate, 'reference_roles_mismatch')
+                require(all(a['provenance']['kind']=='synthetic' for a in outputs.values()), 'reference_roles_required')
+                require(cfg.get('reference_asset_id')==candidate['audition_asset_id'], 'reference_mismatch')
             require(version['reference_text']==plan['request']['reference_text'], 'reference_mismatch')
             require(cfg==plan['resolved']['reuse_configuration'] and version['settings']==plan['resolved']['reuse_settings'], 'reuse_configuration_mismatch')
             if job['operation']=='voice_design':
@@ -189,6 +197,31 @@ def publication(job, attempt, artifact, present_hashes, *, transport_owner, cont
                 require(cfg.get('conditioning','pocket')==plan['resolved']['settings']['conditioning'], 'conditioning_mismatch')
     else:
         require(not candidates, 'result_mismatch')
+
+def reference_roles(plan, candidate, outputs):
+    """Versioned preparation contract; actual bytes remain the publisher's job."""
+    expected=plan['reference_roles'];roles=candidate.get('reference_roles')
+    require(roles is not None, 'reference_roles_required')
+    validate('reference_roles_v1',roles)
+    reference=roles['reference'];audition=roles['audition'];version=candidate['version']
+    require(reference['kind']==expected['reference_kind'], 'reference_roles_mismatch')
+    require(reference['asset']['id']==expected['reference_asset_id'] and audition['asset']['id']==expected['audition_asset_id']==candidate['audition_asset_id'], 'reference_mismatch')
+    require(all(outputs.get(role['asset']['id'])==role['asset'] for role in (reference,audition)), 'asset_metadata_mismatch')
+    require(version['reference_asset_ids']==[reference['asset']['id']] and version['configuration']['reference_asset_id']==reference['asset']['id'], 'reference_mismatch')
+    require(version['reference_text']==reference['transcript']==plan['request']['reference_text'], 'reference_transcript_mismatch')
+    require(audition['text']==expected['audition_text'], 'audition_transcript_mismatch')
+    require(audition['asset']['frames']>0 and audition['asset']['provenance']['kind'] in ('generated','synthetic'), 'audition_provenance_mismatch')
+    require(version['provenance']==reference['asset']['provenance'], 'reference_provenance_mismatch')
+    if reference['kind']=='prepared_reference':
+        original=unique(plan['assets'])[plan['request']['asset_id']]
+        require(reference['original']==original and all(reference[k]==plan['request'][k] for k in ('in_tick','out_tick')), 'reference_source_mismatch')
+        provenance=reference['asset']['provenance']
+        require(provenance['source_id']==original['id'] and provenance['source_sha256']==original['sha256'] and provenance['kind']==original['provenance']['kind'], 'reference_provenance_mismatch')
+        require(reference['asset']['frames']>0 and reference['asset']['frames']*48000==(reference['out_tick']-reference['in_tick'])*reference['asset']['sample_rate'], 'reference_segment_mismatch')
+        require(reference['asset']['id']!=audition['asset']['id'] and reference['asset']['sha256']!=audition['asset']['sha256'], 'reference_audition_conflation')
+    else:
+        require(reference['lineage']==version['design_lineage'] and reference['transcript']==audition['text'] and reference['asset']==audition['asset'], 'design_lineage_mismatch')
+
 
 def replacement(job, attempt, *, owner_dead):
     old=active_attempt(job)
@@ -297,6 +330,8 @@ def frozen_plan(plan, bundles=None):
     require(dict(operation=op,mode=mode,identity=effective) in profile['compatibility'], 'profile_incompatible')
     require(identity['fallback']!='allow_cpu' or (request.get('fallback','forbid')=='allow_cpu' and r['operator_fallback']=='allow_cpu'), 'fallback_policy_mismatch')
     if op in ('voice_prepare','voice_design'):
+        if 'reference_roles' not in plan:
+            require(profile['id'] in ('cpu-synthetic','cuda-synthetic','metal-synthetic'), 'reference_roles_required')
         require(r['reuse_settings'] is not None and r['reuse_configuration'] is not None, 'reuse_configuration_mismatch')
         cfg=r['reuse_configuration'];reuse=r['reuse_settings']
         target=r['reuse_identity'] if op=='voice_design' else effective
@@ -355,6 +390,14 @@ def frozen_plan(plan, bundles=None):
         for a in p['assets']:
             require(a['id'] not in assets or assets[a['id']]==a, 'asset_metadata_mismatch')
         renderable(p,request['policy'])
+    if 'reference_roles' in plan:
+        roles=plan['reference_roles'];validate('reference_role_plan_v1',roles)
+        require(op in ('voice_prepare','voice_design'), 'operation_mismatch')
+        require(roles['reference_kind']==('prepared_reference' if op=='voice_prepare' else 'generated_reference'), 'reference_roles_mismatch')
+        require(roles['reference_asset_id']==r['reuse_configuration']['reference_asset_id'], 'reference_mismatch')
+        require(not {roles['reference_asset_id'],roles['audition_asset_id']}&set(required_asset_ids(plan)), 'reference_mismatch')
+        require((roles['reference_asset_id']!=roles['audition_asset_id'])==(op=='voice_prepare'), 'reference_audition_conflation')
+        require(op!='voice_design' or roles['audition_text']==request['reference_text'], 'reference_transcript_mismatch')
     required=set(required_asset_ids(plan))
     if op=='speech_generate' and mode in ('qwen_clone','pocket_clone'):
         require(all(assets.get(k,{}).get('media_format')=='wav' for k in required), 'reference_format_mismatch')
