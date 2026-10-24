@@ -1723,3 +1723,7 @@ Parent accepts r89 boundedSOURCE+HOSTGO exact99adb8b7/unbound659e3dbd, nofix. Au
 ### 2026-10-24 — Build admission STOP before mutations; disk headroom audit
 
 r90 firstlocalaction STOP6GiB admission beforeDocker/LOCKONLY/prepare/build;poststop6276456448free vs6442450944required,165994496short. Oldlane/objects/proofheld, noIID/boundmanifest. Parent assigns pab-disk-headroom-audit-r91-20261024 READONLYtargeted eligiblecacheinventory/recommendations underuserpriorcachecleanupscope, preserveALLpabproof/worktrees/images/volumes. No retry/thresholdreduction/cleanupauthorityinthatlane.
+
+### 2026-10-24 — Exact approved cache cleanup dispatched
+
+r91 identifies sixpnpmmetadata/Electronzip/pipHTTP/Playwrightdownloadtrees1.664GiB underpriorusercleanupallowlist, currentfree6274297856. Parent authorizes pab-approved-cache-cleanup-r92-20261024 exactsixonly/freshidentity+activeusechecks/postfreebytes, preservesallproof/worktrees/Dockerobjects/stores/siblings. No fallbackdelete/r90retryauthority; actualheadroompostcheckbeforeparentnextaction.
