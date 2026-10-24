@@ -362,3 +362,73 @@ PASS6/6,0.614528387s; SHA256
 Executable commit0c058776d641503434de1c5eccb05ecb7ca51fcd. No further
 executable changes or HOST runs after this frozen final receipt. Independent
 SOURCE/HOST review and every operational gate remain parent owned.
+
+## r56 F1/F2 bounded correction — pre-run freeze
+
+Own checkout reconstructed exactly from 24916a3d1602803dff6df76ae972fe04030998a4 (exec 0c058776d641503434de1c5eccb05ecb7ca51fcd); immutable t3-67aec9bf untouched. Controlling full r56 and r54 read. Only seven allowed paths may change. Baseline and corrected verification use existing --profile-scope six groups 23/26/29/30/32/33, max300s total /9s per group /33 available groups. Baseline adds actual writer child env/argv seam with hostile inherited addopts and positive duplicate3/4, reorder, missing/extra rows plus warning-bearing stdout refusal. Retain baseline RED; fix only its motivated F1/F2 causes. Unaffected groups reuse existing seams. No pytest/collection/product imports, Docker/DB/runtime/build/campaign/native/cleanup/delegation or self-GO.
+
+### r56 F1/F2 frozen implementation handback
+
+Executable commit `8254ab7fbe02c95ed222a82d361c4d9d26b0318c` on
+`fix/positive-f1-f2-r56`, own checkout
+`/Users/ben/.txcode/worktrees/py-audio-box/t3-1bc65cf1`.
+Documentation commit follows this executable and changes only these three handoffs.
+No executable edits after the final receipt.
+
+F1 response: original-positive alone freezes `PYTEST_ADDOPTS=-p no:cacheprovider`.
+Docker create explicitly supplies it; container startup/inspect require exactly one
+matching value and reject missing, duplicate or arbitrary appended options. Writer
+sets the same exact value in the actual ENTRY capture environment, replacing any
+inherited addopts, and binds `child_pytest_addopts` in PENDING/terminal state.
+Host profile validation requires that field. ENTRY argv, source/identity origins,
+entry pytest call, PASS summary predicate and legacy environment/default command
+remain unchanged. Readers retain their existing command/environment. This does
+not allow arbitrary inherited options through startup. HOST exercises actual writer
+capture argv/env with hostile inherited sentinel: positive overrides it, historical
+profile preserves it. Container/config and terminal tampering refuse. Warning-bearing
+`1 passed, 1 warning in 0.12s` remains refused; there is no stdout waiver.
+
+F2 response: positive stage sequence must equal exactly `[1,2,3,4]`.
+Existing group33 rejects duplicate3, duplicate4, reordered, missing and extra
+rows. No observer/schema change. Existing child/wait/raw18944/a/e/f/t/owner,
+PASS, guard, assertion and actual-review conditions remain in force.
+
+Baseline retained: `/private/tmp/pab-p-one-r16-HOST-4j1ln8kj/HOST-receipt.json`,
+SHA256 `9a2f44230b6453242295cb260a3b6f10ae5a240bf55a9a1f907b6b9254e6fe2d`,
+RED groups32/33, six groups,0.689344975s. Group32's new child-env assertion is
+caught by the real writer and produces its refusing lifecycle, then HOST reports
+phase-overrun/result mismatch; group33 reports missing expected rejection for
+extra stage3. Both RED causes motivate only the F1/F2 corrections above.
+No operational stage was executed or retried; no evidence was erased.
+
+Final retained: `/private/tmp/pab-p-one-r16-HOST-y7yeqqub/HOST-receipt.json`,
+SHA256 `499f40807f0f281548c613211972bdc49dfcde37e1c0f6ea4d71e6dd2285f1bb`,
+PASS6/6,0.536137542s, CPython3.14.7/assertions enabled. Exactly the frozen
+six groups; external commands fake, real private file/tar/hash/slot IO only.
+Final receipt pins match the four final files. Both private evidence trees were
+mechanically checked0700 directories/0600 leaves/no symlinks. Prior receipts
+remain historical, unmodified and unrerun. No full campaign.
+
+Final SHA256:
+- launcher.py `fd12abaafba7d07835327dd6bb88b81afdef21eaf25fd373875c6871a52cbe80`
+- finite-driver.py `7dfe240517291b00c4ecb44832bef3678e47a0aaf8eb57b82b94d89f348c0b6e`
+- host-check.py `01ef61ea3313635b55d0c44be64a92c15da8eb97d19b7d5316cb153c8d2a598d`
+- source-manifest.json `a4cb797fbebb5edb206babe506d5596e21ca8e6cbf678b77bf79473213c95fef`
+
+All197 mapped hashes mechanically verified; names193 payload +4 derivatives
+unchanged, only finite-driver derivative digest refreshed. All files outside the
+seven-path allowlist compare byte-exact to reconstruction base, including guard,
+controls, product, target/model/assertions, both conftests, observer, entry,
+runtime identity/semantic helper, locks and B100 runner. Historical provenance
+constants untouched. Changed Python sources compile without execution/pyc;
+diff --check passes. No pytest import/invocation/collection, product import,
+Docker/build/DB/runtime/native/campaign, cleanup, lock/resource acquisition,
+new framework/dummy/adviser or delegation. Historical diagnostic-red1 behavior,
+original-positive0 closed profile, deadlines/retention/unknown-HOLD and all
+independent actual conditions preserved. Historical RED/UNKNOWN remain.
+
+Implementation completion and synthetic HOST PASS are not independent SOURCE
+acceptance or self-GO. Fresh independent Sol review owns F1/F2 acceptance.
+Build, original actual74/assertion/restoration/performance, B100/P211 and declared
+preservation actual subsets remain HOLD/PENDING; no installed/native/T2/platform,
+durability/release credit. Parent owns every later authorization.
