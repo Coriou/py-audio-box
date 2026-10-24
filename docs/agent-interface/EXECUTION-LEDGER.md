@@ -2131,3 +2131,7 @@ r187 independent source GO. Parent merged6ce9e378 conflict-free; integrated13pro
 ### 2026-10-24 — Astra integrated milestone GO; real engine work commissioned
 
 r188 bounded integrated SOURCE GO at cdbd3c7, no new synthetic blocker. Realactivation gaps: fixedsilence limits, clone reference/audition conflation, Qwenimplicitfallback, install/provisioning. Parent commissioned disjoint Sol-low r189 Kokoro CPU engine interface and r190 pinned atomic managed provisioning. Actualinference/download/install not authorized in these source lots; service integration follows engine interface. Updated stale H0 NEXT wording. FinalreleaseAstra and actual threehardware qualification remain outstanding.
+
+### 2026-10-24 — Kokoro engine/lifecycle ownership clarified
+
+r189 correctly notes existing synthetic snapshot has no model-bundle authority mapping. Parent confirmed engine lot exposes reviewed typed callable interface only; subsequent integration owner adds authenticated descriptor/verified managed bundle mapping. Preserve synthetic defaults and do not activate ambient filesystem authority. No new scope or runtime operations.
