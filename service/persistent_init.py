@@ -19,7 +19,12 @@ def digest(value):
     return hashlib.sha256(encode(value).encode()).hexdigest()
 
 
-def read_file(path, limit=LIMIT):
+def read_file(path, limit=LIMIT, *, policy=None, role=None):
+    if policy is not None:
+        from service.install_policy import read_private
+        return read_private(path, limit, policy=policy, role=role)
+    if role is not None:
+        raise ValueError('role_requires_fixed_policy')
     fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
     try:
         s = os.fstat(fd)
@@ -42,7 +47,10 @@ def exclusive(path, data):
     sync_dir(path.parent.parent)
 
 
-def roots_checked(roots):
+def roots_checked(roots, *, policy=None):
+    if policy is not None:
+        from service.install_policy import roots_checked as installed_roots
+        return installed_roots(roots, policy=policy)
     if set(roots) != set(ROLES): raise ValueError('exact_volume_roles_required')
     if any(Path(v).is_symlink() for v in roots.values()): raise ValueError('symlink_volume')
     result = {k: Path(v).resolve() for k,v in roots.items()}
@@ -209,6 +217,287 @@ def main():
     if (args.command=='complete') != (args.initialization_digest is not None):
         raise ValueError('explicit_completion_digest_required')
     print(encode(initialize(request['roots'],request['scope'],request['profiles'],request['budget'],complete=args.initialization_digest)))
+
+
+
+# Internal installed initialization. No CLI/activation or host-registration adapter.
+def _split_core(public, control, staging):
+    """Only entered after the child privilege boundary (injected in source tests)."""
+    from service.install_policy import installation
+    if (os.getuid(),os.geteuid(),os.getgid(),os.getegid()) != (10001,)*4 or os.getgroups():
+        raise ValueError('permanent_control_identity_required')
+    installation(public)
+    core = Core(Path(control)/'core')
+    try:
+        Admission(core, Path(staging), public['configuration']['budget'])
+        DispatchStore(core)
+        persistence.initialize_inventory(core)
+        persistence.initialize_enrollment(core, public)
+    finally:
+        core.close()
+    sync_dir(Path(control)/'core'); sync_dir(Path(control))
+
+
+def _linux_split_child():
+    """Fresh exec: stdin is bounded PUBLIC data; no seed or receipts descriptor."""
+    import sys
+    if sys.platform != 'linux' or os.getuid() != 0 or os.geteuid() != 0:
+        raise ValueError('linux_root_initializer_required')
+    raw = sys.stdin.buffer.read(65537)
+    if len(raw) > 65536: raise ValueError('initializer_pipe_budget')
+    request = json.loads(raw)
+    from service import install_policy as ip
+    from service.install_child import prepare
+    ip._closed(request, 'public control_fd staging_fd')
+    control, staging = prepare(request['public'], request['control_fd'], request['staging_fd'])
+    os.setgroups([])
+    os.setresgid(10001, 10001, 10001)
+    os.setresuid(10001, 10001, 10001)
+    os.umask(0o077)
+    if os.getresuid() != (10001,)*3 or os.getresgid() != (10001,)*3 or os.getgroups():
+        raise ValueError('permanent_control_identity_required')
+    _split_core(request['public'], control, staging)
+
+
+def _launch_split_child(raw):
+    """Synchronous launcher retains parent exclusions until exit AND reap."""
+    import subprocess
+    import sys
+    if sys.platform != 'linux' or os.geteuid() != 0:
+        raise ValueError('linux_root_initializer_required')
+    if len(raw) > 65536: raise ValueError('initializer_pipe_budget')
+    request=json.loads(raw)
+    from service.install_policy import _closed
+    _closed(request,'public control_fd staging_fd')
+    descriptors=(request['control_fd'],request['staging_fd'])
+    if any(type(fd) is not int or fd<3 for fd in descriptors) or len(set(descriptors))!=2:
+        raise ValueError('closed_initializer_descriptors')
+    # Only two role fds survive exec; receipts, exclusion fds and seed do not.
+    child = subprocess.Popen([sys.executable, '-I', '-B', '-c',
+        'import sys;sys.path.insert(0,'+repr(str(Path(__file__).parent.parent))+');'
+        'from service.persistent_init import _linux_split_child;_linux_split_child()'],
+        stdin=subprocess.PIPE, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+        close_fds=True, pass_fds=descriptors, cwd='/', env={})
+    try:
+        child.communicate(raw, timeout=30)
+    except BaseException as primary:
+        try: child.kill()
+        except BaseException as cleanup: primary.add_note('child kill failed: '+str(cleanup))
+        while child.returncode is None:
+            try: child.wait()
+            except (InterruptedError,KeyboardInterrupt) as cleanup:
+                primary.add_note('child reap interrupted: '+str(cleanup))
+        raise
+    if child.returncode != 0: raise ValueError('split_child_failed')
+
+
+def _split_create(path, data, role, *, parent_identity=None):
+    """Exclusive, fd-checked durable creation. No replacement or chown repair."""
+    from service import install_policy as ip
+    with ip.parent_fd(path) as (parent, name):
+        observed=os.fstat(parent)
+        if parent_identity is not None and (observed.st_dev,observed.st_ino) != parent_identity:
+            raise ValueError('installed_root_changed')
+        fd = os.open(name, os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW, 0o600, dir_fd=parent)
+        try:
+            uid, gid, mode = ip.expectation(ip.SPLIT, role)
+            # New empty inode only; never an existing data file.
+            os.fchown(fd, uid, gid); os.fchmod(fd, mode)
+            before = os.fstat(fd); ip.check(before, ip.SPLIT, role)
+            with os.fdopen(os.dup(fd), 'wb') as stream:
+                persistence.write_complete(stream, data)
+            after = os.fstat(fd); ip.check(after, ip.SPLIT, role)
+            if ((before.st_dev, before.st_ino) != (after.st_dev, after.st_ino) or
+                    ip.identity(os.stat(name, dir_fd=parent, follow_symlinks=False)) != ip.identity(after)):
+                raise ValueError('installed_creation_changed')
+            os.fsync(fd); os.fsync(parent)
+        finally: os.close(fd)
+
+
+def initialize_split(roots, scope, config, *, authority, policy, complete=None,
+                     launch_child=_launch_split_child, fault=lambda _: None):
+    """Create-only internal transaction; authority is a trusted host inspection callback.
+
+    The callback must freshly inspect daemon/context/named-volume identities and
+    consumers while the caller's host launch exclusion is held. It returns only
+    the closed observation below; this unit does not implement Docker observation.
+    Injected launchers are synchronous: return only after child close/reap.
+    """
+    import fcntl
+    from contextlib import ExitStack
+    from service import install_policy as ip
+    ip.require(policy); validate_scope(scope); config = ip.configuration(config)
+    if launch_child is _launch_split_child:
+        import sys
+        if sys.platform != 'linux' or os.geteuid() != 0:
+            raise ValueError('linux_root_initializer_required')
+    if type(roots) is not dict or set(roots) != set(ROLES): raise ValueError('exact_volume_roles_required')
+    roots = {k: Path(v) for k,v in roots.items()}
+    with ExitStack() as stack:
+        held = {}; original = {}; roles_ready = False
+        # Directory locks exist before any file. Fixed order includes control first.
+        for role in ('control', 'receipts', 'ipc', 'staging'):
+            with ip.parent_fd(roots[role]) as (parent, name):
+                fd = os.open(name, os.O_RDONLY|os.O_DIRECTORY|os.O_NOFOLLOW, dir_fd=parent)
+                stack.callback(os.close, fd)
+                info = os.fstat(fd)
+                if (info.st_dev,info.st_ino) in original.values():
+                    raise ValueError('distinct_non_nested_roots_required')
+                try: fcntl.flock(fd, fcntl.LOCK_EX|fcntl.LOCK_NB)
+                except BlockingIOError: raise ValueError('initialization_lock_busy') from None
+                info = os.fstat(fd)
+                if ip.identity(os.stat(name,dir_fd=parent,follow_symlinks=False)) != ip.identity(info):
+                    raise ValueError('installed_root_changed')
+                held[role] = fd; original[role] = (info.st_dev, info.st_ino)
+        if len(set(original.values())) != 4 or any(a in b.parents for a in roots.values() for b in roots.values() if a != b):
+            raise ValueError('distinct_non_nested_roots_required')
+        def stable():
+            for role, fd in held.items():
+                with ip.parent_fd(roots[role]) as (parent, name):
+                    s = os.stat(name,dir_fd=parent,follow_symlinks=False)
+                    if (s.st_dev,s.st_ino) != original[role] or (os.fstat(fd).st_dev,os.fstat(fd).st_ino) != original[role]:
+                        raise ValueError('installed_root_changed')
+                    if roles_ready:
+                        ip.check(s,policy,role,directory=True)
+                        ip.check(os.fstat(fd),policy,role,directory=True)
+        def observe():
+            observation = authority()
+            ip._closed(observation, 'host roots consumers')
+            if (observation['host'] != scope or observation['roots'] != {k:list(v) for k,v in original.items()} or
+                    observation['consumers'] != []):
+                raise ValueError('fresh_host_authority_required')
+            stable()
+        def create(path,data,role):
+            stable()
+            _split_create(path,data,role,parent_identity=original[role])
+            stable()
+        observe()
+        receipts = roots['receipts']; record_path = receipts/'p1-init.json'
+        def read(path, role): return read_file(path, policy=policy, role=role)
+        if complete is None:
+            if any(os.listdir(fd) for fd in held.values()): raise ValueError('new_empty_installation_required')
+            for fd in held.values():
+                s = os.fstat(fd)
+                if (s.st_uid,s.st_gid,stat.S_IMODE(s.st_mode)) != (0,0,0o700):
+                    raise ValueError('fresh_root_identity_required')
+            target = {role:dict(device=dev,inode=ino,uid=ip.expectation(policy,role,directory=True)[0],
+                gid=ip.expectation(policy,role,directory=True)[1],mode=ip.expectation(policy,role,directory=True)[2])
+                for role,(dev,ino) in original.items()}
+            public = dict(deployment_id=secrets.token_hex(16), revision=1, scope=ip.SCOPE, host=scope,
+                configuration=config, configuration_digest=digest(config), ownership_policy=ip.POLICY, roles=target)
+            private = dict(public=public, seed=secrets.token_hex(32))
+            ip.initialization(private)
+            # Receipts is still root:root 0700 here. Intent precedes ANY transition.
+            create(record_path, encode(private).encode(), 'receipts'); fault('init_record')
+        else:
+            raw_private = read(record_path, 'receipts')
+            private = json.loads(raw_private)
+            if raw_private != encode(private).encode() or hashlib.sha256(raw_private).hexdigest() != complete: raise ValueError('matching_initialization_record_required')
+            ip._closed(private, 'public seed'); public = private['public']
+        ip.initialization(private)
+        if (public['host'] != scope or public['configuration'] != config or
+                any((r['device'],r['inode']) != original[k] for k,r in public['roles'].items()) or
+                not isinstance(private['seed'],str) or len(private['seed']) != 64):
+            raise ValueError('initialization_scope_mismatch')
+        if (receipts/'p1-enrolled.json').exists(): raise ValueError('installation_already_enrolled')
+        # Only empty role inodes (receipts contains the initial intent) transition.
+        for role, fd in held.items():
+            uid,gid,mode = ip.expectation(policy,role,directory=True)
+            s = os.fstat(fd)
+            if (s.st_uid,s.st_gid,stat.S_IMODE(s.st_mode)) != (uid,gid,mode):
+                if ((s.st_uid,s.st_gid,stat.S_IMODE(s.st_mode)) != (0,0,0o700) or
+                        set(os.listdir(fd)) != ({'p1-init.json'} if role == 'receipts' else set())):
+                    raise ValueError('partial_role_transition_quarantine')
+                os.fchown(fd,uid,gid); os.fchmod(fd,mode); os.fsync(fd)
+            ip.check(os.fstat(fd),policy,role,directory=True); stable(); fault('role_'+role)
+        roles_ready = True
+        if ip.role_records(roots) != public['roles']: raise ValueError('installed_root_changed')
+        lane = hashlib.sha256((private['seed']+'lane').encode()).hexdigest()[:32]
+        payload = dict(version=1,lane=lane,records=[])
+        files = {('ipc','lifecycle.key'):hashlib.sha256((private['seed']+'lifecycle').encode()).hexdigest().encode(),
+            ('ipc','execution.key'):hashlib.sha256((private['seed']+'execution').encode()).hexdigest().encode(),
+            ('receipts','journal.json'):encode(dict(payload=payload,sha256=digest(payload))).encode(),
+            ('receipts','initialized'):b'', ('receipts','lane.lock'):b''}
+        allowed = dict(control={'core'}, staging=set(), ipc={'lifecycle.key','execution.key'},
+            receipts={'p1-init.json','p1-enrolled.json','p1-core-intent','p1-core-done','journal.json','initialized','lane.lock'})
+        allowed['receipts'].update('p1-created-'+r+'-'+n for r,n in files)
+        for role,fd in held.items():
+            if set(os.listdir(fd))-allowed[role]: raise ValueError('unexplained_initialization_entries')
+        for (role,name),data in files.items():
+            path = roots[role]/name; intent = receipts/('p1-created-'+role+'-'+name)
+            binding = digest(dict(role=role,name=name,sha256=hashlib.sha256(data).hexdigest())).encode()
+            if path.exists() or path.is_symlink():
+                if read(path,role) != data or read(intent,'receipts') != binding: raise ValueError('partial_initialization_mismatch')
+            else:
+                if intent.exists() or intent.is_symlink(): raise ValueError('missing_initialized_file_quarantine')
+                create(intent,binding,'receipts'); fault('intent_'+name)
+                create(path,data,role)
+            stable(); fault(name)
+        # Hold lane exclusion through child reap and final verification. Core owns
+        # its lifetime lock during construction; parent holds every root lock.
+        stack.enter_context(ip.locked_file(receipts/'lane.lock',policy=policy,role='receipts'))
+        core_intent = receipts/'p1-core-intent'; done = receipts/'p1-core-done'
+        binding = digest(public).encode()
+        if core_intent.exists() or core_intent.is_symlink():
+            if read(core_intent,'receipts') != binding or not done.exists() or read(done,'receipts') != binding:
+                raise ValueError('partial_core_quarantine')
+        else:
+            if ((roots['control']/'core').exists() or (roots['control']/'core').is_symlink() or done.exists() or done.is_symlink()):
+                raise ValueError('core_without_intent_quarantine')
+            create(core_intent,binding,'receipts'); fault('core_intent')
+            request = encode(dict(public=public,control_fd=held['control'],staging_fd=held['staging'])).encode()
+            if len(request)>65536: raise ValueError('initializer_pipe_budget')
+            launch_child(request)  # MUST be synchronous, including failed reap.
+            stable(); fault('child_reaped')
+            create(done,binding,'receipts')
+        stack.enter_context(ip.locked_file(roots['control']/'core'/'control.lock',policy=policy,role='control'))
+        _validate_split_database(roots, public, policy)
+        observe(); fault('database')
+        if read(record_path,'receipts') != encode(private).encode():
+            raise ValueError('initialization_record_changed')
+        for (role,name),data in files.items():
+            if read(roots[role]/name,role) != data: raise ValueError('partial_initialization_mismatch')
+        if read(core_intent,'receipts') != binding or read(done,'receipts') != binding:
+            raise ValueError('partial_core_quarantine')
+        create(receipts/'p1-enrolled.json',encode(dict(deployment_id=public['deployment_id'],digest=digest(public))).encode(),'receipts')
+        stable(); fault('enrolled')
+        return dict(deployment_id=public['deployment_id'],digest=digest(public),initialization_digest=digest(private))
+
+
+def _validate_split_database(roots, public, policy):
+    """Private-copy schema/authority/inventory validation, never original SQLite."""
+    from service.recovery import private_database
+    from service.reconciliation import COLUMNS, Reconciliation
+    from types import SimpleNamespace
+    from contextlib import closing
+    import sqlite3
+    with private_database(roots['control']/'core'/'core.sqlite', policy=policy) as copied, closing(sqlite3.connect(copied.as_uri()+'?mode=ro',uri=True)) as db:
+        db.execute('PRAGMA trusted_schema=OFF'); db.execute('PRAGMA query_only=ON')
+        import time
+        deadline=time.monotonic()+2
+        db.set_progress_handler(lambda:int(time.monotonic()>deadline),1000)
+        expected = dict(COLUMNS, **persistence.B1_COLUMNS,
+            p1_inventory_scans='id observed complete fingerprint summary',
+            p1_inventory_objects='id first_observed last_observed scan_id record',
+            p1_inventory_history='seq scan_id object_id observed record',
+            p1_integrity='id revision state token',sqlite_sequence='name seq')
+        if {r[0] for r in db.execute("SELECT name FROM sqlite_master WHERE type='table'")} != set(expected):
+            raise ValueError('partial_database_initialization_quarantine')
+        for table,columns in expected.items():
+            if [r[1] for r in db.execute('PRAGMA table_info('+table+')')] != columns.split():
+                raise ValueError('partial_database_initialization_quarantine')
+        fixed = dict(p1_format=[(1,'synthetic-core')], voice_catalogue_format=[(1,)], resource_accounting=[(1,0)], resource_protocol=[(1,2)],
+            resource_monitor=[(1,'healthy')], p1_integrity=[(1,1,'healthy',None)],
+            p1_installation=[(public['deployment_id'],1,public['scope'],encode(public),digest(public))])
+        for table in expected:
+            rows=db.execute('SELECT * FROM '+table+' LIMIT 2').fetchall()
+            if rows != fixed.get(table,[]): raise ValueError('nonfresh_split_database:'+table)
+        if db.execute('PRAGMA user_version').fetchone() != (1,): raise ValueError('unsupported_versions')
+        scan=Reconciliation.__new__(Reconciliation)
+        scan.core=SimpleNamespace(root=roots['control']/'core'); scan.db=db; scan.staging=roots['staging']
+        scan.entry_limit=2048; scan.byte_limit=16*1024**2; scan.seconds=1
+        scan._collect(policy=policy)
+        if scan.reasons: raise ValueError('initialization_inventory_quarantine:'+repr(scan.reasons))
 
 
 if __name__=='__main__': main()

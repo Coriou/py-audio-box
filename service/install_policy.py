@@ -1,0 +1,292 @@
+"""Closed installed filesystem policy. Selection is trusted entrypoint authority.
+
+These primitives do not enroll, migrate, activate, or infer policy from disk.
+The split enrollment transaction must corroborate retained records separately.
+"""
+from contextlib import contextmanager
+from dataclasses import dataclass
+import os
+from pathlib import Path
+import stat
+import fcntl
+
+SCOPE = 'owned-kokoro-v1'
+POLICY = 'docker-kokoro-split-v1'
+ROLES = ('control', 'staging', 'receipts', 'ipc')
+
+
+@dataclass(frozen=True)
+class _SplitPolicy:
+    scope: str = SCOPE
+    name: str = POLICY
+
+
+SPLIT = _SplitPolicy()
+
+
+def require(policy):
+    # No caller-supplied UID map, equivalent object, or metadata-selected string.
+    if policy is not SPLIT:
+        raise ValueError('explicit_fixed_install_policy_required')
+
+
+def expectation(policy, role, *, directory=False):
+    require(policy)
+    if role not in ROLES:
+        raise ValueError('exact_volume_roles_required')
+    if directory:
+        return {'control': (10001, 10001, 0o700),
+                'receipts': (0, 0, 0o2700),
+                'ipc': (0, 10001, 0o750),
+                'staging': (0, 0, 0o1733)}[role]
+    if role == 'staging':
+        # Attempt directories have a separate allocation policy, never this one.
+        raise ValueError('attempt_policy_required')
+    return {'control': (10001, 10001, 0o600),
+            'receipts': (0, 0, 0o600),
+            'ipc': (0, 10001, 0o640)}[role]
+
+
+def identity(info):
+    return (info.st_dev, info.st_ino, info.st_mode, info.st_uid,
+            info.st_gid, info.st_nlink, info.st_size,
+            info.st_mtime_ns, info.st_ctime_ns)
+
+
+def check(info, policy, role, *, directory=False):
+    uid, gid, mode = expectation(policy, role, directory=directory)
+    if ((info.st_uid, info.st_gid, stat.S_IMODE(info.st_mode)) != (uid, gid, mode) or
+            not (stat.S_ISDIR(info.st_mode) if directory else
+                 stat.S_ISREG(info.st_mode) and info.st_nlink == 1)):
+        raise ValueError('installed_role_identity')
+
+
+@contextmanager
+def parent_fd(path):
+    """Walk the literal absolute chain; never resolve away a symlink first."""
+    path = Path(path)
+    if not path.is_absolute() or '..' in path.parts or path.name in ('', '.', '..'):
+        raise ValueError('literal_absolute_install_path_required')
+    fd = os.open('/', os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+    try:
+        for part in path.parts[1:-1]:
+            next_fd = os.open(part, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW,
+                              dir_fd=fd)
+            os.close(fd)
+            fd = next_fd
+        yield fd, path.name
+    finally:
+        os.close(fd)
+
+
+def read_private(path, limit, *, policy, role):
+    require(policy)
+    if type(limit) is not int or limit < 0 or limit > 16 * 1024**2:
+        raise ValueError('installed_read_budget')
+    with parent_fd(path) as (parent, name):
+        fd = os.open(name, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=parent)
+        try:
+            before = os.fstat(fd)
+            check(before, policy, role)
+            if before.st_size > limit:
+                raise ValueError('installed_read_budget')
+            chunks = []; size = 0
+            while size <= before.st_size:
+                data = os.read(fd, min(65536, before.st_size + 1 - size))
+                if not data:
+                    break
+                chunks.append(data); size += len(data)
+            if (size != before.st_size or identity(os.fstat(fd)) != identity(before) or
+                    identity(os.stat(name, dir_fd=parent, follow_symlinks=False)) != identity(before)):
+                raise ValueError('private_file_changed')
+        finally:
+            os.close(fd)
+    # Also reject a renamed ancestor between descriptor traversal and return.
+    with parent_fd(path) as (parent, name):
+        if identity(os.stat(name, dir_fd=parent, follow_symlinks=False)) != identity(before):
+            raise ValueError('private_file_changed')
+    return b''.join(chunks)
+
+
+def roots_checked(roots, *, policy):
+    require(policy)
+    if not isinstance(roots, dict) or set(roots) != set(ROLES):
+        raise ValueError('exact_volume_roles_required')
+    result = {}; seen = set()
+    for role, value in roots.items():
+        path = Path(value)
+        with parent_fd(path) as (parent, name):
+            fd = os.open(name, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=parent)
+            try:
+                info = os.fstat(fd); check(info, policy, role, directory=True)
+                if identity(os.stat(name, dir_fd=parent, follow_symlinks=False)) != identity(info):
+                    raise ValueError('installed_root_changed')
+            finally:
+                os.close(fd)
+        key = info.st_dev, info.st_ino
+        if key in seen:
+            raise ValueError('distinct_volume_roles_required')
+        seen.add(key); result[role] = path
+    if any(a in b.parents for a in result.values() for b in result.values() if a != b):
+        raise ValueError('nested_volume_roles')
+    return result
+
+
+def directory_identity(path, *, policy, role):
+    """Fixed role directory, including a literal no-follow ancestor walk."""
+    require(policy)
+    with parent_fd(path) as (parent,name):
+        fd=os.open(name,os.O_RDONLY|os.O_DIRECTORY|os.O_NOFOLLOW,dir_fd=parent)
+        try:
+            info=os.fstat(fd);check(info,policy,role,directory=True)
+            if identity(os.stat(name,dir_fd=parent,follow_symlinks=False))!=identity(info):
+                raise ValueError('installed_root_changed')
+            return identity(info)
+        finally:os.close(fd)
+
+
+@contextmanager
+def locked_file(path, *, policy, role):
+    """Existing role lock only. Keep exclusion through the final identity check.
+
+    No creation, ownership repair, or arbitrary UID exception. The caller owns
+    ordering when taking more than one lock (control before receipts).
+    """
+    require(policy)
+    with parent_fd(path) as (parent, name):
+        fd = os.open(name, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=parent)
+        try:
+            before = os.fstat(fd)
+            check(before, policy, role)
+            if identity(os.stat(name, dir_fd=parent, follow_symlinks=False)) != identity(before):
+                raise ValueError('installed_lock_changed')
+            try:
+                fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            except BlockingIOError:
+                raise ValueError('maintenance_lock_busy') from None
+            def revalidate():
+                check(os.fstat(fd), policy, role)
+                with parent_fd(path) as (current, leaf):
+                    if (identity(os.fstat(fd)) != identity(before) or
+                            identity(os.stat(leaf, dir_fd=current, follow_symlinks=False)) != identity(before)):
+                        raise ValueError('installed_lock_changed')
+            revalidate()
+            try:
+                yield fd
+            except BaseException as primary:
+                try:
+                    revalidate()
+                except BaseException as cleanup:
+                    primary.add_note('lock revalidation failed: '+str(cleanup))
+                raise
+            else:
+                revalidate()
+        finally:
+            os.close(fd)
+
+
+def _closed(value, fields):
+    if type(value) is not dict or set(value) != set(fields.split()):
+        raise ValueError('closed_installed_record')
+
+
+def configuration(value):
+    """Detached public configuration. No local paths, credentials or seed."""
+    import json
+    import re
+    from service.core import encode
+    from service.admission import finite_budget
+    from contracts import validate as oracle
+    from worker.runtime_protocol import execution
+    _closed(value, 'version ownership_policy profiles budget contexts bundles images mounts')
+    if len(encode(value).encode()) > 48000:
+        raise ValueError('installed_configuration_budget')
+    value = json.loads(encode(value))
+    if type(value['version']) is not int or value['version'] != 1 or value['ownership_policy'] != POLICY:
+        raise ValueError('installed_configuration_version')
+    finite_budget(value['budget'])
+    profiles = value['profiles']
+    if type(profiles) is not list or len(profiles) != 1 or profiles[0]['id'] != 'kokoro-cpu':
+        raise ValueError('installed_profiles')
+    oracle.validate('profile', profiles[0])
+    if profiles[0]['device'] != 'cpu' or profiles[0]['topology'] != 'networkless_container':
+        raise ValueError('installed_profile_topology')
+    _closed(value['images'], 'control worker')
+    if any(not isinstance(v, str) or not re.fullmatch('sha256:[0-9a-f]{64}', v) for v in value['images'].values()):
+        raise ValueError('installed_image_digest')
+    if value['mounts'] != dict(control='/control', staging='/staging', receipts='/receipts', ipc='/ipc', models='/models'):
+        raise ValueError('installed_mount_mapping')
+    contexts = value['contexts']; bundles = value['bundles']
+    if type(contexts) is not dict or not 1 <= len(contexts) <= 32 or type(bundles) is not dict or len(bundles) != 1:
+        raise ValueError('installed_contexts')
+    for principal, context in contexts.items():
+        if not isinstance(principal, str) or not re.fullmatch('[a-zA-Z0-9_-]{1,128}', principal):
+            raise ValueError('installed_principal')
+        spec = execution(context)
+        if spec is None or context['plan']['resolved']['profile'] != oracle.profile_snapshot(profiles[0]):
+            raise ValueError('installed_context_profile')
+        oracle.frozen_plan(context['plan'], context['bundles'])
+        expected = dict(manifest_sha256=spec.manifest_sha256, checkpoint=spec.checkpoint,
+                        revision=spec.revision, path='/models/bundles/'+spec.bundle_id)
+        if bundles != {spec.bundle_id: expected}:
+            raise ValueError('installed_bundle_binding')
+        if (spec.memory_bytes > value['budget']['ram_bytes'] or
+                spec.max_output_bytes*2 > value['budget']['disk_bytes'] or value['budget']['pids'] < 48):
+            raise ValueError('installed_context_budget')
+    return value
+
+
+def installation(value):
+    """Shared closed parser; legacy remains byte/shape compatible."""
+    import re
+    from service.persistent_init import digest, validate_scope
+    if type(value) is not dict:
+        raise ValueError('closed_installation')
+    if value.get('scope') == 'owned-synthetic':
+        _closed(value, 'deployment_id revision scope host profile_budget_digest')
+        hashes = [value['profile_budget_digest']]
+    elif value.get('scope') == SCOPE:
+        _closed(value, 'deployment_id revision scope host configuration configuration_digest ownership_policy roles')
+        config = configuration(value['configuration'])
+        if value['ownership_policy'] != POLICY or value['configuration_digest'] != digest(config):
+            raise ValueError('installed_configuration_digest')
+        _closed(value['roles'], 'control staging receipts ipc')
+        seen = set()
+        for role, record in value['roles'].items():
+            _closed(record, 'device inode uid gid mode')
+            if (any(type(v) is not int or v < 0 for v in record.values()) or record['inode'] == 0 or
+                    (record['uid'], record['gid'], record['mode']) != expectation(SPLIT, role, directory=True)):
+                raise ValueError('installed_role_record')
+            key = record['device'], record['inode']
+            if key in seen: raise ValueError('distinct_volume_roles_required')
+            seen.add(key)
+        hashes = [value['configuration_digest']]
+    else:
+        raise ValueError('unsupported_enrollment')
+    validate_scope(value['host'])
+    if value['scope'] == SCOPE and any(v['driver'] != 'local' for v in value['host']['volumes'].values()):
+        raise ValueError('local_named_volumes_required')
+    if (type(value['revision']) is not int or value['revision'] != 1 or
+            not isinstance(value['deployment_id'], str) or not re.fullmatch('[0-9a-f]{32}', value['deployment_id']) or
+            any(not isinstance(h, str) or not re.fullmatch('[0-9a-f]{64}', h) for h in hashes)):
+        raise ValueError('invalid_installation_identity')
+    return value
+
+
+def role_records(roots):
+    result = {}
+    for role, path in roots_checked(roots, policy=SPLIT).items():
+        s = directory_identity(path, policy=SPLIT, role=role)
+        result[role] = dict(device=s[0], inode=s[1], uid=s[3], gid=s[4], mode=stat.S_IMODE(s[2]))
+    return result
+
+
+def initialization(value):
+    """Closed split private record, kept exclusively in receipts."""
+    import re
+    _closed(value, 'public seed')
+    installation(value['public'])
+    if (value['public']['scope'] != SCOPE or not isinstance(value['seed'],str) or
+            not re.fullmatch('[0-9a-f]{64}',value['seed'])):
+        raise ValueError('invalid_split_initialization')
+    return value

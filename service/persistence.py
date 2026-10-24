@@ -159,6 +159,8 @@ B1_COLUMNS = {
 def initialize_enrollment(core, record):
     """Only the create-only initializer calls this, after all predecessors exist."""
     from service.core import encode
+    from service.install_policy import installation
+    installation(record)
     tables = {r[0] for r in core.db.execute("SELECT name FROM sqlite_master WHERE type='table'")}
     if tables & B1_COLUMNS.keys():
         for table, columns in B1_COLUMNS.items():
@@ -173,7 +175,7 @@ def initialize_enrollment(core, record):
         core.db.execute('CREATE TABLE p1_registrations(id TEXT PRIMARY KEY, record TEXT NOT NULL, digest TEXT NOT NULL)')
         core.db.execute('CREATE TABLE p1_recovery_plans(id TEXT PRIMARY KEY, record TEXT NOT NULL, digest TEXT NOT NULL)')
         core.db.execute('INSERT INTO p1_installation VALUES(?,1,?,?,?)',
-                        (record['deployment_id'], 'owned-synthetic', encode(record), hashlib.sha256(encode(record).encode()).hexdigest()))
+                        (record['deployment_id'], record['scope'], encode(record), hashlib.sha256(encode(record).encode()).hexdigest()))
 
 
 # Optional B2 extension. Normal constructors validate it, never install it.

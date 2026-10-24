@@ -101,7 +101,16 @@ class Reconciliation:
         self.rows[key] = dict(id=key, namespace=namespace, name=name, classification=kind,
             reason=reason, identity=identity, owner=owner, references=sorted(set(refs)))
 
-    def _collect(self, *, _before=None):
+    def _collect(self, *, _before=None, policy=None):
+        # Trusted offline read context only; never infer ownership from a row.
+        # Worker attempt ownership continues to use its existing allocation map.
+        if policy is not None:
+            from service import install_policy
+            install_policy.require(policy)
+        def control_owned(info, *, directory=False):
+            if policy is None: return info.st_uid == os.getuid()
+            uid,gid,mode = install_policy.expectation(policy,'control',directory=directory)
+            return (info.st_uid,info.st_gid,stat.S_IMODE(info.st_mode)) == (uid,gid,mode)
         self.entries = self.bytes = 0
         self.end = time.monotonic() + self.seconds
         self.rows, self.reasons = {}, set()
@@ -287,10 +296,10 @@ class Reconciliation:
                     if digest(value) != record['digest']:
                         raise Incomplete('invalid_b1_digest')
                     if table == 'p1_installation':
-                        closed(value, 'deployment_id revision scope host profile_budget_digest')
-                        validate_scope(value['host'])
+                        from service.install_policy import installation
+                        installation(value)
                         if (value['deployment_id'] != record['id'] or record['revision'] != 1 or
-                            value['revision'] != 1 or record['scope'] != 'owned-synthetic' or value['scope'] != 'owned-synthetic'):
+                            value['revision'] != 1 or record['scope'] != value['scope']):
                             raise Incomplete('invalid_b1_installation')
                     elif table == 'p1_registrations':
                         validate_registration(value)
@@ -480,16 +489,16 @@ class Reconciliation:
                 seen.add(name)
                 if name in assets:
                     kind, reason = 'committed_referenced', 'retained_metadata'
-                    if not regular or info.st_uid != os.getuid() or info.st_nlink != 1 or digest != assets[name]['sha256']:
+                    if not regular or not control_owned(info) or info.st_nlink != 1 or digest != assets[name]['sha256']:
                         kind, reason = 'missing_hash_mismatched_terminal', 'unavailable'
                 elif name in work:
                     kind, reason = 'pending_adoption_known_alias', 'publication_work'
                     owner = attempts.get(json.loads(work[name]['binding'])['staging_id'])
-                    if (not regular or info.st_uid != os.getuid() or info.st_nlink not in (1,2)
+                    if (not regular or not control_owned(info) or info.st_nlink not in (1,2)
                         or (name == work[name]['destination'] and
                             (digest != work[name]['sha256'] or info.st_size != work[name]['byte_length']))):
                         kind, reason = 'unknown_foreign', 'foreign_adoption'
-                elif re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9._:-]{0,127}', name) and not name.startswith('adoption-') and regular and info.st_uid == os.getuid() and info.st_nlink == 1:
+                elif re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9._:-]{0,127}', name) and not name.startswith('adoption-') and regular and control_owned(info) and info.st_nlink == 1:
                     kind, reason = 'adopted_orphan', 'no_publication_provenance'
             elif (owner and (regular or stat.S_ISDIR(info.st_mode))
                   and (not regular or info.st_nlink == 1)
@@ -506,6 +515,8 @@ class Reconciliation:
             self._charge()
             info = os.stat(path, dir_fd=parent_fd, follow_symlinks=False)
             if not stat.S_ISDIR(info.st_mode): raise Incomplete('foreign_inventory_root')
+            if policy is not None and namespace in ('assets','owners','internal_staging'):
+                if not control_owned(info,directory=True): raise Incomplete('foreign_inventory_root')
             fd = os.open(path, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=parent_fd)
             try:
                 if stable(os.fstat(fd)) != stable(info): raise Incomplete('inventory_changed')
@@ -526,19 +537,26 @@ class Reconciliation:
                 for name, kind in archive_names(intent).items():
                     if name in archives: raise Incomplete('duplicate_b2_archive')
                     archives[name] = (kind, intent)
-        root_fd = os.open(self.core.root, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+        if policy is not None:
+            with install_policy.parent_fd(self.core.root) as (parent,name):
+                root_fd = os.open(name, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=parent)
+        else:
+            root_fd = os.open(self.core.root, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
         try:
+            root_before = os.fstat(root_fd)
+            if policy is not None: install_policy.check(root_before,policy,'control',directory=True)
             with os.scandir(root_fd) as root_entries:
                 for entry in root_entries:
                     self._charge()
                     info = os.stat(entry.name, dir_fd=root_fd, follow_symlinks=False)
                     if entry.name in archives:
                         kind, intent = archives[entry.name]
-                        if not stat.S_ISREG(info.st_mode) or info.st_uid!=os.getuid() or info.st_nlink!=1 or info.st_mode & 0o077:
+                        if not stat.S_ISREG(info.st_mode) or not control_owned(info) or info.st_nlink!=1 or info.st_mode & 0o077:
                             raise Incomplete('foreign_b2_archive')
                         from service.persistent_init import read_file
                         from service.recovery import validate_archive_document
-                        content = read_file(self.core.root/entry.name, self.byte_limit-self.bytes)
+                        content = read_file(self.core.root/entry.name, self.byte_limit-self.bytes,
+                            **(dict(policy=policy,role='control') if policy is not None else {}))
                         self._charge(len(content))
                         if kind!='snapshot': validate_archive_document(kind,json.loads(content),intent)
                         self._row('recovery',entry.name,'recovery_evidence','retained_recovery_evidence',
@@ -546,14 +564,19 @@ class Reconciliation:
                         continue
                     is_directory = entry.name in ('assets','staging','owners')
                     is_control = entry.name in ('core.sqlite','core.sqlite-wal','core.sqlite-shm','control.lock')
-                    if not ((is_directory and stat.S_ISDIR(info.st_mode)) or
-                            (is_control and stat.S_ISREG(info.st_mode) and info.st_nlink == 1 and info.st_uid == os.getuid())):
+                    if not ((is_directory and stat.S_ISDIR(info.st_mode) and (policy is None or control_owned(info,directory=True))) or
+                            (is_control and stat.S_ISREG(info.st_mode) and info.st_nlink == 1 and control_owned(info))):
                         self.reasons.add('unknown_control_namespace')
                         self._row('control', entry.name, 'unknown_foreign', 'unknown_control_namespace', identity=list(stable(info)))
+            directory('assets', 'assets', {}, files=True, parent_fd=root_fd)
+            directory('owners', 'owners', owners, files=True, parent_fd=root_fd)
+            directory('staging', 'internal_staging', attempts, parent_fd=root_fd)
+            if policy is not None:
+                with install_policy.parent_fd(self.core.root) as (parent,name):
+                    if (stable(os.fstat(root_fd)) != stable(root_before) or
+                            stable(os.stat(name,dir_fd=parent,follow_symlinks=False)) != stable(root_before)):
+                        raise Incomplete('inventory_changed')
         finally: os.close(root_fd)
-        directory(self.core.root/'assets', 'assets', {}, files=True)
-        directory(self.core.root/'owners', 'owners', owners, files=True)
-        directory(self.core.root/'staging', 'internal_staging', attempts)
         if self.staging is not None and self.staging != self.core.root/'staging':
             directory(self.staging, 'worker_staging', attempts)
         for asset_id in refs.keys() | assets.keys():
