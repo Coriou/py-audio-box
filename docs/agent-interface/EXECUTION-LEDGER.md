@@ -1647,3 +1647,7 @@ Parent accepts r70 bounded BUILD GO:279inventory/18streams/197maps/context200/ba
 ### 2026-10-24 — Optimized original singleton passes; independent semantic gate
 
 r71 ONE actual reports original1passed/pytestwriterdriver0, fullstrictBchild74/four47rows failures0owned0; unchanged<2/RLIMIT/finalreapassertions completed. Exacttargetelapsed unrecorded; broaderpytest2.91s nottargettiming/savings.32receipts64streams/178inventory retained, stopped3containersremoved/ownlanereleased/volumepreserved. Independent pab-b-optimized-positive-semantic-gate-r72-20261024 audits receipts/runtime/witness/cleanup and evidence limits before acceptance or separate B100.
+
+### 2026-10-24 — Original-positive independently accepted; B100 campaign
+
+Parent accepts r72 bounded ONE Linux original-positive GO,178inventory/32completions64streams/archive/runtime/witness/cleanup independently verified. Exacttargetelapsed unrecorded; unchanged<2/RLIMIT/reap assertions PASS, exhaustive snapshots/platform/release limits remain. ONE pab-b100-controls-actual-r73-20261024 authorized exact reviewed100 runner on same14b0cf52 image/f5bc92a1, separate freshvolume/container, finitecaps/firstfailureSTOP/retention. No P211 or other preservationcampaign; independent actualreview follows.
