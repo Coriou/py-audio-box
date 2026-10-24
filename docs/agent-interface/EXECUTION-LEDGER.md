@@ -1659,3 +1659,7 @@ r73 ONE campaign stopped017callFAIL (setup/teardownPASS);000–016 onlysourcepat
 ### 2026-10-24 — Failure audit accepted; minimal recovery tooling preparation
 
 r74 independently verifies r73 boundedfailure/104leaves/17receipts34streams and concreteUSTAR100byte-link representabilitygap; exact017cause/offendinglink remainunknown. Parent accepts audit and authorizes pab-b100-recovery-transport-prep-r75-20261024 private tooling+boundedstdlibsyntheticHOST only, prefer minimal losslessPAX successor/existinghashreader over bespokeLP1 ifsafe. Exactselectedtransport must freezeandpassindependentreview beforeONE ROrecovery; noDocker/testretry/oldobjectmutation/lanerelease now.
+
+### 2026-10-24 — PAX recovery tooling prepared; adversarial source gate
+
+r75 freezes privatePAXonly reader/strictphysical+logicalparser/hashreader/orchestration/supervisor manifest279e71b7,26retainedstdlibHOSTchecksPASS; noDocker/volumeaccess. Originalproofunchanged, nonUTF8fixture representedinmemory dueDarwinfilesystemlimit, Linuxserialization unqualified. Independent pab-b100-recovery-prep-adversarial-r76-20261024 reviewsALLselectedsource/receipts/bounds/security/failurepaths beforeparentONErecoverydecision; nooperationalauthority yet.
