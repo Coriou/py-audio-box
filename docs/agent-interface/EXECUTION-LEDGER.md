@@ -2231,3 +2231,7 @@ r207 source306089b2/docsd0fe258f replaces eager scan with deadline-checked globa
 ### 2026-10-24 — Host observer adopted; registration transaction starts
 
 r208 bounded source GO closes enumeration defect. Parent mergedd0fe258f conflict-free;85 integrated focused tests PASS. Commissioned Sol-low r209 protected host/hello/provenance/controlUID registration transaction using reviewed initializer/observer; activationnotification/packagedlaunch next. No actualLinux/speechqualification claimed.
+
+### 2026-10-24 — Installed registration candidate enters independent review
+
+r209 source4fd3d5af/docs5fc7581c implements protected host/hello/provenance/controlUID originalDB registration and postcommitbrackets, noactivation.112 focused tests reported PASS before finalerrorcleanup,2 targeted at exactcommit. Parent commissioned independent Sol r210 exactcandidatefullsuite. ActualLinuxpeer/UID/mount/reapqualification pending, candidateunmerged.
