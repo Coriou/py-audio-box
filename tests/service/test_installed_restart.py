@@ -245,4 +245,157 @@ class ClosedRestart(unittest.TestCase):
         with self.assertRaisesRegex(ValueError,'unknown_record_fields'):self.f.run_registration()
 
 
+class HistoricalValidation(unittest.TestCase):
+    setUp=ClosedRestart.setUp
+    restart=ClosedRestart.restart
+    # Inherit the actual closed reader, never the permissive registration mock.
+    def history_fixture(self, terminal=True):
+        if terminal: TerminalRestart.terminal_fixture(self)
+        self.restart();rid=self.f.run_registration()
+        path=self.f.authority/('registration-'+rid+'.json')
+        return rid,path,json.loads(path.read_bytes())
+
+    def reject_both(self,rid):
+        from unittest.mock import patch
+        from jsonschema.exceptions import ValidationError
+        oldrows=self.f.rows();delivered=[]
+        original=self.f.child
+        def child(kind,*args):
+            self.assertNotEqual(kind,'writer')
+            return original(kind,*args)
+        with patch.object(self.f,'child',child):
+            with self.assertRaises((ValueError,ValidationError)): self.f.run_registration()
+        with self.assertRaises((ValueError,ValidationError)):
+            h._installed_handoff(self.f.observer,self.f.owners,rid,self.f.fd,lambda:None,
+                notify=lambda *args:delivered.append(args))
+        self.assertEqual(delivered,[]);self.assertEqual(self.f.rows(),oldrows)
+
+    def test_review_nested_examples_retry_and_handoff(self):
+        rid,path,value=self.history_fixture();original=copy.deepcopy(value)
+        def unknown(v):v['history']['journal']['records'][0]['invented_owner_claim']='accepted'
+        def authority(v):
+            r=v['history']['journal']['records'][0];r['allocation']['snapshot']=['not an authority'];r['boot']='f'*32
+        def schema(v):
+            source=v['history']['state']['evidence_projection'];source['schema']=[]
+            source['data']['p1_recovery_plans']=[['invented pending maintenance']]
+        def schema_only(v):v['history']['state']['evidence_projection']['schema']=[]
+        def pending_only(v):v['history']['state']['evidence_projection']['data']['p1_recovery_plans']=[['invented pending maintenance']]
+        def hidden_monitor(v):v['history']['state']['monitor']=[[1,'invented']]
+        def foreign(v):v['history']['journal']['records'][0]['boot']='f'*32
+        def proposal(v):v['history']['journal']['records'][0]['proposal']={'message':{},'manifest':{}}
+        def hidden_fault(v):v['history']['state']['evidence_projection']['data']['resource_faults']=[['hidden']]
+        for mutate in (unknown,authority,schema,schema_only,pending_only,foreign,proposal,hidden_fault,hidden_monitor):
+            with self.subTest(mutation=mutate.__name__):
+                value=copy.deepcopy(original);mutate(value);hist=value['history'];state=hist['state']
+                state['journal_digest']=digest(dict(payload=hist['journal'],sha256=digest(hist['journal'])))
+                state['evidence_projection']['journal']=state['journal_digest']
+                state['source_digest']=digest(state['evidence_projection']);path.write_text(encode(value))
+                self.reject_both(rid)
+        path.write_text(encode(original))
+        self.assertEqual(self.f.run_registration(),rid)
+
+    def test_review_two_node_cycle_retry_and_handoff(self):
+        rid,path,value=self.history_fixture(False)
+        old=json.loads(self.raw);old['kind']='installed-registration-v2';old['history']=copy.deepcopy(value['history'])
+        state=old['history']['state'];registration=value['registration']
+        state['registrations']=[registration];old['history']['predecessors']=[rid]
+        state['evidence_projection']['data']['p1_registrations']=[[rid,encode(registration),rid]]
+        state['source_digest']=digest(state['evidence_projection']);self.path.write_text(encode(old))
+        self.reject_both(rid)
+
+    def third_restart(self):
+        for owner,container in zip(self.f.owners,self.host.containers):
+            owner['started']=container['started']='2026-10-24T03:00:00Z';container['pid']+=100
+        self.f.observer.proc=lambda pid,identity,ipc:dict(pid=pid,start_ticks=300,pid_namespace=pid,cgroup='/docker/'+identity)
+        self.f.hello['boot']='d'*32
+        return self.f.run_registration()
+
+    def test_multiple_clean_restarts_immutable(self):
+        second,path,value=self.history_fixture();saved=path.read_bytes()
+        third=self.third_restart();self.assertNotEqual(second,third)
+        self.assertEqual(self.path.read_bytes(),self.raw);self.assertEqual(path.read_bytes(),saved)
+        self.assertEqual(self.f.run_registration(),third)
+        delivered=[]
+        h._installed_handoff(self.f.observer,self.f.owners,third,self.f.fd,lambda:None,
+            notify=lambda *args:delivered.append(args))
+        self.assertEqual(len(delivered),1)
+
+    def test_multinode_cycle_future_and_replay(self):
+        second,path,b=self.history_fixture(False);third=self.third_restart()
+        cpath=self.f.authority/('registration-'+third+'.json');c=json.loads(cpath.read_bytes())
+        originals={self.path:self.raw,path:path.read_bytes(),cpath:cpath.read_bytes()}
+        for mode in ('cycle','future','replay'):
+            with self.subTest(mode=mode):
+                for p,raw in originals.items():p.write_bytes(raw)
+                if mode=='cycle':
+                    a=json.loads(self.raw);a['kind']='installed-registration-v2';a['history']=copy.deepcopy(b['history'])
+                    hist=a['history'];hist['predecessors']=[third];hist['state']['registrations']=[c['registration']]
+                    hist['state']['evidence_projection']['data']['p1_registrations']=[[third,encode(c['registration']),third]]
+                    hist['state']['source_digest']=digest(hist['state']['evidence_projection']);self.path.write_text(encode(a))
+                else:
+                    # A coherent DAG shape can still claim a later incarnation
+                    # as an earlier prestate, or replay an equal incarnation.
+                    a=json.loads(self.raw);a['kind']='installed-registration-v2';a['history']=copy.deepcopy(b['history'])
+                    if mode=='future':
+                        root=copy.deepcopy(b);root['kind']='installed-registration-v1';root.pop('history')
+                        path.write_text(encode(root))
+                    parent=copy.deepcopy(b['registration'])
+                    if mode=='replay': parent=copy.deepcopy(a['registration'])
+                    pid=digest(parent)
+                    if mode=='replay':
+                        # Exact self replay is a cycle of length one.
+                        parent=a['registration'];pid=self.first
+                    hist=a['history'];hist['predecessors']=[pid];hist['state']['registrations']=[parent]
+                    hist['state']['evidence_projection']['data']['p1_registrations']=[[pid,encode(parent),pid]]
+                    hist['state']['source_digest']=digest(hist['state']['evidence_projection']);self.path.write_text(encode(a))
+                self.reject_both(third)
+
+    def test_typed_snapshot_equivalence(self):
+        import sqlite3
+        from jsonschema.exceptions import ValidationError
+        journal=TerminalRestart.terminal_fixture(self)
+        state=h._registration_snapshot(self.f.roots,self.f.scope)
+        for field,index in (('job',6),('context',7)):
+            with self.subTest(field=field):
+                detached=copy.deepcopy(state)
+                rows=detached['evidence_projection']['data']['jobs']
+                rows[0]=list(rows[0]);original=rows[0][index]
+                value=json.loads(original);value['invented_owner_claim']='accepted'
+                rows[0][index]=encode(value)
+                detached['source_digest']=digest(detached['evidence_projection'])
+                with self.assertRaises((ValueError,ValidationError)):
+                    recovery.installed_clean_history(detached,journal)
+                with sqlite3.connect(self.f.roots['control']/'core/core.sqlite') as db:
+                    db.execute('UPDATE jobs SET '+field+'=?',(encode(value),))
+                try:
+                    with self.assertRaises((ValueError,ValidationError)):
+                        h._registration_snapshot(self.f.roots,self.f.scope)
+                finally:
+                    with sqlite3.connect(self.f.roots['control']/'core/core.sqlite') as db:
+                        db.execute('UPDATE jobs SET '+field+'=?',(original,))
+
+    def test_shared_journal_loader_equivalence(self):
+        from worker.runtime_journal import Journal,validate_payload,journal_bytes
+        from unittest.mock import patch
+        journal=TerminalRestart.terminal_fixture(self)
+        path=self.f.roots['receipts']/'journal.json'
+        def unknown(v):v['records'][0]['unknown']=True
+        def binding(v):v['records'][0]['allocation']['binding']='0'*64
+        def receipt(v):v['records'][0]['receipt']['reaped_children']=-1
+        def proposal(v):v['records'][0]['proposal']={'message':{},'manifest':{}}
+        def uid(v):v['records'][0]['uid']=True
+        for mutate in (lambda v:None,unknown,binding,receipt,proposal,uid):
+            with self.subTest(mutation=mutate.__name__):
+                value=copy.deepcopy(journal);mutate(value);path.write_bytes(journal_bytes(value))
+                outcomes=[]
+                for operation in (lambda:validate_payload(value),lambda:Journal._load(reader)):
+                    reader=Journal.__new__(Journal);reader.root=self.f.roots['receipts']
+                    try:
+                        with patch('worker.runtime_journal.os.getuid',return_value=path.stat().st_uid):operation()
+                        outcomes.append(None)
+                    except Exception as exc:outcomes.append((type(exc),str(exc)))
+                self.assertEqual(outcomes[0],outcomes[1])
+                if mutate.__name__!='<lambda>':self.assertIsNotNone(outcomes[0])
+
+
 if __name__=='__main__':unittest.main()

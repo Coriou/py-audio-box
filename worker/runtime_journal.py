@@ -42,63 +42,68 @@ class Journal:
                 hashlib.sha256(canonical(envelope['payload'])).hexdigest() != envelope['sha256']):
             raise ValueError('journal_checksum')
         self.value = envelope['payload']
-        if (set(self.value) not in ({'version', 'lane', 'records'}, {'version', 'lane', 'records', 'maintenance'}) or self.value['version'] != 1 or
-                not isinstance(self.value['lane'], str) or not isinstance(self.value['records'], list) or
-                len(self.value['records']) > MAX_RECORDS):
-            raise ValueError('invalid_journal')
-        if 'maintenance' in self.value and (self.maintenance is None or self.value['maintenance']!=self.maintenance):
-            raise ValueError('missing_required_maintenance_fence')
-        if self.maintenance is not None and self.value.get('maintenance')!=self.maintenance:
-            raise ValueError('missing_journal_maintenance_binding')
-        identities = set()
-        for row in self.value['records']:
-            fields = {'id', 'allocation', 'phase', 'acked', 'uid', 'boot'}
-            if not isinstance(row, dict) or set(row) not in (fields, fields | {'receipt', 'proposal'}):
-                raise ValueError('invalid_record')
-            if (row['phase'] not in ('prepared', 'started', 'terminal') or
-                    type(row['acked']) is not bool or row['id'] in identities or
-                    not isinstance(row['id'], str) or not row['id'].startswith(self.value['lane']+'/') or
-                    type(row['uid']) is not int or not 20000 <= row['uid'] < 20000+MAX_RECORDS):
-                raise ValueError('invalid_record_identity')
-            identities.add(row['id'])
-            allocation = row['allocation']
-            if (not isinstance(allocation, dict) or set(allocation) != {'snapshot','binding','fixture'} or
-                    not isinstance(allocation['snapshot'], list) or len(allocation['snapshot']) != 4 or
-                    hashlib.sha256(canonical(allocation['snapshot'])).hexdigest() != allocation['binding']):
-                raise ValueError('invalid_record_binding')
-            if row['phase'] == 'terminal':
-                receipt = row.get('receipt')
-                if (not isinstance(receipt, dict) or set(receipt) != {'runtime_id','binding','reaped','timely','original_deadline','engine_uid','reap_method','reaped_children'} or
-                        receipt['runtime_id'] != row['id'] or receipt['binding'] != allocation['binding'] or
-                        receipt['reaped'] is not True or receipt['reap_method'] != 'pid1-waitpid-echild' or
-                        type(receipt['reaped_children']) is not int or receipt['reaped_children'] < 0 or receipt['engine_uid'] != row['uid'] or type(receipt['timely']) is not bool or
-                        receipt['original_deadline'] != allocation['snapshot'][0]['deadline']):
-                    raise ValueError('invalid_terminal_receipt')
-                proposal = row.get('proposal')
-                if not row['acked'] and receipt['timely'] and proposal is None:
-                    raise ValueError('missing_timely_proposal')
-                if proposal is not None:
-                    from contracts import validate as oracle
-                    if not isinstance(proposal, dict) or set(proposal) != {'message','manifest'}:
-                        raise ValueError('invalid_cached_proposal')
-                    job, context, assets, profiles = allocation['snapshot']
-                    oracle.worker_message(proposal['message'],job,assets,transport_owner=job['attempts'][-1]['owner_id'],context=context,current_profiles=profiles)
-                    if proposal['message']['kind'] != 'result':
-                        raise ValueError('invalid_cached_result')
-                    oracle.validate('result_manifest',proposal['manifest'])
-                    for field in ('job_id','attempt_id','generation','owner_id','staging_id','input_sha256'):
-                        if proposal['message'][field] != proposal['manifest'][field]:
-                            raise ValueError('invalid_cached_manifest_tuple')
-            elif row['acked'] or 'receipt' in row or 'proposal' in row:
-                raise ValueError('invalid_nonterminal_receipt')
-        if self.maintenance is not None and self.value['lane']!=self.maintenance['lane']:
-            raise ValueError('maintenance_journal_lane_mismatch')
-        if len(canonical(self.value)) > MAX_BYTES:
-            raise ValueError('journal_limit')
+        validate_payload(self.value, self.maintenance)
 
     def save(self, value):
         _durable_save(self.root,value)
         self.value = value
+
+
+def validate_payload(value, maintenance=None):
+    """Pure shared startup validation; no filesystem, lock or write authority."""
+    if (set(value) not in ({'version', 'lane', 'records'}, {'version', 'lane', 'records', 'maintenance'}) or value['version'] != 1 or
+            not isinstance(value['lane'], str) or not isinstance(value['records'], list) or
+            len(value['records']) > MAX_RECORDS):
+        raise ValueError('invalid_journal')
+    if 'maintenance' in value and (maintenance is None or value['maintenance']!=maintenance):
+        raise ValueError('missing_required_maintenance_fence')
+    if maintenance is not None and value.get('maintenance')!=maintenance:
+        raise ValueError('missing_journal_maintenance_binding')
+    identities = set()
+    for row in value['records']:
+        fields = {'id', 'allocation', 'phase', 'acked', 'uid', 'boot'}
+        if not isinstance(row, dict) or set(row) not in (fields, fields | {'receipt', 'proposal'}):
+            raise ValueError('invalid_record')
+        if (row['phase'] not in ('prepared', 'started', 'terminal') or
+                type(row['acked']) is not bool or row['id'] in identities or
+                not isinstance(row['id'], str) or not row['id'].startswith(value['lane']+'/') or
+                type(row['uid']) is not int or not 20000 <= row['uid'] < 20000+MAX_RECORDS):
+            raise ValueError('invalid_record_identity')
+        identities.add(row['id'])
+        allocation = row['allocation']
+        if (not isinstance(allocation, dict) or set(allocation) != {'snapshot','binding','fixture'} or
+                not isinstance(allocation['snapshot'], list) or len(allocation['snapshot']) != 4 or
+                hashlib.sha256(canonical(allocation['snapshot'])).hexdigest() != allocation['binding']):
+            raise ValueError('invalid_record_binding')
+        if row['phase'] == 'terminal':
+            receipt = row.get('receipt')
+            if (not isinstance(receipt, dict) or set(receipt) != {'runtime_id','binding','reaped','timely','original_deadline','engine_uid','reap_method','reaped_children'} or
+                    receipt['runtime_id'] != row['id'] or receipt['binding'] != allocation['binding'] or
+                    receipt['reaped'] is not True or receipt['reap_method'] != 'pid1-waitpid-echild' or
+                    type(receipt['reaped_children']) is not int or receipt['reaped_children'] < 0 or receipt['engine_uid'] != row['uid'] or type(receipt['timely']) is not bool or
+                    receipt['original_deadline'] != allocation['snapshot'][0]['deadline']):
+                raise ValueError('invalid_terminal_receipt')
+            proposal = row.get('proposal')
+            if not row['acked'] and receipt['timely'] and proposal is None:
+                raise ValueError('missing_timely_proposal')
+            if proposal is not None:
+                from contracts import validate as oracle
+                if not isinstance(proposal, dict) or set(proposal) != {'message','manifest'}:
+                    raise ValueError('invalid_cached_proposal')
+                job, context, assets, profiles = allocation['snapshot']
+                oracle.worker_message(proposal['message'],job,assets,transport_owner=job['attempts'][-1]['owner_id'],context=context,current_profiles=profiles)
+                if proposal['message']['kind'] != 'result':
+                    raise ValueError('invalid_cached_result')
+                oracle.validate('result_manifest',proposal['manifest'])
+                for field in ('job_id','attempt_id','generation','owner_id','staging_id','input_sha256'):
+                    if proposal['message'][field] != proposal['manifest'][field]:
+                        raise ValueError('invalid_cached_manifest_tuple')
+        elif row['acked'] or 'receipt' in row or 'proposal' in row:
+            raise ValueError('invalid_nonterminal_receipt')
+    if maintenance is not None and value['lane']!=maintenance['lane']:
+        raise ValueError('maintenance_journal_lane_mismatch')
+    if len(canonical(value)) > MAX_BYTES:
+        raise ValueError('journal_limit')
 
 
 def journal_bytes(value):

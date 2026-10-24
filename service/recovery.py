@@ -853,47 +853,7 @@ def snapshot(roots, db, scope, *, policy=None, exclude_plan=None, exclude_abando
             r=json.loads(raw); validate_registration(r)
             if digest(r)!=h or r['deployment_id']!=identity or r['scope']!=scope or rid!=digest(r): raise ValueError('registration_digest_scope')
             registrations.append(r)
-        journal_ids=set()
-        for journal_record in payload['records']:
-            fields={'id','allocation','phase','acked','uid','boot'}
-            if not isinstance(journal_record,dict) or set(journal_record) not in (fields,fields|{'receipt','proposal'}):
-                raise ValueError('unknown_journal_record')
-            allocation=journal_record['allocation']
-            closed(allocation,'snapshot binding fixture')
-            if (digest(allocation['snapshot'])!=allocation['binding'] or journal_record['phase'] not in ('prepared','started','terminal') or
-                type(journal_record['acked'])!=bool or not isinstance(journal_record['id'],str) or
-                not journal_record['id'].startswith(payload['lane']+'/'+journal_record['boot']+'/')):
-                raise ValueError('journal_binding_mismatch')
-            from service.worker_transport import Authority
-            from contracts import validate as oracle
-            authority=Authority(*allocation['snapshot'])
-            if (authority.binding!=allocation['binding'] or journal_record['id'] in journal_ids or
-                type(journal_record['uid'])!=int or not 20000<=journal_record['uid']<20064):
-                raise ValueError('invalid_journal_authority')
-            journal_ids.add(journal_record['id'])
-            if journal_record['phase']=='terminal':
-                receipt=journal_record.get('receipt')
-                closed(receipt,'runtime_id binding reaped timely original_deadline engine_uid reap_method reaped_children')
-                if (receipt['runtime_id']!=journal_record['id'] or receipt['binding']!=authority.binding or
-                    receipt['reaped'] is not True or receipt['reap_method']!='pid1-waitpid-echild' or
-                    type(receipt['reaped_children'])!=int or receipt['reaped_children']<0 or
-                    receipt['engine_uid']!=journal_record['uid'] or type(receipt['timely'])!=bool or
-                    receipt['original_deadline']!=authority.job['deadline']):
-                    raise ValueError('invalid_journal_receipt')
-                proposal=journal_record.get('proposal')
-                if not journal_record['acked'] and receipt['timely'] and proposal is None: raise ValueError('missing_journal_proposal')
-                if proposal is not None:
-                    closed(proposal,'message manifest')
-                    authority.check(proposal['message'],'result'); oracle.validate('result_manifest',proposal['manifest'])
-                    for field in ('job_id','attempt_id','generation','owner_id','staging_id','input_sha256'):
-                        if proposal['manifest'][field]!=proposal['message'][field]: raise ValueError('journal_manifest_mismatch')
-            elif journal_record['acked'] or 'receipt' in journal_record or 'proposal' in journal_record:
-                raise ValueError('invalid_journal_phase')
-            matching=[r for r in data['dispatches'] if r[5]==journal_record['id'] or (r[5] is None and r[3]==authority.binding)]
-            if len(matching)!=1 or matching[0][3]!=authority.binding:
-                raise ValueError('journal_dispatch_coverage_unknown')
-            if not any(r['lane']==payload['lane'] and r['boot']==journal_record['boot'] for r in registrations):
-                raise ValueError('unregistered_journal_incarnation')
+        _validate_snapshot_journal(payload, data, registrations)
         for pid,raw,h in data['p1_recovery_plans']:
             p=json.loads(raw); validate_plan(p)
             if digest(p)!=h or p['id']!=pid or p['deployment_id']!=identity: raise ValueError('plan_digest_scope')
@@ -948,6 +908,51 @@ def snapshot(roots, db, scope, *, policy=None, exclude_plan=None, exclude_abando
             versions=dict(contract='1.3.0',core=1,private=1,resource=2),apply_available=False)
     finally:
         if transaction: db.execute('ROLLBACK')
+
+
+def _validate_snapshot_journal(payload, data, registrations):
+    """Shared current/detached allocation, owner, incarnation and receipt checks."""
+    journal_ids=set()
+    for journal_record in payload['records']:
+        fields={'id','allocation','phase','acked','uid','boot'}
+        if not isinstance(journal_record,dict) or set(journal_record) not in (fields,fields|{'receipt','proposal'}):
+            raise ValueError('unknown_journal_record')
+        allocation=journal_record['allocation']
+        closed(allocation,'snapshot binding fixture')
+        if (digest(allocation['snapshot'])!=allocation['binding'] or journal_record['phase'] not in ('prepared','started','terminal') or
+            type(journal_record['acked'])!=bool or not isinstance(journal_record['id'],str) or
+            not journal_record['id'].startswith(payload['lane']+'/'+journal_record['boot']+'/')):
+            raise ValueError('journal_binding_mismatch')
+        from service.worker_transport import Authority
+        from contracts import validate as oracle
+        authority=Authority(*allocation['snapshot'])
+        if (authority.binding!=allocation['binding'] or journal_record['id'] in journal_ids or
+            type(journal_record['uid'])!=int or not 20000<=journal_record['uid']<20064):
+            raise ValueError('invalid_journal_authority')
+        journal_ids.add(journal_record['id'])
+        if journal_record['phase']=='terminal':
+            receipt=journal_record.get('receipt')
+            closed(receipt,'runtime_id binding reaped timely original_deadline engine_uid reap_method reaped_children')
+            if (receipt['runtime_id']!=journal_record['id'] or receipt['binding']!=authority.binding or
+                receipt['reaped'] is not True or receipt['reap_method']!='pid1-waitpid-echild' or
+                type(receipt['reaped_children'])!=int or receipt['reaped_children']<0 or
+                receipt['engine_uid']!=journal_record['uid'] or type(receipt['timely'])!=bool or
+                receipt['original_deadline']!=authority.job['deadline']):
+                raise ValueError('invalid_journal_receipt')
+            proposal=journal_record.get('proposal')
+            if not journal_record['acked'] and receipt['timely'] and proposal is None: raise ValueError('missing_journal_proposal')
+            if proposal is not None:
+                closed(proposal,'message manifest')
+                authority.check(proposal['message'],'result'); oracle.validate('result_manifest',proposal['manifest'])
+                for field in ('job_id','attempt_id','generation','owner_id','staging_id','input_sha256'):
+                    if proposal['manifest'][field]!=proposal['message'][field]: raise ValueError('journal_manifest_mismatch')
+        elif journal_record['acked'] or 'receipt' in journal_record or 'proposal' in journal_record:
+            raise ValueError('invalid_journal_phase')
+        matching=[r for r in data['dispatches'] if r[5]==journal_record['id'] or (r[5] is None and r[3]==authority.binding)]
+        if len(matching)!=1 or matching[0][3]!=authority.binding:
+            raise ValueError('journal_dispatch_coverage_unknown')
+        if not any(r['lane']==payload['lane'] and r['boot']==journal_record['boot'] for r in registrations):
+            raise ValueError('unregistered_journal_incarnation')
 
 
 def inspect(roots,scope, *, policy=None):
@@ -1331,9 +1336,9 @@ def _scalar(value):
         (type(value)==float and not math.isfinite(value))): raise ValueError('b2_evidence_scalar')
 
 
-def _validate_source(source):
+def _validate_source(source, *, columns=None):
     closed(source,'schema data inventory journal marker')
-    columns=_evidence_columns()
+    columns=_evidence_columns() if columns is None else columns
     closed(source['data'],' '.join(columns))
     count=0
     for table,rows in source['data'].items():
@@ -2856,8 +2861,134 @@ def installed_history_current(registrations, scope, deployment_id, current):
     return actual
 
 
+def _installed_detached_source(state, journal):
+    """Validate retained bytes only; never open an old root or SQLite file."""
+    from service import install_policy as ip
+    from contracts import validate as oracle
+    from worker.runtime_journal import validate_payload
+    source=state['evidence_projection']
+    # Same closed bounded source format used by private recovery evidence.
+    columns=_evidence_columns()
+    if not set(source['data']) & B2_COLUMNS.keys():
+        columns={k:v for k,v in columns.items() if k not in B2_COLUMNS}
+    _validate_source(source,columns=columns)
+    data=source['data']
+    if (data['p1_recovery_plans'] or any(data.get(t) for t in B2_COLUMNS) or
+            data['p1_format']!=[[1,'synthetic-core']] or data['resource_protocol']!=[[1,2]]):
+        raise ValueError('installed_history_maintenance_or_version')
+    # Interpret DDL only in an isolated in-memory database, with all external,
+    # function, view, trigger and virtual-table operations denied. Never execute
+    # a retained trigger or query against a retained path.
+    schema=source['schema']
+    with closing(sqlite3.connect(':memory:')) as db:
+        end=time.monotonic()+1
+        db.set_progress_handler(lambda:int(time.monotonic()>end),1000)
+        allowed={sqlite3.SQLITE_CREATE_TABLE,sqlite3.SQLITE_CREATE_INDEX,
+            sqlite3.SQLITE_INSERT,sqlite3.SQLITE_UPDATE,sqlite3.SQLITE_READ,
+            sqlite3.SQLITE_SELECT}
+        db.set_authorizer(lambda action,*args: sqlite3.SQLITE_OK if action in allowed else sqlite3.SQLITE_DENY)
+        seen=set()
+        from service.voice_store import _TRIGGER_DDL
+        triggers={sql.strip() for sql in _TRIGGER_DDL}
+        for row in schema:
+            kind,name,table,sql=row
+            if name in seen: raise ValueError('installed_history_schema')
+            seen.add(name)
+            if kind=='trigger':
+                if not isinstance(sql,str) or sql.strip() not in triggers: raise ValueError('installed_history_schema')
+                continue
+            if kind not in ('table','index') or table not in columns: raise ValueError('installed_history_schema')
+            if sql is None:
+                if kind!='index': raise ValueError('installed_history_schema')
+                continue
+            if kind=='table' and table=='sqlite_sequence': continue
+            try: db.execute(sql)
+            except sqlite3.Error: raise ValueError('installed_history_schema') from None
+        db.set_authorizer(None)
+        if {r[0] for r in db.execute("SELECT name FROM sqlite_master WHERE type='table'")}!=set(columns):
+            raise ValueError('installed_history_schema')
+        for table,fields in columns.items():
+            if [r[1] for r in db.execute('PRAGMA table_info('+table+')')]!=fields.split():
+                raise ValueError('installed_history_schema')
+    from service.reconciliation import CATALOGUE_IDENTITY, CATALOGUE_TABLES
+    from service.voice_store import _sql_identity
+    if sorted((kind,name,table,_sql_identity(sql)) for kind,name,table,sql in schema
+              if table in CATALOGUE_TABLES or name in CATALOGUE_TABLES)!=CATALOGUE_IDENTITY:
+        raise ValueError('installed_history_schema')
+    if len(data['p1_installation'])!=1: raise ValueError('installed_history_enrollment')
+    identity,revision,kind,raw,h=data['p1_installation'][0]
+    public=host_json(raw.encode());ip.installation(public)
+    if (identity!=state['deployment_id'] or identity!=public['deployment_id'] or
+            revision!=1 or kind!=ip.SCOPE or kind!=public['scope'] or digest(public)!=h or
+            raw!=encode(public) or source['marker']!=dict(deployment_id=identity,digest=h)):
+        raise ValueError('installed_history_enrollment')
+    registrations=[]
+    for rid,raw,h in data['p1_registrations']:
+        record=host_json(raw.encode());validate_registration(record)
+        if (rid!=h or digest(record)!=rid or record['deployment_id']!=identity or
+                record['scope']!=public['host'] or raw!=encode(record)):
+            raise ValueError('installed_history_registration')
+        registrations.append(record)
+    # Share the loader's complete closed record/receipt/proposal checks, then
+    # the private snapshot's stronger Authority/boot/runtime/dispatch joins.
+    validate_payload(journal)
+    _validate_snapshot_journal(journal,data,registrations)
+    from service.reconciliation import typed_references, DIAGNOSTICS
+    typed={table:[dict(zip(columns[table].split(),r)) for r in rows]
+           for table,rows in data.items() if table not in DIAGNOSTICS and table!='sqlite_sequence'}
+    scanner=Reconciliation.__new__(Reconciliation)
+    scanner.entry_limit=MAX_ROWS;scanner.byte_limit=MAX_BYTES
+    scanner.entries=scanner.bytes=0;scanner.end=time.monotonic()+1
+    scanner.rows={};scanner.reasons=set()
+    result=typed_references(scanner,typed,None,None,oracle.SCHEMA)
+    owners=list(result[5].values())
+    if scanner.reasons or scanner.rows: raise ValueError('installed_history_typed_source')
+    permitted={'committed_referenced':'retained_metadata','owned_synthetic_transient':'attempt_record'}
+    for row in source['inventory']:
+        if (row['id']!=digest([row['namespace'],row['name']]) or
+                row['classification'] not in permitted or row['reason']!=permitted[row['classification']] or
+                (row['owner'] is not None and row['owner'] not in owners)):
+            raise ValueError('installed_history_inventory')
+    import stat
+    refs,assets=result[:2]
+    retained_assets=set()
+    for row in source['inventory']:
+        identity_claim=row['identity']
+        if (not isinstance(identity_claim,list) or len(identity_claim)!=10 or
+                any(type(v) is not int for v in identity_claim[:9])):
+            raise ValueError('installed_history_inventory_identity')
+        _,_,mode,uid,gid,links,size,_,_,hash_claim=identity_claim
+        regular=stat.S_ISREG(mode)
+        if (sorted(row['references'])!=sorted(refs.get(row['name'],())) or
+                (not regular and not stat.S_ISDIR(mode)) or size<0):
+            raise ValueError('installed_history_inventory_identity')
+        if row['classification']=='committed_referenced':
+            asset=assets.get(row['name'])
+            if (row['namespace']!='assets' or asset is None or not regular or
+                    uid!=10001 or links!=1 or hash_claim!=asset['sha256']):
+                raise ValueError('installed_history_inventory_asset')
+            retained_assets.add(row['name'])
+        elif (row['owner'] is None or (regular and links!=1) or
+                not (row['namespace']=='owners' or row['namespace'] in ('internal_staging','worker_staging') or row['name']=='output.wav')):
+            raise ValueError('installed_history_inventory_owner')
+    if retained_assets!=set(assets)|set(refs): raise ValueError('installed_history_inventory_coverage')
+    counts=dict(__import__('collections').Counter(r['classification'] for r in source['inventory']))
+    derived=dict(prior_epoch=identity,deployment_id=identity,
+        affected=dict(jobs=[r[1] for r in data['jobs']],dispatches=[r[0] for r in data['dispatches'] if not r[-1]],publications=[r[0] for r in data['publications']]),
+        monitor=data['resource_monitor'],protocol=2,integrity=data['p1_integrity'],
+        faults=[r[0] for r in data['resource_faults']],
+        publications=[dict(job_id=r[0],manifest_digest=digest(json.loads(r[1]))) for r in data['publications']],
+        allocation_coherent=_allocation_coherent(data),inventory=dict(counts=counts,reasons=[]),
+        lane=journal['lane'],journal_records=[dict(runtime_id=r['id'],boot=r['boot'],phase=r['phase'],binding=r['allocation']['binding']) for r in journal['records']],
+        registrations=registrations,versions=dict(contract='1.3.0',core=1,private=1,resource=2),apply_available=False)
+    if any(state[k]!=v for k,v in derived.items()): raise ValueError('installed_history_summary')
+    if type(state['bytes']) is not int or not 0<=state['bytes']<=MAX_BYTES: raise ValueError('inspection_budget')
+    return public
+
+
 def installed_clean_history(state, journal):
     """Proof of discharged obligations, never inferred from container exit."""
+    state=json.loads(encode(state)); journal=json.loads(encode(journal))
     closed(journal,'version lane records')
     if (journal['version']!=1 or journal['lane']!=state['lane'] or
             state['faults'] or state['inventory']['reasons'] or not state['allocation_coherent'] or
@@ -2882,6 +3013,7 @@ def installed_clean_history(state, journal):
             digest(projection)!=state['source_digest'] or projection['journal']!=state['journal_digest'] or
             digest(dict(payload=journal,sha256=digest(journal)))!=state['journal_digest']):
         raise ValueError('installed_history_snapshot_binding')
+    _installed_detached_source(state,journal)
     if any(r[3]!='returned' for r in data['dispatch_commands']):
         raise ValueError('installed_history_uncertain_command')
     runtime={d['runtime_id']:d for d in state['dispatches']}

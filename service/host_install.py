@@ -1040,6 +1040,8 @@ def _installed_provenance(value,observer,public):
         if digest(value['registration']) in history['predecessors']:
             raise ValueError('installed_history_self_link')
         recovery.installed_clean_history(state,history['journal'])
+        if json.loads(state['evidence_projection']['data']['p1_installation'][0][3])!=public:
+            raise ValueError('installed_history_enrollment')
     registration=value['registration']; recovery.validate_registration(registration)
     if (registration['deployment_id']!=public['deployment_id'] or registration['scope']!=observer.scope or
             registration['evidence']!='actual-host-inspection'):
@@ -1077,16 +1079,69 @@ def _installed_history_read(observer, public, authority_fd, registrations):
                 raise ValueError('installed_provenance_changed')
             provenance[rid]=raw; retained[rid]=value['registration']
             identities[rid]=identity
-    for raw in provenance.values():
-        value=recovery.host_json(raw)
-        if value['kind']=='installed-registration-v2':
-            history=value['history']
-            if any(digest(r) not in retained or retained[digest(r)]!=r
-                   for r in history['state']['registrations']):
-                raise ValueError('installed_history_missing_predecessor')
     if any(digest(r) not in provenance for r in registrations):
         raise ValueError('installed_missing_provenance')
+    _installed_history_graph(retained,provenance)
     return retained,provenance,identities,retained_bytes
+
+
+def _installed_history_graph(retained, provenance):
+    """Bounded DAG of exact retained pre-insert registration closures."""
+    limit=recovery.HOST_OWNER_LIMIT
+    if len(retained)>limit or len(provenance)>limit: raise ValueError('installed_history_graph_budget')
+    values={rid:recovery.host_json(raw) for rid,raw in provenance.items()}
+    edges={rid:value.get('history',{}).get('predecessors',[]) for rid,value in values.items()}
+    if sum(map(len,edges.values()))>limit*limit: raise ValueError('installed_history_graph_budget')
+    for rid,predecessors in edges.items():
+        if any(p not in values for p in predecessors): raise ValueError('installed_history_missing_predecessor')
+        if any(digest(r) not in retained or retained[digest(r)]!=r
+                for r in values[rid].get('history',{}).get('state',{}).get('registrations',[])):
+            raise ValueError('installed_history_missing_predecessor')
+    # Iterative topological elimination: bounded nodes, edges AND depth, no
+    # recursion on untrusted historical claims.
+    done=set();depth={}
+    for _ in range(limit):
+        ready=[rid for rid,parents in edges.items() if rid not in done and set(parents)<=done]
+        if not ready: break
+        if done and len(ready)!=1: raise ValueError('installed_history_preinsert_branch')
+        for rid in ready:
+            if edges[rid] and set(edges[rid])!=done: raise ValueError('installed_history_preinsert_closure')
+        for rid in ready:
+            parents=edges[rid];depth[rid]=1+max((depth[p] for p in parents),default=0)
+            if depth[rid]>limit: raise ValueError('installed_history_graph_budget')
+            done.add(rid)
+    if done!=set(values): raise ValueError('installed_history_cycle')
+    for rid,parents in edges.items():
+        value=values[rid];new=value['registration']
+        for pid in parents:
+            old=values[pid]['registration']
+            if 'history' in values[pid]:
+                previous=values[pid]['history'];current=value['history']
+                if (current['journal']['records'][:len(previous['journal']['records'])]!=previous['journal']['records'] or
+                        current['state']['evidence_projection']['schema']!=previous['state']['evidence_projection']['schema']):
+                    raise ValueError('installed_history_predecessor_evidence')
+            if not set(edges[pid])<=set(parents): raise ValueError('installed_history_preinsert_closure')
+            oldowners={c['id']:c for c in old['containers']}
+            changed=False
+            for owner in new['containers']:
+                previous=oldowners.get(owner['id'])
+                if previous is None or any(previous[k]!=owner[k] for k in ('image','role','volumes')):
+                    raise ValueError('installed_history_binding')
+                before=recovery.host_timestamp(previous['started']);after=recovery.host_timestamp(owner['started'])
+                if before>after: raise ValueError('installed_history_future_prestate')
+                changed |= before<after
+                if owner['role']=='worker' and ((before==after)!=(old['boot']==new['boot'])):
+                    raise ValueError('installed_history_boot_order')
+            if not changed or old['lane']!=new['lane']:
+                raise ValueError('installed_history_replay')
+            # Bind process claims to the exact predecessor provenance, not just
+            # a registration that happens to be present in the final directory.
+            for process in values[pid]['observation']['processes']:
+                actual=next((p for p in value['observation']['processes'] if p['id']==process['id']),None)
+                if actual is not None and actual['started']!=process['started'] and (
+                        actual['start_ticks']==process['start_ticks'] or actual['pid_namespace']==process['pid_namespace']):
+                    raise ValueError('installed_history_process_reused')
+    return True
 
 
 def _installed_current(observer, registrations, scope, deployment_id):
@@ -1182,6 +1237,7 @@ def _register_installed(observer,selected,authority_fd,check,*,child=_registrati
                 elif history is not None:
                     value.update(kind='installed-registration-v2',history=history)
                 _installed_provenance(value,observer,public)
+                _installed_history_graph({**retained,rid:candidate},{**provenance,rid:encode(value).encode()})
                 if observer.observe_owners(owners,public)!=first: raise ValueError('installed_registration_prebracket_changed')
                 if _registration_hello(child('hello',dict(ipc_fd=fds['ipc']),(fds['ipc'],)),candidate)!=hello:
                     raise ValueError('installed_registration_hello_changed')
