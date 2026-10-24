@@ -13,6 +13,9 @@ class Production:
     def __init__(self, core):
         self.core = core
 
+    def register_preset(self, principal, key, version, *, expected_revision):
+        return self.core.voices.register(principal, key, version, expected_revision=expected_revision)
+
     def prepare(self, principal, key, context, *, _admission=None, _profiles=None, _dispatch_settings=None):
         context = copy.deepcopy(context)
         plan = context['plan']

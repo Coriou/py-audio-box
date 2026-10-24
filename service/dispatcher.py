@@ -40,7 +40,7 @@ class Dispatcher:
         self.initialized.result(timeout=15 if installed_activation is not None else 5)
 
     def call(self, op, *args, timeout=3, **kwargs):
-        if op not in ('submit','job','jobs','events','artifact','asset','cancel','status','replace','inventory_page','reconcile_startup','close','voice_list','voice_get','voice_version','voice_resolve','voice_summaries','voice_version_summaries','asset_ingest','asset_metadata','asset_content','production_prepare','production_generate','production_save','production_results','production_job','production_cancel','production_artifact'):
+        if op not in ('submit','job','jobs','events','artifact','asset','cancel','status','replace','inventory_page','reconcile_startup','close','voice_list','voice_get','voice_version','voice_resolve','voice_summaries','voice_version_summaries','asset_ingest','asset_metadata','asset_content','configured_presets','production_preset_register','production_prepare','production_generate','production_save','production_results','production_job','production_cancel','production_artifact'):
             raise ValueError('unknown_control_command')
         if op == 'asset_ingest':
             from service.ingest import MAX_BYTES
@@ -196,7 +196,7 @@ class Dispatcher:
         from service.production import Production
         from service.catalogue import OPERATIONS
         from service.voice_store import _id
-        operation = {'production_prepare':'voice_prepare', 'production_generate':'speech_generate',
+        operation = {'production_preset_register':'voice_preset_register', 'production_prepare':'voice_prepare', 'production_generate':'speech_generate',
                      'production_save':'voice_save', 'production_results':'voice_results',
                      'production_job':'job_get', 'production_cancel':'job_cancel',
                      'production_artifact':'artifact_get'}[op]
@@ -225,6 +225,13 @@ class Dispatcher:
                 if row and row[0] != fingerprint: raise ValueError('idempotency_conflict')
                 if not row: self.core.db.execute('INSERT INTO catalogue_requests VALUES(?,?,?,?,?)', (principal,'job_cancel',key,fingerprint,encode(payload)))
             return self._command('cancel', payload['job_id'])
+        if op == 'production_preset_register':
+            if not self.installed_checked or not self._ready() or self.production_contexts is None:
+                raise ValueError('not_ready')
+            resolver = getattr(self.production_contexts, 'preset_version', None)
+            if resolver is None: raise ValueError('not_ready')
+            version = resolver(principal, payload['preset'], payload['voice_id'])
+            return domain.register_preset(principal, key, version, expected_revision=payload['expected_revision'])
         if op == 'production_save':
             if self.installed_checked and not self._ready(): raise ValueError('not_ready')
             if not self._activation_open() or self.closing or self.integrity_fault or self.persistence_fault: raise ValueError('not_ready')
@@ -239,7 +246,11 @@ class Dispatcher:
             if not self._activation_open() or self.closing or not self.reconciled or self.quarantined or self.resource_fault or self.integrity_fault:
                 raise ValueError('not_ready')
             if self.production_contexts is None: raise ValueError('not_ready')
-            context = self.production_contexts.resolve(principal, operation, payload)
+            if operation == 'speech_generate' and hasattr(self.production_contexts, 'resolve_registered'):
+                version = self.core.voices.version(principal, payload['voice_version_id'])
+                context = self.production_contexts.resolve_registered(principal, payload, version)
+            else:
+                context = self.production_contexts.resolve(principal, operation, payload)
             method = domain.prepare if op == 'production_prepare' else domain.generate
             job = method(principal, key, context, _admission=self.admission,
                          _profiles=self.profiles, _dispatch_settings=('silence',8))
@@ -255,6 +266,9 @@ class Dispatcher:
         if op in ('asset_metadata','asset_content'):
             from service.domain import owned_asset
             return owned_asset(self.core,*args,content=op=='asset_content',**kwargs)
+        if op=='configured_presets':
+            describe = getattr(self.production_contexts, 'presets', None)
+            return describe(args[0]) if describe else []
         if op=='voice_summaries':return self.core.voices.summaries(*args,**kwargs)
         if op=='voice_version_summaries':return self.core.voices.version_summaries(*args,**kwargs)
         if op=='voice_list':return self.core.voices.list(*args,**kwargs)

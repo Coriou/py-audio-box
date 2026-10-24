@@ -224,7 +224,7 @@ def production_call(dispatcher, principal, operation, payload, key=None):
     try:
         validate(op['request'], payload)
         if op['idempotency']: _id(key)
-        command = {'voice_prepare':'production_prepare', 'speech_generate':'production_generate',
+        command = {'voice_preset_register':'production_preset_register', 'voice_prepare':'production_prepare', 'speech_generate':'production_generate',
                    'voice_save':'production_save', 'voice_results':'production_results',
                    'job_get':'production_job', 'job_cancel':'production_cancel',
                    'artifact_get':'production_artifact'}[operation]

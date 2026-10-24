@@ -44,6 +44,11 @@
       "precision": "auto"
     }
   },
+  "voice_preset_register": {
+    "preset": "example",
+    "voice_id": "example",
+    "expected_revision": 1
+  },
   "voice_save": {
     "candidate_id": "example",
     "voice_id": "example",

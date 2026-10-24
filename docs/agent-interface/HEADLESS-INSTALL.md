@@ -124,3 +124,27 @@ not part of this installer. Actual permissions, setgid inheritance, peer/mount/
 process identities, installed authenticated journeys, CPU Kokoro audible speech,
 retained voice/artifact reuse, cancellation/reap and clean/failed restart must
 still be qualified on the separately authorized Linux target.
+
+
+## First configured Kokoro voice
+
+A fresh installation has an empty voice catalogue. Startup does not register voices.
+With an active `read` + `production-write` credential, read `/skeleton` (CLI `status`,
+MCP `speech_skeleton_status`) for `configured_presets`, exact model/bundle identity
+and activation status. This installation supports the configured Kokoro preset for
+generation; clone preparation is unavailable. Registration does not qualify hardware.
+
+Explicitly POST `/v1/operations/voice_preset_register` with `Idempotency-Key` and
+`{"preset":"af_heart","voice_id":"my-voice","expected_revision":0}` (replace the
+selector with the advertised configured selector). CLI:
+`python -m clients.cli voice preset-register --request '{"preset":"af_heart","voice_id":"my-voice","expected_revision":0}' --idempotency-key first-preset`.
+MCP: `speech_voice_preset_register` with those fields plus `idempotency_key`.
+The response contains the immutable `version.id`; use that ID for `speech_generate`.
+List with `voices list`, inspect with `voice version get ID`, then use the existing
+job → artifact → asset content commands to retrieve and verify the audio.
+Identical replay of the same key/request returns the same result. A changed request
+with that key conflicts; a fresh key cannot overwrite the immutable version.
+After a clean completed shutdown and checked same-volume restart, list and reuse
+the retained version without registering again. Arbitrary imported versions do not
+inherit the configured preset's execution authority. Actual offline speech, listening,
+cancellation/reap and installed restart qualification remain separate host checks.

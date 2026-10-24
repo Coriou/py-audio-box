@@ -29,7 +29,7 @@ def main(argv=None):
     version = vsubs.add_parser('version')
     vget = version.add_subparsers(dest='version_verb', required=True).add_parser('get')
     vget.add_argument('voice_version_id')
-    for name in ('prepare', 'save'):
+    for name in ('prepare', 'save', 'preset-register'):
         action = vsubs.add_parser(name)
         action.add_argument('--request', required=True, help='Canonical JSON request object.')
         action.add_argument('--idempotency-key', required=True)
@@ -57,9 +57,9 @@ def main(argv=None):
         elif args.command == 'operation-detail':
             from urllib.parse import quote
             result = http.get('/skeleton/operations/' + quote(args.operation_id, safe=''))
-        elif args.command == 'speech' or (args.command == 'voice' and args.verb in ('prepare','save')):
+        elif args.command == 'speech' or (args.command == 'voice' and args.verb in ('prepare','save','preset-register')):
             import json
-            operation = 'speech_generate' if args.command == 'speech' else 'voice_'+args.verb
+            operation = 'speech_generate' if args.command == 'speech' else 'voice_'+args.verb.replace('-', '_')
             result = http.call(operation, json.loads(args.request), key=args.idempotency_key)
         elif args.command == 'voice' and args.verb == 'results': result = http.call('voice_results',dict(job_id=args.job_id))
         elif args.command == 'job': result = http.call('job_'+args.verb,dict(job_id=args.job_id), **({'key':args.idempotency_key} if args.verb == 'cancel' else {}))
