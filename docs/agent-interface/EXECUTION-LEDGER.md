@@ -2203,3 +2203,7 @@ r201 sourcee4f84148/docs8aa9a5d8 implements closed split enrollment, create-only
 ### 2026-10-24 — Split initializer path integration blocker
 
 r202 combined source NO-GO: SQLite canonicalizes inherited fd paths to root-only Docker ancestors, so dropped writer can strand partial Core.51 focused tests independently PASS but injected ordinarypaths missed boundary. Parent commissioned r203 realpath adapter correction, permitting private Linux mountnamespace fixedvalidatedbinds source only if needed; no hostpermission relaxation/rootDBwrites. Candidate unmerged, no actualprivileged execution.
+
+### 2026-10-24 — Dropped-child canonical path correction delivered
+
+r203 source0b02b138/docsd9feecc3 uses private Linux namespace fixed validated bind paths before permanentUIDdrop, preserving ordinarySQLite and host permissions.59 focused+31 legacy checks reported PASS; oldentrypoint regression RED. Parent commissioned independent round2 Sol r204. No actualmount/UID operations, root adoption or activation; kernel/permission qualification pending.
