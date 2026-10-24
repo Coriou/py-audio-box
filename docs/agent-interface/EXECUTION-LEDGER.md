@@ -2075,3 +2075,7 @@ r178 source2963abc8/docs616723b4 removes ASGI-message size refusal while retaini
 ### 2026-10-24 — Upload transport cleared; canonical sample migration remains
 
 r179 closes R1 but retains R2 P2: canonical operation sample loop lacks voice_versions_list and binary fixture adaptation; generator determinism is also affected. Reported15+35 passes did not cover those consumers. Parent commissioned r180 explicitly authorizing bounded generator/sample/consumer migration with complete operation coverage and determinism checks, preserving raw public bytes and legacy-envelope rejection. Upload remains unmerged.
+
+### 2026-10-24 — r180 canonical fixture consumer scope clarified
+
+Inventory found tests/service/test_voice_store.py test_contract_fixtures also directly validates serialized operation samples. Parent authorized only that loop migration to the explicit fixture decoder, preserving coverage and public JSON-envelope rejection; isolated voice-store unittest coverage added. No product scope change.
