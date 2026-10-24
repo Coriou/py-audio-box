@@ -2271,3 +2271,7 @@ r214 boundary NO-GO: pipeclosefailure masks unreapedsentinel and bypasses author
 ### 2026-10-24 — Notification cleanup exclusion fix enters re-review
 
 r215 sourcec8723da6/docs070ae984 preservesprimary/unreapedsentinel throughstdin/outputteardown; sixcombinedfailure regressions and147 focused methods reported PASS. Parent commissioned independent Sol r216. Startupboundaryunmerged, activationclosed, actualDockerexecdeath notproved.
+
+### 2026-10-24 — Startup handoff adopted; clean restart history starts
+
+r216 bounded source GO closes cleanupmasking. Parent merged070ae984 conflict-free;147 integrated focused tests PASS. Commissioned Sol-low r217 installed-only historical/currentincarnation adapter preserving legacyunion, completehistory and confirmedterminal/reap obligations. Packagedlauncher/activation stillincomplete; no actualLinux/speechclaim.
