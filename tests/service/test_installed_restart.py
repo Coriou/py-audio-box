@@ -258,7 +258,12 @@ class HistoricalValidation(unittest.TestCase):
     def reject_both(self,rid):
         from unittest.mock import patch
         from jsonschema.exceptions import ValidationError
-        oldrows=self.f.rows();delivered=[]
+        import sqlite3
+        from contextlib import closing
+        def retained_rows():
+            with closing(sqlite3.connect(self.f.roots['control']/'core/core.sqlite')) as db:
+                return tuple(db.iterdump())
+        oldrows=self.f.rows();old_database=retained_rows();delivered=[]
         original=self.f.child
         def child(kind,*args):
             self.assertNotEqual(kind,'writer')
@@ -269,6 +274,7 @@ class HistoricalValidation(unittest.TestCase):
             h._installed_handoff(self.f.observer,self.f.owners,rid,self.f.fd,lambda:None,
                 notify=lambda *args:delivered.append(args))
         self.assertEqual(delivered,[]);self.assertEqual(self.f.rows(),oldrows)
+        self.assertEqual(retained_rows(),old_database)
 
     def test_review_nested_examples_retry_and_handoff(self):
         rid,path,value=self.history_fixture();original=copy.deepcopy(value)
@@ -293,6 +299,68 @@ class HistoricalValidation(unittest.TestCase):
                 self.reject_both(rid)
         path.write_text(encode(original))
         self.assertEqual(self.f.run_registration(),rid)
+
+    def test_r220_required_documents_retry_handoff(self):
+        rid,path,original=self.history_fixture()
+        cases=[('job',('operation',)),('job',('principal_id',)),('job',('stage',)),
+               ('job',('attempts',0,'owner_id')),('context',('plan','resolved','profile','limits')),
+               ('context',('plan','request','identity'))]
+        for column,keys in cases:
+            with self.subTest(column=column,keys=keys):
+                value=copy.deepcopy(original);state=value['history']['state']
+                row=state['evidence_projection']['data']['jobs'][0]
+                index=6 if column=='job' else 7
+                document=json.loads(row[index]);node=document
+                for key in keys[:-1]:node=node[key]
+                del node[keys[-1]];row[index]=encode(document)
+                state['source_digest']=digest(state['evidence_projection']);path.write_text(encode(value))
+                self.reject_both(rid)
+
+    def test_r220_duplicate_rows_retry_handoff(self):
+        rid,path,original=self.history_fixture()
+        for table,rows in original['history']['state']['evidence_projection']['data'].items():
+            if not rows:continue
+            with self.subTest(table=table):
+                value=copy.deepcopy(original);state=value['history']['state']
+                state['evidence_projection']['data'][table].append(copy.deepcopy(rows[0]))
+                if table=='jobs':
+                    state['jobs'].append(copy.deepcopy(state['jobs'][0]))
+                    state['affected']['jobs'].append(state['affected']['jobs'][0])
+                state['source_digest']=digest(state['evidence_projection']);path.write_text(encode(value))
+                self.reject_both(rid)
+
+    def test_r220_independent_job_constraints_and_foreign_keys(self):
+        rid,path,original=self.history_fixture()
+        source=original['history']['state']['evidence_projection']
+        columns=recovery._evidence_columns()
+        columns={k:v for k,v in columns.items() if k in source['data']}
+        for constraint in ('seq','id','principal_operation_key','event_job','command_dispatch','retry_job'):
+            with self.subTest(constraint=constraint):
+                value=copy.deepcopy(source);data=value['data'];row=copy.deepcopy(data['jobs'][0])
+                if constraint in ('seq','id','principal_operation_key'):
+                    if constraint!='seq':row[0]+=100
+                    if constraint!='id':row[1]='different-job'
+                    if constraint!='principal_operation_key':row[4]='different-key'
+                    data['jobs'].append(row)
+                elif constraint=='event_job':data['events'][0][1]='absent-job'
+                elif constraint=='command_dispatch':data['dispatch_commands']=[[1,999,'start','returned']]
+                else:data['jobs'][0][8]='absent-job'
+                with self.assertRaises(ValueError):recovery._installed_detached_rows(value,columns)
+
+    def test_r220_schema_identity_retry_handoff(self):
+        rid,path,original=self.history_fixture()
+        for mutation in ('select','name','table','ddl','trigger_name','autoindex'):
+            with self.subTest(mutation=mutation):
+                value=copy.deepcopy(original);state=value['history']['state'];schema=state['evidence_projection']['schema']
+                if mutation=='select':schema.append(['index','invented','jobs','SELECT 1'])
+                else:
+                    kind='trigger' if mutation=='trigger_name' else 'index' if mutation=='autoindex' else 'table'
+                    row=next(r for r in schema if r[0]==kind and (kind!='table' or r[1]=='jobs'))
+                    if mutation in ('name','trigger_name','autoindex'):row[1]='invented'
+                    elif mutation=='table':row[2]='assets'
+                    else:row[3]=row[3].replace('id TEXT UNIQUE NOT NULL','id TEXT NOT NULL')
+                state['source_digest']=digest(state['evidence_projection']);path.write_text(encode(value))
+                self.reject_both(rid)
 
     def test_review_two_node_cycle_retry_and_handoff(self):
         rid,path,value=self.history_fixture(False)

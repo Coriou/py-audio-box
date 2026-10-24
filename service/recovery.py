@@ -2861,6 +2861,121 @@ def installed_history_current(registrations, scope, deployment_id, current):
     return actual
 
 
+# Supported installed v1 schema reference, captured from the canonical Core,
+# persistence, ResourceStore and DispatchStore initializers. Catalogue and B2
+# declarations remain shared with their existing owners. Retained SQL is never
+# executed; changing a storage format requires an explicit new reference here.
+_INSTALLED_V1_TABLE_DDL = (
+    'CREATE TABLE artifacts(id TEXT PRIMARY KEY, metadata TEXT NOT NULL)',
+    'CREATE TABLE assets(id TEXT PRIMARY KEY, metadata TEXT NOT NULL)',
+    'CREATE TABLE dispatch_commands(\n          seq INTEGER PRIMARY KEY, dispatch_id INTEGER NOT NULL REFERENCES dispatches(seq),\n          op TEXT NOT NULL, state TEXT NOT NULL)',
+    'CREATE TABLE dispatch_settings(\n          job_id TEXT PRIMARY KEY REFERENCES jobs(id), fixture TEXT NOT NULL, seconds INTEGER NOT NULL)',
+    'CREATE TABLE dispatches(\n          seq INTEGER PRIMARY KEY, job_id TEXT NOT NULL REFERENCES jobs(id),\n          authority TEXT NOT NULL, binding TEXT UNIQUE NOT NULL, fixture TEXT NOT NULL,\n          runtime TEXT, phase TEXT NOT NULL, receipt TEXT, outcome TEXT, acked INTEGER NOT NULL DEFAULT 0)',
+    'CREATE TABLE events(seq INTEGER PRIMARY KEY AUTOINCREMENT, job_id TEXT NOT NULL REFERENCES jobs(id), state TEXT NOT NULL)',
+    'CREATE TABLE jobs(seq INTEGER PRIMARY KEY AUTOINCREMENT, id TEXT UNIQUE NOT NULL,\n              principal TEXT NOT NULL, operation TEXT NOT NULL, key TEXT NOT NULL,\n              fingerprint TEXT NOT NULL, job TEXT NOT NULL, context TEXT NOT NULL,\n              retry_of TEXT REFERENCES jobs(id), UNIQUE(principal,operation,key))',
+    'CREATE TABLE p1_format(revision INTEGER NOT NULL, scope TEXT NOT NULL)',
+    'CREATE TABLE p1_installation(id TEXT PRIMARY KEY, revision INTEGER NOT NULL, scope TEXT NOT NULL, record TEXT NOT NULL, digest TEXT NOT NULL)',
+    'CREATE TABLE p1_integrity(id INTEGER PRIMARY KEY, revision INTEGER NOT NULL, state TEXT NOT NULL, token TEXT)',
+    'CREATE TABLE p1_inventory_history(seq INTEGER PRIMARY KEY, scan_id TEXT NOT NULL REFERENCES p1_inventory_scans(id), object_id TEXT NOT NULL, observed REAL NOT NULL, record TEXT NOT NULL)',
+    'CREATE TABLE p1_inventory_objects(id TEXT PRIMARY KEY, first_observed REAL NOT NULL, last_observed REAL NOT NULL, scan_id TEXT NOT NULL REFERENCES p1_inventory_scans(id), record TEXT NOT NULL)',
+    'CREATE TABLE p1_inventory_scans(id TEXT PRIMARY KEY, observed REAL NOT NULL, complete INTEGER NOT NULL, fingerprint TEXT, summary TEXT NOT NULL)',
+    'CREATE TABLE p1_recovery_plans(id TEXT PRIMARY KEY, record TEXT NOT NULL, digest TEXT NOT NULL)',
+    'CREATE TABLE p1_registrations(id TEXT PRIMARY KEY, record TEXT NOT NULL, digest TEXT NOT NULL)',
+    'CREATE TABLE publication_work(\n          job_id TEXT PRIMARY KEY REFERENCES publications(job_id),\n          binding TEXT NOT NULL, destination TEXT NOT NULL UNIQUE,\n          temporary TEXT NOT NULL UNIQUE, sha256 TEXT NOT NULL,\n          byte_length INTEGER NOT NULL CHECK(byte_length BETWEEN 1 AND 1048576))',
+    'CREATE TABLE publications(job_id TEXT PRIMARY KEY REFERENCES jobs(id), manifest TEXT NOT NULL, artifact TEXT NOT NULL, message TEXT NOT NULL)',
+    'CREATE TABLE resource_accounting(\n          id INTEGER PRIMARY KEY CHECK(id=1), highwater INTEGER NOT NULL)',
+    'CREATE TABLE resource_faults(reason TEXT PRIMARY KEY)',
+    "CREATE TABLE resource_monitor(\n          id INTEGER PRIMARY KEY CHECK(id=1), state TEXT NOT NULL CHECK(state IN ('healthy','checking','fault')))",
+    'CREATE TABLE resource_protocol(id INTEGER PRIMARY KEY CHECK(id=1), revision INTEGER NOT NULL)',
+    "CREATE TABLE resource_reservations(\n          id TEXT PRIMARY KEY, category TEXT NOT NULL, demand TEXT NOT NULL,\n          state TEXT NOT NULL CHECK(state IN ('queued','executing','retained')))",
+    'CREATE TABLE revisions(project TEXT NOT NULL, revision INTEGER NOT NULL,\n              snapshot TEXT NOT NULL, PRIMARY KEY(project,revision))',
+)
+
+
+def _installed_detached_rows(source, columns):
+    """Exact canonical sqlite_master identity and every retained SQL constraint."""
+    from service.voice_store import _TABLE_DDL, _TRIGGER_DDL, _sql_identity
+    from service.persistence import B2_DDL
+    def identity(rows):
+        return sorted((kind,name,table,_sql_identity(sql)) for kind,name,table,sql in rows)
+    with closing(sqlite3.connect(':memory:')) as db:
+        end=time.monotonic()+1
+        db.set_progress_handler(lambda:int(time.monotonic()>end),1000)
+        db.execute('PRAGMA trusted_schema=OFF')
+        allowed={sqlite3.SQLITE_CREATE_TABLE,sqlite3.SQLITE_CREATE_INDEX,
+                 sqlite3.SQLITE_INSERT,sqlite3.SQLITE_UPDATE,sqlite3.SQLITE_READ,
+                 sqlite3.SQLITE_SELECT,sqlite3.SQLITE_TRANSACTION}
+        def authorize(action, arg1, *args):
+            if action==sqlite3.SQLITE_PRAGMA and arg1=='foreign_key_check':return sqlite3.SQLITE_OK
+            return sqlite3.SQLITE_OK if action in allowed else sqlite3.SQLITE_DENY
+        db.set_authorizer(authorize)
+        try:
+            for sql in (*_INSTALLED_V1_TABLE_DDL,*_TABLE_DDL,
+                        *(B2_DDL if set(columns)&B2_COLUMNS.keys() else ())):
+                db.execute(sql)
+            expected=list(db.execute('SELECT type,name,tbl_name,sql FROM sqlite_master'))
+            # Recognized immutable triggers are compared only, never installed.
+            expected.extend(('trigger',sql.split()[2],'catalogue_versions',sql) for sql in _TRIGGER_DDL)
+            if identity(source['schema'])!=identity(expected):
+                raise ValueError('installed_history_schema')
+            # AUTOINCREMENT inserts otherwise modify this table implicitly.
+            # Validate its unconstrained canonical rows separately; these claims
+            # are never inserted over the generated sequence rows.
+            sequence=source['data']['sqlite_sequence']
+            names=[r[0] for r in sequence]
+            if (len(names)!=len(set(names)) or any(name not in ('jobs','events') or
+                    type(seq) is not int or seq<0 for name,seq in sequence)):
+                raise ValueError('installed_history_row_constraints')
+            for table,fields in columns.items():
+                if table=='sqlite_sequence':continue
+                rows=source['data'][table]
+                db.executemany('INSERT INTO '+table+' VALUES('+','.join('?' for _ in fields.split())+')',rows)
+                # Affinity must not silently turn malformed claims into valid rows.
+                actual=list(db.execute('SELECT '+','.join(fields.split())+' FROM '+table))
+                if sorted(map(encode,actual))!=sorted(map(encode,rows)):
+                    raise ValueError('installed_history_row_constraints')
+            if list(db.execute('PRAGMA foreign_key_check')):
+                raise ValueError('installed_history_row_constraints')
+            if any(source['data'][name] and name not in names for name in ('jobs','events')):
+                raise ValueError('installed_history_row_constraints')
+            for name,seq in sequence:
+                maximum=max((r[0] for r in db.execute('SELECT seq FROM '+name)),default=0)
+                if seq<maximum:raise ValueError('installed_history_row_constraints')
+        except sqlite3.Error:
+            raise ValueError('installed_history_row_constraints') from None
+
+
+def _installed_detached_documents(data):
+    """Complete closed contract roots before the legacy reference enumerator."""
+    from contracts import validate as oracle
+    from worker.runtime_protocol import execution
+    def context(value):
+        if not isinstance(value,dict) or set(value) not in ({'plan','bundles'},{'plan','bundles','execution'}):
+            raise ValueError('installed_history_context')
+        oracle.validate('worker_plan',value['plan'])
+        if not isinstance(value['bundles'],list):raise ValueError('installed_history_context')
+        for bundle in value['bundles']:oracle.validate('bundle_catalogue_entry',bundle)
+        execution(value)
+    adapters={'jobs':{'job':'job'},'revisions':{'snapshot':'project'},
+              'assets':{'metadata':'asset'},'artifacts':{'metadata':'artifact'},
+              'publications':{'manifest':'result_manifest','artifact':'artifact','message':'worker_message'}}
+    for table,rows in data.items():
+        for row in rows:
+            for column,definition in adapters.get(table,{}).items():
+                oracle.validate(definition,json.loads(row[column]))
+            if table=='jobs':
+                job=json.loads(row['job']);context(json.loads(row['context']))
+                if any(row[column]!=job[field] for column,field in
+                       (('id','id'),('principal','principal_id'),('operation','operation'),('key','idempotency_key'))):
+                    raise ValueError('installed_history_job_identity')
+            elif table=='publication_work':oracle.validate('artifact',json.loads(row['binding']))
+            elif table=='dispatches':
+                authority=json.loads(row['authority'])
+                oracle.validate('job',authority[0]);context(authority[1])
+                for profile in authority[3]:oracle.validate('profile',profile)
+                if row['outcome']:oracle.validate('job',json.loads(row['outcome']))
+
+
 def _installed_detached_source(state, journal):
     """Validate retained bytes only; never open an old root or SQLite file."""
     from service import install_policy as ip
@@ -2876,45 +2991,8 @@ def _installed_detached_source(state, journal):
     if (data['p1_recovery_plans'] or any(data.get(t) for t in B2_COLUMNS) or
             data['p1_format']!=[[1,'synthetic-core']] or data['resource_protocol']!=[[1,2]]):
         raise ValueError('installed_history_maintenance_or_version')
-    # Interpret DDL only in an isolated in-memory database, with all external,
-    # function, view, trigger and virtual-table operations denied. Never execute
-    # a retained trigger or query against a retained path.
-    schema=source['schema']
-    with closing(sqlite3.connect(':memory:')) as db:
-        end=time.monotonic()+1
-        db.set_progress_handler(lambda:int(time.monotonic()>end),1000)
-        allowed={sqlite3.SQLITE_CREATE_TABLE,sqlite3.SQLITE_CREATE_INDEX,
-            sqlite3.SQLITE_INSERT,sqlite3.SQLITE_UPDATE,sqlite3.SQLITE_READ,
-            sqlite3.SQLITE_SELECT}
-        db.set_authorizer(lambda action,*args: sqlite3.SQLITE_OK if action in allowed else sqlite3.SQLITE_DENY)
-        seen=set()
-        from service.voice_store import _TRIGGER_DDL
-        triggers={sql.strip() for sql in _TRIGGER_DDL}
-        for row in schema:
-            kind,name,table,sql=row
-            if name in seen: raise ValueError('installed_history_schema')
-            seen.add(name)
-            if kind=='trigger':
-                if not isinstance(sql,str) or sql.strip() not in triggers: raise ValueError('installed_history_schema')
-                continue
-            if kind not in ('table','index') or table not in columns: raise ValueError('installed_history_schema')
-            if sql is None:
-                if kind!='index': raise ValueError('installed_history_schema')
-                continue
-            if kind=='table' and table=='sqlite_sequence': continue
-            try: db.execute(sql)
-            except sqlite3.Error: raise ValueError('installed_history_schema') from None
-        db.set_authorizer(None)
-        if {r[0] for r in db.execute("SELECT name FROM sqlite_master WHERE type='table'")}!=set(columns):
-            raise ValueError('installed_history_schema')
-        for table,fields in columns.items():
-            if [r[1] for r in db.execute('PRAGMA table_info('+table+')')]!=fields.split():
-                raise ValueError('installed_history_schema')
-    from service.reconciliation import CATALOGUE_IDENTITY, CATALOGUE_TABLES
-    from service.voice_store import _sql_identity
-    if sorted((kind,name,table,_sql_identity(sql)) for kind,name,table,sql in schema
-              if table in CATALOGUE_TABLES or name in CATALOGUE_TABLES)!=CATALOGUE_IDENTITY:
-        raise ValueError('installed_history_schema')
+    _installed_detached_rows(source, columns)
+    if data['voice_catalogue_format']!=[[1]]:raise ValueError('installed_history_catalogue_version')
     if len(data['p1_installation'])!=1: raise ValueError('installed_history_enrollment')
     identity,revision,kind,raw,h=data['p1_installation'][0]
     public=host_json(raw.encode());ip.installation(public)
@@ -2936,6 +3014,7 @@ def _installed_detached_source(state, journal):
     from service.reconciliation import typed_references, DIAGNOSTICS
     typed={table:[dict(zip(columns[table].split(),r)) for r in rows]
            for table,rows in data.items() if table not in DIAGNOSTICS and table!='sqlite_sequence'}
+    _installed_detached_documents(typed)
     scanner=Reconciliation.__new__(Reconciliation)
     scanner.entry_limit=MAX_ROWS;scanner.byte_limit=MAX_BYTES
     scanner.entries=scanner.bytes=0;scanner.end=time.monotonic()+1
