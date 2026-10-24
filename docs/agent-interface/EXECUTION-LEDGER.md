@@ -2375,3 +2375,7 @@ r237 bounded source GO confirms185finalchecks and generatorcompatibility. Parent
 ### 2026-10-24 — Two-output durable adoption intent dependency
 
 Parent authorized r238 narrow persistence.py closedtwo-output adoptionintent + exactreconcileadapter preserving singleoutput/DDLcompatibility and atomicmetadata/retaineduncertainty. AnynewDDL requires explicitversion/allcanonicalreader update proposal beforeedit, no scalarencodingambiguity/CHECKweakening. Fault/restarttests peroutput andcommit required.
+
+### 2026-10-24 — Shared prepared-reference adoption decoder in recovery
+
+Parent authorized r238 minimal recovery.py closedlegacy-or-versionedadoption decoder with literalfirstfile scalarcorroboration, fullpair/manifest/attempt binding and live/detachedsnapshot coherence. NoDDL/snapshotshape/migration/repair; malformedversion/pair refusal and legacytestsrequired.
