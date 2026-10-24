@@ -2107,3 +2107,7 @@ r183 source8dd7e91f/docs9353a1b9 implements Production prepare/results/save/gene
 ### 2026-10-24 — Trusted production adopted; authenticated agent adapters start
 
 r184 bounded source GO. Parent merged9353a1b9 conflict-free and reran4service+1worker production tests PASS. Trusted synthetic prepare/results/save/generate now integrated. Commissioned r185 HTTP/CLI/MCP plus job control with explicit operator resolution seam; arbitrary public execution contexts forbidden. Actual engines/hardware and installed transport remain separate.
+
+### 2026-10-24 — Production adapter reference admission scope resolved
+
+r185 ended before edits/tests: admission rejects asset-bearing plans and dispatch_store freezes empty input authority. Parent commissioned sole successor r186, explicitly authorizing narrow admission.py/dispatch_store.py reference support with verified ownership/media, exact frozen required input IDs and existing resource/execution fences. Original HTTP/CLI/MCP scope retained; no Core/worker rewrite or engine-readiness claim.
