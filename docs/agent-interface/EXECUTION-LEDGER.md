@@ -1955,3 +1955,7 @@ r147 maps35sourcecommits/reviews/full100AST and exact81indices019–099/caps2135
 ### 2026-10-24 — Continuation accounting accepted; source integration checkpoint
 
 Parent accepts r148 boundedplan/accountingGO exact81/2135caps/35reviewmappedcommits/33ownedpaths. Commissions nextisolatedSOURCEcheckpoint ancestrymerge currentroot+candidate1685451c preservingcandidate33blobs/rootdocs/allhistory; noexecutions/activation. Closed81selector/prep remains subsequentseparateunit, C/T2notimported. AllresourceslaneHELD/diagnosticcampaignclosed.
+
+### 2026-10-24 — Source checkpoint merged in isolation; independent adoption gate
+
+r149 t3-410df38e merge0d54ed08 parentsa48f7d6+1685451c/tree3c84cf72 report5140964d;33candidateblobs/modesexact/rootdocsunionpreserved/no conflicts/nooperations. Parent commissions pab-source-integration-review-r150-20261024 ancestry/content/docs-preservation review beforeadoption. PARTIALdormant/validationpending/C-T2notimported/81unrun/resourcesHELD unchanged.
