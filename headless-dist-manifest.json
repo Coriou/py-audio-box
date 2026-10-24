@@ -90,6 +90,8 @@
     "worker/engines/pocket.py",
     "worker/engines/pocket_execution.py",
     "worker/engines/pocket_prepare.py",
+    "worker/engines/qwen.py",
+    "worker/engines/qwen_execution.py",
     "worker/hardware.py",
     "worker/isolated_synthetic.py",
     "worker/lifecycle.py",
