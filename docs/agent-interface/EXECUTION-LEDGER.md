@@ -2243,3 +2243,7 @@ r210 source NO-GO: retry resets provenance inodebaseline after enumeration, acce
 ### 2026-10-24 — Registration provenance identity fix enters re-review
 
 r211 sourcedd526fa9/docs339f0946 binds bytes/identity to validated read/create descriptors and preserves retained retrybaselines. Fourprewriter/readoverlap regressions REDbeforeGREENafter;116 focused methods reported PASS. Parent commissioned independent Sol r212. Candidate remainsunmerged; noactualLinux or activationclaim.
+
+### 2026-10-24 — Registration adopted; packaged launch/activation starts
+
+r212 bounded source GO independently confirms116PASS and fourRED historical regressions. Parent merged339f0946 conflict-free;116 integrated focused tests PASS. Commissioned Sol-low r213 LotB finitehostlauncher/waitingcontrol/checkedactivation/package, preserving legacyenrolledguards and nofixtureAPI. ActualLinux/install/speechqualification stillpending.
