@@ -1743,3 +1743,7 @@ r94 completes oldLOCKONLY/freshONEpreparebuild/verifiedterminalownrelease, IID1d
 ### 2026-10-24 — Bound image independently accepted; ONE017 actual
 
 Parent accepts r95 boundedACTUALbuild+DATA-GO exactimage1d00af16/boundmanifest0fe1876e/reportec0a3f3d;13codebytes and19captures38streams verified, modechronologylimitdisclosed. ONE pab-directed017-actual-r96-20261024 authorized exactreviewedliteral+freshpinnedapproval/closed017/35s/PAXretention; allnewobjects/laneheld/no retry/cleanup. Independentactualreview follows, firsthistoricalpredicateUNKNOWN.
+
+### 2026-10-24 — ONE017 diagnostic FAIL/RED; actual audit and observation-gap diagnosis
+
+r96 ONEinstrumented017 testFAIL/diagnosticRED child-refusalabsent;parentraw9/childE/suffixTK/WRAPPER_ASSERT/observeNOTREACHED, laterparenttrace8 notchildcause. Transportcontent/lifecyclecomplete/28captures56streams/29paths retained; allnewobjects/laneheld. Independent pab-directed017-actual-audit-r97-20261024 auditsactualevidence+minimalcausalnextscope, no rerun/cleanup; firsthistorical/currentchildpredicateUNKNOWN.
