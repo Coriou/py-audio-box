@@ -2307,3 +2307,7 @@ r221 source51133296/docsfbd63fc0 adds fullcontractdocument validation and knownc
 ### 2026-10-24 — Restart history adopted; installed activation unit starts
 
 r222 bounded source GO closes retainedcoherence findings,179independentPASS plus7malformedprobesrefused. Parent mergedfbd63fc0 conflict-free; integrated179suite running session69348. Commissioned Sol-low r223 specifically post-Core checkedinstalledactivation/factoryAPI/worker mapping, packaging separate next. No actualLinux/speechclaim.
+
+### 2026-10-24 — Checked installed activation enters independent review
+
+r223 sourced692a3d7/docs8b5e5aaf completes bounded pre/post-Core activation, authenticatedfactory/configcredentials, workercheckedmapping and receipt-awareclose;71focusedtests reportedPASS,3.11grammar only. Parent commissioned independent Sol r224. Candidateunmerged; packagedhostcommand/image and actualLinux/listener/inferencequalification pending. Integratedrestart179tests completedPASS78.701s.
