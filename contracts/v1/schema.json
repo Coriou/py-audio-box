@@ -1166,35 +1166,9 @@
       "additionalProperties": false
     },
     "asset_upload_request": {
-      "type": "object",
-      "properties": {
-        "content_sha256": {
-          "type": "string",
-          "pattern": "^[a-f0-9]{64}$"
-        },
-        "bytes": {
-          "type": "integer",
-          "minimum": 0,
-          "maximum": 16777216
-        },
-        "source": {
-          "enum": [
-            "upload",
-            "microphone"
-          ]
-        },
-        "content_base64": {
-          "type": "string",
-          "maxLength": 22369624
-        }
-      },
-      "required": [
-        "content_sha256",
-        "bytes",
-        "source",
-        "content_base64"
-      ],
-      "additionalProperties": false
+      "type": "string",
+      "format": "binary",
+      "description": "Raw audio/wav HTTP body, not JSON. At most 25165824 bytes; server-controlled ASGI batching; 15-second default body deadline. No idempotency or voice creation."
     },
     "asset_acquire_request": {
       "type": "object",
@@ -4038,6 +4012,29 @@
         "voice_id",
         "aliases",
         "expected_revision"
+      ],
+      "additionalProperties": false
+    },
+    "voice_versions_list_request": {
+      "type": "object",
+      "properties": {
+        "cursor": {
+          "type": "string"
+        },
+        "limit": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 20
+        },
+        "voice_id": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+        }
+      },
+      "required": [
+        "cursor",
+        "limit",
+        "voice_id"
       ],
       "additionalProperties": false
     }

@@ -24,12 +24,14 @@ def main(argv=None):
     vs.add_argument('--cursor', default='')
     voice = commands.add_parser('voice')
     vsubs = voice.add_subparsers(dest='verb', required=True)
+    vl = vsubs.add_parser('versions'); vl.add_argument('voice_id'); vl.add_argument('--limit',type=int,default=20); vl.add_argument('--cursor',default='')
     vg = vsubs.add_parser('get'); vg.add_argument('voice_id')
     version = vsubs.add_parser('version')
     vget = version.add_subparsers(dest='version_verb', required=True).add_parser('get')
     vget.add_argument('voice_version_id')
     asset = commands.add_parser('asset')
     subs = asset.add_subparsers(dest='verb', required=True)
+    upload = subs.add_parser('upload'); upload.add_argument('file',type=Path)
     get = subs.add_parser('get'); get.add_argument('asset_id')
     download = subs.add_parser('content')
     download.add_argument('asset_id')
@@ -44,8 +46,11 @@ def main(argv=None):
             from urllib.parse import quote
             result = http.get('/skeleton/operations/' + quote(args.operation_id, safe=''))
         elif args.command == 'voices': result = http.call('voices_list', {'limit': args.limit, 'cursor': args.cursor})
+        elif args.command == 'voice' and args.verb == 'versions':
+            result = http.call('voice_versions_list',dict(voice_id=args.voice_id,limit=args.limit,cursor=args.cursor))
         elif args.command == 'voice':
             result = http.call('voice_get', {'voice_id': args.voice_id}) if args.verb == 'get' else http.call('voice_version_get', {'voice_version_id': args.voice_version_id})
+        elif args.verb == 'upload': result = http.upload_file(args.file)
         elif args.verb == 'get': result = http.call('asset_get', {'asset_id': args.asset_id})
         else:
             asset = http.call('asset_get', {'asset_id': args.asset_id})
@@ -68,7 +73,7 @@ def main(argv=None):
                         out.write(data); digest.update(data); total += len(data)
                 if digest.hexdigest() != asset['sha256']: raise ValueError('Downloaded hash mismatch.')
                 os.link(temporary, args.output)  # refuses an existing destination
-                result = {'fixture':True, 'asset_id':args.asset_id, 'bytes':total, 'sha256':digest.hexdigest(), 'saved':True}
+                result = {'asset_id':args.asset_id, 'bytes':total, 'sha256':digest.hexdigest(), 'saved':True}
             finally:
                 if temporary is not None: temporary.unlink(missing_ok=True)
         print(compact(result)); return 0

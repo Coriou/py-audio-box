@@ -36,8 +36,13 @@ class Dispatcher:
         self.initialized.result(timeout=5)
 
     def call(self, op, *args, timeout=3, **kwargs):
-        if op not in ('submit','job','jobs','events','artifact','asset','cancel','status','replace','inventory_page','reconcile_startup','close','voice_list','voice_get','voice_version','voice_resolve'):
+        if op not in ('submit','job','jobs','events','artifact','asset','cancel','status','replace','inventory_page','reconcile_startup','close','voice_list','voice_get','voice_version','voice_resolve','voice_summaries','voice_version_summaries','asset_ingest','asset_metadata','asset_content'):
             raise ValueError('unknown_control_command')
+        if op == 'asset_ingest':
+            from service.ingest import MAX_BYTES
+            if len(args) != 2 or type(args[1]) is not bytes or kwargs:
+                raise ValueError('invalid_request')
+            if len(args[1]) > MAX_BYTES: raise ValueError('resource_limit')
         future=Future()
         self.commands.put_nowait((op,copy.deepcopy(args),copy.deepcopy(kwargs),future))
         return future.result(timeout=timeout)
@@ -151,6 +156,15 @@ class Dispatcher:
                     if startup_error is not None:self.initialized.set_exception(startup_error)
 
     def _command(self,op,*args,**kwargs):
+        if op=='asset_ingest':
+            from service.ingest import ingest_local
+            if len(args)!=2 or type(args[1]) is not bytes or kwargs: raise ValueError('invalid_request')
+            return ingest_local(self.core,*args)
+        if op in ('asset_metadata','asset_content'):
+            from service.domain import owned_asset
+            return owned_asset(self.core,*args,content=op=='asset_content',**kwargs)
+        if op=='voice_summaries':return self.core.voices.summaries(*args,**kwargs)
+        if op=='voice_version_summaries':return self.core.voices.version_summaries(*args,**kwargs)
         if op=='voice_list':return self.core.voices.list(*args,**kwargs)
         if op=='voice_get':return self.core.voices.get(*args,**kwargs)
         if op=='voice_version':return self.core.voices.version(*args,**kwargs)

@@ -106,7 +106,7 @@ class VoiceAPITests(VoiceAPIFixture, unittest.TestCase):
             body = self.request('/v1/capabilities').json()
             self.assertEqual(body['profiles'],[])
             self.assertIn('voice_get',body['operations'])
-            self.assertNotIn('asset_get',body['operations'])
+            self.assertIn('asset_get',body['operations'])
             self.assertFalse(self.request('/skeleton/operations/voice_get').json()['fixture'])
         code = "import sys; import service.api; assert not any(x in sys.modules for x in ('torch','transformers','service.core','service.dispatcher'))"
         result = subprocess.run([sys.executable,'-c',code],capture_output=True,text=True)

@@ -1,4 +1,5 @@
 """Deterministic synthetic fixtures/media. Run: python -m contracts.generate."""
+import base64
 import hashlib
 import json
 import math
@@ -71,6 +72,9 @@ def generate():
         if spec.get('pattern','').startswith('^https'):return 'https://example.invalid/media.wav'
         return 'example'
     requests={op['id']:example(schema[op['request']]) for op in ops}
+    # Fixture serialization only: public upload is an immutable raw WAV body.
+    requests['asset_upload']={'$fixture_binary_base64':base64.b64encode((ROOT/'short.wav').read_bytes()).decode('ascii')}
+    requests['voice_versions_list']=dict(cursor='',limit=1,voice_id='voice.0')
     dump(ROOT/'operation-requests.json',requests)
     for operation in ('voice_prepare','voice_design','speech_generate','project_render'):
         dump(ROOT/('transcript-'+operation+'.json'),transcript(operation,production(30),profiles,requests))
