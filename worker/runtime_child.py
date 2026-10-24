@@ -1,4 +1,4 @@
-"""Closed synthetic/Kokoro/Pocket child. No management capability or service imports."""
+"""Closed synthetic/Kokoro/Pocket/Qwen child. No management capability or service imports."""
 import json
 import os
 from pathlib import Path
@@ -29,7 +29,22 @@ def run_generation(connection, config, staging, cutoff, *, backend_factory=None)
     message = receive(connection, cutoff)
     oracle.worker_message(message, job, config['allowed_assets'], transport_owner=attempt['owner_id'], context=context, current_profiles=config['profiles'])
     if message['kind'] != 'execute': raise Refused('unexpected_message')
-    if spec.engine == 'pocket-tts':
+    if spec.engine == 'qwen':
+        from worker.engines.qwen import execute
+        from worker.engines.qwen_execution import inventory_from_wire, current_hardware
+        inventory = inventory_from_wire(context['execution']['hardware'])
+        current_hardware(spec,inventory)
+        stage = attempt['staging_id']
+        if Path(stage).name != stage or stage in ('.', '..'): raise Refused('invalid_stage')
+        if spec.task == 'clone':
+            directory = os.open(Path(staging)/stage, os.O_RDONLY|os.O_DIRECTORY|os.O_NOFOLLOW)
+            try: os.mkdir('conditioning',0o700,dir_fd=directory)
+            finally: os.close(directory)
+        result = execute(spec,context['plan']['request']['text'],context['execution']['bundles'],
+                         context['execution']['references'],inventory,
+                         reference_temp_dir=Path(staging)/stage/'conditioning' if spec.task == 'clone' else None,
+                         backend_factory=backend_factory,managed_owner_uid=10001)
+    elif spec.engine == 'pocket-tts':
         from worker.engines.pocket import execute
         stage = attempt['staging_id']
         if Path(stage).name != stage or stage in ('.', '..'): raise Refused('invalid_stage')
@@ -149,7 +164,7 @@ def main():
         else:
             raise RuntimeError('supervisor_signal_allowed')
         assert not any(int(p.name) > 2 and int(p.name) != connection.fileno() for p in Path('/proc/self/fd').iterdir() if p.name.isdigit() and Path(p).exists())
-    if mode in ('kokoro','pocket'):
+    if mode in ('kokoro','pocket','qwen'):
         from worker.runtime_protocol import execution, dispatch_mode
         if dispatch_mode(execution(config['context'])) != mode: raise ValueError('execution_dispatch_mismatch')
         contain_kokoro(config['context'])

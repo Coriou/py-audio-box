@@ -113,3 +113,48 @@ class PocketContexts:
         context['plan']['request'] = copy.deepcopy(request)
         execution(context)
         return context
+
+
+class QwenContexts:
+    """Operator-owned exact principal/version/profile and sealed local mappings.
+
+    Linux generation only. No installer activation or caller-selected descriptor.
+    Hardware provenance expires at resolution/admission, never in history readers.
+    """
+    def __init__(self, contexts, local_bundles, local_references, inventory, profiles):
+        from worker.engines.qwen_execution import inventory_wire, current_hardware
+        from contracts import validate as oracle
+        self._contexts = {}
+        for principal, context in contexts.items():
+            snapshot = copy.deepcopy(context)
+            spec = execution(snapshot)
+            if spec is None or spec.engine != 'qwen': raise Refused('qwen_execution_required')
+            if snapshot['execution']['hardware'] != inventory_wire(inventory): raise Refused('hardware_identity')
+            current_hardware(spec, inventory)
+            oracle.admission(dict(operation='speech_generate',input_sha256=oracle.plan_hash(snapshot['plan'])),snapshot,profiles)
+            verify_qwen_local(snapshot, local_bundles, local_references, inventory)
+            self._contexts[principal] = json.dumps(snapshot, allow_nan=False)
+        self._inventory = copy.deepcopy(inventory)
+        self._bundles = copy.deepcopy(local_bundles)
+        self._references = copy.deepcopy(local_references)
+
+    def resolve(self, principal, operation, request):
+        from contracts import validate as oracle
+        from worker.engines.qwen_execution import current_hardware
+        if operation != 'speech_generate' or principal not in self._contexts: raise Refused('not_ready')
+        oracle.validate('speech_generate_request',request)
+        context = json.loads(self._contexts[principal])
+        if request['voice_version_id'] != context['plan']['voice_versions'][0]['id']: raise Refused('saved_version_required')
+        context['plan']['request'] = copy.deepcopy(request)
+        spec = execution(context)
+        current_hardware(spec,self._inventory)
+        verify_qwen_local(context,self._bundles,self._references,self._inventory)
+        return context
+
+
+def verify_qwen_local(context, bundles, references, inventory, *, owner_uid=None):
+    """Same full verifier for control and independent Linux supervisor."""
+    spec = execution(context)
+    if set(bundles) != {spec.bundle_id} or set(references) != set(context['execution']['references']): raise Refused('owned_mapping_required')
+    from worker.engines.qwen import verify_service_inputs
+    verify_service_inputs(spec,bundles,references,inventory,owner_uid=owner_uid)

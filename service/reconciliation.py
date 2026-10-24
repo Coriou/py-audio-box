@@ -491,7 +491,7 @@ def typed_references(self, data, b2, _before, document):
                 raise Incomplete('unknown_reference_kind') from None
         elif set(value) != {'plan','bundles'}:
             self.reasons.add('unknown_reference_schema')
-        elif value['plan']['resolved']['profile']['id'] in ('kokoro-cpu','pocket-cpu'):
+        elif value['plan']['resolved']['profile']['id'] in ('kokoro-cpu','pocket-cpu','qwen-cpu','qwen-cuda'):
             raise Incomplete('unknown_reference_kind')
         plan=value['plan']
         planned_prepare=False
