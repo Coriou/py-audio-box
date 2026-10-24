@@ -2175,3 +2175,7 @@ r195 sourcef04a3a16/docs6bfdc331 binds closed execution/bundle mappings to autho
 ### 2026-10-24 — Kokoro lifecycle adopted; clean installation source starts
 
 r196 bounded source GO. Parent merged6bfdc331 conflict-free; integrated56 targeted methods PASS. Commissioned Sol-low r197 clean authenticated headless entrypoint/package/topology, preserving enrollment and fixture separation. Source tests only this lot; actual installedmount/containment, modelprovision/inference/audible and cancelrestart remain required.
+
+### 2026-10-24 — Kokoro installation enrollment scope dependency
+
+r197 found persistent init/recovery hardcoded synthetic scope. Parent authorized narrow persistent_init.py/persistence.py/recovery.py/reconciliation.py and focused enrollment tests for distinct explicitly gated Kokoro scope. Preserve synthetic behavior, exact volume/runtime/bundle identity, failclosed recovery; no auto migration/re-enrollment or repairs. Source-only task continues.
