@@ -83,7 +83,10 @@ def _worker_impl(connection, settings):
         if settings.get("offline"):
             os.environ["HF_HUB_OFFLINE"] = "1"
             os.environ["TRANSFORMERS_OFFLINE"] = "1"
-        from tts import _load_tts_model_local
+        if __package__ == 'lib.tts_backends':
+            from ..tts import _load_tts_model_local
+        else:  # Legacy callers put lib itself on the import path.
+            from tts import _load_tts_model_local
         model = _load_tts_model_local(**settings)
         connection.send(('ready', {'revision': getattr(model, '_audio_box_revision', settings.get('revision'))}))
         while True:
@@ -282,7 +285,10 @@ class QwenBackend:
                 raise
 
     def create_voice_clone_prompt(self, *args, **kwargs):
-        from tts import bind_clone_prompt
+        if __package__ == 'lib.tts_backends':
+            from ..tts import bind_clone_prompt
+        else:
+            from tts import bind_clone_prompt
         prompt = self.invoke('create_voice_clone_prompt', args, kwargs)
         return bind_clone_prompt(prompt, model=self)
 

@@ -61,8 +61,13 @@ import multiprocessing as mp
 import contextlib
 from dataclasses import dataclass
 from functools import partial
-from tts_backends.qwen import QwenBackend, checkpoint_capabilities, validate_checkpoint_request
-from tts_backends.contract import AudioResult, BackendError
+# Support both package-root headless imports and legacy lib-path CLI imports.
+if __package__:
+    from .tts_backends.qwen import QwenBackend, checkpoint_capabilities, validate_checkpoint_request
+    from .tts_backends.contract import AudioResult, BackendError
+else:
+    from tts_backends.qwen import QwenBackend, checkpoint_capabilities, validate_checkpoint_request
+    from tts_backends.contract import AudioResult, BackendError
 from importlib import metadata as importlib_metadata
 from pathlib import Path
 from typing import Any
