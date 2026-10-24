@@ -10,18 +10,14 @@ from test_contracts import load, FIX
 
 def test_exact_byte_upload_download_transcript():
     data=(FIX/'impulse.wav').read_bytes()
-    request=dict(content_sha256=hashlib.sha256(data).hexdigest(),bytes=len(data),source='microphone',content_base64=base64.b64encode(data).decode())
-    assert c.upload(request)==data
-    h=c.fingerprint('agent','asset_upload',request)
-    c.idempotency(h,'agent','asset_upload',request)
+    assert c.upload(data) is data
+    digest=hashlib.sha256(data).hexdigest()
     chunks=[]
     for start,end in [(0,44),(44,len(data))]:
         r=c.content(data,dict(asset_id='impulse',start=start,end_exclusive=end),authorized=True)
         chunks.append(base64.b64decode(r['content_base64']))
-        assert r['content_sha256']==request['content_sha256']
+        assert r['content_sha256']==digest
     assert b''.join(chunks)==data
-    for update,error in [({'bytes':len(data)+1},'invalid_size'),({'content_sha256':'0'*64},'invalid_hash')]:
-        with pytest.raises(c.ContractError,match=error):c.upload({**request,**update})
     for start,end in [(1,1),(2,1),(0,len(data)+1)]:
         with pytest.raises(c.ContractError,match='invalid_range'):c.content(data,dict(asset_id='impulse',start=start,end_exclusive=end),authorized=True)
     with pytest.raises(c.ContractError,match='forbidden'):c.content(data,dict(asset_id='impulse',start=0,end_exclusive=1),authorized=False)
@@ -112,14 +108,21 @@ def test_block_edit_cannot_rewrite_old_take(field,value):
     with pytest.raises(c.ContractError,match='immutable_identity'):c.edit_semantics(p,q,'block_text')
 
 
-def test_upload_oversize_and_byte_idempotency():
-    from jsonschema import ValidationError
-    request=dict(content_sha256='0'*64,bytes=16777217,source='upload',content_base64='')
-    with pytest.raises(ValidationError):c.upload(request)
-    request.update(bytes=1,content_base64='@@')
-    with pytest.raises(c.ContractError,match='invalid_bytes'):c.upload(request)
-    h=c.fingerprint('agent','asset_upload',request)
-    with pytest.raises(c.ContractError,match='idempotency_conflict'):c.idempotency(h,'agent','asset_upload',{**request,'content_base64':'AA=='})
+def test_upload_raw_bounds_and_nonidempotency():
+    maximum=b'x'*(24*1024*1024)
+    assert c.upload(maximum) is maximum
+    for value in (b'', maximum+b'x'):
+        with pytest.raises(c.ContractError,match='invalid_size'):c.upload(value)
+    for value in ('raw text', bytearray(b'RIFF'), memoryview(b'RIFF'),
+                  dict(content_sha256='0'*64,bytes=1,source='upload',content_base64='AA==')):
+        with pytest.raises(c.ContractError,match='invalid_bytes'):c.upload(value)
+    # Every call is a new non-idempotent upload; no JSON receipt/replay contract.
+    assert c.upload(b'RIFF') == b'RIFF'  # media validity remains ingest-owned
+    for payload in (b'RIFF', {'content_base64':'AA=='}):
+        with pytest.raises(c.ContractError,match='non_idempotent'):
+            c.idempotency('unused','agent','asset_upload',payload)
+    operation=next(o for o in json.loads((c.ROOT/'v1/operations.json').read_text())['operations'] if o['id']=='asset_upload')
+    assert operation['idempotency'] is False
 
 
 def test_all_frozen_operation_plans_have_executable_inputs():

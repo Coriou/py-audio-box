@@ -132,7 +132,7 @@
         "invalid_media",
         "missing_media"
       ],
-      "transport": "Raw audio/wav body; maximum 25165824 bytes; chunks <=65536 bytes; finite body deadline and single concurrent admission. Requires read and production-write. No automatic retry. Creates asset only. MCP uses configured client-local root, never server paths."
+      "transport": "Raw audio/wav body; maximum 25165824 bytes; server-controlled ASGI batching; finite body deadline and single concurrent admission. Requires read and production-write. No automatic retry. Creates asset only. MCP uses configured client-local root, never server paths."
     },
     {
       "id": "asset_acquire",

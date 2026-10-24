@@ -1168,7 +1168,7 @@
     "asset_upload_request": {
       "type": "string",
       "format": "binary",
-      "description": "Raw audio/wav HTTP body, not JSON. At most 25165824 bytes; transport chunks at most 65536 bytes; 15-second default body deadline. No idempotency or voice creation."
+      "description": "Raw audio/wav HTTP body, not JSON. At most 25165824 bytes; server-controlled ASGI batching; 15-second default body deadline. No idempotency or voice creation."
     },
     "asset_acquire_request": {
       "type": "object",

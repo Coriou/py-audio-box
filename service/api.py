@@ -181,8 +181,9 @@ def create_voice_app(dispatcher, *, credentials, upload_deadline=15.0):
                         async for chunk in request.stream():
                             total += len(chunk)
                             if total > MAX_BYTES: raise Failure('resource_limit', 'Upload exceeds 24 MiB.')
-                            if len(chunk)>65536: raise Failure('resource_limit', 'Transport chunks must be at most 65536 bytes.')
                             if length is not None and total > length: raise Failure('invalid_request', 'Content-Length mismatch.')
+                            # ASGI message size is server-controlled. The total cap
+                            # bounds our retained body, not upstream server allocations.
                             buffer.write(chunk)
                 except (TimeoutError, ClientDisconnect):
                     raise Failure('invalid_request', 'Upload incomplete or deadline exceeded.') from None

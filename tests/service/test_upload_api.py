@@ -124,7 +124,6 @@ class UploadAPITests(UploadFixture, unittest.TestCase):
             ([data],{'Content-Length':'3'},'invalid_request'),
             ([data],{'Content-Length':str(len(data)+1)},'invalid_request'),
             ([data],{'Content-Length':'25165825'},'resource_limit'),
-            ([b'x'*65537],{},'resource_limit'),
             ([],{},'invalid_request')]:
             with patch.object(self.dispatcher,'call',side_effect=AssertionError('partial dispatch')):
                 self.error(asyncio.run(self.post(chunks,headers=headers)),code)
@@ -138,15 +137,23 @@ class UploadAPITests(UploadFixture, unittest.TestCase):
         async def run():
             with patch.object(self.dispatcher,'call',side_effect=AssertionError('oversize dispatch')):
                 self.error(await self.post([b'x'*65536]*384+[b'x']),'resource_limit')
+                self.error(await self.post([b'x'*(24*1024*1024+1)]),'resource_limit')
         asyncio.run(run())
         import struct
         data=wav_bytes()
         padding=24*1024*1024-len(data)-8
         maximum=data+b'JUNK'+struct.pack('<I',padding)+b'\0'*padding
         maximum=maximum[:4]+struct.pack('<I',len(maximum)-8)+maximum[8:]
-        response=asyncio.run(self.post([maximum[i:i+65536] for i in range(0,len(maximum),65536)]))
-        self.assertEqual(response.status_code,200,response.text)
-        self.assertEqual(response.json()['sha256'],hashlib.sha256(maximum).hexdigest())
+        # ASGI receive batching is server-controlled: both a single maximum body
+        # and larger-than-64-KiB pieces must preserve exact immutable bytes.
+        ids=set()
+        for chunks in ([maximum], [maximum[i:i+131073] for i in range(0,len(maximum),131073)],
+                       [maximum[i:i+65536] for i in range(0,len(maximum),65536)]):
+            response=asyncio.run(self.post(chunks))
+            self.assertEqual(response.status_code,200,response.text)
+            self.assertEqual(response.json()['sha256'],hashlib.sha256(maximum).hexdigest())
+            self.assertNotIn(response.json()['id'],ids)
+            ids.add(response.json()['id'])
 
     def test_deadline_disconnect_and_concurrent_admission(self):
         async def run():

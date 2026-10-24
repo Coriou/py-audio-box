@@ -18,6 +18,11 @@ def require(condition, code):
         raise ContractError(code)
 
 def validate(kind, value):
+    # JSON Schema binary strings describe the wire body, not a JSON value.
+    if kind == 'asset_upload_request':
+        require(type(value) is bytes, 'invalid_bytes')
+        require(0 < len(value) <= 24*1024*1024, 'invalid_size')
+        return value
     Draft202012Validator({**SCHEMA, '$ref': '#/$defs/' + kind}).validate(value)
     intrinsic(value)
     if kind == 'project':
@@ -40,6 +45,7 @@ def fingerprint(principal, operation, payload):
     return hashlib.sha256(json.dumps([principal, operation, payload], ensure_ascii=False, sort_keys=True, separators=(',', ':'), allow_nan=False).encode()).hexdigest()
 
 def idempotency(saved_fingerprint, principal, operation, payload):
+    require(operation != 'asset_upload', 'non_idempotent')
     require(saved_fingerprint == fingerprint(principal, operation, payload), 'idempotency_conflict')
 
 def revision(expected, current):
@@ -406,12 +412,12 @@ def intrinsic(value):
         for child in value: intrinsic(child)
 
 def upload(request):
-    validate('asset_upload_request',request)
-    try: data=base64.b64decode(request['content_base64'],validate=True)
-    except (ValueError, base64.binascii.Error): raise ContractError('invalid_bytes')
-    require(len(data)==request['bytes'] and len(data)<=16777216, 'invalid_size')
-    require(hashlib.sha256(data).hexdigest()==request['content_sha256'], 'invalid_hash')
-    return data
+    """Raw immutable body oracle; media validation belongs to owner ingest.
+
+    No JSON/base64 envelope, caller hash/size, or idempotent receipt exists.
+    HTTP separately enforces authorization, length, deadline and admission.
+    """
+    return validate('asset_upload_request',request)
 
 def content(data, request, *, authorized):
     validate('content_request',request)
