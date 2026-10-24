@@ -1204,7 +1204,8 @@ def _installed_notify(context, control, raw):
     command = ['docker','--context',context,'exec','--user','10001:10001','-i',control,
         'python','-I','-B','-c',
         "import sys;sys.path.insert(0,'/opt/speech');from service.entrypoint import publish,GATE_LIMIT;publish(sys.stdin.buffer.read(GATE_LIMIT+1))"]
-    with tempfile.TemporaryFile() as output:
+    output = tempfile.TemporaryFile()
+    try:
         process = subprocess.Popen(command,stdin=subprocess.PIPE,stdout=output,stderr=subprocess.DEVNULL,
                                    close_fds=True,env={'PATH':os.defpath},cwd='/')
         try:
@@ -1218,6 +1219,17 @@ def _installed_notify(context, control, raw):
                 raise _RegistrationChildUnreaped('installed_notification_child_unreaped') from primary
             raise
         finally:
-            if process.stdin is not None: process.stdin.close()
+            primary = sys.exception()
+            try:
+                if process.stdin is not None: process.stdin.close()
+            except BaseException as cleanup:
+                if primary is None: raise
+                primary.add_note('notification pipe close failed: '+type(cleanup).__name__)
         if process.returncode != 0 or os.fstat(output.fileno()).st_size:
             raise ValueError('installed_notification_failed')
+    finally:
+        primary = sys.exception()
+        try: output.close()
+        except BaseException as cleanup:
+            if primary is None: raise
+            primary.add_note('notification output close failed: '+type(cleanup).__name__)

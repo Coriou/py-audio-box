@@ -229,5 +229,86 @@ class GateTests(unittest.TestCase):
         self.assertEqual(kw['stderr'],h.subprocess.DEVNULL)
 
 
+class NotificationCleanupTests(unittest.TestCase):
+    setUp = GateTests.setUp
+    # Reuse the real registration/projection fixture without inheriting its tests.
+    def notification_failure(self, *, unreaped=False, pipe=False, output=False, primary=True):
+        error = h.subprocess.TimeoutExpired('injected-notification', 5)
+        class Pipe:
+            def close(self):
+                if pipe: raise OSError('injected pipe close')
+        class Child:
+            stdin=Pipe(); returncode=0
+            def communicate(self, raw, timeout):
+                if primary: raise error
+            def kill(self): pass
+            def wait(self, timeout):
+                if unreaped: raise h.subprocess.TimeoutExpired('injected-reap', 2)
+        real = h.tempfile.TemporaryFile
+        class Output:
+            def __init__(self): self.file=real()
+            def __enter__(self): return self
+            def __exit__(self, *args): self.close()
+            def fileno(self): return self.file.fileno()
+            def close(self):
+                self.file.close()
+                if output: raise OSError('injected output close')
+        child=Child()
+        return error, child, patch.object(h.subprocess,'Popen',return_value=child), patch.object(h.tempfile,'TemporaryFile',Output)
+
+    def check_failure(self, **kw):
+        error, child, spawn, output = self.notification_failure(**kw)
+        start=len(h._registration_retained)
+        try:
+            with spawn, output:
+                with self.assertRaises(BaseException) as caught:
+                    h._installed_notify('local',self.fixture.owners[0]['id'],encode(self.gate).encode())
+            expected=h._RegistrationChildUnreaped if kw.get('unreaped') else (type(error) if kw.get('primary',True) else OSError)
+            self.assertIsInstance(caught.exception,expected)
+            if kw.get('unreaped'): self.assertIs(caught.exception.__cause__,error)
+            elif kw.get('primary',True): self.assertIs(caught.exception,error)
+            notes=' '.join(getattr(caught.exception,'__notes__',[]))
+            for name in ('pipe','output'):
+                if kw.get(name) and (kw.get('primary',True) or name=='output' and kw.get('pipe')):
+                    self.assertIn(name,notes)
+        finally:
+            del h._registration_retained[start:]  # Only this inert injected child.
+
+    def test_reaped_primary_pipe_close(self): self.check_failure(pipe=True)
+    def test_reaped_primary_output_close(self): self.check_failure(output=True)
+    def test_unreaped_output_close(self): self.check_failure(unreaped=True,output=True)
+    def test_success_output_close_refuses(self): self.check_failure(primary=False,output=True)
+    def test_success_pipe_and_output_close_refuses(self): self.check_failure(primary=False,pipe=True,output=True)
+
+    def test_unreaped_both_closes_retains_authority(self):
+        from tests.service.test_installed_host_policy import InstalledHost
+        f=InstalledHost();f.setUp()
+        try:
+            f.authority_fixture()
+            error,child,spawn,output=self.notification_failure(unreaped=True,pipe=True,output=True)
+            start=len(h._registration_retained)
+            try:
+                with patch.object(h,'InstalledObserver',return_value=f.observer()), spawn, output:
+                    with self.assertRaises(h._RegistrationChildUnreaped) as caught:
+                        with h.installed_launch_authority(f.config,f.scope):
+                            h._installed_notify('local',self.fixture.owners[0]['id'],encode(self.gate).encode())
+                    self.assertIs(caught.exception.__cause__,error)
+                    self.assertIn('pipe',' '.join(caught.exception.__notes__))
+                    self.assertIn('output',' '.join(caught.exception.__notes__))
+                    retained=h._registration_retained[start:]
+                    self.assertIs(retained[0],child)
+                    self.assertEqual(len(retained),2)
+                    self.assertEqual(len(retained[1]),2)
+                    for fd in retained[1]: os.fstat(fd)
+                    with self.assertRaisesRegex(ValueError,'installed_launch_busy'):
+                        with h.installed_launch_authority(f.config,f.scope): pass
+            finally:
+                for item in h._registration_retained[start:]:
+                    if isinstance(item,tuple):
+                        for fd in item: os.close(fd)
+                del h._registration_retained[start:]
+        finally: f.doCleanups()
+
+
 if __name__ == '__main__':
     unittest.main()
