@@ -297,3 +297,69 @@ Final executable/source pins:
 No Docker query/build/tag/container/volume/cleanup, pytest import/collection/run, guard/product import, DB/native identity/campaign, old proof/lane/object modification or operational dispatch. No runtime resources acquired. All100 B cases and originalP211/declared P/J/R, transport/close/reap and semantic/report preservation subsets remain separately PENDING / UNRUN. At least one separately authorized unchanged real-observer actual74 complete e/f/t/original-assertions/restoration receipt is still required. Historical r42/r43 RED, PID229 UNKNOWN and native/T2/installed/platform/durability/release HOLD remain unchanged.
 
 Handback is ready for independent Sol SOURCE + retained HOST review on executable2a266f3 and following docs commit. Parent owns review acceptance, exact future actual provenance/host invocation and all operational stages. No implementer GO or actual authorization follows.
+
+## Original-positive closed profile handback — 2026-10-24
+
+Implementation only; **independent SOURCE/HOST review pending, ACTUAL HOLD**.
+Own checkout `/Users/ben/.txcode/worktrees/py-audio-box/t3-67aec9bf` was clean,
+then reconstructed detached from immutable t3-1521cb66 docs
+228a54691eacac7b7837b030332080a456f48dfd, executable
+2a266f3f496351e98a2a410071a135e0a935d707. Full root Sol r54 prerequisite
+and Astra r44 read. No delegation or self-GO. Executable successor is
+`0c058776d641503434de1c5eccb05ecb7ca51fcd`; this documentation commit
+follows it without further executable changes.
+
+`launcher.py --profile original-positive` is the sole new positive selection;
+default `--profile diagnostic-red` retains the original writer argv, entry argv,
+state shape, expected pytest1, historical classification, reader argv and
+historical47 parser. The closed positive driver command is exactly:
+`python /app/diagnostics/p-one-node/finite-driver.py writer-positive original-positive TOKEN UUID`.
+No free expected integer, accepted exit set, result detection or waiver exists.
+Wrong profile/arity, including writer-positive diagnostic-red or integer0,
+refuses before dispatch. Positive intent and terminal bind profile, exact
+command tail, token/UUID, entry, singleton node and requested expected0. Host
+terminal also requires pytest0 and the distinct positive classification;
+legacy requested expected1 is now explicitly checked against its existing
+state fields. Real historical writer state/commands remain byte compatible;
+malformed legacy expected/node/entry fields are refused. Full container
+command/security/image/volume binding uses the same command builder. Archive
+and hash commands remain profile independent; owner journal and retained writer
+slots bind the reader contents to the selected profile. Host final positive
+state is RETAINED-ORIGINAL-POSITIVE-ACTUAL-REVIEW-REQUIRED, acceptance=false.
+Historical RED is never reinterpreted as positive.
+
+Positive retention keeps full private archive/map equality, sentinel, stopped
+writer proof and existing lifecycle bounds. It explicitly parses one exact
+singleton wait: owner=pytest leader, distinct child, raw18944 (74<<8), transcript
+B:a;B:e;B:f;B:t;. Raw9 is refused here; B100 scheduling/SIGKILL controls remain
+separate. Unchanged47 rows must retain source-owned child catch-all, terminal
+wait, guarded finally and cleanup observations, coherent owner/child/raw status,
+zero guard failures and zero parent owned children. Unlike historical47 parsing,
+positive parsing does not demand empty witness or four active error rows. The
+source calls sample at all four stages even when the original test catches its
+expected parent timeout successfully. Child sample precedes final_child/f
+emission and sees only inherited B:a; (length4); completed parent rows see the
+full transcript (length16). Final token/raw wait, not that early child row alone,
+attests the final B route. All original47 schema and observer bytes stay intact.
+
+The unchanged entry's fail-before-fixture singleton Selection plus pytest0 and
+standard `.`/`1 passed in ...s` stdout evidence establishes original test
+completion, including original assertions and successful setup/call/teardown.
+There is no new report plugin/entry edit and no claim of separate phase receipt
+files: pytest0 for the exact unchanged single test is the available evidence.
+Missing PASS output refuses. Stdout/waits retained for positive parsing are
+bounded by existing512KiB metadata slot cap (wait parser16KiB); legacy parsing
+is unaffected. Full raw stdout/stderr and all observer/guard/private metadata
+remain in the equal-hash archive. Independent ACTUAL review must inspect the
+actual parent route/offsets, restoration/finalizer evidence, original assertions,
+limits/reap/elapsed<2, actual74 child final route and unchanged source/runtime
+identity. Structural retention is not that review or operational acceptance.
+
+No build, actual pytest invocation/collection, product import, DB, Docker call,
+native or runtime campaign occurred. Historical qualify.py pins/CLI remain stale,
+refusing and explicitly UNUSED; it is not a positive launcher or bypass. A new
+immutable image, independent review and parent operational authority remain
+required. All original failure transport, deadlines, unknown/HOLD preservation,
+r42/r43 RED, PID229 UNKNOWN and P211/P/J/R/native/platform/release boundaries
+remain. No guard/controls/product/target/model/assertion/conftest/observer/entry/
+runtime identity/lock/B100 runner change; no B100 rerun or new framework.

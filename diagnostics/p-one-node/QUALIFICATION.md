@@ -119,3 +119,48 @@ Original unchanged singleton actual74 qualification remains separately parent-ow
 Existing Lifecycle writer deadlines/pytest1/47-field acceptance cannot be repurposed for B100. New runner provides only the explicit campaign PID1 entry and distinct command/security binding; later parent-authorized host invocation follows PLAN's bounded journal/attach/wait/stopped-inspect/two-reader/archive-map route. Reader helper commands and source/bootstrap/identity/capture/budget/archive/map code remain unchanged. Retain partial bytes and failed/unknown resources; no cleanup or retry is authorized here. Final campaign classification, if reached later, remains acceptance=false pending independent actual review.
 
 All100 controls, originalP211 and existing P/J/R, transport/close/reap and semantic/report preservation subsets stay separately PENDING / UNRUN. No self-GO, actual authority, installed/native/T2/platform/durability/release credit. Historical r42/r43 RED and PID229 UNKNOWN are preserved.
+
+## Closed positive profile — affected stdlib HOST evidence, 2026-10-24
+
+SOURCE implementation submitted for independent Sol global review; no self-GO.
+Pre-run matrix/caps and motivated verification changes are frozen in FREEZE.md.
+Command used: `python3 diagnostics/p-one-node/host-check.py --profile-scope`.
+Six groups23/26/29/30/32/33, case9s and total300s caps; real private IO, fake
+external boundaries. Final receipt:
+`/private/tmp/pab-p-one-r16-HOST-tcuxvmuo/HOST-receipt.json`.
+PASS6/6,0.614528387s; SHA256
+`2574ce0df777eb04ed8313b46867af2fa097523b3470576d7d2b917e23078c5b`.
+Earlier PASS receipts are retained at roots1uo4ogqu and ycnqy5ds recorded in
+FREEZE.md; no RED or hidden fix-run occurred. Subsequent runs were motivated by
+source completeness changes (final positive classification, CLI/legacy expected
+binding and PENDING intent/final publication assertions), not runtime retries.
+
+Final frozen executable SHA256:
+
+- launcher.py: bb8c682fa5589e514b2de2ce5ea838bb06c072d4161fc94fbfc2bd23836e850a
+- finite-driver.py: 04772bf629226ef9392022dfe87db7aa78edddfa17ed4a980d2cc93102eb17c5
+- host-check.py: ff9247ebae666b1aac40234446bd30da2475e4b5b5c81dc7ce116a627e2a217b
+- source-manifest.json: c5951ea20beebb3b2af13d9e59ef2ce74a66149a39141a6ada09612a55dde956
+
+Actual writer scheduling was exercised at fake external/identity/namespace
+boundaries: positive pytest0 TERMINAL/return0; positive1 STOP/return1;
+legacy1 TERMINAL/return0; legacy0 STOP/return1. Existing child/post/source/
+publication deadline negatives remain. Direct real CLI dispatch accepts only
+closed positive and historical forms, refuses wrong profile/integer/arity.
+Positive command/create/inspect bindings and unchanged reader commands checked.
+Real private tar/map/slot retention and final publication exercised with fake
+reader launch boundary. Refusals cover mismatched profile/requested expected/
+pytest exit/command/node/token/classification; wrong owner/child/raw9;
+missing/duplicate tokens or waits; missing PASS; observer guard failures and
+owned children. Legacy full scripted lifecycle success/failure, historical47
+parser and exact private source projection remain covered. These are synthetic
+HOST controls, not original runtime passes or independent parent proof.
+
+197 mapped source hashes verified, with all193 original files and other three
+derivatives byte unchanged from228a546; only changed finite-driver derivative
+hash updated. Manifest historical commit/launcher provenance fields remain
+historical, not a claim that historical commits contain this successor. Entry,
+observer and all mapped source are hashed in prepare_context and driver before/
+after phases. Host compile-without-exec and git diff --check PASS. Private HOST
+retention modes audited0700 directories/0600 regular files with no symlinks.
+Actual/build/collection/native/restoration/performance/release acceptance HOLD.

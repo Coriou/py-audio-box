@@ -319,3 +319,46 @@ Earlier retained PASS receipts: `/private/tmp/pab-B-controls-HOST-lbdac641/HOST-
 ### r53 final executable and HOST result
 
 Executable `2a266f3f496351e98a2a410071a135e0a935d707`; no executable edits after final HOST PASS5/5. Final receipt `/private/tmp/pab-B-controls-HOST-glpw6zw3/HOST-receipt.json` SHA256 `fbe5be54a4aadb2c37b1c3d3ee5c2e47ad1f6817cf6bf90c00aa926b490d323c`. Source/private-inventory verification `/private/tmp/pab-B-controls-source-verification-3jewu83e/verification.json` SHA256 `2e2b102ce53b3b43f70a947ddcc308db6de6c8a1fe9d9f7bd9e138637d1cc545`. Full exact source pins/coverage/retention and limitations are in current r53 HANDOFF and PLAN. No pytest/runtime/Docker/product/DB/native work or old proof/lock cleanup. All100/P211/preservation and actual74 remain pending. Following docs-only commit does not self-approve this preparation.
+
+## Explicit original-positive profile — pre-run HOST freeze (2026-10-24)
+
+Reconstructed this own checkout from immutable candidate docs
+228a54691eacac7b7837b030332080a456f48dfd (executable
+2a266f3f496351e98a2a410071a135e0a935d707). Read full root Sol r54 and
+Astra r44 before implementation. Scope: launcher, finite-driver, host-check,
+manifest and these three handoffs only. No guard, target, model, assertions,
+conftest, observer, entry, identity, lock or B100 runner change.
+
+Before first run, freeze `host-check.py --profile-scope`: six existing/added
+groups 23/26/29/30/32/33, <=33 available groups, <=300 seconds total,
+<=9 seconds/group. Group32 executes actual writer orchestration with fake
+external boundaries: diagnostic1 succeeds, diagnostic0 refuses, positive0
+succeeds, positive1 refuses, and existing deadline failures refuse. Group33
+covers closed profile/expected/command/terminal tampering, exact container
+binding, unchanged readers, actual74 versus9, wrong node/owner/child,
+missing/duplicate B tokens, waits/PASS absence, guard failure/owned state and
+real private tar/hash/slot retention with fake reader commands. Groups23/26
+retain legacy lifecycle success/failure,29 source copy without build,30 legacy
+47-field parser. No actual pytest, collection, product imports, DB, Docker,
+network, native or runtime campaign. Retain first RED and any motivated fix
+receipt without retrying an operational stage. No new full campaign/framework.
+
+First affected HOST receipt: `/private/tmp/pab-p-one-r16-HOST-1uo4ogqu/HOST-receipt.json`,
+PASS six groups, no RED. Source inspection then found final host classification
+still used the historical RED label for positive success; corrected before
+handback. Added direct finite CLI dispatch/refusal and legacy requested-exit
+binding checks. Same six-group frozen scope/caps will run once for these changes;
+this is source/HOST verification, not an operational retry.
+
+Second affected receipt: `/private/tmp/pab-p-one-r16-HOST-ycnqy5ds/HOST-receipt.json`,
+PASS six groups. Final completeness check adds positive intent PENDING binding
+and executes actual host final publication in group33 to verify the new final
+classification and acceptance=false. Same bounded affected matrix is the final
+verification run; both earlier PASS receipts remain retained, no RED occurred.
+
+Final affected receipt: `/private/tmp/pab-p-one-r16-HOST-tcuxvmuo/HOST-receipt.json`,
+PASS6/6,0.614528387s; SHA256
+2574ce0df777eb04ed8313b46867af2fa097523b3470576d7d2b917e23078c5b.
+Executable commit0c058776d641503434de1c5eccb05ecb7ca51fcd. No further
+executable changes or HOST runs after this frozen final receipt. Independent
+SOURCE/HOST review and every operational gate remain parent owned.
