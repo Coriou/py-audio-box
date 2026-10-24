@@ -2091,3 +2091,7 @@ r180 sourceba82cd44/docs26b01145 completes fixture-only binary decoding and both
 ### 2026-10-24 — Upload adopted; voice production domain starts
 
 r181 independent source GO closes R1/R2. Parent merged26b01145 without conflicts; root6upload+2uploadclient+56contract checks PASS including generator determinism. Authenticated upload/asset reads/compact history and client parity now integrated. Commissioned Sol-low r182 trusted prepare/candidate/save/generate domain using existing core/synthetic publication seams; real engine and installed transport qualification still outstanding.
+
+### 2026-10-24 — H1 production synthetic lifecycle dependency resolved
+
+r182 identified existing Core/synthetic workers only support preset speech with no inputs/candidates. Parent answered pending request authorizing minimal worker/synthetic.py and worker/isolated_synthetic.py extensions plus named focused worker tests for contract-valid synthetic prepare and clone-generation, preserving publication/attempt/identity/isolation fences. No HTTP activation, runtime redesign or engine-readiness claim. Pending response has queued child work; no duplicate successor launched. Initial report retains read-only checkpoint, no source/tests yet.
