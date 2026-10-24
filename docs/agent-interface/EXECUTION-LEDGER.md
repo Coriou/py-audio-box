@@ -2363,3 +2363,7 @@ r234 verifiesbothcachedassethashes/fulllegacyimageID but source/runtime/provider
 ### 2026-10-24 — Approved managed cache cleanup cannot recover required headroom
 
 r236 managedUVoffline prune reportsnounusedentries/zero recovery; pipempty othercachesemptyorunprovenactive skipped.4,117,741,568bytesfree (3.835GiB),2,324,709,376bytes shortof6GiB. NoDocker/models/HELD/STT/worktrees touched. ActualCPUexecution remainsblocked; clonecontract source r235 active independently.
+
+### 2026-10-24 — Staged clone reference/audition contract enters review
+
+r235 sourcebf6fdf85/docs3879e3e2 separates ordinary preparedreference/generatedaudition roles in stagedversionedcontracts, retains designgeneratedreference and explicitsyntheticcompatibility.185cases reportedPASS (broaderwrapper beforefinalsmallcheck). Parent commissioned independent Sol r237 exactfinalcontracts/generator/domaincompatibility review. Domainworker migration/realcloning remainsnext; actualCPU blockedheadroom.
