@@ -2023,3 +2023,7 @@ r163 sourceb1dcda18/report34f84015 addsboundedPCMlocalingest24MiB60s/directowner
 ### 2026-10-24 — H2 authenticated voice reads delivered; independent review
 
 r165 source718a404/report2bc39a3 adds4explicitownerDispatcherreads/productionauthfactory/scopedlist-get-versionHTTPCLI-MCP/2KiBoutputcap;5focusedrealCore+ASGItestsPASS. Parentcommissions pab-h2-auth-review-r167-20261024 owner/auth/transport/clientadversarialreview beforeadoption. H1ingestreviewsparallel; publicmutations/jobs/hardware/installedqualificationremainopen.
+
+### 2026-10-24 — H1 review finds WAV validation gaps; bounded parser fix
+
+r166 NO-GO twoP2: wavefloorframes admitsmisaligned/truncatedremainder andceilwidthmislabels15/17/25bitPCM.13+20testsPASS insufficient. Parentcommissions pab-h1-wav-fix-r168-20261024 ingest+tests only boundedrawRIFFextent/padding/framealignment/exactfmtbits-align-byterate validation, preservebytes/publication/storesemantics. H2reviewcontinuesparallel/nooperations/resourcesunchanged.
