@@ -1871,3 +1871,7 @@ r126 detects nine draftentries read only frozenlocalINVALID authority, noexterna
 ### 2026-10-24 — External authority consumer repair delivered; independent gate
 
 r127 newprivateeb6b77d0 inventory1c960b77/draftpins3effbe3e adds9externalpathdigestgates+nestedargv propagation;312focusedinertchecks plussealedinventoryconsumer,16codefrozen/nooperations. Parent commissions pab-authority-consumption-review-r128-20261024 concreteconsumer/auth/hashcycle/fullorderedfakeflow review beforefutureDATA-onlyparentapproval. Originalr124/r126 preserved; no controlclaimschange.
+
+### 2026-10-24 — External authority repair accepted; finite operational build
+
+Parent accepts r128 boundedSOURCE/retainedHOST GO zero blockers exactr127/1c960b77/3effbe3e. NEW pab-external-authorized-build-r129-20261024 authority permits externalprivateapproval+launchDATA-only then exactsixsteps freshpreflight/ONELOCKONLY/ONEprepare/freeze/ONEbuild/DATAbind, codefrozen/firstunexpectedfailureSTOPretain/no retrycleanup. No018authority; independentACTUALimage/boundreviewnext.
