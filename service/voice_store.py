@@ -146,8 +146,30 @@ class VoiceStore:
         return [dict(cursor=r[0], voice=self.get(principal,r[1])) for r in self.db.execute(
             'SELECT seq,id FROM catalogue_voices WHERE principal=? AND seq>? AND (archived=0 OR ?=1) ORDER BY seq LIMIT ?', (principal,after,int(include_archived),limit))]
 
+    def summary(self, principal, voice_id):
+        """Compact identity with counts; never loads authored text/history."""
+        _id(principal); _id(voice_id)
+        row = self.db.execute('SELECT id,revision,archived FROM catalogue_voices WHERE principal=? AND id=?', (principal,voice_id)).fetchone()
+        if row is None: raise ValueError('not_found')
+        count = self.db.execute('SELECT count(*) FROM catalogue_versions WHERE principal=? AND voice_id=?', (principal,voice_id)).fetchone()[0]
+        return dict(id=row[0], revision=row[1], archived=bool(row[2]), version_count=count)
+
+    def summaries(self, principal, *, after=0, limit=20, include_archived=False):
+        _id(principal)
+        oracle.require(type(after) is int and after >= 0 and type(limit) is int and 1 <= limit <= 20 and type(include_archived) is bool, 'invalid_request')
+        return [dict(cursor=r[0], voice=self.summary(principal,r[1])) for r in self.db.execute(
+            'SELECT seq,id FROM catalogue_voices WHERE principal=? AND seq>? AND (archived=0 OR ?=1) ORDER BY seq LIMIT ?', (principal,after,int(include_archived),limit))]
+
+    def version_summaries(self, principal, voice_id, *, after=0, limit=20):
+        _id(principal); _id(voice_id)
+        oracle.require(self.db.execute('SELECT 1 FROM catalogue_voices WHERE principal=? AND id=?', (principal,voice_id)).fetchone() is not None, 'not_found')
+        oracle.require(type(after) is int and after >= 0 and type(limit) is int and 1 <= limit <= 20, 'invalid_request')
+        return [dict(cursor=r[0], id=r[1], voice_id=voice_id) for r in self.db.execute(
+            'SELECT seq,id FROM catalogue_versions WHERE principal=? AND voice_id=? AND seq>? ORDER BY seq LIMIT ?', (principal,voice_id,after,limit))]
+
     def versions(self, principal, voice_id, *, after=0, limit=20):
-        self.get(principal,voice_id)
+        _id(principal); _id(voice_id)
+        oracle.require(self.db.execute('SELECT 1 FROM catalogue_voices WHERE principal=? AND id=?', (principal,voice_id)).fetchone() is not None, 'not_found')
         oracle.require(type(after) is int and after>=0 and type(limit) is int and 1<=limit<=20, 'invalid_request')
         return [dict(cursor=r[0], version=json.loads(r[1])) for r in self.db.execute(
             'SELECT seq,record FROM catalogue_versions WHERE principal=? AND voice_id=? AND seq>? ORDER BY seq LIMIT ?', (principal,voice_id,after,limit))]
@@ -185,6 +207,16 @@ class VoiceStore:
         oracle.require(type(expected_revision) is int and expected_revision >= 0, 'invalid_request')
         payload = dict(version=version, expected_revision=expected_revision)
         def apply():
+            # New registrations only: old records/read/replays remain exact.
+            oracle.require(len(_encode(version).encode('utf-8')) <= 65536, 'resource_limit')
+            def bounded(value):
+                if isinstance(value, str):
+                    oracle.require(len(value.encode('utf-8')) <= 16384, 'resource_limit')
+                elif isinstance(value, dict):
+                    for key, item in value.items(): bounded(key); bounded(item)
+                elif isinstance(value, list):
+                    for item in value: bounded(item)
+            bounded(version)
             voice_id = version['voice_id']
             prior = self.db.execute('SELECT record FROM catalogue_versions WHERE principal=? AND id=?', (principal,version['id'])).fetchone()
             oracle.require(prior is None, 'version_conflict')

@@ -336,3 +336,49 @@ class VoiceStoreTests(unittest.TestCase):
         initialize(self.core)
         with self.assertRaisesRegex(ValueError,'pre_p1_inspect_only'):self.register()
         self.core.p1=True
+
+    def test_compact_pages_and_versions_never_full_get(self):
+        from unittest.mock import patch
+        self.register()
+        for i in range(3):
+            v=copy.deepcopy(self.version); v['id']='page-'+str(i)
+            self.register('page-'+str(i), i+1, v)
+        with patch.object(self.store, 'get', side_effect=AssertionError('full history')):
+            self.assertEqual(self.store.summary('alice', self.version['voice_id'])['version_count'], 4)
+            self.assertEqual(len(self.store.summaries('alice')), 1)
+            first=self.store.version_summaries('alice', self.version['voice_id'], limit=2)
+            rest=self.store.version_summaries('alice', self.version['voice_id'], after=first[-1]['cursor'], limit=2)
+            self.assertEqual(len(first)+len(rest), 4)
+            self.assertEqual(len(self.store.versions('alice', self.version['voice_id'], limit=2)), 2)
+        with self.assertRaisesRegex(ValueError, 'not_found'):
+            self.store.version_summaries('bob', self.version['voice_id'])
+
+    def test_new_registration_text_budget_preserves_legacy_reads_and_replay(self):
+        v,_=self.media()
+        v['reference_text']='x'*16385
+        v['configuration']['reference_text']=v['reference_text']
+        with self.assertRaisesRegex(ValueError, 'resource_limit'): self.register(version=v)
+        v['reference_text']='x'*16384
+        v['configuration']['reference_text']=v['reference_text']
+        saved=self.register(version=v)
+        self.assertEqual(saved,self.register(version=v))
+        self.assertEqual(self.store.version('alice',v['id'])['reference_text'],v['reference_text'])
+
+    def test_ingested_asset_registers_and_freezes_verified_hash(self):
+        from service.ingest import ingest_local
+        import io
+        import wave
+        output=io.BytesIO()
+        with wave.open(output,'wb') as wav:
+            wav.setnchannels(1); wav.setsampwidth(2); wav.setframerate(24000)
+            wav.writeframes(b'\0\0'*600000)
+        asset=ingest_local(self.core,'alice',output.getvalue())
+        v=copy.deepcopy(self.version)
+        v.update(origin='clone', reference_asset_ids=[asset['id']], reference_text=' Exact reference. ',
+                 configuration=dict(mode='qwen_clone',reference_asset_id=asset['id'],reference_text=' Exact reference. ',conditioning='icl'))
+        v['settings']['kind']='qwen_clone'; v['settings']['instruction']=None
+        v['settings_sha256']=oracle.canonical_hash(v['settings'])
+        saved=self.register(version=v)['version']
+        self.reopen()
+        self.assertEqual(self.store.version('alice',v['id']),saved)
+        self.assertEqual(saved['reference_asset_sha256'],{asset['id']:asset['sha256']})
