@@ -258,6 +258,9 @@ class Core:
             self.active = None
             self._publication_storage_failed = False
             self._transaction_serial = 0
+            from service.voice_store import VoiceStore, initialize as initialize_voices
+            initialize_voices(self)
+            self.voices = VoiceStore(self)
             with _core_bookkeeping(): self._ownership.state = 'live'
         except BaseException as primary:
             self._ownership.constructor_failed = True

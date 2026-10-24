@@ -15,7 +15,10 @@
     "missing_media": 422,
     "stale_take": 409,
     "clipping": 422,
-    "migration_collision": 409
+    "migration_collision": 409,
+    "alias_conflict": 409,
+    "version_conflict": 409,
+    "voice_archived": 409
   },
   "cli_exit": {
     "success": 0,

@@ -1000,5 +1000,6 @@
         "not_found"
       ]
     }
-  ]
+  ],
+  "implementation_note": "Declarations are intended transport contracts. Public HTTP remains the four-read synthetic fixture. H0 register/aliases are trusted domain methods and schema fixtures, not HTTP routes; H1 voice_save selects a prepared candidate and calls register. H2 adds alias transport under shared contract ownership."
 }
