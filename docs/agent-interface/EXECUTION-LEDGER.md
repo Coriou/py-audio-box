@@ -2195,3 +2195,7 @@ r199 sourceeaccc205/docsc60e49b5 retains fixed-role readers, exact operator extr
 ### 2026-10-24 — Read/fence checkpoint retained; initializer narrowed to completion
 
 r200 source45d69668/docsb53eff95 retains role-aware offline/reconcile/journal readers and prewrite scope fences;19 focused+31 legacy invocations reported PASS. Closed records and initialization still missing. Parent commissioned sole r201 specifically executable closed split enrollment/create-only initializer with existing readers, excluding further host scaffolding. No root adoption or activation; checkpoints are incomplete, not install progress acceptance.
+
+### 2026-10-24 — Executable split initializer delivered; combined security review
+
+r201 sourcee4f84148/docs8aa9a5d8 implements closed split enrollment, create-only initializer/drop-child code, quarantine/completion and validated private-copy inspection;82 invocations reported PASS with injectedMacidentity. Parent commissioned independent Sol r202 covering combined r199/r200/r201 source. No source adoption; actualLinuxUIDproof absent, hostobservation/registrationwriter and activation remainclosed.
