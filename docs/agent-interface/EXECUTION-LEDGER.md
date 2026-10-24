@@ -2379,3 +2379,7 @@ Parent authorized r238 narrow persistence.py closedtwo-output adoptionintent + e
 ### 2026-10-24 — Shared prepared-reference adoption decoder in recovery
 
 Parent authorized r238 minimal recovery.py closedlegacy-or-versionedadoption decoder with literalfirstfile scalarcorroboration, fullpair/manifest/attempt binding and live/detachedsnapshot coherence. NoDDL/snapshotshape/migration/repair; malformedversion/pair refusal and legacytestsrequired.
+
+### 2026-10-24 — Atomic reference/audition publication candidate enters review
+
+r238 source41460ba3/docs7e6dd350 delivers frozenrolepair/synthetic2files/Coreverifiedpairpublication, versionedadoptionbinding preservingDDL/scalarlegacy and recovery/reconciledecoder.192checks reportedPASS inclfault/restart/commituncertainty/legacyoneoutput. Parent commissioned independent Sol r239. Candidateunmerged, noactualtransformation/cloningqualification; runtimeblockedheadroom.
