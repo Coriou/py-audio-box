@@ -1695,3 +1695,7 @@ r82 t3-b7dca57d source428b8696/docsdb5df551 delivers passiveopt-in refusal/outco
 ### 2026-10-24 — Diagnostic review finds two finite control issues
 
 r83 NO-GO: observewrapper repeats/skips originalshortcircuitcomparisons; COMPLETE ignores teardown-onlyOTHER/overflow. GuardAST/order/197maps/647HOSTreceipts otherwiseverifiedwithinbounds. Parent assigns pab-b100-directed-diagnostic-fix-r84-20261024 freshsuccessor control-onlyfixes+mechanicalpins andisolatedcounter/teardownnegativeHOSTchecks. Guard/target/productunchanged; no build/runtimeauthority. FreshSolreviewthenAstra targetedfinal.
+
+### 2026-10-24 — Diagnostic finite corrections delivered; fresh Sol gate
+
+r84 t3-bb323d30 source72ef0985/docsfaf0ef25 closesclaimed R83-1inlineonce-onlyshortcircuit/exceptionorder andR83-2bothsnapshotclosedvalidation;307inertHOSTchecks/197pins/unchangedguard. Independent pab-b100-directed-fix-review-r85-20261024 assignedexactdelta+originalrequirements/receiptgate beforeAstratargetedfinal. No build/runtime/lanemutationauthority.
