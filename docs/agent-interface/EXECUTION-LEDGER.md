@@ -1735,3 +1735,7 @@ r92 exactsixcachetreesdeleted0errors/deferred,free8054173696(7.501GiB),observedd
 ### 2026-10-24 — Relative inventory root defect disposed; preflight then unspent build
 
 r93fresh6GiBadmission/source197maps passed butprivateinventoryrelativekey resolvedagainstcandidatecwd causedSTOP beforeDocker/mutex/prepare/build. Parent authorizes pab-directed-build-path-fix-r94-20261024 freshcorrectedexplicitinventoryroots+comprehensivereadonlypreflight BEFOREoperationalonce, thenoriginalLOCKONLY+ONEprepare/build/data-onlybinding; failedr90/r93proofimmutable. No weakenedchecks/runtime/cleanup, independentactualreviewaftercompletion.
+
+### 2026-10-24 — Directed image built and data bound; independent actual gate
+
+r94 completes oldLOCKONLY/freshONEpreparebuild/verifiedterminalownrelease, IID1d00af1660042b2e0d4de584cad9718aeebd4883c9b4ab47ad692403a4e98c35. Boundmanifest0fe1876e preserves13codebytes/hashes;19captures38streams/3209inventory claimed,modehistorydisclosed,r90/r93immutable. Independent pab-directed-build-bound-review-r95-20261024 auditsexactactualbuild+bounddata beforeparentONE017approval; no diagnosticexecuted.
