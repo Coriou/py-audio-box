@@ -1627,3 +1627,7 @@ r65 t3-65b1e6b7 execf5bc92a1098266c4b3f0565198727b6e38fd61a5 docs7a53112d1c6c757
 ### 2026-10-24 — Overhead source/F1 HOST accepted with limits; one optimized image build
 
 Parentacceptsr66boundedNEXTBUILDGO F1closed/fresh6HOSTverified; historicalPASS32notpromoted, originaltiming/restorationlifetimeunqualified. ONE pab-b-optimized-image-r67-20261024 authorizedold3stoppedquiescence/exactlockonlyfinalization preservingallobjects/evidence, thenONEpositiveprepare+sourcebuild≤300/400 atf5bc92a1/docs7a53112d/baseunchanged197maps. IndependentACTUALbuildgate beforeONEunchangedoriginalpositive, no runtime/profiling/100campaignnow.
+
+### 2026-10-24 — Unrecorded historical inode premise corrected; fresh owner-bound finalization
+
+r67STOPpreoperations ZERO Docker/prepare/build: oldslots/inventoryneverpersistedlaneinode. Parentcorrectsimpossibleagent-addedhistoricalcontinuityrequirement explicitly; no fabricatedhistory. Freshowner-boundLOCKONLYfinalization authorizedcurrentr67inode[16777223,1007183657]+authenticatedowner91e131a6/bothslots132inventory+fresh3stoppedidentitychecks, heldFDpath/inodeprotection, allobjects/proofpreserved, oldlaneownerentryremovalexplicitinventoryexception. ONE pab-b-owner-finalization-build-r68-20261024 thenunspentprepare/sourcebuild≤300/400 atf5bc92a1/docs7a53112d; no runtime/tests/retry/waiver.
