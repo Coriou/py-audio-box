@@ -2251,3 +2251,7 @@ r212 bounded source GO independently confirms116PASS and fourRED historical regr
 ### 2026-10-24 — Packaged installed startup reader scope
 
 r213 requests split startup/enrollment reader. Parent authorized narrow recovery.py readonly adapter with exact config/registration/hello identity and prelistener negatives; legacy and B2writers unchanged. Explicitly preserve rootreceipt confidentiality: controlcannot inherit privilegedreader authority; notificationalone notactivationauthority. Same taskcontinues.
+
+### 2026-10-24 — Public startup gate projection across receipt boundary
+
+Parent authorized r213 bounded nonsecret gate projection via fixed trustedhost dockerexec to samewaitingcontrol private tmpfs after successful retained registration/postbrackets. ExactDB/enrollment/config and actualcontrolincarnation/authworkerhello corroboration required; digest/notificationalone notauthority. No receipt/key access or publicgate endpoint. Independentreview must cover channel and stale/replacement negatives.
