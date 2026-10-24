@@ -2219,3 +2219,7 @@ r205 found enrolled config lacks CPU/tmpfs/input paths. Parent authorized closed
 ### 2026-10-24 — Installed host observation candidate enters review
 
 r205 source4f282794/docs77894777 delivers fixed-policy Docker/proc/input/mount observation and protected launch authority callback;81 focused methods reported PASS with injected observations. Parent commissioned independent Sol r206. Candidate unmerged; registrationwriter/launchactivation and actualLinuxqualification remainclosed. No Docker mutation or credential contents observed.
+
+### 2026-10-24 — Host enumeration bound correction
+
+r206 source NO-GO R206-1: modelscandir materializes/sorts before4096/deadline checks; inert expireddeadline consumed10000 entries despite81 testsPASS. Parent commissioned targeted Sol r207 boundediteration/globalbudget regression. Observer unmerged; no actualhostqualification. Credential metadataopen/fstat allowed, contents remainunread/unhashed.
