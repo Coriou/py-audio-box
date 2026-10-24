@@ -198,6 +198,92 @@ class ActivationTests(unittest.TestCase):
             self.assertIsNone(self.runtime.authority)
         finally:owner.close()
 
+    def test_queued_cancel_late_hello_keeps_accounting(self):
+        from service.production import Production
+        from service.admission import Admission
+        core=Core(self.root)
+        job=Production(core).generate('alice','late-cancel',self.context,
+            _admission=Admission(core,self.stage,self.fixture.config['budget']),_profiles=self.profiles)
+        job.update(state='cancelled',stage='never_started')
+        with core.transaction():core._save(job)
+        core.close()
+        self.runtime.changed_at=5
+        owner=self.owner()
+        try:
+            status=self.wait(lambda:(s if (s:=owner.call('status'))['reconciled'] else None))
+            self.assertFalse(status['persistent_activation'])
+            self.assertEqual(status['reservations'][-1]['state'],'queued')
+        finally:owner.close()
+
+    def cancellation_case(self, phase, fail_close=False):
+        entered=threading.Event(); release=threading.Event(); captured=[]; closes=[]
+        original_prepare=e.InstalledActivation.prepare
+        def prepare(activation,*args):
+            result=original_prepare(activation,*args)
+            if phase=='preparation':
+                entered.set();self.assertTrue(release.wait(4))
+            return result
+        def acquire(*args,**kwargs):
+            owner=Dispatcher(*args,**kwargs);captured.append(owner)
+            original_close=owner.close
+            def close():
+                closes.append(True)
+                if fail_close:raise RuntimeError('injected_close_unknown')
+                original_close()
+            owner.close=close
+            entered.set();self.assertTrue(release.wait(4))
+            return owner
+        closed=[];original_notification_close=self.waiting.close
+        def notification_close():
+            if not closed:closed.append(True);original_notification_close()
+        self.waiting.close=notification_close
+        with patch('service.dispatcher.Dispatcher',side_effect=acquire), patch.object(e.InstalledActivation,'prepare',prepare):
+            app=self.factory()
+            async def run():
+                context=app.router.lifespan_context(app)
+                startup=asyncio.create_task(context.__aenter__())
+                self.assertTrue(await asyncio.to_thread(entered.wait,4))
+                startup.cancel()
+                await asyncio.sleep(.02)
+                startup.cancel()
+                with self.assertRaises(asyncio.CancelledError):await startup
+                self.assertFalse(closed)
+                release.set()
+                record=app.state.installed_lifecycle
+                task=record['task']
+                try:
+                    if fail_close:
+                        with self.assertRaisesRegex(RuntimeError,'injected_close_unknown'):
+                            await asyncio.wait_for(asyncio.shield(task),4)
+                        self.assertIs(record['owner'],captured[0])
+                        self.assertIs(e._INSTALLED_LIFECYCLES[id(record)],record)
+                        self.assertFalse(closed)
+                    else:
+                        await asyncio.wait_for(asyncio.shield(task),4)
+                        self.assertNotIn(id(record),e._INSTALLED_LIFECYCLES)
+                        self.assertTrue(closed)
+                    self.assertEqual(len(closes),int(phase=='acquisition'))
+                finally:
+                    for owner in captured:
+                        if owner.thread.is_alive(): Dispatcher.close(owner)
+                    e._INSTALLED_LIFECYCLES.pop(id(record),None)
+                    notification_close()
+            try:asyncio.run(run())
+            finally:
+                release.set()
+                for owner in captured:
+                    if owner.thread.is_alive(): Dispatcher.close(owner)
+                notification_close()
+
+    def test_repeated_acquisition_cancellation_retains_owner(self):
+        self.cancellation_case('acquisition')
+
+    def test_repeated_preparation_cancellation_retains_dependency(self):
+        self.cancellation_case('preparation')
+
+    def test_cancelled_acquisition_close_failure_retains_obligations(self):
+        self.cancellation_case('acquisition',fail_close=True)
+
     def test_orphan_guard_prevents_activation(self):
         from service.production import Production
         from service.admission import Admission

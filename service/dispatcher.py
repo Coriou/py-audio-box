@@ -126,10 +126,8 @@ class Dispatcher:
             except (OSError, sqlite3.Error, ValueError):
                 pass  # Diagnostic failure is fail-closed, but the owner must service stops.
             self.integrity_fault = self.integrity['blocked']
-            with core.transaction():
-                for reservation in self.admission.store.rows():
-                    if self._activation_open() and not self.orphaned and not self.resource_fault and not self.integrity_fault and not self.persistence_fault and reservation['state']=='queued' and core.job(reservation['id'])['state']=='cancelled':
-                        self.admission.store.release_tx(reservation['id'],unstarted=True)
+            if not self.enrolled:
+                self._release_startup_cancelled()
             self.initialized.set_result(True)
             while not self.stopping:
                 try:
@@ -171,7 +169,18 @@ class Dispatcher:
 
     def _activation_open(self):
         # One closed predicate for commands, scheduler and queued release.
-        return not self.enrolled or self.installed_checked
+        return not self.enrolled or (self.installed_checked and self.reconciled and
+            not self.quarantined and not self.orphaned and not self.resource_fault and
+            not self.persistence_fault and not self.integrity_fault)
+
+    def _release_startup_cancelled(self):
+        with self.core.transaction():
+            for reservation in self.admission.store.rows():
+                if (self._activation_open() and not self.orphaned and not self.resource_fault
+                        and not self.integrity_fault and not self.persistence_fault
+                        and reservation['state']=='queued'
+                        and self.core.job(reservation['id'])['state']=='cancelled'):
+                    self.admission.store.release_tx(reservation['id'],unstarted=True)
 
     def _ready(self):
         return (self._activation_open() and self.reconciled and not self.closing and
@@ -350,7 +359,7 @@ class Dispatcher:
         return False
 
     def _tick(self):
-        if not self._activation_open(): return  # Legacy enrolled remains inspect-only.
+        if self.enrolled and not self.installed_checked: return  # Legacy inspect-only.
         if getattr(self.core,'_publication_storage_failed',False):
             self.persistence_fault=self.quarantined=True
             return  # Exact reap preceded publication; storage needs reopen, no live retry.
@@ -424,7 +433,9 @@ class Dispatcher:
                 if self.installed_checked: self.installed_activation.check_hello(value)
                 self.quarantined=self.orphaned or self.resource_fault or bool(value['quarantined'])
             except Exception:self.quarantined=True
-            self.reconciled=True;return
+            self.reconciled=True
+            if self.installed_checked: self._release_startup_cancelled()
+            return
         if self.quarantined or self.integrity_fault:return
         queued=next((json.loads(r[0]) for r in self.core.db.execute('SELECT job FROM jobs ORDER BY seq') if json.loads(r[0])['state']=='queued'),None)
         if queued:

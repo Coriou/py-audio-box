@@ -20,6 +20,9 @@ GATE_DIRECTORY = Path('/tmp/speech-box-activation')
 GATE_NAME = 'gate.json'
 GATE_LIMIT = 16384
 
+# Strong process-lifetime responsibility, including failed/unknown close outcomes.
+_INSTALLED_LIFECYCLES = {}
+
 
 def projection(value):
     from service.recovery import closed, validate_registration
@@ -290,23 +293,21 @@ def create_installed_app(*, configuration_file, credential_file, root='/control/
     async def lifespan(app):
         notification = waiting if waiting is not None else WaitingControl()
         owner = None
+        preparation = acquisition = None
+        responsibility = dict(notification=notification, owner=None, task=None, error=None)
+        _INSTALLED_LIFECYCLES[id(responsibility)] = responsibility
+        app.state.installed_lifecycle = responsibility
         try:
             activation = InstalledActivation(notification, config)
             # Waiting has its own 30-second budget and owns no Dispatcher/Core.
             preparation = asyncio.create_task(asyncio.to_thread(activation.prepare, runtime, root))
-            try:
-                await asyncio.shield(preparation)
-            except asyncio.CancelledError:
-                await preparation
-                raise
+            await asyncio.shield(preparation)
             acquisition = asyncio.create_task(asyncio.to_thread(Dispatcher, root, staging=staging, runtime=runtime,
                 profiles=config['profiles'], budget=config['budget'], production_contexts=contexts,
                 installed_activation=activation))
-            try:
-                owner = await asyncio.shield(acquisition)
-            except asyncio.CancelledError:
-                owner = await acquisition
-                raise
+            owner = await asyncio.shield(acquisition)
+            responsibility['owner'] = owner
+            app.state.dispatcher = owner
             deadline = time.monotonic()+3
             while True:
                 status = await asyncio.to_thread(owner.call, 'status')
@@ -318,10 +319,32 @@ def create_installed_app(*, configuration_file, credential_file, root='/control/
             app.state.dispatcher = owner
             yield
         finally:
-            try:
-                if owner is not None: await asyncio.to_thread(owner.close)
-            finally:
+            async def cleanup():
+                # This task is never awaited without a shield. Repeated caller
+                # cancellation cannot cancel a to_thread result or lose its owner.
+                try:
+                    if acquisition is not None:
+                        responsibility['owner'] = await acquisition
+                        app.state.dispatcher = responsibility['owner']
+                    elif preparation is not None:
+                        await preparation
+                except BaseException as exc:
+                    responsibility['error'] = exc
+                acquired = responsibility['owner']
+                if acquired is not None:
+                    try:
+                        await asyncio.to_thread(acquired.close)
+                    except BaseException as exc:
+                        responsibility['error'] = exc
+                        # Notification remains available to the retained owner.
+                        raise
                 notification.close()
+                _INSTALLED_LIFECYCLES.pop(id(responsibility), None)
+            task = asyncio.create_task(cleanup())
+            responsibility['task'] = task
+            # Retrieve background failures while retaining the record and owner.
+            task.add_done_callback(lambda done: None if done.cancelled() else done.exception())
+            await asyncio.shield(task)
     application.router.lifespan_context = lifespan
     return application
 
