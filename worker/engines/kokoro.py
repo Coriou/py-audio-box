@@ -1,6 +1,7 @@
 """One bounded local Kokoro call. No publication or service authority."""
 import hashlib
 import io
+from numbers import Integral
 from pathlib import Path
 import wave
 from worker.transport import Refused
@@ -46,7 +47,7 @@ def execute(execution, text, bundles, *, backend_factory=None):
         size = 44 + frames*2
         if not 0 < frames <= execution.max_frames or size > execution.max_output_bytes:
             raise Refused('output_limit')
-        if (result.sample_rate, result.channels) != (execution.sample_rate, 1) or data.shape not in ((frames,), (frames, 1)):
+        if any(isinstance(v, bool) or not isinstance(v, Integral) for v in (result.sample_rate, result.channels)) or (result.sample_rate, result.channels) != (execution.sample_rate, 1) or data.shape not in ((frames,), (frames, 1)):
             raise Refused('audio_format')
         # AudioResult is mutable: revalidate after receiving it, in bounded chunks.
         if not np.issubdtype(data.dtype, np.number) or np.issubdtype(data.dtype, np.complexfloating):

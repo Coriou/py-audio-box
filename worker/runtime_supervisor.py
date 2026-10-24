@@ -19,9 +19,10 @@ from worker.transport import canonical, Refused, Session
 
 
 class RuntimeSupervisor:
-    def __init__(self, root='/receipts', ipc='/ipc'):
+    def __init__(self, root='/receipts', ipc='/ipc', *, bundles=None):
         if os.getpid() != 1:
             raise RuntimeError('pid1_required')
+        self.bundles = dict(bundles or {})
         self.journal = Journal(root)
         self.ipc = Path(ipc)
         self.boot = secrets.token_hex(16)
@@ -79,7 +80,7 @@ class RuntimeSupervisor:
             if self.journal.maintenance is not None: value['maintenance']=self.journal.maintenance
             return value
         if op == 'prepare':
-            if set(body) != {'snapshot', 'binding', 'fixture'} or body['fixture'] not in ('silence', 'busy', 'descendants', 'permissions'):
+            if set(body) != {'snapshot', 'binding', 'fixture'} or body['fixture'] not in ('silence', 'busy', 'descendants', 'permissions', 'kokoro'):
                 raise Refused('closed_prepare')
             snapshot = body['snapshot']
             if not isinstance(snapshot, list) or len(snapshot) != 4 or hashlib.sha256(canonical(snapshot)).hexdigest() != body['binding']:
@@ -87,6 +88,11 @@ class RuntimeSupervisor:
             from contracts import validate as oracle
             job, context, assets, profiles = snapshot
             oracle.stored_context(job, context)
+            from worker.runtime_protocol import execution
+            spec = execution(context)
+            if (body['fixture'] == 'kokoro') != (spec is not None): raise Refused('execution_dispatch_mismatch')
+            if spec is not None and context['execution']['bundles'] != self.bundles:
+                raise Refused('unregistered_mount_mapping')
             attempt = job['attempts'][-1]
             allocation = dict(snapshot=snapshot, binding=body['binding'], fixture=body['fixture'])
             for row in self.journal.value['records']:

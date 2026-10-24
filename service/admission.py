@@ -32,6 +32,16 @@ class Admission:
         limits=plan['resolved']['profile']['limits'];request=plan['request']
         if len(request.get('text',request.get('reference_text','')))>limits['text_chars'] or request.get('variants',1)>limits['variants']:raise ValueError('resource_input_limit')
         if len(encode(context).encode())>48000:raise ValueError('resource_plan_limit')
+        from worker.runtime_protocol import execution
+        spec = execution(context)
+        if spec is not None:
+            if profiles is None: raise ValueError('no_authority')
+            selected = next(p for p in profiles if p['id']=='kokoro-cpu')
+            if selected['verification'] != 'measured' or not selected['qualification_receipt'] or 'synthetic' in selected['qualification_receipt'].lower():
+                raise ValueError('real_qualification_required')
+            return dict(configuration=oracle.canonical_hash(context['execution']),
+                        slots=1,ram_bytes=spec.memory_bytes,vram_bytes=0,pids=48,
+                        disk_bytes=limits['disk_bytes'],attempt_disk_bytes=limits['disk_bytes'])
         # Closed installed runtime capability, not a general engine/profile adapter.
         if plan['resolved']['profile']['id']!='cpu-synthetic':
             raise ValueError('resource_runtime_unsupported')
@@ -80,9 +90,14 @@ class Admission:
             if stage.exists():
                 size=sum(p.stat().st_size for p in stage.iterdir() if p.is_file())
                 if size>row['demand']['attempt_disk_bytes']:raise ValueError('resource_stage_growth')
+                from worker.runtime_protocol import execution
+                spec=execution(context)
+                max_bytes=spec.max_output_bytes if spec else 9644
+                max_frames=spec.max_frames if spec else 4800
+                rate=24000 if spec else 48000
                 output=stage/'output.wav'
-                if output.exists() and output.stat().st_size>9644:raise ValueError('resource_output_bytes')
+                if output.exists() and output.stat().st_size>max_bytes:raise ValueError('resource_output_bytes')
                 if output.exists() and publication:
                     with wave.open(str(output),'rb') as wav:
-                        if wav.getnframes()>4800 or wav.getframerate()!=48000 or wav.getnchannels()!=1 or wav.getsampwidth()!=2:
+                        if wav.getnframes()>max_frames or wav.getframerate()!=rate or wav.getnchannels()!=1 or wav.getsampwidth()!=2:
                             raise ValueError('resource_decoded_limit')

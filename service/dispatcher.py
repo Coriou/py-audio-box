@@ -1,4 +1,4 @@
-"""Installed internal fixed synthetic dispatcher. R1/P1 activation stays closed.
+"""Internal authenticated execution dispatcher. Installed activation stays closed.
 
 The owner loop alone uses Core/SQLite. A single executor performs bounded UDS I/O;
 its detached replies are consumed as commands on that loop, never as DB callbacks.

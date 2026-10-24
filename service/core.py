@@ -352,8 +352,8 @@ class Core:
             self.db.execute('INSERT INTO revisions VALUES (?,?,?)', (project_id,after['revision'],encode(after)))
         return after
 
-    def submit_synthetic(self, principal: str, key: str, context: dict, *, retry_of: str | None = None, _dispatch_settings=None, _admission=None, _profiles=None) -> dict:
-        """Trusted fixture-only admission; never claims installed/qualified ML readiness.
+    def submit_execution(self, principal: str, key: str, context: dict, *, retry_of: str | None = None, _dispatch_settings=None, _admission=None, _profiles=None) -> dict:
+        """One trusted submission transaction for synthetic and closed Kokoro contexts.
 
         Resolve context in control before calling. Duplicate lookup precedes resolution.
         """
@@ -364,6 +364,10 @@ class Core:
         if row:
             oracle.require(row[0] == fingerprint, 'idempotency_conflict')
             return json.loads(row[1])
+        from worker.runtime_protocol import execution
+        spec=execution(context)
+        if spec is not None and (_admission is None or _profiles is None or _dispatch_settings is None or _dispatch_settings[0]!='kokoro'):
+            raise ValueError('authenticated_dispatch_required')
         if _admission is not None:
             _admission.demand(context,_profiles)
         from contextlib import nullcontext
@@ -395,6 +399,10 @@ class Core:
             if _dispatch_settings is not None:
                 self.db.execute('INSERT INTO dispatch_settings VALUES (?,?,?)',(job['id'],*_dispatch_settings))
         return job
+
+    def submit_synthetic(self, *args, **kwargs):
+        """Historical synthetic entry point, sharing the sole submission transaction."""
+        return self.submit_execution(*args, **kwargs)
 
     def start(self, *, delay: float = 0) -> dict | None:
         if not self.historical_local: raise ValueError('dispatcher_required')
@@ -491,19 +499,25 @@ class Core:
         path=(Path(stage_root) if stage_root is not None else self.root/'staging')/job['attempts'][-1]['staging_id']/'output.wav'
         stage=path.parent
         oracle.require(not stage.is_symlink() and stage.stat().st_uid==os.getuid() and stat.S_IMODE(stage.stat().st_mode)==(0o770 if stage_root is not None else 0o700), 'foreign_stage')
+        from worker.runtime_protocol import execution, generated_source
+        spec=execution(context)
+        byte_limit=spec.max_output_bytes if spec else 1024*1024
         fd=os.open(path, os.O_RDONLY|os.O_NOFOLLOW)
         with os.fdopen(fd,'rb') as stream:
             info=os.fstat(stream.fileno())
-            oracle.require(stat.S_ISREG(info.st_mode) and info.st_uid==(engine_uid if stage_root is not None else os.getuid()) and info.st_nlink==1 and info.st_size<=1024*1024, 'foreign_media')
-            data=stream.read(1024*1024+1)
+            oracle.require(stat.S_ISREG(info.st_mode) and info.st_uid==(engine_uid if stage_root is not None else os.getuid()) and info.st_nlink==1 and info.st_size<=byte_limit, 'foreign_media')
+            data=stream.read(byte_limit+1)
         import io
         with wave.open(io.BytesIO(data),'rb') as wav:
             measured=dict(sha256=hashlib.sha256(data).hexdigest(),frames=wav.getnframes(),sample_rate=wav.getframerate(),channels=wav.getnchannels(),media_format='wav',media_subtype={2:'PCM_16',3:'PCM_24',4:'PCM_32'}.get(wav.getsampwidth(),'OTHER'))
             oracle.require(len(wav.readframes(wav.getnframes()))==measured['frames']*measured['channels']*wav.getsampwidth(), 'missing_media')
         oracle.require(measured=={k:output[k] for k in measured}, 'media_mismatch')
-        # Fixed fake-worker policy; provenance is control-derived, never accepted on faith.
-        expected=dict(kind='synthetic',source_sha256=measured['sha256'],source_id='phase-1a-silence',missing_fields=[])
-        oracle.require(output['provenance']==expected and measured['frames']==4800 and measured['sample_rate']==48000 and measured['channels']==1 and measured['media_subtype']=='PCM_16', 'synthetic_policy')
+        if spec is None:
+            expected=dict(kind='synthetic',source_sha256=measured['sha256'],source_id='phase-1a-silence',missing_fields=[])
+            oracle.require(output['provenance']==expected and measured['frames']==4800 and measured['sample_rate']==48000 and measured['channels']==1 and measured['media_subtype']=='PCM_16', 'synthetic_policy')
+        else:
+            expected=dict(kind='generated',source_sha256=measured['sha256'],source_id=generated_source(context),missing_fields=[])
+            oracle.require(output['provenance']==expected and 0<measured['frames']<=spec.max_frames and measured['sample_rate']==24000 and measured['channels']==1 and measured['media_subtype']=='PCM_16' and len(data)==44+2*measured['frames'], 'generated_policy')
         artifact=dict(id=manifest['artifact_id'],job_id=job['id'],generation=job['generation'],asset_ids=[output['id']],input_sha256=job['input_sha256'],project_revision=0,manifest_sha256=oracle.canonical_hash(manifest),identity=context['plan']['resolved']['identity'],attempt_id=job['attempts'][-1]['id'],owner_id=owner,staging_id=job['attempts'][-1]['staging_id'])
         oracle.publication(job,job['attempts'][-1],artifact,{output['id']:measured['sha256']},transport_owner=owner,context=context,manifest=manifest,verified_result=message,allowed_assets=self._input_assets(job['principal_id'], context['plan']))
         return data,manifest,artifact,message

@@ -17,6 +17,8 @@ class Authority:
 
     def __init__(self, job, context, allowed_assets, profiles):
         oracle.stored_context(job, context)
+        from worker.runtime_protocol import execution
+        execution(context)
         object.__setattr__(self, '_snapshot', canonical([job, context, allowed_assets, profiles]))
 
     # Return detached values: neither the caller nor an accessor can retarget allocation.

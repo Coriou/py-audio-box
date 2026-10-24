@@ -68,6 +68,12 @@ class EngineTests(unittest.TestCase):
             with self.assertRaises(Refused): self.run_engine()
             self.assertEqual(self.calls[-1], 'closed')
 
+    def test_mutated_numeric_metadata_refuses(self):
+        for rate, channels in ((24000, True), (24000., 1), (24000, 1.)):
+            self.audio.sample_rate=rate;self.audio.channels=channels
+            with self.assertRaises(Refused):self.run_engine()
+            self.assertEqual(self.calls[-1], 'closed')
+
     def test_bundle_binding_before_backend(self):
         for changes in (dict(bundle_id='missing'), dict(manifest_sha256='0'*64), dict(revision='other'), dict(checkpoint='other')):
             with self.assertRaises(Refused): self.run_engine(dataclasses.replace(self.spec, **changes))
