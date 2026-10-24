@@ -19,7 +19,12 @@ def digest(value):
     return hashlib.sha256(encode(value).encode()).hexdigest()
 
 
-def read_file(path, limit=LIMIT):
+def read_file(path, limit=LIMIT, *, policy=None, role=None):
+    if policy is not None:
+        from service.install_policy import read_private
+        return read_private(path, limit, policy=policy, role=role)
+    if role is not None:
+        raise ValueError('role_requires_fixed_policy')
     fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
     try:
         s = os.fstat(fd)
@@ -42,7 +47,10 @@ def exclusive(path, data):
     sync_dir(path.parent.parent)
 
 
-def roots_checked(roots):
+def roots_checked(roots, *, policy=None):
+    if policy is not None:
+        from service.install_policy import roots_checked as installed_roots
+        return installed_roots(roots, policy=policy)
     if set(roots) != set(ROLES): raise ValueError('exact_volume_roles_required')
     if any(Path(v).is_symlink() for v in roots.values()): raise ValueError('symlink_volume')
     result = {k: Path(v).resolve() for k,v in roots.items()}

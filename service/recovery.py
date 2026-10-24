@@ -71,7 +71,7 @@ def validate_plan(record):
 
 
 @contextmanager
-def private_database(path):
+def private_database(path, *, policy=None):
     """Bounded stable WAL-aware copy under the normal external owner lock.
 
     SQLite opens only the private 0700 namespace. Cooperative writers are
@@ -91,12 +91,12 @@ def private_database(path):
             source = path.parent/name
             if source.exists() or source.is_symlink():
                 if time.monotonic()>deadline: raise ValueError('snapshot_deadline')
-                data = read_file(source, MAX_BYTES-total)
+                data = read_file(source, MAX_BYTES-total, **(dict(policy=policy, role="control") if policy is not None else {}))
                 total += len(data)
                 if total > MAX_BYTES: raise ValueError('snapshot_byte_budget')
                 st = source.stat(follow_symlinks=False)
                 result[name] = (data, (st.st_dev, st.st_ino, st.st_mode,
-                    st.st_uid, st.st_nlink, st.st_size, st.st_mtime_ns, st.st_ctime_ns))
+                    st.st_uid, st.st_gid, st.st_nlink, st.st_size, st.st_mtime_ns, st.st_ctime_ns))
         if 'core.sqlite' not in result: raise sqlite3.OperationalError('missing_database')
         return namespace, result
     if not path.parent.is_dir(): raise sqlite3.OperationalError('missing_database')

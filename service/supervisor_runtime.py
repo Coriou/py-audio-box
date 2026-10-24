@@ -1,5 +1,8 @@
 """Real bounded UDS lifecycle adapter. No host operator or daemon authority."""
 import json
+import os
+import stat
+import sys
 from pathlib import Path
 import socket
 import time
@@ -71,3 +74,59 @@ class SupervisorRuntime:
                 raise ValueError('manifest_tuple')
         return receipt, TransportObservation('proposal', 'durable_parent_receipt', None,
                                             message, manifest, time.monotonic())
+
+
+def installed_hello_at(ipc_fd, *, timeout=1.5):
+    """Hello only, for a permanently dropped host helper with a validated fd.
+
+    The caller owns child creation/reap. This never drops the current process,
+    reads Core, or exposes keys. Authentication retains the existing peer pair.
+    """
+    from service import install_policy
+    if (sys.platform != 'linux' or os.getuid() != 10001 or os.geteuid() != 10001 or
+            os.getgid() != 10001 or os.getegid() != 10001 or os.getgroups() != []):
+        raise ValueError('dropped_control_identity_required')
+    if type(ipc_fd) is not int or type(timeout) not in (int, float) or not 0 < timeout <= 2:
+        raise ValueError('bounded_communication_required')
+    root = os.fstat(ipc_fd)
+    install_policy.check(root, install_policy.SPLIT, 'ipc', directory=True)
+    cutoff = time.monotonic() + timeout
+    fd = os.open('lifecycle.key', os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=ipc_fd)
+    try:
+        before = os.fstat(fd)
+        install_policy.check(before, install_policy.SPLIT, 'ipc')
+        if before.st_size != 64:
+            raise ValueError('installed_lifecycle_key')
+        raw = os.read(fd, 65)
+        if (len(raw) != 64 or install_policy.identity(os.fstat(fd)) != install_policy.identity(before) or
+                install_policy.identity(os.stat('lifecycle.key', dir_fd=ipc_fd, follow_symlinks=False)) != install_policy.identity(before)):
+            raise ValueError('installed_lifecycle_key_changed')
+        secret = raw.decode('ascii')
+        if any(c not in '0123456789abcdef' for c in secret):
+            raise ValueError('installed_lifecycle_key')
+    finally:
+        os.close(fd)
+    endpoint = os.stat('lifecycle.sock', dir_fd=ipc_fd, follow_symlinks=False)
+    if (not stat.S_ISSOCK(endpoint.st_mode) or endpoint.st_uid != 0 or endpoint.st_gid != 10001 or
+            stat.S_IMODE(endpoint.st_mode) != 0o660 or endpoint.st_nlink != 1):
+        raise ValueError('installed_lifecycle_socket')
+    with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as connection:
+        connection.settimeout(timeout)
+        connection.connect('/proc/self/fd/'+str(ipc_fd)+'/lifecycle.sock')
+        authenticate(connection, session(secret, 0, 10001), cutoff, control=True)
+        send(connection, dict(version=VERSION, op='hello', body={}), cutoff)
+        result = receive(connection, cutoff)
+    if (install_policy.identity(os.fstat(ipc_fd)) != install_policy.identity(root) or
+            install_policy.identity(os.stat('lifecycle.sock', dir_fd=ipc_fd, follow_symlinks=False)) != install_policy.identity(endpoint)):
+        raise ValueError('installed_ipc_changed')
+    if (not isinstance(result, dict) or set(result) != {'ok', 'value'} or result['ok'] is not True or
+            not isinstance(result['value'], dict) or len(json.dumps(result['value'], allow_nan=False).encode()) > 65536):
+        raise RuntimeError('lifecycle_refused_or_quarantined')
+    value = result['value']
+    if (set(value) != {'lane', 'boot', 'quarantined', 'launches'} or
+            any(not isinstance(value[k], str) or len(value[k]) != 32 or
+                any(c not in '0123456789abcdef' for c in value[k]) for k in ('lane', 'boot')) or
+            type(value['quarantined']) is not bool or type(value['launches']) is not int or
+            not 0 <= value['launches'] <= 64):
+        raise ValueError('installed_hello_shape_or_maintenance')
+    return value

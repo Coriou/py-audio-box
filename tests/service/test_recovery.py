@@ -175,7 +175,7 @@ def test_gate_requires_actual_host_boot_configuration_and_enrollment(installatio
 
 
 def test_docker_host_projection_fixed_and_unknown_consumer(installation):
-    spec=importlib.util.spec_from_file_location('p1_operator',Path('scripts/p1-operator.py'));module=importlib.util.module_from_spec(spec);spec.loader.exec_module(module)
+    from service import host_install as module
     roots,scope,_,_=installation;r=registration(installation,'actual-host-inspection');calls=[]
     def read(argv):
         calls.append(argv)
@@ -2693,8 +2693,7 @@ def test_b22d_r3_receipt_only_marker_precedes_acceptance(installation,monkeypatc
 @pytest.fixture
 def b23_host(installation, tmp_path, monkeypatch):
     import time
-    spec=importlib.util.spec_from_file_location('b23_operator',Path('scripts/p1-operator.py'))
-    module=importlib.util.module_from_spec(spec); spec.loader.exec_module(module)
+    from service import host_install as module
     roots,scope,_,_=installation
     def forbidden(*a,**kw):pytest.fail('host authority must not call private kernel')
     for name in ('_complete_receipts','_pending_through_core','_pending_through_journal','_pending_through_evidence'):
@@ -3008,8 +3007,7 @@ def test_b23_shipped_reader_absent_mount_never_falls_back(monkeypatch):
 @pytest.mark.parametrize('fault',['none','stdout','stderr','exit','process-timeout','global-timeout','spawn'])
 def test_b23_fixed_subprocess_bounds_and_sanitized_errors(monkeypatch,fault):
     import time
-    spec=importlib.util.spec_from_file_location('b23_process',Path('scripts/p1-operator.py'))
-    m=importlib.util.module_from_spec(spec);spec.loader.exec_module(m)
+    from service import host_install as m
     observer=m.Docker('pinned-context');calls=[];processes=[]
     class Process:
         def __init__(self,argv,**kwargs):
@@ -3090,8 +3088,7 @@ def test_b23_registration_provenance_refuses_before_registration(b23_host,monkey
 
 
 def test_b23_closed_authority_entrypoints_exist():
-    spec=importlib.util.spec_from_file_location('b23_api',Path('scripts/p1-operator.py'))
-    m=importlib.util.module_from_spec(spec);spec.loader.exec_module(m)
+    from service import host_install as m
     assert callable(getattr(m,'freeze_host',None))
     assert callable(getattr(m,'host_preflight',None))
     assert callable(getattr(recovery,'read_host_capsule',None))
@@ -3131,8 +3128,7 @@ def test_b23_reader_checks_actual_role_mounts(b23_host,monkeypatch,fault):
 def test_b23_local_proc_tree_os_boundary(tmp_path,monkeypatch,fault):
     """Synthetic procfs/cgroupfs only; no host process or daemon is inspected."""
     import builtins
-    spec=importlib.util.spec_from_file_location('b23_proc',Path('scripts/p1-operator.py'))
-    m=importlib.util.module_from_spec(spec);spec.loader.exec_module(m)
+    from service import host_install as m
     real_path=Path;fake=tmp_path/'fake-linux';identity='d'*64
     def mapped(value):
         value=str(value)
