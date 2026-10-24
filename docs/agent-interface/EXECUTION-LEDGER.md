@@ -2051,3 +2051,7 @@ Parentacceptsr171 H2ASOURCE/localASGIGO andancestrymerges68504a21 withoutconflic
 ### 2026-10-24 — H4A profile selection delivered; independent review
 
 r172 source d1491b18403bb54bd75eda6ba4be89dcf8eef236, report 73673ef15f036e6ef83e2e4c9f3251bc367faa2e: pure hardware inventory/profile selection with explicit probes, identity-preserving eligibility/fallback and workload-specific ranking; 14 focused tests reported PASS. Parent commissioned independent Sol-low review pab-h4-profiles-review-r174-20261024. Candidate remains unmerged pending review. Actual CPU/CUDA/native Metal adapters and qualification remain required; r173 authenticated upload/control-plane implementation continues separately. No held-resource operations.
+
+### 2026-10-24 — H4A independent review requests override fix
+
+r174 bounded source NO-GO: boolean explicit device indices alias integer indices despite device/profile exact-int invariants. All 14 focused tests pass but omit this case. Parent commissioned Sol-low r175 correction and focused regressions; candidate remains unmerged. Conservative missing-measurement fallback policy is a documented integration choice, not a second proven defect. Hardware qualification remains outstanding.
