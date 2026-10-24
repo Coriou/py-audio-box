@@ -133,4 +133,57 @@ class QwenProvisioningTests(unittest.TestCase):
     def test_origin_redirect_stream_caps(self):
         existing.PocketProvisioningTests.test_pocket_transport_allowed_redirects_and_exact_caps(self)
 
+    def path_configs(self, value):
+        for key in ('tokenizer_file', 'asset_path'):
+            for wrap in (lambda field: field, lambda field: {'nested': field},
+                         lambda field: {'nested': [{'deeper': [field]}]}):
+                yield key, wrap({key: value})
+
+    def test_path_field_refusals_preserve_active_pointer_and_all_old_bytes(self):
+        old = self.run_provision()
+        pointer = (self.root/'active.json').read_bytes()
+        old_bytes = {str(p.relative_to(old)): p.read_bytes() for p in old.rglob('*') if p.is_file()}
+        for value in ({'location': '/outside/tokenizer.json'}, ['tokenizer.json'], 17, True, False, None, '', ' ',
+                      '/outside/tokenizer.json', '../tokenizer.json', 'missing.json', 'https://outside.invalid/tokenizer.json'):
+            for key, config in self.path_configs(value):
+                with self.subTest(value=value, key=key, config=config):
+                    self.data['tokenizer_config.json'] = manifest_bytes(config)
+                    self.repin()
+                    with self.assertRaises(Refused): self.run_provision()
+                    self.assertEqual((self.root/'active.json').read_bytes(), pointer)
+                    self.assertEqual({str(p.relative_to(old)): p.read_bytes() for p in old.rglob('*') if p.is_file()}, old_bytes)
+
+    def test_path_field_authorized_strings_preserve_downloaded_bytes_and_pins(self):
+        for name, target in (('tokenizer_config.json', 'tokenizer.json'),
+                             ('speech_tokenizer/preprocessor_config.json', 'model.safetensors')):
+            for key, config in self.path_configs(target):
+                with self.subTest(name=name, key=key, config=config):
+                    self.data[name] = manifest_bytes(config)
+                    self.repin()
+                    expected = copy.deepcopy(self.expected)
+                    bundle = self.run_provision()
+                    self.assertEqual(self.expected, expected)
+                    for path, raw in self.data.items(): self.assertEqual((bundle/path).read_bytes(), raw)
+                    self.assertEqual(verify_inputs(self.spec(), {'bundle':bundle}, {}, self.inventory), (bundle,None))
+
+    def test_bad_path_fields_refused_by_shared_inputs_before_backend_construction(self):
+        # Independently materialize a correctly repinned but malformed local bundle:
+        # provisioning must not be the only gate protecting execution.
+        bundle = Path(self.temp.name)/'local-input'
+        for value in ({'location': '/outside/tokenizer.json'}, ['tokenizer.json'], 17, True, False, None, '', ' '):
+            for key, config in self.path_configs(value):
+                with self.subTest(value=value, key=key, config=config):
+                    self.data['tokenizer_config.json'] = manifest_bytes(config)
+                    self.repin()
+                    for name, raw in self.data.items():
+                        path = bundle/name
+                        path.parent.mkdir(parents=True, exist_ok=True)
+                        path.write_bytes(raw)
+                    (bundle/'manifest.json').write_bytes(manifest_bytes(bundle_manifest(self.expected)))
+                    e = self.spec()
+                    with self.assertRaises(Refused): verify_inputs(e, {'bundle':bundle}, {}, self.inventory)
+                    factory = Mock()
+                    with self.assertRaises(Refused): execute(e, 'bonjour', {'bundle':bundle}, {}, self.inventory, backend_factory=factory)
+                    factory.assert_not_called()
+
 if __name__ == '__main__': unittest.main()

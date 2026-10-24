@@ -49,14 +49,17 @@ def _managed_snapshot(root, manifest, names, caps, owner_uid):
     if caps.modes != ('custom_voice',) and manifest['execution']['presets']: raise Refused('bundle_capabilities')
     def inspect(value, key='', directory=''):
         if key in ('auto_map', 'custom_pipelines') or key == 'trust_remote_code' and value is not False: raise Refused('remote_code')
+        # Path declarations have one meaning: a nonempty listed local asset.
+        # Validate before recursion so containers cannot erase their enclosing key.
+        if key.endswith(('_file', '_path')):
+            if type(value) is not str or not value.strip(): raise Refused('unlisted_config_path')
+            if str(Path(directory)/value) not in names or Path(value).is_absolute() or '..' in Path(value).parts: raise Refused('unlisted_config_path')
         if isinstance(value, dict):
             for k, v in value.items(): inspect(v, k, directory)
         elif isinstance(value, list):
             for v in value: inspect(v, key, directory)
         elif isinstance(value, str):
             if '://' in value: raise Refused('remote_config')
-            if key.endswith(('_file', '_path')) and value:
-                if str(Path(directory)/value) not in names or Path(value).is_absolute() or '..' in Path(value).parts: raise Refused('unlisted_config_path')
     for name in names:
         if not name.endswith('.json'): continue
         value = json.loads(_read(root/name, 16*1024*1024, owner_uid=owner_uid))
