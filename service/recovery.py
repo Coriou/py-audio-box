@@ -3453,3 +3453,94 @@ def validate_installed_observation(value, scope, owners, configuration, policy, 
         if process['cgroup'] not in ('/docker/'+identity,'/system.slice/docker-'+identity+'.scope'):
             raise ValueError('host_cgroup_association')
     return value
+
+
+def installed_startup_read(root, configuration, gate, hello, incarnation, *, policy):
+    """Explicit split-scope pre-owner gate using only control-readable evidence.
+
+    Caller holds control exclusion and obtains hello through authenticated IPC.
+    The fixed host exec channel supplies the gate only after protected registration
+    succeeds. Its provenance digest is a binding label, never local authority.
+    No receipt/provenance access, original SQLite connection, or scope fallback.
+    """
+    from service import install_policy as ip
+    from service.entrypoint import projection
+    ip.require(policy)
+    config = ip.configuration(configuration); projection(gate)
+    closed(incarnation,'start_ticks pid_namespace cgroup')
+    if (any(type(incarnation[k]) is not int or incarnation[k] < 1 for k in ('start_ticks','pid_namespace')) or
+            incarnation['cgroup'] != '0::/'):
+        raise ValueError('installed_control_incarnation')
+    closed(hello,'lane boot quarantined launches')
+    if (hello['quarantined'] is not False or type(hello['launches']) is not int or not 0 <= hello['launches'] < 64 or
+            any(not isinstance(hello[k],str) or not re.fullmatch('[0-9a-f]{32}',hello[k]) for k in ('lane','boot'))):
+        raise ValueError('installed_unhealthy_hello')
+    root = Path(root).absolute()
+    ip.directory_identity(root,policy=policy,role='control')
+    primary = None
+    try:
+        with private_database(root/'core.sqlite',policy=policy) as private_path:
+            db = None
+            try:
+                db = sqlite3.connect(private_path.as_uri()+'?mode=ro',uri=True,timeout=0)
+                db.execute('PRAGMA query_only=ON'); db.execute('PRAGMA trusted_schema=OFF')
+                end = time.monotonic()+2
+                db.set_progress_handler(lambda:int(time.monotonic()>end),1000)
+                total = size = 0
+                tables = {r[0] for r in db.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+                if tables & B2_COLUMNS.keys(): raise ValueError('installed_recovery_obligation')
+                for table,columns in B1_COLUMNS.items():
+                    if [r[1] for r in db.execute('PRAGMA table_info('+table+')')] != columns.split():
+                        raise ValueError('unsupported_enrollment_schema')
+                    n,b = db.execute('SELECT count(*),coalesce(sum(length(record)),0) FROM '+table).fetchone()
+                    total += n; size += b
+                    if total > MAX_ROWS or size > MAX_BYTES: raise ValueError('enrollment_read_budget')
+                    if n and (table in B2_COLUMNS or table == 'p1_recovery_plans'):
+                        raise ValueError('installed_recovery_obligation')
+                rows = db.execute('SELECT id,revision,scope,record,digest FROM p1_installation').fetchall()
+                if len(rows) != 1: raise ValueError('not_enrolled')
+                identity,revision,scope,raw,h = rows[0]; public = ip.installation(host_json(raw.encode()))
+                if (revision != 1 or scope != ip.SCOPE or public['scope'] != ip.SCOPE or identity != public['deployment_id'] or digest(public) != h or
+                        public['configuration'] != config or public['configuration_digest'] != digest(config) or
+                        gate['configuration_digest'] != digest(config) or gate['enrollment_digest'] != h):
+                    raise ValueError('installed_startup_configuration')
+                ip.directory_identity(root.parent,policy=policy,role='control')
+                st = root.parent.stat(follow_symlinks=False); role = public['roles']['control']
+                if root.name != 'core' or (st.st_dev,st.st_ino) != (role['device'],role['inode']):
+                    raise ValueError('installed_startup_control_root')
+                selected = None
+                for rid,raw,h in db.execute('SELECT id,record,digest FROM p1_registrations'):
+                    record = host_json(raw.encode()); validate_registration(record)
+                    if (digest(record) != h or rid != h or record['deployment_id'] != identity or
+                            record['scope'] != public['host']):
+                        raise ValueError('installed_startup_registration')
+                    if rid == gate['registration_id']:
+                        if record != gate['registration'] or raw != encode(record):
+                            raise ValueError('installed_startup_registration')
+                        selected = record
+                if selected is None: raise ValueError('missing_registration')
+                if any(selected[k] != hello[k] for k in ('lane','boot')):
+                    raise ValueError('installed_startup_boot')
+                owners = {c['role']:c for c in selected['containers']}
+                if any(owners[r]['image'] != config['images'][r] for r in ('control','worker')):
+                    raise ValueError('installed_startup_image')
+                control = next(p for p in gate['processes'] if p['id'] == owners['control']['id'])
+                if any(control[k] != incarnation[k] for k in ('start_ticks','pid_namespace')):
+                    raise ValueError('installed_control_incarnation')
+                # The parent corroborates host cgroup -> exact PID namespace; the
+                # private namespace exposes '/' locally, never that host path.
+                return dict(deployment_id=identity,registration_id=gate['registration_id'],
+                            configuration_digest=digest(config),enrollment_digest=digest(public))
+            except BaseException as exc:
+                primary = exc; raise
+            finally:
+                try:
+                    if db is not None: db.close()
+                except BaseException as cleanup:
+                    if primary is None: primary = cleanup; raise
+                    primary.add_note('installed reader close failed: '+type(cleanup).__name__)
+    except BaseException as cleanup:
+        if primary is not None and cleanup is not primary:
+            primary.add_note('installed reader teardown failed: '+type(cleanup).__name__)
+            raise primary from cleanup
+        raise
