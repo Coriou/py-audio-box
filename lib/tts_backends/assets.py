@@ -14,6 +14,14 @@ def sha256(path):
 
 
 def verified_bundle(directory, backend):
+    if backend == 'qwen':
+        # Deliberate backend contract: upstream names, no global fr/en widening.
+        from worker.engines.qwen import verify_bundle
+        directory = Path(directory).absolute()
+        from worker.engines.pocket import _read
+        raw = _read(directory / 'manifest.json', 65536)
+        manifest = json.loads(raw)
+        return verify_bundle(directory, hashlib.sha256(raw).hexdigest(), manifest['checkpoint'], manifest['revision'], manifest['language'])
     directory = Path(directory).absolute()
     root = directory.resolve()
     try:

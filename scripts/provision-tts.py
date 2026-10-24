@@ -78,10 +78,10 @@ def provision(backend, dest, language):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--backend', choices=['kokoro', 'pocket-tts'], required=True)
-    parser.add_argument('--language', choices=['fr', 'en'], required=True)
+    parser.add_argument('--backend', choices=['kokoro', 'pocket-tts', 'qwen'], required=True)
+    parser.add_argument('--language', choices=['fr', 'en', 'French', 'English'], required=True)
     parser.add_argument('--dest', type=Path, required=True)
-    parser.add_argument('--expected-manifest', type=Path, help='Operator-reviewed expected Kokoro manifest or Pocket descriptor; --dest becomes managed storage root')
+    parser.add_argument('--expected-manifest', type=Path, help='Operator-reviewed Kokoro manifest, Pocket or Qwen descriptor; --dest becomes managed storage root')
     args = parser.parse_args()
     try:
         if args.expected_manifest:
@@ -91,6 +91,8 @@ if __name__ == '__main__':
             versions = {p: importlib.metadata.version(p) for p in expected['versions']}
             print(json.dumps({'bundle': str(managed_provision(args.dest, expected, runtime_versions=versions))}))
         else:
+            if args.backend == 'qwen' or args.language not in ('fr', 'en'):
+                raise ValueError('Qwen requires an explicit expected descriptor and English/French identity')
             print(json.dumps(provision(args.backend, args.dest, args.language)))
     except Exception as exc:
         print(json.dumps({'status': 'error', 'error': type(exc).__name__, 'message': str(exc)}), file=sys.stderr)

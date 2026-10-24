@@ -38,18 +38,19 @@ def validate_expected(expected):
         raise ValueError('Expected manifest object required')
     value = copy.deepcopy(expected)
     pocket = value.get('backend') == 'pocket-tts'
-    extra = {'config', 'allowed_origins'} if pocket else set()
+    qwen = value.get('backend') == 'qwen'
+    extra = {'allowed_origins', 'execution'} if qwen else {'config', 'allowed_origins'} if pocket else set()
     if set(value) != extra | {'schema_version', 'backend', 'language', 'checkpoint', 'revision', 'license', 'access', 'versions', 'files'}:
         raise ValueError('Exact expected manifest fields required')
-    if type(value['schema_version']) is not int or value['schema_version'] != 1 or value['backend'] not in ('kokoro', 'pocket-tts') or value['language'] not in ('fr', 'en'):
+    if type(value['schema_version']) is not int or value['schema_version'] != 1 or value['backend'] not in ('kokoro', 'pocket-tts', 'qwen') or value['language'] not in (('English', 'French') if qwen else ('fr', 'en')):
         raise ValueError('Unsupported managed backend or language')
     for key in ('checkpoint', 'revision', 'license', 'access'):
         if not isinstance(value[key], str) or not value[key].strip():
             raise ValueError('Expected identity/license/access required')
     versions = value['versions']
-    if not isinstance(versions, dict) or set(versions) != ({'pocket-tts', 'torch', 'tokenizers'} if pocket else {'kokoro-onnx', 'onnxruntime', 'espeakng-loader', 'phonemizer'}) or not all(isinstance(v, str) and v for v in versions.values()):
+    if not isinstance(versions, dict) or set(versions) != ({'qwen-tts', 'torch', 'transformers', 'tokenizers', 'safetensors'} if qwen else {'pocket-tts', 'torch', 'tokenizers'} if pocket else {'kokoro-onnx', 'onnxruntime', 'espeakng-loader', 'phonemizer'}) or not all(isinstance(v, str) and v for v in versions.values()):
         raise ValueError('Exact runtime versions required')
-    if not isinstance(value['files'], list) or not (2 <= len(value['files']) <= 128 if pocket else len(value['files']) == 2):
+    if not isinstance(value['files'], list) or not (4 <= len(value['files']) <= 256 if qwen else 2 <= len(value['files']) <= 128 if pocket else len(value['files']) == 2):
         raise ValueError('Exact backend assets required')
     names = []
     for entry in value['files']:
@@ -62,13 +63,51 @@ def validate_expected(expected):
             raise ValueError('Reviewed origin and revision required')
     if any(not isinstance(n, str) for n in names):
         raise ValueError('Unsafe asset path')
-    if pocket:
+    if qwen:
+        _qwen_descriptor(value)
+    elif pocket:
         _pocket_config(value)
     elif sorted(names) != ['model.onnx', 'voices.bin']:
         raise ValueError('Unsafe or unexpected asset paths')
     if len(manifest_bytes(value)) > 65536:
         raise ValueError('Manifest exceeds engine byte limit')
     return value
+
+
+def _qwen_descriptor(value):
+    from worker.engines.qwen import validate_declarations
+    validate_declarations(value['execution'], value['language'])
+    if any(l not in ('English', 'French') for l in value['execution']['languages']):
+        raise ValueError('Explicit managed Qwen languages required')
+    if len(value['checkpoint']) > 256 or not re.fullmatch('[0-9a-f]{40}', value['revision']):
+        raise ValueError('Immutable Qwen revision required')
+    origins = value['allowed_origins']
+    if type(origins) is not list or not 1 <= len(origins) <= 256 or any(type(o) is not str for o in origins) or len(set(origins)) != len(origins):
+        raise ValueError('Explicit HTTPS authorities required')
+    def authority(url):
+        p = urlsplit(url)
+        if p.scheme != 'https' or not p.hostname or p.username or p.password or p.query or p.fragment:
+            raise ValueError('Unsafe Qwen origin')
+        return 'https://' + p.netloc
+    if any(authority(o) != o for o in origins): raise ValueError('HTTPS authorities required')
+    names = set(); urls = set(); total = 0
+    for entry in value['files']:
+        name = entry['path']
+        if len(name) > 512 or any(not re.fullmatch(r'[A-Za-z0-9_-][A-Za-z0-9_.-]{0,127}', part) for part in name.split('/')) or Path(name).suffix not in ('.json','.safetensors','.txt','.model') or name in names:
+            raise ValueError('Unsafe Qwen snapshot path')
+        if (name.endswith('.json') and entry['bytes'] > 16*1024**2) or entry['bytes'] > 8*1024**3 or authority(entry['origin']) not in origins or entry['origin'] in urls or entry['revision'] != value['revision']:
+            raise ValueError('Qwen asset identity or bound')
+        names.add(name); urls.add(entry['origin']); total += entry['bytes']
+    if total > 16*1024**3 or not {'config.json','generation_config.json','tokenizer_config.json','tokenizer.json','speech_tokenizer/config.json','speech_tokenizer/preprocessor_config.json'} <= names or not any(n.startswith('speech_tokenizer/') and n.endswith('.safetensors') for n in names) or not any('/' not in n and n.endswith('.safetensors') for n in names):
+        raise ValueError('Incomplete bounded Qwen snapshot')
+    if any(any(n.startswith(other + '/') for other in names) for n in names): raise ValueError('File/directory conflict')
+
+
+def _verified_managed(root, expected):
+    if expected['backend'] == 'qwen':
+        from worker.engines.qwen import verify_bundle
+        return verify_bundle(root, manifest_sha256(expected), expected['checkpoint'], expected['revision'], expected['language'])
+    return verified_bundle(root, expected['backend'])
 
 
 def _pocket_config(value):
@@ -261,13 +300,16 @@ def _file(path):
 
 
 def _seal(bundle):
-    for path in bundle.iterdir():
+    for path in bundle.rglob('*'):
+        if path.is_dir(): continue
         _file(path)
         with path.open('rb') as stream:
             os.fsync(stream.fileno())
         path.chmod(0o444)
+    for path in sorted(bundle.rglob('*'), reverse=True):
+        if path.is_dir(): path.chmod(0o555)
     bundle.chmod(0o555)
-    if bundle.stat().st_mode & 0o222 or any(p.stat().st_mode & 0o222 for p in bundle.iterdir()):
+    if bundle.stat().st_mode & 0o222 or any(p.stat().st_mode & 0o222 for p in bundle.rglob('*')):
         raise ValueError('Incomplete bundle sealing')
 
 
@@ -319,22 +361,25 @@ def provision(root, expected, *, runtime_versions, downloader=download, lock_tim
         if bundle.exists() or bundle.is_symlink():
             if bundle.is_symlink() or not bundle.is_dir() or bundle.stat().st_uid != os.getuid():
                 raise ValueError('Unsafe bundle directory')
-            for path in bundle.iterdir():
-                _file(path)
-            _, manifest = verified_bundle(bundle, backend)
-            if {p.name for p in bundle.iterdir()} != names | {'manifest.json'}:
+            for path in bundle.rglob('*'):
+                if path.is_symlink(): raise ValueError('Symlink bundle entry')
+                if not path.is_dir(): _file(path)
+            _, manifest = _verified_managed(bundle, expected)
+            if {str(p.relative_to(bundle)) for p in bundle.rglob('*') if p.is_file()} != names | {'manifest.json'}:
                 raise ValueError('Unexpected immutable bundle entry')
             if manifest != manifest_expected or (bundle / 'manifest.json').read_bytes() != manifest_bytes(manifest_expected):
                 raise ValueError('Immutable bundle identity mismatch')
         else:
             _directory(stage)
             allowed = names | {n + '.part' for n in names} | {'manifest.json'}
-            if any(p.name not in allowed or p.is_symlink() or not p.is_file() for p in stage.iterdir()):
+            directories = {str(p) for n in names for p in Path(n).parents if str(p) != '.'}
+            if any(p.is_symlink() or (str(p.relative_to(stage)) not in (directories if p.is_dir() else allowed)) for p in stage.rglob('*')):
                 raise ValueError('Unsafe staging entry')
-            for path in stage.iterdir():
-                _file(path)
+            for path in stage.rglob('*'):
+                if not path.is_dir(): _file(path)
             for entry in expected['files']:
                 target = stage / entry['path']
+                target.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
                 partial = stage / (entry['path'] + '.part')
                 if partial.exists():
                     partial.unlink()
@@ -346,7 +391,7 @@ def provision(root, expected, *, runtime_versions, downloader=download, lock_tim
                 if entry['path'] == 'config.yaml' and config_bytes is not None:
                     partial.write_bytes(config_bytes)
                 elif downloader is download:
-                    downloader(entry['origin'], partial, entry['bytes'], timeout=transfer_timeout, cancelled=cancelled, **({'allowed_origins': expected['allowed_origins']} if config_bytes is not None else {}))
+                    downloader(entry['origin'], partial, entry['bytes'], timeout=transfer_timeout, cancelled=cancelled, **({'allowed_origins': expected['allowed_origins']} if 'allowed_origins' in expected else {}))
                 else:
                     downloader(entry['origin'], partial)
                 _file(partial)
@@ -357,8 +402,9 @@ def provision(root, expected, *, runtime_versions, downloader=download, lock_tim
             if manifest_path.exists():
                 manifest_path.unlink()
             manifest_path.write_bytes(manifest_bytes(manifest_expected))
-            verified_bundle(stage, backend)
-            for path in stage.iterdir():
+            _verified_managed(stage, expected)
+            for path in stage.rglob('*'):
+                if path.is_dir(): continue
                 _file(path)
                 path.chmod(0o444)
             os.rename(stage, bundle)
