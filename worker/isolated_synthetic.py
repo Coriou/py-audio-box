@@ -29,9 +29,9 @@ def run(connection, config, staging, cutoff):
         raise Refused('unexpected_message')
     plan = oracle.stored_context(job, context)
     request = plan['request']
-    if (plan['operation'] != 'speech_generate' or message['input_asset_ids'] or
-        plan['voice_versions'][0]['configuration']['mode'] != 'qwen_preset' or
-        request['variants'] != 1 or request['reuse'] != 'never'):
+    if plan['operation'] not in ('voice_prepare', 'speech_generate'):
+        raise Refused('synthetic_only')
+    if plan['operation'] == 'speech_generate' and (request['variants'] != 1 or request['reuse'] != 'never'):
         raise Refused('synthetic_only')
     # Fixed silence, irrespective of fixture Qwen identity. No engine is invoked.
     buffer = io.BytesIO()
@@ -53,12 +53,13 @@ def run(connection, config, staging, cutoff):
             os.fsync(output.fileno())
     finally:
         os.close(directory)
-    asset = dict(id='asset-'+uuid4().hex, sha256=digest, frames=4800, sample_rate=48000,
+    asset = dict(id=(plan['resolved']['reuse_configuration']['reference_asset_id'] if plan['operation']=='voice_prepare' else 'asset-'+uuid4().hex), sha256=digest, frames=4800, sample_rate=48000,
                  channels=1, media_format='wav', media_subtype='PCM_16',
                  provenance=dict(kind='synthetic', source_sha256=digest,
                                  source_id='phase-1a-silence', missing_fields=[]))
     manifest = {k: message[k] for k in ('job_id', 'attempt_id', 'generation', 'owner_id', 'staging_id', 'input_sha256')}
-    manifest.update(operation='speech_generate', artifact_id='artifact-'+uuid4().hex, outputs=[asset], candidates=[])
+    from worker.synthetic import candidates
+    manifest.update(operation=plan['operation'], artifact_id='artifact-'+uuid4().hex, outputs=[asset], candidates=candidates(message, asset))
     message.update(kind='result', stage='completed', result_asset_ids=[asset['id']])
     send(connection, dict(message=message, manifest=manifest), cutoff)
 
