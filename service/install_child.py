@@ -83,3 +83,116 @@ def prepare(public, control_fd, staging_fd, *, ops=None):
         if (info.st_dev, info.st_ino) != identity or not stat.S_ISDIR(info.st_mode):
             raise ValueError('initializer_bind_identity_changed')
     return CONTROL, STAGING
+
+
+def drop_control():
+    """Only in a fresh synchronous exec child; verify all saved identity slots."""
+    os.setgroups([])
+    os.setresgid(10001, 10001, 10001)
+    os.setresuid(10001, 10001, 10001)
+    os.umask(0o077)
+    if os.getresuid() != (10001,)*3 or os.getresgid() != (10001,)*3 or os.getgroups():
+        raise ValueError('permanent_control_identity_required')
+
+
+def registration_writer(public, registration, prestate, control, lock_fd, *, fault=lambda _:None):
+    """No DDL, Core constructor, receipt access, generic SQL or action input."""
+    import sqlite3
+    from service import install_policy as ip, recovery
+    from service.core import encode, sync_dir
+    from service.persistent_init import digest
+    if ((os.getuid(),os.geteuid(),os.getgid(),os.getegid()) != (10001,)*4 or
+            os.getgroups()):
+        raise ValueError('permanent_control_identity_required')
+    ip.installation(public); recovery.validate_registration(registration)
+    if (public['scope'] != ip.SCOPE or registration['scope'] != public['host'] or
+            registration['deployment_id'] != public['deployment_id'] or
+            registration['evidence'] != 'actual-host-inspection'):
+        raise ValueError('installed_registration_binding')
+    if type(prestate) is not list or len(encode(prestate).encode()) > recovery.HOST_CAPSULE_BYTES:
+        raise ValueError('installed_registration_prestate')
+    root=Path(control)/'core'
+    ip.directory_identity(root,policy=ip.SPLIT,role='control')
+    held=os.fstat(lock_fd); ip.check(held,ip.SPLIT,'control')
+    if ip.identity(held)!=ip.identity(os.stat(root/'control.lock',follow_symlinks=False)):
+        raise ValueError('installed_inherited_lock_changed')
+    before={}
+    for name in ('core.sqlite','core.sqlite-wal','core.sqlite-shm'):
+        path=root/name
+        try: info=os.stat(path,follow_symlinks=False)
+        except FileNotFoundError:
+            if name=='core.sqlite': raise
+            continue
+        ip.check(info,ip.SPLIT,'control'); before[name]=(info.st_dev,info.st_ino)
+    db=sqlite3.connect((root/'core.sqlite').as_uri()+'?mode=rw',uri=True,timeout=0,isolation_level=None)
+    try:
+        db.execute('PRAGMA trusted_schema=OFF'); db.execute('PRAGMA synchronous=FULL')
+        import time
+        deadline=time.monotonic()+2
+        db.set_progress_handler(lambda:int(time.monotonic()>deadline),1000)
+        db.execute('BEGIN IMMEDIATE')
+        try:
+            rows=db.execute('SELECT id,revision,scope,record,digest FROM p1_installation LIMIT 2').fetchall()
+            expected=[(public['deployment_id'],1,ip.SCOPE,encode(public),digest(public))]
+            if rows!=expected: raise ValueError('installed_writer_installation_changed')
+            count,size=db.execute('SELECT count(*),coalesce(sum(length(record)),0) FROM p1_registrations').fetchone()
+            if count>recovery.HOST_OWNER_LIMIT or size>recovery.HOST_CAPSULE_BYTES:
+                raise ValueError('installed_registration_budget')
+            rows=db.execute('SELECT id,record,digest FROM p1_registrations ORDER BY rowid').fetchall()
+            if [list(r) for r in rows]!=prestate: raise ValueError('installed_writer_prestate_changed')
+            rid=digest(registration); row=(rid,encode(registration),rid)
+            found=[r for r in rows if r[0]==rid]
+            if found and found!=[row]: raise ValueError('installed_writer_registration_changed')
+            fault('preinsert')
+            if not found:
+                if count>=recovery.HOST_OWNER_LIMIT or size+len(row[1].encode())>recovery.HOST_CAPSULE_BYTES:
+                    raise ValueError('installed_registration_budget')
+                db.execute('INSERT INTO p1_registrations VALUES(?,?,?)',row)
+            fault('inserted'); fault('precommit')
+            db.execute('COMMIT'); fault('committed')
+        except BaseException:
+            if db.in_transaction: db.execute('ROLLBACK')
+            raise
+    finally: db.close()
+    for name in ('core.sqlite','core.sqlite-wal','core.sqlite-shm'):
+        try: info=os.stat(root/name,follow_symlinks=False)
+        except FileNotFoundError:
+            if name=='core.sqlite': raise
+            continue
+        ip.check(info,ip.SPLIT,'control')
+        if name in before and before[name]!=(info.st_dev,info.st_ino):
+            raise ValueError('installed_writer_database_changed')
+    if ip.identity(os.fstat(lock_fd))!=ip.identity(held): raise ValueError('installed_inherited_lock_changed')
+    sync_dir(root); sync_dir(Path(control))
+
+
+def registration_entry(kind):
+    """Two fixed entrypoints, bounded public stdin, no operation selected by stdin."""
+    import json
+    from service import install_policy as ip
+    from service.core import encode
+    if sys.platform!='linux' or os.getuid()!=0 or os.geteuid()!=0:
+        raise ValueError('linux_root_initializer_required')
+    raw=sys.stdin.buffer.read(65537)
+    if len(raw)>65536: raise ValueError('installed_child_request_budget')
+    request=json.loads(raw)
+    if kind=='hello':
+        ip._closed(request,'ipc_fd')
+        fd=request['ipc_fd']
+        if type(fd) is not int or fd<3: raise ValueError('installed_child_descriptor')
+        ip.check(os.fstat(fd),ip.SPLIT,'ipc',directory=True)
+        drop_control()
+        from service.supervisor_runtime import installed_hello_at
+        print(encode(installed_hello_at(fd)))
+    elif kind=='writer':
+        ip._closed(request,'public registration prestate control_fd staging_fd lock_fd')
+        ip.installation(request['public'])
+        from service import recovery
+        recovery.validate_registration(request['registration'])
+        descriptors=[request[k] for k in ('control_fd','staging_fd','lock_fd')]
+        if any(type(fd) is not int or fd<3 for fd in descriptors) or len(set(descriptors))!=3:
+            raise ValueError('installed_child_descriptor')
+        control,_=prepare(request['public'],*descriptors[:2])
+        drop_control()
+        registration_writer(request['public'],request['registration'],request['prestate'],control,descriptors[2])
+    else: raise ValueError('installed_child_entrypoint')

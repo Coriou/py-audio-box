@@ -5,7 +5,7 @@ import os
 import re
 import stat
 import sqlite3
-from contextlib import closing
+from contextlib import closing, ExitStack
 import uuid
 from pathlib import Path
 import subprocess
@@ -482,12 +482,16 @@ def host_state(roots,scope,*,_allow_empty=False):
 
 def main():
     parser=argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('command',choices=('register','inspect','plan','preflight','freeze','apply'))
+    parser.add_argument('command',choices=('installed-register','register','inspect','plan','preflight','freeze','apply'))
     parser.add_argument('--request',required=True)
     args=parser.parse_args()
     if args.command=='apply': recovery.apply()
     request=recovery.host_json(read_file(Path(args.request)))
-    if args.command in ('preflight','freeze'):
+    if args.command=='installed-register':
+        recovery.closed(request,'configuration scope owners')
+        with installed_launch_authority(request['configuration'],request['scope']) as authority:
+            result=dict(registration_id=authority.register(request['owners']))
+    elif args.command in ('preflight','freeze'):
         recovery.closed(request,'roots scope freeze')
         state=host_state(request['roots'],request['scope']); observer=Docker(request['scope']['context'])
         if args.command=='freeze': result=freeze_host(observer,state,request['freeze'])
@@ -520,7 +524,7 @@ def main():
 
 
 # Installed observer is separate from the historical synthetic projection.
-# These adapters only read Docker/proc/files. No activation or DB writer lives here.
+# Observation remains separate from the protected registration transaction below.
 from contextlib import contextmanager
 from service import install_policy as ip
 import hashlib
@@ -774,7 +778,7 @@ class InstalledObserver:
     """Trusted internal adapter; injection is for tests, never a CLI evidence flag.
 
     A protected launch session constructs this object. Returned JSON is content,
-    not proof that an actual host was qualified. Registration/activation absent.
+    not proof that an actual host was qualified. Activation remains separate.
     """
     def __init__(self, docker, config, scope, policy, *, mountinfo=recovery._host_mount_topology,
                  proc=_proc_observation):
@@ -848,7 +852,7 @@ def _root_authority_directory(path):
             s=os.fstat(fd)
             if s.st_uid!=0 or not stat.S_ISDIR(s.st_mode) or stat.S_IMODE(s.st_mode)&0o022:
                 raise ValueError('installed_unsafe_authority')
-            if parent==path and stat.S_IMODE(s.st_mode)!=0o700:
+            if parent==path and (stat.S_IMODE(s.st_mode)!=0o700 or s.st_gid!=0):
                 raise ValueError('installed_unsafe_authority')
     return os.open(path,os.O_RDONLY|os.O_DIRECTORY|os.O_NOFOLLOW)
 
@@ -858,7 +862,7 @@ def installed_launch_authority(config, scope):
     """Existing protected per-install policy + finite nonblocking exclusion.
 
     Provisioning is parent-owned. No arbitrary policy path or metadata selection,
-    no creating locks, no policy repair. Hold this context through init/observation.
+    no creating locks, no policy repair. Hold through init/observation/registration.
     """
     if sys.platform!='linux' or os.getuid()!=0 or os.geteuid()!=0:
         raise ValueError('installed_linux_root_authority_required')
@@ -902,7 +906,14 @@ def installed_launch_authority(config, scope):
                 check(); result=observer.initialize_authority(); check(); return result
             def observe_owners(self, owners, enrollment):
                 check(); result=observer.observe_owners(owners,enrollment); check(); return result
-        try: yield HeldAuthority()
+            def register(self, owners):
+                check()
+                return _register_installed(observer,owners,fd,check)
+        try:
+            yield HeldAuthority()
+        except _RegistrationChildUnreaped:
+            _registration_retained.append((os.dup(lock),os.dup(fd)))
+            raise
         finally:
             active=False
             stable()
@@ -914,6 +925,227 @@ def installed_launch_authority(config, scope):
     finally:
         if lock is not None: os.close(lock)
         os.close(fd)
+
+
+
+_registration_retained=[]
+
+
+class _RegistrationChildUnreaped(RuntimeError):
+    """Uncertain helper retains duplicate parent exclusions; never success."""
+
+
+def _registration_child(kind, request, descriptors):
+    raw=encode(request).encode()
+    if kind not in ('hello','writer') or len(raw)>65536:
+        raise ValueError('installed_child_request_budget')
+    if sys.platform!='linux' or os.getuid()!=0 or os.geteuid()!=0:
+        raise ValueError('installed_linux_root_authority_required')
+    with tempfile.TemporaryFile() as output:
+        child=subprocess.Popen([sys.executable,'-I','-B','-c',
+            'import sys;sys.path.insert(0,'+repr(str(Path(__file__).parent.parent))+');'
+            'from service.install_child import registration_entry;registration_entry('+repr(kind)+')'],
+            stdin=subprocess.PIPE,stdout=output,stderr=subprocess.DEVNULL,
+            close_fds=True,pass_fds=tuple(descriptors),cwd='/',env={})
+        try: child.communicate(raw,timeout=10)
+        except BaseException as primary:
+            try: child.kill()
+            except BaseException as cleanup: primary.add_note('registration kill failed: '+str(cleanup))
+            try: child.wait(timeout=2)
+            except BaseException:
+                _registration_retained.append(child)
+                raise _RegistrationChildUnreaped('installed_registration_child_unreaped') from primary
+            try:
+                if child.stdin is not None: child.stdin.close()
+            except BaseException as cleanup: primary.add_note('registration pipe close failed: '+str(cleanup))
+            raise
+        if child.stdin is not None: child.stdin.close()
+        if child.returncode!=0: raise ValueError('installed_registration_child_failed')
+        output.seek(0); data=output.read(65537)
+        if len(data)>65536: raise ValueError('installed_child_output_budget')
+        if kind=='writer':
+            if data: raise ValueError('installed_writer_output')
+            return
+        return recovery.host_json(data)
+
+
+def _registration_read_at(directory,name):
+    fd=os.open(name,os.O_RDONLY|os.O_NOFOLLOW|os.O_NONBLOCK,dir_fd=directory)
+    try:
+        before=os.fstat(fd)
+        if (not stat.S_ISREG(before.st_mode) or before.st_nlink!=1 or
+                before.st_uid!=0 or before.st_gid!=0 or stat.S_IMODE(before.st_mode)!=0o600 or
+                before.st_size>recovery.HOST_CAPSULE_BYTES):
+            raise ValueError('installed_provenance_identity')
+        raw=os.read(fd,recovery.HOST_CAPSULE_BYTES+1)
+        if (len(raw)!=before.st_size or ip.identity(os.fstat(fd))!=ip.identity(before) or
+                ip.identity(os.stat(name,dir_fd=directory,follow_symlinks=False))!=ip.identity(before)):
+            raise ValueError('installed_provenance_changed')
+        return raw
+    finally: os.close(fd)
+
+
+def _registration_snapshot(roots,scope):
+    with recovery.private_database(roots['control']/'core/core.sqlite',policy=ip.SPLIT) as path:
+        with closing(sqlite3.connect(path.as_uri()+'?mode=ro',uri=True,timeout=0,isolation_level=None)) as db:
+            db.execute('PRAGMA query_only=ON'); db.execute('PRAGMA trusted_schema=OFF')
+            end=time.monotonic()+2
+            db.set_progress_handler(lambda:int(time.monotonic()>end),1000)
+            state=recovery.snapshot(roots,db,scope,policy=ip.SPLIT)
+    data=state['evidence_projection']['data']
+    if (state['faults'] or state['inventory']['reasons'] or not state['allocation_coherent'] or
+            any(r['phase']!='terminal' for r in state['journal_records']) or
+            data['p1_recovery_plans'] or any(data.get(t) for t in recovery.B2_COLUMNS)):
+        raise ValueError('installed_registration_unhealthy_state')
+    return state
+
+
+def _registration_hello(hello,registration=None):
+    recovery.closed(hello,'lane boot quarantined launches')
+    if (any(not isinstance(hello[k],str) or not re.fullmatch('[0-9a-f]{32}',hello[k]) for k in ('lane','boot')) or
+            hello['quarantined'] is not False or type(hello['launches']) is not int or not 0<=hello['launches']<64 or
+            (registration is not None and any(hello[k]!=registration[k] for k in ('lane','boot')))):
+        raise ValueError('installed_registration_hello_changed')
+    return hello
+
+
+def _installed_provenance(value,observer,public):
+    recovery.closed(value,'kind registration observation hello ipc_identity')
+    if value['kind']!='installed-registration-v1': raise ValueError('installed_provenance_kind')
+    registration=value['registration']; recovery.validate_registration(registration)
+    if (registration['deployment_id']!=public['deployment_id'] or registration['scope']!=observer.scope or
+            registration['evidence']!='actual-host-inspection'):
+        raise ValueError('installed_provenance_binding')
+    _registration_hello(value['hello'],registration)
+    if value['ipc_identity']!=[public['roles']['ipc'][k] for k in ('device','inode')]:
+        raise ValueError('installed_provenance_ipc')
+    projection=[]
+    for current in value['observation']['topology']['consumers']:
+        role='control' if any(m['destination']=='/control' for m in current['mounts']) else 'worker'
+        if role is None: raise ValueError('installed_provenance_role')
+        projection.append(dict(id=current['id'],image=current['image'],started=current['started'],role=role,
+            volumes=['control','ipc','staging'] if role=='control' else ['ipc','receipts','staging']))
+    recovery.validate_installed_observation(value['observation'],observer.scope,projection,
+        observer.config,observer.policy,public)
+    if any(c not in projection for c in registration['containers']): raise ValueError('installed_provenance_coverage')
+    return value
+
+
+def _register_installed(observer,selected,authority_fd,check,*,child=_registration_child,fault=lambda _:None):
+    """Protected held authority only. No caller-supplied observation receipt.
+
+    Core exclusion spans private copies, children/reap and the post-insert bracket.
+    Provenance-only interruptions remain in the complete retained owner union.
+    """
+    selected=json.loads(encode(selected))
+    roots=ip.roots_checked({r:v['source'] for r,v in observer.policy['roots'].items()},policy=ip.SPLIT)
+    with ip.locked_file(roots['control']/'core/control.lock',policy=ip.SPLIT,role='control') as lock_fd:
+        with ExitStack() as stack:
+            try:
+                fds={}
+                for role in ('control','staging','ipc'):
+                    with ip.parent_fd(roots[role]) as (parent,name):
+                        fd=os.open(name,os.O_RDONLY|os.O_DIRECTORY|os.O_NOFOLLOW,dir_fd=parent)
+                    stack.callback(os.close,fd); fds[role]=fd
+                    ip.check(os.fstat(fd),ip.SPLIT,role,directory=True)
+                    expected=observer.policy['roots'][role]
+                    if (os.fstat(fd).st_dev,os.fstat(fd).st_ino)!=(expected['device'],expected['inode']):
+                        raise ValueError('installed_registration_roots_changed')
+                check(); before=_registration_snapshot(roots,observer.scope)
+                public=json.loads(before['evidence_projection']['data']['p1_installation'][0][3])
+                ip.host_enrollment(public,observer.policy,observer.config,observer.scope)
+                retained={digest(r):r for r in before['registrations']}; provenance={}; identities={}; retained_bytes=0
+                with os.scandir(authority_fd) as entries:
+                    for index,entry in enumerate(entries):
+                        if index>=recovery.HOST_OWNER_LIMIT+2: raise ValueError('installed_authority_budget')
+                        if entry.name in ('launch.lock','host-policy.json'): continue
+                        if not re.fullmatch(r'registration-[0-9a-f]{64}\.json',entry.name):
+                            raise ValueError('installed_unknown_authority_file')
+                        raw=_registration_read_at(authority_fd,entry.name)
+                        retained_bytes+=len(raw)
+                        if retained_bytes>recovery.HOST_CAPSULE_BYTES: raise ValueError('installed_provenance_budget')
+                        value=_installed_provenance(recovery.host_json(raw),observer,public)
+                        rid=digest(value['registration'])
+                        if entry.name!='registration-'+rid+'.json' or raw!=encode(value).encode():
+                            raise ValueError('installed_provenance_changed')
+                        provenance[rid]=raw; retained[rid]=value['registration']
+                        identities[rid]=ip.identity(os.stat(entry.name,dir_fd=authority_fd,follow_symlinks=False))
+                if any(digest(r) not in provenance for r in before['registrations']):
+                    raise ValueError('installed_missing_provenance')
+                candidate=dict(deployment_id=public['deployment_id'],scope=observer.scope,containers=selected,
+                               lane=before['lane'],boot='0'*32,evidence='actual-host-inspection')
+                recovery.validate_registration(candidate)
+                owners=recovery.host_registration_union(list(retained.values()),observer.scope,public['deployment_id']) if retained else []
+                known={c['id']:c for c in owners}
+                for owner in recovery.host_registration_union([candidate],observer.scope,public['deployment_id']):
+                    if owner['id'] in known and known[owner['id']]!=owner: raise ValueError('host_ambiguous_incarnation')
+                    known[owner['id']]=owner
+                owners=[known[k] for k in sorted(known)]
+                if len(owners)>recovery.HOST_OWNER_LIMIT: raise ValueError('host_owner_budget')
+                first=observer.observe_owners(owners,public);check()
+                live={c['id']:c for c in first['topology']['consumers'] if c['running']}
+                if (len(selected)!=2 or {c['role'] for c in selected}!={'control','worker'} or
+                        any(c['id'] not in live for c in selected)):
+                    raise ValueError('installed_registration_requires_live_pair')
+                hello=_registration_hello(child('hello',dict(ipc_fd=fds['ipc']),(fds['ipc'],)))
+                if hello['lane']!=before['lane']: raise ValueError('installed_registration_lane')
+                candidate.update(lane=hello['lane'],boot=hello['boot']); rid=digest(candidate)
+                if rid not in retained and len(retained)>=recovery.HOST_OWNER_LIMIT: raise ValueError('host_registration_budget')
+                value=dict(kind='installed-registration-v1',registration=candidate,observation=first,hello=hello,
+                           ipc_identity=[public['roles']['ipc'][k] for k in ('device','inode')])
+                _installed_provenance(value,observer,public)
+                if observer.observe_owners(owners,public)!=first: raise ValueError('installed_registration_prebracket_changed')
+                if _registration_hello(child('hello',dict(ipc_fd=fds['ipc']),(fds['ipc'],)),candidate)!=hello:
+                    raise ValueError('installed_registration_hello_changed')
+                check(); data=encode(value).encode(); name='registration-'+rid+'.json'
+                if rid not in provenance and retained_bytes+len(data)>recovery.HOST_CAPSULE_BYTES:
+                    raise ValueError('installed_provenance_budget')
+                if rid in provenance:
+                    if provenance[rid]!=data: raise ValueError('installed_provenance_changed')
+                else:
+                    fd=os.open(name,os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW,0o600,dir_fd=authority_fd)
+                    with os.fdopen(fd,'wb') as out:
+                        info=os.fstat(out.fileno())
+                        if (info.st_uid,info.st_gid,stat.S_IMODE(info.st_mode))!=(0,0,0o600) or info.st_nlink!=1:
+                            raise ValueError('installed_provenance_identity')
+                        if out.write(data)!=len(data): raise OSError('installed_provenance_short_write')
+                        out.flush();os.fsync(out.fileno())
+                    os.fsync(authority_fd)
+                identities[rid]=ip.identity(os.stat(name,dir_fd=authority_fd,follow_symlinks=False))
+                provenance[rid]=data
+                def retained_exact():
+                    for identity,raw in provenance.items():
+                        leaf='registration-'+identity+'.json'
+                        if (_registration_read_at(authority_fd,leaf)!=raw or
+                                ip.identity(os.stat(leaf,dir_fd=authority_fd,follow_symlinks=False))!=identities[identity]):
+                            raise ValueError('installed_provenance_changed')
+                retained_exact();fault('provenance');check()
+                prestate=[list(r) for r in before['evidence_projection']['data']['p1_registrations']]
+                request=dict(public=public,registration=candidate,prestate=prestate,
+                    control_fd=fds['control'],staging_fd=fds['staging'],lock_fd=lock_fd)
+                if len(encode(request).encode())>65536: raise ValueError('installed_child_request_budget')
+                if _registration_snapshot(roots,observer.scope)['source_digest']!=before['source_digest']:
+                    raise ValueError('installed_registration_prestate_changed')
+                child('writer',request,(fds['control'],fds['staging'],lock_fd))
+                fault('insert');check()
+                after=_registration_snapshot(roots,observer.scope)
+                expected=prestate if any(r[0]==rid for r in prestate) else prestate+[[rid,encode(candidate),rid]]
+                if [list(r) for r in after['evidence_projection']['data']['p1_registrations']]!=expected:
+                    raise ValueError('installed_registration_poststate')
+                def stable(state):
+                    projection=json.loads(encode(state['evidence_projection']))
+                    projection['data'].pop('p1_registrations')
+                    return projection
+                if stable(before)!=stable(after): raise ValueError('installed_registration_state_changed')
+                if observer.observe_owners(owners,public)!=first: raise ValueError('installed_registration_postbracket_changed')
+                if _registration_hello(child('hello',dict(ipc_fd=fds['ipc']),(fds['ipc'],)),candidate)!=hello:
+                    raise ValueError('installed_registration_hello_changed')
+                retained_exact()
+                fault('bracket');check()
+                return rid
+            except _RegistrationChildUnreaped:
+                _registration_retained.append(os.dup(lock_fd))
+                raise
 
 
 if __name__=='__main__': main()

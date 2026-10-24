@@ -112,6 +112,10 @@ def installed_hello_at(ipc_fd, *, timeout=1.5):
         raise ValueError('installed_lifecycle_socket')
     with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as connection:
         connection.settimeout(timeout)
+        # AF_UNIX resolves this magic-link path in this helper's own proc view.
+        # Unlike SQLite, connect does not canonicalize it back through Docker's
+        # inaccessible host ancestors. The inherited directory remains open;
+        # key/socket identity checks and authenticated server peer checks bracket it.
         connection.connect('/proc/self/fd/'+str(ipc_fd)+'/lifecycle.sock')
         authenticate(connection, session(secret, 0, 10001), cutoff, control=True)
         send(connection, dict(version=VERSION, op='hello', body={}), cutoff)
