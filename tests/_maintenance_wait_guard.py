@@ -19,6 +19,10 @@ _RAW_WRITE = os.write
 
 # Directed survival storage is fixture-owned, never witness-owned.
 _B_SURVIVAL = None
+_B_GAP_ENABLED = False
+_B_GAP_CHILD = False
+_B_GAP_CLOCK = None
+_B_GAP_PARENT = None
 
 
 class MaintenanceWaitGuard:
@@ -838,9 +842,43 @@ class BlockedPipeWitness_B:
         self.wrapper_codes = (session.__code__, session.__wrapped__.__code__, limit.__code__, framing.__code__)
 
     def hooks(self):
+        if _B_GAP_ENABLED and _B_GAP_CHILD:
+            try:
+                if any(_B_SURVIVAL[44:52]): raise ValueError('duplicate gap store')
+                _B_SURVIVAL[44:50] = (_B_GAP_CLOCK() // 1000).to_bytes(6, 'little')
+                _B_SURVIVAL[50] = 0xA5
+                _B_SURVIVAL[51] = 0x5A
+            except BaseException:
+                try:
+                    _B_SURVIVAL[34] = 1
+                    _B_SURVIVAL[35] = 254
+                except BaseException:
+                    pass
         import select
+        if _B_GAP_ENABLED and _B_GAP_CHILD:
+            try:
+                if any(_B_SURVIVAL[60:62]): raise ValueError('duplicate gap store')
+                _B_SURVIVAL[60] = 1
+                _B_SURVIVAL[61] = 254
+            except BaseException:
+                try:
+                    _B_SURVIVAL[34] = 1
+                    _B_SURVIVAL[35] = 254
+                except BaseException:
+                    pass
         diagnostic = self.__dict__.get('_refusal')
         diagnostic = diagnostic if diagnostic and diagnostic['final_active'] else None
+        if _B_GAP_ENABLED and _B_GAP_CHILD:
+            try:
+                if any(_B_SURVIVAL[62:64]): raise ValueError('duplicate gap store')
+                _B_SURVIVAL[62] = 1
+                _B_SURVIVAL[63] = 254
+            except BaseException:
+                try:
+                    _B_SURVIVAL[34] = 1
+                    _B_SURVIVAL[35] = 254
+                except BaseException:
+                    pass
         hook_gate = 0
         hook_returned = False
         try:
@@ -849,6 +887,18 @@ class BlockedPipeWitness_B:
                     _B_SURVIVAL[15] = 0
                     _B_SURVIVAL[14] = 1
                     _B_SURVIVAL[15] = 255 - (1)
+                    if _B_GAP_ENABLED and _B_GAP_CHILD:
+                        try:
+                            if any(_B_SURVIVAL[52:60]): raise ValueError('duplicate gap store')
+                            _B_SURVIVAL[52:58] = (_B_GAP_CLOCK() // 1000).to_bytes(6, 'little')
+                            _B_SURVIVAL[58] = 0xA5
+                            _B_SURVIVAL[59] = 0x5A
+                        except BaseException:
+                            try:
+                                _B_SURVIVAL[34] = 1
+                                _B_SURVIVAL[35] = 254
+                            except BaseException:
+                                pass
                 except BaseException:
                     try:
                         _B_SURVIVAL[34] = 1
@@ -1327,6 +1377,7 @@ class BlockedPipeWitness_B:
         return self.local_callbacks[2][1] if self.valid else None
 
     def trace_B(self, frame, event, arg):
+        global _B_GAP_CHILD
         if not self.valid: return None
         code = frame.f_code
         token = b''
@@ -1435,6 +1486,7 @@ class BlockedPipeWitness_B:
                             diagnostic = self.__dict__.get('_refusal')
                             first_child_role = diagnostic and not diagnostic.get('child_role', False)
                             if diagnostic: diagnostic['child_role'] = True
+                            if _B_GAP_ENABLED and first_child_role: _B_GAP_CHILD = True
                             if first_child_role and _B_SURVIVAL is not None and diagnostic and diagnostic.get('child_role', False):
                                 try:
                                     _B_SURVIVAL[4] = 1
@@ -1480,6 +1532,15 @@ class BlockedPipeWitness_B:
                                             _B_SURVIVAL[35] = 254
                                         except BaseException:
                                             pass
+                        if _B_GAP_ENABLED and local.get('pid') != 0:
+                            try:
+                                _B_GAP_PARENT[3] += 1
+                                if _B_GAP_PARENT[3] != 1: raise ValueError('duplicate parent timeout')
+                                gap_time = _B_GAP_CLOCK() // 1000
+                                if type(gap_time) is not int or not 0 <= gap_time < 1 << 48: raise ValueError('parent clock range')
+                                _B_GAP_PARENT[1] = gap_time
+                            except BaseException:
+                                _B_GAP_PARENT[5] = 1
                     elif self.phase != 'armed' or local.get('pid') != 0:
                         self.valid = False
                         diagnostic = self.__dict__.get('_refusal')
@@ -1650,6 +1711,18 @@ class BlockedPipeWitness_B:
                         _B_SURVIVAL[11] = 0
                         _B_SURVIVAL[10] = 2
                         _B_SURVIVAL[11] = 255 - (2)
+                        if _B_GAP_ENABLED and _B_GAP_CHILD:
+                            try:
+                                if any(_B_SURVIVAL[36:44]): raise ValueError('duplicate gap store')
+                                _B_SURVIVAL[36:42] = (_B_GAP_CLOCK() // 1000).to_bytes(6, 'little')
+                                _B_SURVIVAL[42] = 0xA5
+                                _B_SURVIVAL[43] = 0x5A
+                            except BaseException:
+                                try:
+                                    _B_SURVIVAL[34] = 1
+                                    _B_SURVIVAL[35] = 254
+                                except BaseException:
+                                    pass
                     except BaseException:
                         try:
                             _B_SURVIVAL[34] = 1

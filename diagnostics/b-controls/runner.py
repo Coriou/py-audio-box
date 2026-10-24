@@ -14,8 +14,8 @@ import uuid
 
 ROOT = Path(__file__).resolve().parents[2]
 CONTROL = 'tests/service/test_child_wait_guard.py'
-GUARD = 'd3a011ffcc50e785f39abba54f07b51fe733b132425fff8dfc9a9848c92d254d'
-CONTROLS = 'fbea91ee219305f934b319581f58b0b3ad3b6839abbbcf877298751a1c9512db'
+GUARD = 'a4a4c464a31953d99fe37d80a86fe6f93bca79a2b071aee1cd65b0df6e08fa88'
+CONTROLS = '382ba2171dc2ced6e81efbfd63668432621fd43c6f685c57f958da2c6378e195'
 GROUPS = (
     ('test_B_closed_transcript_source_predicate', 'B-T-', 'B_CONTROL_PARSER', 17, 10),
     ('test_B_directed_isolated_seams', 'B-S-', 'B_CONTROL_SEAMS', 39, 35),

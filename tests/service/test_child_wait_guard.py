@@ -1122,6 +1122,67 @@ expected_control = BASELINE_IDENTITIES.get(mode)
 diagnostic_enabled = expected_control is not None
 NOT_REACHED = 'NOT_REACHED'
 QUALIFICATION_KEYS = ('terminal', 'observe_status', 'observe_witness', 'observe_return', 'receipt_owned')
+def gap_parent_record(values):
+    return dict(layout='FINAL_GAP_V1', setup=values[0], timeout=values[1], wait=values[2],
+        timeout_count=values[3], wait_count=values[4], error=values[5])
+
+def validate_gap_parent(record):
+    if type(record) is not dict or set(record) != {'layout','setup','timeout','wait','timeout_count','wait_count','error'}:
+        raise ValueError('parent gap schema')
+    if record['layout'] != 'FINAL_GAP_V1': raise ValueError('parent gap layout')
+    for key in ('setup','timeout','wait'):
+        v = record[key]
+        if v is not None and (type(v) is not int or not 0 <= v < 1 << 48): raise ValueError('parent gap range')
+    if any(type(record[k]) is not int or record[k] not in (0,1) for k in ('timeout_count','wait_count','error')):
+        raise ValueError('parent gap counts')
+    if record['error'] == 0:
+        if record['setup'] is None: raise ValueError('parent setup absent')
+        for key in ('timeout','wait'):
+            if (record[key] is not None) != (record[key+'_count'] == 1): raise ValueError('parent gap count crosscheck')
+            if record[key] is not None and record[key] < record['setup']: raise ValueError('parent gap order')
+        if record['timeout'] is not None and record['wait'] is not None and record['timeout'] > record['wait']:
+            raise ValueError('parent timeout order')
+
+def decode_gap(raw):
+    gap = dict(layout='FINAL_GAP_V1', f2=None, h0=None, h1=None,
+        f2_state='ABSENT', h0_state='ABSENT', h1_state='ABSENT',
+        import_returned=False, diagnostic_ready=False, error=0)
+    ended = False
+    for name, off in (('f2',36),('h0',44),('h1',52)):
+        slot = raw[off:off+8]
+        if slot == bytes(8): ended = True; continue
+        if slot[6:] != b'\xa5\x5a':
+            gap[name+'_state'] = 'TORN'; gap['error'] = 1; ended = True; continue
+        gap[name] = int.from_bytes(slot[:6], 'little'); gap[name+'_state'] = 'COMMITTED'
+        if ended: gap['error'] = 1
+    for name, off in (('import_returned',60),('diagnostic_ready',62)):
+        pair = raw[off:off+2]
+        if pair == b'\x01\xfe': gap[name] = True
+        elif pair != bytes(2): gap['error'] = 1
+    f2,h0,h1 = (gap[k] for k in ('f2','h0','h1'))
+    if any(raw[36:]) and not (2 <= raw[10] <= 15 and raw[11] == 255-raw[10]): gap['error'] = 1
+    if raw[14:16] in (b'\x02\xfd',b'\x03\xfc',b'\x04\xfb') and h1 is None: gap['error'] = 1
+    if (h0 is not None and (f2 is None or f2 > h0) or
+            h1 is not None and (h0 is None or h0 > h1) or
+            gap['import_returned'] and h0 is None or
+            gap['diagnostic_ready'] and not gap['import_returned'] or
+            h1 is not None and (not gap['diagnostic_ready'] or raw[14:16] not in (b'\x01\xfe',b'\x02\xfd',b'\x03\xfc',b'\x04\xfb',b'\x05\xfa'))):
+        gap['error'] = 1
+    return gap
+
+def validate_gap_crosscheck(child, parent):
+    gap, timing = child['gap'], parent['gap_parent']
+    validate_gap_parent(timing)
+    if gap['error'] or timing['error']: return False
+    if child['wait'] == 'DELIVERED' and (timing['wait'] is None or timing['wait_count'] != 1): return False
+    if child['wait'] != 'DELIVERED' and timing['wait'] is not None: return False
+    for key in ('f2','h0','h1'):
+        v = gap[key]
+        if v is not None and (timing['setup'] is None or v < timing['setup'] or timing['wait'] is None or v > timing['wait']): return False
+    if child['state'] == 'TRUE' and (timing['timeout'] is None or timing['timeout_count'] != 1): return False
+    if child['state'] == 'TRUE' and not (all(gap[k+'_state'] == 'COMMITTED' for k in ('f2','h0','h1')) and gap['import_returned'] and gap['diagnostic_ready']): return False
+    return True
+
 def qualification_record():
     return dict(policy='BASELINE_AFTER_OBSERVE', **dict.fromkeys(QUALIFICATION_KEYS, NOT_REACHED),
         observe_calls=0, assertions='PENDING', first_failed='NONE')
@@ -1157,7 +1218,7 @@ def assert_qualification(record):
     record['assertions'] = 'PASSED'
 def callback_record(role, expected):
     validate_identity(expected)
-    return dict(schema=2, control=expected, role=role,
+    record = dict(schema=2, control=expected, role=role,
         first_site=0, kind='UNREACHED', gate=0, hook_gate=0,
         valid=NOT_REACHED, phase=NOT_REACHED, final_called=NOT_REACHED,
         final_result=NOT_REACHED, terminal_called=NOT_REACHED,
@@ -1167,6 +1228,10 @@ def callback_record(role, expected):
         observe_completed=NOT_REACHED, observe_status=NOT_REACHED,
         observe_armed=NOT_REACHED, observe_witness=NOT_REACHED,
         observe_return=NOT_REACHED, assertion=NOT_REACHED, qualification=qualification_record())
+
+    if expected == 'COLLECTED_CONTROL' and role == 'PARENT':
+        record['gap_parent'] = gap_parent_record([None,None,None,0,0,1])
+    return record
 
 CALLBACK_ENUMS = {
     'schema': (2,), 'control': tuple(BASELINE_IDENTITIES.values()), 'role': ('CHILD','PARENT'),
@@ -1182,8 +1247,11 @@ CALLBACK_KEYS = frozenset(callback_record('CHILD', next(iter(BASELINE_IDENTITIES
 def validate_callback(record, expected):
     validate_identity(expected)
     if record.get("control") != expected: raise ValueError("callback identity binding")
-    if record.keys() != CALLBACK_KEYS: raise ValueError('diagnostic schema')
+    keys = CALLBACK_KEYS | ({'gap_parent'} if expected == 'COLLECTED_CONTROL' and record.get('role') == 'PARENT' else set())
+    if record.keys() != keys: raise ValueError('diagnostic schema')
     for key, value in record.items():
+        if key == 'gap_parent':
+            validate_gap_parent(value); continue
         if key == 'qualification':
             validate_qualification(value)
             continue
@@ -1204,11 +1272,15 @@ def decode_survival(raw, delivered, expected):
         raw=raw.hex() if raw is not None else None, state='UNKNOWN',
         result_complete=False, first_site=0, final_gate=0, hook_gate=0,
         hook_stage=0, milestones=[], error=0)
+    if expected == 'COLLECTED_CONTROL': record['gap'] = decode_gap(bytes(64))
     if not delivered:
         if raw is not None: raise ValueError('read without original wait')
         return record
     if type(raw) is not bytes or len(raw) != 64: raise ValueError('survival length')
-    if raw[:4] != b'BDS\x02' or any(raw[36:]): return record
+    if expected == 'COLLECTED_CONTROL':
+        record['gap'] = decode_gap(raw)
+        if raw[:4] != b'BDS\x03' or record['gap']['error']: return record
+    elif raw[:4] != b'BDS\x02' or any(raw[36:]): return record
     def pair(offset, maximum):
         v, complement = raw[offset:offset+2]
         if (v, complement) == (0, 0): return 0
@@ -1293,6 +1365,8 @@ diagnostic_io_failed = False
 teardown_snapshot = None
 survival = None
 binding0 = h._B_SURVIVAL
+gap_bindings0 = (h._B_GAP_ENABLED, h._B_GAP_CHILD, h._B_GAP_CLOCK, h._B_GAP_PARENT)
+gap_parent = None
 wait_delivered = False
 child_steps = []
 parent_steps = []
@@ -1351,7 +1425,7 @@ def bounded_baseline_snapshot(value):
 
 def validate_baseline_records(records, expected, node, binding):
     validate_identity(expected)
-    if (type(binding) is not dict or binding != dict(schema=2, control=expected, node=node) or
+    if (type(binding) is not dict or binding != dict(schema=2, control=expected, node=node, **({'layout':'FINAL_GAP_V1'} if expected == 'COLLECTED_CONTROL' else {})) or
             node != NODE): raise ValueError('external node/private binding')
     if type(records) is not dict or set(records) != {'child-refusal.json','parent-callback.json','directed-outcome.json'}:
         raise ValueError('baseline leaves')
@@ -1390,7 +1464,8 @@ def validate_baseline_records(records, expected, node, binding):
     if type(outcome['missing_records']) is not list or any(v not in ('child-refusal.json','parent-callback.json') for v in outcome['missing_records']):
         raise ValueError('missing records')
     exit_code = outcome['pytest_exit']
-    complete = (type(exit_code) is int and exit_code in range(6) and child['result_complete'] and
+    gap_ok = expected != 'COLLECTED_CONTROL' or validate_gap_crosscheck(child, parent)
+    complete = (gap_ok and type(exit_code) is int and exit_code in range(6) and child['result_complete'] and
         not any(outcome[k] for k in ('duplicate_phase','unknown_phase','io_failed','callback_other','missing_records')) and
         bounded_baseline_snapshot(outcome['teardown']) and bounded_baseline_snapshot(outcome['final']) and
         all(v in ('PASSED','FAILED') for v in outcome['phases'].values()) and
@@ -1443,7 +1518,7 @@ def publish_outcome(exit_code):
     try:
         records = {name: h.metadata(root/name) for name in ('child-refusal.json','parent-callback.json')}
         records['directed-outcome.json'] = record
-        validate_baseline_records(records, expected_control, NODE, dict(schema=2, control=expected_control, node=NODE))
+        validate_baseline_records(records, expected_control, NODE, dict(schema=2, control=expected_control, node=NODE, **({'layout':'FINAL_GAP_V1'} if expected_control == 'COLLECTED_CONTROL' else {})))
     except (OSError, RuntimeError, TypeError, ValueError, KeyError):
         diagnostic_io_failed = True
         record['io_failed'], record['diagnostic'] = True, 'RED'
@@ -1835,6 +1910,15 @@ class Plugin:
         def terminal(w, result, caller, enrolled, child_bytes):
             global wait_delivered
             if diagnostic_enabled: wait_delivered = True
+            if h._B_GAP_ENABLED:
+                try:
+                    gap_parent[4] += 1
+                    if gap_parent[4] != 1: raise ValueError('duplicate parent wait')
+                    gap_time = h._B_GAP_CLOCK() // 1000
+                    if type(gap_time) is not int or not 0 <= gap_time < 1 << 48: raise ValueError('parent clock range')
+                    gap_parent[2] = gap_time
+                except BaseException:
+                    gap_parent[5] = 1
             answer = original['terminal'](w, result, caller, enrolled, child_bytes)
             if diagnostic_enabled:
                 # Original left-to-right qualification, evaluated once inline.
@@ -1914,11 +1998,26 @@ class Plugin:
 result = 'ESCAPED'
 try:
     if diagnostic_enabled:
+        h._B_GAP_ENABLED, h._B_GAP_CHILD = False, False
+        h._B_GAP_CLOCK = h._B_GAP_PARENT = None
         import mmap
         anon = mmap.MAP_ANON if hasattr(mmap, 'MAP_ANON') else mmap.MAP_ANONYMOUS
         survival = mmap.mmap(-1, 64, flags=mmap.MAP_SHARED | anon,
             prot=mmap.PROT_READ | mmap.PROT_WRITE)
-        survival[:] = b'BDS\x02' + bytes(60)
+        survival[:] = (b'BDS\x03' if expected_control == 'COLLECTED_CONTROL' else b'BDS\x02') + bytes(60)
+        if expected_control == 'COLLECTED_CONTROL':
+            import time
+            from types import BuiltinFunctionType
+            gap_clock = time.monotonic_ns
+            if (type(gap_clock) is not BuiltinFunctionType or gap_clock.__module__ != 'time' or
+                    gap_clock.__name__ != 'monotonic_ns' or gap_clock is not time.monotonic_ns or
+                    not time.get_clock_info('monotonic').monotonic or time.get_clock_info('monotonic').adjustable):
+                raise ValueError('unsupported gap clock')
+            gap_setup = gap_clock()
+            if type(gap_setup) is not int or not 0 <= gap_setup // 1000 < 1 << 48: raise ValueError('gap clock range')
+            gap_parent = [gap_setup // 1000,None,None,0,0,0]
+            h._B_GAP_CLOCK, h._B_GAP_PARENT = gap_clock, gap_parent
+            h._B_GAP_CHILD, h._B_GAP_ENABLED = False, True
         h._B_SURVIVAL = survival
     result = pytest.main(['--noconftest', '-p', 'no:cacheprovider', '-q', '-x', NODE,
         '--basetemp='+str(root/'pytest')], plugins=[Plugin()])
@@ -1930,6 +2029,8 @@ finally:
             child_diagnostic = decode_survival(raw_survival, wait_delivered, expected_control)
             child_steps = child_diagnostic['milestones']
             publish_diagnostic('child-refusal.json', child_diagnostic)
+            if expected_control == 'COLLECTED_CONTROL' and gap_parent is not None:
+                parent_diagnostic['gap_parent'] = gap_parent_record(gap_parent)
             publish_diagnostic('parent-callback.json', parent_diagnostic)
             try:
                 h.atomic(root/(str(parent_owner)+'.json'), dict(control=mode, steps=parent_steps))
@@ -1937,6 +2038,8 @@ finally:
         publish_outcome(int(result) if type(result) is int or isinstance(result, int) else 'ESCAPED')
     finally:
         h._B_SURVIVAL = binding0
+        h._B_GAP_ENABLED, h._B_GAP_CHILD, h._B_GAP_CLOCK, h._B_GAP_PARENT = gap_bindings0
+        gap_parent = gap_clock = None
         if survival is not None: survival.close()
         survival = None
 if diagnostic_enabled: assert not diagnostic_io_failed, 'baseline diagnostic publication/validation failed'
