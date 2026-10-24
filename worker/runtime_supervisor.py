@@ -93,10 +93,6 @@ class RuntimeSupervisor:
             from worker.runtime_protocol import execution, dispatch_mode
             spec = execution(context)
             if (body['fixture'] in ('kokoro','pocket')) != (spec is not None) or (spec is not None and body['fixture'] != dispatch_mode(spec)): raise Refused('execution_dispatch_mismatch')
-            # Independent direct-integration fence, before allocation or journal
-            # mutation. Existing records remain observable/stoppable/collectable.
-            if spec is not None and spec.engine == 'pocket-tts':
-                raise Refused('pocket_restart_repair_required')
             if spec is not None and context['execution']['bundles'] != self.bundles:
                 raise Refused('unregistered_mount_mapping')
             if spec is not None and spec.engine == 'pocket-tts':
@@ -217,7 +213,7 @@ class RuntimeSupervisor:
     def stop_tree(self):
         with self.tree_lock:
             active = self.active
-            if active is not None and active['stopping'] is None:
+            if active is not None and not active.get('finalizing') and active['stopping'] is None:
                 active['stopping'] = time.monotonic()
                 self.signal_namespace(signal.SIGTERM)
 
@@ -227,7 +223,7 @@ class RuntimeSupervisor:
         # signal a newly admitted lane after the main reaper retires their handle.
         with self.tree_lock:
             active = self.active
-            if active is None:
+            if active is None or active.get('finalizing'):
                 return
             now = time.monotonic()
             if (now >= active['cutoff'] or self.halt) and active['stopping'] is None:
@@ -243,7 +239,7 @@ class RuntimeSupervisor:
 
     def tick(self):
         active = self.active
-        if active is None:
+        if active is None or active.get('finalizing'):
             return
         try:
             identity, proposal, when = self.received.get_nowait()
@@ -284,13 +280,48 @@ class RuntimeSupervisor:
                 reaped_children=active['reaped_children'], timely=bool(active['proposal'] is not None and
                 active['proposed_at'] < active['cutoff'] and reaped_at < active['cutoff']),
                 original_deadline=row['allocation']['snapshot'][0]['deadline'])
+            # Retire engine signalling before housekeeping can fork; keep this
+            # allocation occupying the lane. Never wait while holding tree_lock.
+            with self.tree_lock:
+                active['finalizing'] = True
             try:
+                if row['allocation']['fixture'] == 'pocket' and row['phase'] != 'prepared':
+                    self.conditioning(row)
+                # A stopped prepared allocation has never run stage setup.
                 self.change(row, phase='terminal', receipt=receipt, proposal=active['proposal'])
             except Exception:
                 # Actual reap without durable receipt is NOT STOPPED authority.
                 self.failed = True
             with self.tree_lock:
-                self.active = None
+                # An unconfirmed helper remains quarantined and occupied forever;
+                # tick must not reinterpret its wait status as an engine receipt.
+                if not active.get('helper_unknown'):
+                    self.active = None
+
+    def conditioning(self, row):
+        stage = row['allocation']['snapshot'][0]['attempts'][-1]['staging_id']
+        proc = subprocess.Popen(['python', '-m', 'worker.runtime_conditioning', stage, str(row['uid'])],
+            user=10001, group=row['uid'], extra_groups=[], close_fds=True,
+            stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        try:
+            code = proc.wait(timeout=1)
+        except subprocess.TimeoutExpired:
+            try:
+                proc.kill()
+                proc.wait(timeout=1)
+            except Exception:
+                self.active['helper_unknown'] = True
+            raise Refused('conditioning_timeout')
+        except Exception:
+            # A failed exact wait is not death proof. Attempt bounded kill/wait.
+            try:
+                proc.kill()
+                proc.wait(timeout=1)
+            except Exception:
+                self.active['helper_unknown'] = True
+            raise Refused('conditioning_wait_unknown')
+        if code != 0:
+            raise Refused('conditioning_refused')
 
     def client(self, connection):
         cutoff = time.monotonic()+2

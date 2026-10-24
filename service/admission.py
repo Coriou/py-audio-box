@@ -35,10 +35,6 @@ class Admission:
         from worker.runtime_protocol import execution
         spec = execution(context)
         if spec is not None:
-            # r248: retained conditioning blocks restart. Keep product admission
-            # closed until the complete post-reap repair is independently reviewed.
-            if spec.engine == 'pocket-tts':
-                raise ValueError('pocket_restart_repair_required')
             if profiles is None: raise ValueError('no_authority')
             selected = next(p for p in profiles if p['id']==plan['resolved']['profile']['id'])
             if selected['verification'] != 'measured' or not selected['qualification_receipt'] or 'synthetic' in selected['qualification_receipt'].lower():

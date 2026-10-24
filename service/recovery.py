@@ -1862,7 +1862,12 @@ def _allocation_coherent(data,validated=None):
                     authority.job['deadline']!=job['deadline'] or not job['attempts'] or
                     authority.job['attempts'][-1]!={**job['attempts'][-1],'reaped':authority.job['attempts'][-1]['reaped']}): return False
                 demand=json.loads(reservation[2])
-                if (reservation[1]!='inference' or demand['configuration']!=digest(authority.context['plan']['resolved']['identity']['effective']) or
+                from worker.runtime_protocol import execution
+                # Match Admission and live reconciliation exactly. The closed
+                # decoder selects one binding; legacy hashes are not fallbacks.
+                frozen = (authority.context['execution'] if execution(authority.context) is not None
+                          else authority.context['plan']['resolved']['identity']['effective'])
+                if (reservation[1]!='inference' or demand['configuration']!=digest(frozen) or
                     demand['disk_bytes']<demand['attempt_disk_bytes']*len(job['attempts'])): return False
                 if not row[9] and (reservation[3] not in ('executing','retained') or
                     (bool(row[8])!=(reservation[3]=='retained') and row[0] not in recovered)): return False
