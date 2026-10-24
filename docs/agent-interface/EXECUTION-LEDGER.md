@@ -2359,3 +2359,7 @@ r233 confirms IntelMac/OrbStack not supportedinstalledLinuxhost,3.9GiBhostfree, 
 ### 2026-10-24 — CPU bytes verified; headroom recovery within prior cache authorization
 
 r234 verifiesbothcachedassethashes/fulllegacyimageID but source/runtime/provider clearanceunknown and3.874GiBfree below6GiBfloor. Parent commissioned r236 boundedpreviouslyuserapproved managedUV/pip/pnpm/staledownloadcache cleanup only, excludingDocker/models/STT/HELD/worktrees. No executionwaiver; clonecontract r235 continues.
+
+### 2026-10-24 — Approved managed cache cleanup cannot recover required headroom
+
+r236 managedUVoffline prune reportsnounusedentries/zero recovery; pipempty othercachesemptyorunprovenactive skipped.4,117,741,568bytesfree (3.835GiB),2,324,709,376bytes shortof6GiB. NoDocker/models/HELD/STT/worktrees touched. ActualCPUexecution remainsblocked; clonecontract source r235 active independently.
