@@ -2103,3 +2103,7 @@ Live r182 status confirms its scope-response turn ended without resuming impleme
 ### 2026-10-24 — Trusted prepare/save/generate candidate delivered
 
 r183 source8dd7e91f/docs9353a1b9 implements Production prepare/results/save/generate with managed input binding and existing Core publication, plus authorized synthetic prepare/clone proposal support. Four service and one worker test reported PASS, including restart/idempotency/ownership/stale publication and legacy preset behavior. Parent commissioned independent Sol r184; candidate remains unmerged. Synthetic silence is not real voice cloning/engine readiness; HTTP activation and installed worker qualification remain open.
+
+### 2026-10-24 — Trusted production adopted; authenticated agent adapters start
+
+r184 bounded source GO. Parent merged9353a1b9 conflict-free and reran4service+1worker production tests PASS. Trusted synthetic prepare/results/save/generate now integrated. Commissioned r185 HTTP/CLI/MCP plus job control with explicit operator resolution seam; arbitrary public execution contexts forbidden. Actual engines/hardware and installed transport remain separate.
