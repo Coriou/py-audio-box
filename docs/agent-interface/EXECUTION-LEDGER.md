@@ -2315,3 +2315,7 @@ r223 sourced692a3d7/docs8b5e5aaf completes bounded pre/post-Core activation, aut
 ### 2026-10-24 — Installed activation lifecycle/order corrections
 
 r224 source NO-GO reproduced repeatedstartupcancellation losingliveowner/no closeintent and queuedcancelaccountingrelease beforelatehello refusal.71testsPASS missedcombinednegatives. Parent commissioned targeted Sol r225 cancellationresponsibilityretention and posthealthyreconcile releaseordering. Activationunmerged; packagingseparate/noactualqualification.
+
+### 2026-10-24 — Activation cancellation/gate fixes enter re-review
+
+r225 source20f40183/docs2f283a63 retains asyncpreparation/acquisition/cleanup responsibility across repeatedcancel and defers queuedrelease untilhealthyreconcile. ThreeoldregressionsRED;75exactpin methods reportedPASS. Parent commissioned independent Sol r226; activationunmerged actualqualificationpending.
