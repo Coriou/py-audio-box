@@ -2207,3 +2207,7 @@ r202 combined source NO-GO: SQLite canonicalizes inherited fd paths to root-only
 ### 2026-10-24 — Dropped-child canonical path correction delivered
 
 r203 source0b02b138/docsd9feecc3 uses private Linux namespace fixed validated bind paths before permanentUIDdrop, preserving ordinarySQLite and host permissions.59 focused+31 legacy checks reported PASS; oldentrypoint regression RED. Parent commissioned independent round2 Sol r204. No actualmount/UID operations, root adoption or activation; kernel/permission qualification pending.
+
+### 2026-10-24 — Split initializer adopted; installed host observer starts
+
+r204 source GO closes canonicalpath blocker. Parent merged d9feecc3 conflict-free;59 integrated focused tests PASS. Commissioned sole Sol-low r205 fixed-policy LinuxDocker host observation/authority callback unit; registrationwriter and activation follow. No actualLinuxprivilege/mount or installedacceptance claim.
