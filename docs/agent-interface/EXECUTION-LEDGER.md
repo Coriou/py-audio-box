@@ -2079,3 +2079,7 @@ r179 closes R1 but retains R2 P2: canonical operation sample loop lacks voice_ve
 ### 2026-10-24 — r180 canonical fixture consumer scope clarified
 
 Inventory found tests/service/test_voice_store.py test_contract_fixtures also directly validates serialized operation samples. Parent authorized only that loop migration to the explicit fixture decoder, preserving coverage and public JSON-envelope rejection; isolated voice-store unittest coverage added. No product scope change.
+
+### 2026-10-24 — r180 generator test dependencies
+
+Actual generator determinism reached a missing NumPy/soundfile dependency in the dedicated temporary test venv. Parent authorized compatible binary-wheel installation of those two packages and necessary dependencies solely into /private/tmp/pab-0c-venv, with versions recorded; no global packages, source toolchain, models or other runtime operations. This narrowly amends the lane network restriction to finish the required existing check.
