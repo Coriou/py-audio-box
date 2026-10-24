@@ -2215,3 +2215,7 @@ r204 source GO closes canonicalpath blocker. Parent merged d9feecc3 conflict-fre
 ### 2026-10-24 — Installed host resource/input policy clarified
 
 r205 found enrolled config lacks CPU/tmpfs/input paths. Parent authorized closed protected host policy bound to enrollment config digest: operator-selected finite per-role CPU compatible with worker profile, bounded exact tmpfs and fixed container input destinations, explicit validated host source identities. No hardcoded oneCPU ceiling, secret contents, inferred policy defaults or automatic record migration. Narrow canonical config/test coherence included.
+
+### 2026-10-24 — Installed host observation candidate enters review
+
+r205 source4f282794/docs77894777 delivers fixed-policy Docker/proc/input/mount observation and protected launch authority callback;81 focused methods reported PASS with injected observations. Parent commissioned independent Sol r206. Candidate unmerged; registrationwriter/launchactivation and actualLinuxqualification remainclosed. No Docker mutation or credential contents observed.
