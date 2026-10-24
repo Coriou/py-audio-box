@@ -436,13 +436,13 @@ def typed_references(self, data, b2, _before, document):
         elif isinstance(value, str):
             refs.setdefault(value, set()).add(source if len(source)<=256 else source.split(':')[0]+':'+hashlib.sha256(source.encode()).hexdigest())
         else: self.reasons.add('unknown_reference_kind')
-    def walk(value, definition, source):
+    def walk(value, definition, source, path=(), planned_prepare=False):
         if definition == 'asset' and isinstance(value, dict): add(value.get('id'), source)
         node = schema[definition] if isinstance(definition, str) else definition
         if '$ref' in node:
             name = node['$ref'].split('/')[-1]
             if name == 'asset' and isinstance(value, dict): add(value.get('id'), source)
-            return walk(value, name, source)
+            return walk(value, name, source, path, planned_prepare)
         for union in ('oneOf', 'anyOf', 'allOf'):
             if union in node:
                 # Delegate type, $ref and discriminator applicability to the
@@ -454,7 +454,7 @@ def typed_references(self, data, b2, _before, document):
                 if union == 'allOf' and len(branches) != len(node[union]):
                     self.reasons.add('unknown_reference_kind')
                 if not branches: self.reasons.add('unknown_reference_kind')
-                for branch in branches: walk(value, branch, source)
+                for branch in branches: walk(value, branch, source, path, planned_prepare)
                 return
         if 'type' in node and not validator.evolve(schema={'type': node['type']}).is_valid(value):
             self.reasons.add('unknown_reference_kind')
@@ -463,19 +463,25 @@ def typed_references(self, data, b2, _before, document):
             self.reasons.add('unknown_reference_kind')
         if isinstance(value, list):
             if 'items' in node:
-                for item in value: walk(item, node['items'], source)
+                for item in value: walk(item, node['items'], source, path, planned_prepare)
         elif isinstance(value, dict):
             properties = node.get('properties', {})
             if set(value) - properties.keys(): self.reasons.add('unknown_reference_schema')
             for key, item in value.items():
                 if key not in properties: continue
+                # Only these closed prepare-plan fields declare future outputs.
+                # Published manifests/artifacts and saved versions are walked
+                # independently and continue to require their actual assets.
+                if planned_prepare and ((path == ('reference_roles',) and key in ('reference_asset_id','audition_asset_id')) or
+                        (path == ('resolved','reuse_configuration') and key == 'reference_asset_id')):
+                    continue
                 if key == 'reference_asset_sha256' and definition == 'voice_version':
                     if validator.evolve(schema=properties[key]).is_valid(item): add(list(item), source)
                     else: self.reasons.add('unknown_reference_kind')
                 elif key in reference_keys:
                     if validator.evolve(schema=properties[key]).is_valid(item): add(item, source)
                     else: self.reasons.add('unknown_reference_kind')
-                else: walk(item, properties[key], source)
+                else: walk(item, properties[key], source, path+(key,), planned_prepare)
     def context(value, source):
         if set(value) == {'plan','bundles','execution'}:
             from worker.runtime_protocol import execution
@@ -487,7 +493,17 @@ def typed_references(self, data, b2, _before, document):
             self.reasons.add('unknown_reference_schema')
         elif value['plan']['resolved']['profile']['id'] in ('kokoro-cpu','pocket-cpu'):
             raise Incomplete('unknown_reference_kind')
-        walk(value['plan'], 'worker_plan', source)
+        plan=value['plan']
+        planned_prepare=False
+        if plan.get('operation')=='voice_prepare' and 'reference_roles' in plan:
+            from contracts import validate as oracle
+            try:
+                oracle.validate('worker_plan',plan)
+                oracle.frozen_plan(plan,value['bundles'])
+            except (ValueError,KeyError,TypeError,ValidationError):
+                raise Incomplete('unknown_reference_kind') from None
+            planned_prepare=plan['reference_roles']['reference_kind']=='prepared_reference'
+        walk(plan, 'worker_plan', source, planned_prepare=planned_prepare)
         for bundle in value['bundles']: walk(bundle, 'bundle_catalogue_entry', source)
     def catalogue_version(value, principal, source):
         from contracts import validate as oracle

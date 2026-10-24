@@ -39,7 +39,11 @@ def run_generation(connection, config, staging, cutoff, *, backend_factory=None)
             os.mkdir('conditioning', 0o700, dir_fd=directory)
         finally:
             os.close(directory)
-        result = execute(spec, context['plan']['request']['text'], context['execution']['bundles'],
+        preparing = context['plan']['operation'] == 'voice_prepare'
+        if preparing:
+            from worker.engines.pocket_prepare import execute
+        text = context['plan']['reference_roles']['audition_text'] if preparing else context['plan']['request']['text']
+        result = execute(spec, text, context['execution']['bundles'],
                          context['execution']['references'], reference_temp_dir=Path(staging)/stage/'conditioning',
                          backend_factory=backend_factory, managed_owner_uid=10001)
     else:
@@ -47,17 +51,28 @@ def run_generation(connection, config, staging, cutoff, *, backend_factory=None)
     if time.monotonic() >= cutoff: raise Refused('expired_result')
     stage = attempt['staging_id']
     if Path(stage).name != stage or stage in ('.', '..'): raise Refused('invalid_stage')
+    preparing = context['plan']['operation'] == 'voice_prepare'
+    files = [('reference.wav', result['reference']['data']), ('audition.wav', result['audition']['data'])] if preparing else [('output.wav', result['data'])]
     directory = os.open(Path(staging)/stage, os.O_RDONLY|os.O_DIRECTORY|os.O_NOFOLLOW)
     try:
-        fd = os.open('output.wav', os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW, 0o640, dir_fd=directory)
-        with os.fdopen(fd, 'wb') as output:
-            output.write(result['data']); output.flush(); os.fsync(output.fileno())
+        for name, data in files:
+            fd = os.open(name, os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW, 0o640, dir_fd=directory)
+            with os.fdopen(fd, 'wb') as output:
+                output.write(data); output.flush(); os.fsync(output.fileno())
     finally:
         os.close(directory)
-    asset = dict(id='asset-'+uuid4().hex, sha256=result['sha256'], frames=result['frames'], sample_rate=spec.sample_rate, channels=1, media_format='wav', media_subtype='PCM_16', provenance=dict(kind='generated', source_sha256=result['sha256'], source_id=generated_source(context), missing_fields=[]))
+    if not preparing:
+        asset = dict(id='asset-'+uuid4().hex, sha256=result['sha256'], frames=result['frames'], sample_rate=spec.sample_rate, channels=1, media_format='wav', media_subtype='PCM_16', provenance=dict(kind='generated', source_sha256=result['sha256'], source_id=generated_source(context), missing_fields=[]))
     manifest = {k:message[k] for k in ('job_id','attempt_id','generation','owner_id','staging_id','input_sha256')}
-    manifest.update(operation='speech_generate', artifact_id='artifact-'+uuid4().hex, outputs=[asset], candidates=[])
-    message.update(kind='result', stage='completed', result_asset_ids=[asset['id']])
+    if preparing:
+        from worker.engines.pocket_prepare import outputs
+        from worker.synthetic import candidates
+        assets = outputs(context, result)
+        proposed_candidates = candidates(message, assets[1], assets[0])
+    else:
+        assets = [asset]; proposed_candidates = []
+    manifest.update(operation=context['plan']['operation'], artifact_id='artifact-'+uuid4().hex, outputs=assets, candidates=proposed_candidates)
+    message.update(kind='result', stage='completed', result_asset_ids=[a['id'] for a in assets])
     send(connection, dict(message=message, manifest=manifest), cutoff)
 
 
@@ -143,7 +158,9 @@ def main():
         from worker.runtime_protocol import execution
         if execution(config['context']) is not None: raise ValueError('execution_dispatch_mismatch')
         run(connection, config, '/staging', time.monotonic() + 30)
-    os.chmod('/staging/'+config['job']['attempts'][-1]['staging_id']+'/output.wav', 0o644)
+    names = ('reference.wav','audition.wav') if config['context']['plan'].get('reference_roles') else ('output.wav',)
+    for name in names:
+        os.chmod('/staging/'+config['job']['attempts'][-1]['staging_id']+'/'+name, 0o644)
 
 
 if __name__ == '__main__':

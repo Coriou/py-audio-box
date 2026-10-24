@@ -95,9 +95,14 @@ class Admission:
                 max_bytes=spec.max_output_bytes if spec else 9644
                 max_frames=spec.max_frames if spec else 4800
                 rate=spec.sample_rate if spec else 48000
-                output=stage/'output.wav'
-                if output.exists() and output.stat().st_size>max_bytes:raise ValueError('resource_output_bytes')
-                if output.exists() and publication:
-                    with wave.open(str(output),'rb') as wav:
-                        if wav.getnframes()>max_frames or wav.getframerate()!=rate or wav.getnchannels()!=1 or wav.getsampwidth()!=2:
-                            raise ValueError('resource_decoded_limit')
+                files=[('output.wav',max_bytes,max_frames,rate)]
+                if spec is not None and context['plan'].get('reference_roles'):
+                    frames=(spec.out_tick-spec.in_tick)*spec.reference_rate//48000
+                    files=[('reference.wav',44+2*frames,frames,spec.reference_rate),('audition.wav',max_bytes,max_frames,rate)]
+                for name,byte_limit,frame_limit,expected_rate in files:
+                    output=stage/name
+                    if output.exists() and output.stat().st_size>byte_limit:raise ValueError('resource_output_bytes')
+                    if output.exists() and publication:
+                        with wave.open(str(output),'rb') as wav:
+                            if wav.getnframes()>frame_limit or wav.getframerate()!=expected_rate or wav.getnchannels()!=1 or wav.getsampwidth()!=2:
+                                raise ValueError('resource_decoded_limit')

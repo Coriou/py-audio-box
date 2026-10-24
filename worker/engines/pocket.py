@@ -103,7 +103,12 @@ def execute(execution, text, bundles, references, *, reference_temp_dir, backend
     if type(text) is not str or not text or len(text.encode('utf-8')) > e.max_text_bytes:
         raise Refused('text_limit')
     reference = verify_inputs(e, bundles, references, owner_uid=managed_owner_uid)
-    root = Path(bundles[e.bundle_id]).absolute()
+    return _synthesise(e, text, bundles[e.bundle_id], reference, reference_temp_dir, backend_factory)
+
+
+def _synthesise(e, text, bundle, reference, reference_temp_dir, backend_factory):
+    """Private adapter seam: caller already verified the full binding and bytes."""
+    root = Path(bundle).absolute()
     namespace = Path(reference_temp_dir).absolute()
     fd = _open(namespace, True)
     try:
@@ -152,7 +157,8 @@ def execute(execution, text, bundles, references, *, reference_temp_dir, backend
 
 def verify_inputs(e, bundles, references, *, owner_uid=None):
     """Inert verification shared by trusted integration; no backend import."""
-    if type(e) is not PocketExecution: raise Refused('typed_execution_required')
+    from .pocket_prepare import PocketPreparation
+    if type(e) not in (PocketExecution, PocketPreparation): raise Refused('typed_execution_required')
     if e.bundle_id not in bundles or e.reference_id not in references:
         raise Refused('unauthorized_identity')
     root = Path(bundles[e.bundle_id]).absolute()

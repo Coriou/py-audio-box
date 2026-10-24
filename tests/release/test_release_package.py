@@ -265,7 +265,7 @@ class ArchiveTests(unittest.TestCase):
             self.assertEqual(imported.returncode,0,imported.stderr)
     def test_pocket_archive_bytes_and_isolated_dependency_closure(self):
         modules = ('worker.runtime_conditioning', 'worker.engines.pocket',
-                   'worker.engines.pocket_execution')
+                   'worker.engines.pocket_execution', 'worker.engines.pocket_prepare')
         manifest = json.loads((ROOT/'headless-dist-manifest.json').read_text())
         files = set(manifest['files'])
         # Inspect lazy imports too, without executing generation or housekeeping.
@@ -333,7 +333,7 @@ assert any(isinstance(n, ast.List) and len(n.elts) >= 3
     and isinstance(n.elts[2], ast.Constant) and n.elts[2].value == 'worker.runtime_conditioning'
     for n in ast.walk(tree))
 for name in ('worker.runtime_conditioning', 'worker.engines.pocket',
-             'worker.engines.pocket_execution', 'worker.runtime_child'):
+             'worker.engines.pocket_execution', 'worker.engines.pocket_prepare', 'worker.runtime_child'):
     spec = importlib.util.find_spec(name)
     assert pathlib.Path(spec.origin).is_relative_to(package), name
     importlib.import_module(name)

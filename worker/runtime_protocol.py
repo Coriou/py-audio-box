@@ -37,7 +37,7 @@ def execution(context):
         raise Refused('closed_execution_context')
     if type(value['descriptor']) is not dict: raise Refused('closed_execution_required')
     if value['descriptor'].get('engine') == 'pocket-tts':
-        return pocket_execution(context)
+        return pocket_preparation(context) if value['descriptor'].get('phase') == 'prepare' else pocket_execution(context)
     if set(value) != {'descriptor', 'bundles'}: raise Refused('closed_execution_context')
     spec = Execution.from_wire(value['descriptor'])
     if value['bundles'] != {spec.bundle_id: '/models/bundles/'+spec.bundle_id}:
@@ -113,5 +113,48 @@ def pocket_execution(context):
             spec.max_output_bytes > limits['upload_bytes'] or
             2*(spec.max_output_bytes+spec.reference_bytes) > limits['disk_bytes'] or
             len(request['text'].encode('utf-8')) > spec.max_text_bytes):
+        raise Refused('execution_budget_mismatch')
+    return spec
+
+
+def pocket_preparation(context):
+    from worker.engines.pocket_prepare import PocketPreparation
+    value = context['execution']; plan = context['plan']
+    spec = PocketPreparation.from_wire(value['descriptor'])
+    if (set(value) != {'descriptor', 'bundles', 'references'} or
+            value['bundles'] != {spec.bundle_id: '/models/bundles/'+spec.bundle_id} or
+            value['references'] != {spec.reference_id: '/references/assets/'+spec.reference_id}):
+        raise Refused('owned_mount_mapping')
+    identity = dict(engine=spec.engine, model=spec.checkpoint, bundle_sha256=spec.manifest_sha256,
+                    device='cpu', precision='float32')
+    request = plan['request']; resolved = plan['resolved']; roles = plan.get('reference_roles', {})
+    if request.get('reference_text') != '': raise Refused('unsupported_parameter')
+    if (plan['operation'] != 'voice_prepare' or resolved['profile']['id'] != 'pocket-cpu' or
+            request['identity'] != identity or resolved['identity']['effective'] != identity or
+            resolved['identity']['fallback'] != 'forbid' or plan['voice_versions'] or
+            len(plan['assets']) != 1 or request['asset_id'] != spec.reference_id or
+            (request['in_tick'], request['out_tick']) != (spec.in_tick, spec.out_tick) or
+            resolved['settings'] != dict(kind='prepare', conditioning='pocket', output_format='wav_pcm16') or
+            resolved['reuse_settings'] != dict(kind='pocket_clone', language=spec.language, seed=None) or
+            resolved['reuse_configuration'] != dict(mode='pocket_clone', language=spec.language,
+                reference_asset_id=roles.get('reference_asset_id')) or
+            roles.get('version') != 'reference-roles-v1' or roles.get('reference_kind') != 'prepared_reference' or
+            not roles.get('audition_text') or len(roles['audition_text'].encode('utf-8')) > spec.max_text_bytes):
+        raise Refused('execution_plan_mismatch')
+    asset = plan['assets'][0]
+    if any(asset[k] != v for k,v in dict(id=spec.reference_id, sha256=spec.reference_sha256,
+            frames=spec.reference_frames, sample_rate=spec.reference_rate, channels=1,
+            media_format='wav', media_subtype='PCM_16').items()):
+        raise Refused('execution_reference_mismatch')
+    limits = resolved['profile']['limits']
+    if max(spec.reference_bytes, spec.max_output_bytes) > 1048576:
+        raise Refused('preparation_publication_limit')
+    prepared_bytes = 44 + 2*(spec.out_tick-spec.in_tick)*spec.reference_rate//48000
+    if (spec.threads != limits['threads'] or spec.memory_bytes != limits['ram_bytes'] or
+            spec.max_frames*48000 > limits['decoded_ticks']*spec.sample_rate or
+            spec.out_tick-spec.in_tick > limits['decoded_ticks'] or
+            max(spec.max_output_bytes, spec.reference_bytes, prepared_bytes) > limits['upload_bytes'] or
+            2*spec.max_output_bytes + 4*spec.reference_bytes + 2*prepared_bytes > limits['disk_bytes'] or
+            len(roles['audition_text']) > limits['text_chars']):
         raise Refused('execution_budget_mismatch')
     return spec
