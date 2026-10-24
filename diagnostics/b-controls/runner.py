@@ -14,8 +14,8 @@ import uuid
 
 ROOT = Path(__file__).resolve().parents[2]
 CONTROL = 'tests/service/test_child_wait_guard.py'
-GUARD = 'e6009824186b29585d597308806ae3e7925e161cc4043127550e6cb220a35829'
-CONTROLS = '1095f7406ec185162c598da8aa7339eade14dc213492bc3b5e6aaf238175d079'
+GUARD = 'ffa7900cddb59dc903b8e0100bb6e1fc45ba82f94f51b2044a6a94297529a1a5'
+CONTROLS = '9ffeac79f38a5f6fe13799cee59b836d04b2aad8689f7fc871b39d9cdd304fa1'
 GROUPS = (
     ('test_B_closed_transcript_source_predicate', 'B-T-', 'B_CONTROL_PARSER', 17, 10),
     ('test_B_directed_isolated_seams', 'B-S-', 'B_CONTROL_SEAMS', 39, 35),
@@ -42,15 +42,28 @@ def helpers():
     return module
 
 
+SEPARATE_HELPER = 'test_B_overhead_extracted_HOST_contract'
+SEPARATE_HELPER_AST = '2cf539696bc0f0fb9b03b1869a775a2dfe138a12e77a4f3e1d615dd5eb5cf6d9'
+
+
 def inventory(root=ROOT):
     """Read literal params and ID lambda; never import controls or collect pytest."""
     raw = (root/CONTROL).read_bytes()
     require(hashlib.sha256(raw).hexdigest() == CONTROLS, 'controls digest')
     tree = ast.parse(raw)
+    return inventory_tree(tree)
+
+
+def inventory_tree(tree):
+    """Closed AST inventory; inventory() first authenticates complete source bytes."""
     assignments = {n.targets[0].id: n.value for n in tree.body
         if isinstance(n, ast.Assign) and len(n.targets) == 1 and isinstance(n.targets[0], ast.Name)}
     definitions = [n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name.startswith('test_B_')]
-    require([n.name for n in definitions] == [g[0] for g in GROUPS], 'eight definitions/order')
+    require([n.name for n in definitions] == [g[0] for g in GROUPS] + [SEPARATE_HELPER],
+            'eight definitions/order plus exact separate helper')
+    require(hashlib.sha256(ast.dump(definitions[-1], include_attributes=False).encode()).hexdigest()
+            == SEPARATE_HELPER_AST, 'separate helper AST')
+    definitions = definitions[:-1]
     rows = []
     for definition, (name, prefix, variable, count, cap) in zip(definitions, GROUPS):
         require(len(definition.decorator_list) == 1, 'decorator count')

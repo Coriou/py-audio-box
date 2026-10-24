@@ -1,4 +1,6 @@
 """Stdlib-only fake external checks. Never calls node/campaign/pytest/product."""
+import ast
+import copy
 import hashlib
 import importlib.util
 import json
@@ -205,6 +207,34 @@ def source():
     assert not any(n == 'pytest' or n == 'service' or n.startswith('service.') for n in sys.modules)
 
 
+def closed_inventory():
+    raw = (R.ROOT/R.CONTROL).read_bytes()
+    old = raw[:116293]
+    assert hashlib.sha256(old).hexdigest() == '1095f7406ec185162c598da8aa7339eade14dc213492bc3b5e6aaf238175d079'
+    tree = ast.parse(raw)
+    old_tree = ast.parse(old)
+    helper = next(n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name == R.SEPARATE_HELPER)
+    # Reconstruct original eight-group authority, adding only the separately
+    # authenticated helper required by the successor closed inventory.
+    old_tree.body.append(copy.deepcopy(helper))
+    assert R.inventory_tree(old_tree) == R.inventory() and len(R.inventory()) == 100
+    for mode in ('extra', 'reorder', 'missing', 'helper-body', 'helper-duplicate'):
+        changed = copy.deepcopy(tree)
+        groups = [n for n in changed.body if isinstance(n, ast.FunctionDef) and n.name.startswith('test_B_')]
+        if mode == 'extra':
+            extra = copy.deepcopy(helper); extra.name = 'test_B_unknown'; changed.body.append(extra)
+        elif mode == 'reorder':
+            a, b = map(changed.body.index, groups[:2]); changed.body[a], changed.body[b] = changed.body[b], changed.body[a]
+        elif mode == 'missing': changed.body.remove(groups[0])
+        elif mode == 'helper-body': groups[-1].body.append(ast.Pass())
+        else: changed.body.append(copy.deepcopy(helper))
+        rejection(lambda:R.inventory_tree(changed))
+    with tempfile.TemporaryDirectory() as tmp:
+        root = Path(tmp); path = root/R.CONTROL; path.parent.mkdir(parents=True)
+        path.write_bytes(raw + b'\n# changed bytes\n')
+        rejection(lambda:R.inventory(root))
+
+
 def main():
     os.umask(0o077)
     root = Path(tempfile.mkdtemp(prefix='pab-B-controls-HOST-',dir='/private/tmp'))
@@ -215,7 +245,7 @@ def main():
     try:
         with patch.object(subprocess,'Popen',denied), patch.object(subprocess,'run',denied), \
              patch.object(os,'system',denied), patch.object(os,'fork',denied), patch.object(os,'killpg',denied), patch.object(os,'kill',denied):
-            for name, call in [('source',source),('command-binding',command_binding),('selection',lambda:selection(root)),
+            for name, call in [('source',source),('closed-inventory',closed_inventory),('command-binding',command_binding),('selection',lambda:selection(root)),
                     ('ordering-firstred-retention-deadline',lambda:orchestration(root)),('capture',lambda:capture(root))]:
                 call(); receipt['groups'].append(name)
         receipt['state'] = 'PASS'
