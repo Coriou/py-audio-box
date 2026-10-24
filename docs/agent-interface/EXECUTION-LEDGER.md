@@ -2179,3 +2179,7 @@ r196 bounded source GO. Parent merged6bfdc331 conflict-free; integrated56 target
 ### 2026-10-24 — Kokoro installation enrollment scope dependency
 
 r197 found persistent init/recovery hardcoded synthetic scope. Parent authorized narrow persistent_init.py/persistence.py/recovery.py/reconciliation.py and focused enrollment tests for distinct explicitly gated Kokoro scope. Preserve synthetic behavior, exact volume/runtime/bundle identity, failclosed recovery; no auto migration/re-enrollment or repairs. Source-only task continues.
+
+### 2026-10-24 — Installation ownership conflict checkpoint; targeted Astra unblock
+
+r197 retained no source: uniform-owner init/recovery readers conflict with required controlUID10001/rootPID1receipts topology. Parent commissioned targeted Astra r198 fixed-role installation adapter design and complete reader/operator caller inventory, preserving containment/enrollment/retainedevidence without newdiagnosticframework. Packaging implementation pending that concrete sharedboundary; no tests or actualinstall claimed.
