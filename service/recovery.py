@@ -2828,7 +2828,12 @@ def host_registration_digest(registrations):
     return digest(sorted(registrations, key=digest))
 
 
-def validate_host_topology(topology, scope, owners, *, stopped):
+def validate_host_topology(topology, scope, owners, *, stopped, installed_policy=None, configuration=None):
+    if installed_policy is not None:
+        from service.host_install import validate_installed_topology
+        return validate_installed_topology(topology, scope, owners, configuration, installed_policy, stopped=stopped)
+    if configuration is not None:
+        raise ValueError('explicit_installed_host_policy_required')
     closed(topology, 'scope volumes consumers')
     if topology['scope'] != scope: raise ValueError('host_scope_changed')
     volumes = topology['volumes']
@@ -3414,3 +3419,37 @@ def _rehearse_preparation(session,plan,intent,frozen):
             _prefix_transaction(db,lambda:_insert_recovery_step(db,intent,intent['expected'][4]),lambda point:None,'receipt-complete')
             validate_b2_database(db,private)
             _verify_core_rows(db,intent)
+
+
+def validate_installed_observation(value, scope, owners, configuration, policy, enrollment):
+    """Closed observer content only. Never accepted by historical B2 capsules.
+
+    No hello or DB insertion is implied by a protected launch observation.
+    """
+    from service import install_policy as ip
+    closed(value,'kind enrollment_digest configuration_digest host_policy_digest topology processes')
+    if (value['enrollment_digest']!=ip.host_enrollment(enrollment,policy,configuration,scope) or
+            value['kind']!=ip.HOST_POLICY or value['configuration_digest']!=digest(configuration) or
+            value['host_policy_digest']!=digest(policy)):
+        raise ValueError('installed_observation_binding')
+    validate_host_topology(value['topology'],scope,owners,stopped=False,
+                           installed_policy=policy,configuration=configuration)
+    running={c['id']:c for c in value['topology']['consumers'] if c['running']}
+    if not isinstance(value['processes'],list) or len(value['processes'])!=len(running):
+        raise ValueError('installed_process_coverage')
+    seen=set(); namespaces=set()
+    for process in value['processes']:
+        closed(process,'id image started pid start_ticks pid_namespace cgroup')
+        identity=process['id']
+        if identity not in running or identity in seen:
+            raise ValueError('installed_process_coverage')
+        seen.add(identity); current=running[identity]
+        if any(process[k]!=current[k] for k in ('id','image','started','pid')):
+            raise ValueError('installed_process_identity')
+        if any(type(process[k]) is not int or not 1<=process[k]<2**64 for k in ('start_ticks','pid_namespace')):
+            raise ValueError('installed_process_identity')
+        if process['pid_namespace'] in namespaces: raise ValueError('host_shared_pid_namespace')
+        namespaces.add(process['pid_namespace'])
+        if process['cgroup'] not in ('/docker/'+identity,'/system.slice/docker-'+identity+'.scope'):
+            raise ValueError('host_cgroup_association')
+    return value

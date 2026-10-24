@@ -290,3 +290,82 @@ def initialization(value):
             not re.fullmatch('[0-9a-f]{64}',value['seed'])):
         raise ValueError('invalid_split_initialization')
     return value
+
+
+HOST_POLICY = 'installed-local-docker-v1'
+CONFIG_DESTINATION = '/etc/speech-box/install.json'
+CREDENTIAL_DESTINATION = '/etc/speech-box/control.key'
+
+
+def host_policy(value, config, scope):
+    """Protected per-install authority, never selected from observed metadata.
+
+    CPU is in integer nanocpus; worker allocation covers every enrolled thread.
+    Tmpfs bytes/inodes are explicit, finite, and charged within memory budget.
+    Source records contain identity and public hashes, never credential bytes.
+    """
+    from service.persistent_init import digest, validate_scope
+    import re
+    config = configuration(config); validate_scope(scope)
+    _closed(value, 'version kind configuration_digest host roots inputs cpu tmpfs control_port')
+    if (type(value['version']) is not int or value['version'] != 1 or
+            value['kind'] != HOST_POLICY or value['configuration_digest'] != digest(config) or
+            value['host'] != scope):
+        raise ValueError('installed_host_policy_binding')
+    _closed(value['roots'], 'control staging receipts ipc')
+    _closed(value['inputs'], 'models config credential')
+    _closed(value['cpu'], 'control worker'); _closed(value['tmpfs'], 'control worker')
+    if type(value['control_port']) is not int or not 1 <= value['control_port'] <= 65535:
+        raise ValueError('installed_control_port')
+    for role, root in value['roots'].items():
+        _closed(root, 'source device inode')
+        _source_record(root)
+    for name, source in value['inputs'].items():
+        _closed(source, 'source device inode mode uid gid size mtime_ns ctime_ns sha256' if name != 'credential'
+                else 'source device inode mode uid gid size mtime_ns ctime_ns')
+        _source_record(source)
+        if any(type(source[k]) is not int or source[k] < 0 for k in ('size','mtime_ns','ctime_ns')):
+            raise ValueError('installed_input_identity')
+        if any(type(source[k]) is not int for k in ('uid','gid','mode')):
+            raise ValueError('installed_input_identity')
+        expected = {'models': (10001, 10001, 0o555), 'config': (0, 10001, 0o440),
+                    'credential': (0, 10001, 0o640)}[name]
+        if (source['uid'], source['gid'], source['mode']) != expected:
+            raise ValueError('installed_input_policy')
+        if name != 'credential' and (not isinstance(source['sha256'], str) or
+                not re.fullmatch('[0-9a-f]{64}', source['sha256'])):
+            raise ValueError('installed_input_hash')
+    for role in ('control', 'worker'):
+        cpu = value['cpu'][role]
+        if type(cpu) is not int or not 1 <= cpu <= 1024 * 10**9:
+            raise ValueError('installed_cpu_budget')
+        tmpfs = value['tmpfs'][role]; _closed(tmpfs, 'bytes inodes')
+        if (any(type(n) is not int for n in tmpfs.values()) or
+                not 1 <= tmpfs['bytes'] <= config['budget']['ram_bytes'] or
+                not 1 <= tmpfs['inodes'] <= 65536):
+            raise ValueError('installed_tmpfs_budget')
+    threads = max(c['execution']['descriptor']['threads'] for c in config['contexts'].values())
+    if value['cpu']['worker'] < threads * 10**9:
+        raise ValueError('installed_worker_cpu_threads')
+    return value
+
+
+def _source_record(value):
+    path = value['source']
+    if (not isinstance(path, str) or not path.startswith('/') or
+            str(Path(path)) != path or '..' in Path(path).parts or path == '/' or
+            any(type(value[k]) is not int or not 1 <= value[k] < 2**64 for k in ('device', 'inode'))):
+        raise ValueError('installed_source_record')
+
+
+def host_enrollment(public, policy, config, scope):
+    """Corroborate closed retained public enrollment against protected authority."""
+    from service.persistent_init import digest
+    installation(public); host_policy(policy,config,scope)
+    if (public['scope']!=SCOPE or public['host']!=scope or
+            public['configuration']!=config or public['configuration_digest']!=policy['configuration_digest']):
+        raise ValueError('installed_expected_enrollment_binding')
+    for role,source in policy['roots'].items():
+        if (public['roles'][role]['device'],public['roles'][role]['inode'])!=(source['device'],source['inode']):
+            raise ValueError('installed_expected_enrollment_roots')
+    return digest(public)

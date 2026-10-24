@@ -72,5 +72,31 @@ class HostInstall(unittest.TestCase):
             finally:
                 os.close(fd)
 
+    def test_historical_capsule_projection_and_refusals_direct_unittest(self):
+        # Call only named injected historical cases; no pytest runner/guard.
+        import tempfile
+        import pytest
+        from tests.service import test_recovery as old
+        faults=['unknown','nested','bool','nonfinite','duplicate-registration','missing-wait','duplicate-wait',
+                'wait-failed','E1','forged-hash','forged-label','omitted-provenance','bad-cgroup','same-pidns','expiry','oversize','duration','finished']
+        for fault in ['positive',*faults]:
+            with self.subTest(fault=fault),tempfile.TemporaryDirectory() as directory,pytest.MonkeyPatch.context() as monkeypatch:
+                root=Path(directory).resolve();installation=old.installation.__wrapped__(root)
+                host=old.b23_host.__wrapped__(installation,root,monkeypatch)
+                if fault=='positive':old.test_b23_closed_capsule_freeze_and_apply_closed(host)
+                else:old.test_b23_closed_capsule_negative_matrix(host,fault)
+
+    def test_historical_bounded_docker_and_injected_proc(self):
+        import tempfile
+        import pytest
+        from tests.service import test_recovery as old
+        for fault in ['none','stdout','stderr','exit','spawn','global-timeout','process-timeout']:
+            # Each historical Popen is injected.
+            with self.subTest(adapter='docker',fault=fault),pytest.MonkeyPatch.context() as monkeypatch:
+                old.test_b23_fixed_subprocess_bounds_and_sanitized_errors(monkeypatch,fault)
+        for fault in ['none','pid-reuse','foreign-cgroup','shared-namespace','child-namespace','child-escape','ipc-alias','cgroup-symlink','oversize','deadline','no-cgroup-v2']:
+            with self.subTest(adapter='proc',fault=fault),tempfile.TemporaryDirectory() as directory,pytest.MonkeyPatch.context() as monkeypatch:
+                old.test_b23_local_proc_tree_os_boundary(Path(directory),monkeypatch,fault)
+
 
 if __name__ == '__main__': unittest.main()

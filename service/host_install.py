@@ -517,4 +517,392 @@ def main():
     print(encode(result))
 
 
+
+
+# Installed observer is separate from the historical synthetic projection.
+# These adapters only read Docker/proc/files. No activation or DB writer lives here.
+from contextlib import contextmanager
+from service import install_policy as ip
+import hashlib
+import fcntl
+
+INSTALLED_FIELDS = {
+    'user': '.Config.User', 'capdrop': '.HostConfig.CapDrop',
+    'security': '.HostConfig.SecurityOpt', 'readonly': '.HostConfig.ReadonlyRootfs',
+    'network': '.HostConfig.NetworkMode', 'groups': '.HostConfig.GroupAdd',
+    'devices': '.HostConfig.Devices', 'device_requests': '.HostConfig.DeviceRequests',
+    'device_rules': '.HostConfig.DeviceCgroupRules', 'userns': '.HostConfig.UsernsMode',
+    'ipcns': '.HostConfig.IpcMode', 'utsns': '.HostConfig.UTSMode',
+    'memory': '.HostConfig.Memory', 'swap': '.HostConfig.MemorySwap',
+    'pids': '.HostConfig.PidsLimit', 'nanocpus': '.HostConfig.NanoCpus',
+    'period': '.HostConfig.CpuPeriod', 'quota': '.HostConfig.CpuQuota',
+    'cpuset': '.HostConfig.CpusetCpus', 'tmpfs': '.HostConfig.Tmpfs',
+    'ports': '.HostConfig.PortBindings', 'publish_all': '.HostConfig.PublishAllPorts',
+}
+INSTALLED_FORMAT = CONTAINER_FORMAT[:-1] + ''.join(
+    ',"'+key+'":{{json '+field+'}}' for key,field in INSTALLED_FIELDS.items()) + '}'
+
+
+def _installed_container(observer, identity):
+    if not isinstance(identity,str) or not recovery.HEX.fullmatch(identity):
+        raise ValueError('host_container_id')
+    value = _json_output(observer._read(['container','inspect',identity,'--format',INSTALLED_FORMAT]))
+    recovery.closed(value, 'id image started finished running restarting pid restart pidmode privileged capadd cgroupns mounts ' + ' '.join(INSTALLED_FIELDS))
+    if value['id'] != identity: raise ValueError('host_inspect_identity')
+    return value
+
+
+def _source_stat(path, *, directory):
+    # Descriptor traversal preserves literal no-follow ancestry, including /tmp.
+    with ip.parent_fd(path) as (parent, name):
+        fd = os.open(name, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK |
+                     (os.O_DIRECTORY if directory else 0), dir_fd=parent)
+        try:
+            before = os.fstat(fd)
+            if not (stat.S_ISDIR(before.st_mode) if directory else
+                    stat.S_ISREG(before.st_mode) and before.st_nlink == 1):
+                raise ValueError('installed_source_type')
+            if ip.identity(os.stat(name,dir_fd=parent,follow_symlinks=False)) != ip.identity(before):
+                raise ValueError('installed_source_changed')
+            return before
+        finally: os.close(fd)
+
+
+def _public_file(path, *, uid, gid, mode, limit, deadline):
+    with ip.parent_fd(path) as (parent,name):
+        fd=os.open(name,os.O_RDONLY|os.O_NOFOLLOW|os.O_NONBLOCK,dir_fd=parent)
+        try:
+            before=os.fstat(fd)
+            if (not stat.S_ISREG(before.st_mode) or before.st_nlink != 1 or
+                    (before.st_uid,before.st_gid,stat.S_IMODE(before.st_mode)) != (uid,gid,mode) or
+                    before.st_size > limit): raise ValueError('installed_public_file_policy')
+            result=[]; size=0
+            while size <= before.st_size:
+                if time.monotonic() > deadline: raise ValueError('installed_source_budget')
+                block=os.read(fd,min(1024*1024,before.st_size+1-size))
+                if not block: break
+                size+=len(block); result.append(block)
+            if size!=before.st_size or ip.identity(os.fstat(fd))!=ip.identity(before):
+                raise ValueError('installed_source_changed')
+            with ip.parent_fd(path) as (current,leaf):
+                if ip.identity(os.stat(leaf,dir_fd=current,follow_symlinks=False))!=ip.identity(before):
+                    raise ValueError('installed_source_changed')
+            return b''.join(result)
+        finally: os.close(fd)
+
+
+def _model_tree(path, config, deadline):
+    """Bounded sealed tree inventory; hash every file, verify enrolled manifest."""
+    records=[]; total=0; pending=[Path(path)]; files={}; directories=[]; file_identities=[]
+    while pending:
+        current=pending.pop(); before=_source_stat(current,directory=True)
+        if (before.st_uid,before.st_gid,stat.S_IMODE(before.st_mode))!=(10001,10001,0o555):
+            raise ValueError('installed_model_mode')
+        directories.append((current,ip.identity(before)))
+        records.append([str(current.relative_to(path)), 'directory', list(ip.identity(before))])
+        with os.scandir(current) as entries: names=sorted(e.name for e in entries)
+        if len(records)+len(names)>4096 or time.monotonic()>deadline:
+            raise ValueError('installed_source_budget')
+        for name in names:
+            child=current/name
+            with ip.parent_fd(child) as (parent,leaf): s=os.stat(leaf,dir_fd=parent,follow_symlinks=False)
+            if stat.S_ISDIR(s.st_mode): pending.append(child); continue
+            file_before=ip.identity(_source_stat(child,directory=False))
+            raw=_public_file(child,uid=10001,gid=10001,mode=0o444,
+                             limit=min(512*1024**2,2*1024**3-total),deadline=deadline)
+            total+=len(raw); relative=str(child.relative_to(path)); hashed=hashlib.sha256(raw).hexdigest()
+            files[relative]=(hashed,len(raw))
+            if ip.identity(_source_stat(child,directory=False))!=file_before:
+                raise ValueError('installed_source_changed')
+            file_identities.append((child,file_before))
+            records.append([relative,hashed,len(raw),list(file_before)])
+            if child.name=='manifest.json':
+                if len(raw)>65536: raise ValueError('installed_manifest_budget')
+                files[relative]+=(recovery.host_json(raw),)
+    expected={'bundles/'+bid+'/manifest.json': bundle for bid,bundle in config['bundles'].items()}
+    if {n for n in files if n.endswith('/manifest.json')} != set(expected):
+        raise ValueError('installed_model_manifest')
+    allowed=set(expected)
+    for name,bundle in expected.items():
+        hashed,_,manifest=files[name]
+        if hashed!=bundle['manifest_sha256'] or manifest.get('backend')!='kokoro' or manifest.get('schema_version')!=1 or (manifest.get('checkpoint'),manifest.get('revision'))!=(bundle['checkpoint'],bundle['revision']):
+            raise ValueError('installed_model_manifest')
+        if not isinstance(manifest.get('files'),list) or not manifest['files']:
+            raise ValueError('installed_model_manifest')
+        for entry in manifest['files']:
+            relative=entry.get('path')
+            if not isinstance(relative,str) or str(Path(relative))!=relative or Path(relative).is_absolute() or '..' in Path(relative).parts:
+                raise ValueError('installed_model_manifest')
+            target=str(Path(name).parent/relative)
+            if target in allowed or target not in files or files[target][0]!=entry.get('sha256') or ('bytes' in entry and files[target][1]!=entry['bytes']):
+                raise ValueError('installed_model_manifest')
+            allowed.add(target)
+    if set(files)!=allowed: raise ValueError('installed_model_extra_file')
+    for child,before in file_identities:
+        if ip.identity(_source_stat(child,directory=False))!=before:
+            raise ValueError('installed_source_changed')
+    for current,before in directories:
+        if ip.identity(_source_stat(current,directory=True))!=before:
+            raise ValueError('installed_source_changed')
+    return digest(sorted(records))
+
+
+def _installed_sources(policy,config):
+    deadline=time.monotonic()+recovery.HOST_COLLECTION_SECONDS
+    identities={}; paths=[]; records={**policy['roots'],**policy['inputs']}
+    for name,record in records.items():
+        s=_source_stat(record['source'],directory=name not in ('config','credential'))
+        if (s.st_dev,s.st_ino)!=(record['device'],record['inode']):
+            raise ValueError('installed_source_identity')
+        if name in policy['inputs'] and (s.st_uid,s.st_gid,stat.S_IMODE(s.st_mode))!=(record['uid'],record['gid'],record['mode']):
+            raise ValueError('installed_input_identity')
+        if name in policy['inputs'] and any(getattr(s,'st_'+k)!=record[k] for k in ('size','mtime_ns','ctime_ns')):
+            raise ValueError('installed_input_changed')
+        identities[name]=ip.identity(s); paths.append(Path(record['source']))
+    if len({(s[0],s[1]) for s in identities.values()})!=len(records) or any(a==b or a in b.parents or b in a.parents for i,a in enumerate(paths) for b in paths[i+1:]):
+        raise ValueError('installed_source_overlap')
+    # Credential is stat-only: no open/read/hash, even in private provenance.
+    raw=_public_file(policy['inputs']['config']['source'],uid=0,gid=10001,mode=0o440,
+                     limit=65536,deadline=deadline)
+    if (hashlib.sha256(raw).hexdigest()!=policy['inputs']['config']['sha256'] or
+            recovery.host_json(raw)!=config): raise ValueError('installed_config_changed')
+    if _model_tree(policy['inputs']['models']['source'],config,deadline)!=policy['inputs']['models']['sha256']:
+        raise ValueError('installed_models_changed')
+    return identities
+
+
+def _installed_mount_proof(policy, mounts):
+    """Only same ordinary observed filesystem, no intervening/bind aliases."""
+    sources=[v['source'] for v in (*policy['roots'].values(),*policy['inputs'].values())]
+    selected=[]
+    for source in sources:
+        covering=[m for m in mounts if source==m['target'] or source.startswith(m['target'].rstrip('/')+'/')]
+        if not covering: raise ValueError('installed_mount_unproved')
+        mount=max(covering,key=lambda m:len(m['target']))
+        if mount['root']!='/': raise ValueError('installed_mount_alias')
+        if any(m['target']==source or m['target'].startswith(source+'/') for m in mounts):
+            raise ValueError('installed_nested_mount')
+        selected.append(mount)
+    if any(m!=selected[0] for m in selected): raise ValueError('installed_same_mount_required')
+    chosen=selected[0]
+    if any(m['id']!=chosen['id'] and m['device']==chosen['device'] for m in mounts):
+        raise ValueError('installed_mount_alias')
+    if any(str(v['device']) != str(os.makedev(*map(int,chosen['device'].split(':'))))
+           for v in (*policy['roots'].values(),*policy['inputs'].values())):
+        raise ValueError('installed_mount_device')
+    return chosen
+
+
+def validate_installed_topology(topology, scope, owners, config, policy, *, stopped=False):
+    """Content validator only; no authority or actual qualification assertion."""
+    import copy
+    ip.host_policy(policy,config,scope)
+    recovery.closed(topology,'scope volumes consumers policy configuration_digest host_policy_digest')
+    if (topology['policy']!=ip.HOST_POLICY or topology['configuration_digest']!=digest(config) or
+            topology['host_policy_digest']!=digest(policy)):
+        raise ValueError('installed_topology_binding')
+    projected=copy.deepcopy({k:topology[k] for k in ('scope','volumes','consumers')})
+    expected={c['id']:c for c in owners}
+    for current,legacy in zip(topology['consumers'],projected['consumers']):
+        recovery.closed(current,'id image started finished running restarting pid restart pidmode privileged capadd cgroupns mounts '+' '.join(INSTALLED_FIELDS))
+        if current['id'] not in expected: raise ValueError('host_unknown_consumer')
+        owner=expected[current['id']]; role=owner['role']
+        if role not in ('control','worker'): raise ValueError('installed_container_role')
+        if (current['user'] != ('10001:10001' if role=='control' else '0:10001') or
+                current['capdrop']!=['ALL'] or
+                sorted(current['capadd'] or []) != ([] if role=='control' else ['KILL','SETGID','SETUID']) or
+                current['security'] != ['no-new-privileges:true'] or current['readonly'] is not True or
+                current['groups'] not in (None,[]) or current['devices'] not in (None,[]) or
+                current['device_requests'] not in (None,[]) or current['device_rules'] not in (None,[]) or
+                current['userns']!='' or current['ipcns']!='private' or current['utsns']!='' or
+                current['cgroupns']!='private' or current['image']!=config['images'][role]):
+            raise ValueError('installed_container_policy')
+        # No alternative quota/cpuset path, unlimited swap, or implicit default.
+        if (any(type(current[k]) is not int for k in ('memory','swap','pids','nanocpus','period','quota')) or
+                current['memory']!=config['budget']['ram_bytes'] or current['swap']!=current['memory'] or
+                current['pids']!=config['budget']['pids'] or current['nanocpus']!=policy['cpu'][role] or
+                current['period']!=0 or current['quota']!=0 or current['cpuset']!=''):
+            raise ValueError('installed_resource_policy')
+        ports={'8000/tcp':[{'HostIp':'127.0.0.1','HostPort':str(policy['control_port'])}]} if role=='control' else {}
+        if (current['network']!=('bridge' if role=='control' else 'none') or
+                (current['ports'] or {})!=ports or current['publish_all'] is not False):
+            raise ValueError('installed_network_policy')
+        tmp=policy['tmpfs'][role]
+        options='rw,noexec,nosuid,nodev,size='+str(tmp['bytes'])+',nr_inodes='+str(tmp['inodes'])+',mode=1777'
+        if current['tmpfs']!={'/tmp':options}: raise ValueError('installed_tmpfs_policy')
+        wanted_roles=['control','ipc','staging'] if role=='control' else ['ipc','receipts','staging']
+        if sorted(owner['volumes'])!=wanted_roles: raise ValueError('installed_authority_mounts')
+        allowed={ '/models':policy['inputs']['models'], ip.CONFIG_DESTINATION:policy['inputs']['config'] }
+        if role=='control': allowed[ip.CREDENTIAL_DESTINATION]=policy['inputs']['credential']
+        mounts=[]; seen=set(); tmp_seen=False
+        for mount in current['mounts']:
+            recovery.closed(mount,'type name source destination rw')
+            destination=mount['destination']
+            if destination in allowed:
+                if (destination in seen or mount['type']!='bind' or mount['name'] not in ('',None) or
+                        mount['source']!=allowed[destination]['source'] or mount['rw'] is not False):
+                    raise ValueError('installed_input_mount')
+                seen.add(destination)
+            elif destination=='/tmp':
+                if tmp_seen or mount['type']!='tmpfs' or mount['rw'] is not True or mount['source'] not in ('',None) or mount['name'] not in ('',None):
+                    raise ValueError('installed_tmpfs_mount')
+                tmp_seen=True
+            else: mounts.append(mount)
+        # Docker versions may omit tmpfs from .Mounts; HostConfig.Tmpfs is exact.
+        if seen!=set(allowed): raise ValueError('installed_input_mount_coverage')
+        legacy['mounts']=mounts; legacy['capadd']=[]
+        for key in INSTALLED_FIELDS: legacy.pop(key)
+    recovery.validate_host_topology(projected,scope,owners,stopped=stopped)
+    for volume in topology['volumes']:
+        if {k:volume[k] for k in ('source','device','inode')}!=policy['roots'][volume['role']]:
+            raise ValueError('installed_volume_binding')
+    return topology
+
+
+class InstalledObserver:
+    """Trusted internal adapter; injection is for tests, never a CLI evidence flag.
+
+    A protected launch session constructs this object. Returned JSON is content,
+    not proof that an actual host was qualified. Registration/activation absent.
+    """
+    def __init__(self, docker, config, scope, policy, *, mountinfo=recovery._host_mount_topology,
+                 proc=_proc_observation):
+        self.config=ip.configuration(config)
+        # Detach caller data; all calls corroborate the frozen authority.
+        self.policy=json.loads(encode(ip.host_policy(policy,self.config,scope)))
+        self.scope=json.loads(encode(scope)); self.docker=docker
+        self.mountinfo=mountinfo; self.proc=proc
+
+    def inventory(self, owners, *, stopped=False):
+        policy=self.policy
+        if owners:
+            ip.roots_checked({r:v['source'] for r,v in policy['roots'].items()},policy=ip.SPLIT)
+        mounts=self.mountinfo(); _installed_mount_proof(policy,mounts)
+        before=_installed_sources(policy,self.config)
+        security=_json_output(self.docker._read(['info','--format','{"security":{{json .SecurityOptions}},"cgroup":{{json .CgroupVersion}},"name":{{json .Name}},"os":{{json .OperatingSystem}}}']))
+        recovery.closed(security,'security cgroup name os')
+        if (security['cgroup']!='2' or not isinstance(security['security'],list) or
+                any('rootless' in s.lower() or 'userns' in s.lower() for s in security['security']) or
+                'desktop' in (str(security['name'])+' '+str(security['os'])).lower()):
+            raise ValueError('installed_local_rootful_required')
+        volumes=_host_scope(self.docker,self.scope)
+        ids=self.docker._read(['container','ls','--all','--quiet','--no-trunc']).splitlines()
+        if len(ids)>recovery.HOST_OWNER_LIMIT or len(set(ids))!=len(ids) or any(not recovery.HEX.fullmatch(i) for i in ids):
+            raise ValueError('host_enumeration_budget')
+        consumers=[]
+        exact_inputs={r['source'] for r in policy['inputs'].values()}
+        for identity in sorted(ids):
+            c=_installed_container(self.docker,identity)
+            if not isinstance(c['mounts'],list) or len(c['mounts'])>16: raise ValueError('host_mount_budget')
+            touches=False
+            for m in c['mounts']:
+                recovery.closed(m,'type name source destination rw')
+                if m['type']=='bind' and m['source'] in exact_inputs:
+                    touches=True  # Exact narrow disjointness proof already held.
+                elif _mount_touches(m,volumes): touches=True
+                elif m['type']!='tmpfs': raise ValueError('installed_unknown_storage')
+            if touches: consumers.append(c)
+        topology=dict(scope=self.scope,volumes=volumes,consumers=consumers,policy=ip.HOST_POLICY,
+                      configuration_digest=digest(self.config),host_policy_digest=digest(policy))
+        validate_installed_topology(topology,self.scope,owners,self.config,policy,stopped=stopped)
+        if (self.docker._read(['container','ls','--all','--quiet','--no-trunc']).splitlines()!=ids or
+                _host_scope(self.docker,self.scope)!=volumes or self.mountinfo()!=mounts or
+                _installed_sources(policy,self.config)!=before):
+            raise ValueError('installed_observation_changed')
+        return topology
+
+    def initialize_authority(self):
+        topology=self.inventory([])
+        return dict(host=self.scope,roots={v['role']:[v['device'],v['inode']] for v in topology['volumes']},consumers=[])
+
+    def observe_owners(self, owners, enrollment):
+        enrollment_digest=ip.host_enrollment(enrollment,self.policy,self.config,self.scope)
+        first=self.inventory(owners)
+        proc=[{k:c[k] for k in ('id','image','started')} | self.proc(c['pid'],c['id'],self.policy['roots']['ipc']['source'])
+              for c in first['consumers'] if c['running']]
+        second=self.inventory(owners)
+        repeated=[{k:c[k] for k in ('id','image','started')} | self.proc(c['pid'],c['id'],self.policy['roots']['ipc']['source'])
+                  for c in second['consumers'] if c['running']]
+        if first!=second or proc!=repeated: raise ValueError('installed_owner_bracket_changed')
+        result=dict(kind=ip.HOST_POLICY,enrollment_digest=enrollment_digest,configuration_digest=digest(self.config),host_policy_digest=digest(self.policy),
+                    topology=first,processes=proc)
+        return recovery.validate_installed_observation(result,self.scope,owners,self.config,self.policy,enrollment)
+
+
+def _root_authority_directory(path):
+    path=Path(path)
+    # Root-owned private leaf; every ancestor is trusted and non-writable.
+    for parent in (path,*path.parents):
+        with ip.parent_fd(parent/'__authority_probe__') as (fd,_):
+            s=os.fstat(fd)
+            if s.st_uid!=0 or not stat.S_ISDIR(s.st_mode) or stat.S_IMODE(s.st_mode)&0o022:
+                raise ValueError('installed_unsafe_authority')
+            if parent==path and stat.S_IMODE(s.st_mode)!=0o700:
+                raise ValueError('installed_unsafe_authority')
+    return os.open(path,os.O_RDONLY|os.O_DIRECTORY|os.O_NOFOLLOW)
+
+
+@contextmanager
+def installed_launch_authority(config, scope):
+    """Existing protected per-install policy + finite nonblocking exclusion.
+
+    Provisioning is parent-owned. No arbitrary policy path or metadata selection,
+    no creating locks, no policy repair. Hold this context through init/observation.
+    """
+    if sys.platform!='linux' or os.getuid()!=0 or os.geteuid()!=0:
+        raise ValueError('installed_linux_root_authority_required')
+    config=ip.configuration(config); validate_scope(scope)
+    directory=Path(recovery.HOST_AUTHORITY_DIRECTORY)/'installed'/digest(scope)
+    fd=_root_authority_directory(directory)
+    lock=None
+    try:
+        lock=os.open('launch.lock',os.O_RDONLY|os.O_NOFOLLOW|os.O_NONBLOCK,dir_fd=fd)
+        original=os.fstat(lock)
+        def stable():
+            s=os.fstat(lock)
+            if (not stat.S_ISREG(s.st_mode) or s.st_nlink!=1 or s.st_uid!=0 or s.st_gid!=0 or
+                    stat.S_IMODE(s.st_mode)!=0o600 or ip.identity(s)!=ip.identity(original) or
+                    ip.identity(os.stat('launch.lock',dir_fd=fd,follow_symlinks=False))!=ip.identity(original)):
+                raise ValueError('installed_launch_lock_changed')
+            current=_root_authority_directory(directory)
+            try:
+                if ip.identity(os.fstat(current))!=ip.identity(os.fstat(fd)):
+                    raise ValueError('installed_authority_changed')
+            finally: os.close(current)
+        stable()
+        try: fcntl.flock(lock,fcntl.LOCK_EX|fcntl.LOCK_NB)
+        except BlockingIOError: raise ValueError('installed_launch_busy') from None
+        raw=_public_file(directory/'host-policy.json',uid=0,gid=0,mode=0o600,limit=65536,
+                         deadline=time.monotonic()+2)
+        policy_identity=ip.identity(_source_stat(directory/'host-policy.json',directory=False))
+        policy=ip.host_policy(recovery.host_json(raw),config,scope)
+        observer=InstalledObserver(Docker(scope['context']),config,scope,policy)
+        active=True
+        def check():
+            if not active: raise ValueError('installed_launch_authority_closed')
+            stable()
+            if ip.identity(_source_stat(directory/'host-policy.json',directory=False))!=policy_identity:
+                raise ValueError('installed_host_policy_changed')
+            if _public_file(directory/'host-policy.json',uid=0,gid=0,mode=0o600,limit=65536,
+                            deadline=time.monotonic()+2)!=raw:
+                raise ValueError('installed_host_policy_changed')
+        class HeldAuthority:
+            def initialize_authority(self):
+                check(); result=observer.initialize_authority(); check(); return result
+            def observe_owners(self, owners, enrollment):
+                check(); result=observer.observe_owners(owners,enrollment); check(); return result
+        try: yield HeldAuthority()
+        finally:
+            active=False
+            stable()
+            if ip.identity(_source_stat(directory/'host-policy.json',directory=False))!=policy_identity:
+                raise ValueError('installed_host_policy_changed')
+            if _public_file(directory/'host-policy.json',uid=0,gid=0,mode=0o600,limit=65536,
+                            deadline=time.monotonic()+2)!=raw:
+                raise ValueError('installed_host_policy_changed')
+    finally:
+        if lock is not None: os.close(lock)
+        os.close(fd)
+
+
 if __name__=='__main__': main()
