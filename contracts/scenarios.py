@@ -71,10 +71,10 @@ def transcript(operation, project, profiles, requests, *, version=None, device='
     completed=copy.deepcopy(job);completed.update(state='succeeded',artifact_ids=[artifact['id']],stage='completed')
     exchanges += [dict(operation='job_get',request=dict(job_id=job['id']),response=completed),dict(operation='artifact_get',request=dict(artifact_id=artifact['id']),response=artifact),dict(operation='asset_get',request=dict(asset_id=output['id']),response=output)]
     if candidates:
-        exchanges += [dict(operation='voice_results',request=dict(job_id=job['id']),response=result),dict(operation='voice_get',request=dict(voice_id='voice.0'),response=p['voices'][0]),dict(operation='voice_save',request=dict(candidate_id=candidates[0]['id'],voice_id='voice.0',expected_revision=p['voices'][0]['revision']),response=dict(job_id='save-'+kind,input_sha256=c.fingerprint('principal1','voice_save',dict(candidate_id=candidates[0]['id'],voice_id='voice.0',expected_revision=p['voices'][0]['revision'])),state='queued',status_url='/v1/jobs/save-'+kind))]
+        exchanges += [dict(operation='voice_results',request=dict(job_id=job['id']),response=result),dict(operation='voice_get',request=dict(voice_id='voice.0'),response=p['voices'][0])]
         saved=copy.deepcopy(candidates[0]['version']);saved['id']='saved-'+kind
-        # Save result's version ID is obtained from a subsequent voice_get.
         voice=copy.deepcopy(p['voices'][0]);voice['revision']+=1;voice['version_ids'].append(saved['id'])
+        exchanges.append(dict(operation='voice_save', request=dict(job_id=job['id'],candidate_id=candidates[0]['id'],voice_id=voice['id'],expected_revision=p['voices'][0]['revision']), response=dict(voice=voice,version=saved)))
         exchanges += [dict(operation='voice_get',request=dict(voice_id=voice['id']),response=voice),dict(operation='voice_version_get',request=dict(voice_version_id=saved['id']),response=saved)]
     if operation=='project_render':exchanges.insert(0,dict(operation='project_get',request=dict(project_id=p['id']),response=p))
     if operation=='voice_prepare':exchanges.insert(0,dict(operation='asset_get',request=dict(asset_id=assets[0]['id']),response=assets[0]))

@@ -751,15 +751,65 @@
     {
       "operation": "voice_save",
       "request": {
+        "job_id": "job-prepare",
         "candidate_id": "candidate-prepare",
         "voice_id": "voice.0",
         "expected_revision": 1
       },
       "response": {
-        "job_id": "save-prepare",
-        "input_sha256": "a44db8e447cd074d1fe01d6f96a2e3376f5e19054a70c339b3e1143cadc5d4aa",
-        "state": "queued",
-        "status_url": "/v1/jobs/save-prepare"
+        "voice": {
+          "id": "voice.0",
+          "aliases": [
+            "legacy_0"
+          ],
+          "version_ids": [
+            "vv0",
+            "saved-prepare"
+          ],
+          "archived": false,
+          "revision": 2
+        },
+        "version": {
+          "id": "saved-prepare",
+          "voice_id": "voice.0",
+          "origin": "clone",
+          "reference_asset_ids": [
+            "output-prepare"
+          ],
+          "reference_text": "Exact reference.",
+          "identity": {
+            "engine": "qwen",
+            "model": "Qwen3-TTS-12Hz-0.6B-Base",
+            "bundle_sha256": "63e1fd8333a5024d06a7c82aaa3ce7790caec03c0684393d01d77a22acd535f0",
+            "device": "cpu",
+            "precision": "float32"
+          },
+          "settings": {
+            "kind": "qwen_clone",
+            "language": "French",
+            "seed": 1,
+            "temperature": 0.9,
+            "top_p": 1,
+            "top_k": 50,
+            "repetition_penalty": 1.05,
+            "max_new_tokens": 2048,
+            "instruction": null
+          },
+          "settings_sha256": "16f6e4895b03418a85b032b485ab57aa74a6e9157949172e536c18801b512d44",
+          "provenance": {
+            "kind": "synthetic",
+            "source_sha256": "6de1d8cc4c678241ac609b81e8728a89850ce72a9cf736c4214a7ea9dc0943df",
+            "source_id": "impulse",
+            "missing_fields": []
+          },
+          "configuration": {
+            "mode": "qwen_clone",
+            "reference_asset_id": "output-prepare",
+            "reference_text": "Exact reference.",
+            "conditioning": "icl"
+          },
+          "design_lineage": null
+        }
       }
     },
     {

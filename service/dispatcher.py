@@ -22,7 +22,8 @@ from worker.lifecycle import State
 
 
 class Dispatcher:
-    def __init__(self, root, *, ipc='/ipc', staging='/staging', runtime=None, fault=lambda _:None, budget=None, profiles=None, persistent_registration=None):
+    def __init__(self, root, *, ipc='/ipc', staging='/staging', runtime=None, fault=lambda _:None, budget=None, profiles=None, persistent_registration=None, production_contexts=None):
+        self.production_contexts = production_contexts
         self.persistent_registration = persistent_registration
         self.root, self.staging = Path(root), Path(staging)
         self.runtime = runtime or SupervisorRuntime(ipc)
@@ -36,7 +37,7 @@ class Dispatcher:
         self.initialized.result(timeout=5)
 
     def call(self, op, *args, timeout=3, **kwargs):
-        if op not in ('submit','job','jobs','events','artifact','asset','cancel','status','replace','inventory_page','reconcile_startup','close','voice_list','voice_get','voice_version','voice_resolve','voice_summaries','voice_version_summaries','asset_ingest','asset_metadata','asset_content'):
+        if op not in ('submit','job','jobs','events','artifact','asset','cancel','status','replace','inventory_page','reconcile_startup','close','voice_list','voice_get','voice_version','voice_resolve','voice_summaries','voice_version_summaries','asset_ingest','asset_metadata','asset_content','production_prepare','production_generate','production_save','production_results','production_job','production_cancel','production_artifact'):
             raise ValueError('unknown_control_command')
         if op == 'asset_ingest':
             from service.ingest import MAX_BYTES
@@ -155,7 +156,61 @@ class Dispatcher:
                 finally:
                     if startup_error is not None:self.initialized.set_exception(startup_error)
 
+    def _production_command(self, op, principal, payload, *, key=None):
+        from contracts import validate as oracle
+        from service.production import Production
+        from service.catalogue import OPERATIONS
+        from service.voice_store import _id
+        operation = {'production_prepare':'voice_prepare', 'production_generate':'speech_generate',
+                     'production_save':'voice_save', 'production_results':'voice_results',
+                     'production_job':'job_get', 'production_cancel':'job_cancel',
+                     'production_artifact':'artifact_get'}[op]
+        oracle.validate(OPERATIONS[operation]['request'], payload)
+        if OPERATIONS[operation]['idempotency']: _id(key)
+        domain = Production(self.core)
+        def owned(job_id):
+            job = self.core.job(job_id)
+            if job['principal_id'] != principal: raise ValueError('not_found')
+            return job
+        if op == 'production_job': return owned(payload['job_id'])
+        if op == 'production_artifact':
+            artifact = self.core.artifact(payload['artifact_id'])
+            owned(artifact['job_id'])
+            return artifact
+        if op == 'production_results':
+            owned(payload['job_id'])
+            return dict(schema_version='1.3.0', job_id=payload['job_id'], candidates=domain.results(principal, payload['job_id']))
+        if op == 'production_cancel':
+            owned(payload['job_id'])
+            # Durable intent binds the key before invoking existing cancel logic.
+            # Incomplete intent after restart can only resume that exact cancellation.
+            with self.core.transaction():
+                fingerprint = oracle.fingerprint(principal, 'job_cancel', payload)
+                row = self.core.db.execute("SELECT fingerprint FROM catalogue_requests WHERE principal=? AND operation='job_cancel' AND key=?", (principal,key)).fetchone()
+                if row and row[0] != fingerprint: raise ValueError('idempotency_conflict')
+                if not row: self.core.db.execute('INSERT INTO catalogue_requests VALUES(?,?,?,?,?)', (principal,'job_cancel',key,fingerprint,encode(payload)))
+            return self._command('cancel', payload['job_id'])
+        if op == 'production_save':
+            if self.enrolled or self.integrity_fault or self.persistence_fault: raise ValueError('not_ready')
+            owned(payload['job_id'])
+            return domain.save(principal, key, payload['job_id'], payload['candidate_id'], payload['voice_id'], expected_revision=payload['expected_revision'])
+        # Duplicate lookup retains the original frozen identity and reservation.
+        row = self.core.db.execute('SELECT fingerprint,job FROM jobs WHERE principal=? AND operation=? AND key=?', (principal,operation,key)).fetchone()
+        if row:
+            oracle.require(row[0] == oracle.fingerprint(principal,operation,payload), 'idempotency_conflict')
+            job = json.loads(row[1])
+        else:
+            if self.enrolled or not self.reconciled or self.quarantined or self.resource_fault or self.integrity_fault:
+                raise ValueError('not_ready')
+            if self.production_contexts is None: raise ValueError('not_ready')
+            context = self.production_contexts.resolve(principal, operation, payload)
+            method = domain.prepare if op == 'production_prepare' else domain.generate
+            job = method(principal, key, context, _admission=self.admission,
+                         _profiles=self.profiles, _dispatch_settings=('silence',8))
+        return dict(job_id=job['id'], input_sha256=job['input_sha256'], state='queued', status_url='/v1/jobs/'+job['id'])
+
     def _command(self,op,*args,**kwargs):
+        if op.startswith('production_'): return self._production_command(op,*args,**kwargs)
         if op=='asset_ingest':
             from service.ingest import ingest_local
             if len(args)!=2 or type(args[1]) is not bytes or kwargs: raise ValueError('invalid_request')

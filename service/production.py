@@ -13,7 +13,7 @@ class Production:
     def __init__(self, core):
         self.core = core
 
-    def prepare(self, principal, key, context):
+    def prepare(self, principal, key, context, *, _admission=None, _profiles=None, _dispatch_settings=None):
         context = copy.deepcopy(context)
         plan = context['plan']
         oracle.require(plan['operation'] == 'voice_prepare', 'operation_mismatch')
@@ -21,7 +21,8 @@ class Production:
         self.core.voices._asset(principal, asset_id)
         plan['assets'] = [self.core.asset(asset_id)]
         plan['resolved']['reuse_configuration']['reference_asset_id'] = 'audition-' + oracle.canonical_hash([principal, key, plan['request']])
-        return self.core.submit_synthetic(principal, key, context)
+        return self.core.submit_synthetic(principal, key, context, _admission=_admission,
+                                          _profiles=_profiles, _dispatch_settings=_dispatch_settings)
 
     def results(self, principal, job_id):
         job, context = self.core._load(job_id)
@@ -45,11 +46,12 @@ class Production:
         version['id'] = 'saved-' + oracle.canonical_hash([job_id, candidate_id, voice_id])
         return self.core.voices.register(principal, key, version, expected_revision=expected_revision)
 
-    def generate(self, principal, key, context):
+    def generate(self, principal, key, context, *, _admission=None, _profiles=None, _dispatch_settings=None):
         context = copy.deepcopy(context)
         plan = context['plan']
         oracle.require(plan['operation'] == 'speech_generate', 'operation_mismatch')
         version = self.core.voices.version(principal, plan['request']['voice_version_id'])
         plan['voice_versions'] = [version]
         plan['assets'] = [self.core.asset(a) for a in version['reference_asset_ids']]
-        return self.core.submit_synthetic(principal, key, context)
+        return self.core.submit_synthetic(principal, key, context, _admission=_admission,
+                                          _profiles=_profiles, _dispatch_settings=_dispatch_settings)

@@ -100,10 +100,10 @@ def create_voice_app(dispatcher, *, credentials, upload_deadline=15.0):
     This factory starts no owner, worker, listener or persistent enrollment.
     """
     from service.domain import voice_read, asset_call
-    from service.catalogue import VOICE_READS, schema, ASSET_OPERATIONS
+    from service.catalogue import VOICE_READS, schema, ASSET_OPERATIONS, PRODUCTION_OPERATIONS
     if not callable(getattr(credentials, 'resolve', None)):
         raise ValueError('credential_resolver_required')
-    production = FastAPI(title='Authenticated voice catalogue reads', docs_url=None,
+    production = FastAPI(title='Authenticated synthetic production control', docs_url=None,
                          redoc_url=None, openapi_url=None)
     production.add_exception_handler(Failure, failure_handler)
     production.add_exception_handler(RequestValidationError, invalid_handler)
@@ -128,15 +128,20 @@ def create_voice_app(dispatcher, *, credentials, upload_deadline=15.0):
     @production.get('/v1/capabilities')
     def discovery(query: Annotated[EmptyQuery, Query()]):
         body = capabilities()
-        body['operations'] = ['discover', *VOICE_READS, *ASSET_OPERATIONS]
+        body['operations'] = list(dict.fromkeys(('discover', *VOICE_READS, *ASSET_OPERATIONS, *PRODUCTION_OPERATIONS)))
         return body
+
+    @production.get('/skeleton')
+    def production_status(query: Annotated[EmptyQuery, Query()]):
+        return dict(synthetic=True, ready_for_speech=False, engine_qualification='none',
+                    context_configuration='operator-required', store='borrowed-owner')
 
     @production.get('/skeleton/operations/{operation_id}')
     def voice_detail(operation_id: str):
-        if operation_id not in ('discover', *VOICE_READS, *ASSET_OPERATIONS):
+        if operation_id not in ('discover', *VOICE_READS, *ASSET_OPERATIONS, *PRODUCTION_OPERATIONS):
             raise Failure('not_found', 'Operation unavailable.', 'operation_id')
         op = OPERATIONS[operation_id]
-        return dict(fixture=False, availability='implemented' if operation_id == 'asset_upload' else 'implemented_read', operation=op,
+        return dict(fixture=False, availability='implemented' if op['http']['method'] == 'POST' else 'implemented_read', operation=op,
                     request_schema=schema(op['request']), response_schema=schema(op['response']))
 
     @production.get('/v1/voices')
@@ -208,4 +213,41 @@ def create_voice_app(dispatcher, *, credentials, upload_deadline=15.0):
     @production.get('/v1/assets/{asset_id}/content')
     def asset_bytes(asset_id: str, request: Request, query: Annotated[ContentQuery, Query()]):
         return asset_call(dispatcher, request.state.principal, 'asset_content', dict(asset_id=asset_id, **query.model_dump()))
+    from service.domain import production_call
+    def read_endpoint(operation):
+        def endpoint(request: Request, query: Annotated[EmptyQuery, Query()]):
+            return production_call(dispatcher, request.state.principal, operation, dict(request.path_params))
+        return endpoint
+
+    def mutation_endpoint(operation):
+        async def endpoint(request: Request, query: Annotated[EmptyQuery, Query()]):
+            principal = credentials.resolve(request.headers.get('authorization'), required_scope='production-write')
+            if request.headers.get('content-type', '').split(';')[0].strip().lower() != 'application/json':
+                raise Failure('invalid_request', 'Use application/json.')
+            keys = request.headers.getlist('idempotency-key')
+            if len(keys) != 1:
+                raise Failure('invalid_request', 'Supply one Idempotency-Key.')
+            raw = bytearray()
+            try:
+                async with asyncio.timeout(upload_deadline):
+                    async for chunk in request.stream():
+                        if len(raw)+len(chunk) > 16384: raise Failure('resource_limit', 'Request exceeds 16 KiB.')
+                        raw.extend(chunk)
+                def pairs(items):
+                    result = {}
+                    for name, value in items:
+                        if name in result: raise ValueError('duplicate_field')
+                        result[name] = value
+                    return result
+                payload = json.loads(raw, object_pairs_hook=pairs, parse_constant=lambda _: (_ for _ in ()).throw(ValueError()))
+            except (ValueError, RecursionError, TimeoutError, ClientDisconnect):
+                raise Failure('invalid_request', 'Invalid or incomplete JSON request.') from None
+            return await asyncio.to_thread(production_call, dispatcher, principal, operation, payload, keys[0])
+        return endpoint
+
+    for operation in PRODUCTION_OPERATIONS:
+        op = OPERATIONS[operation]
+        production.add_api_route(op['http']['route'],
+            read_endpoint(operation) if op['http']['method'] == 'GET' else mutation_endpoint(operation),
+            methods=[op['http']['method']])
     return production

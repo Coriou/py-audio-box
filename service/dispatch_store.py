@@ -52,12 +52,14 @@ class DispatchStore:
                 if row is None:return None
                 job=row; _,context=self.core._load(job['id'])
             check_operator_resolved(self.db,job['id'])
+            # Verify the owner's frozen dependencies before resource acquisition.
+            allowed_assets = self.core._input_assets(job['principal_id'], context['plan'])
             if self.admission is not None:
                 self.admission.demand(context,profiles)
                 self.admission.store.acquire_tx(job['id'],replacement=bool(replacement))
             attempt=dict(id=new_id('attempt'),generation=job['generation']+1,owner_id=new_id('owner'),staging_id=new_id('stage'),reaped=False)
             job.update(state='running',stage='synthetic',generation=attempt['generation'],attempts=[*job['attempts'],attempt],deadline=(datetime.now(timezone.utc)+timedelta(seconds=min(seconds,context['plan']['resolved']['profile']['limits']['deadline_seconds']))).isoformat())
-            authority=Authority(job,context,[],profiles)
+            authority=Authority(job,context,allowed_assets,profiles)
             authority.check(authority.message(),'execute')
             self.core._save(job)
             self.db.execute('INSERT INTO dispatches(job_id,authority,binding,fixture,phase) VALUES (?,?,?,?,?)', (job['id'],authority._snapshot.decode(),authority.binding,fixture,'intent'))

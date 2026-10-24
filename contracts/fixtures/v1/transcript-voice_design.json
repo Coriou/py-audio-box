@@ -732,15 +732,75 @@
     {
       "operation": "voice_save",
       "request": {
+        "job_id": "job-design",
         "candidate_id": "candidate-design",
         "voice_id": "voice.0",
         "expected_revision": 1
       },
       "response": {
-        "job_id": "save-design",
-        "input_sha256": "bfa41ed1535d89d5fffdaab1327d79417cbe990a01c1419207b080f0ee43d853",
-        "state": "queued",
-        "status_url": "/v1/jobs/save-design"
+        "voice": {
+          "id": "voice.0",
+          "aliases": [
+            "legacy_0"
+          ],
+          "version_ids": [
+            "vv0",
+            "saved-design"
+          ],
+          "archived": false,
+          "revision": 2
+        },
+        "version": {
+          "id": "saved-design",
+          "voice_id": "voice.0",
+          "origin": "design",
+          "reference_asset_ids": [
+            "output-design"
+          ],
+          "reference_text": "Exact design audition.",
+          "identity": {
+            "engine": "qwen",
+            "model": "Qwen3-TTS-12Hz-0.6B-Base",
+            "bundle_sha256": "63e1fd8333a5024d06a7c82aaa3ce7790caec03c0684393d01d77a22acd535f0",
+            "device": "cpu",
+            "precision": "float32"
+          },
+          "settings": {
+            "kind": "qwen_clone",
+            "language": "French",
+            "seed": 1,
+            "temperature": 0.9,
+            "top_p": 1,
+            "top_k": 50,
+            "repetition_penalty": 1.05,
+            "max_new_tokens": 2048,
+            "instruction": null
+          },
+          "settings_sha256": "16f6e4895b03418a85b032b485ab57aa74a6e9157949172e536c18801b512d44",
+          "provenance": {
+            "kind": "synthetic",
+            "source_sha256": "6de1d8cc4c678241ac609b81e8728a89850ce72a9cf736c4214a7ea9dc0943df",
+            "source_id": "impulse",
+            "missing_fields": []
+          },
+          "configuration": {
+            "mode": "qwen_clone",
+            "reference_asset_id": "output-design",
+            "reference_text": "Exact design audition.",
+            "conditioning": "icl"
+          },
+          "design_lineage": {
+            "description": "Warm precise voice.",
+            "source_candidate_id": "candidate-design",
+            "generation_identity": {
+              "engine": "qwen",
+              "model": "Qwen3-TTS-12Hz-1.7B-VoiceDesign",
+              "bundle_sha256": "c9cdba559c10e84ff39673a8acc0c569d15d1c5d3b7ddc81027122788eaf5fd0",
+              "device": "cpu",
+              "precision": "float32"
+            }
+          }
+        }
       }
     },
     {

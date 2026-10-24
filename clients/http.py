@@ -3,7 +3,7 @@ import os
 from urllib.parse import quote
 import httpx
 from contracts.validate import validate
-from service.catalogue import Failure, IMPLEMENTED, OPERATIONS, VOICE_READS
+from service.catalogue import Failure, IMPLEMENTED, OPERATIONS, VOICE_READS, PRODUCTION_OPERATIONS
 
 class HTTP:
     def __init__(self, base_url=None, *, credential=None):
@@ -81,11 +81,32 @@ class HTTP:
         finally:
             if fd is not None: os.close(fd)
 
-    def call(self, operation, payload):
-        if operation not in (*IMPLEMENTED, *VOICE_READS):
+    def post(self, path, payload, key):
+        try:
+            with httpx.Client(base_url=self.base_url, timeout=10, trust_env=False, follow_redirects=False) as client:
+                response = client.post(path, json=payload, headers={
+                    'Authorization':'Bearer '+self.credential if self.credential else '',
+                    'Idempotency-Key':key})
+                body = response.json()
+        except (httpx.HTTPError, ValueError):
+            raise ConnectionError('Production HTTP outcome unknown; do not automatically retry.') from None
+        if response.status_code != 200:
+            validate('error',body)
+            error = Failure(body['code'],body['message'],body['field'],body['action'])
+            error.body = body
+            raise error
+        return body
+
+    def call(self, operation, payload, *, key=None):
+        if operation not in (*IMPLEMENTED, *VOICE_READS, *PRODUCTION_OPERATIONS):
             raise Failure('not_found', 'Operation unavailable in the 0C skeleton.', 'operation')
         op = OPERATIONS[operation]
         validate(op['request'], payload)
+        if op['http']['method'] == 'POST':
+            from service.voice_store import _id
+            try: _id(key)
+            except ValueError: raise Failure('invalid_request', 'Supply a valid idempotency key.') from None
+            return validate(op['response'], self.post(op['http']['route'], payload, key))
         route = op['http']['route']
         query = dict(payload)
         for key in tuple(query):

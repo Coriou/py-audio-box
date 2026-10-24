@@ -47,7 +47,8 @@
   "voice_save": {
     "candidate_id": "example",
     "voice_id": "example",
-    "expected_revision": 1
+    "expected_revision": 1,
+    "job_id": "example"
   },
   "voice_archive": {
     "voice_id": "example",
