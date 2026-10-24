@@ -1184,6 +1184,14 @@ def guard_snapshot(g):
         receipts=min(len(g.receipts),9), receipt_count_overflow=len(g.receipts)>9,
         receipt_statuses=statuses, receipt_status_overflow=len(g.receipts)>2)
 
+def snapshot_complete(snapshot):
+    return (snapshot is not None and
+        all(not snapshot[key] for key in ('failure_overflow', 'owned_overflow',
+            'receipt_count_overflow', 'receipt_status_overflow')) and
+        all(value in ('ESCAPING_B', 'MISSING_RECEIPT', 'ARMED_B') for value in snapshot['failures']) and
+        snapshot['shouldstop'] in ('FALSE', 'MATCH_FIRST', 'MATCH_LAST', 'MATCH_BOTH') and
+        all(type(value) is int and value in (9, 18944) for value in snapshot['receipt_statuses']))
+
 def publish_outcome(exit_code):
     if not diagnostic_enabled: return
     phases = dict.fromkeys(('setup','call','teardown'), NOT_REACHED)
@@ -1209,11 +1217,8 @@ def publish_outcome(exit_code):
         io_failed=diagnostic_io_failed, callback_other=callback_other, missing_records=missing, diagnostic='RED')
     # These observations never change pytest/result/guard acceptance.
     if (not missing and not diagnostic_io_failed and not callback_other and not duplicate and not unknown and
-            snapshot is not None and teardown_snapshot is not None and
-            all(value in ('PASSED','FAILED') for value in phases.values()) and exit_code != 'OTHER' and
-            all(not value for key,value in snapshot.items() if key.endswith('overflow')) and
-            'OTHER' not in snapshot['failures'] and snapshot['shouldstop'] != 'OTHER' and
-            'OTHER' not in snapshot['receipt_statuses']): record['diagnostic'] = 'COMPLETE'
+            snapshot_complete(snapshot) and snapshot_complete(teardown_snapshot) and
+            all(value in ('PASSED','FAILED') for value in phases.values()) and exit_code != 'OTHER'): record['diagnostic'] = 'COMPLETE'
     publish_diagnostic('directed-outcome.json', record)
 owner = os.getpid()
 def evidence(label):
@@ -1284,9 +1289,15 @@ class Plugin:
             if diagnostic_enabled:
                 parent_diagnostic['observe_entered'] = True
                 parent_diagnostic['assertion'] = 'OBSERVE_STATUS'
-                parent_diagnostic['observe_status'] = result[1] == 18944
-                if result[1] != 18944: publish_diagnostic('parent-callback.json', parent_diagnostic)
-            assert result[1] == (9 if mode.startswith('schedule9-') else 74 << 8)
+                if result[1] == (9 if mode.startswith('schedule9-') else 74 << 8):
+                    status_ok = True
+                else:
+                    status_ok = False
+                parent_diagnostic['observe_status'] = status_ok
+                if not status_ok: publish_diagnostic('parent-callback.json', parent_diagnostic)
+                assert status_ok
+            else:
+                assert result[1] == (9 if mode.startswith('schedule9-') else 74 << 8)
             if mode == 'actual-overflow': expected = b'B:overflow;'
             elif mode in admission | predicate_e or mode.startswith('fd-') or mode == 'missing-eagain': expected = b'B:a;'
             elif mode in predicate_f or mode in {'replacement', 'same-object-extra-frame',
@@ -1296,10 +1307,20 @@ class Plugin:
             else: expected = b'B:a;B:e;B:f;B:t;'
             if diagnostic_enabled:
                 parent_diagnostic['assertion'] = 'OBSERVE_WITNESS'
-                parent_diagnostic['observe_armed'] = kw['armed_B'] if type(kw['armed_B']) is bool else 'OTHER'
-                parent_diagnostic['observe_witness'] = kw['witness'] == expected
-                if not (kw['armed_B'] and kw['witness'] == expected): publish_diagnostic('parent-callback.json', parent_diagnostic)
-            assert kw['armed_B'] and kw['witness'] == expected
+                if kw['armed_B']:
+                    parent_diagnostic['observe_armed'] = True
+                    if kw['witness'] == expected:
+                        witness_ok = True
+                    else:
+                        witness_ok = False
+                    parent_diagnostic['observe_witness'] = witness_ok
+                else:
+                    parent_diagnostic['observe_armed'] = False
+                    witness_ok = False
+                if not witness_ok: publish_diagnostic('parent-callback.json', parent_diagnostic)
+                assert witness_ok
+            else:
+                assert kw['armed_B'] and kw['witness'] == expected
             observed = observe0(result, **kw)
             if diagnostic_enabled:
                 parent_diagnostic['observe_completed'] = True
