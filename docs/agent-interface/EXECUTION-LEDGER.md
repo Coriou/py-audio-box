@@ -2311,3 +2311,7 @@ r222 bounded source GO closes retainedcoherence findings,179independentPASS plus
 ### 2026-10-24 — Checked installed activation enters independent review
 
 r223 sourced692a3d7/docs8b5e5aaf completes bounded pre/post-Core activation, authenticatedfactory/configcredentials, workercheckedmapping and receipt-awareclose;71focusedtests reportedPASS,3.11grammar only. Parent commissioned independent Sol r224. Candidateunmerged; packagedhostcommand/image and actualLinux/listener/inferencequalification pending. Integratedrestart179tests completedPASS78.701s.
+
+### 2026-10-24 — Installed activation lifecycle/order corrections
+
+r224 source NO-GO reproduced repeatedstartupcancellation losingliveowner/no closeintent and queuedcancelaccountingrelease beforelatehello refusal.71testsPASS missedcombinednegatives. Parent commissioned targeted Sol r225 cancellationresponsibilityretention and posthealthyreconcile releaseordering. Activationunmerged; packagingseparate/noactualqualification.
