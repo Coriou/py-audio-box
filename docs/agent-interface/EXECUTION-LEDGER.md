@@ -1703,3 +1703,7 @@ r84 t3-bb323d30 source72ef0985/docsfaf0ef25 closesclaimed R83-1inlineonce-onlysh
 ### 2026-10-24 — Sol closes diagnostic fixes; Astra final targeted review
 
 r85 boundedSOURCEGO closesR83-1/R83-2 exactr84/197maps/307HOSTreceipts, no newfinding. Parent sends pab-b100-directed-final-astra-r86-20261024 fulloriginaldesign+implementation+findings/responses forfinaltargetedSOURCEdisposition andminimalnextsingleton/PAXintegrationadvice. No build/runtime/heldlaneactionauthority; historicalfirstpredicateUNKNOWN.
+
+### 2026-10-24 — Astra instrumentation GO; closed017 lifecycle preparation
+
+Parent accepts r86 boundedSOURCEGO/no furtherinstrumentationfix. Assigns pab-directed-singleton-preparation-r87-20261024 freshsuccessor runnerclosed017expected1/cap35+focusedHOST/mechanicalmanifest andprivatePAXlifecycle/snapshotbinding adaptation perexplicitallowlist. Preserveinstrumentedguard/controls/target/product/oldproof/lane. NoDocker/build/runtime/LOCKONLYauthority yet; exactsource/privatebundle independentreview next.
