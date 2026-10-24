@@ -2087,3 +2087,7 @@ Actual generator determinism reached a missing NumPy/soundfile dependency in the
 ### 2026-10-24 — Canonical binary samples and generator corrected
 
 r180 sourceba82cd44/docs26b01145 completes fixture-only binary decoding and both canonical consumer loops, preserving public rawbytes and all42 operation coverage. Reported56 contract cases including actual16-output generator determinism,20 voicestore and15 uploadclient tests PASS; onlyoperationrequests fixture changed. Independent adoption review r181 commissioned; upload remains unmerged.
+
+### 2026-10-24 — Upload adopted; voice production domain starts
+
+r181 independent source GO closes R1/R2. Parent merged26b01145 without conflicts; root6upload+2uploadclient+56contract checks PASS including generator determinism. Authenticated upload/asset reads/compact history and client parity now integrated. Commissioned Sol-low r182 trusted prepare/candidate/save/generate domain using existing core/synthetic publication seams; real engine and installed transport qualification still outstanding.
