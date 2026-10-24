@@ -73,6 +73,7 @@
     "service/install_child.py",
     "service/install_policy.py",
     "service/lifecycle_cli.py",
+    "service/native_runtime.py",
     "service/owner_store.py",
     "service/package_install.py",
     "service/persistence.py",

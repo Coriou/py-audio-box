@@ -284,47 +284,43 @@ def response(value, *, request):
 
 
 def native_execution(context):
-    _closed(context,('plan','bundles','execution'))
-    from worker.engines.qwen_execution import QwenExecution, inventory_from_wire
-    value=context['execution']; plan=context['plan']; resolved=plan['resolved']
-    if set(value) != {'descriptor','bundles','references','hardware'}: raise Refused('closed_execution_context')
-    spec=QwenExecution.from_wire(value['descriptor'])
-    inventory_from_wire(value['hardware'])
-    if spec.task not in ('custom_voice','clone') or (spec.device,spec.dtype,spec.attention) != ('mps','float32','sdpa'): raise Refused('qwen_generation_only')
-    if value['bundles'] != {spec.bundle_id:'/models/bundles/'+spec.bundle_id}: raise Refused('owned_mount_mapping')
-    identity=dict(engine='qwen',model=spec.checkpoint,bundle_sha256=spec.manifest_sha256,device='metal',precision=spec.dtype)
-    if resolved['profile']['topology'] != 'packaged_native': raise Refused('native_topology')
-    request=plan['request']; versions=plan['voice_versions']
-    profile_id='qwen-mps'
-    if (plan['operation'] != 'speech_generate' or resolved['profile']['id'] != profile_id or
-        request['identity'] != identity or resolved['identity']['effective'] != identity or
-        request['fallback'] != 'forbid' or request['variants'] != 1 or request['reuse'] != 'never' or len(versions) != 1): raise Refused('execution_plan_mismatch')
-    v=versions[0]; mode='qwen_clone' if spec.task == 'clone' else 'qwen_preset'
-    settings=dict(kind=mode,language=spec.language,seed=None,instruction=spec.instruct,
-                  **{k:getattr(spec,k) for k in ('temperature','top_p','top_k','repetition_penalty','max_new_tokens')})
-    if (v['id'] != request['voice_version_id'] or v['id'] != spec.voice_revision or v['voice_id'] != spec.voice_id or
-        v['identity'] != identity or v['settings'] != settings or resolved['settings'] != settings): raise Refused('execution_voice_mismatch')
-    if spec.task == 'custom_voice':
-        if (v['origin'] != 'preset' or v['reference_asset_ids'] or plan['assets'] or value['references'] or
-            v['configuration'] != dict(mode=mode,speaker=spec.preset)): raise Refused('execution_preset_mismatch')
-    else:
-        expected=dict(path='/references/assets/'+spec.reference_id,voice_id=spec.voice_id,
-                      voice_revision=spec.voice_revision,checkpoint=spec.checkpoint,revision=spec.revision,text=spec.reference_text)
-        if (value['references'] != {spec.reference_id:expected} or v['origin'] != 'clone' or
-            v['reference_asset_ids'] != [spec.reference_id] or v.get('reference_asset_sha256') != {spec.reference_id:spec.reference_sha256} or
-            v['reference_text'] != spec.reference_text or v['configuration'] != dict(mode=mode,reference_asset_id=spec.reference_id,
-                reference_text=spec.reference_text,conditioning='x_vector' if spec.x_vector_only else 'icl') or len(plan['assets']) != 1): raise Refused('execution_reference_mismatch')
-        a=plan['assets'][0]
-        if any(a[k] != v for k,v in dict(id=spec.reference_id,sha256=spec.reference_sha256,frames=spec.reference_frames,
-                sample_rate=spec.reference_rate,channels=1,media_format='wav',media_subtype='PCM_16').items()): raise Refused('execution_reference_mismatch')
-    limits=resolved['profile']['limits']
-    if (spec.threads != limits['threads'] or spec.memory_bytes != limits['ram_bytes'] or
-        spec.max_frames*48000 > limits['decoded_ticks']*spec.sample_rate or spec.max_output_bytes > limits['upload_bytes'] or
-        2*(spec.max_output_bytes+spec.reference_bytes) > limits['disk_bytes'] or
-        len(request['text'].encode()) > spec.max_text_bytes): raise Refused('execution_budget_mismatch')
-    return spec
+    _closed(context, ('plan','bundles','execution'))
+    from worker.runtime_protocol import qwen_relation
+    return qwen_relation(context, lane='native')
 
 
 def generated_source(context):
     spec=native_execution(context)
     return spec.engine+'-execution-sha256:'+hashlib.sha256(canonical(spec.identity())).hexdigest()
+
+
+def frozen_native(context):
+    """Select only from the frozen profile, never from received evidence."""
+    return context['plan']['resolved']['profile']['id'] == 'qwen-mps'
+
+
+def native_binding(context):
+    native_execution(context)
+    value = context['execution']['native']
+    _closed(value, ('deployment_id','configuration_sha256','lane','boot','runtime_manifest_sha256'))
+    for key in ('deployment_id','lane','boot'): _hex(value[key],32)
+    for key in ('configuration_sha256','runtime_manifest_sha256'): _hex(value[key],64)
+    return value
+
+
+def terminal_receipt(value, *, authority, runtime_id, local_import_uid=None):
+    """One pure live/history validator. Local UID is trusted configuration only."""
+    if frozen_native(authority.context):
+        config = native_binding(authority.context)
+        expected = {k:config[k] for k in ('deployment_id','configuration_sha256','lane','boot')}
+        expected.update(runtime_id=runtime_id,binding=authority.binding,original_deadline=authority.job['deadline'])
+        receipt(value, expected=expected)
+        if local_import_uid is not None: _int(local_import_uid,0,2**31-1)
+        return local_import_uid
+    _closed(value, ('runtime_id','binding','reaped','timely','original_deadline','engine_uid','reap_method','reaped_children'))
+    if (value['runtime_id'] != runtime_id or value['binding'] != authority.binding or
+        value['original_deadline'] != authority.job['deadline'] or value['reaped'] is not True or
+        value['reap_method'] != 'pid1-waitpid-echild' or type(value['timely']) is not bool or
+        type(value['reaped_children']) is not int or value['reaped_children'] < 0 or
+        type(value['engine_uid']) is not int): raise Refused('unbound_receipt')
+    return value['engine_uid']

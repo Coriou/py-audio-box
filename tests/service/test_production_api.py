@@ -58,7 +58,7 @@ class SyntheticRuntime:
         return Observation(identity,State.ALIVE if self.hold and not self.cancelled else State.STOPPED)
     def terminate(self,identity,timeout): self.cancelled=True
     def collect(self,a,identity):
-        receipt=dict(runtime_id=identity,binding=a.binding,reaped=True,engine_uid=os.getuid(),reap_method='pid1-waitpid-echild',timely=not self.cancelled,original_deadline=a.job['deadline'])
+        receipt=dict(runtime_id=identity,binding=a.binding,reaped=True,engine_uid=os.getuid(),reap_method='pid1-waitpid-echild',reaped_children=0,timely=not self.cancelled,original_deadline=a.job['deadline'])
         if self.cancelled: return receipt,None
         from worker.synthetic import fixture_outputs, fixture_manifest
         message=a.message()

@@ -30,10 +30,10 @@ def execution(context):
     value = context.get('execution')
     plan = context['plan']; profile = plan['resolved']['profile']
     if value is None:
-        if profile['id'] in ('kokoro-cpu', 'pocket-cpu', 'qwen-cpu', 'qwen-cuda'): raise Refused('execution_required')
+        if profile['id'] in ('kokoro-cpu', 'pocket-cpu', 'qwen-cpu', 'qwen-cuda', 'qwen-mps'): raise Refused('execution_required')
         return None
     if set(context) != {'plan', 'bundles', 'execution'}: raise Refused('closed_execution_context')
-    if type(value) is not dict or set(value) not in ({'descriptor', 'bundles'}, {'descriptor', 'bundles', 'references'}, {'descriptor','bundles','references','hardware'}):
+    if type(value) is not dict or set(value) not in ({'descriptor', 'bundles'}, {'descriptor', 'bundles', 'references'}, {'descriptor','bundles','references','hardware'}, {'descriptor','bundles','references','hardware','native'}):
         raise Refused('closed_execution_context')
     if type(value['descriptor']) is not dict: raise Refused('closed_execution_required')
     if value['descriptor'].get('engine') == 'qwen':
@@ -164,16 +164,26 @@ def pocket_preparation(context):
 
 
 def qwen_execution(context):
+    lane = "native" if context["plan"]["resolved"]["profile"]["id"] == "qwen-mps" else "linux"
+    return qwen_relation(context, lane=lane)
+
+
+def qwen_relation(context, *, lane):
     from worker.engines.qwen_execution import QwenExecution, inventory_from_wire
     value=context['execution']; plan=context['plan']; resolved=plan['resolved']
-    if set(value) != {'descriptor','bundles','references','hardware'}: raise Refused('closed_execution_context')
+    if lane not in ('linux', 'native'): raise Refused('closed_qwen_lane')
+    keys = {'descriptor','bundles','references','hardware'}
+    if set(value) != keys and not (lane == 'native' and set(value) == keys | {'native'}): raise Refused('closed_execution_context')
     spec=QwenExecution.from_wire(value['descriptor'])
     inventory_from_wire(value['hardware'])
-    if spec.task not in ('custom_voice','clone') or spec.device == 'mps': raise Refused('qwen_generation_only')
+    if spec.task not in ('custom_voice','clone'): raise Refused('qwen_generation_only')
+    if lane == 'native':
+        if (spec.device,spec.dtype,spec.attention) != ('mps','float32','sdpa') or resolved['profile']['topology'] != 'packaged_native': raise Refused('native_topology')
+    elif spec.device == 'mps': raise Refused('qwen_generation_only')
     if value['bundles'] != {spec.bundle_id:'/models/bundles/'+spec.bundle_id}: raise Refused('owned_mount_mapping')
-    identity=dict(engine='qwen',model=spec.checkpoint,bundle_sha256=spec.manifest_sha256,device='cuda' if spec.device.startswith('cuda:') else 'cpu',precision=spec.dtype)
+    identity=dict(engine='qwen',model=spec.checkpoint,bundle_sha256=spec.manifest_sha256,device='metal' if lane == 'native' else ('cuda' if spec.device.startswith('cuda:') else 'cpu'),precision=spec.dtype)
     request=plan['request']; versions=plan['voice_versions']
-    profile_id='qwen-cuda' if spec.device.startswith('cuda:') else 'qwen-cpu'
+    profile_id='qwen-mps' if lane == 'native' else ('qwen-cuda' if spec.device.startswith('cuda:') else 'qwen-cpu')
     if (plan['operation'] != 'speech_generate' or resolved['profile']['id'] != profile_id or
         request['identity'] != identity or resolved['identity']['effective'] != identity or
         request['fallback'] != 'forbid' or request['variants'] != 1 or request['reuse'] != 'never' or len(versions) != 1): raise Refused('execution_plan_mismatch')

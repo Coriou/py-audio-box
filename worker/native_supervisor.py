@@ -204,6 +204,33 @@ class NativeSupervisor:
             verify_service_inputs(e,reg['bundles'],self.references(r,reg),reg['inventory'])
         return reg
 
+    def register_snapshot(self, snapshot):
+        """Internal provisioning helper; deliberately absent from the wire OPS.
+
+        Extend an existing trusted principal/version/profile template to one exact
+        owner allocation. It cannot add model mappings, hardware or descriptors.
+        The caller must be the trusted native configuration owner, before prepare.
+        """
+        from contracts import validate as oracle
+        from service.worker_transport import Authority
+        authority=Authority(*snapshot)
+        def template(value):
+            context=copy.deepcopy(value[1]);context['plan'].pop('request')
+            return value[0]['principal_id'],context,value[3]
+        with self.lock:
+            matches=[r for r in self.registrations.values() if template(r['snapshot'])==template(snapshot)]
+            if not matches: raise Refused('native_registration')
+            oracle.admission(authority.job,authority.context,authority.profiles)
+            authority.check(authority.message(),'execute')
+            reg=copy.deepcopy(matches[0]);reg['snapshot']=json.loads(authority._snapshot)
+            binding=authority.binding
+            if binding in self.registrations:
+                if self.registrations[binding]!=reg: raise Refused('native_registration')
+                return binding
+            if len(self.registrations)>=64: raise Refused('native_registration')
+            self.registrations[binding]=reg
+            return binding
+
     def directory(self,r): return self.journal.root/r['token']
     def references(self,r,reg):
         e=reg['execution']

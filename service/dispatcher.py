@@ -100,7 +100,7 @@ class Dispatcher:
             self.enrolled=bool(core.db.execute("SELECT 1 FROM sqlite_master WHERE name='p1_installation'").fetchone())
             if startup is None and self.enrolled and not self.installed_checked:
                 raise ValueError('startup_deployment_changed')
-            self.admission=Admission(core,self.staging,self.budget)
+            self.admission=Admission(core,self.staging,self.budget,private_spool=getattr(self.runtime,'spool',None))
             self.store=DispatchStore(core,self.admission)
             self.pool=ThreadPoolExecutor(max_workers=1,thread_name_prefix='bounded-lifecycle')
             self.pending=None;self.reconciled=False;self.quarantined=False
@@ -184,6 +184,7 @@ class Dispatcher:
 
     def _ready(self):
         return (self._activation_open() and self.reconciled and not self.closing and
+                getattr(self.runtime,'admission_open',True) and
                 not self.orphaned and not self.quarantined and not self.resource_fault and
                 not self.persistence_fault and not self.integrity_fault and
                 (not self.installed_checked or all(
@@ -243,7 +244,7 @@ class Dispatcher:
             oracle.require(row[0] == oracle.fingerprint(principal,operation,payload), 'idempotency_conflict')
             job = json.loads(row[1])
         else:
-            if not self._activation_open() or self.closing or not self.reconciled or self.quarantined or self.resource_fault or self.integrity_fault:
+            if not self._activation_open() or self.closing or not self.reconciled or self.quarantined or self.resource_fault or self.integrity_fault or not getattr(self.runtime,'admission_open',True):
                 raise ValueError('not_ready')
             if self.production_contexts is None: raise ValueError('not_ready')
             if hasattr(self.production_contexts, 'resolve_owned'):
@@ -320,6 +321,7 @@ class Dispatcher:
             if self.installed_checked and self.core.job(args[0])['state']=='queued' and not self._ready(): raise ValueError('not_ready')
             if self.integrity_fault and self.core.job(args[0])['state']=='queued':raise ValueError('integrity_blocks_release')
             job=self.core.request_cancel(*args,**kwargs,_cancel_unstarted=True,_admission=self.admission)
+            self._interrupt_transfer(job['id'])
             self.next_poll=0
             return job
         if op in ('submit','replace'):
@@ -330,14 +332,14 @@ class Dispatcher:
                 if existing:return json.loads(existing[0])
             if not self._activation_open(): raise ValueError('persistent_activation_closed_until_C1')
             if self.installed_checked: raise ValueError('installed_production_commands_required')
-            if self.closing or not self.reconciled or self.quarantined or self.resource_fault or self.integrity_fault:raise ValueError('startup_or_quarantine')
+            if self.closing or not self.reconciled or self.quarantined or self.resource_fault or self.integrity_fault or not getattr(self.runtime,'admission_open',True):raise ValueError('startup_or_quarantine')
             if op=='replace':
                 if self.pending or self.store.current():raise ValueError('lane_busy')
                 job_id=args[0]
                 check_operator_resolved(self.core.db,job_id)
                 row=self.store.allocate(self.profiles,'silence',8,replacement=job_id)
                 self.fault('prespawn')
-                self._launch(row,'prepare',lambda:self.runtime.prepare(row['authority'],row['fixture']))
+                self._prepare(row)
                 return self.core.job(row['job_id'])
             # Fixed installed internal fixture; caller supplies no context/profile/plan.
             principal,key=args
@@ -349,6 +351,19 @@ class Dispatcher:
                 _dispatch_settings=(fixture,seconds),_admission=self.admission,_profiles=self.profiles)
             return job
         return getattr(self.core,op)(*args,**kwargs)
+
+    def _prepare(self, row):
+        if hasattr(self.runtime,'detach'):
+            detached=self.runtime.detach(row['authority'],self.core)
+            self._launch(row,'prepare',lambda:self.runtime.prepare(row['authority'],row['fixture'],detached))
+        else:
+            self._launch(row,'prepare',lambda:self.runtime.prepare(row['authority'],row['fixture']))
+
+    def _interrupt_transfer(self, job_id):
+        row=self.store.current()
+        if row and row['job_id']==job_id and row['runtime'] and hasattr(self.runtime,'interrupt'):
+            self.runtime.bind(row['authority'],row['runtime'])
+            self.runtime.interrupt(row['runtime'])
 
     def _launch(self,row,op,fn):
         command=self.store.command(row,op)
@@ -405,6 +420,9 @@ class Dispatcher:
                 self.fault('prestart')
                 bound=self.store.current()
                 if self._service_stop(bound):return
+                if self.core.job(bound['job_id'])['state']=='cancel_requested':
+                    self._interrupt_transfer(bound['job_id'])
+                    self._launch(bound,'stop',lambda:self.runtime.terminate(value,1.5));return
                 self._launch(bound,'start',lambda:self.runtime.start(value));return
             if op=='start':self.store.update(row,phase='observing');self.fault('postspawn')
             elif op=='observe':
@@ -433,6 +451,7 @@ class Dispatcher:
         if time.monotonic()<self.next_poll:return
         row=self.store.current()
         if row:
+            if hasattr(self.runtime,'bind') and row['runtime']: self.runtime.bind(row['authority'],row['runtime'])
             if row['outcome']:
                 if self.integrity_fault:return
                 if self.persistence_fault:return
@@ -459,23 +478,25 @@ class Dispatcher:
             self.reconciled=True
             if self.installed_checked: self._release_startup_cancelled()
             return
-        if self.quarantined or self.integrity_fault:return
+        if self.quarantined or self.integrity_fault or not getattr(self.runtime,'admission_open',True):return
         queued=next((json.loads(r[0]) for r in self.core.db.execute('SELECT job FROM jobs ORDER BY seq') if json.loads(r[0])['state']=='queued'),None)
         if queued:
             settings=self.core.db.execute('SELECT fixture,seconds FROM dispatch_settings WHERE job_id=?',(queued['id'],)).fetchone()
             if settings is None:raise ValueError('fixed_dispatch_settings_required')
             row=self.store.allocate(self.profiles,*settings)
             self.fault('prespawn')
-            self._launch(row,'prepare',lambda:self.runtime.prepare(row['authority'],row['fixture']))
+            self._prepare(row)
 
     def _terminal(self,row,receipt,observation):
         if getattr(self.core,'_publication_storage_failed',False):
             self.persistence_fault=self.quarantined=True
             return  # Only reopen may resolve publication storage ambiguity.
         authority=row['authority'];job=self.core.job(row['job_id'])
-        if (receipt['runtime_id']!=row['runtime'] or receipt['binding']!=authority.binding or
-            receipt['reaped'] is not True or receipt['reap_method']!='pid1-waitpid-echild' or
-            receipt['original_deadline']!=authority.job['deadline']):raise ValueError('unbound_receipt')
+        from worker.native_protocol import terminal_receipt, frozen_native
+        native=frozen_native(authority.context)
+        import_uid=terminal_receipt(receipt,authority=authority,runtime_id=row['runtime'],
+            local_import_uid=getattr(self.runtime,'local_import_uid',None))
+        if native and import_uid is None: raise ValueError('trusted_native_import_uid_required')
         if self.integrity_fault:
             # Retain a conflicting original receipt; a fresh exact receipt may
             # only fill an empty slot. Neither form authorizes release/ACK here.
@@ -497,8 +518,11 @@ class Dispatcher:
                         if stored[key]!=expected:raise ValueError('stale_publication_intent')
                     self.core._commit_publication(job['id'])
                 elif receipt['timely'] is True and observation is not None:
+                    if native:
+                        from datetime import datetime, timezone
+                        if datetime.now(timezone.utc)>=datetime.fromisoformat(authority.job['deadline']): raise ValueError('native_import_deadline')
                     self.core._publish(job['id'],dict(message=observation.message,manifest=observation.manifest),
-                        fault=self.fault,stage_root=self.staging,engine_uid=receipt['engine_uid'])
+                        fault=self.fault,stage_root=self.staging,engine_uid=import_uid)
                 else:self._fail(job,'deadline_or_reaped')
             except (OSError,sqlite3.Error,PublicationQuarantine):
                 # Storage failure is not invalid media. Retain intent, ownership,

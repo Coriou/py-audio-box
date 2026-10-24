@@ -491,7 +491,7 @@ def typed_references(self, data, b2, _before, document):
                 raise Incomplete('unknown_reference_kind') from None
         elif set(value) != {'plan','bundles'}:
             self.reasons.add('unknown_reference_schema')
-        elif value['plan']['resolved']['profile']['id'] in ('kokoro-cpu','pocket-cpu','qwen-cpu','qwen-cuda'):
+        elif value['plan']['resolved']['profile']['id'] in ('kokoro-cpu','pocket-cpu','qwen-cpu','qwen-cuda','qwen-mps'):
             raise Incomplete('unknown_reference_kind')
         plan=value['plan']
         planned_prepare=False
@@ -644,8 +644,8 @@ def typed_references(self, data, b2, _before, document):
                 if record['outcome']: walk(json.loads(record['outcome']), 'job', source)
                 if record['receipt']:
                     receipt = json.loads(record['receipt'])
-                    if set(receipt) - {'runtime_id','binding','reaped','engine_uid','reap_method','reaped_children','timely','original_deadline'}:
-                        self.reasons.add('unknown_reference_schema')
+                    from worker.native_protocol import terminal_receipt
+                    terminal_receipt(receipt, authority=Authority(*authority), runtime_id=record['runtime'])
             if table == 'resource_reservations':
                 if set(json.loads(record['demand'])) != {'configuration','slots','ram_bytes','vram_bytes','pids','disk_bytes','attempt_disk_bytes'}:
                     self.reasons.add('unknown_reference_schema')
@@ -703,10 +703,8 @@ def typed_references(self, data, b2, _before, document):
                 dispatch_reasons.add('reservation_outcome_mismatch')
             if r['receipt']:
                 receipt = json.loads(r['receipt'])
-                if (receipt.get('runtime_id') != r['runtime'] or receipt.get('binding') != a.binding or
-                    receipt.get('original_deadline') != a.job['deadline'] or receipt.get('reaped') is not True or
-                    receipt.get('reap_method') != 'pid1-waitpid-echild'):
-                    dispatch_reasons.add('receipt_mismatch')
+                from worker.native_protocol import terminal_receipt
+                terminal_receipt(receipt, authority=a, runtime_id=r['runtime'])
             elif r['outcome'] or job['state'] in ('succeeded','failed','cancelled'):
                 dispatch_reasons.add('terminal_receipt_missing')
             publication = next((p for p in data.get('publications', []) if p['job_id'] == job['id']), None)

@@ -59,9 +59,9 @@ class SupervisorRuntime:
         receipt = value['receipt']
         if receipt is None:
             return None
-        if (receipt['runtime_id'] != runtime_id or receipt['binding'] != authority.binding or
-                receipt['reaped'] is not True):
-            raise ValueError('unbound_receipt')
+        from worker.native_protocol import terminal_receipt, frozen_native
+        if frozen_native(authority.context): raise ValueError('native_transport_required')
+        terminal_receipt(receipt,authority=authority,runtime_id=runtime_id)
         proposal = value['proposal']
         if proposal is None:
             return receipt, None
