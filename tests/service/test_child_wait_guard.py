@@ -1112,10 +1112,51 @@ root.mkdir(mode=0o700)
 steps = []
 
 # Schema and storage are prepared before target clock/trace installation.
-diagnostic_enabled = mode == 'original74-real-observer'
+from types import MappingProxyType
+BASELINE_IDENTITIES = MappingProxyType({
+    'original74-real-observer': 'ORIGINAL74_REAL_OBSERVER',
+    'collected-control': 'COLLECTED_CONTROL'})
+assert mode in ('original74-real-observer', 'collected-control', 'missing-obj', 'wrong-obj', 'wrong-node', 'parameter', 'wrong-code', 'closure', 'operation', 'wrong-errno', 'subclass', 'missing-eagain', 'fd-other', 'fd-reuse', 'fd-witness-alias', 'fd-read-access', 'raw-budget', 'offset', 'view-owner', 'view-slice', 'premature', 'route561', 'raise-offset', 'call-offset', 'absent-route', 'extra-route', 'reordered-route', 'wrong-args', 'replacement', 'same-object-extra-frame', 'trace-disabled', 'writer-failure', 'direct-exit74', 'actual-overflow', 'schedule9-no-f', 'schedule9-f', 'previous-trace', 'setup-failure', 'fixture-undo')
+expected_control = BASELINE_IDENTITIES.get(mode)
+diagnostic_enabled = expected_control is not None
 NOT_REACHED = 'NOT_REACHED'
-def callback_record(role):
-    return dict(schema=2, control='ORIGINAL74_REAL_OBSERVER', role=role,
+QUALIFICATION_KEYS = ('terminal', 'observe_status', 'observe_witness', 'observe_return', 'receipt_owned')
+def qualification_record():
+    return dict(policy='BASELINE_AFTER_OBSERVE', **dict.fromkeys(QUALIFICATION_KEYS, NOT_REACHED),
+        observe_calls=0, assertions='PENDING', first_failed='NONE')
+def validate_identity(expected):
+    if type(expected) is not str or expected not in BASELINE_IDENTITIES.values():
+        raise ValueError('external baseline identity')
+def validate_qualification(record):
+    if type(record) is not dict or record.keys() != qualification_record().keys():
+        raise ValueError('qualification schema')
+    if record['policy'] != 'BASELINE_AFTER_OBSERVE': raise ValueError('qualification policy')
+    for key in QUALIFICATION_KEYS:
+        value = record[key]
+        if not (type(value) is bool or type(value) is str and value == NOT_REACHED):
+            raise ValueError('qualification operand')
+    if type(record['observe_calls']) is not int or record['observe_calls'] not in (0,1):
+        raise ValueError('qualification call count')
+    if record['assertions'] not in ('PENDING','PASSED','FAILED','NOT_REACHED') or record['first_failed'] not in (*QUALIFICATION_KEYS,'NONE'):
+        raise ValueError('qualification assertion enum')
+    failed = record['first_failed']
+    if record['assertions'] == 'PASSED':
+        if failed != 'NONE' or record['observe_calls'] != 1 or any(record[k] is not True for k in QUALIFICATION_KEYS):
+            raise ValueError('qualification false PASS')
+    elif record['assertions'] == 'FAILED':
+        if failed == 'NONE' or record[failed] is True or any(record[k] is not True for k in QUALIFICATION_KEYS[:QUALIFICATION_KEYS.index(failed)]):
+            raise ValueError('qualification first failure')
+    elif failed != 'NONE': raise ValueError('qualification premature failure')
+def assert_qualification(record):
+    # Saved primitives only: no late witness/receipt/state consultation.
+    for key in QUALIFICATION_KEYS:
+        if record[key] is not True:
+            record['assertions'], record['first_failed'] = 'FAILED', key
+            raise AssertionError('baseline qualification: '+key)
+    record['assertions'] = 'PASSED'
+def callback_record(role, expected):
+    validate_identity(expected)
+    return dict(schema=2, control=expected, role=role,
         first_site=0, kind='UNREACHED', gate=0, hook_gate=0,
         valid=NOT_REACHED, phase=NOT_REACHED, final_called=NOT_REACHED,
         final_result=NOT_REACHED, terminal_called=NOT_REACHED,
@@ -1124,10 +1165,10 @@ def callback_record(role):
         exact_t=NOT_REACHED, observe_entered=NOT_REACHED,
         observe_completed=NOT_REACHED, observe_status=NOT_REACHED,
         observe_armed=NOT_REACHED, observe_witness=NOT_REACHED,
-        observe_return=NOT_REACHED, assertion=NOT_REACHED)
+        observe_return=NOT_REACHED, assertion=NOT_REACHED, qualification=qualification_record())
 
 CALLBACK_ENUMS = {
-    'schema': (2,), 'control': ('ORIGINAL74_REAL_OBSERVER',), 'role': ('CHILD','PARENT'),
+    'schema': (2,), 'control': tuple(BASELINE_IDENTITIES.values()), 'role': ('CHILD','PARENT'),
     'first_site': tuple(range(14)), 'gate': tuple(range(16)), 'hook_gate': tuple(range(25)),
     'kind': ('FALSE','CAUGHT_EXCEPTION','WRAPPER_ASSERT','UNREACHED'),
     'phase': (NOT_REACHED,'ARMED','BACKPRESSURE','TIMEOUT','OTHER'),
@@ -1136,10 +1177,15 @@ CALLBACK_ENUMS = {
     'suffix': (NOT_REACHED,'EMPTY','T','TK','OTHER'),
     'assertion': (NOT_REACHED,'FINAL_PREREQUISITE','TERMINAL_PREREQUISITE',
         'OBSERVE_STATUS','OBSERVE_WITNESS','OBSERVE_RETURN')}
-CALLBACK_KEYS = frozenset(callback_record('CHILD'))
-def validate_callback(record):
+CALLBACK_KEYS = frozenset(callback_record('CHILD', next(iter(BASELINE_IDENTITIES.values()))))
+def validate_callback(record, expected):
+    validate_identity(expected)
+    if record.get("control") != expected: raise ValueError("callback identity binding")
     if record.keys() != CALLBACK_KEYS: raise ValueError('diagnostic schema')
     for key, value in record.items():
+        if key == 'qualification':
+            validate_qualification(value)
+            continue
         if key == 'status':
             valid = type(value) is int and 0 <= value <= 65535 or type(value) is str and value in (NOT_REACHED,'OTHER')
         elif key in CALLBACK_ENUMS:
@@ -1150,8 +1196,9 @@ def validate_callback(record):
 # Exact v2 child-survival leaf; the historical filename does not imply refusal.
 MILESTONES = ('real-eagain-baseline', 'eagain-accepted', 'actual-child558-timeout',
     'final-baseline', 'final-accepted')
-def decode_survival(raw, delivered):
-    record = dict(schema=2, control='ORIGINAL74_REAL_OBSERVER', role='CHILD',
+def decode_survival(raw, delivered, expected):
+    validate_identity(expected)
+    record = dict(schema=2, control=expected, role='CHILD',
         wait='DELIVERED' if delivered else 'WAIT_UNOBSERVED',
         raw=raw.hex() if raw is not None else None, state='UNKNOWN',
         result_complete=False, first_site=0, final_gate=0, hook_gate=0,
@@ -1223,7 +1270,9 @@ def decode_survival(raw, delivered):
     if legal: record.update(state=state, result_complete=True)
     return record
 
-def validate_survival(record):
+def validate_survival(record, expected):
+    validate_identity(expected)
+    if record.get("control") != expected: raise ValueError("survival identity binding")
     if type(record) is not dict or record.get('schema') != 2 or type(record['schema']) is not int:
         raise ValueError('survival schema')
     if record.get('wait') not in ('DELIVERED','WAIT_UNOBSERVED'): raise ValueError('survival wait')
@@ -1232,13 +1281,13 @@ def validate_survival(record):
     elif type(encoded) is str and len(encoded) == 128 and all(c in '0123456789abcdef' for c in encoded):
         raw = bytes.fromhex(encoded)
     else: raise ValueError('survival bytes')
-    expected = decode_survival(raw, record['wait'] == 'DELIVERED')
+    expected = decode_survival(raw, record['wait'] == 'DELIVERED', expected)
     # Type-exact comparison rejects bool/int aliases as well as extra fields.
     import json
     if json.dumps(record, sort_keys=True) != json.dumps(expected, sort_keys=True):
         raise ValueError('survival crosscheck')
 
-child_diagnostic, parent_diagnostic = callback_record('CHILD'), callback_record('PARENT')
+child_diagnostic, parent_diagnostic = callback_record('CHILD', expected_control) if diagnostic_enabled else None, callback_record('PARENT', expected_control) if diagnostic_enabled else None
 diagnostic_io_failed = False
 teardown_snapshot = None
 survival = None
@@ -1251,8 +1300,8 @@ def publish_diagnostic(name, record):
     global diagnostic_io_failed
     if diagnostic_enabled:
         try:
-            if name == 'child-refusal.json': validate_survival(record)
-            elif name != 'directed-outcome.json': validate_callback(record)
+            if name == 'child-refusal.json': validate_survival(record, expected_control)
+            elif name != 'directed-outcome.json': validate_callback(record, expected_control)
             h.atomic(root/name, record)
         except (OSError, RuntimeError, TypeError, ValueError): diagnostic_io_failed = True
 
@@ -1290,6 +1339,70 @@ def snapshot_complete(snapshot):
         snapshot['shouldstop'] in ('FALSE', 'MATCH_FIRST', 'MATCH_LAST', 'MATCH_BOTH') and
         all(type(value) is int and value in (9, 18944) for value in snapshot['receipt_statuses']))
 
+def bounded_baseline_snapshot(value):
+    keys = {'failures','failure_overflow','shouldstop','owned','owned_overflow','receipts',
+        'receipt_count_overflow','receipt_statuses','receipt_status_overflow'}
+    return (type(value) is dict and set(value) == keys and
+        type(value['failures']) is list and len(value['failures']) <= 8 and
+        type(value['receipt_statuses']) is list and len(value['receipt_statuses']) <= 2 and
+        all(type(value[k]) is bool for k in ('failure_overflow','owned_overflow','receipt_count_overflow','receipt_status_overflow')) and
+        all(type(value[k]) is int and 0 <= value[k] <= 9 for k in ('owned','receipts')) and snapshot_complete(value))
+
+def validate_baseline_records(records, expected, node, binding):
+    validate_identity(expected)
+    if (type(binding) is not dict or binding != dict(schema=2, control=expected, node=node) or
+            node != NODE): raise ValueError('external node/private binding')
+    if type(records) is not dict or set(records) != {'child-refusal.json','parent-callback.json','directed-outcome.json'}:
+        raise ValueError('baseline leaves')
+    child, parent, outcome = (records[k] for k in ('child-refusal.json','parent-callback.json','directed-outcome.json'))
+    validate_survival(child, expected)
+    validate_callback(parent, expected)
+    if parent['role'] != 'PARENT': raise ValueError('parent role')
+    qualification = parent['qualification']
+    if type(qualification['terminal']) is bool:
+        raw, ef, suffix = (parent[k] for k in ('raw18944','exact_ef','exact_t'))
+        if (type(raw) is not bool or type(parent['status']) is not int or raw != (parent['status'] == 18944) or
+                (type(ef) is not bool if raw else ef != NOT_REACHED) or
+                (type(suffix) is not bool if raw and ef is True else suffix != NOT_REACHED) or
+                qualification['terminal'] != (raw is True and ef is True and suffix is True) or
+                parent['terminal_called'] is not True): raise ValueError('terminal capture crosscheck')
+    for key in ('observe_status','observe_return'):
+        if type(qualification[key]) is bool and (parent[key] is not qualification[key] or parent['observe_entered'] is not True):
+            raise ValueError('observe capture crosscheck')
+    if type(qualification['observe_witness']) is bool:
+        armed, witness = parent['observe_armed'], parent['observe_witness']
+        if (type(armed) is not bool or (type(witness) is not bool if armed else witness != NOT_REACHED) or
+                qualification['observe_witness'] != (armed is True and witness is True)):
+            raise ValueError('witness capture crosscheck')
+    keys = {'schema','control','role','qualification','pytest_exit','phases','duplicate_phase',
+        'unknown_phase','teardown','final','io_failed','callback_other','missing_records','diagnostic'}
+    if type(outcome) is not dict or set(outcome) != keys: raise ValueError('outcome schema')
+    if type(outcome['schema']) is not int or outcome['schema'] != 2 or outcome['control'] != expected or outcome['role'] != 'PARENT':
+        raise ValueError('outcome identity')
+    validate_qualification(outcome['qualification'])
+    if outcome['qualification'] != parent['qualification']: raise ValueError('qualification crosscheck')
+    for key in ('duplicate_phase','unknown_phase','io_failed','callback_other'):
+        if type(outcome[key]) is not bool: raise ValueError('outcome flag')
+    if (type(outcome['phases']) is not dict or set(outcome['phases']) != {'setup','call','teardown'} or
+            any(v not in ('PASSED','FAILED',NOT_REACHED,'OTHER') for v in outcome['phases'].values())):
+        raise ValueError('outcome phases')
+    if type(outcome['missing_records']) is not list or any(v not in ('child-refusal.json','parent-callback.json') for v in outcome['missing_records']):
+        raise ValueError('missing records')
+    exit_code = outcome['pytest_exit']
+    complete = (type(exit_code) is int and exit_code in range(6) and child['result_complete'] and
+        not any(outcome[k] for k in ('duplicate_phase','unknown_phase','io_failed','callback_other','missing_records')) and
+        bounded_baseline_snapshot(outcome['teardown']) and bounded_baseline_snapshot(outcome['final']) and
+        all(v in ('PASSED','FAILED') for v in outcome['phases'].values()) and
+        all(type(parent['qualification'][k]) is bool for k in QUALIFICATION_KEYS) and
+        parent['qualification']['observe_calls'] == 1 and parent['qualification']['assertions'] in ('PASSED','FAILED'))
+    if outcome['diagnostic'] != ('COMPLETE' if complete else 'RED'): raise ValueError('diagnostic completeness')
+    passed = (complete and exit_code == 0 and all(v == 'PASSED' for v in outcome['phases'].values()) and
+        parent['qualification']['assertions'] == 'PASSED' and child['state'] == 'TRUE' and child['milestones'] == list(MILESTONES) and
+        all(not outcome[k]['failures'] and outcome[k]['shouldstop'] == 'FALSE' and outcome[k]['owned'] == 0 and
+            outcome[k]['receipts'] == 1 and outcome[k]['receipt_statuses'] == [18944] for k in ('teardown','final')))
+    if exit_code == 0 and not passed: raise ValueError('false baseline PASS')
+    return dict(diagnostic='COMPLETE' if complete else 'RED', test_status='PASS' if passed else 'FAIL')
+
 def publish_outcome(exit_code):
     if not diagnostic_enabled: return
     phases = dict.fromkeys(('setup','call','teardown'), NOT_REACHED)
@@ -1307,20 +1420,31 @@ def publish_outcome(exit_code):
         try:
             callback = h.metadata(root/name)
             if name == 'child-refusal.json':
-                validate_survival(callback)
+                validate_survival(callback, expected_control)
                 callback_other = callback_other or not callback['result_complete']
             else:
-                validate_callback(callback)
+                validate_callback(callback, expected_control)
                 callback_other = callback_other or any(value == 'OTHER' for value in callback.values())
         except (OSError, RuntimeError, TypeError, ValueError): callback_other = True
-    record = dict(schema=2, control='ORIGINAL74_REAL_OBSERVER', role='PARENT',
+    record = dict(schema=2, control=expected_control, role='PARENT',
+        qualification=parent_diagnostic['qualification'].copy(),
         pytest_exit=exit_code, phases=phases, duplicate_phase=duplicate,
         unknown_phase=unknown, teardown=teardown_snapshot if teardown_snapshot is not None else NOT_REACHED, final=snapshot if snapshot is not None else NOT_REACHED,
         io_failed=diagnostic_io_failed, callback_other=callback_other, missing_records=missing, diagnostic='RED')
     # These observations never change pytest/result/guard acceptance.
     if (not missing and not diagnostic_io_failed and not callback_other and not duplicate and not unknown and
             snapshot_complete(snapshot) and snapshot_complete(teardown_snapshot) and
-            all(value in ('PASSED','FAILED') for value in phases.values()) and type(exit_code) is int): record['diagnostic'] = 'COMPLETE'
+            all(value in ('PASSED','FAILED') for value in phases.values()) and type(exit_code) is int and
+            all(type(parent_diagnostic['qualification'][k]) is bool for k in QUALIFICATION_KEYS) and
+            parent_diagnostic['qualification']['observe_calls'] == 1 and
+            parent_diagnostic['qualification']['assertions'] in ('PASSED','FAILED')): record['diagnostic'] = 'COMPLETE'
+    try:
+        records = {name: h.metadata(root/name) for name in ('child-refusal.json','parent-callback.json')}
+        records['directed-outcome.json'] = record
+        validate_baseline_records(records, expected_control, NODE, dict(schema=2, control=expected_control, node=NODE))
+    except (OSError, RuntimeError, TypeError, ValueError, KeyError):
+        diagnostic_io_failed = True
+        record['io_failed'], record['diagnostic'] = True, 'RED'
     publish_diagnostic('directed-outcome.json', record)
 owner = os.getpid()
 parent_owner = owner
@@ -1422,6 +1546,9 @@ class Plugin:
         observe0 = guard.observe
         def observe(result, **kw):
             if diagnostic_enabled:
+                qualification = parent_diagnostic['qualification']
+                if qualification['observe_calls'] != 0: raise AssertionError('duplicate baseline observe')
+                qualification['observe_calls'] = 1
                 parent_diagnostic['observe_entered'] = True
                 parent_diagnostic['assertion'] = 'OBSERVE_STATUS'
                 if result[1] == (9 if mode.startswith('schedule9-') else 74 << 8):
@@ -1430,7 +1557,7 @@ class Plugin:
                     status_ok = False
                 parent_diagnostic['observe_status'] = status_ok
                 # Publication is deferred to handback.
-                assert status_ok
+                parent_diagnostic['qualification']['observe_status'] = status_ok
             else:
                 assert result[1] == (9 if mode.startswith('schedule9-') else 74 << 8)
             if mode == 'actual-overflow': expected = b'B:overflow;'
@@ -1453,14 +1580,19 @@ class Plugin:
                     parent_diagnostic['observe_armed'] = False
                     witness_ok = False
                 # Publication is deferred to handback.
-                assert witness_ok
+                qualification['observe_witness'] = witness_ok
             else:
                 assert kw['armed_B'] and kw['witness'] == expected
             observed = observe0(result, **kw)
             if diagnostic_enabled:
+                qualification['observe_return'] = observed is result
+                qualification['receipt_owned'] = bool(guard.receipts[-1] == result and result[0] not in guard.owned)
                 parent_diagnostic['observe_completed'] = True
-                parent_diagnostic['observe_return'] = observed is result
+                parent_diagnostic['observe_return'] = qualification['observe_return']
                 parent_diagnostic['assertion'] = 'OBSERVE_RETURN'
+                if all(qualification[key] is True for key in QUALIFICATION_KEYS):
+                    evidence('exact-terminal-readback')
+                return observed
             assert observed is result
             assert guard.receipts[-1] == result and result[0] not in guard.owned
             evidence('exact-terminal-readback')
@@ -1703,17 +1835,23 @@ class Plugin:
             if diagnostic_enabled: wait_delivered = True
             answer = original['terminal'](w, result, caller, enrolled, child_bytes)
             if diagnostic_enabled:
+                # Original left-to-right qualification, evaluated once inline.
+                raw_ok = ef_ok = t_ok = NOT_REACHED
+                if ((raw_ok := result[1] == 74 << 8) and
+                        (ef_ok := child_bytes == b'B:e;B:f;') and (t_ok := answer == b'B:t;')):
+                    terminal_ok = True
+                else: terminal_ok = False
+                parent_diagnostic['qualification']['terminal'] = terminal_ok
                 witness_snapshot(w, parent_diagnostic)
                 parent_diagnostic.update(terminal_called=True,
-                    terminal_result='EMPTY' if answer == b'' else 'T' if answer == b'B:t;' else 'TK' if answer == b'B:t;B:k;' else 'OTHER',
+                    terminal_result={b'':'EMPTY',b'B:t;':'T',b'B:t;B:k;':'TK'}.get(answer,'OTHER'),
                     status=result[1] if type(result[1]) is int and 0 <= result[1] <= 65535 else 'OTHER',
                     child_bytes={b'':'EMPTY',b'B:e;':'E',b'B:e;B:f;':'EF'}.get(child_bytes,'OTHER'),
                     suffix={b'':'EMPTY',b'B:t;':'T',b'B:t;B:k;':'TK'}.get(answer,'OTHER'),
-                    raw18944=result[1] == 18944, exact_ef=child_bytes == b'B:e;B:f;', exact_t=answer == b'B:t;')
-                if not (parent_diagnostic['raw18944'] and parent_diagnostic['exact_ef'] and parent_diagnostic['exact_t']):
-                    parent_diagnostic['kind'] = 'WRAPPER_ASSERT'
-                    parent_diagnostic['assertion'] = 'TERMINAL_PREREQUISITE'
-                    # Publication is deferred to handback.
+                    raw18944=raw_ok, exact_ef=ef_ok, exact_t=t_ok)
+                evidence('terminal-reached')
+                if terminal_ok: evidence('actual74-parent-qualified')
+                return answer
             evidence('terminal-reached')
             if mode in {'schedule9-no-f', 'schedule9-f'}:
                 assert result[1] == 9 and w.killed and caller.f_locals['killed'] is True
@@ -1754,14 +1892,17 @@ class Plugin:
             global teardown_snapshot
             teardown_snapshot = guard_snapshot(guard)
             # Publication is deferred to handback.
-        if guard.failures:
-            assert guard.session.shouldstop == guard.failures[-1]
-            assert any(s.endswith('incomplete or invalid armed B contract') for s in guard.failures)
-            with pytest.raises(pytest.exit.Exception): wrapped_run({}, {}, lambda value: True)
-            with h.activate(guard, root/'refused'):
-                with pytest.raises(RuntimeError): h.fresh_run([sys.executable, '-c', 'raise AssertionError("must not launch")'])
-                assert not list((root/'refused').iterdir())
-            evidence('both-next-launches-refused')
+        try:
+            if guard.failures:
+                assert guard.session.shouldstop == guard.failures[-1]
+                assert any(s.endswith('incomplete or invalid armed B contract') for s in guard.failures)
+                with pytest.raises(pytest.exit.Exception): wrapped_run({}, {}, lambda value: True)
+                with h.activate(guard, root/'refused'):
+                    with pytest.raises(RuntimeError): h.fresh_run([sys.executable, '-c', 'raise AssertionError("must not launch")'])
+                    assert not list((root/'refused').iterdir())
+                evidence('both-next-launches-refused')
+        finally:
+            if diagnostic_enabled: assert_qualification(parent_diagnostic['qualification'])
 result = 'ESCAPED'
 try:
     if diagnostic_enabled:
@@ -1778,7 +1919,7 @@ finally:
         if diagnostic_enabled:
             # Never inspect the mapping unless the original wait was delivered.
             raw_survival = bytes(survival[:]) if wait_delivered else None
-            child_diagnostic = decode_survival(raw_survival, wait_delivered)
+            child_diagnostic = decode_survival(raw_survival, wait_delivered, expected_control)
             child_steps = child_diagnostic['milestones']
             publish_diagnostic('child-refusal.json', child_diagnostic)
             publish_diagnostic('parent-callback.json', parent_diagnostic)
@@ -1790,6 +1931,7 @@ finally:
         h._B_SURVIVAL = binding0
         if survival is not None: survival.close()
         survival = None
+if diagnostic_enabled: assert not diagnostic_io_failed, 'baseline diagnostic publication/validation failed'
 assert len(guards) == 1
 g = guards[0]
 restore_observer()
