@@ -2291,3 +2291,7 @@ Parent authorized r219 worker/runtime_journal.py solely pure extraction of exist
 ### 2026-10-24 — Shared typed snapshot validation extraction
 
 Parent authorized r219 reconciliation.py solely pure typed data/reference/owner validation extraction reused by live scanning/detachedhistory; live filesystem checks preserved, no historicalreobservation claim or permissive mode. Equivalence/nestedmalformation regressions required. No write/repair/migration authority.
+
+### 2026-10-24 — Retained restart semantic/graph correction enters re-review
+
+r219 source33fc3097/docs037c3237 adds sharedcomplete detachedjournal/snapshot/typedreference validation and boundedDAG/preinsertclosure.175 exactpin tests reported PASS, oldfullretry malformedpayload/cycle acceptance reproducedRED. Parent commissioned independent Sol r220 including pureextraction and in-memoryschema safety. Restartunmerged; noactualruntime or packagedactivationclaim.
