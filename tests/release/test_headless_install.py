@@ -19,8 +19,12 @@ from tests.service import test_installed_registration as fixtures
 
 
 class GateTests(unittest.TestCase):
+    def new_registration(self):
+        fixture=fixtures.Registration();fixture.setUp();return fixture
+
     def setUp(self):
-        f = self.fixture = fixtures.Registration(); f.setUp(); self.addCleanup(f.doCleanups)
+        f = self.fixture = self.new_registration() if hasattr(self,'new_registration') else GateTests.new_registration(self)
+        self.addCleanup(f.doCleanups)
         self.rid = f.run_registration()
         record = json.loads(f.rows()[0][1])
         self.processes = [dict(id=c['id'],image=c['image'],started=c['started'],pid=90+i,

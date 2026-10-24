@@ -792,7 +792,7 @@ def snapshot(roots, db, scope, *, policy=None, exclude_plan=None, exclude_abando
             ip.initialization(private)
             if private_raw != encode(private).encode() or raw != encode(installation):
                 raise ValueError('noncanonical_installed_record')
-            if (kind != ip.SCOPE or private['public'] != installation or ip.role_records(roots) != installation['roles']):
+            if (kind not in ip.SCOPES or private['public'] != installation or ip.role_records(roots) != installation['roles']):
                 raise ValueError('volume_role_identity_mismatch')
         else:
             if kind != 'owned-synthetic': raise ValueError('explicit_fixed_install_policy_required')
@@ -3004,7 +3004,7 @@ def _installed_detached_source(state, journal):
     identity,revision,kind,raw,h=data['p1_installation'][0]
     public=host_json(raw.encode());ip.installation(public)
     if (identity!=state['deployment_id'] or identity!=public['deployment_id'] or
-            revision!=1 or kind!=ip.SCOPE or kind!=public['scope'] or digest(public)!=h or
+            revision!=1 or kind not in ip.SCOPES or kind!=public['scope'] or digest(public)!=h or
             raw!=encode(public) or source['marker']!=dict(deployment_id=identity,digest=h)):
         raise ValueError('installed_history_enrollment')
     registrations=[]
@@ -3793,7 +3793,7 @@ def installed_startup_read(root, configuration, gate, hello, incarnation, *, pol
                 rows = db.execute('SELECT id,revision,scope,record,digest FROM p1_installation').fetchall()
                 if len(rows) != 1: raise ValueError('not_enrolled')
                 identity,revision,scope,raw,h = rows[0]; public = ip.installation(host_json(raw.encode()))
-                if (revision != 1 or scope != ip.SCOPE or public['scope'] != ip.SCOPE or identity != public['deployment_id'] or digest(public) != h or
+                if (revision != 1 or scope != ip.scope_for(config) or public['scope'] != ip.scope_for(config) or identity != public['deployment_id'] or digest(public) != h or
                         public['configuration'] != config or public['configuration_digest'] != digest(config) or
                         gate['configuration_digest'] != digest(config) or gate['enrollment_digest'] != h):
                     raise ValueError('installed_startup_configuration')

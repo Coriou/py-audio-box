@@ -383,8 +383,8 @@ def initialize_split(roots, scope, config, *, authority, policy, complete=None,
             target = {role:dict(device=dev,inode=ino,uid=ip.expectation(policy,role,directory=True)[0],
                 gid=ip.expectation(policy,role,directory=True)[1],mode=ip.expectation(policy,role,directory=True)[2])
                 for role,(dev,ino) in original.items()}
-            public = dict(deployment_id=secrets.token_hex(16), revision=1, scope=ip.SCOPE, host=scope,
-                configuration=config, configuration_digest=digest(config), ownership_policy=ip.POLICY, roles=target)
+            public = dict(deployment_id=secrets.token_hex(16), revision=1, scope=ip.scope_for(config), host=scope,
+                configuration=config, configuration_digest=digest(config), ownership_policy=config['ownership_policy'], roles=target)
             private = dict(public=public, seed=secrets.token_hex(32))
             ip.initialization(private)
             # Receipts is still root:root 0700 here. Intent precedes ANY transition.

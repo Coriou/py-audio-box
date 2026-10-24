@@ -26,3 +26,17 @@ COPY contracts /opt/speech/contracts
 COPY lib /opt/speech/lib
 USER 0:10001
 CMD ["python", "-I", "-B", "-c", "import sys;sys.path.insert(0,'/opt/speech');from worker.runtime_supervisor import main;main()", "--installed-policy", "docker-kokoro-split-v1", "--configuration-file", "/etc/speech-box/install.json"]
+
+# Explicit alternative image; never installs Kokoro into the Pocket worker.
+FROM python:3.11-slim-bookworm@sha256:0a310eeecf4e1f5a0743f9a6520c90c88d089c903ca5fd283f501e3a805f5f89 AS worker-pocket
+ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 TORCH_DEVICE=cpu HF_HOME=/tmp/huggingface HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 MALLOC_MMAP_THRESHOLD_=131072
+WORKDIR /opt/speech
+RUN apt-get update && apt-get install -y --no-install-recommends libsndfile1 && rm -rf /var/lib/apt/lists/*
+COPY requirements/pocket-installed.lock /opt/speech/pocket-installed.lock
+RUN pip install --no-cache-dir --require-hashes -r pocket-installed.lock --extra-index-url https://download.pytorch.org/whl/cpu
+COPY service /opt/speech/service
+COPY worker /opt/speech/worker
+COPY contracts /opt/speech/contracts
+COPY lib /opt/speech/lib
+USER 0:10001
+CMD ["python", "-I", "-B", "-c", "import sys;sys.path.insert(0,'/opt/speech');from worker.runtime_supervisor import main;main()", "--installed-policy", "docker-pocket-split-v1", "--configuration-file", "/etc/speech-box/install.json"]

@@ -94,7 +94,7 @@ def _reference_pcm16(raw, rate, frames):
         raise Refused('reference_format')
 
 
-def execute(execution, text, bundles, references, *, reference_temp_dir, backend_factory=None, preset=None, instruct=None, managed_owner_uid=None):
+def execute(execution, text, bundles, references, *, reference_temp_dir, backend_factory=None, preset=None, instruct=None, managed_owner_uid=None, reference_fd=None):
     if type(execution) is not PocketExecution:
         raise Refused('typed_execution_required')
     e = execution
@@ -102,7 +102,7 @@ def execute(execution, text, bundles, references, *, reference_temp_dir, backend
         raise Refused('unsupported_parameter')
     if type(text) is not str or not text or len(text.encode('utf-8')) > e.max_text_bytes:
         raise Refused('text_limit')
-    reference = verify_inputs(e, bundles, references, owner_uid=managed_owner_uid)
+    reference = verify_inputs(e, bundles, references, owner_uid=managed_owner_uid, reference_fd=reference_fd)
     return _synthesise(e, text, bundles[e.bundle_id], reference, reference_temp_dir, backend_factory)
 
 
@@ -155,14 +155,17 @@ def _synthesise(e, text, bundle, reference, reference_temp_dir, backend_factory)
             backend.close()
 
 
-def verify_inputs(e, bundles, references, *, owner_uid=None):
+def verify_inputs(e, bundles, references, *, owner_uid=None, reference_fd=None):
     """Inert verification shared by trusted integration; no backend import."""
     from .pocket_prepare import PocketPreparation
     if type(e) not in (PocketExecution, PocketPreparation): raise Refused('typed_execution_required')
     if e.bundle_id not in bundles or e.reference_id not in references:
         raise Refused('unauthorized_identity')
     verify_bundle(e, bundles, owner_uid=owner_uid)
-    reference = _read(references[e.reference_id], e.reference_bytes, e.reference_sha256, owner_uid=owner_uid)
+    if reference_fd is None:
+        reference = _read(references[e.reference_id], e.reference_bytes, e.reference_sha256, owner_uid=owner_uid)
+    else:
+        reference = read_reference_fd(reference_fd, e, owner_uid=owner_uid)
     if len(reference) != e.reference_bytes:
         raise Refused('reference_size')
     _reference_pcm16(reference, e.reference_rate, e.reference_frames)
@@ -210,3 +213,22 @@ def verify_bundle(e, bundles, *, owner_uid=None):
                 raise Refused('bundle_digest')
     if 'config.yaml' not in names:
         raise Refused('bundle_config')
+
+
+def read_reference_fd(fd, e, *, owner_uid=None):
+    """Read one inherited private descriptor without reopening any public path."""
+    from worker.managed_reference import check_fd
+    before = check_fd(fd, owner_uid=10001 if owner_uid is None else owner_uid)
+    if before.st_size != e.reference_bytes: raise Refused('reference_size')
+    data = bytearray()
+    while len(data) <= e.reference_bytes:
+        block = os.pread(fd, min(65536, e.reference_bytes+1-len(data)), len(data))
+        if not block: break
+        data.extend(block)
+    after = check_fd(fd, owner_uid=10001 if owner_uid is None else owner_uid)
+    fields = ('st_dev','st_ino','st_size','st_mtime_ns','st_ctime_ns')
+    if any(getattr(before,k) != getattr(after,k) for k in fields): raise Refused('file_changed')
+    if len(data) != e.reference_bytes or hashlib.sha256(data).hexdigest() != e.reference_sha256:
+        raise Refused('reference_digest')
+    _reference_pcm16(data, e.reference_rate, e.reference_frames)
+    return bytes(data)

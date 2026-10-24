@@ -265,7 +265,7 @@ class ArchiveTests(unittest.TestCase):
             self.assertEqual(imported.returncode,0,imported.stderr)
     def test_pocket_archive_bytes_and_isolated_dependency_closure(self):
         modules = ('clients.cli', 'clients.http', 'clients.mcp', 'service.execution_context',
-                   'worker.runtime_conditioning', 'worker.engines.pocket',
+                   'worker.managed_reference', 'service.pocket_install', 'worker.runtime_conditioning', 'worker.engines.pocket',
                    'worker.engines.pocket_execution', 'worker.engines.pocket_prepare')
         manifest = json.loads((ROOT/'headless-dist-manifest.json').read_text())
         files = set(manifest['files'])
@@ -334,7 +334,7 @@ assert any(isinstance(n, ast.List) and len(n.elts) >= 3
     and isinstance(n.elts[2], ast.Constant) and n.elts[2].value == 'worker.runtime_conditioning'
     for n in ast.walk(tree))
 for name in ('clients.cli', 'clients.http', 'clients.mcp', 'service.execution_context',
-             'worker.runtime_conditioning', 'worker.engines.pocket',
+             'worker.managed_reference', 'service.pocket_install', 'worker.runtime_conditioning', 'worker.engines.pocket',
              'worker.engines.pocket_execution', 'worker.engines.pocket_prepare', 'worker.runtime_child'):
     spec = importlib.util.find_spec(name)
     assert pathlib.Path(spec.origin).is_relative_to(package), name
@@ -366,7 +366,7 @@ print('isolated Pocket and authenticated client archive closure')
     def test_release_context_and_cpu_base(self):
         recipe=(ROOT/'service/Dockerfile.release').read_text()
         cpu=(ROOT/'Dockerfile.cpu').read_text().splitlines()[0].removeprefix('FROM ')
-        self.assertEqual(recipe.count('FROM '+cpu+' AS '),2)
+        self.assertEqual(recipe.count('FROM '+cpu+' AS '),3)
         self.assertNotIn('3.14',recipe);self.assertNotIn('service.api:app',recipe)
         self.assertIn('-r kokoro.lock -r requirements.lock',recipe)
         self.assertNotIn('tini',recipe)  # supervisor and control must remain PID1
@@ -374,6 +374,27 @@ print('isolated Pocket and authenticated client archive closure')
         self.assertEqual(ignore[0],'**')
         self.assertFalse(any(n.startswith('!tests') or n.startswith('!studio') for n in ignore))
         self.assertNotIn('build:',(ROOT/'service/compose.release.yml').read_text())
+    def test_pocket_worker_lock_is_exact_existing_hash_metadata_union(self):
+        import re
+        def entries(path):
+            raw=path.read_text()
+            starts=list(re.finditer(r'^([a-zA-Z0-9_-]+)==',raw,re.M))
+            return {m[1]:raw[m.start():(starts[i+1].start() if i+1<len(starts) else len(raw))]
+                    for i,m in enumerate(starts)}
+        pocket=entries(ROOT/'requirements/pocket.lock')
+        service=entries(ROOT/'service/requirements.lock')
+        actual=entries(ROOT/'requirements/pocket-installed.lock')
+        self.assertEqual(actual,{**service,**pocket})
+        for entry in actual.values():self.assertIn('--hash=sha256:',entry)
+        self.assertTrue(actual['fastapi'].startswith('fastapi==0.143.1 '))
+        self.assertNotIn('kokoro-onnx',actual)
+        from service.pocket_install import runtime_versions
+        for name,version in runtime_versions().items():
+            self.assertTrue(actual[name].startswith(name+'=='+version+' '))
+        recipe=(ROOT/'service/Dockerfile.release').read_text().split(' AS worker-pocket',1)[1]
+        self.assertIn('--require-hashes -r pocket-installed.lock',recipe)
+        self.assertNotIn('kokoro.lock',recipe)
+
     def test_lock_versions_preserved_and_hashes_present(self):
         lock=(ROOT/'service/requirements.lock').read_text()
         self.assertIn('--python-version 3.11',lock)

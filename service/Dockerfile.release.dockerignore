@@ -17,6 +17,7 @@
 !lib/**/*.json
 !requirements/
 !requirements/kokoro.lock
+!requirements/pocket-installed.lock
 !requirements/tts-assets.json
 **/__pycache__
 **/*.pyc

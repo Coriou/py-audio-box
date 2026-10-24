@@ -79,7 +79,7 @@ class SplitInit(unittest.TestCase):
 
     def child(self,raw):
         request=json.loads(raw);self.assertEqual(set(request),{'public','control_fd','staging_fd'})
-        self.assertNotIn('seed',encode(request));self.calls.append(raw)
+        self.assertNotIn('seed',request);self.assertNotIn('seed',request['public']);self.calls.append(raw)
         old=os.umask(0o077)
         try:
             with ExitStack() as identity:

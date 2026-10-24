@@ -19,10 +19,11 @@ from worker.transport import canonical, Refused, Session
 
 
 class RuntimeSupervisor:
-    def __init__(self, root='/receipts', ipc='/ipc', *, bundles=None, references=None, qwen_contexts=None, inventory=None, qwen_profiles=None, pocket_reference_roots=None):
+    def __init__(self, root='/receipts', ipc='/ipc', *, bundles=None, references=None, qwen_contexts=None, inventory=None, qwen_profiles=None, pocket_reference_roots=None, installed_pocket=False):
         if os.getpid() != 1:
             raise RuntimeError('pid1_required')
         from types import MappingProxyType
+        self.installed_pocket = installed_pocket
         self.bundles = MappingProxyType(dict(bundles or {}))
         self.references = MappingProxyType(copy.deepcopy(references or {}))
         self.pocket_reference_roots = MappingProxyType(dict(pocket_reference_roots or {}))
@@ -159,6 +160,7 @@ class RuntimeSupervisor:
             context = row['allocation']['snapshot'][1]
             from worker.runtime_protocol import execution
             spec = execution(context)
+            reference_fd = None
             if spec is not None and spec.engine == 'pocket-tts':
                 self.verify_pocket(context, row['allocation']['snapshot'][0]['principal_id'])
             if spec is not None and spec.engine == 'qwen':
@@ -179,14 +181,22 @@ class RuntimeSupervisor:
                           secret=key, control_uid=0, gid=10001, fixture=row['allocation']['fixture'],
                           protected_stages=[r['allocation']['snapshot'][0]['attempts'][-1]['staging_id'] for r in self.journal.value['records'] if r['id'] != row['id']])
             try:
+                if spec is not None and spec.engine == 'pocket-tts' and getattr(self, 'installed_pocket', False):
+                    reference_fd = self.verify_pocket(context, job['principal_id'], retain_fd=True)
+                    config['reference_fd'] = reference_fd
+                if time.monotonic() >= self.active['cutoff']: raise Refused('expired_before_launch')
                 proc = subprocess.Popen(['python', '-m', 'worker.runtime_child', str(child.fileno())],
                     user=uid, group=uid, extra_groups=[], start_new_session=True,
-                    close_fds=True, pass_fds=(child.fileno(),), stdin=subprocess.DEVNULL,
+                    close_fds=True, pass_fds=(child.fileno(),) + (() if reference_fd is None else (reference_fd,)), stdin=subprocess.DEVNULL,
                     stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
                 self.active.update(started=True, leader=proc.pid, process=proc)
                 self.launches += 1
+            except BaseException:
+                parent.close()
+                raise
             finally:
                 child.close()
+                if reference_fd is not None: os.close(reference_fd)
             active = self.active
             def collect_internal():
                 try:
@@ -307,12 +317,12 @@ class RuntimeSupervisor:
                 if not active.get('helper_unknown'):
                     self.active = None
 
-    def verify_pocket(self, context, principal, *, owner_uid=10001):
+    def verify_pocket(self, context, principal, *, owner_uid=10001, retain_fd=False):
         """Independent exact reference allowlist under operator-declared RO mounts.
 
-        Roots are supervisor configuration, never allocation/request paths. The
-        source fixture may map a managed assets directory read-only; installed
-        path/mount policy is a separate gate. No database access is granted.
+        Roots are supervisor configuration, never allocation/request paths.
+        Installed policy fixes the read-only assets mount and uses a reaped
+        UID10001 helper plus an O_RDONLY descriptor, never a DB mount.
         """
         from worker.runtime_protocol import execution
         from worker.engines.pocket import verify_inputs, _open
@@ -321,8 +331,9 @@ class RuntimeSupervisor:
         if principal in roots:
             root = Path(roots[principal])
             if not root.is_absolute() or '..' in root.parts: raise Refused('unregistered_reference_mapping')
-            fd = _open(root, directory=True, owner_uid=owner_uid)
-            os.close(fd)
+            if not getattr(self, 'installed_pocket', False):
+                fd = _open(root, directory=True, owner_uid=owner_uid)
+                os.close(fd)
             expected = {spec.reference_id:'/references/assets/'+spec.reference_id}
             if context['execution']['references'] != expected: raise Refused('unregistered_reference_mapping')
             references = {spec.reference_id:root/spec.reference_id}
@@ -330,7 +341,24 @@ class RuntimeSupervisor:
             if context['execution']['references'] != self.references:
                 raise Refused('unregistered_reference_mapping')
             references = self.references
-        verify_inputs(spec, self.bundles, references, owner_uid=owner_uid)
+        if getattr(self, 'installed_pocket', False):
+            if principal not in roots or str(roots[principal]) != '/references/assets':
+                raise Refused('unregistered_reference_mapping')
+            from worker.managed_reference import acquire
+            try:
+                fd = acquire(spec.reference_id)
+            except BaseException:
+                self.failed = True  # No new lane after an uncertain helper boundary.
+                raise
+            try:
+                verify_inputs(spec, self.bundles, references, owner_uid=owner_uid, reference_fd=fd)
+                if retain_fd:
+                    result, fd = fd, None
+                    return result
+            finally:
+                if fd is not None: os.close(fd)
+        else:
+            verify_inputs(spec, self.bundles, references, owner_uid=owner_uid)
 
     def verify_qwen(self, context, profiles, principal):
         from worker.engines.qwen_execution import current_hardware, inventory_wire
@@ -468,12 +496,14 @@ class RuntimeSupervisor:
 def main():
     import argparse
     parser = argparse.ArgumentParser()
-    parser.add_argument('--installed-policy', choices=('docker-kokoro-split-v1',))
+    parser.add_argument('--installed-policy', choices=('docker-kokoro-split-v1','docker-pocket-split-v1'))
     parser.add_argument('--configuration-file')
     args = parser.parse_args()
     os.umask(0o077)
     try:
         bundles = None
+        pocket_roots = None
+        installed_pocket = False
         if args.installed_policy is not None:
             from service import install_policy as ip
             from service.execution_context import installed_configuration, installed_mapping
@@ -481,7 +511,10 @@ def main():
             if (os.getuid(), os.geteuid(), os.getgid(), os.getegid()) != (0, 0, 10001, 10001) or os.getgroups() not in ([], [10001]):
                 raise ValueError('installed_worker_identity')
             config = installed_configuration(args.configuration_file, policy=ip.SPLIT)
+            if config['ownership_policy'] != args.installed_policy: raise ValueError('installed_worker_policy_binding')
             bundles = installed_mapping(config, policy=ip.SPLIT)
+            installed_pocket = ip.pocket(config)
+            if installed_pocket: pocket_roots = {p:'/references/assets' for p in config['contexts']}
             ip.directory_identity('/receipts', policy=ip.SPLIT, role='receipts')
             ip.directory_identity('/ipc', policy=ip.SPLIT, role='ipc')
             for name, limit in (('lane.lock', 0), ('journal.json', 1024**2)):
@@ -490,7 +523,7 @@ def main():
                 ip.read_private(Path('/ipc')/name, 4096, policy=ip.SPLIT, role='ipc')
         elif args.configuration_file is not None:
             raise ValueError('explicit_fixed_install_policy_required')
-        RuntimeSupervisor(bundles=bundles).serve()
+        RuntimeSupervisor(bundles=bundles, pocket_reference_roots=pocket_roots, installed_pocket=installed_pocket).serve()
     except (OSError, ValueError, KeyError, TypeError):
         print('lifecycle supervisor unavailable; lane quarantined', flush=True)
         raise SystemExit(2)

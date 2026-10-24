@@ -54,12 +54,12 @@ def selected_reference(e, raw):
     return buffer.getvalue(), frames
 
 
-def execute(e, text, bundles, references, *, reference_temp_dir, backend_factory=None, managed_owner_uid=None):
+def execute(e, text, bundles, references, *, reference_temp_dir, backend_factory=None, managed_owner_uid=None, reference_fd=None):
     from .pocket import verify_inputs, _synthesise
     if type(e) is not PocketPreparation: raise Refused('typed_preparation_required')
     if type(text) is not str or not text or len(text.encode('utf-8')) > e.max_text_bytes:
         raise Refused('text_limit')
-    raw = verify_inputs(e, bundles, references, owner_uid=managed_owner_uid)
+    raw = verify_inputs(e, bundles, references, owner_uid=managed_owner_uid, reference_fd=reference_fd)
     prepared, frames = selected_reference(e, raw)
     audition = _synthesise(e, text, bundles[e.bundle_id], prepared, reference_temp_dir, backend_factory)
     return dict(reference=dict(data=prepared, frames=frames, size_bytes=len(prepared),

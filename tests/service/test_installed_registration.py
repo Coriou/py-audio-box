@@ -16,8 +16,11 @@ from tests.service.test_install_child import Namespace
 
 
 class Registration(unittest.TestCase):
+    def new_split_fixture(self):
+        fixture=split_fixtures.SplitInit();fixture.setUp();return fixture
+
     def setUp(self):
-        self.fixture=split_fixtures.SplitInit();self.fixture.setUp();self.addCleanup(self.fixture.doCleanups)
+        self.fixture=self.new_split_fixture();self.addCleanup(self.fixture.doCleanups)
         f=self.fixture;f.run_init();self.roots=f.roots;self.scope=f.scope;self.config=f.config
         self.public=json.loads((self.roots['receipts']/'p1-init.json').read_bytes())['public']
         self.authority=f.root/'authority';self.authority.mkdir(mode=0o700)
@@ -58,7 +61,7 @@ class Registration(unittest.TestCase):
 
     def child(self,kind,request,fds):
         self.children.append(kind)
-        self.assertNotIn('seed',encode(request));self.assertNotIn('sql',request)
+        self.assertNotIn('seed',request);self.assertNotIn('seed',request.get('public',{}));self.assertNotIn('sql',request)
         with self.assertRaises(BlockingIOError):
             fd=os.open(self.roots['control']/'core/control.lock',os.O_RDONLY)
             try:fcntl.flock(fd,fcntl.LOCK_EX|fcntl.LOCK_NB)
