@@ -2115,3 +2115,7 @@ r185 ended before edits/tests: admission rejects asset-bearing plans and dispatc
 ### 2026-10-24 — r186 atomic production admission forwarding
 
 Parent authorized service/production.py explicit private _admission/_profiles/_dispatch_settings forwarding from trusted Dispatcher to existing Core submission, preserving direct-domain defaults and atomic reservations. No arbitrary keyword/public authority forwarding. Focused duplicate/refusal/reservation regressions required alongside existing domain coverage. Same r186 implementer continues.
+
+### 2026-10-24 — r186 integrated catalogue reconciliation dependency
+
+Real Dispatcher integration revealed reconciliation rejects integrated H0 catalogue tables as unknown schema. Parent authorized narrow reconciliation.py exact schema/reference inventory plus focused fresh-owner/restart/reference-retention/unknown-schema regressions. Preserve fail-closed schema identity and media ownership, no repair/deletion or broad persistence redesign. Same r186 work continues.
