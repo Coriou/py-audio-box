@@ -8,6 +8,7 @@ import base64
 from contextlib import contextmanager
 from datetime import datetime, timezone
 import hashlib
+import ipaddress
 import json
 import os
 from pathlib import Path
@@ -82,12 +83,16 @@ class NativeRuntime:
         for key in ('deployment_id','lane','boot'): p._hex(native[key],32)
         for key in ('configuration_sha256','runtime_manifest_sha256'): p._hex(native[key],64)
         if type(host) is not str or not host or len(host)>253: raise Refused('native_endpoint')
+        # Trusted enrollment must resolve gateway names outside the RPC path.
+        try: endpoint=ipaddress.ip_address(host)
+        except ValueError: raise Refused('native_numeric_endpoint') from None
+        if getattr(endpoint,'scope_id',None) is not None: raise Refused('native_numeric_endpoint')
         p._int(port,1,65535)
         if local_import_uid!=os.getuid() or type(local_import_uid) is not int: raise Refused('native_import_uid')
         if connector is None and (type(tls) is not ssl.SSLContext or tls.verify_mode!=ssl.CERT_REQUIRED or
                 tls.minimum_version!=ssl.TLSVersion.TLSv1_3 or tls.maximum_version!=ssl.TLSVersion.TLSv1_3):
             raise Refused('native_tls')
-        self.host,self.port,self.tls,self.pin=host,port,tls,peer_sha256
+        self.host,self.port,self.tls,self.pin=str(endpoint),port,tls,peer_sha256
         self.native=json.loads(canonical(native));self.local_import_uid=local_import_uid
         self.spool=_directory(spool,0o700);self.staging=_directory(staging,0o770)
         if self.spool==self.staging or self.staging in self.spool.parents or self.spool in self.staging.parents:
@@ -100,11 +105,28 @@ class NativeRuntime:
         self._account()
 
     @contextmanager
-    def _connect(self, timeout):
-        with socket.create_connection((self.host,self.port),timeout=timeout) as raw:
-            raw.settimeout(timeout)
-            with self.tls.wrap_socket(raw,server_hostname=self.host) as connection:
-                yield connection
+    def _connect(self, cutoff):
+        def remaining():
+            value=cutoff-time.monotonic()
+            if value<=0: raise Refused('native_deadline')
+            return value
+        address=ipaddress.ip_address(self.host)
+        # A single numeric sockaddr: no resolver or multi-address retry loop.
+        raw=socket.socket(socket.AF_INET6 if address.version==6 else socket.AF_INET,socket.SOCK_STREAM)
+        connection=None
+        try:
+            raw.settimeout(remaining())
+            raw.connect((self.host,self.port))
+            raw.settimeout(remaining())
+            connection=self.tls.wrap_socket(raw,server_hostname=self.host,do_handshake_on_connect=False)
+            connection.settimeout(remaining())
+            connection.do_handshake()
+            remaining()
+            yield connection
+        finally:
+            try:
+                if connection is not None: connection.close()
+            finally: raw.close()
 
     def _account(self, extra=0, *, new=False):
         total=0;count=0
@@ -190,7 +212,7 @@ class NativeRuntime:
         semaphore=self.transfer if op in ('put_input','get_output') else self.lifecycle
         if not semaphore.acquire(False): raise Refused('native_busy')
         try:
-            with self.connector(max(.001,cutoff-time.monotonic())) as connection:
+            with self.connector(cutoff) as connection:
                 p.send(connection,q,cutoff,peer_sha256=self.pin)
                 reply=p.response(p.receive(connection,cutoff,peer_sha256=self.pin),request=q)
             if not reply['ok']: raise Refused(reply['error'])

@@ -47,7 +47,7 @@ class NativeFixture:
         self.runtime=self.make_runtime()
 
     def make_runtime(self):
-        return NativeRuntime(host='fixture.invalid',port=4443,tls=None,peer_sha256=self.pin,
+        return NativeRuntime(host='127.0.0.1',port=4443,tls=None,peer_sha256=self.pin,
             native=self.native,spool=self.spool,staging=self.stage,local_import_uid=os.getuid(),connector=self.connect)
 
     @contextmanager
@@ -94,6 +94,93 @@ class NativeFixture:
 
 class NativeRuntimeTests(unittest.TestCase):
     def setUp(self): self.f=NativeFixture(self)
+
+    def test_production_connector_uses_remaining_absolute_budget(self):
+        f=self.f; now=[100.]; timeouts=[]; closed=[]; handshakes=[]
+        class Raw:
+            def settimeout(self,value): timeouts.append(value)
+            def connect(self,address): now[0]+=1.5
+            def close(self): closed.append('raw')
+        class TLS:
+            def settimeout(self,value): timeouts.append(value)
+            def do_handshake(self): handshakes.append(True);now[0]+=.25
+            def close(self): closed.append('tls')
+        class Context:
+            def wrap_socket(self,raw,**kw):
+                self.kw=kw;return TLS()
+        f.runtime.tls=Context()
+        with patch('service.native_runtime.time.monotonic',side_effect=lambda:now[0]),patch('service.native_runtime.socket.socket',return_value=Raw()),patch('service.native_runtime.socket.getaddrinfo',side_effect=AssertionError('DNS')):
+            with f.runtime._connect(102.): pass
+        self.assertEqual(timeouts,[2.,.5,.5]);self.assertEqual(handshakes,[True])
+        self.assertEqual(closed,['tls','raw']);self.assertFalse(f.runtime.tls.kw['do_handshake_on_connect'])
+        self.assertEqual(f.requests,[])
+
+    def test_production_connector_expiry_closes_without_handshake_or_wire(self):
+        f=self.f
+        for tcp_time in (2.,3.):
+            now=[100.];closed=[]
+            class Raw:
+                def settimeout(self,value): pass
+                def connect(self,address): now[0]+=tcp_time
+                def close(self): closed.append(True)
+            tls=unittest.mock.Mock();f.runtime.tls=tls
+            with patch('service.native_runtime.time.monotonic',side_effect=lambda:now[0]),patch('service.native_runtime.socket.socket',return_value=Raw()) as create,patch('service.native_runtime.socket.getaddrinfo',side_effect=AssertionError('DNS')):
+                with self.assertRaisesRegex(Refused,'deadline'):
+                    with f.runtime._connect(102.): self.fail('expired connector yielded')
+            tls.wrap_socket.assert_not_called();self.assertEqual(create.call_count,1)
+            self.assertEqual(closed,[True]);self.assertEqual(f.requests,[])
+
+    def test_expired_connector_does_not_attempt_tcp(self):
+        f=self.f;raw=unittest.mock.Mock()
+        with patch('service.native_runtime.time.monotonic',return_value=102.),patch('service.native_runtime.socket.socket',return_value=raw):
+            with self.assertRaisesRegex(Refused,'deadline'):
+                with f.runtime._connect(102.): self.fail('expired')
+        raw.connect.assert_not_called();raw.close.assert_called_once()
+        self.assertEqual(f.requests,[])
+
+    def test_hostname_requires_separate_trusted_numeric_enrollment(self):
+        f=self.f
+        with self.assertRaisesRegex(Refused,'numeric_endpoint'):
+            NativeRuntime(host='host.docker.internal',port=4443,tls=None,peer_sha256=f.pin,
+                native=f.native,spool=f.spool,staging=f.stage,local_import_uid=os.getuid(),connector=f.connect)
+
+    def test_future_allocation_authorizes_from_template_without_control_hook(self):
+        f=self.f;snapshot=copy.deepcopy(f.snapshot)
+        snapshot[0]['id']='f'*32
+        a=Authority(*snapshot)
+        self.assertNotIn(a.binding,f.s.registrations)
+        rid=f.runtime.prepare(a)
+        self.assertIn(a.binding,f.s.registrations)
+        self.assertEqual(f.s.journal.value['records'][0]['snapshot'],snapshot)
+        self.assertEqual(f.runtime.prepare(a),rid)
+
+    def test_changed_trusted_template_fields_refuse_without_journal(self):
+        f=self.f
+        paths=[(0,'principal_id'),(1,'plan','voice_versions',0,'id'),
+            (1,'execution','descriptor','revision'),(1,'execution','descriptor','checkpoint'),
+            (1,'execution','descriptor','reference_sha256'),(1,'execution','descriptor','voice_revision'),(1,'execution','bundles','bundle'),
+            (1,'execution','references'),(1,'execution','hardware','host','architecture'),
+            (1,'execution','native','configuration_sha256'),(1,'bundles',0,'instructions'),
+            (3,0,'qualification_receipt'),(3,0,'id'),
+            (1,'execution','hardware','host','deployment'),(1,'bundles',0,'languages')]
+        for path in paths:
+            with self.subTest(path=path):
+                snapshot=copy.deepcopy(f.snapshot);snapshot[0]['id']='f'*32
+                target=snapshot
+                for key in path[:-1]: target=target[key]
+                key=path[-1];old=target.get(key) if isinstance(target,dict) else target[key]
+                target[key]=not old if type(old) is bool else ({'foreign':'value'} if type(old) is dict else 'foreign')
+                if path==(1,'plan','voice_versions',0,'id'):
+                    snapshot[1]['plan']['request']['voice_version_id']='foreign'
+                from contracts import validate as oracle
+                snapshot[0]['input_sha256']=oracle.plan_hash(snapshot[1]['plan'])
+                binding=hashlib.sha256(canonical(snapshot)).hexdigest()
+                q=f.f.q('prepare',{'snapshot':snapshot},binding=binding)
+                try: f.s.dispatch(q)
+                except Exception: pass
+                else: self.fail('altered template accepted')
+                self.assertEqual(f.s.journal.value['records'],[])
+                self.assertNotIn(binding,f.s.registrations)
 
     def test_actual_tls_codecs_handlers_child_transfer_receipt_and_exact_replay(self):
         f=self.f;rid=f.launch()
@@ -145,7 +232,7 @@ class NativeRuntimeTests(unittest.TestCase):
     def test_local_import_uid_stage_symlink_and_conflict_refuse(self):
         f=self.f
         with self.assertRaisesRegex(Refused,'uid'):
-            NativeRuntime(host='x',port=1,tls=None,peer_sha256=f.pin,native=f.native,
+            NativeRuntime(host='127.0.0.1',port=1,tls=None,peer_sha256=f.pin,native=f.native,
                 spool=f.spool,staging=f.stage,local_import_uid=os.getuid()+1,connector=f.connect)
         rid=f.launch();stage=f.stage/f.a.job['attempts'][-1]['staging_id'];stage.mkdir(mode=0o770);stage.chmod(0o770)
         target=stage/'output.wav';target.symlink_to(f.spool/'foreign')

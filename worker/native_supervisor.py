@@ -143,7 +143,8 @@ class NativeSupervisor:
     """Registrations are trusted exact snapshots, not a wire-selected validator.
 
     Each registration contains snapshot, typed execution, sealed bundles and
-    enrolled inventory. Future foundation wiring constructs these registrations.
+    enrolled inventory. Prepare derives fresh exact bindings only from these
+    trusted templates; requests cannot change their enrolled metadata.
     """
     def __init__(self, root, *, deployment_id, configuration_sha256, peer_pin,
                  runtime_manifest_sha256, registrations, python, child_entry,
@@ -183,8 +184,8 @@ class NativeSupervisor:
                 raise Refused('native_unknown') from None
             return target
 
-    def registration(self,r,verify=False):
-        reg=self.registrations.get(r['binding'])
+    def registration(self,r,verify=False, *, candidate=None):
+        reg=candidate if candidate is not None else self.registrations.get(r['binding'])
         if reg is None or reg['snapshot'] != r['snapshot']: raise Refused('native_registration')
         e=reg['execution']
         from contracts import validate as oracle
@@ -209,7 +210,7 @@ class NativeSupervisor:
 
         Extend an existing trusted principal/version/profile template to one exact
         owner allocation. It cannot add model mappings, hardware or descriptors.
-        The caller must be the trusted native configuration owner, before prepare.
+        Prepare may call this only after comparing the immutable enrolled template.
         """
         from contracts import validate as oracle
         from service.worker_transport import Authority
@@ -224,6 +225,7 @@ class NativeSupervisor:
             authority.check(authority.message(),'execute')
             reg=copy.deepcopy(matches[0]);reg['snapshot']=json.loads(authority._snapshot)
             binding=authority.binding
+            self.registration(dict(binding=binding,snapshot=reg['snapshot']),candidate=reg)
             if binding in self.registrations:
                 if self.registrations[binding]!=reg: raise Refused('native_registration')
                 return binding
@@ -320,6 +322,8 @@ class NativeSupervisor:
             if (a['id'],a['generation'],a['attempts'][-1])==(b['id'],b['generation'],b['attempts'][-1]): raise Refused('native_binding')
         if self.quarantined or any(r['phase']!='terminal' for r in self.journal.value['records']) or len(self.journal.value['records'])>=64 or sum(not r['acked'] for r in self.journal.value['records'])>=8: raise Refused('native_busy')
         r=dict(id='/'.join((self.journal.value['lane'],self.boot,secrets.token_hex(16))),boot=self.boot,binding=binding,snapshot=snapshot,phase='prepared',acked=False,input_size=0,receipt=None,proposal=None,output=None,token=secrets.token_hex(16))
+        if binding not in self.registrations:
+            self.register_snapshot(snapshot)
         reg=self.registration(r); e=reg['execution']
         reserved=sum(2*(p.native_execution(x['snapshot'][1]).reference_bytes+p.native_execution(x['snapshot'][1]).max_output_bytes) for x in self.journal.value['records'])
         if reserved+2*(e.reference_bytes+e.max_output_bytes)>QUOTA: raise Refused('native_quota')

@@ -134,7 +134,7 @@ class DispatcherEngineTests(unittest.TestCase):
                 return Observation(identity,State.STOPPED if inner.finish.is_set() else State.ALIVE)
             def terminate(inner,identity,timeout):inner.cancel=True;inner.stopped.set()
             def collect(inner,authority,identity):
-                receipt=dict(runtime_id=identity,binding=authority.binding,reaped=True,engine_uid=os.getuid(),reap_method='pid1-waitpid-echild',timely=not inner.cancel,original_deadline=authority.job['deadline'])
+                receipt=dict(runtime_id=identity,binding=authority.binding,reaped=True,engine_uid=os.getuid(),reap_method='pid1-waitpid-echild',reaped_children=0,timely=not inner.cancel,original_deadline=authority.job['deadline'])
                 if inner.cancel:return receipt,None
                 _,proposal,_=outer.proposal(authority=authority)
                 return receipt,TransportObservation('proposal','injected-test-only',message=proposal['message'],manifest=proposal['manifest'])

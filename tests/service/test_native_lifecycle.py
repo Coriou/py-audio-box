@@ -46,14 +46,6 @@ class NativeLifecycleTests(unittest.TestCase):
 
     def open(self, *, finish=True):
         f=self.f
-        def fault(point):
-            extra=getattr(self,'extra_fault',None)
-            if extra: extra(point)
-            if point=='before_prepare':
-                # Authorized internal fixture provisioning on the owner, BEFORE
-                # the first wire request. This helper is not a protocol operation.
-                a=self.dispatcher.store.current()['authority']
-                f.s.register_snapshot(json.loads(a._snapshot))
         def before(q):
             if q['op'] in ('observe','collect'):
                 if finish and f.s.active:
@@ -61,7 +53,8 @@ class NativeLifecycleTests(unittest.TestCase):
                 f.s.tick()
         f.before=before
         self.dispatcher=Dispatcher(self.root,staging=f.stage,runtime=f.runtime,
-            profiles=self.profiles,production_contexts=self.contexts,fault=fault)
+            profiles=self.profiles,production_contexts=self.contexts,
+            **({'fault':self.extra_fault} if getattr(self,'extra_fault',None) else {}))
         self.wait(lambda:self.dispatcher.call('status')['reconciled'])
         self.assertFalse(self.dispatcher.call('status')['integrity_fault'],self.dispatcher.call('status'))
         return self.dispatcher

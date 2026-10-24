@@ -47,7 +47,7 @@ class Runtime:
         return Observation(identity,self.state)
     def terminate(self,identity,timeout):self.state=State.STOPPED
     def collect(self,a,identity):
-        receipt=dict(runtime_id=identity,binding=a.binding,reaped=True,engine_uid=os.getuid(),reap_method='pid1-waitpid-echild',timely=self.timely,original_deadline=a.job['deadline'])
+        receipt=dict(runtime_id=identity,binding=a.binding,reaped=True,engine_uid=os.getuid(),reap_method='pid1-waitpid-echild',reaped_children=0,timely=self.timely,original_deadline=a.job['deadline'])
         if not self.timely:return receipt,None
         stage=self.staging/a.job['attempts'][-1]['staging_id'];stage.mkdir(mode=0o770,exist_ok=True);stage.chmod(0o770)
         buf=io.BytesIO()
