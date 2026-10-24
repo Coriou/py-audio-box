@@ -1719,3 +1719,7 @@ r88 boundedSOURCE+retainedHOSTGO exactunboundfreeze659e3dbd/99adb8b7, no critica
 ### 2026-10-24 — Astra preparation GO; LOCKONLY and ONE source build
 
 Parent accepts r89 boundedSOURCE+HOSTGO exact99adb8b7/unbound659e3dbd, nofix. Authorizes pab-directed-image-build-r90-20261024 freshquiescentfourattacher/ownerbound oldLOCKONLY disposition preservingallobjects/proof, thenONEprepare/sourcebuild existingrecipe/caps anddata-onlynewimagebinding preserving13codehashes. No diagnostic/runtime; independentactualbuild+boundmanifestreview follows. No historicalinode/AuthPIDpremise.
+
+### 2026-10-24 — Build admission STOP before mutations; disk headroom audit
+
+r90 firstlocalaction STOP6GiB admission beforeDocker/LOCKONLY/prepare/build;poststop6276456448free vs6442450944required,165994496short. Oldlane/objects/proofheld, noIID/boundmanifest. Parent assigns pab-disk-headroom-audit-r91-20261024 READONLYtargeted eligiblecacheinventory/recommendations underuserpriorcachecleanupscope, preserveALLpabproof/worktrees/images/volumes. No retry/thresholdreduction/cleanupauthorityinthatlane.
