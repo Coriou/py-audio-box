@@ -2247,3 +2247,7 @@ r211 sourcedd526fa9/docs339f0946 binds bytes/identity to validated read/create d
 ### 2026-10-24 — Registration adopted; packaged launch/activation starts
 
 r212 bounded source GO independently confirms116PASS and fourRED historical regressions. Parent merged339f0946 conflict-free;116 integrated focused tests PASS. Commissioned Sol-low r213 LotB finitehostlauncher/waitingcontrol/checkedactivation/package, preserving legacyenrolledguards and nofixtureAPI. ActualLinux/install/speechqualification stillpending.
+
+### 2026-10-24 — Packaged installed startup reader scope
+
+r213 requests split startup/enrollment reader. Parent authorized narrow recovery.py readonly adapter with exact config/registration/hello identity and prelistener negatives; legacy and B2writers unchanged. Explicitly preserve rootreceipt confidentiality: controlcannot inherit privilegedreader authority; notificationalone notactivationauthority. Same taskcontinues.
