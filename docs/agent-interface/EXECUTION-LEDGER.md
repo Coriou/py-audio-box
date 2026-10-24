@@ -2211,3 +2211,7 @@ r203 source0b02b138/docsd9feecc3 uses private Linux namespace fixed validated bi
 ### 2026-10-24 — Split initializer adopted; installed host observer starts
 
 r204 source GO closes canonicalpath blocker. Parent merged d9feecc3 conflict-free;59 integrated focused tests PASS. Commissioned sole Sol-low r205 fixed-policy LinuxDocker host observation/authority callback unit; registrationwriter and activation follow. No actualLinuxprivilege/mount or installedacceptance claim.
+
+### 2026-10-24 — Installed host resource/input policy clarified
+
+r205 found enrolled config lacks CPU/tmpfs/input paths. Parent authorized closed protected host policy bound to enrollment config digest: operator-selected finite per-role CPU compatible with worker profile, bounded exact tmpfs and fixed container input destinations, explicit validated host source identities. No hardcoded oneCPU ceiling, secret contents, inferred policy defaults or automatic record migration. Narrow canonical config/test coherence included.
