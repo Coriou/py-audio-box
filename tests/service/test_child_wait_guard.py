@@ -1116,7 +1116,8 @@ from types import MappingProxyType
 BASELINE_IDENTITIES = MappingProxyType({
     'original74-real-observer': 'ORIGINAL74_REAL_OBSERVER',
     'collected-control': 'COLLECTED_CONTROL'})
-assert mode in ('original74-real-observer', 'collected-control', 'missing-obj', 'wrong-obj', 'wrong-node', 'parameter', 'wrong-code', 'closure', 'operation', 'wrong-errno', 'subclass', 'missing-eagain', 'fd-other', 'fd-reuse', 'fd-witness-alias', 'fd-read-access', 'raw-budget', 'offset', 'view-owner', 'view-slice', 'premature', 'route561', 'raise-offset', 'call-offset', 'absent-route', 'extra-route', 'reordered-route', 'wrong-args', 'replacement', 'same-object-extra-frame', 'trace-disabled', 'writer-failure', 'direct-exit74', 'actual-overflow', 'schedule9-no-f', 'schedule9-f', 'previous-trace', 'setup-failure', 'fixture-undo')
+assert mode in ('original74-real-observer', 'collected-control', 'missing-obj', 'wrong-obj', 'wrong-node', 'parameter', 'wrong-code', 'closure', 'operation', 'wrong-errno', 'subclass', 'missing-eagain', 'fd-other', 'fd-reuse', 'fd-witness-alias', 'fd-read-access', 'raw-budget', 'offset', 'view-owner', 'view-slice', 'premature', 'route561', 'raise-offset', 'call-offset', 'absent-route', 'extra-route', 'reordered-route', 'wrong-args', 'replacement', 'same-object-extra-frame', 'trace-disabled', 'writer-failure', 'direct-exit74', 'actual-overflow', 'schedule9-no-f', 'schedule9-f', 'previous-trace', 'setup-failure', 'fixture-undo',
+    'clock1000', 'observed', 'ready', 'select_blocked', 'operation', 'outer-binding')
 expected_control = BASELINE_IDENTITIES.get(mode)
 diagnostic_enabled = expected_control is not None
 NOT_REACHED = 'NOT_REACHED'
@@ -2436,8 +2437,9 @@ def test_B_precapture_same_collected_function(tmp_path, control):
     import subprocess
     (tmp_path/'baseline').mkdir()
     test_B_directed_isolated_seams(tmp_path/'baseline', 'collected-control')
-    source = _B_precapture_program(control).replace('CONTROL', repr(control))
-    source = source.replace('ROOT', repr(str(tmp_path/'mutated-proof'))).replace('NODE', repr(B_CONTROL_NODE))
+    source = _B_precapture_program(control).replace('mode, root = CONTROL, Path(ROOT)',
+        'mode, root = '+repr(control)+', Path('+repr(str(tmp_path/'mutated-proof'))+')')
+    source = source.replace('NODE', repr(B_CONTROL_NODE))
     prefix = 'import sys; sys.path[:0] = '+repr([str(Path(harness.__file__).parent),
         str(Path(harness.__file__).parent.parent/'diagnostics'/'p-one-node')])+'\n'
     result = subprocess.run([sys.executable, '-B', '-c', prefix+source],

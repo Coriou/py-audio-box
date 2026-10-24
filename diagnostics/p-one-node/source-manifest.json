@@ -2,7 +2,7 @@
   "base_recipe_contract": "r26: shared invocation-owned local FROM; build-time clean replacement ONLY dedicated image /tmp including hidden entries and symlink before seed COPY, numeric 0700/10001:10001 and seed 0600 with exact seed-only assertion; narrow image construction hygiene extends old metadata-only recipe; no packages/runtime initializer/volume cleanup/network/pull",
   "commit": "8d5aba5fc702719843d055b7d3f693c407deb0e9",
   "derivative_files": {
-    "diagnostics/b-controls/runner.py": "d8deadd0e90d9ab3281c422f4afc3667e7047c5c1e2e2e8ca7947cf13f9ffebf",
+    "diagnostics/b-controls/runner.py": "c9ba54b9f1599ed075f2dbfb7603ac49d8e0714cd757590424c4bfc9ca2d7bd2",
     "diagnostics/p-one-node/finite-driver.py": "7dfe240517291b00c4ecb44832bef3678e47a0aaf8eb57b82b94d89f348c0b6e",
     "diagnostics/p-one-node/identity_semantics.py": "fd2d1f6d40699aa258d9016996037e8f61875f9302b21f8a6700cac935f707de",
     "diagnostics/p-one-node/runtime-identity.py": "eb5d3a7dbdf717a219163bfeaaa9bb8616a0ad7c7b2ec315aa0eb8b24504c034"
@@ -153,7 +153,7 @@
     "tests/service/conftest.py": "6a74f7594739d6fecd59db87642282ff8ea1ec78b3b79d89eef8d514b01fcc47",
     "tests/service/test_adapters.py": "40d4b249a7c2d7dc70fe1a30ed2f3faa712cbd006ff73165a978eacdc61a85dd",
     "tests/service/test_admission.py": "f822e2c9547ef9970612e2093155a7d2475141bd751e09e31ddb283bd395b8ec",
-    "tests/service/test_child_wait_guard.py": "f48f0d9f66a8847df6b61a3c0b78e8dd60cf49f5c7d3ff40fe30cbd0599439ff",
+    "tests/service/test_child_wait_guard.py": "422d470ed833f5d9cb0e7d7f6dca69ccf030b21873a726d582306bf6d40c41b3",
     "tests/service/test_core.py": "d194eacaaeb3a0cca1a6c6a0969c537892aae19dd332f42c3e243797309a5a26",
     "tests/service/test_dispatcher.py": "c75dcd51b8287aaf602919daf476758d0c1bd2132eebd4ab0ca78c2ce94129b8",
     "tests/service/test_packaged_lifecycle.py": "3460fe5279eb3d97045fca71d2f2e1a24947656fb170728427465588c4bd6255",
