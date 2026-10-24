@@ -107,6 +107,7 @@
     "worker/managed_reference.py",
     "worker/native_child.py",
     "worker/native_protocol.py",
+    "worker/native_supervisor.py",
     "worker/runtime_child.py",
     "worker/runtime_conditioning.py",
     "worker/runtime_journal.py",
