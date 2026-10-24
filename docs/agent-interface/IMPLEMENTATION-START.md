@@ -1,28 +1,22 @@
-# Start here: implementation agents
+# Start here: headless implementation
 
-Use [IMPLEMENTATION-PLAN.md](IMPLEMENTATION-PLAN.md) as the canonical implementation plan. The research archive explains decisions; it is not a prerequisite reading list or an additional set of release requirements. Latest user instructions take precedence over the plan.
+The 2026-10-24 user decision is binding: ship existing fixes and full HTTP/small CLI/MCP control, working qualified CPU/CUDA/Apple Silicon native Metal, and clean voice cloning/management. **No web UI ships now.** Studio/browser accessibility/visual timeline and public STT/dictation are deferred. Preserve existing headless scripts, stitch/audio operations, internal QA/alignment, Qwen defaults, voice identities and legacy workflows.
 
-Execution follows [ORCHESTRATION-PROTOCOL.md](ORCHESTRATION-PROTOCOL.md): orchestrator → Sol-low implementer → separate Sol-low adversarial reviewer → integration verification → final Astra review/corrections. Read the rules for your role and ticket; the orchestrator maintains [EXECUTION-LEDGER.md](EXECUTION-LEDGER.md).
+Read [PRODUCT.md](../../PRODUCT.md), [IMPLEMENTATION-PLAN.md](IMPLEMENTATION-PLAN.md) sections 1–4 and your assigned H package, then current source/tests for that package. Read only relevant ledger/checkpoint entries; r146/r147 explain inherited evidence but their studio/diagnostic-first sequence is superseded. Historical reviews are not rewritten. [ORCHESTRATION-PROTOCOL.md](ORCHESTRATION-PROTOCOL.md) supplies role discipline; the new plan governs current scope and Astra milestone cadence.
 
-## Read only what the assignment needs
+## Current checkpoint and next work
 
-1. Read repository instructions and [PRODUCT.md](../../PRODUCT.md), then the plan's scope, shared contracts, execution guidance and your assigned phase/work package.
-2. Inspect the current source, dependencies and test entry points for that package. The plan describes future files as well as existing ones; confirm which exist before running commands.
-3. Read a research report only when the plan cites it for a decision you actually need. Do not restart broad product/model research.
+Root inspected at `9b39f6061abebd6fdfd90885ee25d4aa75cdb28c`; recheck before edits. The accepted source integration at ec78661f is PARTIAL/validation-pending. CLOSED81 candidate86c7c744 is source accepted, not root adopted; r155 private preparation was in r156 review at entry; the parent has since recorded bounded source/inert GO, with no build/runtime authority. C/T2 is separate. Historical 81 remain UNRUN; native cause remains unknown. No operations are known running from the handoff, without a live probe. All resources/lane remain HELD and untracked STT must remain untouched.
 
-V1 is the shared voice/TTS production service and complete studio, through HTTP, CLI and MCP, installed with Docker. Public STT/contextual dictation and TxCode integration are deferred. Preserve existing internal reference-processing/QA/alignment capabilities, Qwen defaults, voice identities and legacy workflows. Voicebox is not an adopted dependency or a mandatory fork. CPU-only operation on constrained Macs/small servers is primary; use the plan's hardware-profile contract to preserve CUDA/Metal paths and avoid hardcoding CPU limits into every installation.
+**NEXT: H0 inventory plus durable immutable voice catalogue slice**, using existing SQLite/core and voice semantics, with the plan's explicit allowlist. This can proceed without the 81 campaign or native diagnostic completion. Do not auto-build, launch, adopt diagnostic branches, create private preparations or add instrumentation. Production recovery/security/ownership risks remain release gates through the explicit replacement matrix.
 
-## Execute one bounded package
+## Execute one bounded unit
 
-- Record the baseline, branch/worktree, existing uncommitted work, owned files, dependencies and interface owner. Preserve unrelated work and research evidence.
-- Use the plan's engineering defaults. Change a shared contract deliberately with its fixtures and affected clients; do not independently invent competing schemas or stores.
-- Build the smallest complete slice, including relevant failure states. Parallel work must have non-overlapping ownership or an explicit integration owner.
-- Run the package's meaningful fast checks first, then its required integration/browser/runtime checks. `scripts/run-unit-tests.sh` is the existing isolated unit entry point. Inspect commands before execution: the legacy `scripts/run-e2e-test.sh` performs remote operations and is not a routine local acceptance gate.
-- Verify the integrated state, not just an isolated patch. Model hardware, browser, acoustic and release evidence are distinct; fake-worker success does not satisfy a real-audio gate.
-- Continue only when required exit conditions are evidenced. Missing hardware leaves that profile unqualified; it does not justify broad platform claims or blocking unrelated work.
+- Record exact checkout/SHA, existing changes, literal owned files and shared contract owner. Preserve unrelated data/history/resources.
+- Use Sol-low implementation and separate Sol-low review; parent integrates. Astra reviews material integrated milestones only. Four slots permit parent, two implementers and one rotating reviewer; do not spawn work unless commissioned.
+- Reuse service/worker/client source. The current public API and clients are synthetic reads, not complete durable speech. Contract declarations and Compose filenames are not implementation evidence.
+- Run only meaningful assigned checks under the authority actually given. Docs-only work needs content verification, not tests. `scripts/run-unit-tests.sh` builds Docker; remote/e2e scripts are not routine local gates.
+- Keep source/synthetic, installed runtime/hardware, real agent and human listening evidence distinct. Missing hardware allows source progress but blocks release qualification; CPU, CUDA and native Metal are all required.
+- Report changed behavior/files, exact checks/outcomes, carried versus new evidence, remaining blockers and next owner. Do not claim release completion or native causality from source review.
 
-## Hand off enough evidence to continue cheaply
-
-Report package/phase, resulting behavior, changed paths and contract revisions, exact checks and outcomes, evidence locations, unresolved failures/limitations, and the next unblocked package. Distinguish implemented, tested and accepted. Never claim a phase complete because code exists or unit tests alone pass.
-
-This packet authorizes no work by itself; carry out the implementation assignment actually given. No application code was implemented while preparing this plan.
+The plan itself grants no runtime, Docker, cloud-spend, cleanup or HELD-lane authority. Future web work uses the same public API; it adds no current release gate.

@@ -1991,3 +1991,7 @@ Parent records r156 boundedSOURCE/privateclosure/retainedinertGO exactr155 seal0
 ### 2026-10-24 — Headless feature inventory delivered
 
 r158 SOURCEinventory findsHTTP/CLI/MCPstillfixture-only, reallegacyTTS/clone/registry reusable, durableinternalCore notpubliclywired, noqualifiednativeAppleMetalpath. Proposedfeaturelots authenticateddurableHTTP/assets→realenginejobs+immutablevoices/hardwareprofiles→assembly+clientparity. Parentrecordsplanningevidence, notruntimeacceptance; r157Astra canonicalheadlessreplanactive. Noautomatic81operation; proceedfeatureswithproductionownership/persistence/securitygates retained.
+
+### 2026-10-24 — Headless release plan adopted; feature H0 next
+
+Parent adopts r157 canonicalH0–H5 replan peruser: fullHTTP/CLI/MCP, cleanvoiceclone/management, workingCPU/CUDA/nativeAppleMetal REQUIRED; webUI/STTdeferred.81diagnosticcampaignoffcriticalpath withproduction-risk-equivalence/faulttestsrequiredrelease; no falsehistoricalclearance. H0durableimmutablevoicecatalogue source+focusedtests commissioned next; noHELDresource/build/modelauthority. r158currentfeatureinventory informslegacycoverage.

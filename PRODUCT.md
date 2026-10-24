@@ -4,52 +4,45 @@
 
 ## Platform
 
-web
+Self-hosted headless audio service: HTTP API, small CLI and MCP. A human web client is deferred.
 
-## Users
+## Binding release direction — 2026-10-24
 
-Agents are the primary automation users. People and trusted teams install the product locally or on a private server and use a complete speech production studio, including scripts and timeline editing. This first-release audience was confirmed by the user on 2026-10-15.
+This user decision supersedes the 2026-10-15 requirement to ship a complete web studio. The current release has three priorities:
 
-## Product Purpose
+1. Ship useful existing fixes and audio capabilities behind a complete public HTTP API, with thin CLI/MCP coverage for agents and a future human web client.
+2. Make CPU, NVIDIA/CUDA and Apple Silicon native Metal work on explicitly qualified profiles, with hardware-aware compatible backend selection and measured performance.
+3. Make voice catalogue, acquisition, cloning, preparation, explicit audition, reuse and management coherent and dependable.
 
-Give agents a voice. Make discovering capabilities, managing voices, creating voices, generating speech, assembling productions, and obtaining results straightforward and economical in context, tokens, and compute.
+No web UI ships in this release. Studio, browser accessibility, microphone recording UI and visual timeline editing are deferred, not release gates. Public STT, dictation and TxCode speech input remain deferred. Preserve internal transcription/QA/alignment used by existing audio workflows.
 
-## Operating Context
+## Users and purpose
 
-The first release serves one person or a trusted team on self-hosted infrastructure. Agents connect through HTTP and a small CLI, with MCP integration. People use a web studio. These interface and deployment priorities were confirmed by the user on 2026-10-15.
+Give agents a voice. One person or a trusted team installs locally or on a private server, discovers capabilities cheaply, manages reusable voices, generates and assembles audio, and retrieves durable results. Future human clients use the same public API, identifiers, revisions, permissions and jobs; they must not need a privileged second backend.
 
-## Capabilities and Constraints
+## Existing product and remaining work
 
-The existing project provides Docker-based audio tooling, a named voice registry, reference-based cloning, built-in and designed Qwen voices, speech generation, optional CPU engines, audio utilities, and Redis-based job automation. The new product is being planned; its service API and web studio are not implemented.
+The repository contains Qwen preset/design/clone tooling, explicit CPU alternatives, voice registration, audio export and Redis job workflows. It also contains a synthetic HTTP/CLI/MCP skeleton, contracts, and partially accepted service persistence, supervision and recovery source. The current public API is not the complete durable speech service; source presence is not installed or acoustic qualification. Preserve accepted fixes, voice IDs/aliases, authored text, provenance, defaults and legacy workflows while integrating the service.
 
-The requested product includes microphone, local-file, and remote-source voice acquisition; clean queue management and capability discovery; efficient optional completion notifications for agents; scripts and timeline editing. Exact editing depth, supported deployment hardware, framework, API contracts, authentication design, and wakeup integrations remain planning decisions.
+The release includes headless scripts, takes, stitch/assembly and existing audio operations. Deferring the visual editor does not delete these capabilities. The canonical implementation plan maps existing functions and planned operations to finite implementation packages, including explicit deferred editor-only contracts.
 
-## Brand Commitments
+## Hardware and installation
 
-Proposed motto from the user: "give your agents a voice". Product name and visual identity remain open.
+CPU on constrained Intel Macs and smaller Linux servers is first-class. NVIDIA/CUDA and Apple Silicon native Metal are also required release families, not optional roadmap items. Qualify exact hardware/runtime/model combinations; unsupported combinations remain explicit. Docker is the baseline control-plane install. Where Docker cannot expose native Metal, ship a packaged macOS arm64 worker with managed runtime, authenticated local transport and the same job semantics. Apple Silicon CPU Docker alone does not satisfy Metal acceptance.
 
-## Evidence on Hand
+Auto selection chooses among compatible, available, provisioned profiles, preferring measured qualified performance within memory and concurrency limits. Users can override engine/model/device/profile. Never silently substitute a voice identity, model or incompatible engine; explain an unavailable selection and offer explicit alternatives. Provisioning is deliberate, verified and resumable. Discovery never downloads or loads models. No best-possible performance claim without measurement. Unavailable hardware blocks actual release qualification, not independent source implementation. No cloud rental, paid provisioning or new costs are implied.
 
-Repository implementation and README files, docs/TTS_MEMORY.md, docs/TTS_PERFORMANCE.md, and the existing backend contracts describe current behavior. Repository evidence does not establish new API, UI, installation, hardware, or acoustic acceptance.
+## Product principles
 
-## Product Principles
+- A first successful agent task must not require reading source.
+- Keep discovery, receipts and errors compact; fetch detail and audio explicitly.
+- Preserve immutable voice versions, exact inputs and recoverable job/artifact history.
+- Support bounded waiting, cancellation and durable events without model-driven polling loops.
+- Enforce trusted-team authentication, storage integrity, ownership and restart safety.
+- Measure constrained-host usability and stronger-hardware throughput separately; retain explicit model and voice semantics.
 
-- Make a first successful agent task possible without reading the repository.
-- Keep discovery and routine responses compact; expose detail when requested.
-- Give people and agents coherent access to the same voice and production work.
-- Make long-running work manageable and results recoverable without frequent polling.
-- Preserve explicit control over compute and voice behavior.
+## Authority and evidence
 
-## Deferred Speech Input and Portability Research
+[IMPLEMENTATION-PLAN.md](docs/agent-interface/IMPLEMENTATION-PLAN.md) is the current delivery plan; [IMPLEMENTATION-START.md](docs/agent-interface/IMPLEMENTATION-START.md) is the entry point. Historical reviews and the execution ledger retain their original evidence and scopes. Their older studio requirements and diagnostic-first sequencing are superseded by this release decision, not retrospectively rewritten as passes. No release, hardware, native-crash diagnosis or operational acceptance is established by this document.
 
-Latest scope decision (2026-10-15): STT and contextual dictation are deferred from v1. The user will first test them in TxCode. They are future upgrade candidates, not release requirements or prerequisites for this product. Keep the research and general CPU/Docker lessons without implementing new public STT-specific contracts in v1. Preserve existing transcription/QA/alignment internals wherever current cloning or production features depend on them; deferral does not remove existing features.
-
-Earlier on 2026-10-15 the user requested dedicated STT research, with French, English and mixed-language speech leading evaluation. CPU-only older Intel Macs are first-class targets, and larger models/GPU evaluations are authorized where hardware is available. Easy Docker setup for agents across supported machines is a core requirement, alongside broad qualified GPU support. “Any box” is an installation goal that needs an explicit tested support matrix, not a proven universal claim.
-
-Research recommends bounded shared-service STT for agent voice messages and media, with raw recognition and derived corrections kept separate. A Wispr-like system-wide dictation client/sibling remains a separate product decision; existing native clients should be evaluated before building one. No sibling application, native permissions integration or new default model has been selected.
-
-For that future upgrade, contextual dictation is a first-class speech-input goal: preserve French/English and technical intent while reducing user correction effort. Clients such as TxCode supply bounded work context and own recording and safe draft insertion. Faithful media transcription remains a separate intent; no dictation sibling or hosted provider is selected.
-
-## CPU and Accelerator Priority
-
-The primary everyday environments are the constrained Intel Mac and smaller remote Grok Bot machines. Efficient CPU-only operation is a first-class requirement. Better machines should benefit from qualified GPU/CUDA and macOS Metal acceleration, suitable model choices and measured larger resource/concurrency profiles through the same interfaces. Do not hardcode CPU-only limits or silently change voice/model identity. Actual remote CPU/RAM/ISA specifications need inventory; no universal accelerator compatibility is established. Docker remains the baseline install; Metal may require an optional packaged native worker while the control/UI remains Docker-based.
+Proposed motto: “give your agents a voice”. Product name and visual identity remain open and do not block headless implementation.
