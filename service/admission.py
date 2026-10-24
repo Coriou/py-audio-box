@@ -30,11 +30,23 @@ class Admission:
         plan=context['plan']
         oracle.admission(dict(operation=plan['operation'],input_sha256=oracle.plan_hash(plan)),context,profiles)
         limits=plan['resolved']['profile']['limits'];request=plan['request']
-        if len(request.get('text',''))>limits['text_chars'] or request.get('variants',1)>limits['variants']:raise ValueError('resource_input_limit')
+        if len(request.get('text',request.get('reference_text','')))>limits['text_chars'] or request.get('variants',1)>limits['variants']:raise ValueError('resource_input_limit')
         if len(encode(context).encode())>48000:raise ValueError('resource_plan_limit')
         # Closed installed runtime capability, not a general engine/profile adapter.
-        if plan['resolved']['profile']['id']!='cpu-synthetic' or plan['assets'] or request.get('variants')!=1:
+        if plan['resolved']['profile']['id']!='cpu-synthetic':
             raise ValueError('resource_runtime_unsupported')
+        operation = plan['operation']
+        required = oracle.required_asset_ids(plan)
+        if set(required) != {a['id'] for a in plan['assets']}:
+            raise ValueError('asset_dependencies_mismatch')
+        if operation == 'voice_prepare':
+            if required != [request['asset_id']]: raise ValueError('resource_runtime_unsupported')
+        elif operation == 'speech_generate':
+            if request['variants'] != 1 or request['reuse'] != 'never':
+                raise ValueError('resource_runtime_unsupported')
+        else:
+            raise ValueError('resource_runtime_unsupported')
+        # Core verifies owned exact managed media before reserving and allocation.
         if limits['ram_bytes']<192*1024**2 or limits['expensive_slots']<1 or limits['resident_models']<1:
             raise ValueError('resource_containment_unsupported')
         if limits['decoded_ticks']<4800 or limits['upload_bytes']<9644 or limits['disk_bytes']<2*1024**2:

@@ -102,11 +102,17 @@ def owned_asset(core, principal, asset_id, *, content=False, start=0, end_exclus
     from service.ingest import MAX_BYTES, open_directory
     import json
     row = core.db.execute('SELECT metadata FROM assets WHERE id=?', (asset_id,)).fetchone()
-    if row is None or json.loads(row[0]).get('principal_id') != principal:
-        raise ValueError('not_found')
+    if row is None: raise ValueError('not_found')
+    owner = json.loads(row[0]).get('principal_id')
+    if owner is not None and owner != principal: raise ValueError('not_found')
+    try:
+        # Published audition/generation assets inherit the producing job owner;
+        # uploads carry explicit managed ownership. Use the shared owner oracle.
+        core.voices._asset(principal, asset_id)
+    except ValueError as exc:
+        if str(exc) == 'forbidden': raise ValueError('not_found') from None
+        raise
     metadata = core.asset(asset_id)
-    if metadata.get('principal_id') != principal:
-        raise ValueError('not_found')
     if not content:
         return metadata
     if not 0 <= start < end_exclusive or end_exclusive-start > 65536:
@@ -163,3 +169,81 @@ def asset_call(dispatcher, principal, operation, payload):
         raise Failure(code, 'Asset operation unavailable.', action='Check media and service readiness; uploads are never automatically retried.') from None
     except (OSError, sqlite3.Error, TimeoutError, queue.Full):
         raise Failure('not_ready', 'Asset owner unavailable; upload outcome may be unknown.', action='Do not automatically retry uploads.') from None
+
+
+class SyntheticContexts:
+    """Operator configuration only: detached immutable snapshots keyed by principal/op.
+
+    This provider advertises no engine readiness. Runtime profile admission remains
+    independent; synthetic test qualification must be explicitly supplied by owner.
+    """
+    def __init__(self, contexts):
+        import json
+        from types import MappingProxyType
+        frozen = {}
+        for (principal, operation), context in contexts.items():
+            if operation not in ('voice_prepare', 'speech_generate'):
+                raise ValueError('unsupported_control')
+            snapshot = json.loads(json.dumps(context, allow_nan=False))
+            plan = snapshot['plan']
+            if plan['operation'] != operation or plan['resolved']['profile']['id'] != 'cpu-synthetic':
+                raise ValueError('unsupported_control')
+            identity = plan['resolved']['identity']['effective']
+            if (identity['engine'], identity['model'], identity['device'], identity['precision']) != ('qwen', 'Qwen3-TTS-12Hz-0.6B-Base', 'cpu', 'float32'):
+                raise ValueError('unsupported_control')
+            if plan['resolved']['settings']['kind'] != ('prepare' if operation == 'voice_prepare' else 'qwen_clone'):
+                raise ValueError('unsupported_control')
+            frozen[(principal, operation)] = json.dumps(snapshot, allow_nan=False).encode()
+        self._contexts = MappingProxyType(frozen)
+
+    def resolve(self, principal, operation, request):
+        import json
+        raw = self._contexts.get((principal, operation))
+        if raw is None: raise ValueError('not_ready')
+        context = json.loads(raw)
+        plan = context['plan']; resolved = plan['resolved']
+        if request['identity'] != resolved['identity']['requested']:
+            raise ValueError('unsupported_control')
+        if operation == 'speech_generate' and (request['fallback'] != 'forbid' or request['variants'] != 1 or request['reuse'] != 'never'):
+            raise ValueError('unsupported_control')
+        plan['request'] = json.loads(json.dumps(request))
+        if operation == 'voice_prepare':
+            resolved['reuse_configuration']['reference_text'] = request['reference_text']
+        return context
+
+
+def production_call(dispatcher, principal, operation, payload, key=None):
+    """Typed bounded adapter, explicit owner commands only; no Core access here."""
+    import queue
+    import sqlite3
+    from service.catalogue import PRODUCTION_OPERATIONS, compact
+    from service.voice_store import _id
+    if operation not in PRODUCTION_OPERATIONS:
+        raise Failure('not_found', 'Production operation unavailable.')
+    op = OPERATIONS[operation]
+    try:
+        validate(op['request'], payload)
+        if op['idempotency']: _id(key)
+        command = {'voice_prepare':'production_prepare', 'speech_generate':'production_generate',
+                   'voice_save':'production_save', 'voice_results':'production_results',
+                   'job_get':'production_job', 'job_cancel':'production_cancel',
+                   'artifact_get':'production_artifact'}[operation]
+        result = dispatcher.call(command, principal, payload, key=key)
+        if len(compact(result).encode()) > 12288:
+            raise Failure('resource_limit', 'Production response exceeds 12 KiB budget.')
+        return validate(op['response'], result)
+    except ValidationError:
+        raise Failure('invalid_request', 'Production contract unavailable.', 'request') from None
+    except (ValueError, KeyError, NotImplementedError) as exc:
+        code = str(exc)
+        code = {'candidate_missing':'not_found','voice_version_missing':'not_found',
+                'unpublished_candidate':'not_ready','stale_candidate':'missing_media',
+                'foreign_media':'missing_media','asset_metadata_mismatch':'missing_media',
+                'invalid_trim':'invalid_request','invalid_range':'invalid_request',
+                'settings_mismatch':'unsupported_control','resource_input_limit':'resource_limit',
+                'resource_plan_limit':'resource_limit','plan_limit':'resource_limit',
+                'queue_full':'resource_limit','resource_runtime_unsupported':'unsupported_control'}.get(code, code)
+        if code not in op['errors']: code = 'not_ready'
+        raise Failure(code, 'Production operation unavailable.', action='Check IDs, selection and operator configuration; do not automatically retry mutations.') from None
+    except (OSError, sqlite3.Error, TimeoutError, queue.Full):
+        raise Failure('not_ready', 'Owner unavailable; mutation outcome may be unknown.', action='Do not automatically retry mutations.') from None

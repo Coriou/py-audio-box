@@ -32,6 +32,8 @@ TABLES = {
     'resource_faults', 'resource_monitor', 'resource_protocol',
     'p1_inventory_scans', 'p1_inventory_objects', 'p1_inventory_history', 'p1_integrity',
 }
+from service.voice_store import _TABLE_DDL, _TRIGGER_DDL, _TABLES as CATALOGUE_TABLES, _schema_identity
+TABLES.update(CATALOGUE_TABLES)
 TABLES.update(persistence.B1_COLUMNS)
 TABLES.update(persistence.B2_COLUMNS)
 DIAGNOSTICS = {'p1_inventory_scans', 'p1_inventory_objects', 'p1_inventory_history', 'p1_integrity'}
@@ -47,6 +49,15 @@ COLUMNS = {
     'resource_reservations': 'id category demand state', 'resource_accounting': 'id highwater',
     'resource_faults': 'reason', 'resource_monitor': 'id state', 'resource_protocol': 'id revision',
 }
+
+# Columns derive from VoiceStore's sole supported DDL, not table-name trust.
+_catalogue_reference = sqlite3.connect(':memory:')
+try:
+    for _sql in (*_TABLE_DDL, *_TRIGGER_DDL): _catalogue_reference.execute(_sql)
+    CATALOGUE_IDENTITY = _schema_identity(_catalogue_reference)
+    COLUMNS.update({t:' '.join(r[1] for r in _catalogue_reference.execute('PRAGMA table_info('+t+')')) for t in CATALOGUE_TABLES})
+finally:
+    _catalogue_reference.close()
 
 COLUMNS.update(persistence.B1_COLUMNS)
 
@@ -104,6 +115,11 @@ class Reconciliation:
         if tables & persistence.B2_COLUMNS.keys():
             from service.recovery import validate_b2_database
             b2 = validate_b2_database(self.db, self.core.root, _uncertified=_before['id'] if _before else None)
+        if tables & CATALOGUE_TABLES:
+            if tables & CATALOGUE_TABLES != CATALOGUE_TABLES or _schema_identity(self.db) != CATALOGUE_IDENTITY:
+                raise Incomplete('unknown_reference_schema')
+            if self.db.execute('SELECT revision FROM voice_catalogue_format').fetchall() != [(1,)]:
+                raise Incomplete('unknown_reference_schema')
         data = {}
         for table in sorted(tables & TABLES - DIAGNOSTICS - {'sqlite_sequence'}):
             columns = [r[1] for r in self.db.execute('PRAGMA table_info('+table+')')]
@@ -176,7 +192,10 @@ class Reconciliation:
                 if set(value) - properties.keys(): self.reasons.add('unknown_reference_schema')
                 for key, item in value.items():
                     if key not in properties: continue
-                    if key in reference_keys:
+                    if key == 'reference_asset_sha256' and definition == 'voice_version':
+                        if validator.evolve(schema=properties[key]).is_valid(item): add(list(item), source)
+                        else: self.reasons.add('unknown_reference_kind')
+                    elif key in reference_keys:
                         if validator.evolve(schema=properties[key]).is_valid(item): add(item, source)
                         else: self.reasons.add('unknown_reference_kind')
                     else: walk(item, properties[key], source)
@@ -184,6 +203,27 @@ class Reconciliation:
             if set(value) != {'plan','bundles'}: self.reasons.add('unknown_reference_schema')
             walk(value['plan'], 'worker_plan', source)
             for bundle in value['bundles']: walk(bundle, 'bundle_catalogue_entry', source)
+        def catalogue_version(value, principal, source):
+            from contracts import validate as oracle
+            try: oracle.validate('voice_version', value)
+            except (ValueError, ValidationError): raise Incomplete('unknown_reference_kind') from None
+            if not any(r['principal']==principal and r['id']==value['voice_id'] for r in data.get('catalogue_voices', [])):
+                raise Incomplete('unknown_reference_kind')
+            if set(value.get('reference_asset_sha256',{})) != set(value['reference_asset_ids']):
+                raise Incomplete('unknown_reference_kind')
+            for asset_id in value['reference_asset_ids']:
+                asset = next((json.loads(r['metadata']) for r in data.get('assets',[]) if r['id']==asset_id), None)
+                if asset is None: raise Incomplete('unknown_reference_kind')
+                owner = asset.get('principal_id')
+                if owner is None:
+                    producing = {r['principal'] for r in data.get('jobs',[]) for a in data.get('artifacts',[])
+                                 if json.loads(a['metadata'])['job_id']==r['id'] and asset_id in json.loads(a['metadata'])['asset_ids']}
+                    if producing != {principal}: raise Incomplete('unknown_reference_kind')
+                elif owner != principal: raise Incomplete('unknown_reference_kind')
+                if value.get('reference_asset_sha256',{}).get(asset_id) != asset['sha256']:
+                    raise Incomplete('unknown_reference_kind')
+            walk(value, 'voice_version', source)
+
         adapters = {
             'jobs': {'job':'job', 'context':None}, 'revisions': {'snapshot':'project'},
             'assets': {'metadata':'asset'}, 'artifacts': {'metadata':'artifact'},
@@ -198,6 +238,39 @@ class Reconciliation:
                     value = json.loads(record[column])
                     if column == 'context': context(value, source)
                     else: walk(value, definition, source)
+                if table in CATALOGUE_TABLES - {'voice_catalogue_format'}:
+                    from service.voice_store import _id
+                    try:
+                        _id(record['principal'])
+                        for field in ('id','voice_id','name','key'):
+                            if field in record: _id(record[field])
+                    except ValueError: raise Incomplete('unknown_reference_kind') from None
+                if table == 'catalogue_voices':
+                    if type(record['revision']) is not int or record['revision'] < 1 or record['archived'] not in (0,1):
+                        raise Incomplete('unknown_reference_kind')
+                if table == 'catalogue_names':
+                    if not any(r['principal']==record['principal'] and r['id']==record['voice_id'] for r in data.get('catalogue_voices', [])):
+                        raise Incomplete('unknown_reference_kind')
+                if table == 'catalogue_versions':
+                    value = json.loads(record['record'])
+                    if value.get('id') != record['id'] or value.get('voice_id') != record['voice_id']:
+                        raise Incomplete('unknown_reference_kind')
+                    catalogue_version(value, record['principal'], source)
+                if table == 'catalogue_requests':
+                    if not re.fullmatch('[a-f0-9]{64}',record['fingerprint']): raise Incomplete('unknown_reference_kind')
+                    value = json.loads(record['result'])
+                    definitions = {'voice_register':'voice_register_result', 'voice_aliases':'voice',
+                                   'voice_archive':'voice', 'job_cancel':'job_cancel_request'}
+                    definition = definitions.get(record['operation'])
+                    if definition is None: raise Incomplete('unknown_reference_kind')
+                    from contracts import validate as oracle
+                    try: oracle.validate(definition, value)
+                    except (ValueError, ValidationError): raise Incomplete('unknown_reference_kind') from None
+                    if record['operation'] == 'voice_register': catalogue_version(value['version'],record['principal'],source)
+                    if record['operation'] == 'job_cancel':
+                        if not any(r['id']==value['job_id'] and r['principal']==record['principal'] for r in data.get('jobs', [])):
+                            raise Incomplete('unknown_reference_kind')
+                    walk(value, definition, source)
                 if table in persistence.B1_COLUMNS:
                     from service.persistent_init import digest, validate_scope
                     from service.recovery import validate_plan, validate_registration, closed

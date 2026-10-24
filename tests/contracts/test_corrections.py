@@ -87,7 +87,7 @@ def test_voice_history_and_frozen_plan_reconnect_workflows():
     for operation in ['voice_prepare','voice_design']:
         candidate=dict(schema_version='1.3.0',id='candidate1',job_id='job1',version=p['voice_versions'][0],audition_asset_id='impulse')
         result=dict(schema_version='1.3.0',job_id='job1',candidates=[candidate]);c.validate('voice_results',result)
-        save=dict(candidate_id=result['candidates'][0]['id'],voice_id=v['id'],expected_revision=v['revision']);c.validate('voice_save_request',save)
+        save=dict(job_id=result['job_id'],candidate_id=result['candidates'][0]['id'],voice_id=v['id'],expected_revision=v['revision']);c.validate('voice_save_request',save)
         c.revision(save['expected_revision'],v['revision'])
         with pytest.raises(c.ContractError):c.revision(save['expected_revision'],v['revision']+1)
         c.validate('voice_version',candidate['version'])

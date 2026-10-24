@@ -29,6 +29,18 @@ def main(argv=None):
     version = vsubs.add_parser('version')
     vget = version.add_subparsers(dest='version_verb', required=True).add_parser('get')
     vget.add_argument('voice_version_id')
+    for name in ('prepare', 'save'):
+        action = vsubs.add_parser(name)
+        action.add_argument('--request', required=True, help='Canonical JSON request object.')
+        action.add_argument('--idempotency-key', required=True)
+    results = vsubs.add_parser('results'); results.add_argument('job_id')
+    speech = commands.add_parser('speech').add_subparsers(dest='verb', required=True)
+    generate = speech.add_parser('generate'); generate.add_argument('--request', required=True); generate.add_argument('--idempotency-key', required=True)
+    jobs = commands.add_parser('job').add_subparsers(dest='verb', required=True)
+    jobs.add_parser('get').add_argument('job_id')
+    cancel = jobs.add_parser('cancel'); cancel.add_argument('job_id'); cancel.add_argument('--idempotency-key', required=True)
+    artifacts = commands.add_parser('artifact').add_subparsers(dest='verb', required=True)
+    artifacts.add_parser('get').add_argument('artifact_id')
     asset = commands.add_parser('asset')
     subs = asset.add_subparsers(dest='verb', required=True)
     upload = subs.add_parser('upload'); upload.add_argument('file',type=Path)
@@ -45,6 +57,13 @@ def main(argv=None):
         elif args.command == 'operation-detail':
             from urllib.parse import quote
             result = http.get('/skeleton/operations/' + quote(args.operation_id, safe=''))
+        elif args.command == 'speech' or (args.command == 'voice' and args.verb in ('prepare','save')):
+            import json
+            operation = 'speech_generate' if args.command == 'speech' else 'voice_'+args.verb
+            result = http.call(operation, json.loads(args.request), key=args.idempotency_key)
+        elif args.command == 'voice' and args.verb == 'results': result = http.call('voice_results',dict(job_id=args.job_id))
+        elif args.command == 'job': result = http.call('job_'+args.verb,dict(job_id=args.job_id), **({'key':args.idempotency_key} if args.verb == 'cancel' else {}))
+        elif args.command == 'artifact': result = http.call('artifact_get',dict(artifact_id=args.artifact_id))
         elif args.command == 'voices': result = http.call('voices_list', {'limit': args.limit, 'cursor': args.cursor})
         elif args.command == 'voice' and args.verb == 'versions':
             result = http.call('voice_versions_list',dict(voice_id=args.voice_id,limit=args.limit,cursor=args.cursor))
@@ -87,7 +106,7 @@ def main(argv=None):
     except (OSError, ValueError) as exc:
         # No local paths, payloads, URLs or tracebacks in model-facing errors.
         from service.catalogue import problem
-        print(compact(problem('invalid_request', 'Local byte transfer failed; use a new writable output file.', 'output'))); return 2
+        print(compact(problem('invalid_request', 'Invalid request or local media transfer; check arguments and paths.', 'output'))); return 2
 
 if __name__ == '__main__':
     sys.exit(main())

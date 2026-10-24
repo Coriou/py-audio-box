@@ -106,7 +106,11 @@
       "errors": [
         "invalid_request",
         "forbidden",
-        "not_found"
+        "not_found",
+        "not_ready",
+        "resource_limit",
+        "missing_media",
+        "unsupported_control"
       ]
     },
     {
@@ -183,7 +187,8 @@
         "idempotency_conflict",
         "not_ready",
         "resource_limit",
-        "unsupported_control"
+        "unsupported_control",
+        "missing_media"
       ]
     },
     {
@@ -222,7 +227,7 @@
       "cli": "voice save",
       "mcp": "speech_voice_save",
       "request": "voice_save_request",
-      "response": "receipt",
+      "response": "voice_register_result",
       "idempotency": true,
       "scope": "production-write",
       "headers": [
@@ -236,7 +241,11 @@
         "not_ready",
         "resource_limit",
         "unsupported_control",
-        "revision_conflict"
+        "revision_conflict",
+        "missing_media",
+        "voice_archived",
+        "version_conflict",
+        "alias_conflict"
       ]
     },
     {
@@ -289,7 +298,8 @@
         "idempotency_conflict",
         "not_ready",
         "resource_limit",
-        "unsupported_control"
+        "unsupported_control",
+        "missing_media"
       ]
     },
     {
@@ -706,7 +716,11 @@
       "errors": [
         "invalid_request",
         "forbidden",
-        "not_found"
+        "not_found",
+        "not_ready",
+        "resource_limit",
+        "missing_media",
+        "unsupported_control"
       ]
     },
     {
@@ -719,7 +733,7 @@
       "cli": "job cancel",
       "mcp": "speech_job_cancel",
       "request": "job_cancel_request",
-      "response": "receipt",
+      "response": "job",
       "idempotency": true,
       "scope": "production-write",
       "headers": [
@@ -732,7 +746,8 @@
         "idempotency_conflict",
         "not_ready",
         "resource_limit",
-        "unsupported_control"
+        "unsupported_control",
+        "missing_media"
       ]
     },
     {
@@ -967,7 +982,11 @@
       "errors": [
         "invalid_request",
         "forbidden",
-        "not_found"
+        "not_found",
+        "not_ready",
+        "resource_limit",
+        "missing_media",
+        "unsupported_control"
       ]
     },
     {
@@ -1035,5 +1054,5 @@
       ]
     }
   ],
-  "implementation_note": "Declarations are intended transport contracts. Public HTTP remains the four-read synthetic fixture. H0 register/aliases are trusted domain methods and schema fixtures, not HTTP routes; H1 voice_save selects a prepared candidate and calls register. H2 adds alias transport under shared contract ownership."
+  "implementation_note": "Declarations include unavailable operations. Authenticated H2 factory exposes only its callable operation set; synthetic contexts require explicit operator configuration. Save is synchronous; cancel returns observed job state. No automatic retries."
 }

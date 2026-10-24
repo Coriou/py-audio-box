@@ -10,7 +10,7 @@ import httpx
 from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
 from contracts.validate import validate
-from service.catalogue import FIXTURES, IMPLEMENTED, OPERATIONS
+from service.catalogue import FIXTURES, IMPLEMENTED, OPERATIONS, VOICE_READS, PRODUCTION_OPERATIONS
 from clients.http import HTTP
 
 
@@ -49,8 +49,7 @@ def test_http_cli_mcp_parity_and_errors(configured_url, tmp_path):
                 init = await session.initialize()
                 assert init.protocolVersion
                 tools = (await session.list_tools()).tools
-                assert len(tools) == 6
-                assert not any(t.name == 'speech_speech_generate' for t in tools)
+                assert {t.name for t in tools} == {OPERATIONS[o]['mcp'] for o in (*IMPLEMENTED,*VOICE_READS,*PRODUCTION_OPERATIONS)} | {'speech_skeleton_status','speech_operation_detail'}
                 discovered = await session.call_tool('speech_discover',{})
                 assert discovered.structuredContent == expected and not discovered.isError
                 bad = await session.call_tool('speech_discover',{'scan':True})
@@ -61,9 +60,11 @@ def test_http_cli_mcp_parity_and_errors(configured_url, tmp_path):
                 assert cap.isError and cap.structuredContent['code'] == 'resource_limit'
                 good = await session.call_tool('speech_asset_content',{'asset_id':'impulse','start':0,'end_exclusive':3072})
                 assert not good.isError and len(base64.b64decode(good.structuredContent['content_base64'])) == 3072
-                for name in ['speech_asset_upload','speech_speech_generate']:
+                for name in ['speech_asset_upload']:
                     absent = await session.call_tool(name,{})
                     assert absent.isError and absent.structuredContent['code'] == 'not_found'
+                malformed = await session.call_tool('speech_speech_generate',{})
+                assert malformed.isError and malformed.structuredContent['code'] == 'invalid_request'
                 detail = await session.call_tool('speech_operation_detail',{'operation_id':'speech_generate'})
                 assert detail.structuredContent['availability'] == 'unavailable'
     asyncio.run(check())

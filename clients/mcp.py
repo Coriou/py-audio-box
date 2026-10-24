@@ -8,16 +8,24 @@ from mcp.server.stdio import stdio_server
 from mcp.types import Tool, TextContent, CallToolResult
 from contracts.validate import ContractError, validate
 from clients.http import HTTP
-from service.catalogue import (DIRECT_BYTES, Failure, IMPLEMENTED, VOICE_READS, OPERATIONS, compact, problem, schema)
+from service.catalogue import (DIRECT_BYTES, Failure, IMPLEMENTED, VOICE_READS, PRODUCTION_OPERATIONS, OPERATIONS, compact, problem, schema)
 
 server = Server('speech-synthetic-0c')
 
 
+def input_schema(operation):
+    value = schema(OPERATIONS[operation]['request'])
+    if OPERATIONS[operation]['idempotency']:
+        value['properties']['idempotency_key'] = {'type':'string','pattern':'^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$'}
+        value['required'].append('idempotency_key')
+    return value
+
+
 def tools():
     items = [Tool(name=OPERATIONS[op]['mcp'],
-        description=('Named HTTP read; availability depends on configured service. ' +
+        description=('Named HTTP operation; availability depends on configured service. ' +
             ('Explicit opt-in bytes only; at most 3072 decoded bytes. Larger downloads: python -m clients.cli asset content ID --output FILE.' if op == 'asset_content' else op)),
-        inputSchema=schema(OPERATIONS[op]['request'])) for op in dict.fromkeys((*IMPLEMENTED, *VOICE_READS))]
+        inputSchema=input_schema(op)) for op in dict.fromkeys((*IMPLEMENTED, *VOICE_READS, *PRODUCTION_OPERATIONS))]
     if os.environ.get('SPEECH_UPLOAD_ROOT'):
         items.append(Tool(name='speech_asset_upload_file', description='Upload a client-host WAV from an operator-authorized filesystem root (SPEECH_UPLOAD_ROOT). Grants host filesystem read permission within that root; relative no-follow paths only. Creates an asset, not a cloned voice. No inline audio.', inputSchema={'type':'object','properties':{'path':{'type':'string','minLength':1,'maxLength':4096}},'required':['path'],'additionalProperties':False}))
     items += [Tool(name='speech_skeleton_status', description='Compact synthetic skeleton status and limitations.',
@@ -57,13 +65,15 @@ async def call_tool(name, arguments):
                 raise Failure('invalid_request', 'Supply one operation_id.', 'operation_id')
             body = await asyncio.to_thread(transport.get, '/skeleton/operations/' + quote(arguments['operation_id'], safe=''))
         else:
-            operation = next((op for op in dict.fromkeys((*IMPLEMENTED, *VOICE_READS)) if OPERATIONS[op]['mcp'] == name), None)
+            operation = next((op for op in dict.fromkeys((*IMPLEMENTED, *VOICE_READS, *PRODUCTION_OPERATIONS)) if OPERATIONS[op]['mcp'] == name), None)
             if operation is None: raise Failure('not_found', 'Tool unavailable in the 0C skeleton.', 'tool')
+            arguments = dict(arguments)
+            key = arguments.pop('idempotency_key', None) if OPERATIONS[operation]['idempotency'] else None
             validate(OPERATIONS[operation]['request'], arguments)
             if operation == 'asset_content' and arguments['end_exclusive'] - arguments['start'] > DIRECT_BYTES:
                 raise Failure('resource_limit', 'Direct text MCP range exceeds 3072 decoded bytes.', 'range',
                               'Use python -m clients.cli asset content ID --output FILE outside model context.')
-            body = await asyncio.to_thread(transport.call, operation, arguments)
+            body = await asyncio.to_thread(transport.call, operation, arguments, **({'key':key} if OPERATIONS[operation]['idempotency'] else {}))
         return result(body)
     except Failure as exc:
         return result(exc.body, True)

@@ -1258,12 +1258,17 @@
           "type": "integer",
           "minimum": 0,
           "maximum": 9007199254740991
+        },
+        "job_id": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
         }
       },
       "required": [
         "candidate_id",
         "voice_id",
-        "expected_revision"
+        "expected_revision",
+        "job_id"
       ],
       "additionalProperties": false
     },
