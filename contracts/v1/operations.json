@@ -38,7 +38,9 @@
       "errors": [
         "invalid_request",
         "forbidden",
-        "not_found"
+        "not_found",
+        "not_ready",
+        "resource_limit"
       ]
     },
     {
@@ -58,7 +60,9 @@
       "errors": [
         "invalid_request",
         "forbidden",
-        "not_found"
+        "not_found",
+        "not_ready",
+        "resource_limit"
       ]
     },
     {
@@ -977,7 +981,9 @@
       "errors": [
         "invalid_request",
         "forbidden",
-        "not_found"
+        "not_found",
+        "not_ready",
+        "resource_limit"
       ]
     },
     {

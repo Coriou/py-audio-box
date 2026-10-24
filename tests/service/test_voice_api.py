@@ -1,12 +1,14 @@
 """In-process ASGI and actual local owner; no listeners or inference."""
 import asyncio
 import json
+import queue
 from pathlib import Path
 import subprocess
 import sys
 import unittest
 from unittest.mock import patch
 import httpx
+from contracts.validate import validate
 from service.api import app, create_voice_app
 from service.auth import Credential, StaticCredentials
 from service.core import Core
@@ -29,6 +31,40 @@ class VoiceAPIFixture(VoiceDispatcherFixture):
         return asyncio.run(run())
 
 class VoiceAPITests(VoiceAPIFixture, unittest.TestCase):
+    def advertised_errors(self, operation):
+        response = self.request('/skeleton/operations/'+operation)
+        self.assertEqual(response.status_code, 200)
+        detail = response.json()
+        self.assertFalse(detail['fixture'])
+        self.assertEqual(detail['operation']['id'], operation)
+        return detail['operation']['errors']
+
+    def assert_operation_error(self, response, operation, code, status):
+        self.assertEqual(response.status_code, status)
+        body = validate('error', response.json())
+        self.assertEqual(body['code'], code)
+        self.assertIn(body['code'], self.advertised_errors(operation))
+        self.assertLess(len(response.content), 2048)
+        self.assertNotIn('private-path', response.text)
+
+    def test_read_error_declarations_and_sanitized_readiness(self):
+        routes = {
+            'voices_list': '/v1/voices',
+            'voice_get': '/v1/voices/'+self.version['voice_id'],
+            'voice_version_get': '/v1/voice-versions/'+self.version['id'],
+        }
+        for operation, path in routes.items():
+            with self.subTest(operation=operation):
+                self.assertEqual(self.advertised_errors(operation),
+                                 ['invalid_request', 'forbidden', 'not_found',
+                                  'not_ready', 'resource_limit'])
+                for failure in (OSError, queue.Full, TimeoutError):
+                    with self.subTest(failure=failure.__name__):
+                        with patch.object(self.dispatcher, 'call',
+                                          side_effect=failure('private-path')):
+                            response = self.request(path)
+                        self.assert_operation_error(response, operation, 'not_ready', 503)
+
     def test_auth_principal_revocation_and_fixture_separation(self):
         for token in ('', 'bad', 'write-secret'):
             response = self.request('/v1/voices', token)
@@ -52,10 +88,6 @@ class VoiceAPITests(VoiceAPIFixture, unittest.TestCase):
             self.assertEqual(self.request('/v1/voices?'+query).status_code,422)
         self.assertEqual(self.request('/v1/voices/'+self.version['voice_id']).json()['revision'],1)
         self.assertEqual(self.request('/v1/voice-versions/'+self.version['id']).json(),self.version)
-        with patch.object(self.dispatcher, 'call', side_effect=OSError('private-path')):
-            response = self.request('/v1/voices')
-            self.assertEqual(response.json()['code'],'not_ready')
-            self.assertNotIn('private-path', response.text)
         # Real oversized metadata, seeded while no Dispatcher owns the root.
         self.dispatcher.close()
         core = Core(self.root)
@@ -67,8 +99,7 @@ class VoiceAPITests(VoiceAPIFixture, unittest.TestCase):
         self.dispatcher = Dispatcher(self.root,staging=Path(self.tmp.name)/'staging')
         self.app = create_voice_app(self.dispatcher,credentials=self.credentials)
         response = self.request('/v1/voices/'+self.version['voice_id'])
-        self.assertEqual(response.json()['code'],'resource_limit')
-        self.assertLess(len(response.content),2048)
+        self.assert_operation_error(response, 'voice_get', 'resource_limit', 429)
 
     def test_discovery_and_lazy_schema(self):
         with patch.object(self.dispatcher,'call',side_effect=AssertionError('discovery accessed owner')):
