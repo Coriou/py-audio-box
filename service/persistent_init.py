@@ -243,27 +243,20 @@ def _linux_split_child():
     import sys
     if sys.platform != 'linux' or os.getuid() != 0 or os.geteuid() != 0:
         raise ValueError('linux_root_initializer_required')
+    raw = sys.stdin.buffer.read(65537)
+    if len(raw) > 65536: raise ValueError('initializer_pipe_budget')
+    request = json.loads(raw)
+    from service import install_policy as ip
+    from service.install_child import prepare
+    ip._closed(request, 'public control_fd staging_fd')
+    control, staging = prepare(request['public'], request['control_fd'], request['staging_fd'])
     os.setgroups([])
     os.setresgid(10001, 10001, 10001)
     os.setresuid(10001, 10001, 10001)
     os.umask(0o077)
     if os.getresuid() != (10001,)*3 or os.getresgid() != (10001,)*3 or os.getgroups():
         raise ValueError('permanent_control_identity_required')
-    raw = sys.stdin.buffer.read(65537)
-    if len(raw) > 65536: raise ValueError('initializer_pipe_budget')
-    request = json.loads(raw)
-    from service import install_policy as ip
-    ip._closed(request, 'public control_fd staging_fd')
-    ip.installation(request['public'])
-    descriptors=[request['control_fd'],request['staging_fd']]
-    if any(type(fd) is not int or fd < 3 for fd in descriptors) or len(set(descriptors)) != 2:
-        raise ValueError('closed_initializer_descriptors')
-    for role,fd in zip(('control','staging'),descriptors):
-        info=os.fstat(fd); ip.check(info,ip.SPLIT,role,directory=True)
-        record=request['public']['roles'][role]
-        if (info.st_dev,info.st_ino) != (record['device'],record['inode']):
-            raise ValueError('installed_root_changed')
-    _split_core(request['public'], '/proc/self/fd/'+str(descriptors[0]), '/proc/self/fd/'+str(descriptors[1]))
+    _split_core(request['public'], control, staging)
 
 
 def _launch_split_child(raw):

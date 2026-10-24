@@ -11,7 +11,8 @@ from types import SimpleNamespace
 import unittest
 from unittest.mock import patch
 
-from service import install_policy as ip, persistent_init as init, recovery
+from service import install_policy as ip, persistent_init as init, recovery, install_child
+from tests.service.test_install_child import Namespace
 from service.admission import DEFAULT_BUDGET
 from service.core import encode
 from tests.service.test_engine_admission import configuration as engine_configuration
@@ -84,7 +85,12 @@ class SplitInit(unittest.TestCase):
             with ExitStack() as identity:
                 for name in ('getuid','geteuid','getgid','getegid'):identity.enter_context(patch.object(os,name,return_value=10001))
                 identity.enter_context(patch.object(os,'getgroups',return_value=[]))
-                init._split_core(request['public'],self.fds[request['control_fd']],self.fds[request['staging_fd']])
+                namespace = Namespace(self)
+                with namespace.view():
+                    control, staging = install_child.prepare(request['public'], request['control_fd'], request['staging_fd'], ops=namespace)
+                    self.roots.update(control=control, staging=staging)
+                    init._split_core(request['public'], control, staging)
+                self.assertEqual(namespace.events, ['unshare','private','tmpfs','bind-control','bind-staging'])
         finally:os.umask(old)
 
     def run_init(self,**kwargs):
@@ -96,6 +102,107 @@ class SplitInit(unittest.TestCase):
         def fault(where):
             if where==point:raise OSError('injected '+point)
         with self.assertRaisesRegex(OSError,'injected'):self.run_init(fault=fault)
+
+    def adapter_request(self):
+        self.crash('core_intent')
+        public=json.loads((self.roots['receipts']/'p1-init.json').read_bytes())['public']
+        fds=[self.real_open(self.roots[r],os.O_RDONLY|os.O_DIRECTORY) for r in ('control','staging')]
+        for fd,role in zip(fds,('control','staging')):
+            self.fds[fd]=self.roots[role];self.addCleanup(self.close,fd)
+        return public,fds
+
+    def test_linux_entry_prepares_before_permanent_drop(self):
+        import io
+        import sys
+        public,fds=self.adapter_request()
+        request=dict(public=public,control_fd=fds[0],staging_fd=fds[1])
+        events=[]
+        namespace=Namespace(self)
+        prepare=install_child.prepare
+        def setup(*args):
+            events.append('prepare')
+            return prepare(*args,ops=namespace)
+        with namespace.view(), ExitStack() as stack:
+            stack.enter_context(patch.object(sys,'platform','linux'))
+            stack.enter_context(patch.object(sys,'stdin',SimpleNamespace(buffer=io.BytesIO(encode(request).encode()))))
+            for name in ('getuid','geteuid'):stack.enter_context(patch.object(os,name,return_value=0))
+            for name,args in (('setgroups',[]),('setresgid',(10001,)*3),('setresuid',(10001,)*3)):
+                def call(*values,n=name):events.append((n,values))
+                stack.enter_context(patch.object(os,name,create=True,side_effect=call))
+            for name in ('getresuid','getresgid'):stack.enter_context(patch.object(os,name,create=True,return_value=(10001,)*3))
+            stack.enter_context(patch.object(os,'getgroups',return_value=[]))
+            stack.enter_context(patch.object(os,'umask',side_effect=lambda mode:events.append(('umask',mode))))
+            stack.enter_context(patch.object(install_child,'prepare',side_effect=setup))
+            core=stack.enter_context(patch.object(init,'_split_core'))
+            init._linux_split_child()
+            core.assert_called_once_with(public,install_child.CONTROL,install_child.STAGING)
+        self.assertEqual(events,['prepare',('setgroups',([],)),('setresgid',(10001,)*3),('setresuid',(10001,)*3),('umask',0o077)])
+
+    def test_linux_entry_setup_failure_never_drops_or_opens_core(self):
+        import io
+        import sys
+        public,fds=self.adapter_request()
+        request=dict(public=public,control_fd=fds[0],staging_fd=fds[1])
+        with ExitStack() as stack:
+            stack.enter_context(patch.object(sys,'platform','linux'))
+            stack.enter_context(patch.object(sys,'stdin',SimpleNamespace(buffer=io.BytesIO(encode(request).encode()))))
+            for name in ('getuid','geteuid'):stack.enter_context(patch.object(os,name,return_value=0))
+            drops=[stack.enter_context(patch.object(os,name,create=True)) for name in ('setgroups','setresgid','setresuid')]
+            stack.enter_context(patch.object(install_child,'prepare',side_effect=OSError('namespace denied')))
+            core=stack.enter_context(patch.object(init,'_split_core'))
+            with self.assertRaisesRegex(OSError,'namespace denied'):init._linux_split_child()
+            for drop in drops:drop.assert_not_called()
+            core.assert_not_called()
+
+    def test_adapter_sqlite_canonical_database_wal_shm(self):
+        public,fds=self.adapter_request()
+        namespace=Namespace(self)
+        with namespace.view():
+            control,staging=install_child.prepare(public,*fds,ops=namespace)
+            database=control/'probe.sqlite'
+            import sqlite3
+            db=sqlite3.connect(database)
+            try:
+                db.execute('pragma journal_mode=wal')
+                db.execute('create table probe(value)');db.commit()
+                self.assertEqual(db.execute('pragma database_list').fetchone()[2],str(database))
+                for suffix in ('','-wal','-shm'):self.assertTrue(Path(str(database)+suffix).is_file())
+                self.assertEqual(control.stat().st_ino,public['roles']['control']['inode'])
+            finally:db.close()
+
+    def test_adapter_failures_stop_before_core(self):
+        public,fds=self.adapter_request()
+        before=self.bytes()
+        for point in ('unshare','private','tmpfs','bind-control','bind-staging'):
+            namespace=Namespace(self,fail=point)
+            with namespace.view(),self.assertRaisesRegex(OSError,'injected'):
+                install_child.prepare(public,*fds,ops=namespace)
+            self.assertEqual(namespace.events[-1],point)
+        self.assertEqual(before,self.bytes())
+
+    def test_adapter_refuses_changed_fd_and_duplicate_before_namespace(self):
+        public,fds=self.adapter_request()
+        namespace=Namespace(self)
+        bad=copy.deepcopy(public);bad['roles']['control']['inode']+=1
+        for record,descriptors in ((bad,fds),(public,[fds[0],fds[0]]),(public,[True,fds[1]])):
+            with self.assertRaises(ValueError):install_child.prepare(record,*descriptors,ops=namespace)
+        self.assertEqual(namespace.events,[])
+
+    def test_adapter_refuses_unsafe_mountpoint_and_bind_identity(self):
+        public,fds=self.adapter_request()
+        namespace=Namespace(self)
+        with namespace.view():
+            with patch.object(namespace,'stat',return_value=SimpleNamespace(st_uid=0,st_mode=0o120777)):
+                with self.assertRaisesRegex(ValueError,'unsafe_initializer_mountpoint'):
+                    install_child.prepare(public,*fds,ops=namespace)
+            self.assertEqual(namespace.events,[])
+            original=namespace.stat
+            def changed(path):
+                if path != namespace.base:return SimpleNamespace(st_dev=-1,st_ino=-1,st_mode=0o40700)
+                return original(path)
+            with patch.object(namespace,'stat',side_effect=changed):
+                with self.assertRaisesRegex(ValueError,'bind_identity_changed'):
+                    install_child.prepare(public,*fds,ops=namespace)
 
     def test_fresh_closed_records_private_copy_inspection_same_bytes_reopen(self):
         result=self.run_init();self.assertEqual(len(self.calls),1)
@@ -199,7 +306,7 @@ class SplitInit(unittest.TestCase):
         with patch.object(sqlite3,'connect',side_effect=connect):
             init.initialize_split(self.roots,self.scope,self.config,authority=self.authority,policy=ip.SPLIT,launch_child=launch)
             recovery.inspect(self.roots,self.scope,policy=ip.SPLIT)
-        originals=[(p,c) for p,c in opened if str(self.roots['control']) in p]
+        originals=[(p,c) for p,c in opened if p.endswith('/control/core/core.sqlite')]
         self.assertEqual(len(originals),1);self.assertTrue(originals[0][1])
         self.assertTrue(all(c or 'p1-inspect-' in p for p,c in opened))
         for p in (self.roots['control']/'core').glob('core.sqlite*'):
