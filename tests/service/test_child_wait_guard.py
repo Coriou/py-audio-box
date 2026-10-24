@@ -2028,3 +2028,19 @@ def test_B_independent_authority_source_predicates(monkeypatch, control):
         with pytest.raises(ValueError, match='^B changed collected target code$'): cls.target_source(function, node)
     function.__code__ = code
     assert cls.code_projection(cls.target_source(function, node)[1]) == cls.code_projection(code)
+
+
+def test_B_overhead_extracted_HOST_contract():
+    """Separate future test entry; only extracted/synthetic stdlib HOST credit.
+
+    Does not join or alter B100. Complete guard setup, fixture undo, rewritten
+    collection and actual trace restoration still require their existing gates.
+    """
+    import subprocess, sys
+    path = Path(harness.__file__).resolve().parents[1]/'diagnostics/b-controls/HOST-overhead.py'
+    completed = subprocess.run([sys.executable, str(path)], capture_output=True,
+        text=True, timeout=30, check=False)
+    assert completed.returncode == 0, (completed.stdout, completed.stderr)
+    assert completed.stdout == ('HOST-overhead PASS 32 extracted/synthetic checks; '
+        'full setup/fixture/trace restoration PENDING\n')
+    assert completed.stderr == ''
