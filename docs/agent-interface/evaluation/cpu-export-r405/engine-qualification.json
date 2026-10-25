@@ -1,0 +1,66 @@
+{
+  "evidence": "actual-engine-smoke-only",
+  "installed_service_qualified": false,
+  "calls": [
+    {
+      "backend": "kokoro",
+      "runtime": "onnxruntime",
+      "providers": [
+        "CPUExecutionProvider"
+      ],
+      "cpu_mem_arena": false,
+      "checkpoint": "Kokoro-82M-v1.0-onnx-fp32",
+      "text_submitted": "Bonjour, ceci est un essai r\u00e9el de notre bo\u00eete audio.",
+      "preset": "ff_siwis",
+      "generation_seconds": 2.2957327930052998,
+      "model_load_seconds": 2.2587349670066033,
+      "load_seconds": 2.2587349670066033,
+      "model_reused": false,
+      "request_index": 1,
+      "frames": 74240,
+      "sample_rate": 24000,
+      "sha256": "924f8050f22e49084a3611eb4f91b6f97cf8118265ecd4e955bbf5fe0ecb8c41"
+    },
+    {
+      "backend": "kokoro",
+      "runtime": "onnxruntime",
+      "providers": [
+        "CPUExecutionProvider"
+      ],
+      "cpu_mem_arena": false,
+      "checkpoint": "Kokoro-82M-v1.0-onnx-fp32",
+      "text_submitted": "Bonjour, ceci est un essai r\u00e9el de notre bo\u00eete audio.",
+      "preset": "ff_siwis",
+      "generation_seconds": 1.8287249749992043,
+      "model_load_seconds": 2.2587349670066033,
+      "load_seconds": 0.0,
+      "model_reused": true,
+      "request_index": 2,
+      "frames": 74240,
+      "sample_rate": 24000,
+      "sha256": "924f8050f22e49084a3611eb4f91b6f97cf8118265ecd4e955bbf5fe0ecb8c41"
+    }
+  ],
+  "elapsed_seconds": 8.388930735003669,
+  "peak_rss_kib": 480752,
+  "versions": {
+    "kokoro-onnx": "0.6.1",
+    "onnxruntime": "1.31.0",
+    "espeakng-loader": "0.2.4",
+    "phonemizer": "3.4.0"
+  },
+  "export_bytes": 222822,
+  "export_media": {
+    "frames": 74240,
+    "sample_rate": 24000,
+    "channels": 1,
+    "media_format": "wav",
+    "media_subtype": "PCM_24",
+    "sha256": "0597d73aa2f3c7c7aa59e6dd8a3528739c3341173655b6ffa7e84f8a168ca56b"
+  },
+  "export_sha256": "0597d73aa2f3c7c7aa59e6dd8a3528739c3341173655b6ffa7e84f8a168ca56b",
+  "worker_image": "sha256:b2261a528c9564a9d733111b71fb155e7524bdb9c4a2f41086e1454347f4f04d",
+  "uid": 10001,
+  "cpu_quota": 2,
+  "memory_limit": 2147483648
+}

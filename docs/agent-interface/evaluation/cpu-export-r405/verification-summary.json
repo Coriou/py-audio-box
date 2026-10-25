@@ -1,0 +1,100 @@
+{
+  "source_commit": "58171c19d82542ed6e8dec01527ad6149c777440",
+  "release_ready": false,
+  "actual_engine": true,
+  "actual_converter": true,
+  "actual_installed_initialization": true,
+  "actual_installed_activation": false,
+  "public_installed_journey": false,
+  "actual_cloning": false,
+  "cuda_qualified": false,
+  "metal_qualified": false,
+  "held": [
+    {
+      "attempt": 3,
+      "installation": "01655c405ca7800c07e4798406599c90",
+      "private_handle": "/private/tmp/pab-release-r405-install3/installation",
+      "volumes": [
+        "pab-01655c405ca7800c07e4798406599c90-authority",
+        "pab-01655c405ca7800c07e4798406599c90-config",
+        "pab-01655c405ca7800c07e4798406599c90-control",
+        "pab-01655c405ca7800c07e4798406599c90-credential",
+        "pab-01655c405ca7800c07e4798406599c90-ipc",
+        "pab-01655c405ca7800c07e4798406599c90-models",
+        "pab-01655c405ca7800c07e4798406599c90-receipts",
+        "pab-01655c405ca7800c07e4798406599c90-staging"
+      ]
+    },
+    {
+      "attempt": 4,
+      "installation": "7e735fd5e74e8be882e1b502d615dff4",
+      "private_handle": "/private/tmp/pab-release-r405-install4/installation",
+      "volumes": [
+        "pab-7e735fd5e74e8be882e1b502d615dff4-authority",
+        "pab-7e735fd5e74e8be882e1b502d615dff4-config",
+        "pab-7e735fd5e74e8be882e1b502d615dff4-control",
+        "pab-7e735fd5e74e8be882e1b502d615dff4-credential",
+        "pab-7e735fd5e74e8be882e1b502d615dff4-ipc",
+        "pab-7e735fd5e74e8be882e1b502d615dff4-models",
+        "pab-7e735fd5e74e8be882e1b502d615dff4-receipts",
+        "pab-7e735fd5e74e8be882e1b502d615dff4-staging"
+      ]
+    },
+    {
+      "attempt": 5,
+      "installation": "651ccd7b8e8d5b78a46de3d4ee8fece8",
+      "private_handle": "/private/tmp/pab-release-r405-install5/installation",
+      "volumes": [
+        "pab-651ccd7b8e8d5b78a46de3d4ee8fece8-authority",
+        "pab-651ccd7b8e8d5b78a46de3d4ee8fece8-config",
+        "pab-651ccd7b8e8d5b78a46de3d4ee8fece8-control",
+        "pab-651ccd7b8e8d5b78a46de3d4ee8fece8-credential",
+        "pab-651ccd7b8e8d5b78a46de3d4ee8fece8-ipc",
+        "pab-651ccd7b8e8d5b78a46de3d4ee8fece8-models",
+        "pab-651ccd7b8e8d5b78a46de3d4ee8fece8-receipts",
+        "pab-651ccd7b8e8d5b78a46de3d4ee8fece8-staging"
+      ]
+    }
+  ],
+  "tests": {
+    "release": {
+      "passed": 522,
+      "subtests_passed": 147
+    },
+    "focused_integration": {
+      "passed": 167,
+      "subtests_passed": 107
+    },
+    "fresh_directory_regressions": {
+      "passed": 134,
+      "subtests_passed": 103
+    },
+    "directory_and_sanitized_diagnostics": {
+      "passed": 3
+    },
+    "docker_subpath": {
+      "passed": 13,
+      "subtests_passed": 7
+    },
+    "retained_descriptor": {
+      "passed": 12
+    },
+    "package_after_directory_fix": {
+      "passed": 59,
+      "subtests_passed": 74
+    },
+    "service_bounded_run": {
+      "passed": 604,
+      "subtests_passed": 353,
+      "failed": 3,
+      "complete": false
+    },
+    "recovery_bounded_run": {
+      "passed": 861,
+      "failed": 2,
+      "errors": 1,
+      "skipped": 2,
+      "complete": false
+    }
+  }
+}
