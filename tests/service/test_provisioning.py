@@ -341,20 +341,26 @@ class PocketProvisioningTests(unittest.TestCase):
             for change in (dict(language='en' if language == 'fr' else 'fr'), dict(revision='b'*40), dict(checkpoint='other'), dict(manifest_sha256='0'*64)):
                 with self.assertRaises(Refused):
                     verify_inputs(dataclasses.replace(spec, **change), {'bundle': bundle}, {'reference': ref})
-            seen = []
+            seen = []; loader_directories = []
+            previous_directory = Path.cwd()
             class Model:
                 @classmethod
                 def load_model(cls, config):
                     compiled = json.loads(Path(config).read_text())
                     seen.append(compiled)
+                    loader_directories.append(Path.cwd())
                     return cls()
             with patch.dict(sys.modules, {'torch': types.SimpleNamespace(set_num_threads=lambda n: None),
                                           'pocket_tts': types.SimpleNamespace(TTSModel=Model),
                                           'yaml': types.SimpleNamespace(safe_load=json.loads, safe_dump=lambda v, f: json.dump(v, f))}):
                 backend = PocketBackend(bundle, language=language)
                 backend.close()
-            self.assertEqual(seen[0]['weights_path'], str(bundle/'model.safetensors'))
-            self.assertEqual(seen[0]['tokenizer']['tokenizer_path'], str(bundle/'tokenizer.json'))
+            self.assertEqual(seen[0]['weights_path'], 'model.safetensors')
+            self.assertEqual(seen[0]['tokenizer']['tokenizer_path'], 'tokenizer.json')
+            self.assertEqual(loader_directories, [bundle.resolve()])
+            self.assertEqual(Path.cwd(), previous_directory)
+            self.assertTrue((loader_directories[0]/seen[0]['weights_path']).samefile(bundle/'model.safetensors'))
+            self.assertTrue((loader_directories[0]/seen[0]['tokenizer']['tokenizer_path']).samefile(bundle/'tokenizer.json'))
             calls = len(self.calls)
             self.assertEqual(self.run_provision(), bundle)
             self.assertEqual(len(self.calls), calls)
