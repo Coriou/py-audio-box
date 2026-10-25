@@ -27,6 +27,36 @@ COPY lib /opt/speech/lib
 USER 0:10001
 CMD ["python", "-I", "-B", "-c", "import sys;sys.path.insert(0,'/opt/speech');from worker.runtime_supervisor import main;main()", "--installed-policy", "docker-kokoro-split-v1", "--configuration-file", "/etc/speech-box/install.json"]
 
+# New-family recipe only: every package/executable pin is mandatory operator
+# input. Never inherit worker's unversioned apt layer. Actual acquisition/build,
+# resolved complete closure review and finished image qualification are separate.
+FROM python:3.11-slim-bookworm@sha256:0a310eeecf4e1f5a0743f9a6520c90c88d089c903ca5fd283f501e3a805f5f89 AS worker-export
+ARG EXPORT_FFMPEG_PACKAGE_VERSION
+ARG EXPORT_SNDFILE_PACKAGE_VERSION
+ARG EXPORT_ESPEAK_PACKAGE_VERSION
+ARG EXPORT_FFMPEG_SHA256
+ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 TORCH_DEVICE=cpu HF_HOME=/tmp/huggingface MALLOC_MMAP_THRESHOLD_=131072
+WORKDIR /opt/speech
+RUN test -n "$EXPORT_FFMPEG_PACKAGE_VERSION" && test -n "$EXPORT_SNDFILE_PACKAGE_VERSION" && test -n "$EXPORT_ESPEAK_PACKAGE_VERSION" && \
+    test ${#EXPORT_FFMPEG_SHA256} -eq 64 && \
+    apt-get update && apt-get install -y --no-install-recommends \
+    "ffmpeg=$EXPORT_FFMPEG_PACKAGE_VERSION" "libsndfile1=$EXPORT_SNDFILE_PACKAGE_VERSION" "espeak-ng=$EXPORT_ESPEAK_PACKAGE_VERSION" && \
+    echo "$EXPORT_FFMPEG_SHA256  /usr/bin/ffmpeg" | sha256sum --strict --check - && \
+    test ! -L /usr/bin/ffmpeg && chmod a-w /usr/bin/ffmpeg && rm -rf /var/lib/apt/lists/*
+COPY requirements/kokoro.lock /opt/speech/kokoro.lock
+COPY requirements/tts-assets.json /opt/speech/requirements/tts-assets.json
+COPY service/requirements.lock /opt/speech/requirements.lock
+RUN pip install --no-cache-dir --require-hashes -r kokoro.lock -r requirements.lock --extra-index-url https://download.pytorch.org/whl/cpu
+COPY service /opt/speech/service
+COPY worker /opt/speech/worker
+COPY contracts /opt/speech/contracts
+COPY lib /opt/speech/lib
+USER 0:10001
+# The private daemon supplies exact configuration and expected finished image.
+# Direct image execution refuses; no default image identity or fake seal.
+CMD ["python", "-I", "-B", "-c", "raise SystemExit('explicit private export daemon launch required')"]
+
+
 # Explicit alternative image; never installs Kokoro into the Pocket worker.
 FROM python:3.11-slim-bookworm@sha256:0a310eeecf4e1f5a0743f9a6520c90c88d089c903ca5fd283f501e3a805f5f89 AS worker-pocket
 ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 TORCH_DEVICE=cpu HF_HOME=/tmp/huggingface HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 MALLOC_MMAP_THRESHOLD_=131072

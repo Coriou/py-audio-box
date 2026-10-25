@@ -10,6 +10,7 @@ import fcntl
 import hashlib
 import json
 import os
+import re
 from pathlib import Path
 import stat
 import subprocess
@@ -24,33 +25,47 @@ from service.persistent_init import digest
 MAX_HELPERS=128
 
 
-def gate_projection(value):
-    from service import recovery
+def gate_projection(value, *, family=None, configuration=None, binding=None, public=None):
+    from service import recovery, installed_export as ex
+    export=family is ex.FAMILY
+    if family is not None and not export: raise ValueError('explicit_export_family_required')
+    policy=ex.LAUNCH if export else dv.POLICY
+    evidence=ex.EVIDENCE if export else dv.EVIDENCE
     dv.closed(value,'version launch_policy registration_id registration configuration_digest enrollment_digest provenance_digest observation')
-    if type(value['version']) is not int or value['version']!=1 or value['launch_policy']!=dv.POLICY or len(encoded(value))>65536:
+    if type(value['version']) is not int or value['version']!=(2 if export else 1) or value['launch_policy']!=policy or len(encoded(value))>65536:
         raise ValueError('daemon_gate_version_budget')
     for k in ('registration_id','configuration_digest','enrollment_digest','provenance_digest'):
         if not isinstance(value[k],str) or not dv.HEX.fullmatch(value[k]): raise ValueError('daemon_gate_digest')
-    r=value['registration']; recovery.validate_registration(r)
-    if digest(r)!=value['registration_id'] or r['evidence']!=dv.EVIDENCE or len(r['containers'])!=2 or {c['role'] for c in r['containers']}!={'control','worker'}:
+    r=value['registration']
+    (ex.host_registration if export else recovery.validate_registration)(r)
+    if digest(r)!=value['registration_id'] or r['evidence']!=evidence or len(r['containers'])!=2 or {c['role'] for c in r['containers']}!={'control','worker'}:
         raise ValueError('daemon_gate_registration')
     observation=value['observation']; dv.closed(observation,'kind binding inspections local hello')
-    if observation['kind']!=dv.EVIDENCE: raise ValueError('daemon_gate_evidence')
+    if observation['kind']!=evidence: raise ValueError('daemon_gate_evidence')
     dv.closed(observation['local'],'control worker'); dv.closed(observation['inspections'],'control worker')
-    for role in ('control','worker'): dv.local(observation['local'][role],role)
+    for role in ('control','worker'): dv.local(observation['local'][role],role,family=family)
     from service.host_install import _registration_hello
-    _registration_hello(observation['hello'],r)
+    _registration_hello(observation['hello'],r,family=family,configuration=configuration)
+    if export:
+        ex.installation(public)
+        if (digest(configuration)!=value['configuration_digest'] or digest(public)!=value['enrollment_digest'] or
+                ex._encoded(public['configuration'])!=ex._encoded(configuration)):
+            raise ValueError('daemon_gate_configuration_enrollment')
+        dv.observation(observation,r,configuration,binding,public,family=family)
     return value
 
 
-def child(kind, request, descriptors):
+def child(kind, request, descriptors, *, family=None):
     """Retain all enclosing exclusions through actual exit/reap, even on failure."""
+    from service import installed_export as ex
+    if family is not None and family is not ex.FAMILY: raise ValueError('explicit_export_family_required')
+    entry='export_container_entry' if family is not None else 'container_entry'
     if kind not in ('core','hello','writer'): raise ValueError('daemon_child_kind')
     raw=encoded(request)
     if len(raw)>65536: raise ValueError('daemon_child_budget')
     deadline=time.monotonic()+30
     p=subprocess.Popen([sys.executable,'-I','-B','-c',
-        "import sys;sys.path.insert(0,'/opt/speech');from service.install_child import container_entry;container_entry("+repr(kind)+')'],
+        "import sys;sys.path.insert(0,'/opt/speech');from service.install_child import "+entry+";"+entry+"("+repr(kind)+')'],
         stdin=subprocess.PIPE,stdout=subprocess.PIPE,stderr=subprocess.DEVNULL,close_fds=True,
         pass_fds=tuple(descriptors),cwd='/',env={},bufsize=0)
     result=collect(p,raw,65536,deadline,'daemon_child')
@@ -59,18 +74,22 @@ def child(kind, request, descriptors):
 
 
 class Helper:
-    def __init__(self,phase,nonce,request,wire,*,roots=None,child_runner=child):
+    def __init__(self,phase,nonce,request,wire,*,roots=None,child_runner=child,family=None):
         dv.closed(request,'configuration binding helper manifest')
         self.phase,self.nonce,self.wire=phase,nonce,wire
-        self.config=ip.configuration(request['configuration']); self.b=dv.binding(request['binding'])
-        if self.config['ownership_policy']!=ip.POLICY or digest(self.config)!=self.b['configuration_digest']:
+        from service import installed_export as ex
+        self.family=family; self.export=family is ex.FAMILY
+        self.policy=ex.LAUNCH if self.export else dv.POLICY
+        self.evidence=ex.EVIDENCE if self.export else dv.EVIDENCE
+        self.config=ip.family_configuration(request['configuration'],family); self.b=dv.binding(request['binding'],family=family)
+        if self.config['ownership_policy']!=(ex.POLICY if self.export else ip.POLICY) or digest(self.config)!=self.b['configuration_digest']:
             raise ValueError('daemon_kokoro_configuration_required')
         if (self.b['cpu']['worker']<max(c['execution']['descriptor']['threads'] for c in self.config['contexts'].values())*10**9 or
                 any(t['bytes']>self.config['budget']['ram_bytes'] for t in self.b['tmpfs'].values())):
             raise ValueError('daemon_resource_budget')
-        self.own=dv.inspect_container(request['helper'],'helper',self.config,self.b,phase=phase,nonce=nonce)
+        self.own=dv.inspect_container(request['helper'],'helper',self.config,self.b,phase=phase,nonce=nonce,family=family)
         self.manifest=request['manifest']; self.root={r:Path(dv.ROOTS[r]) for r in dv.HELPER_ROLES[phase]} if roots is None else roots
-        self.child=child_runner; self.fds={}; self.original={}; self.scope=dv.scope(self.b)
+        self.child=(lambda kind,request,fds:child(kind,request,fds,family=family)) if child_runner is child else child_runner; self.fds={}; self.original={}; self.scope=dv.scope(self.b,family=family)
         self.authority=self.root['authority']; self.end=time.monotonic()+100
 
     def rpc(self,action,payload):
@@ -140,13 +159,13 @@ class Helper:
             seen.add(identity)
             if identity in known:
                 phase,nonce,started=known[identity]
-                dv.inspect_container(c,'helper',self.config,self.b,phase=phase,nonce=nonce)
+                dv.inspect_container(c,'helper',self.config,self.b,phase=phase,nonce=nonce,family=self.family)
                 if c['State']['StartedAt']!=started: raise ValueError('daemon_helper_incarnation_changed')
                 if identity!=self.own['Id'] and (c['State']['Running'] is not False or c['State']['ExitCode']!=0):
                     raise ValueError('daemon_prior_helper_not_terminal')
             elif identity in ids.values():
                 role=next(r for r,i in ids.items() if i==identity)
-                dv.inspect_container(c,role,self.config,self.b)
+                dv.inspect_container(c,role,self.config,self.b,family=self.family)
             else: raise ValueError('daemon_unexplained_volume_consumer')
         if not set(known).union(ids.values())<=seen: raise ValueError('daemon_missing_retained_consumer')
         return value
@@ -180,11 +199,11 @@ class Helper:
                 self.snapshot()
                 os.fchmod(self.fds['authority'],0o700); os.fsync(self.fds['authority'])
                 self.write('binding.json',self.b)
-                self.write('launch.lock',dict(policy=dv.POLICY))
+                self.write('launch.lock',dict(policy=self.policy))
             else:
                 if (authority.st_uid,authority.st_gid,stat.S_IMODE(authority.st_mode))!=(0,0,0o700) or self.read('binding.json')!=self.b:
                     raise ValueError('daemon_authority_binding')
-            if self.read('launch.lock')!=dict(policy=dv.POLICY): raise ValueError('daemon_launch_lock_binding')
+            if self.read('launch.lock')!=dict(policy=self.policy): raise ValueError('daemon_launch_lock_binding')
             stack.enter_context(ip.locked_file(self.authority/'launch.lock',policy=ip.SPLIT,role='receipts'))
             entries=os.listdir(self.fds['authority'])
             import re
@@ -268,7 +287,11 @@ class Helper:
         from service.auth import installed_credentials
         # Existing credential parser validates closed principals/scopes; bytes and
         # credential digest never leave this phase or enter an authority record.
-        installed_credentials(self.root['credential']/'control.key',self.config['contexts'])
+        credentials=installed_credentials(self.root['credential']/'control.key',self.config['contexts'])
+        if self.export:
+            admitted={c.principal for c in credentials._credentials if {'read','production-write'} <= c.scopes}
+            if not set(self.config['audio_export']['principals']) <= admitted:
+                raise ValueError('daemon_export_credential_principals')
         result=dict(identities={r:list(self.original[r]) for r in ('models','config','credential')},model_digest=model_digest)
         self.write('import-done.json',result)
         return dict(phase='imported')
@@ -288,14 +311,21 @@ class Helper:
                 raise ValueError('daemon_initializer_unexplained_consumer')
             return dict(host=self.scope,roots={r:list(self.original[r]) for r in ip.ROLES},consumers=[])
         result=initialize_split({r:self.root[r] for r in ip.ROLES},self.scope,self.config,
-            authority=observe,policy=ip.SPLIT,daemon_binding=self.b,
+            authority=observe,policy=ip.SPLIT,daemon_binding=self.b,family=self.family,
             launch_child=lambda raw:self.child('core',json.loads(raw),tuple(json.loads(raw)[k] for k in ('control_fd','staging_fd'))))
         self.write('init-done.json',result)
         return dict(phase='initialized',**result)
 
     def public(self):
         private=json.loads(ip.read_private(self.root['receipts']/'p1-init.json',1024*1024,policy=ip.SPLIT,role='receipts'))
-        ip.initialization(private); public=private['public']
+        public=private['public']
+        if self.export:
+            from service import installed_export as ex
+            ip._closed(private,'public seed')
+            ex.installation(public)
+            if not isinstance(private['seed'],str) or not re.fullmatch('[0-9a-f]{64}',private['seed']):
+                raise ValueError('daemon_initialization_seed')
+        else: ip.initialization(private)
         marker=json.loads(ip.read_private(self.root['receipts']/'p1-enrolled.json',65536,policy=ip.SPLIT,role='receipts'))
         if (public.get('launch')!=self.b or public['configuration']!=self.config or ip.role_records({r:self.root[r] for r in ip.ROLES})!=public['roles'] or
             marker!=dict(deployment_id=public['deployment_id'],digest=digest(public))): raise ValueError('daemon_enrollment_changed')
@@ -306,7 +336,7 @@ class Helper:
 
     def inspect(self,role,ids,action='inspect'):
         c=self.rpc(action,dict(id=ids[role],role=role))
-        dv.inspect_container(c,role,self.config,self.b)
+        dv.inspect_container(c,role,self.config,self.b,family=self.family)
         if c['Id']!=ids[role]: raise ValueError('daemon_retained_id_changed')
         return c
 
@@ -317,7 +347,7 @@ class Helper:
             volumes=['control','ipc','staging'] if r=='control' else ['ipc','receipts','staging']) for r,c in pair.items()]
 
     def startup(self):
-        return self.child('hello',dict(ipc_fd=self.fds['ipc']),(self.fds['ipc'],))
+        return self.child('hello',dict(ipc_fd=self.fds['ipc'],**({'configuration':self.config} if self.export else {})),(self.fds['ipc'],))
 
     def healthy(self,state):
         if (state['protocol']!=2 or json.loads(encode(state['monitor']))!=[[1,'healthy']] or
@@ -341,28 +371,66 @@ class Helper:
     def observe(self,ids,public):
         first=self.pair(ids); startup=self.startup()
         facts=self.rpc('facts',dict(id=ids['control'],role='control'))
-        value=dict(kind=dv.EVIDENCE,binding=digest(self.b),inspections=first,local=dict(control=facts,worker=startup['local']),hello=startup['hello'])
+        value=dict(kind=self.evidence,binding=digest(self.b),inspections=first,local=dict(control=facts,worker=startup['local']),hello=startup['hello'])
         # Include every imported input view, not only the four mutable roles.
         inputs=self.read('import-done.json')['identities']
         for r,identity in inputs.items():
             for local in value['local'].values():
                 if r in local['roots'] and local['roots'][r]!=identity: raise ValueError('daemon_input_view_identity')
+        if self.export:
+            assets=self.root['control']/'core/assets'
+            info=ip.directory_identity(assets,policy=ip.SPLIT,role='control')
+            if any(local['roots']['assets']!=list(info[:2]) for local in value['local'].values()):
+                raise ValueError('daemon_assets_view_identity')
         if self.pair(ids)!=first or self.startup()!=startup: raise ValueError('daemon_observation_bracket')
         return value
 
+    def validate_registration(self, record):
+        from service import installed_export as ex, recovery
+        return (ex.host_registration if self.export else recovery.validate_registration)(record)
+
+    def registration_snapshot(self, public):
+        if not self.export:
+            from service.host_install import _registration_snapshot
+            return _registration_snapshot({r:self.root[r] for r in ip.ROLES},self.scope)
+        # Deliberately initial empty history only. Retained export history and
+        # owner activation are a later slice; never pass v2 to the v1 scanner.
+        from service import installed_export as ex
+        import sqlite3
+        ex.expectation(public,self.family).check_root(self.root['control']/'core')
+        ex.fresh_namespace(self.root)
+        path=self.root['control']/'core/core.sqlite'
+        with ip.parent_fd(path) as (parent,name):
+            before=os.stat(name,dir_fd=parent,follow_symlinks=False)
+            ip.check(before,ip.SPLIT,'control')
+            db=sqlite3.connect(path.as_uri()+'?mode=ro',uri=True,timeout=0,isolation_level=None)
+            try:
+                db.execute('PRAGMA query_only=ON'); db.execute('PRAGMA trusted_schema=OFF')
+                data=ex.database(db,public)
+                fixed=dict(p1_format=[(2,'synthetic-core')],voice_catalogue_format=[(1,)],
+                    resource_accounting=[(1,0)],resource_protocol=[(1,2)],
+                    resource_monitor=[(1,'healthy')],p1_integrity=[(1,1,'healthy',None)],
+                    p1_installation=[(public['deployment_id'],1,ex.SCOPE,encode(public),digest(public))])
+                if any(rows!=fixed.get(table,[]) for table,rows in data.items() if table!='p1_registrations'):
+                    raise ValueError('daemon_export_initial_history_only')
+                schema=list(db.execute('SELECT type,name,tbl_name,sql FROM sqlite_master LIMIT 2049'))
+            finally: db.close()
+            if ip.identity(os.stat(name,dir_fd=parent,follow_symlinks=False))!=ip.identity(before):
+                raise ValueError('daemon_export_snapshot_changed')
+        return dict(protocol=2,monitor=data['resource_monitor'],integrity=data['p1_integrity'],
+            registrations=[json.loads(row[1]) for row in data['p1_registrations']],
+            evidence_projection=dict(schema=schema,data=data))
+
     def register(self,ids,public,history):
-        from service import recovery
-        from service.host_install import _registration_snapshot
-        roots={r:self.root[r] for r in ip.ROLES}
         with ip.locked_file(self.root['control']/'core/control.lock',policy=ip.SPLIT,role='control') as lock:
-            before=_registration_snapshot(roots,self.scope)
+            before=self.registration_snapshot(public)
             self.healthy(before)
             obs=self.observe(ids,public)
             record=dict(deployment_id=public['deployment_id'],scope=self.scope,containers=self.owners(obs['inspections']),
-                lane=obs['hello']['lane'],boot=obs['hello']['boot'],evidence=dv.EVIDENCE)
-            recovery.validate_registration(record); dv.observation(obs,record,self.config,self.b,public)
+                lane=obs['hello']['lane'],boot=obs['hello']['boot'],evidence=self.evidence)
+            self.validate_registration(record); dv.observation(obs,record,self.config,self.b,public,family=self.family)
             for old in before['registrations']:
-                if old['evidence']!=dv.EVIDENCE: raise ValueError('daemon_mixed_registration_history')
+                if old['evidence']!=self.evidence: raise ValueError('daemon_mixed_registration_history')
                 old_worker=next(c for c in old['containers'] if c['role']=='worker')
                 new_worker=next(c for c in record['containers'] if c['role']=='worker')
                 if old_worker['id']!=new_worker['id'] or old['lane']!=record['lane']:
@@ -370,19 +438,20 @@ class Helper:
                 if (old_worker['started']==new_worker['started'])!=(old['boot']==record['boot']):
                     raise ValueError('daemon_restart_boot_binding')
             rid=digest(record)
-            provenance=dict(kind=dv.EVIDENCE,registration=record,observation=obs,enrollment_digest=digest(public),history=history)
+            provenance=dict(kind=self.evidence,registration=record,observation=obs,enrollment_digest=digest(public),history=history)
             self.write('registration-'+rid+'.json',provenance)
             prestate=[list(r) for r in before['evidence_projection']['data']['p1_registrations']]
             self.child('writer',dict(public=public,registration=record,prestate=prestate,control_fd=self.fds['control'],
                 staging_fd=self.fds['staging'],lock_fd=lock),(self.fds['control'],self.fds['staging'],lock))
-            after=_registration_snapshot(roots,self.scope)
+            after=self.registration_snapshot(public)
             if [list(r) for r in after['evidence_projection']['data']['p1_registrations']]!=prestate+[[rid,encode(record),rid]]:
                 raise ValueError('daemon_registration_poststate')
             def stable(state):
                 projection=json.loads(encode(state['evidence_projection'])); projection['data'].pop('p1_registrations'); return projection
             if stable(before)!=stable(after) or self.observe(ids,public)!=obs: raise ValueError('daemon_registration_bracket')
-            gate=gate_projection(dict(version=1,launch_policy=dv.POLICY,registration_id=rid,registration=record,
-                configuration_digest=digest(self.config),enrollment_digest=digest(public),provenance_digest=digest(provenance),observation=obs))
+            gate=gate_projection(dict(version=2 if self.export else 1,launch_policy=self.policy,registration_id=rid,registration=record,
+                configuration_digest=digest(self.config),enrollment_digest=digest(public),provenance_digest=digest(provenance),observation=obs),family=self.family,
+                configuration=self.config if self.export else None,binding=self.b,public=public)
             self.rpc('notify',dict(id=ids['control'],gate=gate))
             if self.observe(ids,public)!=obs: raise ValueError('daemon_notification_bracket')
             return rid,record
@@ -395,12 +464,15 @@ class Helper:
         raise ValueError('daemon_runtime_wait_timeout_retained')
 
     def ready(self,ids,public,rid,record):
+        if self.export: raise ValueError('daemon_export_owner_activation_unavailable')
         self.wait(lambda:self.rpc('marker',dict(id=ids['control'],role='control')),lambda v:v==dict(phase='ready',registration_id=rid))
-        current=self.observe(ids,public); dv.observation(current,record,self.config,self.b,public)
+        current=self.observe(ids,public); dv.observation(current,record,self.config,self.b,public,family=self.family)
         return dict(phase='ready',registration_id=rid,containers=ids)
 
     def runtime(self):
         public=self.public()
+        if self.export:
+            raise ValueError('daemon_export_owner_activation_and_retained_history_unavailable')
         if self.exists('containers.json'):
             ids=self.read('containers.json'); dv.closed(ids,'control worker')
         elif self.phase=='up':
@@ -409,7 +481,7 @@ class Helper:
             ids={}
             for role in ('control','worker'):
                 self.snapshot()
-                c=self.rpc('create',dict(role=role)); dv.inspect_container(c,role,self.config,self.b)
+                c=self.rpc('create',dict(role=role)); dv.inspect_container(c,role,self.config,self.b,family=self.family)
                 if c['State']['Running'] is not False or c['State']['Status']!='created': raise ValueError('daemon_created_container_state')
                 ids[role]=c['Id']; self.write('created-'+role+'.json',dict(id=c['Id']))
             if len(set(ids.values()))!=2: raise ValueError('daemon_duplicate_runtime_id')
@@ -426,7 +498,7 @@ class Helper:
             if marker.get('phase')!='ready': raise ValueError('daemon_live_not_ready')
             rid=marker['registration_id']; provenance=self.read('registration-'+rid+'.json')
             record=provenance['registration']
-            if digest(record)!=rid or record['evidence']!=dv.EVIDENCE or provenance['enrollment_digest']!=digest(public): raise ValueError('daemon_retained_registration')
+            if digest(record)!=rid or record['evidence']!=self.evidence or provenance['enrollment_digest']!=digest(public): raise ValueError('daemon_retained_registration')
             result=self.ready(ids,public,rid,record)
             if self.phase!='stop': return result
             self.rpc('term',dict(id=ids['control'],role='control'))
@@ -473,7 +545,7 @@ class Helper:
         return result
 
 
-def main():
+def main(*, family=None):
     try:
         if sys.platform!='linux' or os.getresuid()!=(0,0,0) or os.getresgid()!=(0,0,0): raise ValueError('daemon_helper_linux_root')
         phase,nonce=sys.argv[1:]
@@ -489,8 +561,13 @@ def main():
         wire=Wire(sys.stdin.buffer,sys.stdout.buffer,nonce,phase)
         action,request=wire.receive()
         if action!='begin': raise ValueError('daemon_helper_begin')
-        result=Helper(phase,nonce,request,wire).run()
+        result=Helper(phase,nonce,request,wire,family=family).run()
         wire.send('complete',dict(result=result))
     except (Exception,KeyboardInterrupt):
         # No backend/manifest/credential fragments in stderr or protocol output.
         raise SystemExit(2) from None
+
+
+def export_main():
+    from service.installed_export import FAMILY
+    return main(family=FAMILY)

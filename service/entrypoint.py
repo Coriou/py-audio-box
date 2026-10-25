@@ -596,3 +596,8 @@ def create_native_owner(*, record_file, configuration_file, templates_file, owne
 def daemon_main():
     from service.daemon_volumes import POLICY
     installed_main(launch_policy=POLICY)
+
+
+def daemon_export_main():
+    """Reserved new-family owner entrypoint; activation is not implemented yet."""
+    raise SystemExit('installed export owner activation unavailable')

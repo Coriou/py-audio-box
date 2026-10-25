@@ -177,7 +177,8 @@ def collect(p, raw, limit, deadline, prefix, retained=None):
 
 
 class Docker:
-    def __init__(self, context=None, *, endpoint=None):
+    def __init__(self, context=None, *, endpoint=None, family=None):
+        self.family=family
         self.env={k:v for k,v in os.environ.items() if not k.startswith('DOCKER_')}
         self.endpoint=endpoint
         self.end=time.monotonic()+120
@@ -243,26 +244,26 @@ class Docker:
         elif action=='create':
             dv.closed(payload,'role')
             if payload['role'] not in ('control','worker'): raise ValueError('daemon_action_role')
-            identity=self.call(dv.command(payload['role'],config,b))
+            identity=self.call(dv.command(payload['role'],config,b,family=getattr(self,'family',None)))
             result=self.container(identity)
         elif action in ('start','term','inspect','marker','facts'):
             dv.closed(payload,'id role')
             role=payload['role']; identity=payload['id']
             if role not in ('control','worker'): raise ValueError('daemon_action_role')
-            dv.inspect_container(self.container(identity),role,config,b)
+            dv.inspect_container(self.container(identity),role,config,b,family=getattr(self,'family',None))
             if action=='start': self.call(['container','start',identity])
             elif action=='term': self.call(['container','kill','--signal=TERM',identity])
             if action in ('start','term','inspect'): result=self.container(identity)
             else:
                 code=('from service.entrypoint import launch_status;launch_status()' if action=='marker' else
-                    'from service.daemon_runtime import read_control;read_control()')
+                    ('from service.daemon_runtime import read_export_control;read_export_control()' if getattr(self,'family',None) is not None else 'from service.daemon_runtime import read_control;read_control()'))
                 if role!='control': raise ValueError('daemon_control_reader_only')
                 result=parse(self.call(['exec','--user','10001:10001',identity,'python','-I','-B','-c',
                     "import sys;sys.path.insert(0,'/opt/speech');"+code]))
         elif action=='notify':
             # Payload is nonsecret. Fixed private notification entrypoint only.
             dv.closed(payload,'id gate')
-            identity=payload['id']; dv.inspect_container(self.container(identity),'control',config,b)
+            identity=payload['id']; dv.inspect_container(self.container(identity),'control',config,b,family=getattr(self,'family',None))
             raw=encoded(payload['gate'])
             if len(raw)>65536: raise ValueError('daemon_gate_budget')
             deadline=min(self.end,time.monotonic()+10)
@@ -291,14 +292,14 @@ class Docker:
         return result
 
     def exchange(self,identity,phase,nonce,config,b,source):
-        own=self.container(identity); dv.inspect_container(own,'helper',config,b,phase=phase,nonce=nonce)
+        own=self.container(identity); dv.inspect_container(own,'helper',config,b,phase=phase,nonce=nonce,family=getattr(self,'family',None))
         p=subprocess.Popen(self.argv(['container','start','--attach','--interactive',identity]),stdin=subprocess.PIPE,
             stdout=subprocess.PIPE,stderr=subprocess.DEVNULL,env=self.env,bufsize=0,close_fds=True)
         with Owner(p,'daemon_helper',self.end,self.retained) as owner:
             wire=Wire(p.stdout,p.stdin,nonce,phase,deadline=self.end,owner=owner)
             while True:
                 own=self.container(identity)
-                dv.inspect_container(own,'helper',config,b,phase=phase,nonce=nonce)
+                dv.inspect_container(own,'helper',config,b,phase=phase,nonce=nonce,family=getattr(self,'family',None))
                 if own['State']['Running']: break
                 if p.poll() is not None or time.monotonic()>=self.end: raise ValueError('daemon_helper_start_unknown')
                 time.sleep(.02)
@@ -314,7 +315,7 @@ class Docker:
             wire.finish()
             owner.deadline=min(self.end,time.monotonic()+10)
         final=self.container(identity)
-        dv.inspect_container(final,'helper',config,b,phase=phase,nonce=nonce)
+        dv.inspect_container(final,'helper',config,b,phase=phase,nonce=nonce,family=getattr(self,'family',None))
         if final['State']['Running'] or final['State']['ExitCode']!=0: raise ValueError('daemon_helper_exit_unknown')
         if action!='input': self.check()
         return result
@@ -399,7 +400,11 @@ def manifest(entries):
     return out
 
 
-def main(argv=None):
+def main(argv=None, *, family=None):
+    # Family comes only from the distinct private entrypoint, never a request.
+    if family is not None:
+        from service import installed_export as ex, install_policy as ip
+        if family is not ex.FAMILY: raise ValueError('explicit_export_family_required')
     p=argparse.ArgumentParser(description='Explicit local Docker volume installation; no acquisition or repair.')
     p.add_argument('command',choices=('install','up','status','stop')); p.add_argument('--context'); p.add_argument('--request'); p.add_argument('--handle',required=True)
     a=p.parse_args(argv)
@@ -408,6 +413,15 @@ def main(argv=None):
             if not a.context or not a.request: raise ValueError('daemon_install_inputs_required')
             request=parse(read(a.request)); dv.closed(request,'configuration helper_image inputs cpu tmpfs control_port')
             inputs=manifest(request['inputs']); config=request['configuration']
+            if family is not None:
+                config=ip.family_configuration(config,family)
+                # Corroborate the actual supplied closed credential document
+                # before the first Docker call; helper repeats after import.
+                from service.auth import decode_credentials
+                credentials=decode_credentials(read(next(e['source'] for e in inputs if e['role']=='credential'),48000),config['contexts'])
+                admitted={c.principal for c in credentials._credentials if {'read','production-write'} <= c.scopes}
+                if not set(config['audio_export']['principals']) <= admitted:
+                    raise ValueError('daemon_export_credential_principals')
             # Stdlib admission before any daemon mutation. Full existing service
             # configuration/model validation runs again in the pinned helper.
             if type(config) is not dict or len(encoded(config))>48000: raise ValueError('daemon_configuration_budget')
@@ -418,15 +432,15 @@ def main(argv=None):
                 raise ValueError('daemon_resource_budget')
             if any(e['bytes']>48000 for e in inputs if e['role'] in ('config','credential')):
                 raise ValueError('daemon_private_input_budget')
-            d=Docker(a.context)
+            d=Docker(a.context,family=family)
             installation=secrets.token_hex(16)
             # Exclusive client intent before ANY daemon mutation. Partial volumes
             # and exact IDs remain in append-only sibling receipts, never rollback.
-            b=dict(policy=dv.POLICY,installation=installation,daemon=d.frozen,volumes={},helper_image=request['helper_image'],
+            b=dict(policy=ex.LAUNCH if family is not None else dv.POLICY,installation=installation,daemon=d.frozen,volumes={},helper_image=request['helper_image'],
                 configuration_digest=dv.digest(config),cpu=request['cpu'],tmpfs=request['tmpfs'],control_port=request['control_port'])
             candidate=dict(b,volumes={r:dict(Name='pab-'+installation+'-'+r,Driver='local',Options=None,Scope='local',
                 Mountpoint='/pending/'+r,CreatedAt='pending',Labels={'speech-box.installation':installation,'speech-box.role':r}) for r in dv.ROLES})
-            dv.binding(candidate)
+            dv.binding(candidate,family=family)
             for image in [b['helper_image'],*config['images'].values()]:
                 if d.call(['image','inspect',image,'--format','{{.Id}}'])!=image: raise ValueError('daemon_loaded_image_required')
             exclusive(a.handle,dict(kind='creation-intent',binding=b,configuration=config))
@@ -442,21 +456,21 @@ def main(argv=None):
                 v={k:v[k] for k in ('Name','Driver','Options','Scope','Mountpoint','CreatedAt','Labels')}
                 dv.volume(v,role,installation); b['volumes'][role]=v
                 exclusive(a.handle+'.created-'+role,v); d.check()
-            dv.binding(b)
+            dv.binding(b,family=family)
             exclusive(a.handle+'.binding',dict(binding=b,configuration=config))
             phases=('install','init')
         else:
             if a.request or a.context: raise ValueError('daemon_handle_selection_only')
             retained=parse(read(a.handle+'.binding')); dv.closed(retained,'binding configuration')
-            b=dv.binding(retained['binding']); config=retained['configuration']; inputs=[]
-            d=Docker(endpoint=b['daemon']['endpoint'])
+            b=dv.binding(retained['binding'],family=family); config=retained['configuration']; inputs=[]
+            d=Docker(endpoint=b['daemon']['endpoint'],family=family)
             if d.frozen!=b['daemon']: raise ValueError('daemon_handle_context_changed')
             phases=(a.command,)
         for phase in phases:
             nonce=secrets.token_hex(16)
             intent=a.handle+'.helper-'+nonce
             exclusive(intent,dict(phase=phase,nonce=nonce,binding=dv.digest(b)))
-            identity=d.call(dv.command('helper',config,b,phase=phase,nonce=nonce))
+            identity=d.call(dv.command('helper',config,b,phase=phase,nonce=nonce,family=family))
             if not dv.HEX.fullmatch(identity): raise ValueError('daemon_helper_id')
             exclusive(intent+'.id',dict(id=identity))
             result=d.exchange(identity,phase,nonce,config,b,inputs if phase=='install' else [])
@@ -464,3 +478,9 @@ def main(argv=None):
         print(encoded(result).decode())
     except (Exception,KeyboardInterrupt):
         raise SystemExit('speech-box docker refused; retain handle, volumes and containers for review') from None
+
+
+def export_main(argv=None):
+    """Explicit private fresh-family installer; no public/default selection."""
+    from service.installed_export import FAMILY
+    return main(argv,family=FAMILY)

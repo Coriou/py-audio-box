@@ -239,7 +239,7 @@ CONTAINER_CONTROL = Path('/control')
 CONTAINER_STAGING = Path('/staging')
 
 
-def prepare_container(public, control_fd, staging_fd):
+def prepare_container(public, control_fd, staging_fd, *, family=None):
     """Existing fixed mount view; never unshare/mount/chroot or host paths.
 
     Only the daemon helper's Core/writer phases mount these roots. Models and
@@ -247,8 +247,9 @@ def prepare_container(public, control_fd, staging_fd):
     """
     from service import install_policy as ip
     from service import daemon_volumes as dv
-    ip.installation(public)
-    if public.get('launch',{}).get('policy')!=dv.POLICY:
+    from service import installed_export as ex
+    ip.family_installation(public, family)
+    if public.get('launch',{}).get('policy')!=(ex.LAUNCH if family is ex.FAMILY else dv.POLICY):
         raise ValueError('explicit_daemon_container_view_required')
     descriptors=(control_fd,staging_fd)
     if any(type(fd) is not int or fd<3 for fd in descriptors) or len(set(descriptors))!=2:
@@ -284,7 +285,7 @@ def verify_dropped_capabilities():
         raise ValueError('container_child_retained_capabilities')
 
 
-def container_entry(kind):
+def container_entry(kind, *, family=None):
     """Three finite trusted entrypoints; no arbitrary action/path/SQL protocol."""
     import json
     from service import install_policy as ip
@@ -293,25 +294,33 @@ def container_entry(kind):
         raise ValueError('linux_root_initializer_required')
     raw=sys.stdin.buffer.read(65537)
     if len(raw)>65536: raise ValueError('installed_child_request_budget')
+    from service import installed_export as ex
+    if family is not None and family is not ex.FAMILY: raise ValueError('explicit_export_family_required')
     request=json.loads(raw)
     if kind=='hello':
-        ip._closed(request,'ipc_fd')
+        ip._closed(request,'ipc_fd configuration' if family is not None else 'ipc_fd')
+        config=ip.family_configuration(request['configuration'],family) if family is not None else None
         fd=request['ipc_fd']
         if type(fd) is not int or fd<3: raise ValueError('installed_child_descriptor')
         ip.check(os.fstat(fd),ip.SPLIT,'ipc',directory=True)
         close_other_descriptors((fd,)); drop_control(); verify_dropped_capabilities()
         from service.supervisor_runtime import installed_hello_at
-        print(encode(installed_hello_at(fd,startup=True)))
+        print(encode(installed_hello_at(fd,startup=True,family=family,configuration=config)))
         return
     if kind=='core': ip._closed(request,'public control_fd staging_fd')
     elif kind=='writer': ip._closed(request,'public registration prestate control_fd staging_fd lock_fd')
     else: raise ValueError('installed_child_entrypoint')
-    control,staging=prepare_container(request['public'],request['control_fd'],request['staging_fd'])
+    control,staging=prepare_container(request['public'],request['control_fd'],request['staging_fd'],family=family)
     keep=(request['lock_fd'],) if kind=='writer' else ()
     if keep and (type(keep[0]) is not int or keep[0]<3 or keep[0] in (request['control_fd'],request['staging_fd'])):
         raise ValueError('installed_child_descriptor')
     close_other_descriptors(keep); drop_control(); verify_dropped_capabilities()
     if kind=='core':
         from service.persistent_init import _split_core
-        _split_core(request['public'],control,staging)
-    else: registration_writer(request['public'],request['registration'],request['prestate'],control,keep[0])
+        _split_core(request['public'],control,staging,family=family)
+    else: registration_writer(request['public'],request['registration'],request['prestate'],control,keep[0],family=family)
+
+
+def export_container_entry(kind):
+    from service.installed_export import FAMILY
+    return container_entry(kind, family=FAMILY)

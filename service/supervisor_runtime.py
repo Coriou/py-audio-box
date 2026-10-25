@@ -142,7 +142,7 @@ def installed_hello_at(ipc_fd, *, timeout=1.5, startup=False, family=None, confi
     if startup:
         from service import daemon_volumes as dv
         dv.closed(value,'hello local')
-        dv.local(value['local'],'worker')
+        dv.local(value['local'],'worker',family=family)
         from service.host_install import _registration_hello
         _registration_hello(value['hello'], family=family, configuration=configuration)
         return value

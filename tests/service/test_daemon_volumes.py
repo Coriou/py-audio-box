@@ -35,8 +35,8 @@ def binding(config):
         tmpfs={r:dict(bytes=65536,inodes=64) for r in ('control','worker')},control_port=8765)
 
 
-def container(role,config,b,*,phase=None,nonce=None,identity=None):
-    args=dv.command(role,config,b,phase=phase,nonce=nonce)
+def container(role,config,b,*,phase=None,nonce=None,identity=None,family=None):
+    args=dv.command(role,config,b,phase=phase,nonce=nonce,family=family)
     helper=role=='helper'; t=b['tmpfs']['control' if helper else role]
     return dict(Id=identity or ('1' if role=='control' else '2')*64,Image=b['helper_image'] if helper else config['images'][role],
         Config=dict(User='0:0' if helper else '10001:10001' if role=='control' else '0:10001',Entrypoint=['python'],
@@ -46,17 +46,26 @@ def container(role,config,b,*,phase=None,nonce=None,identity=None):
             CapAdd=list(dv.INIT_CAPS if phase in ('install','init') else dv.LATER_CAPS) if helper else [] if role=='control' else list(dv.WORKER_CAPS),
             SecurityOpt=['no-new-privileges:true'],RestartPolicy=dict(Name='no',MaximumRetryCount=0),Devices=[],DeviceRequests=None,Binds=None,
             Memory=config['budget']['ram_bytes'],MemorySwap=config['budget']['ram_bytes'],PidsLimit=config['budget']['pids'],
-            Mounts=[dict(Type='volume',Source=m['Name'],Target=m['Destination'],ReadOnly=not m['RW'],VolumeOptions=dict(NoCopy=True)) for m in dv.mounts(role,b,phase)],
+            Mounts=[dict(Type='volume',Source=m['Name'],Target=m['Destination'],ReadOnly=not m['RW'],VolumeOptions=dict(NoCopy=True,**({'Subpath':'core/assets'} if m['Destination']=='/references/assets' else {}))) for m in dv.mounts(role,b,phase,family=family)],
             NanoCpus=b['cpu']['control' if helper else role],Tmpfs={'/tmp':'rw,noexec,nosuid,nodev,size='+str(t['bytes'])+',nr_inodes='+str(t['inodes'])+',mode=1777'},
             PortBindings={'8000/tcp':[dict(HostIp='127.0.0.1',HostPort=str(b['control_port']))]} if role=='control' else {}),
         State=dict(Running=False,Restarting=False,ExitCode=0,Status='created',StartedAt='0001-01-01T00:00:00Z',Pid=0),RestartCount=0,
-        Mounts=dv.mounts(role,b,phase))
+        Mounts=dv.mounts(role,b,phase,family=family))
 
 
 class Session:
-    def __init__(self,test):
+    def __init__(self,test,*,family=None):
+        self.family=family
         self.test=test; self.f=SplitInit(); self.f.setUp(); test.addCleanup(self.f.doCleanups)
-        self.root=self.f.root; self.config=self.f.config; self.b=binding(self.config); self.scope=dv.scope(self.b)
+        self.root=self.f.root; self.config=self.f.config
+        if family is not None:
+            from service import installed_export as ex
+            fixture=json.loads(Path('contracts/fixtures/v1/transcript-audio_export.json').read_bytes())
+            self.config.update(version=2,ownership_policy=ex.POLICY,audio_export=dict(converter=fixture['context']['execution']['converter'],profile=fixture['profiles'][0],principals=['alice']))
+            self.config['audio_export']['converter']['worker_image_digest']=self.config['images']['worker']
+        self.b=binding(self.config)
+        if family is not None: self.b['policy']=ex.LAUNCH
+        self.scope=dv.scope(self.b,family=family)
         self.roots=dict(self.f.roots); self.cs={}; self.n=0; self.calls=[]; self.marker=dict(phase='preparing'); self.gate=None
         self.boot='b'*32; self.starts=0; self.f.scope=self.scope
         for role in ('authority','models','config','credential'):
@@ -88,13 +97,20 @@ class Session:
 
     def facts(self,role):
         names=('control','ipc','staging','models','config','credential') if role=='control' else ('receipts','ipc','staging','models','config')
+        roots={r:[self.roots[r].stat().st_dev,self.roots[r].stat().st_ino] for r in names}
+        if self.family is not None:
+            assets=self.roots['control']/'core/assets'; roots['assets']=[assets.stat().st_dev,assets.stat().st_ino]
         return dict(role=role,pid=1,start_ticks=100+self.starts,pid_namespace=200+(role=='worker'),cgroup='0::/',
             uid=10001 if role=='control' else 0,gid=10001,groups=[],capabilities=0 if role=='control' else 224,
-            roots={r:[self.roots[r].stat().st_dev,self.roots[r].stat().st_ino] for r in names})
+            roots=roots)
 
     def startup(self):
         journal=json.loads((self.roots['receipts']/'journal.json').read_bytes())['payload']
-        return dict(hello=dict(lane=journal['lane'],boot=self.boot,quarantined=False,launches=0),local=self.facts('worker'))
+        hello=dict(lane=journal['lane'],boot=self.boot,quarantined=False,launches=0)
+        if self.family is not None:
+            from service.installed_export import export_seal
+            hello['export_seal']=export_seal(self.config)
+        return dict(hello=hello,local=self.facts('worker'))
 
     def action(self,action,payload):
         self.calls.append((action,copy.deepcopy(payload)))
@@ -105,7 +121,7 @@ class Session:
             raw=self.bytes[payload['index']][payload['offset']:payload['offset']+49152]
             return dict(data=base64.b64encode(raw).decode())
         if action=='create':
-            role=payload['role']; c=container(role,self.config,self.b); self.cs[c['Id']]=c; return copy.deepcopy(c)
+            role=payload['role']; c=container(role,self.config,self.b,family=self.family); self.cs[c['Id']]=c; return copy.deepcopy(c)
         if action=='notify':
             self.gate=copy.deepcopy(payload['gate']); self.marker=dict(phase='ready',registration_id=self.gate['registration_id']); return {}
         identity=payload['id']; role=payload['role']; c=self.cs[identity]
@@ -124,16 +140,16 @@ class Session:
         self.test.assertNotIn('seed',request)
         if kind=='hello': return self.startup()
         with patch.object(ic,'CONTAINER_CONTROL',self.roots['control']),patch.object(ic,'CONTAINER_STAGING',self.roots['staging']):
-            control,staging=ic.prepare_container(request['public'],request['control_fd'],request['staging_fd'])
+            control,staging=ic.prepare_container(request['public'],request['control_fd'],request['staging_fd'],family=self.family)
         with patch.object(ic.LinuxMounts,'unshare',side_effect=AssertionError('unshare')),patch.object(ic.LinuxMounts,'mount',side_effect=AssertionError('mount')):
             with patch.multiple(os,getuid=lambda:10001,geteuid=lambda:10001,getgid=lambda:10001,getegid=lambda:10001,getgroups=lambda:[]):
                 if kind=='core':
-                    self.f.calls.append(request); return pi._split_core(request['public'],control,staging)
-                return ic.registration_writer(request['public'],request['registration'],request['prestate'],control,request['lock_fd'])
+                    self.f.calls.append(request); return pi._split_core(request['public'],control,staging,family=self.family)
+                return ic.registration_writer(request['public'],request['registration'],request['prestate'],control,request['lock_fd'],family=self.family)
 
     def run(self,phase):
         self.n+=1; nonce=format(self.n,'032x'); identity=format(self.n+10,'064x')
-        c=container('helper',self.config,self.b,phase=phase,nonce=nonce,identity=identity)
+        c=container('helper',self.config,self.b,phase=phase,nonce=nonce,identity=identity,family=self.family)
         c['State'].update(Running=True,Status='running',StartedAt='2026-10-25T00:00:00Z'); self.cs[identity]=c
         outer=self
         class Wire:
@@ -141,7 +157,7 @@ class Session:
             def receive(self):
                 action,payload=self.pending; return action,outer.action(action,payload)
         roots={r:self.roots[r] for r in dv.HELPER_ROLES[phase]}
-        h=dh.Helper(phase,nonce,dict(configuration=self.config,binding=self.b,helper=copy.deepcopy(c),manifest=self.inputs if phase=='install' else []),Wire(),roots=roots,child_runner=self.child)
+        h=dh.Helper(phase,nonce,dict(configuration=self.config,binding=self.b,helper=copy.deepcopy(c),manifest=self.inputs if phase=='install' else []),Wire(),roots=roots,child_runner=self.child,family=self.family)
         self.helper=h
         old=os.umask(0o077)
         try:

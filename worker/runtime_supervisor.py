@@ -95,7 +95,11 @@ class RuntimeSupervisor:
         if op == 'startup':
             if body: raise Refused('closed_body')
             from service.daemon_runtime import facts
-            return dict(hello=self.operation('hello',{}),local=facts('worker'))
+            if getattr(self,'_export_configuration',None) is not None:
+                from service.installed_export import FAMILY
+                local=facts('worker',family=FAMILY)
+            else: local=facts('worker')
+            return dict(hello=self.operation('hello',{}),local=local)
         if op == 'hello':
             if body:
                 raise Refused('closed_body')
