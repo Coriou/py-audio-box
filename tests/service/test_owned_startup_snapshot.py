@@ -83,6 +83,19 @@ class OwnedStartupSnapshotTests(unittest.TestCase):
         self.db.rollback()
         self.usable()
 
+    def test_integrity_check_implicit_empty_temp_preserves_owner_backup(self):
+        self.assertEqual(self.db.execute('PRAGMA integrity_check').fetchall(), [('ok',)])
+        self.assertIn((1,'temp',''), self.db.execute('PRAGMA database_list').fetchall())
+        before=self.locks() if sys.platform=='linux' else None
+        with recovery.startup_database(self.path,owned_db=self.db) as target:
+            with sqlite3.connect(target.as_uri()+'?mode=ro',uri=True) as copy:
+                self.assertEqual(copy.execute('SELECT value FROM facts').fetchall(), [('retained-value',)])
+        if before is not None:self.assertEqual(self.locks(),before)
+        self.usable()
+        self.db.execute('CREATE TEMP TABLE transient(value)')
+        with self.assertRaisesRegex(ValueError,'owned_snapshot_main_database_required'):
+            with recovery.startup_database(self.path,owned_db=self.db):self.fail('temporary objects admitted')
+
     def test_changed_source_identity_refuses_without_closing_owner(self):
         original=os.stat; changed=False
         def observed(path,*args,**kwargs):

@@ -165,7 +165,12 @@ def startup_database(path, *, policy=None, owned_db=None):
     before=capture()
     # Executing on this connection also enforces SQLite's owner-thread check.
     databases=owned_db.execute('PRAGMA database_list').fetchall()
-    if databases!=[(0,'main',str(path))]: raise ValueError('owned_snapshot_main_database_required')
+    # SQLite integrity_check initializes its implicit temp namespace, even when
+    # no temporary object exists. It is not an attached database or backup input.
+    main=[row for row in databases if row!=(1,'temp','')]
+    if (main!=[(0,'main',str(path))] or
+            (len(main)!=len(databases) and owned_db.execute('SELECT count(*) FROM temp.sqlite_master').fetchone()!=(0,))):
+        raise ValueError('owned_snapshot_main_database_required')
     page_size=owned_db.execute('PRAGMA main.page_size').fetchone()[0]
     page_count=owned_db.execute('PRAGMA main.page_count').fetchone()[0]
     if (type(page_size) is not int or not 512<=page_size<=65536 or page_size&(page_size-1) or
