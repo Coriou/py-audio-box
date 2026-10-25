@@ -316,6 +316,53 @@ class PublicationMigrationFaultTests(PublicationFormatTests):
         with patch('service.publication_format.os.getuid',return_value=uid+1):
             self.assertEqual(migrate(self.root,expect_v1=True)[0],2)
         self.assertEqual(self.state(),before)
+    def test_retained_owner_modes_refuse_before_original_writer(self):
+        import stat
+        for mode in (0o666,0o644,0o660,0o640,0o400,0o700,0o1600,0o2600,0o4600):
+            with self.subTest(mode=oct(mode)),tempfile.TemporaryDirectory() as tmp:
+                root=Path(tmp).resolve()/'core'
+                with closing(Core(root,_publication_creation=1)) as core:
+                    job,_,_=direct_history(core)
+                    path=root/'owners'/job['attempts'][-1]['owner_id']
+                    path.touch(mode=0o600);path.chmod(mode)
+                    before=list(core.db.iterdump())
+                evidence=path.stat();connect=sqlite3.connect
+                def guarded_connect(database,*args,**kwargs):
+                    self.assertNotIn('?mode=rw',str(database))
+                    return connect(database,*args,**kwargs)
+                with patch('service.publication_format.sqlite3.connect',side_effect=guarded_connect):
+                    result=migrate(root,expect_v1=True)
+                    self.assertEqual(result[0],2,result)
+                    self.assertTrue(result[1].startswith('refused:'),result)
+                    if mode!=0o400:self.assertEqual(result[1],'refused:foreign-owner-file')
+                with closing(connect(root/'core.sqlite')) as db:self.assertEqual(list(db.iterdump()),before)
+                after=path.stat()
+                self.assertEqual((after.st_dev,after.st_ino,after.st_mode,after.st_uid,after.st_gid,after.st_nlink,after.st_size,after.st_mtime_ns),
+                                 (evidence.st_dev,evidence.st_ino,evidence.st_mode,evidence.st_uid,evidence.st_gid,evidence.st_nlink,evidence.st_size,evidence.st_mtime_ns))
+                self.assertEqual(stat.S_IMODE(after.st_mode),mode);self.assertEqual(path.read_bytes(),b'')
+
+    def test_held_owner_descriptor_mode_revalidated_before_writer_and_ddl(self):
+        from service import publication_format as fmt
+        for boundary in ('before-writer','before-ddl'):
+            with self.subTest(boundary=boundary),tempfile.TemporaryDirectory() as tmp:
+                root=Path(tmp).resolve()/'core'
+                with closing(Core(root,_publication_creation=1)) as core:
+                    job,_,_=direct_history(core)
+                    path=root/'owners'/job['attempts'][-1]['owner_id'];path.touch(mode=0o600)
+                    before=list(core.db.iterdump())
+                hold=fmt._hold_owners;validate=fmt._validate;held=[];calls=0
+                def hold_then_change(*args):
+                    hold(*args);held.append(args[2].locks[0].fileno())
+                    if boundary=='before-writer':os.fchmod(held[0],0o666)
+                def validate_then_change(*args):
+                    nonlocal calls
+                    result=validate(*args);calls+=1
+                    if boundary=='before-ddl' and calls==2:os.fchmod(held[0],0o666)
+                    return result
+                with patch.object(fmt,'_hold_owners',side_effect=hold_then_change),patch.object(fmt,'_validate',side_effect=validate_then_change):
+                    self.assertEqual(migrate(root,expect_v1=True),(2,'refused:foreign-owner-file'))
+                with closing(sqlite3.connect(root/'core.sqlite')) as db:self.assertEqual(list(db.iterdump()),before)
+                self.assertEqual(path.stat().st_mode & 0o7777,0o666);self.assertEqual(path.read_bytes(),b'')
     def test_scalar_sql_preflight_before_materialization(self):
         core=self.core(1)
         class SizeProxy:

@@ -233,9 +233,22 @@ def _namespace(root):
         finally: os.close(fd)
 
 
-def _same(root,before):
+def _owner_info(fd):
+    info=os.fstat(fd)
+    if (not stat.S_ISREG(info.st_mode) or stat.S_IMODE(info.st_mode)!=0o600 or
+            info.st_uid!=os.getuid() or info.st_nlink!=1 or info.st_size!=0):
+        raise Refusal('foreign-owner-file')
+    return info
+
+
+def _same(root,before,owner=None):
     now=_namespace(root)
     if now[0]!=before[0] or now[2]!=before[2] or any(now[1].get(k)!=v for k,v in before[1].items()): raise Refusal('local-identity-changed')
+    if owner is not None:
+        for stream,name in zip(owner.locks,owner.lock_names):
+            info=_owner_info(stream.fileno())
+            other=os.stat(root/'owners'/name,follow_symlinks=False)
+            if (info.st_dev,info.st_ino)!=(other.st_dev,other.st_ino):raise Refusal('owner-changed')
     return now
 
 
@@ -248,11 +261,10 @@ def _hold_owners(root, db, owner):
         for name in names:
             if name not in known:raise Refusal('unknown-owner')
             fd=os.open(name,os.O_RDWR|os.O_NOFOLLOW|os.O_NONBLOCK,dir_fd=directory)
-            stream=os.fdopen(fd,'r+b');owner.locks.append(stream)
-            info=os.fstat(fd)
-            if not stat.S_ISREG(info.st_mode) or info.st_uid!=os.getuid() or info.st_nlink!=1 or info.st_size!=0:
-                raise Refusal('foreign-owner-file')
+            stream=os.fdopen(fd,'r+b');owner.locks.append(stream);owner.lock_names.append(name)
+            info=_owner_info(fd)
             fcntl.flock(fd,fcntl.LOCK_EX|fcntl.LOCK_NB)
+            _owner_info(fd)
             other=os.stat(name,dir_fd=directory,follow_symlinks=False)
             if (info.st_dev,info.st_ino)!=(other.st_dev,other.st_ino):raise Refusal('owner-changed')
     finally:os.close(directory)
@@ -270,7 +282,7 @@ def migrate(root, *, expect_v1, _fault=lambda point:None):
             # or call registry cleanup while inside it. A retained sentinel fences
             # all future Core/maintenance admission if close becomes uncertain.
             owner=SimpleNamespace(root_key=os.path.normcase(str(root)),root_identity=None,
-                constructor_failed=False,state='maintenance',db=None,owner=None,private=None,locks=[])
+                constructor_failed=False,state='maintenance',db=None,owner=None,private=None,locks=[],lock_names=[])
             c._core_registry[0]=owner
             result=(2,'refused');committing=False;begun=False;db=None;lock=None;close_uncertain=False;mutated=False
             try:
@@ -280,7 +292,7 @@ def migrate(root, *, expect_v1, _fault=lambda point:None):
                 fcntl.flock(fd,fcntl.LOCK_EX|fcntl.LOCK_NB)
                 st=os.fstat(fd)
                 if (st.st_dev,st.st_ino,st.st_mode,st.st_uid,st.st_gid,st.st_nlink)!=before[1]['control.lock']: raise Refusal('control-lock-changed')
-                _same(root,before)
+                _same(root,before,owner)
                 owner.private=private_database(root/'core.sqlite')
                 private=owner.private.__enter__()
                 db=owner.db=sqlite3.connect(private.as_uri()+'?mode=ro',uri=True,timeout=0,isolation_level=None)
@@ -292,7 +304,7 @@ def migrate(root, *, expect_v1, _fault=lambda point:None):
                     owner.private.__exit__(None,None,None);owner.private=None
                 except BaseException:
                     close_uncertain=True;raise
-                _same(root,before)
+                _same(root,before,owner)
                 db=owner.db=sqlite3.connect((root/'core.sqlite').as_uri()+'?mode=rw',uri=True,timeout=0,isolation_level=None)
                 db.execute('PRAGMA trusted_schema=OFF');db.execute('PRAGMA foreign_keys=ON');db.execute('PRAGMA synchronous=FULL')
                 db.execute('PRAGMA wal_autocheckpoint=0')
@@ -300,7 +312,7 @@ def migrate(root, *, expect_v1, _fault=lambda point:None):
                 db.execute('BEGIN IMMEDIATE');begun=True
                 current=_validate(db,root)
                 if not _typed_equal(current,predecessor): raise Refusal('prestate-changed')
-                before=_same(root,before)
+                before=_same(root,before,owner)
                 if current[0]==2:
                     db.execute('ROLLBACK');begun=False;result=(0,'already-v2')
                 else:
@@ -318,13 +330,13 @@ def migrate(root, *, expect_v1, _fault=lambda point:None):
                     post=_validate(db,root)
                     expected=dict(current[2]);expected['p1_format']=[(r[0],2,r[2]) for r in expected['p1_format']]
                     if not _typed_equal(post[2],expected): raise Refusal('post-row-preservation')
-                    _same(root,before);_fault('before-commit')
+                    _same(root,before,owner);_fault('before-commit')
                     committing=True
                     db.execute('COMMIT');begun=False
                     _fault('after-commit')
                     c.sync_dir(root);c.sync_dir(root.parent)
                     if p.store_format(db)!=2: raise Refusal('committed-pair')
-                    _same(root,before);_fault('after-verify')
+                    _same(root,before,owner);_fault('after-verify')
                     result=(0,'migrated')
             except BaseException as exc:
                 if committing or close_uncertain:
