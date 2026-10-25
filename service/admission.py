@@ -1,5 +1,7 @@
 """Private control policy; synthetic containment is never ML qualification."""
 import copy
+import os
+import stat
 import wave
 from contracts import validate as oracle
 from service.core import encode
@@ -128,6 +130,15 @@ class Admission:
                     output=stage/name
                     if output.exists() and output.stat().st_size>byte_limit:raise ValueError('resource_output_bytes')
                     if output.exists() and publication:
+                        if context['plan']['operation']=='audio_export':
+                            from worker.audio_export import pcm, read_bounded
+                            fd=os.open(output,os.O_RDONLY|os.O_NOFOLLOW|os.O_NONBLOCK)
+                            try:
+                                if not stat.S_ISREG(os.fstat(fd).st_mode): raise ValueError('foreign_media')
+                                measured=pcm(read_bounded(fd,byte_limit),rate=expected_rate,channels=spec.channels,bits=24)
+                            finally: os.close(fd)
+                            if measured['frames']>frame_limit: raise ValueError('resource_decoded_limit')
+                            continue
                         with wave.open(str(output),'rb') as wav:
                             if wav.getnframes()>frame_limit or wav.getframerate()!=expected_rate or wav.getnchannels()!=1 or wav.getsampwidth()!=2:
                                 raise ValueError('resource_decoded_limit')

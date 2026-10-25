@@ -439,7 +439,7 @@ def typed_references(self, data, b2, _before, document):
     schema = document['$defs']
     validator = Draft202012Validator(document)
     reference_keys = {'asset_id','asset_ids','input_asset_ids','result_asset_ids',
-                      'audition_asset_id','reference_asset_id','reference_asset_ids'}
+                      'source_asset_id','audition_asset_id','reference_asset_id','reference_asset_ids'}
     def add(value, source):
         if isinstance(value, list):
             for item in value: add(item, source)

@@ -1212,6 +1212,35 @@
         "alias_conflict",
         "voice_archived"
       ]
+    },
+    {
+      "id": "audio_export",
+      "http": {
+        "method": "POST",
+        "route": "/v1/operations/audio_export",
+        "input_location": "json"
+      },
+      "cli": "audio export",
+      "mcp": "speech_audio_export",
+      "request": "audio_export_request",
+      "response": "receipt",
+      "idempotency": true,
+      "scope": "production-write",
+      "headers": [
+        "Idempotency-Key"
+      ],
+      "errors": [
+        "invalid_request",
+        "forbidden",
+        "not_found",
+        "idempotency_conflict",
+        "not_ready",
+        "resource_limit",
+        "unsupported_control",
+        "missing_media",
+        "invalid_media"
+      ],
+      "description": "Managed owned integer PCM WAV inputs only, up to 60 seconds and 24 MiB; separate PCM24 WAV master. Optional loudness is single-pass loudnorm, not delivery loudness certification. Requires an explicitly enrolled immutable converter image and registration; existing installed families are unavailable."
     }
   ],
   "implementation_note": "Declarations include unavailable operations. Authenticated H2 factory exposes only its callable operation set; synthetic contexts require explicit operator configuration. Save is synchronous; cancel returns observed job state. No automatic retries."

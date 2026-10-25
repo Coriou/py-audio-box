@@ -157,6 +157,12 @@ def publication(job, attempt, artifact, present_hashes, *, transport_owner, cont
     for key in ('job_id','attempt_id','generation','input_sha256','staging_id','owner_id'):
         require(manifest[key]==artifact[key], 'manifest_attempt_mismatch')
     require(manifest['operation']==job['operation'] and manifest['artifact_id']==artifact['id'], 'result_mismatch')
+    if job['operation']=='audio_export':
+        source=plan['assets'][0]
+        require(manifest.get('audio_export')==dict(source_asset_id=source['id'],source_sha256=source['sha256'],settings=plan['request'],converter=plan['resolved']['identity']['converter']), 'export_provenance_mismatch')
+        require(artifact.get('audio_export')==manifest['audio_export'], 'export_provenance_mismatch')
+        require(not manifest['candidates'], 'result_mismatch')
+    else: require('audio_export' not in manifest and 'audio_export' not in artifact, 'operation_mismatch')
     require(artifact['manifest_sha256']==canonical_hash(manifest), 'manifest_mismatch')
     outputs=unique(manifest['outputs'])
     require(set(verified_result['result_asset_ids'])==set(outputs), 'result_mismatch')
@@ -304,6 +310,7 @@ def select_bundle(identity,mode,bundles):
 
 def required_asset_ids(plan):
     op=plan['operation']
+    if op=='audio_export':return [plan['request']['asset_id']]
     if op=='voice_prepare':return [plan['request']['asset_id']]
     if op=='voice_design':return []
     if op=='project_render':return sorted({c['asset_id'] for c in plan['project']['clips']})
@@ -318,6 +325,10 @@ def profile_snapshot(profile):
 
 
 def frozen_plan(plan, bundles=None):
+    if plan['operation']=='audio_export':
+        from worker.audio_export import execution
+        execution(dict(plan=plan,bundles={} if bundles is None else bundles,execution=dict(converter=plan['resolved']['identity']['converter'])))
+        return
     request=plan['request'];op=plan['operation'];r=plan['resolved'];identity=r['identity']
     resolution(identity)
     require(r['kind']=={'speech_generate':'speech','voice_prepare':'prepare','voice_design':'design','project_render':'render'}[op], 'operation_mismatch')

@@ -1159,7 +1159,7 @@
           ],
           "keywords": {
             "default": "DEFAULT_TTS_MODEL",
-            "help": "'Qwen3-TTS model \u2014 HF repo ID or local path'"
+            "help": "'Qwen3-TTS model — HF repo ID or local path'"
           }
         },
         {
@@ -1194,7 +1194,7 @@
           "keywords": {
             "default": "'Auto'",
             "choices": "QWEN3_LANGUAGES",
-            "help": "\"Target synthesis language. 'Auto' detects from the target text (langid, \u22653 words) then falls back to the detected ref language.\""
+            "help": "\"Target synthesis language. 'Auto' detects from the target text (langid, ≥3 words) then falls back to the detected ref language.\""
           }
         },
         {
@@ -1205,7 +1205,7 @@
           ],
           "keywords": {
             "action": "'store_true'",
-            "help": "'Build voice prompt from speaker embedding only \u2014 no ref_text needed. Faster but cloning quality may be reduced.'"
+            "help": "'Build voice prompt from speaker embedding only — no ref_text needed. Faster but cloning quality may be reduced.'"
           }
         },
         {
@@ -1434,7 +1434,7 @@
           "keywords": {
             "default": "None",
             "metavar": "'NAME'",
-            "help": "\"Tone label for this reference clip, e.g. 'neutral', 'sad', 'excited'. Stored in the prompt meta and indexed in the voice registry so 'voice-synth speak --tone NAME' can select it. Tone/style comes from the reference audio itself \u2014 record or extract a clip that already sounds the way you want.\""
+            "help": "\"Tone label for this reference clip, e.g. 'neutral', 'sad', 'excited'. Stored in the prompt meta and indexed in the voice registry so 'voice-synth speak --tone NAME' can select it. Tone/style comes from the reference audio itself — record or extract a clip that already sounds the way you want.\""
           }
         },
         {
@@ -1566,7 +1566,7 @@
             "type": "float",
             "default": "None",
             "dest": "'timeout'",
-            "help": "'Wall-clock timeout in seconds for the synthesis step. Defaults to 4\u00d7 the CPU ETA estimate. Pass 0 to disable entirely.'"
+            "help": "'Wall-clock timeout in seconds for the synthesis step. Defaults to 4× the CPU ETA estimate. Pass 0 to disable entirely.'"
           }
         },
         {
@@ -1598,7 +1598,7 @@
             "'prepare-ref'"
           ],
           "keywords": {
-            "help": "'Run stages 1\u20133 only (normalise, VAD score, transcribe)'",
+            "help": "'Run stages 1–3 only (normalise, VAD score, transcribe)'",
             "formatter_class": "argparse.ArgumentDefaultsHelpFormatter"
           }
         },
@@ -2025,7 +2025,7 @@
           ],
           "keywords": {
             "metavar": "'PATH'",
-            "help": "'Path to a local audio file (WAV, MP3, M4A, FLAC, \u2026). Skips the download step. Mount the file into the container with -v /host/path:/container/path.'"
+            "help": "'Path to a local audio file (WAV, MP3, M4A, FLAC, …). Skips the download step. Mount the file into the container with -v /host/path:/container/path.'"
           }
         },
         {
@@ -2178,7 +2178,7 @@
           ],
           "keywords": {
             "default": "'small'",
-            "help": "\"faster-whisper model size for ref transcription ('tiny', 'small', 'medium', \u2026)\""
+            "help": "\"faster-whisper model size for ref transcription ('tiny', 'small', 'medium', …)\""
           }
         },
         {
@@ -2238,7 +2238,7 @@
           "keywords": {
             "type": "float",
             "default": "None",
-            "help": "'Wall-clock timeout in seconds for the synthesis step (passed to voice-clone synth). Defaults to 4\u00d7 the CPU ETA estimate. Pass 0 to disable.'"
+            "help": "'Wall-clock timeout in seconds for the synthesis step (passed to voice-clone synth). Defaults to 4× the CPU ETA estimate. Pass 0 to disable.'"
           }
         },
         {
@@ -2337,7 +2337,7 @@
           ],
           "keywords": {
             "metavar": "'PATH'",
-            "help": "'Path to a local audio file (WAV, MP3, M4A, FLAC, \u2026). Skips the download step. Mount the file into the container with -v /host/path:/container/path.'"
+            "help": "'Path to a local audio file (WAV, MP3, M4A, FLAC, …). Skips the download step. Mount the file into the container with -v /host/path:/container/path.'"
           }
         },
         {
@@ -2411,7 +2411,7 @@
             "type": "float",
             "default": "None",
             "metavar": "'SECS'",
-            "help": "'Demucs chunk size in seconds (default: 4\u00d7 --length, e.g. 120s for 30s clips)'"
+            "help": "'Demucs chunk size in seconds (default: 4× --length, e.g. 120s for 30s clips)'"
           }
         },
         {
@@ -2424,7 +2424,7 @@
             "type": "int",
             "default": "None",
             "metavar": "'N'",
-            "help": "'Number of candidate windows to run Demucs on (default: 2\u00d7 --clips)'"
+            "help": "'Number of candidate windows to run Demucs on (default: 2× --clips)'"
           }
         },
         {
@@ -3278,7 +3278,7 @@
             "'design-voice'"
           ],
           "keywords": {
-            "help": "'Create a voice from natural language (VoiceDesign \u2192 Clone; slow on CPU)'",
+            "help": "'Create a voice from natural language (VoiceDesign → Clone; slow on CPU)'",
             "formatter_class": "argparse.ArgumentDefaultsHelpFormatter"
           }
         },
@@ -3312,7 +3312,7 @@
           ],
           "keywords": {
             "required": "True",
-            "help": "'Script text spoken in the designed voice (short, ~1\u20132 sentences)'"
+            "help": "'Script text spoken in the designed voice (short, ~1–2 sentences)'"
           }
         },
         {
@@ -3768,7 +3768,6 @@
         "voice_import",
         "voice_export",
         "asset_segment",
-        "audio_export",
         "job_list",
         "job_wait",
         "job_events",
@@ -3777,6 +3776,14 @@
       "status": "planned_required",
       "owner": "H1 domain / H2 contracts and adapters",
       "reason": "Finite missing transport contracts; names are requirements, not callable routes. H0 alias/version-list methods and schemas are domain-only."
+    },
+    {
+      "operations": [
+        "audio_export"
+      ],
+      "status": "implemented_source_unqualified",
+      "owner": "H2 r366",
+      "reason": "Closed HTTP/CLI/MCP managed PCM24 export and supervised worker source; inert fixture lifecycle only. Real converter image digest, sealed registration and installed-family enrollment/qualification remain parent-owned UNRUN. Legacy behavior unchanged; release NO-GO, legacy CLOSED."
     }
   ],
   "headless_legacy_bridges": [

@@ -449,7 +449,7 @@ class Core:
         with (_admission._preflight() if _admission is not None else nullcontext()), self.transaction():
             duplicate = self.execution_duplicate(principal, operation, key, plan['request'], context=context, retry_of=retry_of)
             if duplicate is not None: return duplicate
-            if operation not in ('speech_generate', 'voice_prepare'): raise NotImplementedError(operation)
+            if operation not in ('speech_generate', 'voice_prepare', 'audio_export'): raise NotImplementedError(operation)
             if len(encode(context).encode()) > 48000: raise ValueError('plan_limit')
             oracle.plan_hash(plan)
             oracle.frozen_plan(plan, context['bundles'])
@@ -597,11 +597,18 @@ class Core:
                 oracle.require(stat.S_ISREG(info.st_mode) and info.st_uid==(engine_uid if stage_root is not None else os.getuid()) and info.st_nlink==1 and info.st_size<=byte_limit, 'foreign_media')
                 data=stream.read(byte_limit+1)
             import io
-            with wave.open(io.BytesIO(data),'rb') as wav:
-                measured=dict(sha256=hashlib.sha256(data).hexdigest(),frames=wav.getnframes(),sample_rate=wav.getframerate(),channels=wav.getnchannels(),media_format='wav',media_subtype={2:'PCM_16',3:'PCM_24',4:'PCM_32'}.get(wav.getsampwidth(),'OTHER'))
-                oracle.require(len(wav.readframes(wav.getnframes()))==measured['frames']*measured['channels']*wav.getsampwidth(), 'missing_media')
+            if context['plan']['operation']=='audio_export':
+                from worker.audio_export import pcm
+                measured=pcm(data,rate=spec.sample_rate,channels=spec.channels,bits=24)
+            else:
+                with wave.open(io.BytesIO(data),'rb') as wav:
+                    measured=dict(sha256=hashlib.sha256(data).hexdigest(),frames=wav.getnframes(),sample_rate=wav.getframerate(),channels=wav.getnchannels(),media_format='wav',media_subtype={2:'PCM_16',3:'PCM_24',4:'PCM_32'}.get(wav.getsampwidth(),'OTHER'))
+                    oracle.require(len(wav.readframes(wav.getnframes()))==measured['frames']*measured['channels']*wav.getsampwidth(), 'missing_media')
             oracle.require(measured=={k:output[k] for k in measured}, 'media_mismatch')
-            if spec is None and roles:
+            if context['plan']['operation']=='audio_export':
+                from worker.audio_export import verify_output
+                verify_output(context,data,output)
+            elif spec is None and roles:
                 oracle.require(data==fixtures[filename], 'synthetic_policy')
             elif spec is None:
                 expected=dict(kind='synthetic',source_sha256=measured['sha256'],source_id='phase-1a-silence',missing_fields=[])
@@ -620,6 +627,7 @@ class Core:
             data_by_id[output['id']]=data
             hashes[output['id']]=measured['sha256']
         artifact=dict(id=manifest['artifact_id'],job_id=job['id'],generation=job['generation'],asset_ids=[o['id'] for o in manifest['outputs']],input_sha256=job['input_sha256'],project_revision=0,manifest_sha256=oracle.canonical_hash(manifest),identity=context['plan']['resolved']['identity'],attempt_id=job['attempts'][-1]['id'],owner_id=owner,staging_id=job['attempts'][-1]['staging_id'])
+        if context['plan']['operation']=='audio_export': artifact['audio_export']=manifest['audio_export']
         oracle.publication(job,job['attempts'][-1],artifact,hashes,transport_owner=owner,context=context,manifest=manifest,verified_result=message,allowed_assets=self._input_assets(job['principal_id'], context['plan']))
         return (data_by_id if roles else data),manifest,artifact,message
 
@@ -769,6 +777,9 @@ class Core:
         oracle.require(metadata['id']==asset_id and '/' not in asset_id and asset_id not in ('.','..'), 'foreign_media')
         from service.ingest import MAX_BYTES, open_directory, reference_budget
         budget = MAX_BYTES if reference_budget(metadata) else 1024*1024
+        if metadata['provenance']['kind']=='audio_export':
+            from worker.audio_export import MAX_OUTPUT
+            budget=MAX_OUTPUT
         directory = open_directory(self.root/'assets')
         try:
             fd=os.open(metadata['id'],os.O_RDONLY|os.O_NOFOLLOW,dir_fd=directory)

@@ -19,10 +19,13 @@ from worker.transport import canonical, Refused, Session
 
 
 class RuntimeSupervisor:
-    def __init__(self, root='/receipts', ipc='/ipc', *, bundles=None, references=None, qwen_contexts=None, inventory=None, qwen_profiles=None, pocket_reference_roots=None, installed_pocket=False):
+    def __init__(self, root='/receipts', ipc='/ipc', *, bundles=None, references=None, qwen_contexts=None, inventory=None, qwen_profiles=None, pocket_reference_roots=None, installed_pocket=False, audio_converters=None, converter_image_digest=None, export_reference_roots=None):
         if os.getpid() != 1:
             raise RuntimeError('pid1_required')
         from types import MappingProxyType
+        self.audio_converters = copy.deepcopy(audio_converters or {})
+        self.converter_image_digest = converter_image_digest
+        self.export_reference_roots = dict(export_reference_roots or {})
         self.installed_pocket = installed_pocket
         self.bundles = MappingProxyType(dict(bundles or {}))
         self.references = MappingProxyType(copy.deepcopy(references or {}))
@@ -91,7 +94,7 @@ class RuntimeSupervisor:
             if self.journal.maintenance is not None: value['maintenance']=self.journal.maintenance
             return value
         if op == 'prepare':
-            if set(body) != {'snapshot', 'binding', 'fixture'} or body['fixture'] not in ('silence', 'busy', 'descendants', 'permissions', 'kokoro', 'pocket', 'qwen'):
+            if set(body) != {'snapshot', 'binding', 'fixture'} or body['fixture'] not in ('silence', 'busy', 'descendants', 'permissions', 'kokoro', 'pocket', 'qwen', 'audio_export'):
                 raise Refused('closed_prepare')
             snapshot = body['snapshot']
             if not isinstance(snapshot, list) or len(snapshot) != 4 or hashlib.sha256(canonical(snapshot)).hexdigest() != body['binding']:
@@ -101,9 +104,11 @@ class RuntimeSupervisor:
             oracle.stored_context(job, context)
             from worker.runtime_protocol import execution, dispatch_mode
             spec = execution(context)
-            if (body['fixture'] in ('kokoro','pocket','qwen')) != (spec is not None) or (spec is not None and body['fixture'] != dispatch_mode(spec)): raise Refused('execution_dispatch_mismatch')
-            if spec is not None and context['execution']['bundles'] != self.bundles:
+            if (body['fixture'] in ('kokoro','pocket','qwen','audio_export')) != (spec is not None) or (spec is not None and body['fixture'] != dispatch_mode(spec)): raise Refused('execution_dispatch_mismatch')
+            if spec is not None and spec.engine!='audio-export' and context['execution']['bundles'] != self.bundles:
                 raise Refused('unregistered_mount_mapping')
+            if spec is not None and spec.engine == 'audio-export':
+                fd=self.verify_export(context,job['principal_id']); os.close(fd)
             if spec is not None and spec.engine == 'pocket-tts':
                 self.verify_pocket(context, job['principal_id'])
             if spec is not None and spec.engine == 'qwen':
@@ -165,6 +170,8 @@ class RuntimeSupervisor:
             from worker.runtime_protocol import execution
             spec = execution(context)
             reference_fd = None
+            if spec is not None and spec.engine == 'audio-export':
+                fd=self.verify_export(context,row['allocation']['snapshot'][0]['principal_id']); os.close(fd)
             if spec is not None and spec.engine == 'pocket-tts':
                 self.verify_pocket(context, row['allocation']['snapshot'][0]['principal_id'])
             if spec is not None and spec.engine == 'qwen':
@@ -185,6 +192,10 @@ class RuntimeSupervisor:
                           secret=key, control_uid=0, gid=10001, fixture=row['allocation']['fixture'],
                           protected_stages=[r['allocation']['snapshot'][0]['attempts'][-1]['staging_id'] for r in self.journal.value['records'] if r['id'] != row['id']])
             try:
+                if spec is not None and spec.engine=='audio-export':
+                    reference_fd=self.verify_export(context,job['principal_id'])
+                    config['reference_fd']=reference_fd
+                    config['converter_image_digest']=self.converter_image_digest
                 if spec is not None and spec.engine == 'pocket-tts' and getattr(self, 'installed_pocket', False):
                     reference_fd = self.verify_pocket(context, job['principal_id'], retain_fd=True)
                     config['reference_fd'] = reference_fd
@@ -320,6 +331,29 @@ class RuntimeSupervisor:
                 # tick must not reinterpret its wait status as an engine receipt.
                 if not active.get('helper_unknown'):
                     self.active = None
+
+    def verify_export(self, context, principal, *, owner_uid=10001):
+        from worker.audio_export import execution, verify_converter, pcm, MAX_SOURCE, read_bounded
+        from worker.engines.pocket import _open
+        execution(context)
+        reg=context['execution']['converter']
+        profile=context['plan']['resolved']['profile']['id']
+        if self.audio_converters.get((principal,profile))!=reg:
+            raise Refused('unregistered_converter')
+        exe=verify_converter(reg,self.converter_image_digest); os.close(exe)
+        root=self.export_reference_roots.get(principal)
+        if root is None or str(root)!='/references/assets': raise Refused('unregistered_reference_mapping')
+        a=context['plan']['assets'][0]
+        fd=_open(Path(root)/a['id'],owner_uid=owner_uid)
+        try:
+            info=os.fstat(fd)
+            if not 0<info.st_size<=MAX_SOURCE: raise Refused('missing_media')
+            raw=read_bounded(fd,MAX_SOURCE); measured=pcm(raw)
+            if any(a[k]!=v for k,v in measured.items()): raise Refused('missing_media')
+            os.lseek(fd,0,0)
+            return fd
+        except BaseException:
+            os.close(fd); raise
 
     def verify_pocket(self, context, principal, *, owner_uid=10001, retain_fd=False):
         """Independent exact reference allowlist under operator-declared RO mounts.

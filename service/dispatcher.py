@@ -22,7 +22,8 @@ from worker.lifecycle import State
 
 
 class Dispatcher:
-    def __init__(self, root, *, ipc='/ipc', staging='/staging', runtime=None, fault=lambda _:None, budget=None, profiles=None, persistent_registration=None, production_contexts=None, installed_activation=None):
+    def __init__(self, root, *, ipc='/ipc', staging='/staging', runtime=None, fault=lambda _:None, budget=None, profiles=None, persistent_registration=None, production_contexts=None, installed_activation=None, audio_exports=None):
+        self.audio_exports = audio_exports
         self.installed_activation = installed_activation
         self.installed_checked = False
         self.closing = False
@@ -40,7 +41,7 @@ class Dispatcher:
         self.initialized.result(timeout=15 if installed_activation is not None else 5)
 
     def call(self, op, *args, timeout=3, **kwargs):
-        if op not in ('submit','job','jobs','events','artifact','asset','cancel','status','replace','inventory_page','reconcile_startup','close','voice_list','voice_get','voice_version','voice_resolve','voice_summaries','voice_version_summaries','asset_ingest','asset_metadata','asset_content','configured_presets','configured_capabilities','configured_profiles','production_preset_register','production_prepare','production_generate','production_save','production_results','production_job','production_cancel','production_artifact','production_jobs','production_events','production_retry','production_aliases','production_archive','production_profile'):
+        if op not in ('submit','job','jobs','events','artifact','asset','cancel','status','replace','inventory_page','reconcile_startup','close','voice_list','voice_get','voice_version','voice_resolve','voice_summaries','voice_version_summaries','asset_ingest','asset_metadata','asset_content','configured_presets','configured_capabilities','configured_profiles','production_preset_register','production_prepare','production_generate','production_audio_export','audio_export_available','production_save','production_results','production_job','production_cancel','production_artifact','production_jobs','production_events','production_retry','production_aliases','production_archive','production_profile'):
             raise ValueError('unknown_control_command')
         if op == 'asset_ingest':
             from service.ingest import MAX_BYTES
@@ -212,7 +213,7 @@ class Dispatcher:
         from service.production import Production
         from service.catalogue import OPERATIONS
         from service.voice_store import _id
-        operation = {'production_preset_register':'voice_preset_register', 'production_prepare':'voice_prepare', 'production_generate':'speech_generate',
+        operation = {'production_preset_register':'voice_preset_register', 'production_prepare':'voice_prepare', 'production_generate':'speech_generate', 'production_audio_export':'audio_export',
                      'production_save':'voice_save', 'production_results':'voice_results',
                      'production_job':'job_get', 'production_cancel':'job_cancel',
                      'production_artifact':'artifact_get', 'production_jobs':'jobs_list', 'production_events':'job_events',
@@ -251,10 +252,13 @@ class Dispatcher:
                 if self.core.db.execute('SELECT 1 FROM publications WHERE job_id=?',(old['id'],)).fetchone(): raise ValueError('unsupported_control')
                 from service.persistence import check_operator_resolved
                 check_operator_resolved(self.core.db,old['id'])
-                if self.production_contexts is None: raise ValueError('not_ready')
                 from service.production_selection import ContextComposition, resolve_owned, choose
                 request = context['plan']['request']
-                if isinstance(self.production_contexts, ContextComposition):
+                if old['operation']=='audio_export':
+                    if self.installed_checked or self.audio_exports is None: raise ValueError('not_ready')
+                    current=self.audio_exports.resolve(self.core,principal,request)
+                elif self.production_contexts is None: raise ValueError('not_ready')
+                elif isinstance(self.production_contexts, ContextComposition):
                     current = self.production_contexts.resolve_selected(self,principal,old['operation'],request)
                 else:
                     current = resolve_owned(self.production_contexts,self.core,principal,old['operation'],request)
@@ -315,6 +319,14 @@ class Dispatcher:
             if not self._activation_open() or self.closing or self.integrity_fault or self.persistence_fault: raise ValueError('not_ready')
             owned(payload['job_id'])
             return domain.save(principal, key, payload['job_id'], payload['candidate_id'], payload['voice_id'], expected_revision=payload['expected_revision'])
+        if op == 'production_audio_export':
+            job=self.core.execution_duplicate(principal,operation,key,payload)
+            if job is None:
+                if (not self._activation_open() or self.closing or not self.reconciled or self.quarantined or self.resource_fault or self.integrity_fault or self.persistence_fault or not getattr(self.runtime,'admission_open',True) or self.audio_exports is None or self.installed_checked):
+                    raise ValueError('not_ready')
+                context=self.audio_exports.resolve(self.core,principal,payload)
+                job=domain.audio_export(principal,key,context,_admission=self.admission,_profiles=self.profiles)
+            return dict(job_id=job['id'],input_sha256=job['input_sha256'],state='queued',status_url='/v1/jobs/'+job['id'])
         # Duplicate lookup retains the original frozen identity and reservation.
         job = self.core.execution_duplicate(principal, operation, key, payload)
         if job is None:
@@ -333,6 +345,7 @@ class Dispatcher:
         return dict(job_id=job['id'], input_sha256=job['input_sha256'], state='queued', status_url='/v1/jobs/'+job['id'])
 
     def _command(self,op,*args,**kwargs):
+        if op=='audio_export_available': return bool(not self.installed_checked and self.audio_exports and self.audio_exports.available(args[0]))
         if op.startswith('production_'): return self._production_command(op,*args,**kwargs)
         if op=='asset_ingest':
             if self.installed_checked and not self._ready(): raise ValueError('not_ready')

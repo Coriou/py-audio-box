@@ -13,6 +13,12 @@ class Production:
     def __init__(self, core):
         self.core = core
 
+    def audio_export(self, principal, key, context, *, _admission=None, _profiles=None):
+        from worker.audio_export import execution
+        execution(context)
+        return self.core.submit_execution(principal,key,context,_admission=_admission,
+            _profiles=_profiles,_dispatch_settings=('audio_export',min(25,context['plan']['resolved']['profile']['limits']['deadline_seconds'])))
+
     def register_preset(self, principal, key, version, *, expected_revision):
         return self.core.voices.register(principal, key, version, expected_revision=expected_revision)
 

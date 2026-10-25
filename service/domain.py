@@ -117,6 +117,9 @@ def owned_asset(core, principal, asset_id, *, content=False, start=0, end_exclus
         return metadata
     if not 0 <= start < end_exclusive or end_exclusive-start > 65536:
         raise ValueError('invalid_request')
+    if metadata['provenance']['kind']=='audio_export':
+        from worker.audio_export import MAX_OUTPUT
+        MAX_BYTES=MAX_OUTPUT
     directory = open_directory(core.root/'assets')
     try:
         fd = os.open(metadata['id'], os.O_RDONLY|os.O_NOFOLLOW, dir_fd=directory)
@@ -224,7 +227,7 @@ def production_call(dispatcher, principal, operation, payload, key=None):
     try:
         validate(op['request'], payload)
         if op['idempotency']: _id(key)
-        command = {'voice_preset_register':'production_preset_register', 'voice_prepare':'production_prepare', 'speech_generate':'production_generate',
+        command = {'audio_export':'production_audio_export', 'voice_preset_register':'production_preset_register', 'voice_prepare':'production_prepare', 'speech_generate':'production_generate',
                    'voice_save':'production_save', 'voice_results':'production_results',
                    'job_get':'production_job', 'job_cancel':'production_cancel',
                    'artifact_get':'production_artifact', 'jobs_list':'production_jobs', 'job_events':'production_events',
