@@ -74,9 +74,13 @@ def private_input(path, *, mode, limit):
 
 
 def installed_credentials(path, principals):
+    return decode_credentials(private_input(path, mode=0o640, limit=48000), principals)
+
+
+def decode_credentials(raw, principals):
     from service.recovery import host_json, closed
     from re import fullmatch
-    value = host_json(private_input(path, mode=0o640, limit=48000))
+    value = host_json(raw)
     closed(value, 'version credentials')
     if type(value['version']) is not int or value['version'] != 1 or type(value['credentials']) is not list or not 1 <= len(value['credentials']) <= 32:
         raise ValueError('invalid_credential_configuration')
