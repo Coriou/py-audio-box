@@ -62,7 +62,7 @@ class ExportDaemonTests(unittest.TestCase):
         with self.assertRaises(ValueError): dh.gate_projection(s.gate)
         with self.assertRaises(ValueError): dv.binding(s.b)
         with self.assertRaises(ValueError): dv.command('worker',s.config,s.b)
-        with self.assertRaisesRegex(ValueError,'activation_and_retained_history_unavailable'):
+        with self.assertRaisesRegex(ValueError,'owner_activation_unavailable'):
             s.run('up')
 
     def test_exact_subpath_commands_and_inspection_refusals(self):
@@ -92,7 +92,7 @@ class ExportDaemonTests(unittest.TestCase):
 
     def test_unavailable_up_has_no_create_or_start(self):
         s=self.initialized()
-        with self.assertRaisesRegex(ValueError,'activation_and_retained_history_unavailable'): s.run('up')
+        with self.assertRaisesRegex(ValueError,'owner_activation_unavailable'): s.run('up')
         self.assertFalse(any(a in ('create','start','notify') for a,_ in s.calls))
 
     def test_credential_principal_refuses_before_core(self):

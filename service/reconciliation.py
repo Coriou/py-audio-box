@@ -105,7 +105,7 @@ class Reconciliation:
         self.rows[key] = dict(id=key, namespace=namespace, name=name, classification=kind,
             reason=reason, identity=identity, owner=owner, references=sorted(set(refs)))
 
-    def _collect(self, *, _before=None, policy=None):
+    def _collect(self, *, _before=None, policy=None, _export_public=None, _family=None):
         # Trusted offline read context only; never infer ownership from a row.
         # Worker attempt ownership continues to use its existing allocation map.
         if policy is not None:
@@ -119,6 +119,7 @@ class Reconciliation:
         self.scalar_limit = self.byte_limit
         self.media_limit = self.byte_limit
         self.separate_media = False
+        self._export_family = _family
         self.entries = self.bytes = self.media_bytes = 0
         self.end = time.monotonic() + self.seconds
         self.rows, self.reasons = {}, set()
@@ -134,6 +135,14 @@ class Reconciliation:
             self.media_limit=160*1024**2
             self.separate_media=True
             self.scalar_limit=16*1024**2
+        from service import installed_export as ex
+        if _family is not None or _export_public is not None:
+            if _family is not ex.FAMILY or policy is not ex.ip.SPLIT:
+                raise Incomplete('explicit_export_family_required')
+            ex.database(self.db, _export_public)
+            self.media_limit=ex.MEDIA_BYTES
+            self.scalar_limit=ex.SCALAR_BYTES
+            self.separate_media=True
         b2 = None
         if tables & persistence.B2_COLUMNS.keys():
             from service.recovery import validate_b2_database
@@ -609,12 +618,14 @@ def typed_references(self, data, b2, _before, document):
                     raise Incomplete('invalid_b1_digest')
                 if table == 'p1_installation':
                     from service.install_policy import installation
-                    installation(value)
+                    from service import installed_export as ex
+                    (ex.installation if getattr(self,'_export_family',None) is ex.FAMILY else installation)(value)
                     if (value['deployment_id'] != record['id'] or record['revision'] != 1 or
                         value['revision'] != 1 or record['scope'] != value['scope']):
                         raise Incomplete('invalid_b1_installation')
                 elif table == 'p1_registrations':
-                    validate_registration(value)
+                    from service import installed_export as ex
+                    (ex.host_registration if getattr(self,'_export_family',None) is ex.FAMILY else validate_registration)(value)
                     if record['id'] != digest(value): raise Incomplete('invalid_b1_registration')
                 else:
                     validate_plan(value)

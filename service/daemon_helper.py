@@ -355,17 +355,16 @@ class Helper:
             raise ValueError('daemon_unhealthy_control_state')
 
     def clean(self,*,lane_lock=False):
-        from service.host_install import _registration_snapshot
         from worker.runtime_journal import read_snapshot
         from service.recovery import installed_clean_history
         with ExitStack() as stack:
             stack.enter_context(ip.locked_file(self.root['control']/'core/control.lock',policy=ip.SPLIT,role='control'))
             if lane_lock: stack.enter_context(ip.locked_file(self.root['receipts']/'lane.lock',policy=ip.SPLIT,role='receipts'))
-            state=_registration_snapshot({r:self.root[r] for r in ip.ROLES},self.scope)
+            state=self.retained_snapshot()
             self.healthy(state)
             journal,maintenance=read_snapshot(self.root['receipts'],policy=ip.SPLIT)
             if maintenance is not None: raise ValueError('daemon_maintenance_pending')
-            installed_clean_history(state,journal)
+            installed_clean_history(state,journal,family=self.family)
             return json.loads(encode(dict(state=state,journal=journal)))
 
     def observe(self,ids,public):
@@ -389,12 +388,22 @@ class Helper:
         from service import installed_export as ex, recovery
         return (ex.host_registration if self.export else recovery.validate_registration)(record)
 
-    def registration_snapshot(self, public):
+    def retained_snapshot(self):
+        if self.export:
+            from service import installed_export as ex
+            return ex.retained_snapshot(self.root,self.public(),family=self.family)
+        from service.host_install import _registration_snapshot
+        return _registration_snapshot({r:self.root[r] for r in ip.ROLES},self.scope)
+
+    def registration_snapshot(self, public, *, retained=False):
+        if retained and self.export:
+            from service import installed_export as ex
+            return ex.retained_snapshot(self.root,public,family=self.family)
         if not self.export:
             from service.host_install import _registration_snapshot
             return _registration_snapshot({r:self.root[r] for r in ip.ROLES},self.scope)
-        # Deliberately initial empty history only. Retained export history and
-        # owner activation are a later slice; never pass v2 to the v1 scanner.
+        # Deliberately narrow fresh reader. Retained facts use the separate
+        # explicitly selected reader; this path keeps its empty-history checks.
         from service import installed_export as ex, recovery
         import sqlite3
         ex.expectation(public,self.family).check_root(self.root['control']/'core')
@@ -419,9 +428,16 @@ class Helper:
 
     def register(self,ids,public,history):
         with ip.locked_file(self.root['control']/'core/control.lock',policy=ip.SPLIT,role='control') as lock:
-            before=self.registration_snapshot(public)
+            before=self.registration_snapshot(public,retained=self.export)
             self.healthy(before)
+            if self.export:
+                from worker.runtime_journal import read_snapshot
+                from service import recovery
+                journal,maintenance=read_snapshot(self.root['receipts'],policy=ip.SPLIT)
+                if maintenance is not None: raise ValueError('daemon_maintenance_pending')
+                recovery.installed_clean_history(before,journal,family=self.family)
             obs=self.observe(ids,public)
+            if self.export and obs['hello']['lane']!=before['lane']: raise ValueError('installed_history_lane')
             record=dict(deployment_id=public['deployment_id'],scope=self.scope,containers=self.owners(obs['inspections']),
                 lane=obs['hello']['lane'],boot=obs['hello']['boot'],evidence=self.evidence)
             self.validate_registration(record); dv.observation(obs,record,self.config,self.b,public,family=self.family)
@@ -439,7 +455,7 @@ class Helper:
             prestate=[list(r) for r in before['evidence_projection']['data']['p1_registrations']]
             self.child('writer',dict(public=public,registration=record,prestate=prestate,control_fd=self.fds['control'],
                 staging_fd=self.fds['staging'],lock_fd=lock),(self.fds['control'],self.fds['staging'],lock))
-            after=self.registration_snapshot(public)
+            after=self.registration_snapshot(public,retained=self.export)
             if [list(r) for r in after['evidence_projection']['data']['p1_registrations']]!=prestate+[[rid,encode(record),rid]]:
                 raise ValueError('daemon_registration_poststate')
             def stable(state):
@@ -468,7 +484,7 @@ class Helper:
     def runtime(self):
         public=self.public()
         if self.export:
-            raise ValueError('daemon_export_owner_activation_and_retained_history_unavailable')
+            raise ValueError('daemon_export_owner_activation_unavailable')
         if self.exists('containers.json'):
             ids=self.read('containers.json'); dv.closed(ids,'control worker')
         elif self.phase=='up':

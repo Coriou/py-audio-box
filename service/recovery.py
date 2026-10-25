@@ -743,7 +743,7 @@ def _run_bounded_maintenance(roots, scope, operation, *, _prewrite=None):
 
 
 
-def snapshot(roots, db, scope, *, policy=None, exclude_plan=None, exclude_abandon=None, transaction=True, _prefix=None, _journal_after=False, _core_after=False, _journal_observation=None):
+def snapshot(roots, db, scope, *, policy=None, exclude_plan=None, exclude_abandon=None, transaction=True, _prefix=None, _journal_after=False, _core_after=False, _journal_observation=None, _export_public=None, _family=None):
     """Read-only transaction including WAL; never calls an observation fence."""
     from service import install_policy as ip
     if policy is not None: ip.require(policy)
@@ -751,6 +751,15 @@ def snapshot(roots, db, scope, *, policy=None, exclude_plan=None, exclude_abando
         if policy is None: return globals()['read_file'](path, limit)
         role = next((r for r,p in roots.items() if p == Path(path).parent), None)
         return globals()['read_file'](path, limit, policy=policy, role=role)
+    from service import installed_export as ex
+    export = _family is ex.FAMILY
+    if (_family is not None and not export) or (_export_public is not None and not export):
+        raise ValueError('explicit_export_family_required')
+    if export:
+        if policy is not ip.SPLIT: raise ValueError('explicit_fixed_install_policy_required')
+        ex.installation(_export_public)
+        if encode(_export_public['host']) != encode(scope): raise ValueError('export_enrollment_binding')
+        ex.database(db, _export_public)
     validate_scope(scope)
     if transaction: db.execute('BEGIN')
     try:
@@ -778,21 +787,25 @@ def snapshot(roots, db, scope, *, policy=None, exclude_plan=None, exclude_abando
             count+=n; size+=b
             if count>MAX_ROWS or size>MAX_BYTES: raise ValueError('inspection_budget')
             data[table]=db.execute('SELECT * FROM '+table+' ORDER BY rowid').fetchall()
-        if data['p1_format'] != [(1,'synthetic-core')] or data['resource_protocol'] != [(1,2)] or db.execute('PRAGMA user_version').fetchone() != (1,):
+        if data['p1_format'] != [(2 if export else 1,'synthetic-core')] or data['resource_protocol'] != [(1,2)] or db.execute('PRAGMA user_version').fetchone() != (2 if export else 1,):
             raise ValueError('unsupported_versions')
         if len(data['p1_installation'])!=1: raise ValueError('not_enrolled')
         identity,revision,kind,raw,h=data['p1_installation'][0]
         installation=json.loads(raw)
-        ip.installation(installation)
+        (ex.installation if export else ip.installation)(installation)
+        if export and encode(installation)!=encode(_export_public): raise ValueError('export_exact_enrollment_required')
         if (digest(installation)!=h or identity!=installation['deployment_id'] or revision!=1 or kind!=installation['scope'] or installation['host']!=scope):
             raise ValueError('deployment_scope_mismatch')
         private_raw=read_file(roots['receipts']/'p1-init.json')
         private=json.loads(private_raw)
         if policy is not None:
-            ip.initialization(private)
+            if export:
+                closed(private,'public seed'); ex.installation(private['public'])
+                if not isinstance(private['seed'],str) or not HEX.fullmatch(private['seed']): raise ValueError('invalid_split_initialization')
+            else: ip.initialization(private)
             if private_raw != encode(private).encode() or raw != encode(installation):
                 raise ValueError('noncanonical_installed_record')
-            if (kind not in ip.SCOPES or private['public'] != installation or ip.role_records(roots) != installation['roles']):
+            if (kind not in ((ex.SCOPE,) if export else ip.SCOPES) or private['public'] != installation or ip.role_records(roots) != installation['roles']):
                 raise ValueError('volume_role_identity_mismatch')
         else:
             if kind != 'owned-synthetic': raise ValueError('explicit_fixed_install_policy_required')
@@ -846,15 +859,16 @@ def snapshot(roots, db, scope, *, policy=None, exclude_plan=None, exclude_abando
             receipt_completion=journal['payload'].get('maintenance') if _prefix is not None else read_maintenance(roots['receipts'], policy=policy)
             if receipt_completion!=journal['payload'].get('maintenance'): raise ValueError('journal_maintenance_binding')
         payload=journal['payload']
-        if digest(payload)!=journal['sha256'] or payload['version']!=1 or not isinstance(payload['records'],list) or len(payload['records'])>64:
+        if (export and type(payload['version']) is not int) or digest(payload)!=journal['sha256'] or payload['version']!=1 or not isinstance(payload['records'],list) or len(payload['records'])>64:
             raise ValueError('journal_identity_unreadable')
         registrations=[]
         for rid,raw,h in data['p1_registrations']:
-            r=json.loads(raw); validate_registration(r)
-            if policy is not None and r['evidence'] != ('daemon-volumes-inspection-v1' if 'launch' in installation else 'actual-host-inspection'):
+            r=json.loads(raw); (ex.host_registration if export else validate_registration)(r)
+            if policy is not None and r['evidence'] != (ex.EVIDENCE if export else 'daemon-volumes-inspection-v1' if 'launch' in installation else 'actual-host-inspection'):
                 raise ValueError('installed_registration_evidence_policy')
             if digest(r)!=h or r['deployment_id']!=identity or r['scope']!=scope or rid!=digest(r): raise ValueError('registration_digest_scope')
             registrations.append(r)
+        if export and any(r['lane']!=payload['lane'] for r in registrations): raise ValueError('installed_history_lane')
         _validate_snapshot_journal(payload, data, registrations)
         for pid,raw,h in data['p1_recovery_plans']:
             p=json.loads(raw); validate_plan(p)
@@ -863,7 +877,7 @@ def snapshot(roots, db, scope, *, policy=None, exclude_plan=None, exclude_abando
         scanner=Reconciliation.__new__(Reconciliation)
         scanner.core=SimpleNamespace(root=roots['control']/'core'); scanner.db=db; scanner.staging=roots['staging']
         scanner.entry_limit=MAX_ROWS; scanner.byte_limit=MAX_BYTES; scanner.seconds=1
-        scanner._collect(_before=_prefix if _core_after else None, policy=policy)
+        scanner._collect(_before=_prefix if _core_after else None, policy=policy, _export_public=_export_public, _family=_family)
         if tables & B2_COLUMNS.keys():
             size += scanner.bytes + len(journal_raw)
             if size>MAX_BYTES or count+scanner.entries+len(payload['records'])>MAX_ROWS:
@@ -2835,13 +2849,27 @@ def host_registration_union(registrations, scope, deployment_id):
     return [known[k] for k in sorted(known)]
 
 
-def installed_history_current(registrations, scope, deployment_id, current):
+def installed_history_current(registrations, scope, deployment_id, current, *, family=None, public=None):
     """Installed retained claims -> one independently inspected current per ID.
 
     Historical StartedAt values are claims, never observations of dead processes.
     The caller supplies a fresh complete host inspection, not a selected pair.
     Legacy host_registration_union deliberately keeps its original semantics.
     """
+    from service import installed_export as ex
+    if family is not None:
+        if family is not ex.FAMILY: raise ValueError('explicit_export_family_required')
+        ex.installation(public)
+        if public['deployment_id']!=deployment_id or encode(public['host'])!=encode(scope): raise ValueError('export_enrollment_binding')
+        def projected(records):
+            result=[]
+            for record in records:
+                ex.bound_registration(record,public)
+                value=json.loads(encode(record)); value['evidence']='actual-host-inspection'
+                result.append(value)
+            return result
+        registrations, current = projected(registrations), projected(current)
+        if len({r['lane'] for r in registrations+current})!=1: raise ValueError('installed_history_lane')
     if not registrations:
         return host_registration_union(current,scope,deployment_id)
     # Reuse every legacy closed/origin/budget check separately; only cross-row
@@ -2991,34 +3019,39 @@ def _installed_detached_documents(data, *, publication_format=1):
                 if row['outcome']:oracle.validate('job',json.loads(row['outcome']))
 
 
-def _installed_detached_source(state, journal):
+def _installed_detached_source(state, journal, *, family=None):
     """Validate retained bytes only; never open an old root or SQLite file."""
     from service import install_policy as ip
     from contracts import validate as oracle
     from worker.runtime_journal import validate_payload
+    from service import installed_export as ex
+    export = family is ex.FAMILY
+    if family is not None and not export: raise ValueError('explicit_export_family_required')
     source=state['evidence_projection']
     # Same closed bounded source format used by private recovery evidence.
     columns=_evidence_columns()
     if not set(source['data']) & B2_COLUMNS.keys():
         columns={k:v for k,v in columns.items() if k not in B2_COLUMNS}
     _validate_source(source,columns=columns)
+    if export and type(journal['version']) is not int: raise ValueError('invalid_journal')
     data=source['data']
     if (data['p1_recovery_plans'] or any(data.get(t) for t in B2_COLUMNS) or
-            data['p1_format']!=[[1,'synthetic-core']] or data['resource_protocol']!=[[1,2]]):
+            data['p1_format']!=[[2 if export else 1,'synthetic-core']] or data['resource_protocol']!=[[1,2]]):
         raise ValueError('installed_history_maintenance_or_version')
     _installed_detached_rows(source, columns)
     if data['voice_catalogue_format']!=[[1]]:raise ValueError('installed_history_catalogue_version')
     if len(data['p1_installation'])!=1: raise ValueError('installed_history_enrollment')
     identity,revision,kind,raw,h=data['p1_installation'][0]
-    public=host_json(raw.encode());ip.installation(public)
+    public=host_json(raw.encode());(ex.installation if export else ip.installation)(public)
     if (identity!=state['deployment_id'] or identity!=public['deployment_id'] or
-            revision!=1 or kind not in ip.SCOPES or kind!=public['scope'] or digest(public)!=h or
+            revision!=1 or kind not in ((ex.SCOPE,) if export else ip.SCOPES) or kind!=public['scope'] or digest(public)!=h or
             raw!=encode(public) or source['marker']!=dict(deployment_id=identity,digest=h)):
         raise ValueError('installed_history_enrollment')
+    if export: ex._retained_contexts(public,data)
     registrations=[]
     for rid,raw,h in data['p1_registrations']:
-        record=host_json(raw.encode());validate_registration(record)
-        if record['evidence'] != ('daemon-volumes-inspection-v1' if 'launch' in public else 'actual-host-inspection'):
+        record=host_json(raw.encode());(ex.bound_registration(record,public) if export else validate_registration(record))
+        if record['evidence'] != (ex.EVIDENCE if export else 'daemon-volumes-inspection-v1' if 'launch' in public else 'actual-host-inspection'):
             raise ValueError('installed_registration_evidence_policy')
         if (rid!=h or digest(record)!=rid or record['deployment_id']!=identity or
                 record['scope']!=public['host'] or raw!=encode(record)):
@@ -3027,13 +3060,15 @@ def _installed_detached_source(state, journal):
     # Share the loader's complete closed record/receipt/proposal checks, then
     # the private snapshot's stronger Authority/boot/runtime/dispatch joins.
     validate_payload(journal)
+    if export and any(r['lane']!=journal['lane'] for r in registrations): raise ValueError('installed_history_lane')
     _validate_snapshot_journal(journal,data,registrations)
     from service.reconciliation import typed_references, DIAGNOSTICS
     typed={table:[dict(zip(columns[table].split(),r)) for r in rows]
            for table,rows in data.items() if table not in DIAGNOSTICS and table!='sqlite_sequence'}
-    _installed_detached_documents(typed)
+    _installed_detached_documents(typed, publication_format=2 if export else 1)
     scanner=Reconciliation.__new__(Reconciliation)
-    scanner.publication_format=1  # This role-specific installed history stays v1.
+    scanner._export_family=family
+    scanner.publication_format=2 if export else 1
     scanner.entry_limit=MAX_ROWS;scanner.byte_limit=MAX_BYTES
     scanner.entries=scanner.bytes=0;scanner.end=time.monotonic()+1
     scanner.rows={};scanner.reasons=set()
@@ -3049,6 +3084,7 @@ def _installed_detached_source(state, journal):
     import stat
     refs,assets=result[:2]
     retained_assets=set()
+    media_bytes=0
     for row in source['inventory']:
         identity_claim=row['identity']
         if (not isinstance(identity_claim,list) or len(identity_claim)!=10 or
@@ -3056,6 +3092,8 @@ def _installed_detached_source(state, journal):
             raise ValueError('installed_history_inventory_identity')
         _,_,mode,uid,gid,links,size,_,_,hash_claim=identity_claim
         regular=stat.S_ISREG(mode)
+        if regular: media_bytes += size
+        if export and media_bytes>ex.MEDIA_BYTES: raise ValueError('inspection_media_budget')
         if (sorted(row['references'])!=sorted(refs.get(row['name'],())) or
                 (not regular and not stat.S_ISDIR(mode)) or size<0):
             raise ValueError('installed_history_inventory_identity')
@@ -3083,11 +3121,14 @@ def _installed_detached_source(state, journal):
     return public
 
 
-def installed_clean_history(state, journal):
+def installed_clean_history(state, journal, *, family=None):
     """Proof of discharged obligations, never inferred from container exit."""
+    from service import installed_export as ex
+    export = family is ex.FAMILY
+    if family is not None and not export: raise ValueError('explicit_export_family_required')
     state=json.loads(encode(state)); journal=json.loads(encode(journal))
     closed(journal,'version lane records')
-    if (journal['version']!=1 or journal['lane']!=state['lane'] or
+    if ((export and type(journal['version']) is not int) or journal['version']!=1 or journal['lane']!=state['lane'] or
             state['faults'] or state['inventory']['reasons'] or not state['allocation_coherent'] or
             len(journal['records'])>=64 or any(r['state']!='retained' for r in state['reservations']) or
             any(j['state'] not in ('succeeded','failed','cancelled') or
@@ -3099,7 +3140,7 @@ def installed_clean_history(state, journal):
     data=projection['data']
     registrations=[]
     for rid,raw,h in data['p1_registrations']:
-        record=host_json(raw.encode()); validate_registration(record)
+        record=host_json(raw.encode()); (ex.host_registration if export else validate_registration)(record)
         if digest(record)!=rid or rid!=h: raise ValueError('installed_history_registration')
         registrations.append(record)
     jobs=[{k:v for k,v in json.loads(r[6]).items() if k in ('id','state','generation','deadline','attempts')} for r in data['jobs']]
@@ -3110,7 +3151,7 @@ def installed_clean_history(state, journal):
             digest(projection)!=state['source_digest'] or projection['journal']!=state['journal_digest'] or
             digest(dict(payload=journal,sha256=digest(journal)))!=state['journal_digest']):
         raise ValueError('installed_history_snapshot_binding')
-    _installed_detached_source(state,journal)
+    _installed_detached_source(state,journal,family=family)
     if any(r[3]!='returned' for r in data['dispatch_commands']):
         raise ValueError('installed_history_uncertain_command')
     runtime={d['runtime_id']:d for d in state['dispatches']}
@@ -3761,7 +3802,7 @@ def validate_installed_observation(value, scope, owners, configuration, policy, 
     return value
 
 
-def installed_startup_read(root, configuration, gate, hello, incarnation, *, policy, launch_policy=None):
+def installed_startup_read(root, configuration, gate, hello, incarnation, *, policy, launch_policy=None, family=None):
     """Explicit split-scope pre-owner gate using only control-readable evidence.
 
     Caller holds control exclusion and obtains hello through authenticated IPC.
@@ -3772,6 +3813,11 @@ def installed_startup_read(root, configuration, gate, hello, incarnation, *, pol
     from service import install_policy as ip
     from service.entrypoint import projection
     ip.require(policy)
+    if family is not None:
+        from service import installed_export as ex
+        if family is not ex.FAMILY or policy is not ip.SPLIT or launch_policy!=ex.LAUNCH:
+            raise ValueError('installed_explicit_launch_policy')
+        return ex.startup_read(root,configuration,gate,hello,incarnation,family=family)
     config = ip.configuration(configuration); projection(gate)
     from service import daemon_volumes as dv
     if launch_policy not in (None,dv.POLICY) or (gate.get('launch_policy') != launch_policy):
