@@ -1,0 +1,115 @@
+# Native Qwen package SOURCE portion (r297)
+
+This separate `native-qwen-v1` archive is a worker source package, not a complete
+Lot B installation. Linux Kokoro/Pocket enrollment, root/PID1/UID rules, images,
+locks and history readers are unchanged. There is no native installed activation,
+Docker launcher, enrollment transaction, readiness promotion or fresh catalogue
+bootstrap in this portion. Do not use Linux registration for native history.
+Actual Metal speech remains UNAVAILABLE / UNQUALIFIED.
+
+Build without acquisition from the checkout using an explicitly selected Python:
+
+```
+/absolute/python -I -B -c "import sys;sys.path.insert(0,'/absolute/source');from service.native_package import main;main()" archive --output /absolute/new-native.zip
+```
+
+Extract into an operator-owned immutable source directory. The archive contains
+only the explicit `native-dist-manifest.json` allowlist and `native-worker.py`.
+It contains no Python binary, dependencies, wheels, weights, credential or local
+configuration. It contains no Linux dependency locks. Invoke the extracted entry
+with the selected absolute managed Darwin arm64 executable (no PATH/shebang):
+
+```
+/absolute/managed/python -I -B /absolute/native-worker/native-worker.py check --config /absolute/private/supervisor.json --runtime-manifest /absolute/private/runtime.json
+```
+
+`serve` repeats preflight and enters the existing NativeSupervisor and serve function in the
+same interpreter using the checked configuration snapshot. It is an explicit private listener operation and is not needed
+for source checks. No command installs, resolves, downloads or repairs anything.
+The supervisor exec child inherits its existing minimal offline environment and
+single private socket; config/TLS credentials are not inherited.
+
+Both documents must be canonical JSON, owner-only 0600, single-link regular
+files, in owner-only 0700 directories. Every path is literal absolute and walked
+without following symlinks. CA, certificate and key also require 0600/0700 roots.
+Use a dedicated service account and exclude hostile same-UID writers. Rotation
+requires a stopped and reconciled deployment; never edit trust under a live owner.
+
+The supervisor document is the existing closed NativeSupervisor CLI shape:
+`root,deployment_id,configuration_sha256,peer_pin,runtime_manifest_sha256,
+registrations,python,child_entry,host,port,proven_host_network,cafile,certfile,keyfile`.
+`python` must equal the current managed `sys.executable`; symlink executables are
+refused. `child_entry` is the exact extracted `worker/native_child.py`.
+`peer_pin` is the exact Docker client certificate DER SHA256, not a CA pin.
+TLS remains 1.3/CERT_REQUIRED with the existing exact per-frame peer pin.
+
+Select a numeric reachable host interface and port explicitly. Wildcards and
+multicast refuse. Loopback needs explicit proven host-network topology; it is
+not a Docker Desktop/OrbStack reachability assumption. Restrict the host firewall
+to the selected Docker bridge source/interface and this one port. Resolve any
+host gateway name outside the RPC path and configure NativeRuntime with that
+explicit numeric address and the exact server certificate DER pin. These source
+checks do not establish routing or firewall enforcement. When Docker control
+packaging is completed, mount client credentials only into control, never a
+Linux worker or native inference child. No native server key belongs in Docker.
+
+The runtime manifest is closed with these fields (no supplied example is a real
+platform/dependency lock):
+
+- `version: 1`, `variant: "native-qwen-v1"`, `qualification: "unverified"`.
+- `python`: exact `executable,version,build,implementation,machine,system,sha256`.
+  `version` is full `sys.version`, `build` is the two-element python_build list,
+  system/machine must be Darwin/arm64; sha256 hashes the managed executable.
+- `distributions`: normalized name → exact installed version, the entire set
+  including packaging/tooling. Local `+cpu` versions refuse. Requires-Dist edges
+  and platform markers are checked without importing ML. URL/extra dependencies
+  are unsupported and refuse. Missing packaging itself also refuses.
+- `artifacts`: nonempty list of `{path,sha256,distributions}` mapping every
+  distribution exactly once to an operator-provided offline artifact. Paths
+  must be owner-controlled immutable files. Hashes authenticate selected bytes;
+  this does not prove an artifact was installed or its ABI is compatible.
+- `source_archive`: `{path,sha256}` for the exact retained native source archive.
+  Every named extracted source byte must equal the archive; extra archive
+  members refuse. Keep the archive outside the extracted tree.
+- `models`: list of `{bundle_id,path,manifest_sha256,checkpoint,revision,license,access}`.
+  License/access are explicit operator provenance metadata, not legal validation.
+  Model bytes/capabilities and exact execution mapping are verified by the
+  existing Qwen bundle verifier. No model is installed. All declared models must
+  be used by the bounded existing supervisor registration templates.
+
+The runtime manifest digest is SHA256 of its canonical bytes. It must match
+supervisor config and every template's frozen native metadata along with
+configuration/deployment identity. Registrations keep the existing
+`snapshot,execution,bundles,inventory` format and F6 template authorization.
+They are not created by public requests. Boot/lane enrollment and completed
+history still need their separate native policy in the remainder of Lot B.
+
+A successful check means only `package=prepared`,
+`dependencies=metadata-verified`, `abi=unrun`, `qualification=unqualified`,
+`speech=unavailable`. Missing or mismatched inputs refuse; no usable status is
+written. No reviewed Darwin Python or wheelhouse is supplied. Real ARM ABI/import,
+model/MPS, TLS/topology, process/FD/resource and lifecycle qualification remain
+unrun. CPU/CUDA release rows and clone lifetime limitations remain separate.
+
+`service.native_package.enrolled_runtime(configuration_file)` is the private
+Docker control consumer for a separately provisioned native configuration. Its
+closed fields are `version:1,variant:"native-qwen-v1",native,host,port,peer_sha256,
+cafile,certfile,keyfile,spool,staging`. `native` is the existing exact five-field
+`deployment_id,configuration_sha256,lane,boot,runtime_manifest_sha256` tuple.
+It validates private config/client trust files, creates the actual pinned TLS
+NativeRuntime, requires a healthy hello matching every configured identity
+including boot, and refuses uncertain retained imports. It returns that runtime
+for an explicitly configured owner; it does not enroll a Dispatcher, refresh
+boot from hello, waive history, write an enrollment record or promote readiness.
+Control credentials contain only client key/cert/CA; server key remains on host.
+Completed-history activation and the installed entrypoint still require the
+remaining native policy. Calling this factory performs real TLS I/O unless its
+existing connector seam is injected; the r297 tests inject it.
+
+Each dependency artifact must now be one wheel for one declared distribution.
+The wheel filename name/version and supported interpreter/platform tags must
+match; its bounded METADATA and WHEEL headers must agree. Linux/x86-only tags
+refuse on Darwin arm64. This does not authenticate the installed distribution's
+file provenance or prove native extensions load. Source distributions and runtime
+aggregate archives are unsupported; absent compatible wheels leave unavailable.
+Inert tests use explicitly nonqualifying metadata-only ZIPs, never native wheels.
