@@ -107,6 +107,69 @@ class AudioExportTests(ProductionAPIFixture,unittest.TestCase):
         (self.root/'assets'/asset['id']).write_bytes(b'corrupt')
         self.assertEqual(self.request('POST','/v1/operations/audio_export',payload=r,key='corrupt').json()['code'],'missing_media')
         self.assertEqual(self.dispatcher.call('jobs','alice'),[])
+
+    def tampered_public_copy(self, path, value=None, remove=False):
+        import sqlite3
+        from service.core import Core, encode
+        from service.reconciliation import Reconciliation
+        _,_,request=self.upload()
+        job=self.terminal(self.submit('audio_export',request,'tamper'))
+        artifact_id=job['artifact_ids'][0]
+        self.assertEqual(self.request('GET','/v1/artifacts/'+artifact_id).status_code,200)
+        with sqlite3.connect(self.root/'core.sqlite') as db:
+            original=db.execute('SELECT metadata FROM artifacts WHERE id=?',(artifact_id,)).fetchone()[0]
+            trusted={t:db.execute('SELECT * FROM '+t).fetchall() for t in ('jobs','publications','publication_work')}
+            changed=json.loads(original);target=changed
+            for key in path[:-1]:target=target[key]
+            if remove:del target[path[-1]]
+            else:target[path[-1]]=value
+            db.execute('UPDATE artifacts SET metadata=? WHERE id=?',(encode(changed),artifact_id))
+        response=self.request('GET','/v1/artifacts/'+artifact_id)
+        self.assertEqual(response.status_code,503,response.text)
+        self.dispatcher.close()
+        core=Core(self.root)
+        try:
+            result=Reconciliation(core,self.stage).reconcile_startup()
+            self.assertTrue(result['blocked'],result)
+            self.assertIn('public_artifact_mismatch',result['reasons'])
+            for table,rows in trusted.items():self.assertEqual(core.db.execute('SELECT * FROM '+table).fetchall(),rows)
+            self.assertEqual(core.db.execute('SELECT metadata FROM artifacts WHERE id=?',(artifact_id,)).fetchone()[0],encode(changed))
+        finally:core.close()
+        self.start(exports=False)
+        self.assertTrue(self.dispatcher.call('status')['integrity_fault'])
+        self.assertEqual(self.request('GET','/v1/artifacts/'+artifact_id).status_code,503)
+
+    def test_public_converter_tamper_refused(self):
+        self.tampered_public_copy(['audio_export','converter','reported_build'],'TAMPERED BUILD CLAIM')
+    def test_public_settings_tamper_refused(self):
+        self.tampered_public_copy(['audio_export','settings','rate'],96000)
+    def test_public_source_tamper_refused(self):
+        self.tampered_public_copy(['audio_export','source_sha256'],'f'*64)
+    def test_public_missing_provenance_refused(self):
+        self.tampered_public_copy(['audio_export'],remove=True)
+    def test_public_id_tamper_refused(self):
+        self.tampered_public_copy(['id'],'foreign-artifact')
+    def test_public_job_tamper_refused(self):
+        self.tampered_public_copy(['job_id'],'foreign-job')
+    def test_public_asset_tamper_refused(self):
+        self.tampered_public_copy(['asset_ids'],['foreign-asset'])
+    def test_public_numeric_representation_tamper_refused(self):
+        self.tampered_public_copy(['generation'],0.0)
+
+    def test_export_of_export_retained_history_healthy(self):
+        from service.core import Core
+        from service.reconciliation import Reconciliation
+        _,_,r=self.upload();first=self.terminal(self.submit('audio_export',r,'first'))
+        a=self.request('GET','/v1/artifacts/'+first['artifact_ids'][0]).json()
+        second=self.terminal(self.submit('audio_export',dict(r,asset_id=a['asset_ids'][0],rate=24000,channels=1),'second'))
+        self.dispatcher.close()
+        core=Core(self.root)
+        try:
+            result=Reconciliation(core,self.stage).reconcile_startup()
+            self.assertTrue(result['complete'],result);self.assertFalse(result['blocked'],result)
+        finally:core.close()
+        self.start(exports=False)
+        for job in (first,second):self.assertEqual(self.request('GET','/v1/artifacts/'+job['artifact_ids'][0]).status_code,200)
     def test_failure_stale_malformed_never_publish(self):
         for fault in ('failure','stale','malformed'):
             self.runtime.fault=fault

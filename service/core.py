@@ -766,6 +766,16 @@ class Core:
         row=self.db.execute('SELECT metadata FROM artifacts WHERE id=?',(artifact_id,)).fetchone()
         if row is None: raise ValueError('not_found')
         artifact=json.loads(row[0])
+        oracle.validate('artifact',artifact)
+        job_id=artifact.get('job_id')
+        data={}
+        for table, columns, key in (
+                ('jobs','id,job,context','id'), ('publications','job_id,manifest,artifact','job_id'),
+                ('publication_work','job_id,binding,destination,temporary,sha256,byte_length','job_id')):
+            names=columns.split(',')
+            data[table]=[dict(zip(names,r)) for r in self.db.execute(
+                'SELECT '+columns+' FROM '+table+' WHERE '+key+'=?',(job_id,))]
+        artifact=persistence.public_artifact(dict(id=artifact_id,metadata=row[0]),data)
         for asset_id in artifact['asset_ids']: self.asset(asset_id)
         return artifact
 

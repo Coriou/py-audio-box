@@ -550,6 +550,10 @@ def typed_references(self, data, b2, _before, document):
                 value = json.loads(record[column])
                 if column == 'context': context(value, source)
                 else: walk(value, definition, source)
+            if table == 'artifacts':
+                try: persistence.public_artifact(record, data)
+                except persistence.PublicationQuarantine:
+                    raise Incomplete('public_artifact_mismatch') from None
             if table in CATALOGUE_TABLES - {'voice_catalogue_format'}:
                 from service.voice_store import _id
                 try:

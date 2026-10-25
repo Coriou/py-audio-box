@@ -324,3 +324,49 @@ def publication_record(record, data):
             publication=publication,job=json.loads(stored['job']),context=json.loads(stored['context']))
     except (StopIteration,KeyError,IndexError,TypeError) as exc:
         raise PublicationQuarantine('publication_work_mismatch') from exc
+
+
+def public_artifact(record, data):
+    """Corroborate the independently served copy with retained producer identity."""
+    import json
+    from contracts import validate as oracle
+    from worker.transport import canonical
+    from jsonschema.exceptions import ValidationError
+    try:
+        artifact = json.loads(record['metadata'])
+        oracle.validate('artifact', artifact)
+        job_id = artifact['job_id']
+        stored = next(r for r in data['jobs'] if r['id'] == job_id)
+        job, context = json.loads(stored['job']), json.loads(stored['context'])
+        publication = next(r for r in data['publications'] if r['job_id'] == job_id)
+        work = next(r for r in data['publication_work'] if r['job_id'] == job_id)
+        bound, _ = publication_record(work, data)
+        manifest = json.loads(publication['manifest'])
+        oracle.validate('result_manifest', manifest)
+        plan = context['plan']; attempt = job['attempts'][-1]
+        owner = dict(job_id=job['id'], generation=job['generation'],
+            input_sha256=job['input_sha256'], attempt_id=attempt['id'],
+            owner_id=attempt['owner_id'], staging_id=attempt['staging_id'])
+        expected = dict(owner, id=manifest['artifact_id'],
+            asset_ids=[o['id'] for o in manifest['outputs']],
+            project_revision=plan['project']['revision'] if plan['operation']=='project_render' else 0,
+            manifest_sha256=oracle.canonical_hash(manifest), identity=plan['resolved']['identity'])
+        if plan['operation'] == 'audio_export':
+            source = plan['assets'][0]
+            expected['audio_export'] = dict(source_asset_id=source['id'], source_sha256=source['sha256'],
+                settings=plan['request'], converter=plan['resolved']['identity']['converter'])
+            if canonical(manifest.get('audio_export')) != canonical(expected['audio_export']): raise ValueError()
+        elif 'audio_export' in manifest: raise ValueError()
+        if (record['id'] != expected['id'] or job['state'] != 'succeeded' or
+                canonical(job['artifact_ids']) != canonical([expected['id']]) or
+                job['operation'] != plan['operation'] or manifest['operation'] != plan['operation'] or
+                job['input_sha256'] != oracle.plan_hash(plan) or
+                canonical({k:manifest[k] for k in owner}) != canonical(owner) or
+                any(canonical(a) != canonical(expected) for a in
+                    (artifact, bound, json.loads(publication['artifact'])))):
+            raise ValueError()
+        intent = json.loads(work['binding'])
+        if 'version' in intent and canonical(intent['manifest']) != canonical(manifest): raise ValueError()
+        return artifact
+    except (ValueError, TypeError, KeyError, IndexError, StopIteration, ValidationError, oracle.ContractError) as exc:
+        raise PublicationQuarantine('public_artifact_mismatch') from exc

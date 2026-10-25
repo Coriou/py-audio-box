@@ -15,7 +15,7 @@ installation, hardware, independent review or release acceptance report.
   through the worktree chain, root project/Projects paths, and nested worktree
   AGENTS inventory; none applies here. No root checkout file writes, merge, push,
   self-adoption or delegation. Independent Sol/Astra review remains parent-owned.
-- User clarified converter authority during implementation: immutable converter
+- The ORCHESTRATOR decided converter authority during implementation: immutable converter
   artifact bound to trusted worker image digest, exact executable path/hash,
   reported build/version and runtime closure from the same image. No invented
   approved pin, acquisition, build, converter execution or installed-family claim.
