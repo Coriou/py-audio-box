@@ -40,6 +40,13 @@ class InertExportRuntime:
     def terminate(self,i,timeout):self.cancelled=True
     def collect(self,a,i):
         receipt=dict(runtime_id=i,binding=a.binding,reaped=True,engine_uid=os.getuid(),reap_method='pid1-waitpid-echild',reaped_children=2,timely=not self.cancelled and self.fault!='failure',original_deadline=a.job['deadline'])
+        if self.fault in ('late_partial','late_oversized'):
+            from worker.audio_export import execution
+            stage=self.stage/a.job['attempts'][-1]['staging_id'];stage.mkdir(mode=0o770);stage.chmod(0o770)
+            (stage/'output.wav').write_bytes(b'incomplete' if self.fault=='late_partial' else b'x'*(execution(a.context).max_output_bytes+1))
+            (stage/'output.wav').chmod(0o600)
+            receipt['timely']=False
+            return receipt,None
         if self.cancelled or self.fault=='failure':return receipt,None
         m=a.message();p=a.context['plan'];source=p['assets'][0];r=p['request'];frames=(source['frames']*r['rate']+source['sample_rate']-1)//source['sample_rate']
         raw=audio(r['rate'],r['channels'],3,frames)
@@ -176,6 +183,31 @@ class AudioExportTests(ProductionAPIFixture,unittest.TestCase):
             _,_,r=self.upload();j=self.terminal(self.submit('audio_export',r,'key-'+fault),'failed')
             self.assertEqual(j['artifact_ids'],[])
             self.assertTrue(j['attempts'][0]['reaped'])
+    def test_late_partial_is_accounted_without_decoding_or_publication(self):
+        self.runtime.fault='late_partial'
+        _,_,r=self.upload()
+        with patch('service.admission.os.open', wraps=os.open) as opened:
+            j=self.terminal(self.submit('audio_export',r,'late-partial'),'failed')
+        self.assertEqual(j['stage'],'deadline_or_reaped')
+        self.assertEqual(j['artifact_ids'],[])
+        self.assertFalse(any(Path(call.args[0]).name=='output.wav' for call in opened.call_args_list if isinstance(call.args[0],(str,Path))))
+        self.assertFalse(self.dispatcher.call('status')['quarantined'])
+    def test_late_oversized_partial_still_faults_resource_fence(self):
+        self.runtime.fault='late_oversized'
+        _,_,r=self.upload();j=self.terminal(self.submit('audio_export',r,'late-oversized'),'failed')
+        self.assertEqual(j['stage'],'verification_failed')
+        self.assertEqual(j['artifact_ids'],[])
+        self.assertTrue(self.dispatcher.call('status')['quarantined'])
+    def test_eligible_unreadable_proposal_still_refused(self):
+        _,_,r=self.upload();original=os.open
+        def deny_output(path,*args,**kwargs):
+            if isinstance(path,(str,Path)) and Path(path).name=='output.wav':raise PermissionError('INERT unreadable eligible output')
+            return original(path,*args,**kwargs)
+        with patch('service.admission.os.open',side_effect=deny_output):
+            j=self.terminal(self.submit('audio_export',r,'unreadable'),'failed')
+        self.assertEqual(j['stage'],'verification_failed')
+        self.assertEqual(j['artifact_ids'],[])
+        self.assertTrue(self.dispatcher.call('status')['quarantined'])
     def test_cancel_reap_and_unknown_refuses_publication_capacity_release(self):
         self.runtime.hold=True;_,_,r=self.upload();receipt=self.submit('audio_export',r,'cancel')
         self.wait(lambda:self.dispatcher.call('job',receipt['job_id'])['state']=='running')

@@ -77,10 +77,18 @@ class AudioExportTests(unittest.TestCase):
             calls=[]
             def fake(argv,**kw):
                 calls.append((argv,kw));os.write(kw['pass_fds'][2],wav())
-            raw,measured=execute(c,fd,stage,image_digest=reg['worker_image_digest'],converter_uid=os.getuid(),run=fake)
+            previous=os.umask(0o077)
+            try:raw,measured=execute(c,fd,stage,image_digest=reg['worker_image_digest'],converter_uid=os.getuid(),run=fake)
+            finally:os.umask(previous)
             self.assertEqual(measured['frames'],2400)
+            self.assertEqual((stage/'output.wav').stat().st_mode & 0o777,0o644)
+            self.assertEqual(stage.stat().st_mode & 0o777,0o770)
             self.assertEqual(len(calls),1)
             argv,kw=calls[0];self.assertIn('pcm_s24le',argv);self.assertNotIn('shell',kw);self.assertNotIn('start_new_session',kw)
+            self.assertEqual(argv[argv.index('-i')+1],'pipe:'+str(fd))
+            self.assertIn(fd,kw['pass_fds'])
+            import fcntl
+            self.assertEqual(fcntl.fcntl(fd,fcntl.F_GETFL)&os.O_ACCMODE,os.O_RDONLY)
             self.assertEqual(kw['timeout'],25)
             output=dict(measured,provenance=provenance(c['plan']))
             verify_output(c,raw,output)
@@ -146,8 +154,12 @@ class ExportWorkerBoundaryTests(unittest.TestCase):
             fd=os.open('contracts/fixtures/v1/short.wav',os.O_RDONLY)
             try:
                 def fail(*a,**kw):raise subprocess.CalledProcessError(1,a[0])
-                with self.assertRaises(subprocess.CalledProcessError):
-                    execute(c,fd,stage,image_digest=reg['worker_image_digest'],converter_uid=os.getuid(),run=fail)
+                previous=os.umask(0o077)
+                try:
+                    with self.assertRaises(subprocess.CalledProcessError):
+                        execute(c,fd,stage,image_digest=reg['worker_image_digest'],converter_uid=os.getuid(),run=fail)
+                finally:os.umask(previous)
                 self.assertTrue((stage/'output.wav').exists())
                 self.assertEqual((stage/'output.wav').stat().st_size,0)
+                self.assertEqual((stage/'output.wav').stat().st_mode & 0o777,0o600)
             finally:os.close(fd)

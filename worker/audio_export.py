@@ -191,7 +191,10 @@ def execute(context, source_fd, stage, *, image_digest, run=None, converter_uid=
         if info.st_uid not in (os.getuid(),10001) or stat.S_IMODE(info.st_mode)!=0o770:
             raise Refused('foreign_stage')
         output=os.open('output.wav',os.O_RDWR|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW,0o640,dir_fd=directory)
-        command=['/proc/self/fd/'+str(exe),'-nostdin','-v','error','-y','-protocol_whitelist','file,pipe','-threads',str(spec.threads),'-filter_threads',str(spec.threads),'-f','wav','-i','/proc/self/fd/'+str(source_fd),'-map','0:a:0','-vn','-sn','-dn','-map_metadata','-1']
+        # The managed source is private to UID10001. The allocated child may
+        # read its inherited readonly FD, but reopening /proc/self/fd/N applies
+        # pathname DAC again. FFmpeg's pipe protocol consumes that same FD.
+        command=['/proc/self/fd/'+str(exe),'-nostdin','-v','error','-y','-protocol_whitelist','file,pipe','-threads',str(spec.threads),'-filter_threads',str(spec.threads),'-f','wav','-i','pipe:'+str(source_fd),'-map','0:a:0','-vn','-sn','-dn','-map_metadata','-1']
         if plan['request']['loudness'] is not None: command+=['-af','loudnorm=I='+str(plan['request']['loudness'])+':TP=-1.0:LRA=11']
         command+=['-ar',str(spec.sample_rate),'-ac',str(spec.channels),'-c:a','pcm_s24le','-fs',str(spec.max_output_bytes),'-f','wav','/proc/self/fd/'+str(output)]
         (subprocess.run if run is None else run)(command,check=True,timeout=min(25,timeout),pass_fds=(exe,source_fd,output),close_fds=True,stdin=subprocess.DEVNULL,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL,env={'PATH':'/usr/bin:/bin','LANG':'C','OMP_NUM_THREADS':str(spec.threads)})
@@ -200,6 +203,9 @@ def execute(context, source_fd, stage, *, image_digest, run=None, converter_uid=
         os.fsync(output); os.lseek(output,0,0); data=read_bounded(output,spec.max_output_bytes)
         result=pcm(data,rate=spec.sample_rate,channels=spec.channels,bits=24)
         if len(data)>spec.max_output_bytes or not max(1,spec.max_frames-2)<=result['frames']<=spec.max_frames: raise Refused('resource_output_bytes')
+        # Keep partial output private. Only complete, verified PCM becomes
+        # readable to Core, before the child can send its proposal.
+        os.fchmod(output,0o644)
         return data,result
     finally:
         if output is not None: os.close(output)

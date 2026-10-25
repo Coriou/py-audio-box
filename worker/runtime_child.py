@@ -75,6 +75,9 @@ def run_generation(connection, config, staging, cutoff, *, backend_factory=None)
             fd = os.open(name, os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW, 0o640, dir_fd=directory)
             with os.fdopen(fd, 'wb') as output:
                 output.write(data); output.flush(); os.fsync(output.fileno())
+                # The private stage fences traversal by other attempts. Make the
+                # completed leaf readable to Core before sending its proposal.
+                os.fchmod(output.fileno(), 0o644)
     finally:
         os.close(directory)
     if not preparing:
@@ -207,9 +210,9 @@ def main():
         from worker.runtime_protocol import execution
         if execution(config['context']) is not None: raise ValueError('execution_dispatch_mismatch')
         run(connection, config, '/staging', time.monotonic() + 30)
-    names = ('reference.wav','audition.wav') if config['context']['plan'].get('reference_roles') else ('output.wav',)
-    for name in names:
-        os.chmod('/staging/'+config['job']['attempts'][-1]['staging_id']+'/'+name, 0o644)
+        names = ('reference.wav','audition.wav') if config['context']['plan'].get('reference_roles') else ('output.wav',)
+        for name in names:
+            os.chmod('/staging/'+config['job']['attempts'][-1]['staging_id']+'/'+name, 0o644)
 
 
 if __name__ == '__main__':

@@ -37,10 +37,18 @@ class EngineLifecycleTests(unittest.TestCase):
         config=dict(job=authority.job,context=authority.context,allowed_assets=list(authority.allowed_assets),profiles=list(authority.profiles),secret='a'*64,control_uid=os.getuid(),gid=os.getgid())
         message=authority.message()
         if mutate:mutate(message)
-        with patch('worker.transport.authenticate',side_effect=authentication_error) as auth, patch('worker.transport.receive',return_value=message), patch('worker.transport.send',side_effect=lambda c,v,t:sent.append(v)), patch('worker.engines.kokoro.execute',side_effect=execute):
+        def send(c,value,cutoff):
+            self.assertEqual((stage/'output.wav').stat().st_mode & 0o777,0o644)
+            sent.append(value)
+        with patch('worker.transport.authenticate',side_effect=authentication_error) as auth, patch('worker.transport.receive',return_value=message), patch('worker.transport.send',side_effect=send), patch('worker.engines.kokoro.execute',side_effect=execute):
             run_kokoro(None,config,self.stage,time.monotonic()+5,backend_factory=Backend)
             self.assertEqual(auth.call_args.args[1].binding,authority.binding)
         return authority,sent[0],calls
+
+    def test_completed_leaf_readable_before_proposal_under_private_umask(self):
+        previous=os.umask(0o077)
+        try:self.proposal()
+        finally:os.umask(previous)
 
     def test_measured_publication_and_schema(self):
         authority,proposal,calls=self.proposal()
@@ -191,13 +199,15 @@ class InstalledWorkerEntrypointTests(unittest.TestCase):
             stack.enter_context(patch.object(os,'getgroups',return_value=[]))
             config=stack.enter_context(patch('service.execution_context.installed_configuration',return_value={'ownership_policy':ip.POLICY,'contexts':{'alice':{}}}))
             checked=stack.enter_context(patch('service.execution_context.installed_mapping',return_value=mapping))
+            stack.enter_context(patch.object(ip,'configuration_policy',return_value=ip.SPLIT))
             stack.enter_context(patch.object(ip,'directory_identity'))
             files=stack.enter_context(patch.object(ip,'read_private',return_value=b''))
             runtime=stack.enter_context(patch.object(supervisor,'RuntimeSupervisor'))
             supervisor.main()
             config.assert_called_once_with('/explicit/install.json',policy=ip.SPLIT)
             checked.assert_called_once_with({'ownership_policy':ip.POLICY,'contexts':{'alice':{}}},policy=ip.SPLIT)
-            runtime.assert_called_once_with(bundles=mapping,pocket_reference_roots=None,installed_pocket=False)
+            runtime.assert_called_once_with(bundles=mapping,pocket_reference_roots=None,installed_pocket=False,
+                                            installed_policy=ip.SPLIT,export_configuration=None,expected_worker_image=None)
             runtime.return_value.serve.assert_called_once_with()
             self.assertEqual(files.call_count,4)
 
@@ -213,12 +223,14 @@ class InstalledWorkerEntrypointTests(unittest.TestCase):
                 stack.enter_context(patch.object(os,'getgroups',return_value=[]))
                 stack.enter_context(patch('service.execution_context.installed_configuration',return_value={'ownership_policy':ip.POCKET_POLICY,'contexts':{'alice':{},'bob':{}}}))
                 checked=stack.enter_context(patch('service.execution_context.installed_mapping',return_value={'bundle':'/models/bundles/bundle'}))
+                stack.enter_context(patch.object(ip,'configuration_policy',return_value=ip.SPLIT))
                 stack.enter_context(patch.object(ip,'directory_identity'))
                 stack.enter_context(patch.object(ip,'read_private',return_value=b''))
                 runtime=stack.enter_context(patch.object(supervisor,'RuntimeSupervisor'))
                 if selected==ip.POCKET_POLICY:
                     supervisor.main()
-                    runtime.assert_called_once_with(bundles={'bundle':'/models/bundles/bundle'},pocket_reference_roots={'alice':'/references/assets','bob':'/references/assets'},installed_pocket=True)
+                    runtime.assert_called_once_with(bundles={'bundle':'/models/bundles/bundle'},pocket_reference_roots={'alice':'/references/assets','bob':'/references/assets'},installed_pocket=True,
+                                                    installed_policy=ip.SPLIT,export_configuration=None,expected_worker_image=None)
                 else:
                     with self.assertRaises(SystemExit):supervisor.main()
                     checked.assert_not_called();runtime.assert_not_called()

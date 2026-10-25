@@ -618,7 +618,9 @@ class Dispatcher:
         if job['state'] not in ('succeeded','failed','cancelled'):
             intent=self.core.db.execute('SELECT 1 FROM publications WHERE job_id=?',(job['id'],)).fetchone()
             try:
-                self._resource_check(publication=True)
+                # Failed/late attempts may retain incomplete private media. Always
+                # account its bytes, but decode only a proposal eligible to publish.
+                self._resource_check(publication=bool(intent or (receipt['timely'] is True and observation is not None)))
                 if getattr(self,'resource_fault',False):raise ValueError('resource_violation')
                 if intent:
                     if receipt['timely'] is not True:raise ValueError('late_publication_intent')
