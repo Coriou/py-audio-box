@@ -5606,6 +5606,14 @@ def _t1_legacy_pipe_roots(tmp_path):
     return dict(receipts=receipts)
 
 
+def _t1_pipe_fd(fd, ends):
+    """Inject only into this fixture's currently live FIFO endpoints."""
+    import stat
+    if fd not in ends:return False
+    try:return stat.S_ISFIFO(os.fstat(fd).st_mode)
+    except OSError:return False
+
+
 def _t1_pipe_model(monkeypatch):
     """Actual fork/pipe, only storage/host session modeled; no limits changed."""
     import sys
@@ -6528,6 +6536,7 @@ def test_t1_close_ownership_cleanup(monkeypatch,tmp_path,repeat,site,timing,fail
     def tracked_pipe():
         pair=pipe();ends.extend(pair);pipe_id.append(fstat(pair[0]).st_ino);return pair
     def broken_close(fd):
+        if not _t1_pipe_fd(fd,ends):return close(fd)
         target=(os.getpid()!=parent and site=='child-read' and fd==ends[0]) or (
             os.getpid()==parent and site!='child-read' and fd==ends[0 if site in ('cleanup-read','fork-read') else 1])
         if target and not fired:
@@ -6549,7 +6558,10 @@ def test_t1_close_ownership_cleanup(monkeypatch,tmp_path,repeat,site,timing,fail
     monkeypatch.setattr(os,'pipe',tracked_pipe)
     monkeypatch.setattr(os,'close',broken_close)
     if site=='cleanup-read':
-        def failed_read(*a):raise ValueError('injected read failure')
+        read=os.read
+        def failed_read(fd,count):
+            if _t1_pipe_fd(fd,ends):raise ValueError('injected read failure')
+            return read(fd,count)
         monkeypatch.setattr(os,'read',failed_read)
     if timing=='pipe-reuse':
         # Linux pipe ends share inode identity. Model that identity on macOS;
@@ -6623,7 +6635,7 @@ def test_t1_reap_interruption_ownership(monkeypatch,tmp_path,repeat,error_type,p
         def tracked_pipe():
             pair=pipe();ends.extend(pair);return pair
         def badclose(fd):
-            if os.getpid()==parent and fd==ends[1] and site!='normal-wait':
+            if _t1_pipe_fd(fd,ends) and os.getpid()==parent and fd==ends[1] and site!='normal-wait':
                 until=time.monotonic()+3
                 while not marker.with_suffix('.ready').exists() and time.monotonic()<until:time.sleep(.001)
                 assert marker.with_suffix('.ready').exists(),'sleeping child must enter operation before cleanup'
@@ -6697,7 +6709,7 @@ def test_t1_cleanup_missing_process_receipts(monkeypatch,tmp_path,site):
     def trackedpipe():
         pair=pipe();ends.extend(pair);return pair
     def badclose(fd):
-        if os.getpid()==parent and fd==ends[1]:
+        if _t1_pipe_fd(fd,ends) and os.getpid()==parent and fd==ends[1]:
             until=time.monotonic()+3
             while not marker.with_suffix('.ready').exists() and time.monotonic()<until:time.sleep(.001)
             assert marker.with_suffix('.ready').exists()
@@ -6749,7 +6761,7 @@ def test_t1_cleanup_refuses_inside_caller_exception_handler(monkeypatch,error_ty
     def trackedpipe():
         pair=pipe();ends.extend(pair);return pair
     def badclose(fd):
-        if os.getpid()==parent and fd==ends[0] and not fired:
+        if _t1_pipe_fd(fd,ends) and os.getpid()==parent and fd==ends[0] and not fired:
             fired.append(fd);close(fd);raise interruption
         return close(fd)
     monkeypatch.setattr(os,'pipe',trackedpipe);monkeypatch.setattr(os,'close',badclose)
@@ -6785,7 +6797,9 @@ def test_lifetime_private_reader_closes_before_teardown(tmp_path, monkeypatch, r
         else:
             for table, columns in recovery.B1_COLUMNS.items():
                 db.execute('CREATE TABLE '+table+'('+','.join(c+' TEXT' for c in columns.split())+')')
-            host = dict()  # Validators below isolate ownership from enrollment policy.
+            host = dict(daemon='inert-reader',context='inert-reader',
+                volumes={role:dict(name=role,driver='local',created='fixture')
+                         for role in ('control','staging','receipts','ipc')})
             installation = dict(deployment_id='a'*32, revision=1, scope='owned-synthetic', host=host,
                 profile_budget_digest=recovery.digest(dict(profiles=[], budget={})))
             db.execute('INSERT INTO p1_installation(id,record,digest) VALUES(?,?,?)', ('a'*32, encode(installation), recovery.digest(installation)))
@@ -6946,7 +6960,8 @@ def test_bounded_core_maintenance_refuses_before_effects(tmp_path, monkeypatch, 
     monkeypatch.setattr(recovery, '_maintenance_session', forbidden)
     try:
         with pytest.raises(ValueError, match='b2_maintenance_core_ownership_busy'):
-            recovery._run_bounded_maintenance({'control': tmp_path/('held' if same_root else 'other')}, {}, forbidden, _prewrite=forbidden)
+            recovery._run_bounded_maintenance(dict(_t1_legacy_pipe_roots(tmp_path),
+                control=tmp_path/('held' if same_root else 'other')), {}, forbidden, _prewrite=forbidden)
         assert effects == []
     finally:
         record.state = 'constructing'; record.close()
@@ -7006,7 +7021,7 @@ def test_bounded_core_prefork_deterministic_parent_release(tmp_path, monkeypatch
     import select, threading, sys
     from service import core as module
     baseline = tuple(module._core_registry); effects = []; waits = []
-    pipe = os.pipe; ends = []; raw = iter([b'{"result":true}', b''])
+    pipe = os.pipe; read0 = os.read; ends = []; raw = iter([b'{"result":true}', b''])
     monkeypatch.setattr(sys, 'platform', 'linux')
     monkeypatch.setattr(threading, 'active_count', lambda: 1)
     def piping():
@@ -7016,6 +7031,7 @@ def test_bounded_core_prefork_deterministic_parent_release(tmp_path, monkeypatch
         with pytest.raises(ValueError, match='core_ownership_busy'): module._reserve_core(tmp_path/'at-fork')
         effects.append('fork'); return 987654
     def read(*a):
+        if not _t1_pipe_fd(a[0],ends):return read0(*a)
         # Parent releases immediately after successful fork, before any read.
         r = module._reserve_core(tmp_path/'after-fork'); r.close()
         return next(raw)
