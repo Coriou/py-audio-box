@@ -87,7 +87,8 @@ class NativeActivation:
 def completed_history(core, runtime):
     """Read-only native policy under Core exclusion, before recovery or scheduling.
 
-    Only succeeded, single-attempt preset/design publications are supported.
+    Only succeeded, single-attempt native publications are supported.
+    Clone references must remain owned and byte-identical in Core and transport.
     All reservation, filesystem and unknown evidence is retained on refusal.
     """
     from contracts import validate as oracle
@@ -170,7 +171,7 @@ def completed_history(core, runtime):
                 all(op in ('observe','stop') for op in ops[2:collected]) and
                 bool(ops[collected+1:]) and all(op == 'ack' for op in ops[collected+1:]))
         require(d['runtime'] is not None and d['fixture'] == 'qwen')
-        require(p.native_execution(context).task != 'clone')
+        spec = p.native_execution(context)
         require(job['state'] == 'succeeded' and job['stage'] == 'completed' and len(job['attempts']) == 1 and job['attempts'][0]['reaped'] is True)
         frozen = a.job; finished = dict(job); finished['attempts'] = [dict(job['attempts'][0],reaped=False)]
         # Only these completion fields may differ from the dispatched Authority.
@@ -220,7 +221,26 @@ def completed_history(core, runtime):
         require(job['artifact_ids'] == [artifact['id']])
         require(any(row['id'] == artifact['id'] and canonical(json.loads(row['metadata'])) == canonical(artifact) for row in typed['artifacts']))
         directory = runtime.spool/a.binding
-        require({f.name for f in directory.iterdir()} == {'snapshot','output','complete','import-intent','import-complete'})
+        names = {'snapshot','output','complete','import-intent','import-complete'}
+        if spec.task == 'clone':
+            # Historical decoding does not expire hardware, rederive a voice or
+            # trust a retained allocation as enrollment. Recheck the exact owned
+            # reference frozen in Authority and its detached input bytes.
+            # Core has not attached its catalogue facade at this pre-schema
+            # startup fence. The existing read-only owner check needs no DDL.
+            from service.voice_store import VoiceStore
+            VoiceStore(core)._asset(frozen['principal_id'], spec.reference_id)
+            asset = core.asset(spec.reference_id)
+            require(canonical(asset) == canonical(context['plan']['assets'][0]))
+            raw = _read(core.root/'assets'/spec.reference_id, spec.reference_bytes)
+            import hashlib
+            require(len(raw) == spec.reference_bytes and
+                    hashlib.sha256(raw).hexdigest() == spec.reference_sha256)
+            from worker.native_supervisor import pcm
+            pcm(raw, spec, True)
+            require(_read(directory/'input', spec.reference_bytes) == raw)
+            names.add('input')
+        require({f.name for f in directory.iterdir()} == names)
         require(_read(directory/'snapshot',48000) == a._snapshot)
         pending = runtime.reopened_imports.get(a.binding)
         require(pending is not None and pending[1] is not None and pending[2] is True)

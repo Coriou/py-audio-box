@@ -21,7 +21,34 @@ from worker.transport import Refused
 
 class NativeLifecycleTests(unittest.TestCase):
     def setUp(self):
-        self.f=NativeFixture(self);self.f.s.utc=lambda:datetime.now(timezone.utc)
+        self.f=NativeFixture(self, clone=getattr(self,'clone_history',False));self.f.s.utc=lambda:datetime.now(timezone.utc)
+        if getattr(self,'clone_history',False):
+            from dataclasses import replace
+            from contracts import validate as oracle
+            from service.ingest import ingest_local
+            # Explicit trusted fixture enrollment, not public clone onboarding.
+            core=Core(self.f.f.fixture.root/'core')
+            try:
+                from service.admission import Admission
+                # Initialize the resource protocol while the fixture root is
+                # still empty, as Dispatcher does before accepting uploads.
+                Admission(core,self.f.stage,private_spool=self.f.spool)
+                asset=ingest_local(core,'alice',self.f.reference_raw)
+            finally: core.close()
+            plan=self.f.snapshot[1]['plan']; version=plan['voice_versions'][0]
+            rid=asset['id']; plan['assets']=[asset]
+            version.update(reference_asset_ids=[rid],reference_asset_sha256={rid:asset['sha256']})
+            version['configuration']['reference_asset_id']=rid
+            self.f.f.e=replace(self.f.f.e,reference_id=rid)
+            self.f.snapshot[1]['execution']['descriptor']=self.f.f.e.identity()
+            self.f.snapshot[1]['execution']['references']={rid:dict(path='/references/assets/'+rid,
+                voice_id=self.f.f.e.voice_id,voice_revision=self.f.f.e.voice_revision,
+                checkpoint=self.f.f.e.checkpoint,revision=self.f.f.e.revision,text=self.f.f.e.reference_text)}
+            self.f.snapshot[2]=[rid]
+            self.f.snapshot[0]['input_sha256']=oracle.plan_hash(plan)
+            self.f.a=Authority(*self.f.snapshot)
+            self.f.s.registrations={self.f.a.binding:dict(snapshot=copy.deepcopy(self.f.snapshot),
+                execution=self.f.f.e,bundles={'bundle':self.f.f.fixture.bundle},inventory=self.f.f.inventory)}
         self.context=copy.deepcopy(self.f.snapshot[1]);self.profiles=self.f.snapshot[3]
         self.profiles[0]['limits']['disk_bytes']=2*1024**2
         self.context['plan']['resolved']['profile']['limits']['disk_bytes']=2*1024**2
@@ -296,4 +323,38 @@ class NativeLifecycleTests(unittest.TestCase):
                 self.wait(lambda:d.call('status')['phase']=='idle')
                 self.assertEqual(d.call('status')['reservations'][0]['state'],'retained')
                 self.assertEqual(len(job['artifact_ids']),1);self.assertEqual(len(f.f.calls),1)
+            finally:self.close()
+
+
+class NativeCloneLifetimeTests(unittest.TestCase):
+    """Seeded clone reference is held through cancellation and confirmed reap."""
+    clone_history=True
+    setUp=NativeLifecycleTests.setUp
+    wait=NativeLifecycleTests.wait
+    open=NativeLifecycleTests.open
+    close=NativeLifecycleTests.close
+
+    def test_cancel_keeps_reference_until_confirmed_reap(self):
+        f=self.f; spec=f.f.e
+        with patch('worker.native_child.parent_exchange',return_value=None):
+            try:
+                d=self.open(finish=False)
+                result=d.call('production_generate','alice',self.context['plan']['request'],key='clone-cancel')
+                self.wait(lambda:f.s.active is not None and f.s.active['handle'] is not None)
+                row=f.s.journal.value['records'][0]
+                native_input=f.s.directory(row)/('input-'+spec.reference_sha256)
+                control_input=next(f.spool.glob('*/input'))
+                owned=self.root/'assets'/spec.reference_id
+                d.call('production_cancel','alice',dict(job_id=result['job_id']),key='cancel')
+                self.wait(lambda:f.s.active['cancel'])
+                for path in (native_input,control_input,owned):
+                    self.assertEqual(path.read_bytes(),f.reference_raw)
+                self.assertIsNone(f.s.journal.value['records'][0]['receipt'])
+                self.assertEqual(d.call('status')['reservations'][0]['state'],'executing')
+                f.f.h.code=-15;f.s.active['receiver'].join(1);f.s.tick()
+                self.wait(lambda:d.call('job',result['job_id'])['state']=='cancelled')
+                self.wait(lambda:d.call('status')['phase']=='idle')
+                self.assertTrue(f.s.journal.value['records'][0]['receipt']['reaped'])
+                for path in (native_input,control_input,owned):
+                    self.assertEqual(path.read_bytes(),f.reference_raw)
             finally:self.close()

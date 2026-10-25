@@ -272,9 +272,15 @@ class DiscoveryTests(unittest.TestCase):
         app=create_voice_app(Dispatcher(),credentials=credentials,installed=config)
         async def read():
             async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app),base_url='http://test',headers={'Authorization':'Bearer read'}) as client:
-                return (await client.get('/skeleton')).json(),(await client.get('/v1/capabilities')).json()
-        status,caps=asyncio.run(read())
+                return ((await client.get('/skeleton')).json(), (await client.get('/v1/capabilities')).json(),
+                        {op: (await client.get('/skeleton/operations/'+op)).json()
+                         for op in ('voice_prepare','voice_results','voice_save','voice_preset_register')})
+        status,caps,details=asyncio.run(read())
         self.assertTrue(status['installed']);self.assertTrue(status['activation_ready']);self.assertFalse(status['ready_for_speech'])
         self.assertTrue(status['clone_prepare']);self.assertEqual(status['configured_presets'],[])
         self.assertIn('voice_prepare',caps['operations']);self.assertNotIn('voice_preset_register',caps['operations'])
         self.assertEqual(caps['profiles'][0]['readiness'],'not_ready')
+        for op in ('voice_prepare','voice_results','voice_save'):
+            self.assertIn(op,caps['operations'])
+            self.assertEqual(details[op]['availability'], 'implemented_read' if op=='voice_results' else 'implemented')
+        self.assertEqual(details['voice_preset_register']['availability'],'unavailable_configured_profile')

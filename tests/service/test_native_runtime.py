@@ -26,12 +26,13 @@ class BytesChannel:
 
 
 class NativeFixture:
-    def __init__(self,case):
+    def __init__(self,case, *, clone=False):
         from worker.native_child import parent_exchange
         self.parent_exchange=parent_exchange
         self.case=case
         self.f=supervisor_tests.NativeSupervisorTests('test_prepare_replay_tuple_session_and_stop_ack_restart')
         self.f.setUp();case.addCleanup(self.f.doCleanups)
+        if clone: self.reference_raw,_,_=self.f.prepare_clone(prepare=False)
         self.s=self.f.s;self.f.t=time.monotonic();self.s.clock=time.monotonic
         self.native=dict(deployment_id='a'*32,configuration_sha256='b'*64,
             lane=self.s.journal.value['lane'],boot=self.s.boot,runtime_manifest_sha256='d'*64)
@@ -77,7 +78,8 @@ class NativeFixture:
         from tests.worker.test_native_qwen import inert_guard
         raw=canonical(config);child=BytesChannel(struct.pack('!I',len(raw))+raw)
         backend=self.f.fixture.backend
-        backend.synthesise_preset.return_value.metadata=dict(checkpoint=str(self.f.fixture.bundle),revision=self.f.e.revision)
+        for method in ('synthesise_preset','synthesise_clone'):
+            getattr(backend,method).return_value.metadata=dict(checkpoint=str(self.f.fixture.bundle),revision=self.f.e.revision)
         with inert_guard(),patch('lib.tts_backends.qwen_native.NativeQwenBackend',return_value=backend):
             native_child.run_socket(child)
         return self.parent_exchange(BytesChannel(child.sent),config,cutoff)

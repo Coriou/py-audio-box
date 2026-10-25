@@ -281,3 +281,41 @@ class NativeHistoryTests(unittest.TestCase):
 
     def test_retained_unknown_dimension_refuses(self):
         self.change_document('resource_reservations','demand',lambda d:d.update(extra=1))
+
+
+class NativeCloneHistoryTests(NativeHistoryTests):
+    """Exact enrolled clone prerequisite only; catalogue seed is explicit."""
+    clone_history = True
+
+    def test_clone_keeps_exact_reference_and_transcript_across_replay(self):
+        self.prepare()
+        spec=self.f.f.e
+        directory=next(self.f.spool.iterdir())
+        self.assertEqual((directory/'input').read_bytes(),self.f.reference_raw)
+        self.assertEqual(self.context['plan']['voice_versions'][0]['reference_text'],'hello')
+        for _ in range(2):
+            try:
+                d=self.reopen()
+                receipt=d.call('production_generate','alice',self.context['plan']['request'],key='retained')
+                self.assertEqual(receipt['job_id'],self.job['id'])
+                self.assertEqual(d.call('job',self.job['id']),self.job)
+            finally:self.close()
+        self.assertEqual(len(self.f.f.calls),1)
+        self.assertEqual((directory/'input').read_bytes(),self.f.reference_raw)
+        self.assertEqual((self.root/'assets'/spec.reference_id).read_bytes(),self.f.reference_raw)
+
+    def test_changed_owned_reference_refuses(self):
+        self.refusal(lambda c:(c.root/'assets'/self.f.f.e.reference_id).write_bytes(b'changed'))
+
+    def test_changed_detached_reference_refuses(self):
+        self.refusal(lambda c:next(self.f.spool.glob('*/input')).write_bytes(b'changed'))
+
+    def test_missing_owned_reference_refuses(self):
+        self.refusal(lambda c:(c.root/'assets'/self.f.f.e.reference_id).unlink())
+
+    def test_foreign_owned_reference_refuses(self):
+        def change(c):
+            row=c.db.execute('SELECT metadata FROM assets WHERE id=?',(self.f.f.e.reference_id,)).fetchone()
+            asset=json.loads(row[0]);asset['principal_id']='bob'
+            c.db.execute('UPDATE assets SET metadata=? WHERE id=?',(json.dumps(asset),self.f.f.e.reference_id))
+        self.refusal(change)
