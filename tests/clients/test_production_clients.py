@@ -83,8 +83,71 @@ class ProductionClientTests(ProductionAPIFixture,unittest.TestCase):
             job=cli(['job','get',speech['job_id']]);self.assertEqual(tool('job_get',dict(job_id=job['id'])),job)
             artifact=cli(['artifact','get',job['artifact_ids'][0]])
             self.assertEqual(tool('artifact_get',dict(artifact_id=artifact['id'])),artifact)
+            listing=cli(['jobs','list','--limit','1'])
+            self.assertEqual(tool('jobs_list',dict(cursor='',limit=1)),listing)
+            self.assertEqual(transport.call('jobs_list',dict(cursor='',limit=1)),listing)
+            events=cli(['job','events',job_id])
+            self.assertEqual(tool('job_events',dict(job_id=job_id,cursor='',limit=20)),events)
+            waited=cli(['job','wait',job_id,'--cursor',events['next_cursor'],'--wait-seconds','0'])
+            self.assertEqual(tool('job_wait',dict(job_id=job_id,cursor=events['next_cursor'],wait_seconds=0)),waited)
+            # Profile detail parity is checked even when discovery is empty.
+            profile_id=self.profiles[0]['id']
+            with patch('service.production_selection.discovery',return_value=self.profiles):
+                profile=cli(['profile','get',profile_id])
+                self.assertEqual(tool('profile_get',dict(profile_id=profile_id)),profile)
+                self.assertEqual(transport.get('/skeleton/profiles/'+profile_id),profile)
+            version=transport.call('voice_version_get',dict(voice_version_id=saved['version']['id']))
+            aliases=dict(voice_id='voice',aliases=['speaker'],expected_revision=1)
+            changed=cli(['voice','aliases','--request',json.dumps(aliases),'--idempotency-key','aliases'])
+            self.assertEqual(tool('voice_aliases',aliases,'aliases'),changed)
+            from service.catalogue import Failure
+            for bad,key,code in ((dict(aliases,aliases=['different']),'aliases','idempotency_conflict'),
+                                 (dict(aliases,aliases=['fresh']),'stale','revision_conflict'),
+                                 (dict(voice_id='voice',aliases=['voice'],expected_revision=2),'self-alias','invalid_request')):
+                with self.assertRaises(Failure) as error: transport.call('voice_aliases',bad,key=key)
+                self.assertEqual(error.exception.body['code'],code)
+            other=transport.call('voice_save',dict(save,voice_id='other'),key='save-other')
+            with self.assertRaises(Failure) as error:
+                transport.call('voice_aliases',dict(voice_id='voice',aliases=['other'],expected_revision=2),key='conflict')
+            self.assertEqual(error.exception.body['code'],'alias_conflict')
+            for token in ('bob','reader'):
+                with self.assertRaises(Failure):HTTP(credential=token).call('voice_archive',dict(voice_id='voice',expected_revision=2),key='foreign')
+            archive=dict(voice_id='voice',expected_revision=changed['revision'])
+            archived=cli(['voice','archive','--request',json.dumps(archive),'--idempotency-key','archive'])
+            self.assertEqual(tool('voice_archive',archive,'archive'),archived)
+            self.assertTrue(archived['archived'])
+            self.assertEqual(transport.call('voice_version_get',dict(voice_version_id=version['id'])),version)
+            # Immutable archived versions remain valid generation references.
+            historical=transport.call('speech_generate',generation,key='historical')
+            self.wait(lambda:self.dispatcher.call('job',historical['job_id'])['state']=='succeeded')
+            self.wait(lambda:self.dispatcher.call('status')['phase']=='idle')
             cancelled=cli(['job','cancel',job_id,'--idempotency-key','cancel'])
             self.assertEqual(tool('job_cancel',dict(job_id=job_id),'cancel'),cancelled)
+            self.runtime.hold=True
+            held=transport.call('voice_prepare',payload,key='held')
+            self.wait(lambda:self.dispatcher.call('job',held['job_id'])['state']=='running')
+            cli(['job','cancel',held['job_id'],'--idempotency-key','held-cancel'])
+            self.wait(lambda:self.dispatcher.call('job',held['job_id'])['state']=='cancelled')
+            self.wait(lambda:self.dispatcher.call('status')['phase']=='idle')
+            self.runtime.hold=False
+            retried=cli(['job','retry',held['job_id'],'--input-sha256',held['input_sha256'],'--idempotency-key','retry'])
+            retry_payload=dict(job_id=held['job_id'],input_sha256=held['input_sha256'])
+            self.assertEqual(tool('job_retry',retry_payload,'retry'),retried)
+            self.assertEqual(transport.call('job_retry',retry_payload,key='retry'),retried)
+            self.wait(lambda:self.dispatcher.call('job',retried['job_id'])['state']=='succeeded')
+            self.wait(lambda:self.dispatcher.call('status')['phase']=='idle')
+            # Reopen the same durable owner and re-read through all adapters.
+            from service.dispatcher import Dispatcher
+            from service.api import create_voice_app
+            self.dispatcher.close()
+            self.dispatcher=Dispatcher(self.root,staging=self.stage,runtime=self.runtime,profiles=self.profiles,production_contexts=self.contexts)
+            self.app=create_voice_app(self.dispatcher,credentials=self.credentials)
+            self.wait(lambda:self.dispatcher.call('status')['reconciled'])
+            self.assertEqual(cli(['artifact','get',artifact['id']]),artifact)
+            self.assertEqual(tool('voice_get',dict(voice_id='voice')),archived)
+            self.assertEqual(transport.call('voice_version_get',dict(voice_version_id=version['id'])),version)
+            self.assertEqual(tool('job_events',dict(job_id=job_id,cursor='',limit=20)),events)
+            self.assertEqual(tool('job_retry',retry_payload,'retry'),retried)
             advertised=set(transport.call('discover',{})['operations'])
             tools={t.name:t for t in mcp.tools()}
             for operation in advertised-{'asset_upload'}:

@@ -1997,5 +1997,27 @@
     "cursor": "",
     "limit": 1,
     "voice_id": "voice.0"
+  },
+  "jobs_list": {
+    "cursor": "example",
+    "limit": 1
+  },
+  "job_events": {
+    "job_id": "example",
+    "cursor": "example",
+    "limit": 1
+  },
+  "job_wait": {
+    "job_id": "example",
+    "cursor": "example",
+    "wait_seconds": 1
+  },
+  "profile_get": {
+    "profile_id": "example"
+  },
+  "voice_aliases": {
+    "voice_id": "example",
+    "aliases": [],
+    "expected_revision": 1
   }
 }

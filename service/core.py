@@ -358,6 +358,39 @@ class Core:
             self.db.execute('INSERT INTO revisions VALUES (?,?,?)', (project_id,after['revision'],encode(after)))
         return after
 
+    def execution_duplicate(self, principal, operation, key, request, *, context=None, retry_of=None):
+        """Replay request hashes only with their durable retry lineage.
+
+        Pre-public-control retries used the ordinary request digest. Never infer
+        lineage from that digest or from the optional serialized job property.
+        This read is also used inside the submission transaction.
+        """
+        row = self.db.execute('SELECT fingerprint,job,context,retry_of FROM jobs WHERE principal=? AND operation=? AND key=?',
+                              (principal,operation,key)).fetchone()
+        if row is None: return None
+        fingerprint, raw_job, raw_context, lineage = row
+        job = json.loads(raw_job)
+        expected = oracle.fingerprint(principal, operation,
+            dict(request=request,retry_of=retry_of) if retry_of else request)
+        legacy = oracle.fingerprint(principal, operation, request)
+        oracle.require(lineage == retry_of and fingerprint in (expected, legacy)
+                       and job['principal_id'] == principal and job['operation'] == operation
+                       and job['idempotency_key'] == key
+                       and job.get('retry_of', lineage) == lineage, 'idempotency_conflict')
+        if retry_of:
+            source = self.db.execute('SELECT principal,operation,job,context FROM jobs WHERE id=?', (retry_of,)).fetchone()
+            oracle.require(source is not None and source[0] == principal and source[1] == operation,
+                           'idempotency_conflict')
+            previous = json.loads(source[2])
+            stored = json.loads(raw_context)
+            oracle.require(context is not None and encode(stored) == encode(context) == encode(json.loads(source[3]))
+                           and previous['id'] == retry_of and previous['principal_id'] == principal
+                           and previous['operation'] == operation and stored['plan']['operation'] == operation
+                           and stored['plan']['request'] == request
+                           and job['input_sha256'] == previous['input_sha256'] == oracle.plan_hash(stored['plan']),
+                           'idempotency_conflict')
+        return job
+
     def submit_execution(self, principal: str, key: str, context: dict, *, retry_of: str | None = None, _dispatch_settings=None, _admission=None, _profiles=None) -> dict:
         """One trusted submission transaction for synthetic and closed engine contexts.
 
@@ -365,11 +398,9 @@ class Core:
         """
         plan = context['plan']
         operation = plan['operation']
-        fingerprint = oracle.fingerprint(principal, operation, plan['request'])
-        row = self.db.execute('SELECT fingerprint,job FROM jobs WHERE principal=? AND operation=? AND key=?',(principal,operation,key)).fetchone()
-        if row:
-            oracle.require(row[0] == fingerprint, 'idempotency_conflict')
-            return json.loads(row[1])
+        fingerprint = oracle.fingerprint(principal, operation, dict(request=plan['request'],retry_of=retry_of) if retry_of else plan['request'])
+        duplicate = self.execution_duplicate(principal, operation, key, plan['request'], context=context, retry_of=retry_of)
+        if duplicate is not None: return duplicate
         from worker.runtime_protocol import execution, dispatch_mode
         spec=execution(context)
         if spec is not None and (_admission is None or _profiles is None or _dispatch_settings is None or _dispatch_settings[0]!=dispatch_mode(spec)):
@@ -378,10 +409,8 @@ class Core:
             _admission.demand(context,_profiles)
         from contextlib import nullcontext
         with (_admission._preflight() if _admission is not None else nullcontext()), self.transaction():
-            row = self.db.execute('SELECT fingerprint,job FROM jobs WHERE principal=? AND operation=? AND key=?', (principal,operation,key)).fetchone()
-            if row:
-                oracle.require(row[0] == fingerprint, 'idempotency_conflict')
-                return json.loads(row[1])
+            duplicate = self.execution_duplicate(principal, operation, key, plan['request'], context=context, retry_of=retry_of)
+            if duplicate is not None: return duplicate
             if operation not in ('speech_generate', 'voice_prepare'): raise NotImplementedError(operation)
             if len(encode(context).encode()) > 48000: raise ValueError('plan_limit')
             oracle.plan_hash(plan)
@@ -391,12 +420,13 @@ class Core:
             self._input_assets(principal, plan)
             if retry_of:
                 old, previous = self._load(retry_of)
-                oracle.require(old['state'] in ('failed','cancelled') and old['principal_id'] == principal and encode(previous) == encode(context)
+                oracle.require(old['state'] in ('failed','cancelled') and all(a['reaped'] for a in old['attempts']) and old['principal_id'] == principal and encode(previous) == encode(context)
                                and old['input_sha256'] == oracle.plan_hash(previous['plan'])
                                and old['input_sha256'] == oracle.plan_hash(plan), 'invalid_retry')
             count = sum(json.loads(r[0])['state'] in ('queued','running','cancel_requested') for r in self.db.execute('SELECT job FROM jobs'))
             if count >= min(32, plan['resolved']['profile']['limits']['queue']): raise ValueError('queue_full')
             job = dict(id=new_id('job'), operation=operation,input_sha256=oracle.plan_hash(plan),principal_id=principal,idempotency_key=key,state='queued',generation=0,attempts=[],artifact_ids=[],stage='queued',deadline='')
+            if retry_of: job['retry_of'] = retry_of
             oracle.validate('job', job)
             self.db.execute('INSERT INTO jobs(id,principal,operation,key,fingerprint,job,context,retry_of) VALUES (?,?,?,?,?,?,?,?)', (job['id'],principal,operation,key,fingerprint,encode(job),encode(context),retry_of))
             self.db.execute('INSERT INTO events(job_id,state) VALUES (?,?)', (job['id'],'queued'))

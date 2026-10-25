@@ -227,7 +227,8 @@ def production_call(dispatcher, principal, operation, payload, key=None):
         command = {'voice_preset_register':'production_preset_register', 'voice_prepare':'production_prepare', 'speech_generate':'production_generate',
                    'voice_save':'production_save', 'voice_results':'production_results',
                    'job_get':'production_job', 'job_cancel':'production_cancel',
-                   'artifact_get':'production_artifact'}[operation]
+                   'artifact_get':'production_artifact', 'jobs_list':'production_jobs', 'job_events':'production_events',
+                   'job_retry':'production_retry', 'voice_aliases':'production_aliases', 'voice_archive':'production_archive', 'profile_get':'production_profile'}[operation]
         result = dispatcher.call(command, principal, payload, key=key)
         if len(compact(result).encode()) > 12288:
             raise Failure('resource_limit', 'Production response exceeds 12 KiB budget.')

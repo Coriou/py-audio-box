@@ -158,16 +158,11 @@ def create_voice_app(dispatcher, *, credentials, upload_deadline=15.0, installed
             body['engines'] = sorted({c['identity']['engine'] for p in selected_profiles for c in p['compatibility']})
         body['operations'] = list(dict.fromkeys(('discover', *VOICE_READS, *ASSET_OPERATIONS, *PRODUCTION_OPERATIONS)))
         if configured:
-            body['operations'] = [op for op in body['operations'] if op not in PRODUCTION_OPERATIONS or op in configured['operations']]
+            body['operations'] = [op for op in body['operations'] if op not in ('voice_preset_register','voice_prepare','voice_results','voice_save','speech_generate') or op in configured['operations']]
         if installed is not None and not (configured and configured['engine']=='pocket-tts'):
             body['operations'] = [op for op in body['operations'] if op not in ('voice_prepare', 'voice_results', 'voice_save')]
+        if not dispatcher.call('status')['retry_available']: body['operations'] = [op for op in body['operations'] if op != 'job_retry']
         return body
-
-    @production.get('/skeleton/profiles/{profile_id}')
-    def production_profile(profile_id: str, request: Request):
-        for profile in dispatcher.call('configured_profiles', request.state.principal):
-            if profile['id'] == profile_id: return profile
-        raise HTTPException(status_code=404, detail='Unknown configured profile')
 
     @production.get('/skeleton')
     def production_status(request: Request, query: Annotated[EmptyQuery, Query()]):
@@ -210,7 +205,8 @@ def create_voice_app(dispatcher, *, credentials, upload_deadline=15.0, installed
         op = OPERATIONS[operation_id]
         availability = 'implemented' if op['http']['method'] == 'POST' else 'implemented_read'
         configured = dispatcher.call('configured_capabilities', request.state.principal)
-        if configured and operation_id in PRODUCTION_OPERATIONS and operation_id not in configured['operations']:
+        if operation_id == 'job_retry' and not dispatcher.call('status')['retry_available']: availability = 'unavailable_lifecycle'
+        if configured and operation_id in ('voice_preset_register','voice_prepare','voice_results','voice_save','speech_generate') and operation_id not in configured['operations']:
             availability = 'unavailable_configured_profile'
         if (installed is not None and operation_id in ('voice_prepare', 'voice_results', 'voice_save')
                 and not (configured and operation_id in configured['operations'])):
@@ -288,6 +284,31 @@ def create_voice_app(dispatcher, *, credentials, upload_deadline=15.0, installed
     def asset_bytes(asset_id: str, request: Request, query: Annotated[ContentQuery, Query()]):
         return asset_call(dispatcher, request.state.principal, 'asset_content', dict(asset_id=asset_id, **query.model_dump()))
     from service.domain import production_call
+    def control_read_endpoint(operation):
+        async def endpoint(request: Request):
+            from contracts.validate import validate, ContractError
+            from jsonschema.exceptions import ValidationError
+            from service.job_control import wait_job
+            payload = dict(request.path_params)
+            if len(request.query_params.multi_items()) != len(set(request.query_params.keys())):
+                raise Failure('invalid_request', 'Duplicate query fields.')
+            if set(payload).intersection(request.query_params):
+                raise Failure('invalid_request', 'Path fields cannot be repeated in the query.')
+            payload.update(request.query_params)
+            try:
+                for name in ('limit', 'wait_seconds'):
+                    if name in payload:
+                        value = payload[name]
+                        if not value.isascii() or not value.isdecimal(): raise ValueError()
+                        payload[name] = int(value)
+                validate(OPERATIONS[operation]['request'],payload)
+            except (ValueError, ValidationError, ContractError):
+                raise Failure('invalid_request', 'Use the named bounded query contract.') from None
+            if operation == 'job_wait':
+                return await wait_job(dispatcher,request.state.principal,payload,request.is_disconnected)
+            return await asyncio.to_thread(production_call,dispatcher,request.state.principal,operation,payload)
+        return endpoint
+
     def read_endpoint(operation):
         def endpoint(request: Request, query: Annotated[EmptyQuery, Query()]):
             return production_call(dispatcher, request.state.principal, operation, dict(request.path_params))
@@ -322,6 +343,7 @@ def create_voice_app(dispatcher, *, credentials, upload_deadline=15.0, installed
     for operation in PRODUCTION_OPERATIONS:
         op = OPERATIONS[operation]
         production.add_api_route(op['http']['route'],
-            read_endpoint(operation) if op['http']['method'] == 'GET' else mutation_endpoint(operation),
+            (control_read_endpoint(operation) if operation in ('jobs_list','job_events','job_wait','profile_get') else read_endpoint(operation)) if op['http']['method'] == 'GET' else mutation_endpoint(operation),
             methods=[op['http']['method']])
+    production.add_api_route('/skeleton/profiles/{profile_id}',control_read_endpoint('profile_get'),methods=['GET'])
     return production

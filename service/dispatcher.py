@@ -40,7 +40,7 @@ class Dispatcher:
         self.initialized.result(timeout=15 if installed_activation is not None else 5)
 
     def call(self, op, *args, timeout=3, **kwargs):
-        if op not in ('submit','job','jobs','events','artifact','asset','cancel','status','replace','inventory_page','reconcile_startup','close','voice_list','voice_get','voice_version','voice_resolve','voice_summaries','voice_version_summaries','asset_ingest','asset_metadata','asset_content','configured_presets','configured_capabilities','configured_profiles','production_preset_register','production_prepare','production_generate','production_save','production_results','production_job','production_cancel','production_artifact'):
+        if op not in ('submit','job','jobs','events','artifact','asset','cancel','status','replace','inventory_page','reconcile_startup','close','voice_list','voice_get','voice_version','voice_resolve','voice_summaries','voice_version_summaries','asset_ingest','asset_metadata','asset_content','configured_presets','configured_capabilities','configured_profiles','production_preset_register','production_prepare','production_generate','production_save','production_results','production_job','production_cancel','production_artifact','production_jobs','production_events','production_retry','production_aliases','production_archive','production_profile'):
             raise ValueError('unknown_control_command')
         if op == 'asset_ingest':
             from service.ingest import MAX_BYTES
@@ -212,7 +212,8 @@ class Dispatcher:
         operation = {'production_preset_register':'voice_preset_register', 'production_prepare':'voice_prepare', 'production_generate':'speech_generate',
                      'production_save':'voice_save', 'production_results':'voice_results',
                      'production_job':'job_get', 'production_cancel':'job_cancel',
-                     'production_artifact':'artifact_get'}[op]
+                     'production_artifact':'artifact_get', 'production_jobs':'jobs_list', 'production_events':'job_events',
+                     'production_retry':'job_retry', 'production_aliases':'voice_aliases', 'production_archive':'voice_archive', 'production_profile':'profile_get'}[op]
         oracle.validate(OPERATIONS[operation]['request'], payload)
         if OPERATIONS[operation]['idempotency']: _id(key)
         domain = Production(self.core)
@@ -220,6 +221,67 @@ class Dispatcher:
             job = self.core.job(job_id)
             if job['principal_id'] != principal: raise ValueError('not_found')
             return job
+        if op == 'production_profile':
+            from service.production_selection import discovery
+            for profile in discovery(self):
+                if profile['id'] == payload['profile_id']: return profile
+            raise ValueError('not_found')
+        if op in ('production_aliases', 'production_archive'):
+            method = self.core.voices.aliases if op == 'production_aliases' else self.core.voices.archive
+            return method(principal, key, **payload)
+        if op == 'production_retry':
+            old = owned(payload['job_id'])
+            oracle.require(payload['input_sha256'] == old['input_sha256'], 'idempotency_conflict')
+            _, context = self.core._load(old['id'])
+            from worker.native_protocol import frozen_native
+            if hasattr(self.runtime, 'native') or frozen_native(context):
+                raise ValueError('unsupported_control')
+            # Replays precede authority refresh, but remain bound to the source
+            # job even when two sources have byte-identical frozen inputs.
+            job = self.core.execution_duplicate(principal, old['operation'], key,
+                context['plan']['request'], context=context, retry_of=old['id'])
+            if job is None:
+                oracle.require(old['state'] in ('failed','cancelled') and all(a['reaped'] for a in old['attempts']), 'unsupported_control')
+                if not self._ready(): raise ValueError('not_ready')
+                if self.core.db.execute("SELECT 1 FROM dispatches WHERE job_id=? AND (acked=0 OR phase='unknown')", (old['id'],)).fetchone():
+                    raise ValueError('not_ready')
+                if self.core.db.execute('SELECT 1 FROM publications WHERE job_id=?',(old['id'],)).fetchone(): raise ValueError('unsupported_control')
+                from service.persistence import check_operator_resolved
+                check_operator_resolved(self.core.db,old['id'])
+                if self.production_contexts is None: raise ValueError('not_ready')
+                from service.production_selection import ContextComposition, resolve_owned, choose
+                request = context['plan']['request']
+                if isinstance(self.production_contexts, ContextComposition):
+                    current = self.production_contexts.resolve_selected(self,principal,old['operation'],request)
+                else:
+                    current = resolve_owned(self.production_contexts,self.core,principal,old['operation'],request)
+                    current = choose(self,[('configured',current)],request)
+                # Resolve current authority, never replace the historical plan.
+                oracle.require(current.get('execution') == context.get('execution'), 'unsupported_control')
+                for field in ('identity','profile','settings','settings_sha256'):
+                    oracle.require(current['plan']['resolved'][field] == context['plan']['resolved'][field], 'unsupported_control')
+                settings = self.core.db.execute('SELECT fixture,seconds FROM dispatch_settings WHERE job_id=?',(old['id'],)).fetchone()
+                if settings is None: raise ValueError('unsupported_control')
+                job = self.core.submit_execution(principal,key,context,retry_of=old['id'],
+                    _admission=self.admission,_profiles=self.profiles,_dispatch_settings=tuple(settings))
+            return dict(job_id=job['id'],input_sha256=job['input_sha256'],state='queued',status_url='/v1/jobs/'+job['id'])
+        if op in ('production_jobs', 'production_events'):
+            from service.job_control import cursor_decode, cursor_encode
+            job_id = payload.get('job_id', '')
+            if job_id: job = owned(job_id)
+            kind = 'events' if job_id else 'jobs'
+            after = cursor_decode(payload['cursor'], principal, kind, job_id)
+            if after:
+                query = ('SELECT 1 FROM events WHERE seq=? AND job_id=?' if job_id else
+                         'SELECT 1 FROM jobs WHERE seq=? AND principal=?')
+                if not self.core.db.execute(query, (after, job_id or principal)).fetchone():
+                    raise ValueError('invalid_request')
+            rows = self.core.events(job_id, after, payload['limit']) if job_id else self.core.jobs(principal, after, payload['limit'])
+            token = lambda seq: cursor_encode(seq, principal, kind, job_id)
+            if job_id:
+                return dict(job=job, events=[dict(cursor=token(r['cursor']),state=r['state']) for r in rows],
+                            next_cursor=token(rows[-1]['cursor']) if rows else payload['cursor'])
+            return dict(items=[r['job'] for r in rows],next_cursor=token(rows[-1]['cursor']) if len(rows)==payload['limit'] else None)
         if op == 'production_job': return owned(payload['job_id'])
         if op == 'production_artifact':
             artifact = self.core.artifact(payload['artifact_id'])
@@ -251,11 +313,8 @@ class Dispatcher:
             owned(payload['job_id'])
             return domain.save(principal, key, payload['job_id'], payload['candidate_id'], payload['voice_id'], expected_revision=payload['expected_revision'])
         # Duplicate lookup retains the original frozen identity and reservation.
-        row = self.core.db.execute('SELECT fingerprint,job FROM jobs WHERE principal=? AND operation=? AND key=?', (principal,operation,key)).fetchone()
-        if row:
-            oracle.require(row[0] == oracle.fingerprint(principal,operation,payload), 'idempotency_conflict')
-            job = json.loads(row[1])
-        else:
+        job = self.core.execution_duplicate(principal, operation, key, payload)
+        if job is None:
             if not self._activation_open() or self.closing or not self.reconciled or self.quarantined or self.resource_fault or self.integrity_fault or not getattr(self.runtime,'admission_open',True):
                 raise ValueError('not_ready')
             if self.production_contexts is None: raise ValueError('not_ready')
@@ -323,7 +382,7 @@ class Dispatcher:
         if op=='status':
             try:row=self.store.current()
             except ValueError:row=None;self.error='dispatch_identity_unreadable'
-            return dict(reconciled=self.reconciled,quarantined=self.quarantined,
+            return dict(retry_available=not hasattr(self.runtime,'native'),reconciled=self.reconciled,quarantined=self.quarantined,
                 phase=row['phase'] if row else 'idle',runtime_id=row['runtime'] if row else None,
                 resource_activation=self._ready(),persistent_activation=self.enrolled and self._ready(),error=self.error,
                 resource_fault=self.resource_fault,persistence_fault=self.persistence_fault,
@@ -342,8 +401,10 @@ class Dispatcher:
             # Idempotent lookup is a read, including during quarantine/reconnect.
             if op=='submit':
                 if len(args)!=2 or not set(kwargs)<= {'retry_of','fixture','seconds'}:raise ValueError('closed_synthetic_command')
-                existing=self.core.db.execute("SELECT job FROM jobs WHERE principal=? AND operation='speech_generate' AND key=?",args).fetchone()
-                if existing:return json.loads(existing[0])
+                context=json.loads(Path('contracts/fixtures/v1/transcript-speech_generate.json').read_text())['context']
+                existing=self.core.execution_duplicate(args[0], 'speech_generate', args[1],
+                    context['plan']['request'], context=context, retry_of=kwargs.get('retry_of'))
+                if existing is not None:return existing
             if not self._activation_open(): raise ValueError('persistent_activation_closed_until_C1')
             if self.installed_checked: raise ValueError('installed_production_commands_required')
             if self.closing or not self.reconciled or self.quarantined or self.resource_fault or self.integrity_fault or not getattr(self.runtime,'admission_open',True):raise ValueError('startup_or_quarantine')
