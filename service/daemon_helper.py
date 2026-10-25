@@ -14,12 +14,11 @@ from pathlib import Path
 import stat
 import subprocess
 import sys
-import tempfile
 import time
 
 from service import daemon_volumes as dv, install_policy as ip
 from service.core import encode
-from service.daemon_client import Wire, encoded, manifest
+from service.daemon_client import Wire, encoded, manifest, collect
 from service.persistent_init import digest
 
 MAX_HELPERS=128
@@ -45,24 +44,17 @@ def gate_projection(value):
 
 
 def child(kind, request, descriptors):
-    """Synchronous fixed child; no KILL on timeout, no false completion receipt."""
+    """Retain all enclosing exclusions through actual exit/reap, even on failure."""
     if kind not in ('core','hello','writer'): raise ValueError('daemon_child_kind')
     raw=encoded(request)
     if len(raw)>65536: raise ValueError('daemon_child_budget')
-    with tempfile.TemporaryFile() as out:
-        p=subprocess.Popen([sys.executable,'-I','-B','-c',
-            "import sys;sys.path.insert(0,'/opt/speech');from service.install_child import container_entry;container_entry("+repr(kind)+')'],
-            stdin=subprocess.PIPE,stdout=out,stderr=subprocess.DEVNULL,close_fds=True,pass_fds=tuple(descriptors),cwd='/',env={})
-        try: p.communicate(raw,timeout=30)
-        except subprocess.TimeoutExpired:
-            # Pending helper intent prevents any successor from activating. No
-            # kill, replacement Core or automatic completion of ambiguous work.
-            raise ValueError('daemon_child_timeout_retained') from None
-        if p.returncode!=0: raise ValueError('daemon_child_failed_retained')
-        out.seek(0); result=out.read(65537)
-        if len(result)>65536: raise ValueError('daemon_child_output_budget')
-        if kind=='hello': return json.loads(result)
-        if result: raise ValueError('daemon_writer_unexpected_output')
+    p=subprocess.Popen([sys.executable,'-I','-B','-c',
+        "import sys;sys.path.insert(0,'/opt/speech');from service.install_child import container_entry;container_entry("+repr(kind)+')'],
+        stdin=subprocess.PIPE,stdout=subprocess.PIPE,stderr=subprocess.DEVNULL,close_fds=True,
+        pass_fds=tuple(descriptors),cwd='/',env={},bufsize=0)
+    result=collect(p,raw,65536,time.monotonic()+30,'daemon_child')
+    if kind=='hello': return json.loads(result)
+    if result: raise ValueError('daemon_writer_unexpected_output')
 
 
 class Helper:

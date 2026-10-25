@@ -599,3 +599,136 @@ class FailureAndPackagingTests(unittest.TestCase):
         self.assertEqual(result['local'],facts); self.assertEqual(result['hello']['boot'],'b'*32)
         with self.assertRaises(Refused): owner.operation('startup',dict(extra=True))
         self.assertEqual(request(dict(version=VERSION,op='startup',body={})),('startup',{}))
+
+
+class AdapterBoundsTests(ProtocolTests):
+    """Actual adapters with inert pipes and controlled fake reap transitions."""
+    def process(self, data=b'', wait=None):
+        reader,writer,input_reader,input_writer=self.pipes()
+        if data: writer.write(data)
+        writer.close()
+        p=SimpleNamespace(stdout=reader,stdin=input_writer,returncode=None)
+        def done(timeout):
+            if wait: wait(p,timeout)
+            else: p.returncode=0
+            return p.returncode
+        p.wait=done
+        return p
+
+    def test_child_timeout_holds_every_root_until_reap(self):
+        import fcntl
+        s=Session(self); s.run('install'); s.child=dh.child; calls=[]
+        def wait(p,timeout):
+            self.assertEqual(timeout,.1)
+            for role in ('authority','control','receipts','staging','ipc'):
+                fd=os.open(s.roots[role],os.O_RDONLY|os.O_DIRECTORY)
+                try:
+                    with self.assertRaises(BlockingIOError): fcntl.flock(fd,fcntl.LOCK_EX|fcntl.LOCK_NB)
+                finally: os.close(fd)
+            self.assertTrue((s.roots['receipts']/'p1-core-intent').exists())
+            calls.append('wait')
+            if len(calls)<3: raise dc.subprocess.TimeoutExpired('inert',timeout)
+            p.returncode=0
+        p=self.process(wait=wait); original=dc.collect
+        def expired(*args): return original(*args[:3],-1,args[4])
+        with patch.object(dh.subprocess,'Popen',return_value=p),patch.object(dh,'collect',side_effect=expired):
+            with self.assertRaisesRegex(ValueError,'child_timeout_retained'): s.run('init')
+        self.assertEqual(len(calls),3)
+        self.assertTrue((s.roots['receipts']/'p1-core-intent').exists())
+        for role in ('authority','control','receipts','staging','ipc'):
+            fd=os.open(s.roots[role],os.O_RDONLY|os.O_DIRECTORY)
+            try: fcntl.flock(fd,fcntl.LOCK_EX|fcntl.LOCK_NB)
+            finally: os.close(fd)
+
+    def test_both_adapters_live_overflow_bounded_and_reaped(self):
+        import threading
+        for helper,limit in ((True,65536),(False,dc.LIMIT)):
+            with self.subTest(helper=helper):
+                reader,writer,input_reader,input_writer=self.pipes()
+                sent=[]; reaped=[]; peak=[]
+                def produce():
+                    try:
+                        for _ in range(limit//4096+16): writer.write(b'x'*4096)
+                        sent.append(True)
+                    finally: writer.close()
+                thread=threading.Thread(target=produce); thread.start()
+                p=SimpleNamespace(stdout=reader,stdin=input_writer if helper else None,returncode=None)
+                def wait(timeout):
+                    thread.join(1); self.assertFalse(thread.is_alive()); reaped.append(True); p.returncode=0; return 0
+                p.wait=wait
+                class Capped(bytearray):
+                    def extend(self,data):
+                        super().extend(data); peak.append(len(self)); self_test.assertLessEqual(len(self),limit)
+                self_test=self
+                d=object.__new__(dc.Docker); d.endpoint='unix:///fixture'; d.env={}; d.end=time.monotonic()+3; d.retained=[]
+                with patch.object(dc.subprocess,'Popen',return_value=p) as popen,patch.object(dc,'bytearray',Capped,create=True):
+                    with self.assertRaisesRegex(ValueError,'output_budget'):
+                        if helper: dh.child('hello',{},())
+                        else: d.call(['fixture'])
+                self.assertEqual(popen.call_args.kwargs['stdout'],dc.subprocess.PIPE)
+                self.assertTrue(sent and reaped); self.assertLessEqual(max(peak,default=0),limit)
+                self.assertEqual(d.retained,[])
+
+    def test_client_timeout_reaps_before_return_and_releases_reference(self):
+        calls=[]
+        def wait(p,timeout):
+            calls.append(timeout)
+            if len(calls)<3: raise dc.subprocess.TimeoutExpired('inert',timeout)
+            p.returncode=0
+        p=self.process(wait=wait); p.stdin.close(); p.stdin=None
+        d=object.__new__(dc.Docker); d.endpoint='unix:///fixture'; d.env={}; d.end=-1; d.retained=[]
+        with patch.object(dc.subprocess,'Popen',return_value=p):
+            with self.assertRaisesRegex(ValueError,'client_timeout_retained'): d.call(['fixture'])
+        self.assertEqual(calls,[.1]*3); self.assertEqual(d.retained,[])
+
+    def test_exchange_exact_eof_pending_and_subsequent_trailing(self):
+        s=Session(self); nonce='a'*32; identity='3'*64
+        c=container('helper',s.config,s.b,phase='init',nonce=nonce,identity=identity)
+        c['State'].update(Running=True,Status='running',StartedAt='2026-10-25T00:00:00Z')
+        frame=dc.encoded(dict(version=1,nonce=nonce,phase='init',step=2,action='complete',payload=dict(result={'phase':'initialized'})))+b'\n'
+        for suffix,split in ((b'',False),(b'junk',False),(frame,False),(b'junk',True)):
+            with self.subTest(suffix=suffix,split=split):
+                p=self.process(frame+suffix)
+                d=object.__new__(dc.Docker); d.endpoint='unix:///fixture'; d.env={}; d.end=time.monotonic()+2; d.retained=[]
+                final=copy.deepcopy(c); final['State'].update(Running=False,Status='exited')
+                d.container=Mock(side_effect=[c,c,final]); d.check=Mock()
+                read=os.read
+                def split_read(fd,n): return read(fd,min(n,len(frame)))
+                with patch.object(dc.subprocess,'Popen',return_value=p),patch.object(dc.os,'read',side_effect=split_read if split else read):
+                    if suffix:
+                        with self.assertRaisesRegex(ValueError,'trailing_protocol'): d.exchange(identity,'init',nonce,s.config,s.b,[])
+                    else: self.assertEqual(d.exchange(identity,'init',nonce,s.config,s.b,[]),{'phase':'initialized'})
+                if suffix: d.check.assert_not_called()
+
+    def test_terminal_eof_timeout(self):
+        reader,writer,_,out=self.pipes(); wire=dc.Wire(reader,out,'a'*32,'up',deadline=time.monotonic()+.01)
+        with self.assertRaisesRegex(ValueError,'terminal_eof_timeout'): wire.finish()
+
+    def test_good_output_and_nonzero_exit(self):
+        for helper in (False,True):
+            for status in (0,2):
+                with self.subTest(helper=helper,status=status):
+                    p=self.process(b'{"ok":true}' if helper else b'  result\n')
+                    def wait(timeout): p.returncode=status; return status
+                    p.wait=wait
+                    d=object.__new__(dc.Docker); d.endpoint='unix:///fixture'; d.env={}; d.end=time.monotonic()+1; d.retained=[]
+                    with patch.object(dc.subprocess,'Popen',return_value=p):
+                        if status:
+                            with self.assertRaisesRegex(ValueError,'failed_retained'):
+                                if helper: dh.child('hello',{},())
+                                else: d.call(['fixture'])
+                        elif helper: self.assertEqual(dh.child('hello',{},()),{'ok':True})
+                        else: self.assertEqual(d.call(['fixture']),'result')
+                    self.assertEqual(d.retained,[])
+
+    def test_setup_error_and_unknown_wait_cannot_unwind_before_reap(self):
+        p=self.process(); calls=[]
+        def wait(timeout):
+            calls.append(timeout)
+            if len(calls)==1: return None
+            p.returncode=0; return 0
+        p.wait=wait
+        with patch.object(dc.os,'set_blocking',side_effect=OSError('inert setup fault')):
+            with self.assertRaisesRegex(OSError,'inert setup fault'):
+                dc.collect(p,b'',64,time.monotonic()+1,'fixture')
+        self.assertEqual(calls,[.1,.1]); self.assertTrue(p.stdout.closed and p.stdin.closed)

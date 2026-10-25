@@ -106,6 +106,23 @@ A normal up after clean stop reuses the same exact runtime IDs. Status is bounde
 observation, not future health. A missing/recreated ID, changed endpoint/daemon,
 mount, image, input view, boot or unproved history refuses and retains state.
 
+Child completion becoming unknown is an exceptional retention state. On child
+output overflow or timeout, the helper stops advancing the transaction, keeps
+its root/authority/launch exclusions and incomplete intent, drains stdout without
+retaining further output, and waits for actual exit/reap. Exactly one child stays
+owned; there is no replacement, force/KILL, rollback, success or intent clearing.
+This wait has **unbounded duration with bounded resources** and may require manual
+intervention. A caller timeout is not helper completion: retain the exact helper
+ID and all receipts; competing operations must refuse. Do not remove or replace
+retained resources. Normal protocol and collection deadlines still bound success.
+
+Docker CLI stdout retains at most 1 MiB and helper-child stdout at most 64 KiB,
+plus one read chunk of at most 64 KiB and fixed pipe/selector/request overhead;
+there is no disk spool. Readiness waits use 100-ms selector/wait intervals rather
+than polling without delay. Terminal protocol success additionally requires exact
+stdout EOF within 10 seconds and the remaining operation deadline; buffered or
+subsequent trailing bytes, including a second frame, refuse.
+
 Eight distinct unpredictable installation-scoped local named volumes hold control,
 receipts, staging, IPC, authority, models, configuration and credential. Volume
 copy-up is disabled. Authority remains root:root 0700 with exclusive, fsynced 0600

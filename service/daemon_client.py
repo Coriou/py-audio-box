@@ -13,7 +13,6 @@ import selectors
 import stat
 import subprocess
 import sys
-import tempfile
 import time
 
 from service import daemon_volumes as dv
@@ -62,6 +61,69 @@ def exclusive(path, value):
     finally: os.close(fd)
 
 
+def collect(p, raw, limit, deadline, prefix):
+    """One owned child, capped memory, no disk spool; failure drains until reap.
+
+    Unknown completion has unbounded duration but bounded resources. Never
+    return through an enclosing exclusion until wait has verified actual reap.
+    """
+    output=bytearray(); failure=None; offset=0
+    try:
+        with selectors.DefaultSelector() as sel:
+            os.set_blocking(p.stdout.fileno(),False)
+            sel.register(p.stdout,selectors.EVENT_READ)
+            if p.stdin is not None:
+                os.set_blocking(p.stdin.fileno(),False)
+                if raw: sel.register(p.stdin,selectors.EVENT_WRITE)
+                else: p.stdin.close()
+            while sel.get_map():
+                if failure is None and time.monotonic()>=deadline:
+                    failure=ValueError(prefix+'_timeout_retained')
+                    output.clear()
+                    if p.stdin is not None and not p.stdin.closed:
+                        sel.unregister(p.stdin); p.stdin.close()
+                for key,_ in sel.select(.1):
+                    if key.fileobj is p.stdout:
+                        try: data=os.read(p.stdout.fileno(),65536)
+                        except BlockingIOError: continue
+                        if not data:
+                            sel.unregister(p.stdout); p.stdout.close()
+                        elif failure is None:
+                            if len(data)>limit-len(output):
+                                failure=ValueError(prefix+'_output_budget'); output.clear()
+                                if p.stdin is not None and not p.stdin.closed:
+                                    sel.unregister(p.stdin); p.stdin.close()
+                            else: output.extend(data)
+                    else:
+                        try: offset+=os.write(p.stdin.fileno(),raw[offset:offset+65536])
+                        except BlockingIOError: continue
+                        except BrokenPipeError: offset=len(raw)
+                        if offset==len(raw): sel.unregister(p.stdin); p.stdin.close()
+    except BaseException as exc:
+        # Even interruption/adapter faults cannot unwind child ownership.
+        failure=exc; output.clear()
+        if p.stdin is not None and not p.stdin.closed: p.stdin.close()
+        # Closing stdout is safe on this exceptional path: no storage grows,
+        # and the writer receives EPIPE rather than blocking on a full pipe.
+        if not p.stdout.closed: p.stdout.close()
+    while True:
+        if failure is None and time.monotonic()>=deadline:
+            failure=ValueError(prefix+'_timeout_retained'); output.clear()
+        try:
+            status=p.wait(timeout=.1)
+            if type(status) is int and type(p.returncode) is int: break
+            time.sleep(.1)
+        except subprocess.TimeoutExpired:
+            if failure is None and time.monotonic()>=deadline:
+                failure=ValueError(prefix+'_timeout_retained'); output.clear()
+        except BaseException as exc:
+            if failure is None: failure=exc; output.clear()
+            time.sleep(.1)
+    if failure is not None: raise failure
+    if p.returncode!=0: raise ValueError(prefix+'_failed_retained')
+    return bytes(output)
+
+
 class Docker:
     def __init__(self, context=None, *, endpoint=None):
         self.env={k:v for k,v in os.environ.items() if not k.startswith('DOCKER_')}
@@ -81,15 +143,14 @@ class Docker:
         return ['docker']+(['--host',self.endpoint] if self.endpoint else [])+args
 
     def call(self,args):
-        # File-backed bounded collection avoids unbounded communicate output.
-        with tempfile.TemporaryFile() as output:
-            p=subprocess.Popen(self.argv(args),stdin=subprocess.DEVNULL,stdout=output,stderr=subprocess.DEVNULL,env=self.env,close_fds=True)
-            self.retained.append(p)
-            try: p.wait(timeout=max(.01,min(15,self.end-time.monotonic())))
-            except subprocess.TimeoutExpired: raise ValueError('daemon_client_timeout_retained') from None
-            if p.returncode!=0: raise ValueError('daemon_cli_refused_retained')
-            if output.tell()>LIMIT: raise ValueError('daemon_output_budget')
-            output.seek(0); return output.read(LIMIT+1).decode().strip()
+        p=subprocess.Popen(self.argv(args),stdin=subprocess.DEVNULL,stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,env=self.env,close_fds=True,bufsize=0)
+        self.retained.append(p)
+        try:
+            return collect(p,b'',LIMIT,min(self.end,time.monotonic()+15),'daemon_client').decode().strip()
+        finally:
+            # collect returns/raises only after verified reap.
+            self.retained.remove(p)
 
     def json(self,args): return parse(self.call(args))
 
@@ -204,6 +265,7 @@ class Docker:
             response=self.action(action,payload,config,b,source)
             wire.send(action,response)
         p.stdin.close()
+        wire.finish()
         try: p.wait(timeout=max(.01,min(10,self.end-time.monotonic())))
         except subprocess.TimeoutExpired: raise ValueError('daemon_helper_exit_unknown') from None
         if p.returncode!=0: raise ValueError('daemon_helper_failed_retained')
@@ -231,6 +293,17 @@ class Wire:
                 if remaining<=0 or not sel.select(remaining): raise ValueError('daemon_phase_write_timeout')
                 try: offset+=os.write(self.writer.fileno(),raw[offset:])
                 except BlockingIOError: continue
+    def finish(self):
+        """A terminal frame is successful only with bounded, exact stdout EOF."""
+        if self.pending: raise ValueError('daemon_trailing_protocol')
+        with selectors.DefaultSelector() as sel:
+            sel.register(self.reader,selectors.EVENT_READ)
+            remaining=min(10,self.deadline-time.monotonic())
+            if remaining<=0 or not sel.select(remaining):
+                raise ValueError('daemon_terminal_eof_timeout')
+            if os.read(self.reader.fileno(),1):
+                raise ValueError('daemon_trailing_protocol')
+
     def receive(self):
         raw=self.pending
         with selectors.DefaultSelector() as sel:
