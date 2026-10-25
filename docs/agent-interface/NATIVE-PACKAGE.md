@@ -294,3 +294,33 @@ remain subsequent slices. No reviewed arm64 wheelhouse, compatible installed ABI
 actual hardware/model/MPS, denied-peer/topology, audio, cancellation/crash/resource
 or completed installed restart qualification is supplied. CPU/CUDA qualification
 and legacy lib/tts digest RED remain separate and unchanged/unwaived.
+
+r319 SOURCE adds fresh owned **Qwen preset** onboarding to the existing public
+`voice_preset_register` operation (CLI `voice preset-register`, MCP
+`speech_voice_preset_register`). Start with authenticated `/skeleton` and its
+principal-scoped `configured_presets`. Submit only `preset`, `voice_id` and
+`expected_revision` with the existing idempotency key. Registration requires the
+existing activated/ready owner gate; it neither enrolls nor promotes a profile.
+Then use the returned immutable version ID in `speech_generate`, preserving the
+explicit Qwen model/bundle/metal/precision identity and fallback forbid. Retrieve
+job/artifact/asset bytes through the same HTTP API. CLI/MCP remain thin clients.
+
+Only an unambiguous, explicitly enrolled native `custom_voice` template can
+supply a preset. Its trusted metadata supplies speaker, settings, model, sealed
+bundle identity, native trust and profile. Owned version identity deterministically
+binds principal, target and the entire immutable template. Core's existing
+registration transaction supplies ownership, CAS, idempotency and immutable
+versions. Native supervisor independently reproduces the derivation from its
+original enrolled templates before authorizing an allocation; generated
+registrations never become new preset templates. Existing exact registered
+versions and Linux Kokoro/Pocket routes are preserved. No public descriptor,
+path, principal, inventory or configuration field is accepted.
+
+Same-boot close/reopen/replay is subject to the unchanged finite clean completed
+history policy above. This is not automatic boot/trust renewal. Public discovery
+still reports speech UNAVAILABLE / UNQUALIFIED. Managed clone onboarding needs a
+separate bounded operation joining Core-owned verified reference media and text
+to immutable clone versions, plus an independently authorized native reference
+mapping/lifetime and completed-history policy; presets do not supply those
+permissions. No clean clone journey, arm64 wheelhouse, ABI, Metal or release
+qualification is established here.

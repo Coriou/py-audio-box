@@ -32,6 +32,8 @@ class NativeLifecycleTests(unittest.TestCase):
         self.f.s.registrations[self.f.a.binding]['snapshot'][1]=copy.deepcopy(self.context)
         self.f.s.registrations[self.f.a.binding]['snapshot'][3]=copy.deepcopy(self.profiles)
         self.f.s.registrations[self.f.a.binding]['snapshot'][0]['principal_id']='alice'
+        # Explicit fixture enrollment must update originals, not rely on allocations.
+        self.f.s._preset_templates=copy.deepcopy(self.f.s.registrations)
         seed.close()
         self.contexts=NativeQwenContexts({('alice','qwen-mps','vv0'):self.context},self.f.f.inventory,self.profiles,self.f.native)
         self.dispatcher=None

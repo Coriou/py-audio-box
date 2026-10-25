@@ -158,6 +158,7 @@ class NativeSupervisor:
         self.boot=secrets.token_hex(16); self.pin=peer_pin; self.manifest=runtime_manifest_sha256
         if type(registrations) is not dict or not 1<=len(registrations)<=64: raise Refused('native_registration')
         self.registrations=copy.deepcopy(registrations)
+        self._preset_templates=copy.deepcopy(registrations)
         self.python,self.entry=python,child_entry
         self.popen,self.pair,self.signal_group,self.identity=popen,pair,signal_group,identity
         self.clock,self.utc=clock,utc
@@ -186,7 +187,7 @@ class NativeSupervisor:
 
     def registration(self,r,verify=False, *, candidate=None):
         reg=candidate if candidate is not None else self.registrations.get(r['binding'])
-        if reg is None or reg['snapshot'] != r['snapshot']: raise Refused('native_registration')
+        if reg is None or canonical(reg['snapshot']) != canonical(r['snapshot']): raise Refused('native_registration')
         e=reg['execution']
         from contracts import validate as oracle
         job,context,assets,profiles=r['snapshot']
@@ -219,7 +220,27 @@ class NativeSupervisor:
             context=copy.deepcopy(value[1]);context['plan'].pop('request')
             return value[0]['principal_id'],context,value[3]
         with self.lock:
-            matches=[r for r in self.registrations.values() if template(r['snapshot'])==template(snapshot)]
+            # Working allocations are consumers, never enrollment authority.
+            expected = canonical(template(snapshot))
+            matches=[r for r in self._preset_templates.values()
+                     if canonical(template(r['snapshot'])) == expected]
+            if not matches:
+                # Public owned preset identities are reproducible only from an
+                # already enrolled principal's exact native template.
+                from worker.native_protocol import owned_preset_context
+                for registered in self._preset_templates.values():
+                    try:
+                        source = registered['snapshot']
+                        version = snapshot[1]['plan']['voice_versions'][0]
+                        derived = owned_preset_context(source[1], source[0]['principal_id'],
+                            registered['execution'].preset, version['voice_id'])
+                        candidate = copy.deepcopy(source); candidate[1] = derived
+                        if canonical(template(candidate)) != expected: continue
+                        reg = copy.deepcopy(registered)
+                        reg['execution'] = p.native_execution(derived)
+                        matches.append(reg)
+                    except (Refused, KeyError, ValueError):
+                        continue
             if not matches: raise Refused('native_registration')
             oracle.admission(authority.job,authority.context,authority.profiles)
             authority.check(authority.message(),'execute')
