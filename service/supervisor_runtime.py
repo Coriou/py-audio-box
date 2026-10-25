@@ -76,7 +76,7 @@ class SupervisorRuntime:
                                             message, manifest, time.monotonic())
 
 
-def installed_hello_at(ipc_fd, *, timeout=1.5):
+def installed_hello_at(ipc_fd, *, timeout=1.5, startup=False):
     """Hello only, for a permanently dropped host helper with a validated fd.
 
     The caller owns child creation/reap. This never drops the current process,
@@ -118,7 +118,7 @@ def installed_hello_at(ipc_fd, *, timeout=1.5):
         # key/socket identity checks and authenticated server peer checks bracket it.
         connection.connect('/proc/self/fd/'+str(ipc_fd)+'/lifecycle.sock')
         authenticate(connection, session(secret, 0, 10001), cutoff, control=True)
-        send(connection, dict(version=VERSION, op='hello', body={}), cutoff)
+        send(connection, dict(version=VERSION, op='startup' if startup else 'hello', body={}), cutoff)
         result = receive(connection, cutoff)
     if (install_policy.identity(os.fstat(ipc_fd)) != install_policy.identity(root) or
             install_policy.identity(os.stat('lifecycle.sock', dir_fd=ipc_fd, follow_symlinks=False)) != install_policy.identity(endpoint)):
@@ -127,6 +127,13 @@ def installed_hello_at(ipc_fd, *, timeout=1.5):
             not isinstance(result['value'], dict) or len(json.dumps(result['value'], allow_nan=False).encode()) > 65536):
         raise RuntimeError('lifecycle_refused_or_quarantined')
     value = result['value']
+    if startup:
+        from service import daemon_volumes as dv
+        dv.closed(value,'hello local')
+        dv.local(value['local'],'worker')
+        from service.host_install import _registration_hello
+        _registration_hello(value['hello'])
+        return value
     if (set(value) != {'lane', 'boot', 'quarantined', 'launches'} or
             any(not isinstance(value[k], str) or len(value[k]) != 32 or
                 any(c not in '0123456789abcdef' for c in value[k]) for k in ('lane', 'boot')) or

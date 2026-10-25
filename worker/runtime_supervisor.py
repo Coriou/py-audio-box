@@ -79,6 +79,10 @@ class RuntimeSupervisor:
         return 'unknown'
 
     def operation(self, op, body):
+        if op == 'startup':
+            if body: raise Refused('closed_body')
+            from service.daemon_runtime import facts
+            return dict(hello=self.operation('hello',{}),local=facts('worker'))
         if op == 'hello':
             if body:
                 raise Refused('closed_body')

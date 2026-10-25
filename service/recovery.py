@@ -31,7 +31,7 @@ def closed(value, keys):
 def validate_registration(record):
     closed(record, 'deployment_id scope containers lane boot evidence')
     validate_scope(record['scope'])
-    if record['evidence'] not in ('E1-mock','actual-host-inspection'): raise ValueError('unknown_host_evidence')
+    if record['evidence'] not in ('E1-mock','actual-host-inspection','daemon-volumes-inspection-v1'): raise ValueError('unknown_host_evidence')
     if not isinstance(record['containers'],list) or not 2<=len(record['containers'])<=16: raise ValueError('bounded_container_set')
     roles = set(); ids = set()
     for c in record['containers']:
@@ -851,6 +851,8 @@ def snapshot(roots, db, scope, *, policy=None, exclude_plan=None, exclude_abando
         registrations=[]
         for rid,raw,h in data['p1_registrations']:
             r=json.loads(raw); validate_registration(r)
+            if policy is not None and r['evidence'] != ('daemon-volumes-inspection-v1' if 'launch' in installation else 'actual-host-inspection'):
+                raise ValueError('installed_registration_evidence_policy')
             if digest(r)!=h or r['deployment_id']!=identity or r['scope']!=scope or rid!=digest(r): raise ValueError('registration_digest_scope')
             registrations.append(r)
         _validate_snapshot_journal(payload, data, registrations)
@@ -991,6 +993,8 @@ def check_consumers(state, observation):
 
 def register(roots,scope,registration):
     validate_registration(registration)
+    if registration['evidence'] == 'daemon-volumes-inspection-v1':
+        raise ValueError('daemon_fixed_writer_required')
     with offline(roots,write=True,journal_lock=False) as (roots,db):
         state=snapshot(roots,db,scope)
         if registration['deployment_id']!=state['deployment_id'] or registration['scope']!=scope or registration['lane']!=state['lane']:
@@ -3007,6 +3011,8 @@ def _installed_detached_source(state, journal):
     registrations=[]
     for rid,raw,h in data['p1_registrations']:
         record=host_json(raw.encode());validate_registration(record)
+        if record['evidence'] != ('daemon-volumes-inspection-v1' if 'launch' in public else 'actual-host-inspection'):
+            raise ValueError('installed_registration_evidence_policy')
         if (rid!=h or digest(record)!=rid or record['deployment_id']!=identity or
                 record['scope']!=public['host'] or raw!=encode(record)):
             raise ValueError('installed_history_registration')
@@ -3747,7 +3753,7 @@ def validate_installed_observation(value, scope, owners, configuration, policy, 
     return value
 
 
-def installed_startup_read(root, configuration, gate, hello, incarnation, *, policy):
+def installed_startup_read(root, configuration, gate, hello, incarnation, *, policy, launch_policy=None):
     """Explicit split-scope pre-owner gate using only control-readable evidence.
 
     Caller holds control exclusion and obtains hello through authenticated IPC.
@@ -3759,6 +3765,9 @@ def installed_startup_read(root, configuration, gate, hello, incarnation, *, pol
     from service.entrypoint import projection
     ip.require(policy)
     config = ip.configuration(configuration); projection(gate)
+    from service import daemon_volumes as dv
+    if launch_policy not in (None,dv.POLICY) or (gate.get('launch_policy') != launch_policy):
+        raise ValueError('installed_explicit_launch_policy')
     closed(incarnation,'start_ticks pid_namespace cgroup')
     if (any(type(incarnation[k]) is not int or incarnation[k] < 1 for k in ('start_ticks','pid_namespace')) or
             incarnation['cgroup'] != '0::/'):
@@ -3803,6 +3812,8 @@ def installed_startup_read(root, configuration, gate, hello, incarnation, *, pol
                 selected = None
                 for rid,raw,h in db.execute('SELECT id,record,digest FROM p1_registrations'):
                     record = host_json(raw.encode()); validate_registration(record)
+                    if record['evidence'] != (dv.EVIDENCE if launch_policy == dv.POLICY else 'actual-host-inspection'):
+                        raise ValueError('installed_registration_evidence_policy')
                     if (digest(record) != h or rid != h or record['deployment_id'] != identity or
                             record['scope'] != public['host']):
                         raise ValueError('installed_startup_registration')
@@ -3816,7 +3827,14 @@ def installed_startup_read(root, configuration, gate, hello, incarnation, *, pol
                 owners = {c['role']:c for c in selected['containers']}
                 if any(owners[r]['image'] != config['images'][r] for r in ('control','worker')):
                     raise ValueError('installed_startup_image')
-                control = next(p for p in gate['processes'] if p['id'] == owners['control']['id'])
+                if launch_policy == dv.POLICY:
+                    if public.get('launch',{}).get('policy') != launch_policy:
+                        raise ValueError('daemon_startup_enrollment')
+                    dv.observation(gate['observation'],selected,config,public['launch'],public)
+                    control = gate['observation']['local']['control']
+                else:
+                    if 'launch' in public: raise ValueError('installed_explicit_launch_policy')
+                    control = next(p for p in gate['processes'] if p['id'] == owners['control']['id'])
                 if any(control[k] != incarnation[k] for k in ('start_ticks','pid_namespace')):
                     raise ValueError('installed_control_incarnation')
                 # The parent corroborates host cgroup -> exact PID namespace; the

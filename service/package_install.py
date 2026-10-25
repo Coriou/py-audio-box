@@ -228,6 +228,9 @@ def archive(source, destination):
 
 
 def main(argv=None):
+    if (argv if argv is not None else sys.argv[1:])[:1] == ['docker']:
+        from service.daemon_client import main as docker_main
+        return docker_main((argv if argv is not None else sys.argv[1:])[1:])
     parser=argparse.ArgumentParser(description='Finite Linux Docker speech-box installer; retained failures require operator review.')
     parser.add_argument('command',choices=('init','complete','up','stop','status','archive','setup'))
     parser.add_argument('--configuration'); parser.add_argument('--scope'); parser.add_argument('--host-policy')
