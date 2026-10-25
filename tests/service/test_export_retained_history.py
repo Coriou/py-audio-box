@@ -144,6 +144,56 @@ class ExportRetainedHistoryTests(unittest.TestCase):
             bad=copy.deepcopy(journal);mutate(bad)
             with self.assertRaises(ValueError):recovery.installed_clean_history(state,bad,family=ex.FAMILY)
 
+    def test_dispatch_phase_refusal_across_clean_history_readers(self):
+        from tests.service.test_export_daemon import ExportSnapshotTests
+        s,public,journal,asset,source=self.retained_export()
+        path=s.roots['control']/'core/core.sqlite'
+        state=ex.retained_snapshot(s.roots,public,family=ex.FAMILY)
+        self.assertEqual([d['phase'] for d in state['dispatches']],['acknowledged'])
+        hello=s.gate['observation']['hello']
+        facts=s.gate['observation']['local']['control']
+        incarnation={k:facts[k] for k in ('start_ticks','pid_namespace')};incarnation['cgroup']='0::/'
+        pair=copy.deepcopy(s.gate['observation']['inspections'])
+        for container in pair.values():container['State'].update(Running=False,ExitCode=0,Status='exited',Pid=0)
+        clean_history=json.loads(encode(dict(state=state,journal=journal)))
+        clean_receipt=dict(containers=pair,history=clean_history)
+        self.assertEqual(ex.stopped_receipt(clean_receipt,pair,clean_history,public=public,family=ex.FAMILY),clean_receipt)
+        # Keep a WAL writer open: every reader must preserve source bytes,
+        # sidecars, identities, timestamps and namespace after deliberate mutation.
+        with database(path) as writer:
+            writer.execute('PRAGMA journal_mode=WAL')
+            for phase in ('unknown','started','bound','observing','receipt','ack_pending','acked','idle'):
+                with self.subTest(phase=phase):
+                    writer.execute('UPDATE dispatches SET phase=?',(phase,));writer.commit()
+                    bad=json.loads(encode(state))
+                    bad['dispatches'][0]['phase']=phase
+                    bad['evidence_projection']['data']['dispatches'][0][6]=phase
+                    bad['source_digest']=recovery.digest(bad['evidence_projection'])
+                    history=dict(state=bad,journal=journal)
+                    receipt=dict(containers=pair,history=history)
+                    before=ExportSnapshotTests.source_state(self,path)
+                    namespace=sorted(p.name for p in path.parent.iterdir())
+                    files=s.f.bytes()
+                    readers=(
+                        lambda:ex.retained_snapshot(s.roots,public,family=ex.FAMILY),
+                        lambda:ex.startup_read(path.parent,s.config,s.gate,hello,incarnation,family=ex.FAMILY),
+                        lambda:recovery._installed_detached_source(bad,journal,family=ex.FAMILY),
+                        lambda:recovery.installed_clean_history(bad,journal,family=ex.FAMILY),
+                        lambda:s.helper.clean(),
+                        lambda:ex.stopped_receipt(receipt,pair,history,public=public,family=ex.FAMILY))
+                    with patch.object(s.helper,'public',return_value=public):
+                        for read in readers:
+                            with self.assertRaisesRegex(ValueError,'^installed_history_unclean$'):read()
+                            self.assertEqual(ExportSnapshotTests.source_state(self,path),before)
+                            self.assertEqual(sorted(p.name for p in path.parent.iterdir()),namespace)
+                            self.assertEqual(s.f.bytes(),files)
+                    self.assertEqual(writer.execute('SELECT phase,acked FROM dispatches').fetchall(),[(phase,1)])
+            # Restoration is explicit fixture setup, never a reader repair.
+            writer.execute("UPDATE dispatches SET phase='acknowledged'");writer.commit()
+            restored=ex.retained_snapshot(s.roots,public,family=ex.FAMILY)
+            self.assertTrue(recovery.installed_clean_history(restored,journal,family=ex.FAMILY))
+            ex.startup_read(path.parent,s.config,s.gate,hello,incarnation,family=ex.FAMILY)
+
     def test_precore_private_read_boot_and_incarnation(self):
         s,public,journal,asset,source=self.retained_export()
         path=s.roots['control']/'core/core.sqlite'
@@ -224,25 +274,20 @@ class ExportRetainedHistoryTests(unittest.TestCase):
         # The initial reader still refuses populated history.
         with self.assertRaises(ValueError):s.helper.registration_snapshot(public)
 
-    def test_terminal_speech_and_stopped_receipt_selection(self):
+    def test_legacy_acked_speech_fixture_refused_without_repair(self):
         from types import SimpleNamespace
         from tests.service.test_installed_restart import TerminalRestart
         s,public=self.fixture()
         holder=SimpleNamespace(f=SimpleNamespace(roots={r:s.roots[r] for r in ex.ip.ROLES},
             lane=s.gate['registration']['lane'],hello=dict(boot=s.gate['registration']['boot'])))
-        journal=TerminalRestart.terminal_fixture(holder)
-        state=ex.retained_snapshot(s.roots,public,family=ex.FAMILY)
-        self.assertTrue(recovery.installed_clean_history(state,journal,family=ex.FAMILY))
-        pair=copy.deepcopy(s.gate['observation']['inspections'])
-        for container in pair.values():container['State'].update(Running=False,ExitCode=0,Status='exited',Pid=0)
-        history=json.loads(encode(dict(state=state,journal=journal)))
-        receipt=dict(containers=pair,history=history)
-        self.assertEqual(ex.stopped_receipt(receipt,pair,history,public=public,family=ex.FAMILY),receipt)
-        bad=copy.deepcopy(receipt);bad['history']['journal']['records'][0]['acked']=False
-        with self.assertRaises(ValueError):ex.stopped_receipt(bad,pair,history,public=public,family=ex.FAMILY)
-        with self.assertRaises(ValueError):ex.stopped_receipt(receipt,pair,history,public=public,family=None)
-        alien=copy.deepcopy(pair);alien['worker']['Id']='f'*64
-        with self.assertRaises(ValueError):ex.stopped_receipt(dict(containers=alien,history=history),alien,history,public=public,family=ex.FAMILY)
+        TerminalRestart.terminal_fixture(holder)
+        path=s.roots['control']/'core/core.sqlite'
+        with database(path) as db:
+            self.assertEqual(db.execute('SELECT phase,acked FROM dispatches').fetchall(),[('acked',1)])
+        before=s.f.bytes()
+        with self.assertRaisesRegex(ValueError,'^installed_history_unclean$'):
+            ex.retained_snapshot(s.roots,public,family=ex.FAMILY)
+        self.assertEqual(s.f.bytes(),before)
 
     def test_retained_wal_private_targets_and_source_identity(self):
         from tests.service.test_export_daemon import ExportSnapshotTests

@@ -310,6 +310,11 @@ def retained_snapshot(roots, public, *, family):
     return state
 
 
+def _clean_dispatches(rows):
+    """New-family SQL obligations require the persisted terminal ACK phase."""
+    return all(r[6]=='acknowledged' and r[9]==1 and r[7] is not None for r in rows)
+
+
 def startup_read(root, config, gate, hello, incarnation, *, family):
     """Control-readable pre-owner facts only; receipts remain supervisor-owned."""
     from contextlib import closing
@@ -344,7 +349,7 @@ def startup_read(root, config, gate, hello, incarnation, *, family):
             data=database(db,public)
             if (any(json.loads(r[6])['state'] not in ('succeeded','failed','cancelled') or
                     any(a['reaped'] is not True for a in json.loads(r[6])['attempts']) for r in data['jobs']) or
-                    any(r[6]=='unknown' or r[9]!=1 or r[7] is None for r in data['dispatches']) or
+                    not _clean_dispatches(data['dispatches']) or
                     any(r[3]!='returned' for r in data['dispatch_commands'])):
                 raise ValueError('installed_history_unclean')
             selected=[json.loads(r[1]) for r in data['p1_registrations'] if r[0]==gate['registration_id']]

@@ -3039,6 +3039,8 @@ def _installed_detached_source(state, journal, *, family=None):
             data['p1_format']!=[[2 if export else 1,'synthetic-core']] or data['resource_protocol']!=[[1,2]]):
         raise ValueError('installed_history_maintenance_or_version')
     _installed_detached_rows(source, columns)
+    if export and not ex._clean_dispatches(data['dispatches']):
+        raise ValueError('installed_history_unclean')
     if data['voice_catalogue_format']!=[[1]]:raise ValueError('installed_history_catalogue_version')
     if len(data['p1_installation'])!=1: raise ValueError('installed_history_enrollment')
     identity,revision,kind,raw,h=data['p1_installation'][0]
