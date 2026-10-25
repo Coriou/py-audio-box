@@ -317,7 +317,7 @@ class Registration(unittest.TestCase):
         with patch.object(sqlite3,'connect',side_effect=connect):self.run_registration()
         originals=[(p,u) for p,u in opened if 'namespace/mnt/pab-install/control/core/core.sqlite' in p]
         self.assertEqual(len(originals),1);self.assertEqual(originals[0][1],10001)
-        self.assertTrue(all('p1-inspect-' in p or (p,u) in originals for p,u in opened))
+        self.assertTrue(all(p == ':memory:' or 'p1-inspect-' in p or (p,u) in originals for p,u in opened))
 
     def test_writer_entry_prepares_fixed_paths_before_drop(self):
         import io

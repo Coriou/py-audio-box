@@ -2,6 +2,8 @@
 cache/
 work/
 work_remote/
+# Qualification models, recordings and receipts stay outside runtime build contexts.
+docs/agent-interface/evaluation/
 .env
 SETUP.local.md
 

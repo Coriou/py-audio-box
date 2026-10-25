@@ -267,7 +267,8 @@ class DiscoveryTests(unittest.TestCase):
                     return dict(engine='pocket-tts',profile=config['profiles'][0],operations=['voice_prepare','voice_results','voice_save','speech_generate'],next_action='upload → prepare → save')
                 if operation=='configured_profiles':return copy.deepcopy(config['profiles'])
                 if operation=='configured_presets':return []
-                if operation=='status':return dict(persistent_activation=True)
+                if operation=='audio_export_available':return False
+                if operation=='status':return dict(persistent_activation=True,retry_available=True)
                 raise AssertionError(operation)
         credentials=StaticCredentials([Credential('read','alice',frozenset({'read'}))])
         app=create_voice_app(Dispatcher(),credentials=credentials,installed=config)

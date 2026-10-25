@@ -464,9 +464,13 @@ class Helper:
             gate=gate_projection(dict(version=2 if self.export else 1,launch_policy=self.policy,registration_id=rid,registration=record,
                 configuration_digest=digest(self.config),enrollment_digest=digest(public),provenance_digest=digest(provenance),observation=obs),family=self.family,
                 configuration=self.config if self.export else None,binding=self.b,public=public)
-            self.rpc('notify',dict(id=ids['control'],gate=gate))
-            if self.observe(ids,public)!=obs: raise ValueError('daemon_notification_bracket')
-            return rid,record
+        # Durable registration and its final bracket are complete. Release the
+        # registrar's Core exclusion BEFORE publishing activation: the notified
+        # control immediately acquires that same lock for its private precheck.
+        # The outer authority lock still excludes another installer/registrar.
+        self.rpc('notify',dict(id=ids['control'],gate=gate))
+        if self.observe(ids,public)!=obs: raise ValueError('daemon_notification_bracket')
+        return rid,record
 
     def wait(self,function,predicate):
         while time.monotonic()<self.end:

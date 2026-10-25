@@ -63,6 +63,25 @@ class ExportDaemonTests(unittest.TestCase):
         with self.assertRaises(ValueError): dv.command('worker',s.config,s.b)
         self.assertEqual(s.run('status')['phase'],'initialized')
 
+    def test_notification_follows_release_of_real_core_exclusion(self):
+        import fcntl
+        s=self.initialized()
+        observed=[]
+        def hook(helper, ids, public):
+            original=helper.rpc
+            def rpc(action,payload):
+                if action=='notify':
+                    fd=os.open(s.roots['control']/'core/control.lock',os.O_RDONLY)
+                    try:
+                        fcntl.flock(fd,fcntl.LOCK_EX|fcntl.LOCK_NB)
+                        observed.append(payload['gate']['registration_id'])
+                        fcntl.flock(fd,fcntl.LOCK_UN)
+                    finally: os.close(fd)
+                return original(action,payload)
+            helper.rpc=rpc
+        result=self.registration(s,hook)
+        self.assertEqual(observed,[result['registration_id']])
+
     def test_exact_subpath_commands_and_inspection_refusals(self):
         s=self.session(); good=container('worker',s.config,s.b,family=ex.FAMILY)
         args=dv.command('worker',s.config,s.b,family=ex.FAMILY)
