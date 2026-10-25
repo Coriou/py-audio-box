@@ -277,7 +277,10 @@ def response(value, *, request):
                     oracle.validate('result_manifest',v['proposal']['manifest'])
                 except Exception: raise Refused('native_response') from None
                 message,manifest=v['proposal']['message'],v['proposal']['manifest']
-                if message['kind']!='result' or any(message[k]!=manifest[k] for k in ('job_id','attempt_id','generation','owner_id','staging_id','input_sha256')) or len(manifest['outputs'])!=1 or manifest['candidates']: raise Refused('native_response')
+                if message['kind']!='result' or any(message[k]!=manifest[k] for k in ('job_id','attempt_id','generation','owner_id','staging_id','input_sha256')): raise Refused('native_response')
+                if manifest['operation']=='voice_prepare':
+                    if len(manifest['outputs'])!=2 or len(manifest['candidates'])!=1: raise Refused('native_response')
+                elif manifest['operation']!='speech_generate' or len(manifest['outputs'])!=1 or manifest['candidates']: raise Refused('native_response')
             if v['output'] is not None:
                 _closed(v['output'],('sha256','bytes')); _hex(v['output']['sha256'],64); _int(v['output']['bytes'],46,1048576)
     return value
@@ -349,5 +352,67 @@ def owned_preset_context(template, principal, preset, voice_id):
     version['reference_asset_sha256'] = {}
     context['plan']['request']['voice_version_id'] = version['id']
     context['execution']['descriptor'].update(voice_id=voice_id, voice_revision=version['id'])
+    execution(context)
+    return context
+
+
+def owned_clone_context(template, principal, request, asset, *, version=None):
+    """Reconstruct dynamic execution exclusively from an original clone template.
+
+    Managed asset metadata and exact authored transcript vary; model, settings,
+    profile, bundle mappings, hardware and boot trust never come from a version.
+    The native input protocol independently verifies the bound bytes before start.
+    """
+    import copy
+    from contracts import validate as oracle
+    from worker.runtime_protocol import execution
+    from worker.engines.qwen_prepare import QwenPreparation
+    from worker.transport import Refused, canonical
+    spec = execution(template)
+    if spec.task != 'clone' or spec.device != 'mps' or spec.x_vector_only:
+        raise Refused('unsupported_control')
+    context = copy.deepcopy(template); plan = context['plan']; resolved = plan['resolved']
+    identity = resolved['identity']['effective']
+    if canonical(request['identity']) != canonical(identity): raise Refused('identity_substitution')
+    transcript = request['reference_text'] if version is None else version['reference_text']
+    if type(transcript) is not str or not transcript.strip(): raise Refused('explicit_transcript_required')
+    descriptor = spec.identity()
+    descriptor.update(reference_id=asset['id'], reference_sha256=asset['sha256'],
+        reference_frames=asset['frames'], reference_rate=asset['sample_rate'],
+        reference_bytes=44+2*asset['frames'], reference_text=transcript, x_vector_only=False)
+    if (asset['channels'], asset['media_format'], asset['media_subtype']) != (1,'wav','PCM_16'):
+        raise Refused('reference_format')
+    settings = copy.deepcopy(resolved['settings'])
+    cfg = dict(mode='qwen_clone', reference_asset_id=asset['id'], reference_text=transcript, conditioning='icl')
+    if version is None:
+        oracle.validate('voice_prepare_request', request)
+        if not request.get('audition_text','').strip(): raise Refused('explicit_audition_required')
+        if request['in_tick'] != 0 or request['out_tick']*asset['sample_rate'] != asset['frames']*48000:
+            raise Refused('unsupported_segment')
+        token = oracle.canonical_hash([principal, request])
+        descriptor.update(voice_id='preparation', voice_revision='prepare-'+token)
+        plan.update(operation='voice_prepare', request=copy.deepcopy(request), voice_versions=[], assets=[copy.deepcopy(asset)])
+        plan['reference_roles'] = dict(version='reference-roles-v1', reference_kind='prepared_reference',
+            reference_asset_id='pending', audition_asset_id='pending-audition', audition_text=request['audition_text'])
+        cfg['reference_asset_id'] = 'pending'
+        prepare_settings = dict(kind='prepare', conditioning='icl', output_format='wav_pcm16')
+        resolved.update(kind='prepare', settings=prepare_settings, settings_sha256=oracle.canonical_hash(prepare_settings),
+            reuse_settings=settings, reuse_configuration=cfg)
+        derived = QwenPreparation(**descriptor)
+    else:
+        oracle.validate('speech_generate_request', request)
+        expected = dict(identity=identity, settings=settings, settings_sha256=oracle.canonical_hash(settings),
+            origin='clone', provenance=asset['provenance'], reference_asset_ids=[asset['id']], reference_asset_sha256={asset['id']:asset['sha256']},
+            reference_text=transcript, configuration=cfg, design_lineage=None)
+        if any(canonical(version.get(k)) != canonical(v) for k,v in expected.items()): raise Refused('saved_version_required')
+        descriptor.update(voice_id=version['voice_id'],voice_revision=version['id'])
+        from worker.engines.qwen_execution import QwenExecution
+        derived = QwenExecution(**descriptor)
+        plan.update(operation='speech_generate',request=copy.deepcopy(request),voice_versions=[copy.deepcopy(version)],assets=[copy.deepcopy(asset)])
+        plan.pop('reference_roles',None)
+    context['execution']['descriptor'] = derived.identity()
+    context['execution']['references'] = {asset['id']:dict(path='/references/assets/'+asset['id'],
+        voice_id=derived.voice_id, voice_revision=derived.voice_revision, checkpoint=derived.checkpoint,
+        revision=derived.revision,text=transcript)}
     execution(context)
     return context

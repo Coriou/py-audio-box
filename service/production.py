@@ -21,7 +21,7 @@ class Production:
         plan = context['plan']
         oracle.require(plan['operation'] == 'voice_prepare', 'operation_mismatch')
         from worker.runtime_protocol import execution, dispatch_mode
-        if context.get('execution', {}).get('descriptor', {}).get('phase') == 'prepare' and plan['request']['reference_text'] != '':
+        if context.get('execution', {}).get('descriptor', {}).get('phase') == 'prepare' and context['execution']['descriptor'].get('engine') == 'pocket-tts' and plan['request']['reference_text'] != '':
             from worker.transport import Refused
             raise Refused('unsupported_parameter')
         asset_id = plan['request']['asset_id']
@@ -40,7 +40,10 @@ class Production:
         if spec is not None:
             from worker.engines.pocket import _read
             from worker.engines.pocket_prepare import PocketPreparation, selected_reference
-            oracle.require(type(spec) is PocketPreparation, 'typed_preparation_required')
+            from worker.engines.qwen_prepare import QwenPreparation
+            oracle.require(type(spec) in (PocketPreparation, QwenPreparation), 'typed_preparation_required')
+            if type(spec) is QwenPreparation:
+                from worker.engines.qwen_prepare import selected_reference
             raw = _read(self.core.root/'assets'/spec.reference_id, spec.reference_bytes, spec.reference_sha256)
             selected_reference(spec, raw)
             _dispatch_settings = (dispatch_mode(spec), min(25, plan['resolved']['profile']['limits']['deadline_seconds']))

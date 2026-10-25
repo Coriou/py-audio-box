@@ -239,7 +239,31 @@ class NativeSupervisor:
                         reg = copy.deepcopy(registered)
                         reg['execution'] = p.native_execution(derived)
                         matches.append(reg)
-                    except (Refused, KeyError, ValueError):
+                    except (Refused, KeyError, ValueError, IndexError):
+                        continue
+            if not matches:
+                from worker.native_protocol import owned_clone_context
+                for registered in self._preset_templates.values():
+                    try:
+                        source = registered['snapshot']; target = snapshot[1]['plan']
+                        if source[0]['principal_id'] != snapshot[0]['principal_id']: continue
+                        if registered['execution'].task != 'clone': continue
+                        # The provisioned profile must explicitly support preparation.
+                        if not any(c['operation']=='voice_prepare' and c['mode']=='prepare'
+                                   for c in source[1]['plan']['resolved']['profile']['compatibility']): continue
+                        derived = owned_clone_context(source[1], source[0]['principal_id'], target['request'],
+                            target['assets'][0], version=(target['voice_versions'][0] if target['operation']=='speech_generate' else None))
+                        if target['operation'] == 'voice_prepare':
+                            # Production assigns deterministic output role IDs after resolution.
+                            token = oracle.canonical_hash([snapshot[0]['principal_id'], snapshot[0]['idempotency_key'], target['request']])
+                            reference = 'reference-'+token
+                            derived['plan']['resolved']['reuse_configuration']['reference_asset_id'] = reference
+                            derived['plan']['reference_roles'].update(reference_asset_id=reference,audition_asset_id='audition-'+token)
+                        candidate = copy.deepcopy(source); candidate[1] = derived
+                        if canonical(template(candidate)) != expected: continue
+                        reg = copy.deepcopy(registered); reg['execution'] = p.native_execution(derived)
+                        matches.append(reg)
+                    except (Refused, KeyError, ValueError, IndexError):
                         continue
             if not matches: raise Refused('native_registration')
             oracle.admission(authority.job,authority.context,authority.profiles)

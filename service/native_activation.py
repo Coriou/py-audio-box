@@ -246,9 +246,18 @@ def completed_history(core, runtime):
         require(pending is not None and pending[1] is not None and pending[2] is True)
         require(pending[1]['runtime_id'] == d['runtime'])
         require(_read(directory/'import-intent',512) == _read(directory/'import-complete',512))
-        require(_read(directory/'output',1048576) == _read(runtime.staging/job['attempts'][0]['staging_id']/'output.wav',1048576))
+        preparing = context['plan']['operation'] == 'voice_prepare'
+        name = 'audition.wav' if preparing else 'output.wav'
+        stage = runtime.staging/job['attempts'][0]['staging_id']
+        require(_read(directory/'output',1048576) == _read(stage/name,1048576))
         output = json.loads(_read(directory/'complete',256))
-        require(len(manifest['outputs']) == 1 and manifest['outputs'][0]['sha256'] == output['sha256'])
+        if preparing:
+            from worker.engines.qwen_prepare import selected_reference
+            reference, _ = selected_reference(spec, _read(directory/'input',spec.reference_bytes))
+            require(_read(stage/'reference.wav',1048576) == reference)
+            require(len(manifest['outputs']) == 2 and manifest['outputs'][0]['sha256'] == spec.reference_sha256 and manifest['outputs'][1]['sha256'] == output['sha256'])
+        else:
+            require(len(manifest['outputs']) == 1 and manifest['outputs'][0]['sha256'] == output['sha256'])
         require(canonical(retained['output']) == canonical(output) and
                 canonical(retained['proposal']) == canonical(dict(message=json.loads(publication['message']),manifest=manifest)))
     # Existing inventory reader checks unknown namespaces and actual retained media.

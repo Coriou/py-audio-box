@@ -174,6 +174,8 @@ def qwen_relation(context, *, lane):
     if lane not in ('linux', 'native'): raise Refused('closed_qwen_lane')
     keys = {'descriptor','bundles','references','hardware'}
     if set(value) != keys and not (lane == 'native' and set(value) == keys | {'native'}): raise Refused('closed_execution_context')
+    if value['descriptor'].get('phase') == 'prepare':
+        return qwen_preparation(context, lane=lane)
     spec=QwenExecution.from_wire(value['descriptor'])
     inventory_from_wire(value['hardware'])
     if spec.task not in ('custom_voice','clone'): raise Refused('qwen_generation_only')
@@ -210,4 +212,36 @@ def qwen_relation(context, *, lane):
         spec.max_frames*48000 > limits['decoded_ticks']*spec.sample_rate or spec.max_output_bytes > limits['upload_bytes'] or
         2*(spec.max_output_bytes+spec.reference_bytes) > limits['disk_bytes'] or
         len(request['text'].encode()) > spec.max_text_bytes): raise Refused('execution_budget_mismatch')
+    return spec
+
+
+def qwen_preparation(context, *, lane):
+    """Closed pair producer, with the same generation relation for its audition."""
+    import copy
+    from contracts import validate as oracle
+    from worker.engines.qwen_prepare import QwenPreparation
+    spec = QwenPreparation.from_wire(context['execution']['descriptor'])
+    if lane != 'native': raise Refused('native_preparation_required')
+    plan = context['plan']; request = plan['request']; resolved = plan['resolved']; roles = plan.get('reference_roles', {})
+    if (plan['operation'] != 'voice_prepare' or plan['voice_versions'] or len(plan['assets']) != 1 or
+            request['asset_id'] != spec.reference_id or request['reference_text'] != spec.reference_text or
+            not request.get('audition_text','').strip() or roles.get('audition_text') != request['audition_text'] or
+            request['in_tick'] != 0 or request['out_tick']*spec.reference_rate != spec.reference_frames*48000 or
+            roles.get('reference_kind') != 'prepared_reference' or
+            resolved['settings'] != dict(kind='prepare',conditioning='icl',output_format='wav_pcm16') or
+            resolved['reuse_configuration'] != dict(mode='qwen_clone', reference_asset_id=roles.get('reference_asset_id'),
+                reference_text=spec.reference_text, conditioning='icl') or
+            len(request['audition_text'].encode()) > spec.max_text_bytes):
+        raise Refused('execution_plan_mismatch')
+    audition_context = copy.deepcopy(context); p = audition_context['plan']; r = p['resolved']
+    settings = resolved['reuse_settings']
+    p.update(operation='speech_generate', request=dict(voice_version_id=spec.voice_revision,
+        text=request['audition_text'], identity=request['identity'], fallback='forbid',variants=1,reuse='never'))
+    p['voice_versions'] = [dict(id=spec.voice_revision,voice_id=spec.voice_id,identity=request['identity'],
+        origin='clone',reference_asset_ids=[spec.reference_id],reference_asset_sha256={spec.reference_id:spec.reference_sha256},
+        reference_text=spec.reference_text,configuration=dict(mode='qwen_clone',reference_asset_id=spec.reference_id,
+            reference_text=spec.reference_text,conditioning='icl'),settings=settings)]
+    r.update(kind='speech',settings=settings,settings_sha256=oracle.canonical_hash(settings),reuse_configuration=None,reuse_settings=None)
+    audition_context['execution']['descriptor'] = spec.generation().identity()
+    qwen_relation(audition_context,lane=lane)
     return spec

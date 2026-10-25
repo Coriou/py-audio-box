@@ -305,12 +305,51 @@ class NativeQwenContexts:
             oracle.admission(dict(operation='speech_generate',input_sha256=oracle.plan_hash(snapshot['plan'])),snapshot,profiles)
             self._contexts[key] = json.dumps(snapshot,allow_nan=False)
 
+    def _clone_templates(self, principal):
+        return [json.loads(raw) for key, raw in self._contexts.items()
+                if key[0] == principal and execution(json.loads(raw)).task == 'clone'
+                and not execution(json.loads(raw)).x_vector_only
+                and any(c == dict(operation='voice_prepare',mode='prepare',
+                                  identity=json.loads(raw)['plan']['resolved']['identity']['effective'])
+                        for c in json.loads(raw)['plan']['resolved']['profile']['compatibility'])]
+
+    def resolve_owned(self, core, principal, operation, request):
+        from contracts import validate as oracle
+        from worker.native_protocol import owned_clone_context
+        from worker.engines.qwen_execution import current_native_hardware
+        from worker.engines.pocket import _read
+        oracle.validate(operation+'_request', request)
+        version = None
+        if operation == 'speech_generate':
+            version = core.voices.version(principal, request['voice_version_id'])
+            if version['origin'] != 'clone' or (principal,'qwen-mps',version['id']) in self._contexts:
+                return self.resolve_registered(principal,request,version)
+            if len(version['reference_asset_ids']) != 1: raise Refused('execution_reference_mismatch')
+            reference = version['reference_asset_ids'][0]
+        elif operation == 'voice_prepare': reference = request['asset_id']
+        else: raise Refused('not_ready')
+        templates = self._clone_templates(principal)
+        if len(templates) != 1: raise Refused('not_ready')
+        core.voices._asset(principal,reference)
+        asset = core.asset(reference)
+        context = owned_clone_context(templates[0], principal, request, asset, version=version)
+        spec = execution(context)
+        current_native_hardware(spec,self._inventory)
+        raw = _read(core.root/'assets'/reference,spec.reference_bytes,spec.reference_sha256)
+        from worker.engines.qwen_prepare import QwenPreparation, selected_reference
+        if type(spec) is QwenPreparation: selected_reference(spec,raw)
+        else:
+            from worker.engines.pocket import _reference_pcm16
+            if len(raw) != spec.reference_bytes: raise Refused('reference_size')
+            _reference_pcm16(raw,spec.reference_rate,spec.reference_frames)
+        return context
+
     def capabilities(self, principal):
         contexts = [json.loads(raw) for key, raw in self._contexts.items() if key[0] == principal]
         if not contexts: return None
         return dict(engine='qwen', profile=contexts[0]['plan']['resolved']['profile'],
-                    operations=(['voice_preset_register'] if self.presets(principal) else []) + ['speech_generate', 'job_get', 'job_cancel', 'artifact_get'],
-                    installed=True, next_action='Read configured_presets → voice_preset_register → speech_generate; managed clone onboarding remains unavailable.')
+                    operations=(['voice_preset_register'] if self.presets(principal) else []) + (['voice_prepare', 'voice_results', 'voice_save'] if len(self._clone_templates(principal)) == 1 else []) + ['speech_generate', 'job_get', 'job_cancel', 'artifact_get'],
+                    installed=True, next_action=('asset_upload (complete canonical mono PCM16 WAV, at most 1 MiB/60 seconds) → voice_prepare (in_tick=0, out_tick=frames*48000/sample_rate, exact reference_text, separate audition_text) → voice_results → voice_save → speech_generate' if len(self._clone_templates(principal)) == 1 else 'Read configured_presets → voice_preset_register → speech_generate'))
 
     def presets(self, principal):
         result = []
