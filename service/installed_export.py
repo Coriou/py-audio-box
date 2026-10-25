@@ -113,3 +113,166 @@ def verify_local_converter(value, *, owner_uid=0):
         finally:
             os.close(fd)
     return verify_converter(converter, value['images']['worker'], owner_uid=owner_uid)
+
+
+# Private selection token; never reconstructed from retained markers.
+FAMILY = object()
+
+
+def binding(value):
+    from service import daemon_volumes as dv
+    if type(value) is not dict or value.get('policy') != LAUNCH:
+        raise ValueError('export_launch_family_required')
+    projected = copy.deepcopy(value)
+    projected['policy'] = dv.POLICY
+    dv.binding(projected)
+    return copy.deepcopy(value)
+
+
+def host_scope(value):
+    from service import daemon_volumes as dv
+    projected = binding(value)
+    projected['policy'] = dv.POLICY
+    return dv.scope(projected)
+
+
+def installation(value):
+    from service.persistent_init import digest
+    ip._closed(value, 'deployment_id revision scope host configuration configuration_digest ownership_policy roles launch')
+    config = configuration(value['configuration'])
+    launch = binding(value['launch'])
+    if (value['scope'] != SCOPE or value['ownership_policy'] != POLICY or
+            value['configuration_digest'] != digest(config) or
+            launch['configuration_digest'] != digest(config) or
+            launch['installation'] != value['deployment_id'] or
+            _encoded(value['host']) != _encoded(host_scope(launch))):
+        raise ValueError('export_enrollment_binding')
+    # Reuse unchanged role/revision/host grammar, without admitting the new
+    # record to any legacy parser or production activation consumer.
+    old = copy.deepcopy(value)
+    old.pop('launch')
+    old.update(scope=ip.SCOPE, ownership_policy=ip.POLICY)
+    old['configuration'].pop('audio_export')
+    old['configuration'].update(version=1, ownership_policy=ip.POLICY)
+    old['configuration_digest'] = digest(old['configuration'])
+    ip.installation(old)
+    return value
+
+
+def database(db, public, *, fresh=False):
+    """Exact bounded SQL model; no DDL on the inspected database."""
+    from service import persistence, recovery
+    from service.reconciliation import COLUMNS
+    from service.core import encode
+    import time
+    installation(public)
+    deadline = time.monotonic()+2
+    db.set_progress_handler(lambda:int(time.monotonic()>deadline),1000)
+    if persistence.store_format(db) != 2:
+        raise ValueError('export_publication_v2_required')
+    columns = dict(COLUMNS,
+        p1_inventory_scans='id observed complete fingerprint summary',
+        p1_inventory_objects='id first_observed last_observed scan_id record',
+        p1_inventory_history='seq scan_id object_id observed record',
+        p1_integrity='id revision state token', sqlite_sequence='name seq')
+    n, scalar = db.execute("SELECT count(*),coalesce(sum(coalesce(length(sql),0)+length(name)+length(tbl_name)+length(type)),0) FROM sqlite_master").fetchone()
+    if n>2048 or scalar>SCALAR_BYTES:
+        raise ValueError('export_scalar_budget')
+    schema = list(db.execute('SELECT type,name,tbl_name,sql FROM sqlite_master LIMIT 2049'))
+    if {r[1] for r in schema if r[0]=='table'} != set(columns):
+        raise ValueError('export_exact_schema_required')
+    data = {}; count = 0; size = scalar
+    for table, fields in columns.items():
+        expression = '+'.join('coalesce(length(CAST('+field+' AS BLOB)),0)' for field in fields.split())
+        n, scalar = db.execute('SELECT count(*),coalesce(sum('+expression+'),0) FROM '+table).fetchone()
+        if count+n>2048 or size+scalar>SCALAR_BYTES:
+            raise ValueError('export_scalar_budget')
+        rows = list(db.execute('SELECT '+','.join(fields.split())+' FROM '+table+' LIMIT 2049'))
+        count += len(rows); size += len(encode(rows).encode())
+        if count > 2048 or size > SCALAR_BYTES or time.monotonic()>deadline:
+            raise ValueError('export_scalar_budget')
+        data[table] = rows
+    recovery._installed_detached_rows(dict(schema=schema,data=data), columns)
+    expected = [(public['deployment_id'],1,SCOPE,encode(public),_digest(public))]
+    if data['p1_installation'] != expected:
+        raise ValueError('export_exact_enrollment_required')
+    if list(db.execute('PRAGMA integrity_check')) != [('ok',)] or list(db.execute('PRAGMA foreign_key_check')):
+        raise ValueError('export_database_integrity')
+    if data['p1_recovery_plans']:
+        raise ValueError('export_maintenance_refused')
+    for rid, raw, digest in data['p1_registrations']:
+        record = json.loads(raw)
+        bound_registration(record, public)
+        if (_encoded(record).decode() != raw or _digest(record) != rid or rid != digest or
+                record['deployment_id'] != public['deployment_id'] or
+                _encoded(record['scope']) != _encoded(public['host'])):
+            raise ValueError('export_registration_canonical_binding')
+    if fresh:
+        fixed = dict(p1_format=[(2,'synthetic-core')], voice_catalogue_format=[(1,)],
+            resource_accounting=[(1,0)], resource_protocol=[(1,2)], resource_monitor=[(1,'healthy')],
+            p1_integrity=[(1,1,'healthy',None)], p1_installation=expected)
+        if any(rows != fixed.get(table,[]) for table,rows in data.items()):
+            raise ValueError('export_nonfresh_initialization')
+    else:
+        recovery._installed_detached_documents({t:[dict(zip(columns[t].split(),r)) for r in rows] for t,rows in data.items()}, publication_format=2)
+    return data
+
+
+class _Expectation:
+    def __init__(self, public):
+        self._public = _encoded(installation(public))
+
+    def check(self, db):
+        return database(db, json.loads(self._public))
+
+    def check_root(self, root):
+        public = json.loads(self._public)
+        record = public['roles']['control']
+        from pathlib import Path
+        info = ip.directory_identity(Path(root).parent, policy=ip.SPLIT, role='control')
+        if info[:2] != (record['device'], record['inode']):
+            raise ValueError('export_enrollment_root_changed')
+
+
+def expectation(public, family):
+    if family is not FAMILY:
+        raise ValueError('explicit_export_family_required')
+    return _Expectation(public)
+
+
+def host_registration(value):
+    from service import recovery
+    if type(value) is not dict or value.get('evidence') != EVIDENCE:
+        raise ValueError('export_registration_evidence')
+    old = copy.deepcopy(value)
+    old['evidence'] = 'daemon-volumes-inspection-v1'
+    recovery.validate_registration(old)
+    return value
+
+
+def fresh_namespace(roots):
+    """Finite empty initialization inventory, not a retained-history scanner."""
+    root = roots['control']/'core'
+    ip.directory_identity(root, policy=ip.SPLIT, role='control')
+    required = {'core.sqlite', 'control.lock', 'assets', 'owners', 'staging'}
+    names = set(os.listdir(root))
+    if not required <= names or names-required-{'core.sqlite-wal','core.sqlite-shm'}:
+        raise ValueError('export_fresh_namespace')
+    for name in names:
+        path = root/name
+        if name in ('assets','owners','staging'):
+            ip.directory_identity(path, policy=ip.SPLIT, role='control')
+            if os.listdir(path): raise ValueError('export_fresh_namespace')
+        else:
+            with ip.parent_fd(path) as (parent, leaf):
+                ip.check(os.stat(leaf,dir_fd=parent,follow_symlinks=False),ip.SPLIT,'control')
+    if os.listdir(roots['staging']): raise ValueError('export_fresh_namespace')
+
+
+def bound_registration(value, public):
+    host_registration(value)
+    if (_encoded(value['scope']) != _encoded(public['host']) or
+            value['deployment_id'] != public['deployment_id'] or
+            any(c['image'] != public['configuration']['images'][c['role']] for c in value['containers'])):
+        raise ValueError('export_registration_image_binding')
+    return value

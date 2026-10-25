@@ -223,18 +223,23 @@ def main():
 
 
 # Internal installed initialization. No CLI/activation or host-registration adapter.
-def _split_core(public, control, staging):
+def _split_core(public, control, staging, *, family=None):
     """Only entered after the child privilege boundary (injected in source tests)."""
-    from service.install_policy import installation
     if (os.getuid(),os.geteuid(),os.getgid(),os.getegid()) != (10001,)*4 or os.getgroups():
         raise ValueError('permanent_control_identity_required')
-    installation(public)
-    core = Core(Path(control)/'core', _publication_creation=1)
+    from service import install_policy as ip, installed_export as ex
+    ip.family_installation(public, family)
+    checked = ex.expectation(public, family) if family is ex.FAMILY else None
+    # Creation is exclusive. Existing roots must be fully enrolled exact stores;
+    # unsupported interruption inside Core construction remains quarantined.
+    core = Core(Path(control)/'core', _publication_creation=2 if checked else 1,
+                _installed_family=checked)
     try:
         Admission(core, Path(staging), public['configuration']['budget'])
         DispatchStore(core)
         persistence.initialize_inventory(core)
         persistence.initialize_enrollment(core, public)
+        if checked: ex.database(core.db, public, fresh=True)
     finally:
         core.close()
     sync_dir(Path(control)/'core'); sync_dir(Path(control))
@@ -317,7 +322,7 @@ def _split_create(path, data, role, *, parent_identity=None):
 
 
 def initialize_split(roots, scope, config, *, authority, policy, complete=None,
-                     launch_child=_launch_split_child, fault=lambda _: None, daemon_binding=None):
+                     launch_child=_launch_split_child, fault=lambda _: None, daemon_binding=None, family=None):
     """Create-only internal transaction; authority is a trusted host inspection callback.
 
     The callback must freshly inspect daemon/context/named-volume identities and
@@ -328,11 +333,15 @@ def initialize_split(roots, scope, config, *, authority, policy, complete=None,
     import fcntl
     from contextlib import ExitStack
     from service import install_policy as ip
-    ip.require(policy); validate_scope(scope); config = ip.configuration(config)
+    ip.require(policy); validate_scope(scope); config = ip.family_configuration(config, family)
+    from service import installed_export as ex
+    export = family is ex.FAMILY
+    if export and (daemon_binding is None or launch_child is _launch_split_child):
+        raise ValueError('export_private_initializer_binding_required')
     if daemon_binding is not None:
         from service import daemon_volumes as dv
-        dv.binding(daemon_binding)
-        if scope != dv.scope(daemon_binding) or digest(config) != daemon_binding['configuration_digest'] or config['ownership_policy'] != ip.POLICY:
+        (ex.binding if export else dv.binding)(daemon_binding)
+        if scope != (ex.host_scope if export else dv.scope)(daemon_binding) or digest(config) != daemon_binding['configuration_digest'] or config['ownership_policy'] != (ex.POLICY if export else ip.POLICY):
             raise ValueError('daemon_initialization_binding')
     if launch_child is _launch_split_child:
         import sys
@@ -390,11 +399,12 @@ def initialize_split(roots, scope, config, *, authority, policy, complete=None,
             target = {role:dict(device=dev,inode=ino,uid=ip.expectation(policy,role,directory=True)[0],
                 gid=ip.expectation(policy,role,directory=True)[1],mode=ip.expectation(policy,role,directory=True)[2])
                 for role,(dev,ino) in original.items()}
-            public = dict(deployment_id=secrets.token_hex(16), revision=1, scope=ip.scope_for(config), host=scope,
+            public = dict(deployment_id=daemon_binding['installation'] if export else secrets.token_hex(16), revision=1, scope=ex.SCOPE if export else ip.scope_for(config), host=scope,
                 configuration=config, configuration_digest=digest(config), ownership_policy=config['ownership_policy'], roles=target)
             if daemon_binding is not None: public['launch'] = daemon_binding
             private = dict(public=public, seed=secrets.token_hex(32))
-            ip.initialization(private)
+            if export: ex.installation(public)
+            else: ip.initialization(private)
             # Receipts is still root:root 0700 here. Intent precedes ANY transition.
             create(record_path, encode(private).encode(), 'receipts'); fault('init_record')
         else:
@@ -402,8 +412,11 @@ def initialize_split(roots, scope, config, *, authority, policy, complete=None,
             private = json.loads(raw_private)
             if raw_private != encode(private).encode() or hashlib.sha256(raw_private).hexdigest() != complete: raise ValueError('matching_initialization_record_required')
             ip._closed(private, 'public seed'); public = private['public']
-        ip.initialization(private)
-        if (public.get('launch') != daemon_binding or public['host'] != scope or public['configuration'] != config or
+        if export:
+            ex.installation(public)
+            ip._closed(private, 'public seed')
+        else: ip.initialization(private)
+        if (public.get('launch') != daemon_binding or public['host'] != scope or encode(public['configuration']) != encode(config) or
                 any((r['device'],r['inode']) != original[k] for k,r in public['roles'].items()) or
                 not isinstance(private['seed'],str) or len(private['seed']) != 64):
             raise ValueError('initialization_scope_mismatch')
@@ -444,10 +457,20 @@ def initialize_split(roots, scope, config, *, authority, policy, complete=None,
         # Hold lane exclusion through child reap and final verification. Core owns
         # its lifetime lock during construction; parent holds every root lock.
         stack.enter_context(ip.locked_file(receipts/'lane.lock',policy=policy,role='receipts'))
+        completion_lock = False
         core_intent = receipts/'p1-core-intent'; done = receipts/'p1-core-done'
         binding = digest(public).encode()
         if core_intent.exists() or core_intent.is_symlink():
-            if read(core_intent,'receipts') != binding or not done.exists() or read(done,'receipts') != binding:
+            if read(core_intent,'receipts') != binding:
+                raise ValueError('partial_core_quarantine')
+            if export and not done.exists() and not done.is_symlink():
+                # Only a complete exact fresh store can finish the lost child
+                # reply. Never reconstruct missing enrollment or partial DDL.
+                stack.enter_context(ip.locked_file(roots['control']/'core'/'control.lock',policy=policy,role='control'))
+                completion_lock = True
+                _validate_split_database(roots, public, policy, family=family)
+                create(done,binding,'receipts')
+            elif not done.exists() or read(done,'receipts') != binding:
                 raise ValueError('partial_core_quarantine')
         else:
             if ((roots['control']/'core').exists() or (roots['control']/'core').is_symlink() or done.exists() or done.is_symlink()):
@@ -458,8 +481,9 @@ def initialize_split(roots, scope, config, *, authority, policy, complete=None,
             launch_child(request)  # MUST be synchronous, including failed reap.
             stable(); fault('child_reaped')
             create(done,binding,'receipts')
-        stack.enter_context(ip.locked_file(roots['control']/'core'/'control.lock',policy=policy,role='control'))
-        _validate_split_database(roots, public, policy)
+        if not completion_lock:
+            stack.enter_context(ip.locked_file(roots['control']/'core'/'control.lock',policy=policy,role='control'))
+        _validate_split_database(roots, public, policy, family=family)
         observe(); fault('database')
         if read(record_path,'receipts') != encode(private).encode():
             raise ValueError('initialization_record_changed')
@@ -472,7 +496,7 @@ def initialize_split(roots, scope, config, *, authority, policy, complete=None,
         return dict(deployment_id=public['deployment_id'],digest=digest(public),initialization_digest=digest(private))
 
 
-def _validate_split_database(roots, public, policy):
+def _validate_split_database(roots, public, policy, *, family=None):
     """Private-copy schema/authority/inventory validation, never original SQLite."""
     from service.recovery import private_database
     from service.reconciliation import COLUMNS, Reconciliation
@@ -484,6 +508,12 @@ def _validate_split_database(roots, public, policy):
         import time
         deadline=time.monotonic()+2
         db.set_progress_handler(lambda:int(time.monotonic()>deadline),1000)
+        if family is not None:
+            from service import installed_export as ex
+            ex.expectation(public, family)
+            ex.database(db, public, fresh=True)
+            ex.fresh_namespace(roots)
+            return
         expected = dict(COLUMNS, **persistence.B1_COLUMNS,
             p1_inventory_scans='id observed complete fingerprint summary',
             p1_inventory_objects='id first_observed last_observed scan_id record',

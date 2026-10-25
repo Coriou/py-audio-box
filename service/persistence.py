@@ -203,7 +203,11 @@ def initialize_enrollment(core, record):
     """Only the create-only initializer calls this, after all predecessors exist."""
     from service.core import encode
     from service.install_policy import installation
-    installation(record)
+    if getattr(core, '_installed_family', None) is not None:
+        from service.installed_export import installation as export_installation
+        export_installation(record)
+    else:
+        installation(record)
     tables = {r[0] for r in core.db.execute("SELECT name FROM sqlite_master WHERE type='table'")}
     if tables & B1_COLUMNS.keys():
         for table, columns in B1_COLUMNS.items():

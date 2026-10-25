@@ -95,7 +95,7 @@ def drop_control():
         raise ValueError('permanent_control_identity_required')
 
 
-def registration_writer(public, registration, prestate, control, lock_fd, *, fault=lambda _:None):
+def registration_writer(public, registration, prestate, control, lock_fd, *, fault=lambda _:None, family=None):
     """No DDL, Core constructor, receipt access, generic SQL or action input."""
     import sqlite3
     from service import install_policy as ip, recovery
@@ -104,18 +104,32 @@ def registration_writer(public, registration, prestate, control, lock_fd, *, fau
     if ((os.getuid(),os.geteuid(),os.getgid(),os.getegid()) != (10001,)*4 or
             os.getgroups()):
         raise ValueError('permanent_control_identity_required')
-    ip.installation(public); recovery.validate_registration(registration)
-    if (public['scope'] not in ip.SCOPES or registration['scope'] != public['host'] or
+    from service import installed_export as ex, persistence
+    export = family is ex.FAMILY
+    ip.family_installation(public, family)
+    if export: ex.bound_registration(registration, public)
+    else: recovery.validate_registration(registration)
+    if (public['scope'] not in ((ex.SCOPE,) if export else ip.SCOPES) or registration['scope'] != public['host'] or
             registration['deployment_id'] != public['deployment_id'] or
-            registration['evidence'] != ('daemon-volumes-inspection-v1' if 'launch' in public else 'actual-host-inspection')):
+            registration['evidence'] != (ex.EVIDENCE if export else ('daemon-volumes-inspection-v1' if 'launch' in public else 'actual-host-inspection'))):
         raise ValueError('installed_registration_binding')
     if type(prestate) is not list or len(encode(prestate).encode()) > recovery.HOST_CAPSULE_BYTES:
         raise ValueError('installed_registration_prestate')
     root=Path(control)/'core'
     ip.directory_identity(root,policy=ip.SPLIT,role='control')
+    if export: ex.expectation(public, family).check_root(root)
     held=os.fstat(lock_fd); ip.check(held,ip.SPLIT,'control')
     if ip.identity(held)!=ip.identity(os.stat(root/'control.lock',follow_symlinks=False)):
         raise ValueError('installed_inherited_lock_changed')
+    if export:
+        # An independent open must observe inherited exclusion, not acquire it.
+        import fcntl
+        probe = os.open(root/'control.lock', os.O_RDONLY|os.O_NOFOLLOW)
+        try:
+            try: fcntl.flock(probe, fcntl.LOCK_EX|fcntl.LOCK_NB)
+            except BlockingIOError: pass
+            else: raise ValueError('installed_inherited_lock_not_held')
+        finally: os.close(probe)
     before={}
     for name in ('core.sqlite','core.sqlite-wal','core.sqlite-shm'):
         path=root/name
@@ -130,8 +144,27 @@ def registration_writer(public, registration, prestate, control, lock_fd, *, fau
         import time
         deadline=time.monotonic()+2
         db.set_progress_handler(lambda:int(time.monotonic()>deadline),1000)
+        def validate():
+            if export:
+                ex.expectation(public, family).check_root(root)
+                if (ip.identity(os.fstat(lock_fd)) != ip.identity(held) or
+                        ip.identity(os.stat(root/'control.lock',follow_symlinks=False)) != ip.identity(held)):
+                    raise ValueError('installed_inherited_lock_changed')
+                for name in ('core.sqlite','core.sqlite-wal','core.sqlite-shm'):
+                    try: info=os.stat(root/name,follow_symlinks=False)
+                    except FileNotFoundError:
+                        if name in before: raise ValueError('installed_writer_database_changed')
+                        continue
+                    ip.check(info,ip.SPLIT,'control')
+                    if name in before and before[name] != (info.st_dev,info.st_ino):
+                        raise ValueError('installed_writer_database_changed')
+                ex.database(db, public)
+            elif persistence.store_format(db) != 1:
+                raise ValueError('installed_writer_v1_required')
+        validate()
         db.execute('BEGIN IMMEDIATE')
         try:
+            validate()
             rows=db.execute('SELECT id,revision,scope,record,digest FROM p1_installation LIMIT 2').fetchall()
             expected=[(public['deployment_id'],1,public['scope'],encode(public),digest(public))]
             if rows!=expected: raise ValueError('installed_writer_installation_changed')
@@ -139,16 +172,20 @@ def registration_writer(public, registration, prestate, control, lock_fd, *, fau
             if count>recovery.HOST_OWNER_LIMIT or size>recovery.HOST_CAPSULE_BYTES:
                 raise ValueError('installed_registration_budget')
             rows=db.execute('SELECT id,record,digest FROM p1_registrations ORDER BY rowid').fetchall()
-            if [list(r) for r in rows]!=prestate: raise ValueError('installed_writer_prestate_changed')
+            if encode([list(r) for r in rows])!=encode(prestate): raise ValueError('installed_writer_prestate_changed')
             rid=digest(registration); row=(rid,encode(registration),rid)
             found=[r for r in rows if r[0]==rid]
             if found and found!=[row]: raise ValueError('installed_writer_registration_changed')
             fault('preinsert')
+            if export: validate()
             if not found:
                 if count>=recovery.HOST_OWNER_LIMIT or size+len(row[1].encode())>recovery.HOST_CAPSULE_BYTES:
                     raise ValueError('installed_registration_budget')
                 db.execute('INSERT INTO p1_registrations VALUES(?,?,?)',row)
-            fault('inserted'); fault('precommit')
+            fault('inserted')
+            validate()
+            fault('precommit')
+            validate()
             db.execute('COMMIT'); fault('committed')
         except BaseException:
             if db.in_transaction: db.execute('ROLLBACK')

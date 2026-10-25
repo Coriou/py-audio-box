@@ -226,11 +226,18 @@ _failed_constructor_cleanup = _FailedConstructorView()
 
 
 class Core:
-    def __init__(self, root: Path, *, historical_local=False, _native_activation=None, _publication_creation=2):
+    def __init__(self, root: Path, *, historical_local=False, _native_activation=None, _publication_creation=2, _installed_family=None):
         if type(_publication_creation) is not int or _publication_creation not in (1,2):
             raise ValueError('internal_publication_creation')
+        if _installed_family is not None:
+            from service.installed_export import _Expectation
+            if type(_installed_family) is not _Expectation or _native_activation is not None or _publication_creation != 2:
+                raise ValueError('checked_installed_family_required')
+        self._installed_family = _installed_family
         self.historical_local = historical_local
         self.root = Path(root).absolute()
+        if _installed_family is not None:
+            _installed_family.check_root(self.root)
         self._ownership = _reserve_core(self.root)
         self.owner = self._db = None
         try:
@@ -245,6 +252,13 @@ class Core:
                         check.execute('PRAGMA trusted_schema=OFF')
                         if persistence.store_format(check)!=1:
                             raise ValueError('installed_native_publication_v2_unsupported')
+            if not fresh and _installed_family is not None:
+                from service.recovery import private_database
+                from contextlib import closing
+                with private_database(self.root/'core.sqlite') as private:
+                    with closing(sqlite3.connect(private.as_uri()+'?mode=ro',uri=True,timeout=0)) as check:
+                        check.execute('PRAGMA trusted_schema=OFF')
+                        _installed_family.check(check)
             persistence.mkdir_durable(self.root, sync_dir)
             if self.root.is_symlink() or self.root.stat().st_uid != os.getuid():
                 raise ValueError('foreign_root')
@@ -285,6 +299,8 @@ class Core:
                     raise ValueError('checked_native_activation_required')
                 _publication_creation=1
                 _native_activation.retained_check(self)
+            if not fresh and _installed_family is not None:
+                _installed_family.check(self.db)
             self.db.execute('PRAGMA journal_mode=WAL')
             self.db.execute('PRAGMA synchronous=FULL')
             self.db.execute('PRAGMA foreign_keys=ON')
@@ -467,6 +483,8 @@ class Core:
         fingerprint = oracle.fingerprint(principal, operation, dict(request=plan['request'],retry_of=retry_of) if retry_of else plan['request'])
         duplicate = self.execution_duplicate(principal, operation, key, plan['request'], context=context, retry_of=retry_of)
         if duplicate is not None: return duplicate
+        if self._installed_family is not None:
+            self._installed_family.check(self.db)
         self.require_export_format(operation)
         from service.native_renewal import preallocate
         preallocate(self,context)
