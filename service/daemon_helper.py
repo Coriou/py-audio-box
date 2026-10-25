@@ -395,15 +395,13 @@ class Helper:
             return _registration_snapshot({r:self.root[r] for r in ip.ROLES},self.scope)
         # Deliberately initial empty history only. Retained export history and
         # owner activation are a later slice; never pass v2 to the v1 scanner.
-        from service import installed_export as ex
+        from service import installed_export as ex, recovery
         import sqlite3
         ex.expectation(public,self.family).check_root(self.root['control']/'core')
         ex.fresh_namespace(self.root)
         path=self.root['control']/'core/core.sqlite'
-        with ip.parent_fd(path) as (parent,name):
-            before=os.stat(name,dir_fd=parent,follow_symlinks=False)
-            ip.check(before,ip.SPLIT,'control')
-            db=sqlite3.connect(path.as_uri()+'?mode=ro',uri=True,timeout=0,isolation_level=None)
+        with recovery.private_database(path,policy=ip.SPLIT) as private:
+            db=sqlite3.connect(private.as_uri()+'?mode=ro',uri=True,timeout=0,isolation_level=None)
             try:
                 db.execute('PRAGMA query_only=ON'); db.execute('PRAGMA trusted_schema=OFF')
                 data=ex.database(db,public)
@@ -415,8 +413,6 @@ class Helper:
                     raise ValueError('daemon_export_initial_history_only')
                 schema=list(db.execute('SELECT type,name,tbl_name,sql FROM sqlite_master LIMIT 2049'))
             finally: db.close()
-            if ip.identity(os.stat(name,dir_fd=parent,follow_symlinks=False))!=ip.identity(before):
-                raise ValueError('daemon_export_snapshot_changed')
         return dict(protocol=2,monitor=data['resource_monitor'],integrity=data['p1_integrity'],
             registrations=[json.loads(row[1]) for row in data['p1_registrations']],
             evidence_projection=dict(schema=schema,data=data))

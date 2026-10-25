@@ -211,3 +211,103 @@ class ExportDaemonTests(unittest.TestCase):
             d.action('create',dict(role='worker'),s.config,s.b,[])
         self.assertEqual(d.call.call_count,1)
         self.assertTrue(any('volume-subpath=core/assets' in arg for arg in d.call.call_args.args[0]))
+
+class ExportSnapshotTests(unittest.TestCase):
+    session=ExportDaemonTests.session
+    initialized=ExportDaemonTests.initialized
+    # Select only these methods in the inert runner (do not duplicate inherited cases).
+    def snapshot_fixture(self):
+        s=self.initialized()
+        public=json.loads((s.roots['receipts']/'p1-init.json').read_bytes())['public']
+        return s,public,s.roots['control']/'core/core.sqlite'
+
+    def source_state(self,path):
+        return {p.name:(p.read_bytes(),tuple(getattr(p.stat(),k) for k in
+            ('st_dev','st_ino','st_mode','st_uid','st_gid','st_nlink','st_size','st_mtime_ns','st_ctime_ns')))
+            for p in path.parent.iterdir() if p.is_file()}
+
+    def checked_snapshot(self,s,public,path,*,refusal=False,application_id=0):
+        import sqlite3
+        from service import install_policy as ip
+        before=self.source_state(path); namespace=sorted(p.name for p in path.parent.iterdir())
+        connect=sqlite3.connect; targets=[]
+        def opened(target,*args,**kwargs):
+            targets.append(str(target))
+            self.assertNotIn(str(path.parent),str(target))
+            db=connect(target,*args,**kwargs)
+            if str(target)!=':memory:':
+                self.assertTrue(str(target).startswith('file:'))
+                self.assertEqual(db.execute('PRAGMA application_id').fetchone(),(application_id,))
+            return db
+        with ip.locked_file(path.parent/'control.lock',policy=ip.SPLIT,role='control'),patch.object(sqlite3,'connect',side_effect=opened):
+            if refusal:
+                with self.assertRaises(ValueError): s.helper.registration_snapshot(public)
+            else:
+                result=s.helper.registration_snapshot(public)
+                self.assertEqual(result['protocol'],2)
+        self.assertEqual(self.source_state(path),before)
+        self.assertEqual(sorted(p.name for p in path.parent.iterdir()),namespace)
+        return [t for t in targets if t!=':memory:']
+
+    def test_snapshot_preserves_source_without_and_with_live_wal(self):
+        import sqlite3
+        s,public,path=self.snapshot_fixture()
+        self.assertFalse(path.with_name('core.sqlite-wal').exists())
+        self.assertEqual(len(self.checked_snapshot(s,public,path)),1)
+        db=sqlite3.connect(path); self.addCleanup(db.close)
+        db.execute('PRAGMA journal_mode=WAL')
+        db.execute('PRAGMA application_id=386')
+        db.commit()
+        # Real committed WAL bytes must be copied, not ignored or checkpointed.
+        self.assertGreater(path.with_name('core.sqlite-wal').stat().st_size,0)
+        self.assertEqual(len(self.checked_snapshot(s,public,path,application_id=386)),1)
+        from service import recovery
+        # Cumulative DB+WAL and DB+WAL+SHM limits, using real tiny sidecars.
+        total=path.stat().st_size
+        for name in ('core.sqlite-wal','core.sqlite-shm'):
+            total+=(path.parent/name).stat().st_size
+            with patch.object(recovery,'MAX_BYTES',total-1):
+                self.assertEqual(self.checked_snapshot(s,public,path,refusal=True),[])
+
+    def test_snapshot_refusal_preserves_source_and_checks_private_target(self):
+        s,public,path=self.snapshot_fixture()
+        from service import installed_export as export
+        original=export.database
+        def bad(db,public):
+            data=original(db,public); data['resource_accounting']=[(1,1)]; return data
+        with patch.object(export,'database',side_effect=bad):
+            self.assertEqual(len(self.checked_snapshot(s,public,path,refusal=True)),1)
+
+    def test_snapshot_preopen_finite_byte_and_namespace_caps(self):
+        from service import recovery
+        s,public,path=self.snapshot_fixture()
+        for budget in (1,path.stat().st_size-1):
+            with patch.object(recovery,'MAX_BYTES',budget):
+                self.assertEqual(self.checked_snapshot(s,public,path,refusal=True),[])
+        with patch.object(recovery,'MAX_ROWS',1):
+            self.assertEqual(self.checked_snapshot(s,public,path,refusal=True),[])
+
+    def test_snapshot_detects_source_change_before_open_and_after_query(self):
+        from service import recovery, installed_export as export, install_policy as ip
+        s,public,path=self.snapshot_fixture()
+        # A legitimate external namespace change is detected; the snapshot must
+        # retain that change rather than repairing/removing it.
+        marker=path.parent/'external-change'
+        before=self.source_state(path)
+        read=recovery.read_file; calls=[]
+        def changed(*args,**kwargs):
+            data=read(*args,**kwargs); calls.append(1)
+            if len(calls)==1: marker.write_bytes(b'external')
+            return data
+        with ip.locked_file(path.parent/'control.lock',policy=ip.SPLIT,role='control'),patch.object(recovery,'read_file',side_effect=changed),self.assertRaisesRegex(ValueError,'snapshot_source_changed'):
+            s.helper.registration_snapshot(public)
+        self.assertEqual(marker.read_bytes(),b'external')
+        self.assertEqual({k:v for k,v in self.source_state(path).items() if k!=marker.name},before)
+        marker.unlink()  # fixture-owned mutation only
+        original=export.database
+        def after(db,public):
+            data=original(db,public); marker.write_bytes(b'after-query'); return data
+        with ip.locked_file(path.parent/'control.lock',policy=ip.SPLIT,role='control'),patch.object(export,'database',side_effect=after),self.assertRaisesRegex(ValueError,'snapshot_source_changed'):
+            s.helper.registration_snapshot(public)
+        self.assertEqual(marker.read_bytes(),b'after-query')
+        self.assertEqual({k:v for k,v in self.source_state(path).items() if k!=marker.name},before)
