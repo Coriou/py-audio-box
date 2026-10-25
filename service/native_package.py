@@ -532,14 +532,16 @@ def native_startup_inputs(record_file, *, configuration_file, templates_file, ow
     NativeActivation repeats binding and validates completed history under Core
     exclusion. Its private pending-import mode grants no admission authority.
     """
+    from service.native_renewal import startup_guard, selected_source
+    startup_guard(Path(owner_root),activation=True)
     directory(str(literal(str(record_file)).parent))
     # Canonical bytes preserve primitive types (True/1/1.0 compare equal in Python).
-    saved = canonical(document(record_file))
+    saved = canonical(selected_source(record_file,owner_root))
     before, contexts, templates = _enrollment_snapshot(configuration_file, templates_file, owner_root)
     if saved != canonical(before): raise Refused('native_enrollment_binding')
     runtime = enrolled_runtime(configuration_file, connector=connector, _completed_history=_completed_history)
     after, _, _ = _enrollment_snapshot(configuration_file, templates_file, owner_root)
-    if canonical(after) != canonical(before) or canonical(document(record_file)) != saved:
+    if canonical(after) != canonical(before) or canonical(selected_source(record_file,owner_root)) != saved:
         raise Refused('native_enrollment_changed')
     return dict(runtime=runtime, production_contexts=contexts,
                 profiles=templates['profiles'], budget=templates['budget'])

@@ -70,6 +70,7 @@
     "service/native_launch.py",
     "service/native_package.py",
     "service/native_runtime.py",
+    "service/native_renewal.py",
     "service/owner_store.py",
     "service/package_install.py",
     "service/persistence.py",
