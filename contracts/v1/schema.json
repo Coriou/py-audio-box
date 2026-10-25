@@ -1218,6 +1218,13 @@
         },
         "identity": {
           "$ref": "#/$defs/identity"
+        },
+        "profile_override": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+        },
+        "device_override": {
+          "$ref": "#/$defs/execution_device_override"
         }
       },
       "required": [
@@ -1326,6 +1333,13 @@
             "never",
             "exact"
           ]
+        },
+        "profile_override": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+        },
+        "device_override": {
+          "$ref": "#/$defs/execution_device_override"
         }
       },
       "required": [
@@ -4221,6 +4235,28 @@
         "preset",
         "voice_id",
         "expected_revision"
+      ],
+      "additionalProperties": false
+    },
+    "execution_device_override": {
+      "type": "object",
+      "properties": {
+        "family": {
+          "enum": [
+            "cpu",
+            "cuda",
+            "mps"
+          ]
+        },
+        "index": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 255
+        }
+      },
+      "required": [
+        "family",
+        "index"
       ],
       "additionalProperties": false
     }

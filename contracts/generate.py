@@ -64,7 +64,7 @@ def generate():
         if 'const' in spec:return spec['const']
         if 'enum' in spec:return spec['enum'][0]
         if 'anyOf' in spec:return example(spec['anyOf'][0])
-        if spec.get('type')=='object':return {k:example(v) for k,v in spec['properties'].items()}
+        if spec.get('type')=='object':return {k:example(v) for k,v in spec['properties'].items() if k not in ('profile_override','device_override')}
         if spec.get('type')=='array':return [example(spec['items']) for _ in range(spec.get('minItems',0))]
         if spec.get('type') in ('integer','number'):return max(1,spec.get('minimum',0))
         if spec.get('type')=='boolean':return False

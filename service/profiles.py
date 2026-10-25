@@ -1,7 +1,7 @@
 """Pure H4 selection seam; trusted qualification records, not a public JSON contract.
 
-No default profiles or runtime integration. Persisted records require operator-owned
-freshness/invalidation before use. Selection never provisions or updates readiness.
+No default profiles. production_selection binds owner-resolved executable contexts
+to this policy before admission. Persisted records require operator-owned freshness/invalidation before use. Selection never provisions or updates readiness.
 """
 from dataclasses import dataclass
 from enum import Enum
@@ -146,7 +146,7 @@ class ResolvedSelection:
     reason: Reason
     diagnostics: tuple[ProfileStatus, ...]
     # profile freezes engine/checkpoint/revision/device index/dtype/attention/resources
-    # for the parent-owned future executable contract; no current protocol mutation.
+    # within the selected complete production context; no public descriptor authority.
 
 
 def profile_status(p: ExecutionProfile, r: VoiceWorkRequest,
