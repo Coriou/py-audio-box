@@ -128,6 +128,57 @@ class NativeOnboardingTests(unittest.TestCase):
         self.assertEqual(self.f.s.register_snapshot(template),Authority(*template).binding)
         self.assertEqual(len(self.f.s._preset_templates),1)
 
+    def test_original_and_owned_registration_require_canonical_primitives(self):
+        from worker.native_protocol import owned_preset_context
+        from contracts import validate as oracle
+        original = copy.deepcopy(self.f.snapshot)
+        owned = copy.deepcopy(original)
+        owned[1] = owned_preset_context(original[1], original[0]['principal_id'],
+                                       self.f.f.e.preset, 'canonical')
+        owned[0]['input_sha256'] = oracle.plan_hash(owned[1]['plan'])
+        for snapshot in (original, owned):
+            changed = copy.deepcopy(snapshot)
+            self.assertIs(type(changed[1]['execution']['descriptor']['top_p']), float)
+            changed[1]['execution']['descriptor']['top_p'] = 1
+            self.assertEqual(snapshot, changed)
+            self.assertNotEqual(canonical(snapshot), canonical(changed))
+            for enrolled in (False, True, True):
+                if enrolled:
+                    binding = self.f.s.register_snapshot(snapshot)
+                    self.assertEqual(self.f.s.register_snapshot(snapshot), binding)
+                with self.assertRaises(Refused) as caught:
+                    self.f.s.register_snapshot(changed)
+                self.assertEqual(str(caught.exception), 'native_registration')
+        self.assertEqual(len(self.f.s._preset_templates), 1)
+
+    def test_existing_binding_snapshot_join_requires_canonical_primitives(self):
+        binding = self.f.s.register_snapshot(self.f.snapshot)
+        changed = copy.deepcopy(self.f.snapshot)
+        changed[1]['execution']['descriptor']['top_p'] = 1
+        with self.assertRaises(Refused):
+            self.f.s.registration(dict(binding=binding, snapshot=changed))
+        self.f.s.registration(dict(binding=binding, snapshot=self.f.snapshot))
+
+    def test_saved_original_and_owned_versions_require_canonical_primitives(self):
+        from service.execution_context import NativeQwenContexts
+        original = copy.deepcopy(self.templates['registrations'][0]['context'])
+        principal = self.f.snapshot[0]['principal_id']
+        contexts = NativeQwenContexts({(principal, 'qwen-mps', 'vv0'): original},
+            self.f.f.inventory, self.templates['profiles'], self.f.native)
+        for version in (original['plan']['voice_versions'][0],
+                        contexts.preset_version(principal, self.f.f.e.preset, 'canonical')):
+            request = dict(original['plan']['request'], voice_version_id=version['id'])
+            contexts.resolve_registered(principal, request, version)
+            changed = copy.deepcopy(version)
+            self.assertIs(type(changed['settings']['top_p']), float)
+            changed['settings']['top_p'] = 1
+            self.assertEqual(version, changed)
+            self.assertNotEqual(canonical(version), canonical(changed))
+            for _ in range(2):
+                with self.assertRaises(Refused):
+                    contexts.resolve_registered(principal, request, changed)
+                contexts.resolve_registered(principal, request, version)
+
     def test_ambiguous_selector_and_clone_template_never_become_presets(self):
         from service.execution_context import NativeQwenContexts
         original=copy.deepcopy(self.templates['registrations'][0]['context'])

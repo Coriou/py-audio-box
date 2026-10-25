@@ -348,7 +348,8 @@ class NativeQwenContexts:
             context = json.loads(self._contexts[key])
         else:
             context = self._preset_context(principal, version['configuration'].get('speaker'), version['voice_id'])
-        if context['plan']['voice_versions'] != [version]: raise Refused('saved_version_required')
+        from worker.transport import canonical
+        if canonical(context['plan']['voice_versions']) != canonical([version]): raise Refused('saved_version_required')
         context['plan']['request'] = copy.deepcopy(request)
         current_native_hardware(execution(context),self._inventory)
         return context

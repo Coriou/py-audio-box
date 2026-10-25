@@ -40,6 +40,8 @@ class NativeFixture:
         self.a=Authority(*self.snapshot)
         self.s.registrations={self.a.binding:dict(snapshot=self.snapshot,execution=self.f.e,
             bundles={'bundle':self.f.fixture.bundle},inventory=self.f.inventory)}
+        # This post-constructor native binding is explicit fixture enrollment.
+        self.s._preset_templates=copy.deepcopy(self.s.registrations)
         self.spool=self.f.fixture.root/'control-spool';self.spool.mkdir(mode=0o700)
         self.stage=self.f.fixture.root/'control-stage';self.stage.mkdir(mode=0o770);self.stage.chmod(0o770)
         self.cert=b'fixture-server-certificate';self.pin=hashlib.sha256(self.cert).hexdigest()

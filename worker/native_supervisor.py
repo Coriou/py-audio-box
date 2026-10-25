@@ -187,7 +187,7 @@ class NativeSupervisor:
 
     def registration(self,r,verify=False, *, candidate=None):
         reg=candidate if candidate is not None else self.registrations.get(r['binding'])
-        if reg is None or reg['snapshot'] != r['snapshot']: raise Refused('native_registration')
+        if reg is None or canonical(reg['snapshot']) != canonical(r['snapshot']): raise Refused('native_registration')
         e=reg['execution']
         from contracts import validate as oracle
         job,context,assets,profiles=r['snapshot']
@@ -220,7 +220,10 @@ class NativeSupervisor:
             context=copy.deepcopy(value[1]);context['plan'].pop('request')
             return value[0]['principal_id'],context,value[3]
         with self.lock:
-            matches=[r for r in self.registrations.values() if template(r['snapshot'])==template(snapshot)]
+            # Working allocations are consumers, never enrollment authority.
+            expected = canonical(template(snapshot))
+            matches=[r for r in self._preset_templates.values()
+                     if canonical(template(r['snapshot'])) == expected]
             if not matches:
                 # Public owned preset identities are reproducible only from an
                 # already enrolled principal's exact native template.
@@ -232,7 +235,7 @@ class NativeSupervisor:
                         derived = owned_preset_context(source[1], source[0]['principal_id'],
                             registered['execution'].preset, version['voice_id'])
                         candidate = copy.deepcopy(source); candidate[1] = derived
-                        if canonical(template(candidate)) != canonical(template(snapshot)): continue
+                        if canonical(template(candidate)) != expected: continue
                         reg = copy.deepcopy(registered)
                         reg['execution'] = p.native_execution(derived)
                         matches.append(reg)
