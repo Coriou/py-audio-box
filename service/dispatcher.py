@@ -40,7 +40,7 @@ class Dispatcher:
         self.initialized.result(timeout=15 if installed_activation is not None else 5)
 
     def call(self, op, *args, timeout=3, **kwargs):
-        if op not in ('submit','job','jobs','events','artifact','asset','cancel','status','replace','inventory_page','reconcile_startup','close','voice_list','voice_get','voice_version','voice_resolve','voice_summaries','voice_version_summaries','asset_ingest','asset_metadata','asset_content','configured_presets','configured_capabilities','production_preset_register','production_prepare','production_generate','production_save','production_results','production_job','production_cancel','production_artifact'):
+        if op not in ('submit','job','jobs','events','artifact','asset','cancel','status','replace','inventory_page','reconcile_startup','close','voice_list','voice_get','voice_version','voice_resolve','voice_summaries','voice_version_summaries','asset_ingest','asset_metadata','asset_content','configured_presets','configured_capabilities','configured_profiles','production_preset_register','production_prepare','production_generate','production_save','production_results','production_job','production_cancel','production_artifact'):
             raise ValueError('unknown_control_command')
         if op == 'asset_ingest':
             from service.ingest import MAX_BYTES
@@ -259,13 +259,12 @@ class Dispatcher:
             if not self._activation_open() or self.closing or not self.reconciled or self.quarantined or self.resource_fault or self.integrity_fault or not getattr(self.runtime,'admission_open',True):
                 raise ValueError('not_ready')
             if self.production_contexts is None: raise ValueError('not_ready')
-            if hasattr(self.production_contexts, 'resolve_owned'):
-                context = self.production_contexts.resolve_owned(self.core, principal, operation, payload)
-            elif operation == 'speech_generate' and hasattr(self.production_contexts, 'resolve_registered'):
-                version = self.core.voices.version(principal, payload['voice_version_id'])
-                context = self.production_contexts.resolve_registered(principal, payload, version)
+            from service.production_selection import ContextComposition, resolve_owned, choose
+            if isinstance(self.production_contexts, ContextComposition):
+                context = self.production_contexts.resolve_selected(self, principal, operation, payload)
             else:
-                context = self.production_contexts.resolve(principal, operation, payload)
+                context = resolve_owned(self.production_contexts, self.core, principal, operation, payload)
+                context = choose(self, [('configured', context)], payload)
             method = domain.prepare if op == 'production_prepare' else domain.generate
             job = method(principal, key, context, _admission=self.admission,
                          _profiles=self.profiles, _dispatch_settings=('silence',8))
@@ -281,6 +280,9 @@ class Dispatcher:
         if op in ('asset_metadata','asset_content'):
             from service.domain import owned_asset
             return owned_asset(self.core,*args,content=op=='asset_content',**kwargs)
+        if op=='configured_profiles':
+            from service.production_selection import discovery
+            return discovery(self)
         if op=='configured_capabilities':
             describe = getattr(self.production_contexts, 'capabilities', None)
             configured = describe(args[0]) if describe else None

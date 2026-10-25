@@ -29,6 +29,16 @@ def execution(context):
     from worker.engines.execution import Execution
     value = context.get('execution')
     plan = context['plan']; profile = plan['resolved']['profile']
+    request = plan['request']
+    if request.get('profile_override') not in (None, profile['id']):
+        raise Refused('profile_override_unavailable')
+    override = request.get('device_override')
+    if override is not None:
+        device = value.get('descriptor', {}).get('device', 'cpu') if value else 'cpu'
+        family = 'cuda' if device.startswith('cuda:') else device
+        index = int(device.split(':')[1]) if family == 'cuda' else 0
+        if override != dict(family=family, index=index):
+            raise Refused('device_override_unavailable')
     if value is None:
         if profile['id'] in ('kokoro-cpu', 'pocket-cpu', 'qwen-cpu', 'qwen-cuda', 'qwen-mps'): raise Refused('execution_required')
         return None

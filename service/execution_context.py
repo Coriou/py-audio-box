@@ -246,6 +246,24 @@ class QwenContexts:
         self._bundles = copy.deepcopy(local_bundles)
         self._references = copy.deepcopy(local_references)
 
+    def selection_metadata(self):
+        """Configured snapshots only; no media/bundle verification or resolution.
+
+        This describes possible executions, not readiness of an owned request.
+        """
+        from contracts import validate as oracle
+        records = []
+        for raw in self._contexts.values():
+            context = json.loads(raw)
+            spec = execution(context)  # Pure canonical decoding; no input verifier.
+            records.append(dict(profile=context['plan']['resolved']['profile'],
+                execution_sha256=oracle.canonical_hash(context['execution']),
+                engine=spec.engine, device=spec.device,
+                memory_bytes=spec.memory_bytes, threads=spec.threads,
+                hardware=context['execution']['hardware'],
+                native=context['execution'].get('native')))
+        return tuple(records)
+
     def resolve(self, principal, operation, request):
         from contracts import validate as oracle
         from worker.engines.qwen_execution import current_hardware

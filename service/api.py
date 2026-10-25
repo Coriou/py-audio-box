@@ -152,12 +152,22 @@ def create_voice_app(dispatcher, *, credentials, upload_deadline=15.0, installed
                 profile['next_action'] = configured['next_action'] if configured and configured['engine']=='pocket-tts' else 'Read /skeleton configured_presets; explicitly call voice_preset_register, then speech_generate. Clone preparation is unavailable.'
             if not dispatcher.call('status')['persistent_activation']:
                 for profile in body['profiles']: profile['readiness'] = 'not_ready'
+        selected_profiles = dispatcher.call('configured_profiles', request.state.principal)
+        if selected_profiles:
+            body['profiles'] = selected_profiles
+            body['engines'] = sorted({c['identity']['engine'] for p in selected_profiles for c in p['compatibility']})
         body['operations'] = list(dict.fromkeys(('discover', *VOICE_READS, *ASSET_OPERATIONS, *PRODUCTION_OPERATIONS)))
         if configured:
             body['operations'] = [op for op in body['operations'] if op not in PRODUCTION_OPERATIONS or op in configured['operations']]
         if installed is not None and not (configured and configured['engine']=='pocket-tts'):
             body['operations'] = [op for op in body['operations'] if op not in ('voice_prepare', 'voice_results', 'voice_save')]
         return body
+
+    @production.get('/skeleton/profiles/{profile_id}')
+    def production_profile(profile_id: str, request: Request):
+        for profile in dispatcher.call('configured_profiles', request.state.principal):
+            if profile['id'] == profile_id: return profile
+        raise HTTPException(status_code=404, detail='Unknown configured profile')
 
     @production.get('/skeleton')
     def production_status(request: Request, query: Annotated[EmptyQuery, Query()]):

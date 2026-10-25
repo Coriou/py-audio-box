@@ -245,6 +245,9 @@ def production_call(dispatcher, principal, operation, payload, key=None):
                 'queue_full':'resource_limit','resource_runtime_unsupported':'unsupported_control'}.get(code, code)
         if code not in op['errors']: code = 'not_ready'
         detail = 'Pocket reference_text is unsupported; use an empty string.' if str(exc) == 'unsupported_parameter' else 'Production operation unavailable.'
-        raise Failure(code, detail, action='Check IDs, selection and operator configuration; do not automatically retry mutations.') from None
+        from service.production_selection import SelectionUnavailable
+        action = ('Operator must refresh/qualify the exact installed profile or correct the override: '
+                  + ', '.join(exc.reasons)) if isinstance(exc, SelectionUnavailable) else 'Check IDs, selection and operator configuration; do not automatically retry mutations.'
+        raise Failure(code, detail, action=action) from None
     except (OSError, sqlite3.Error, TimeoutError, queue.Full):
         raise Failure('not_ready', 'Owner unavailable; mutation outcome may be unknown.', action='Do not automatically retry mutations.') from None

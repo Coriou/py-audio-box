@@ -265,6 +265,7 @@ class DiscoveryTests(unittest.TestCase):
             def call(inner,operation,*args):
                 if operation=='configured_capabilities':
                     return dict(engine='pocket-tts',profile=config['profiles'][0],operations=['voice_prepare','voice_results','voice_save','speech_generate'],next_action='upload → prepare → save')
+                if operation=='configured_profiles':return copy.deepcopy(config['profiles'])
                 if operation=='configured_presets':return []
                 if operation=='status':return dict(persistent_activation=True)
                 raise AssertionError(operation)
