@@ -40,7 +40,7 @@ replacement, further phase, success publication or intent clearing is introduced
 The same adapter serves Core, hello and registration writer. Existing Core,
 intent, lane/Core/root lock ordering and quarantine remain unchanged.
 
-The user explicitly resolved the finite-return tension in this session: retain
+The orchestrator resolved the finite-return tension (attribution corrected in r362): retain
 helper and locks until actual exit/reap, with bounded resources and no further
 work. Thus exceptional retention has **unbounded duration**, even after the
 30-second child collection deadline. One child remains owned by that helper;

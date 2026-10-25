@@ -48,11 +48,12 @@ def child(kind, request, descriptors):
     if kind not in ('core','hello','writer'): raise ValueError('daemon_child_kind')
     raw=encoded(request)
     if len(raw)>65536: raise ValueError('daemon_child_budget')
+    deadline=time.monotonic()+30
     p=subprocess.Popen([sys.executable,'-I','-B','-c',
         "import sys;sys.path.insert(0,'/opt/speech');from service.install_child import container_entry;container_entry("+repr(kind)+')'],
         stdin=subprocess.PIPE,stdout=subprocess.PIPE,stderr=subprocess.DEVNULL,close_fds=True,
         pass_fds=tuple(descriptors),cwd='/',env={},bufsize=0)
-    result=collect(p,raw,65536,time.monotonic()+30,'daemon_child')
+    result=collect(p,raw,65536,deadline,'daemon_child')
     if kind=='hello': return json.loads(result)
     if result: raise ValueError('daemon_writer_unexpected_output')
 

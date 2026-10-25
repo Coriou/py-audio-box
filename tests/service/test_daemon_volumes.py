@@ -698,6 +698,8 @@ class AdapterBoundsTests(ProtocolTests):
                     if suffix:
                         with self.assertRaisesRegex(ValueError,'trailing_protocol'): d.exchange(identity,'init',nonce,s.config,s.b,[])
                     else: self.assertEqual(d.exchange(identity,'init',nonce,s.config,s.b,[]),{'phase':'initialized'})
+                self.assertTrue(p.stdout.closed and p.stdin.closed)
+                self.assertEqual(p.returncode,0); self.assertEqual(d.retained,[])
                 if suffix: d.check.assert_not_called()
 
     def test_terminal_eof_timeout(self):
@@ -732,3 +734,144 @@ class AdapterBoundsTests(ProtocolTests):
             with self.assertRaisesRegex(OSError,'inert setup fault'):
                 dc.collect(p,b'',64,time.monotonic()+1,'fixture')
         self.assertEqual(calls,[.1,.1]); self.assertTrue(p.stdout.closed and p.stdin.closed)
+
+
+class OwnershipTests(AdapterBoundsTests):
+    # New methods are selected explicitly; inherited bounds remain in the r360 selection.
+    def test_helper_wait_cadence_interruptions_hold_locks(self):
+        import fcntl
+        for unknown in (False,True):
+            s=Session(self); s.run('install'); s.child=dh.child; calls=[]
+            def wait(p,timeout):
+                for role in ('authority','control','receipts','staging','ipc'):
+                    fd=os.open(s.roots[role],os.O_RDONLY|os.O_DIRECTORY)
+                    try:
+                        with self.assertRaises(BlockingIOError): fcntl.flock(fd,fcntl.LOCK_EX|fcntl.LOCK_NB)
+                    finally: os.close(fd)
+                calls.append(timeout)
+                if len(calls)==1:
+                    if unknown: return
+                    raise OSError('first wait')
+                if len(calls)==2: raise dc.subprocess.TimeoutExpired('inert',timeout)
+                p.returncode=0
+            p=self.process(wait=wait); sleep=time.sleep; sleeps=[]
+            def cadence(n):
+                sleeps.append(n)
+                if len(sleeps)==1: raise KeyboardInterrupt('cadence')
+                sleep(n)
+            expected=KeyboardInterrupt if unknown else OSError
+            with patch.object(dh.subprocess,'Popen',return_value=p) as spawn,patch.object(dc.time,'sleep',side_effect=cadence):
+                with self.assertRaises(expected): s.run('init')
+            self.assertEqual(spawn.call_count,1); self.assertEqual(len(calls),3)
+            self.assertTrue((s.roots['receipts']/'p1-core-intent').exists())
+            self.assertFalse((s.roots['receipts']/'p1-enrolled.json').exists())
+            for role in ('authority','control','receipts','staging','ipc'):
+                fd=os.open(s.roots[role],os.O_RDONLY|os.O_DIRECTORY)
+                try: fcntl.flock(fd,fcntl.LOCK_EX|fcntl.LOCK_NB)
+                finally: os.close(fd)
+
+    def test_independent_close_retry_and_cadence_remaining_interval(self):
+        for name,after in (('stdin',False),('stdin',True),('stdout',False),('stdout',True)):
+            p=self.process(); original=getattr(p,name); events=[]; clock=[0.]; retained=[p]
+            class Stream:
+                @property
+                def closed(self): return original.closed
+                def close(self):
+                    events.append('close')
+                    if len(events)==1:
+                        if after: original.close()
+                        raise OSError('close first')
+                    original.close()
+            setattr(p,name,Stream())
+            def wait(timeout):
+                self.assertIn(p,retained); self.assertTrue(getattr(p,'stdout' if name=='stdin' else 'stdin').closed)
+                p.returncode=0; return 0
+            p.wait=wait; intervals=[]
+            def sleep(n):
+                intervals.append(n)
+                if len(intervals)==1:
+                    clock[0]+=.04; raise SystemExit('cadence')
+                clock[0]+=n
+            owner=dc.Owner(p,'fixture',10,retained)
+            with patch.object(dc.time,'monotonic',side_effect=lambda:clock[0]),patch.object(dc.time,'sleep',side_effect=sleep):
+                with self.assertRaisesRegex(OSError,'close first'): owner.__exit__(None,None,None)
+            self.assertEqual(retained,[]); self.assertTrue(original.closed)
+            self.assertEqual(len(events),1 if after else 2)
+            self.assertAlmostEqual(intervals[0],.1); self.assertAlmostEqual(intervals[1],.06)
+            self.assertIsNone(owner.failure.__context__)
+
+    def test_exchange_faults_and_exit_predicates_finalize(self):
+        s=Session(self); nonce='a'*32; identity='3'*64
+        c=container('helper',s.config,s.b,phase='init',nonce=nonce,identity=identity)
+        c['State'].update(Running=True,Status='running',StartedAt='2026-10-25T00:00:00Z')
+        for fault in ('construct','send','receive','action','finish','eof_timeout','final','running','helper_nonzero','attach_nonzero','attach_signal','success'):
+            with self.subTest(fault=fault):
+                p=self.process(); final=copy.deepcopy(c); final['State'].update(Running=fault=='running',Status='exited',ExitCode=2 if fault=='helper_nonzero' else 0)
+                d=object.__new__(dc.Docker); d.endpoint='unix:///fixture'; d.env={}; d.end=time.monotonic()+2; d.retained=[]
+                d.container=Mock(side_effect=[c,c,OSError('final') if fault=='final' else final]); d.check=Mock()
+                d.action=Mock(side_effect=OSError('action'))
+                wire=Mock(); wire.receive.return_value=('complete',dict(result={'ok':True}))
+                if fault=='action': wire.receive.return_value=('notify',{})
+                for method in ('send','receive','finish'):
+                    if fault==method: getattr(wire,method).side_effect=OSError(fault)
+                if fault=='eof_timeout':
+                    reader,writer,_,out=self.pipes()
+                    actual=dc.Wire(reader,out,nonce,'init',deadline=time.monotonic()+.01)
+                    wire.finish.side_effect=actual.finish
+                def wait(timeout):
+                    p.returncode=2 if fault=='attach_nonzero' else -15 if fault=='attach_signal' else 0
+                    return p.returncode
+                p.wait=wait
+                with patch.object(dc.subprocess,'Popen',return_value=p),patch.object(dc,'Wire',side_effect=OSError('construct') if fault=='construct' else None,return_value=wire):
+                    if fault=='success': self.assertEqual(d.exchange(identity,'init',nonce,s.config,s.b,[]),{'ok':True})
+                    else:
+                        with self.assertRaises((OSError,ValueError)): d.exchange(identity,'init',nonce,s.config,s.b,[])
+                self.assertIsNotNone(p.returncode); self.assertTrue(p.stdin.closed and p.stdout.closed); self.assertEqual(d.retained,[])
+
+    def test_notify_common_owner_and_nested_order(self):
+        s=Session(self); identity='3'*64
+        c=container('control',s.config,s.b,identity=identity)
+        for fault in ('success','timeout','interrupt'):
+            p=self.process(); p.stdout.close(); p.stdout=None
+            d=object.__new__(dc.Docker); d.endpoint='unix:///fixture'; d.env={}; d.end=time.monotonic()+2; d.retained=[]
+            d.container=Mock(return_value=c); d.check=Mock(); waits=[]
+            def wait(timeout):
+                waits.append(timeout)
+                if len(waits)==1 and fault=='interrupt': raise KeyboardInterrupt('notify')
+                p.returncode=0; return 0
+            p.wait=wait
+            if fault=='timeout': d.end=-1
+            outer=self.process(); order=[]
+            def outer_wait(timeout):
+                self.assertTrue(p.stdin.closed); self.assertEqual(p.returncode,0)
+                self.assertNotIn(p,d.retained); order.append('outer'); outer.returncode=0; return 0
+            outer.wait=outer_wait
+            with patch.object(dc.subprocess,'Popen',return_value=p):
+                if fault=='success':
+                    with dc.Owner(outer,'attach',time.monotonic()+2,d.retained):
+                        self.assertEqual(d.action('notify',dict(id=identity,gate={}),s.config,s.b,[]),{})
+                else:
+                    with self.assertRaises((ValueError,KeyboardInterrupt)):
+                        with dc.Owner(outer,'attach',time.monotonic()+2,d.retained):
+                            d.action('notify',dict(id=identity,gate={}),s.config,s.b,[])
+            self.assertEqual(order,['outer']); self.assertEqual(d.retained,[])
+
+    def test_selector_teardown_and_reference_registration_faults(self):
+        for fault in ('selector','append'):
+            p=self.process(); calls=[]
+            class Retained(list):
+                def append(self,value):
+                    super().append(value)
+                    if fault=='append': raise OSError('append')
+            retained=Retained(); factory=dc.selectors.DefaultSelector
+            class Selector:
+                def __init__(self): self.sel=factory(); self.calls=0
+                def __getattr__(self,name): return getattr(self.sel,name)
+                def close(self):
+                    self.calls+=1; self.sel.close()
+                    if self.calls==1: raise SystemExit('selector')
+            with patch.object(dc.selectors,'DefaultSelector',Selector):
+                with self.assertRaises((OSError,SystemExit)):
+                    dc.collect(p,b'',10,time.monotonic()+2,'fixture',retained)
+            self.assertEqual(retained,[]); self.assertEqual(p.returncode,0)
+            self.assertTrue(p.stdin.closed and p.stdout.closed)

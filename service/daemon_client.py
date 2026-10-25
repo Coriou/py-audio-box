@@ -3,6 +3,7 @@
 All daemon traffic uses the explicitly resolved Unix endpoint, with ambient
 Docker overrides removed. No shell, acquisition, rollback, rm or KILL path.
 """
+from contextlib import contextmanager
 import argparse
 import base64
 import json
@@ -61,24 +62,94 @@ def exclusive(path, value):
     finally: os.close(fd)
 
 
-def collect(p, raw, limit, deadline, prefix):
-    """One owned child, capped memory, no disk spool; failure drains until reap.
+class Owner:
+    """Synchronous local Popen custody; finite faults cannot release an owner.
 
-    Unknown completion has unbounded duration but bounded resources. Never
-    return through an enclosing exclusion until wait has verified actual reap.
+    Only the first exception is retained, without its traceback/context. Cleanup
+    uses the stream objects, never a numeric descriptor that could be reused.
     """
-    output=bytearray(); failure=None; offset=0
-    try:
-        with selectors.DefaultSelector() as sel:
-            os.set_blocking(p.stdout.fileno(),False)
-            sel.register(p.stdout,selectors.EVENT_READ)
+    def __init__(self,p,prefix,deadline,retained=None):
+        self.p=p; self.prefix=prefix; self.deadline=deadline
+        self.retained=retained; self.failure=None; self.status=None
+        self.selectors=[]
+
+    def fail(self,exc):
+        if self.failure is None:
+            exc.__traceback__=None; exc.__context__=None; exc.__cause__=None
+            self.failure=exc
+
+    def cadence(self):
+        end=None
+        while True:
+            try:
+                now=time.monotonic()
+                if end is None: end=now+.1
+                remaining=end-now
+                if remaining<=0: return
+                time.sleep(remaining)
+            except BaseException as exc: self.fail(exc)
+
+    def __enter__(self):
+        # Registration is inside custody, including an append failure.
+        try:
+            if self.retained is not None: self.retained.append(self.p)
+        except BaseException as exc:
+            self.fail(exc); self.__exit__(None,None,None)
+        return self
+
+    def __exit__(self,kind,exc,tb):
+        if exc is not None: self.fail(exc)
+        closed=[False,False]
+        while self.status is None or not all(closed) or self.selectors:
+            for i,name in enumerate(('stdin','stdout')):
+                if closed[i]: continue
+                try:
+                    stream=getattr(self.p,name,None)
+                    if stream is not None and not stream.closed: stream.close()
+                    closed[i]=stream is None or stream.closed
+                except BaseException as error: self.fail(error)
+            if self.selectors:
+                try:
+                    self.selectors[-1].close(); self.selectors.pop()
+                except BaseException as error: self.fail(error)
+            if self.status is None:
+                try:
+                    if time.monotonic()>=self.deadline:
+                        self.fail(ValueError(self.prefix+'_timeout_retained'))
+                    status=self.p.wait(timeout=.1)
+                    if type(status) is int: self.status=status
+                except subprocess.TimeoutExpired: pass
+                except BaseException as error: self.fail(error)
+            if self.status is None or not all(closed) or self.selectors: self.cadence()
+        if self.retained is not None:
+            while True:
+                try:
+                    if self.p in self.retained: self.retained.remove(self.p)
+                    break
+                except BaseException as error:
+                    self.fail(error); self.cadence()
+        if self.failure is not None: raise self.failure from None
+        if self.status!=0: raise ValueError(self.prefix+'_failed_retained')
+        return False
+
+
+def collect(p, raw, limit, deadline, prefix, retained=None):
+    """Capped live collection; after failure discard through EOF when usable."""
+    with Owner(p,prefix,deadline,retained) as owner:
+        output=bytearray(); offset=0
+        sel=selectors.DefaultSelector()
+        owner.selectors.append(sel)
+        try:
+            if p.stdout is not None:
+                os.set_blocking(p.stdout.fileno(),False)
+                sel.register(p.stdout,selectors.EVENT_READ)
             if p.stdin is not None:
                 os.set_blocking(p.stdin.fileno(),False)
                 if raw: sel.register(p.stdin,selectors.EVENT_WRITE)
                 else: p.stdin.close()
             while sel.get_map():
-                if failure is None and time.monotonic()>=deadline:
-                    failure=ValueError(prefix+'_timeout_retained')
+                if owner.failure is None and time.monotonic()>=deadline:
+                    owner.fail(ValueError(prefix+'_timeout_retained'))
                     output.clear()
                     if p.stdin is not None and not p.stdin.closed:
                         sel.unregister(p.stdin); p.stdin.close()
@@ -88,9 +159,9 @@ def collect(p, raw, limit, deadline, prefix):
                         except BlockingIOError: continue
                         if not data:
                             sel.unregister(p.stdout); p.stdout.close()
-                        elif failure is None:
+                        elif owner.failure is None:
                             if len(data)>limit-len(output):
-                                failure=ValueError(prefix+'_output_budget'); output.clear()
+                                owner.fail(ValueError(prefix+'_output_budget')); output.clear()
                                 if p.stdin is not None and not p.stdin.closed:
                                     sel.unregister(p.stdin); p.stdin.close()
                             else: output.extend(data)
@@ -99,28 +170,9 @@ def collect(p, raw, limit, deadline, prefix):
                         except BlockingIOError: continue
                         except BrokenPipeError: offset=len(raw)
                         if offset==len(raw): sel.unregister(p.stdin); p.stdin.close()
-    except BaseException as exc:
-        # Even interruption/adapter faults cannot unwind child ownership.
-        failure=exc; output.clear()
-        if p.stdin is not None and not p.stdin.closed: p.stdin.close()
-        # Closing stdout is safe on this exceptional path: no storage grows,
-        # and the writer receives EPIPE rather than blocking on a full pipe.
-        if not p.stdout.closed: p.stdout.close()
-    while True:
-        if failure is None and time.monotonic()>=deadline:
-            failure=ValueError(prefix+'_timeout_retained'); output.clear()
-        try:
-            status=p.wait(timeout=.1)
-            if type(status) is int and type(p.returncode) is int: break
-            time.sleep(.1)
-        except subprocess.TimeoutExpired:
-            if failure is None and time.monotonic()>=deadline:
-                failure=ValueError(prefix+'_timeout_retained'); output.clear()
         except BaseException as exc:
-            if failure is None: failure=exc; output.clear()
-            time.sleep(.1)
-    if failure is not None: raise failure
-    if p.returncode!=0: raise ValueError(prefix+'_failed_retained')
+            output.clear(); owner.fail(exc)
+            raise
     return bytes(output)
 
 
@@ -143,14 +195,10 @@ class Docker:
         return ['docker']+(['--host',self.endpoint] if self.endpoint else [])+args
 
     def call(self,args):
+        deadline=min(self.end,time.monotonic()+15)
         p=subprocess.Popen(self.argv(args),stdin=subprocess.DEVNULL,stdout=subprocess.PIPE,
             stderr=subprocess.DEVNULL,env=self.env,close_fds=True,bufsize=0)
-        self.retained.append(p)
-        try:
-            return collect(p,b'',LIMIT,min(self.end,time.monotonic()+15),'daemon_client').decode().strip()
-        finally:
-            # collect returns/raises only after verified reap.
-            self.retained.remove(p)
+        return collect(p,b'',LIMIT,deadline,'daemon_client',self.retained).decode().strip()
 
     def json(self,args): return parse(self.call(args))
 
@@ -217,13 +265,11 @@ class Docker:
             identity=payload['id']; dv.inspect_container(self.container(identity),'control',config,b)
             raw=encoded(payload['gate'])
             if len(raw)>65536: raise ValueError('daemon_gate_budget')
+            deadline=min(self.end,time.monotonic()+10)
             p=subprocess.Popen(self.argv(['exec','--interactive','--user','10001:10001',identity,'python','-I','-B','-c',
                 "import sys;sys.path.insert(0,'/opt/speech');from service.entrypoint import publish;publish(sys.stdin.buffer.read(65537))"]),
                 stdin=subprocess.PIPE,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL,env=self.env)
-            self.retained.append(p)
-            try: p.communicate(raw,timeout=10)
-            except subprocess.TimeoutExpired: raise ValueError('daemon_notify_timeout_retained') from None
-            if p.returncode!=0: raise ValueError('daemon_notify_failed_retained')
+            collect(p,raw,0,deadline,'daemon_notify',self.retained)
             result={}
         elif action=='input':
             dv.closed(payload,'index offset')
@@ -248,27 +294,25 @@ class Docker:
         own=self.container(identity); dv.inspect_container(own,'helper',config,b,phase=phase,nonce=nonce)
         p=subprocess.Popen(self.argv(['container','start','--attach','--interactive',identity]),stdin=subprocess.PIPE,
             stdout=subprocess.PIPE,stderr=subprocess.DEVNULL,env=self.env,bufsize=0,close_fds=True)
-        self.retained.append(p)
-        wire=Wire(p.stdout,p.stdin,nonce,phase,deadline=self.end)
-        while True:
-            own=self.container(identity)
-            dv.inspect_container(own,'helper',config,b,phase=phase,nonce=nonce)
-            if own['State']['Running']: break
-            if p.poll() is not None or time.monotonic()>=self.end: raise ValueError('daemon_helper_start_unknown')
-            time.sleep(.02)
-        manifest=[{k:v for k,v in e.items() if k!='source'} for e in source]
-        wire.send('begin',dict(configuration=config,binding=b,helper=own,manifest=manifest))
-        while True:
-            action,payload=wire.receive()
-            if action=='complete':
-                dv.closed(payload,'result'); result=payload['result']; break
-            response=self.action(action,payload,config,b,source)
-            wire.send(action,response)
-        p.stdin.close()
-        wire.finish()
-        try: p.wait(timeout=max(.01,min(10,self.end-time.monotonic())))
-        except subprocess.TimeoutExpired: raise ValueError('daemon_helper_exit_unknown') from None
-        if p.returncode!=0: raise ValueError('daemon_helper_failed_retained')
+        with Owner(p,'daemon_helper',self.end,self.retained) as owner:
+            wire=Wire(p.stdout,p.stdin,nonce,phase,deadline=self.end,owner=owner)
+            while True:
+                own=self.container(identity)
+                dv.inspect_container(own,'helper',config,b,phase=phase,nonce=nonce)
+                if own['State']['Running']: break
+                if p.poll() is not None or time.monotonic()>=self.end: raise ValueError('daemon_helper_start_unknown')
+                time.sleep(.02)
+            manifest=[{k:v for k,v in e.items() if k!='source'} for e in source]
+            wire.send('begin',dict(configuration=config,binding=b,helper=own,manifest=manifest))
+            while True:
+                action,payload=wire.receive()
+                if action=='complete':
+                    dv.closed(payload,'result'); result=payload['result']; break
+                response=self.action(action,payload,config,b,source)
+                wire.send(action,response)
+            p.stdin.close()
+            wire.finish()
+            owner.deadline=min(self.end,time.monotonic()+10)
         final=self.container(identity)
         dv.inspect_container(final,'helper',config,b,phase=phase,nonce=nonce)
         if final['State']['Running'] or final['State']['ExitCode']!=0: raise ValueError('daemon_helper_exit_unknown')
@@ -277,16 +321,30 @@ class Docker:
 
 
 class Wire:
-    def __init__(self,reader,writer,nonce,phase,*,deadline=None):
+    def __init__(self,reader,writer,nonce,phase,*,deadline=None,owner=None):
         self.reader,self.writer,self.nonce,self.phase=reader,writer,nonce,phase
+        self.owner=owner
         self.step=0; self.deadline=deadline or time.monotonic()+110; self.pending=b''
         os.set_blocking(self.writer.fileno(),False)
+    @contextmanager
+    def selector(self):
+        sel=selectors.DefaultSelector()
+        if self.owner is not None: self.owner.selectors.append(sel)
+        try:
+            yield sel
+        except BaseException as exc:
+            if self.owner is not None: self.owner.fail(exc)
+            raise
+        finally:
+            sel.close()
+            if self.owner is not None: self.owner.selectors.remove(sel)
+
     def send(self,action,payload):
         self.step+=1
         raw=encoded(dict(version=1,nonce=self.nonce,phase=self.phase,step=self.step,action=action,payload=payload))+b'\n'
         if len(raw)>LIMIT: raise ValueError('daemon_frame_budget')
         offset=0
-        with selectors.DefaultSelector() as sel:
+        with self.selector() as sel:
             sel.register(self.writer,selectors.EVENT_WRITE)
             while offset<len(raw):
                 remaining=self.deadline-time.monotonic()
@@ -296,7 +354,7 @@ class Wire:
     def finish(self):
         """A terminal frame is successful only with bounded, exact stdout EOF."""
         if self.pending: raise ValueError('daemon_trailing_protocol')
-        with selectors.DefaultSelector() as sel:
+        with self.selector() as sel:
             sel.register(self.reader,selectors.EVENT_READ)
             remaining=min(10,self.deadline-time.monotonic())
             if remaining<=0 or not sel.select(remaining):
@@ -306,7 +364,7 @@ class Wire:
 
     def receive(self):
         raw=self.pending
-        with selectors.DefaultSelector() as sel:
+        with self.selector() as sel:
             sel.register(self.reader,selectors.EVENT_READ)
             while b'\n' not in raw:
                 if len(raw)>=LIMIT: raise ValueError('daemon_frame_budget')
