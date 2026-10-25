@@ -75,11 +75,27 @@ def generate():
     # Fixture serialization only: public upload is an immutable raw WAV body.
     requests['asset_upload']={'$fixture_binary_base64':base64.b64encode((ROOT/'short.wav').read_bytes()).decode('ascii')}
     requests['voice_versions_list']=dict(cursor='',limit=1,voice_id='voice.0')
+    requests['audio_export']=dict(asset_id='short',rate=48000,channels=2,loudness=None)
     dump(ROOT/'operation-requests.json',requests)
     for operation in ('voice_prepare','voice_design','speech_generate','project_render'):
         dump(ROOT/('transcript-'+operation+'.json'),transcript(operation,production(30),profiles,requests))
     for operation in ('voice_prepare','voice_design'):
         dump(ROOT/('transcript-'+operation+'-roles.json'),transcript(operation,production(30),profiles,requests,reference_roles=True))
+    dump(ROOT/'transcript-audio_export.json',audio_export_fixture())
     dump(ROOT/'job.json',dict(id='job1',operation='speech_generate',input_sha256=H,principal_id='principal1',idempotency_key='request1',state='running',generation=1,attempts=[dict(id='attempt1',generation=1,owner_id='worker1',reaped=False,staging_id='staging1')],artifact_ids=[],stage='loading',deadline='2026-10-16T00:10:00Z'))
     dump(ROOT/'artifact.json',dict(id='artifact1',job_id='job1',generation=1,asset_ids=['impulse'],input_sha256=H,project_revision=1,manifest_sha256=H,identity=RESOLUTION,attempt_id='attempt1',owner_id='worker1',staging_id='staging1'))
+
+
+def audio_export_fixture():
+    """Inert registration/context only; zero digests are explicitly unqualified."""
+    profile=json.loads((ROOT/'capabilities.json').read_text())['profiles'][0]
+    profile.update(id='audio-export-fixture',config_revision='export-fixture-1',compatibility=[])
+    profile['limits'].update(upload_bytes=36*1024**2,disk_bytes=128*1024**2,ram_bytes=192*1024**2,deadline_seconds=25)
+    converter=dict(version='audio-converter-v1',worker_image_digest='sha256:'+H,executable='/usr/bin/ffmpeg',executable_sha256=H,reported_version='INERT fixture; not a real FFmpeg registration',reported_build='UNQUALIFIED fixture; no converter executed',runtime_closure=['/lib/fixture-runtime.so'])
+    request=dict(asset_id='short',rate=48000,channels=2,loudness=None)
+    source=next(a for a in production(30)['assets'] if a['id']=='short')
+    from .validate import canonical_hash,profile_snapshot
+    plan=dict(schema_version='1.3.0',operation='audio_export',request=request,project=None,voice_versions=[],assets=[source],resolved=dict(kind='audio_export',identity=dict(kind='audio_export',converter=converter,profile_id=profile['id']),profile=profile_snapshot(profile),settings=request.copy(),settings_sha256=canonical_hash(request)))
+    return dict(context=dict(plan=plan,bundles={},execution=dict(converter=converter)),profiles=[profile])
+
 if __name__=='__main__':generate()

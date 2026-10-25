@@ -2019,5 +2019,11 @@
     "voice_id": "example",
     "aliases": [],
     "expected_revision": 1
+  },
+  "audio_export": {
+    "asset_id": "short",
+    "rate": 48000,
+    "channels": 2,
+    "loudness": null
   }
 }

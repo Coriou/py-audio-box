@@ -1,5 +1,6 @@
 """Closed synthetic/Kokoro/Pocket/Qwen child. No management capability or service imports."""
 import json
+from datetime import datetime, timezone
 import os
 from pathlib import Path
 import signal
@@ -95,6 +96,31 @@ def run_generation(connection, config, staging, cutoff, *, backend_factory=None)
 run_kokoro = run_generation
 
 
+def run_export(connection, config, staging, cutoff):
+    from uuid import uuid4
+    import hashlib
+    from worker.transport import Session, authenticate, canonical, send, Refused
+    from contracts import validate as oracle
+    from worker.audio_export import execute, provenance
+    job,context=config['job'],config['context']
+    attempt=job['attempts'][-1]
+    binding=hashlib.sha256(canonical([job,context,config['allowed_assets'],config['profiles']])).hexdigest()
+    authenticate(connection,Session(config['secret'],binding,config['control_uid'],config['gid']),cutoff,control=False)
+    message=receive(connection,cutoff)
+    oracle.worker_message(message,job,config['allowed_assets'],transport_owner=attempt['owner_id'],context=context,current_profiles=config['profiles'])
+    if message['kind']!='execute': raise Refused('unexpected_message')
+    stage=attempt['staging_id']
+    if Path(stage).name!=stage or stage in ('.','..'): raise Refused('invalid_stage')
+    data,measured=execute(context,config['reference_fd'],Path(staging)/stage,image_digest=config['converter_image_digest'],timeout=max(.01,cutoff-time.monotonic()))
+    if time.monotonic()>=cutoff: raise Refused('expired_result')
+    asset=dict(id='asset-'+uuid4().hex,**measured,provenance=provenance(context['plan']))
+    manifest={k:message[k] for k in ('job_id','attempt_id','generation','owner_id','staging_id','input_sha256')}
+    a=context['plan']['assets'][0]
+    manifest.update(operation='audio_export',artifact_id='artifact-'+uuid4().hex,outputs=[asset],candidates=[],audio_export=dict(source_asset_id=a['id'],source_sha256=a['sha256'],settings=context['plan']['request'],converter=context['plan']['resolved']['identity']['converter']))
+    message.update(kind='result',stage='completed',result_asset_ids=[asset['id']])
+    send(connection,dict(message=message,manifest=manifest),cutoff)
+
+
 def contain_kokoro(context):
     """Linux child process ceilings; container-wide topology remains install-owned."""
     import resource
@@ -164,11 +190,13 @@ def main():
         else:
             raise RuntimeError('supervisor_signal_allowed')
         assert not any(int(p.name) > 2 and int(p.name) != connection.fileno() for p in Path('/proc/self/fd').iterdir() if p.name.isdigit() and Path(p).exists())
-    if mode in ('kokoro','pocket','qwen'):
+    if mode in ('kokoro','pocket','qwen','audio_export'):
         from worker.runtime_protocol import execution, dispatch_mode
         if dispatch_mode(execution(config['context'])) != mode: raise ValueError('execution_dispatch_mismatch')
         contain_kokoro(config['context'])
-        run_generation(connection, config, '/staging', time.monotonic()+30)
+        if mode=='audio_export':
+            run_export(connection,config,'/staging',time.monotonic()+min(25,(datetime.fromisoformat(config['job']['deadline'])-datetime.now(timezone.utc)).total_seconds()))
+        else: run_generation(connection, config, '/staging', time.monotonic()+30)
     else:
         from worker.runtime_protocol import execution
         if execution(config['context']) is not None: raise ValueError('execution_dispatch_mismatch')

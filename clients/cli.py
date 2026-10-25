@@ -37,6 +37,8 @@ def main(argv=None):
     results = vsubs.add_parser('results'); results.add_argument('job_id')
     speech = commands.add_parser('speech').add_subparsers(dest='verb', required=True)
     generate = speech.add_parser('generate'); generate.add_argument('--request', required=True); generate.add_argument('--idempotency-key', required=True)
+    audio = commands.add_parser('audio').add_subparsers(dest='verb',required=True).add_parser('export')
+    audio.add_argument('--request',required=True); audio.add_argument('--idempotency-key',required=True)
     jobs = commands.add_parser('job').add_subparsers(dest='verb', required=True)
     jobs.add_parser('get').add_argument('job_id')
     for name in ('events','wait'):
@@ -65,9 +67,9 @@ def main(argv=None):
         elif args.command == 'operation-detail':
             from urllib.parse import quote
             result = http.get('/skeleton/operations/' + quote(args.operation_id, safe=''))
-        elif args.command == 'speech' or (args.command == 'voice' and args.verb in ('prepare','save','preset-register','aliases','archive')):
+        elif args.command in ('speech','audio') or (args.command == 'voice' and args.verb in ('prepare','save','preset-register','aliases','archive')):
             import json
-            operation = 'speech_generate' if args.command == 'speech' else 'voice_'+args.verb.replace('-', '_')
+            operation = 'audio_export' if args.command == 'audio' else 'speech_generate' if args.command == 'speech' else 'voice_'+args.verb.replace('-', '_')
             payload = json.loads(args.request)
             if operation == 'voice_prepare' and args.audition_text is not None:
                 if 'audition_text' in payload and payload['audition_text'] != args.audition_text: raise ValueError('conflicting_audition_text')

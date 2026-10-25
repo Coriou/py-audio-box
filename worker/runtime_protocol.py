@@ -26,6 +26,9 @@ def execution_session(secret, binding, uid, gid):
 
 def execution(context):
     """Validate a private engine snapshot against the complete frozen plan."""
+    if context['plan']['operation']=='audio_export':
+        from worker.audio_export import execution as export_execution
+        return export_execution(context)
     from worker.engines.execution import Execution
     value = context.get('execution')
     plan = context['plan']; profile = plan['resolved']['profile']
@@ -87,7 +90,7 @@ def generated_source(context):
 
 
 def dispatch_mode(spec):
-    return {'kokoro': 'kokoro', 'pocket-tts': 'pocket', 'qwen': 'qwen'}[spec.engine]
+    return {'audio-export':'audio_export','kokoro': 'kokoro', 'pocket-tts': 'pocket', 'qwen': 'qwen'}[spec.engine]
 
 
 def pocket_execution(context):

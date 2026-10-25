@@ -153,6 +153,9 @@ class ProductionClientTests(ProductionAPIFixture,unittest.TestCase):
             for operation in advertised-{'asset_upload'}:
                 self.assertIn(OPERATIONS[operation]['mcp'],tools)
             for operation in PRODUCTION_OPERATIONS:
+                if operation=='audio_export':
+                    self.assertNotIn(operation,advertised)  # No converter registered in this speech fixture.
+                    continue
                 self.assertIn(operation,advertised)
                 self.assertIn('idempotency_key',tools[OPERATIONS[operation]['mcp']].inputSchema['required']) if OPERATIONS[operation]['idempotency'] else None
             bad=asyncio.run(mcp.call_tool('speech_voice_prepare',payload))
@@ -160,3 +163,43 @@ class ProductionClientTests(ProductionAPIFixture,unittest.TestCase):
             self.assertLess(len(json.dumps(result)),12288)
 
 if __name__=='__main__':unittest.main()
+
+
+class AudioExportClientTests(unittest.TestCase):
+    def test_http_cli_mcp_export_same_job_and_verified_download(self):
+        import test_audio_export as export_fixture
+        fixture=export_fixture.AudioExportTests();fixture.setUp();self.addCleanup(fixture.doCleanups)
+        class ASGIClient:
+            def __init__(self,**kwargs):pass
+            def __enter__(self):return self
+            def __exit__(self,*args):pass
+            def request(self,method,path,**kwargs):
+                async def run():
+                    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=fixture.app),base_url='http://test') as client:
+                        return await client.request(method,path,**kwargs)
+                return asyncio.run(run())
+            def get(self,path,**kw):return self.request('GET',path,**kw)
+            def post(self,path,**kw):return self.request('POST',path,**kw)
+        _,_,request=fixture.upload()
+        with patch('clients.http.httpx.Client',ASGIClient),patch.dict('os.environ',{'SPEECH_CREDENTIAL':'writer'}):
+            transport=HTTP(credential='writer')
+            receipt=transport.call('audio_export',request,key='master')
+            output=io.StringIO()
+            with contextlib.redirect_stdout(output):
+                code=main(['audio','export','--request',json.dumps(request),'--idempotency-key','master'])
+            self.assertEqual(code,0);self.assertEqual(json.loads(output.getvalue()),receipt)
+            result=asyncio.run(mcp.call_tool('speech_audio_export',dict(request,idempotency_key='master')))
+            self.assertFalse(result.isError);self.assertEqual(result.structuredContent,receipt)
+            tool=next(t for t in mcp.tools() if t.name=='speech_audio_export')
+            self.assertEqual(set(tool.inputSchema['required']),{'asset_id','rate','channels','loudness','idempotency_key'})
+            self.assertFalse(tool.inputSchema['additionalProperties'])
+            job=fixture.terminal(receipt)
+            artifact=transport.call('artifact_get',dict(artifact_id=job['artifact_ids'][0]))
+            self.assertEqual(artifact['audio_export']['settings'],request)
+            asset_id=artifact['asset_ids'][0]
+            target=Path(fixture.tmp.name)/'master.wav'
+            with contextlib.redirect_stdout(io.StringIO()):code=main(['asset','content',asset_id,'--output',str(target)])
+            self.assertEqual(code,0)
+            import hashlib
+            self.assertEqual(hashlib.sha256(target.read_bytes()).hexdigest(),transport.call('asset_get',dict(asset_id=asset_id))['sha256'])
+            self.assertEqual(len(fixture.runtime.authorities),1)

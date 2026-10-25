@@ -91,7 +91,8 @@
             "microphone",
             "https",
             "youtube",
-            "legacy"
+            "legacy",
+            "audio_export"
           ]
         },
         "source_sha256": {
@@ -768,7 +769,14 @@
           "pattern": "^[a-f0-9]{64}$"
         },
         "identity": {
-          "$ref": "#/$defs/execution_resolution"
+          "oneOf": [
+            {
+              "$ref": "#/$defs/execution_resolution"
+            },
+            {
+              "$ref": "#/$defs/audio_export_identity"
+            }
+          ]
         },
         "attempt_id": {
           "type": "string",
@@ -781,6 +789,9 @@
         "staging_id": {
           "type": "string",
           "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+        },
+        "audio_export": {
+          "$ref": "#/$defs/audio_export_provenance"
         }
       },
       "required": [
@@ -820,7 +831,8 @@
             "migration_collision",
             "alias_conflict",
             "version_conflict",
-            "voice_archived"
+            "voice_archived",
+            "publication_format_migration_required"
           ]
         },
         "message": {
@@ -2026,7 +2038,14 @@
           "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
         },
         "identity": {
-          "$ref": "#/$defs/execution_resolution"
+          "oneOf": [
+            {
+              "$ref": "#/$defs/execution_resolution"
+            },
+            {
+              "$ref": "#/$defs/audio_export_identity"
+            }
+          ]
         },
         "deadline": {
           "type": "string"
@@ -2864,6 +2883,9 @@
             "resolved"
           ],
           "additionalProperties": false
+        },
+        {
+          "$ref": "#/$defs/audio_export_plan"
         }
       ]
     },
@@ -3632,71 +3654,14 @@
       "additionalProperties": false
     },
     "result_manifest": {
-      "type": "object",
-      "properties": {
-        "operation": {
-          "enum": [
-            "voice_prepare",
-            "voice_design",
-            "speech_generate",
-            "project_render"
-          ]
+      "oneOf": [
+        {
+          "$ref": "#/$defs/speech_result_manifest"
         },
-        "job_id": {
-          "type": "string",
-          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
-        },
-        "attempt_id": {
-          "type": "string",
-          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
-        },
-        "generation": {
-          "type": "integer",
-          "minimum": 0,
-          "maximum": 9007199254740991
-        },
-        "owner_id": {
-          "type": "string",
-          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
-        },
-        "staging_id": {
-          "type": "string",
-          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
-        },
-        "input_sha256": {
-          "type": "string",
-          "pattern": "^[a-f0-9]{64}$"
-        },
-        "artifact_id": {
-          "type": "string",
-          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
-        },
-        "outputs": {
-          "type": "array",
-          "items": {
-            "$ref": "#/$defs/asset"
-          }
-        },
-        "candidates": {
-          "type": "array",
-          "items": {
-            "$ref": "#/$defs/voice_candidate"
-          }
+        {
+          "$ref": "#/$defs/audio_export_result_manifest"
         }
-      },
-      "required": [
-        "operation",
-        "job_id",
-        "attempt_id",
-        "generation",
-        "owner_id",
-        "staging_id",
-        "input_sha256",
-        "artifact_id",
-        "outputs",
-        "candidates"
-      ],
-      "additionalProperties": false
+      ]
     },
     "bundle_catalogue_entry": {
       "type": "object",
@@ -4465,6 +4430,357 @@
       },
       "required": [
         "profile_id"
+      ],
+      "additionalProperties": false
+    },
+    "audio_export_request": {
+      "type": "object",
+      "properties": {
+        "asset_id": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+        },
+        "rate": {
+          "enum": [
+            24000,
+            44100,
+            48000,
+            96000
+          ]
+        },
+        "channels": {
+          "enum": [
+            1,
+            2
+          ]
+        },
+        "loudness": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "number",
+              "minimum": -70,
+              "maximum": -5
+            }
+          ]
+        }
+      },
+      "required": [
+        "asset_id",
+        "rate",
+        "channels",
+        "loudness"
+      ],
+      "additionalProperties": false
+    },
+    "audio_converter_registration": {
+      "type": "object",
+      "properties": {
+        "version": {
+          "const": "audio-converter-v1"
+        },
+        "worker_image_digest": {
+          "type": "string",
+          "pattern": "^sha256:[a-f0-9]{64}$"
+        },
+        "executable": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 4096
+        },
+        "executable_sha256": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "reported_version": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 1024
+        },
+        "reported_build": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 4096
+        },
+        "runtime_closure": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 256,
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 4096
+          }
+        }
+      },
+      "required": [
+        "version",
+        "worker_image_digest",
+        "executable",
+        "executable_sha256",
+        "reported_version",
+        "reported_build",
+        "runtime_closure"
+      ],
+      "additionalProperties": false
+    },
+    "audio_export_identity": {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "const": "audio_export"
+        },
+        "converter": {
+          "$ref": "#/$defs/audio_converter_registration"
+        },
+        "profile_id": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+        }
+      },
+      "required": [
+        "kind",
+        "converter",
+        "profile_id"
+      ],
+      "additionalProperties": false
+    },
+    "audio_export_resolved": {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "const": "audio_export"
+        },
+        "identity": {
+          "$ref": "#/$defs/audio_export_identity"
+        },
+        "profile": {
+          "$ref": "#/$defs/profile_snapshot"
+        },
+        "settings": {
+          "$ref": "#/$defs/audio_export_request"
+        },
+        "settings_sha256": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        }
+      },
+      "required": [
+        "kind",
+        "identity",
+        "profile",
+        "settings",
+        "settings_sha256"
+      ],
+      "additionalProperties": false
+    },
+    "audio_export_plan": {
+      "type": "object",
+      "properties": {
+        "schema_version": {
+          "const": "1.3.0"
+        },
+        "operation": {
+          "const": "audio_export"
+        },
+        "request": {
+          "$ref": "#/$defs/audio_export_request"
+        },
+        "project": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/project"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "voice_versions": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/voice_version"
+          }
+        },
+        "assets": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/asset"
+          }
+        },
+        "resolved": {
+          "$ref": "#/$defs/audio_export_resolved"
+        }
+      },
+      "required": [
+        "schema_version",
+        "operation",
+        "request",
+        "project",
+        "voice_versions",
+        "assets",
+        "resolved"
+      ],
+      "additionalProperties": false
+    },
+    "audio_export_provenance": {
+      "type": "object",
+      "properties": {
+        "source_asset_id": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+        },
+        "source_sha256": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "settings": {
+          "$ref": "#/$defs/audio_export_request"
+        },
+        "converter": {
+          "$ref": "#/$defs/audio_converter_registration"
+        }
+      },
+      "required": [
+        "source_asset_id",
+        "source_sha256",
+        "settings",
+        "converter"
+      ],
+      "additionalProperties": false
+    },
+    "speech_result_manifest": {
+      "type": "object",
+      "properties": {
+        "operation": {
+          "enum": [
+            "voice_prepare",
+            "voice_design",
+            "speech_generate",
+            "project_render"
+          ]
+        },
+        "job_id": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+        },
+        "attempt_id": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+        },
+        "generation": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "owner_id": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+        },
+        "staging_id": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+        },
+        "input_sha256": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "artifact_id": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+        },
+        "outputs": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/asset"
+          }
+        },
+        "candidates": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/voice_candidate"
+          }
+        }
+      },
+      "required": [
+        "operation",
+        "job_id",
+        "attempt_id",
+        "generation",
+        "owner_id",
+        "staging_id",
+        "input_sha256",
+        "artifact_id",
+        "outputs",
+        "candidates"
+      ],
+      "additionalProperties": false
+    },
+    "audio_export_result_manifest": {
+      "type": "object",
+      "properties": {
+        "operation": {
+          "const": "audio_export"
+        },
+        "job_id": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+        },
+        "attempt_id": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+        },
+        "generation": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "owner_id": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+        },
+        "staging_id": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+        },
+        "input_sha256": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "artifact_id": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+        },
+        "outputs": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/asset"
+          }
+        },
+        "candidates": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/voice_candidate"
+          }
+        },
+        "audio_export": {
+          "$ref": "#/$defs/audio_export_provenance"
+        }
+      },
+      "required": [
+        "operation",
+        "job_id",
+        "attempt_id",
+        "generation",
+        "owner_id",
+        "staging_id",
+        "input_sha256",
+        "artifact_id",
+        "outputs",
+        "candidates",
+        "audio_export"
       ],
       "additionalProperties": false
     }

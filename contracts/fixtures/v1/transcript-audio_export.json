@@ -1,0 +1,124 @@
+{
+  "context": {
+    "plan": {
+      "schema_version": "1.3.0",
+      "operation": "audio_export",
+      "request": {
+        "asset_id": "short",
+        "rate": 48000,
+        "channels": 2,
+        "loudness": null
+      },
+      "project": null,
+      "voice_versions": [],
+      "assets": [
+        {
+          "media_subtype": "PCM_16",
+          "media_format": "wav",
+          "id": "short",
+          "sha256": "4a00018adfff151e83d66254d04188e36076b9ea6d4159824937c895750fa399",
+          "frames": 2400,
+          "sample_rate": 48000,
+          "channels": 1,
+          "provenance": {
+            "kind": "synthetic",
+            "source_sha256": "4a00018adfff151e83d66254d04188e36076b9ea6d4159824937c895750fa399",
+            "source_id": "short",
+            "missing_fields": []
+          }
+        }
+      ],
+      "resolved": {
+        "kind": "audio_export",
+        "identity": {
+          "kind": "audio_export",
+          "converter": {
+            "version": "audio-converter-v1",
+            "worker_image_digest": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+            "executable": "/usr/bin/ffmpeg",
+            "executable_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+            "reported_version": "INERT fixture; not a real FFmpeg registration",
+            "reported_build": "UNQUALIFIED fixture; no converter executed",
+            "runtime_closure": [
+              "/lib/fixture-runtime.so"
+            ]
+          },
+          "profile_id": "audio-export-fixture"
+        },
+        "profile": {
+          "id": "audio-export-fixture",
+          "config_revision": "export-fixture-1",
+          "device": "cpu",
+          "topology": "networkless_container",
+          "limits": {
+            "expensive_slots": 1,
+            "resident_models": 1,
+            "threads": 2,
+            "queue": 32,
+            "upload_bytes": 37748736,
+            "decoded_ticks": 28800000,
+            "text_chars": 10000,
+            "variants": 4,
+            "disk_bytes": 134217728,
+            "deadline_seconds": 25,
+            "ram_bytes": 201326592,
+            "vram_bytes": 0
+          },
+          "compatibility": []
+        },
+        "settings": {
+          "asset_id": "short",
+          "rate": 48000,
+          "channels": 2,
+          "loudness": null
+        },
+        "settings_sha256": "492b8a535b2b1371fab70708f4246687304774b09c4f9ac4bb6ade19798992ae"
+      }
+    },
+    "bundles": {},
+    "execution": {
+      "converter": {
+        "version": "audio-converter-v1",
+        "worker_image_digest": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+        "executable": "/usr/bin/ffmpeg",
+        "executable_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+        "reported_version": "INERT fixture; not a real FFmpeg registration",
+        "reported_build": "UNQUALIFIED fixture; no converter executed",
+        "runtime_closure": [
+          "/lib/fixture-runtime.so"
+        ]
+      }
+    }
+  },
+  "profiles": [
+    {
+      "config_revision": "export-fixture-1",
+      "compatibility": [],
+      "id": "audio-export-fixture",
+      "device": "cpu",
+      "topology": "networkless_container",
+      "support": "unqualified",
+      "installation": "absent",
+      "configuration": "valid",
+      "readiness": "not_ready",
+      "verification": "synthetic",
+      "checked_at": "2026-10-16T00:00:00Z",
+      "qualification_receipt": "",
+      "limits": {
+        "expensive_slots": 1,
+        "resident_models": 1,
+        "threads": 2,
+        "queue": 32,
+        "upload_bytes": 37748736,
+        "decoded_ticks": 28800000,
+        "text_chars": 10000,
+        "variants": 4,
+        "disk_bytes": 134217728,
+        "deadline_seconds": 25,
+        "ram_bytes": 201326592,
+        "vram_bytes": 0
+      },
+      "next_action": "Inventory host and qualify exact backend/model/precision before advertising support."
+    }
+  ]
+}

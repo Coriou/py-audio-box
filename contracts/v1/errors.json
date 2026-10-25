@@ -18,7 +18,8 @@
     "migration_collision": 409,
     "alias_conflict": 409,
     "version_conflict": 409,
-    "voice_archived": 409
+    "voice_archived": 409,
+    "publication_format_migration_required": 409
   },
   "cli_exit": {
     "success": 0,
