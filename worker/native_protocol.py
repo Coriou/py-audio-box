@@ -324,3 +324,30 @@ def terminal_receipt(value, *, authority, runtime_id, local_import_uid=None):
         type(value['reaped_children']) is not int or value['reaped_children'] < 0 or
         type(value['engine_uid']) is not int): raise Refused('unbound_receipt')
     return value['engine_uid']
+
+
+def owned_preset_context(template, principal, preset, voice_id):
+    """Derive only catalogue identity from an enrolled native custom-voice template.
+
+    Shared by control resolution and independent supervisor authorization. No
+    model, hardware, profile, native trust or voice control is caller authority.
+    """
+    import copy
+    import re
+    from contracts import validate as oracle
+    from worker.runtime_protocol import execution
+    from worker.transport import Refused
+    if type(voice_id) is not str or not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9._:-]{0,127}', voice_id):
+        raise Refused('invalid_id')
+    spec = execution(template)
+    if spec.engine != 'qwen' or spec.device != 'mps' or spec.task != 'custom_voice' or spec.preset != preset:
+        raise Refused('unsupported_control')
+    context = copy.deepcopy(template)
+    version = context['plan']['voice_versions'][0]
+    version['voice_id'] = voice_id
+    version['id'] = 'preset-' + oracle.canonical_hash([principal, voice_id, template])
+    version['reference_asset_sha256'] = {}
+    context['plan']['request']['voice_version_id'] = version['id']
+    context['execution']['descriptor'].update(voice_id=voice_id, voice_revision=version['id'])
+    execution(context)
+    return context

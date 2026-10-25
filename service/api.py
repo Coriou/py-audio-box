@@ -184,6 +184,7 @@ def create_voice_app(dispatcher, *, credentials, upload_deadline=15.0, installed
             return dict(synthetic=False, ready_for_speech=False, installed=True,
                         activation_ready=status['persistent_activation'], status=status,
                         configured_capabilities=configured, store='installed-native-owner',
+                        configured_presets=dispatcher.call('configured_presets', request.state.principal),
                         qualification='UNAVAILABLE / UNQUALIFIED; source activation does not qualify speech')
         if configured:
             return dict(synthetic=False, ready_for_speech=False, installed=False,

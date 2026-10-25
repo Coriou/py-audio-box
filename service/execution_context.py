@@ -309,16 +309,45 @@ class NativeQwenContexts:
         contexts = [json.loads(raw) for key, raw in self._contexts.items() if key[0] == principal]
         if not contexts: return None
         return dict(engine='qwen', profile=contexts[0]['plan']['resolved']['profile'],
-                    operations=['speech_generate', 'job_get', 'job_cancel', 'artifact_get'],
-                    installed=True, next_action='Use an existing owned registered voice version; fresh native voice onboarding is unavailable.')
+                    operations=(['voice_preset_register'] if self.presets(principal) else []) + ['speech_generate', 'job_get', 'job_cancel', 'artifact_get'],
+                    installed=True, next_action='Read configured_presets → voice_preset_register → speech_generate; managed clone onboarding remains unavailable.')
+
+    def presets(self, principal):
+        result = []
+        for key, raw in self._contexts.items():
+            if key[0] != principal: continue
+            spec = execution(json.loads(raw))
+            if spec.task != 'custom_voice': continue
+            # A selector must identify one exact trusted template, never first-match.
+            if sum(execution(json.loads(v)).preset == spec.preset for k, v in self._contexts.items() if k[0] == principal) != 1:
+                continue
+            result.append(dict(preset=spec.preset, engine='qwen', model=spec.checkpoint,
+                language=spec.language, bundle_sha256=spec.manifest_sha256,
+                supports=['voice_preset_register', 'speech_generate'], clone_prepare=False))
+        return result
+
+    def _preset_context(self, principal, preset, voice_id):
+        from worker.native_protocol import owned_preset_context
+        from worker.engines.qwen_execution import current_native_hardware
+        matches = [json.loads(raw) for key, raw in self._contexts.items()
+                   if key[0] == principal and execution(json.loads(raw)).task == 'custom_voice'
+                   and execution(json.loads(raw)).preset == preset]
+        if len(matches) != 1: raise Refused('unsupported_control')
+        current_native_hardware(execution(matches[0]), self._inventory)
+        return owned_preset_context(matches[0], principal, preset, voice_id)
+
+    def preset_version(self, principal, preset, voice_id):
+        return self._preset_context(principal, preset, voice_id)['plan']['voice_versions'][0]
 
     def resolve_registered(self, principal, request, version):
         from contracts import validate as oracle
         from worker.engines.qwen_execution import current_native_hardware
         oracle.validate('speech_generate_request',request)
         key = (principal,'qwen-mps',request['voice_version_id'])
-        if key not in self._contexts: raise Refused('not_ready')
-        context = json.loads(self._contexts[key])
+        if key in self._contexts:
+            context = json.loads(self._contexts[key])
+        else:
+            context = self._preset_context(principal, version['configuration'].get('speaker'), version['voice_id'])
         if context['plan']['voice_versions'] != [version]: raise Refused('saved_version_required')
         context['plan']['request'] = copy.deepcopy(request)
         current_native_hardware(execution(context),self._inventory)
