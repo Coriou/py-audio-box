@@ -57,6 +57,40 @@ class NativeEnrollmentTests(unittest.TestCase):
             with self.assertRaises((ValueError, Refused)): self.reopen()
             self.assertEqual(self.record.read_bytes(), raw)
 
+    def record_type_substitutions(self, saved):
+        for value in (True, 1.0):
+            changed = copy.deepcopy(saved); changed['version'] = value
+            yield 'version', value, changed
+        for field in ('device', 'inode', 'uid'):
+            changed = copy.deepcopy(saved)
+            changed['owner'][field] = float(saved['owner'][field])
+            # Establish that this specifically exercises Python's equality gap.
+            self.assertEqual(changed, saved)
+            yield field, changed['owner'][field], changed
+
+    def test_record_type_substitutions_refuse_before_tls(self):
+        saved = self.enroll()
+        for field, value, changed in self.record_type_substitutions(saved):
+            with self.subTest(field=field, value=value):
+                raw = canonical(changed); self.write('enrollment', raw)
+                count = len(self.f.requests)
+                with self.assertRaisesRegex(Refused, 'native_enrollment_binding'): self.reopen()
+                self.assertEqual(len(self.f.requests), count)
+                self.assertEqual(self.record.read_bytes(), raw)
+
+    def test_record_type_substitutions_during_hello_refuse(self):
+        saved = self.enroll()
+        for field, value, changed in self.record_type_substitutions(saved):
+            with self.subTest(field=field, value=value):
+                self.write('enrollment', canonical(saved))
+                raw = canonical(changed)
+                def mutate(q, response):
+                    if q['op'] == 'hello': self.write('enrollment', raw)
+                    return response
+                self.f.mutate = mutate
+                with self.assertRaisesRegex(Refused, 'native_enrollment_changed'): self.reopen()
+                self.assertEqual(self.record.read_bytes(), raw)
+
     def test_changed_trust_configuration_templates_and_owner_refuse_before_tls(self):
         self.enroll()
         for name in ('key', 'control', 'templates'):

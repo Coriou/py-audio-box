@@ -512,7 +512,7 @@ def enroll_native(record_file, *, configuration_file, templates_file, owner_root
     before, _, _ = _enrollment_snapshot(configuration_file, templates_file, owner_root)
     enrolled_runtime(configuration_file, connector=connector)
     after, _, _ = _enrollment_snapshot(configuration_file, templates_file, owner_root)
-    if before != after: raise Refused('native_enrollment_changed')
+    if canonical(before) != canonical(after): raise Refused('native_enrollment_changed')
     raw = canonical(before)
     if len(raw) > 16384: raise Refused('native_enrollment_bounds')
     with parent_fd(record_file) as (parent, name):
@@ -532,12 +532,13 @@ def native_startup_inputs(record_file, *, configuration_file, templates_file, ow
     and implement native completed-history validation before installed startup.
     """
     directory(str(literal(str(record_file)).parent))
-    saved = document(record_file)
+    # Canonical bytes preserve primitive types (True/1/1.0 compare equal in Python).
+    saved = canonical(document(record_file))
     before, contexts, templates = _enrollment_snapshot(configuration_file, templates_file, owner_root)
-    if saved != before: raise Refused('native_enrollment_binding')
+    if saved != canonical(before): raise Refused('native_enrollment_binding')
     runtime = enrolled_runtime(configuration_file, connector=connector)
     after, _, _ = _enrollment_snapshot(configuration_file, templates_file, owner_root)
-    if after != before or document(record_file) != saved:
+    if canonical(after) != canonical(before) or canonical(document(record_file)) != saved:
         raise Refused('native_enrollment_changed')
     return dict(runtime=runtime, production_contexts=contexts,
                 profiles=templates['profiles'], budget=templates['budget'])
