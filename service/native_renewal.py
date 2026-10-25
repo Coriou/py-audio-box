@@ -739,6 +739,9 @@ def commit(intent_file, *, export_file, connector=None):
         require(hello['launches']==0 and hello['quarantined'] is False and
                 canonical(hello['inventory'])==canonical(templates['inventory']) and
                 all(hello[k]==v for k,v in source['native'].items()),'native_renewal_hello')
+        runtime._availability_inventory=templates['inventory']
+        for row in templates['registrations']:
+            runtime.check_availability(row['context'])
         expected=host_predecessor(intent,directory)
         require(hello.get('retention')==digest(expected),'native_renewal_capacity_binding')
         completed_history(owner,runtime,retired=EpochEvidence(owner,runtime,pending=RetiredEvidence(intent,document(export_file))))

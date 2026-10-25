@@ -260,7 +260,7 @@ class RenewalCompletionTests(RenewalHistoryTests):
             configuration_sha256=config['native']['configuration_sha256'],peer_pin=old.pin,
             runtime_manifest_sha256=old.manifest,registrations=registered,python=old.python,child_entry=old.entry,
             popen=old.popen,pair=old.pair,signal_group=old.signal_group,identity=old.identity,
-            clock=old.clock,utc=old.utc,free_bytes=old.free_bytes,free_ram=old.free_ram)
+            clock=old.clock,utc=old.utc,free_bytes=old.free_bytes,free_ram=old.free_ram,availability_provider=old.availability.provider)
         self.addCleanup(successor.journal.lock.close)
         self.f.s=successor;self.f.native=config['native'];self.f.before=lambda q:None
         if fault: fault(intent_path,export_file)

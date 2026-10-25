@@ -174,7 +174,7 @@ class NativeSupervisor:
                  popen=subprocess.Popen, pair=socket.socketpair,
                  signal_group=os.killpg, identity=lambda handle: None,
                  clock=time.monotonic, utc=lambda: datetime.now(timezone.utc),
-                 free_bytes=None, free_ram=available_ram):
+                 free_bytes=None, free_ram=available_ram, availability_provider=None):
         for v,n in ((deployment_id,32),(configuration_sha256,64),(peer_pin,64),(runtime_manifest_sha256,64)): p._hex(v,n)
         if not Path(python).is_absolute() or child_entry!=str(Path(__file__).with_name('native_child.py').resolve()): raise Refused('native_command')
         if (Path(root)/'predecessor').exists() and (Path(root)/'native.json').exists(): raise Refused('native_renewal_new_boot_required')
@@ -195,6 +195,13 @@ class NativeSupervisor:
             if sorted(configured) != sorted(canonical(b) for _, b in pairs):
                 raise Refused('native_origin')
             self._origin_contexts = {canonical(b['context']): a['context'] for a, b in pairs}
+        from worker.native_availability import Availability, host_observation
+        from worker.engines.qwen_execution import inventory_wire
+        inventories = [r['inventory'] for r in registrations.values()]
+        if any(canonical(inventory_wire(i)) != canonical(inventory_wire(inventories[0])) for i in inventories):
+            raise Refused('native_registration')
+        self.availability = Availability(inventories[0], runtime_manifest_sha256,
+            provider=host_observation if availability_provider is None else availability_provider, utc=utc, clock=clock)
         self.python,self.entry=python,child_entry
         self.popen,self.pair,self.signal_group,self.identity=popen,pair,signal_group,identity
         self.clock,self.utc=clock,utc
@@ -204,6 +211,7 @@ class NativeSupervisor:
         # Exact handle selection/signalling and the terminal decision use this lock.
         self.handle_lock=threading.Lock(); self.uncertain=set()
         self.active=None; self.failed=False; self.launches=0
+        self.availability_slots=threading.BoundedSemaphore(2)
         self.cutoffs={}; self.cancelled=set(); self.slots=threading.BoundedSemaphore(3)
         self.shutdown_event=threading.Event(); self.transfer_slot=threading.BoundedSemaphore(1)
 
@@ -221,7 +229,7 @@ class NativeSupervisor:
                 raise Refused('native_unknown') from None
             return target
 
-    def registration(self,r,verify=False, *, candidate=None):
+    def registration(self,r,verify=False, *, candidate=None, current=True):
         reg=candidate if candidate is not None else self.registrations.get(r['binding'])
         if reg is None or canonical(reg['snapshot']) != canonical(r['snapshot']): raise Refused('native_registration')
         e=reg['execution']
@@ -235,8 +243,12 @@ class NativeSupervisor:
         from worker.engines.qwen_execution import inventory_wire
         if r['snapshot'][1]['execution']['hardware'] != inventory_wire(reg['inventory']): raise Refused('native_registration')
         if (e.device,e.dtype,e.attention,e.task) not in (('mps','float32','sdpa','custom_voice'),('mps','float32','sdpa','clone')) or e.timeout_s>30 or e.max_output_bytes>1048576: raise Refused('native_registration')
-        from worker.engines.qwen_execution import current_native_hardware
-        current_native_hardware(e,reg['inventory'],now=self.utc())
+        from worker.engines.qwen_execution import static_native_hardware, current_native_hardware
+        static_native_hardware(e,reg['inventory'])
+        if current:
+            from worker.native_availability import validate
+            observed = validate(self.availability.get(), reg['inventory'], self.manifest, now=self.availability.utc())
+            current_native_hardware(e,observed,now=self.availability.utc())
         if verify:
             from worker.engines.qwen import verify_service_inputs
             verify_service_inputs(e,reg['bundles'],self.references(r,reg),reg['inventory'])
@@ -333,6 +345,14 @@ class NativeSupervisor:
         q=p.request(request)
         if q['deployment_id']!=self.journal.deployment or q['configuration_sha256']!=self.journal.configuration: raise Refused('native_session')
         op=q['op']
+        if op=='availability':
+            from worker.native_availability import digest
+            if (q['lane'] != self.journal.value['lane'] or q['boot'] != self.boot or
+                    q['binding'] != digest(self.availability.enrolled) or
+                    q['body']['runtime_manifest_sha256'] != self.manifest):
+                raise Refused('native_session')
+            if self.quarantined: raise Refused('native_unknown')
+            return self.availability.get()
         # Stop must reach the owned handle even while a previous ACK holds the
         # state lock in fsync. Journal values are replaced, never edited in place.
         if op=='stop':
@@ -482,6 +502,9 @@ class NativeSupervisor:
         if not self.transfer.acquire(False): raise Refused('native_busy')
         try:
             reg=self.registration(r,True); e=reg['execution']
+            # Input/bundle verification may cross observation expiry. Recheck
+            # without changing the frozen request before any launch intent.
+            self.registration(r)
             if self.failed or r['phase']!='prepared': raise Refused('native_unknown')
             if r['input_size']!=e.reference_bytes or self.clock()>=self.cutoffs[r['id']]: raise Refused('native_deadline')
             with self.lock:
@@ -580,7 +603,7 @@ class NativeSupervisor:
                 if self.clock()>self.cutoffs[r['id']]+1: self.failed=True
                 return
             if not a['closed']: self.failed=True; return
-            reg=self.registration(r); e=reg['execution']
+            reg=self.registration(r,current=False); e=reg['execution']
             if e.task=='clone':
                 directory=private(self.directory(r)/'conditioning',True)
                 if list(directory.iterdir()): self.failed=True; return
@@ -622,7 +645,8 @@ class NativeSupervisor:
         try:
             cutoff=self.clock()+2
             q=p.request(p.receive(connection,cutoff,peer_sha256=self.pin))
-            slot=self.transfer_slot if q['op'] in ('put_input','get_output') else self.slots
+            slot=(self.availability_slots if q['op']=='availability' else
+                  self.transfer_slot if q['op'] in ('put_input','get_output') else self.slots)
             if not slot.acquire(False): slot=None; raise Refused('native_busy')
             envelope={k:v for k,v in q.items() if k!='body'}
             try:

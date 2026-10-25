@@ -86,7 +86,7 @@ def _write(path, data):
 
 class NativeRuntime:
     def __init__(self, *, host, port, tls, peer_sha256, native, spool, staging,
-                 local_import_uid, connector=None):
+                 local_import_uid, connector=None, utc=lambda: datetime.now(timezone.utc)):
         p._hex(peer_sha256,64)
         p._closed(native,('deployment_id','configuration_sha256','lane','boot','runtime_manifest_sha256'))
         for key in ('deployment_id','lane','boot'): p._hex(native[key],32)
@@ -101,6 +101,9 @@ class NativeRuntime:
         if connector is None and (type(tls) is not ssl.SSLContext or tls.verify_mode!=ssl.CERT_REQUIRED or
                 tls.minimum_version!=ssl.TLSVersion.TLSv1_3 or tls.maximum_version!=ssl.TLSVersion.TLSv1_3):
             raise Refused('native_tls')
+        self.utc = utc
+        self._availability_inventory = None
+        self._availability_metadata = None
         self.host,self.port,self.tls,self.pin=str(endpoint),port,tls,peer_sha256
         self.native=json.loads(canonical(native));self.local_import_uid=local_import_uid
         self.spool=_directory(spool,0o700);self.staging=_directory(staging,0o770)
@@ -109,6 +112,7 @@ class NativeRuntime:
         if self.spool.stat().st_dev!=self.staging.stat().st_dev: raise Refused('native_import_volume')
         self.connector=connector or self._connect
         self.records={};self.lock=threading.RLock()
+        self.availability_slots=threading.BoundedSemaphore(2)
         self.lifecycle=threading.BoundedSemaphore(3);self.transfer=threading.BoundedSemaphore(1)
         self.owner=threading.get_ident()
         self.failed=False
@@ -280,7 +284,7 @@ class NativeRuntime:
             self.records[runtime_id]=record
             return record
 
-    def _rpc(self, op, body, *, authority=None, runtime_id=None, timeout=2):
+    def _rpc(self, op, body, *, authority=None, runtime_id=None, timeout=2, availability_binding=None):
         if type(timeout) not in (int,float) or not 0<timeout<=2: raise Refused('native_timeout')
         config=p.native_binding(authority.context) if authority else self.native
         if authority and any(config[k]!=self.native[k] for k in config if k!='boot'): raise Refused('native_configuration')
@@ -291,9 +295,10 @@ class NativeRuntime:
         if cutoff<=time.monotonic(): raise Refused('native_deadline')
         q=dict(version=p.VERSION,deployment_id=config['deployment_id'],configuration_sha256=config['configuration_sha256'],
             lane=None if op=='hello' else config['lane'],boot=None if op=='hello' else config['boot'],
-            request_id=secrets.token_hex(16),runtime_id=runtime_id,binding=authority.binding if authority else None,op=op,body=body)
+            request_id=secrets.token_hex(16),runtime_id=runtime_id,binding=authority.binding if authority else availability_binding,op=op,body=body)
         p.request(q)
-        semaphore=self.transfer if op in ('put_input','get_output') else self.lifecycle
+        semaphore=(self.availability_slots if op=='availability' else
+                   self.transfer if op in ('put_input','get_output') else self.lifecycle)
         if not semaphore.acquire(False): raise Refused('native_busy')
         try:
             with self.connector(cutoff) as connection:
@@ -316,13 +321,40 @@ class NativeRuntime:
         self._rpc('ack',{},authority=r['authority'],runtime_id=body['runtime_id'],timeout=timeout)
         return dict(acked=True)
 
+    def cached_availability(self):
+        # Discovery only: never RPC, provider, model or acquisition.
+        from worker.engines.qwen_execution import inventory_from_wire
+        from worker.native_availability import validate
+        value = self._availability_metadata
+        if value is None or self._availability_inventory is None: return None
+        try:
+            return validate(value, inventory_from_wire(self._availability_inventory),
+                            self.native['runtime_manifest_sha256'], now=self.utc())
+        except Refused: return None
+
+    def check_availability(self, context):
+        from worker.engines.qwen_execution import static_native_hardware, inventory_from_wire
+        from worker.native_availability import digest, validate
+        if canonical(p.native_binding(context)) != canonical(self.native):
+            raise Refused('native_configuration')
+        enrolled = inventory_from_wire(context['execution']['hardware'])
+        static_native_hardware(p.native_execution(context), enrolled)
+        if self._availability_inventory is not None and canonical(context['execution']['hardware']) != canonical(self._availability_inventory):
+            raise Refused('hardware_identity')
+        value = self._rpc('availability', dict(runtime_manifest_sha256=self.native['runtime_manifest_sha256']),
+                          availability_binding=digest(enrolled))
+        observed = validate(value, enrolled, self.native['runtime_manifest_sha256'], now=self.utc())
+        self._availability_metadata = value
+        if self._availability_inventory is None:
+            self._availability_inventory = json.loads(canonical(context['execution']['hardware']))
+        return observed
+
     def prepare(self, authority, fixture='qwen', detached=b''):
         if fixture!='qwen': raise Refused('native_fixture')
         spec=p.native_execution(authority.context)
         config=p.native_binding(authority.context)
         if config!=self.native: raise Refused('native_configuration')
-        from worker.engines.qwen_execution import current_native_hardware, inventory_from_wire
-        current_native_hardware(spec,inventory_from_wire(authority.context['execution']['hardware']))
+        self.check_availability(authority.context)
         if type(detached) is not bytes or len(detached)!=spec.reference_bytes: raise Refused('native_input')
         if detached:
             from worker.native_supervisor import pcm
@@ -355,8 +387,7 @@ class NativeRuntime:
 
     def start(self, runtime_id):
         r=self.records[runtime_id];a=r['authority'];spec=p.native_execution(a.context)
-        from worker.engines.qwen_execution import current_native_hardware, inventory_from_wire
-        current_native_hardware(spec,inventory_from_wire(a.context['execution']['hardware']))
+        self.check_availability(a.context)
         if spec.reference_bytes and not r['uploaded']:
             raw=_read(self.spool/a.binding/'input',24000000)
             if len(raw)!=spec.reference_bytes or hashlib.sha256(raw).hexdigest()!=spec.reference_sha256: raise Refused('native_input')

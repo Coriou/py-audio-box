@@ -543,6 +543,14 @@ def native_startup_inputs(record_file, *, configuration_file, templates_file, ow
     after, _, _ = _enrollment_snapshot(configuration_file, templates_file, owner_root)
     if canonical(after) != canonical(before) or canonical(selected_source(record_file,owner_root)) != saved:
         raise Refused('native_enrollment_changed')
+    contexts.bind_availability(runtime)
+    runtime._availability_inventory = templates['inventory']
+    for row in templates['registrations']:
+        try: runtime.check_availability(row['context'])
+        except Refused:
+            # Availability grants future work only. Keep authenticated historical
+            # activation/collect/reads available; every allocation checks again.
+            break
     from service.native_renewal import origin_authorization
     authorization = origin_authorization(owner_root)
     if authorization is not None:

@@ -201,8 +201,9 @@ class NativeLifecycleTests(unittest.TestCase):
             context['execution']['hardware']['devices'][0]['probed_at']=(datetime.now(timezone.utc)+timedelta(seconds=seconds)).isoformat()
             inventory=inventory_from_wire(context['execution']['hardware'])
             self.assertEqual(p.native_execution(context),self.f.f.e)
-            with self.assertRaisesRegex(Refused,'stale'):
-                NativeQwenContexts({('alice','qwen-mps','vv0'):context},inventory,self.profiles,self.f.native)
+            contexts = NativeQwenContexts({('alice','qwen-mps','vv0'):context},inventory,self.profiles,self.f.native)
+            with self.assertRaisesRegex(Refused,'availability_required'):
+                contexts.resolve('alice','speech_generate',context['plan']['request'])
         with self.assertRaises(Refused):self.contexts.resolve('bob','speech_generate',self.context['plan']['request'])
         changed=copy.deepcopy(self.context['plan']['voice_versions'][0]);changed['name']='foreign'
         with self.assertRaises(Refused):self.contexts.resolve_registered('alice',self.context['plan']['request'],changed)

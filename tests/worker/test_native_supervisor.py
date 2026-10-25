@@ -66,9 +66,12 @@ class NativeSupervisorTests(unittest.TestCase):
         job=fixture['job']; job.update(input_sha256=oracle.canonical_hash(plan),deadline=(self.now+timedelta(seconds=25)).isoformat())
         return [job,context,[],[profile]]
 
+    def observe_hardware(self, enrolled):
+        return replace(enrolled, devices=tuple(replace(d, available=True, probed_at=self.now.isoformat()) for d in enrolled.devices))
+
     def make(self):
         def popen(*args,**kwargs): self.calls.append((args,kwargs)); return self.h
-        self.s=NativeSupervisor(self.root,deployment_id='a'*32,configuration_sha256='b'*64,peer_pin='c'*64,runtime_manifest_sha256='d'*64,registrations=self.reg,python='/managed/python',child_entry=str(Path(__file__).resolve().parents[2]/'worker/native_child.py'),popen=popen,pair=lambda:(Channel(),Channel()),signal_group=lambda *v:self.signals.append(v),clock=lambda:self.t,utc=lambda:self.now,free_bytes=lambda:100*1024**3,free_ram=lambda:16*1024**3)
+        self.s=NativeSupervisor(self.root,deployment_id='a'*32,configuration_sha256='b'*64,peer_pin='c'*64,runtime_manifest_sha256='d'*64,registrations=self.reg,python='/managed/python',child_entry=str(Path(__file__).resolve().parents[2]/'worker/native_child.py'),popen=popen,pair=lambda:(Channel(),Channel()),signal_group=lambda *v:self.signals.append(v),clock=lambda:self.t,utc=lambda:self.now,free_bytes=lambda:100*1024**3,free_ram=lambda:16*1024**3,availability_provider=self.observe_hardware)
         self.addCleanup(self.s.journal.lock.close)
 
     def q(self,op,body=None,**changes):

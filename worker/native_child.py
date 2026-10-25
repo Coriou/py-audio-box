@@ -58,11 +58,11 @@ def infer(execution, text, bundles, references, inventory, *,
     The owned entry installs spawn_guard before calling this function. No
     arbitrary backend factory or caller-selected method crosses this boundary.
     """
-    from worker.engines.qwen_execution import current_native_hardware
+    from worker.engines.qwen_execution import static_native_hardware
     from worker.engines.qwen import verify_service_inputs, execute
     if not _guard_installed:
         raise Refused('native_spawn_guard_required')
-    current_native_hardware(execution, inventory)
+    static_native_hardware(execution, inventory)
     if execution.timeout_s > 30 or execution.max_output_bytes > 1048576:
         raise Refused('native_execution_limit')
     _, raw = verify_service_inputs(execution, bundles, references, inventory,

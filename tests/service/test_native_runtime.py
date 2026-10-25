@@ -33,7 +33,7 @@ class NativeFixture:
         self.f=supervisor_tests.NativeSupervisorTests('test_prepare_replay_tuple_session_and_stop_ack_restart')
         self.f.setUp();case.addCleanup(self.f.doCleanups)
         if clone: self.reference_raw,_,_=self.f.prepare_clone(prepare=False)
-        self.s=self.f.s;self.f.t=time.monotonic();self.s.clock=time.monotonic
+        self.s=self.f.s;self.f.t=time.monotonic();self.s.clock=time.monotonic;self.s.availability.clock=time.monotonic
         self.native=dict(deployment_id='a'*32,configuration_sha256='b'*64,
             lane=self.s.journal.value['lane'],boot=self.s.boot,runtime_manifest_sha256='d'*64)
         self.snapshot=copy.deepcopy(self.f.snapshot)

@@ -56,6 +56,12 @@ class ContextComposition:
         self.max_age_seconds = max_age_seconds
         self.concurrency = concurrency
 
+    def bind_availability(self, runtime):
+        if runtime is not self.runtime: raise SelectionUnavailable(['runtime_binding_changed'])
+        for _, provider in self.candidates:
+            bind = getattr(provider, 'bind_availability', None)
+            if bind is not None: bind(runtime)
+
     def capabilities(self, principal):
         provider = self.candidates[0][1] if len(self.candidates) == 1 else None
         describe = getattr(provider, 'capabilities', None)
@@ -188,6 +194,10 @@ def choose(dispatcher, contexts, request, *, inventory=None, measurements=None,
             from worker.engines.qwen_execution import inventory_wire
             if context['execution']['hardware'] != inventory_wire(inventory):
                 blocked.append('hardware_identity_changed'); continue
+        if native:
+            try: inv = dispatcher.runtime.check_availability(context)
+            except ValueError:
+                blocked.append('stale_or_unavailable_device'); continue
         records.append(record); snapshots[name] = context
     if not records: raise SelectionUnavailable(blocked or ['no_profiles'])
     first = records[0]
@@ -196,7 +206,7 @@ def choose(dispatcher, contexts, request, *, inventory=None, measurements=None,
     work = VoiceWorkRequest(first.engine, first.checkpoint, first.revision, first.conditioning,
         first.features, next(iter(first.languages)), dispatcher.admission.budget['ram_bytes'],
         concurrency=concurrency, device_override=device)
-    result = select(tuple(records), work, fresh_inventory(inv, max_age_seconds), policy)
+    result = select(tuple(records), work, inv if native else fresh_inventory(inv, max_age_seconds), policy)
     if result.profile is None:
         raise SelectionUnavailable([result.reason.value, *blocked,
             *(r.value for status in result.diagnostics for r in status.reasons)])
@@ -218,6 +228,7 @@ def metadata_status(dispatcher, composition, name, p, facts):
             (native and (inv.host.system != 'darwin' or inv.host.deployment != 'native')) or
             (not native and inv.host.system != 'linux')):
         reasons.append('runtime_topology_incompatible')
+        return reasons
     if facts['engine'] != 'qwen':
         return ['measurement_binding_verification_required']
     if facts['hardware'] != inventory_wire(inv):
@@ -246,8 +257,9 @@ def metadata_status(dispatcher, composition, name, p, facts):
     work = VoiceWorkRequest('metadata', 'metadata', 'metadata', 'metadata',
         frozenset(), 'und', dispatcher.admission.budget['ram_bytes'],
         concurrency=composition.concurrency)
-    result = select((record,), work,
-        fresh_inventory(inv, min(composition.max_age_seconds, 300)), composition.policy)
+    observed = dispatcher.runtime.cached_availability() if native else fresh_inventory(inv, min(composition.max_age_seconds, 300))
+    if observed is None: return reasons + ['stale_or_unavailable_device']
+    result = select((record,), work, observed, composition.policy)
     if result.profile is None:
         reasons.extend(r.value for status in result.diagnostics for r in status.reasons)
         reasons.append(result.reason.value)
@@ -262,7 +274,12 @@ def discovery(dispatcher):
     inventory = (composition.inventory if isinstance(composition, ContextComposition) else
                  getattr(composition, '_inventory', None))
     age = composition.max_age_seconds if isinstance(composition, ContextComposition) else 300
-    inventory = fresh_inventory(inventory, age) if inventory is not None else None
+    if hasattr(dispatcher.runtime, 'cached_availability'):
+        inventory = dispatcher.runtime.cached_availability()
+        if inventory is None and getattr(composition, '_inventory', None) is not None:
+            inventory = HardwareInventory(composition._inventory.host, ())
+    else:
+        inventory = fresh_inventory(inventory, age) if inventory is not None else None
     profiles = copy.deepcopy(dispatcher.profiles)
     for p in profiles:
         reasons = []
