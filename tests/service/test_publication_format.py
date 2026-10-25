@@ -219,7 +219,8 @@ class PublicationFormatTests(unittest.TestCase):
         # than spawning a binary here. Current role gates are explicit literals.
         source=Path('service/persistent_init.py').read_text()
         self.assertIn("Core(roots['control']/'core', _publication_creation=1)",source)
-        self.assertIn("Core(Path(control)/'core', _publication_creation=1)",source)
+        # The separately checked export family creates v2; the legacy branch remains v1.
+        self.assertIn("Core(Path(control)/'core', _publication_creation=2 if checked else 1",source)
         native=Path('service/native_activation.py').read_text()
         self.assertIn("data['p1_format'] == [[1,'synthetic-core']]",native)
         self.assertNotIn('user_version',Path('service/install_child.py').read_text())
