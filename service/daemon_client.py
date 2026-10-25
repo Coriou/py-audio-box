@@ -408,7 +408,7 @@ def main(argv=None, *, family=None):
     from service import install_policy as ip, installed_pocket_daemon as pd
     pd.require(family)
     export = pd.is_export(family)
-    p=argparse.ArgumentParser(description='Explicit local Docker volume installation; no acquisition or repair.')
+    p=argparse.ArgumentParser(description=('Explicit fresh Pocket CPU Docker volume installation; actual qualification remains separate.' if family is pd.FAMILY else 'Explicit local Docker volume installation; no acquisition or repair.'))
     p.add_argument('command',choices=('install','up','status','stop')); p.add_argument('--context'); p.add_argument('--request'); p.add_argument('--handle',required=True)
     a=p.parse_args(argv)
     try:

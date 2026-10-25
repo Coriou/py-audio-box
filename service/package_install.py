@@ -228,12 +228,15 @@ def archive(source, destination):
 
 
 def main(argv=None):
-    if (argv if argv is not None else sys.argv[1:])[:1] in (['docker'], ['docker-export']):
-        export = (argv if argv is not None else sys.argv[1:])[0] == 'docker-export'
-        from service.daemon_client import main, export_main
-        docker_main = export_main if export else main
-        return docker_main((argv if argv is not None else sys.argv[1:])[1:])
-    parser=argparse.ArgumentParser(description='Finite Linux Docker speech-box installer; retained failures require operator review.')
+    arguments = argv if argv is not None else sys.argv[1:]
+    if arguments[:1] in (['docker'], ['docker-export'], ['docker-pocket']):
+        from service.daemon_client import main, export_main, pocket_main
+        if arguments[0] == 'docker-pocket': docker_main = pocket_main
+        elif arguments[0] == 'docker-export': docker_main = export_main
+        else: docker_main = main
+        return docker_main(arguments[1:])
+    parser=argparse.ArgumentParser(description='Finite Linux Docker speech-box installer; retained failures require operator review.',
+        epilog='Docker volume commands: docker, docker-export, docker-pocket (install/up/status/stop; use COMMAND --help).')
     parser.add_argument('command',choices=('init','complete','up','stop','status','archive','setup'))
     parser.add_argument('--configuration'); parser.add_argument('--scope'); parser.add_argument('--host-policy')
     parser.add_argument('--request'); parser.add_argument('--setup-bundle')

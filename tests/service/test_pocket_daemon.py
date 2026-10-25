@@ -151,3 +151,46 @@ class PocketDaemonTests(unittest.TestCase):
             self.assertTrue(any(selector in x for x in args))
             self.assertFalse(any('export_main' in x for x in args))
         with self.assertRaises(ValueError):ip.family_policy(object())
+
+
+class PocketPackageRoutingTests(unittest.TestCase):
+    def test_public_fixed_docker_commands_route_to_exact_family(self):
+        from unittest.mock import patch
+        from service import package_install as package, daemon_client as client
+        for command,selected in (('docker','main'),('docker-export','export_main'),('docker-pocket','pocket_main')):
+            with self.subTest(command=command), patch.object(client,'main') as ordinary, patch.object(client,'export_main') as export, patch.object(client,'pocket_main') as pocket:
+                handlers=dict(main=ordinary,export_main=export,pocket_main=pocket)
+                arguments=['status','--handle','explicit-handle.json']
+                package.main([command,*arguments])
+                handlers[selected].assert_called_once_with(arguments)
+                for name,handler in handlers.items():
+                    if name!=selected: handler.assert_not_called()
+
+    def test_pocket_dispatch_uses_process_arguments(self):
+        from unittest.mock import patch
+        from service import package_install as package, daemon_client as client
+        with patch('sys.argv',['speech-box','docker-pocket','stop','--handle','explicit.json']), patch.object(client,'pocket_main') as pocket:
+            package.main()
+            pocket.assert_called_once_with(['stop','--handle','explicit.json'])
+
+    def test_package_and_pocket_help_expose_finite_commands(self):
+        from contextlib import redirect_stdout
+        import io
+        from service import package_install as package, daemon_client as client
+        for function,expected in ((package.main,'docker-pocket'),(client.pocket_main,'Pocket CPU')):
+            output=io.StringIO()
+            with redirect_stdout(output), self.assertRaises(SystemExit) as caught:
+                function(['--help'])
+            self.assertEqual(caught.exception.code,0)
+            self.assertIn(expected,output.getvalue())
+        self.assertIn('install,up,status,stop',output.getvalue())
+
+    def test_pocket_rejects_unlisted_actions_before_daemon_access(self):
+        from contextlib import redirect_stderr
+        from unittest.mock import patch
+        import io
+        from service import package_install as package, daemon_client as client
+        with patch.object(client,'Docker') as docker, redirect_stderr(io.StringIO()), self.assertRaises(SystemExit) as caught:
+            package.main(['docker-pocket','repair','--handle','explicit.json'])
+        self.assertEqual(caught.exception.code,2)
+        docker.assert_not_called()
