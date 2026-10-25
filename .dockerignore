@@ -17,6 +17,7 @@ __pycache__/
 # Virtual envs
 .venv/
 .venv-client/
+.venv-mcp/
 venv/
 
 # Dev/IDE artefacts

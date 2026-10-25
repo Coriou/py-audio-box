@@ -1,4 +1,22 @@
-# toolbox
+# py-audio-box
+
+Headless CPU speech candidate for API, CLI and MCP clients, including GitHub and
+cloud agents. Start with the [CPU worked recipe](docs/agent-interface/CPU-QUICKSTART.md)
+and the [headless installation guide](docs/agent-interface/HEADLESS-INSTALL.md).
+For reference cloning, use the [Pocket CPU recipe](docs/agent-interface/POCKET-QUICKSTART.md).
+There is no browser UI.
+
+Kokoro preset speech and Pocket reference cloning use separate installations.
+The ordinary Docker-client installer exposes separate `docker-export` and
+`docker-pocket` commands; protected Linux-host installation remains available.
+The `actual-install14` Kokoro CPU journey passed authenticated HTTP, CLI and MCP,
+speech/export/download and same-installation restart on Linux/amd64 under OrbStack.
+The public Pocket installed journey remains pending; complete CPU release
+qualification remains in progress. CUDA and Apple Metal are **unqualified** and are not
+gates for this CPU candidate. Build the headless images from the pinned source;
+availability of published headless images is not established.
+
+## Legacy toolbox
 
 A portable, cacheable Python runtime for ML/audio scripts.
 Everything runs in Docker — zero host installs, fast re-runs, shared cache across all apps.
@@ -68,10 +86,10 @@ docker pull ghcr.io/coriou/voice-tools:cuda128     # GPU — data-centre Blackwe
 
 ## Platforms
 
-### CPU (default — works everywhere)
+### CPU (legacy Docker workflow)
 
-No extra requirements. The default image runs purely on CPU and works on
-macOS, Linux, and Windows (Docker Desktop or WSL 2).
+The legacy default image selects CPU execution. Its platform instructions below
+are separate from the headless installer requirements and qualification status.
 
 ```bash
 make build

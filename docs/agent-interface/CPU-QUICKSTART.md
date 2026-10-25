@@ -6,10 +6,19 @@ FFmpeg export, then installs the fresh `docker-kokoro-export-split-v2` family.
 HTTP, CLI and MCP share the canonical service; no browser or GPU is required.
 The expected manifest and build pins are inputs, not runtime qualification.
 
+The `actual-install14` run passed authenticated HTTP, CLI and MCP, speech,
+PCM24 export, verified download and same-installation restart on Linux/amd64
+under OrbStack. See the [bounded installed report](reviews/CPU-KOKORO-INSTALLED-r407-parent.md).
+Public Pocket installed acceptance remains pending; CUDA and Apple Metal remain
+unqualified.
+
 Use Python 3.11 and a local rootful Docker daemon with cgroup v2 and
 `linux/amd64` support. Docker Desktop/OrbStack must expose an explicit local Unix
 socket context. Allow at least 2 GiB worker memory plus control/build overhead,
 and enough disk for the images, models, retained build logs and private volumes.
+The installed disk quota is 1 GiB. Speech reserves 64 MiB per job and export
+reserves 128 MiB per job; retained reservations share that quota across jobs.
+This quota does not cover the host's image, model and build storage needs.
 Builds acquire Debian packages and hash-locked Python wheels; model acquisition
 uses bounded downloads from the pinned upstream release.
 
@@ -59,3 +68,22 @@ interrupts do not release that owner. Do not rerun against a partial output dire
 actual probe success and the installed HTTP journey are distinct evidence stages;
 a failed stage confers no authority on a later stage. This recipe makes no CUDA,
 Metal, Pocket or release-wide qualification claim.
+
+## MCP adapter
+
+The minimal `requirements/client.lock` installs the HTTP/CLI recipe dependencies.
+The stdio MCP adapter also needs the pinned MCP SDK. On the supported Linux/amd64
+Python 3.11 client, install it in a separate environment:
+
+```sh
+python3.11 -m venv .venv-mcp
+.venv-mcp/bin/python -m pip install --only-binary=:all: --require-hashes -r service/requirements.lock
+```
+
+Configure the agent's MCP server command as `.venv-mcp/bin/python -m clients.mcp`,
+with this checkout as its working directory. Supply `SPEECH_URL` and
+`SPEECH_CREDENTIAL` privately through the agent host's secret configuration.
+The adapter calls the same authenticated HTTP service and named operation schemas;
+it loads no model. Do not put the credential in command arguments or publish the
+installation output directory. Native macOS SDK wheel availability is a separate
+client prerequisite; the CPU runtime itself remains in Linux Docker.

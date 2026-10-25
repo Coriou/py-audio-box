@@ -7,9 +7,35 @@ original Linux-root, host-path and host-inspection requirements.
 For daemon-side CPU policy generation and the explicit Intel Mac Linux-VM
 boundary, use [CPU-DOCKER.md](CPU-DOCKER.md).
 
+## CPU candidate and current evidence
+
+This is a headless CPU candidate: use authenticated HTTP, CLI or MCP, with no
+browser UI. For an ordinary Docker client (including a suitable GitHub/cloud
+runner), start with [DOCKER-VOLUMES.md](DOCKER-VOLUMES.md). The protected Linux-host
+route below is a separate installation lane; its host-root requirements do not
+apply automatically to the ordinary Docker-client route.
+
+For a build/provision/measure/install worked example, use
+[CPU-QUICKSTART.md](CPU-QUICKSTART.md). The pinned French Kokoro engine and PCM24
+converter have passed actual contained execution with the current runtime image.
+The `actual-install14` installed HTTP speech/export/download/stop/restart journey
+and actual CLI/MCP checks have passed on Linux/amd64 under OrbStack; see the
+[bounded installed report](reviews/CPU-KOKORO-INSTALLED-r407-parent.md). This is not
+a CUDA/Metal or complete-release claim, and an engine profile alone does not
+establish an installed journey.
+
+Pocket cloning is a separate installation; see [POCKET-QUICKSTART.md](POCKET-QUICKSTART.md).
+The ordinary Docker-client route is
+`docker-pocket`; the protected-host route is also documented below. Actual
+contained Pocket reference synthesis has passed, while the complete installed
+upload/prepare/save/generate/restart journey remains pending. CUDA and Apple Metal
+remain **UNQUALIFIED**; neither is a gate for this CPU candidate. Published
+headless image availability is not established: build and enroll exact local
+images from the reviewed source.
+
 This source unit supplies the finite `speech-box init`, `complete`, `up`,
-`status`, and `stop` command. Independent source review and actual installed
-Linux/CPU speech qualification remain pending. Do not interpret an
+`status`, and `stop` command. Qualification of this protected Linux-host lane
+remains separate from the passed ordinary Docker-client Kokoro journey. Do not interpret an
 injected test, dependency resolution, source archive or Dockerfile as that evidence.
 
 First target: x86_64 Linux, trusted Python 3.11, local rootful Docker at
@@ -43,8 +69,8 @@ never attempted by `init/up/stop/status/complete`. The legacy Poetry project is
 unchanged; `[tool.speech-box-headless]` describes this separate archive format.
 The lock was resolved with existing versions constrained for CPython 3.11,
 x86_64 manylinux_2_28 against official PyPI metadata; no compatibility inference
-is made from the Python 3.14 test environment. Actual wheel installation, Python
-3.11 execution, image build and installed runtime remain qualification work.
+is made from the Python 3.14 test environment. Installing these dependencies or building an image alone does not qualify the
+installed runtime; use the end-to-end checklist below.
 
 `service/Dockerfile.release` has control, Kokoro CPU worker and alternative Pocket CPU worker targets using the existing
 pinned Python 3.11 CPU base. The Kokoro worker installs the unchanged `requirements/kokoro.lock`
@@ -127,7 +153,7 @@ future health guarantee. Active work can make stop refuse within its finite
 budget; that is retained uncertainty, not proof of death or released capacity.
 
 Finite journal/UID/history budgets remain. Recovery/destructive maintenance is
-not part of this installer. Actual permissions, setgid inheritance, peer/mount/
+not part of this installer. For this protected Linux-host lane, actual permissions, setgid inheritance, peer/mount/
 process identities, installed authenticated journeys, CPU Kokoro audible speech,
 retained voice/artifact reuse, cancellation/reap and clean/failed restart must
 still be qualified on the separately authorized Linux target.
@@ -153,26 +179,64 @@ Identical replay of the same key/request returns the same result. A changed requ
 with that key conflicts; a fresh key cannot overwrite the immutable version.
 After a clean completed shutdown and checked same-volume restart, list and reuse
 the retained version without registering again. Arbitrary imported versions do not
-inherit the configured preset's execution authority. Actual offline speech, listening,
-cancellation/reap and installed restart qualification remain separate host checks.
+inherit the configured preset's execution authority. The ordinary Docker-client
+Kokoro journey has passed speech and clean restart checks. Listening acceptance,
+cancellation/reap, failed-restart handling and the protected-host lane remain
+separate checks.
 
 ## Explicit alternative: Pocket CPU clones
 
 The same archive also supports **one** `pocket-cpu` profile under ownership policy
-`docker-pocket-split-v1` and enrollment scope `owned-pocket-v1`. Select this instead
+`docker-pocket-split-v2` and enrollment scope `owned-pocket-v2`.
+The legacy `docker-pocket-split-v1` / `owned-pocket-v1` policy remains unchanged;
+do not relabel or migrate retained v1 state. Select this instead
 of Kokoro when creating a fresh installation. An existing enrolled Kokoro
 configuration remains immutable; changing its policy, bundle or profile is not an
-upgrade path. Rootful Linux, Python 3.11, local volumes and every existing host,
-registration, activation and retained-history check still apply.
+upgrade path. For the protected-host route, rootful Linux, Python 3.11, local
+volumes and every existing host, registration, activation and retained-history
+check still apply.
+
+### Ordinary Docker-client Pocket commands
+
+The archive also exposes the separate finite `docker-pocket` command. It selects
+`installed-pocket-daemon-volumes-v2` explicitly, with configuration version 1,
+ownership policy `docker-pocket-split-v2`, scope `owned-pocket-v2`, and the existing
+publication/store format 1. Actual installed Pocket qualification is pending.
+The command does not qualify a Docker platform, model, voice or image.
+
+Prepare the same closed request envelope documented in
+[DOCKER-VOLUMES.md](DOCKER-VOLUMES.md), supplying the Pocket configuration, exact
+Pocket bundle files, private credential file and already loaded immutable helper,
+control and Pocket worker image IDs. Use a fresh handle and fresh named volumes:
+
+```sh
+./speech-box docker-pocket install --context YOUR_LOCAL_CONTEXT --request pocket-request.json --handle pocket-installation.json
+./speech-box docker-pocket up --handle pocket-installation.json
+./speech-box docker-pocket status --handle pocket-installation.json
+./speech-box docker-pocket stop --handle pocket-installation.json
+./speech-box docker-pocket up --handle pocket-installation.json
+```
+
+Installation imports the supplied bytes and initializes the fresh enrollment.
+Later commands retain the same installation/container IDs; clean stop and retained
+history checks precede restart. A partial operation retains its receipts and
+refuses automatic repair. This route uses trusted Docker inspection and real
+container-local observations; it does not require protected-host root authority
+on the operator machine. Every daemon/security requirement of the ordinary
+Docker-client route still applies. The worker receives only a read-only named
+volume subpath `core/assets` at `/references/assets`; unsupported subpath behavior
+refuses. No build, pull, acquisition, migration or readiness assertion occurs in
+these commands. The authenticated upload/prepare/save/generate API, CLI and MCP
+workflow below is shared by both Pocket routes.
 
 Use the `control` image target and the separate `worker-pocket` target in
 `service/Dockerfile.release`, then enroll their actual immutable local image IDs.
 The Pocket target installs `requirements/pocket-installed.lock` with hash checking;
 it contains the existing Pocket lock plus service-only dependencies. Pocket pins
 win overlapping distribution names (in particular worker FastAPI 0.143.1 versus
-control 0.143.2). Every stanza/hash comes verbatim from the existing locks. This
-source composition has not been installed or resolved again and does not establish
-runtime compatibility. Existing Pocket runtime declarations are `pocket-tts=3.3.0`,
+control 0.143.2). Every stanza/hash comes verbatim from the existing locks. The public target has been built and completed actual contained Pocket CPU
+execution; installed public acceptance is tracked separately in the Pocket
+quickstart. Pocket runtime declarations are `pocket-tts=3.3.0`,
 `torch=2.10.0+cpu`, `tokenizers=0.23.3`; reviewed bundle runtime metadata must match.
 No package hash, model asset or image ID is generated by the installer.
 
@@ -230,3 +294,49 @@ speech, audible clone/reference fidelity, cold/warm resource budgets, cross-UID
 permissions, cancellation/reap and same-volume restart remain UNRUN for this source
 lot. An interrupted nonempty conditioning directory remains UNKNOWN and retained;
 there is no recursive removal, general recovery or relaxed restart guard.
+
+
+## GitHub/cloud agent CPU acceptance checklist
+
+Use a disposable, suitable Linux Docker runner with enough disk for pinned
+images/models and a persistent evidence directory outside `/tmp`, for example
+`$HOME/.local/state/py-audio-box/release-r407`. Keep model/license access and
+credentials in the runner's secret facility. Never include credentials in
+arguments, logs, reports or uploaded artifacts. A runner without Docker or the
+required daemon policy cannot qualify this installation.
+
+Run heavy builds and actual synthesis serially. Bound source tests to 2 CPUs and 1 GiB memory. Actual engine/install checks use
+the explicit limits in their selected recipe (Kokoro 2 GiB, Pocket up to 4 GiB
+per container); retain explicit timeouts and finite output limits. A
+resource refusal or timeout is a failed/incomplete check, not permission to
+silently increase limits. Do not run concurrent model engines on this host.
+
+1. Record the source commit, platform, exact image IDs, dependency locks, model
+   manifest/revision/hash and selected installer policy. Build/load the images
+   explicitly; follow the chosen installation guide without fixture credentials
+   or fabricated qualification fields.
+2. Initialize fresh volumes, run `up`, then read authenticated `status`, `discover`
+   and operation schemas. Record activation and execution availability separately.
+3. Register the advertised Kokoro preset through `voice preset-register`; retain
+   the request, idempotency key and returned immutable version ID. For the separate
+   Pocket lane, upload a reference, prepare, retrieve the audition and save the
+   voice through public operations instead.
+4. Submit `speech generate` using the returned version and the advertised schema.
+   Follow `job events` / bounded `job wait` until terminal; a healthy worker or
+   accepted job alone is insufficient. Retrieve the artifact, asset metadata and
+   `asset content --output` to an exclusive file. Verify bytes/hash, decodable WAV,
+   nonempty frames and duration. Record listening separately from machine checks.
+5. In the Kokoro/export-v2 lane, submit `audio export` using its public schema, wait for completion and retrieve
+   the exported asset. Replay each identical request/idempotency key and verify
+   the retained result; a changed request with that key must conflict.
+6. Exercise cancellation and verify terminal/reap evidence. After completed work,
+   perform clean `stop` and checked same-volume `up`; reuse the retained voice and
+   read the prior job/artifact before a new generation. Preserve refusal evidence
+   and partial state rather than deleting it to obtain a pass.
+
+Use `python -m clients.cli --url <loopback-url> …` with `SPEECH_CREDENTIAL` supplied
+privately. `operation-detail speech_generate` and `operation-detail audio_export`
+provide current closed request schemas. Equivalent authenticated HTTP/MCP calls
+are valid; neither a web UI nor direct Core/database writes belong in acceptance.
+The final report must distinguish source checks, actual engine execution, actual
+installed public journeys and human listening, and mark every unrun step UNRUN.

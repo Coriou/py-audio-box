@@ -1,5 +1,10 @@
 # Pocket French CPU, without a UI
 
+The public installed Pocket upload/prepare/save/generate/restart journey is
+pending acceptance. The steps below describe the recipe's intended checks;
+they do not establish a passed installed run. CUDA and Apple Metal remain
+unqualified.
+
 This create-only worked recipe builds the public `control` and `worker-pocket`
 Linux/amd64 Docker targets, checks a supplied pinned model cache, measures one
 actual contained Pocket preparation, installs the retained Docker-volume family,

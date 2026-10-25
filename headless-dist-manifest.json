@@ -38,6 +38,7 @@
     "docs/agent-interface/HEADLESS-INSTALL.md",
     "docs/agent-interface/NATIVE-PACKAGE.md",
     "docs/agent-interface/POCKET-QUICKSTART.md",
+    "docs/agent-interface/reviews/CPU-KOKORO-INSTALLED-r407-parent.md",
     "headless-dist-manifest.json",
     "lib/__init__.py",
     "lib/audio.py",
