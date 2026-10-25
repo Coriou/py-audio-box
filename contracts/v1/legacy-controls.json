@@ -3602,7 +3602,7 @@
   "shared_sources": [
     {
       "source": "lib/tts.py",
-      "sha256": "53520fff300f575f80eb492738f228d53ebe11ba81da9ecdfce4fdad80cc76cd",
+      "sha256": "fb8b65eab87e8286db56644af71b2ce547a29e9a73ee52235fe48aa6ca663528",
       "constants": {
         "PROMPT_SCHEMA_VERSION": "1",
         "DEFAULT_TTS_MODEL": "'Qwen/Qwen3-TTS-12Hz-0.6B-Base'",
@@ -3628,19 +3628,19 @@
       "coverage": "unchanged_legacy",
       "environment_controls": [
         {
-          "line": 177,
+          "line": 182,
           "expression": "os.getenv(name)"
         },
         {
-          "line": 206,
+          "line": 211,
           "expression": "os.getenv(QWEN3_CUSTOMVOICE_FLAG_ENV)"
         },
         {
-          "line": 718,
+          "line": 745,
           "expression": "os.getenv('TTS_MODEL_REVISION')"
         },
         {
-          "line": 487,
+          "line": 492,
           "expression": "os.getenv('TORCH_DEVICE', '')"
         }
       ]
