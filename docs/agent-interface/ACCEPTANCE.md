@@ -56,7 +56,7 @@ Verify networkless inference and socket IPC in the actual Compose profile, worke
 
 Use 48,000-tick end-exclusive fixtures covering split, explicit ripple, shorter-take adoption, stale selections, unresolved placeholders, missing sources and partial-render omission reports. Verify fixed placement, explicit ingest transformations, preset headroom and preview/render timing tolerances. Store undo as a new revision.
 
-Exercise expiring one-use bootstrap, token scopes/revocation, browser CSRF/Host/Origin checks, authorized artifact reads, callback address policy, and the stdio-to-HTTP MCP path. Direct remote MCP and every advertised wake adapter need separate client-specific evidence. Reconcile provisional budgets to PLAN.md: catalogue plus onboarding ≤2,500 tokens, status ≤1 KiB, receipt ≤2 KiB, default lists ≤20 entries. These remain proposed gates, not results.
+Exercise expiring one-use bootstrap, token scopes/revocation, browser CSRF/Host/Origin checks, authorized artifact reads, callback address policy, and the stdio-to-HTTP MCP path. Direct remote MCP and every advertised wake adapter need separate client-specific evidence. The current full headless control plane has a catalogue plus onboarding budget of 3,500 tokens for 25 named, typed MCP tools; this supersedes the earlier 2,500-token skeleton proposal. Status ≤1 KiB, receipt ≤2 KiB and default lists ≤20 entries remain unchanged. Measurements do not establish runtime or hardware qualification.
 
 ## Existing-solutions audit additions
 

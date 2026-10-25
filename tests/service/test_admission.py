@@ -727,8 +727,13 @@ def test_lotk_measurement_counts_descendants_not_root_and_flat_growth(tmp_path, 
     expected=descendant.lstat().st_size+3+6
     original=Path.lstat
     def lstat(path,*args,**kwargs):
-        assert path not in roots,'root directory size must never be measured'
-        return original(path,*args,**kwargs)
+        info = original(path,*args,**kwargs)
+        if path in roots:
+            # Root metadata must still be checked to reject symlinks. A huge
+            # sentinel size proves that validation does not charge root size.
+            from types import SimpleNamespace
+            return SimpleNamespace(st_mode=info.st_mode, st_size=2**52)
+        return info
     monkeypatch.setattr(Path,'lstat',lstat)
     assert _measure_recovery_roots(roots)==expected
     snapshot=roots[0]/('p1-recovery-'+'8'*32+'.sqlite')

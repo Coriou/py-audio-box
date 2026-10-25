@@ -88,7 +88,7 @@ class NativeHistoryTests(unittest.TestCase):
 
     def refusal(self, mutate):
         self.prepare()
-        core=Core(self.root)
+        core=Core(self.root, _publication_creation=1)
         try: mutate(core)
         finally:core.close()
         def evidence():
@@ -365,7 +365,7 @@ class NativeTerminalHistoryTests(unittest.TestCase):
 
     def test_core_ownership_excludes_retained_reader(self):
         self.prepare()
-        core=Core(self.root)
+        core=Core(self.root, _publication_creation=1)
         try:
             with self.assertRaises(Exception):self.reopen()
             self.assertEqual(core.job(self.job['id']),self.job)

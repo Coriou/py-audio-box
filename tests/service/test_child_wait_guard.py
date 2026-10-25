@@ -15,6 +15,8 @@ from contextlib import contextmanager
 from service import recovery
 sys.platform = 'linux'
 recovery._install_maintenance_limit = lambda: None
+# This is an inert session model with no filesystem roots or database writer.
+recovery._require_legacy_writer_scope = lambda roots: None
 @contextmanager
 def session(*a, **k): yield None
 recovery._maintenance_session = session

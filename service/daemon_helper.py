@@ -19,7 +19,7 @@ import time
 
 from service import daemon_volumes as dv, install_policy as ip
 from service.core import encode
-from service.daemon_client import Wire, encoded, manifest, collect
+from service.daemon_client import Wire, encoded, manifest, collect, INPUT_CHUNK
 from service.persistent_init import digest
 
 MAX_HELPERS=128
@@ -265,7 +265,7 @@ class Helper:
                     while offset<e['bytes']:
                         response=self.rpc('input',dict(index=index,offset=offset)); dv.closed(response,'data')
                         raw=base64.b64decode(response['data'],validate=True)
-                        if not 1<=len(raw)<=min(49152,e['bytes']-offset): raise ValueError('daemon_input_stream_budget')
+                        if not 1<=len(raw)<=min(INPUT_CHUNK,e['bytes']-offset): raise ValueError('daemon_input_stream_budget')
                         f.write(raw); hashed.update(raw); offset+=len(raw)
                     if role!='credential' and hashed.hexdigest()!=e['sha256']: raise ValueError('daemon_input_content_changed')
                     os.fchown(f.fileno(),10001 if role=='models' else 0,10001)

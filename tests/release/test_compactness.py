@@ -6,7 +6,9 @@ from contracts.validate import validate
 
 def test_measured_catalogue_and_fixture_guardrails():
     data = measure()
-    assert data['initial_connection_tokens'] <= 2500
+    # Full headless control now advertises 25 named, typed tools (jobs, voices,
+    # profiles and export included), rather than the earlier read-only skeleton.
+    assert data['initial_connection_tokens'] <= 3500
     metrics = data['metrics']
     assert metrics['skeleton_status']['utf8_bytes'] <= 2048  # duplicated SDK envelope
     # Canonical raw payload ceilings; envelope duplication is recorded separately.

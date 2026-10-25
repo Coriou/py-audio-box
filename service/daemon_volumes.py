@@ -154,13 +154,21 @@ def inspect_container(c, role, config, b, *, phase=None, nonce=None, family=None
     hc=c['HostConfig']; cc=c['Config']; state=c['State']
     helper=role=='helper'; t=b['tmpfs']['control' if helper else role]
     caps=list((INIT_CAPS if phase in ('install','init') else LATER_CAPS) if helper else (() if role=='control' else WORKER_CAPS))
+    actual_caps = hc['CapAdd']
+    if actual_caps is None:
+        actual_caps = []
+    if type(actual_caps) is not list or any(type(cap) is not str for cap in actual_caps):
+        raise ValueError('daemon_container_security_binding')
+    # Docker canonicalizes Linux capabilities with CAP_; older responses and
+    # fixtures use the bare kernel name. Both still match the same closed set.
+    actual_caps = [cap.removeprefix('CAP_') for cap in actual_caps]
     if (not HEX.fullmatch(c['Id']) or c['Image']!=(b['helper_image'] if helper else config['images'][role]) or
         cc['User']!=('0:0' if helper else '10001:10001' if role=='control' else '0:10001') or
         cc['Entrypoint']!=['python'] or cc['Cmd']!=expected[expected.index('--entrypoint')+3:] or
-        hc['Privileged'] is not False or hc['ReadonlyRootfs'] is not True or hc['Init'] not in (None,False) or
+        hc['Privileged'] is not False or hc['ReadonlyRootfs'] is not True or (hc.get('Init') is not None and hc.get('Init') is not False) or
         hc['PidMode'] not in ('',None) or hc['IpcMode']!='private' or hc['CgroupnsMode']!='private' or
         hc['UsernsMode'] not in ('',None) or hc['NetworkMode']!=('bridge' if role=='control' else 'none') or
-        hc['CapDrop']!=['ALL'] or sorted(hc['CapAdd'] or [])!=sorted(caps) or
+        hc['CapDrop']!=['ALL'] or sorted(actual_caps)!=sorted(caps) or
         hc['SecurityOpt']!=['no-new-privileges:true'] or hc['RestartPolicy']!={'Name':'no','MaximumRetryCount':0} or
         hc['Devices'] or hc['DeviceRequests'] or hc['Binds'] or hc.get('VolumesFrom') or hc.get('GroupAdd') or
         hc.get('DeviceCgroupRules') or hc.get('Sysctls') or hc.get('CgroupParent') or hc.get('UTSMode') or

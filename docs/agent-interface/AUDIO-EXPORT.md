@@ -1,5 +1,14 @@
 # Managed PCM24 WAV master — source candidate
 
+The source distribution exposes the fresh CPU export installer as
+`speech-box docker-export install --context orbstack --request REQUEST --handle HANDLE`,
+then `speech-box docker-export up|status|stop --handle HANDLE`. It selects the
+export family explicitly; `speech-box docker` keeps the original family.
+The export client requires Python 3.11 and the dependencies in
+`service/requirements.lock` in its operator environment (no ML packages on the
+operator Mac). Supply the reviewed request, immutable images, model bundle and
+private credential first. These commands never acquire or qualify them.
+
 `POST /v1/operations/audio_export`, CLI `audio export`, and MCP
 `speech_audio_export` accept exactly:
 
@@ -114,3 +123,10 @@ Kokoro asset export. Fake Docker/UID/process/reap and PCM assertions are source
 fixtures, never installed or converter qualification. Actual FFmpeg, pins,
 Linux/Desktop/OrbStack, CUDA and Metal remain UNRUN/unqualified. Independent
 Sol and final Astra review remain parent-owned; release NO-GO, legacy CLOSED.
+# Converter registration size
+
+Converter registrations are bounded to 16 KiB of canonical UTF-8 JSON. The
+resolved Debian FFmpeg runtime has 214 library paths (about 10.5 KiB), so a 4 KiB
+registration cannot describe its complete closure. This does not change the
+48,000-byte configuration/context limits, the 256-path schema bound, immutable
+file checks, executable hash, finished-image binding or qualification requirements.

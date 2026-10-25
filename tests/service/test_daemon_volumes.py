@@ -172,6 +172,38 @@ class Session:
 class DaemonTests(unittest.TestCase):
     def setUp(self): self.s=Session(self)
 
+    def test_docker_canonical_capabilities_and_omitted_init(self):
+        s = self.s
+        c = container('helper',s.config,s.b,phase='install',nonce='a'*32)
+        c['HostConfig'].pop('Init')
+        c['HostConfig']['CapAdd'] = ['CAP_'+name for name in dv.INIT_CAPS]
+        dv.inspect_container(c,'helper',s.config,s.b,phase='install',nonce='a'*32)
+        for init in (True, 0, 1, 'false'):
+            bad = copy.deepcopy(c); bad['HostConfig']['Init'] = init
+            with self.assertRaises(ValueError):
+                dv.inspect_container(bad,'helper',s.config,s.b,phase='install',nonce='a'*32)
+        bad = copy.deepcopy(c);bad['HostConfig']['CapAdd'].append('CAP_SYS_ADMIN')
+        with self.assertRaises(ValueError):
+            dv.inspect_container(bad,'helper',s.config,s.b,phase='install',nonce='a'*32)
+        for malformed in (0, False, '', {}):
+            bad = container('control',s.config,s.b)
+            bad['HostConfig']['CapAdd'] = malformed
+            with self.assertRaises(ValueError):
+                dv.inspect_container(bad,'control',s.config,s.b)
+
+    def test_model_transfer_chunks_fit_wire_and_reconstruct_exact_bytes(self):
+        raw = bytes(range(256))*2305
+        path = self.s.root/'large-model-input';path.write_bytes(raw)
+        source = [dict(source=str(path),bytes=len(raw))]
+        client = dc.Docker.__new__(dc.Docker)
+        chunks = []
+        for offset in range(0,len(raw),dc.INPUT_CHUNK):
+            response = client.action('input',dict(index=0,offset=offset),None,None,source)
+            self.assertLess(len(dc.encoded(response))+1024,dc.LIMIT)
+            chunks.append(base64.b64decode(response['data'],validate=True))
+        self.assertEqual(len(chunks[0]),256*1024)
+        self.assertEqual(b''.join(chunks),raw)
+
     def test_install_up_status_stop_same_id_up(self):
         s=self.s; first=s.install(); ids=first['containers']; immutable=(s.roots['authority']/('registration-'+first['registration_id']+'.json')).read_bytes()
         self.assertEqual(len(s.f.calls),1)
@@ -317,8 +349,8 @@ class ChildAndClientTests(unittest.TestCase):
              patch.object(pi,'_split_core') as core,patch.object(ic.LinuxMounts,'unshare',side_effect=AssertionError('unshare')), \
              patch.object(ic.LinuxMounts,'mount',side_effect=AssertionError('mount')):
             ic.container_entry('core')
-            prepare.assert_called_once_with({},10,11); close.assert_called_once_with(())
-            caps.assert_called_once(); core.assert_called_once_with({},Path('/control'),Path('/staging'))
+            prepare.assert_called_once_with({},10,11,family=None); close.assert_called_once_with(())
+            caps.assert_called_once(); core.assert_called_once_with({},Path('/control'),Path('/staging'),family=None)
         self.assertEqual(events,[('groups',[]),('gid',(10001,)*3),('uid',(10001,)*3)])
 
     def test_retained_capabilities_or_saved_identity_fail(self):
@@ -346,7 +378,9 @@ class ChildAndClientTests(unittest.TestCase):
         request=dict(configuration=s.config,helper_image=s.b['helper_image'],inputs=inputs,cpu=s.b['cpu'],tmpfs=s.b['tmpfs'],control_port=s.b['control_port'])
         request_file=s.root/'request.json'; request_file.write_text(encode(request)); handle=s.root/'handle.json'
         class FakeDocker:
-            def __init__(self,context=None,*,endpoint=None): self.frozen=s.b['daemon']; self.names=set()
+            def __init__(self,context=None,*,endpoint=None,family=None):
+                assert family is None
+                self.frozen=s.b['daemon']; self.names=set()
             def check(self): pass
             def call(self,args):
                 if args[:2]==['volume','ls']: return '\n'.join(self.names)

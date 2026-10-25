@@ -24,6 +24,17 @@ def fixture():
 
 
 class AudioExportTests(unittest.TestCase):
+    def test_complete_dynamic_closure_fits_but_registration_stays_bounded(self):
+        value = fixture()['context']['execution']['converter']
+        value['runtime_closure'] = [
+            '/usr/lib/x86_64-linux-gnu/libdependency%03d.so.1.2.3' % i
+            for i in range(214)]
+        self.assertGreater(len(json.dumps(value)), 4096)
+        self.assertEqual(registration(value), value)
+        value['runtime_closure'] = [path + 'x'*80 for path in value['runtime_closure']]
+        with self.assertRaisesRegex(ValueError, 'resource_plan_limit'):
+            registration(value)
+
     def test_closed_settings(self):
         request=fixture()['context']['plan']['request']
         for change in ({'rate':True},{'channels':1.0},{'loudness':float('nan')},{'loudness':float('inf')},{'loudness':-71},{'loudness':-4},{'path':'/tmp/a'},{'rate':22050}):

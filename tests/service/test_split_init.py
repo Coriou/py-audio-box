@@ -308,7 +308,7 @@ class SplitInit(unittest.TestCase):
             recovery.inspect(self.roots,self.scope,policy=ip.SPLIT)
         originals=[(p,c) for p,c in opened if p.endswith('/control/core/core.sqlite')]
         self.assertEqual(len(originals),1);self.assertTrue(originals[0][1])
-        self.assertTrue(all(c or 'p1-inspect-' in p for p,c in opened))
+        self.assertTrue(all(c or p == ':memory:' or 'p1-inspect-' in p for p,c in opened))
         for p in (self.roots['control']/'core').glob('core.sqlite*'):
             self.assertEqual((p.stat().st_uid,p.stat().st_gid),(10001,10001))
 

@@ -238,7 +238,8 @@ def test_startup_join_refuses_ack_release_and_launch(tmp_path, damage):
     d.close()
     with sqlite3.connect(root/'core.sqlite') as db:
         if damage=='receipt':
-            receipt=json.loads(db.execute('SELECT receipt FROM dispatches').fetchone()[0]);receipt['binding']='wrong'
+            original_receipt=db.execute('SELECT receipt FROM dispatches').fetchone()[0]
+            receipt=json.loads(original_receipt);receipt['binding']='wrong'
             db.execute('UPDATE dispatches SET receipt=?',(json.dumps(receipt),))
         elif damage=='reservation':db.execute('DELETE FROM resource_reservations')
         elif damage=='state':db.execute("UPDATE resource_reservations SET state='executing'")
@@ -254,10 +255,24 @@ def test_startup_join_refuses_ack_release_and_launch(tmp_path, damage):
         d=Dispatcher(root,staging=stage,runtime=runtime)
         try:
             status=d.call('status');assert status['integrity_fault']
-            assert status['integrity']['counts']['unresolved_owner_receipt_reservation']>=1
+            if damage == 'attempt':
+                assert 'public_artifact_mismatch' in status['integrity']['reasons']
+                assert status['integrity']['defect_latched']
+            else:
+                assert status['integrity']['counts'].get('unresolved_owner_receipt_reservation',0)>=1, status['integrity']
             assert runtime.acks==0 and runtime.starts==1
             assert d.call('job',job['id'])['state']=='succeeded'
             with pytest.raises(ValueError):d.call('submit','p','fresh')
+        finally:d.close()
+    if damage == 'receipt':
+        # Restoring bytes cannot silently acknowledge an already observed defect.
+        with sqlite3.connect(root/'core.sqlite') as db:
+            db.execute('UPDATE dispatches SET receipt=?',(original_receipt,))
+        d=Dispatcher(root,staging=stage,runtime=runtime)
+        try:
+            status=d.call('status')
+            assert status['integrity_fault'] and status['integrity']['defect_latched']
+            assert runtime.acks==0 and runtime.starts==1
         finally:d.close()
 
 
@@ -427,17 +442,19 @@ def test_lifetime_failed_startup_publication_waits_for_cleanup(tmp_path, monkeyp
         def fetchone(self): return None
     class Core:
         db = DB()
-        def __init__(self, root): events.append('open')
+        def __init__(self, root, **kwargs): events.append('open')
         def close(self):
             if cleanup == 'core': entered.set(); assert release.wait(2)
             events.append('closed')
     class Pool:
         def shutdown(self, **kwargs): entered.set(); assert release.wait(2); events.append('shutdown')
-    def admission(*args): raise original
+    def admission(*args, **kwargs): raise original
     monkeypatch.setattr(recovery, 'startup_read', lambda _:None)
     monkeypatch.setattr(module, 'Core', Core)
     monkeypatch.setattr(module, 'Admission', admission)
     value = Dispatcher.__new__(Dispatcher)
+    value.installed_activation = None; value.installed_checked = False
+    value.runtime = object(); value.production_contexts = None
     value.root = tmp_path; value.persistent_registration = None
     value.staging = tmp_path; value.budget = None; value.initialized = Future()
     if cleanup == 'pool': value.pool = Pool()
@@ -464,7 +481,7 @@ def test_lifetime_real_core_refusal_has_no_next_startup_overlap(tmp_path, monkey
         entered.set()
         assert release.wait(2)
         close(core); closed.set()
-    def refuse(*args): raise primary
+    def refuse(*args, **kwargs): raise primary
     monkeypatch.setattr(module.Core, 'close', paused)
     monkeypatch.setattr(module, 'Admission', refuse)
     failures = []; done = threading.Event()
@@ -510,7 +527,7 @@ def test_lifetime_actual_timeout_excludes_next_reader(tmp_path, monkeypatch, sec
     def read(root):
         reads.append(root)
         return original_read(root)
-    def refuse(*args): raise primary
+    def refuse(*args, **kwargs): raise primary
     monkeypatch.setattr(Core, 'close', paused)
     monkeypatch.setattr(module, 'Admission', refuse)
     monkeypatch.setattr(recovery, 'startup_read', read)
@@ -551,10 +568,10 @@ def test_lifetime_reader_core_gap_competing_owner_refuses_before_admission(tmp_p
     root = tmp_path/'core'
     core = Core(root); core.close()
     owned = []
-    def competed(path):
+    def competed(path, **kwargs):
         owner = Core(path)
         owned.append(owner)
-        try: return Core(path)
+        try: return Core(path, **kwargs)
         finally: owner.close()
     monkeypatch.setattr(module, 'Core', competed)
     monkeypatch.setattr(module, 'Admission', lambda *a:pytest.fail('Admission after lock refusal'))
@@ -589,7 +606,7 @@ def test_bounded_core_dispatcher_cleanup_outcome(tmp_path, monkeypatch, startup,
         def fetchone(self): return None
     class Core:
         db = DB()
-        def __init__(self, root): pass
+        def __init__(self, root, **kwargs): pass
         def close(self):
             events.append('core')
             if faults in ('core', 'both'): raise RuntimeError('owned Core fault')
@@ -597,11 +614,13 @@ def test_bounded_core_dispatcher_cleanup_outcome(tmp_path, monkeypatch, startup,
         def shutdown(self, **kw):
             events.append('pool')
             if faults in ('pool', 'both'): raise RuntimeError('owned pool fault')
-    def admission(*a): raise primary
+    def admission(*a, **kwargs): raise primary
     monkeypatch.setattr(module, 'Core', Core)
     monkeypatch.setattr(recovery, '_startup_read_lock', lambda root: nullcontext(False))
     monkeypatch.setattr(module, 'Admission', admission)
     value = Dispatcher.__new__(Dispatcher)
+    value.installed_activation = None; value.installed_checked = False
+    value.runtime = object(); value.production_contexts = None
     value.root = tmp_path; value.staging = tmp_path; value.budget = None
     value.persistent_registration = None; value.pool = Pool(); value._cleanup_failed = False
     value.initialized = Future()
@@ -643,11 +662,11 @@ root = Path(sys.argv[1])
 connect = sqlite3.connect
 class DB(sqlite3.Connection):
     def close(self): raise RuntimeError('owned before-close fault')
-module.sqlite3.connect = lambda *a, **k: connect(*a, factory=DB, **k)
+module.sqlite3.connect = lambda *a, **k: connect(*a, **k) if a and a[0] == ':memory:' else connect(*a, factory=DB, **k)
 # The real Dispatcher constructs a real Core, then fails Admission; finally's
 # DB close fails and the actual owning writer terminates.
 primary = ValueError('original admission failure')
-def fail(*a): raise primary
+def fail(*a, **kwargs): raise primary
 dispatcher.Admission = fail
 try: dispatcher.Dispatcher(root)
 except ValueError as e:
@@ -675,6 +694,8 @@ try:
 finally:
     for r in owned: r.close()
 sys.platform = 'linux'
+# This isolated ownership model has no enrolled roots; admission is tested above.
+recovery._require_legacy_writer_scope = lambda roots: None
 try: recovery._run_bounded_maintenance({}, {}, lambda s: True)
 except ValueError as e: assert 'core_ownership_busy' in str(e)
 else: raise AssertionError('abandoned maintenance admitted')

@@ -331,8 +331,7 @@ def _maintenance_connection(db, *, original=False):
         db.execute('PRAGMA synchronous=FULL')
         if db.execute('PRAGMA synchronous').fetchone()!=(2,):raise ValueError('b2_maintenance_sync')
         db.execute('PRAGMA wal_autocheckpoint=0')
-    if db.execute("SELECT 1 FROM sqlite_master WHERE type='trigger' LIMIT 1").fetchone():
-        raise ValueError('b2_maintenance_trigger')
+    _maintenance_schema_objects(db, require_catalogue=False)
     # Callers explicitly pin the standard Unix VFS. No ATTACH, extension
     # or mmap escape through original or private validation connections.
     def authorize(action, arg1, arg2, database, source):
@@ -1649,6 +1648,27 @@ def validate_b2_record(table,value):
     _uuid(value['recovery_id'])
 
 
+def _maintenance_schema_objects(db, *, require_catalogue=True):
+    """Accept only the catalogue's exact immutable triggers, never arbitrary SQL."""
+    from service.reconciliation import CATALOGUE_IDENTITY, CATALOGUE_TABLES
+    from service.voice_store import _sql_identity
+    count, size = db.execute("SELECT count(*),coalesce(sum(length(CAST(coalesce(sql,'') AS BLOB))),0) FROM sqlite_master").fetchone()
+    if count > MAX_ROWS or size > MAX_BYTES:
+        raise ValueError('b2_unknown_schema')
+    rows = [(k,n,t,_sql_identity(s)) for k,n,t,s in db.execute(
+        'SELECT type,name,tbl_name,sql FROM sqlite_master LIMIT 2049')]
+    catalogue = sorted(row for row in rows if row[2] in CATALOGUE_TABLES or row[1] in CATALOGUE_TABLES)
+    special = sorted(row for row in rows if row[0] in ('trigger','view') or
+                     row[0] == 'index' and row[3])
+    expected = sorted(row for row in CATALOGUE_IDENTITY if row[0] == 'trigger')
+    if not catalogue and not require_catalogue:
+        expected = []
+    elif catalogue != CATALOGUE_IDENTITY:
+        raise ValueError('b2_unknown_schema')
+    if special != expected:
+        raise ValueError('b2_unknown_schema')
+
+
 def _validate_b2_database(db, root, uncertified=None, retained_receipts=None):
     """Bound the complete logical population before decoding any JSON."""
     from service.persistence import B2_COLUMNS, b2_schema
@@ -1660,7 +1680,8 @@ def _validate_b2_database(db, root, uncertified=None, retained_receipts=None):
         p1_inventory_history='seq scan_id object_id observed record',
         p1_integrity='id revision state token',sqlite_sequence='name seq')
     tables={r[0] for r in db.execute("SELECT name FROM sqlite_master WHERE type='table'")}
-    if tables!=set(expected) or db.execute("SELECT 1 FROM sqlite_master WHERE type IN ('trigger','view') OR (type='index' AND sql IS NOT NULL) LIMIT 1").fetchone(): raise ValueError('b2_unknown_schema')
+    if tables!=set(expected): raise ValueError('b2_unknown_schema')
+    _maintenance_schema_objects(db)
     count=size=0
     for table in sorted(tables):
         columns=expected[table].split()
@@ -3531,8 +3552,7 @@ def _observe_b2_journal(receipts,lane):
 def _preparation_prestate(roots,db,scope,capsule,profiles,budget,diagnostic_decisions):
     """Read-only before the original writer, repeated under the same locks."""
     _budget(budget);_decisions(diagnostic_decisions)
-    if db.execute("SELECT 1 FROM sqlite_master WHERE type IN ('trigger','view') OR (type='index' AND sql IS NOT NULL) LIMIT 1").fetchone():
-        raise ValueError('b2_unknown_schema')
+    _maintenance_schema_objects(db)
     if capsule['purpose']!=dict(kind='pre-plan',plan_id=None,plan_digest=None):
         raise ValueError('b2_preparation_purpose')
     proof=capsule['kernel_proof']

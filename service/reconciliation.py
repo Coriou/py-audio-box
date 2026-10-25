@@ -402,7 +402,7 @@ class Reconciliation:
             if related and all(self._resolved_diagnostic(r) for r in related):self.reasons.discard(reason)
         if self.inherited_fault: self.reasons.add('unacknowledged_integrity')
         counts = dict(Counter(r['classification'] for r in self.rows.values()))
-        defect_latched = bool(self.reasons & {'unacknowledged_integrity','unknown_reference_schema','unknown_reference_kind'}) or any(r['classification'] in ('unknown_foreign','adopted_orphan','missing_hash_mismatched_terminal','unresolved_owner_receipt_reservation') and not self._resolved_diagnostic(r) for r in self.rows.values())
+        defect_latched = bool(self.reasons & {'unacknowledged_integrity','unknown_reference_schema','unknown_reference_kind','public_artifact_mismatch'}) or any(r['classification'] in ('unknown_foreign','adopted_orphan','missing_hash_mismatched_terminal','unresolved_owner_receipt_reservation') and not self._resolved_diagnostic(r) for r in self.rows.values())
         self.summary = dict(scan_id=self.scan_id, complete=complete, defect_latched=defect_latched,
             blocked=not complete or bool(self.reasons), counts=counts, reasons=sorted(self.reasons)[:20],
             cleanup_allowed=False)
@@ -687,10 +687,9 @@ def typed_references(self, data, b2, _before, document):
                 for profile in authority[3]: walk(profile, 'profile', source)
                 add(authority[2], source)
                 if record['outcome']: walk(json.loads(record['outcome']), 'job', source)
-                if record['receipt']:
-                    receipt = json.loads(record['receipt'])
-                    from worker.native_protocol import terminal_receipt
-                    terminal_receipt(receipt, authority=Authority(*authority), runtime_id=record['runtime'])
+                # The joined dispatch check below validates the terminal receipt.
+                # Doing it here first aborts the inventory before a malformed
+                # receipt can become a durable, latched ownership defect.
             if table == 'resource_reservations':
                 if set(json.loads(record['demand'])) != {'configuration','slots','ram_bytes','vram_bytes','pids','disk_bytes','attempt_disk_bytes'}:
                     self.reasons.add('unknown_reference_schema')

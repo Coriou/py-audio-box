@@ -1,3 +1,9 @@
+import sys
+from pathlib import Path
+# Fresh `python -c` tests import this module without pytest's pythonpath hook.
+_tests = str(Path(__file__).resolve().parents[1])
+if _tests not in sys.path:
+    sys.path.insert(0, _tests)
 from _maintenance_wait_guard import fresh_run as _guarded_fresh_run
 import os
 """B1 E1 only: real disposable roots/SQLite/locks, mocked host projection."""

@@ -27,7 +27,7 @@ class NativeLifecycleTests(unittest.TestCase):
             from contracts import validate as oracle
             from service.ingest import ingest_local
             # Explicit trusted fixture enrollment, not public clone onboarding.
-            core=Core(self.f.f.fixture.root/'core')
+            core=Core(self.f.f.fixture.root/'core', _publication_creation=1)
             try:
                 from service.admission import Admission
                 # Initialize the resource protocol while the fixture root is
@@ -53,7 +53,7 @@ class NativeLifecycleTests(unittest.TestCase):
         self.profiles[0]['limits']['disk_bytes']=2*1024**2
         self.context['plan']['resolved']['profile']['limits']['disk_bytes']=2*1024**2
         self.root=self.f.f.fixture.root/'core'
-        seed=Core(self.root)
+        seed=Core(self.root, _publication_creation=1)
         seed.voices.register('alice','fixture-owned-version',self.context['plan']['voice_versions'][0],expected_revision=0)
         self.context['plan']['voice_versions']=[seed.voices.version('alice','vv0')]
         self.f.s.registrations[self.f.a.binding]['snapshot'][1]=copy.deepcopy(self.context)
@@ -177,7 +177,7 @@ class NativeLifecycleTests(unittest.TestCase):
                 self.assertNotIn('ack',[q['op'] for q in f.requests])
                 self.assertFalse(f.s.journal.value['records'][0]['acked'])
                 self.close()
-                core=Core(self.root)
+                core=Core(self.root, _publication_creation=1)
                 try:self.assertEqual(core.db.execute('SELECT * FROM publications').fetchall(),[])
                 finally:core.close()
                 f.runtime=f.make_runtime();self.assertFalse(f.runtime.admission_open)
@@ -242,7 +242,7 @@ class NativeLifecycleTests(unittest.TestCase):
                 self.assertEqual(d.call('job',result['job_id'])['artifact_ids'],[])
             finally:self.close()
         # Same frozen lane rejects Linux substitution in the detached validator.
-        core=Core(self.root)
+        core=Core(self.root, _publication_creation=1)
         try:
             row=core.db.execute('SELECT authority,runtime FROM dispatches').fetchone()
             a=Authority(*json.loads(row[0]));receipt=copy.deepcopy(f.s.journal.value['records'][0]['receipt'])

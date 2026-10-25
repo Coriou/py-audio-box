@@ -24,7 +24,11 @@ def install():
     class MemoryAPI(original):
         def __init__(self, library, data_path):
             self._library = None
-            path = self._shared_library_path(ctypes.CDLL(str(library)))
+            source_library = ctypes.CDLL(str(library))
+            try:
+                path = self._shared_library_path(source_library)
+            finally:
+                _ctypes.dlclose(source_library._handle)
             fd = os.memfd_create('speech-espeak', os.MFD_CLOEXEC | os.MFD_ALLOW_SEALING)
             try:
                 with open(path, 'rb') as source:

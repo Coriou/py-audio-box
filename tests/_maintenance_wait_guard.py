@@ -252,7 +252,7 @@ class ModeledRehearsalCompletionWitness:
         if (not stat.S_ISDIR(info.st_mode) or info.st_uid != os.getuid() or info.st_mode & 0o077 or
                 not stat.S_ISREG(file_info.st_mode) or file_info.st_uid != os.getuid() or
                 file_info.st_nlink != 1 or
-                db.execute('PRAGMA database_list').fetchall() != [(0, 'main', str(database))]):
+                db.execute('PRAGMA database_list').fetchall() != [(0, 'main', str(database.resolve()))]):
             return False
         # Only code objects and the exact exception survive cleanup. No exception
         # payload, DB contents or paths are serialized into the witness pipe.
@@ -2030,8 +2030,12 @@ def install(request, monkeypatch, guard):
     rehearsal0, transaction0 = recovery._rehearse_preparation, recovery._prefix_transaction
     pipe, read, write, close, exit0 = os.pipe, os.read, os.write, os.close, os._exit
     state = dict(active=False, read=None, write=None, witness=b'', enrolling=False)
-    from one_node_observer import Observer
-    diagnostic = Observer(request, run.__code__)
+    diagnostic = None
+    # This private sink belongs to one diagnostic node, not every service test.
+    # Generic maintenance ownership and terminal-receipt checks stay active.
+    if request.node.nodeid == BlockedPipeWitness_B.nodeid:
+        from one_node_observer import Observer
+        diagnostic = Observer(request, run.__code__)
 
     prepared_B = {}
     def clear_prepared_B():
@@ -2106,7 +2110,8 @@ def install(request, monkeypatch, guard):
             guard.observe(result, witness=state['witness'], armed_P=state.get('armed_P', False),
                 armed_B=state.get('armed_B', False),
                 expected_signal=signal.SIGKILL if cleanup_phase else _expected_cleanup_signal(request.node, cleanup), expected_exit=expected_exit)
-            diagnostic.sample(2, state['witness'], result[0], result[1], cleanup, len(guard.failures), len(guard.owned))
+            if diagnostic is not None:
+                diagnostic.sample(2, state['witness'], result[0], result[1], cleanup, len(guard.failures), len(guard.owned))
         return result
 
     def guarded_run(roots, scope, operation, **kwargs):
@@ -2217,7 +2222,8 @@ def install(request, monkeypatch, guard):
                     raise
             def observed_exit(code):
                 if state.get('armed_B'):
-                    diagnostic.sample(1, state['witness'])
+                    if diagnostic is not None:
+                        diagnostic.sample(1, state['witness'])
                     final_B = code == 74 and blocked_B.final_child(sys._getframe(1))
                     if final_B:
                         try: mark(b'B:f;')
@@ -2263,10 +2269,11 @@ def install(request, monkeypatch, guard):
                                 'recapture-hash', 'recapture-oracle', 'recapture-verified'}):
                         mark(b'D:' + frame.f_locals['p'].encode('ascii'))
                 if code == 74:
-                    diagnostic.sample(1, state['witness'])
+                    if diagnostic is not None:
+                        diagnostic.sample(1, state['witness'])
                 exit0(code)
             blocked_B = BlockedPipeWitness_B(request.node, run, operation, sys._getframe(1),
-                recovery, write, tracked_fork, tracked_wait, w, diagnostic.fd, mark, originals_B,
+                recovery, write, tracked_fork, tracked_wait, w, diagnostic.fd if diagnostic is not None else None, mark, originals_B,
                 prepared=prepared_B.get('facts') or False)
             if blocked_B.eligible and not prepared_B.get('facts'): blocked_B.valid = False
             state['blocked_B'] = blocked_B
@@ -2304,7 +2311,8 @@ def install(request, monkeypatch, guard):
                     raise
         finally:
             try:
-                diagnostic.sample(3, state['witness'], failures=len(guard.failures), owned=len(guard.owned))
+                if diagnostic is not None:
+                    diagnostic.sample(3, state['witness'], failures=len(guard.failures), owned=len(guard.owned))
             finally:
                 if state.get('armed_B') or lost_P is not None and lost_P.eligible: sys.settrace(trace_P)
                 if blocked_B is not None: blocked_B.clear()
@@ -2315,7 +2323,8 @@ def install(request, monkeypatch, guard):
                 state['active'] = False
                 try: close(r)
                 finally: close(w)
-            diagnostic.sample(4, state['witness'], failures=len(guard.failures), owned=len(guard.owned))
+            if diagnostic is not None:
+                diagnostic.sample(4, state['witness'], failures=len(guard.failures), owned=len(guard.owned))
             if guard.owned:
                 guard.fail('missing terminal maintenance receipt')
             if guard.directory is not None and guard.failures:
@@ -2464,7 +2473,8 @@ def bootstrap(directory, nodeid, originalname, params, token):
     guard = MaintenanceWaitGuard(node, SimpleNamespace(shouldstop=False))
     guard.directory = directory
     patch = pytest.MonkeyPatch()
-    install(SimpleNamespace(node=node), patch, guard)
+    finalizers = []
+    install(SimpleNamespace(node=node, addfinalizer=finalizers.append), patch, guard)
     _CURRENT, _ROOT = guard, directory / 'nested'
     _ROOT.mkdir(mode=0o700)
     identity = dict(pid=os.getpid(), node=nodeid, token=token)
@@ -2473,6 +2483,8 @@ def bootstrap(directory, nodeid, originalname, params, token):
     def finish():
         if os.getpid() != owner: return
         if guard.owned: guard.fail('orphan owned maintenance PIDs')
+        for finalize in reversed(finalizers):
+            finalize()
         atomic(directory / 'done.json', identity)
     atexit.register(finish)
 

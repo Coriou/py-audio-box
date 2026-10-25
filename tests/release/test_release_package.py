@@ -366,7 +366,7 @@ print('isolated Pocket and authenticated client archive closure')
     def test_release_context_and_cpu_base(self):
         recipe=(ROOT/'service/Dockerfile.release').read_text()
         cpu=(ROOT/'Dockerfile.cpu').read_text().splitlines()[0].removeprefix('FROM ')
-        self.assertEqual(recipe.count('FROM '+cpu+' AS '),3)
+        self.assertEqual(recipe.count('FROM '+cpu+' AS '),4)
         self.assertNotIn('3.14',recipe);self.assertNotIn('service.api:app',recipe)
         self.assertIn('-r kokoro.lock -r requirements.lock',recipe)
         self.assertNotIn('tini',recipe)  # supervisor and control must remain PID1

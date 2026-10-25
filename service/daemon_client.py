@@ -20,6 +20,7 @@ from service import daemon_volumes as dv
 
 LIMIT=1024*1024
 TOTAL=2*1024**3
+INPUT_CHUNK=256*1024  # Base64 plus framing remains below the 1 MiB wire limit.
 
 
 def encoded(value):
@@ -237,7 +238,7 @@ class Docker:
 
     def action(self,action,payload,config,b,source):
         # Input chunks do no daemon action. The held phase's exact snapshots
-        # bracket the stream; avoid a Docker-info process for every 48 KiB.
+        # bracket the stream; avoid a Docker-info process for every input chunk.
         if action!='input': self.check()
         if action=='snapshot':
             dv.closed(payload,''); result=self.snapshot(b)
@@ -283,7 +284,7 @@ class Docker:
                 before=os.fstat(f.fileno())
                 if not stat.S_ISREG(before.st_mode) or before.st_nlink!=1 or before.st_size!=entry['bytes'] or offset>before.st_size:
                     raise ValueError('daemon_input_changed')
-                f.seek(offset); raw=f.read(min(49152,before.st_size-offset))
+                f.seek(offset); raw=f.read(min(INPUT_CHUNK,before.st_size-offset))
                 if file_identity(os.fstat(f.fileno()))!=file_identity(before) or file_identity(os.stat(entry['source'],follow_symlinks=False))!=file_identity(before):
                     raise ValueError('daemon_input_changed')
             result=dict(data=base64.b64encode(raw).decode())

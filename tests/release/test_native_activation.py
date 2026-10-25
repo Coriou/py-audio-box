@@ -53,7 +53,7 @@ class NativeActivationTests(unittest.TestCase):
             self.assertTrue(reopened.installed_checked)
             reopened.close()
         # Refused startup releases the same Core lifetime exclusion.
-        core = Core(self.owner); core.close()
+        core = Core(self.owner, _publication_creation=1); core.close()
 
     def test_retained_namespace_refuses_before_tls(self):
         self.enroll()
@@ -75,10 +75,10 @@ class NativeActivationTests(unittest.TestCase):
         original = activation.precheck
         def race(dispatcher):
             original(dispatcher)
-            other = Core(self.owner); other.close()
+            other = Core(self.owner, _publication_creation=1); other.close()
         activation.precheck = race
         with self.assertRaisesRegex(Refused, 'native_retained_history_unsupported'): self.start(activation)
-        core = Core(self.owner); core.close()
+        core = Core(self.owner, _publication_creation=1); core.close()
 
     def test_gap_trust_change_refuses_and_closes_core(self):
         self.enroll()
@@ -89,7 +89,7 @@ class NativeActivationTests(unittest.TestCase):
             self.write('key', b'CHANGED INERT KEY')
         activation.precheck = change
         with self.assertRaisesRegex(Refused, 'native_enrollment_changed'): self.start(activation)
-        core = Core(self.owner); core.close()
+        core = Core(self.owner, _publication_creation=1); core.close()
 
     def test_changed_boot_refuses_no_core_and_no_learning(self):
         self.enroll()

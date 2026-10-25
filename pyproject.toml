@@ -46,6 +46,7 @@ pytest = "^8.3.3"
 line-length = 100
 
 [tool.pytest.ini_options]
+pythonpath = [".", "tests", "diagnostics/p-one-node"]
 markers = [
     "integration: tests that require external services and are opt-in",
     "redis_integration: tests that exercise real Redis stream/lock behavior",

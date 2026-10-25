@@ -528,7 +528,7 @@ def test_lifetime_f2_owner_close_failure_preserves_primary(tmp_path, monkeypatch
     import sqlite3
     from service import core as module
     before = set(module._failed_constructor_cleanup)
-    original_open = open
+    original_open = os.fdopen
     primary = ValueError('synthetic persistence failure')
     fault = True
     class Owner:
@@ -538,7 +538,7 @@ def test_lifetime_f2_owner_close_failure_preserves_primary(tmp_path, monkeypatch
             if fault: raise RuntimeError('owner close failure')
             self.actual.close()
     def owned_open(*args, **kwargs): return Owner(original_open(*args, **kwargs))
-    monkeypatch.setattr(module, 'open', owned_open, raising=False)
+    monkeypatch.setattr(module.os, 'fdopen', owned_open)
     def fail(*args, **kwargs): raise primary
     monkeypatch.setattr(module.persistence, 'initialize', fail)
     try:
@@ -557,7 +557,7 @@ def test_lifetime_f2_db_failure_does_not_attempt_failing_owner(tmp_path, monkeyp
     import sqlite3
     from service import core as module
     before = set(module._failed_constructor_cleanup)
-    original_open, original_connect = open, sqlite3.connect
+    original_open, original_connect = os.fdopen, sqlite3.connect
     primary = ValueError('synthetic primary with two cleanup faults')
     fault, owner_attempts = True, []
     class Owner:
@@ -571,8 +571,8 @@ def test_lifetime_f2_db_failure_does_not_attempt_failing_owner(tmp_path, monkeyp
         def close(self):
             if fault: raise RuntimeError('DB close before release')
             super().close()
-    monkeypatch.setattr(module, 'open', lambda *a, **k: Owner(original_open(*a, **k)), raising=False)
-    monkeypatch.setattr(module.sqlite3, 'connect', lambda *a, **k: original_connect(*a, factory=Connection, **k))
+    monkeypatch.setattr(module.os, 'fdopen', lambda *a, **k: Owner(original_open(*a, **k)))
+    monkeypatch.setattr(module.sqlite3, 'connect', lambda *a, **k: original_connect(*a, **k) if a[0] == ':memory:' else original_connect(*a, factory=Connection, **k))
     def fail(*args, **kwargs): raise primary
     monkeypatch.setattr(module.persistence, 'initialize', fail)
     try:
@@ -603,7 +603,7 @@ def test_bounded_core_capacity_before_effects(tmp_path, monkeypatch):
     effects = []
     assert module.CORE_OWNERSHIP_LIMIT == 64
     monkeypatch.setattr(module.persistence, 'mkdir_durable', lambda *a: effects.append('mkdir'))
-    monkeypatch.setattr(module, 'open', lambda *a: effects.append('owner'), raising=False)
+    monkeypatch.setattr(module.os, 'fdopen', lambda *a: effects.append('owner'))
     monkeypatch.setattr(module.sqlite3, 'connect', lambda *a, **k: effects.append('db'))
     try:
         for i in range(63): owned.append(module._reserve_core(tmp_path/str(i)))
@@ -706,7 +706,12 @@ def test_bounded_core_early_failure_accounting(tmp_path, monkeypatch, phase):
         db = connect(*a, factory=DB, **kw); opened.append(db); return db
     monkeypatch.setattr(module.persistence, 'mkdir_durable', make)
     monkeypatch.setattr(module.sqlite3, 'connect', connection)
-    if phase == 'owner': monkeypatch.setattr(module, 'open', lambda *a: fail(), raising=False)
+    if phase == 'owner':
+        opening = module.os.open
+        def owned_open(path, *args, **kwargs):
+            if path == root/'control.lock': fail()
+            return opening(path, *args, **kwargs)
+        monkeypatch.setattr(module.os, 'open', owned_open)
     if phase == 'persistence': monkeypatch.setattr(module.persistence, 'initialize', lambda *a, **k: fail())
     if phase == 'sync':
         def syncing(path):
@@ -726,7 +731,7 @@ def test_bounded_core_ordinary_close_faults(tmp_path, monkeypatch, when, drop):
     import sqlite3
     from service import core as module
     baseline = _bounded_records(); fault = True; calls = []
-    connect, opening = sqlite3.connect, open
+    connect, opening = sqlite3.connect, os.fdopen
     class DB(sqlite3.Connection):
         def close(self):
             calls.append('db')
@@ -740,8 +745,8 @@ def test_bounded_core_ordinary_close_faults(tmp_path, monkeypatch, when, drop):
             calls.append('owner')
             if fault and when == 'owner': raise RuntimeError('owner')
             self.file.close()
-    monkeypatch.setattr(module.sqlite3, 'connect', lambda *a, **k: connect(*a, factory=DB, **k))
-    monkeypatch.setattr(module, 'open', lambda *a: Owner(opening(*a)), raising=False)
+    monkeypatch.setattr(module.sqlite3, 'connect', lambda *a, **k: connect(*a, **k) if a[0] == ':memory:' else connect(*a, factory=DB, **k))
+    monkeypatch.setattr(module.os, 'fdopen', lambda *a: Owner(opening(*a)))
     c = ActiveCore(tmp_path/'ordinary'); r = c._ownership
     assert r in _bounded_records() and r.state == 'live'
     try:
@@ -865,7 +870,7 @@ def test_bounded_core_remaining_early_phases(tmp_path, monkeypatch, phase):
 def test_bounded_core_no_mutex_during_resource_hooks(tmp_path, monkeypatch):
     from service import core as module
     import sqlite3
-    baseline = _bounded_records(); connect = sqlite3.connect; opening = open; witnessed = []
+    baseline = _bounded_records(); connect = sqlite3.connect; opening = os.fdopen; witnessed = []
     def check():
         assert module._core_registry_mutex.acquire(blocking=False)
         module._core_registry_mutex.release(); witnessed.append(True)
@@ -876,8 +881,8 @@ def test_bounded_core_no_mutex_during_resource_hooks(tmp_path, monkeypatch):
         def __init__(self, file): self.file = file
         def fileno(self): return self.file.fileno()
         def close(self): check(); self.file.close()
-    monkeypatch.setattr(module.sqlite3, 'connect', lambda *a, **k: connect(*a, factory=DB, **k))
-    monkeypatch.setattr(module, 'open', lambda *a: Owner(opening(*a)), raising=False)
+    monkeypatch.setattr(module.sqlite3, 'connect', lambda *a, **k: connect(*a, **k) if a[0] == ':memory:' else connect(*a, factory=DB, **k))
+    monkeypatch.setattr(module.os, 'fdopen', lambda *a: Owner(opening(*a)))
     c = ActiveCore(tmp_path/'hooks')
     try:
         c.active = object()

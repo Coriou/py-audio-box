@@ -20,6 +20,10 @@ from worker.engines.pocket import _open
 
 MAX_SOURCE = 24*1024*1024
 MAX_OUTPUT = 36*1024*1024
+# Debian FFmpeg's resolved 214-library closure is about 10.5 KiB. Keep the
+# registration finite while retaining every dependency (the outer plan/config
+# limits remain unchanged).
+MAX_REGISTRATION = 16*1024
 
 
 def read_bounded(fd, limit):
@@ -44,7 +48,7 @@ def settings(value):
 
 def registration(value):
     oracle.validate('audio_converter_registration', value)
-    if len(json.dumps(value,ensure_ascii=False,separators=(',',':'),allow_nan=False).encode('utf-8'))>4096:
+    if len(json.dumps(value,ensure_ascii=False,separators=(',',':'),allow_nan=False).encode('utf-8'))>MAX_REGISTRATION:
         raise Refused('resource_plan_limit')
     for path in [value['executable'], *value['runtime_closure']]:
         if not Path(path).is_absolute() or '..' in Path(path).parts or str(Path(path)) != path:

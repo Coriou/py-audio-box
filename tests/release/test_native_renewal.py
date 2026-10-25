@@ -189,7 +189,16 @@ class RenewalHistoryTests(unittest.TestCase):
         self.assertFalse((self.f.s.journal.root/'retirement').exists())
 
     def test_changed_retained_media_refuses_seal(self):
-        self.prepare();self.begin();self.retire()
+        self.prepare()
+        if not any((self.root/'assets').iterdir()):
+            # Failed/cancelled jobs publish no audio. Give those inherited cases
+            # a real owned upload before freezing the retained-media inventory.
+            from service.ingest import ingest_local
+            core=Core(self.root,_publication_creation=1)
+            try:
+                ingest_local(core,'alice',Path('contracts/fixtures/v1/short.wav').read_bytes())
+            finally:core.close()
+        self.begin();self.retire()
         file=next((self.root/'assets').iterdir());raw=file.read_bytes();file.write_bytes(raw+b'RETAIN')
         with self.assertRaises(Exception): r.seal(self.intent,export_file=self.f.s.journal.root/'retirement-export')
         self.assertFalse((self.intent.parent/'001.seal').exists())
