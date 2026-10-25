@@ -238,11 +238,9 @@ class Dispatcher:
                 raise ValueError('unsupported_control')
             # Replays precede authority refresh, but remain bound to the source
             # job even when two sources have byte-identical frozen inputs.
-            previous = self.core.db.execute('SELECT retry_of,job FROM jobs WHERE principal=? AND key=? AND retry_of IS NOT NULL', (principal,key)).fetchall()
-            if previous:
-                oracle.require(len(previous)==1 and previous[0][0]==old['id'], 'idempotency_conflict')
-                job = json.loads(previous[0][1])
-            else:
+            job = self.core.execution_duplicate(principal, old['operation'], key,
+                context['plan']['request'], context=context, retry_of=old['id'])
+            if job is None:
                 oracle.require(old['state'] in ('failed','cancelled') and all(a['reaped'] for a in old['attempts']), 'unsupported_control')
                 if not self._ready(): raise ValueError('not_ready')
                 if self.core.db.execute("SELECT 1 FROM dispatches WHERE job_id=? AND (acked=0 OR phase='unknown')", (old['id'],)).fetchone():
@@ -315,11 +313,8 @@ class Dispatcher:
             owned(payload['job_id'])
             return domain.save(principal, key, payload['job_id'], payload['candidate_id'], payload['voice_id'], expected_revision=payload['expected_revision'])
         # Duplicate lookup retains the original frozen identity and reservation.
-        row = self.core.db.execute('SELECT fingerprint,job FROM jobs WHERE principal=? AND operation=? AND key=?', (principal,operation,key)).fetchone()
-        if row:
-            oracle.require(row[0] == oracle.fingerprint(principal,operation,payload), 'idempotency_conflict')
-            job = json.loads(row[1])
-        else:
+        job = self.core.execution_duplicate(principal, operation, key, payload)
+        if job is None:
             if not self._activation_open() or self.closing or not self.reconciled or self.quarantined or self.resource_fault or self.integrity_fault or not getattr(self.runtime,'admission_open',True):
                 raise ValueError('not_ready')
             if self.production_contexts is None: raise ValueError('not_ready')
@@ -406,8 +401,10 @@ class Dispatcher:
             # Idempotent lookup is a read, including during quarantine/reconnect.
             if op=='submit':
                 if len(args)!=2 or not set(kwargs)<= {'retry_of','fixture','seconds'}:raise ValueError('closed_synthetic_command')
-                existing=self.core.db.execute("SELECT job FROM jobs WHERE principal=? AND operation='speech_generate' AND key=?",args).fetchone()
-                if existing:return json.loads(existing[0])
+                context=json.loads(Path('contracts/fixtures/v1/transcript-speech_generate.json').read_text())['context']
+                existing=self.core.execution_duplicate(args[0], 'speech_generate', args[1],
+                    context['plan']['request'], context=context, retry_of=kwargs.get('retry_of'))
+                if existing is not None:return existing
             if not self._activation_open(): raise ValueError('persistent_activation_closed_until_C1')
             if self.installed_checked: raise ValueError('installed_production_commands_required')
             if self.closing or not self.reconciled or self.quarantined or self.resource_fault or self.integrity_fault or not getattr(self.runtime,'admission_open',True):raise ValueError('startup_or_quarantine')
