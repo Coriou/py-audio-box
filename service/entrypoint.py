@@ -515,6 +515,17 @@ def _owned_app(dependencies, mount):
             app.state.installed_mount = app.router.routes[-1]
             app.state.dispatcher = owner
             yield
+        except BaseException as exc:
+            # Uvicorn's quiet installed mode suppresses its lifespan traceback.
+            # Retain a source location without credential/configuration values.
+            trace = exc.__traceback__
+            while trace is not None and trace.tb_next is not None:
+                trace = trace.tb_next
+            if trace is not None:
+                import sys
+                print('installed_startup_refused:'+type(exc).__name__+':'+
+                    trace.tb_frame.f_code.co_name+':'+str(trace.tb_lineno),file=sys.stderr)
+            raise
         finally:
             responsibility['cleanup_requested'] = True
             advance()

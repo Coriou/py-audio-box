@@ -107,7 +107,10 @@ def mounts(role, b, phase=None, *, family=None):
         Destination=ROOTS[r],RW=r in writable,Propagation='') for r in names]
     if family is not None and role=='worker':
         result.append(dict(Type='volume',Name=b['volumes']['control']['Name'],
-            Source=b['volumes']['control']['Mountpoint'].rstrip('/')+'/core/assets',
+            # Docker reports the volume root here, including for subpath mounts.
+            # HostConfig.VolumeOptions.Subpath is independently checked exactly;
+            # live local-root identities corroborate the mounted asset inode.
+            Source=b['volumes']['control']['Mountpoint'],
             Destination='/references/assets',RW=False,Propagation=''))
     return result
 

@@ -3308,12 +3308,11 @@ def test_b23a_r1_reader_nested_role_mount_refuses(b23_host,monkeypatch,role,mana
 def test_lotk_exact_supplied_snapshot_is_not_recaptured(installation, monkeypatch):
     """A frozen actual snapshot must survive acceptance without a new backup."""
     intent, observation, raw = prefix_fixture(installation)
-    from contextlib import contextmanager
-    @contextmanager
-    def forbidden_recapture(path):
+    def forbidden_recapture(*args):
         raise AssertionError('frozen snapshot was recaptured')
-        yield
-    monkeypatch.setattr(recovery, 'private_database', forbidden_recapture)
+    # Read-only validation may still use a private database. Only making a new
+    # original snapshot would replace the supplied immutable physical evidence.
+    monkeypatch.setattr(recovery, '_capture_original_snapshot', forbidden_recapture)
     roots, scope, _, _ = installation
     result = recovery._pending_through_evidence(roots, scope, intent, observation,
         now=102, snapshot_bytes=raw)

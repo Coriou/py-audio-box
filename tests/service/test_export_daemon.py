@@ -70,13 +70,14 @@ class ExportDaemonTests(unittest.TestCase):
         self.assertEqual(args[args.index('--expected-worker-image')+1],s.config['images']['worker'])
         self.assertTrue(any('volume-subpath=core/assets' in a and ',readonly' in a and 'volume-nocopy' in a for a in args))
         dv.inspect_container(good,'worker',s.config,s.b,family=ex.FAMILY)
+        self.assertEqual(good['Mounts'][-1]['Source'],s.b['volumes']['control']['Mountpoint'])
         changes=[lambda c:c['HostConfig']['Mounts'][-1]['VolumeOptions'].pop('Subpath'),
             lambda c:c['HostConfig']['Mounts'][-1]['VolumeOptions'].update(Subpath='core'),
             lambda c:c['HostConfig']['Mounts'][-1]['VolumeOptions'].update(NoCopy=False),
             lambda c:c['HostConfig']['Mounts'][-1]['VolumeOptions'].update(NoCopy=1),
             lambda c:c['HostConfig']['Mounts'][-1].update(ReadOnly=1),
             lambda c:c['HostConfig']['Mounts'][-1]['VolumeOptions'].update(unknown=True),
-            lambda c:c['Mounts'][-1].update(Source=s.b['volumes']['control']['Mountpoint']),
+            lambda c:c['Mounts'][-1].update(Source=s.b['volumes']['control']['Mountpoint']+'/foreign'),
             lambda c:c['Mounts'][-1].update(Name='copied-control'),
             lambda c:c['Mounts'][-1].update(RW=True),
             lambda c:c['Mounts'].append(copy.deepcopy(c['Mounts'][-1])),

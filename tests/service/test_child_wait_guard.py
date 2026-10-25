@@ -658,14 +658,14 @@ class Plugin:
                 witness.completed = (*witness.completed[:2], '0'*32)
                 assert witness.completed[2] != witness.completed[1]['intent']['id']
             if mode == 'bad-offset':
-                frame.f_locals['offset'] = len(frame.f_locals['raw'])
+                h.set_frame_local(frame, 'offset', len(frame.f_locals['raw']))
                 assert frame.f_locals['offset'] == len(frame.f_locals['raw'])
             if mode == 'frame-budget':
-                frame.f_locals['raw'] = bytearray(1048577)
+                h.set_frame_local(frame, 'raw', bytearray(1048577))
                 assert len(frame.f_locals['raw']) == 1048577
             if mode == 'bad-slice':
-                inner = exc.__traceback__.tb_next.tb_frame
-                inner.f_locals['a'] = (frame.f_locals['write_fd'], memoryview(b'wrong slice'))
+                inner = witness.event_trace_P[2].tb_next.tb_frame
+                h.set_frame_local(inner, 'a', (frame.f_locals['write_fd'], memoryview(b'wrong slice')))
                 assert bytes(inner.f_locals['a'][1]) == b'wrong slice'
                 assert inner.f_locals['a'][1].obj is not frame.f_locals['raw']
             if mode == 'wrong-operation-code':
@@ -1769,7 +1769,7 @@ class Plugin:
                     exc = Sub(errno.EAGAIN, 'control').with_traceback(exc.__traceback__)
                     assert type(exc) is Sub
                 elif mode == 'raw-budget':
-                    frame.f_locals['raw'] = bytearray(1048577)
+                    h.set_frame_local(frame, 'raw', bytearray(1048577))
                     w.framed_id = id(frame.f_locals['raw'])
                     offset = frame.f_locals['offset']
                     inner.f_locals['raw'] = memoryview(frame.f_locals['raw'])[offset:offset+65536]

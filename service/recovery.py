@@ -1965,7 +1965,11 @@ def _prefix_file(path, raw, fault, point):
 
 
 def _prefix_exact(path, raw):
-    if path.stat(follow_symlinks=False).st_mode & 0o777 != 0o600: raise ValueError('b2_prefix_permissions')
+    try:
+        info = path.stat(follow_symlinks=False)
+    except FileNotFoundError:
+        raise ValueError('b2_prefix_missing') from None
+    if info.st_mode & 0o777 != 0o600: raise ValueError('b2_prefix_permissions')
     if read_file(path,MAX_BYTES)!=raw: raise ValueError('b2_prefix_quarantine')
     fd=os.open(path,os.O_RDONLY|os.O_NOFOLLOW|os.O_NONBLOCK)
     try: os.fsync(fd)

@@ -282,6 +282,19 @@ class ModeledRehearsalCompletionWitness:
 # Future H/S triples of the same four-byte format plus P and these legacy phases
 # total 59 bytes; even all existing R/J/T/C alternatives together stay <=256
 # only under their existing mutually exclusive node declarations (see handoff).
+def set_frame_local(frame, name, value):
+    """Apply an explicit predicate mutation on supported CPython test runtimes."""
+    frame.f_locals[name] = value
+    if sys.version_info < (3, 13):
+        # Before PEP 667, f_locals is a snapshot; writing it alone silently
+        # leaves the tested predicate unchanged. Synchronize the labelled probe.
+        import ctypes
+        sync = ctypes.pythonapi.PyFrame_LocalsToFast
+        sync.argtypes = (ctypes.py_object, ctypes.c_int)
+        sync.restype = None
+        sync(frame, 0)
+
+
 class DurableLostResultWitness_P:
     armed, seam, final = b'P:a;', b'P:s;', b'P:f;'
 
@@ -289,6 +302,7 @@ class DurableLostResultWitness_P:
         self.runner, self.continuation = runner, continuation
         self.witness_fd = witness_fd
         self.exception = self.route = self.completed = self.runner_frame = None
+        self.event_trace_P = None
         self.result_identity = self.sentinel_P = None
         self.valid = True
         module = sys.modules.get('test_recovery')
@@ -408,7 +422,13 @@ class DurableLostResultWitness_P:
                 if self.sentinel_P is None or self.sentinel_P.read_text() != self.completed[2]: self.valid = False
         if event == 'exception' and frame.f_code is self.runner:
             exc = arg[1]
-            if self.at_seam_P(exc, frame): self.emit_P(self.seam)
+            # CPython 3.11 supplies the traceback in the trace event before it
+            # attaches it to the exception. Keep only this exact observed event.
+            self.event_trace_P = (exc, frame, arg[2])
+            try:
+                if self.at_seam_P(exc, frame): self.emit_P(self.seam)
+            finally:
+                self.event_trace_P = None
         return self.trace_P
 
     def at_seam_P(self, exc, frame):
@@ -418,7 +438,8 @@ class DurableLostResultWitness_P:
         try:
             if self.sentinel_P is None or self.sentinel_P.read_text() != self.completed[2]: return False
         except OSError: return False
-        trace = exc.__traceback__
+        observed = self.event_trace_P
+        trace = observed[2] if observed is not None and observed[0] is exc and observed[1] is frame else exc.__traceback__
         if (trace is None or trace.tb_frame is not frame or trace.tb_lasti not in self.write_offsets or
                 trace.tb_next is None or trace.tb_next.tb_frame.f_code is not self.broken or
                 trace.tb_next.tb_lasti not in self.raise_offsets or
@@ -452,6 +473,7 @@ class DurableLostResultWitness_P:
         return self.final if tuple(route) == self.route else b''
 
     def clear_P(self):
+        self.event_trace_P = None
         self.exception = self.route = self.completed = self.runner_frame = self.sentinel_P = None
 
     @classmethod
