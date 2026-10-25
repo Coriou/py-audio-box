@@ -226,7 +226,9 @@ _failed_constructor_cleanup = _FailedConstructorView()
 
 
 class Core:
-    def __init__(self, root: Path, *, historical_local=False, _native_activation=None):
+    def __init__(self, root: Path, *, historical_local=False, _native_activation=None, _publication_creation=2):
+        if type(_publication_creation) is not int or _publication_creation not in (1,2):
+            raise ValueError('internal_publication_creation')
         self.historical_local = historical_local
         self.root = Path(root).absolute()
         self._ownership = _reserve_core(self.root)
@@ -234,6 +236,15 @@ class Core:
         try:
             fresh = not self.root.exists() or (self.root.is_dir() and not any(self.root.iterdir()))
             self.fresh_initialized = fresh
+            if not fresh and (_publication_creation==1 or _native_activation is not None):
+                # Installed/native constructor choice is also a pre-writer gate.
+                from service.recovery import private_database
+                from contextlib import closing
+                with private_database(self.root/'core.sqlite') as private:
+                    with closing(sqlite3.connect(private.as_uri()+'?mode=ro',uri=True,timeout=0)) as check:
+                        check.execute('PRAGMA trusted_schema=OFF')
+                        if persistence.store_format(check)!=1:
+                            raise ValueError('installed_native_publication_v2_unsupported')
             persistence.mkdir_durable(self.root, sync_dir)
             if self.root.is_symlink() or self.root.stat().st_uid != os.getuid():
                 raise ValueError('foreign_root')
@@ -242,7 +253,7 @@ class Core:
             info = self.root.stat()
             self._ownership.bind_root((info.st_dev, info.st_ino))
             self.root.chmod(0o700)
-            self.owner = self._ownership.owner = open(self.root / 'control.lock', 'a+b')
+            self.owner = self._ownership.owner = os.fdopen(os.open(self.root / 'control.lock', os.O_RDWR|os.O_CREAT|os.O_NOFOLLOW,0o600),'r+b')
             try: fcntl.flock(self.owner, fcntl.LOCK_EX | fcntl.LOCK_NB)
             except BlockingIOError:
                 raise ValueError('control_busy') from None
@@ -265,16 +276,22 @@ class Core:
             elif database.is_symlink() or database.stat().st_uid!=os.getuid():
                 raise persistence.PublicationQuarantine('foreign_database')
             self._db = self._ownership.db = sqlite3.connect(self.root / 'core.sqlite', timeout=2, isolation_level=None)
+            version = self.db.execute('PRAGMA user_version').fetchone()[0]
+            if version == 2 and (_publication_creation == 1 or _native_activation is not None):
+                raise ValueError('installed_native_publication_v2_unsupported')
             if _native_activation is not None:
                 from service.native_activation import NativeActivation
                 if type(_native_activation) is not NativeActivation:
                     raise ValueError('checked_native_activation_required')
+                _publication_creation=1
                 _native_activation.retained_check(self)
             self.db.execute('PRAGMA journal_mode=WAL')
             self.db.execute('PRAGMA synchronous=FULL')
             self.db.execute('PRAGMA foreign_keys=ON')
             version = self.db.execute('PRAGMA user_version').fetchone()[0]
-            if version not in (0, 1): raise ValueError('unsupported_store_version')
+            if version not in (0, 1, 2): raise ValueError('unsupported_store_version')
+            if version == 2 and (_publication_creation == 1 or _native_activation is not None):
+                raise ValueError('installed_native_publication_v2_unsupported')
             if version == 0 and not fresh:
                 raise persistence.PublicationQuarantine('incomplete_core_schema')
             if version == 0:
@@ -289,9 +306,16 @@ class Core:
             CREATE TABLE publications(job_id TEXT PRIMARY KEY REFERENCES jobs(id), manifest TEXT NOT NULL, artifact TEXT NOT NULL, message TEXT NOT NULL);
             CREATE TABLE assets(id TEXT PRIMARY KEY, metadata TEXT NOT NULL);
             CREATE TABLE artifacts(id TEXT PRIMARY KEY, metadata TEXT NOT NULL);
-            PRAGMA user_version=1;
-            COMMIT;''')
-            self.p1 = persistence.initialize(self.db, fresh=fresh)
+            ''')
+                try:
+                    self.p1 = persistence.initialize(self.db, fresh=True,creation=_publication_creation)
+                    self.db.execute('COMMIT')
+                except BaseException:
+                    self.db.execute('ROLLBACK')
+                    raise
+            else:
+                self.p1 = persistence.initialize(self.db, fresh=False)
+            self.publication_format = persistence.store_format(self.db) if self.p1 else None
             if not self.p1:
                 self.db.execute('PRAGMA query_only=ON')  # Also fence direct schema writers.
             # SQLite FULL protects WAL commits; persist the database/WAL namespace too.
@@ -301,6 +325,8 @@ class Core:
             self._publication_storage_failed = False
             self._transaction_serial = 0
             from service.voice_store import VoiceStore, initialize as initialize_voices
+            if not fresh and self.publication_format==2 and not self.db.execute("SELECT 1 FROM sqlite_master WHERE name='voice_catalogue_format'").fetchone():
+                raise persistence.PublicationQuarantine('incomplete_core_initialization')
             initialize_voices(self)
             self.voices = VoiceStore(self)
             with _core_bookkeeping(): self._ownership.state = 'live'
@@ -427,6 +453,10 @@ class Core:
                            'idempotency_conflict')
         return job
 
+    def require_export_format(self, operation):
+        if operation == 'audio_export' and (not self.p1 or persistence.store_format(self.db) != 2):
+            raise ValueError('publication_format_migration_required')
+
     def submit_execution(self, principal: str, key: str, context: dict, *, retry_of: str | None = None, _dispatch_settings=None, _admission=None, _profiles=None) -> dict:
         """One trusted submission transaction for synthetic and closed engine contexts.
 
@@ -437,6 +467,7 @@ class Core:
         fingerprint = oracle.fingerprint(principal, operation, dict(request=plan['request'],retry_of=retry_of) if retry_of else plan['request'])
         duplicate = self.execution_duplicate(principal, operation, key, plan['request'], context=context, retry_of=retry_of)
         if duplicate is not None: return duplicate
+        self.require_export_format(operation)
         from service.native_renewal import preallocate
         preallocate(self,context)
         from worker.runtime_protocol import execution, dispatch_mode
@@ -647,7 +678,7 @@ class Core:
         # Preserve historical single-output rows byte-for-byte in shape.
         e=entries[0]; columns=(e['destination'],e['temporary'],e['sha256'],e['byte_length'])
         binding=encode(artifact if len(entries)==1 else dict(version='prepared-reference-adoption-v1',artifact=artifact,manifest=manifest,files=entries))
-        persistence.publication_intent((binding,*columns),job=job,context=self._load(job_id)[1])
+        persistence.publication_intent((binding,*columns),publication=dict(artifact=encode(artifact),manifest=encode(manifest)),job=job,context=self._load(job_id)[1],publication_format=self.publication_format)
         with self.transaction():
             self.db.execute('INSERT INTO publications VALUES (?,?,?,?)', (job_id,encode(manifest),encode(artifact),encode(message)))
             self.db.execute('INSERT INTO publication_work VALUES (?,?,?,?,?,?)', (job_id,binding,*columns))
@@ -674,9 +705,10 @@ class Core:
         row=self.db.execute('SELECT binding,destination,temporary,sha256,byte_length FROM publication_work WHERE job_id=?',(job_id,)).fetchone()
         if row is None:
             raise persistence.PublicationQuarantine('missing_publication_provenance')
-        bound,entries=persistence.publication_intent(row,publication=dict(artifact=encode(artifact),manifest=encode(manifest)))
+        job,context=self._load(job_id)
+        bound,entries=persistence.publication_intent(row,publication=dict(artifact=encode(artifact),manifest=encode(manifest)),job=job,context=context,publication_format=self.publication_format)
         stored=json.loads(row[0])
-        if bound!=artifact or ('version' in stored and stored['manifest']!=manifest):
+        if encode(bound)!=encode(artifact) or ('version' in stored and encode(stored['manifest'])!=encode(manifest)):
             raise persistence.PublicationQuarantine('publication_work_mismatch')
         job,context=self._load(job_id)
         attempt=job['attempts'][-1]
@@ -694,8 +726,8 @@ class Core:
             try: alias_info=alias.lstat()
             except FileNotFoundError: alias_info=None
             if alias_info is not None:
-                first=persistence.verify_file(path,digest,length,links=2)
-                second=persistence.verify_file(alias,digest,length,links=2)
+                first=persistence.verify_file(path,digest,length,links=2,publication_format=self.publication_format,job=job,context=context)
+                second=persistence.verify_file(alias,digest,length,links=2,publication_format=self.publication_format,job=job,context=context)
                 if (first.st_dev,first.st_ino)!=(second.st_dev,second.st_ino):
                     raise persistence.PublicationQuarantine('foreign_publication_alias')
                 for (asset_id,) in self.db.execute('SELECT id FROM assets'):
@@ -707,7 +739,7 @@ class Core:
                         raise persistence.PublicationQuarantine('published_inode_alias')
                 alias.unlink()  # Only the exact recorded redundant protocol alias.
                 sync_dir(directory)
-            persistence.verify_file(path,digest,length,links=1)
+            persistence.verify_file(path,digest,length,links=1,publication_format=self.publication_format,job=job,context=context)
             sync_dir(directory)
 
     @persistence.storage_session
@@ -775,7 +807,7 @@ class Core:
             names=columns.split(',')
             data[table]=[dict(zip(names,r)) for r in self.db.execute(
                 'SELECT '+columns+' FROM '+table+' WHERE '+key+'=?',(job_id,))]
-        artifact=persistence.public_artifact(dict(id=artifact_id,metadata=row[0]),data)
+        artifact=persistence.public_artifact(dict(id=artifact_id,metadata=row[0]),data,publication_format=self.publication_format)
         for asset_id in artifact['asset_ids']: self.asset(asset_id)
         return artifact
 
@@ -788,8 +820,24 @@ class Core:
         from service.ingest import MAX_BYTES, open_directory, reference_budget
         budget = MAX_BYTES if reference_budget(metadata) else 1024*1024
         if metadata['provenance']['kind']=='audio_export':
-            from worker.audio_export import MAX_OUTPUT
-            budget=MAX_OUTPUT
+            # Asset provenance alone is not authority to enlarge a read. Bind it
+            # to the same retained producer used by the public artifact reader.
+            matches=list(self.db.execute('SELECT job_id FROM publication_work WHERE destination=? LIMIT 2',(asset_id,)))
+            oracle.require(len(matches)==1,'foreign_media')
+            job_id=matches[0][0]
+            retained=self.db.execute('SELECT artifact FROM publications WHERE job_id=?',(job_id,)).fetchone()
+            oracle.require(retained is not None,'foreign_media')
+            aid=json.loads(retained[0])['id']
+            public=self.db.execute('SELECT metadata FROM artifacts WHERE id=?',(aid,)).fetchone()
+            oracle.require(public is not None,'foreign_media')
+            raw=public[0];data={}
+            for table,columns,key in (
+                    ('jobs','id,job,context','id'),('publications','job_id,manifest,artifact','job_id'),
+                    ('publication_work','job_id,binding,destination,temporary,sha256,byte_length','job_id')):
+                data[table]=[dict(zip(columns.split(','),r)) for r in self.db.execute('SELECT '+columns+' FROM '+table+' WHERE '+key+'=?',(job_id,))]
+            persistence.public_artifact(dict(id=aid,metadata=raw),data,publication_format=self.publication_format)
+            job,context=self._load(job_id)
+            budget=persistence.publication_limit(self.publication_format,job,context)
         directory = open_directory(self.root/'assets')
         try:
             fd=os.open(metadata['id'],os.O_RDONLY|os.O_NOFOLLOW,dir_fd=directory)

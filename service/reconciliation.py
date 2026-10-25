@@ -79,6 +79,9 @@ class Reconciliation:
         self.staging = Path(staging).absolute() if staging is not None else None
         self.owner = threading.get_ident()
         self.entry_limit, self.byte_limit, self.seconds = entries, byte_budget, seconds
+        self.scalar_limit = 16*1024**2 if core.publication_format==2 else byte_budget
+        self.media_limit = 160*1024**2 if core.publication_format==2 else byte_budget
+        self.separate_media = core.publication_format==2
         self.scan_id = None
         self.cursors = {}
         persistence.initialize_inventory(core)
@@ -90,10 +93,11 @@ class Reconciliation:
         if self.db.in_transaction:
             raise ValueError('inventory_transaction')
 
-    def _charge(self, size=0):
+    def _charge(self, size=0, *, media=False):
         self.entries += 1
-        self.bytes += size
-        if self.entries > self.entry_limit or self.bytes > self.byte_limit or time.monotonic() > self.end:
+        if media and self.separate_media: self.media_bytes += size
+        else: self.bytes += size
+        if self.entries > self.entry_limit or self.bytes > min(self.byte_limit,self.scalar_limit) or self.media_bytes > self.media_limit or time.monotonic() > self.end:
             raise Incomplete('inventory_budget')
 
     def _row(self, namespace, name, kind, reason, *, identity=None, owner=None, refs=()):
@@ -111,7 +115,11 @@ class Reconciliation:
             if policy is None: return info.st_uid == os.getuid()
             uid,gid,mode = install_policy.expectation(policy,'control',directory=directory)
             return (info.st_uid,info.st_gid,stat.S_IMODE(info.st_mode)) == (uid,gid,mode)
-        self.entries = self.bytes = 0
+        # Offline/native callers intentionally bypass the mutating constructor.
+        self.scalar_limit = self.byte_limit
+        self.media_limit = self.byte_limit
+        self.separate_media = False
+        self.entries = self.bytes = self.media_bytes = 0
         self.end = time.monotonic() + self.seconds
         self.rows, self.reasons = {}, set()
         tables = {r[0] for r in self.db.execute("SELECT name FROM sqlite_master WHERE type='table'")}
@@ -120,6 +128,12 @@ class Reconciliation:
         self.fingerprint = hashlib.sha256(encode(schema).encode())
         if tables - TABLES:
             self.reasons.add('unknown_reference_schema')
+        try: self.publication_format = persistence.store_format(self.db)
+        except (ValueError,sqlite3.Error): raise Incomplete('unknown_publication_format') from None
+        if self.publication_format==2 and policy is None and not tables & persistence.B1_COLUMNS.keys():
+            self.media_limit=160*1024**2
+            self.separate_media=True
+            self.scalar_limit=16*1024**2
         b2 = None
         if tables & persistence.B2_COLUMNS.keys():
             from service.recovery import validate_b2_database
@@ -166,7 +180,7 @@ class Reconciliation:
             digest = None
             if regular:
                 # Charge each name, including aliases. Never claim hardlink credit.
-                self._charge(info.st_size)
+                self._charge(info.st_size,media=True)
                 if namespace == 'assets':
                     fd = os.open(name, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=directory_fd)
                     try:
@@ -551,7 +565,7 @@ def typed_references(self, data, b2, _before, document):
                 if column == 'context': context(value, source)
                 else: walk(value, definition, source)
             if table == 'artifacts':
-                try: persistence.public_artifact(record, data)
+                try: persistence.public_artifact(record, data,publication_format=self.publication_format)
                 except persistence.PublicationQuarantine:
                     raise Incomplete('public_artifact_mismatch') from None
             if table in CATALOGUE_TABLES - {'voice_catalogue_format'}:
@@ -646,7 +660,7 @@ def typed_references(self, data, b2, _before, document):
                     for column, definition in adapters['publications'].items(): walk(json.loads(target[column]), definition, source)
             if table == 'publication_work':
                 from service.persistence import publication_record
-                artifact,entries=publication_record(record,data)
+                artifact,entries=publication_record(record,data,publication_format=self.publication_format)
                 for entry in entries: add(entry['destination'], source)
                 walk(artifact, 'artifact', source)
             if table == 'dispatches':
@@ -678,7 +692,7 @@ def typed_references(self, data, b2, _before, document):
     work = {}
     for r in data.get('publication_work', []):
         from service.persistence import publication_record
-        artifact,entries=publication_record(r,data)
+        artifact,entries=publication_record(r,data,publication_format=self.publication_format)
         for entry in entries:
             expanded=dict(r,**entry);expanded['binding']=json.dumps(artifact)
             work[entry['destination']]=expanded

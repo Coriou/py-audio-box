@@ -41,7 +41,7 @@ class Dispatcher:
         self.initialized.result(timeout=15 if installed_activation is not None else 5)
 
     def call(self, op, *args, timeout=3, **kwargs):
-        if op not in ('submit','job','jobs','events','artifact','asset','cancel','status','replace','inventory_page','reconcile_startup','close','voice_list','voice_get','voice_version','voice_resolve','voice_summaries','voice_version_summaries','asset_ingest','asset_metadata','asset_content','configured_presets','configured_capabilities','configured_profiles','production_preset_register','production_prepare','production_generate','production_audio_export','audio_export_available','production_save','production_results','production_job','production_cancel','production_artifact','production_jobs','production_events','production_retry','production_aliases','production_archive','production_profile'):
+        if op not in ('submit','job','jobs','events','artifact','asset','cancel','status','replace','inventory_page','reconcile_startup','close','voice_list','voice_get','voice_version','voice_resolve','voice_summaries','voice_version_summaries','asset_ingest','asset_metadata','asset_content','configured_presets','configured_capabilities','configured_profiles','production_preset_register','production_prepare','production_generate','production_audio_export','audio_export_available','audio_export_availability','production_save','production_results','production_job','production_cancel','production_artifact','production_jobs','production_events','production_retry','production_aliases','production_archive','production_profile'):
             raise ValueError('unknown_control_command')
         if op == 'asset_ingest':
             from service.ingest import MAX_BYTES
@@ -93,7 +93,8 @@ class Dispatcher:
                             DEFAULT_BUDGET if self.budget is None else self.budget)
             from service.native_activation import NativeActivation
             core=self.core=Core(self.root, _native_activation=(self.installed_activation
-                if type(self.installed_activation) is NativeActivation else None))
+                if type(self.installed_activation) is NativeActivation else None),
+                _publication_creation=1 if self.installed_activation is not None or startup is not None else 2)
             if self.installed_activation is not None:
                 self.installed_activation.postcheck(self)
                 self.installed_checked = True
@@ -256,6 +257,7 @@ class Dispatcher:
                 request = context['plan']['request']
                 if old['operation']=='audio_export':
                     if self.installed_checked or self.audio_exports is None: raise ValueError('not_ready')
+                    self.core.require_export_format('audio_export')
                     current=self.audio_exports.resolve(self.core,principal,request)
                 elif self.production_contexts is None: raise ValueError('not_ready')
                 elif isinstance(self.production_contexts, ContextComposition):
@@ -324,6 +326,7 @@ class Dispatcher:
             if job is None:
                 if (not self._activation_open() or self.closing or not self.reconciled or self.quarantined or self.resource_fault or self.integrity_fault or self.persistence_fault or not getattr(self.runtime,'admission_open',True) or self.audio_exports is None or self.installed_checked):
                     raise ValueError('not_ready')
+                self.core.require_export_format('audio_export')
                 context=self.audio_exports.resolve(self.core,principal,payload)
                 job=domain.audio_export(principal,key,context,_admission=self.admission,_profiles=self.profiles)
             return dict(job_id=job['id'],input_sha256=job['input_sha256'],state='queued',status_url='/v1/jobs/'+job['id'])
@@ -345,7 +348,10 @@ class Dispatcher:
         return dict(job_id=job['id'], input_sha256=job['input_sha256'], state='queued', status_url='/v1/jobs/'+job['id'])
 
     def _command(self,op,*args,**kwargs):
-        if op=='audio_export_available': return bool(not self.installed_checked and self.audio_exports and self.audio_exports.available(args[0]))
+        if op=='audio_export_availability':
+            if self.installed_checked or not self.audio_exports or not self.audio_exports.available(args[0]): return 'unavailable_converter'
+            return 'implemented' if self.core.publication_format==2 else 'publication_format_migration_required'
+        if op=='audio_export_available': return self._command('audio_export_availability',*args)=='implemented'
         if op.startswith('production_'): return self._production_command(op,*args,**kwargs)
         if op=='asset_ingest':
             if self.installed_checked and not self._ready(): raise ValueError('not_ready')

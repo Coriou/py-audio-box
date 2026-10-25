@@ -808,7 +808,8 @@
         "idempotency_conflict",
         "not_ready",
         "resource_limit",
-        "unsupported_control"
+        "unsupported_control",
+        "publication_format_migration_required"
       ]
     },
     {
@@ -1238,7 +1239,8 @@
         "resource_limit",
         "unsupported_control",
         "missing_media",
-        "invalid_media"
+        "invalid_media",
+        "publication_format_migration_required"
       ],
       "description": "Managed owned integer PCM WAV inputs only, up to 60 seconds and 24 MiB; separate PCM24 WAV master. Optional loudness is single-pass loudnorm, not delivery loudness certification. Requires an explicitly enrolled immutable converter image and registration; existing installed families are unavailable."
     }

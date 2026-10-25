@@ -10,15 +10,58 @@ class PublicationQuarantine(ValueError):
     """Ambiguous namespace/provenance: retain intent and every name."""
 
 
-def initialize(db, *, fresh):
+PUBLICATION_V1 = '''CREATE TABLE publication_work(
+          job_id TEXT PRIMARY KEY REFERENCES publications(job_id),
+          binding TEXT NOT NULL, destination TEXT NOT NULL UNIQUE,
+          temporary TEXT NOT NULL UNIQUE, sha256 TEXT NOT NULL,
+          byte_length INTEGER NOT NULL CHECK(byte_length BETWEEN 1 AND 1048576))'''
+PUBLICATION_V2 = PUBLICATION_V1.replace('1048576', '37748736')
+FORMAT_DDL = 'CREATE TABLE p1_format(revision INTEGER NOT NULL, scope TEXT NOT NULL)'
+
+
+def detached_format(schema, markers):
+    """Named detached model; envelopes make no historical user_version claim."""
+    from service.voice_store import _sql_identity
+    if (len(markers) != 1 or len(markers[0]) != 2 or
+            type(markers[0][0]) is not int or markers[0][0] not in (1, 2) or
+            markers[0][1] != 'synthetic-core'):
+        raise PublicationQuarantine('unsupported_p1_format')
+    version = markers[0][0]
+    expected = sqlite3.connect(':memory:')
+    try:
+        expected.execute(FORMAT_DDL)
+        expected.execute(PUBLICATION_V1 if version == 1 else PUBLICATION_V2)
+        def identity(rows):
+            return sorted((k,n,t,_sql_identity(s)) for k,n,t,s in rows
+                          if t in ('p1_format','publication_work') or n in ('p1_format','publication_work'))
+        if identity(schema) != identity(expected.execute('SELECT type,name,tbl_name,sql FROM sqlite_master')):
+            raise PublicationQuarantine('unsupported_publication_schema')
+    finally:
+        expected.close()
+    return version
+
+
+def store_format(db):
+    where=" WHERE tbl_name IN ('p1_format','publication_work') OR name IN ('p1_format','publication_work')"
+    count,size=db.execute('SELECT count(*),coalesce(sum(coalesce(length(sql),0)+length(name)+length(tbl_name)+length(type)),0) FROM sqlite_master'+where).fetchone()
+    markers=list(db.execute('SELECT typeof(revision),length(scope) FROM p1_format LIMIT 2'))
+    if count>2048 or size>16*1024**2 or len(markers)!=1 or markers[0]!=('integer',14):
+        raise PublicationQuarantine('unsupported_p1_format')
+    version = detached_format(list(db.execute('SELECT type,name,tbl_name,sql FROM sqlite_master'+where+' LIMIT 2049')),
+                              list(db.execute('SELECT revision,scope FROM p1_format LIMIT 2')))
+    if db.execute('PRAGMA user_version').fetchone() != (version,):
+        raise PublicationQuarantine('publication_version_pair')
+    return version
+
+
+def initialize(db, *, fresh, creation=2):
     tables = {r[0] for r in db.execute("SELECT name FROM sqlite_master WHERE type='table'")}
     check_recovery_open(db)
     private = tables & {'p1_format', 'publication_work'}
     if private:
         if private != {'p1_format', 'publication_work'}:
             raise PublicationQuarantine('partial_p1_format')
-        if db.execute('SELECT revision,scope FROM p1_format').fetchall() != [(1, 'synthetic-core')]:
-            raise PublicationQuarantine('unsupported_p1_format')
+        store_format(db)
         expected = {
             'p1_format': ['revision', 'scope'],
             'publication_work': ['job_id', 'binding', 'destination', 'temporary', 'sha256', 'byte_length'],
@@ -28,16 +71,16 @@ def initialize(db, *, fresh):
                 raise PublicationQuarantine('partial_p1_schema')
         return True
     if not fresh:
+        if db.execute('PRAGMA user_version').fetchone() != (1,):
+            raise PublicationQuarantine('partial_p1_format')
         return False  # Never stamp an old root, even an empty old database.
-    db.executescript('''BEGIN IMMEDIATE;
-        CREATE TABLE p1_format(revision INTEGER NOT NULL, scope TEXT NOT NULL);
-        INSERT INTO p1_format VALUES (1,'synthetic-core');
-        CREATE TABLE publication_work(
-          job_id TEXT PRIMARY KEY REFERENCES publications(job_id),
-          binding TEXT NOT NULL, destination TEXT NOT NULL UNIQUE,
-          temporary TEXT NOT NULL UNIQUE, sha256 TEXT NOT NULL,
-          byte_length INTEGER NOT NULL CHECK(byte_length BETWEEN 1 AND 1048576));
-        COMMIT;''')
+    # Called inside fresh Core's transaction: DDL and both markers commit together.
+    if type(creation) is not int or creation not in (1,2):
+        raise ValueError('internal_publication_creation')
+    db.execute(FORMAT_DDL)
+    db.execute("INSERT INTO p1_format VALUES (?,'synthetic-core')",(creation,))
+    db.execute(PUBLICATION_V1 if creation == 1 else PUBLICATION_V2)
+    db.execute('PRAGMA user_version='+str(creation))
     return True
 
 
@@ -63,8 +106,8 @@ def write_complete(stream, data):
     os.fsync(stream.fileno())
 
 
-def verify_file(path, digest, length, *, links):
-    if not 1 <= length <= 1048576:
+def verify_file(path, digest, length, *, links, publication_format=1, job=None, context=None):
+    if type(length) is not int or not 1 <= length <= publication_limit(publication_format, job, context):
         raise PublicationQuarantine('publication_length_limit')
     fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW)
     try:
@@ -72,13 +115,13 @@ def verify_file(path, digest, length, *, links):
         if (not stat.S_ISREG(info.st_mode) or info.st_uid != os.getuid()
                 or info.st_nlink != links or info.st_size != length):
             raise PublicationQuarantine('foreign_publication_inode')
-        data = bytearray()
-        while len(data) < length + 1:
-            chunk = os.read(fd, min(65536, length + 1 - len(data)))
+        count = 0; digest_state = hashlib.sha256()
+        while count < length + 1:
+            chunk = os.read(fd, min(65536, length + 1 - count))
             if not chunk:
                 break
-            data.extend(chunk)
-        if len(data) != length or hashlib.sha256(data).hexdigest() != digest:
+            count += len(chunk); digest_state.update(chunk)
+        if count != length or digest_state.hexdigest() != digest:
             raise PublicationQuarantine('publication_bytes_mismatch')
         os.fsync(fd)
         return info
@@ -256,7 +299,27 @@ def check_operator_resolved(db,job_id):
         raise ValueError('operator_resolved_job')
 
 
-def publication_intent(row, *, publication=None, job=None, context=None):
+def publication_limit(publication_format, job=None, context=None):
+    """Storage capacity is never producer authority. Export needs a frozen execution."""
+    from contracts import validate as oracle
+    from worker.audio_export import execution
+    if type(publication_format) is not int or publication_format not in (1,2):
+        raise PublicationQuarantine('unsupported_p1_format')
+    if publication_format == 2 and job is not None and context is not None:
+        plan = context['plan']
+        if plan['operation'] == 'audio_export':
+            oracle.frozen_plan(plan,context['bundles'])
+            if job['operation'] != 'audio_export' or job['input_sha256'] != oracle.plan_hash(plan):
+                raise PublicationQuarantine('publication_producer_mismatch')
+            spec = execution(context)
+            from worker.transport import canonical
+            if canonical(context['execution']) != canonical(dict(converter=plan['resolved']['identity']['converter'])):
+                raise PublicationQuarantine('publication_execution_mismatch')
+            return min(37748736,spec.max_output_bytes)
+    return 1048576
+
+
+def publication_intent(row, *, publication=None, job=None, context=None, publication_format=1):
     """Decode only literal legacy work or an explicit, closed prepared pair.
 
     No DDL migration. Scalar columns always corroborate the first actual file.
@@ -265,6 +328,7 @@ def publication_intent(row, *, publication=None, job=None, context=None):
     import json
     from jsonschema.exceptions import ValidationError
     from contracts import validate as oracle
+    from worker.transport import canonical
     binding,destination,temporary,digest,length=row
     try:
         value=json.loads(binding)
@@ -294,18 +358,35 @@ def publication_intent(row, *, publication=None, job=None, context=None):
                         entry['byte_length']!=44+output['frames']*output['channels']*2): raise ValueError()
             if entries[0]!=dict(destination=destination,temporary=temporary,sha256=digest,byte_length=length): raise ValueError()
         if publication is not None:
-            if artifact!=json.loads(publication['artifact']): raise ValueError()
-            if 'version' in value and value['manifest']!=json.loads(publication['manifest']): raise ValueError()
+            if canonical(artifact)!=canonical(json.loads(publication['artifact'])): raise ValueError()
+            if 'version' in value and canonical(value['manifest'])!=canonical(json.loads(publication['manifest'])): raise ValueError()
         if job is not None:
             attempt=job['attempts'][-1]
             for key,expected in dict(job_id=job['id'],generation=job['generation'],input_sha256=job['input_sha256'],attempt_id=attempt['id'],owner_id=attempt['owner_id'],staging_id=attempt['staging_id']).items():
-                if artifact[key]!=expected: raise ValueError()
+                if canonical(artifact[key])!=canonical(expected): raise ValueError()
         if context is not None and 'version' in value:
             oracle.reference_roles(context['plan'],value['manifest']['candidates'][0],{a['id']:a for a in value['manifest']['outputs']})
-            if artifact['identity']!=context['plan']['resolved']['identity']: raise ValueError()
+            if canonical(artifact['identity'])!=canonical(context['plan']['resolved']['identity']): raise ValueError()
+        limit=publication_limit(publication_format,job,context)
+        if context is not None and job is not None:
+            plan=context['plan']
+            if canonical(artifact['identity'])!=canonical(plan['resolved']['identity']): raise ValueError()
+            if plan['operation']=='audio_export':
+                source=plan['assets'][0]
+                provenance=dict(source_asset_id=source['id'],source_sha256=source['sha256'],settings=plan['request'],converter=plan['resolved']['identity']['converter'])
+                if canonical(artifact.get('audio_export'))!=canonical(provenance): raise ValueError()
+                if publication is not None:
+                    manifest=json.loads(publication['manifest'])
+                    if (manifest['operation']!='audio_export' or
+                            canonical(manifest.get('audio_export'))!=canonical(provenance) or
+                            artifact['manifest_sha256']!=oracle.canonical_hash(manifest) or
+                            artifact['asset_ids']!=[o['id'] for o in manifest['outputs']]): raise ValueError()
+                    if len(entries)!=1 or len(manifest['outputs'])!=1: raise ValueError()
+                    for e,o in zip(entries,manifest['outputs']):
+                        if e['destination']!=o['id'] or e['sha256']!=o['sha256']: raise ValueError()
         for e in entries:
             if (set(e)!={'destination','temporary','sha256','byte_length'} or
-                    type(e['byte_length'])!=int or not 1<=e['byte_length']<=1048576 or
+                    type(e['byte_length'])!=int or not 1<=e['byte_length']<=limit or
                     not isinstance(e['temporary'],str) or not e['temporary'].startswith('adoption-') or
                     len(e['temporary'])!=41 or any(c not in '0123456789abcdef' for c in e['temporary'][9:])): raise ValueError()
         if len({e['destination'] for e in entries})!=len(entries) or len({e['temporary'] for e in entries})!=len(entries): raise ValueError()
@@ -314,19 +395,19 @@ def publication_intent(row, *, publication=None, job=None, context=None):
         raise PublicationQuarantine('publication_work_mismatch') from exc
 
 
-def publication_record(record, data):
+def publication_record(record, data, *, publication_format=1):
     """Same cross-document binding for live and detached catalogue readers."""
     import json
     try:
         publication=next(r for r in data['publications'] if r['job_id']==record['job_id'])
         stored=next(r for r in data['jobs'] if r['id']==record['job_id'])
         return publication_intent(tuple(record[k] for k in ('binding','destination','temporary','sha256','byte_length')),
-            publication=publication,job=json.loads(stored['job']),context=json.loads(stored['context']))
+            publication=publication,job=json.loads(stored['job']),context=json.loads(stored['context']),publication_format=publication_format)
     except (StopIteration,KeyError,IndexError,TypeError) as exc:
         raise PublicationQuarantine('publication_work_mismatch') from exc
 
 
-def public_artifact(record, data):
+def public_artifact(record, data, *, publication_format=1):
     """Corroborate the independently served copy with retained producer identity."""
     import json
     from contracts import validate as oracle
@@ -340,7 +421,7 @@ def public_artifact(record, data):
         job, context = json.loads(stored['job']), json.loads(stored['context'])
         publication = next(r for r in data['publications'] if r['job_id'] == job_id)
         work = next(r for r in data['publication_work'] if r['job_id'] == job_id)
-        bound, _ = publication_record(work, data)
+        bound, _ = publication_record(work, data,publication_format=publication_format)
         manifest = json.loads(publication['manifest'])
         oracle.validate('result_manifest', manifest)
         plan = context['plan']; attempt = job['attempts'][-1]

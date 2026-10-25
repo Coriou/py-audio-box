@@ -83,6 +83,7 @@
     "service/production_selection.py",
     "service/profiles.py",
     "service/provisioning.py",
+    "service/publication_format.py",
     "service/reconciliation.py",
     "service/recovery.py",
     "service/resource_store.py",

@@ -2898,10 +2898,14 @@ _INSTALLED_V1_TABLE_DDL = (
 )
 
 
+_PUBLICATION_V2_TABLE_DDL = tuple(sql.replace('1048576','37748736') if sql.startswith('CREATE TABLE publication_work(') else sql for sql in _INSTALLED_V1_TABLE_DDL)
+
+
 def _installed_detached_rows(source, columns):
     """Exact canonical sqlite_master identity and every retained SQL constraint."""
     from service.voice_store import _TABLE_DDL, _TRIGGER_DDL, _sql_identity
-    from service.persistence import B2_DDL
+    from service.persistence import B2_DDL, detached_format
+    publication_format=detached_format(source['schema'],source['data']['p1_format'])
     def identity(rows):
         return sorted((kind,name,table,_sql_identity(sql)) for kind,name,table,sql in rows)
     with closing(sqlite3.connect(':memory:')) as db:
@@ -2916,7 +2920,7 @@ def _installed_detached_rows(source, columns):
             return sqlite3.SQLITE_OK if action in allowed else sqlite3.SQLITE_DENY
         db.set_authorizer(authorize)
         try:
-            for sql in (*_INSTALLED_V1_TABLE_DDL,*_TABLE_DDL,
+            for sql in (*(_INSTALLED_V1_TABLE_DDL if publication_format==1 else _PUBLICATION_V2_TABLE_DDL),*_TABLE_DDL,
                         *(B2_DDL if set(columns)&B2_COLUMNS.keys() else ())):
                 db.execute(sql)
             expected=list(db.execute('SELECT type,name,tbl_name,sql FROM sqlite_master'))
@@ -2951,7 +2955,7 @@ def _installed_detached_rows(source, columns):
             raise ValueError('installed_history_row_constraints') from None
 
 
-def _installed_detached_documents(data):
+def _installed_detached_documents(data, *, publication_format=1):
     """Complete closed contract roots before the legacy reference enumerator."""
     from contracts import validate as oracle
     from worker.runtime_protocol import execution
@@ -2959,8 +2963,11 @@ def _installed_detached_documents(data):
         if not isinstance(value,dict) or set(value) not in ({'plan','bundles'},{'plan','bundles','execution'}):
             raise ValueError('installed_history_context')
         oracle.validate('worker_plan',value['plan'])
-        if not isinstance(value['bundles'],list):raise ValueError('installed_history_context')
-        for bundle in value['bundles']:oracle.validate('bundle_catalogue_entry',bundle)
+        if value['plan']['operation']=='audio_export':
+            if value['bundles']!={}:raise ValueError('installed_history_context')
+        else:
+            if not isinstance(value['bundles'],list):raise ValueError('installed_history_context')
+            for bundle in value['bundles']:oracle.validate('bundle_catalogue_entry',bundle)
         execution(value)
     adapters={'jobs':{'job':'job'},'revisions':{'snapshot':'project'},
               'assets':{'metadata':'asset'},'artifacts':{'metadata':'artifact'},
@@ -2976,7 +2983,7 @@ def _installed_detached_documents(data):
                     raise ValueError('installed_history_job_identity')
             elif table=='publication_work':
                 from service.persistence import publication_record
-                publication_record(row,data)
+                publication_record(row,data,publication_format=publication_format)
             elif table=='dispatches':
                 authority=json.loads(row['authority'])
                 oracle.validate('job',authority[0]);context(authority[1])
@@ -3026,6 +3033,7 @@ def _installed_detached_source(state, journal):
            for table,rows in data.items() if table not in DIAGNOSTICS and table!='sqlite_sequence'}
     _installed_detached_documents(typed)
     scanner=Reconciliation.__new__(Reconciliation)
+    scanner.publication_format=1  # This role-specific installed history stays v1.
     scanner.entry_limit=MAX_ROWS;scanner.byte_limit=MAX_BYTES
     scanner.entries=scanner.bytes=0;scanner.end=time.monotonic()+1
     scanner.rows={};scanner.reasons=set()

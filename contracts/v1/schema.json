@@ -831,7 +831,8 @@
             "migration_collision",
             "alias_conflict",
             "version_conflict",
-            "voice_archived"
+            "voice_archived",
+            "publication_format_migration_required"
           ]
         },
         "message": {

@@ -157,6 +157,8 @@ def initialize(roots, scope, profiles, budget, *, complete=None, fault=lambda _:
         from service.recovery import offline
         from service.reconciliation import COLUMNS
         with offline(roots) as (_, db):
+            if persistence.store_format(db)!=1:
+                raise ValueError('installed_native_publication_v2_unsupported')
             required = dict(COLUMNS, **persistence.B1_COLUMNS,
                 p1_inventory_scans='id observed complete fingerprint summary',
                 p1_inventory_objects='id first_observed last_observed scan_id record',
@@ -172,7 +174,7 @@ def initialize(roots, scope, profiles, budget, *, complete=None, fault=lambda _:
                     db.execute('SELECT * FROM p1_integrity').fetchall() != [(1,1,'healthy',None)] or
                     db.execute('SELECT record FROM p1_installation').fetchall() != [(encode(public),)]):
                 raise ValueError('partial_authority_initialization_quarantine')
-    core = Core(roots['control']/'core')
+    core = Core(roots['control']/'core', _publication_creation=1)
     try:
         if any(core.db.execute('SELECT 1 FROM '+t+' LIMIT 1').fetchone() for t in ('jobs','assets','publications','artifacts','revisions')):
             raise ValueError('populated_initialization_refused')
@@ -227,7 +229,7 @@ def _split_core(public, control, staging):
     if (os.getuid(),os.geteuid(),os.getgid(),os.getegid()) != (10001,)*4 or os.getgroups():
         raise ValueError('permanent_control_identity_required')
     installation(public)
-    core = Core(Path(control)/'core')
+    core = Core(Path(control)/'core', _publication_creation=1)
     try:
         Admission(core, Path(staging), public['configuration']['budget'])
         DispatchStore(core)
