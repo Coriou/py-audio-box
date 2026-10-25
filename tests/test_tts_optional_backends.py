@@ -290,14 +290,15 @@ def test_pocket_conditions_exact_private_snapshot_and_cleans_it(tmp_path, monkey
             snapshot = Path(path)
             snapshot_paths.append(snapshot)
             assert snapshot != reference
-            assert snapshot.suffix == '.wav'
+            assert snapshot.parent in (Path('/proc/self/fd'), Path('/dev/fd'))
             assert stat.S_IMODE(snapshot.stat().st_mode) == 0o600
             # Mutate the source at the exact hash/encoder race boundary.
             reference.write_bytes(b'changed synthetic test reference B')
-            assert snapshot.read_bytes() == approved_bytes
+            captured = snapshot.read_bytes()
+            assert captured == approved_bytes
             if encoder_fails:
                 raise RuntimeError('synthetic encoder failure')
-            return {'approved_bytes': snapshot.read_bytes()}
+            return {'approved_bytes': captured}
         def generate_audio(self, state, text, copy_state):
             assert state['approved_bytes'] == approved_bytes
             return torch.ones(24)
@@ -331,11 +332,14 @@ def test_pocket_uses_owned_snapshot_namespace_without_deleting_directory(tmp_pat
         sample_rate = 24000
         @classmethod
         def load_model(cls, config):
-            assert Path(config).parent == namespace
+            assert Path(config).suffix in ('.yaml', '.yml')
+            assert Path(config) == tmp_path / 'config.yaml'
+            assert Path.cwd() == tmp_path
+            assert list(namespace.iterdir()) == []
             return cls()
         def get_state_for_audio_prompt(self, path):
             snapshot = Path(path)
-            assert snapshot.parent == namespace
+            assert list(namespace.iterdir()) == []
             snapshots.append(snapshot)
             return {'reference_bytes': snapshot.read_bytes()}
         def generate_audio(self, *args, **kwargs):

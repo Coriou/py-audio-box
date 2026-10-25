@@ -14,7 +14,7 @@ import os
 from pathlib import Path
 import stat
 import struct
-import tempfile
+from lib.tts_backends.pocket_snapshot import snapshot as reference_snapshot
 import wave
 from numbers import Integral
 from worker.transport import Refused
@@ -119,13 +119,12 @@ def _synthesise(e, text, bundle, reference, reference_temp_dir, backend_factory)
     if backend_factory is None:
         from lib.tts_backends.pocket_tts import PocketBackend
         backend_factory = PocketBackend
-    # Only our exact file is removed on normal unwind. Caller retains directory.
-    with tempfile.NamedTemporaryFile(suffix='.wav', dir=namespace) as snapshot:
-        snapshot.write(reference)
-        snapshot.flush()
+    # Anonymous inputs cannot disappear beneath a concurrent staging scan.
+    # The kernel also closes them after forced termination.
+    with reference_snapshot(reference) as snapshot:
         backend = backend_factory(root, language=e.language, threads=e.threads, reference_temp_dir=namespace)
         try:
-            result = backend.synthesise(text, reference=Path(snapshot.name))
+            result = backend.synthesise(text, reference=snapshot)
             from lib.tts_backends.contract import AudioResult
             if type(result) is not AudioResult:
                 raise Refused('audio_result_required')

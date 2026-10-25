@@ -49,6 +49,7 @@
     "lib/tts_backends/espeak_memfd.py",
     "lib/tts_backends/kokoro.py",
     "lib/tts_backends/pocket_tts.py",
+    "lib/tts_backends/pocket_snapshot.py",
     "lib/tts_backends/qwen.py",
     "lib/tts_backends/qwen_native.py",
     "lib/vad.py",

@@ -43,7 +43,7 @@ class PocketTests(unittest.TestCase):
             def __init__(self, root, **kwargs): outer.calls.append((root, kwargs))
             def synthesise(self, text, **kwargs):
                 snapshot = kwargs['reference']
-                outer.calls.append((text, snapshot.read_bytes(), snapshot.parent, snapshot.stat().st_mode & 0o777))
+                outer.calls.append((text, snapshot.read_bytes(), snapshot.parent != outer.namespace, snapshot.stat().st_mode & 0o777))
                 # Original mutation cannot change the already captured reference.
                 outer.ref.write_bytes(b'changed after validation')
                 if outer.fail_call: raise RuntimeError('call failed')
@@ -58,7 +58,7 @@ class PocketTests(unittest.TestCase):
 
     def test_exact_snapshot_arguments_and_identity(self):
         result = self.run_engine()
-        self.assertEqual(self.calls, [(self.bundle, dict(language='fr', threads=2, reference_temp_dir=self.namespace)), ('  Bonjour\n', self.reference, self.namespace, 0o600), 'closed'])
+        self.assertEqual(self.calls, [(self.bundle, dict(language='fr', threads=2, reference_temp_dir=self.namespace)), ('  Bonjour\n', self.reference, True, 0o600), 'closed'])
         self.assertEqual((result['frames'], result['size_bytes']), (3, 50))
         self.assertEqual(hashlib.sha256(result['data']).hexdigest(), result['sha256'])
         with wave.open(io.BytesIO(result['data'])) as wav:
@@ -180,27 +180,19 @@ class PocketTests(unittest.TestCase):
                     self.run_engine(self.reference_spec(raw))
                 self.assertEqual(self.calls, [])
 
-    def test_snapshot_unlink_failure_prevents_success(self):
-        import tempfile as std_tempfile
-        original = std_tempfile.NamedTemporaryFile
-        sentinel = self.namespace/'caller'; sentinel.write_bytes(b'caller')
-        def snapshot(*args, **kwargs):
-            result = original(*args, **kwargs)
-            cleanup = result._closer.cleanup
-            def failed_unlink(path):
-                raise OSError('unlink failed')
-            # Exercise real stdlib close/cleanup with only unlink replaced.
-            result._closer.cleanup = lambda: cleanup(unlink=failed_unlink)
-            return result
-        with patch('worker.engines.pocket.tempfile.NamedTemporaryFile', side_effect=snapshot):
-            with self.assertRaisesRegex(OSError, 'unlink failed'):
-                self.run_engine()
-        self.assertEqual(self.calls[-1], 'closed')
-        retained = [p for p in self.namespace.iterdir() if p != sentinel]
-        self.assertEqual(len(retained), 1)
-        self.assertEqual(retained[0].read_bytes(), self.reference)
-        self.assertEqual(sentinel.read_bytes(), b'caller')
-        self.assertTrue(self.namespace.is_dir())
+    def test_conditioning_never_adds_entries_to_resource_scan(self):
+        original_factory = self.factory
+        paths = []
+        class Backend(original_factory):
+            def synthesise(inner, *args, **kwargs):
+                paths.append(kwargs['reference'])
+                self.assertEqual(list(self.namespace.iterdir()), [])
+                self.assertEqual(paths[-1].stat().st_size, len(self.reference))
+                return super().synthesise(*args, **kwargs)
+        self.factory = Backend
+        self.run_engine()
+        self.assertEqual(list(self.namespace.iterdir()), [])
+        self.assertFalse(paths[0].exists())
 
     def test_lifecycle_failures_retain_namespace(self):
         sentinel = self.namespace/'caller'; sentinel.write_bytes(b'caller')
@@ -240,7 +232,13 @@ class PocketTests(unittest.TestCase):
             @classmethod
             def load_model(cls, config):
                 # Stub only: no upstream loader/weights are executed.
-                assert Path(config).is_file()
+                assert Path(config).suffix in ('.yaml', '.yml')
+                assert Path(config) == outer.bundle / 'config.yaml'
+                assert Path.cwd() == outer.bundle
+                assert Path('model.safetensors').read_bytes() == (outer.bundle / 'model.safetensors').read_bytes()
+                assert list(outer.namespace.iterdir()) == []
+                if outer.fail_load:
+                    raise RuntimeError('loader failed')
                 return cls()
             def get_state_for_audio_prompt(self, path):
                 snapshot = Path(path)
@@ -251,15 +249,23 @@ class PocketTests(unittest.TestCase):
                 assert state == 'state' and copy_state
                 return Tensor()
         threads = []; seeds = []
-        with patch.dict(sys.modules, {'torch': types.SimpleNamespace(set_num_threads=threads.append, manual_seed=seeds.append), 'pocket_tts': types.SimpleNamespace(TTSModel=Model), 'yaml': types.SimpleNamespace(safe_load=lambda text: {'weights_path': 'model.safetensors'}, safe_dump=lambda value, stream: stream.write(repr(value)))}):
+        outer.fail_load = False
+        original_cwd = Path.cwd()
+        with patch.dict(sys.modules, {'torch': types.SimpleNamespace(set_num_threads=threads.append, manual_seed=seeds.append), 'pocket_tts': types.SimpleNamespace(TTSModel=Model), 'yaml': types.SimpleNamespace(safe_load=lambda text: {'weights_path': 'model.safetensors'}, safe_dump=lambda value: repr(value))}):
             self.factory = PocketBackend
             result = self.run_engine(spec)
+            self.assertEqual(Path.cwd(), original_cwd)
             self.assertEqual(result['frames'], 2)
-            self.assertEqual(snapshots[-1].parent, self.namespace)
+            self.assertEqual(list(self.namespace.iterdir()), [])
             self.assertFalse(snapshots[-1].exists())
             # Historical direct-call namespace default, seed and cache remain.
             legacy = PocketBackend(self.bundle)
             try:
+                from lib.tts_backends.contract import BackendError
+                with tempfile.TemporaryFile() as foreign:
+                    foreign_alias = Path('/proc/self/fd' if Path('/proc/self/fd').is_dir() else '/dev/fd') / str(foreign.fileno())
+                    with self.assertRaises(BackendError):
+                        legacy.synthesise('Unregistered descriptor', reference=foreign_alias)
                 first = legacy.synthesise('Bonjour', reference=self.ref, seed=7)
                 second = legacy.synthesise('Encore', reference=self.ref)
                 self.assertEqual(first.metadata['reference_sha256'], spec.reference_sha256)
@@ -267,7 +273,11 @@ class PocketTests(unittest.TestCase):
                 self.assertIsNone(legacy.reference_temp_dir)
             finally:
                 legacy.close()
-        self.assertEqual(threads, [2, 2]); self.assertEqual(seeds, [7])
+            outer.fail_load = True
+            with self.assertRaisesRegex(RuntimeError, 'loader failed'):
+                PocketBackend(self.bundle)
+            self.assertEqual(Path.cwd(), original_cwd)
+        self.assertEqual(threads, [2, 2, 2]); self.assertEqual(seeds, [7])
         self.assertEqual(list(self.namespace.iterdir()), [])
 
     def test_manifest_structure_and_limits(self):
@@ -301,6 +311,7 @@ class PocketTests(unittest.TestCase):
         import sys
         source = """
 import builtins
+import pathlib
 original = builtins.__import__
 def guarded(name, *args, **kwargs):
     if name.split('.')[0] in ('torch', 'pocket_tts', 'numpy', 'service', 'requests', 'urllib'):
