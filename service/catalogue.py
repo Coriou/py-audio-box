@@ -13,6 +13,11 @@ ERROR_STATUS = json.loads((ROOT / 'contracts/v1/errors.json').read_text())['http
 VOICE_READS = ('voices_list', 'voice_get', 'voice_version_get', 'voice_versions_list')
 ASSET_OPERATIONS = ('asset_upload', 'asset_get', 'asset_content')
 PRODUCTION_OPERATIONS = ('audio_export', 'voice_preset_register', 'voice_prepare', 'voice_results', 'voice_save', 'speech_generate', 'job_get', 'job_cancel', 'artifact_get', 'jobs_list', 'job_events', 'job_wait', 'job_retry', 'voice_aliases', 'voice_archive', 'profile_get')
+# Artifact reads retain both converter identity and export provenance. Each
+# converter registration is independently capped at 16 KiB; preserve both
+# copies plus the ordinary 12 KiB envelope within this finite read-only budget.
+PRODUCTION_RESPONSE_BYTES = 12 * 1024
+ARTIFACT_RESPONSE_BYTES = 64 * 1024
 VOICE_RESPONSE_BYTES = 2048
 DIRECT_BYTES = 3072
 HTTP_BYTES = 16 * 1024 * 1024

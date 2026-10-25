@@ -102,6 +102,29 @@ class AudioExportTests(ProductionAPIFixture,unittest.TestCase):
         self.assertEqual(self.submit('audio_export',request,'master'),receipt)
         self.assertEqual(self.request('POST','/v1/operations/audio_export',payload=dict(request,rate=96000),key='master').json()['code'],'idempotency_conflict')
         self.assertEqual(self.request('POST','/v1/operations/audio_export',payload=request,key='new').json()['code'],'not_ready')
+    def test_full_converter_closure_artifact_read_preserves_both_provenance_copies(self):
+        # Model the complete 214-library pinned closure with inert absolute paths.
+        # No converter is executed and these paths are never opened by this fixture.
+        from service.catalogue import compact, PRODUCTION_RESPONSE_BYTES, ARTIFACT_RESPONSE_BYTES
+        converter=copy.deepcopy(self.exports.converter)
+        converter['runtime_closure']=['/usr/lib/x86_64-linux-gnu/libfixture-runtime-'+format(i,'03d')+'.so.1' for i in range(214)]
+        self.dispatcher.close()
+        self.exports=AudioExports(converter,self.profile,['alice'])
+        self.start()
+        _,_,request=self.upload()
+        job=self.terminal(self.submit('audio_export',request,'full-converter-closure'))
+        response=self.request('GET','/v1/artifacts/'+job['artifact_ids'][0])
+        self.assertEqual(response.status_code,200,response.text)
+        artifact=response.json()
+        self.assertGreater(len(compact(artifact).encode('utf-8')),PRODUCTION_RESPONSE_BYTES)
+        self.assertLessEqual(len(compact(artifact).encode('utf-8')),ARTIFACT_RESPONSE_BYTES)
+        self.assertEqual(artifact['identity']['converter'],converter)
+        self.assertEqual(artifact['audio_export']['converter'],converter)
+        # Asset metadata still uses its original compact provenance and 2 KiB cap.
+        asset=self.request('GET','/v1/assets/'+artifact['asset_ids'][0])
+        self.assertEqual(asset.status_code,200,asset.text)
+        self.assertLessEqual(len(compact(asset.json()).encode('utf-8')),2048)
+
     def test_invalid_foreign_missing_unavailable_and_permissions(self):
         _,asset,r=self.upload()
         for payload in (dict(r,rate=22050),dict(r,channels=True),dict(r,path='/tmp/a'),{k:v for k,v in r.items() if k!='loudness'}):
@@ -257,3 +280,36 @@ class AudioExportTests(ProductionAPIFixture,unittest.TestCase):
         self.assertEqual(job['retry_of'],old['id'])
         self.assertEqual(job['input_sha256'],old['input_sha256'])
         self.assertEqual(self.submit('job_retry',request,'retry'),retried)
+
+
+class ProductionResponseBudgetTests(unittest.TestCase):
+    def test_artifact_response_still_refuses_above_64_kib(self):
+        from unittest.mock import Mock
+        from service.catalogue import ARTIFACT_RESPONSE_BYTES, Failure, compact
+        from service.domain import production_call
+        artifact=json.loads(Path('contracts/fixtures/v1/artifact.json').read_bytes())
+        artifact['asset_ids']=['a'+format(i,'04d')+'x'*120 for i in range(600)]
+        oracle.validate('artifact',artifact)
+        self.assertGreater(len(compact(artifact).encode('utf-8')),ARTIFACT_RESPONSE_BYTES)
+        dispatcher=Mock();dispatcher.call.return_value=artifact
+        with self.assertRaises(Failure) as caught:
+            production_call(dispatcher,'alice','artifact_get',dict(artifact_id=artifact['id']))
+        self.assertEqual(caught.exception.body['code'],'resource_limit')
+        dispatcher.call.assert_called_once_with('production_artifact','alice',dict(artifact_id=artifact['id']),key=None)
+
+    def test_other_production_response_keeps_12_kib_budget(self):
+        from unittest.mock import Mock
+        from service.catalogue import PRODUCTION_RESPONSE_BYTES, ARTIFACT_RESPONSE_BYTES, Failure, compact
+        from service.domain import production_call
+        job=json.loads(Path('contracts/fixtures/v1/job.json').read_bytes())
+        for field in ('id','principal_id','idempotency_key'):job[field]='j'*128
+        for field in ('id','owner_id','staging_id'):job['attempts'][0][field]='a'*128
+        page=dict(items=[copy.deepcopy(job) for _ in range(20)],next_cursor=None)
+        oracle.validate('jobs_page',page)
+        size=len(compact(page).encode('utf-8'))
+        self.assertGreater(size,PRODUCTION_RESPONSE_BYTES)
+        self.assertLess(size,ARTIFACT_RESPONSE_BYTES)
+        dispatcher=Mock();dispatcher.call.return_value=page
+        with self.assertRaises(Failure) as caught:
+            production_call(dispatcher,'alice','jobs_list',dict(cursor='',limit=20))
+        self.assertEqual(caught.exception.body['code'],'resource_limit')

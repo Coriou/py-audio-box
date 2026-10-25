@@ -219,7 +219,7 @@ def production_call(dispatcher, principal, operation, payload, key=None):
     """Typed bounded adapter, explicit owner commands only; no Core access here."""
     import queue
     import sqlite3
-    from service.catalogue import PRODUCTION_OPERATIONS, compact
+    from service.catalogue import PRODUCTION_OPERATIONS, PRODUCTION_RESPONSE_BYTES, ARTIFACT_RESPONSE_BYTES, compact
     from service.voice_store import _id
     if operation not in PRODUCTION_OPERATIONS:
         raise Failure('not_found', 'Production operation unavailable.')
@@ -233,8 +233,9 @@ def production_call(dispatcher, principal, operation, payload, key=None):
                    'artifact_get':'production_artifact', 'jobs_list':'production_jobs', 'job_events':'production_events',
                    'job_retry':'production_retry', 'voice_aliases':'production_aliases', 'voice_archive':'production_archive', 'profile_get':'production_profile'}[operation]
         result = dispatcher.call(command, principal, payload, key=key)
-        if len(compact(result).encode()) > 12288:
-            raise Failure('resource_limit', 'Production response exceeds 12 KiB budget.')
+        response_bytes = ARTIFACT_RESPONSE_BYTES if operation == 'artifact_get' else PRODUCTION_RESPONSE_BYTES
+        if len(compact(result).encode('utf-8')) > response_bytes:
+            raise Failure('resource_limit', 'Production response exceeds '+str(response_bytes//1024)+' KiB budget.')
         return validate(op['response'], result)
     except ValidationError:
         raise Failure('invalid_request', 'Production contract unavailable.', 'request') from None
