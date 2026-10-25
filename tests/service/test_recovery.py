@@ -5598,6 +5598,14 @@ def test_t1_strict_closed_frame(raw):
     with pytest.raises((ValueError,UnicodeError)):recovery._decode_maintenance_result(raw)
 
 
+def _t1_legacy_pipe_roots(tmp_path):
+    """Minimal real legacy-scope receipt for storage-modeled pipe tests."""
+    receipts=tmp_path/'pipe-receipts';receipts.mkdir(exist_ok=True)
+    path=receipts/'p1-init.json'
+    path.write_text(encode(dict(scope='owned-synthetic')));path.chmod(0o600)
+    return dict(receipts=receipts)
+
+
 def _t1_pipe_model(monkeypatch):
     """Actual fork/pipe, only storage/host session modeled; no limits changed."""
     import sys
@@ -5618,7 +5626,7 @@ def _t1_pipe_model(monkeypatch):
 
 @pytest.mark.parametrize('mode',['ordinary','fragment','short','write-EINTR','read-EINTR','EPIPE','zero-write',
     'empty','partial','extra','second','nonzero','signal','post-EOF-alive','never-EOF','slow','backpressure','exact-T-alive'])
-def test_t1_actual_pipe_transport(monkeypatch,mode):
+def test_t1_actual_pipe_transport(monkeypatch,mode,tmp_path):
     import resource,signal,time,select
     from types import SimpleNamespace
     prior=resource.getrlimit(resource.RLIMIT_FSIZE)
@@ -5658,6 +5666,8 @@ def test_t1_actual_pipe_transport(monkeypatch,mode):
             write(fd,raw);write(fd,b' ' if mode=='extra' else raw);os.close(fd);os._exit(0)
         return write(fd,raw)
     def changed_read(fd,count):
+        import stat
+        if not stat.S_ISFIFO(os.fstat(fd).st_mode):return read(fd,count)
         assert count<=65536
         state['read']+=1
         if mode=='read-EINTR' and state['read']==1:raise InterruptedError()
@@ -5666,16 +5676,16 @@ def test_t1_actual_pipe_transport(monkeypatch,mode):
     value='a'*(recovery.MAINTENANCE_RESULT_LIMIT-len(encode(dict(result='')).encode())) if mode=='exact-T-alive' else 'é🙂'
     began=original_time()
     if mode in ('ordinary','fragment','short','write-EINTR','read-EINTR'):
-        assert recovery._run_bounded_maintenance({}, {},lambda session:value)==value
+        assert recovery._run_bounded_maintenance(_t1_legacy_pipe_roots(tmp_path), {},lambda session:value)==value
     else:
-        with pytest.raises((ValueError,OSError)):recovery._run_bounded_maintenance({}, {},lambda session:value)
+        with pytest.raises((ValueError,OSError)):recovery._run_bounded_maintenance(_t1_legacy_pipe_roots(tmp_path), {},lambda session:value)
     assert original_time()-began<2
     assert resource.getrlimit(resource.RLIMIT_FSIZE)==prior
     assert len(owned)==1
     with pytest.raises(ChildProcessError):waitpid(owned[0],os.WNOHANG)
 
 
-def test_t1_fork_failure_closes_descriptors(monkeypatch):
+def test_t1_fork_failure_closes_descriptors(monkeypatch,tmp_path):
     _t1_pipe_model(monkeypatch)
     pipe=os.pipe;ends=[]
     def tracked():
@@ -5683,7 +5693,7 @@ def test_t1_fork_failure_closes_descriptors(monkeypatch):
     monkeypatch.setattr(os,'pipe',tracked)
     def failed():raise OSError('fork unavailable')
     monkeypatch.setattr(os,'fork',failed)
-    with pytest.raises(OSError):recovery._run_bounded_maintenance({}, {},lambda s:True)
+    with pytest.raises(OSError):recovery._run_bounded_maintenance(_t1_legacy_pipe_roots(tmp_path), {},lambda s:True)
     for fd in ends:
         with pytest.raises(OSError):os.fstat(fd)
 
@@ -5810,7 +5820,7 @@ def test_t1_preparation_semantics_both_codec_ends(b23_host,installation,monkeypa
 
 @pytest.mark.parametrize('size',[65536,65537,1048575,1048576])
 @pytest.mark.parametrize('seed',['é🙂','{"old":"\\\\\\\"é"}'])
-def test_t1_successful_exact_size_pipe_waitpid_eintr(monkeypatch,size,seed):
+def test_t1_successful_exact_size_pipe_waitpid_eintr(monkeypatch,size,seed,tmp_path):
     import resource
     owned=_t1_pipe_model(monkeypatch)
     prior=resource.getrlimit(resource.RLIMIT_FSIZE)
@@ -5822,7 +5832,7 @@ def test_t1_successful_exact_size_pipe_waitpid_eintr(monkeypatch,size,seed):
     monkeypatch.setattr(os,'waitpid',interrupted)
     value=seed+'a'*(size-len(encode(dict(result=seed)).encode()))
     assert len(encode(dict(result=value)).encode())==size
-    assert recovery._run_bounded_maintenance({}, {},lambda s:value)==value
+    assert recovery._run_bounded_maintenance(_t1_legacy_pipe_roots(tmp_path), {},lambda s:value)==value
     assert calls[0]==os.WNOHANG and resource.getrlimit(resource.RLIMIT_FSIZE)==prior
     with pytest.raises(ChildProcessError):waitpid(owned[0],os.WNOHANG)
 
@@ -5852,7 +5862,7 @@ def test_t1_real_blocked_pipe_backpressure_deadline(monkeypatch,tmp_path):
         return select_blocked(r,w,x,timeout)
     monkeypatch.setattr(select,'select',ready);monkeypatch.setattr(os,'write',observed)
     with pytest.raises(ValueError,match='timeout'):
-        recovery._run_bounded_maintenance({}, {},lambda s:'a'*900000)
+        recovery._run_bounded_maintenance(_t1_legacy_pipe_roots(tmp_path), {},lambda s:'a'*900000)
     assert marker.read_text()=='kernel pipe full'
     assert clock()-start<2 and resource.getrlimit(resource.RLIMIT_FSIZE)==prior
     with pytest.raises(ChildProcessError):os.waitpid(owned[0],os.WNOHANG)
@@ -6413,7 +6423,7 @@ def test_t1_actual_pipe_overflow_precedes_decoder(monkeypatch,tmp_path):
     trap=tmp_path/'decoded-overflow'
     def forbidden(*a,**k):trap.write_text('decode');raise AssertionError('overflow decoded')
     monkeypatch.setattr(recovery,'_decode_maintenance_result',forbidden)
-    with pytest.raises(ValueError,match='result_budget'):recovery._run_bounded_maintenance({}, {},lambda s:value)
+    with pytest.raises(ValueError,match='result_budget'):recovery._run_bounded_maintenance(_t1_legacy_pipe_roots(tmp_path), {},lambda s:value)
     assert not trap.exists() and resource.getrlimit(resource.RLIMIT_FSIZE)==prior
     with pytest.raises(ChildProcessError):os.waitpid(owned[0],os.WNOHANG)
 
@@ -6549,7 +6559,7 @@ def test_t1_close_ownership_cleanup(monkeypatch,tmp_path,repeat,site,timing,fail
     start=time.monotonic()
     try:
         with pytest.raises((failure,OSError,ValueError)):
-            recovery._run_bounded_maintenance({}, {},operation)
+            recovery._run_bounded_maintenance(_t1_legacy_pipe_roots(tmp_path), {},operation)
         assert time.monotonic()-start<5
         assert resource.getrlimit(resource.RLIMIT_FSIZE)==prior
         for fd in ends:
@@ -6635,10 +6645,10 @@ def test_t1_reap_interruption_ownership(monkeypatch,tmp_path,repeat,error_type,p
             return True
         start=time.monotonic()
         if site=='normal-wait' and phase=='before' and error_type is InterruptedError:
-            assert recovery._run_bounded_maintenance({}, {},operation) is True
+            assert recovery._run_bounded_maintenance(_t1_legacy_pipe_roots(tmp_path), {},operation) is True
         else:
             with pytest.raises(BaseException) as caught:
-                recovery._run_bounded_maintenance({}, {},operation)
+                recovery._run_bounded_maintenance(_t1_legacy_pipe_roots(tmp_path), {},operation)
             assert caught.value is (interruption if site=='normal-wait' else original)
         assert fired==[site] and len(owned)==1 and time.monotonic()-start<5
         assert marker.read_text()=='entered\n' and resource.getrlimit(resource.RLIMIT_FSIZE)==prior
@@ -6695,7 +6705,7 @@ def test_t1_cleanup_missing_process_receipts(monkeypatch,tmp_path,site):
         marker.with_suffix('.ready').write_text('ready')
         time.sleep(60)
     try:
-        with pytest.raises(KeyboardInterrupt) as caught:recovery._run_bounded_maintenance({}, {},operation)
+        with pytest.raises(KeyboardInterrupt) as caught:recovery._run_bounded_maintenance(_t1_legacy_pipe_roots(tmp_path), {},operation)
         assert caught.value is original and fired==[site] and marker.read_text()=='once'
         with pytest.raises(ChildProcessError):wait(owned[0],os.WNOHANG)
         for fd in ends:
@@ -6714,7 +6724,7 @@ def test_t1_cleanup_missing_process_receipts(monkeypatch,tmp_path,site):
 
 
 @pytest.mark.parametrize('error_type',[InterruptedError,KeyboardInterrupt,BaseException])
-def test_t1_cleanup_refuses_inside_caller_exception_handler(monkeypatch,error_type):
+def test_t1_cleanup_refuses_inside_caller_exception_handler(monkeypatch,error_type,tmp_path):
     """An already handled caller exception must not hide a new cleanup failure."""
     import signal
     owned=_t1_pipe_model(monkeypatch)
@@ -6731,7 +6741,7 @@ def test_t1_cleanup_refuses_inside_caller_exception_handler(monkeypatch,error_ty
         try:raise ValueError('caller already handled this')
         except ValueError:
             with pytest.raises(BaseException) as caught:
-                recovery._run_bounded_maintenance({}, {},lambda session:True)
+                recovery._run_bounded_maintenance(_t1_legacy_pipe_roots(tmp_path), {},lambda session:True)
             assert caught.value is interruption
         assert fired and len(owned)==1
         with pytest.raises(ChildProcessError):wait(owned[0],os.WNOHANG)
@@ -6833,7 +6843,7 @@ def test_lifetime_wait_guard_unit(case, maintenance_wait_guard):
     assert guard.owned == ({123} if case == 'unrelated' else set())
 
 
-def test_lifetime_guard_real_semantic_refusal_and_unrelated_child(monkeypatch, maintenance_wait_guard):
+def test_lifetime_guard_real_semantic_refusal_and_unrelated_child(monkeypatch, maintenance_wait_guard,tmp_path):
     import sys
     monkeypatch.setattr(sys, 'platform', 'linux')
     monkeypatch.setattr(recovery, '_install_maintenance_limit', lambda:None)
@@ -6844,7 +6854,7 @@ def test_lifetime_guard_real_semantic_refusal_and_unrelated_child(monkeypatch, m
     if unrelated == 0: os._exit(0)
     def refused(_): raise ValueError('synthetic semantic refusal')
     with pytest.raises(ValueError, match='child_failed'):
-        recovery._run_bounded_maintenance({}, {}, refused)
+        recovery._run_bounded_maintenance(_t1_legacy_pipe_roots(tmp_path), {}, refused)
     assert os.waitpid(unrelated, 0) == (unrelated, 0)
     assert not maintenance_wait_guard.failures
     assert len(maintenance_wait_guard.receipts) == 1
@@ -6952,7 +6962,7 @@ def test_bounded_core_prefork_lease_failure(tmp_path, monkeypatch, failure):
         raise OSError('owned fork failure')
     monkeypatch.setattr(os, 'pipe', piping); monkeypatch.setattr(os, 'fork', forking)
     with pytest.raises(OSError, match='owned .* failure'):
-        recovery._run_bounded_maintenance({}, {}, lambda s: True)
+        recovery._run_bounded_maintenance(_t1_legacy_pipe_roots(tmp_path), {}, lambda s: True)
     for fd in ends:
         with pytest.raises(OSError): os.fstat(fd)
     r = module._reserve_core(tmp_path/'after'); r.close()
@@ -6971,7 +6981,7 @@ def test_bounded_core_lease_parent_release_child_pid_refusal(monkeypatch, tmp_pa
             except ValueError as e: assert 'inherited_process' in str(e)
             else: raise AssertionError('child inherited registry accepted')
         return 'child refused inherited registry'
-    assert recovery._run_bounded_maintenance({}, {}, operation) == 'child refused inherited registry'
+    assert recovery._run_bounded_maintenance(_t1_legacy_pipe_roots(tmp_path), {}, operation) == 'child refused inherited registry'
     r = module._reserve_core(tmp_path/'parent'); r.close()
     assert tuple(module._core_registry) == baseline
 
@@ -6998,7 +7008,7 @@ def test_bounded_core_prefork_deterministic_parent_release(tmp_path, monkeypatch
     monkeypatch.setattr(os, 'read', read); monkeypatch.setattr(os, 'waitpid', wait)
     monkeypatch.setattr(select, 'select', lambda r, w, x, t: (r, w, x))
     monkeypatch.setattr(os, 'kill', lambda *a: pytest.fail('successful double signalled'))
-    assert recovery._run_bounded_maintenance({}, {}, lambda s: pytest.fail('parent operation')) is True
+    assert recovery._run_bounded_maintenance(_t1_legacy_pipe_roots(tmp_path), {}, lambda s: pytest.fail('parent operation')) is True
     assert effects == ['pipe', 'fork'] and waits == [(987654, os.WNOHANG)]
     for fd in ends:
         with pytest.raises(OSError): os.fstat(fd)
