@@ -310,6 +310,91 @@ class RenewalCompletionTests(RenewalHistoryTests):
         self.assertTrue((old.journal.root/'retirement').exists())
         self.assertTrue((old2.journal.root/'retirement').exists())
 
+    def intent_fault(self, epoch, operation):
+        self.prepare()
+        if epoch == 2: self.renew(1)
+        paths,_,_=self.successor_inputs(epoch)
+        args=dict(**paths,owner_root=str(self.root),request_id=str(epoch)*32)
+        final=self.root/'native-renewal'/f'{epoch:03d}.intent'
+        stage=final.with_name(final.name+'.stage')
+        real_rename=r.os.rename;real_fsync=r.os.fsync
+        def rename(a,b):
+            if Path(b)==final: raise OSError('injected intent rename')
+            return real_rename(a,b)
+        def fsync(fd):
+            target=stage if operation=='stage-fsync' else final
+            if target.exists() and os.fstat(fd).st_ino==target.stat().st_ino:
+                raise OSError('injected intent fsync')
+            return real_fsync(fd)
+        target=patch.object(r.os,'rename',side_effect=rename) if operation=='rename' else patch.object(r.os,'fsync',side_effect=fsync)
+        with target:
+            with self.assertRaisesRegex(OSError,'injected intent'): r.begin(self.record,**args)
+        retained=stage if stage.exists() else final
+        before=retained.read_bytes()
+        self.assertEqual(r.document(retained)['request_id'],args['request_id'])
+        with self.assertRaises(Refused): r.selected_source(self.record,self.root)
+        with self.assertRaises(Refused): Core(self.root)
+        self.assertEqual(retained.read_bytes(),before)
+        return args,final,stage,before
+
+    def resume_intent_fault(self, epoch, operation):
+        args,final,stage,before=self.intent_fault(epoch,operation)
+        synced=[];real=r.os.fsync
+        def fsync(fd):
+            synced.append(os.fstat(fd).st_ino);return real(fd)
+        with patch.object(r.os,'fsync',side_effect=fsync):
+            value=r.begin(self.record,**args)
+        self.assertFalse(stage.exists());self.assertEqual(final.read_bytes(),before)
+        self.assertEqual(value,r.document(final))
+        self.assertIn(final.stat().st_ino,synced)
+        self.assertIn(final.parent.stat().st_ino,synced)
+        self.assertEqual(r.begin(self.record,**args),value)
+
+    def test_first_intent_rename_resumes(self): self.resume_intent_fault(1,'rename')
+    def test_later_intent_rename_resumes(self): self.resume_intent_fault(2,'rename')
+    def test_first_intent_stage_fsync_resumes(self): self.resume_intent_fault(1,'stage-fsync')
+    def test_later_intent_stage_fsync_resumes(self): self.resume_intent_fault(2,'stage-fsync')
+    def test_first_intent_final_fsync_resumes(self): self.resume_intent_fault(1,'final-fsync')
+    def test_later_intent_final_fsync_resumes(self): self.resume_intent_fault(2,'final-fsync')
+
+    def refuse_intent_changes(self, epoch):
+        args,final,stage,before=self.intent_fault(epoch,'rename')
+        directory=final.parent
+        def evidence():
+            return {str(f.relative_to(self.root)):f.read_bytes() for f in self.root.rglob('*') if f.is_file()}
+        def refused(call):
+            saved=evidence()
+            with self.assertRaises((Refused,ValueError)): call()
+            self.assertEqual(evidence(),saved)
+            self.assertFalse(final.exists())
+        refused(lambda:r.begin(self.record,**dict(args,request_id='f'*32)))
+        # A changed explicit boot in both supplied documents must not retarget intent.
+        config_path=Path(args['configuration_file']);templates_path=Path(args['templates_file'])
+        config_raw=config_path.read_bytes();templates_raw=templates_path.read_bytes()
+        config=n.document(config_path);templates=n.document(templates_path)
+        config['native']['boot']='a'*32
+        for row in templates['registrations']: row['context']['execution']['native']['boot']='a'*32
+        config_path.write_bytes(canonical(config));templates_path.write_bytes(canonical(templates))
+        refused(lambda:r.begin(self.record,**args))
+        config_path.write_bytes(config_raw);templates_path.write_bytes(templates_raw)
+        # Changed payload, truncated document, foreign request and forked epoch stay retained.
+        original=r.document(stage)
+        for change in ('payload','partial','request','fork'):
+            value=copy.deepcopy(original)
+            if change=='payload': value['stopped_sha256']='0'*64
+            if change=='request': value['request_id']='f'*32
+            if change=='fork': value['epoch']=epoch+1
+            stage.write_bytes(b'{' if change=='partial' else canonical(value))
+            refused(lambda:r.begin(self.record,**args))
+        stage.write_bytes(before)
+        # A changed stopped database fingerprint is not silently resealed.
+        with patch.object(r,'stopped_fingerprint',return_value='0'*64):
+            refused(lambda:r.begin(self.record,**args))
+        self.assertEqual(r.begin(self.record,**args),original)
+
+    def test_first_staged_intent_changed_inputs_retained(self): self.refuse_intent_changes(1)
+    def test_later_staged_intent_changed_inputs_retained(self): self.refuse_intent_changes(2)
+
     def test_commit_rename_failure_resumes_exact_owned_phase(self):
         self.prepare()
         def fault(intent,export):

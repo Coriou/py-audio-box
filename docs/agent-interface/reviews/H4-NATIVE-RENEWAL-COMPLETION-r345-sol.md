@@ -256,4 +256,3 @@ records the complete candidate. SHA-256:
 
 The explicit unittest driver is retained at `/tmp/r345_tests.py`, SHA-256
 `f44e0c84d64a88ccd6d9df6b2eb79ee51d514035f38c9ab9aee18ca446b6ed20`.
-

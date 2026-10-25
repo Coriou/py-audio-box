@@ -87,8 +87,9 @@ def publish(path, value, cap=EXPORT):
     return value
 
 
-def namespace(root, *, resume=False):
+def namespace(root, *, resume=False, _begin=False):
     """Finite append-only chain; pending/staging never grants admission."""
+    require(not _begin or resume)
     directory = Path(root)/'native-renewal'
     if not directory.exists() and not directory.is_symlink(): return {}
     n.directory(str(directory))
@@ -104,7 +105,14 @@ def namespace(root, *, resume=False):
     for file in entries:
         if file.name.endswith('.stage'):
             require(resume and not file.with_suffix('').exists())
-            document(file)  # Explicit phase publisher must subsequently compare exact bytes.
+            value = document(file)  # Publisher must subsequently compare exact bytes.
+            if _begin and file.name.endswith('.intent.stage'):
+                # Only explicit begin may see a completed intent as a candidate.
+                # Chain validation below runs before request/evidence comparison.
+                validate_intent(value)
+                require(all(other == file or other.name[:3] < file.name[:3]
+                            for other in entries))
+                result[file.name.removesuffix('.stage')] = value
             continue
         value = document(file)
         validators[file.name.split('.')[1]](value)
@@ -306,14 +314,25 @@ def begin(record_file, *, configuration_file, templates_file, owner_root, reques
     from service.core import native_maintenance
     p._hex(request_id,32)
     with native_maintenance(owner_root) as owner:
-        saved_values=namespace(owner_root,resume=True)
+        saved_values=namespace(owner_root,resume=True,_begin=True)
         replays=[(k,v) for k,v in saved_values.items() if k.endswith('.intent') and v['request_id']==request_id]
         if replays:
             require(len(replays)==1)
             key,existing=replays[0]
             supplied,_,_=n._enrollment_snapshot(configuration_file,templates_file,owner_root)
             require(canonical(source_record(record_file))==canonical(existing['predecessor']) and canonical(supplied)==canonical(existing['successor']))
+            require(canonical(existing['predecessor']['owner']) == canonical(dict(
+                path=str(owner.root), device=owner.root.stat().st_dev,
+                inode=owner.root.stat().st_ino, uid=os.getuid())), 'native_owner_binding')
             if key[:3]+'.commit' not in saved_values:
+                predecessor,_,old_templates=n._enrollment_snapshot(
+                    existing['predecessor']['configuration_file'],
+                    existing['predecessor']['templates_file'],owner_root)
+                require(canonical(predecessor)==canonical(existing['predecessor']), 'native_enrollment_changed')
+                compatible(n.document(predecessor['configuration_file']), old_templates,
+                           n.document(configuration_file), n.document(templates_file))
+                require(canonical(stopped_membership(owner,predecessor['native'],subset=True)) ==
+                        canonical(existing['membership']), 'native_history_unclean')
                 require(stopped_fingerprint(owner)==existing['stopped_sha256'],'native_enrollment_changed')
             return publish(owner.root/'native-renewal'/key,existing)
         pending=[v for k,v in saved_values.items() if k.endswith('.intent') and k[:3]+'.commit' not in saved_values]
