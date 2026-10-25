@@ -33,6 +33,7 @@ class PendingImport:
         self.authority,self.runtime_id=authority,runtime_id
         self.receipt,self.proposal,self.raw=receipt,proposal,raw
         self.identity=identity
+        self.reference_identity=None
 
 
 def _identity(info):
@@ -144,7 +145,7 @@ class NativeRuntime:
             p._hex(directory.name,64);_directory(directory,0o700);count+=1
             actual=0
             for file in directory.iterdir():
-                if file.name not in ('snapshot','input','output','complete','import','import-intent','import-complete'): raise Refused('native_control_storage')
+                if file.name not in ('snapshot','input','output','complete','import','import-reference','import-intent','import-complete'): raise Refused('native_control_storage')
                 info=file.lstat()
                 if not stat.S_ISREG(info.st_mode) or info.st_uid!=os.getuid() or info.st_nlink!=1 or stat.S_IMODE(info.st_mode)!=0o600:
                     raise Refused('native_control_storage')
@@ -167,7 +168,7 @@ class NativeRuntime:
                 raw=_read(directory/'output',1048576)
                 if len(raw)!=output['bytes'] or hashlib.sha256(raw).hexdigest()!=output['sha256']: self.failed=True
                 else: pcm(raw,spec)
-                final=self.staging/authority.job['attempts'][-1]['staging_id']/'output.wav'
+                final=self.staging/authority.job['attempts'][-1]['staging_id']/('audition.wav' if authority.context['plan']['operation']=='voice_prepare' else 'output.wav')
                 if final.exists() or final.is_symlink():
                     _directory(final.parent,0o770)
                     if _read(final,1048576)!=raw: self.failed=True
@@ -195,8 +196,8 @@ class NativeRuntime:
                     # Legacy completed history needs the same exact Core proof.
                     self.reopened_imports[authority.binding]=(authority,None,True)
             # Charge declared worst case, including detached input and output copy.
-            total+=max(actual,2*spec.reference_bytes+3*min(spec.max_output_bytes,1048576)+96000)
-            if (directory/'import').exists() or ((directory/'output').exists() and not (directory/'complete').exists()):
+            total+=max(actual,(4 if authority.context['plan']['operation']=='voice_prepare' else 2)*spec.reference_bytes+3*min(spec.max_output_bytes,1048576)+96000)
+            if (directory/'import-reference').exists() or (directory/'import').exists() or ((directory/'output').exists() and not (directory/'complete').exists()):
                 self.failed=True
         if count+int(new)>64 or total+extra>QUOTA: raise Refused('native_control_quota')
         return total
@@ -331,7 +332,7 @@ class NativeRuntime:
         with self.lock:
             if not self.admission_open: raise Refused('native_control_uncertain')
             if not directory.exists():
-                self._account(2*spec.reference_bytes+3*min(spec.max_output_bytes,1048576)+96000,new=True)
+                self._account((4 if authority.context['plan']['operation']=='voice_prepare' else 2)*spec.reference_bytes+3*min(spec.max_output_bytes,1048576)+96000,new=True)
                 directory.mkdir(mode=0o700)
             _directory(directory,0o700)
             _write(directory/'snapshot',authority._snapshot)
@@ -416,7 +417,7 @@ class NativeRuntime:
         spec=p.native_execution(authority.context)
         directory=self.spool/authority.binding
         _directory(directory,0o700)
-        destination=self.staging/authority.job['attempts'][-1]['staging_id']/'output.wav'
+        destination=self.staging/authority.job['attempts'][-1]['staging_id']/('audition.wav' if authority.context['plan']['operation']=='voice_prepare' else 'output.wav')
         complete=directory/'complete';partial=directory/'output'
         if complete.exists():
             raw=_read(partial,1048576)
@@ -444,7 +445,7 @@ class NativeRuntime:
                 raise
         self._validate_output(authority,proposal,output,raw,spec)
         temporary=directory/'import'
-        destination=self.staging/authority.job['attempts'][-1]['staging_id']/'output.wav'
+        destination=self.staging/authority.job['attempts'][-1]['staging_id']/('audition.wav' if authority.context['plan']['operation']=='voice_prepare' else 'output.wav')
         if not destination.exists() and not destination.is_symlink():
             if authority.binding in self.import_completed: return receipt,None
             if temporary.exists() or temporary.is_symlink():
@@ -464,7 +465,13 @@ class NativeRuntime:
             if _read(destination,1048576)!=raw: raise Refused('native_control_conflict')
             if authority.binding not in self.import_completed: self.import_closed.add(authority.binding);raise Refused('native_control_uncertain')
             identity=None
-        return PendingImport(authority,runtime_id,receipt,proposal,raw,identity)
+        pending = PendingImport(authority,runtime_id,receipt,proposal,raw,identity)
+        if authority.context['plan']['operation'] == 'voice_prepare' and identity is not None:
+            from worker.engines.qwen_prepare import selected_reference
+            reference, _ = selected_reference(spec, _read(directory/'input',spec.reference_bytes))
+            _write(directory/'import-reference',reference)
+            pending.reference_identity = _identity((directory/'import-reference').lstat())
+        return pending
 
     def finalize_collect(self, pending):
         if threading.get_ident()!=self.owner: raise Refused('native_owner_required')
@@ -502,7 +509,9 @@ class NativeRuntime:
                 raise Refused('native_control_storage')
         try:
             verify_stage()
-            destination=stage/'output.wav'
+            preparing = authority.context['plan']['operation'] == 'voice_prepare'
+            name = 'audition.wav' if preparing else 'output.wav'
+            destination=stage/name
             if destination.exists() or destination.is_symlink():
                 if authority.binding not in self.import_completed: raise Refused('native_control_uncertain')
                 if _read(destination,1048576)!=raw: raise Refused('native_control_conflict')
@@ -513,11 +522,23 @@ class NativeRuntime:
                     raise Refused('native_control_storage')
                 # Atomic no-replace publication into staging; Core sees only complete
                 # bytes. Drop the private link and fsync before returning ownership.
-                os.link(temporary,'output.wav',dst_dir_fd=stagefd,follow_symlinks=False)
+                os.link(temporary,name,dst_dir_fd=stagefd,follow_symlinks=False)
                 temporary.unlink()
                 _sync(directory);os.fsync(stagefd)
                 active()
             if _read(destination,1048576)!=raw: raise Refused('native_control_conflict')
+            if preparing:
+                reference = directory/'import-reference'
+                final_reference = stage/'reference.wav'
+                if final_reference.exists() or final_reference.is_symlink():
+                    if authority.binding not in self.import_completed: raise Refused('native_control_uncertain')
+                else:
+                    active()
+                    if pending.reference_identity is None or _identity(reference.lstat()) != pending.reference_identity:
+                        raise Refused('native_control_storage')
+                    os.link(reference,'reference.wav',dst_dir_fd=stagefd,follow_symlinks=False)
+                    reference.unlink(); _sync(directory); os.fsync(stagefd)
+                    active()
             verify_stage()
             if authority.binding not in self.import_completed:
                 marker=_read(directory/'import-intent',512)

@@ -139,6 +139,8 @@ def verify_bundle(root, manifest_digest, checkpoint, revision, language, *, owne
 
 
 def verify_inputs(e, bundles, references, inventory, *, owner_uid=None):
+    from .qwen_prepare import QwenPreparation
+    if type(e) is QwenPreparation: e = e.generation()
     if type(e) is not QwenExecution: raise Refused('typed_execution_required')
     family = DeviceFamily.CUDA if e.device.startswith('cuda:') else DeviceFamily(e.device)
     index = int(e.device.split(':')[1]) if family == DeviceFamily.CUDA else 0
@@ -159,6 +161,8 @@ def verify_inputs(e, bundles, references, inventory, *, owner_uid=None):
 
 def execute(execution, text, bundles, references, inventory, *, reference_temp_dir=None, backend_factory=None, managed_owner_uid=None):
     e = execution
+    from .qwen_prepare import QwenPreparation
+    if type(e) is QwenPreparation: e = e.generation()
     if type(e) is not QwenExecution: raise Refused('typed_execution_required')
     if type(text) is not str or not text.strip() or len(text.encode()) > e.max_text_bytes: raise Refused('text_limit')
     root, reference = verify_inputs(e,bundles,references,inventory,owner_uid=managed_owner_uid)

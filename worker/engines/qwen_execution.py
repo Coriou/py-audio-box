@@ -136,6 +136,8 @@ def current_native_hardware(spec, inventory, *, now=None):
     from datetime import datetime, timezone
     from worker.hardware import DeviceFamily, topology_allows
     inventory_wire(inventory)
+    from worker.engines.qwen_prepare import QwenPreparation
+    if type(spec) is QwenPreparation: spec = spec.generation()
     if (type(spec) is not QwenExecution
             or (spec.device, spec.dtype, spec.attention) != ('mps', 'float32', 'sdpa')
             or spec.task not in ('custom_voice', 'clone')

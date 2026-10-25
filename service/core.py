@@ -540,6 +540,8 @@ class Core:
                 oracle.require(output['provenance']==expected and measured['frames']==4800 and measured['sample_rate']==48000 and measured['channels']==1 and measured['media_subtype']=='PCM_16', 'synthetic_policy')
             elif roles and filename=='reference.wav':
                 from worker.engines.pocket_prepare import selected_reference
+                if spec.engine == 'qwen':
+                    from worker.engines.qwen_prepare import selected_reference
                 from worker.engines.pocket import _read
                 raw=_read(self.root/'assets'/spec.reference_id,spec.reference_bytes,spec.reference_sha256)
                 prepared,frames=selected_reference(spec,raw)

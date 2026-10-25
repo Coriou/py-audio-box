@@ -65,8 +65,10 @@ def infer(execution, text, bundles, references, inventory, *,
     current_native_hardware(execution, inventory)
     if execution.timeout_s > 30 or execution.max_output_bytes > 1048576:
         raise Refused('native_execution_limit')
-    verify_service_inputs(execution, bundles, references, inventory,
+    _, raw = verify_service_inputs(execution, bundles, references, inventory,
                           owner_uid=managed_owner_uid)
+    from worker.engines.qwen_prepare import QwenPreparation, selected_reference
+    if type(execution) is QwenPreparation: selected_reference(execution, raw)
     from lib.tts_backends.qwen_native import NativeQwenBackend
     return execute(execution, text, bundles, references, inventory,
         reference_temp_dir=reference_temp_dir, managed_owner_uid=managed_owner_uid,
@@ -114,7 +116,14 @@ def proposal(snapshot,result,spec):
     asset=dict(id='asset-'+secrets.token_hex(16),sha256=result['sha256'],frames=result['frames'],sample_rate=spec.sample_rate,channels=1,media_format='wav',media_subtype='PCM_16',provenance=dict(kind='generated',source_sha256=result['sha256'],source_id=generated_source(context),missing_fields=[]))
     message=dict(protocol_version='1.3.0',kind='result',job_id=job['id'],attempt_id=attempt['id'],generation=job['generation'],input_sha256=job['input_sha256'],input_asset_ids=assets,staging_id=attempt['staging_id'],owner_id=attempt['owner_id'],identity=context['plan']['resolved']['identity'],deadline=job['deadline'],stage='completed',result_asset_ids=[asset['id']],plan=context['plan'])
     manifest={k:message[k] for k in ('job_id','attempt_id','generation','owner_id','staging_id','input_sha256')}
-    manifest.update(operation=context['plan']['operation'],artifact_id='artifact-'+secrets.token_hex(16),outputs=[asset],candidates=[])
+    if context['plan']['operation'] == 'voice_prepare':
+        from worker.engines.qwen_prepare import output_assets
+        from worker.synthetic import candidates
+        outputs = output_assets(context, result)
+        proposed = candidates(message, outputs[1], outputs[0])
+        message['result_asset_ids'] = [a['id'] for a in outputs]
+    else: outputs = [asset]; proposed = []
+    manifest.update(operation=context['plan']['operation'],artifact_id='artifact-'+secrets.token_hex(16),outputs=outputs,candidates=proposed)
     return dict(message=message,manifest=manifest)
 
 
@@ -129,6 +138,22 @@ def validate_proposal(snapshot,value,data,spec):
     oracle.worker_message(value['message'],job,assets,transport_owner=job['attempts'][-1]['owner_id'],context=context,current_profiles=profiles)
     oracle.validate('result_manifest',value['manifest'])
     m=value['manifest']; message=value['message']
+    if (message['kind'] != 'result' or m['operation'] != context['plan']['operation'] or
+            any(m[k] != message[k] for k in ('job_id','attempt_id','generation','owner_id','staging_id','input_sha256'))):
+        raise Refused('native_proposal')
+    if context['plan']['operation'] == 'voice_prepare':
+        from worker.engines.qwen_prepare import output_assets
+        from worker.synthetic import candidates
+        audition = dict(sha256=hashlib.sha256(data).hexdigest(),frames=(len(data)-44)//2)
+        outputs = output_assets(context, audition)
+        expected = candidates(message, outputs[1], outputs[0])
+        from worker.transport import canonical
+        if (canonical(m['outputs']) != canonical(outputs) or canonical(m['candidates']) != canonical(expected) or
+                message['result_asset_ids'] != [a['id'] for a in outputs]): raise Refused('native_proposal')
+        if len(data)>min(spec.max_output_bytes,1048576): raise Refused('native_output')
+        pcm(data,spec)
+        if len(data) != 44 + outputs[1]['frames']*2: raise Refused('native_output')
+        return
     if message['kind']!='result' or any(m[k]!=message[k] for k in ('job_id','attempt_id','generation','owner_id','staging_id','input_sha256')) or len(m['outputs'])!=1 or m['candidates'] or m['operation']!='speech_generate': raise Refused('native_proposal')
     a=m['outputs'][0]
     if len(data)>min(spec.max_output_bytes,1048576) or a['sha256']!=hashlib.sha256(data).hexdigest() or message['result_asset_ids']!=[a['id']] or a['sample_rate']!=spec.sample_rate or a['provenance']!=dict(kind='generated',source_sha256=a['sha256'],source_id=generated_source(context),missing_fields=[]): raise Refused('native_output')
@@ -149,13 +174,16 @@ def run_socket(connection, *, inference=None, guard=True):
     if hashlib.sha256(p.canonical(config['snapshot'])).hexdigest()!=config['binding']: raise Refused('native_binding')
     cutoff=config['cutoff']
     if type(cutoff) not in (int,float) or not 0<cutoff-time.monotonic()<=30: raise Refused('native_deadline')
-    spec=QwenExecution.from_wire(config['execution'])
+    if config['execution'].get('phase') == 'prepare':
+        from worker.engines.qwen_prepare import QwenPreparation
+        spec = QwenPreparation.from_wire(config['execution'])
+    else: spec=QwenExecution.from_wire(config['execution'])
     if p.native_execution(config['snapshot'][1]) != spec: raise Refused('native_execution')
     from contracts import validate as oracle
     oracle.stored_context(config['snapshot'][0],config['snapshot'][1])
     if (spec.device,spec.dtype,spec.attention) != ('mps','float32','sdpa') or spec.task not in ('clone','custom_voice'): raise Refused('native_execution')
     if guard: install_spawn_guard()
-    result=(infer if inference is None else inference)(spec,config['snapshot'][1]['plan']['request']['text'],config['bundles'],config['references'],inventory_from_wire(config['inventory']),reference_temp_dir=config['conditioning'],managed_owner_uid=os.getuid())
+    result=(infer if inference is None else inference)(spec,(config['snapshot'][1]['plan']['request']['audition_text'] if config['snapshot'][1]['plan']['operation']=='voice_prepare' else config['snapshot'][1]['plan']['request']['text']),config['bundles'],config['references'],inventory_from_wire(config['inventory']),reference_temp_dir=config['conditioning'],managed_owner_uid=os.getuid())
     value=proposal(config['snapshot'],result,spec)
     validate_proposal(config['snapshot'],value,result['data'],spec)
     wire_send(connection,dict(token=config['token'],binding=config['binding'],proposal=value,bytes=len(result['data']),sha256=result['sha256']),cutoff)

@@ -21,7 +21,7 @@ def native_demand(context):
     from worker.native_protocol import native_execution
     spec = native_execution(context)
     limits = context['plan']['resolved']['profile']['limits']
-    if 2*spec.reference_bytes+3*min(spec.max_output_bytes,1048576)+96000 > limits['disk_bytes']:
+    if (4 if context['plan']['operation']=='voice_prepare' else 2)*spec.reference_bytes+3*min(spec.max_output_bytes,1048576)+96000 > limits['disk_bytes']:
         raise ValueError('native_control_disk_budget')
     return dict(configuration=oracle.canonical_hash(context['execution']),
                 slots=1,ram_bytes=spec.memory_bytes,vram_bytes=0,pids=1,
@@ -118,7 +118,7 @@ class Admission:
                 rate=spec.sample_rate if spec else 48000
                 files=[('output.wav',max_bytes,max_frames,rate)]
                 if spec is not None and context['plan'].get('reference_roles'):
-                    frames=(spec.out_tick-spec.in_tick)*spec.reference_rate//48000
+                    frames=spec.reference_frames if spec.engine=='qwen' else (spec.out_tick-spec.in_tick)*spec.reference_rate//48000
                     files=[('reference.wav',44+2*frames,frames,spec.reference_rate),('audition.wav',max_bytes,max_frames,rate)]
                 for name,byte_limit,frame_limit,expected_rate in files:
                     output=stage/name
