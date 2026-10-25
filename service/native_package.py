@@ -543,6 +543,10 @@ def native_startup_inputs(record_file, *, configuration_file, templates_file, ow
     after, _, _ = _enrollment_snapshot(configuration_file, templates_file, owner_root)
     if canonical(after) != canonical(before) or canonical(selected_source(record_file,owner_root)) != saved:
         raise Refused('native_enrollment_changed')
+    from service.native_renewal import origin_authorization
+    authorization = origin_authorization(owner_root)
+    if authorization is not None:
+        contexts.authorize_origins(*authorization)
     return dict(runtime=runtime, production_contexts=contexts,
                 profiles=templates['profiles'], budget=templates['budget'])
 

@@ -417,3 +417,66 @@ def owned_clone_context(template, principal, request, asset, *, version=None):
         revision=derived.revision,text=transcript)}
     execution(context)
     return context
+
+
+def origin_template_pairs(original, current, mapping):
+    """Validate private origin rows against current rows; no allocation is authority.
+
+    Return unique principal/origin families. Only native epoch identity and probe
+    timestamps may differ. Historical inventory is decoded without expiring it.
+    """
+    import copy
+    import hashlib
+    from worker.transport import canonical, Refused
+    from worker.runtime_protocol import execution
+    from contracts import validate as oracle
+    if type(mapping) is not list or not 1 <= len(mapping) <= 64: raise Refused('native_origin')
+    keys = []
+    for entry in mapping:
+        _closed(entry, ('principal','origin_sha256','current_sha256'))
+        if type(entry['principal']) is not str or not 1 <= len(entry['principal']) <= 256: raise Refused('native_origin')
+        _hex(entry['origin_sha256'],64); _hex(entry['current_sha256'],64)
+        keys.append((entry['principal'],entry['origin_sha256']))
+    if len(set(keys)) != len(keys): raise Refused('native_origin')
+    if type(original) is not list or type(current) is not list or not 1 <= len(original) == len(current) == len(mapping) <= 64:
+        raise Refused('native_origin')
+    def digest(row): return hashlib.sha256(canonical(row)).hexdigest()
+    def normalized(row):
+        _closed(row, ('principal','profile','voice_version','context'))
+        value = copy.deepcopy(row)
+        context = value['context']
+        native_binding(context)
+        oracle.frozen_plan(context['plan'],context['bundles'])
+        native = context['execution']['native']
+        _closed(native, ('deployment_id','configuration_sha256','lane','boot','runtime_manifest_sha256'))
+        for key in ('configuration_sha256','lane','boot'): native.pop(key)
+        hardware = context['execution']['hardware']
+        _closed(hardware, ('host','devices'))
+        for device in hardware['devices']:
+            _closed(device, ('family','index','supported','available','probed_at'))
+            if device['supported'] is not True or device['available'] is not True or type(device['probed_at']) is not str:
+                raise Refused('native_origin')
+            device.pop('probed_at')
+        return value
+    result = []
+    for entry in mapping:
+        a = [row for row in original if row['principal'] == entry['principal'] and digest(row) == entry['origin_sha256']]
+        b = [row for row in current if row['principal'] == entry['principal'] and digest(row) == entry['current_sha256']]
+        if len(a) != 1 or len(b) != 1 or canonical(normalized(a[0])) != canonical(normalized(b[0])):
+            raise Refused('native_origin')
+        result.append((copy.deepcopy(a[0]), copy.deepcopy(b[0])))
+    if len({digest(b) for _, b in result}) != len(current): raise Refused('native_origin')
+    return result
+
+
+def origin_execution_context(context, current):
+    """Build a future context, retaining the exact immutable voice and plan."""
+    import copy
+    from worker.runtime_protocol import execution
+    from contracts import validate as oracle
+    result = copy.deepcopy(context)
+    for key in ('native','hardware'):
+        result['execution'][key] = copy.deepcopy(current['execution'][key])
+    execution(result)
+    oracle.frozen_plan(result['plan'],result['bundles'])
+    return result
