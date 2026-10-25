@@ -16,6 +16,18 @@ def finite_budget(value):
     return copy.deepcopy(value)
 
 
+def native_demand(context):
+    """Pure historical reservation rule; no hardware freshness or store writes."""
+    from worker.native_protocol import native_execution
+    spec = native_execution(context)
+    limits = context['plan']['resolved']['profile']['limits']
+    if 2*spec.reference_bytes+3*min(spec.max_output_bytes,1048576)+96000 > limits['disk_bytes']:
+        raise ValueError('native_control_disk_budget')
+    return dict(configuration=oracle.canonical_hash(context['execution']),
+                slots=1,ram_bytes=spec.memory_bytes,vram_bytes=0,pids=1,
+                disk_bytes=limits['disk_bytes'],attempt_disk_bytes=limits['disk_bytes'])
+
+
 class Admission:
     def __init__(self,core,staging,budget=None,*,private_spool=None):
         self.budget=finite_budget(DEFAULT_BUDGET if budget is None else budget)
@@ -45,8 +57,9 @@ class Admission:
                 if spec.device == 'mps':
                     from worker.native_protocol import native_binding
                     native_binding(context)
-                if spec.device == 'mps' and 2*spec.reference_bytes+3*min(spec.max_output_bytes,1048576)+96000 > limits['disk_bytes']: raise ValueError('native_control_disk_budget')
                 if spec.device.startswith('cuda:') and limits['vram_bytes'] <= 0: raise ValueError('cuda_memory_required')
+            if spec.engine == 'qwen' and spec.device == 'mps':
+                return native_demand(context)
             return dict(configuration=oracle.canonical_hash(context['execution']),
                         slots=1,ram_bytes=spec.memory_bytes,vram_bytes=limits['vram_bytes'] if spec.engine == 'qwen' and spec.device.startswith('cuda:') else 0,pids=1 if spec.engine == 'qwen' and spec.device == 'mps' else 48,
                         disk_bytes=limits['disk_bytes'],attempt_disk_bytes=limits['disk_bytes'])

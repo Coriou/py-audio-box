@@ -138,7 +138,10 @@ def completed_history(core, runtime):
         require(row['complete'] == 1 and summary.get('blocked') is False and not summary.get('reasons'))
     for table in ('p1_inventory_objects','p1_inventory_history'):
         require(all(json.loads(row['record'])['classification'] in ('committed_referenced','owned_synthetic_transient') for row in typed[table]))
-    require(all(row[3] == 'returned' for row in data['dispatch_commands']))
+    # These are Dispatcher journal operations, not the wider native RPC namespace.
+    commands = sorted(typed['dispatch_commands'], key=lambda row:row['seq'])
+    require(all(row['op'] in ('prepare','start','observe','stop','collect','ack') and
+                row['state'] == 'returned' for row in commands))
     jobs = {row['id']:row for row in typed['jobs']}
     dispatches = {row['job_id']:row for row in typed['dispatches']}
     reservations = {row['id']:row for row in typed['resource_reservations']}
@@ -150,20 +153,41 @@ def completed_history(core, runtime):
         job = json.loads(stored['job']); context = json.loads(stored['context'])
         d = dispatches[jid]; a = Authority(*json.loads(d['authority']))
         require(d['authority'].encode() == a._snapshot and d['binding'] == a.binding)
-        require(p.native_binding(a.context) == runtime.native and a.context == context)
+        require(canonical(p.native_binding(a.context)) == canonical(runtime.native) and
+                canonical(a.context) == canonical(context))
+        require(stored['retry_of'] is None)
+        require(stored['fingerprint'] == oracle.fingerprint(stored['principal'],
+                stored['operation'], a.context['plan']['request']))
+        ops = [row['op'] for row in commands if row['dispatch_id'] == d['seq']]
+        require(all(op in ops for op in ('prepare','start','collect','ack')))
+        require(ops.count('prepare') == ops.count('start') == 1 and ops[:2] == ['prepare','start'])
+        collected = ops.index('collect'); acknowledged = ops.index('ack')
+        require(collected < acknowledged and all(op in ('observe','stop') for op in ops[2:collected]) and
+                all(op == 'collect' for op in ops[collected:acknowledged]) and
+                all(op == 'ack' for op in ops[acknowledged:]))
+        require(d['runtime'] is not None and d['fixture'] == 'qwen')
         require(p.native_execution(context).task != 'clone')
-        require(job['state'] == 'succeeded' and len(job['attempts']) == 1 and job['attempts'][0]['reaped'] is True)
+        require(job['state'] == 'succeeded' and job['stage'] == 'completed' and len(job['attempts']) == 1 and job['attempts'][0]['reaped'] is True)
         frozen = a.job; finished = dict(job); finished['attempts'] = [dict(job['attempts'][0],reaped=False)]
-        require(all(frozen[k] == finished[k] for k in frozen if k not in ('state','stage','artifact_ids')))
-        require(d['acked'] == 1 and d['phase'] == 'acknowledged' and json.loads(d['outcome']) == job)
+        # Only these completion fields may differ from the dispatched Authority.
+        immutable = lambda value: {k:v for k,v in value.items() if k not in ('state','stage','artifact_ids')}
+        require(canonical(immutable(frozen)) == canonical(immutable(finished)))
+        require(d['acked'] == 1 and d['phase'] == 'acknowledged' and canonical(json.loads(d['outcome'])) == canonical(job))
         receipt = json.loads(d['receipt']); p.terminal_receipt(receipt,authority=a,runtime_id=d['runtime'],local_import_uid=runtime.local_import_uid)
         require(receipt['timely'] is True)
         retained = runtime._rpc('collect',{},authority=a,runtime_id=d['runtime'])
         require(canonical(retained['receipt']) == canonical(receipt))
         require(retained['proposal'] is not None)
         reservation = reservations[jid]; demand = json.loads(reservation['demand'])
+        from service.admission import native_demand
+        expected_demand = native_demand(a.context)
+        require(set(demand) == set(expected_demand))
+        dimensions = set(expected_demand)-{'configuration'}
+        require(all(type(demand[k]) is int and 0 <= demand[k] <= 2**53-1 for k in dimensions))
+        require(all(demand[k] > 0 for k in dimensions-{'vram_bytes'}))
+        # Single attempt means no replacement disk charge; corroborate, never reserve.
         require(reservation['state'] == 'retained' and reservation['category'] == 'inference' and
-                demand['configuration'] == r.digest(context['execution']) and demand['disk_bytes'] >= demand['attempt_disk_bytes'])
+                canonical(demand) == canonical(expected_demand))
         publication = publications[jid]; artifact = json.loads(publication['artifact']); manifest = json.loads(publication['manifest'])
         hashes = {}
         for asset in manifest['outputs']:
@@ -172,7 +196,7 @@ def completed_history(core, runtime):
             hashes[asset['id']] = hashlib.sha256(raw).hexdigest()
         oracle.publication(frozen,frozen['attempts'][0],artifact,hashes,transport_owner=frozen['attempts'][0]['owner_id'],context=context,manifest=manifest,verified_result=json.loads(publication['message']),allowed_assets=a.allowed_assets)
         require(job['artifact_ids'] == [artifact['id']])
-        require(any(row['id'] == artifact['id'] and json.loads(row['metadata']) == artifact for row in typed['artifacts']))
+        require(any(row['id'] == artifact['id'] and canonical(json.loads(row['metadata'])) == canonical(artifact) for row in typed['artifacts']))
         directory = runtime.spool/a.binding
         require({f.name for f in directory.iterdir()} == {'snapshot','output','complete','import-intent','import-complete'})
         require(_read(directory/'snapshot',48000) == a._snapshot)

@@ -48,8 +48,10 @@ class NativeActivationTests(unittest.TestCase):
         finally:
             owner.close()
         self.assertFalse(owner.thread.is_alive())
-        reopened = self.start()
-        reopened.close()
+        for _ in range(2):
+            reopened = self.start()
+            self.assertTrue(reopened.installed_checked)
+            reopened.close()
         # Refused startup releases the same Core lifetime exclusion.
         core = Core(self.owner); core.close()
 

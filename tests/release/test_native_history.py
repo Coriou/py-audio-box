@@ -1,6 +1,7 @@
 """Tiny source histories; actual Core and native proofs, fake TLS/process/backend."""
 import copy
 import json
+import sqlite3
 import time
 import unittest
 from unittest.mock import patch
@@ -46,7 +47,8 @@ class NativeHistoryTests(unittest.TestCase):
             finally:self.close()
 
     def reopen(self):
-        self.dispatcher=Dispatcher(self.root,staging=self.f.stage,installed_activation=NativeActivation(self.record,**self.kw))
+        self.activation=NativeActivation(self.record,**self.kw)
+        self.dispatcher=Dispatcher(self.root,staging=self.f.stage,installed_activation=self.activation)
         self.wait(lambda:self.dispatcher.call('status')['reconciled'])
         return self.dispatcher
 
@@ -56,6 +58,7 @@ class NativeHistoryTests(unittest.TestCase):
             try:
                 d=self.reopen()
                 self.assertFalse(d.call('status')['quarantined'])
+                self.assertEqual(d.call('production_generate','alice',self.context['plan']['request'],key='retained')['job_id'],self.job['id'])
                 self.assertEqual(d.call('job',self.job['id']),self.job)
                 self.assertEqual(d.call('status')['reservations'][0]['state'],'retained')
                 self.assertEqual(d.call('production_artifact','alice',dict(artifact_id=self.job['artifact_ids'][0]))['id'],self.job['artifact_ids'][0])
@@ -67,11 +70,23 @@ class NativeHistoryTests(unittest.TestCase):
         core=Core(self.root)
         try: mutate(core)
         finally:core.close()
-        evidence={p:p.read_bytes() for p in self.f.spool.rglob('*') if p.is_file()}
+        def evidence():
+            return {p:p.read_bytes() for root in (self.f.spool,self.f.stage,self.root/'assets')
+                    for p in root.rglob('*') if p.is_file()}
+        saved=evidence()
+        def database():
+            with sqlite3.connect(self.root/'core.sqlite') as db:
+                return list(db.iterdump())
+        durable=database()
         acks=sum(q['op']=='ack' for q in self.f.requests)
         with self.assertRaises(Exception): self.reopen()
+        activation=self.activation
+        if hasattr(activation,'runtime'):
+            self.assertTrue(activation.runtime.import_closed)
+            self.assertFalse(activation.runtime.import_completed)
         self.dispatcher=None
-        self.assertEqual(evidence,{p:p.read_bytes() for p in self.f.spool.rglob('*') if p.is_file()})
+        self.assertEqual(saved,evidence())
+        self.assertEqual(durable,database())
         self.assertEqual(acks,sum(q['op']=='ack' for q in self.f.requests))
 
     def test_unfinished_reservation_refuses(self):
@@ -136,3 +151,67 @@ class NativeHistoryTests(unittest.TestCase):
         import sqlite3
         with sqlite3.connect(self.root/'core.sqlite') as db:
             self.assertIsNone(db.execute("SELECT 1 FROM sqlite_master WHERE name='voice_catalogue_format'").fetchone())
+
+
+    def change_document(self, table, column, mutate):
+        def change(c):
+            value=json.loads(c.db.execute('SELECT '+column+' FROM '+table).fetchone()[0])
+            mutate(value)
+            c.db.execute('UPDATE '+table+' SET '+column+'=?',(json.dumps(value),))
+        self.refusal(change)
+
+    def test_negative_retained_dimensions_refuse(self):
+        self.change_document('resource_reservations','demand',lambda d:d.update(
+            slots=-1,ram_bytes=-1,pids=-1,disk_bytes=-1,attempt_disk_bytes=-1))
+
+    def test_self_retry_refuses(self):
+        self.refusal(lambda c:c.db.execute('UPDATE jobs SET retry_of=id'))
+
+    def test_wrong_request_fingerprint_refuses(self):
+        self.refusal(lambda c:c.db.execute("UPDATE jobs SET fingerprint='not-the-request-fingerprint'"))
+
+    def test_unknown_returned_command_refuses(self):
+        self.refusal(lambda c:c.db.execute("INSERT INTO dispatch_commands(dispatch_id,op,state) SELECT seq,'unrecognized-operation','returned' FROM dispatches"))
+
+    def test_unknown_command_state_refuses(self):
+        self.refusal(lambda c:c.db.execute("UPDATE dispatch_commands SET state='unknown' WHERE op='ack'"))
+
+    def test_missing_start_command_refuses(self):
+        self.refusal(lambda c:c.db.execute("DELETE FROM dispatch_commands WHERE op='start'"))
+
+    def test_command_order_refuses(self):
+        self.refusal(lambda c:c.db.execute("UPDATE dispatch_commands SET op='ack' WHERE op='prepare'"))
+
+    def test_job_generation_float_refuses(self):
+        self.change_document('jobs','job',lambda j:j.update(generation=float(j['generation'])))
+
+    def test_outcome_generation_float_refuses(self):
+        self.change_document('dispatches','outcome',lambda j:j.update(generation=float(j['generation'])))
+
+    def test_context_primitive_substitution_refuses(self):
+        self.change_document('jobs','context',lambda c:c['execution']['descriptor'].update(
+            memory_bytes=float(c['execution']['descriptor']['memory_bytes'])))
+
+    def test_artifact_primitive_substitution_refuses(self):
+        self.change_document('artifacts','metadata',lambda a:a.update(generation=float(a['generation'])))
+
+    def test_retained_float_dimension_refuses(self):
+        self.change_document('resource_reservations','demand',lambda d:d.update(slots=1.0))
+
+    def test_retained_bool_dimension_refuses(self):
+        self.change_document('resource_reservations','demand',lambda d:d.update(slots=True))
+
+    def test_retained_zero_dimension_refuses(self):
+        self.change_document('resource_reservations','demand',lambda d:d.update(pids=0))
+
+    def test_retained_overflow_dimension_refuses(self):
+        self.change_document('resource_reservations','demand',lambda d:d.update(ram_bytes=2**53))
+
+    def test_retained_nonfinite_dimension_refuses(self):
+        self.change_document('resource_reservations','demand',lambda d:d.update(ram_bytes=float('inf')))
+
+    def test_retained_positive_wrong_reservation_refuses(self):
+        self.change_document('resource_reservations','demand',lambda d:d.update(disk_bytes=d['disk_bytes']+1))
+
+    def test_retained_unknown_dimension_refuses(self):
+        self.change_document('resource_reservations','demand',lambda d:d.update(extra=1))
