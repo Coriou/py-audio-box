@@ -305,6 +305,13 @@ class NativeQwenContexts:
             oracle.admission(dict(operation='speech_generate',input_sha256=oracle.plan_hash(snapshot['plan'])),snapshot,profiles)
             self._contexts[key] = json.dumps(snapshot,allow_nan=False)
 
+    def capabilities(self, principal):
+        contexts = [json.loads(raw) for key, raw in self._contexts.items() if key[0] == principal]
+        if not contexts: return None
+        return dict(engine='qwen', profile=contexts[0]['plan']['resolved']['profile'],
+                    operations=['speech_generate', 'job_get', 'job_cancel', 'artifact_get'],
+                    installed=True, next_action='Use an existing owned registered voice version; fresh native voice onboarding is unavailable.')
+
     def resolve_registered(self, principal, request, version):
         from contracts import validate as oracle
         from worker.engines.qwen_execution import current_native_hardware

@@ -94,7 +94,7 @@ if ui.is_dir():
     app.mount('/evaluation', StaticFiles(directory=ui, html=True), name='synthetic-evaluation')
 
 
-def create_voice_app(dispatcher, *, credentials, upload_deadline=15.0, installed=None):
+def create_voice_app(dispatcher, *, credentials, upload_deadline=15.0, installed=None, native_installed=False):
     """Borrow an initialized Dispatcher. Caller retains sole close responsibility.
 
     This factory starts no owner, worker, listener or persistent enrollment.
@@ -109,7 +109,11 @@ def create_voice_app(dispatcher, *, credentials, upload_deadline=15.0, installed
         if (not dispatcher.installed_checked or
                 dispatcher.installed_activation.configuration != installed):
             raise ValueError('checked_installed_activation_required')
-    production = FastAPI(title='Authenticated installed speech control' if installed is not None else 'Authenticated synthetic production control', docs_url=None,
+    if native_installed:
+        from service.native_activation import NativeActivation
+        if installed is not None or type(dispatcher.installed_activation) is not NativeActivation or not dispatcher.installed_checked:
+            raise ValueError('checked_native_activation_required')
+    production = FastAPI(title='Authenticated installed speech control' if installed is not None or native_installed else 'Authenticated synthetic production control', docs_url=None,
                          redoc_url=None, openapi_url=None)
     production.add_exception_handler(Failure, failure_handler)
     production.add_exception_handler(RequestValidationError, invalid_handler)
@@ -175,6 +179,12 @@ def create_voice_app(dispatcher, *, credentials, upload_deadline=15.0, installed
                         activation_ready=status['persistent_activation'],
                         qualification='operator-declared configured profile; installation and registration do not qualify execution')
         configured = dispatcher.call('configured_capabilities', request.state.principal)
+        if native_installed:
+            status = dispatcher.call('status')
+            return dict(synthetic=False, ready_for_speech=False, installed=True,
+                        activation_ready=status['persistent_activation'], status=status,
+                        configured_capabilities=configured, store='installed-native-owner',
+                        qualification='UNAVAILABLE / UNQUALIFIED; source activation does not qualify speech')
         if configured:
             return dict(synthetic=False, ready_for_speech=False, installed=False,
                         configured_capabilities=configured, store='borrowed-owner',

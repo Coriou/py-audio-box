@@ -239,3 +239,58 @@ promoted. Authenticated installed public lifespan/credentials, topology/mounts,
 fresh voice onboarding and hardware qualification remain separate. No arm64
 wheelhouse is supplied; actual Metal remains UNAVAILABLE / UNQUALIFIED. CPU/CUDA
 release rows and the known legacy lib/tts.py digest RED remain unwaived.
+
+## Explicit native public control launch (r317 SOURCE candidate)
+
+The separate native installed control command now mounts the canonical authenticated
+HTTP app through the same retained lifespan ownership used by Linux. Existing
+Linux installer commands, routes and ownership rules are unchanged. This command
+neither provisions nor enrolls. First prepare the explicit write-once native
+record/config/templates with the private enrollment API described above, using
+independently provisioned client trust and immutable registered contexts. Run
+under the dedicated owner account with no hostile same-UID writers.
+
+Supply an owner-only 0600 credential document in a 0700 owner directory. It uses
+the existing closed `version:1,credentials:[{token,principal,scopes}]` schema:
+1..32 credentials, token 32..4096 ASCII letters/digits/`._:-`, principal already
+present in native templates, scopes `read` and optionally `production-write`.
+No credential value belongs in a command argument or log. No default credential,
+environment lookup, self-enrollment or readiness promotion is provided.
+
+After separately provisioning and starting the native supervisor with its exact
+configured boot/trust, an operator can explicitly start control from the extracted
+source directory with a separately provisioned compatible control interpreter:
+
+```
+/absolute/control/python -I -B /absolute/native-worker/scripts/native-installed.py serve \
+  --record-file /absolute/private/enrollment.json \
+  --configuration-file /absolute/private/control.json \
+  --templates-file /absolute/private/templates.json \
+  --owner-root /absolute/private/owner --staging /absolute/private/staging \
+  --credential-file /absolute/private/credentials.json --host 127.0.0.1 --port 8780
+```
+
+Only explicit `127.0.0.1` or `::1` HTTP binds are supported. This is the control
+host's loopback; no Docker/host route, mount or TLS topology is inferred or proven.
+Do not expose this plain HTTP listener via forwarding to untrusted networks.
+TERM/INT uses ordinary owner drain; failed/unknown close retains its strong owner
+obligation and reports failure. Cancelled asynchronous startup retains eventual
+acquisition and closes it once; it does not abandon an owner or retry failed close.
+The native runtime is constructed on the existing Dispatcher owner thread.
+Same immutable enrollment/config/templates/boot/trust and the finite reviewed
+native completed-history policy still apply. No automatic boot/trust renewal.
+
+The existing clients use that same API: set `SPEECH_URL` explicitly to
+`http://127.0.0.1:8780` and supply `SPEECH_CREDENTIAL` securely in the client
+process environment. Existing `python -m clients.cli discover`, `voices list`,
+`job get ID`, and `python -m clients.mcp` continue to use canonical requests,
+authentication, scopes and errors. Native discovery returns configured native
+profile metadata without promotion; `/skeleton` separates activation from speech
+and reports `ready_for_speech:false`, UNAVAILABLE / UNQUALIFIED.
+
+This is source wiring, not a complete installed journey. Fresh public native
+owned-voice onboarding, topology/mount validation and stopped/reconciled renewal
+remain subsequent slices. No reviewed arm64 wheelhouse, compatible installed ABI,
+actual hardware/model/MPS, denied-peer/topology, audio, cancellation/crash/resource
+or completed installed restart qualification is supplied. CPU/CUDA qualification
+and legacy lib/tts digest RED remain separate and unchanged/unwaived.

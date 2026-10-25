@@ -307,9 +307,6 @@ def create_installed_app(*, configuration_file, credential_file, root='/control/
     No listener is created here. Explicit files and the trusted host notification
     are required; no environment/default credential or synthetic fallback.
     """
-    from contextlib import asynccontextmanager
-    import asyncio
-    from fastapi import FastAPI
     from service.auth import installed_credentials
     from service.execution_context import installed_configuration, installed_mapping, installed_contexts
     from service.dispatcher import Dispatcher
@@ -320,11 +317,26 @@ def create_installed_app(*, configuration_file, credential_file, root='/control/
     mapping = installed_mapping(config, policy=ip.SPLIT)
     contexts = installed_contexts(config, mapping)
     runtime = runtime or SupervisorRuntime('/ipc')
+    def dependencies():
+        notification = waiting if waiting is not None else WaitingControl()
+        activation = InstalledActivation(notification, config)
+        return notification, lambda: activation.prepare(runtime, root), lambda: Dispatcher(
+            root, staging=staging, runtime=runtime, profiles=config['profiles'],
+            budget=config['budget'], production_contexts=contexts, installed_activation=activation)
+    return _owned_app(dependencies, lambda owner: create_voice_app(
+        owner, credentials=credentials, installed=config))
+
+
+def _owned_app(dependencies, mount):
+    """Shared strong installed ownership, including cancelled acquisition/close."""
+    from contextlib import asynccontextmanager
+    import asyncio
+    from fastapi import FastAPI
     application = FastAPI(docs_url=None, redoc_url=None, openapi_url=None)
 
     @asynccontextmanager
     async def lifespan(app):
-        notification = waiting if waiting is not None else WaitingControl()
+        notification, prepare, acquire = dependencies()
         owner = None
         preparation = acquisition = None
         loop = asyncio.get_running_loop()
@@ -402,13 +414,10 @@ def create_installed_app(*, configuration_file, credential_file, root='/control/
             responsibility['closed'] = True
             _INSTALLED_LIFECYCLES.pop(id(responsibility), None)
         try:
-            activation = InstalledActivation(notification, config)
-            # Waiting has its own 30-second budget and owns no Dispatcher/Core.
-            preparation = operation('preparation', lambda: activation.prepare(runtime, root))
-            await asyncio.shield(preparation.wrapper)
-            acquisition = operation('acquisition', lambda: Dispatcher(root, staging=staging, runtime=runtime,
-                profiles=config['profiles'], budget=config['budget'], production_contexts=contexts,
-                installed_activation=activation))
+            if prepare is not None:
+                preparation = operation('preparation', prepare)
+                await asyncio.shield(preparation.wrapper)
+            acquisition = operation('acquisition', acquire)
             owner = await asyncio.shield(acquisition.wrapper)
             responsibility['owner'] = owner
             app.state.dispatcher = owner
@@ -419,7 +428,11 @@ def create_installed_app(*, configuration_file, credential_file, root='/control/
                 if time.monotonic() >= deadline: raise ValueError('installed_reconciliation_timeout')
                 await asyncio.sleep(.02)
             if not status['persistent_activation']: raise ValueError('installed_reconciliation_refused')
-            app.mount('/', create_voice_app(owner, credentials=credentials, installed=config))
+            previous = getattr(app.state, 'installed_mount', None)
+            if previous is not None:
+                app.router.routes.remove(previous)
+            app.mount('/', mount(owner))
+            app.state.installed_mount = app.router.routes[-1]
             app.state.dispatcher = owner
             yield
         finally:
