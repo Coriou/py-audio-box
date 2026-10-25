@@ -271,6 +271,108 @@ class ProductionSelectionTests(unittest.TestCase):
         self.wait(lambda:self.runtime.authorities)
         self.cancel(receipt)
 
+    def assert_discovery_refuses(self, reason):
+        profile = self.discovery_profile()
+        self.assertEqual(profile['readiness'], 'not_ready')
+        self.assertIn(reason, profile['next_action'])
+
+    def test_exact_unavailable_cuda0_never_borrows_available_cuda1(self):
+        self.composition.candidates = self.composition.candidates[:1]
+        self.composition.measurements = {'gpu0': self.measurements['gpu0']}
+        self.composition.inventory = HardwareInventory(self.inventory.host, tuple(
+            replace(d, available=False) if d.index == 0 else d for d in self.inventory.devices))
+        self.assert_discovery_refuses('hardware_identity_changed')
+        self.refused(['hardware_identity_changed'], key='exact-unavailable')
+
+    def test_same_index_changed_hardware_identity_requires_requalification(self):
+        self.composition.inventory = replace(self.inventory,
+            host=replace(self.inventory.host, architecture='changed-same-indices'))
+        self.assert_discovery_refuses('hardware_identity_changed')
+        self.refused(['hardware_identity_changed'], key='same-index-changed-host')
+
+    def test_exact_device_predicate_even_with_matching_hardware_wire(self):
+        # Detached metadata can describe an unavailable device; a matching receipt
+        # alone is insufficient. Keep all hashes and hardware wires consistent.
+        inv = replace(self.inventory, devices=tuple(
+            replace(d, available=False) if d.index == 0 else d for d in self.inventory.devices))
+        self.composition.inventory = inv
+        name, provider = self.composition.candidates[0]
+        self.composition.candidates = ((name, provider),)
+        context = copy.deepcopy(self.snapshots[name])
+        context['execution']['hardware'] = inventory_wire(inv)
+        provider._contexts['alice'] = json.dumps(context)
+        provider._inventory = inv
+        self.composition.measurements = {name: Measurement(oracle.canonical_hash(context['execution']),
+                                                        self.measurements[name].performance)}
+        self.assert_discovery_refuses('device_unavailable')
+        self.refused(['candidate_identity_or_readiness_refused'], key='matching-unavailable')
+
+    def test_candidates_cannot_mix_measurement_and_current_hardware_witnesses(self):
+        # Only gpu0 is measured but its hardware binding is stale. gpu1 has
+        # current hardware and availability but no measurement of its own.
+        name, provider = self.composition.candidates[0]
+        context = copy.deepcopy(self.snapshots[name])
+        old = replace(self.inventory, host=replace(self.inventory.host, architecture='old'))
+        context['execution']['hardware'] = inventory_wire(old)
+        provider._contexts['alice'] = json.dumps(context)
+        self.composition.measurements = {name: Measurement(oracle.canonical_hash(context['execution']),
+                                                        self.measurements[name].performance)}
+        self.assert_discovery_refuses('hardware_identity_changed')
+        self.refused(['measurement_required', 'hardware_identity_changed'], key='mixed-witnesses')
+        # One complete valid candidate suffices despite the invalid alternative.
+        self.composition.measurements['gpu1'] = self.measurements['gpu1']
+        self.assertEqual(self.discovery_profile()['readiness'], 'ready')
+        receipt = self.submit(key='same-candidate-valid')
+        self.wait(lambda: self.runtime.authorities)
+        self.assertEqual(self.runtime.authorities[-1].context['execution']['descriptor']['device'], 'cuda:1')
+        self.cancel(receipt)
+
+    def test_metadata_resources_concurrency_and_runtime_composition_agree(self):
+        for field in ('ram_bytes', 'vram_bytes'):
+            with self.subTest(resource=field):
+                original = self.dispatcher.admission.budget[field]
+                self.dispatcher.admission.budget[field] = self.profiles[0]['limits'][field] - 1
+                self.assert_discovery_refuses('memory_insufficient')
+                self.refused(['memory_insufficient'], key='metadata-'+field)
+                self.dispatcher.admission.budget[field] = original
+        self.composition.concurrency = 3
+        self.assert_discovery_refuses('concurrency_exceeded')
+        self.refused(['concurrency_exceeded'], key='metadata-concurrency')
+        self.composition.concurrency = 1
+        self.composition.runtime = object()
+        self.assert_discovery_refuses('runtime_binding_changed')
+        self.refused(['runtime_binding_changed'], key='metadata-runtime')
+        self.composition.runtime = self.runtime
+        self.dispatcher.installed_checked = True
+        try:
+            self.assert_discovery_refuses('installed_composition_unsupported')
+            # Exercise the same pre-resolution composition gate directly; this
+            # fixture has no installed activation and must not fake enrollment.
+            from service.production_selection import SelectionUnavailable
+            with self.assertRaises(SelectionUnavailable) as caught:
+                self.composition.resolve_selected(self.dispatcher, 'alice', 'speech_generate', self.payload)
+            self.assertIn('installed_composition_unsupported', caught.exception.reasons)
+        finally:
+            self.dispatcher.installed_checked = False
+
+    def test_metadata_runtime_topology_and_unknown_unmeasured_are_conservative(self):
+        self.runtime.native = {'changed': 'native binding'}
+        self.assert_discovery_refuses('runtime_topology_incompatible')
+        self.refused(['runtime_topology_incompatible'], key='metadata-topology')
+        del self.runtime.native
+        self.composition.policy = SelectionPolicy(allow_unmeasured=True)
+        with patch.object(QwenContexts, 'selection_metadata', None):
+            self.assert_discovery_refuses('measurement_binding_verification_required')
+
+    def test_selection_metadata_is_detached_and_contains_no_owned_media(self):
+        provider = self.composition.candidates[0][1]
+        facts = provider.selection_metadata()[0]
+        self.assertEqual(set(facts), {'profile', 'execution_sha256', 'engine', 'device',
+                                     'memory_bytes', 'threads', 'hardware', 'native'})
+        facts['hardware']['host']['architecture'] = 'tampered'
+        facts['profile']['id'] = 'tampered'
+        self.assertEqual(self.discovery_profile()['readiness'], 'ready')
+
 
 class SelectionContractTests(unittest.TestCase):
     def test_generator_filename_and_byte_determinism_and_existing_fixtures(self):

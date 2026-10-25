@@ -203,6 +203,57 @@ def choose(dispatcher, contexts, request, *, inventory=None, measurements=None,
     return snapshots[result.profile.profile_id]
 
 
+def metadata_status(dispatcher, composition, name, p, facts):
+    """All witnesses belong to ONE configured template; never resolve owned inputs."""
+    from worker.engines.qwen_execution import inventory_wire
+    reasons = []
+    family = (DeviceFamily.MPS if facts['device'] == 'mps' else
+              DeviceFamily.CUDA if facts['device'].startswith('cuda:') else DeviceFamily.CPU)
+    index = int(facts['device'].split(':')[1]) if family == DeviceFamily.CUDA else 0
+    native = hasattr(dispatcher.runtime, 'native')
+    if family == DeviceFamily.MPS and facts['native'] != getattr(dispatcher.runtime, 'native', None):
+        reasons.append('native_binding_changed')
+    inv = composition.inventory
+    if ((family == DeviceFamily.MPS) != native or
+            (native and (inv.host.system != 'darwin' or inv.host.deployment != 'native')) or
+            (not native and inv.host.system != 'linux')):
+        reasons.append('runtime_topology_incompatible')
+    if facts['engine'] != 'qwen':
+        return ['measurement_binding_verification_required']
+    if facts['hardware'] != inventory_wire(inv):
+        reasons.append('hardware_identity_changed')
+    measurement = composition.measurements.get(name)
+    performance = None
+    if measurement is not None:
+        if measurement.execution_sha256 != facts['execution_sha256']:
+            reasons.append('measurement_required')
+        else:
+            performance = measurement.performance
+    if 'synthetic' in p['qualification_receipt'].lower():
+        reasons.append('profile_unqualified')
+    if (facts['memory_bytes'] != p['limits']['ram_bytes'] or
+            facts['threads'] != p['limits']['threads']):
+        reasons.append('execution_context_refused')
+    if family == DeviceFamily.CUDA and p['limits']['vram_bytes'] > dispatcher.admission.budget['vram_bytes']:
+        reasons.append('memory_insufficient')
+    # Reuse execution's pure device/topology/resource/concurrency and policy gates.
+    # Identity placeholders deliberately express no request-specific voice promise.
+    record = ExecutionProfile(name, 'metadata', 'metadata', 'metadata', 'metadata',
+        family, index, 'metadata', 'metadata', frozenset(), frozenset({'und'}),
+        Resources(facts['memory_bytes'], facts['threads'], p['limits']['expensive_slots']),
+        p['installation'] == 'installed', True, True, p['checked_at'],
+        p['qualification_receipt'], performance)
+    work = VoiceWorkRequest('metadata', 'metadata', 'metadata', 'metadata',
+        frozenset(), 'und', dispatcher.admission.budget['ram_bytes'],
+        concurrency=composition.concurrency)
+    result = select((record,), work,
+        fresh_inventory(inv, min(composition.max_age_seconds, 300)), composition.policy)
+    if result.profile is None:
+        reasons.extend(r.value for status in result.diagnostics for r in status.reasons)
+        reasons.append(result.reason.value)
+    return reasons
+
+
 def discovery(dispatcher):
     """Metadata only: never resolve media, verify bundles, import ML or provision."""
     composition = dispatcher.production_contexts
@@ -230,26 +281,31 @@ def discovery(dispatcher):
         if isinstance(composition, ContextComposition):
             if composition.runtime is not dispatcher.runtime: reasons.append('runtime_binding_changed')
             if composition.concurrency > p['limits']['expensive_slots']: reasons.append('concurrency_exceeded')
-            # A receipt for another key/profile is not evidence for this profile.
-            # Unknown providers cannot prove an execution binding from metadata;
-            # do not resolve them (which can read owned media and verify bundles).
-            bound = False
+            if dispatcher.installed_checked and len(composition.candidates) != 1:
+                reasons.append('installed_composition_unsupported')
+            candidate_ready = False
             unknown = False
+            failures = []
             for name, provider in composition.candidates:
                 describe = getattr(provider, 'selection_metadata', None)
                 if describe is None:
                     unknown = True
                     continue
-                measurement = composition.measurements.get(name)
-                for snapshot, execution_hash in describe():
-                    if snapshot != oracle.profile_snapshot(p):
-                        continue
-                    if (measurement is not None and composition.policy.workload
-                            and measurement.performance.workload == composition.policy.workload
-                            and measurement.execution_sha256 == execution_hash):
-                        bound = True
-            if not composition.policy.allow_unmeasured and not bound:
-                reasons.append('measurement_binding_verification_required' if unknown else 'measurement_required')
+                try:
+                    metadata = describe()
+                    for facts in metadata:
+                        if facts['profile'] != oracle.profile_snapshot(p):
+                            continue
+                        candidate_reasons = metadata_status(dispatcher, composition, name, p, facts)
+                        if not candidate_reasons:
+                            candidate_ready = True
+                        failures.extend(candidate_reasons)
+                except (ValueError, TypeError, KeyError, AttributeError):
+                    unknown = True
+            if not candidate_ready:
+                reasons.extend(failures or ['measurement_required'])
+                if unknown:
+                    reasons.append('measurement_binding_verification_required')
         family = DeviceFamily.MPS if p['device'] == 'metal' else DeviceFamily(p['device'])
         if inventory is not None and not any(d.family == family and d.available and d.supported
                                              for d in inventory.devices):
