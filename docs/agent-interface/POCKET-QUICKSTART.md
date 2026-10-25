@@ -16,9 +16,9 @@ Build and model storage need several GiB beyond runtime memory. The installed
 budget is 4 GiB independently for control and worker; the contained ML address
 space ceiling is 3 GiB, two threads and 180 seconds per operation. These are
 fixed bounded recipe limits, not a promise that every host will complete.
-The installed disk quota is 1 GiB, with 64 MiB free-space admission and a 4 MiB
-reservation per retained job. The latter covers two copies of the maximum
-720044-byte output plus the full 1 MiB admitted input (3537240 bytes total).
+The installed disk quota is 1 GiB, with 64 MiB free-space admission and an 8 MiB
+reservation per retained job. The latter covers the preparation protocol’s two output copies and six
+reference/segment copies at the full 1 MiB input ceiling (7731544 bytes total).
 Retained jobs still consume quota; ordinary Core capacity checks remain active.
 
 Acquire authorized gated Hugging Face files with your own authenticated HF CLI:

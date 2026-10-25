@@ -16,8 +16,8 @@ import sys
 import time
 import wave
 
-# Two retained output copies plus a maximum admitted reference stay below 4 MiB.
-POCKET_JOB_DISK_BYTES = 4 * 1024**2
+# Preparation reserves two output copies plus six reference/segment copies.
+POCKET_JOB_DISK_BYTES = 8 * 1024**2
 POCKET_INSTALL_DISK_BYTES = 1024**3
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))

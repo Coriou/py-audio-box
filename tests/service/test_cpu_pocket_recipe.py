@@ -26,17 +26,17 @@ class PocketRecipeAdmission(unittest.TestCase):
         expected=json.loads((ROOT/'requirements/tts/pocket-fr.expected.json').read_bytes())
         for rate in (24000,48000):
             with self.subTest(rate=rate), tempfile.TemporaryDirectory() as tmp:
-                path=Path(tmp)/'voice.wav';path.write_bytes(pcm(rate,rate))
+                path=Path(tmp)/'voice.wav';path.write_bytes(pcm(rate,rate*8))
                 raw,ref=RECIPE.reference(path)
                 ctx,profile=RECIPE.context(expected,ref)
-                self.assertEqual(ctx['execution']['descriptor']['out_tick'],48000)
+                self.assertEqual(ctx['execution']['descriptor']['out_tick'],384000)
                 self.assertEqual(ctx['execution']['descriptor']['reference_sha256'],hashlib.sha256(raw).hexdigest())
                 self.assertEqual(profile['verification'],'synthetic')
                 self.assertEqual(profile['support'],'unqualified')
                 self.assertEqual(profile['qualification_receipt'],'')
                 self.assertEqual(ctx['plan']['request']['audition_text'],'Bonjour.')
-                self.assertEqual(profile['limits']['disk_bytes'],4*1024**2)
-                self.assertGreaterEqual(profile['limits']['disk_bytes'],2*(ctx['execution']['descriptor']['max_output_bytes']+profile['limits']['upload_bytes']))
+                self.assertEqual(profile['limits']['disk_bytes'],8*1024**2)
+                self.assertGreaterEqual(profile['limits']['disk_bytes'],2*ctx['execution']['descriptor']['max_output_bytes']+6*profile['limits']['upload_bytes'])
                 self.assertEqual(RECIPE.POCKET_INSTALL_DISK_BYTES,1024**3)
 
     def test_reference_rejects_duration_over_eight_seconds_and_symlink(self):
