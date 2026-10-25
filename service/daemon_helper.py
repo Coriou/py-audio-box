@@ -476,15 +476,12 @@ class Helper:
         raise ValueError('daemon_runtime_wait_timeout_retained')
 
     def ready(self,ids,public,rid,record):
-        if self.export: raise ValueError('daemon_export_owner_activation_unavailable')
         self.wait(lambda:self.rpc('marker',dict(id=ids['control'],role='control')),lambda v:v==dict(phase='ready',registration_id=rid))
         current=self.observe(ids,public); dv.observation(current,record,self.config,self.b,public,family=self.family)
         return dict(phase='ready',registration_id=rid,containers=ids)
 
     def runtime(self):
         public=self.public()
-        if self.export:
-            raise ValueError('daemon_export_owner_activation_unavailable')
         if self.exists('containers.json'):
             ids=self.read('containers.json'); dv.closed(ids,'control worker')
         elif self.phase=='up':
@@ -532,7 +529,15 @@ class Helper:
         # is the never-started pair from this fresh exclusive create transaction.
         if any(c['State']['Status']!='created' for c in pair.values()):
             receipts=[self.read(n) for n in os.listdir(self.fds['authority']) if n.startswith('stopped-') and n.endswith('.json')]
-            if not any(r['containers']==pair and r['history']==history for r in receipts): raise ValueError('daemon_clean_stop_receipt_required')
+            if self.export:
+                from service.installed_export import stopped_receipt
+                matches = []
+                for receipt in receipts:
+                    try: stopped_receipt(receipt,pair,history,public=public,family=self.family)
+                    except ValueError: continue
+                    matches.append(receipt)
+                if not matches: raise ValueError('daemon_clean_stop_receipt_required')
+            elif not any(r['containers']==pair and r['history']==history for r in receipts): raise ValueError('daemon_clean_stop_receipt_required')
         self.inspect('control',ids,'start')
         self.wait(lambda:self.rpc('marker',dict(id=ids['control'],role='control')),lambda v:v==dict(phase='waiting'))
         self.inspect('worker',ids,'start')

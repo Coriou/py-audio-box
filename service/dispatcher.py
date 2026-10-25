@@ -92,9 +92,11 @@ class Dispatcher:
                             hello, self.current_profiles,
                             DEFAULT_BUDGET if self.budget is None else self.budget)
             from service.native_activation import NativeActivation
+            installed_family = getattr(self.installed_activation, "expectation", None)
             core=self.core=Core(self.root, _native_activation=(self.installed_activation
                 if type(self.installed_activation) is NativeActivation else None),
-                _publication_creation=1 if self.installed_activation is not None or startup is not None else 2)
+                _installed_family=installed_family,
+                _publication_creation=2 if installed_family is not None else 1 if self.installed_activation is not None or startup is not None else 2)
             if self.installed_activation is not None:
                 self.installed_activation.postcheck(self)
                 self.installed_checked = True
@@ -256,7 +258,7 @@ class Dispatcher:
                 from service.production_selection import ContextComposition, resolve_owned, choose
                 request = context['plan']['request']
                 if old['operation']=='audio_export':
-                    if self.installed_checked or self.audio_exports is None: raise ValueError('not_ready')
+                    if (self.installed_checked and not self._checked_export_family()) or self.audio_exports is None: raise ValueError('not_ready')
                     self.core.require_export_format('audio_export')
                     current=self.audio_exports.resolve(self.core,principal,request)
                 elif self.production_contexts is None: raise ValueError('not_ready')
@@ -324,7 +326,7 @@ class Dispatcher:
         if op == 'production_audio_export':
             job=self.core.execution_duplicate(principal,operation,key,payload)
             if job is None:
-                if (not self._activation_open() or self.closing or not self.reconciled or self.quarantined or self.resource_fault or self.integrity_fault or self.persistence_fault or not getattr(self.runtime,'admission_open',True) or self.audio_exports is None or self.installed_checked):
+                if (not self._activation_open() or self.closing or not self.reconciled or self.quarantined or self.resource_fault or self.integrity_fault or self.persistence_fault or not getattr(self.runtime,'admission_open',True) or self.audio_exports is None or (self.installed_checked and (not self._checked_export_family() or not self._ready()))):
                     raise ValueError('not_ready')
                 self.core.require_export_format('audio_export')
                 context=self.audio_exports.resolve(self.core,principal,payload)
@@ -347,9 +349,14 @@ class Dispatcher:
                          _profiles=self.profiles, _dispatch_settings=('silence',8))
         return dict(job_id=job['id'], input_sha256=job['input_sha256'], state='queued', status_url='/v1/jobs/'+job['id'])
 
+    def _checked_export_family(self):
+        from service.installed_export import FAMILY
+        return (self.installed_checked and getattr(self.installed_activation, "family", None) is FAMILY
+                and self.core.publication_format == 2 and self.core._installed_family is not None)
+
     def _command(self,op,*args,**kwargs):
         if op=='audio_export_availability':
-            if self.installed_checked or not self.audio_exports or not self.audio_exports.available(args[0]): return 'unavailable_converter'
+            if (self.installed_checked and (not self._checked_export_family() or not self._ready())) or not self.audio_exports or not self.audio_exports.available(args[0]): return 'unavailable_converter'
             return 'implemented' if self.core.publication_format==2 else 'publication_format_migration_required'
         if op=='audio_export_available': return self._command('audio_export_availability',*args)=='implemented'
         if op.startswith('production_'): return self._production_command(op,*args,**kwargs)

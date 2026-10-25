@@ -707,6 +707,8 @@ class Core:
             destination=self.root/'assets'/e['destination']
             temporary=destination.parent/e['temporary']
             with open(temporary,'xb') as stream:
+                if self._installed_family is not None:
+                    os.fchmod(stream.fileno(), 0o600)
                 persistence.write_complete(stream, data[e['destination']])
             if fault: fault('after_file_'+str(index))
             os.link(temporary,destination,follow_symlinks=False)

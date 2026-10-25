@@ -366,7 +366,7 @@ def startup_read(root, config, gate, hello, incarnation, *, family):
             if scanner.reasons or not recovery._allocation_coherent(data):
                 raise ValueError('installed_registration_unhealthy_state')
     return dict(deployment_id=public['deployment_id'],registration_id=gate['registration_id'],
-                configuration_digest=_digest(config),enrollment_digest=_digest(public))
+                configuration_digest=_digest(config),enrollment_digest=_digest(public),public=public)
 
 
 def _retained_contexts(public, data):

@@ -369,7 +369,13 @@ class Reconciliation:
         self.rows, self.reasons = {}, set()
         try:
             self.db.set_progress_handler(lambda: int(time.monotonic() > self.end), 1000)
-            fingerprint = self._collect()
+            from service import installed_export as ex, install_policy as ip
+            expected = getattr(self.core, "_installed_family", None)
+            if type(expected) is ex._Expectation:
+                fingerprint = self._collect(policy=ip.SPLIT, _family=ex.FAMILY,
+                    _export_public=json.loads(expected._public))
+            else:
+                fingerprint = self._collect()
             complete = True
         except (OSError, sqlite3.Error, ValueError, ValidationError, KeyError, IndexError, TypeError, RecursionError) as exc:
             self.reasons.add(str(exc) if isinstance(exc, Incomplete) else 'inventory_read_failed')

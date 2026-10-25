@@ -20,7 +20,7 @@ when the converter is unavailable. Changed payload conflicts. A new export
 creates a separate durable PCM24 WAV; original bytes remain unchanged.
 
 New exports of every size require **publication-v2** on an unenrolled local
-store: coherent SQLite `user_version=2`, P1 revision 2 and the exact 36 MiB
+store or the explicitly checked fresh installed export family: coherent SQLite `user_version=2`, P1 revision 2 and the exact 36 MiB
 publication CHECK. Fresh local roots use v2. Existing v1 roots retain their
 format and reads; new export/retry admission returns HTTP 409
 `publication_format_migration_required`, before allocation. Retained-key replay
@@ -38,9 +38,10 @@ with confirmed rollback; 4 means outcome unknown and explicit reinspection is
 required. There is no public migration API, implicit upgrade or installed writer
 authority. This source commission did not migrate an actual root.
 
-Fresh and resumed installed/native roots stay v1 and refuse v2 before their
-Core writer. Their converter gate and media/accounting limits remain unchanged.
-Only validated local v2 reconciliation uses a separate 160 MiB media-name budget;
+Old installed/native families stay v1 and refuse v2 before their
+Core writer. Their converter gates and media/accounting limits remain unchanged.
+The separately selected fresh Kokoro export family uses checked v2.
+Validated local v2 and explicitly checked new-family reconciliation use a separate 160 MiB media-name budget;
 SQL/JSON stays at 16 MiB, with 2048 entries and the existing finite deadline.
 
 After separately authorized converter enrollment/qualification, a real journey is:
@@ -65,8 +66,9 @@ The trusted integration seams are `AudioExports` on the owner and
 `RuntimeSupervisor(audio_converters=..., converter_image_digest=...,
 export_reference_roots=...)` on the existing worker. They require a distinct
 `audio-export-*` profile with no speech compatibility entries. They are not new
-installed enrollment APIs. Existing installed entrypoints pass no converter
-registration, and the owner explicitly refuses installed-family export.
+installed enrollment APIs. Old installed entrypoints pass no converter registration and remain unavailable.
+The new private Kokoro daemon family constructs both owner and worker mappings
+from its checked immutable configuration; caller maps are refused.
 
 The registration binds an immutable worker image digest, exact executable
 path/hash, reported version/build and explicit runtime closure paths from that
@@ -85,3 +87,30 @@ mechanism, enroll an explicitly reviewed installed family, then qualify actual
 conversion and process containment. No real digest is supplied by this candidate.
 Linux/amd64, Intel Mac Docker Desktop, OrbStack, CUDA and native Metal are UNRUN
 and unqualified. Release **NO-GO**; legacy **CLOSED**.
+
+
+The fresh daemon family is explicitly selected through
+`service.daemon_client.export_main`, using the existing private install request
+and exclusive handle workflow: install, up, status, stop, then same-handle up.
+It requires new named volumes, configuration version 2,
+`docker-kokoro-export-split-v2`, exact helper/control/worker image IDs, the
+closed converter/profile/principals configuration, and independently supplied
+qualification facts. There is no usable distributed converter pin or readiness
+receipt. The old installer remains v1; a disk marker cannot select this family.
+
+The new control entrypoint consumes a private notification only after inspected
+seal/image/config/profile/principal/boot/start/assets and registration brackets.
+It repeats control-readable pre-Core and post-acquisition checks, reconciles,
+and uses the existing single Dispatcher/worker lane. Same-key replay precedes
+readiness checks after checked reopen; new work and retries require readiness.
+The RO assets subpath and dropped descriptor helper retain private 0700/0600
+ownership. New-family publication explicitly creates 0600 output copies even
+when a factory caller did not establish the PID1 umask.
+
+r392 adds an INERT fresh installed owner journey with no copied history rows,
+including 1,152,044-byte output, public HTTP/CLI/MCP, verified CLI and range
+downloads, same-owner-family reopen/replay without live readiness and generated
+Kokoro asset export. Fake Docker/UID/process/reap and PCM assertions are source
+fixtures, never installed or converter qualification. Actual FFmpeg, pins,
+Linux/Desktop/OrbStack, CUDA and Metal remain UNRUN/unqualified. Independent
+Sol and final Astra review remain parent-owned; release NO-GO, legacy CLOSED.

@@ -58,12 +58,10 @@ class ExportDaemonTests(unittest.TestCase):
             with self.assertRaises(ValueError): dh.gate_projection(bad,family=ex.FAMILY,configuration=s.config,binding=s.b,public=public)
         bad=dict(s.gate,extra=True)
         with self.assertRaises(ValueError): dh.gate_projection(bad,family=ex.FAMILY,configuration=s.config,binding=s.b,public=public)
-        with self.assertRaises(ValueError): s.helper.ready({},public,'',{})
         with self.assertRaises(ValueError): dh.gate_projection(s.gate)
         with self.assertRaises(ValueError): dv.binding(s.b)
         with self.assertRaises(ValueError): dv.command('worker',s.config,s.b)
-        with self.assertRaisesRegex(ValueError,'owner_activation_unavailable'):
-            s.run('up')
+        self.assertEqual(s.run('status')['phase'],'initialized')
 
     def test_exact_subpath_commands_and_inspection_refusals(self):
         s=self.session(); good=container('worker',s.config,s.b,family=ex.FAMILY)
@@ -90,10 +88,11 @@ class ExportDaemonTests(unittest.TestCase):
         helper=dv.command('helper',s.config,s.b,phase='init',nonce='a'*32,family=ex.FAMILY)
         self.assertTrue(any('export_main' in a for a in helper))
 
-    def test_unavailable_up_has_no_create_or_start(self):
+    def test_up_uses_existing_coordinator(self):
         s=self.initialized()
-        with self.assertRaisesRegex(ValueError,'owner_activation_unavailable'): s.run('up')
-        self.assertFalse(any(a in ('create','start','notify') for a,_ in s.calls))
+        self.assertEqual(s.run('up')['phase'],'ready')
+        self.assertEqual([a for a,p in s.calls].count('create'),2)
+        self.assertEqual([a for a,p in s.calls].count('notify'),1)
 
     def test_credential_principal_refuses_before_core(self):
         s=self.session(); i=next(i for i,e in enumerate(s.inputs) if e['role']=='credential')

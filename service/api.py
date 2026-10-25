@@ -105,7 +105,11 @@ def create_voice_app(dispatcher, *, credentials, upload_deadline=15.0, installed
         raise ValueError('credential_resolver_required')
     if installed is not None:
         from service import install_policy as ip
-        installed = ip.configuration(installed)
+        from service.entrypoint import InstalledActivation
+        from service import installed_export as ex
+        selected = (type(dispatcher.installed_activation) is InstalledActivation and
+                    dispatcher.installed_activation.family is ex.FAMILY)
+        installed = ex.configuration(installed) if selected else ip.configuration(installed)
         if (not dispatcher.installed_checked or
                 dispatcher.installed_activation.configuration != installed):
             raise ValueError('checked_installed_activation_required')

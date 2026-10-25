@@ -255,7 +255,7 @@ class Docker:
             elif action=='term': self.call(['container','kill','--signal=TERM',identity])
             if action in ('start','term','inspect'): result=self.container(identity)
             else:
-                code=('from service.entrypoint import launch_status;launch_status()' if action=='marker' else
+                code=(('from service.entrypoint import export_launch_status;export_launch_status()' if getattr(self,'family',None) is not None else 'from service.entrypoint import launch_status;launch_status()') if action=='marker' else
                     ('from service.daemon_runtime import read_export_control;read_export_control()' if getattr(self,'family',None) is not None else 'from service.daemon_runtime import read_control;read_control()'))
                 if role!='control': raise ValueError('daemon_control_reader_only')
                 result=parse(self.call(['exec','--user','10001:10001',identity,'python','-I','-B','-c',
@@ -268,7 +268,7 @@ class Docker:
             if len(raw)>65536: raise ValueError('daemon_gate_budget')
             deadline=min(self.end,time.monotonic()+10)
             p=subprocess.Popen(self.argv(['exec','--interactive','--user','10001:10001',identity,'python','-I','-B','-c',
-                "import sys;sys.path.insert(0,'/opt/speech');from service.entrypoint import publish;publish(sys.stdin.buffer.read(65537))"]),
+                "import sys;sys.path.insert(0,'/opt/speech');from service.entrypoint import "+("publish_export" if getattr(self,"family",None) is not None else "publish")+" as publish;publish(sys.stdin.buffer.read(65537))"]),
                 stdin=subprocess.PIPE,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL,env=self.env)
             collect(p,raw,0,deadline,'daemon_notify',self.retained)
             result={}
