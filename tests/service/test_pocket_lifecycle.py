@@ -1,5 +1,6 @@
 """Saved-reference vertical slice; injected transport/backend, no ML or processes."""
 import copy
+from contextlib import nullcontext
 import hashlib
 import io
 import json
@@ -77,7 +78,8 @@ class PocketLifecycleTests(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory(); self.addCleanup(self.tmp.cleanup)
         self.root = Path(self.tmp.name).resolve()
-        self.core = Core(self.root/'core'); self.addCleanup(lambda: self.core.close())
+        # This Pocket cloning fixture exercises the existing publication-v1 lane.
+        self.core = Core(self.root/'core', _publication_creation=1); self.addCleanup(lambda: self.core.close())
         self.stage = self.root/'stage'; self.stage.mkdir()
         self.admission = Admission(self.core, self.stage); self.store = DispatchStore(self.core,self.admission)
         b = io.BytesIO()
@@ -121,6 +123,7 @@ class PocketLifecycleTests(unittest.TestCase):
         if authority is None:
             self.submit(); authority=self.store.allocate(self.profiles,'pocket',8)['authority']
         stage=self.stage/authority.job['attempts'][-1]['staging_id'];stage.mkdir(mode=0o770);stage.chmod(0o770)
+        (stage/'conditioning').mkdir(mode=0o700)  # Injected setup; no engine-side mkdir.
         self.calls=[];sent=[];outer=self
         class Backend:
             def __init__(inner,root,**kw):outer.calls.append((root,kw))
@@ -130,10 +133,11 @@ class PocketLifecycleTests(unittest.TestCase):
             def close(inner):outer.calls.append('closed')
         def execute(spec,text,bundles,references,**kw):
             self.assertEqual(bundles,authority.context['execution']['bundles']);self.assertEqual(references,authority.context['execution']['references'])
+            self.assertIs(kw.pop('managed_namespace'),True)
             kw['managed_owner_uid']=os.getuid()  # injected fixture ownership; installed owner is 10001
             return engine_execute(spec,text,self.mapping,self.refs,**kw)
         config=dict(job=authority.job,context=authority.context,allowed_assets=list(authority.allowed_assets),profiles=list(authority.profiles),secret='a'*64,control_uid=os.getuid(),gid=os.getgid())
-        with patch('worker.transport.authenticate') as auth,patch('worker.transport.receive',return_value=authority.message()),patch('worker.transport.send',side_effect=lambda c,v,t:sent.append(v)),patch('worker.engines.pocket.execute',side_effect=execute):
+        with patch('lib.tts_backends.pocket_snapshot.managed_directory',return_value=nullcontext()), patch('worker.transport.authenticate') as auth,patch('worker.transport.receive',return_value=authority.message()),patch('worker.transport.send',side_effect=lambda c,v,t:sent.append(v)),patch('worker.engines.pocket.execute',side_effect=execute):
             run_generation(None,config,self.stage,time.monotonic()+5,backend_factory=Backend)
             self.assertEqual(auth.call_args.args[1].binding,authority.binding)
         return authority,sent[0],stage
@@ -271,7 +275,7 @@ class PocketLifecycleTests(unittest.TestCase):
             self.assertEqual(os.environ['OMP_NUM_THREADS'],'2')
         calls=[]
         config=dict(fixture='pocket',context=self.context,job=dict(attempts=[dict(staging_id='stage')]))
-        with patch('sys.argv',['worker','3']),patch('worker.runtime_child.socket.socket'),patch('worker.runtime_child.receive',return_value=config),patch('worker.runtime_child.contain_kokoro',side_effect=lambda c:calls.append('limits')),patch('worker.runtime_child.run_generation',side_effect=lambda *a:calls.append('generation')),patch('worker.runtime_child.os.chmod'):
+        with patch('sys.argv',['worker','3']),patch('worker.runtime_child.socket.socket'),patch('worker.runtime_child.receive',return_value=config),patch('worker.runtime_child.contain_kokoro',side_effect=lambda c:calls.append('limits')),patch('worker.runtime_child.pocket_cutoff',return_value=100),patch('worker.runtime_child.run_generation',side_effect=lambda *a:calls.append('generation')),patch('worker.runtime_child.os.chmod'):
             main()
         self.assertEqual(calls,['limits','generation'])
 
@@ -327,7 +331,7 @@ class PocketLifecycleTests(unittest.TestCase):
             phase='terminal',acked=True,uid=20000,boot=history.hello['boot'],receipt=receipt,proposal=None)])
         (history.roots['receipts']/'journal.json').write_bytes(journal_bytes(journal))
         with patch.object(os,'getuid',return_value=10001):
-            core=Core(target)
+            core=Core(target, _publication_creation=1)
             try:
                 scan=Reconciliation(core,history.roots['staging'])
                 self.assertFalse(scan.reconcile_startup()['blocked'])
@@ -353,6 +357,26 @@ class PocketLifecycleTests(unittest.TestCase):
         from worker.lifecycle import Observation, State
         import threading
         outer=self
+        def remove_namespace(stage):
+            from tests.worker.test_runtime_conditioning import filesystem_policy
+            from worker.runtime_conditioning import remove_empty
+            helper=threading.get_ident()
+            originals={name:getattr(os,name) for name in ('open','stat','fstat')}
+            with filesystem_policy(outer.stage,stage):
+                # Core's owner scans concurrently; only this inert helper thread
+                # may see synthetic UID/mode records for the housekeeping test.
+                for name,original in originals.items():
+                    mocked=getattr(os,name);injected=mocked.side_effect
+                    mocked.side_effect=lambda *args,_injected=injected,_original=original,**kwargs: (_injected if threading.get_ident()==helper else _original)(*args,**kwargs)
+                remove_empty(stage.name,20000)
+        publication_errors=[]
+        original_publish=Core._publish
+        def publishing(core,*args,**kwargs):
+            try:return original_publish(core,*args,**kwargs)
+            except (ValueError,AssertionError) as exc:
+                publication_errors.append(type(exc).__name__+':'+str(exc)[:256])
+                raise
+        self.enterContext(patch.object(Core,'_publish',new=publishing))
         class Runtime:
             def __init__(inner):
                 inner.state=State.ALIVE;inner.authority=None
@@ -369,14 +393,12 @@ class PocketLifecycleTests(unittest.TestCase):
             def terminate(inner,identity,timeout):inner.cancel=True;inner.stopped.set()
             def collect(inner,authority,identity):
                 receipt=dict(runtime_id=identity,binding=authority.binding,reaped=True,engine_uid=20000,reap_method='pid1-waitpid-echild',reaped_children=0,timely=not inner.cancel,original_deadline=authority.job['deadline'])
-                from tests.worker.test_runtime_conditioning import filesystem_policy
-                from worker.runtime_conditioning import remove_empty
                 stage=outer.stage/authority.job['attempts'][-1]['staging_id']
                 if inner.cancel:
-                    with filesystem_policy(outer.stage,stage):remove_empty(stage.name,20000)
+                    remove_namespace(stage)
                     return receipt,None
                 _,proposal,stage=outer.proposal(authority=authority)
-                with filesystem_policy(outer.stage,stage):remove_empty(stage.name,20000)
+                remove_namespace(stage)
                 return receipt,TransportObservation('proposal','injected-test-only',message=proposal['message'],manifest=proposal['manifest'])
         def wait(predicate):
             end=time.monotonic()+5
@@ -386,7 +408,6 @@ class PocketLifecycleTests(unittest.TestCase):
                 time.sleep(.02)
             self.fail('bounded dispatcher wait expired')
         # Separate persistent owner root, seeded with one explicitly owned preset.
-        from service.core import Core
         for cancel in (False,True):
             # Enrollment is inert test support only; installed config stays Kokoro.
             from tests.service.test_installed_registration import Registration
@@ -403,7 +424,7 @@ class PocketLifecycleTests(unittest.TestCase):
             self.stage=self.root/('stage-cancel' if cancel else 'stage-success')
             self.stage.mkdir()
             root=self.root/('dispatcher-cancel' if cancel else 'dispatcher-success')/'core'
-            seed=Core(root);self.core.db.backup(seed.db);(seed.root/'assets'/self.asset['id']).write_bytes(self.raw);seed.close()
+            seed=Core(root, _publication_creation=1);self.core.db.backup(seed.db);(seed.root/'assets'/self.asset['id']).write_bytes(self.raw);seed.close()
             runtime=Runtime()
             contexts=PocketContexts({'alice':self.context},self.mapping,self.refs)
             dispatcher=Dispatcher(root,staging=self.stage,runtime=runtime,profiles=self.profiles,production_contexts=contexts)
@@ -424,7 +445,7 @@ class PocketLifecycleTests(unittest.TestCase):
                     self.assertTrue(namespace.is_dir())
                 runtime.finish.set()
                 job=wait(lambda:(j if (j:=dispatcher.call('job',result['job_id']))['state'] in ('succeeded','cancelled','failed') else None))
-                self.assertEqual(job['state'],'cancelled' if cancel else 'succeeded',job)
+                self.assertEqual(job['state'],'cancelled' if cancel else 'succeeded',dict(job=job,publication_errors=publication_errors))
                 wait(lambda:dispatcher.call('status')['reservations'][-1]['state']=='retained')
                 wait(lambda:dispatcher.call('status')['phase']=='idle')
                 if not cancel:

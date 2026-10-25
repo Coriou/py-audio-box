@@ -49,19 +49,17 @@ def run_generation(connection, config, staging, cutoff, *, backend_factory=None)
         from worker.engines.pocket import execute
         stage = attempt['staging_id']
         if Path(stage).name != stage or stage in ('.', '..'): raise Refused('invalid_stage')
-        # Attempt-owned; never remove while descendants or death proof are unknown.
-        directory = os.open(Path(staging)/stage, os.O_RDONLY|os.O_DIRECTORY|os.O_NOFOLLOW)
-        try:
-            os.mkdir('conditioning', 0o700, dir_fd=directory)
-        finally:
-            os.close(directory)
+        # Created by the reaped UID10001 setup helper, never by the engine child.
+        from lib.tts_backends.pocket_snapshot import managed_directory
+        with managed_directory(Path(staging)/stage/'conditioning'):
+            pass
         preparing = context['plan']['operation'] == 'voice_prepare'
         if preparing:
             from worker.engines.pocket_prepare import execute
         text = context['plan']['reference_roles']['audition_text'] if preparing else context['plan']['request']['text']
         result = execute(spec, text, context['execution']['bundles'],
                          context['execution']['references'], reference_temp_dir=Path(staging)/stage/'conditioning',
-                         backend_factory=backend_factory, managed_owner_uid=10001, reference_fd=config.get('reference_fd'))
+                         backend_factory=backend_factory, managed_owner_uid=10001, reference_fd=config.get('reference_fd'), managed_namespace=True)
     else:
         result = execute(spec, context['plan']['request']['text'], context['execution']['bundles'], backend_factory=backend_factory)
     if time.monotonic() >= cutoff: raise Refused('expired_result')
@@ -144,6 +142,23 @@ def contain_kokoro(context):
         os.environ[name] = str(spec.threads)
 
 
+def pocket_cutoff(config):
+    """Private Pocket ceiling bounded by the supervisor's original monotonic anchor."""
+    import math
+    from worker.runtime_protocol import execution
+    spec=execution(config['context'])
+    if spec is None or spec.engine!='pocket-tts':raise ValueError('pocket_execution_required')
+    anchored=config.get('pocket_cutoff')
+    profile=config['context']['plan']['resolved']['profile']['limits']['deadline_seconds']
+    if (type(anchored) not in (int,float) or not math.isfinite(anchored) or anchored<=0 or
+            type(profile) is not int or not 1<=profile<=86400):
+        raise ValueError('bounded_original_deadline_required')
+    now=time.monotonic()
+    remaining=(datetime.fromisoformat(config['job']['deadline'])-datetime.now(timezone.utc)).total_seconds()
+    if not math.isfinite(remaining):raise ValueError('bounded_original_deadline_required')
+    return min(anchored,now+min(180,profile,max(0,remaining)))
+
+
 def main():
     connection = socket.socket(fileno=int(sys.argv[1]))
     config = receive(connection, time.monotonic() + 2)
@@ -205,7 +220,7 @@ def main():
         contain_kokoro(config['context'])
         if mode=='audio_export':
             run_export(connection,config,'/staging',time.monotonic()+min(25,(datetime.fromisoformat(config['job']['deadline'])-datetime.now(timezone.utc)).total_seconds()))
-        else: run_generation(connection, config, '/staging', time.monotonic()+30)
+        else: run_generation(connection, config, '/staging', pocket_cutoff(config) if mode=='pocket' else time.monotonic()+30)
     else:
         from worker.runtime_protocol import execution
         if execution(config['context']) is not None: raise ValueError('execution_dispatch_mismatch')

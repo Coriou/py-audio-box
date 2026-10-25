@@ -20,18 +20,24 @@ class PocketBackend:
     exclusive worker process: model loading temporarily changes cwd and sets
     PyTorch process-wide thread counts; concurrent construction is unsupported.
     """
-    def __init__(self, assets, language='fr', threads=2, reference_temp_dir=None):
+    def __init__(self, assets, language='fr', threads=2, reference_temp_dir=None, *, managed_namespace=False):
         if isinstance(threads, bool) or not isinstance(threads, Integral) or threads < 1:
             raise BackendError('invalid_threads', 'Thread count must be a positive integer')
+        if managed_namespace and reference_temp_dir is None:raise BackendError('invalid_reference_temp_dir','Managed namespace required')
+        if type(managed_namespace) is not bool:raise BackendError('invalid_reference_temp_dir','Invalid managed namespace selector')
         self.reference_temp_dir = None
         if reference_temp_dir is not None:
             directory = Path(reference_temp_dir)
             try:
-                info = directory.stat()
-                if directory.is_symlink() or not stat.S_ISDIR(info.st_mode):
-                    raise ValueError('Snapshot namespace must be a real directory')
-                if os.name == 'posix' and (stat.S_IMODE(info.st_mode) != 0o700 or info.st_uid != os.getuid()):
-                    raise ValueError('Snapshot namespace must be owned and mode0700')
+                if managed_namespace:
+                    from .pocket_snapshot import managed_directory
+                    with managed_directory(directory):pass
+                else:
+                    info = directory.stat()
+                    if directory.is_symlink() or not stat.S_ISDIR(info.st_mode):
+                        raise ValueError('Snapshot namespace must be a real directory')
+                    if os.name == 'posix' and (stat.S_IMODE(info.st_mode) != 0o700 or info.st_uid != os.getuid()):
+                        raise ValueError('Snapshot namespace must be owned and mode0700')
             except (OSError, ValueError) as exc:
                 raise BackendError('invalid_reference_temp_dir', 'Choose an existing private owned snapshot directory') from exc
             self.reference_temp_dir = directory.resolve()

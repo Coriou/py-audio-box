@@ -94,7 +94,7 @@ def _reference_pcm16(raw, rate, frames):
         raise Refused('reference_format')
 
 
-def execute(execution, text, bundles, references, *, reference_temp_dir, backend_factory=None, preset=None, instruct=None, managed_owner_uid=None, reference_fd=None):
+def execute(execution, text, bundles, references, *, reference_temp_dir, backend_factory=None, preset=None, instruct=None, managed_owner_uid=None, reference_fd=None, managed_namespace=False):
     if type(execution) is not PocketExecution:
         raise Refused('typed_execution_required')
     e = execution
@@ -103,55 +103,73 @@ def execute(execution, text, bundles, references, *, reference_temp_dir, backend
     if type(text) is not str or not text or len(text.encode('utf-8')) > e.max_text_bytes:
         raise Refused('text_limit')
     reference = verify_inputs(e, bundles, references, owner_uid=managed_owner_uid, reference_fd=reference_fd)
-    return _synthesise(e, text, bundles[e.bundle_id], reference, reference_temp_dir, backend_factory)
+    return _synthesise(e, text, bundles[e.bundle_id], reference, reference_temp_dir, backend_factory, managed_namespace=managed_namespace)
 
 
-def _synthesise(e, text, bundle, reference, reference_temp_dir, backend_factory):
+def _synthesise(e, text, bundle, reference, reference_temp_dir, backend_factory, *, managed_namespace=False):
     """Private adapter seam: caller already verified the full binding and bytes."""
     root = Path(bundle).absolute()
     namespace = Path(reference_temp_dir).absolute()
-    fd = _open(namespace, True)
-    try:
-        if stat.S_IMODE(os.fstat(fd).st_mode) != 0o700:
-            raise Refused('snapshot_namespace')
-    finally:
-        os.close(fd)
-    if backend_factory is None:
-        from lib.tts_backends.pocket_tts import PocketBackend
-        backend_factory = PocketBackend
-    # Anonymous inputs cannot disappear beneath a concurrent staging scan.
-    # The kernel also closes them after forced termination.
-    with reference_snapshot(reference) as snapshot:
-        backend = backend_factory(root, language=e.language, threads=e.threads, reference_temp_dir=namespace)
+    if type(managed_namespace) is not bool:raise Refused('snapshot_namespace')
+    namespace_guard=None
+    if managed_namespace:
+        from lib.tts_backends.pocket_snapshot import managed_directory
+        namespace_guard=managed_directory(namespace)
+        namespace_guard.__enter__()
+    else:
+        fd = _open(namespace, True)
         try:
-            result = backend.synthesise(text, reference=snapshot)
-            from lib.tts_backends.contract import AudioResult
-            if type(result) is not AudioResult:
-                raise Refused('audio_result_required')
-            import numpy as np
-            data = np.asarray(result.samples)
-            frames = data.shape[0] if data.ndim in (1, 2) else 0
-            size = 44+frames*2
-            if not 0 < frames <= e.max_frames or size > e.max_output_bytes:
-                raise Refused('output_limit')
-            if any(isinstance(v, bool) or not isinstance(v, Integral) for v in (result.sample_rate, result.channels)) or (result.sample_rate, result.channels) != (e.sample_rate, 1) or data.shape not in ((frames,), (frames, 1)):
-                raise Refused('audio_format')
-            if not np.issubdtype(data.dtype, np.number) or np.issubdtype(data.dtype, np.complexfloating):
-                raise Refused('invalid_audio')
-            buffer = io.BytesIO()
-            with wave.open(buffer, 'wb') as wav:
-                wav.setnchannels(1); wav.setsampwidth(2); wav.setframerate(result.sample_rate)
-                for start in range(0, frames, 4096):
-                    block = data[start:start+4096].reshape(-1).astype('float64')
-                    if not np.isfinite(block).all() or (np.abs(block) > 1).any():
-                        raise Refused('invalid_audio')
-                    wav.writeframesraw((block*32767).astype('<i2').tobytes())
-            output = buffer.getvalue()
-            if len(output) != size:
-                raise Refused('output_size')
-            return dict(data=output, frames=frames, size_bytes=size, sha256=hashlib.sha256(output).hexdigest(), identity=dict(e.identity(), text_sha256=hashlib.sha256(text.encode('utf-8')).hexdigest()))
+            if stat.S_IMODE(os.fstat(fd).st_mode) != 0o700:
+                raise Refused('snapshot_namespace')
         finally:
-            backend.close()
+            os.close(fd)
+    previous_cache=os.environ.get('TORCHINDUCTOR_CACHE_DIR')
+    os.environ['TORCHINDUCTOR_CACHE_DIR']=str(namespace)
+    try:
+        if backend_factory is None:
+            from lib.tts_backends.pocket_tts import PocketBackend
+            backend_factory = PocketBackend
+        # Anonymous inputs cannot disappear beneath a concurrent staging scan.
+        # The kernel also closes them after forced termination.
+        with reference_snapshot(reference) as snapshot:
+            backend = backend_factory(root, language=e.language, threads=e.threads, reference_temp_dir=namespace, **(dict(managed_namespace=True) if managed_namespace else {}))
+            try:
+                result = backend.synthesise(text, reference=snapshot)
+                from lib.tts_backends.contract import AudioResult
+                if type(result) is not AudioResult:
+                    raise Refused('audio_result_required')
+                import numpy as np
+                data = np.asarray(result.samples)
+                frames = data.shape[0] if data.ndim in (1, 2) else 0
+                size = 44+frames*2
+                if not 0 < frames <= e.max_frames or size > e.max_output_bytes:
+                    raise Refused('output_limit')
+                if any(isinstance(v, bool) or not isinstance(v, Integral) for v in (result.sample_rate, result.channels)) or (result.sample_rate, result.channels) != (e.sample_rate, 1) or data.shape not in ((frames,), (frames, 1)):
+                    raise Refused('audio_format')
+                if not np.issubdtype(data.dtype, np.number) or np.issubdtype(data.dtype, np.complexfloating):
+                    raise Refused('invalid_audio')
+                buffer = io.BytesIO()
+                with wave.open(buffer, 'wb') as wav:
+                    wav.setnchannels(1); wav.setsampwidth(2); wav.setframerate(result.sample_rate)
+                    for start in range(0, frames, 4096):
+                        block = data[start:start+4096].reshape(-1).astype('float64')
+                        if not np.isfinite(block).all() or (np.abs(block) > 1).any():
+                            raise Refused('invalid_audio')
+                        wav.writeframesraw((block*32767).astype('<i2').tobytes())
+                output = buffer.getvalue()
+                if len(output) != size:
+                    raise Refused('output_size')
+                return dict(data=output, frames=frames, size_bytes=size, sha256=hashlib.sha256(output).hexdigest(), identity=dict(e.identity(), text_sha256=hashlib.sha256(text.encode('utf-8')).hexdigest()))
+            finally:
+                backend.close()
+
+
+    finally:
+        try:
+            if previous_cache is None:os.environ.pop('TORCHINDUCTOR_CACHE_DIR',None)
+            else:os.environ['TORCHINDUCTOR_CACHE_DIR']=previous_cache
+        finally:
+            if namespace_guard is not None:namespace_guard.__exit__(None,None,None)
 
 
 def verify_inputs(e, bundles, references, *, owner_uid=None, reference_fd=None):

@@ -52,7 +52,7 @@ class Production:
                 from worker.engines.qwen_prepare import selected_reference
             raw = _read(self.core.root/'assets'/spec.reference_id, spec.reference_bytes, spec.reference_sha256)
             selected_reference(spec, raw)
-            _dispatch_settings = (dispatch_mode(spec), min(25, plan['resolved']['profile']['limits']['deadline_seconds']))
+            _dispatch_settings = (dispatch_mode(spec), min(180 if spec.engine=='pocket-tts' else 25, plan['resolved']['profile']['limits']['deadline_seconds']))
         return self.core.submit_execution(principal, key, context, _admission=_admission,
                                           _profiles=_profiles, _dispatch_settings=_dispatch_settings)
 
@@ -97,6 +97,6 @@ class Production:
             oracle.require(len(raw) == spec.reference_bytes, 'reference_size')
             _reference_pcm16(raw, spec.reference_rate, spec.reference_frames)
         if spec is not None:
-            _dispatch_settings = (dispatch_mode(spec), min(25, plan['resolved']['profile']['limits']['deadline_seconds']))
+            _dispatch_settings = (dispatch_mode(spec), min(180 if spec.engine=='pocket-tts' else 25, plan['resolved']['profile']['limits']['deadline_seconds']))
         return self.core.submit_execution(principal, key, context, _admission=_admission,
                                           _profiles=_profiles, _dispatch_settings=_dispatch_settings)

@@ -23,8 +23,9 @@ def _directory(s, uid, gid, mode, device=None):
         raise ConditioningRefused('conditioning_identity')
 
 
-def remove_empty(stage, child_uid, *, policy=None):
+def remove_empty(stage, child_uid, *, policy=None, managed_namespace=False):
     """Validate fixed /staging and remove only conditioning, if kernel-empty."""
+    if type(managed_namespace) is not bool:raise ConditioningRefused('conditioning_policy')
     if (not isinstance(stage, str) or not stage or stage in ('.', '..') or
             '/' in stage or '\\' in stage or '\0' in stage or
             type(child_uid) is not int or not 20000 <= child_uid < 20000+64):
@@ -57,7 +58,7 @@ def remove_empty(stage, child_uid, *, policy=None):
             except FileNotFoundError:
                 stage_bound()
                 return
-            _directory(child, child_uid, child_uid, 0o700, bound.st_dev)
+            _directory(child, 10001 if managed_namespace else child_uid, child_uid, 0o770 if managed_namespace else 0o700, bound.st_dev)
             stage_bound()
             if _identity(os.stat('conditioning', dir_fd=fd, follow_symlinks=False)) != _identity(child):
                 raise ConditioningRefused('conditioning_changed')
@@ -70,7 +71,7 @@ def remove_empty(stage, child_uid, *, policy=None):
         os.close(root)
 
 
-def main():
+def main(*, _managed_namespace=False):
     if len(sys.argv) not in (3, 4):
         raise ConditioningRefused('conditioning_arguments')
     uid = int(sys.argv[2])
@@ -82,8 +83,12 @@ def main():
         if sys.argv[3] != ip.POCKET_V2_POLICY:
             raise ConditioningRefused('conditioning_policy')
         policy = ip.POCKET_SPLIT
-    remove_empty(sys.argv[1], uid, policy=policy)
+    remove_empty(sys.argv[1], uid, policy=policy, **(dict(managed_namespace=True) if _managed_namespace else {}))
 
 
 if __name__ == '__main__':
     main()
+
+
+def pocket_main():
+    return main(_managed_namespace=True)

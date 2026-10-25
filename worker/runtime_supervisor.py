@@ -154,7 +154,8 @@ class RuntimeSupervisor:
             # Install the original monotonic budget before ACK/start. Never recompute.
             anchored = time.monotonic()
             budget = (datetime.fromisoformat(job['deadline']) - datetime.now(timezone.utc)).total_seconds()
-            if not 0 < budget <= 30:
+            maximum=min(180,context['plan']['resolved']['profile']['limits']['deadline_seconds']) if spec is not None and spec.engine=='pocket-tts' else 30
+            if not 0 < budget <= maximum:
                 raise Refused('bounded_original_deadline_required')
             cutoff = anchored+budget
             identity = '/'.join((self.journal.value['lane'], self.boot, secrets.token_hex(16)))
@@ -207,7 +208,10 @@ class RuntimeSupervisor:
             stage = job['attempts'][-1]['staging_id']
             uid = row['uid']
             # Nonresident setup helper, reaped before engine launch. No extra caps.
-            subprocess.run(['python', '-c', 'import os,sys; os.umask(0); os.mkdir(sys.argv[1],0o770)',
+            setup='import os,sys; os.umask(0); os.mkdir(sys.argv[1],0o770)'
+            if spec is not None and spec.engine=='pocket-tts':
+                setup+='; os.mkdir(sys.argv[1]+"/conditioning",0o770)'
+            subprocess.run(['python', '-c', setup,
                             '/staging/'+stage], user=10001, group=uid, extra_groups=[],
                            close_fds=True, check=True, timeout=1)
             if time.monotonic() >= self.active['cutoff']:
@@ -217,6 +221,8 @@ class RuntimeSupervisor:
             config = dict(job=job, context=context, allowed_assets=assets, profiles=profiles,
                           secret=key, control_uid=0, gid=10001, fixture=row['allocation']['fixture'],
                           protected_stages=[r['allocation']['snapshot'][0]['attempts'][-1]['staging_id'] for r in self.journal.value['records'] if r['id'] != row['id']])
+            if spec is not None and spec.engine=='pocket-tts':
+                config['pocket_cutoff']=self.active['cutoff']  # Original prepare anchor, never renewed.
             try:
                 if spec is not None and spec.engine=='audio-export':
                     reference_fd=self.verify_export(context,job['principal_id'])
@@ -473,7 +479,12 @@ class RuntimeSupervisor:
     def conditioning(self, row):
         stage = row['allocation']['snapshot'][0]['attempts'][-1]['staging_id']
         from service import install_policy as ip
-        command = ['python', '-m', 'worker.runtime_conditioning', stage, str(row['uid'])]
+        from worker.runtime_protocol import execution
+        spec=execution(row['allocation']['snapshot'][1])
+        if spec is not None and spec.engine=='pocket-tts':
+            command=['python','-c','from worker.runtime_conditioning import pocket_main; pocket_main()',stage,str(row['uid'])]
+        else:
+            command = ['python', '-m', 'worker.runtime_conditioning', stage, str(row['uid'])]
         if getattr(self, 'installed_policy', None) is ip.POCKET_SPLIT:
             command.append(ip.POCKET_V2_POLICY)
         proc = subprocess.Popen(command,

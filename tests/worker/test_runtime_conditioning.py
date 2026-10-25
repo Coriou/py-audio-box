@@ -174,7 +174,8 @@ class ConditioningFilesystemTests(unittest.TestCase):
 class ConditioningSupervisorTests(unittest.TestCase):
     def setUp(self):
         self.s=RuntimeSupervisor.__new__(RuntimeSupervisor)
-        self.row=dict(id='lane/boot/allocation',uid=20000,phase='started',allocation=dict(fixture='pocket',binding='frozen',snapshot=[dict(deadline='original',attempts=[dict(staging_id='attempt')])]))
+        self.row=dict(id='lane/boot/allocation',uid=20000,phase='started',allocation=dict(fixture='pocket',binding='frozen',snapshot=[dict(deadline='original',attempts=[dict(staging_id='attempt')]),{}]))
+        self.enterContext(patch('worker.runtime_protocol.execution',return_value=SimpleNamespace(engine='pocket-tts')))
         self.s.journal=SimpleNamespace(value=dict(records=[self.row]))
         self.s.failed=False;self.s.halt=False;self.s.tree_lock=threading.Lock();self.s.received=queue.Queue()
         done=threading.Event();done.set()
@@ -204,7 +205,7 @@ class ConditioningSupervisorTests(unittest.TestCase):
         with patch('worker.runtime_supervisor.subprocess.Popen',side_effect=launch) as popen:
             self.tick([(42,0),ChildProcessError()])
         self.assertEqual(popen.call_args.kwargs,dict(user=10001,group=20000,extra_groups=[],close_fds=True,stdin=subprocess.DEVNULL,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL))
-        self.assertEqual(popen.call_args.args[0],['python','-m','worker.runtime_conditioning','attempt','20000'])
+        self.assertEqual(popen.call_args.args[0],['python','-c','from worker.runtime_conditioning import pocket_main; pocket_main()','attempt','20000'])
         receipt=self.s.change.call_args.kwargs['receipt']
         self.assertEqual(receipt,dict(runtime_id=self.row['id'],binding='frozen',reaped=True,engine_uid=20000,reap_method='pid1-waitpid-echild',reaped_children=1,timely=True,original_deadline='original'))
         self.assertIsNone(self.s.active)

@@ -4,6 +4,7 @@ Backend/transport/death observations are injected; real Core/SQLite/media/oracle
 No ML, network, listener, real sandbox or operational housekeeping.
 """
 import copy
+from contextlib import nullcontext
 from dataclasses import replace
 import hashlib
 import io
@@ -72,13 +73,15 @@ class PreparationFixture(unittest.TestCase):
         if authority is None:
             self.submit();authority=b.store.allocate(self.profiles,'pocket',8)['authority']
         stage=b.stage/authority.job['attempts'][-1]['staging_id'];stage.mkdir(mode=0o770);stage.chmod(0o770)
+        (stage/'conditioning').mkdir(mode=0o700)  # Injected setup; no engine-side mkdir.
         sent=[]
         def engine(spec,text,bundles,references,**kw):
             self.assertEqual(bundles,authority.context['execution']['bundles']);self.assertEqual(references,authority.context['execution']['references'])
+            self.assertIs(kw.pop('managed_namespace'),True)
             kw['managed_owner_uid']=os.getuid()
             return execute(spec,text,b.mapping,self.refs,**kw)
         config=dict(job=authority.job,context=authority.context,allowed_assets=list(authority.allowed_assets),profiles=list(authority.profiles),secret='a'*64,control_uid=os.getuid(),gid=os.getgid())
-        with patch('worker.transport.authenticate'),patch('worker.transport.receive',return_value=authority.message()),patch('worker.transport.send',side_effect=lambda c,v,t:sent.append(v)),patch('worker.engines.pocket_prepare.execute',side_effect=engine):
+        with patch('lib.tts_backends.pocket_snapshot.managed_directory',return_value=nullcontext()), patch('worker.transport.authenticate'),patch('worker.transport.receive',return_value=authority.message()),patch('worker.transport.send',side_effect=lambda c,v,t:sent.append(v)),patch('worker.engines.pocket_prepare.execute',side_effect=engine):
             run_generation(None,config,b.stage,time.monotonic()+5,backend_factory=self.backend)
         return authority,sent[0],stage
 
@@ -347,14 +350,16 @@ class PocketPublicJourneyTests(PreparationFixture):
                     remove_namespace(attempt_stage)
                     return dict(runtime_id=identity,binding=a.binding,reaped=True,engine_uid=os.getuid(),reap_method='pid1-waitpid-echild',reaped_children=0,timely=False,original_deadline=a.job['deadline']),None
                 attempt_stage.mkdir(mode=0o770);attempt_stage.chmod(0o770)
+                (attempt_stage/'conditioning').mkdir(mode=0o700)  # Injected setup boundary.
                 spec=execution(a.context);refs={spec.reference_id:root/'assets'/spec.reference_id}
                 from worker.engines.pocket import execute as generate
                 def engine(spec,text,bundles,references,**kw):
+                    outer.assertIs(kw.pop('managed_namespace'),True)
                     kw['managed_owner_uid']=os.getuid()
                     runner=execute if type(spec) is PocketPreparation else generate
                     return outer.journey_execute(runner,spec,text,b.mapping,refs,kw)
                 config=dict(job=a.job,context=a.context,allowed_assets=list(a.allowed_assets),profiles=list(a.profiles),secret='a'*64,control_uid=os.getuid(),gid=os.getgid())
-                with patch('worker.transport.authenticate'),patch('worker.transport.receive',return_value=a.message()),patch('worker.transport.send',side_effect=lambda c,v,t:sent.append(v)),patch('worker.engines.pocket_prepare.execute',side_effect=engine),patch('worker.engines.pocket.execute',side_effect=engine):
+                with patch('lib.tts_backends.pocket_snapshot.managed_directory',return_value=nullcontext()), patch('worker.transport.authenticate'),patch('worker.transport.receive',return_value=a.message()),patch('worker.transport.send',side_effect=lambda c,v,t:sent.append(v)),patch('worker.engines.pocket_prepare.execute',side_effect=engine),patch('worker.engines.pocket.execute',side_effect=engine):
                     run_generation(None,config,stage,time.monotonic()+5,backend_factory=outer.backend)
                 # Injected confirmed death, then actual exact empty-dir helper
                 # filesystem logic under same-UID policy fixtures.
