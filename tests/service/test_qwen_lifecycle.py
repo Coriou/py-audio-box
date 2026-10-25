@@ -34,7 +34,8 @@ class QwenLifecycleTests(unittest.TestCase):
     def setUp(self):
         self.tmp=tempfile.TemporaryDirectory();self.addCleanup(self.tmp.cleanup)
         self.root=Path(self.tmp.name).resolve()
-        self.core=Core(self.root/'core');self.addCleanup(lambda:self.core.close())
+        # This fixture exercises the retained installed Qwen v1 history family.
+        self.core=Core(self.root/'core',_publication_creation=1);self.addCleanup(lambda:self.core.close())
         self.stage=self.root/'stage';self.stage.mkdir()
         self.admission=Admission(self.core,self.stage);self.store=DispatchStore(self.core,self.admission)
         out=io.BytesIO()
@@ -324,7 +325,7 @@ class QwenLifecycleTests(unittest.TestCase):
             self.stage=self.root/('stage-cancel' if cancel else 'stage-success')
             self.stage.mkdir()
             root=self.root/('dispatcher-cancel' if cancel else 'dispatcher-success')/'core'
-            seed=Core(root);self.core.db.backup(seed.db);(seed.root/'assets'/self.asset['id']).write_bytes(self.raw);seed.close()
+            seed=Core(root,_publication_creation=1);self.core.db.backup(seed.db);(seed.root/'assets'/self.asset['id']).write_bytes(self.raw);seed.close()
             runtime=Runtime()
             contexts=self.context_factory()
             dispatcher=Dispatcher(root,staging=self.stage,runtime=runtime,profiles=self.profiles,production_contexts=contexts)
