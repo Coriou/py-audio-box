@@ -181,16 +181,22 @@ class FaultDB:
         return self.db.execute(sql, *args)
 
 
+def owned_fault_connection(core, connection):
+    """Test-only swap: SQL and ownership close must use the same connection."""
+    assert core._db is core._ownership.db
+    core._db = core._ownership.db = connection
+
+
 @pytest.mark.parametrize('statement', ['BEGIN IMMEDIATE', 'INSERT INTO publications', 'INSERT INTO publication_work', 'COMMIT'])
 @pytest.mark.parametrize('after', [False, True])
 def test_intent_transaction_failure_reopen_state(core, context, statement, after):
     job, result = proposal(core, context)
     real = core.db
-    core.db = FaultDB(real, statement, after=after, rollback=True)
+    owned_fault_connection(core, FaultDB(real, statement, after=after, rollback=True))
     with pytest.raises(sqlite3.OperationalError, match='original injected error'):
         core._publish(job['id'], result)
     assert not list((core.root/'assets').iterdir())
-    core.db = real
+    owned_fault_connection(core, real)
     reopen(core)
     rows = core.db.execute('SELECT count(*) FROM publications').fetchone()[0]
     work = core.db.execute('SELECT count(*) FROM publication_work').fetchone()[0]
@@ -205,10 +211,10 @@ def test_intent_transaction_failure_reopen_state(core, context, statement, after
 def test_terminal_commit_ambiguity_no_duplicate_history(core, context, after):
     job, result = pending(core, context, 'after_adoption')
     real = core.db
-    core.db = FaultDB(real, 'COMMIT', after=after, rollback=True)
+    owned_fault_connection(core, FaultDB(real, 'COMMIT', after=after, rollback=True))
     with pytest.raises(sqlite3.OperationalError, match='original injected error'):
         core._commit_publication(job['id'])
-    core.db = real
+    owned_fault_connection(core, real)
     reopen(core)
     assert core.job(job['id'])['state'] == ('succeeded' if after else 'running')
     assert not core.reconcile()
@@ -224,6 +230,7 @@ def test_old_populated_root_not_enrolled(tmp_path, context):
     core = Core(root)
     job, result = pending(core, context)
     core.db.execute('DROP TABLE publication_work'); core.db.execute('DROP TABLE p1_format')
+    core.db.execute('PRAGMA user_version=1')  # Explicit pre-P1 historical fixture.
     core.close()
     for _ in range(2):
         core = Core(root)
@@ -313,7 +320,7 @@ def test_dispatcher_storage_failure_retains_release_ack(tmp_path, monkeypatch, b
             monkeypatch.setattr(module, 'sync_dir', lambda _: (_ for _ in ()).throw(OSError('directory denied')))
         elif (boundary == 'terminal' and point == 'after_adoption') or (boundary == 'outcome' and point == 'after_commit'):
             fired.append(point)
-            dispatcher.core.db = FaultDB(dispatcher.core.db, 'COMMIT', after=after, rollback=True)
+            owned_fault_connection(dispatcher.core, FaultDB(dispatcher.core.db, 'COMMIT', after=after, rollback=True))
     dispatcher = Dispatcher(root, staging=stage, runtime=runtime, fault=fault)
     try:
         ready(dispatcher); job = running(dispatcher, runtime)
@@ -353,10 +360,10 @@ def test_initialization_barrier_failure_no_reseed(tmp_path, monkeypatch, boundar
         patch.setattr(module, 'sync_dir', fail)
         with pytest.raises(OSError, match='initialization barrier'): Core(root)
     for _ in range(2):
-        if boundary in ('root', 'format'):
+        if boundary == 'root':
             # An empty directory has no identity/DB fragments to reinterpret.
             core = Core(root)
-            assert core.p1 and core.db.execute('SELECT * FROM p1_format').fetchall() == [(1, 'synthetic-core')]
+            assert core.p1 and core.db.execute('SELECT * FROM p1_format').fetchall() == [(2, 'synthetic-core')]
             core.close()
         else:
             with pytest.raises(persistence.PublicationQuarantine): Core(root)
@@ -367,6 +374,7 @@ def test_old_terminal_history_reads_and_dedup_remain(core, context):
     terminal = core.job(job['id']); events = core.events(job['id'])
     artifact = core.artifact(terminal['artifact_ids'][0])
     core.db.execute('DROP TABLE publication_work'); core.db.execute('DROP TABLE p1_format')
+    core.db.execute('PRAGMA user_version=1')  # Explicit pre-P1 historical fixture.
     for _ in range(2):
         reopen(core)
         assert not core.p1
@@ -379,6 +387,40 @@ def test_old_terminal_history_reads_and_dedup_remain(core, context):
             core.submit_synthetic('p', 'new', context)
         core._commit_publication(job['id'])
         assert core.events(job['id']) == events
+
+
+@pytest.mark.parametrize('corruption', ['default_reader','artifact_id','producer_copy','manifest_owner','export_asset'])
+def test_pre_p1_inspection_preserves_producer_and_media_fences(core, context, corruption):
+    job,result=proposal(core,context);core._publish(job['id'],result)
+    artifact=core.artifact(core.job(job['id'])['artifact_ids'][0])
+    if corruption=='artifact_id':
+        changed=dict(artifact,id='foreign-artifact')
+        core.db.execute('UPDATE artifacts SET metadata=? WHERE id=?',(json.dumps(changed),artifact['id']))
+    elif corruption=='producer_copy':
+        changed=dict(artifact,owner_id='foreign-owner')
+        core.db.execute('UPDATE publications SET artifact=? WHERE job_id=?',(json.dumps(changed),job['id']))
+    elif corruption=='manifest_owner':
+        manifest=json.loads(core.db.execute('SELECT manifest FROM publications WHERE job_id=?',(job['id'],)).fetchone()[0])
+        manifest['owner_id']='foreign-owner'
+        core.db.execute('UPDATE publications SET manifest=? WHERE job_id=?',(json.dumps(manifest),job['id']))
+    elif corruption=='export_asset':
+        asset=core.asset(artifact['asset_ids'][0]);asset['provenance']['kind']='audio_export'
+        core.db.execute('UPDATE assets SET metadata=? WHERE id=?',(json.dumps(asset),asset['id']))
+    core.db.execute('DROP TABLE publication_work');core.db.execute('DROP TABLE p1_format')
+    core.db.execute('PRAGMA user_version=1')
+    reopen(core)
+    if corruption=='default_reader':
+        root=core.root;core.close();core.__init__(root,historical_local=False)
+        with pytest.raises(persistence.PublicationQuarantine,match='pre_p1_inspect_only'):
+            core.artifact(artifact['id'])
+    elif corruption=='artifact_id':
+        with pytest.raises(ValueError,match='foreign_media'):core.artifact(artifact['id'])
+    elif corruption=='export_asset':
+        with pytest.raises(persistence.PublicationQuarantine,match='pre_p1_inspect_only'):
+            core.asset(artifact['asset_ids'][0])
+    else:
+        with pytest.raises(persistence.PublicationQuarantine,match='legacy_artifact_mismatch'):
+            core.artifact(artifact['id'])
 
 
 def test_recovery_stat_io_error_is_not_incomplete_media(core, context, monkeypatch):

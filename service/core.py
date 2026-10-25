@@ -819,6 +819,31 @@ class Core:
         if row is None: raise ValueError('not_found')
         artifact=json.loads(row[0])
         oracle.validate('artifact',artifact)
+        if not self.p1:
+            if self.historical_local is not True:
+                raise persistence.PublicationQuarantine('pre_p1_inspect_only')
+            # Explicit legacy inspection verifies metadata and owned media only;
+            # it does not confer the P1 public-artifact provenance authority.
+            oracle.require(artifact['id']==artifact_id, 'foreign_media')
+            job,context=self._load(artifact['job_id'])
+            retained=self.db.execute('SELECT manifest,artifact FROM publications WHERE job_id=?',(job['id'],)).fetchone()
+            if retained is None:
+                raise persistence.PublicationQuarantine('legacy_artifact_mismatch')
+            manifest=json.loads(retained[0]);oracle.validate('result_manifest',manifest)
+            plan=context['plan'];attempt=job['attempts'][-1]
+            owner=dict(job_id=job['id'],generation=job['generation'],input_sha256=job['input_sha256'],
+                       attempt_id=attempt['id'],owner_id=attempt['owner_id'],staging_id=attempt['staging_id'])
+            expected=dict(owner,id=manifest['artifact_id'],asset_ids=[o['id'] for o in manifest['outputs']],
+                          project_revision=plan['project']['revision'] if plan['operation']=='project_render' else 0,
+                          manifest_sha256=oracle.canonical_hash(manifest),identity=plan['resolved']['identity'])
+            if (job['state']!='succeeded' or job['artifact_ids']!=[artifact_id] or
+                    job['operation']!=plan['operation'] or manifest['operation']!=plan['operation'] or
+                    job['input_sha256']!=oracle.plan_hash(plan) or
+                    {k:manifest[k] for k in owner}!=owner or artifact!=expected or
+                    json.loads(retained[1])!=expected):
+                raise persistence.PublicationQuarantine('legacy_artifact_mismatch')
+            for asset_id in artifact['asset_ids']: self.asset(asset_id)
+            return artifact
         job_id=artifact.get('job_id')
         data={}
         for table, columns, key in (
@@ -840,6 +865,8 @@ class Core:
         from service.ingest import MAX_BYTES, open_directory, reference_budget
         budget = MAX_BYTES if reference_budget(metadata) else 1024*1024
         if metadata['provenance']['kind']=='audio_export':
+            if not self.p1:
+                raise persistence.PublicationQuarantine('pre_p1_inspect_only')
             # Asset provenance alone is not authority to enlarge a read. Bind it
             # to the same retained producer used by the public artifact reader.
             matches=list(self.db.execute('SELECT job_id FROM publication_work WHERE destination=? LIMIT 2',(asset_id,)))
