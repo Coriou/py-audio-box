@@ -45,6 +45,34 @@ def versions(expected):
     return measured
 
 
+def private_bundle(source, destination, expected, manifest_sha256):
+    """Verify bounded bind inputs, then seal a Linux-owned probe-only copy."""
+    destination.mkdir(parents=True, mode=0o755)
+    entries = [dict(path='manifest.json', bytes=None, sha256=manifest_sha256), *expected['files']]
+    for entry in entries:
+        name = entry['path']
+        if Path(name).name != name: raise ValueError('literal_bundle_file_required')
+        original = source/name
+        if original.is_symlink() or not original.is_file(): raise ValueError('sealed_model_required')
+        size = original.stat().st_size
+        if entry['bytes'] is None:
+            if not 0 < size <= 65536: raise ValueError('manifest_size')
+        elif size != entry['bytes']: raise ValueError('model_size')
+        digest = hashlib.sha256()
+        target = destination/name
+        with original.open('rb') as src, target.open('xb') as dst:
+            remaining = size
+            while remaining:
+                raw = src.read(min(65536, remaining))
+                if not raw: raise ValueError('model_size')
+                dst.write(raw); digest.update(raw); remaining -= len(raw)
+            if src.read(1): raise ValueError('model_size')
+        if digest.hexdigest() != entry['sha256']: raise ValueError('model_hash')
+        target.chmod(0o444); os.chown(target, 10001, 10001)
+    destination.chmod(0o555); os.chown(destination, 10001, 10001)
+    return destination
+
+
 def drop(uid):
     # Permanent UID transition clears effective/permitted capabilities.
     os.setgroups([])
@@ -128,7 +156,11 @@ def probe(args, expected):
     context = payload['context']
     spec = execution(context)
     measured_versions = versions(expected)
-    root = Path('/models/bundles')/spec.bundle_id
+    # macOS bind mounts can map ownership to the container's current UID.
+    # Actual execution uses a verified sealed Linux tmpfs copy, as installed
+    # volumes do; its path is reported separately from the frozen input context.
+    root = private_bundle(Path('/models/bundles')/spec.bundle_id,
+        Path('/tmp/models/bundles')/spec.bundle_id, expected, spec.manifest_sha256)
     for path in (root, *root.rglob('*')):
         info = path.lstat()
         if path.is_symlink() or info.st_uid != 10001 or info.st_mode & 0o222:
@@ -152,7 +184,7 @@ def probe(args, expected):
     def generation(directory):
         contain_kokoro(context)  # Production limits BEFORE any ML import.
         from worker.engines.kokoro import execute
-        result = execute(spec, context['plan']['request']['text'], context['execution']['bundles'])
+        result = execute(spec, context['plan']['request']['text'], {spec.bundle_id:str(root)})
         raw = result.pop('data')
         exclusive(directory/'speech.wav', raw)
         return dict(result, media=pcm(raw), uid=os.getuid(), groups=os.getgroups())
@@ -179,7 +211,7 @@ def probe(args, expected):
     finally:
         os.close(source_fd)
     print(encoded(dict(kind='actual-cpu-kokoro-export-probe-v1', image=args.image,
-        versions=measured_versions, context_sha256=oracle.canonical_hash(context),
+        versions=measured_versions, context_sha256=oracle.canonical_hash(context), probe_bundle_path=str(root),
         manifest_sha256=spec.manifest_sha256, descriptor=spec.identity(),
         converter=converter, generation=generated, export=converted)).decode(), flush=True)
 

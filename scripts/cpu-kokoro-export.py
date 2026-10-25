@@ -55,12 +55,13 @@ class Commands:
         # Read concurrently and enforce a byte ceiling; neither PIPE capacity nor
         # an unbounded communicate() may turn build output into host memory use.
         process = subprocess.Popen(command, cwd=ROOT, env=self.env, stdin=subprocess.DEVNULL,
-            stdout=subprocess.PIPE, stderr=subprocess.STDOUT, start_new_session=True)
+            stdout=subprocess.PIPE, stderr=subprocess.PIPE, start_new_session=True)
         selector = None
         try:
             save(prefix.with_suffix('.pid.json'), dict(pid=process.pid))
             selector = selectors.DefaultSelector()
             selector.register(process.stdout, selectors.EVENT_READ)
+            selector.register(process.stderr, selectors.EVENT_READ)
             deadline, total, chunks = time.monotonic()+timeout, 0, []
             with prefix.with_suffix('.log').open('xb') as log:
                 while selector.get_map():
@@ -71,7 +72,8 @@ class Commands:
                             selector.unregister(key.fileobj); continue
                         total += len(block)
                         if total > maximum: raise ValueError('command_output_limit')
-                        log.write(block); chunks.append(block)
+                        log.write(block)
+                        if key.fileobj is process.stdout: chunks.append(block)
                 code = process.wait(timeout=max(.1, deadline-time.monotonic()))
                 if code: raise ValueError('command_failed_see_retained_log')
                 save(prefix.with_suffix('.wait.json'), dict(pid=process.pid, returncode=code, reaped=True))
@@ -103,6 +105,7 @@ class Commands:
         finally:
             if selector is not None: selector.close()
             process.stdout.close()
+            process.stderr.close()
 
     def docker(self, args, **kwargs):
         return self.run(['docker', '--host', self.endpoint, *args], **kwargs)
@@ -112,7 +115,7 @@ class Commands:
             '--network', network, '--read-only', '--user', '0:10001', '--cap-drop', 'ALL',
             '--cap-add', 'CHOWN', '--cap-add', 'SETUID', '--cap-add', 'SETGID', '--cap-add', 'KILL',
             '--security-opt', 'no-new-privileges', '--pids-limit', '128', '--memory', '2g',
-            '--memory-swap', '2g', '--cpus', '2', '--tmpfs', '/tmp:rw,nosuid,nodev,size=134217728,mode=1777']
+            '--memory-swap', '2g', '--cpus', '2', '--tmpfs', '/tmp:rw,nosuid,nodev,size=536870912,mode=1777']
         for source, target, readonly in mounts:
             command += ['--mount', 'type=bind,src='+str(source)+',dst='+target+(',readonly' if readonly else '')]
         command += ['--entrypoint', 'python', image, '-I', '-B', '/recipe.py', *arguments]
@@ -122,8 +125,21 @@ class Commands:
         try:
             output = self.docker(['start', '--attach', identity], timeout=timeout, maximum=1024**2)
         except BaseException:
-            self.docker(['kill', '--signal', 'TERM', identity], timeout=20)
-            self.docker(['wait', identity], timeout=20)
+            before = None
+            try:
+                before = json.loads(self.docker(['inspect', identity]))[0]
+                save(self.output/(name+'.failure-inspect.json'), before)
+            except Exception:
+                pass  # Retained exact ID still permits TERM and independent wait.
+            if before is None or before['State']['Running']:
+                try:
+                    self.docker(['kill', '--signal', 'TERM', identity], timeout=20)
+                except Exception:
+                    pass  # An exit racing TERM must still reach wait/inspection.
+            try:
+                self.docker(['wait', identity], timeout=20)
+            finally:
+                save(self.output/(name+'.inspect.json'), json.loads(self.docker(['inspect', identity]))[0])
             raise
         waited = self.docker(['wait', identity], timeout=20).strip()
         inspected = json.loads(self.docker(['inspect', identity]))[0]

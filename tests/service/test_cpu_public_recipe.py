@@ -41,8 +41,8 @@ class FiniteCommands(unittest.TestCase):
 
     def test_success_retains_complete_log_and_actual_wait(self):
         result = self.commands.run(self.command("import sys;print('out');print('err',file=sys.stderr)"))
-        self.assertEqual(set(result.splitlines()), {'out','err'})
-        self.assertEqual((self.output/'01-command.log').read_text(), result)
+        self.assertEqual(result, 'out\n')
+        self.assertEqual(set((self.output/'01-command.log').read_text().splitlines()), {'out','err'})
         self.assertEqual(self.assert_reaped()['returncode'], 0)
 
     def test_nonzero_is_not_success_and_still_reaped(self):
@@ -72,7 +72,9 @@ class FiniteCommands(unittest.TestCase):
         read_fd, write_fd = os.pipe()
         os.close(write_fd)
         stream = os.fdopen(read_fd, 'rb', buffering=0)
-        process = Mock(pid=7654321, stdout=stream)
+        read_err, write_err = os.pipe(); os.close(write_err)
+        error_stream = os.fdopen(read_err, 'rb', buffering=0)
+        process = Mock(pid=7654321, stdout=stream, stderr=error_stream)
         process.poll.return_value = None
         expired = subprocess.TimeoutExpired(['finite-test-child'], 15)
         def actual_exit(*args, **kwargs):
@@ -129,8 +131,33 @@ class FiniteCommands(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, 'terminal_failure'):
                 self.commands.container('probe', image, [], ['probe'])
 
+    def test_attach_failure_and_term_exit_race_still_waits_and_inspects(self):
+        identity, image = 'a'*64, 'sha256:'+'b'*64
+        running = dict(Image=image, State=dict(Running=True, OOMKilled=False, ExitCode=0))
+        stopped = dict(Image=image, State=dict(Running=False, OOMKilled=False, ExitCode=1))
+        calls = [identity, ValueError('attach_failed'), json.dumps([running]), ValueError('already_stopped'), '1', json.dumps([stopped])]
+        with patch.object(self.commands, 'docker', side_effect=calls) as docker:
+            with self.assertRaisesRegex(ValueError, 'attach_failed'):
+                self.commands.container('probe', image, [], ['probe'])
+        self.assertEqual(docker.call_count, 6)
+        self.assertEqual(json.loads((self.output/'probe.inspect.json').read_bytes()), stopped)
+
 
 class PrivateSourceCapability(unittest.TestCase):
+    def test_private_bundle_rejects_hash_mismatch_before_sealing(self):
+        import hashlib
+        probe_spec = importlib.util.spec_from_file_location('cpu_bundle_probe', ROOT/'scripts/cpu-kokoro-export-probe.py')
+        probe = importlib.util.module_from_spec(probe_spec)
+        probe_spec.loader.exec_module(probe)
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary); source = root/'source'; source.mkdir()
+            (source/'manifest.json').write_bytes(b'{}')
+            (source/'model.onnx').write_bytes(b'wrong')
+            expected = dict(files=[dict(path='model.onnx', bytes=5, sha256='0'*64)])
+            with patch.object(probe.os, 'chown'):
+                with self.assertRaisesRegex(ValueError, 'model_hash'):
+                    probe.private_bundle(source, root/'private'/'bundle', expected, hashlib.sha256(b'{}').hexdigest())
+
     def test_readonly_capability_exists_before_owner_transfer(self):
         import fcntl
         probe_spec = importlib.util.spec_from_file_location('cpu_public_probe', ROOT/'scripts/cpu-kokoro-export-probe.py')
