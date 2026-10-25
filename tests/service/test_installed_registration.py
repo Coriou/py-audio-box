@@ -51,9 +51,9 @@ class Registration(unittest.TestCase):
         # Content validator is tested independently by installed-host-policy tests.
         # Here injected observations exercise the transaction with real copies/DB.
         self.enrollment_patch=patch.object(ip,'host_enrollment',return_value=digest(self.public))
-        self.enterContext(self.enrollment_patch)
+        self.enrollment_patch.start();self.addCleanup(self.enrollment_patch.stop)
         self.provenance_patch=patch.object(h,'_installed_provenance',side_effect=lambda v,*_:v)
-        self.enterContext(self.provenance_patch)
+        self.provenance_patch.start();self.addCleanup(self.provenance_patch.stop)
 
 
     def read_provenance(self,fd,name):
@@ -173,7 +173,7 @@ class Registration(unittest.TestCase):
         for container in host.containers:
             for mount in container['mounts']:
                 if mount['type']=='volume':mount['source']=str(self.roots[mount['name']])
-        self.provenance_patch.__exit__(None,None,None);self.enrollment_patch.__exit__(None,None,None)
+        self.provenance_patch.stop();self.enrollment_patch.stop()
         self.observer=host.observer();self.observer.docker.context=self.scope["context"];self.owners=host.owners
         return host
 
