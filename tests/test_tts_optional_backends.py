@@ -43,6 +43,7 @@ def test_bundle_tamper_and_escape_rejected(tmp_path):
 
 
 def test_kokoro_mock_contract(tmp_path, monkeypatch):
+    monkeypatch.setattr("tts_backends.espeak_memfd.install", lambda: None)
     from tts_backends.kokoro import KokoroBackend
     bundle(tmp_path, 'kokoro', {'model.onnx': b'model', 'voices.bin': b'voices'})
     class Session:
@@ -238,6 +239,7 @@ def test_kokoro_rejects_non_cpu_effective_provider(tmp_path, monkeypatch):
 
 
 def test_kokoro_failed_inference_is_accounted_in_model_reuse(tmp_path, monkeypatch):
+    monkeypatch.setattr("tts_backends.espeak_memfd.install", lambda: None)
     bundle(tmp_path, 'kokoro', {'model.onnx': b'model', 'voices.bin': b'voices'})
     class Session:
         def __init__(self, *args, **kwargs):
