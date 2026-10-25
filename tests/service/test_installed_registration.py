@@ -165,7 +165,8 @@ class Registration(unittest.TestCase):
 
     def use_closed_observer(self):
         from tests.service import test_installed_host_policy as host_fixtures
-        host=host_fixtures.InstalledHost();host.setUp();self.addCleanup(host.doCleanups)
+        host=host_fixtures.InstalledHost();host.temporary_parent=self.fixture.root.parent
+        host.setUp();self.addCleanup(host.doCleanups)
         self.assertEqual(host.config,self.config)
         host.scope=self.scope;host.policy['host']=self.scope
         host.policy['roots']={r:dict(source=str(p),device=p.stat().st_dev,inode=p.stat().st_ino) for r,p in self.roots.items()}

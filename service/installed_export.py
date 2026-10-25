@@ -324,7 +324,7 @@ def _clean_dispatches(rows):
     return all(r[6]=='acknowledged' and r[9]==1 and r[7] is not None for r in rows)
 
 
-def startup_read(root, config, gate, hello, incarnation, *, family):
+def startup_read(root, config, gate, hello, incarnation, *, family, owned_db=None):
     """Control-readable pre-owner facts only; receipts remain supervisor-owned."""
     from contextlib import closing
     from pathlib import Path
@@ -341,7 +341,7 @@ def startup_read(root, config, gate, hello, incarnation, *, family):
     host_install._registration_hello(hello, family=family, configuration=config)
     root=Path(root).absolute()
     ip.directory_identity(root,policy=ip.SPLIT,role='control')
-    with recovery.private_database(root/'core.sqlite',policy=ip.SPLIT) as path:
+    with recovery.startup_database(root/'core.sqlite',policy=ip.SPLIT,owned_db=owned_db) as path:
         with closing(sqlite3.connect(path.as_uri()+'?mode=ro',uri=True,timeout=0,isolation_level=None)) as db:
             db.execute('PRAGMA query_only=ON'); db.execute('PRAGMA trusted_schema=OFF')
             import time

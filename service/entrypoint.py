@@ -360,7 +360,7 @@ class InstalledActivation:
         before = local_incarnation()
         hello = dispatcher.runtime.call('hello', {})
         checked = installed_startup_read(dispatcher.root, self.configuration, gate,
-                                        hello, before, policy=ip.family_policy(self.family, self.configuration), launch_policy=self.launch_policy, family=self.family)
+                                        hello, before, policy=ip.family_policy(self.family, self.configuration), launch_policy=self.launch_policy, family=self.family, owned_db=dispatcher.core.db)
         if (checked != self.checked or self.waiting.read() != gate or
                 dispatcher.runtime.call('hello', {}) != hello or local_incarnation() != before):
             raise ValueError('installed_post_owner_binding_changed')

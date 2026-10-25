@@ -21,7 +21,7 @@ from tests.service import test_provisioning as provisioning_fixtures
 
 class SplitInit(unittest.TestCase):
     def setUp(self):
-        self.temp=tempfile.TemporaryDirectory(dir='/private/tmp'); self.addCleanup(self.temp.cleanup)
+        self.temp=tempfile.TemporaryDirectory(dir=getattr(self,'temporary_parent','/private/tmp')); self.addCleanup(self.temp.cleanup)
         self.root=Path(self.temp.name)
         self.roots={r:self.root/r for r in ip.ROLES}
         for p in self.roots.values(): p.mkdir(mode=0o700)

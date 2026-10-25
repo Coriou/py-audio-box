@@ -117,6 +117,8 @@ class ActivationTests(unittest.TestCase):
                 with self.assertRaises(BlockingIOError): fcntl.flock(fd,fcntl.LOCK_EX|fcntl.LOCK_NB)
             finally:os.close(fd)
             phases.append(self.runtime.hellos)
+            if len(phases)==1: self.assertNotIn('owned_db',kwargs)
+            else: self.assertIsInstance(kwargs.get('owned_db'),sqlite3.Connection)
             return reader(*args,**kwargs)
         with patch.object(recovery,'installed_startup_read',side_effect=read):
             owner=self.owner()

@@ -115,6 +115,99 @@ def private_database(path, *, policy=None):
 
 
 @contextmanager
+def startup_database(path, *, policy=None, owned_db=None):
+    """Private startup snapshot; preserve an active owner's SQLite POSIX locks.
+
+    Closing any separately opened DB/WAL/SHM descriptor in this process can
+    release SQLite's process-wide record locks. The owned route therefore uses
+    only stat/enumeration on originals and backs up through the existing owner
+    connection. The caller keeps Core's lifetime exclusion throughout this scope.
+    Pre-owner/offline callers retain the original bounded raw-copy reader.
+    """
+    if owned_db is None:
+        with private_database(path, policy=policy) as target:
+            yield target
+        return
+    from service import install_policy as ip
+    import stat
+    if type(owned_db) is not sqlite3.Connection or owned_db.in_transaction:
+        raise ValueError('owned_snapshot_connection_required')
+    path=Path(path).absolute()
+    if path.name!='core.sqlite' or path.resolve(strict=True)!=path:
+        raise ValueError('owned_snapshot_canonical_path')
+    deadline=time.monotonic()+2
+    def timely():
+        if time.monotonic()>deadline: raise ValueError('snapshot_deadline')
+    def capture():
+        timely()
+        if policy is not None: ip.directory_identity(path.parent,policy=policy,role='control')
+        namespace=[]
+        with os.scandir(path.parent) as entries:
+            for entry in entries:
+                timely()
+                if len(namespace)>=MAX_ROWS: raise ValueError('snapshot_namespace_budget')
+                namespace.append(entry.name)
+        records={};total=0
+        for name in ('core.sqlite','core.sqlite-wal','core.sqlite-shm'):
+            timely()
+            try: info=os.stat(path.parent/name,follow_symlinks=False)
+            except FileNotFoundError:
+                if name=='core.sqlite': raise sqlite3.OperationalError('missing_database')
+                continue
+            if policy is not None: ip.check(info,policy,'control')
+            elif (not stat.S_ISREG(info.st_mode) or info.st_nlink!=1 or info.st_uid!=os.getuid() or
+                    stat.S_IMODE(info.st_mode)!=0o600):
+                raise ValueError('unsafe_private_file')
+            total+=info.st_size
+            if total>MAX_BYTES: raise ValueError('snapshot_byte_budget')
+            records[name]=ip.identity(info)
+        return sorted(namespace),records
+    before=capture()
+    # Executing on this connection also enforces SQLite's owner-thread check.
+    databases=owned_db.execute('PRAGMA database_list').fetchall()
+    if databases!=[(0,'main',str(path))]: raise ValueError('owned_snapshot_main_database_required')
+    page_size=owned_db.execute('PRAGMA main.page_size').fetchone()[0]
+    page_count=owned_db.execute('PRAGMA main.page_count').fetchone()[0]
+    if (type(page_size) is not int or not 512<=page_size<=65536 or page_size&(page_size-1) or
+            type(page_count) is not int or page_count<1 or page_count*page_size>MAX_BYTES):
+        raise ValueError('snapshot_byte_budget')
+    timely()
+    with tempfile.TemporaryDirectory(prefix='p1-owned-inspect-') as directory:
+        target=Path(directory)/'core.sqlite'
+        writer=None
+        try:
+            writer=sqlite3.connect(target,timeout=0,isolation_level=None)
+            os.chmod(target,0o600)
+            writer.execute('PRAGMA page_size='+str(page_size))
+            page_limit=MAX_BYTES//page_size
+            if writer.execute('PRAGMA max_page_count='+str(page_limit)).fetchone()!=(page_limit,):
+                raise ValueError('snapshot_byte_budget')
+            def progress(status,remaining,total):
+                timely()
+                if type(status) is not int or status not in (sqlite3.SQLITE_OK,sqlite3.SQLITE_BUSY,sqlite3.SQLITE_LOCKED,sqlite3.SQLITE_DONE):
+                    raise ValueError('snapshot_backup_progress')
+                # BUSY/LOCKED may precede usable page counts; retry only until
+                # the same deadline, never infer a successful partial backup.
+                if status in (sqlite3.SQLITE_BUSY,sqlite3.SQLITE_LOCKED): return
+                if type(remaining) is not int or type(total) is not int or not 0<=remaining<=total:
+                    raise ValueError('snapshot_backup_progress')
+                if total*page_size>MAX_BYTES: raise ValueError('snapshot_byte_budget')
+            owned_db.backup(writer,pages=64,progress=progress,sleep=0)
+            timely()
+            target_size=writer.execute('PRAGMA page_size').fetchone()[0]
+            target_pages=writer.execute('PRAGMA page_count').fetchone()[0]
+            if target_pages*target_size>MAX_BYTES: raise ValueError('snapshot_byte_budget')
+        finally:
+            if writer is not None: writer.close()
+        if target.stat(follow_symlinks=False).st_size>MAX_BYTES: raise ValueError('snapshot_byte_budget')
+        if capture()!=before: raise ValueError('snapshot_source_changed')
+        try:
+            yield target
+        finally:
+            if capture()!=before: raise ValueError('snapshot_source_changed')
+
+
+@contextmanager
 def _locked_roots(roots, *, journal_lock=True, policy=None):
     if policy is not None:
         from service import install_policy
@@ -3832,7 +3925,7 @@ def validate_installed_observation(value, scope, owners, configuration, policy, 
     return value
 
 
-def installed_startup_read(root, configuration, gate, hello, incarnation, *, policy, launch_policy=None, family=None):
+def installed_startup_read(root, configuration, gate, hello, incarnation, *, policy, launch_policy=None, family=None, owned_db=None):
     """Explicit split-scope pre-owner gate using only control-readable evidence.
 
     Caller holds control exclusion and obtains hello through authenticated IPC.
@@ -3852,7 +3945,7 @@ def installed_startup_read(root, configuration, gate, hello, incarnation, *, pol
         from service import installed_export as ex
         if family is not ex.FAMILY or policy is not ip.EXPORT_SPLIT or launch_policy!=ex.LAUNCH:
             raise ValueError('installed_explicit_launch_policy')
-        return ex.startup_read(root,configuration,gate,hello,incarnation,family=family)
+        return ex.startup_read(root,configuration,gate,hello,incarnation,family=family,owned_db=owned_db)
     config = ip.configuration(configuration)
     if policy is not ip.configuration_policy(config):
         raise ValueError('installed_explicit_launch_policy')
@@ -3872,7 +3965,7 @@ def installed_startup_read(root, configuration, gate, hello, incarnation, *, pol
     ip.directory_identity(root,policy=policy,role='control')
     primary = None
     try:
-        with private_database(root/'core.sqlite',policy=policy) as private_path:
+        with startup_database(root/'core.sqlite',policy=policy,owned_db=owned_db) as private_path:
             db = None
             try:
                 db = sqlite3.connect(private_path.as_uri()+'?mode=ro',uri=True,timeout=0)

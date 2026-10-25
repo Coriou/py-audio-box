@@ -22,7 +22,7 @@ from tests.service import test_provisioning as provisioning
 
 class InstalledHost(unittest.TestCase):
     def setUp(self):
-        self.temp=tempfile.TemporaryDirectory(); self.addCleanup(self.cleanup)
+        self.temp=tempfile.TemporaryDirectory(dir=getattr(self,'temporary_parent',None)); self.addCleanup(self.cleanup)
         self.root=Path(self.temp.name).resolve(); self.owners_map={}
         fixture=provisioning.ProvisioningTests(); fixture.setUp(); self.addCleanup(fixture.doCleanups)
         context,profiles=configuration(fixture.expected); spec=context['execution']['descriptor']; bid=spec['bundle_id']
@@ -299,7 +299,8 @@ class InstalledHost(unittest.TestCase):
     def test_observer_callback_supplies_actual_split_initializer_injected_child(self):
         from service import persistent_init
         from tests.service import test_split_init as split_tests
-        fixture=split_tests.SplitInit();fixture.setUp();self.addCleanup(fixture.doCleanups)
+        fixture=split_tests.SplitInit();fixture.temporary_parent=self.root.parent
+        fixture.setUp();self.addCleanup(fixture.doCleanups)
         fixture.scope=self.scope;fixture.config=self.config
         self.policy['roots']={r:dict(source=str(p),device=p.stat().st_dev,inode=p.stat().st_ino) for r,p in fixture.roots.items()}
         self.volumes=[dict(role=r,**self.scope['volumes'][r],**v) for r,v in self.policy['roots'].items()]
