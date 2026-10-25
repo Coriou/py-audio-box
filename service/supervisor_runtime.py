@@ -24,15 +24,21 @@ class SupervisorRuntime:
         self.interrupt = interrupt
 
     def call(self, op, body, timeout=1.5):
-        if not 0 < timeout <= 2:
+        from service import installed_pocket_daemon as pd
+        from worker.runtime_protocol import POCKET_START_RPC_SECONDS
+        pocket_start = op == 'start' and self.family is pd.FAMILY
+        maximum = POCKET_START_RPC_SECONDS if pocket_start else 2
+        if not 0 < timeout <= maximum:
             raise ValueError('bounded_communication_required')
-        cutoff = time.monotonic()+timeout
+        entered = time.monotonic()
+        cutoff = entered+timeout
+        handshake_cutoff = entered+min(timeout, 2)
         secret = (self.ipc/'lifecycle.key').read_text().strip()
         with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as connection:
-            connection.settimeout(timeout)
+            connection.settimeout(min(timeout, 2))
             connection.connect(str(self.ipc/'lifecycle.sock'))
-            authenticate(connection, session(secret, 0, 10001), cutoff, control=True)
-            send(connection, dict(version=VERSION, op=op, body=body), cutoff)
+            authenticate(connection, session(secret, 0, 10001), handshake_cutoff, control=True)
+            send(connection, dict(version=VERSION, op=op, body=body), handshake_cutoff)
             if self.interrupt == op+'-sent':
                 import os
                 os._exit(17)
@@ -51,7 +57,10 @@ class SupervisorRuntime:
             binding=authority.binding, fixture=fixture))['runtime_id']
 
     def start(self, identity):
-        return self.call('start', dict(runtime_id=identity))
+        from service import installed_pocket_daemon as pd
+        from worker.runtime_protocol import POCKET_START_RPC_SECONDS
+        timeout = POCKET_START_RPC_SECONDS if self.family is pd.FAMILY else 1.5
+        return self.call('start', dict(runtime_id=identity), timeout)
 
     def observe(self, runtime_id, timeout):
         value = self.call('observe', dict(runtime_id=runtime_id), min(timeout, 2))

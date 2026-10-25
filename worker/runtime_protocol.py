@@ -3,6 +3,9 @@ import hashlib
 import hmac
 from worker.transport import Session, Refused, authenticate, receive, send
 
+# Trusted public Pocket v2 start response only; never an execution deadline.
+POCKET_START_RPC_SECONDS = 10
+
 VERSION = 'lifecycle-v1'
 OPS = frozenset(('hello', 'startup', 'prepare', 'start', 'observe', 'stop', 'collect', 'ack'))
 

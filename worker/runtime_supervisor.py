@@ -511,10 +511,17 @@ class RuntimeSupervisor:
             raise Refused('conditioning_refused')
 
     def client(self, connection):
-        cutoff = time.monotonic()+2
+        entered = time.monotonic()
+        cutoff = entered+2
         try:
             authenticate(connection, session(self.secret, 10001, 10001), cutoff, control=False)
             op, body = request(receive(connection, cutoff))
+            if (op == 'start' and getattr(self, '_pocket_daemon', False) and
+                    getattr(self, 'installed_pocket', False)):
+                if set(body) != {'runtime_id'} or not isinstance(body['runtime_id'], str):
+                    raise Refused('closed_identity_body')
+                from worker.runtime_protocol import POCKET_START_RPC_SECONDS
+                cutoff = entered+POCKET_START_RPC_SECONDS
             answer = queue.Queue(1)
             self.commands.put_nowait((op, body, answer))
             result = answer.get(timeout=max(.001, cutoff-time.monotonic()))
