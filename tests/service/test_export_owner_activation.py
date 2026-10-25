@@ -68,7 +68,7 @@ class ExportOwnerTests(ProductionAPIFixture, unittest.TestCase):
         self.enterContext(patch.object(ep,'local_incarnation',side_effect=lambda:{
             k:s.facts('control')[k] for k in ('start_ticks','pid_namespace','cgroup')}))
 
-    def open_owner(self, *, admission=True):
+    def open_owner(self, *, admission=True, actual_reference=False):
         s=self.s
         class Runtime(InertExportRuntime):
             acks=0
@@ -114,7 +114,8 @@ class ExportOwnerTests(ProductionAPIFixture, unittest.TestCase):
                     from worker import managed_reference
                     def acquire(asset_id):
                         return os.open(owner.root/'assets'/asset_id,os.O_RDONLY)
-                    with patch.object(managed_reference,'acquire',side_effect=acquire):
+                    from contextlib import nullcontext
+                    with (nullcontext() if actual_reference else patch.object(managed_reference,'acquire',side_effect=acquire)):
                         fd=s.worker.verify_export(a.context,a.job['principal_id'])
                         os.close(fd)
                     super().prepare(a,fixture)
@@ -293,6 +294,138 @@ class ExportOwnerTests(ProductionAPIFixture, unittest.TestCase):
         self.submit('job_cancel',dict(job_id=receipt['job_id']),'cancel')
         self.assertEqual(self.terminal(receipt,'cancelled')['artifact_ids'],[])
         self.assertEqual(self.runtime.acks,1)
+
+    def test_public_helper_unknown_retains_owned_app_close(self):
+        """INERT composed acquire -> verify -> unbound UNKNOWN -> retained close."""
+        import array
+        import asyncio
+        import socket
+        import sqlite3
+        import threading
+        from unittest.mock import Mock
+        from service.core import Core
+        from worker import managed_reference as managed
+
+        self.setup_family();self.open_owner(actual_reference=True)
+        contexts=self.dispatcher.production_contexts
+        self.dispatcher.close()
+        notification=self.notifications[-1]
+        closed=[]
+        original_notification_close=notification.close
+        def close_notification():
+            closed.append(True);original_notification_close()
+        notification.close=close_notification
+        # Lifespan retains this notification; fixture disposal happens explicitly.
+        self._cleanups=[item for item in self._cleanups if item[0] != original_notification_close]
+        with patch('service.execution_context.installed_mapping',return_value={}),patch('service.execution_context.installed_contexts',return_value=contexts):
+            app=ep.create_installed_app(configuration_file=self.s.roots['config']/'install.json',
+                credential_file=self.s.roots['credential']/'control.key',root=self.root,staging=self.stage,
+                runtime=self.runtime,waiting=notification,family=ex.FAMILY,launch_policy=ex.LAUNCH)
+        real_socketpair=socket.socketpair
+        parent=Mock();child=Mock();child.fileno.return_value=17
+        def socketpair(*args,**kwargs):
+            if threading.current_thread().name.startswith('bounded-lifecycle'):
+                return parent,child
+            return real_socketpair(*args,**kwargs)
+        proc=Mock(returncode=None);proc.wait.side_effect=RuntimeError('INERT unknown helper wait')
+        retained=[];release=threading.Event();captured=[];transferred=[];closed_transfers=[]
+        real_close=os.close
+        def close_fd(fd):
+            real_close(fd)
+            if fd in transferred and not closed_transfers:
+                with self.assertRaises(OSError):os.fstat(fd)
+                closed_transfers.append(fd)
+        prepare_errors=[]
+        original_prepare=self.runtime.prepare
+        def traced_prepare(*args):
+            try:return original_prepare(*args)
+            except BaseException as exc:
+                prepare_errors.append(repr(exc));raise
+        self.runtime.prepare=traced_prepare
+        original_tick=Dispatcher._tick
+        def tick(owner):
+            # Test disposal only: exit the loop without changing durable UNKNOWN,
+            # acknowledging work, manufacturing reap, or claiming successful close.
+            if release.is_set():owner.stopping=True;return
+            original_tick(owner)
+        async def run():
+            context=app.router.lifespan_context(app)
+            await context.__aenter__()
+            owner=app.state.dispatcher;captured.append(owner)
+            self.dispatcher=owner;self.app=app
+            try:
+                upload=await asyncio.to_thread(self.request,'POST','/v1/assets',content=audio(frames=96000),token='secret-fixture-only-'+'x'*32)
+                self.assertEqual(upload.status_code,200,upload.text)
+                request=dict(asset_id=upload.json()['id'],rate=48000,channels=2,loudness=None)
+                fd=os.open(self.root/'assets'/request['asset_id'],os.O_RDONLY)
+                transferred.append(fd)
+                parent.recvmsg.return_value=(b'R',[(socket.SOL_SOCKET,socket.SCM_RIGHTS,array.array('i',[fd]).tobytes())],0,None)
+                journal=(self.s.roots['receipts']/'journal.json').read_bytes()
+                response=await asyncio.to_thread(self.request,'POST','/v1/operations/audio_export',payload=request,key='helper-unknown',token='secret-fixture-only-'+'x'*32)
+                self.assertEqual(response.status_code,200,response.text)
+                receipt=response.json()
+                await asyncio.to_thread(self.wait,lambda:owner.call('status')['phase']=='unknown')
+                self.assertEqual(closed_transfers,[fd],str(prepare_errors))
+                def assert_retained():
+                    status=owner.call('status')
+                    self.assertTrue(status['quarantined'])
+                    self.assertIsNone(status['runtime_id'])
+                    self.assertEqual(status['reservations'][0]['state'],'executing')
+                    self.assertEqual(owner.call('job',receipt['job_id'])['artifact_ids'],[])
+                    from contextlib import closing
+                    with closing(sqlite3.connect((self.root/'core.sqlite').as_uri()+'?mode=ro',uri=True)) as db:
+                        row=db.execute('SELECT phase,runtime,receipt,outcome,acked FROM dispatches').fetchone()
+                        self.assertEqual(row,('unknown',None,None,None,0))
+                        self.assertEqual(db.execute('SELECT count(*) FROM publications').fetchone()[0],0)
+                    self.assertEqual(self.runtime.acks,0)
+                    self.assertEqual(self.runtime.authorities,[])
+                    self.assertEqual(self.runtime.completed,{})
+                    self.assertEqual((self.s.roots['receipts']/'journal.json').read_bytes(),journal)
+                    self.assertEqual(retained,[proc])
+                    self.assertIsNone(proc.returncode)
+                    self.assertTrue(self.s.worker.operation('hello',{})['quarantined'])
+                assert_retained()
+                proc.kill.assert_called_once();self.assertEqual(proc.wait.call_count,2)
+                parent.close.assert_called();child.close.assert_called()
+                # Ordinary shutdown calls actual Dispatcher.close in _ThreadResult.
+                with self.assertRaisesRegex(RuntimeError,'control_close_timeout'):
+                    await context.__aexit__(None,None,None)
+                record=app.state.installed_lifecycle
+                self.assertIs(ep._INSTALLED_LIFECYCLES[id(record)],record)
+                self.assertIs(record['owner'],owner)
+                self.assertIs(record['notification'],notification)
+                self.assertFalse(record['closed']);self.assertFalse(closed)
+                self.assertTrue(record['cleanup_requested'])
+                self.assertIsInstance(record['error'],RuntimeError)
+                self.assertTrue(record['operations']['close'].result.done())
+                self.assertTrue(owner.thread.is_alive())
+                self.assertTrue(owner.call('status')['stop_obligation'])
+                with self.assertRaisesRegex(ValueError,'control_busy'):Core(self.root)
+                assert_retained()
+            finally:
+                # Finite test-only disposal, AFTER retention assertions. No retry
+                # of owned-app close, no success/reap injection, no durable repair.
+                if not app.state.installed_lifecycle['cleanup_requested']:
+                    try:await context.__aexit__(None,None,None)
+                    except RuntimeError:pass
+                release.set()
+                await asyncio.to_thread(owner.thread.join,3)
+                self.assertFalse(owner.thread.is_alive())
+                for thread in owner.pool._threads:
+                    self.assertFalse(thread.is_alive())
+                record=app.state.installed_lifecycle
+                for operation in record['operations'].values():
+                    self.assertTrue(operation.result.done())
+                ep._INSTALLED_LIFECYCLES.pop(id(record),None)
+        try:
+            with patch.object(os,'close',side_effect=close_fd),patch.object(Dispatcher,'_tick',tick),patch.object(managed,'_retained',retained),patch.object(socket,'socketpair',side_effect=socketpair),patch.object(socket,'MSG_CMSG_CLOEXEC',getattr(socket,'MSG_CMSG_CLOEXEC',0),create=True),patch.object(managed.subprocess,'Popen',return_value=proc):
+                asyncio.run(run())
+        finally:
+            release.set()
+            for owner in captured:
+                owner.thread.join(3)
+            original_notification_close()
+        self.assertEqual(retained,[proc])  # Fake handle remains unknown, never reaped.
 
     def test_owner_seal_and_notification_changes_refuse(self):
         self.setup_family();activation=self.open_owner()
