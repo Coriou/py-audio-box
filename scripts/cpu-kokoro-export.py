@@ -297,7 +297,8 @@ def main():
     bundle = models/'bundles'/key
     manifest = ctx['execution']['descriptor']['manifest_sha256']
     config = dict(version=2, ownership_policy='docker-kokoro-export-split-v2', profiles=[speech],
-        budget=dict(disk_bytes=268435456, free_bytes=16777216, pids=128, queue=32, ram_bytes=2147483648, resident_models=1, slots=1, vram_bytes=0),
+        # Retained speech/export reservations share this quota across jobs.
+        budget=dict(disk_bytes=1073741824, free_bytes=16777216, pids=128, queue=32, ram_bytes=2147483648, resident_models=1, slots=1, vram_bytes=0),
         contexts={args.principal:ctx}, bundles={key:dict(checkpoint=expected['checkpoint'], manifest_sha256=manifest, path='/models/bundles/'+key, revision=expected['revision'])},
         images=images, mounts=dict(control='/control',ipc='/ipc',models='/models',receipts='/receipts',staging='/staging'),
         audio_export=dict(converter=measured['converter'], profile=export, principals=[args.principal]))

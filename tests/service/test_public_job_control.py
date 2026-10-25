@@ -5,13 +5,34 @@ import json
 from pathlib import Path
 import sys
 import unittest
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 sys.path.insert(0,str(Path(__file__).resolve().parent))
 from test_production_api import ProductionAPIFixture, audio
 from service.job_control import cursor_encode, wait_job
 from service.domain import production_call
 from service.core import Core
 from service.catalogue import Failure
+
+
+class ProductionCapacityErrors(unittest.TestCase):
+    def test_disk_capacity_refusals_are_actionable_without_retry(self):
+        payload = dict(job_id='job-capacity', input_sha256='0'*64)
+        for reason, message, action in (
+            ('disk_quota', 'configured disk quota', 'increase the disk quota'),
+            ('disk_free_reserve', 'free-space reserve', 'restore free disk space'),
+        ):
+            with self.subTest(reason=reason):
+                dispatcher = Mock()
+                dispatcher.call.side_effect = ValueError(reason)
+                with self.assertRaises(Failure) as caught:
+                    production_call(dispatcher, 'alice', 'job_retry', payload, 'retry-capacity')
+                self.assertEqual(caught.exception.status, 429)
+                self.assertEqual(caught.exception.body['code'], 'resource_limit')
+                self.assertIn(message, caught.exception.body['message'])
+                self.assertIn(action, caught.exception.body['action'])
+                self.assertIn('retention policy', caught.exception.body['action'])
+                self.assertIn('do not automatically retry mutations', caught.exception.body['action'])
+                dispatcher.call.assert_called_once_with('production_retry', 'alice', payload, key='retry-capacity')
 
 
 class PublicJobControlTests(ProductionAPIFixture,unittest.TestCase):

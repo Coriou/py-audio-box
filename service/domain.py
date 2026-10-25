@@ -247,7 +247,8 @@ def production_call(dispatcher, principal, operation, payload, key=None):
                 'invalid_trim':'invalid_request','invalid_range':'invalid_request',
                 'settings_mismatch':'unsupported_control','unsupported_parameter':'unsupported_control','resource_input_limit':'resource_limit',
                 'resource_plan_limit':'resource_limit','plan_limit':'resource_limit',
-                'queue_full':'resource_limit','resource_runtime_unsupported':'unsupported_control'}.get(code, code)
+                'queue_full':'resource_limit','disk_quota':'resource_limit','disk_free_reserve':'resource_limit',
+                'resource_runtime_unsupported':'unsupported_control'}.get(code, code)
         if code not in op['errors']: code = 'not_ready'
         detail = 'Pocket reference_text is unsupported; use an empty string.' if str(exc) == 'unsupported_parameter' else 'Production operation unavailable.'
         if code=='publication_format_migration_required':
@@ -255,6 +256,12 @@ def production_call(dispatcher, principal, operation, payload, key=None):
         from service.production_selection import SelectionUnavailable
         action = ('Operator must refresh/qualify the exact installed profile or correct the override: '
                   + ', '.join(exc.reasons)) if isinstance(exc, SelectionUnavailable) else 'Check IDs, selection and operator configuration; do not automatically retry mutations.'
+        if str(exc) == 'disk_quota':
+            detail = 'Retained storage and reservations exceed the configured disk quota.'
+            action = 'Operator must review retained data and reservations under the retention policy or increase the disk quota; do not automatically retry mutations.'
+        elif str(exc) == 'disk_free_reserve':
+            detail = 'Available disk space cannot preserve the configured free-space reserve.'
+            action = 'Operator must restore free disk space under the retention policy or review the configured free-space reserve; do not automatically retry mutations.'
         raise Failure(code, detail, action=action) from None
     except (OSError, sqlite3.Error, TimeoutError, queue.Full):
         raise Failure('not_ready', 'Owner unavailable; mutation outcome may be unknown.', action='Do not automatically retry mutations.') from None
