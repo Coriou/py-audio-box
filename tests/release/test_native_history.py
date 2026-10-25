@@ -40,7 +40,7 @@ class NativeHistoryTests(unittest.TestCase):
         n.enroll_native(self.record,**self.kw)
         with patch('worker.native_child.parent_exchange',side_effect=self.f.exchange):
             try:
-                d=self.open()
+                d=self.open(finish=not getattr(self,'terminal_mode',None))
                 if observe_count > 1:
                     # Let the real Dispatcher record repeated ALIVE observations;
                     # only the final one gets the fixture's actual terminal proof.
@@ -54,7 +54,16 @@ class NativeHistoryTests(unittest.TestCase):
                             self.f.s.tick()
                     self.f.before=before
                 result=d.call('production_generate','alice',self.context['plan']['request'],key='retained')
-                self.job=self.wait(lambda:(j if (j:=d.call('job',result['job_id']))['state']=='succeeded' else None))
+                if getattr(self,'terminal_mode',None):
+                    self.wait(lambda:self.f.s.active is not None and self.f.s.active['handle'] is not None)
+                    if self.terminal_mode == 'cancelled':
+                        d.call('production_cancel','alice',dict(job_id=result['job_id']),key='cancel')
+                        self.wait(lambda:self.f.s.active['cancel'])
+                    self.f.s.active['receiver'].join(1)
+                    self.f.f.h.code=-15 if self.terminal_mode == 'cancelled' else 7
+                    self.f.s.tick()
+                expected=getattr(self,'terminal_mode','succeeded')
+                self.job=self.wait(lambda:(j if (j:=d.call('job',result['job_id']))['state']==expected else None))
                 self.wait(lambda:d.call('status')['phase']=='idle')
             finally:self.close()
 
@@ -94,7 +103,7 @@ class NativeHistoryTests(unittest.TestCase):
         with self.assertRaises(Exception): self.reopen()
         activation=self.activation
         if hasattr(activation,'runtime'):
-            self.assertTrue(activation.runtime.import_closed)
+            self.assertEqual(bool(activation.runtime.import_closed),not bool(getattr(self,'terminal_mode',None)) or bool(activation.runtime.reopened_imports))
             self.assertFalse(activation.runtime.import_completed)
         self.dispatcher=None
         self.assertEqual(saved,evidence())
@@ -319,3 +328,94 @@ class NativeCloneHistoryTests(NativeHistoryTests):
             asset=json.loads(row[0]);asset['principal_id']='bob'
             c.db.execute('UPDATE assets SET metadata=? WHERE id=?',(json.dumps(asset),self.f.f.e.reference_id))
         self.refusal(change)
+
+
+class NativeTerminalHistoryTests(unittest.TestCase):
+    setUp = NativeHistoryTests.setUp
+    wait = NativeHistoryTests.wait
+    open = NativeHistoryTests.open
+    close = NativeHistoryTests.close
+    prepare = NativeHistoryTests.prepare
+    reopen = NativeHistoryTests.reopen
+    refusal = NativeHistoryTests.refusal
+    change_document = NativeHistoryTests.change_document
+    rewrite_commands = NativeHistoryTests.rewrite_commands
+
+    terminal_mode = 'failed'
+
+    def test_completed_job_reopens_twice_and_retains_exact_artifact(self):
+        self.prepare()
+        with patch('worker.native_child.parent_exchange',side_effect=self.f.exchange):
+            try:
+                d=self.reopen()
+                self.assertEqual(d.call('job',self.job['id']),self.job)
+                self.assertFalse(d.call('status')['retry_available'])
+                self.f.before=lambda q:self.f.finish() if q['op'] in ('observe','collect') and self.f.s.active else None
+                requests=len(self.f.requests)
+                with self.assertRaises(ValueError):
+                    d.call('production_retry','alice',dict(job_id=self.job['id'],input_sha256=self.job['input_sha256']),key='retry')
+                self.assertEqual(len(self.f.requests),requests)
+                self.f.f.h=type(self.f.f.h)()
+                result=d.call('production_generate','alice',self.context['plan']['request'],key='next')
+                self.wait(lambda:d.call('job',result['job_id'])['state']=='succeeded')
+                self.wait(lambda:d.call('status')['phase']=='idle')
+            finally:self.close()
+        try:self.assertFalse(self.reopen().call('status')['quarantined'])
+        finally:self.close()
+
+    def test_core_ownership_excludes_retained_reader(self):
+        self.prepare()
+        core=Core(self.root)
+        try:
+            with self.assertRaises(Exception):self.reopen()
+            self.assertEqual(core.job(self.job['id']),self.job)
+        finally:core.close()
+
+    def test_never_started_history_is_unsupported(self):
+        def change(c):
+            job=json.loads(c.db.execute('SELECT job FROM jobs').fetchone()[0])
+            job.update(state='cancelled',stage='never_started',attempts=[])
+            c.db.execute('UPDATE jobs SET job=?',(json.dumps(job),))
+        self.refusal(change)
+
+    def test_old_boot_receipt_refuses(self):
+        self.change_document('dispatches','receipt',lambda r:r.update(boot='e'*32))
+
+    def test_foreign_receipt_refuses(self):
+        self.change_document('dispatches','receipt',lambda r:r.update(binding='f'*64))
+
+    def test_missing_reap_refuses(self):
+        self.change_document('dispatches','receipt',lambda r:r.update(reaped=False))
+
+    def test_receiver_open_refuses(self):
+        self.change_document('dispatches','receipt',lambda r:r.update(receiver_closed=False))
+
+    def test_unstarted_receipt_refuses(self):
+        self.change_document('dispatches','receipt',lambda r:r.update(processes=[]))
+
+    def test_partial_import_refuses(self):
+        self.refusal(lambda c:next(self.f.spool.iterdir()).joinpath('import').write_bytes(b'partial'))
+
+    def test_partial_pair_refuses(self):
+        self.refusal(lambda c:next(self.f.stage.iterdir()).joinpath('reference.wav').write_bytes(b'partial'))
+
+    test_unfinished_reservation_refuses = NativeHistoryTests.test_unfinished_reservation_refuses
+    test_unknown_schema_refuses = NativeHistoryTests.test_unknown_schema_refuses
+    test_unconfirmed_ack_refuses = NativeHistoryTests.test_unconfirmed_ack_refuses
+    test_changed_authority_refuses = NativeHistoryTests.test_changed_authority_refuses
+    test_changed_boot_refuses_without_learning = NativeHistoryTests.test_changed_boot_refuses_without_learning
+    test_missing_ack_command_refuses = NativeHistoryTests.test_missing_ack_command_refuses
+    test_self_retry_refuses = NativeHistoryTests.test_self_retry_refuses
+    test_context_primitive_substitution_refuses = NativeHistoryTests.test_context_primitive_substitution_refuses
+    test_missing_entire_catalogue_refuses_before_core_can_recreate_it = NativeHistoryTests.test_missing_entire_catalogue_refuses_before_core_can_recreate_it
+
+
+class NativeCancelledHistoryTests(NativeTerminalHistoryTests):
+    terminal_mode = 'cancelled'
+    clone_history = True
+
+    def test_changed_reference_refuses(self):
+        self.refusal(lambda c:(c.root/'assets'/self.f.f.e.reference_id).write_bytes(b'changed'))
+
+    def test_changed_detached_reference_refuses(self):
+        self.refusal(lambda c:next(self.f.spool.glob('*/input')).write_bytes(b'changed'))

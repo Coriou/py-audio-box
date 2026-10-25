@@ -121,6 +121,7 @@ class NativeLifecycleTests(unittest.TestCase):
                 template[0]['input_sha256']=oracle.plan_hash(template[1]['plan'])
                 a=Authority(*template)
                 f.s.registrations={a.binding:dict(snapshot=template,execution=f.f.e,bundles={'bundle':f.f.fixture.bundle},inventory=f.f.inventory)}
+                f.s._preset_templates=copy.deepcopy(f.s.registrations)
                 f.runtime=f.make_runtime()
                 self.contexts=NativeQwenContexts({('alice','qwen-mps','vv0'):self.context},f.f.inventory,self.profiles,f.native)
                 f.f.h=type(f.f.h)()

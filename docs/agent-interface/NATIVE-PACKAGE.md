@@ -2,9 +2,9 @@
 
 This separate `native-qwen-v1` archive is a worker source package, not a complete
 Lot B installation. Linux Kokoro/Pocket enrollment, root/PID1/UID rules, images,
-locks and history readers are unchanged. The bounded private first-start owner factory is described below; there is no
-complete native installed activation, Docker launcher, enrollment transaction, readiness promotion or fresh catalogue
-bootstrap in this portion. Do not use Linux registration for native history.
+locks and history readers are unchanged. The current native owner and public
+control path is described below; packaging, topology and hardware qualification
+remain incomplete. Do not use Linux registration for native history.
 Actual Metal speech remains UNAVAILABLE / UNQUALIFIED.
 
 Build without acquisition from the checkout using an explicitly selected Python:
@@ -81,15 +81,14 @@ The runtime manifest digest is SHA256 of its canonical bytes. It must match
 supervisor config and every template's frozen native metadata along with
 configuration/deployment identity. Registrations keep the existing
 `snapshot,execution,bundles,inventory` format and F6 template authorization.
-They are not created by public requests. Boot/lane enrollment and completed
-history still need their separate native policy in the remainder of Lot B.
+They are not created by public requests. Boot/lane enrollment and retained history use the separate native policy below.
 
 A successful check means only `package=prepared`,
 `dependencies=metadata-verified`, `abi=unrun`, `qualification=unqualified`,
 `speech=unavailable`. Missing or mismatched inputs refuse; no usable status is
 written. No reviewed Darwin Python or wheelhouse is supplied. Real ARM ABI/import,
 model/MPS, TLS/topology, process/FD/resource and lifecycle qualification remain
-unrun. CPU/CUDA release rows and clone lifetime limitations remain separate.
+unrun. CPU/CUDA release rows remain separate.
 
 `service.native_package.enrolled_runtime(configuration_file)` is the private
 Docker control consumer for a separately provisioned native configuration. Its
@@ -178,67 +177,44 @@ inputs, repeats the bracket and returns existing runtime/context objects plus
 profiles/budget. Missing, malformed, changed or unhealthy state refuses; boot is
 never learned or updated from hello. This function is preparation for future
 startup wiring: **do not pass its result directly to an installed Dispatcher as activation
-authority**; the r307 private NativeActivation consumer adds first-start fences. It acquires no Core lock and reads no completed history. Native
-owner-thread pre/post acquisition checks, completed-history and publication/import
-uncertainty validation, installed lifespan/entrypoint wiring and topology/mount
-validation remain closed. Existing Linux enrollment/history policy is unchanged.
+authority**; NativeActivation supplies owner-thread fences and the current history
+policy below. The preparation function acquires no Core lock and reads no history.
+Topology/mount validation remains incomplete. Linux enrollment/history is unchanged.
 A clean new native boot requires separately designed stopped/reconciled renewal;
 this write-once slice deliberately refuses automatic rotation.
 
 
-r307 adds the private `service.entrypoint.create_native_owner(record_file=...,
-configuration_file=..., templates_file=..., owner_root=..., staging=...)` SOURCE
-factory. It consumes the explicit durable enrollment on the existing Dispatcher
-control-writer thread, constructs NativeRuntime there, and repeats owner/trust/
-record/hello binding after Core lifetime exclusion. It takes no public runtime,
-connector or trusted configuration object. The caller owns ordinary Dispatcher
-close/drain; a failed close retains its owner obligation and is not retried.
+## Current native owner history policy (r341 SOURCE candidate)
 
-This is **first start only**: the enrolled owner directory must already exist and
-be completely empty. Every initialized Core, even a clean empty database from a
-previous activation, refuses. Any spool or staging entry refuses, including a
-completed import. Current native hello must have exactly the configured boot,
-no quarantine and zero launches. There is no boot learning, renewal, history
-waiver, repair or deletion. A successful source owner construction does not
-promote configured profile readiness or qualify Metal.
+`service.entrypoint.create_native_owner` consumes the write-once enrollment on
+Dispatcher's control writer under Core lifetime exclusion, before schema
+initialization, recovery or scheduling. Same immutable enrollment, templates,
+configuration, trust and five-field native identity including boot are required.
+A clean empty owner or fewer than 64 single-attempt jobs is supported. Successful
+jobs require exact publication bytes, intent, import completion, frozen Authority,
+owned receipt, durable outcome/ACK and retained reservation.
 
-This factory does not yet mount the authenticated public installed ASGI app or
-provide a native installed command/lifespan/topology policy. Existing Linux
-factory and history readers remain separate and unchanged. Remaining completion
-gate: strict native completed-history schema/receipt/Authority/publication and
-durable import-intent linkage, authenticated installed credential/lifespan wiring,
-topology/mount validation and supported fresh owned voice onboarding. Until that
-native history gate is reviewed, **all retained Core roots remain refused**.
-Actual Metal is UNAVAILABLE / UNQUALIFIED; no reviewed arm64 wheelhouse is supplied.
+Failed/cancelled jobs are supported only at `deadline_or_reaped`, with one
+confirmed owned process reap, receiver closure, a negative terminal receipt
+matching the retained supervisor response, durable outcome/ACK, exact reservation
+and frozen Authority, and **no publication, output, import or staging payload**.
+Clone references must remain byte-identical and owned in Core and detached spool.
+The supervisor's receipt follows receiver join and conditioning removal. References
+remain retained before and after reap. Startup reads retained evidence; it never
+repairs, ACKs, deletes history or raises capacity. Unknown/unreaped/unacknowledged,
+partial publication/pair/import and changed reference evidence refuse admission.
 
-r309 supersedes r307's first-start-only limitation for the private owner factory.
-The native policy runs on the Core owner thread under lifetime exclusion, before
-import recovery, reconciliation writes or scheduling. It accepts a clean zero-job
-owner or fewer than 64 succeeded, single-attempt, non-clone native jobs with the
-same immutable configured five-field identity and boot. Exact native canonical
-schema/SQL constraints, closed documents/frozen Authority, retained reservations,
-confirmed durable outcomes/ACKs, actual publication bytes and publication intent,
-matching retained supervisor terminal receipt/proposal/output, and exact private
-import-intent plus import-complete are required. Unknown namespaces, diagnostics,
-unfinished commands/work, missing or changed trust and incomplete/legacy imports
-refuse without repair, cleanup, ACK or boot learning. NativeRuntime remains on the
-control writer; TLS receives only detached Authority, never Core or SQLite.
+Never-started cancellation is explicitly unsupported: no dispatched Authority and
+owned process receipt proves that history in this slice. Native retry remains
+unavailable. Failed verification with retained output also refuses. Existing
+validated success publication/import policy is preserved; no new terminal intent
+recovery is authorized. The launch count must equal this finite dispatched history.
+At capacity, retain evidence and refuse; bounded renewal is still required.
 
-The startup consumer may construct a runtime with completed imports pending proof;
-this alone leaves its admission closed. Only the native validator discharges that
-in-memory closure after all proofs. The normal enrollment/startup preparation
-consumer still refuses pending imports. Linux installed history and its explicit
-native-history refusal remain unchanged. The launch count must equal the retained
-completed native job count; unknown host launches refuse. A host restart with a
-changed boot still needs separately designed stopped/reconciled renewal.
-
-Failed/cancelled/retried/clone histories, queued work, crash recovery, maintenance
-or Linux-enrolled roots, legacy imports without intent/completion, and histories
-outside the finite reader budgets remain unsupported. No configured profile is
-promoted. Authenticated installed public lifespan/credentials, topology/mounts,
-fresh voice onboarding and hardware qualification remain separate. No arm64
-wheelhouse is supplied; actual Metal remains UNAVAILABLE / UNQUALIFIED. CPU/CUDA
-release rows and the known legacy lib/tts.py digest RED remain unwaived.
+This is the first same-boot vertical slice of r334 delivery 2. New-boot/trust
+renewal, topology/mount/peer validation and real dependency packaging remain
+required subsequent parts. Delivery 2 is **incomplete**. Metal is UNQUALIFIED;
+actual release remains NO-GO. Linux history policy remains separate.
 
 ## Explicit native public control launch (r317 SOURCE candidate)
 
@@ -288,12 +264,11 @@ authentication, scopes and errors. Native discovery returns configured native
 profile metadata without promotion; `/skeleton` separates activation from speech
 and reports `ready_for_speech:false`, UNAVAILABLE / UNQUALIFIED.
 
-This is source wiring, not a complete installed journey. Fresh public native
-owned-voice onboarding, topology/mount validation and stopped/reconciled renewal
+This is source wiring, not a complete installed journey. Topology/mount validation and stopped/reconciled renewal
 remain subsequent slices. No reviewed arm64 wheelhouse, compatible installed ABI,
 actual hardware/model/MPS, denied-peer/topology, audio, cancellation/crash/resource
 or completed installed restart qualification is supplied. CPU/CUDA qualification
-and legacy lib/tts digest RED remain separate and unchanged/unwaived.
+remain separate; the closed legacy reconciliation ledger is unchanged.
 
 r319 SOURCE adds fresh owned **Qwen preset** onboarding to the existing public
 `voice_preset_register` operation (CLI `voice preset-register`, MCP
@@ -316,11 +291,11 @@ registrations never become new preset templates. Existing exact registered
 versions and Linux Kokoro/Pocket routes are preserved. No public descriptor,
 path, principal, inventory or configuration field is accepted.
 
-Same-boot close/reopen/replay is subject to the unchanged finite clean completed
-history policy above. This is not automatic boot/trust renewal. Public discovery
-still reports speech UNAVAILABLE / UNQUALIFIED. Managed clone onboarding needs a
-separate bounded operation joining Core-owned verified reference media and text
-to immutable clone versions, plus an independently authorized native reference
-mapping/lifetime and completed-history policy; presets do not supply those
-permissions. No clean clone journey, arm64 wheelhouse, ABI, Metal or release
-qualification is established here.
+Same-boot close/reopen/replay uses the current history policy above. Managed
+clone onboarding now uses public upload → voice_prepare (exact reference transcript
+and separate authored audition) → voice_results → voice_save → speech_generate
+with the immutable version ID. Whole canonical mono PCM16 WAV inputs are bounded
+to 1 MiB/60 seconds; partial segments and x-vector preparation are unsupported.
+No per-voice enrollment editing is needed. Public jobs list/wait/events/cancel and
+voice management share canonical HTTP with thin CLI/MCP; native retry remains
+unavailable. This source journey does not qualify arm64 ABI, topology or Metal.

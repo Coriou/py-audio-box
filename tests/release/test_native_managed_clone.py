@@ -65,7 +65,7 @@ class ManagedCloneTests(unittest.TestCase):
         self.kw=dict(configuration_file=str(self.root/'control'),templates_file=str(self.root/'templates'),owner_root=str(self.owner),connector=self.f.connect)
         tls=patch.object(n.p,'tls_context',return_value=None);tls.start();self.addCleanup(tls.stop)
 
-    def public_journey(self):
+    def public_journey(self, terminal=None):
         app=self.prepare()
         transcript='  Exact user transcript.\nBonjour ! '
         audition='  A separately authored audition.\nEncore ! '
@@ -128,28 +128,59 @@ class ManagedCloneTests(unittest.TestCase):
                         with self.assertRaises(Failure):HTTP(credential=credential).call('voice_prepare',self.request,key='denied')
                     self.assertTrue((self.owner/'assets'/upload['id']).exists())
                     self.assertTrue((self.owner/'assets'/reference['id']).exists())
+                    if terminal:
+                        self.f.f.h=type(self.f.f.h)()
+                        before=self.f.before
+                        self.f.before=lambda q:self.f.s.tick()
+                        with patch('worker.native_child.parent_exchange',return_value=None):
+                            stopped=http.call('speech_generate',self.generate,key='terminal')
+                            self.terminal_id=stopped['job_id']
+                            self.wait(lambda:self.f.s.active and self.f.s.active['handle'])
+                            if terminal == 'cancelled':
+                                http.call('job_cancel',dict(job_id=self.terminal_id),key='cancel-terminal')
+                                self.wait(lambda:self.f.s.active['cancel'])
+                            self.f.s.active['receiver'].join(1)
+                            self.f.f.h.code=-15 if terminal == 'cancelled' else 7
+                            self.f.s.tick()
+                            self.wait(lambda:http.call('job_get',dict(job_id=self.terminal_id))['state']==terminal)
+                            self.wait(lambda:app.state.dispatcher.call('status')['phase']=='idle')
+                        self.f.before=before
+
                 else:
                     self.assertEqual(self.prep,http.call('voice_prepare',self.request,key='prepare'))
                     self.assertEqual(self.saved,http.call('voice_save',self.save,key='save'))
                     self.assertEqual(self.generated,http.call('speech_generate',self.generate,key='generate'))
                     self.assertEqual(self.generated_job,http.call('job_get',dict(job_id=self.generated['job_id'])))
                     self.assertEqual(self.prep_job,http.call('job_get',dict(job_id=self.prep['job_id'])))
+                    if terminal:
+                        self.assertEqual(http.call('job_wait',dict(job_id=self.terminal_id,cursor='',wait_seconds=0))['job']['state'],terminal)
+                        self.assertEqual(http.call('voice_version_get',dict(voice_version_id=self.saved['version']['id'])),self.saved['version'])
+                        self.f.f.h=type(self.f.f.h)()
+                        complete(http.call('speech_generate',self.generate,key='after-terminal'))
+                        self.assertFalse(app.state.dispatcher.call('status')['retry_available'])
+
         async def run():
             for reopen in (False,True):
                 async with app.router.lifespan_context(app):await asyncio.to_thread(journey,reopen)
                 self.assertFalse(app.state.dispatcher.thread.is_alive())
         with self.connector(),patch('worker.native_child.parent_exchange',side_effect=self.f.exchange):asyncio.run(run())
-        self.assertEqual(len(self.f.f.calls),2)
+        self.assertEqual(len(self.f.f.calls),4 if terminal else 2)
         calls=self.f.f.fixture.backend.synthesise_clone.call_args_list
-        self.assertEqual(len(calls),2)
+        self.assertEqual(len(calls),3 if terminal else 2)
         self.assertEqual(calls[0].args[0]['text'],audition)
         self.assertEqual(calls[1].args[0]['text'],self.generate['text'])
-        self.assertEqual([call.args[2] for call in calls],[transcript,transcript])
+        self.assertEqual([call.args[2] for call in calls],[transcript]*(3 if terminal else 2))
         self.assertEqual(len(self.f.s._preset_templates),1)
         return app
 
     def test_public_upload_prepare_results_save_generate_reopen_replay(self):
         self.public_journey()
+
+    def test_saved_clone_cancel_reopen_and_new_job(self):
+        self.public_journey(terminal='cancelled')
+
+    def test_saved_clone_failure_reopen_and_new_job(self):
+        self.public_journey(terminal='failed')
 
     def test_reopen_refuses_tampered_preparation_pair_without_repair(self):
         app=self.public_journey()
@@ -164,7 +195,7 @@ class ManagedCloneTests(unittest.TestCase):
         self.assertEqual(acks,sum(q['op']=='ack' for q in self.f.requests))
         self.assertEqual(before,{p:p.read_bytes() for root in (self.owner,self.f.spool,self.f.stage) for p in root.rglob('*') if p.is_file()})
 
-    def test_cancelled_preparation_retains_reference_and_refuses_history(self):
+    def test_cancelled_preparation_retains_reference_and_reopens(self):
         app=self.prepare()
         self.f.before=lambda q:self.f.s.tick()
         def journey():
@@ -192,8 +223,8 @@ class ManagedCloneTests(unittest.TestCase):
         async def run():
             async with app.router.lifespan_context(app):await asyncio.to_thread(journey)
             acks=sum(q['op']=='ack' for q in self.f.requests)
-            with self.assertRaises(Exception):
-                async with app.router.lifespan_context(app):self.fail('cancelled history accepted')
+            async with app.router.lifespan_context(app):
+                self.assertFalse(app.state.dispatcher.call('status')['quarantined'])
             self.assertEqual(acks,sum(q['op']=='ack' for q in self.f.requests))
         with self.connector(),patch('worker.native_child.parent_exchange',return_value=None):asyncio.run(run())
 
