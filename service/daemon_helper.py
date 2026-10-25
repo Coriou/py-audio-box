@@ -26,10 +26,10 @@ MAX_HELPERS=128
 
 
 def gate_projection(value, *, family=None, configuration=None, binding=None, public=None):
-    from service import recovery, installed_export as ex
+    from service import recovery, installed_export as ex, installed_pocket_daemon as pd
+    pd.require(family)
     export=family is ex.FAMILY
-    if family is not None and not export: raise ValueError('explicit_export_family_required')
-    policy=ex.LAUNCH if export else dv.POLICY
+    policy=pd.launch(family)
     evidence=ex.EVIDENCE if export else dv.EVIDENCE
     dv.closed(value,'version launch_policy registration_id registration configuration_digest enrollment_digest provenance_digest observation')
     if type(value['version']) is not int or value['version']!=(2 if export else 1) or value['launch_policy']!=policy or len(encoded(value))>65536:
@@ -45,9 +45,9 @@ def gate_projection(value, *, family=None, configuration=None, binding=None, pub
     dv.closed(observation['local'],'control worker'); dv.closed(observation['inspections'],'control worker')
     for role in ('control','worker'): dv.local(observation['local'][role],role,family=family)
     from service.host_install import _registration_hello
-    _registration_hello(observation['hello'],r,family=family,configuration=configuration)
-    if export:
-        ex.installation(public)
+    _registration_hello(observation['hello'],r,family=family if export or configuration is not None else None,configuration=configuration)
+    if export or (family is pd.FAMILY and public is not None):
+        ip.family_installation(public, family)
         if (digest(configuration)!=value['configuration_digest'] or digest(public)!=value['enrollment_digest'] or
                 ex._encoded(public['configuration'])!=ex._encoded(configuration)):
             raise ValueError('daemon_gate_configuration_enrollment')
@@ -58,8 +58,9 @@ def gate_projection(value, *, family=None, configuration=None, binding=None, pub
 def child(kind, request, descriptors, *, family=None):
     """Retain all enclosing exclusions through actual exit/reap, even on failure."""
     from service import installed_export as ex
-    if family is not None and family is not ex.FAMILY: raise ValueError('explicit_export_family_required')
-    entry='export_container_entry' if family is not None else 'container_entry'
+    from service import installed_pocket_daemon as pd
+    pd.require(family)
+    entry='pocket_container_entry' if family is pd.FAMILY else 'export_container_entry' if family is ex.FAMILY else 'container_entry'
     if kind not in ('core','hello','writer'): raise ValueError('daemon_child_kind')
     raw=encoded(request)
     if len(raw)>65536: raise ValueError('daemon_child_budget')
@@ -78,11 +79,13 @@ class Helper:
         dv.closed(request,'configuration binding helper manifest')
         self.phase,self.nonce,self.wire=phase,nonce,wire
         from service import installed_export as ex
-        self.family=family; self.export=family is ex.FAMILY
-        self.policy=ex.LAUNCH if self.export else dv.POLICY
+        from service import installed_pocket_daemon as pd
+        pd.require(family)
+        self.family=family; self.export=family is ex.FAMILY; self.pocket=family is pd.FAMILY
+        self.policy=pd.launch(family)
         self.evidence=ex.EVIDENCE if self.export else dv.EVIDENCE
         self.config=ip.family_configuration(request['configuration'],family); self.b=dv.binding(request['binding'],family=family)
-        if self.config['ownership_policy']!=(ex.POLICY if self.export else ip.POLICY) or digest(self.config)!=self.b['configuration_digest']:
+        if self.config['ownership_policy']!=(ex.POLICY if self.export else ip.POCKET_V2_POLICY if self.pocket else ip.POLICY) or digest(self.config)!=self.b['configuration_digest']:
             raise ValueError('daemon_kokoro_configuration_required')
         if (self.b['cpu']['worker']<max(c['execution']['descriptor']['threads'] for c in self.config['contexts'].values())*10**9 or
                 any(t['bytes']>self.config['budget']['ram_bytes'] for t in self.b['tmpfs'].values())):
@@ -347,7 +350,7 @@ class Helper:
             volumes=['control','ipc','staging'] if r=='control' else ['ipc','receipts','staging']) for r,c in pair.items()]
 
     def startup(self):
-        return self.child('hello',dict(ipc_fd=self.fds['ipc'],**({'configuration':self.config} if self.export else {})),(self.fds['ipc'],))
+        return self.child('hello',dict(ipc_fd=self.fds['ipc'],**({'configuration':self.config} if self.family is not None else {})),(self.fds['ipc'],))
 
     def healthy(self,state):
         if (state['protocol']!=2 or json.loads(encode(state['monitor']))!=[[1,'healthy']] or
@@ -364,7 +367,7 @@ class Helper:
             self.healthy(state)
             journal,maintenance=read_snapshot(self.root['receipts'],policy=ip.SPLIT)
             if maintenance is not None: raise ValueError('daemon_maintenance_pending')
-            installed_clean_history(state,journal,family=self.family)
+            installed_clean_history(state,journal,family=self.family if self.export else None)
             return json.loads(encode(dict(state=state,journal=journal)))
 
     def observe(self,ids,public):
@@ -376,7 +379,7 @@ class Helper:
         for r,identity in inputs.items():
             for local in value['local'].values():
                 if r in local['roots'] and local['roots'][r]!=identity: raise ValueError('daemon_input_view_identity')
-        if self.export:
+        if self.export or self.pocket:
             assets=self.root['control']/'core/assets'
             info=ip.directory_identity(assets,policy=ip.SPLIT,role='control')
             if any(local['roots']['assets']!=list(info[:2]) for local in value['local'].values()):
@@ -393,7 +396,7 @@ class Helper:
             from service import installed_export as ex
             return ex.retained_snapshot(self.root,self.public(),family=self.family)
         from service.host_install import _registration_snapshot
-        return _registration_snapshot({r:self.root[r] for r in ip.ROLES},self.scope)
+        return _registration_snapshot({r:self.root[r] for r in ip.ROLES},self.scope,policy=ip.family_policy(self.family))
 
     def registration_snapshot(self, public, *, retained=False):
         if retained and self.export:
@@ -401,7 +404,7 @@ class Helper:
             return ex.retained_snapshot(self.root,public,family=self.family)
         if not self.export:
             from service.host_install import _registration_snapshot
-            return _registration_snapshot({r:self.root[r] for r in ip.ROLES},self.scope)
+            return _registration_snapshot({r:self.root[r] for r in ip.ROLES},self.scope,policy=ip.family_policy(self.family))
         # Deliberately narrow fresh reader. Retained facts use the separate
         # explicitly selected reader; this path keeps its empty-history checks.
         from service import installed_export as ex, recovery
@@ -463,7 +466,7 @@ class Helper:
             if stable(before)!=stable(after) or self.observe(ids,public)!=obs: raise ValueError('daemon_registration_bracket')
             gate=gate_projection(dict(version=2 if self.export else 1,launch_policy=self.policy,registration_id=rid,registration=record,
                 configuration_digest=digest(self.config),enrollment_digest=digest(public),provenance_digest=digest(provenance),observation=obs),family=self.family,
-                configuration=self.config if self.export else None,binding=self.b,public=public)
+                configuration=self.config if self.family is not None else None,binding=self.b,public=public)
         # Durable registration and its final bracket are complete. Release the
         # registrar's Core exclusion BEFORE publishing activation: the notified
         # control immediately acquires that same lock for its private precheck.
@@ -599,4 +602,9 @@ def main(*, family=None):
 
 def export_main():
     from service.installed_export import FAMILY
+    return main(family=FAMILY)
+
+
+def pocket_main():
+    from service.installed_pocket_daemon import FAMILY
     return main(family=FAMILY)

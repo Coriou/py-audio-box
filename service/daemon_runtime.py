@@ -24,8 +24,8 @@ def facts(role, *, family=None):
     if caps[0] or caps[3] or caps[1]!=caps[2]: raise ValueError('daemon_runtime_capabilities')
     names=('control','ipc','staging','models','config','credential') if role=='control' else ('receipts','ipc','staging','models','config')
     if family is not None:
-        from service.installed_export import FAMILY
-        if family is not FAMILY: raise ValueError('explicit_export_family_required')
+        from service import installed_pocket_daemon as pd
+        pd.require(family)
         names=(*names,'assets')
     roots={}
     from service import install_policy as ip
@@ -64,4 +64,9 @@ def read_control(*, family=None):
 
 def read_export_control():
     from service.installed_export import FAMILY
+    return read_control(family=FAMILY)
+
+
+def read_pocket_control():
+    from service.installed_pocket_daemon import FAMILY
     return read_control(family=FAMILY)

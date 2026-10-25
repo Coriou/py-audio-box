@@ -20,7 +20,7 @@ from service import daemon_volumes as dv, daemon_helper as dh, daemon_client as 
 from service import install_child as ic, persistent_init as pi, install_policy as ip, entrypoint as ep, recovery
 from service.core import encode
 from tests.service.test_split_init import SplitInit
-from service.provisioning import manifest_bytes
+from service.provisioning import manifest_bytes, bundle_manifest
 
 
 def binding(config):
@@ -58,13 +58,39 @@ class Session:
         self.family=family
         self.test=test; self.f=SplitInit(); self.f.setUp(); test.addCleanup(self.f.doCleanups)
         self.root=self.f.root; self.config=self.f.config
-        if family is not None:
-            from service import installed_export as ex
+        from service import installed_export as ex, installed_pocket_daemon as pd
+        pocket_model = None
+        if family is pd.FAMILY:
+            from tests.service.test_pocket_preparation import PreparationFixture
+            from tests.service.test_installed_pocket import configuration
+            from tests.service.test_provisioning import PocketProvisioningTests
+            from service.provisioning import bundle_manifest, _pocket_config
+            from service import pocket_install
+            from dataclasses import replace
+            from contracts import validate as oracle
+            prepared=PreparationFixture(); prepared.setUp(); test.addCleanup(prepared.doCleanups)
+            pocket_model=PocketProvisioningTests(); pocket_model.setUp(); test.addCleanup(pocket_model.doCleanups)
+            pocket_model.expected.update(checkpoint='test',language='fr',versions=pocket_install.runtime_versions())
+            raw=manifest_bytes(bundle_manifest(pocket_model.expected))
+            spec=replace(prepared.spec,manifest_sha256=hashlib.sha256(raw).hexdigest(),revision=pocket_model.expected['revision'])
+            context=prepared.context; identity=context['plan']['resolved']['identity']['effective']
+            identity['bundle_sha256']=spec.manifest_sha256
+            context['plan']['resolved']['identity']['requested']=copy.deepcopy(identity)
+            context['plan']['request']['identity']=copy.deepcopy(identity)
+            for c in prepared.profiles[0]['compatibility']: c['identity']=copy.deepcopy(identity)
+            context['plan']['resolved']['profile']=oracle.profile_snapshot(prepared.profiles[0])
+            context['bundles'][0]['bundle_sha256']=spec.manifest_sha256
+            context['execution']['descriptor']=spec.identity()
+            self.config=configuration(context,prepared.profiles)
+            self.config['ownership_policy']=ip.POCKET_V2_POLICY
+            self.f.config=self.config
+            pocket_model.data=dict(pocket_model.data,**{'config.yaml':_pocket_config(pocket_model.expected)})
+        elif family is ex.FAMILY:
             fixture=json.loads(Path('contracts/fixtures/v1/transcript-audio_export.json').read_bytes())
             self.config.update(version=2,ownership_policy=ex.POLICY,audio_export=dict(converter=fixture['context']['execution']['converter'],profile=fixture['profiles'][0],principals=['alice']))
             self.config['audio_export']['converter']['worker_image_digest']=self.config['images']['worker']
         self.b=binding(self.config)
-        if family is not None: self.b['policy']=ex.LAUNCH
+        if family is not None: self.b['policy']=pd.launch(family)
         self.scope=dv.scope(self.b,family=family)
         self.roots=dict(self.f.roots); self.cs={}; self.n=0; self.calls=[]; self.marker=dict(phase='preparing'); self.gate=None
         self.boot='b'*32; self.starts=0; self.f.scope=self.scope
@@ -79,10 +105,12 @@ class Session:
         self.f.translate=owner
         # Already supplied tiny model bytes; no acquisition/imports of ML modules.
         from tests.service.test_provisioning import ProvisioningTests
-        model=ProvisioningTests(); model.setUp(); test.addCleanup(model.doCleanups)
+        if pocket_model is not None: model=pocket_model
+        else:
+            model=ProvisioningTests(); model.setUp(); test.addCleanup(model.doCleanups)
         bid=next(iter(self.config['bundles']))
         data=[('models','bundles/'+bid+'/'+name,raw) for name,raw in model.data.items()]
-        data += [('models','bundles/'+bid+'/manifest.json',manifest_bytes(model.expected)),('config','install.json',encode(self.config).encode()),
+        data += [('models','bundles/'+bid+'/manifest.json',manifest_bytes(bundle_manifest(model.expected) if pocket_model is not None else model.expected)),('config','install.json',encode(self.config).encode()),
             ('credential','control.key',encode(dict(version=1,credentials=[dict(token='secret-fixture-only-'+'x'*32,principal='alice',scopes=['read','production-write'])])).encode())]
         self.inputs=[]; self.bytes=[]
         for role,path,raw in data:
@@ -107,7 +135,8 @@ class Session:
     def startup(self):
         journal=json.loads((self.roots['receipts']/'journal.json').read_bytes())['payload']
         hello=dict(lane=journal['lane'],boot=self.boot,quarantined=False,launches=0)
-        if self.family is not None:
+        from service.installed_export import FAMILY
+        if self.family is FAMILY:
             from service.installed_export import export_seal
             hello['export_seal']=export_seal(self.config)
         return dict(hello=hello,local=self.facts('worker'))

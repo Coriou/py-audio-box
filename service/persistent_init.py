@@ -339,14 +339,16 @@ def initialize_split(roots, scope, config, *, authority, policy, complete=None,
     from service import install_policy as ip
     ip.require(policy); validate_scope(scope); config = ip.family_configuration(config, family)
     from service import installed_export as ex
+    from service import installed_pocket_daemon as pd
     export = family is ex.FAMILY
+    pocket_daemon = family is pd.FAMILY
     if policy is not ip.family_policy(family, config): raise ValueError('explicit_fixed_install_policy_required')
-    if export and (daemon_binding is None or launch_child is _launch_split_child):
+    if (export or pocket_daemon) and (daemon_binding is None or launch_child is _launch_split_child):
         raise ValueError('export_private_initializer_binding_required')
     if daemon_binding is not None:
         from service import daemon_volumes as dv
-        (ex.binding if export else dv.binding)(daemon_binding)
-        if scope != (ex.host_scope if export else dv.scope)(daemon_binding) or digest(config) != daemon_binding['configuration_digest'] or config['ownership_policy'] != (ex.POLICY if export else ip.POLICY):
+        dv.binding(daemon_binding, family=family)
+        if scope != dv.scope(daemon_binding, family=family) or digest(config) != daemon_binding['configuration_digest'] or config['ownership_policy'] != (ex.POLICY if export else pd.POLICY if pocket_daemon else ip.POLICY):
             raise ValueError('daemon_initialization_binding')
     if launch_child is _launch_split_child:
         import sys
@@ -404,7 +406,7 @@ def initialize_split(roots, scope, config, *, authority, policy, complete=None,
             target = {role:dict(device=dev,inode=ino,uid=ip.expectation(policy,role,directory=True)[0],
                 gid=ip.expectation(policy,role,directory=True)[1],mode=ip.expectation(policy,role,directory=True)[2])
                 for role,(dev,ino) in original.items()}
-            public = dict(deployment_id=daemon_binding['installation'] if export else secrets.token_hex(16), revision=1, scope=ex.SCOPE if export else ip.scope_for(config), host=scope,
+            public = dict(deployment_id=daemon_binding['installation'] if (export or pocket_daemon) else secrets.token_hex(16), revision=1, scope=ex.SCOPE if export else ip.scope_for(config), host=scope,
                 configuration=config, configuration_digest=digest(config), ownership_policy=config['ownership_policy'], roles=target)
             if daemon_binding is not None: public['launch'] = daemon_binding
             private = dict(public=public, seed=secrets.token_hex(32))
@@ -513,8 +515,8 @@ def _validate_split_database(roots, public, policy, *, family=None):
         import time
         deadline=time.monotonic()+2
         db.set_progress_handler(lambda:int(time.monotonic()>deadline),1000)
-        if family is not None:
-            from service import installed_export as ex
+        from service import installed_export as ex
+        if family is ex.FAMILY:
             ex.expectation(public, family)
             ex.database(db, public, fresh=True)
             ex.fresh_namespace(roots)

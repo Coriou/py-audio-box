@@ -1161,6 +1161,10 @@ def _registration_snapshot(roots,scope, *, policy=ip.SPLIT):
 
 
 def _registration_hello(hello,registration=None, *, family=None, configuration=None):
+    from service import installed_pocket_daemon as pd
+    if family is pd.FAMILY:
+        pd.configuration(configuration)
+        return _registration_hello(hello, registration)
     if family is not None:
         from service import installed_export as ex
         if family is not ex.FAMILY or configuration is None:

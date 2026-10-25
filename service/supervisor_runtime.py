@@ -14,10 +14,10 @@ from service.worker_transport import TransportObservation
 class SupervisorRuntime:
     def __init__(self, ipc='/ipc', interrupt='none', *, family=None, configuration=None):
         if family is not None or configuration is not None:
-            from service import installed_export as ex
-            if family is not ex.FAMILY or configuration is None:
-                raise ValueError('explicit_export_family_required')
-            configuration = ex.configuration(configuration)
+            from service import installed_export as ex, installed_pocket_daemon as pd, install_policy as ip
+            pd.require(family)
+            if family is None or configuration is None: raise ValueError('explicit_installed_family_required')
+            configuration = ip.family_configuration(configuration, family)
         self.family = family
         self.configuration = configuration
         self.ipc = Path(ipc)

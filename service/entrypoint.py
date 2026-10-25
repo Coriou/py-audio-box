@@ -53,6 +53,10 @@ class _ThreadResult:
 
 
 def projection(value, *, family=None):
+    from service import installed_pocket_daemon as pd
+    if family is pd.FAMILY:
+        from service.daemon_helper import gate_projection
+        return gate_projection(value, family=family)
     if family is not None:
         from service.installed_export import FAMILY
         if family is not FAMILY: raise ValueError("explicit_export_family_required")
@@ -192,8 +196,8 @@ class WaitingControl:
     """One incarnation, one notification; no stale-directory reuse or repair."""
     def __init__(self, *, directory=GATE_DIRECTORY, seconds=30, family=None):
         if family is not None:
-            from service.installed_export import FAMILY
-            if family is not FAMILY: raise ValueError("explicit_export_family_required")
+            from service import installed_pocket_daemon as pd
+            pd.require(family)
         self.family = family
         _control_identity()
         if type(seconds) not in (int,float) or not 0 < seconds <= 30:
@@ -296,13 +300,13 @@ def main():
 class InstalledActivation:
     """Internal startup dependency; public projection alone never activates."""
     def __init__(self, waiting, configuration, *, launch_policy=None, family=None):
-        from service import installed_export as ex
+        from service import installed_export as ex, installed_pocket_daemon as pd
         self.family = family
-        if family is not None and (family is not ex.FAMILY or launch_policy != ex.LAUNCH):
+        if family is not None and launch_policy != pd.launch(family):
             raise ValueError("installed_explicit_launch_policy")
         self.launch_policy = launch_policy
         self.waiting = waiting
-        self.configuration = ex.configuration(configuration) if family is ex.FAMILY else ip.configuration(configuration)
+        self.configuration = ip.family_configuration(configuration, family)
         self.checked = None
         self.prepared = None
         self.started = False
@@ -320,7 +324,8 @@ class InstalledActivation:
         self.checked = checked_waiting_gate(self.waiting, self.configuration, runtime, root=root, launch_policy=self.launch_policy, family=self.family)
         self.prepared = runtime, Path(root).absolute()
         self.expectation = None
-        if self.family is not None:
+        from service import installed_export as ex
+        if self.family is ex.FAMILY:
             from service.installed_export import expectation
             self.expectation = expectation(self.checked["public"], self.family)
 
@@ -359,7 +364,8 @@ class InstalledActivation:
         if (checked != self.checked or self.waiting.read() != gate or
                 dispatcher.runtime.call('hello', {}) != hello or local_incarnation() != before):
             raise ValueError('installed_post_owner_binding_changed')
-        if self.family is not None:
+        from service import installed_export as ex
+        if self.family is ex.FAMILY:
             from service.audio_export import AudioExports
             export = self.configuration['audio_export']
             dispatcher.audio_exports = AudioExports(export['converter'], export['profile'], export['principals'])
@@ -377,8 +383,8 @@ def create_installed_app(*, configuration_file, credential_file, root='/control/
     from service.dispatcher import Dispatcher
     from service.supervisor_runtime import SupervisorRuntime
     from service.api import create_voice_app
-    from service import installed_export as ex
-    if family is not None and (family is not ex.FAMILY or launch_policy != ex.LAUNCH):
+    from service import installed_export as ex, installed_pocket_daemon as pd
+    if family is not None and launch_policy != pd.launch(family):
         raise ValueError("installed_explicit_launch_policy")
     if family is ex.FAMILY:
         from service.auth import private_input
@@ -388,6 +394,7 @@ def create_installed_app(*, configuration_file, credential_file, root='/control/
         kokoro.update(version=1, ownership_policy=ip.POLICY)
     else:
         config = installed_configuration(configuration_file, policy=ip.SPLIT)
+        config = ip.family_configuration(config, family)
         kokoro = config
     credentials = installed_credentials(credential_file, config['contexts'])
     if family is ex.FAMILY:
@@ -396,7 +403,7 @@ def create_installed_app(*, configuration_file, credential_file, root='/control/
             raise ValueError('installed_export_credential_principals')
     mapping = installed_mapping(kokoro, policy=ip.configuration_policy(kokoro))
     contexts = installed_contexts(kokoro, mapping)
-    runtime = runtime or SupervisorRuntime('/ipc', **(dict(family=family, configuration=config) if family is ex.FAMILY else {}))
+    runtime = runtime or SupervisorRuntime('/ipc', **(dict(family=family, configuration=config) if family is not None else {}))
     def dependencies():
         notification = waiting if waiting is not None else WaitingControl(family=family)
         activation = InstalledActivation(notification, config, launch_policy=launch_policy, family=family)
@@ -542,8 +549,8 @@ def _listener_ready(configuration_digest, *, launch_policy=None):
     from http.client import HTTPConnection
     from service.auth import private_input
     from service.recovery import host_json
-    from service import daemon_volumes as dv, installed_export as ex
-    if launch_policy not in (None, dv.POLICY, ex.LAUNCH):
+    from service import daemon_volumes as dv, installed_export as ex, installed_pocket_daemon as pd
+    if launch_policy not in (None, dv.POLICY, ex.LAUNCH, pd.LAUNCH):
         raise ValueError('installed_explicit_launch_policy')
     credential = ip.CREDENTIAL_DESTINATION if launch_policy is None else dv.CREDENTIAL
     value=host_json(private_input(credential,mode=0o640,limit=48000))
@@ -621,8 +628,8 @@ def installed_main(*, launch_policy=None, family=None):
     """PID1 command factory; Uvicorn listener follows checked owner acquisition."""
     import asyncio
     import uvicorn
-    from service import installed_export as ex
-    if family is not None and (family is not ex.FAMILY or launch_policy != ex.LAUNCH):
+    from service import installed_export as ex, installed_pocket_daemon as pd
+    if family is not None and launch_policy != pd.launch(family):
         raise ValueError('installed_explicit_launch_policy')
     _control_identity()
     os.umask(0o077)
@@ -705,4 +712,19 @@ def publish_export(raw):
 
 def export_launch_status():
     from service.installed_export import FAMILY
+    return launch_status(family=FAMILY)
+
+
+def daemon_pocket_main():
+    from service.installed_pocket_daemon import FAMILY, LAUNCH
+    return installed_main(launch_policy=LAUNCH, family=FAMILY)
+
+
+def publish_pocket(raw):
+    from service.installed_pocket_daemon import FAMILY
+    return publish(raw, family=FAMILY)
+
+
+def pocket_launch_status():
+    from service.installed_pocket_daemon import FAMILY
     return launch_status(family=FAMILY)

@@ -63,7 +63,8 @@ def volume(value, role, installation):
 
 def binding(value, *, family=None):
     if family is not None:
-        from service import installed_export as ex
+        from service import installed_export as ex, installed_pocket_daemon as pd
+        if family is pd.FAMILY: return pd.binding(value)
         if family is not ex.FAMILY: raise ValueError('explicit_export_family_required')
         return ex.binding(value)
     closed(value, 'policy installation daemon volumes helper_image configuration_digest cpu tmpfs control_port')
@@ -116,11 +117,15 @@ def mounts(role, b, phase=None, *, family=None):
 
 
 def command(role, config, b, *, phase=None, nonce=None, family=None):
+    from service import installed_pocket_daemon as pd
     binding(b, family=family)
+    export = pd.is_export(family)
     if role=='helper' and (phase not in PHASES or not re.fullmatch('[0-9a-f]{32}',nonce or '')):
         raise ValueError('daemon_helper_phase')
     if family is not None:
-        from service import install_policy as ip, installed_export as ex
+        from service import install_policy as ip
+        if export:
+            from service import installed_export as ex
         ip.family_configuration(config, family)
         if digest(config)!=b['configuration_digest']: raise ValueError('daemon_configuration_binding')
     helper=role=='helper'; budget=config['budget']; t=b['tmpfs']['control' if helper else role]
@@ -138,13 +143,13 @@ def command(role, config, b, *, phase=None, nonce=None, family=None):
     for m in mounts(role,b,phase,family=family):
         args+=['--mount','type=volume,source='+m['Name']+',destination='+m['Destination']+',volume-nocopy'+('' if m['RW'] else ',readonly')+(',volume-subpath=core/assets' if m['Destination']=='/references/assets' else '')]
     if helper:
-        code=('from service.daemon_helper import export_main;export_main()' if family is not None else 'from service.daemon_helper import main;main()'); extra=[phase,nonce]
+        code=('from service.daemon_helper import pocket_main;pocket_main()' if family is pd.FAMILY else 'from service.daemon_helper import export_main;export_main()' if export else 'from service.daemon_helper import main;main()'); extra=[phase,nonce]
     elif role=='control':
-        code=('from service.entrypoint import daemon_export_main;daemon_export_main()' if family is not None else 'from service.entrypoint import daemon_main;daemon_main()'); extra=[]
+        code=('from service.entrypoint import daemon_pocket_main;daemon_pocket_main()' if family is pd.FAMILY else 'from service.entrypoint import daemon_export_main;daemon_export_main()' if export else 'from service.entrypoint import daemon_main;daemon_main()'); extra=[]
     else:
-        code='from worker.runtime_supervisor import main;main()'
-        extra=['--installed-policy',ex.POLICY if family is not None else 'docker-kokoro-split-v1','--configuration-file',CONFIG]
-        if family is not None: extra+=['--expected-worker-image',config['images']['worker']]
+        code=('from worker.runtime_supervisor import pocket_daemon_main;pocket_daemon_main()' if family is pd.FAMILY else 'from worker.runtime_supervisor import main;main()')
+        extra=['--installed-policy',pd.POLICY if family is pd.FAMILY else ex.POLICY if export else 'docker-kokoro-split-v1','--configuration-file',CONFIG]
+        if export: extra+=['--expected-worker-image',config['images']['worker']]
     args += ['--entrypoint','python',b['helper_image'] if helper else config['images'][role],'-I','-B','-c',
         "import sys;sys.path.insert(0,'/opt/speech');"+code]+extra
     return args
@@ -219,8 +224,8 @@ def inspect_container(c, role, config, b, *, phase=None, nonce=None, family=None
 
 def local(value, role, *, family=None):
     if family is not None:
-        from service import installed_export as ex
-        if family is not ex.FAMILY: raise ValueError('explicit_export_family_required')
+        from service import installed_pocket_daemon as pd
+        pd.require(family)
     closed(value,'role pid start_ticks pid_namespace cgroup uid gid groups capabilities roots')
     expected={'control':(10001,10001,0),'worker':(0,10001,(1<<5)|(1<<6)|(1<<7))}[role]
     if (any(type(value[k]) is not int for k in ('uid','gid','capabilities')) or

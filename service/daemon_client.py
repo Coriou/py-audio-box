@@ -237,6 +237,8 @@ class Docker:
         return dict(daemon=self.frozen,volumes=volumes,consumers=consumers)
 
     def action(self,action,payload,config,b,source):
+        from service import installed_pocket_daemon as pd
+        export = pd.is_export(getattr(self,'family',None))
         # Input chunks do no daemon action. The held phase's exact snapshots
         # bracket the stream; avoid a Docker-info process for every input chunk.
         if action!='input': self.check()
@@ -256,8 +258,8 @@ class Docker:
             elif action=='term': self.call(['container','kill','--signal=TERM',identity])
             if action in ('start','term','inspect'): result=self.container(identity)
             else:
-                code=(('from service.entrypoint import export_launch_status;export_launch_status()' if getattr(self,'family',None) is not None else 'from service.entrypoint import launch_status;launch_status()') if action=='marker' else
-                    ('from service.daemon_runtime import read_export_control;read_export_control()' if getattr(self,'family',None) is not None else 'from service.daemon_runtime import read_control;read_control()'))
+                code=(('from service.entrypoint import pocket_launch_status;pocket_launch_status()' if getattr(self,'family',None) is pd.FAMILY else 'from service.entrypoint import export_launch_status;export_launch_status()' if export else 'from service.entrypoint import launch_status;launch_status()') if action=='marker' else
+                    ('from service.daemon_runtime import read_pocket_control;read_pocket_control()' if getattr(self,'family',None) is pd.FAMILY else 'from service.daemon_runtime import read_export_control;read_export_control()' if export else 'from service.daemon_runtime import read_control;read_control()'))
                 if role!='control': raise ValueError('daemon_control_reader_only')
                 result=parse(self.call(['exec','--user','10001:10001',identity,'python','-I','-B','-c',
                     "import sys;sys.path.insert(0,'/opt/speech');"+code]))
@@ -269,7 +271,7 @@ class Docker:
             if len(raw)>65536: raise ValueError('daemon_gate_budget')
             deadline=min(self.end,time.monotonic()+10)
             p=subprocess.Popen(self.argv(['exec','--interactive','--user','10001:10001',identity,'python','-I','-B','-c',
-                "import sys;sys.path.insert(0,'/opt/speech');from service.entrypoint import "+("publish_export" if getattr(self,"family",None) is not None else "publish")+" as publish;publish(sys.stdin.buffer.read(65537))"]),
+                "import sys;sys.path.insert(0,'/opt/speech');from service.entrypoint import "+("publish_pocket" if getattr(self,"family",None) is pd.FAMILY else "publish_export" if export else "publish")+" as publish;publish(sys.stdin.buffer.read(65537))"]),
                 stdin=subprocess.PIPE,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL,env=self.env)
             collect(p,raw,0,deadline,'daemon_notify',self.retained)
             result={}
@@ -403,9 +405,9 @@ def manifest(entries):
 
 def main(argv=None, *, family=None):
     # Family comes only from the distinct private entrypoint, never a request.
-    if family is not None:
-        from service import installed_export as ex, install_policy as ip
-        if family is not ex.FAMILY: raise ValueError('explicit_export_family_required')
+    from service import install_policy as ip, installed_pocket_daemon as pd
+    pd.require(family)
+    export = pd.is_export(family)
     p=argparse.ArgumentParser(description='Explicit local Docker volume installation; no acquisition or repair.')
     p.add_argument('command',choices=('install','up','status','stop')); p.add_argument('--context'); p.add_argument('--request'); p.add_argument('--handle',required=True)
     a=p.parse_args(argv)
@@ -416,6 +418,7 @@ def main(argv=None, *, family=None):
             inputs=manifest(request['inputs']); config=request['configuration']
             if family is not None:
                 config=ip.family_configuration(config,family)
+            if export:
                 # Corroborate the actual supplied closed credential document
                 # before the first Docker call; helper repeats after import.
                 from service.auth import decode_credentials
@@ -437,7 +440,7 @@ def main(argv=None, *, family=None):
             installation=secrets.token_hex(16)
             # Exclusive client intent before ANY daemon mutation. Partial volumes
             # and exact IDs remain in append-only sibling receipts, never rollback.
-            b=dict(policy=ex.LAUNCH if family is not None else dv.POLICY,installation=installation,daemon=d.frozen,volumes={},helper_image=request['helper_image'],
+            b=dict(policy=pd.launch(family) if family is not None else dv.POLICY,installation=installation,daemon=d.frozen,volumes={},helper_image=request['helper_image'],
                 configuration_digest=dv.digest(config),cpu=request['cpu'],tmpfs=request['tmpfs'],control_port=request['control_port'])
             candidate=dict(b,volumes={r:dict(Name='pab-'+installation+'-'+r,Driver='local',Options=None,Scope='local',
                 Mountpoint='/pending/'+r,CreatedAt='pending',Labels={'speech-box.installation':installation,'speech-box.role':r}) for r in dv.ROLES})
@@ -485,3 +488,8 @@ def export_main(argv=None):
     """Explicit private fresh-family installer; no public/default selection."""
     from service.installed_export import FAMILY
     return main(argv,family=FAMILY)
+
+
+def pocket_main(argv=None):
+    from service.installed_pocket_daemon import FAMILY
+    return main(argv, family=FAMILY)

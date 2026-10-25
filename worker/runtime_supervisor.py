@@ -104,6 +104,9 @@ class RuntimeSupervisor:
             if getattr(self,'_export_configuration',None) is not None:
                 from service.installed_export import FAMILY
                 local=facts('worker',family=FAMILY)
+            elif getattr(self, '_pocket_daemon', False):
+                from service.installed_pocket_daemon import FAMILY
+                local=facts('worker',family=FAMILY)
             else: local=facts('worker')
             return dict(hello=self.operation('hello',{}),local=local)
         if op == 'hello':
@@ -601,13 +604,15 @@ def export_startup(value, expected_worker_image, *, owner_uid=0):
     return config
 
 
-def main():
+def main(*, _pocket_daemon=False):
     import argparse
     parser = argparse.ArgumentParser()
     parser.add_argument('--installed-policy', choices=('docker-kokoro-split-v1','docker-pocket-split-v1','docker-pocket-split-v2','docker-kokoro-export-split-v2'))
     parser.add_argument('--configuration-file')
     parser.add_argument('--expected-worker-image')
     args = parser.parse_args()
+    if _pocket_daemon and args.installed_policy != 'docker-pocket-split-v2':
+        raise ValueError('pocket_daemon_v2_configuration_required')
     os.umask(0o077)
     try:
         bundles = None
@@ -632,6 +637,9 @@ def main():
                 if args.expected_worker_image is not None: raise ValueError('explicit_export_family_required')
                 config = installed_configuration(args.configuration_file, policy=ip.SPLIT)
             if (export_config or config)['ownership_policy'] != args.installed_policy: raise ValueError('installed_worker_policy_binding')
+            if _pocket_daemon:
+                from service import installed_pocket_daemon as pd
+                pd.configuration(config)
             installed_policy = ip.configuration_policy(config)
             bundles = installed_mapping(config, policy=installed_policy)
             installed_pocket = ip.pocket(config)
@@ -644,9 +652,12 @@ def main():
                 ip.read_private(Path('/ipc')/name, 4096, policy=installed_policy, role='ipc')
         elif args.configuration_file is not None or args.expected_worker_image is not None:
             raise ValueError('explicit_fixed_install_policy_required')
-        RuntimeSupervisor(bundles=bundles, pocket_reference_roots=pocket_roots,
+        supervisor = RuntimeSupervisor(bundles=bundles, pocket_reference_roots=pocket_roots,
             installed_pocket=installed_pocket, installed_policy=installed_policy, export_configuration=export_config,
-            expected_worker_image=args.expected_worker_image).serve()
+            expected_worker_image=args.expected_worker_image)
+        if _pocket_daemon and not installed_pocket: raise ValueError('pocket_daemon_v2_configuration_required')
+        supervisor._pocket_daemon = _pocket_daemon
+        supervisor.serve()
     except (OSError, ValueError, KeyError, TypeError):
         print('lifecycle supervisor unavailable; lane quarantined', flush=True)
         raise SystemExit(2)
@@ -654,3 +665,7 @@ def main():
 
 if __name__ == '__main__':
     main()
+
+
+def pocket_daemon_main():
+    return main(_pocket_daemon=True)

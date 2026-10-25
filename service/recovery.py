@@ -3843,7 +3843,12 @@ def installed_startup_read(root, configuration, gate, hello, incarnation, *, pol
     from service import install_policy as ip
     from service.entrypoint import projection
     ip.require(policy)
-    if family is not None:
+    from service import installed_pocket_daemon as pd
+    pocket_daemon = family is pd.FAMILY
+    if pocket_daemon:
+        if policy is not ip.POCKET_SPLIT or launch_policy != pd.LAUNCH: raise ValueError('installed_explicit_launch_policy')
+        pd.configuration(configuration)
+    elif family is not None:
         from service import installed_export as ex
         if family is not ex.FAMILY or policy is not ip.EXPORT_SPLIT or launch_policy!=ex.LAUNCH:
             raise ValueError('installed_explicit_launch_policy')
@@ -3851,9 +3856,9 @@ def installed_startup_read(root, configuration, gate, hello, incarnation, *, pol
     config = ip.configuration(configuration)
     if policy is not ip.configuration_policy(config):
         raise ValueError('installed_explicit_launch_policy')
-    projection(gate)
+    projection(gate, family=family)
     from service import daemon_volumes as dv
-    if launch_policy not in (None,dv.POLICY) or (gate.get('launch_policy') != launch_policy):
+    if launch_policy not in ((pd.LAUNCH,) if pocket_daemon else (None,dv.POLICY)) or (gate.get('launch_policy') != launch_policy):
         raise ValueError('installed_explicit_launch_policy')
     closed(incarnation,'start_ticks pid_namespace cgroup')
     if (any(type(incarnation[k]) is not int or incarnation[k] < 1 for k in ('start_ticks','pid_namespace')) or
@@ -3899,7 +3904,7 @@ def installed_startup_read(root, configuration, gate, hello, incarnation, *, pol
                 selected = None
                 for rid,raw,h in db.execute('SELECT id,record,digest FROM p1_registrations'):
                     record = host_json(raw.encode()); validate_registration(record)
-                    if record['evidence'] != (dv.EVIDENCE if launch_policy == dv.POLICY else 'actual-host-inspection'):
+                    if record['evidence'] != (dv.EVIDENCE if launch_policy in (dv.POLICY,pd.LAUNCH) else 'actual-host-inspection'):
                         raise ValueError('installed_registration_evidence_policy')
                     if (digest(record) != h or rid != h or record['deployment_id'] != identity or
                             record['scope'] != public['host']):
@@ -3914,10 +3919,10 @@ def installed_startup_read(root, configuration, gate, hello, incarnation, *, pol
                 owners = {c['role']:c for c in selected['containers']}
                 if any(owners[r]['image'] != config['images'][r] for r in ('control','worker')):
                     raise ValueError('installed_startup_image')
-                if launch_policy == dv.POLICY:
+                if launch_policy in (dv.POLICY,pd.LAUNCH):
                     if public.get('launch',{}).get('policy') != launch_policy:
                         raise ValueError('daemon_startup_enrollment')
-                    dv.observation(gate['observation'],selected,config,public['launch'],public)
+                    dv.observation(gate['observation'],selected,config,public['launch'],public,family=family)
                     control = gate['observation']['local']['control']
                 else:
                     if 'launch' in public: raise ValueError('installed_explicit_launch_policy')

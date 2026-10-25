@@ -296,9 +296,13 @@ def installation(value):
         _closed(value, 'deployment_id revision scope host configuration configuration_digest ownership_policy roles'+(' launch' if 'launch' in value else ''))
         if 'launch' in value:
             from service import daemon_volumes as dv
-            dv.binding(value['launch'])
-            if (value['host'] != dv.scope(value['launch']) or value['configuration_digest'] != value['launch']['configuration_digest'] or
-                    value['ownership_policy'] != POLICY):
+            from service import installed_pocket_daemon as pd
+            pocket_launch = value['ownership_policy'] == POCKET_V2_POLICY
+            family = pd.FAMILY if pocket_launch else None
+            dv.binding(value['launch'], family=family)
+            if (value['host'] != dv.scope(value['launch'], family=family) or value['configuration_digest'] != value['launch']['configuration_digest'] or
+                    value['ownership_policy'] != (POCKET_V2_POLICY if pocket_launch else POLICY) or
+                    (pocket_launch and value['deployment_id'] != value['launch']['installation'])):
                 raise ValueError('daemon_enrollment_binding')
         config = configuration(value['configuration'])
         role_policy = POCKET_SPLIT if config['ownership_policy'] == POCKET_V2_POLICY else SPLIT
@@ -338,6 +342,10 @@ def role_records(roots, *, policy=SPLIT):
 def family_policy(family=None, config=None):
     if family is None:
         return SPLIT if config is None else configuration_policy(config)
+    from service import installed_pocket_daemon as pd
+    if family is pd.FAMILY:
+        if config is not None: pd.configuration(config)
+        return POCKET_SPLIT
     from service.installed_export import FAMILY
     if family is not FAMILY:
         raise ValueError('explicit_export_family_required')
@@ -438,7 +446,8 @@ def host_enrollment(public, policy, config, scope):
 def family_configuration(value, family=None):
     if family is None:
         return configuration(value)
-    from service import installed_export as ex
+    from service import installed_export as ex, installed_pocket_daemon as pd
+    if family is pd.FAMILY: return pd.configuration(value)
     if family is not ex.FAMILY:
         raise ValueError('explicit_installed_family_required')
     return ex.configuration(value)
@@ -447,7 +456,8 @@ def family_configuration(value, family=None):
 def family_installation(value, family=None):
     if family is None:
         return installation(value)
-    from service import installed_export as ex
+    from service import installed_export as ex, installed_pocket_daemon as pd
+    if family is pd.FAMILY: return pd.installation(value)
     if family is not ex.FAMILY:
         raise ValueError('explicit_installed_family_required')
     return ex.installation(value)

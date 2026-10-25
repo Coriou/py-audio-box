@@ -89,6 +89,7 @@
     "service/install_child.py",
     "service/install_policy.py",
     "service/installed_export.py",
+    "service/installed_pocket_daemon.py",
     "service/job_control.py",
     "service/lifecycle_cli.py",
     "service/native_activation.py",

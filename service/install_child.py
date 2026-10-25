@@ -250,7 +250,8 @@ def prepare_container(public, control_fd, staging_fd, *, family=None):
     from service import daemon_volumes as dv
     from service import installed_export as ex
     ip.family_installation(public, family)
-    if public.get('launch',{}).get('policy')!=(ex.LAUNCH if family is ex.FAMILY else dv.POLICY):
+    from service import installed_pocket_daemon as pd
+    if public.get('launch',{}).get('policy')!=pd.launch(family):
         raise ValueError('explicit_daemon_container_view_required')
     descriptors=(control_fd,staging_fd)
     if any(type(fd) is not int or fd<3 for fd in descriptors) or len(set(descriptors))!=2:
@@ -296,7 +297,8 @@ def container_entry(kind, *, family=None):
     raw=sys.stdin.buffer.read(65537)
     if len(raw)>65536: raise ValueError('installed_child_request_budget')
     from service import installed_export as ex
-    if family is not None and family is not ex.FAMILY: raise ValueError('explicit_export_family_required')
+    from service import installed_pocket_daemon as pd
+    pd.require(family)
     request=json.loads(raw)
     if kind=='hello':
         ip._closed(request,'ipc_fd configuration' if family is not None else 'ipc_fd')
@@ -324,4 +326,9 @@ def container_entry(kind, *, family=None):
 
 def export_container_entry(kind):
     from service.installed_export import FAMILY
+    return container_entry(kind, family=FAMILY)
+
+
+def pocket_container_entry(kind):
+    from service.installed_pocket_daemon import FAMILY
     return container_entry(kind, family=FAMILY)
