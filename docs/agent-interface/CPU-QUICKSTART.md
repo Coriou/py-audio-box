@@ -9,8 +9,14 @@ The expected manifest and build pins are inputs, not runtime qualification.
 The `actual-install14` run passed authenticated HTTP, CLI and MCP, speech,
 PCM24 export, verified download and same-installation restart on Linux/amd64
 under OrbStack. See the [bounded installed report](reviews/CPU-KOKORO-INSTALLED-r407-parent.md).
-Public Pocket installed acceptance remains pending; CUDA and Apple Metal remain
-unqualified.
+The separate ordinary Docker-client Pocket installed journey has also passed;
+see the [bounded CPU release report](reviews/CPU-RELEASE-r407-parent.md).
+The fresh public05 nine-job journey also passed its final clean stop. Its retained
+history used 872 of 2048 inspection rows; this is finite measured acceptance,
+not a guarantee of unlimited retained jobs or history.
+
+Listening remains **UNMEASURED**, the protected-host lane **UNRUN**, and the CPU
+regressions/source archive checks have passed. CUDA and Apple Metal remain unqualified.
 
 Use Python 3.11 and a local rootful Docker daemon with cgroup v2 and
 `linux/amd64` support. Docker Desktop/OrbStack must expose an explicit local Unix

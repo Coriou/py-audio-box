@@ -1,9 +1,22 @@
 # Pocket French CPU, without a UI
 
-The public installed Pocket upload/prepare/save/generate/restart journey is
-pending acceptance. The steps below describe the recipe's intended checks;
-they do not establish a passed installed run. CUDA and Apple Metal remain
-unqualified.
+The ordinary Docker-client `pocket-public-install05` run at source `7c56f72`
+passed the public recipe's probe/install, authenticated HTTP preparation/save/
+generation/download, clean stop and same-container restart. Two additional
+distinct references passed complete preparation/save/generation workflows.
+Cancellation of an actually running job reached cancelled, reaped and idle ACK.
+A second checked stop/restart retained the same container IDs, voices and jobs;
+both saved versions then produced new audio with SHA-256 checked downloads.
+Identical-key replay returned the same receipt and changed payloads returned 409.
+See the [bounded CPU release report](reviews/CPU-RELEASE-r407-parent.md).
+
+The fresh public05 nine-job journey also passed its final clean stop. Its retained
+history used 872 of 2048 inspection rows; this is finite measured acceptance,
+not a guarantee of unlimited retained jobs or history.
+
+Listening/perceptual acceptance remains **UNMEASURED**, the protected-host lane
+**UNRUN**, and the CPU regressions/source archive checks have passed. CUDA and Apple Metal
+remain **UNQUALIFIED**.
 
 This create-only worked recipe builds the public `control` and `worker-pocket`
 Linux/amd64 Docker targets, checks a supplied pinned model cache, measures one
@@ -92,4 +105,5 @@ virtual environment and install `service/requirements.lock` with
 `python -m clients.mcp`, working directory this checkout, and inject
 `SPEECH_URL` and `SPEECH_CREDENTIAL` privately. MCP loads no model. macOS MCP SDK
 wheel availability is a separate client prerequisite. This recipe establishes
-no CUDA, Metal, cancellation, listening or release-wide qualification.
+no CUDA, Metal, listening or release-wide qualification. The ordinary Docker-client
+cancellation/reap check passed as recorded above.

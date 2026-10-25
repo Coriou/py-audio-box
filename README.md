@@ -11,8 +11,16 @@ The ordinary Docker-client installer exposes separate `docker-export` and
 `docker-pocket` commands; protected Linux-host installation remains available.
 The `actual-install14` Kokoro CPU journey passed authenticated HTTP, CLI and MCP,
 speech/export/download and same-installation restart on Linux/amd64 under OrbStack.
-The public Pocket installed journey remains pending; complete CPU release
-qualification remains in progress. CUDA and Apple Metal are **unqualified** and are not
+The ordinary Docker-client Pocket `pocket-public-install05` run at source `7c56f72`
+passed preparation/save/generation/download, cancellation/reap, retained-voice
+reuse and repeated same-container restart. See the
+[bounded CPU release report](docs/agent-interface/reviews/CPU-RELEASE-r407-parent.md).
+The fresh public05 nine-job journey also passed its final clean stop. Its retained
+history used 872 of 2048 inspection rows; this is finite measured acceptance,
+not a guarantee of unlimited retained jobs or history.
+
+Listening remains **UNMEASURED**, the protected-host lane **UNRUN**, and the CPU
+regressions/source archive checks have passed. CUDA and Apple Metal are **unqualified** and are not
 gates for this CPU candidate. Build the headless images from the pinned source;
 availability of published headless images is not established.
 

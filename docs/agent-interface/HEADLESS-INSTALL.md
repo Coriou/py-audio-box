@@ -27,8 +27,20 @@ establish an installed journey.
 Pocket cloning is a separate installation; see [POCKET-QUICKSTART.md](POCKET-QUICKSTART.md).
 The ordinary Docker-client route is
 `docker-pocket`; the protected-host route is also documented below. Actual
-contained Pocket reference synthesis has passed, while the complete installed
-upload/prepare/save/generate/restart journey remains pending. CUDA and Apple Metal
+contained Pocket reference synthesis and the ordinary Docker-client installed
+upload/prepare/save/generate/download/restart journey passed in
+`pocket-public-install05` at source `7c56f72`. Additional checks passed two distinct
+reference workflows, running-job cancellation through cancelled/reaped/idle ACK,
+a second same-container restart retaining voices/jobs, and new generation from
+both saved versions after restart with SHA-256 checked downloads. Identical-key
+replay returned the same receipt; changed payloads with that key returned 409.
+See the [bounded CPU release report](reviews/CPU-RELEASE-r407-parent.md).
+The fresh public05 nine-job journey also passed its final clean stop. Its retained
+history used 872 of 2048 inspection rows; this is finite measured acceptance,
+not a guarantee of unlimited retained jobs or history.
+
+Listening remains **UNMEASURED**, the protected-host lane **UNRUN**, and the CPU
+regressions/source archive checks have passed. CUDA and Apple Metal
 remain **UNQUALIFIED**; neither is a gate for this CPU candidate. Published
 headless image availability is not established: build and enroll exact local
 images from the reviewed source.
@@ -201,7 +213,8 @@ check still apply.
 The archive also exposes the separate finite `docker-pocket` command. It selects
 `installed-pocket-daemon-volumes-v2` explicitly, with configuration version 1,
 ownership policy `docker-pocket-split-v2`, scope `owned-pocket-v2`, and the existing
-publication/store format 1. Actual installed Pocket qualification is pending.
+publication/store format 1. The ordinary Docker-client installed Pocket checks
+listed above have passed; the protected-host lane remains **UNRUN**.
 The command does not qualify a Docker platform, model, voice or image.
 
 Prepare the same closed request envelope documented in
@@ -289,10 +302,12 @@ this profile.
 Discovery reports Pocket preparation/save/generation and the configured profile.
 `activation_ready` describes checked owner activation; `ready_for_speech` additionally
 requires the declared qualified/measured/ready Pocket profile. Installation,
-provisioning, enrollment and registration do not mint qualification. Actual offline
-speech, audible clone/reference fidelity, cold/warm resource budgets, cross-UID
-permissions, cancellation/reap and same-volume restart remain UNRUN for this source
-lot. An interrupted nonempty conditioning directory remains UNKNOWN and retained;
+provisioning, enrollment and registration do not mint qualification. The ordinary
+Docker-client lane passed the installed speech, cancellation/reap and same-volume
+restart checks recorded above. The protected-host lane remains **UNRUN**;
+perceptual clone/reference fidelity remains **UNMEASURED**, and dedicated
+cold/warm resource characterization remains separate. An interrupted nonempty
+conditioning directory remains UNKNOWN and retained;
 there is no recursive removal, general recovery or relaxed restart guard.
 
 
