@@ -192,7 +192,7 @@ _failed_constructor_cleanup = _FailedConstructorView()
 
 
 class Core:
-    def __init__(self, root: Path, *, historical_local=False):
+    def __init__(self, root: Path, *, historical_local=False, _native_activation=None):
         self.historical_local = historical_local
         self.root = Path(root).absolute()
         self._ownership = _reserve_core(self.root)
@@ -229,6 +229,11 @@ class Core:
             elif database.is_symlink() or database.stat().st_uid!=os.getuid():
                 raise persistence.PublicationQuarantine('foreign_database')
             self._db = self._ownership.db = sqlite3.connect(self.root / 'core.sqlite', timeout=2, isolation_level=None)
+            if _native_activation is not None:
+                from service.native_activation import NativeActivation
+                if type(_native_activation) is not NativeActivation:
+                    raise ValueError('checked_native_activation_required')
+                _native_activation.retained_check(self)
             self.db.execute('PRAGMA journal_mode=WAL')
             self.db.execute('PRAGMA synchronous=FULL')
             self.db.execute('PRAGMA foreign_keys=ON')

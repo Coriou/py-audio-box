@@ -24,7 +24,7 @@ class NativeActivationTests(unittest.TestCase):
         return Dispatcher(self.owner, staging=self.f.stage,
                           installed_activation=activation or self.activation())
 
-    def test_owner_thread_first_start_reconcile_close_and_restart_refusal(self):
+    def test_owner_thread_first_start_reconcile_close_and_clean_restart(self):
         self.enroll()
         constructed = []
         original = n.enrolled_runtime
@@ -48,8 +48,10 @@ class NativeActivationTests(unittest.TestCase):
         finally:
             owner.close()
         self.assertFalse(owner.thread.is_alive())
-        with self.assertRaisesRegex(Refused, 'native_retained_history_unsupported'):
-            self.start()
+        for _ in range(2):
+            reopened = self.start()
+            self.assertTrue(reopened.installed_checked)
+            reopened.close()
         # Refused startup releases the same Core lifetime exclusion.
         core = Core(self.owner); core.close()
 
