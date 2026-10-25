@@ -394,3 +394,21 @@ def host_enrollment(public, policy, config, scope):
         if (public['roles'][role]['device'],public['roles'][role]['inode'])!=(source['device'],source['inode']):
             raise ValueError('installed_expected_enrollment_roots')
     return digest(public)
+
+
+def family_configuration(value, family=None):
+    if family is None:
+        return configuration(value)
+    from service import installed_export as ex
+    if family is not ex.FAMILY:
+        raise ValueError('explicit_installed_family_required')
+    return ex.configuration(value)
+
+
+def family_installation(value, family=None):
+    if family is None:
+        return installation(value)
+    from service import installed_export as ex
+    if family is not ex.FAMILY:
+        raise ValueError('explicit_installed_family_required')
+    return ex.installation(value)

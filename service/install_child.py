@@ -95,7 +95,7 @@ def drop_control():
         raise ValueError('permanent_control_identity_required')
 
 
-def registration_writer(public, registration, prestate, control, lock_fd, *, fault=lambda _:None):
+def registration_writer(public, registration, prestate, control, lock_fd, *, fault=lambda _:None, family=None):
     """No DDL, Core constructor, receipt access, generic SQL or action input."""
     import sqlite3
     from service import install_policy as ip, recovery
@@ -104,18 +104,32 @@ def registration_writer(public, registration, prestate, control, lock_fd, *, fau
     if ((os.getuid(),os.geteuid(),os.getgid(),os.getegid()) != (10001,)*4 or
             os.getgroups()):
         raise ValueError('permanent_control_identity_required')
-    ip.installation(public); recovery.validate_registration(registration)
-    if (public['scope'] not in ip.SCOPES or registration['scope'] != public['host'] or
+    from service import installed_export as ex, persistence
+    export = family is ex.FAMILY
+    ip.family_installation(public, family)
+    if export: ex.bound_registration(registration, public)
+    else: recovery.validate_registration(registration)
+    if (public['scope'] not in ((ex.SCOPE,) if export else ip.SCOPES) or registration['scope'] != public['host'] or
             registration['deployment_id'] != public['deployment_id'] or
-            registration['evidence'] != ('daemon-volumes-inspection-v1' if 'launch' in public else 'actual-host-inspection')):
+            registration['evidence'] != (ex.EVIDENCE if export else ('daemon-volumes-inspection-v1' if 'launch' in public else 'actual-host-inspection'))):
         raise ValueError('installed_registration_binding')
     if type(prestate) is not list or len(encode(prestate).encode()) > recovery.HOST_CAPSULE_BYTES:
         raise ValueError('installed_registration_prestate')
     root=Path(control)/'core'
     ip.directory_identity(root,policy=ip.SPLIT,role='control')
+    if export: ex.expectation(public, family).check_root(root)
     held=os.fstat(lock_fd); ip.check(held,ip.SPLIT,'control')
     if ip.identity(held)!=ip.identity(os.stat(root/'control.lock',follow_symlinks=False)):
         raise ValueError('installed_inherited_lock_changed')
+    if export:
+        # An independent open must observe inherited exclusion, not acquire it.
+        import fcntl
+        probe = os.open(root/'control.lock', os.O_RDONLY|os.O_NOFOLLOW)
+        try:
+            try: fcntl.flock(probe, fcntl.LOCK_EX|fcntl.LOCK_NB)
+            except BlockingIOError: pass
+            else: raise ValueError('installed_inherited_lock_not_held')
+        finally: os.close(probe)
     before={}
     for name in ('core.sqlite','core.sqlite-wal','core.sqlite-shm'):
         path=root/name
@@ -130,8 +144,27 @@ def registration_writer(public, registration, prestate, control, lock_fd, *, fau
         import time
         deadline=time.monotonic()+2
         db.set_progress_handler(lambda:int(time.monotonic()>deadline),1000)
+        def validate():
+            if export:
+                ex.expectation(public, family).check_root(root)
+                if (ip.identity(os.fstat(lock_fd)) != ip.identity(held) or
+                        ip.identity(os.stat(root/'control.lock',follow_symlinks=False)) != ip.identity(held)):
+                    raise ValueError('installed_inherited_lock_changed')
+                for name in ('core.sqlite','core.sqlite-wal','core.sqlite-shm'):
+                    try: info=os.stat(root/name,follow_symlinks=False)
+                    except FileNotFoundError:
+                        if name in before: raise ValueError('installed_writer_database_changed')
+                        continue
+                    ip.check(info,ip.SPLIT,'control')
+                    if name in before and before[name] != (info.st_dev,info.st_ino):
+                        raise ValueError('installed_writer_database_changed')
+                ex.database(db, public)
+            elif persistence.store_format(db) != 1:
+                raise ValueError('installed_writer_v1_required')
+        validate()
         db.execute('BEGIN IMMEDIATE')
         try:
+            validate()
             rows=db.execute('SELECT id,revision,scope,record,digest FROM p1_installation LIMIT 2').fetchall()
             expected=[(public['deployment_id'],1,public['scope'],encode(public),digest(public))]
             if rows!=expected: raise ValueError('installed_writer_installation_changed')
@@ -139,16 +172,20 @@ def registration_writer(public, registration, prestate, control, lock_fd, *, fau
             if count>recovery.HOST_OWNER_LIMIT or size>recovery.HOST_CAPSULE_BYTES:
                 raise ValueError('installed_registration_budget')
             rows=db.execute('SELECT id,record,digest FROM p1_registrations ORDER BY rowid').fetchall()
-            if [list(r) for r in rows]!=prestate: raise ValueError('installed_writer_prestate_changed')
+            if encode([list(r) for r in rows])!=encode(prestate): raise ValueError('installed_writer_prestate_changed')
             rid=digest(registration); row=(rid,encode(registration),rid)
             found=[r for r in rows if r[0]==rid]
             if found and found!=[row]: raise ValueError('installed_writer_registration_changed')
             fault('preinsert')
+            if export: validate()
             if not found:
                 if count>=recovery.HOST_OWNER_LIMIT or size+len(row[1].encode())>recovery.HOST_CAPSULE_BYTES:
                     raise ValueError('installed_registration_budget')
                 db.execute('INSERT INTO p1_registrations VALUES(?,?,?)',row)
-            fault('inserted'); fault('precommit')
+            fault('inserted')
+            validate()
+            fault('precommit')
+            validate()
             db.execute('COMMIT'); fault('committed')
         except BaseException:
             if db.in_transaction: db.execute('ROLLBACK')
@@ -202,7 +239,7 @@ CONTAINER_CONTROL = Path('/control')
 CONTAINER_STAGING = Path('/staging')
 
 
-def prepare_container(public, control_fd, staging_fd):
+def prepare_container(public, control_fd, staging_fd, *, family=None):
     """Existing fixed mount view; never unshare/mount/chroot or host paths.
 
     Only the daemon helper's Core/writer phases mount these roots. Models and
@@ -210,8 +247,9 @@ def prepare_container(public, control_fd, staging_fd):
     """
     from service import install_policy as ip
     from service import daemon_volumes as dv
-    ip.installation(public)
-    if public.get('launch',{}).get('policy')!=dv.POLICY:
+    from service import installed_export as ex
+    ip.family_installation(public, family)
+    if public.get('launch',{}).get('policy')!=(ex.LAUNCH if family is ex.FAMILY else dv.POLICY):
         raise ValueError('explicit_daemon_container_view_required')
     descriptors=(control_fd,staging_fd)
     if any(type(fd) is not int or fd<3 for fd in descriptors) or len(set(descriptors))!=2:
@@ -247,7 +285,7 @@ def verify_dropped_capabilities():
         raise ValueError('container_child_retained_capabilities')
 
 
-def container_entry(kind):
+def container_entry(kind, *, family=None):
     """Three finite trusted entrypoints; no arbitrary action/path/SQL protocol."""
     import json
     from service import install_policy as ip
@@ -256,25 +294,33 @@ def container_entry(kind):
         raise ValueError('linux_root_initializer_required')
     raw=sys.stdin.buffer.read(65537)
     if len(raw)>65536: raise ValueError('installed_child_request_budget')
+    from service import installed_export as ex
+    if family is not None and family is not ex.FAMILY: raise ValueError('explicit_export_family_required')
     request=json.loads(raw)
     if kind=='hello':
-        ip._closed(request,'ipc_fd')
+        ip._closed(request,'ipc_fd configuration' if family is not None else 'ipc_fd')
+        config=ip.family_configuration(request['configuration'],family) if family is not None else None
         fd=request['ipc_fd']
         if type(fd) is not int or fd<3: raise ValueError('installed_child_descriptor')
         ip.check(os.fstat(fd),ip.SPLIT,'ipc',directory=True)
         close_other_descriptors((fd,)); drop_control(); verify_dropped_capabilities()
         from service.supervisor_runtime import installed_hello_at
-        print(encode(installed_hello_at(fd,startup=True)))
+        print(encode(installed_hello_at(fd,startup=True,family=family,configuration=config)))
         return
     if kind=='core': ip._closed(request,'public control_fd staging_fd')
     elif kind=='writer': ip._closed(request,'public registration prestate control_fd staging_fd lock_fd')
     else: raise ValueError('installed_child_entrypoint')
-    control,staging=prepare_container(request['public'],request['control_fd'],request['staging_fd'])
+    control,staging=prepare_container(request['public'],request['control_fd'],request['staging_fd'],family=family)
     keep=(request['lock_fd'],) if kind=='writer' else ()
     if keep and (type(keep[0]) is not int or keep[0]<3 or keep[0] in (request['control_fd'],request['staging_fd'])):
         raise ValueError('installed_child_descriptor')
     close_other_descriptors(keep); drop_control(); verify_dropped_capabilities()
     if kind=='core':
         from service.persistent_init import _split_core
-        _split_core(request['public'],control,staging)
-    else: registration_writer(request['public'],request['registration'],request['prestate'],control,keep[0])
+        _split_core(request['public'],control,staging,family=family)
+    else: registration_writer(request['public'],request['registration'],request['prestate'],control,keep[0],family=family)
+
+
+def export_container_entry(kind):
+    from service.installed_export import FAMILY
+    return container_entry(kind, family=FAMILY)

@@ -61,7 +61,11 @@ def volume(value, role, installation):
     return value
 
 
-def binding(value):
+def binding(value, *, family=None):
+    if family is not None:
+        from service import installed_export as ex
+        if family is not ex.FAMILY: raise ValueError('explicit_export_family_required')
+        return ex.binding(value)
     closed(value, 'policy installation daemon volumes helper_image configuration_digest cpu tmpfs control_port')
     if value['policy']!=POLICY or not re.fullmatch('[0-9a-f]{32}',value['installation']):
         raise ValueError('daemon_new_installation_policy')
@@ -85,27 +89,37 @@ def binding(value):
     return value
 
 
-def scope(value):
-    binding(value)
+def scope(value, *, family=None):
+    binding(value, family=family)
     return dict(daemon=value['daemon']['id'],context=value['daemon']['endpoint'],volumes={r:dict(
         name=value['volumes'][r]['Name'],driver='local',created=value['volumes'][r]['CreatedAt'])
         for r in ('control','receipts','staging','ipc')})
 
 
-def mounts(role, b, phase=None):
+def mounts(role, b, phase=None, *, family=None):
+    binding(b, family=family)
     if role=='helper': names=HELPER_ROLES[phase]
     elif role=='control': names=('control','ipc','staging','models','config','credential')
     elif role=='worker': names=('receipts','ipc','staging','models','config')
     else: raise ValueError('daemon_role')
     writable=set(names) if role=='helper' else ({'control'} if role=='control' else {'receipts','ipc','staging'})
-    return [dict(Type='volume',Name=b['volumes'][r]['Name'],Source=b['volumes'][r]['Mountpoint'],
+    result = [dict(Type='volume',Name=b['volumes'][r]['Name'],Source=b['volumes'][r]['Mountpoint'],
         Destination=ROOTS[r],RW=r in writable,Propagation='') for r in names]
+    if family is not None and role=='worker':
+        result.append(dict(Type='volume',Name=b['volumes']['control']['Name'],
+            Source=b['volumes']['control']['Mountpoint'].rstrip('/')+'/core/assets',
+            Destination='/references/assets',RW=False,Propagation=''))
+    return result
 
 
-def command(role, config, b, *, phase=None, nonce=None):
-    binding(b)
+def command(role, config, b, *, phase=None, nonce=None, family=None):
+    binding(b, family=family)
     if role=='helper' and (phase not in PHASES or not re.fullmatch('[0-9a-f]{32}',nonce or '')):
         raise ValueError('daemon_helper_phase')
+    if family is not None:
+        from service import install_policy as ip, installed_export as ex
+        ip.family_configuration(config, family)
+        if digest(config)!=b['configuration_digest']: raise ValueError('daemon_configuration_binding')
     helper=role=='helper'; budget=config['budget']; t=b['tmpfs']['control' if helper else role]
     args=['container','create','--pull=never','--restart=no','--read-only','--user',
         '0:0' if helper else ('10001:10001' if role=='control' else '0:10001'),
@@ -118,23 +132,25 @@ def command(role, config, b, *, phase=None, nonce=None):
     for cap in caps: args+=['--cap-add='+cap]
     if helper: args+=['--interactive','--attach=stdin','--attach=stdout']
     if role=='control': args+=['--publish','127.0.0.1:'+str(b['control_port'])+':8000']
-    for m in mounts(role,b,phase):
-        args+=['--mount','type=volume,source='+m['Name']+',destination='+m['Destination']+',volume-nocopy'+('' if m['RW'] else ',readonly')]
+    for m in mounts(role,b,phase,family=family):
+        args+=['--mount','type=volume,source='+m['Name']+',destination='+m['Destination']+',volume-nocopy'+('' if m['RW'] else ',readonly')+(',volume-subpath=core/assets' if m['Destination']=='/references/assets' else '')]
     if helper:
-        code='from service.daemon_helper import main;main()'; extra=[phase,nonce]
-    elif role=='control': code='from service.entrypoint import daemon_main;daemon_main()'; extra=[]
+        code=('from service.daemon_helper import export_main;export_main()' if family is not None else 'from service.daemon_helper import main;main()'); extra=[phase,nonce]
+    elif role=='control':
+        code=('from service.entrypoint import daemon_export_main;daemon_export_main()' if family is not None else 'from service.entrypoint import daemon_main;daemon_main()'); extra=[]
     else:
         code='from worker.runtime_supervisor import main;main()'
-        extra=['--installed-policy','docker-kokoro-split-v1','--configuration-file',CONFIG]
+        extra=['--installed-policy',ex.POLICY if family is not None else 'docker-kokoro-split-v1','--configuration-file',CONFIG]
+        if family is not None: extra+=['--expected-worker-image',config['images']['worker']]
     args += ['--entrypoint','python',b['helper_image'] if helper else config['images'][role],'-I','-B','-c',
         "import sys;sys.path.insert(0,'/opt/speech');"+code]+extra
     return args
 
 
-def inspect_container(c, role, config, b, *, phase=None, nonce=None):
+def inspect_container(c, role, config, b, *, phase=None, nonce=None, family=None):
     """Validate full trusted Docker inspection, including absence of extra mounts."""
-    binding(b)
-    expected=command(role,config,b,phase=phase,nonce=nonce)
+    binding(b, family=family)
+    expected=command(role,config,b,phase=phase,nonce=nonce,family=family)
     hc=c['HostConfig']; cc=c['Config']; state=c['State']
     helper=role=='helper'; t=b['tmpfs']['control' if helper else role]
     caps=list((INIT_CAPS if phase in ('install','init') else LATER_CAPS) if helper else (() if role=='control' else WORKER_CAPS))
@@ -166,25 +182,34 @@ def inspect_container(c, role, config, b, *, phase=None, nonce=None):
         datetime.fromisoformat(started.replace('Z','+00:00'))
         if started.startswith('0001-'): raise ValueError('daemon_container_started_at')
     requested=hc.get('Mounts')
-    if type(requested) is not list or len(requested)!=len(mounts(role,b,phase)):
+    if type(requested) is not list or len(requested)!=len(mounts(role,b,phase,family=family)):
         raise ValueError('daemon_explicit_volume_mounts_required')
     projected=[]
     for m in requested:
+        if family is not None:
+            options=dict(NoCopy=True,**({'Subpath':'core/assets'} if role=='worker' and m.get('Target')=='/references/assets' else {}))
+            if digest(m.get('VolumeOptions'))!=digest(options) or type(m.get('ReadOnly',False)) is not bool:
+                raise ValueError('daemon_export_exact_mount_options')
         if (set(m)-{'Type','Source','Target','ReadOnly','Consistency','VolumeOptions'} or
-            m.get('VolumeOptions')!={'NoCopy':True} or m.get('Consistency','') not in ('','default')):
+            m.get('VolumeOptions')!=dict(NoCopy=True,**({'Subpath':'core/assets'} if family is not None and role=='worker' and m.get('Target')=='/references/assets' else {})) or m.get('Consistency','') not in ('','default')):
             raise ValueError('daemon_no_copyup_mount_required')
         projected.append(dict(Type=m['Type'],Source=m['Source'],Target=m['Target'],ReadOnly=m.get('ReadOnly',False)))
-    expected_mounts=[dict(Type='volume',Source=m['Name'],Target=m['Destination'],ReadOnly=not m['RW']) for m in mounts(role,b,phase)]
+    expected_mounts=[dict(Type='volume',Source=m['Name'],Target=m['Destination'],ReadOnly=not m['RW']) for m in mounts(role,b,phase,family=family)]
     if sorted(projected,key=lambda m:m['Target'])!=sorted(expected_mounts,key=lambda m:m['Target']):
         raise ValueError('daemon_requested_mount_binding')
     # Reject source/path aliases as well as extra or changed role mounts.
+    if family is not None and any(type(m.get('RW')) is not bool for m in c['Mounts']):
+        raise ValueError('daemon_export_exact_mount_options')
     actual=[{k:m.get(k,'') for k in ('Type','Name','Source','Destination','RW','Propagation')} for m in c['Mounts']]
-    if sorted(actual,key=lambda m:m['Destination'])!=sorted(mounts(role,b,phase),key=lambda m:m['Destination']):
+    if sorted(actual,key=lambda m:m['Destination'])!=sorted(mounts(role,b,phase,family=family),key=lambda m:m['Destination']):
         raise ValueError('daemon_container_mount_binding')
     return c
 
 
-def local(value, role):
+def local(value, role, *, family=None):
+    if family is not None:
+        from service import installed_export as ex
+        if family is not ex.FAMILY: raise ValueError('explicit_export_family_required')
     closed(value,'role pid start_ticks pid_namespace cgroup uid gid groups capabilities roots')
     expected={'control':(10001,10001,0),'worker':(0,10001,(1<<5)|(1<<6)|(1<<7))}[role]
     if (any(type(value[k]) is not int for k in ('uid','gid','capabilities')) or
@@ -194,6 +219,7 @@ def local(value, role):
         value['groups'] not in ([],[expected[1]])):
         raise ValueError('daemon_container_local_identity')
     names=('control','ipc','staging','models','config','credential') if role=='control' else ('receipts','ipc','staging','models','config')
+    if family is not None: names=(*names,'assets')
     closed(value['roots'],' '.join(names))
     for pair in value['roots'].values():
         if type(pair) is not list or len(pair)!=2 or any(type(n) is not int or n<1 for n in pair):
@@ -202,22 +228,25 @@ def local(value, role):
     return value
 
 
-def observation(value, registration, config, b, public):
+def observation(value, registration, config, b, public, *, family=None):
+    from service import installed_export as ex
+    binding(b, family=family)
+    evidence=ex.EVIDENCE if family is ex.FAMILY else EVIDENCE
     closed(value,'kind binding inspections local hello')
-    if value['kind']!=EVIDENCE or value['binding']!=digest(b) or registration['evidence']!=EVIDENCE or public['launch']!=b:
+    if value['kind']!=evidence or value['binding']!=digest(b) or registration['evidence']!=evidence or public['launch']!=b:
         raise ValueError('daemon_evidence_binding')
     closed(value['inspections'],'control worker'); closed(value['local'],'control worker')
     from service.host_install import _registration_hello
-    _registration_hello(value['hello'],registration)
+    _registration_hello(value['hello'],registration,family=family,configuration=config if family is not None else None)
     for role in ('control','worker'):
-        c=inspect_container(value['inspections'][role],role,config,b); facts=local(value['local'][role],role)
+        c=inspect_container(value['inspections'][role],role,config,b,family=family); facts=local(value['local'][role],role,family=family)
         owner=next(c for c in registration['containers'] if c['role']==role)
         if (owner['id']!=c['Id'] or owner['image']!=c['Image'] or owner['started']!=c['State']['StartedAt'] or c['State']['Running'] is not True):
             raise ValueError('daemon_evidence_incarnation')
         for r,record in public['roles'].items():
             if r in facts['roots'] and facts['roots'][r]!=[record['device'],record['inode']]:
                 raise ValueError('daemon_evidence_role_identity')
-    for r in ('ipc','staging','models','config'):
+    for r in (('ipc','staging','models','config','assets') if family is not None else ('ipc','staging','models','config')):
         if value['local']['control']['roots'][r]!=value['local']['worker']['roots'][r]:
             raise ValueError('daemon_evidence_cross_view_identity')
     return value

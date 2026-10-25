@@ -12,7 +12,14 @@ from service.worker_transport import TransportObservation
 
 
 class SupervisorRuntime:
-    def __init__(self, ipc='/ipc', interrupt='none'):
+    def __init__(self, ipc='/ipc', interrupt='none', *, family=None, configuration=None):
+        if family is not None or configuration is not None:
+            from service import installed_export as ex
+            if family is not ex.FAMILY or configuration is None:
+                raise ValueError('explicit_export_family_required')
+            configuration = ex.configuration(configuration)
+        self.family = family
+        self.configuration = configuration
         self.ipc = Path(ipc)
         self.interrupt = interrupt
 
@@ -32,7 +39,12 @@ class SupervisorRuntime:
             result = receive(connection, cutoff)
         if set(result) != {'ok', 'value'} or result['ok'] is not True:
             raise RuntimeError('lifecycle_refused_or_quarantined')
-        return result['value']
+        value = result['value']
+        if self.family is not None and op in ('hello', 'startup'):
+            from service.host_install import _registration_hello
+            _registration_hello(value['hello'] if op == 'startup' else value,
+                                family=self.family, configuration=self.configuration)
+        return value
 
     def prepare(self, authority, fixture='silence'):
         return self.call('prepare', dict(snapshot=json.loads(authority._snapshot),
@@ -76,7 +88,7 @@ class SupervisorRuntime:
                                             message, manifest, time.monotonic())
 
 
-def installed_hello_at(ipc_fd, *, timeout=1.5, startup=False):
+def installed_hello_at(ipc_fd, *, timeout=1.5, startup=False, family=None, configuration=None):
     """Hello only, for a permanently dropped host helper with a validated fd.
 
     The caller owns child creation/reap. This never drops the current process,
@@ -130,10 +142,13 @@ def installed_hello_at(ipc_fd, *, timeout=1.5, startup=False):
     if startup:
         from service import daemon_volumes as dv
         dv.closed(value,'hello local')
-        dv.local(value['local'],'worker')
+        dv.local(value['local'],'worker',family=family)
         from service.host_install import _registration_hello
-        _registration_hello(value['hello'])
+        _registration_hello(value['hello'], family=family, configuration=configuration)
         return value
+    if family is not None or configuration is not None:
+        from service.host_install import _registration_hello
+        return _registration_hello(value, family=family, configuration=configuration)
     if (set(value) != {'lane', 'boot', 'quarantined', 'launches'} or
             any(not isinstance(value[k], str) or len(value[k]) != 32 or
                 any(c not in '0123456789abcdef' for c in value[k]) for k in ('lane', 'boot')) or

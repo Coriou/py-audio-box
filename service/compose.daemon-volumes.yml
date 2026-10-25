@@ -71,3 +71,17 @@ volumes:
   credential:
     external: true
     name: ${SPEECH_CREDENTIAL_VOLUME:?exact volume}
+
+# New family reference (not an executable Compose override): private
+# service.daemon_client.export_main selects installed-kokoro-export-daemon-volumes-v2.
+# Its worker adds exactly:
+#   type: volume
+#   source: control                 # the same enrolled named volume
+#   target: /references/assets
+#   read_only: true
+#   volume: {nocopy: true, subpath: core/assets}
+# Worker policy docker-kokoro-export-split-v2 additionally requires
+# --expected-worker-image <exact configured finished sha256 image ID>.
+# Unsupported subpath daemons refuse. Never replace with the whole control
+# volume, a Mac bind or a daemon Mountpoint bind. Owner activation/retained
+# history are unavailable; new-family up/status/stop currently refuse.

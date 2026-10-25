@@ -52,7 +52,45 @@ class _ThreadResult:
         return await asyncio.shield(asyncio.wrap_future(self.result))
 
 
-def projection(value):
+def projection(value, *, family=None):
+    if family is not None:
+        from service.installed_export import FAMILY
+        if family is not FAMILY: raise ValueError("explicit_export_family_required")
+        from service.installed_export import LAUNCH, host_registration
+        from service.recovery import closed
+        closed(value, "version launch_policy registration_id registration configuration_digest enrollment_digest provenance_digest observation")
+        if type(value["version"]) is not int or value["version"] != 2 or value["launch_policy"] != LAUNCH:
+            raise ValueError("installed_gate_version")
+        host_registration(value["registration"])
+        if digest(value["registration"]) != value["registration_id"]:
+            raise ValueError("installed_gate_registration")
+        for key in ("configuration_digest", "enrollment_digest", "provenance_digest"):
+            if type(value[key]) is not str or not re.fullmatch("[0-9a-f]{64}", value[key]):
+                raise ValueError("installed_gate_digest")
+        # This file parser checks shape only. Authority comes from the later
+        # selected configuration/enrollment/Docker/hello brackets.
+        from service import daemon_volumes as dv
+        from service.host_install import _registration_hello
+        observation=value['observation']
+        closed(observation,'kind binding inspections local hello')
+        from service.installed_export import EVIDENCE
+        if observation['kind'] != EVIDENCE: raise ValueError('daemon_gate_evidence')
+        closed(observation['local'],'control worker')
+        closed(observation['inspections'],'control worker')
+        for role in ('control','worker'): dv.local(observation['local'][role],role,family=family)
+        hello=observation['hello']
+        closed(hello,'lane boot quarantined launches export_seal')
+        _registration_hello({k:v for k,v in hello.items() if k!='export_seal'},value['registration'])
+        seal=hello['export_seal']
+        closed(seal,'configuration_digest converter_digest worker_image_digest profile_digest principals_digest publication_format')
+        if type(seal['publication_format']) is not int or seal['publication_format'] != 2:
+            raise ValueError('installed_export_seal_mismatch')
+        for key,item in seal.items():
+            if key=='publication_format': continue
+            pattern='sha256:[0-9a-f]{64}' if key=='worker_image_digest' else '[0-9a-f]{64}'
+            if type(item) is not str or not re.fullmatch(pattern,item):
+                raise ValueError('installed_export_seal_mismatch')
+        return value
     from service.recovery import closed, validate_registration
     if value.get('launch_policy') == 'installed-daemon-volumes-v1':
         from service.daemon_helper import gate_projection
@@ -89,11 +127,11 @@ def projection(value):
     return value
 
 
-def decode_projection(raw):
+def decode_projection(raw, *, family=None):
     from service.recovery import host_json
     if type(raw) is not bytes or len(raw) > GATE_LIMIT:
         raise ValueError('installed_gate_budget')
-    value = projection(host_json(raw))
+    value = projection(host_json(raw), family=family)
     if raw != encode(value).encode():
         raise ValueError('installed_gate_encoding')
     return value
@@ -129,9 +167,9 @@ def _directory_stable(fd, path):
         raise ValueError('installed_gate_directory_changed')
 
 
-def publish(raw, *, directory=GATE_DIRECTORY):
+def publish(raw, *, directory=GATE_DIRECTORY, family=None):
     """Fixed exec helper only: bounded stdin, exclusive file, no path/action input."""
-    _control_identity(); decode_projection(raw)
+    _control_identity(); decode_projection(raw, family=family)
     fd = _directory(directory)
     try:
         out = os.open(GATE_NAME, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600, dir_fd=fd)
@@ -152,7 +190,11 @@ def publish(raw, *, directory=GATE_DIRECTORY):
 
 class WaitingControl:
     """One incarnation, one notification; no stale-directory reuse or repair."""
-    def __init__(self, *, directory=GATE_DIRECTORY, seconds=30):
+    def __init__(self, *, directory=GATE_DIRECTORY, seconds=30, family=None):
+        if family is not None:
+            from service.installed_export import FAMILY
+            if family is not FAMILY: raise ValueError("explicit_export_family_required")
+        self.family = family
         _control_identity()
         if type(seconds) not in (int,float) or not 0 < seconds <= 30:
             raise ValueError('installed_wait_budget')
@@ -174,7 +216,7 @@ class WaitingControl:
             if (ip.identity(os.fstat(fd)) != identity or
                     ip.identity(os.stat(GATE_NAME,dir_fd=self.fd,follow_symlinks=False)) != identity):
                 raise ValueError('installed_gate_replaced')
-            value = decode_projection(raw)
+            value = decode_projection(raw, family=self.family)
             pair = raw,identity
             if self.saved is not None and self.saved != pair:
                 raise ValueError('installed_gate_replaced')
@@ -220,7 +262,7 @@ def _read_pid1_incarnation():
     return result
 
 
-def checked_waiting_gate(waiting, configuration, runtime, *, root='/control/core', launch_policy=None):
+def checked_waiting_gate(waiting, configuration, runtime, *, root='/control/core', launch_policy=None, family=None):
     """Pre-owner check only. The caller must repeat binding after Core acquisition.
 
     Holding the existing control lock excludes registrars/owners through all
@@ -232,7 +274,7 @@ def checked_waiting_gate(waiting, configuration, runtime, *, root='/control/core
     with ip.locked_file(Path(root)/'control.lock',policy=ip.SPLIT,role='control'):
         before = local_incarnation()
         hello = runtime.call('hello', {})
-        checked = installed_startup_read(root,configuration,gate,hello,before,policy=ip.SPLIT,launch_policy=launch_policy)
+        checked = installed_startup_read(root,configuration,gate,hello,before,policy=ip.SPLIT,launch_policy=launch_policy,family=family)
         if (runtime.call('hello', {}) != hello or local_incarnation() != before or
                 waiting.read() != gate):
             raise ValueError('installed_startup_bracket_changed')
@@ -253,36 +295,51 @@ def main():
 
 class InstalledActivation:
     """Internal startup dependency; public projection alone never activates."""
-    def __init__(self, waiting, configuration, *, launch_policy=None):
+    def __init__(self, waiting, configuration, *, launch_policy=None, family=None):
+        from service import installed_export as ex
+        self.family = family
+        if family is not None and (family is not ex.FAMILY or launch_policy != ex.LAUNCH):
+            raise ValueError("installed_explicit_launch_policy")
         self.launch_policy = launch_policy
         self.waiting = waiting
-        self.configuration = ip.configuration(configuration)
+        self.configuration = ex.configuration(configuration) if family is ex.FAMILY else ip.configuration(configuration)
         self.checked = None
         self.prepared = None
         self.started = False
 
     def _configuration_matches(self, dispatcher):
-        if (dispatcher.current_profiles != self.configuration['profiles'] or
-                dispatcher.budget != self.configuration['budget'] or
+        from service import installed_export as ex
+        profiles = ex.admission_profiles(self.configuration) if self.family is ex.FAMILY else self.configuration['profiles']
+        if (encode(dispatcher.current_profiles) != encode(profiles) or
+                encode(dispatcher.budget) != encode(self.configuration['budget']) or
                 dispatcher.production_contexts is None or dispatcher.persistent_registration is not None):
             raise ValueError('installed_dispatch_configuration')
 
     def prepare(self, runtime, root):
         if self.prepared is not None: raise ValueError('installed_activation_reuse')
-        self.checked = checked_waiting_gate(self.waiting, self.configuration, runtime, root=root, launch_policy=self.launch_policy)
+        self.checked = checked_waiting_gate(self.waiting, self.configuration, runtime, root=root, launch_policy=self.launch_policy, family=self.family)
         self.prepared = runtime, Path(root).absolute()
+        self.expectation = None
+        if self.family is not None:
+            from service.installed_export import expectation
+            self.expectation = expectation(self.checked["public"], self.family)
 
     def precheck(self, dispatcher):
         if self.started: raise ValueError('installed_activation_reuse')
         self.started = True
         self._configuration_matches(dispatcher)
+        if dispatcher.audio_exports is not None: raise ValueError("installed_caller_export_mapping")
         if self.prepared is None: self.prepare(dispatcher.runtime, dispatcher.root)
         if self.prepared != (dispatcher.runtime, dispatcher.root.absolute()):
             raise ValueError('installed_activation_owner_binding')
 
     def check_hello(self, hello):
         gate = self.waiting.read()
-        if (set(hello) != {'lane', 'boot', 'quarantined', 'launches'} or
+        from service import installed_export as ex
+        if self.family is ex.FAMILY:
+            from service.host_install import _registration_hello
+            _registration_hello(hello, family=self.family, configuration=self.configuration)
+        if (set(hello) != ({'lane', 'boot', 'quarantined', 'launches', 'export_seal'} if self.family is ex.FAMILY else {'lane', 'boot', 'quarantined', 'launches'}) or
                 hello['quarantined'] is not False or type(hello['launches']) is not int or
                 not 0 <= hello['launches'] < 64 or
                 any(hello[k] != gate['registration'][k] for k in ('lane', 'boot'))):
@@ -298,14 +355,18 @@ class InstalledActivation:
         before = local_incarnation()
         hello = dispatcher.runtime.call('hello', {})
         checked = installed_startup_read(dispatcher.root, self.configuration, gate,
-                                        hello, before, policy=ip.SPLIT, launch_policy=self.launch_policy)
+                                        hello, before, policy=ip.SPLIT, launch_policy=self.launch_policy, family=self.family)
         if (checked != self.checked or self.waiting.read() != gate or
                 dispatcher.runtime.call('hello', {}) != hello or local_incarnation() != before):
             raise ValueError('installed_post_owner_binding_changed')
+        if self.family is not None:
+            from service.audio_export import AudioExports
+            export = self.configuration['audio_export']
+            dispatcher.audio_exports = AudioExports(export['converter'], export['profile'], export['principals'])
 
 
 def create_installed_app(*, configuration_file, credential_file, root='/control/core',
-                         staging='/staging', runtime=None, waiting=None, launch_policy=None):
+                         staging='/staging', runtime=None, waiting=None, launch_policy=None, family=None):
     """Factory-only ASGI entry, with one owner acquired/closed by lifespan.
 
     No listener is created here. Explicit files and the trusted host notification
@@ -316,16 +377,31 @@ def create_installed_app(*, configuration_file, credential_file, root='/control/
     from service.dispatcher import Dispatcher
     from service.supervisor_runtime import SupervisorRuntime
     from service.api import create_voice_app
-    config = installed_configuration(configuration_file, policy=ip.SPLIT)
+    from service import installed_export as ex
+    if family is not None and (family is not ex.FAMILY or launch_policy != ex.LAUNCH):
+        raise ValueError("installed_explicit_launch_policy")
+    if family is ex.FAMILY:
+        from service.auth import private_input
+        from service.recovery import host_json
+        config = ex.configuration(host_json(private_input(configuration_file, mode=0o440, limit=48000)))
+        kokoro = {k:v for k,v in config.items() if k != "audio_export"}
+        kokoro.update(version=1, ownership_policy=ip.POLICY)
+    else:
+        config = installed_configuration(configuration_file, policy=ip.SPLIT)
+        kokoro = config
     credentials = installed_credentials(credential_file, config['contexts'])
-    mapping = installed_mapping(config, policy=ip.SPLIT)
-    contexts = installed_contexts(config, mapping)
-    runtime = runtime or SupervisorRuntime('/ipc')
+    if family is ex.FAMILY:
+        admitted = {c.principal for c in credentials._credentials if {'read','production-write'} <= c.scopes}
+        if not set(config['audio_export']['principals']) <= admitted:
+            raise ValueError('installed_export_credential_principals')
+    mapping = installed_mapping(kokoro, policy=ip.SPLIT)
+    contexts = installed_contexts(kokoro, mapping)
+    runtime = runtime or SupervisorRuntime('/ipc', **(dict(family=family, configuration=config) if family is ex.FAMILY else {}))
     def dependencies():
-        notification = waiting if waiting is not None else WaitingControl()
-        activation = InstalledActivation(notification, config, launch_policy=launch_policy)
+        notification = waiting if waiting is not None else WaitingControl(family=family)
+        activation = InstalledActivation(notification, config, launch_policy=launch_policy, family=family)
         return notification, lambda: activation.prepare(runtime, root), lambda: Dispatcher(
-            root, staging=staging, runtime=runtime, profiles=config['profiles'],
+            root, staging=staging, runtime=runtime, profiles=ex.admission_profiles(config) if family is ex.FAMILY else config['profiles'],
             budget=config['budget'], production_contexts=contexts, installed_activation=activation)
     return _owned_app(dependencies, lambda owner: create_voice_app(
         owner, credentials=credentials, installed=config))
@@ -470,7 +546,7 @@ def _listener_ready(configuration_digest):
     finally: connection.close()
 
 
-def launch_status():
+def launch_status(*, family=None):
     """Fixed exec reader of a nonsecret, incarnation-bound startup result."""
     _control_identity()
     try: fd = _directory(GATE_DIRECTORY)
@@ -496,7 +572,7 @@ def launch_status():
             if (result['phase']!='ready' or not re.fullmatch('[0-9a-f]{64}',result['registration_id']) or
                     result['incarnation']!=_read_pid1_incarnation()):
                 raise ValueError('installed_startup_binding')
-            gate=decode_projection(ip.read_private(GATE_DIRECTORY/GATE_NAME,GATE_LIMIT,policy=ip.SPLIT,role='control'))
+            gate=decode_projection(ip.read_private(GATE_DIRECTORY/GATE_NAME,GATE_LIMIT,policy=ip.SPLIT,role='control'), family=family)
             if gate['registration_id']!=result['registration_id']: raise ValueError('installed_startup_gate_binding')
             if not _listener_ready(gate['configuration_digest']):
                 print(encode(dict(phase='not_ready'))); return
@@ -526,22 +602,25 @@ def _installed_server(config):
     return InstalledServer(config)
 
 
-def installed_main(*, launch_policy=None):
+def installed_main(*, launch_policy=None, family=None):
     """PID1 command factory; Uvicorn listener follows checked owner acquisition."""
     import asyncio
     import uvicorn
+    from service import installed_export as ex
+    if family is not None and (family is not ex.FAMILY or launch_policy != ex.LAUNCH):
+        raise ValueError('installed_explicit_launch_policy')
     _control_identity()
     os.umask(0o077)
     if launch_policy is None:
         config_file, credential_file = ip.CONFIG_DESTINATION, ip.CREDENTIAL_DESTINATION
-    elif launch_policy == 'installed-daemon-volumes-v1':
+    elif launch_policy == 'installed-daemon-volumes-v1' or family is not None:
         from service import daemon_volumes as dv
         from service.daemon_runtime import publish_control
-        publish_control()
+        publish_control(family=family)
         config_file, credential_file = dv.CONFIG, dv.CREDENTIAL
     else: raise ValueError('installed_explicit_launch_policy')
     app = create_installed_app(configuration_file=config_file, credential_file=credential_file,
-        **({} if launch_policy is None else dict(launch_policy=launch_policy)))
+        **({} if launch_policy is None else dict(launch_policy=launch_policy, family=family)))
     server = _installed_server(uvicorn.Config(app,host='0.0.0.0',port=8000,access_log=False,
         log_level='critical',timeout_graceful_shutdown=10))
 
@@ -596,3 +675,19 @@ def create_native_owner(*, record_file, configuration_file, templates_file, owne
 def daemon_main():
     from service.daemon_volumes import POLICY
     installed_main(launch_policy=POLICY)
+
+
+def daemon_export_main():
+    """Explicit trusted new-family PID1 entrypoint."""
+    from service.installed_export import FAMILY, LAUNCH
+    installed_main(launch_policy=LAUNCH, family=FAMILY)
+
+
+def publish_export(raw):
+    from service.installed_export import FAMILY
+    return publish(raw, family=FAMILY)
+
+
+def export_launch_status():
+    from service.installed_export import FAMILY
+    return launch_status(family=FAMILY)

@@ -1160,7 +1160,16 @@ def _registration_snapshot(roots,scope):
     return state
 
 
-def _registration_hello(hello,registration=None):
+def _registration_hello(hello,registration=None, *, family=None, configuration=None):
+    if family is not None:
+        from service import installed_export as ex
+        if family is not ex.FAMILY or configuration is None:
+            raise ValueError('explicit_export_family_required')
+        recovery.closed(hello,'lane boot quarantined launches export_seal')
+        ex.validate_seal(hello['export_seal'], configuration)
+        _registration_hello({k:v for k,v in hello.items() if k != 'export_seal'}, registration)
+        return hello
+    if configuration is not None: raise ValueError('explicit_export_family_required')
     recovery.closed(hello,'lane boot quarantined launches')
     if (any(not isinstance(hello[k],str) or not re.fullmatch('[0-9a-f]{32}',hello[k]) for k in ('lane','boot')) or
             hello['quarantined'] is not False or type(hello['launches']) is not int or not 0<=hello['launches']<64 or
