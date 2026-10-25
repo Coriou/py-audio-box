@@ -69,9 +69,11 @@ class Dispatcher:
             # before Core repeats the deployment/completion/hello binding below.
             if self.installed_activation is not None:
                 from service.entrypoint import InstalledActivation
-                if type(self.installed_activation) is not InstalledActivation:
+                from service.native_activation import NativeActivation
+                if type(self.installed_activation) not in (InstalledActivation, NativeActivation):
                     raise ValueError('checked_installed_activation_required')
                 self.installed_activation.precheck(self)
+                if hasattr(self.runtime, 'attach_owner'): self.runtime.attach_owner()
                 startup = None
             else:
                 with _startup_read_lock(self.root) as readable:
@@ -101,6 +103,9 @@ class Dispatcher:
             self.enrolled=bool(core.db.execute("SELECT 1 FROM sqlite_master WHERE name='p1_installation'").fetchone())
             if startup is None and self.enrolled and not self.installed_checked:
                 raise ValueError('startup_deployment_changed')
+            if self.installed_checked:
+                from service.native_activation import NativeActivation
+                self.enrolled = self.enrolled or type(self.installed_activation) is NativeActivation
             self.admission=Admission(core,self.staging,self.budget,private_spool=getattr(self.runtime,'spool',None))
             self.store=DispatchStore(core,self.admission)
             if hasattr(self.runtime,'recover_imports'):self.runtime.recover_imports(core)
@@ -167,6 +172,9 @@ class Dispatcher:
                     self._cleanup_failed = True
                     if startup_error is not None: startup_error.add_note('startup Core cleanup failed: '+type(cleanup).__name__)
                 finally:
+                    from service.native_activation import NativeActivation
+                    if type(self.installed_activation) is NativeActivation:
+                        self.installed_activation.finished(self, self._cleanup_failed, startup_error)
                     if startup_error is not None:self.initialized.set_exception(startup_error)
 
     def _activation_open(self):

@@ -65,6 +65,7 @@
     "service/install_child.py",
     "service/install_policy.py",
     "service/lifecycle_cli.py",
+    "service/native_activation.py",
     "service/native_package.py",
     "service/native_runtime.py",
     "service/owner_store.py",

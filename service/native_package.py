@@ -527,9 +527,9 @@ def enroll_native(record_file, *, configuration_file, templates_file, owner_root
 def native_startup_inputs(record_file, *, configuration_file, templates_file, owner_root, connector=None):
     """Reopen durable source enrollment and prepare exact runtime/contexts.
 
-    This does NOT authorize Dispatcher construction or read Linux/native history.
-    A future native owner activation must repeat this bracket under Core exclusion
-    and implement native completed-history validation before installed startup.
+    This alone does NOT authorize Dispatcher construction or read history.
+    NativeActivation is the private first-start consumer: it repeats binding under
+    Core exclusion and refuses every retained Core/spool/staging history.
     """
     directory(str(literal(str(record_file)).parent))
     # Canonical bytes preserve primitive types (True/1/1.0 compare equal in Python).
