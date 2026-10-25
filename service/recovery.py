@@ -932,13 +932,10 @@ def _validate_snapshot_journal(payload, data, registrations):
         journal_ids.add(journal_record['id'])
         if journal_record['phase']=='terminal':
             receipt=journal_record.get('receipt')
-            closed(receipt,'runtime_id binding reaped timely original_deadline engine_uid reap_method reaped_children')
-            if (receipt['runtime_id']!=journal_record['id'] or receipt['binding']!=authority.binding or
-                receipt['reaped'] is not True or receipt['reap_method']!='pid1-waitpid-echild' or
-                type(receipt['reaped_children'])!=int or receipt['reaped_children']<0 or
-                receipt['engine_uid']!=journal_record['uid'] or type(receipt['timely'])!=bool or
-                receipt['original_deadline']!=authority.job['deadline']):
-                raise ValueError('invalid_journal_receipt')
+            from worker.native_protocol import terminal_receipt, frozen_native
+            if frozen_native(authority.context): raise ValueError('native_installed_policy_unavailable')
+            terminal_receipt(receipt, authority=authority, runtime_id=journal_record['id'])
+            if receipt['engine_uid'] != journal_record['uid']: raise ValueError('invalid_journal_receipt')
             proposal=journal_record.get('proposal')
             if not journal_record['acked'] and receipt['timely'] and proposal is None: raise ValueError('missing_journal_proposal')
             if proposal is not None:
@@ -1873,9 +1870,9 @@ def _allocation_coherent(data,validated=None):
                     (bool(row[8])!=(reservation[3]=='retained') and row[0] not in recovered)): return False
                 if row[7]:
                     receipt=json.loads(row[7])
-                    if (receipt.get('runtime_id')!=row[5] or receipt.get('binding')!=row[3] or
-                        receipt.get('original_deadline')!=job['deadline'] or receipt.get('reaped') is not True or
-                        receipt.get('reap_method')!='pid1-waitpid-echild'): return False
+                    from worker.native_protocol import terminal_receipt, frozen_native
+                    if frozen_native(authority.context): return False  # Lot B policy remains closed.
+                    terminal_receipt(receipt, authority=authority, runtime_id=row[5])
                 elif (row[8] or job['state'] in ('succeeded','failed','cancelled')) and row[0] not in recovered: return False
                 for publication in data['publications']:
                     if publication[0]!=job_id: continue
@@ -3108,8 +3105,10 @@ def installed_clean_history(state, journal):
     uids=set()
     for row in journal['records']:
         d=runtime[row['id']]; receipt=row.get('receipt',{})
+        from service.worker_transport import Authority
+        from worker.native_protocol import terminal_receipt
+        terminal_receipt(receipt,authority=Authority(*row['allocation']['snapshot']),runtime_id=row['id'])
         if (row['phase']!='terminal' or row['acked'] is not True or
-                receipt.get('reaped') is not True or receipt.get('reap_method')!='pid1-waitpid-echild' or
                 digest(receipt)!=d['receipt_digest'] or row['allocation']['binding']!=d['binding'] or
                 row['uid']!=20000+len(uids) or row['uid'] in uids):
             raise ValueError('installed_history_unconfirmed_reap_ack')

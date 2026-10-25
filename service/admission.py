@@ -17,9 +17,9 @@ def finite_budget(value):
 
 
 class Admission:
-    def __init__(self,core,staging,budget=None):
+    def __init__(self,core,staging,budget=None,*,private_spool=None):
         self.budget=finite_budget(DEFAULT_BUDGET if budget is None else budget)
-        self.store=ResourceStore(core,self.budget,(core.root,staging))
+        self.store=ResourceStore(core,self.budget,(core.root,staging) if private_spool is None else (core.root,staging,private_spool))
         self.core,self.staging=core,staging
         # Older work cannot be silently assigned invented budgets.
         if core.db.execute('SELECT 1 FROM jobs WHERE id NOT IN (SELECT id FROM resource_reservations) LIMIT 1').fetchone():
@@ -40,11 +40,15 @@ class Admission:
             if selected['verification'] != 'measured' or not selected['qualification_receipt'] or 'synthetic' in selected['qualification_receipt'].lower():
                 raise ValueError('real_qualification_required')
             if spec.engine == 'qwen':
-                from worker.engines.qwen_execution import current_hardware, inventory_from_wire
-                current_hardware(spec, inventory_from_wire(context['execution']['hardware']))
+                from worker.engines.qwen_execution import current_hardware, current_native_hardware, inventory_from_wire
+                (current_native_hardware if spec.device == 'mps' else current_hardware)(spec, inventory_from_wire(context['execution']['hardware']))
+                if spec.device == 'mps':
+                    from worker.native_protocol import native_binding
+                    native_binding(context)
+                if spec.device == 'mps' and 2*spec.reference_bytes+3*min(spec.max_output_bytes,1048576)+96000 > limits['disk_bytes']: raise ValueError('native_control_disk_budget')
                 if spec.device.startswith('cuda:') and limits['vram_bytes'] <= 0: raise ValueError('cuda_memory_required')
             return dict(configuration=oracle.canonical_hash(context['execution']),
-                        slots=1,ram_bytes=spec.memory_bytes,vram_bytes=limits['vram_bytes'] if spec.engine == 'qwen' and spec.device.startswith('cuda:') else 0,pids=48,
+                        slots=1,ram_bytes=spec.memory_bytes,vram_bytes=limits['vram_bytes'] if spec.engine == 'qwen' and spec.device.startswith('cuda:') else 0,pids=1 if spec.engine == 'qwen' and spec.device == 'mps' else 48,
                         disk_bytes=limits['disk_bytes'],attempt_disk_bytes=limits['disk_bytes'])
         # Closed installed runtime capability, not a general engine/profile adapter.
         if plan['resolved']['profile']['id']!='cpu-synthetic':

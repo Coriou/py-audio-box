@@ -275,3 +275,51 @@ def installed_contexts(config, mapping):
     if ip.pocket(config):
         return PocketContexts(config['contexts'], mapping, installed=True)
     return KokoroContexts(config['contexts'], mapping)
+
+
+class NativeQwenContexts:
+    """Trusted, bounded principal/profile/version metadata registrations.
+
+    The control cannot inspect Darwin model paths. The enrolled native supervisor
+    independently verifies its sealed bundle and exact allocation registration.
+    No public request can add an entry or supply hardware/configuration metadata.
+    """
+    def __init__(self, contexts, inventory, profiles, native):
+        from worker.native_protocol import native_binding
+        from worker.engines.qwen_execution import current_native_hardware, inventory_wire
+        from contracts import validate as oracle
+        if type(contexts) is not dict or not 1 <= len(contexts) <= 64: raise Refused('native_registration')
+        self._contexts = {}
+        self._inventory = copy.deepcopy(inventory)
+        self._native = copy.deepcopy(native)
+        for key, context in contexts.items():
+            if type(key) is not tuple or len(key) != 3: raise Refused('native_registration')
+            principal, profile, version = key
+            snapshot = copy.deepcopy(context)
+            if native_binding(snapshot) != native: raise Refused('native_registration')
+            spec = execution(snapshot)
+            if (profile,version) != ('qwen-mps',spec.voice_revision): raise Refused('native_registration')
+            if snapshot['execution']['hardware'] != inventory_wire(inventory): raise Refused('hardware_identity')
+            current_native_hardware(spec, inventory)
+            oracle.frozen_plan(snapshot['plan'],snapshot['bundles'])
+            oracle.admission(dict(operation='speech_generate',input_sha256=oracle.plan_hash(snapshot['plan'])),snapshot,profiles)
+            self._contexts[key] = json.dumps(snapshot,allow_nan=False)
+
+    def resolve_registered(self, principal, request, version):
+        from contracts import validate as oracle
+        from worker.engines.qwen_execution import current_native_hardware
+        oracle.validate('speech_generate_request',request)
+        key = (principal,'qwen-mps',request['voice_version_id'])
+        if key not in self._contexts: raise Refused('not_ready')
+        context = json.loads(self._contexts[key])
+        if context['plan']['voice_versions'] != [version]: raise Refused('saved_version_required')
+        context['plan']['request'] = copy.deepcopy(request)
+        current_native_hardware(execution(context),self._inventory)
+        return context
+
+    def resolve(self, principal, operation, request):
+        if operation != 'speech_generate': raise Refused('not_ready')
+        key=(principal,'qwen-mps',request.get('voice_version_id'))
+        if key not in self._contexts: raise Refused('not_ready')
+        version=json.loads(self._contexts[key])['plan']['voice_versions'][0]
+        return self.resolve_registered(principal,request,version)

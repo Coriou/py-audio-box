@@ -75,7 +75,7 @@ class ActivationTests(unittest.TestCase):
             def terminate(inner,identity,timeout): inner.cancel=True;inner.stopped.set()
             def collect(inner,authority,identity):
                 receipt=dict(runtime_id=identity,binding=authority.binding,reaped=True,engine_uid=10001,
-                    reap_method='pid1-waitpid-echild',timely=not inner.cancel,original_deadline=authority.job['deadline'])
+                    reap_method='pid1-waitpid-echild',reaped_children=0,timely=not inner.cancel,original_deadline=authority.job['deadline'])
                 if inner.cancel:return receipt,None
                 _,proposal,_=outer.proposal(authority=authority)
                 return receipt,TransportObservation('proposal','INJECTED ONLY',message=proposal['message'],manifest=proposal['manifest'])
@@ -497,7 +497,7 @@ class SelectedRestart(unittest.TestCase):
         class Waiting:
             def wait(self):return copy.deepcopy(gate)
             read=wait
-        runtime=Mock();runtime.call.side_effect=lambda op,body:copy.deepcopy(fixture.f.hello)
+        runtime=Mock(spool=None);runtime.call.side_effect=lambda op,body:copy.deepcopy(fixture.f.hello)
         process=gate['processes'][0]
         incarnation=dict(start_ticks=process['start_ticks'],pid_namespace=process['pid_namespace'],cgroup='0::/')
         for name in ('getuid','geteuid','getgid','getegid'):

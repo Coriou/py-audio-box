@@ -345,7 +345,7 @@ class PocketPublicJourneyTests(PreparationFixture):
                 sent=[];attempt_stage=stage/a.job['attempts'][-1]['staging_id']
                 if inner.cancelled:
                     remove_namespace(attempt_stage)
-                    return dict(runtime_id=identity,binding=a.binding,reaped=True,engine_uid=os.getuid(),reap_method='pid1-waitpid-echild',timely=False,original_deadline=a.job['deadline']),None
+                    return dict(runtime_id=identity,binding=a.binding,reaped=True,engine_uid=os.getuid(),reap_method='pid1-waitpid-echild',reaped_children=0,timely=False,original_deadline=a.job['deadline']),None
                 attempt_stage.mkdir(mode=0o770);attempt_stage.chmod(0o770)
                 spec=execution(a.context);refs={spec.reference_id:root/'assets'/spec.reference_id}
                 from worker.engines.pocket import execute as generate
@@ -359,7 +359,7 @@ class PocketPublicJourneyTests(PreparationFixture):
                 # Injected confirmed death, then actual exact empty-dir helper
                 # filesystem logic under same-UID policy fixtures.
                 remove_namespace(attempt_stage)
-                receipt=dict(runtime_id=identity,binding=a.binding,reaped=True,engine_uid=os.getuid(),reap_method='pid1-waitpid-echild',timely=True,original_deadline=a.job['deadline'])
+                receipt=dict(runtime_id=identity,binding=a.binding,reaped=True,engine_uid=os.getuid(),reap_method='pid1-waitpid-echild',reaped_children=0,timely=True,original_deadline=a.job['deadline'])
                 return receipt,TransportObservation('proposal','INJECTED ONLY',message=sent[0]['message'],manifest=sent[0]['manifest'])
         configured=self.journey_contexts()
         runtime=Runtime();owner=self.journey_owner(root,stage,runtime,configured)
