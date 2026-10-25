@@ -102,12 +102,24 @@ class VoiceAPITests(VoiceAPIFixture, unittest.TestCase):
         self.assert_operation_error(response, 'voice_get', 'resource_limit', 429)
 
     def test_discovery_and_lazy_schema(self):
-        with patch.object(self.dispatcher,'call',side_effect=AssertionError('discovery accessed owner')):
+        reads={('configured_capabilities','alice'):None,
+               ('configured_profiles','alice'):[],
+               ('audio_export_available','alice'):False,
+               ('status',):dict(retry_available=False)}
+        def configured_read(*args, **kwargs):
+            if args in reads and not kwargs:return reads[args]
+            raise AssertionError('discovery accessed unexpected owner operation')
+        with patch.object(self.dispatcher,'call',side_effect=configured_read) as owner:
             body = self.request('/v1/capabilities').json()
             self.assertEqual(body['profiles'],[])
             self.assertIn('voice_get',body['operations'])
             self.assertIn('asset_get',body['operations'])
             self.assertFalse(self.request('/skeleton/operations/voice_get').json()['fixture'])
+            self.assertNotIn('audio_export',body['operations'])
+            self.assertNotIn('job_retry',body['operations'])
+            self.assertEqual([c.args for c in owner.call_args_list],
+                [('configured_capabilities','alice'),('configured_profiles','alice'),
+                 ('audio_export_available','alice'),('status',),('configured_capabilities','alice')])
         code = "import sys; import service.api; assert not any(x in sys.modules for x in ('torch','transformers','service.core','service.dispatcher'))"
         result = subprocess.run([sys.executable,'-c',code],capture_output=True,text=True)
         self.assertEqual(result.returncode,0,result.stderr)

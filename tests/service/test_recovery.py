@@ -6161,10 +6161,26 @@ def test_t1_actual_capacity_refusal_both_routes(b23_host,installation,monkeypatc
         monkeypatch.setattr(recovery,'_capture_original_snapshot',after_capture)
     else:
         writer=recovery._write_core_completion
+        configure=recovery._maintenance_connection
+        def private_capacity(db, *, original=False):
+            caller=sys._getframe(1)
+            if original and caller.f_code is recovery._rehearse_preparation.__code__:
+                private=caller.f_locals['private']
+                assert caller.f_locals['db'] is db
+                assert private != root
+                assert db.execute('PRAGMA database_list').fetchall()==[(0,'main',str((private/'core.sqlite').resolve()))]
+                pages=db.execute('PRAGMA page_count').fetchone()[0]+32
+                assert db.execute('PRAGMA max_page_count='+str(pages)).fetchone()==(pages,)
+            caller=None
+            return configure(db,original=original)
+        monkeypatch.setattr(recovery,'_maintenance_connection',private_capacity)
         def full(db,path,intent):
-            # Actual SQLite max_page_count at the private prospective write.
-            db.execute('PRAGMA max_page_count=1')
-            db.execute('INSERT INTO p1_registrations VALUES(?,?,?)',('capacity','x'*4194304,'x'))
+            # Actual private SQLite capacity, with the production authorizer intact.
+            try:
+                db.execute('INSERT INTO p1_registrations VALUES(?,?,?)',('capacity','x'*4194304,'x'))
+            except sqlite3.OperationalError as exc:
+                assert exc.sqlite_errorcode == sqlite3.SQLITE_FULL
+                raise ValueError('actual private SQLite capacity refusal') from exc
             return writer(db,path,intent)
         monkeypatch.setattr(recovery,'_write_core_completion',full)
     def consume(session,**request):

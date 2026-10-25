@@ -560,7 +560,7 @@ class BlockedPipeWitness_B:
         if Path(filename).resolve() != source_path.resolve():
             raise ValueError('B wrong target source')
         data = source_path.read_bytes()
-        if hashlib.sha256(data).hexdigest() != '91746519b27f862a0b80137262ca05cd2a7a2daf14307ac378884da056ff7c95':
+        if hashlib.sha256(data).hexdigest() != '916f1b75613da2eee32cbcb1b7321c51a17014a4d0c69bb2f0ff239cf7082387':
             raise ValueError('B changed target source')
         key = cls.fact_key(function, node, data)
         if prepared is not None:

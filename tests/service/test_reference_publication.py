@@ -132,9 +132,9 @@ class ReferencePublicationTests(unittest.TestCase):
             def stop(point):
                 if point=='after_adoption':raise RuntimeError('retained')
             with self.assertRaises(RuntimeError):c.core.finish(fault=stop)
-            real=c.core.db;c.core._db=FaultDB(real,after)
+            real=c.core.db;c.core._db=c.core._ownership.db=FaultDB(real,after)
             with self.assertRaises(sqlite3.OperationalError):c.core._commit_publication(job['id'])
-            c.core._db=real
+            c.core._db=c.core._ownership.db=real
             root=c.core.root;c.core.close();c.core=Core(root,historical_local=True)
             c.core.reconcile();c.core._commit_publication(job['id'])
             self.assertEqual(c.core.job(job['id'])['state'],'succeeded')
@@ -157,10 +157,12 @@ class ReferencePublicationTests(unittest.TestCase):
     def test_exact_frozen_role_text_and_no_audition_reuse(self):
         c=self.fixture()
         c.context['plan']['reference_roles']={'audition_text':' Explicit\n audition text '}
+        c.context['plan']['request']['audition_text']=' Explicit\n audition text '
         c.context['plan']['request']['reference_text']=' Original\n transcript '
         c.context['plan']['resolved']['reuse_configuration']['reference_text']=c.context['plan']['request']['reference_text']
         job=c.domain.prepare('p','prepare',c.context)
         c.context['plan']['reference_roles']['audition_text']='mutated'
+        c.context['plan']['request']['audition_text']='mutated'
         c.core.start();self.assertEqual(c.core.finish()['state'],'succeeded')
         candidate=c.domain.results('p',job['id'])[0]
         self.assertEqual(candidate['reference_roles']['audition']['text'],' Explicit\n audition text ')
