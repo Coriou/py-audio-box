@@ -155,6 +155,15 @@ def installation(value):
     old['configuration'].pop('audio_export')
     old['configuration'].update(version=1, ownership_policy=ip.POLICY)
     old['configuration_digest'] = digest(old['configuration'])
+    ip._closed(value['roles'], 'control staging receipts ipc')
+    staging = value['roles']['staging']
+    ip._closed(staging, 'device inode uid gid mode')
+    if (any(type(staging[k]) is not int for k in ('uid','gid','mode')) or
+            (staging['uid'],staging['gid'],staging['mode']) != ip.expectation(ip.EXPORT_SPLIT,'staging',directory=True)):
+        raise ValueError('export_staging_role_record')
+    # Reuse the legacy scalar/identity grammar after explicitly validating the
+    # fresh family's distinct staging permission tuple. Never adapt old roots.
+    old['roles']['staging'].update(uid=0,gid=0,mode=0o1733)
     ip.installation(old)
     return value
 
@@ -296,7 +305,7 @@ def retained_snapshot(roots, public, *, family):
         with closing(sqlite3.connect(path.as_uri()+'?mode=ro', uri=True, timeout=0, isolation_level=None)) as db:
             db.execute('PRAGMA query_only=ON')
             db.execute('PRAGMA trusted_schema=OFF')
-            state = recovery.snapshot(roots, db, public['host'], policy=ip.SPLIT,
+            state = recovery.snapshot(roots, db, public['host'], policy=ip.EXPORT_SPLIT,
                                       _export_public=public, _family=family)
     data = state['evidence_projection']['data']
     if (state['faults'] or state['inventory']['reasons'] or not state['allocation_coherent'] or
@@ -362,7 +371,7 @@ def startup_read(root, config, gate, hello, incarnation, *, family):
             scanner=Reconciliation.__new__(Reconciliation)
             scanner.core=SimpleNamespace(root=root);scanner.db=db;scanner.staging=None
             scanner.entry_limit=2048;scanner.byte_limit=SCALAR_BYTES;scanner.seconds=1
-            scanner._collect(policy=ip.SPLIT,_export_public=public,_family=family)
+            scanner._collect(policy=ip.EXPORT_SPLIT,_export_public=public,_family=family)
             if scanner.reasons or not recovery._allocation_coherent(data):
                 raise ValueError('installed_registration_unhealthy_state')
     return dict(deployment_id=public['deployment_id'],registration_id=gate['registration_id'],

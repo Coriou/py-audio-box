@@ -311,7 +311,7 @@ class Helper:
                 raise ValueError('daemon_initializer_unexplained_consumer')
             return dict(host=self.scope,roots={r:list(self.original[r]) for r in ip.ROLES},consumers=[])
         result=initialize_split({r:self.root[r] for r in ip.ROLES},self.scope,self.config,
-            authority=observe,policy=ip.SPLIT,daemon_binding=self.b,family=self.family,
+            authority=observe,policy=ip.family_policy(self.family),daemon_binding=self.b,family=self.family,
             launch_child=lambda raw:self.child('core',json.loads(raw),tuple(json.loads(raw)[k] for k in ('control_fd','staging_fd'))))
         self.write('init-done.json',result)
         return dict(phase='initialized',**result)
@@ -327,7 +327,7 @@ class Helper:
                 raise ValueError('daemon_initialization_seed')
         else: ip.initialization(private)
         marker=json.loads(ip.read_private(self.root['receipts']/'p1-enrolled.json',65536,policy=ip.SPLIT,role='receipts'))
-        if (public.get('launch')!=self.b or public['configuration']!=self.config or ip.role_records({r:self.root[r] for r in ip.ROLES})!=public['roles'] or
+        if (public.get('launch')!=self.b or public['configuration']!=self.config or ip.role_records({r:self.root[r] for r in ip.ROLES},policy=ip.family_policy(self.family))!=public['roles'] or
             marker!=dict(deployment_id=public['deployment_id'],digest=digest(public))): raise ValueError('daemon_enrollment_changed')
         completed=self.read('init-done.json')
         if completed!=dict(deployment_id=public['deployment_id'],digest=digest(public),initialization_digest=digest(private)):

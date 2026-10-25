@@ -755,10 +755,12 @@ def snapshot(roots, db, scope, *, policy=None, exclude_plan=None, exclude_abando
     if (_family is not None and not export) or (_export_public is not None and not export):
         raise ValueError('explicit_export_family_required')
     if export:
-        if policy is not ip.SPLIT: raise ValueError('explicit_fixed_install_policy_required')
+        if policy is not ip.EXPORT_SPLIT: raise ValueError('explicit_fixed_install_policy_required')
         ex.installation(_export_public)
         if encode(_export_public['host']) != encode(scope): raise ValueError('export_enrollment_binding')
         ex.database(db, _export_public)
+    elif policy is ip.EXPORT_SPLIT:
+        raise ValueError('explicit_export_family_required')
     validate_scope(scope)
     if transaction: db.execute('BEGIN')
     try:
@@ -804,7 +806,7 @@ def snapshot(roots, db, scope, *, policy=None, exclude_plan=None, exclude_abando
             else: ip.initialization(private)
             if private_raw != encode(private).encode() or raw != encode(installation):
                 raise ValueError('noncanonical_installed_record')
-            if (kind not in ((ex.SCOPE,) if export else ip.SCOPES) or private['public'] != installation or ip.role_records(roots) != installation['roles']):
+            if (kind not in ((ex.SCOPE,) if export else ip.SCOPES) or private['public'] != installation or ip.role_records(roots,policy=policy) != installation['roles']):
                 raise ValueError('volume_role_identity_mismatch')
         else:
             if kind != 'owned-synthetic': raise ValueError('explicit_fixed_install_policy_required')
@@ -3841,9 +3843,11 @@ def installed_startup_read(root, configuration, gate, hello, incarnation, *, pol
     ip.require(policy)
     if family is not None:
         from service import installed_export as ex
-        if family is not ex.FAMILY or policy is not ip.SPLIT or launch_policy!=ex.LAUNCH:
+        if family is not ex.FAMILY or policy is not ip.EXPORT_SPLIT or launch_policy!=ex.LAUNCH:
             raise ValueError('installed_explicit_launch_policy')
         return ex.startup_read(root,configuration,gate,hello,incarnation,family=family)
+    if policy is not ip.SPLIT:
+        raise ValueError('installed_explicit_launch_policy')
     config = ip.configuration(configuration); projection(gate)
     from service import daemon_volumes as dv
     if launch_policy not in (None,dv.POLICY) or (gate.get('launch_policy') != launch_policy):

@@ -41,7 +41,7 @@ class ExportInitialization(unittest.TestCase):
         with self.assertRaisesRegex(OSError,'injected'):self.run_init(fault=fault)
 
     def run_init(self,**kwargs):
-        return init.initialize_split(self.roots,self.scope,self.config,authority=self.authority,policy=ip.SPLIT,
+        return init.initialize_split(self.roots,self.scope,self.config,authority=self.authority,policy=ip.EXPORT_SPLIT,
             launch_child=self.child,daemon_binding=self.b,family=ex.FAMILY,**kwargs)
 
     def identity(self):
@@ -67,6 +67,73 @@ class ExportInitialization(unittest.TestCase):
             self.assertEqual(core.publication_format,2)
         with self.assertRaises(ValueError):ip.installation(public)
         with self.assertRaises(ValueError):ip.configuration(self.config)
+
+    def test_distinct_staging_policy_and_closed_selector(self):
+        self.assertEqual(ip.expectation(ip.SPLIT,'staging',directory=True),(0,0,0o1733))
+        self.assertEqual(ip.expectation(ip.EXPORT_SPLIT,'staging',directory=True),(0,10001,0o1753))
+        self.assertIs(ip.family_policy(),ip.SPLIT)
+        self.assertIs(ip.family_policy(ex.FAMILY),ip.EXPORT_SPLIT)
+        for policy in (None, ex.POLICY, ip._SplitPolicy(scope=ex.SCOPE,name=ex.POLICY)):
+            with self.subTest(policy=policy),self.assertRaises(ValueError):ip.require(policy)
+        for family in (False, ex.POLICY, object()):
+            with self.subTest(family=family),self.assertRaises(ValueError):ip.family_policy(family)
+
+    def test_wrong_family_policy_refuses_before_writes(self):
+        before=self.bytes()
+        with self.assertRaisesRegex(ValueError,'explicit_fixed_install_policy_required'):
+            init.initialize_split(self.roots,self.scope,self.config,authority=self.authority,policy=ip.SPLIT,
+                launch_child=self.child,daemon_binding=self.b,family=ex.FAMILY)
+        self.assertEqual(before,self.bytes());self.assertEqual(self.calls,[])
+        legacy=copy.deepcopy(self.config);legacy.pop('audio_export')
+        legacy.update(version=1,ownership_policy=ip.POLICY)
+        with self.assertRaisesRegex(ValueError,'explicit_fixed_install_policy_required'):
+            init.initialize_split(self.roots,self.fixture.scope,legacy,authority=self.authority,
+                policy=ip.EXPORT_SPLIT,launch_child=self.child)
+        self.assertEqual(before,self.bytes());self.assertEqual(self.calls,[])
+
+    def test_export_staging_record_rejects_legacy_and_scalar_aliases(self):
+        self.run_init();public=self.public()
+        for field,values in dict(uid=[False,0.0,1],gid=[0,10001.0,True],
+                mode=[0o1733,0o1773,0o1753*1.0,True],device=[False,1.0],inode=[True,1.0]).items():
+            for value in values:
+                changed=copy.deepcopy(public);changed['roles']['staging'][field]=value
+                with self.subTest(field=field,value=value),self.assertRaises(ValueError):ex.installation(changed)
+        for record in (None, [], {}, dict(public['roles']['staging'],extra=1)):
+            changed=copy.deepcopy(public);changed['roles']['staging']=record
+            with self.subTest(record=record),self.assertRaises(ValueError):ex.installation(changed)
+        with self.assertRaises(ValueError):ip.role_records(self.roots)
+        self.assertEqual(ip.role_records(self.roots,policy=ip.EXPORT_SPLIT),public['roles'])
+
+    def test_export_policy_without_family_refuses_inventory_and_startup(self):
+        from service import recovery
+        from service.reconciliation import Reconciliation,Incomplete
+        with self.assertRaisesRegex(ValueError,'explicit_export_family_required'):
+            recovery.snapshot(self.roots,None,self.scope,policy=ip.EXPORT_SPLIT)
+        with self.assertRaisesRegex(ValueError,'explicit_fixed_install_policy_required'):
+            recovery.snapshot(self.roots,None,self.scope,policy=ip.SPLIT,_family=ex.FAMILY)
+        scanner=Reconciliation.__new__(Reconciliation)
+        with self.assertRaisesRegex(Incomplete,'explicit_export_family_required'):
+            scanner._collect(policy=ip.EXPORT_SPLIT)
+        with self.assertRaisesRegex(ValueError,'installed_explicit_launch_policy'):
+            recovery.installed_startup_read(None,None,None,None,None,policy=ip.EXPORT_SPLIT)
+        with self.assertRaisesRegex(ValueError,'installed_explicit_launch_policy'):
+            recovery.installed_startup_read(None,None,None,None,None,policy=ip.SPLIT,
+                family=ex.FAMILY,launch_policy=ex.LAUNCH)
+
+    def test_export_staging_filesystem_identity_remains_exact(self):
+        self.run_init();path=self.roots['staging'];info=path.stat()
+        key=(info.st_dev,info.st_ino)
+        before=self.bytes()
+        for uid,gid,mode in ((0,0,0o1753),(10001,10001,0o1753),(0,10001,0o1733),
+                (0,10001,0o1773),(0,10001,0o0753)):
+            self.fixture.virtual[key]=(uid,gid)
+            path.chmod(mode);self.fixture.special[key]=mode & 0o7000
+            with self.subTest(uid=uid,gid=gid,mode=oct(mode)),self.assertRaises(ValueError):
+                ip.role_records(self.roots,policy=ip.EXPORT_SPLIT)
+        self.fixture.virtual[key]=(0,10001)
+        path.chmod(0o1753);self.fixture.special[key]=0o1000
+        self.assertEqual(ip.role_records(self.roots,policy=ip.EXPORT_SPLIT),self.public()['roles'])
+        self.assertEqual(before,self.bytes())
 
     def test_same_intent_completion(self):
         self.crash('database');before=len(self.calls)

@@ -111,6 +111,8 @@ class Reconciliation:
         if policy is not None:
             from service import install_policy
             install_policy.require(policy)
+            if policy is install_policy.EXPORT_SPLIT and _family is None:
+                raise Incomplete('explicit_export_family_required')
         def control_owned(info, *, directory=False):
             if policy is None: return info.st_uid == os.getuid()
             uid,gid,mode = install_policy.expectation(policy,'control',directory=directory)
@@ -137,7 +139,7 @@ class Reconciliation:
             self.scalar_limit=16*1024**2
         from service import installed_export as ex
         if _family is not None or _export_public is not None:
-            if _family is not ex.FAMILY or policy is not ex.ip.SPLIT:
+            if _family is not ex.FAMILY or policy is not ex.ip.EXPORT_SPLIT:
                 raise Incomplete('explicit_export_family_required')
             ex.database(self.db, _export_public)
             self.media_limit=ex.MEDIA_BYTES
@@ -372,7 +374,7 @@ class Reconciliation:
             from service import installed_export as ex, install_policy as ip
             expected = getattr(self.core, "_installed_family", None)
             if type(expected) is ex._Expectation:
-                fingerprint = self._collect(policy=ip.SPLIT, _family=ex.FAMILY,
+                fingerprint = self._collect(policy=ip.EXPORT_SPLIT, _family=ex.FAMILY,
                     _export_public=json.loads(expected._public))
             else:
                 fingerprint = self._collect()

@@ -33,11 +33,14 @@ class _SplitPolicy:
 
 
 SPLIT = _SplitPolicy()
+# Fresh export-family roots only. The trusted control group can enumerate
+# worker staging through its read-only mount; isolated executor groups cannot.
+EXPORT_SPLIT = _SplitPolicy(scope='owned-kokoro-export-v2', name='docker-kokoro-export-split-v2')
 
 
 def require(policy):
     # No caller-supplied UID map, equivalent object, or metadata-selected string.
-    if policy is not SPLIT:
+    if policy is not SPLIT and policy is not EXPORT_SPLIT:
         raise ValueError('explicit_fixed_install_policy_required')
 
 
@@ -46,6 +49,8 @@ def expectation(policy, role, *, directory=False):
     if role not in ROLES:
         raise ValueError('exact_volume_roles_required')
     if directory:
+        if policy is EXPORT_SPLIT and role == 'staging':
+            return (0, 10001, 0o1753)
         return {'control': (10001, 10001, 0o700),
                 'receipts': (0, 0, 0o2700),
                 'ipc': (0, 10001, 0o750),
@@ -309,12 +314,21 @@ def installation(value):
     return value
 
 
-def role_records(roots):
+def role_records(roots, *, policy=SPLIT):
     result = {}
-    for role, path in roots_checked(roots, policy=SPLIT).items():
-        s = directory_identity(path, policy=SPLIT, role=role)
+    for role, path in roots_checked(roots, policy=policy).items():
+        s = directory_identity(path, policy=policy, role=role)
         result[role] = dict(device=s[0], inode=s[1], uid=s[3], gid=s[4], mode=stat.S_IMODE(s[2]))
     return result
+
+
+def family_policy(family=None):
+    if family is None:
+        return SPLIT
+    from service.installed_export import FAMILY
+    if family is not FAMILY:
+        raise ValueError('explicit_export_family_required')
+    return EXPORT_SPLIT
 
 
 def initialization(value):

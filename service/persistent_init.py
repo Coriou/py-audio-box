@@ -336,6 +336,7 @@ def initialize_split(roots, scope, config, *, authority, policy, complete=None,
     ip.require(policy); validate_scope(scope); config = ip.family_configuration(config, family)
     from service import installed_export as ex
     export = family is ex.FAMILY
+    if policy is not ip.family_policy(family): raise ValueError('explicit_fixed_install_policy_required')
     if export and (daemon_binding is None or launch_child is _launch_split_child):
         raise ValueError('export_private_initializer_binding_required')
     if daemon_binding is not None:
@@ -432,7 +433,7 @@ def initialize_split(roots, scope, config, *, authority, policy, complete=None,
                 os.fchown(fd,uid,gid); os.fchmod(fd,mode); os.fsync(fd)
             ip.check(os.fstat(fd),policy,role,directory=True); stable(); fault('role_'+role)
         roles_ready = True
-        if ip.role_records(roots) != public['roles']: raise ValueError('installed_root_changed')
+        if ip.role_records(roots,policy=policy) != public['roles']: raise ValueError('installed_root_changed')
         lane = hashlib.sha256((private['seed']+'lane').encode()).hexdigest()[:32]
         payload = dict(version=1,lane=lane,records=[])
         files = {('ipc','lifecycle.key'):hashlib.sha256((private['seed']+'lifecycle').encode()).hexdigest().encode(),

@@ -274,7 +274,7 @@ def checked_waiting_gate(waiting, configuration, runtime, *, root='/control/core
     with ip.locked_file(Path(root)/'control.lock',policy=ip.SPLIT,role='control'):
         before = local_incarnation()
         hello = runtime.call('hello', {})
-        checked = installed_startup_read(root,configuration,gate,hello,before,policy=ip.SPLIT,launch_policy=launch_policy,family=family)
+        checked = installed_startup_read(root,configuration,gate,hello,before,policy=ip.family_policy(family),launch_policy=launch_policy,family=family)
         if (runtime.call('hello', {}) != hello or local_incarnation() != before or
                 waiting.read() != gate):
             raise ValueError('installed_startup_bracket_changed')
@@ -355,7 +355,7 @@ class InstalledActivation:
         before = local_incarnation()
         hello = dispatcher.runtime.call('hello', {})
         checked = installed_startup_read(dispatcher.root, self.configuration, gate,
-                                        hello, before, policy=ip.SPLIT, launch_policy=self.launch_policy, family=self.family)
+                                        hello, before, policy=ip.family_policy(self.family), launch_policy=self.launch_policy, family=self.family)
         if (checked != self.checked or self.waiting.read() != gate or
                 dispatcher.runtime.call('hello', {}) != hello or local_incarnation() != before):
             raise ValueError('installed_post_owner_binding_changed')

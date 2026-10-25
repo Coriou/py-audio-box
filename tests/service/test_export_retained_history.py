@@ -202,7 +202,7 @@ class ExportRetainedHistoryTests(unittest.TestCase):
         incarnation={k:facts[k] for k in ('start_ticks','pid_namespace')};incarnation['cgroup']='0::/'
         before=s.f.bytes()
         result=recovery.installed_startup_read(path.parent,s.config,s.gate,hello,incarnation,
-            policy=ex.ip.SPLIT,launch_policy=ex.LAUNCH,family=ex.FAMILY)
+            policy=ex.ip.EXPORT_SPLIT,launch_policy=ex.LAUNCH,family=ex.FAMILY)
         self.assertEqual(result['registration_id'],s.gate['registration_id'])
         self.assertEqual(s.f.bytes(),before)
         for changed in (dict(hello,boot='f'*32),dict(hello,launches=True)):

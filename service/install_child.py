@@ -255,7 +255,7 @@ def prepare_container(public, control_fd, staging_fd, *, family=None):
     if any(type(fd) is not int or fd<3 for fd in descriptors) or len(set(descriptors))!=2:
         raise ValueError('closed_initializer_descriptors')
     for role,fd in zip(('control','staging'),descriptors):
-        info=os.fstat(fd); ip.check(info,ip.SPLIT,role,directory=True)
+        info=os.fstat(fd); ip.check(info,ip.family_policy(family),role,directory=True)
         record=public['roles'][role]
         if (info.st_dev,info.st_ino)!=(record['device'],record['inode']): raise ValueError('installed_root_changed')
         path=CONTAINER_CONTROL if role=='control' else CONTAINER_STAGING
