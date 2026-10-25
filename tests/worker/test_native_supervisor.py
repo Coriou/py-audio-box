@@ -260,7 +260,7 @@ class NativeSupervisorTests(unittest.TestCase):
         self.s.journal.lock.close(); self.make()
         self.assertTrue(self.s.quarantined); self.assertEqual(len(self.calls),1)
 
-    def prepare_clone(self):
+    def prepare_clone(self, *, prepare=True):
         import io
         import wave
         from contracts import validate as oracle
@@ -285,7 +285,9 @@ class NativeSupervisorTests(unittest.TestCase):
         snapshot[2]=['reference']
         self.snapshot=snapshot; self.binding=hashlib.sha256(canonical(snapshot)).hexdigest()
         self.s.registrations={self.binding:dict(snapshot=snapshot,execution=e,bundles={'bundle':self.fixture.bundle},inventory=self.inventory)}
-        self.prepare()
+        self.e=e
+        self.s._preset_templates=copy.deepcopy(self.s.registrations)
+        if prepare: self.prepare()
         return raw,digest,e
 
     def test_input_complete_replay_conflict_gap_and_hash(self):

@@ -202,7 +202,8 @@ def create_voice_app(dispatcher, *, credentials, upload_deadline=15.0, installed
         configured = dispatcher.call('configured_capabilities', request.state.principal)
         if configured and operation_id in PRODUCTION_OPERATIONS and operation_id not in configured['operations']:
             availability = 'unavailable_configured_profile'
-        if installed is not None and operation_id in ('voice_prepare', 'voice_results', 'voice_save'):
+        if (installed is not None and operation_id in ('voice_prepare', 'voice_results', 'voice_save')
+                and not (configured and operation_id in configured['operations'])):
             availability = 'unavailable_configured_profile'
         return dict(fixture=False, availability=availability, operation=op,
                     request_schema=schema(op['request']), response_schema=schema(op['response']))
