@@ -552,7 +552,10 @@ class Dispatcher:
             elif op=='ack':
                 if value!={'acked':True}:raise ValueError('ack_required')
                 self.store.update(row,acked=1,phase='acknowledged');self.quarantined=getattr(self,'resource_fault',False)
-            self.next_poll=time.monotonic()+.03
+            from service import installed_pocket_daemon as pd
+            interval = .2 if (getattr(self.runtime,'family',None) is pd.FAMILY and
+                              op=='observe' and value.state==State.ALIVE) else .03
+            self.next_poll=time.monotonic()+interval
         if self.pending:return
         if self._service_stop(self.store.current()):return
         if time.monotonic()<self.next_poll:return

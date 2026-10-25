@@ -705,3 +705,60 @@ print('one abandoned record; 63 remaining slots; maintenance refused; normal int
     child = subprocess.run([sys.executable, '-c', script, str(tmp_path/'dead')], capture_output=True, text=True, timeout=8)
     assert child.returncode == 0, child.stderr
     assert child.stdout.strip() == 'one abandoned record; 63 remaining slots; maintenance refused; normal interpreter exit'
+
+
+@pytest.mark.parametrize('family,polls', [('pocket',5),('legacy',None),('export',None)])
+def test_alive_poll_cadence_bounds_real_command_journal_and_keeps_stop_immediate(monkeypatch,family,polls):
+    """Drive owner ticks with a controlled clock and real SQLite command rows."""
+    from concurrent.futures import Future
+    from contextlib import nullcontext
+    import sqlite3
+    from types import SimpleNamespace
+    from unittest.mock import Mock
+    from service.dispatch_store import DispatchStore
+    from service import installed_pocket_daemon as pd, installed_export as ex
+    from service import dispatcher as module
+    clock=[100.0]
+    monkeypatch.setattr(module.time,'monotonic',lambda:clock[0])
+    db=sqlite3.connect(':memory:')
+    try:
+        db.execute('CREATE TABLE dispatch_commands(seq INTEGER PRIMARY KEY,dispatch_id INTEGER,op TEXT,state TEXT)')
+        core=SimpleNamespace(db=db,transaction=lambda:nullcontext(),job=Mock(return_value={'state':'running'}))
+        row=dict(seq=1,job_id='job',runtime='runtime',phase='observing',outcome=None,receipt=None)
+        store=DispatchStore.__new__(DispatchStore);store.core=core;store.db=db
+        store.current=lambda:row
+        store.update=lambda unused,**fields:row.update(fields)
+        def submit(fn):
+            future=Future();future.set_result(fn());return future
+        runtime=SimpleNamespace(family={'pocket':pd.FAMILY,'legacy':None,'export':ex.FAMILY}[family],
+            observe=Mock(return_value=Observation('runtime',State.ALIVE)),terminate=Mock(return_value=None))
+        owner=Dispatcher.__new__(Dispatcher)
+        owner.core=core;owner.store=store;owner.runtime=runtime;owner.pool=SimpleNamespace(submit=submit)
+        owner.enrolled=False;owner.installed_checked=False;owner.pending=None;owner.next_poll=0
+        owner.resource_fault=False;owner.persistence_fault=False;owner.stop_obligation=False
+        owner.resource_stop_sent=set();owner.quarantined=False;owner.reconciled=True
+        owner.fault=lambda _:None;owner._resource_check=lambda:None
+        # Launch + settle every clock point. Actual Dispatcher._launch writes the
+        # SQL journal; suppressed observations create neither sent nor returned rows.
+        for tick in range(100):
+            clock[0]=100+tick*.01
+            owner._tick();owner._tick()
+        count=db.execute("SELECT count(*) FROM dispatch_commands WHERE op='observe'").fetchone()[0]
+        assert count==runtime.observe.call_count
+        assert db.execute("SELECT count(*) FROM dispatch_commands WHERE state!='returned'").fetchone()[0]==0
+        if polls is not None:assert count==polls
+        else:assert count>20
+        # A cancel discovered in an in-flight ALIVE response launches stop at
+        # this same instant, without first applying the longer observation delay.
+        core.job.return_value={'state':'cancel_requested'}
+        future=Future();future.set_result(Observation('runtime',State.ALIVE))
+        owner.pending=(future,row,'observe',store.command(row,'observe'))
+        owner._tick()
+        assert owner.pending[2]=='stop'
+        runtime.terminate.assert_called_once_with('runtime',1.5)
+        # Resource stop obligations likewise run before the next-poll guard.
+        owner.pending=None;owner.stop_obligation=True;owner.next_poll=clock[0]+100
+        owner._tick()
+        assert owner.pending[2]=='stop'
+        assert runtime.terminate.call_count==2
+    finally:db.close()
