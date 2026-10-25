@@ -224,7 +224,17 @@ def main():
     print('Private credential, handle and retained evidence: '+str(output))
 
 
+def failure_diagnostic(exc):
+    """Code location only: never stringify exceptions or inspect frame locals."""
+    trace = exc.__traceback__
+    if trace is None:
+        return type(exc).__name__
+    while trace.tb_next is not None:
+        trace = trace.tb_next
+    return type(exc).__name__ + ':' + trace.tb_frame.f_code.co_name + ':' + str(trace.tb_lineno)
+
+
 if __name__=='__main__':
     try: main()
-    except (Exception,KeyboardInterrupt):
-        raise SystemExit('Pocket recipe refused; retain output, handles, containers and volumes for review.') from None
+    except (Exception,KeyboardInterrupt) as exc:
+        raise SystemExit('Pocket recipe refused (' + failure_diagnostic(exc) + '); retain output, handles, containers and volumes for review.') from None

@@ -187,7 +187,8 @@ def test_maintenance_is_checked_under_lane_lock_before_journal_read(tmp_path,mon
     import worker.runtime_journal as module
     write_journal(tmp_path,dict(version=1,lane='lane',records=[]))
     calls=[]
-    def fence(root):
+    def fence(root, *, policy=None):
+        assert policy is None
         with (root/'lane.lock').open('rb') as lock:
             with pytest.raises(BlockingIOError):fcntl.flock(lock,fcntl.LOCK_EX|fcntl.LOCK_NB)
         calls.append('fence')

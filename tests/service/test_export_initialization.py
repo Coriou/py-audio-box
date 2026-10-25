@@ -114,8 +114,11 @@ class ExportInitialization(unittest.TestCase):
         scanner=Reconciliation.__new__(Reconciliation)
         with self.assertRaisesRegex(Incomplete,'explicit_export_family_required'):
             scanner._collect(policy=ip.EXPORT_SPLIT)
+        legacy=copy.deepcopy(self.config)
+        legacy.pop('audio_export')
+        legacy.update(version=1,ownership_policy=ip.POLICY)
         with self.assertRaisesRegex(ValueError,'installed_explicit_launch_policy'):
-            recovery.installed_startup_read(None,None,None,None,None,policy=ip.EXPORT_SPLIT)
+            recovery.installed_startup_read(None,legacy,None,None,None,policy=ip.EXPORT_SPLIT)
         with self.assertRaisesRegex(ValueError,'installed_explicit_launch_policy'):
             recovery.installed_startup_read(None,None,None,None,None,policy=ip.SPLIT,
                 family=ex.FAMILY,launch_policy=ex.LAUNCH)

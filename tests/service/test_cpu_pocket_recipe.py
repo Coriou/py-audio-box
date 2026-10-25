@@ -22,6 +22,18 @@ def pcm(rate=48000, frames=480):
 
 
 class PocketRecipeAdmission(unittest.TestCase):
+    def test_failure_diagnostic_retains_location_without_private_values(self):
+        def private_failure():
+            credential = 'private-test-credential'
+            raise ValueError(credential)
+        try:
+            private_failure()
+        except ValueError as exc:
+            diagnostic = RECIPE.failure_diagnostic(exc)
+        self.assertRegex(diagnostic, r'^ValueError:private_failure:[0-9]+$')
+        self.assertNotIn('private-test-credential', diagnostic)
+        self.assertEqual(RECIPE.failure_diagnostic(KeyboardInterrupt()), 'KeyboardInterrupt')
+
     def test_reference_ticks_use_48k_clock_at_both_allowed_rates(self):
         expected=json.loads((ROOT/'requirements/tts/pocket-fr.expected.json').read_bytes())
         for rate in (24000,48000):

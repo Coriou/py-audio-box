@@ -50,8 +50,8 @@ def test_work_committed_before_exclusive_create(core, context, monkeypatch):
     job, result = proposal(core, context)
     core._publish(job['id'], result)
     assert len(seen) == 1 and core.job(job['id'])['state'] == 'succeeded'
-    assert core.db.execute('PRAGMA user_version').fetchone() == (1,)
-    assert core.db.execute('SELECT * FROM p1_format').fetchall() == [(1, 'synthetic-core')]
+    assert core.db.execute('PRAGMA user_version').fetchone() == (2,)
+    assert core.db.execute('SELECT * FROM p1_format').fetchall() == [(2, 'synthetic-core')]
 
 
 @pytest.mark.parametrize('kind', ['short', 'zero', 'partial_error', 'flush', 'file_fsync'])
