@@ -560,7 +560,7 @@ class BlockedPipeWitness_B:
         if Path(filename).resolve() != source_path.resolve():
             raise ValueError('B wrong target source')
         data = source_path.read_bytes()
-        if hashlib.sha256(data).hexdigest() != 'c236e4045a0c35836fc269fd5938c053ab3e97f1f2682f023470afe3a68dd211':
+        if hashlib.sha256(data).hexdigest() != '91746519b27f862a0b80137262ca05cd2a7a2daf14307ac378884da056ff7c95':
             raise ValueError('B changed target source')
         key = cls.fact_key(function, node, data)
         if prepared is not None:
@@ -1349,8 +1349,7 @@ class BlockedPipeWitness_B:
         return (type(deadline) in (int, float) and math.isfinite(deadline) and deadline == self.deadline and
             self.recovery.time.monotonic is self.clock and self.clock() >= deadline)
 
-    def eagain(self, exc, frame):
-        tb = exc.__traceback__
+    def eagain(self, exc, frame, tb):
         if not (type(exc) is BlockingIOError and exc.errno == errno.EAGAIN and tb is not None and
                 tb.tb_frame is frame and tb.tb_lasti in self.write_sites and tb.tb_next is not None and
                 tb.tb_next.tb_frame.f_code is self.observed.__code__ and
@@ -1486,7 +1485,7 @@ class BlockedPipeWitness_B:
                     exc = arg[1]
                     if type(exc) is BlockingIOError and self.phase in ('armed', 'backpressure'):
                         first = self.phase == 'armed'
-                        if not self.eagain(exc, frame):
+                        if not self.eagain(exc, frame, arg[2]):
                             self.valid = False
                             diagnostic = self.__dict__.get('_refusal')
                             if diagnostic and not diagnostic['first_site']:
@@ -1503,7 +1502,7 @@ class BlockedPipeWitness_B:
                                             pass
                         elif first: token = b'B:e;'
                     elif self.timeout(exc):
-                        tb = exc.__traceback__
+                        tb = arg[2]  # Live trace-event chain; not yet attached to exc.
                         if local.get('pid') == 0:
                             diagnostic = self.__dict__.get('_refusal')
                             first_child_role = diagnostic and not diagnostic.get('child_role', False)

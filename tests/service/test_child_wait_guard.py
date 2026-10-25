@@ -1593,9 +1593,9 @@ predicate_e = {'wrong-errno', 'subclass', 'raw-budget', 'offset', 'view-owner', 
 predicate_f = {'premature', 'route561', 'raise-offset', 'call-offset',
     'absent-route', 'extra-route', 'reordered-route', 'wrong-args'}
 admission = {'missing-obj', 'wrong-obj', 'wrong-node', 'parameter', 'wrong-code', 'closure', 'operation'}
-def probe_e(w, exc, frame):
+def probe_e(w, exc, frame, tb):
     saved = w.__dict__.copy()
-    try: return original['eagain'](w, exc, frame)
+    try: return original['eagain'](w, exc, frame, tb)
     finally: w.__dict__.clear(); w.__dict__.update(saved)
 def extra(exc): raise exc
 class Plugin:
@@ -1739,8 +1739,8 @@ class Plugin:
                 assert w.eligible and not w.valid
                 evidence('admission-mutated-rejected')
         patch.setattr(cls, '__init__', init)
-        def eagain(w, exc, frame):
-            assert probe_e(w, exc, frame), 'EAGAIN prerequisite absent; never negative PASS'
+        def eagain(w, exc, frame, tb):
+            assert probe_e(w, exc, frame, tb), 'EAGAIN prerequisite absent; never negative PASS'
             evidence('real-eagain-baseline')
             if mode.startswith('fd-'):
                 fd = frame.f_locals['write_fd']; old = w.identity(fd)[0]
@@ -1762,11 +1762,11 @@ class Plugin:
                 assert closed.value.errno == errno.EBADF
                 evidence('actual-dup2-readback-temp-closed')
             if mode in predicate_e:
-                inner = exc.__traceback__.tb_next.tb_frame
+                inner = tb.tb_next.tb_frame
                 if mode == 'wrong-errno': exc.errno = errno.EPIPE; assert exc.errno == errno.EPIPE
                 elif mode == 'subclass':
                     class Sub(BlockingIOError): pass
-                    exc = Sub(errno.EAGAIN, 'control').with_traceback(exc.__traceback__)
+                    exc = Sub(errno.EAGAIN, 'control').with_traceback(tb)
                     assert type(exc) is Sub
                 elif mode == 'raw-budget':
                     h.set_frame_local(frame, 'raw', bytearray(1048577))
@@ -1785,7 +1785,7 @@ class Plugin:
                     inner.f_locals['raw'] = memoryview(frame.f_locals['raw'])[:1]
                     assert inner.f_locals['raw'].nbytes == 1
                 evidence('source-predicate-mutated')
-            answer = original['eagain'](w, exc, frame)
+            answer = original['eagain'](w, exc, frame, tb)
             reject = mode.startswith('fd-') or mode in predicate_e or mode == 'missing-eagain'
             if mode == 'missing-eagain': answer = False  # Withheld certificate control, no fake kernel EAGAIN.
             assert answer is not reject
@@ -1798,10 +1798,10 @@ class Plugin:
             return answer
         # Repeated EAGAIN retries must not create repeated evidence or mutations.
         seen = [False]
-        def once_e(w, exc, frame):
-            if seen[0]: return original['eagain'](w, exc, frame)
+        def once_e(w, exc, frame, tb):
+            if seen[0]: return original['eagain'](w, exc, frame, tb)
             seen[0] = True
-            return eagain(w, exc, frame)
+            return eagain(w, exc, frame, tb)
         patch.setattr(cls, 'eagain', once_e)
         timeout_ids = [0, 0]
         def trace(w, frame, event, arg):
@@ -2485,7 +2485,10 @@ def _B_precapture_program(control):
             target = next(n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name == cls.name)
             call, = [n for n in ast.walk(target) if isinstance(n, ast.Call) and
                 ast.unparse(n.func) == 'recovery._run_bounded_maintenance']
-            assert isinstance(call.args[0], ast.Dict) and not call.args[0].keys
+            assert (isinstance(call.args[0], ast.Call) and
+                isinstance(call.args[0].func, ast.Name) and call.args[0].func.id == '_t1_legacy_pipe_roots' and
+                len(call.args[0].args) == 1 and isinstance(call.args[0].args[0], ast.Name) and
+                call.args[0].args[0].id == 'tmp_path' and not call.args[0].keywords)
             call.args[0] = ast.copy_location(ast.Dict(keys=[ast.Constant('B1')],
                 values=[ast.Constant(None)]), call.args[0])
             ast.fix_missing_locations(tree)
