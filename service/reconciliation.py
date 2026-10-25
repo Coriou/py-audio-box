@@ -251,6 +251,16 @@ class Reconciliation:
                 for entry in root_entries:
                     self._charge()
                     info = os.stat(entry.name, dir_fd=root_fd, follow_symlinks=False)
+                    if entry.name == 'native-renewal' and policy is None:
+                        from service.native_renewal import namespace
+                        evidence = namespace(self.core.root)
+                        for name, value in evidence.items():
+                            raw = encode(value).encode()
+                            self._charge(len(raw))
+                            self._row('native-renewal', name, 'committed_referenced',
+                                      'validated_native_renewal_preparation',
+                                      identity=[hashlib.sha256(raw).hexdigest()])
+                        continue
                     if entry.name in archives:
                         kind, intent = archives[entry.name]
                         if not stat.S_ISREG(info.st_mode) or not control_owned(info) or info.st_nlink!=1 or info.st_mode & 0o077:

@@ -65,35 +65,7 @@ def pcm(data, spec, reference=False):
     except (ValueError, EOFError, wave.Error): raise Refused('native_pcm') from None
 
 
-class Journal:
-    def __init__(self, root, deployment, configuration):
-        self.root = private(root, True)
-        fd = os.open(self.root/'native.lock', os.O_RDWR | os.O_CREAT | os.O_NOFOLLOW, 0o600)
-        self.lock = os.fdopen(fd, 'a+b')
-        private(self.root/'native.lock')
-        fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
-        self.deployment, self.configuration = deployment, configuration
-        path = self.root/'native.json'
-        if path.exists():
-            raw = read_private(path, 1048576)
-            value = json.loads(raw)
-            p._closed(value, ('payload', 'sha256'))
-            if hashlib.sha256(canonical(value['payload'])).hexdigest() != value['sha256']: raise Refused('native_journal')
-            self.value = value['payload']; self.validate(self.value)
-            from worker.native_child import validate_proposal
-            for r in self.value['records']:
-                if r['output'] is not None:
-                    data=read_private(private(self.root/r['token'],True)/'output',1048576)
-                    if len(data)!=r['output']['bytes'] or hashlib.sha256(data).hexdigest()!=r['output']['sha256']: raise Refused('native_journal')
-                    validate_proposal(r['snapshot'],r['proposal'],data,p.native_execution(r['snapshot'][1]))
-        else:
-            if set(x.name for x in self.root.iterdir())!={'native.lock'}: raise Refused('native_storage')
-            self.save(dict(version='native-journal-v1', deployment_id=deployment,
-                configuration_sha256=configuration, lane=secrets.token_hex(16), records=[]))
-        expected={'native.lock','native.json'} | {r['token'] for r in self.value['records']}
-        if set(x.name for x in self.root.iterdir())!=expected: raise Refused('native_storage')
-        for r in self.value['records']: private(self.root/r['token'],True)
-
+class _JournalValidation:
     def validate(self, value):
         p._closed(value, ('version','deployment_id','configuration_sha256','lane','records'))
         if (value['version'],value['deployment_id'],value['configuration_sha256']) != ('native-journal-v1',self.deployment,self.configuration): raise Refused('native_journal')
@@ -124,7 +96,46 @@ class Journal:
         return dict(runtime_id=r['id'],binding=r['binding'],deployment_id=self.deployment,
             configuration_sha256=self.configuration,lane=lane or self.value['lane'],boot=r['boot'],original_deadline=r['snapshot'][0]['deadline'])
 
+
+
+class Journal(_JournalValidation):
+    def __init__(self, root, deployment, configuration):
+        self.root = private(root, True)
+        self.execution_guard()
+        fd = os.open(self.root/'native.lock', os.O_RDWR | os.O_CREAT | os.O_NOFOLLOW, 0o600)
+        self.lock = os.fdopen(fd, 'a+b')
+        private(self.root/'native.lock')
+        fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        self.execution_guard()
+        self.deployment, self.configuration = deployment, configuration
+        path = self.root/'native.json'
+        if path.exists():
+            raw = read_private(path, 1048576)
+            value = json.loads(raw)
+            p._closed(value, ('payload', 'sha256'))
+            if hashlib.sha256(canonical(value['payload'])).hexdigest() != value['sha256']: raise Refused('native_journal')
+            self.value = value['payload']; self.validate(self.value)
+            from worker.native_child import validate_proposal
+            for r in self.value['records']:
+                if r['output'] is not None:
+                    data=read_private(private(self.root/r['token'],True)/'output',1048576)
+                    if len(data)!=r['output']['bytes'] or hashlib.sha256(data).hexdigest()!=r['output']['sha256']: raise Refused('native_journal')
+                    validate_proposal(r['snapshot'],r['proposal'],data,p.native_execution(r['snapshot'][1]))
+        else:
+            if set(x.name for x in self.root.iterdir())!={'native.lock'}: raise Refused('native_storage')
+            self.save(dict(version='native-journal-v1', deployment_id=deployment,
+                configuration_sha256=configuration, lane=secrets.token_hex(16), records=[]))
+        expected={'native.lock','native.json'} | {r['token'] for r in self.value['records']}
+        if set(x.name for x in self.root.iterdir())!=expected: raise Refused('native_storage')
+        for r in self.value['records']: private(self.root/r['token'],True)
+
+    def execution_guard(self):
+        # Partial publication is deliberately as blocking as a completed marker.
+        if any(path.name.startswith('retirement') for path in self.root.iterdir()):
+            raise Refused('native_root_retired')
+
     def save(self,value):
+        self.execution_guard()
         self.validate(value)
         raw = canonical(dict(payload=value,sha256=hashlib.sha256(canonical(value)).hexdigest()))
         if len(raw)>1048576: raise Refused('native_journal_limit')
@@ -285,6 +296,7 @@ class NativeSupervisor:
         return {e.reference_id:dict(path=str(self.directory(r)/('input-'+e.reference_sha256)),voice_id=e.voice_id,voice_revision=e.voice_revision,checkpoint=e.checkpoint,revision=e.revision,text=e.reference_text)}
 
     def dispatch(self,request):
+        self.journal.execution_guard()
         q=p.request(request)
         if q['deployment_id']!=self.journal.deployment or q['configuration_sha256']!=self.journal.configuration: raise Refused('native_session')
         op=q['op']
@@ -358,6 +370,7 @@ class NativeSupervisor:
         return 'unknown'
 
     def prepare(self,q):
+        self.journal.execution_guard()
         if q['boot']!=self.boot: raise Refused('native_session')
         snapshot=json.loads(canonical(q['body']['snapshot'])); binding=hashlib.sha256(canonical(snapshot)).hexdigest()
         if binding!=q['binding']: raise Refused('native_binding')
@@ -424,6 +437,7 @@ class NativeSupervisor:
         return {}
 
     def start(self,r):
+        self.journal.execution_guard()
         if r['phase']!='prepared': return {}
         if not self.transfer.acquire(False): raise Refused('native_busy')
         try:

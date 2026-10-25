@@ -532,6 +532,8 @@ def native_startup_inputs(record_file, *, configuration_file, templates_file, ow
     NativeActivation repeats binding and validates completed history under Core
     exclusion. Its private pending-import mode grants no admission authority.
     """
+    from service.native_renewal import startup_guard
+    startup_guard(Path(owner_root))
     directory(str(literal(str(record_file)).parent))
     # Canonical bytes preserve primitive types (True/1/1.0 compare equal in Python).
     saved = canonical(document(record_file))

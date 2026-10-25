@@ -47,6 +47,10 @@ def create_native_app(*, record_file, configuration_file, templates_file, owner_
 
 
 def main(argv=None):
+    import sys
+    arguments = list(sys.argv[1:] if argv is None else argv)
+    if arguments and arguments[0] in ('renewal-begin','renewal-retire','renewal-commit'):
+        return maintenance_main(arguments)
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('command', choices=('serve',))
     for name in ('record-file', 'configuration-file', 'templates-file', 'owner-root', 'staging', 'credential-file'):
@@ -71,6 +75,31 @@ def main(argv=None):
         asyncio.run(run())
     except BaseException:
         raise SystemExit('native installed launch refused; retain inputs for review') from None
+
+
+def maintenance_main(argv):
+    """Private operator commands only; no HTTP or public provisioning route."""
+    from service import native_renewal as renewal
+    parser = argparse.ArgumentParser(description='Stopped native renewal preparation; successor activation unavailable')
+    commands = parser.add_subparsers(dest='command',required=True)
+    begin = commands.add_parser('renewal-begin')
+    for name in ('record-file','configuration-file','templates-file','owner-root','request-id'):
+        begin.add_argument('--'+name,required=True)
+    retire = commands.add_parser('renewal-retire')
+    retire.add_argument('--intent-file',required=True); retire.add_argument('--host-root',required=True)
+    commit = commands.add_parser('renewal-commit')
+    commit.add_argument('--intent-file',required=True); commit.add_argument('--export-file',required=True)
+    args = vars(parser.parse_args(argv)); command = args.pop('command')
+    try:
+        if command == 'renewal-begin':
+            record = args.pop('record_file'); result = renewal.begin(record,**args)
+        elif command == 'renewal-retire':
+            intent = args.pop('intent_file'); result = renewal.retire(intent,**args)
+        else:
+            intent = args.pop('intent_file'); result = renewal.commit(intent,**args)
+        print(package.canonical(result).decode())
+    except Exception as error:
+        raise SystemExit(str(error)+'; retain all inputs and evidence') from None
 
 
 if __name__ == '__main__':

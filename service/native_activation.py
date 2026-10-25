@@ -84,7 +84,7 @@ class NativeActivation:
             _INSTALLED_LIFECYCLES.pop(id(self), None)
 
 
-def completed_history(core, runtime):
+def completed_history(core, runtime, *, retired=None):
     """Read-only native policy under Core exclusion, before recovery or scheduling.
 
     Single-attempt successes and receipt-only failed/cancelled jobs are supported.
@@ -99,6 +99,10 @@ def completed_history(core, runtime):
     from service.worker_transport import Authority
     from service.native_runtime import _read
     from worker import native_protocol as p
+    if retired is not None:
+        from service.native_renewal import RetiredEvidence
+        if type(retired) is not RetiredEvidence: raise Refused('native_history_evidence_unavailable')
+        retired.check_membership(core, runtime)
     if threading.get_ident() != runtime.owner: raise Refused('native_owner_required')
     def require(ok):
         if not ok: raise Refused('native_history_unclean')
@@ -182,7 +186,10 @@ def completed_history(core, runtime):
         require(canonical(immutable(frozen)) == canonical(immutable(finished)))
         require(d['acked'] == 1 and d['phase'] == 'acknowledged' and canonical(json.loads(d['outcome'])) == canonical(job))
         receipt = json.loads(d['receipt']); p.terminal_receipt(receipt,authority=a,runtime_id=d['runtime'],local_import_uid=runtime.local_import_uid)
-        retained = runtime._rpc('collect',{},authority=a,runtime_id=d['runtime'])
+        if retired is None:
+            retained = runtime._rpc('collect',{},authority=a,runtime_id=d['runtime'])
+        else:
+            retained = retired.collect(a, d['runtime'])
         require(canonical(retained['receipt']) == canonical(receipt))
         reservation = reservations[jid]; demand = json.loads(reservation['demand'])
         from service.admission import native_demand

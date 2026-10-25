@@ -299,3 +299,18 @@ to 1 MiB/60 seconds; partial segments and x-vector preparation are unsupported.
 No per-voice enrollment editing is needed. Public jobs list/wait/events/cancel and
 voice management share canonical HTTP with thin CLI/MCP; native retry remains
 unavailable. This source journey does not qualify arm64 ABI, topology or Metal.
+
+## r344 stopped-renewal preparation candidate — unavailable for operation
+
+This candidate adds private `renewal-begin`, `renewal-retire` and
+`renewal-commit` parser entries to `scripts/native-installed.py`. **It does not
+implement a supported renewal transaction. Do not run these commands on an
+installation.** Begin persists an admission-blocking intent; retire permanently
+fences the old native root and exports terminal evidence. Commit validates the
+old history offline and then explicitly refuses
+`native_renewal_successor_unavailable`. There is no supported rollback, successor
+activation, cumulative host-capacity carryover or eight-epoch chain yet. A valid
+preparation seal does not reopen the owner. Only inert source fixtures exercise
+these commands/functions in this candidate. The r343 Lot A exit is incomplete;
+independent review and completion are required before adoption. Lot B origin
+mapping and the full public renewal journey remain subsequent work.

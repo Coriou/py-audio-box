@@ -177,6 +177,40 @@ def _core_maintenance_lease():
         yield
 
 
+@contextmanager
+def native_maintenance(root):
+    """Existing Core registry + lifetime lock, without constructing/recovering Core.
+
+    Only an existing private owner is admissible. SQLite is opened read-only and
+    query-only; constructor cleanup retains the same uncertain-close obligations.
+    """
+    from service import native_package as n
+    root = n.directory(str(Path(root).absolute()))
+    record = _reserve_core(root)
+    try:
+        info = root.stat()
+        record.bind_root((info.st_dev, info.st_ino))
+        # Maintenance must never create a missing lock or database.
+        from service.native_runtime import _read
+        _read(root/'control.lock', 0)
+        fd = os.open(root/'control.lock', os.O_RDWR | os.O_NOFOLLOW | os.O_NONBLOCK)
+        record.owner = os.fdopen(fd, 'r+b')
+        fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        _read(root/'core.sqlite', 16*1024**2)
+        record.db = sqlite3.connect((root/'core.sqlite').as_uri()+'?mode=ro',
+                                   uri=True, isolation_level=None)
+        record.db.execute('PRAGMA query_only=ON')
+        record.db.execute('BEGIN')
+        class ReadOnlyOwner:
+            # Pure retained-media reader, no recovery/schema/owner constructor.
+            asset = Core.asset
+        owner = ReadOnlyOwner()
+        owner.root, owner.db = root, record.db
+        yield owner
+    finally:
+        record.close()
+
+
 # Read-only compatibility view for the existing F2 constructor probes. It owns
 # no additional records/resources; all retention is in the fixed registry.
 from collections.abc import Set as _AbstractSet
@@ -212,6 +246,8 @@ class Core:
             try: fcntl.flock(self.owner, fcntl.LOCK_EX | fcntl.LOCK_NB)
             except BlockingIOError:
                 raise ValueError('control_busy') from None
+            from service.native_renewal import startup_guard
+            startup_guard(self.root)
             for name in ('staging', 'assets', 'owners'):
                 path = self.root / name
                 if not fresh and not path.is_dir():
