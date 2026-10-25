@@ -126,3 +126,13 @@ class NativeHistoryTests(unittest.TestCase):
 
     def test_changed_import_intent_refuses(self):
         self.refusal(lambda c:next(self.f.spool.glob('*/import-intent')).write_bytes(b'{}'))
+
+    def test_missing_entire_catalogue_refuses_before_core_can_recreate_it(self):
+        def remove(c):
+            from service.voice_store import _TABLES
+            c.db.execute('PRAGMA foreign_keys=OFF')
+            for table in _TABLES: c.db.execute('DROP TABLE '+table)
+        self.refusal(remove)
+        import sqlite3
+        with sqlite3.connect(self.root/'core.sqlite') as db:
+            self.assertIsNone(db.execute("SELECT 1 FROM sqlite_master WHERE name='voice_catalogue_format'").fetchone())

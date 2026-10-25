@@ -90,7 +90,9 @@ class Dispatcher:
                         enrollment_gate(self.root, self.persistent_registration,
                             hello, self.current_profiles,
                             DEFAULT_BUDGET if self.budget is None else self.budget)
-            core=self.core=Core(self.root)
+            from service.native_activation import NativeActivation
+            core=self.core=Core(self.root, _native_activation=(self.installed_activation
+                if type(self.installed_activation) is NativeActivation else None))
             if self.installed_activation is not None:
                 self.installed_activation.postcheck(self)
                 self.installed_checked = True

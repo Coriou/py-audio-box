@@ -53,13 +53,16 @@ class NativeActivation:
                 type(hello.get('launches')) is not int or hello['launches'] != self.expected_launches):
             raise Refused('native_activation_hello')
 
+    def retained_check(self, core):
+        # Core invokes this under flock, before any schema initialization/migration.
+        if self.was_empty != core.fresh_initialized:
+            raise Refused('native_retained_history_unsupported')
+        self.expected_launches = 0 if core.fresh_initialized else completed_history(core, self.runtime)
+
     def postcheck(self, dispatcher):
         # Core's lifetime exclusion is held here; all SQLite remains on its owner.
         if self.was_empty != dispatcher.core.fresh_initialized:
             raise Refused('native_retained_history_unsupported')
-        self.expected_launches = 0
-        if not dispatcher.core.fresh_initialized:
-            self.expected_launches = completed_history(dispatcher.core, self.runtime)
         if dispatcher.runtime is not self.runtime: raise Refused('native_owner_binding')
         before, _, _ = n._enrollment_snapshot(**{k:v for k,v in self.inputs.items() if k != 'connector'})
         if canonical(before) != self.saved or canonical(n.document(self.record_file)) != self.saved:
