@@ -229,18 +229,23 @@ def archive(source, destination):
 
 def main(argv=None):
     parser=argparse.ArgumentParser(description='Finite Linux Docker speech-box installer; retained failures require operator review.')
-    parser.add_argument('command',choices=('init','complete','up','stop','status','archive'))
+    parser.add_argument('command',choices=('init','complete','up','stop','status','archive','setup'))
     parser.add_argument('--configuration'); parser.add_argument('--scope'); parser.add_argument('--host-policy')
+    parser.add_argument('--request'); parser.add_argument('--setup-bundle')
     parser.add_argument('--initialization-digest'); parser.add_argument('--output')
     args=parser.parse_args(argv)
     try:
+        if args.command=='setup':
+            from service.cpu_setup import main as setup
+            if not args.request or not args.output: raise ValueError('explicit_setup_request_output_required')
+            return setup(['--request',args.request,'--output',args.output])
         if args.command=='archive':
             if not args.output: raise ValueError('output_required')
             print(archive(Path(__file__).resolve().parents[1],args.output)); return
         if sys.version_info[:2] != (3,11): raise ValueError('trusted_python311_required')
         from service import host_install as hi, install_policy as ip
         from service.persistent_init import initialize_split, digest
-        if not args.configuration or not args.scope: raise ValueError('explicit_inputs_required')
+        if not args.setup_bundle and (not args.configuration or not args.scope): raise ValueError('explicit_inputs_required')
         # Public data only; never accept credential data as an argument.
         def read(path):
             fd=os.open(path,os.O_RDONLY|os.O_NOFOLLOW|os.O_NONBLOCK)
@@ -249,14 +254,21 @@ def main(argv=None):
                 raw=stream.read(65537)
             if len(raw)>65536: raise ValueError('input_budget')
             return hi.recovery.host_json(raw)
-        config=ip.configuration(read(args.configuration)); scope=read(args.scope)
+        if args.setup_bundle:
+            if args.configuration or args.scope or args.host_policy: raise ValueError('setup_bundle_exclusive')
+            bundle=read(args.setup_bundle)
+            hi.recovery.closed(bundle,'phase layout configuration scope host_policy')
+            if bundle['phase']!='configuration-only': raise ValueError('setup_configuration_only_required')
+            config=ip.configuration(bundle['configuration']); scope=bundle['scope']
+        else:
+            config=ip.configuration(read(args.configuration)); scope=read(args.scope)
         hi.validate_scope(scope)
         if args.command!='complete' and args.initialization_digest:
             raise ValueError('completion_command_required')
         os.umask(0o077)
         if args.command=='init':
-            if not args.host_policy: raise ValueError('explicit_host_policy_required')
-            hi.create_installed_authority(config,scope,read(args.host_policy))
+            if not args.host_policy and not args.setup_bundle: raise ValueError('explicit_host_policy_required')
+            hi.create_installed_authority(config,scope,bundle['host_policy'] if args.setup_bundle else read(args.host_policy))
         elif args.host_policy: raise ValueError('provisioning_only_at_init')
         directory=Path(hi.recovery.HOST_AUTHORITY_DIRECTORY)/'installed'/digest(scope)
         with hi.installed_launch_authority(config,scope) as authority:

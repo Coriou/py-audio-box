@@ -1,5 +1,8 @@
 # Packaged headless installation
 
+For daemon-side CPU policy generation and the explicit Intel Mac Linux-VM
+boundary, use [CPU-DOCKER.md](CPU-DOCKER.md).
+
 This source unit supplies the finite `speech-box init`, `complete`, `up`,
 `status`, and `stop` command. Independent source review and actual installed
 Linux/CPU speech qualification remain pending. Do not interpret an
