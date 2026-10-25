@@ -457,4 +457,90 @@ def main(argv=None):
         raise SystemExit('native package refused; retained inputs require review') from None
 
 
+
+
+def _enrollment_snapshot(configuration_file, templates_file, owner_root):
+    """Private source preparation only; no Core, history or readiness authority."""
+    from service.execution_context import NativeQwenContexts
+    from worker.engines.qwen_execution import inventory_from_wire
+    owner = directory(str(owner_root))
+    with parent_fd(owner) as (fd, name):
+        info = os.stat(name, dir_fd=fd, follow_symlinks=False)
+    config = document(configuration_file)
+    templates = document(templates_file)
+    directory(str(literal(str(templates_file)).parent))
+    p._closed(templates, ('version', 'variant', 'profiles', 'budget', 'inventory', 'registrations'))
+    if type(templates['version']) is not int or templates['version'] != 1 or templates['variant'] != VARIANT:
+        raise Refused('native_enrollment_variant')
+    rows = templates['registrations']
+    if type(rows) is not list or not 1 <= len(rows) <= 64: raise Refused('native_registration')
+    contexts = {}
+    for row in rows:
+        p._closed(row, ('principal', 'profile', 'voice_version', 'context'))
+        for key in ('principal', 'profile', 'voice_version'):
+            if type(row[key]) is not str or not 1 <= len(row[key]) <= 256:
+                raise Refused('native_registration')
+        key = tuple(row[k] for k in ('principal', 'profile', 'voice_version'))
+        if key in contexts: raise Refused('native_registration_duplicate')
+        contexts[key] = row['context']
+    # Validate the actual profile/model/immutable version/native tuple relation.
+    selected = NativeQwenContexts(contexts, inventory_from_wire(templates['inventory']),
+                                  templates['profiles'], config['native'])
+    from service.admission import finite_budget
+    if type(templates['budget']) is not dict: raise Refused('native_enrollment_budget')
+    finite_budget(templates['budget'])
+    trust = {k: hashlib.sha256(read(config[k], 65536)).hexdigest()
+             for k in ('cafile', 'certfile', 'keyfile')}
+    record = dict(version=1, variant=VARIANT, kind='native-enrollment-source-v1',
+        owner=dict(path=str(owner), device=info.st_dev, inode=info.st_ino, uid=info.st_uid),
+        configuration_file=str(literal(str(configuration_file))),
+        templates_file=str(literal(str(templates_file))),
+        configuration_sha256=hashlib.sha256(canonical(config)).hexdigest(),
+        templates_sha256=hashlib.sha256(canonical(templates)).hexdigest(),
+        trust_sha256=trust, native=config['native'])
+    return record, selected, templates
+
+
+def enroll_native(record_file, *, configuration_file, templates_file, owner_root, connector=None):
+    """Explicit private write-once binding, never public self-enrollment.
+
+    Failure after file creation retains a blocking partial record. No repair,
+    overwrite, boot learning, DB mutation or installed activation occurs here.
+    """
+    record_file = literal(str(record_file))
+    directory(str(record_file.parent))
+    before, _, _ = _enrollment_snapshot(configuration_file, templates_file, owner_root)
+    enrolled_runtime(configuration_file, connector=connector)
+    after, _, _ = _enrollment_snapshot(configuration_file, templates_file, owner_root)
+    if before != after: raise Refused('native_enrollment_changed')
+    raw = canonical(before)
+    if len(raw) > 16384: raise Refused('native_enrollment_bounds')
+    with parent_fd(record_file) as (parent, name):
+        fd = os.open(name, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600, dir_fd=parent)
+        with os.fdopen(fd, 'wb') as stream:
+            if stream.write(raw) != len(raw): raise OSError('native_enrollment_short_write')
+            stream.flush(); os.fsync(stream.fileno())
+        os.fsync(parent)
+    return before
+
+
+def native_startup_inputs(record_file, *, configuration_file, templates_file, owner_root, connector=None):
+    """Reopen durable source enrollment and prepare exact runtime/contexts.
+
+    This does NOT authorize Dispatcher construction or read Linux/native history.
+    A future native owner activation must repeat this bracket under Core exclusion
+    and implement native completed-history validation before installed startup.
+    """
+    directory(str(literal(str(record_file)).parent))
+    saved = document(record_file)
+    before, contexts, templates = _enrollment_snapshot(configuration_file, templates_file, owner_root)
+    if saved != before: raise Refused('native_enrollment_binding')
+    runtime = enrolled_runtime(configuration_file, connector=connector)
+    after, _, _ = _enrollment_snapshot(configuration_file, templates_file, owner_root)
+    if after != before or document(record_file) != saved:
+        raise Refused('native_enrollment_changed')
+    return dict(runtime=runtime, production_contexts=contexts,
+                profiles=templates['profiles'], budget=templates['budget'])
+
+
 if __name__ == '__main__': main()

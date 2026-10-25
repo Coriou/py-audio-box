@@ -144,3 +144,43 @@ After the byte-bounded ZIP constructor, actual central entries must equal the
 preflight EOCD count and satisfy the source/wheel entry ceiling before any member
 read. This corrects bounded count accounting; it adds no unbounded-allocation or
 installed-runtime qualification claim.
+
+r303 adds a finite private durable SOURCE enrollment preparation API in
+`service.native_package`; this is still not installed activation. An operator
+calls `enroll_native(record_file, configuration_file=..., templates_file=...,
+owner_root=...)` explicitly while the deployment is stopped. No public endpoint,
+CLI default, environment lookup or automatic enrollment is added. The record
+parent and owner root must already be private owner-controlled 0700 directories.
+The new record is exclusive 0600, fsynced with its parent, never overwritten or
+repaired. A partial record blocks reuse. Retain it for operator reconciliation.
+
+The canonical 0600 templates document has exactly `version:1`,
+`variant:"native-qwen-v1"`, `profiles`, `budget`, `inventory`, `registrations`.
+Inventory uses the existing hardware wire representation. Budget uses the
+existing finite Admission shape. Registrations are 1..64 closed rows of
+`principal,profile,voice_version,context`; their three-part keys must be unique.
+Actual `NativeQwenContexts` validates frozen plans, native identity, model/voice
+metadata, profile admission and inventory freshness. These are operator-selected
+source registrations, not supported fresh-catalogue voice creation or proof of
+Metal readiness. Supervisor registration and sealed model verification remain
+independent requirements.
+
+The record binds the literal control/templates paths and canonical document
+hashes, individual client trust byte hashes, exact five-field native identity,
+and owner root path/device/inode/UID. Native runtime construction still validates
+control shape, trust roots, pinned TLS and exact healthy hello including configured
+boot; uncertain retained imports refuse. Enrollment brackets hello with repeated
+configuration/trust/template/owner reads. The existing immutable operator-input,
+no hostile same-UID writer premise applies; this is not hostile-writer isolation.
+
+`native_startup_inputs` requires that same durable record and exact explicit
+inputs, repeats the bracket and returns existing runtime/context objects plus
+profiles/budget. Missing, malformed, changed or unhealthy state refuses; boot is
+never learned or updated from hello. This function is preparation for future
+startup wiring: **do not pass its result to an installed Dispatcher as activation
+authority**. It acquires no Core lock and reads no completed history. Native
+owner-thread pre/post acquisition checks, completed-history and publication/import
+uncertainty validation, installed lifespan/entrypoint wiring and topology/mount
+validation remain closed. Existing Linux enrollment/history policy is unchanged.
+A clean new native boot requires separately designed stopped/reconciled renewal;
+this write-once slice deliberately refuses automatic rotation.
