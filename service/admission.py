@@ -29,7 +29,8 @@ def native_demand(context):
 
 
 class Admission:
-    def __init__(self,core,staging,budget=None,*,private_spool=None):
+    def __init__(self,core,staging,budget=None,*,private_spool=None,native_availability=None):
+        self.native_availability = native_availability
         self.budget=finite_budget(DEFAULT_BUDGET if budget is None else budget)
         self.store=ResourceStore(core,self.budget,(core.root,staging) if private_spool is None else (core.root,staging,private_spool))
         self.core,self.staging=core,staging
@@ -52,8 +53,11 @@ class Admission:
             if selected['verification'] != 'measured' or not selected['qualification_receipt'] or 'synthetic' in selected['qualification_receipt'].lower():
                 raise ValueError('real_qualification_required')
             if spec.engine == 'qwen':
-                from worker.engines.qwen_execution import current_hardware, current_native_hardware, inventory_from_wire
-                (current_native_hardware if spec.device == 'mps' else current_hardware)(spec, inventory_from_wire(context['execution']['hardware']))
+                from worker.engines.qwen_execution import current_hardware, inventory_from_wire
+                if spec.device == 'mps':
+                    if self.native_availability is None: raise ValueError('native_availability_required')
+                    self.native_availability(context)
+                else: current_hardware(spec, inventory_from_wire(context['execution']['hardware']))
                 if spec.device == 'mps':
                     from worker.native_protocol import native_binding
                     native_binding(context)

@@ -304,9 +304,10 @@ class NativeQwenContexts:
     """
     def __init__(self, contexts, inventory, profiles, native):
         from worker.native_protocol import native_binding
-        from worker.engines.qwen_execution import current_native_hardware, inventory_wire
+        from worker.engines.qwen_execution import static_native_hardware, inventory_wire
         from contracts import validate as oracle
         if type(contexts) is not dict or not 1 <= len(contexts) <= 64: raise Refused('native_registration')
+        self._availability = None
         self._contexts = {}
         self._inventory = copy.deepcopy(inventory)
         self._native = copy.deepcopy(native)
@@ -318,10 +319,18 @@ class NativeQwenContexts:
             spec = execution(snapshot)
             if (profile,version) != ('qwen-mps',spec.voice_revision): raise Refused('native_registration')
             if snapshot['execution']['hardware'] != inventory_wire(inventory): raise Refused('hardware_identity')
-            current_native_hardware(spec, inventory)
+            static_native_hardware(spec, inventory)
             oracle.frozen_plan(snapshot['plan'],snapshot['bundles'])
             oracle.admission(dict(operation='speech_generate',input_sha256=oracle.plan_hash(snapshot['plan'])),snapshot,profiles)
             self._contexts[key] = json.dumps(snapshot,allow_nan=False)
+
+    def bind_availability(self, runtime):
+        if runtime.native != self._native: raise Refused('native_registration')
+        self._availability = runtime.check_availability
+
+    def _current(self, context):
+        if self._availability is None: raise Refused('native_availability_required')
+        self._availability(context)
 
     def authorize_origins(self, original, current, mapping):
         from worker.native_protocol import origin_template_pairs
@@ -348,7 +357,6 @@ class NativeQwenContexts:
     def resolve_owned(self, core, principal, operation, request):
         from contracts import validate as oracle
         from worker.native_protocol import owned_clone_context
-        from worker.engines.qwen_execution import current_native_hardware
         from worker.engines.pocket import _read
         oracle.validate(operation+'_request', request)
         version = None
@@ -368,7 +376,7 @@ class NativeQwenContexts:
         from worker.native_protocol import origin_execution_context
         context = origin_execution_context(context, templates[0])
         spec = execution(context)
-        current_native_hardware(spec,self._inventory)
+        self._current(context)
         raw = _read(core.root/'assets'/reference,spec.reference_bytes,spec.reference_sha256)
         from worker.engines.qwen_prepare import QwenPreparation, selected_reference
         if type(spec) is QwenPreparation: selected_reference(spec,raw)
@@ -401,12 +409,11 @@ class NativeQwenContexts:
 
     def _preset_context(self, principal, preset, voice_id):
         from worker.native_protocol import owned_preset_context
-        from worker.engines.qwen_execution import current_native_hardware
         matches = [json.loads(raw) for key, raw in self._contexts.items()
                    if key[0] == principal and execution(json.loads(raw)).task == 'custom_voice'
                    and execution(json.loads(raw)).preset == preset]
         if len(matches) != 1: raise Refused('unsupported_control')
-        current_native_hardware(execution(matches[0]), self._inventory)
+        self._current(matches[0])
         from worker.native_protocol import origin_execution_context
         return origin_execution_context(owned_preset_context(self._origin(matches[0]), principal, preset, voice_id), matches[0])
 
@@ -415,7 +422,6 @@ class NativeQwenContexts:
 
     def resolve_registered(self, principal, request, version):
         from contracts import validate as oracle
-        from worker.engines.qwen_execution import current_native_hardware
         oracle.validate('speech_generate_request',request)
         key = (principal,'qwen-mps',request['voice_version_id'])
         if key in self._contexts:
@@ -425,7 +431,7 @@ class NativeQwenContexts:
         from worker.transport import canonical
         if canonical(context['plan']['voice_versions']) != canonical([version]): raise Refused('saved_version_required')
         context['plan']['request'] = copy.deepcopy(request)
-        current_native_hardware(execution(context),self._inventory)
+        self._current(context)
         return context
 
     def resolve(self, principal, operation, request):

@@ -248,6 +248,7 @@ class ManagedCloneDerivationTests(unittest.TestCase):
         self.asset=ingest_local(self.core,'alice',self.f.reference_raw)
         self.foreign=ingest_local(self.core,'bob',self.f.reference_raw)
         self.contexts=NativeQwenContexts({('alice','qwen-mps','vv0'):snapshot[1]},self.f.f.inventory,snapshot[3],self.f.native)
+        self.contexts.bind_availability(self.f.runtime)
         self.request=dict(asset_id=self.asset['id'],in_tick=0,out_tick=8,reference_text=' Exact source.\n',
             audition_text=' Different audition.\n',identity=identity)
 

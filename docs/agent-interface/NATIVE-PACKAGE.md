@@ -1,4 +1,4 @@
-# Native Qwen package and owner lifecycle (r349 SOURCE candidate)
+# Native Qwen package and owner lifecycle (r352 SOURCE candidate)
 
 This separate `native-qwen-v1` archive is a worker source package, not a qualified
 installed deployment. Linux Kokoro/Pocket enrollment, root/PID1/UID rules, images,
@@ -159,7 +159,8 @@ Inventory uses the existing hardware wire representation. Budget uses the
 existing finite Admission shape. Registrations are 1..64 closed rows of
 `principal,profile,voice_version,context`; their three-part keys must be unique.
 Actual `NativeQwenContexts` validates frozen plans, native identity, model/voice
-metadata, profile admission and inventory freshness. These are operator-selected
+metadata, profile admission and static inventory identity. Current availability is
+associated separately as described below. These are operator-selected
 source registrations, not supported fresh-catalogue voice creation or proof of
 Metal readiness. Supervisor registration and sealed model verification remain
 independent requirements.
@@ -300,6 +301,51 @@ No per-voice enrollment editing is needed. Public jobs list/wait/events/cancel a
 voice management share canonical HTTP with thin CLI/MCP; native retry remains
 unavailable. This source journey does not qualify arm64 ABI, topology or Metal.
 
+## Current availability without trust renewal (r352 SOURCE candidate)
+
+Enrolled templates, inventory, runtime manifest, boot/lane and trust remain exact
+immutable identity evidence. Their recorded probe timestamps do not authorize
+future work and do not expire that identity. The host has one private in-memory
+observation cache for its exact enrolled MPS device/incarnation. On absent or
+expired evidence, future work requests a bounded current observation through the
+existing TLS 1.3 channel and exact peer pins. The private response is bound to the
+request ID, configuration, boot, lane, immutable inventory digest and runtime
+manifest. No public timestamp, inventory or trust-refresh operation is accepted.
+
+The installed default provider queries the actual native host metadata and
+Metal's `MTLCreateSystemDefaultDevice` API. It imports no ML, loads no model,
+downloads nothing and starts no process. This is cheap device availability, not
+an inference probe, performance measurement or qualification. Discovery only
+reads cached metadata and never triggers this query. Tests inject inert providers;
+the real provider has not been executed or qualified in this source lane.
+
+An observation lasts at most 300 seconds. Concurrent refreshes coalesce into one
+provider call; each refresh waits at most one second. At most one provider thread
+can remain in flight, including after timeout, and late results are discarded.
+Two bounded private availability RPC slots are separate from lifecycle/transfer
+slots, preserving stop/collect/ACK access. There is no scheduler, persisted lease,
+probe history, new epoch chain or new signature authority. Failed/unavailable,
+stale/future, malformed, foreign or changed-shape evidence refuses future work.
+
+Activation/control reopen reacquires the association through that pinned channel.
+When current availability fails, authenticated clean-history activation and reads
+remain possible, but each new registration/resolution/selection/admission and
+native prepare/start independently requires current availability. The supervisor
+also checks it before launch, including after input verification. A prepared job
+can refresh its current availability at start without changing its frozen input.
+Stop/reap/terminalization/collect/ACK and historical proof do not require a probe.
+No old Authority, plan/deadline, measurement binding, origin, voice version,
+reference/artifact or receipt is restamped or rewritten. Refresh spends no retained
+capacity; new jobs still spend all existing cumulative limits.
+
+Boot, peer trust, runtime/source archive or static hardware/configuration changes
+are not freshness. Boot/trust changes still require the explicit stopped renewal
+below, within its unchanged eight-epoch/capacity limits. **This source/package
+change is an upgrade and is not renewal-compatible with an old installed binary.**
+A fresh corrected installation must begin with the corrected archive/manifest.
+No upgrade migration or installed/hardware acceptance is supplied. Legacy remains
+CLOSED, Metal UNQUALIFIED and release NO-GO.
+
 ## Explicit stopped renewal and stable voice origins
 
 Use one retained owner and the following private maintenance path for renewal.
@@ -317,8 +363,9 @@ owner root and a 32-hex request ID. It persists the next numbered intent. Supply
 new boot/lane explicitly in the private configuration/templates before begin;
 hello never supplies enrollment authority. Keep unchanged runtime/model/settings,
 profile/budget/topology and owner/spool/staging paths. New trust files and input
-documents use new immutable paths. Inventory timestamps may refresh the same
-positive device shape. Retain all predecessor documents and host roots.
+documents use new immutable paths. Inventory timestamps may differ only within the same
+positive device shape; current availability is acquired separately and routine
+freshness no longer requires this transaction. Retain all predecessor documents and host roots.
 
 After stopping the old supervisor, retire takes the intent and old host root,
 holds `native.lock`, and exports exact ACKed terminal membership. Transfer that
@@ -335,7 +382,7 @@ required. No credentials, certificates or trust are generated by these commands.
 
 Start the candidate supervisor using unchanged package/model bytes and separately
 provisioned trust. Commit takes the same intent/export, checks exact pinned healthy
-zero-launch hello and current inventory, repeats immutable reads and hello, then
+zero-launch hello, exact enrolled inventory and current availability, repeats immutable reads and hello, then
 publishes the numbered commit as the sole activation point. Normal launch must
 name `native-renewal/NNN.enrollment` and its matching configuration/templates.
 The original enrollment or another stale envelope refuses. A pending intent or

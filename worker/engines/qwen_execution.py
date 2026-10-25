@@ -127,15 +127,10 @@ def current_hardware(spec, inventory):
     except (StopIteration,ValueError,TypeError): raise Refused('stale_or_unavailable_device') from None
 
 
-def current_native_hardware(spec, inventory, *, now=None):
-    """Enrolled native snapshot only; never interprets the control host as Metal.
-
-    Call at each future native resolution/admission/prepare/start seam. Historical
-    decoding must continue to use inventory_from_wire without freshness expiry.
-    """
-    from datetime import datetime, timezone
+def static_native_hardware(spec, inventory):
+    """Validate immutable native identity, independently of observation age."""
     from worker.hardware import DeviceFamily, topology_allows
-    inventory_wire(inventory)
+    inventory_from_wire(inventory_wire(inventory))
     from worker.engines.qwen_prepare import QwenPreparation
     if type(spec) is QwenPreparation: spec = spec.generation()
     if (type(spec) is not QwenExecution
@@ -143,6 +138,18 @@ def current_native_hardware(spec, inventory, *, now=None):
             or spec.task not in ('custom_voice', 'clone')
             or not topology_allows(inventory.host, DeviceFamily.MPS)):
         raise Refused('native_execution_required')
+    try:
+        device = next(d for d in inventory.devices if d.family == DeviceFamily.MPS and d.index == 0)
+        if device.supported is not True: raise ValueError()
+    except (StopIteration, ValueError):
+        raise Refused('stale_or_unavailable_device') from None
+
+
+def current_native_hardware(spec, inventory, *, now=None):
+    """Current observation only; immutable enrollment uses static validation."""
+    from datetime import datetime, timezone
+    from worker.hardware import DeviceFamily
+    static_native_hardware(spec, inventory)
     instant = datetime.now(timezone.utc) if now is None else now
     try:
         device = next(d for d in inventory.devices if d.family == DeviceFamily.MPS and d.index == 0)

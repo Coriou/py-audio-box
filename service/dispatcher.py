@@ -108,7 +108,10 @@ class Dispatcher:
             if self.installed_checked:
                 from service.native_activation import NativeActivation
                 self.enrolled = self.enrolled or type(self.installed_activation) is NativeActivation
-            self.admission=Admission(core,self.staging,self.budget,private_spool=getattr(self.runtime,'spool',None))
+            bind = getattr(self.production_contexts, 'bind_availability', None)
+            if bind is not None: bind(self.runtime)
+            self.admission=Admission(core,self.staging,self.budget,private_spool=getattr(self.runtime,'spool',None),
+                native_availability=getattr(self.runtime, 'check_availability', None))
             self.store=DispatchStore(core,self.admission)
             if hasattr(self.runtime,'recover_imports'):self.runtime.recover_imports(core)
             self.pool=ThreadPoolExecutor(max_workers=1,thread_name_prefix='bounded-lifecycle')

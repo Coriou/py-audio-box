@@ -165,6 +165,7 @@ class NativeOnboardingTests(unittest.TestCase):
         principal = self.f.snapshot[0]['principal_id']
         contexts = NativeQwenContexts({(principal, 'qwen-mps', 'vv0'): original},
             self.f.f.inventory, self.templates['profiles'], self.f.native)
+        contexts.bind_availability(self.f.runtime)
         for version in (original['plan']['voice_versions'][0],
                         contexts.preset_version(principal, self.f.f.e.preset, 'canonical')):
             request = dict(original['plan']['request'], voice_version_id=version['id'])

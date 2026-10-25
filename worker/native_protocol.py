@@ -18,7 +18,7 @@ from worker.transport import Refused, canonical, exact, remaining
 VERSION = 'native-qwen-v1'
 FRAME_LIMIT = 65536
 CHUNK_LIMIT = 32768
-OPS = frozenset(('hello', 'prepare', 'put_input', 'start', 'observe', 'stop',
+OPS = frozenset(('hello', 'availability', 'prepare', 'put_input', 'start', 'observe', 'stop',
                  'collect', 'get_output', 'ack'))
 
 
@@ -71,12 +71,15 @@ def request(value):
         for key in ('lane', 'boot'):
             _hex(value[key], 32)
         _hex(value['binding'], 64)
-        if op == 'prepare':
+        if op in ('prepare', 'availability'):
             if value['runtime_id'] is not None:
                 raise Refused('native_runtime')
         else:
             runtime_id(value['runtime_id'], value['lane'], value['boot'])
-    if op == 'prepare':
+    if op == 'availability':
+        _closed(body, ('runtime_manifest_sha256',))
+        _hex(body['runtime_manifest_sha256'], 64)
+    elif op == 'prepare':
         _closed(body, ('snapshot',))
         if type(body['snapshot']) is not list or len(body['snapshot']) != 4:
             raise Refused('native_snapshot')
@@ -250,6 +253,12 @@ def response(value, *, request):
         if type(v['runtime_id']) is not str or v['state'] not in ('alive','stopped-and-reaped','unknown'): raise Refused('native_response')
         if op=='prepare': runtime_id(v['runtime_id'],request['lane'],request['boot'])
         elif v['runtime_id'] != request['runtime_id']: raise Refused('native_response')
+    elif op=='availability':
+        _closed(v, ('enrollment_sha256','runtime_manifest_sha256','inventory'))
+        if v['enrollment_sha256'] != request['binding'] or v['runtime_manifest_sha256'] != request['body']['runtime_manifest_sha256']:
+            raise Refused('native_response_binding')
+        from worker.engines.qwen_execution import inventory_from_wire
+        inventory_from_wire(v['inventory'])
     elif op=='hello':
         _closed(v, ('deployment_id','configuration_sha256','lane','boot','quarantined','launches','runtime_manifest_sha256','inventory')+ (('retention',) if 'retention' in v else ()))
         if (v['deployment_id'],v['configuration_sha256']) != (request['deployment_id'],request['configuration_sha256']): raise Refused('native_response')
