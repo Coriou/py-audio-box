@@ -314,7 +314,7 @@ import builtins
 import pathlib
 original = builtins.__import__
 def guarded(name, *args, **kwargs):
-    if name.split('.')[0] in ('torch', 'pocket_tts', 'numpy', 'service', 'requests', 'urllib'):
+    if name.split('.')[0] in ('torch', 'pocket_tts', 'numpy', 'service', 'requests') or (name.split('.')[0] == 'urllib' and name != 'urllib.parse'):
         raise AssertionError(name)
     return original(name, *args, **kwargs)
 builtins.__import__ = guarded

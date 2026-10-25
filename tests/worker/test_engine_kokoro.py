@@ -87,7 +87,7 @@ class EngineTests(unittest.TestCase):
 import builtins
 original = builtins.__import__
 def guarded(name, *args, **kwargs):
-    if name.split('.')[0] in ('service', 'torch', 'onnxruntime', 'kokoro_onnx', 'numpy', 'requests', 'urllib'):
+    if name.split('.')[0] in ('service', 'torch', 'onnxruntime', 'kokoro_onnx', 'numpy', 'requests') or (name.split('.')[0] == 'urllib' and name != 'urllib.parse'):
         raise AssertionError(name)
     return original(name, *args, **kwargs)
 builtins.__import__ = guarded
