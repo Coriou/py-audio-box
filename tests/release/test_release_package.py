@@ -534,6 +534,16 @@ class GeneratedTopologyTests(unittest.TestCase):
 
 
 class ListenerProbeTests(unittest.TestCase):
+    def test_probe_uses_only_fixed_credential_for_validated_launch_policy(self):
+        from service import daemon_volumes as dv, installed_export as ex
+        for policy,path in ((None,e.ip.CREDENTIAL_DESTINATION),(dv.POLICY,dv.CREDENTIAL),(ex.LAUNCH,dv.CREDENTIAL)):
+            with self.subTest(policy=policy), patch('service.auth.private_input',side_effect=FileNotFoundError) as read:
+                with self.assertRaises(FileNotFoundError):e._listener_ready('a'*64,launch_policy=policy)
+                read.assert_called_once_with(path,mode=0o640,limit=48000)
+        with patch('service.auth.private_input') as read:
+            with self.assertRaises(ValueError):e._listener_ready('a'*64,launch_policy='caller/path')
+            read.assert_not_called()
+
     def test_probe_binds_live_activation_and_never_returns_token_or_body(self):
         from types import SimpleNamespace
         token='PRIVATE-TOKEN-NEVER-OUTPUT'

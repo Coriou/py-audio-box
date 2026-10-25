@@ -537,12 +537,16 @@ def _owned_app(dependencies, mount):
 STARTUP_NAME = 'startup.json'
 
 
-def _listener_ready(configuration_digest):
+def _listener_ready(configuration_digest, *, launch_policy=None):
     """Fixed local authenticated status probe; token/body never leave this helper."""
     from http.client import HTTPConnection
     from service.auth import private_input
     from service.recovery import host_json
-    value=host_json(private_input(ip.CREDENTIAL_DESTINATION,mode=0o640,limit=48000))
+    from service import daemon_volumes as dv, installed_export as ex
+    if launch_policy not in (None, dv.POLICY, ex.LAUNCH):
+        raise ValueError('installed_explicit_launch_policy')
+    credential = ip.CREDENTIAL_DESTINATION if launch_policy is None else dv.CREDENTIAL
+    value=host_json(private_input(credential,mode=0o640,limit=48000))
     token=value['credentials'][0]['token']
     connection=HTTPConnection('127.0.0.1',8000,timeout=2)
     try:
@@ -585,7 +589,7 @@ def launch_status(*, family=None):
                 raise ValueError('installed_startup_binding')
             gate=decode_projection(ip.read_private(GATE_DIRECTORY/GATE_NAME,GATE_LIMIT,policy=ip.SPLIT,role='control'), family=family)
             if gate['registration_id']!=result['registration_id']: raise ValueError('installed_startup_gate_binding')
-            if not _listener_ready(gate['configuration_digest']):
+            if not _listener_ready(gate['configuration_digest'],launch_policy=gate.get('launch_policy')):
                 print(encode(dict(phase='not_ready'))); return
             print(encode({k:result[k] for k in ('phase','registration_id')}))
         finally: os.close(value)
