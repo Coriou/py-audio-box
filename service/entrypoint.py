@@ -271,10 +271,10 @@ def checked_waiting_gate(waiting, configuration, runtime, *, root='/control/core
     from service.recovery import installed_startup_read
     _control_identity()
     gate = waiting.wait()
-    with ip.locked_file(Path(root)/'control.lock',policy=ip.SPLIT,role='control'):
+    with ip.locked_file(Path(root)/'control.lock',policy=ip.family_policy(family, configuration),role='control'):
         before = local_incarnation()
         hello = runtime.call('hello', {})
-        checked = installed_startup_read(root,configuration,gate,hello,before,policy=ip.family_policy(family),launch_policy=launch_policy,family=family)
+        checked = installed_startup_read(root,configuration,gate,hello,before,policy=ip.family_policy(family, configuration),launch_policy=launch_policy,family=family)
         if (runtime.call('hello', {}) != hello or local_incarnation() != before or
                 waiting.read() != gate):
             raise ValueError('installed_startup_bracket_changed')
@@ -355,7 +355,7 @@ class InstalledActivation:
         before = local_incarnation()
         hello = dispatcher.runtime.call('hello', {})
         checked = installed_startup_read(dispatcher.root, self.configuration, gate,
-                                        hello, before, policy=ip.family_policy(self.family), launch_policy=self.launch_policy, family=self.family)
+                                        hello, before, policy=ip.family_policy(self.family, self.configuration), launch_policy=self.launch_policy, family=self.family)
         if (checked != self.checked or self.waiting.read() != gate or
                 dispatcher.runtime.call('hello', {}) != hello or local_incarnation() != before):
             raise ValueError('installed_post_owner_binding_changed')
@@ -394,7 +394,7 @@ def create_installed_app(*, configuration_file, credential_file, root='/control/
         admitted = {c.principal for c in credentials._credentials if {'read','production-write'} <= c.scopes}
         if not set(config['audio_export']['principals']) <= admitted:
             raise ValueError('installed_export_credential_principals')
-    mapping = installed_mapping(kokoro, policy=ip.SPLIT)
+    mapping = installed_mapping(kokoro, policy=ip.configuration_policy(kokoro))
     contexts = installed_contexts(kokoro, mapping)
     runtime = runtime or SupervisorRuntime('/ipc', **(dict(family=family, configuration=config) if family is ex.FAMILY else {}))
     def dependencies():

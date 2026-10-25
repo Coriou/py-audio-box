@@ -794,6 +794,8 @@ def snapshot(roots, db, scope, *, policy=None, exclude_plan=None, exclude_abando
         identity,revision,kind,raw,h=data['p1_installation'][0]
         installation=json.loads(raw)
         (ex.installation if export else ip.installation)(installation)
+        if not export and policy is not None and policy is not ip.configuration_policy(installation['configuration']):
+            raise ValueError('installed_enrollment_policy_binding')
         if export and encode(installation)!=encode(_export_public): raise ValueError('export_exact_enrollment_required')
         if (digest(installation)!=h or identity!=installation['deployment_id'] or revision!=1 or kind!=installation['scope'] or installation['host']!=scope):
             raise ValueError('deployment_scope_mismatch')
@@ -3846,9 +3848,10 @@ def installed_startup_read(root, configuration, gate, hello, incarnation, *, pol
         if family is not ex.FAMILY or policy is not ip.EXPORT_SPLIT or launch_policy!=ex.LAUNCH:
             raise ValueError('installed_explicit_launch_policy')
         return ex.startup_read(root,configuration,gate,hello,incarnation,family=family)
-    if policy is not ip.SPLIT:
+    config = ip.configuration(configuration)
+    if policy is not ip.configuration_policy(config):
         raise ValueError('installed_explicit_launch_policy')
-    config = ip.configuration(configuration); projection(gate)
+    projection(gate)
     from service import daemon_volumes as dv
     if launch_policy not in (None,dv.POLICY) or (gate.get('launch_policy') != launch_policy):
         raise ValueError('installed_explicit_launch_policy')

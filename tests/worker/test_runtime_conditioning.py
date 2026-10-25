@@ -55,6 +55,20 @@ class ConditioningFilesystemTests(unittest.TestCase):
         (self.stage/'output.wav').write_bytes(b'untouched')
     def run_helper(self, mutate=None):
         with filesystem_policy(self.root,self.stage,mutate=mutate): c.remove_empty('attempt',20000)
+    def test_pocket_v2_requires_explicit_fixed_selector_and_empty_directory(self):
+        from service import install_policy as ip
+        def v2(role, values):
+            if role=='root':values.update(st_gid=10001,st_mode=stat.S_IFDIR|0o1753)
+        with filesystem_policy(self.root,self.stage,mutate=v2):
+            with self.assertRaises(c.ConditioningRefused):c.remove_empty('attempt',20000)
+            with self.assertRaises(c.ConditioningRefused):c.remove_empty('attempt',20000,policy=ip.EXPORT_SPLIT)
+            (self.child/'retained').write_bytes(b'x')
+            with self.assertRaises(OSError):c.remove_empty('attempt',20000,policy=ip.POCKET_SPLIT)
+            (self.child/'retained').unlink()
+            c.remove_empty('attempt',20000,policy=ip.POCKET_SPLIT)
+        self.assertFalse(self.child.exists())
+        self.assertEqual((self.stage/'output.wav').read_bytes(),b'untouched')
+
     def test_empty_and_verified_absence(self):
         with patch.object(os,'rmdir',wraps=os.rmdir) as remove, patch.object(os,'fsync',wraps=os.fsync) as sync:
             self.run_helper(); self.run_helper()
@@ -134,7 +148,7 @@ class ConditioningFilesystemTests(unittest.TestCase):
             for name,value in [('getuid',10001),('geteuid',10001),('getgid',20000),('getegid',20000),('getgroups',[])]:
                 stack.enter_context(patch.object(os,name,return_value=value))
             remove=stack.enter_context(patch.object(c,'remove_empty'))
-            c.main();remove.assert_called_once_with('attempt',20000)
+            c.main();remove.assert_called_once_with('attempt',20000,policy=None)
             with patch.object(os,'getgroups',return_value=[10001]):
                 with self.assertRaises(c.ConditioningRefused):c.main()
     def test_stage_symlink_and_substitution_leave_original_untouched(self):
@@ -168,6 +182,14 @@ class ConditioningSupervisorTests(unittest.TestCase):
         self.s.change=Mock();self.s.signal_namespace=Mock()
     def tick(self, waits=None):
         with patch('worker.runtime_supervisor.os.waitpid',side_effect=waits or [ChildProcessError()]),patch('worker.runtime_supervisor.time.monotonic',return_value=95):self.s.tick()
+    def test_only_trusted_pocket_v2_supervisor_adds_selector(self):
+        from service import install_policy as ip
+        self.s.installed_policy=ip.POCKET_SPLIT
+        proc=Mock();proc.wait.return_value=0
+        with patch('worker.runtime_supervisor.subprocess.Popen',return_value=proc) as launch:
+            self.s.conditioning(self.row)
+        self.assertEqual(launch.call_args.args[0][-1],ip.POCKET_V2_POLICY)
+
     def test_before_echild_and_receiver_pending_never_launch(self):
         with patch('worker.runtime_supervisor.subprocess.Popen') as launch:
             self.tick([(42,0),(0,0)]);launch.assert_not_called();self.s.change.assert_not_called()

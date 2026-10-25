@@ -229,6 +229,8 @@ def _split_core(public, control, staging, *, family=None):
         raise ValueError('permanent_control_identity_required')
     from service import install_policy as ip, installed_export as ex
     ip.family_installation(public, family)
+    policy = ip.family_policy(family, public['configuration'])
+    ip.directory_identity(staging, policy=policy, role='staging')
     checked = ex.expectation(public, family) if family is ex.FAMILY else None
     # Creation is exclusive. Existing roots must be fully enrolled exact stores;
     # unsupported interruption inside Core construction remains quarantined.
@@ -298,22 +300,24 @@ def _launch_split_child(raw):
     if child.returncode != 0: raise ValueError('split_child_failed')
 
 
-def _split_create(path, data, role, *, parent_identity=None):
+def _split_create(path, data, role, *, parent_identity=None, policy=None):
     """Exclusive, fd-checked durable creation. No replacement or chown repair."""
     from service import install_policy as ip
+    policy = ip.SPLIT if policy is None else policy
+    ip.require(policy)
     with ip.parent_fd(path) as (parent, name):
         observed=os.fstat(parent)
         if parent_identity is not None and (observed.st_dev,observed.st_ino) != parent_identity:
             raise ValueError('installed_root_changed')
         fd = os.open(name, os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW, 0o600, dir_fd=parent)
         try:
-            uid, gid, mode = ip.expectation(ip.SPLIT, role)
+            uid, gid, mode = ip.expectation(policy, role)
             # New empty inode only; never an existing data file.
             os.fchown(fd, uid, gid); os.fchmod(fd, mode)
-            before = os.fstat(fd); ip.check(before, ip.SPLIT, role)
+            before = os.fstat(fd); ip.check(before, policy, role)
             with os.fdopen(os.dup(fd), 'wb') as stream:
                 persistence.write_complete(stream, data)
-            after = os.fstat(fd); ip.check(after, ip.SPLIT, role)
+            after = os.fstat(fd); ip.check(after, policy, role)
             if ((before.st_dev, before.st_ino) != (after.st_dev, after.st_ino) or
                     ip.identity(os.stat(name, dir_fd=parent, follow_symlinks=False)) != ip.identity(after)):
                 raise ValueError('installed_creation_changed')
@@ -336,7 +340,7 @@ def initialize_split(roots, scope, config, *, authority, policy, complete=None,
     ip.require(policy); validate_scope(scope); config = ip.family_configuration(config, family)
     from service import installed_export as ex
     export = family is ex.FAMILY
-    if policy is not ip.family_policy(family): raise ValueError('explicit_fixed_install_policy_required')
+    if policy is not ip.family_policy(family, config): raise ValueError('explicit_fixed_install_policy_required')
     if export and (daemon_binding is None or launch_child is _launch_split_child):
         raise ValueError('export_private_initializer_binding_required')
     if daemon_binding is not None:
@@ -386,7 +390,7 @@ def initialize_split(roots, scope, config, *, authority, policy, complete=None,
             stable()
         def create(path,data,role):
             stable()
-            _split_create(path,data,role,parent_identity=original[role])
+            _split_create(path,data,role,parent_identity=original[role],policy=policy)
             stable()
         observe()
         receipts = roots['receipts']; record_path = receipts/'p1-init.json'

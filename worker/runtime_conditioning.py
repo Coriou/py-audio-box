@@ -23,18 +23,21 @@ def _directory(s, uid, gid, mode, device=None):
         raise ConditioningRefused('conditioning_identity')
 
 
-def remove_empty(stage, child_uid):
+def remove_empty(stage, child_uid, *, policy=None):
     """Validate fixed /staging and remove only conditioning, if kernel-empty."""
     if (not isinstance(stage, str) or not stage or stage in ('.', '..') or
             '/' in stage or '\\' in stage or '\0' in stage or
             type(child_uid) is not int or not 20000 <= child_uid < 20000+64):
         raise ConditioningRefused('conditioning_allocation')
+    from service import install_policy as ip
+    if policy is not None and policy is not ip.POCKET_SPLIT:
+        raise ConditioningRefused('conditioning_policy')
     flags = os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC
     # Linux O_PATH permits traversal of mode1733 without directory-read access.
     root = os.open('/staging', os.O_PATH | flags)
     try:
         root_stat = os.fstat(root)
-        _directory(root_stat, 0, 0, 0o1733)
+        _directory(root_stat, *(ip.expectation(policy, 'staging', directory=True) if policy is ip.POCKET_SPLIT else (0, 0, 0o1733)))
         def root_bound():
             if _identity(os.stat('/staging', follow_symlinks=False)) != _identity(root_stat):
                 raise ConditioningRefused('conditioning_root_changed')
@@ -68,12 +71,18 @@ def remove_empty(stage, child_uid):
 
 
 def main():
-    if len(sys.argv) != 3:
+    if len(sys.argv) not in (3, 4):
         raise ConditioningRefused('conditioning_arguments')
     uid = int(sys.argv[2])
     if (os.getuid(), os.geteuid(), os.getgid(), os.getegid(), os.getgroups()) != (10001, 10001, uid, uid, []):
         raise ConditioningRefused('conditioning_credentials')
-    remove_empty(sys.argv[1], uid)
+    from service import install_policy as ip
+    policy = None
+    if len(sys.argv) == 4:
+        if sys.argv[3] != ip.POCKET_V2_POLICY:
+            raise ConditioningRefused('conditioning_policy')
+        policy = ip.POCKET_SPLIT
+    remove_empty(sys.argv[1], uid, policy=policy)
 
 
 if __name__ == '__main__':

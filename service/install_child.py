@@ -58,7 +58,7 @@ def prepare(public, control_fd, staging_fd, *, ops=None):
     identities = []
     for role, fd in zip(('control', 'staging'), descriptors):
         info = os.fstat(fd)
-        ip.check(info, ip.SPLIT, role, directory=True)
+        ip.check(info, ip.configuration_policy(public['configuration']), role, directory=True)
         record = public['roles'][role]
         identity = (info.st_dev, info.st_ino)
         if identity != (record['device'], record['inode']):
@@ -107,6 +107,7 @@ def registration_writer(public, registration, prestate, control, lock_fd, *, fau
     from service import installed_export as ex, persistence
     export = family is ex.FAMILY
     ip.family_installation(public, family)
+    policy = ip.family_policy(family, public['configuration'])
     if export: ex.bound_registration(registration, public)
     else: recovery.validate_registration(registration)
     if (public['scope'] not in ((ex.SCOPE,) if export else ip.SCOPES) or registration['scope'] != public['host'] or
@@ -116,9 +117,9 @@ def registration_writer(public, registration, prestate, control, lock_fd, *, fau
     if type(prestate) is not list or len(encode(prestate).encode()) > recovery.HOST_CAPSULE_BYTES:
         raise ValueError('installed_registration_prestate')
     root=Path(control)/'core'
-    ip.directory_identity(root,policy=ip.SPLIT,role='control')
+    ip.directory_identity(root,policy=policy,role='control')
     if export: ex.expectation(public, family).check_root(root)
-    held=os.fstat(lock_fd); ip.check(held,ip.SPLIT,'control')
+    held=os.fstat(lock_fd); ip.check(held,policy,'control')
     if ip.identity(held)!=ip.identity(os.stat(root/'control.lock',follow_symlinks=False)):
         raise ValueError('installed_inherited_lock_changed')
     if export:
@@ -137,7 +138,7 @@ def registration_writer(public, registration, prestate, control, lock_fd, *, fau
         except FileNotFoundError:
             if name=='core.sqlite': raise
             continue
-        ip.check(info,ip.SPLIT,'control'); before[name]=(info.st_dev,info.st_ino)
+        ip.check(info,policy,'control'); before[name]=(info.st_dev,info.st_ino)
     db=sqlite3.connect((root/'core.sqlite').as_uri()+'?mode=rw',uri=True,timeout=0,isolation_level=None)
     try:
         db.execute('PRAGMA trusted_schema=OFF'); db.execute('PRAGMA synchronous=FULL')
@@ -155,7 +156,7 @@ def registration_writer(public, registration, prestate, control, lock_fd, *, fau
                     except FileNotFoundError:
                         if name in before: raise ValueError('installed_writer_database_changed')
                         continue
-                    ip.check(info,ip.SPLIT,'control')
+                    ip.check(info,policy,'control')
                     if name in before and before[name] != (info.st_dev,info.st_ino):
                         raise ValueError('installed_writer_database_changed')
                 ex.database(db, public)
@@ -196,7 +197,7 @@ def registration_writer(public, registration, prestate, control, lock_fd, *, fau
         except FileNotFoundError:
             if name=='core.sqlite': raise
             continue
-        ip.check(info,ip.SPLIT,'control')
+        ip.check(info,policy,'control')
         if name in before and before[name]!=(info.st_dev,info.st_ino):
             raise ValueError('installed_writer_database_changed')
     if ip.identity(os.fstat(lock_fd))!=ip.identity(held): raise ValueError('installed_inherited_lock_changed')

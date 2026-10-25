@@ -113,6 +113,8 @@ def installed_mapping(configuration, *, policy):
     from service import install_policy as ip
     ip.require(policy)
     config = ip.configuration(configuration)
+    if policy is not ip.configuration_policy(config):
+        raise ValueError('installed_configuration_policy_binding')
     mapping = {key: value['path'] for key, value in config['bundles'].items()}
     if any(context['execution']['bundles'] != mapping for context in config['contexts'].values()):
         raise Refused('unregistered_mount_mapping')

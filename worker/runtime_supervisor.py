@@ -19,7 +19,7 @@ from worker.transport import canonical, Refused, Session
 
 
 class RuntimeSupervisor:
-    def __init__(self, root='/receipts', ipc='/ipc', *, bundles=None, references=None, qwen_contexts=None, inventory=None, qwen_profiles=None, pocket_reference_roots=None, installed_pocket=False, audio_converters=None, converter_image_digest=None, export_reference_roots=None, export_configuration=None, expected_worker_image=None):
+    def __init__(self, root='/receipts', ipc='/ipc', *, bundles=None, references=None, qwen_contexts=None, inventory=None, qwen_profiles=None, pocket_reference_roots=None, installed_pocket=False, installed_policy=None, audio_converters=None, converter_image_digest=None, export_reference_roots=None, export_configuration=None, expected_worker_image=None):
         if os.getpid() != 1:
             raise RuntimeError('pid1_required')
         from types import MappingProxyType
@@ -36,6 +36,12 @@ class RuntimeSupervisor:
                 raise ValueError('export_configuration_is_sole_authority')
             self.converter_image_digest = self._export_configuration['images']['worker']
             self.export_reference_roots = {p:'/references/assets' for p in self._export_configuration['audio_export']['principals']}
+        from service import install_policy as ip
+        if installed_policy is not None and installed_policy is not ip.SPLIT and installed_policy is not ip.POCKET_SPLIT:
+            raise ValueError('explicit_fixed_install_policy_required')
+        if installed_policy is ip.POCKET_SPLIT and (not installed_pocket or export_configuration is not None):
+            raise ValueError('installed_pocket_policy_binding')
+        self.installed_policy = installed_policy
         self.installed_pocket = installed_pocket
         self.bundles = MappingProxyType(dict(bundles or {}))
         self.references = MappingProxyType(copy.deepcopy(references or {}))
@@ -463,7 +469,11 @@ class RuntimeSupervisor:
 
     def conditioning(self, row):
         stage = row['allocation']['snapshot'][0]['attempts'][-1]['staging_id']
-        proc = subprocess.Popen(['python', '-m', 'worker.runtime_conditioning', stage, str(row['uid'])],
+        from service import install_policy as ip
+        command = ['python', '-m', 'worker.runtime_conditioning', stage, str(row['uid'])]
+        if getattr(self, 'installed_policy', None) is ip.POCKET_SPLIT:
+            command.append(ip.POCKET_V2_POLICY)
+        proc = subprocess.Popen(command,
             user=10001, group=row['uid'], extra_groups=[], close_fds=True,
             stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         try:
@@ -594,7 +604,7 @@ def export_startup(value, expected_worker_image, *, owner_uid=0):
 def main():
     import argparse
     parser = argparse.ArgumentParser()
-    parser.add_argument('--installed-policy', choices=('docker-kokoro-split-v1','docker-pocket-split-v1','docker-kokoro-export-split-v2'))
+    parser.add_argument('--installed-policy', choices=('docker-kokoro-split-v1','docker-pocket-split-v1','docker-pocket-split-v2','docker-kokoro-export-split-v2'))
     parser.add_argument('--configuration-file')
     parser.add_argument('--expected-worker-image')
     args = parser.parse_args()
@@ -603,6 +613,7 @@ def main():
         bundles = None
         pocket_roots = None
         installed_pocket = False
+        installed_policy = None
         export_config = None
         if args.installed_policy is not None:
             from service import install_policy as ip
@@ -621,19 +632,20 @@ def main():
                 if args.expected_worker_image is not None: raise ValueError('explicit_export_family_required')
                 config = installed_configuration(args.configuration_file, policy=ip.SPLIT)
             if (export_config or config)['ownership_policy'] != args.installed_policy: raise ValueError('installed_worker_policy_binding')
-            bundles = installed_mapping(config, policy=ip.SPLIT)
+            installed_policy = ip.configuration_policy(config)
+            bundles = installed_mapping(config, policy=installed_policy)
             installed_pocket = ip.pocket(config)
             if installed_pocket: pocket_roots = {p:'/references/assets' for p in config['contexts']}
-            ip.directory_identity('/receipts', policy=ip.SPLIT, role='receipts')
-            ip.directory_identity('/ipc', policy=ip.SPLIT, role='ipc')
+            ip.directory_identity('/receipts', policy=installed_policy, role='receipts')
+            ip.directory_identity('/ipc', policy=installed_policy, role='ipc')
             for name, limit in (('lane.lock', 0), ('journal.json', 1024**2)):
-                ip.read_private(Path('/receipts')/name, limit, policy=ip.SPLIT, role='receipts')
+                ip.read_private(Path('/receipts')/name, limit, policy=installed_policy, role='receipts')
             for name in ('lifecycle.key', 'execution.key'):
-                ip.read_private(Path('/ipc')/name, 4096, policy=ip.SPLIT, role='ipc')
+                ip.read_private(Path('/ipc')/name, 4096, policy=installed_policy, role='ipc')
         elif args.configuration_file is not None or args.expected_worker_image is not None:
             raise ValueError('explicit_fixed_install_policy_required')
         RuntimeSupervisor(bundles=bundles, pocket_reference_roots=pocket_roots,
-            installed_pocket=installed_pocket, export_configuration=export_config,
+            installed_pocket=installed_pocket, installed_policy=installed_policy, export_configuration=export_config,
             expected_worker_image=args.expected_worker_image).serve()
     except (OSError, ValueError, KeyError, TypeError):
         print('lifecycle supervisor unavailable; lane quarantined', flush=True)

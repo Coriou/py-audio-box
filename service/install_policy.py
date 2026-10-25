@@ -14,15 +14,18 @@ SCOPE = 'owned-kokoro-v1'
 POLICY = 'docker-kokoro-split-v1'
 POCKET_POLICY = 'docker-pocket-split-v1'
 POCKET_SCOPE = 'owned-pocket-v1'
-SCOPES = (SCOPE, POCKET_SCOPE)
+POCKET_V2_POLICY = 'docker-pocket-split-v2'
+POCKET_V2_SCOPE = 'owned-pocket-v2'
+SCOPES = (SCOPE, POCKET_SCOPE, POCKET_V2_SCOPE)
 
 
 def pocket(config):
-    return config['ownership_policy'] == POCKET_POLICY
+    return config['ownership_policy'] in (POCKET_POLICY, POCKET_V2_POLICY)
 
 
 def scope_for(config):
-    return POCKET_SCOPE if pocket(config) else SCOPE
+    return (POCKET_V2_SCOPE if config['ownership_policy'] == POCKET_V2_POLICY else
+            POCKET_SCOPE if pocket(config) else SCOPE)
 ROLES = ('control', 'staging', 'receipts', 'ipc')
 
 
@@ -33,6 +36,15 @@ class _SplitPolicy:
 
 
 SPLIT = _SplitPolicy()
+# Fresh Pocket roots only; distinct from export despite the shared fixed tuple.
+POCKET_SPLIT = _SplitPolicy(scope=POCKET_V2_SCOPE, name=POCKET_V2_POLICY)
+
+
+def configuration_policy(config):
+    """Select only from a validated trusted configuration, never filesystem metadata."""
+    checked = configuration(config)
+    return POCKET_SPLIT if checked['ownership_policy'] == POCKET_V2_POLICY else SPLIT
+
 # Fresh export-family roots only. The trusted control group can enumerate
 # worker staging through its read-only mount; isolated executor groups cannot.
 EXPORT_SPLIT = _SplitPolicy(scope='owned-kokoro-export-v2', name='docker-kokoro-export-split-v2')
@@ -40,7 +52,7 @@ EXPORT_SPLIT = _SplitPolicy(scope='owned-kokoro-export-v2', name='docker-kokoro-
 
 def require(policy):
     # No caller-supplied UID map, equivalent object, or metadata-selected string.
-    if policy is not SPLIT and policy is not EXPORT_SPLIT:
+    if policy is not SPLIT and policy is not EXPORT_SPLIT and policy is not POCKET_SPLIT:
         raise ValueError('explicit_fixed_install_policy_required')
 
 
@@ -49,7 +61,7 @@ def expectation(policy, role, *, directory=False):
     if role not in ROLES:
         raise ValueError('exact_volume_roles_required')
     if directory:
-        if policy is EXPORT_SPLIT and role == 'staging':
+        if policy in (EXPORT_SPLIT, POCKET_SPLIT) and role == 'staging':
             return (0, 10001, 0o1753)
         return {'control': (10001, 10001, 0o700),
                 'receipts': (0, 0, 0o2700),
@@ -230,7 +242,7 @@ def configuration(value):
     if len(encode(value).encode()) > 48000:
         raise ValueError('installed_configuration_budget')
     value = json.loads(encode(value))
-    if type(value['version']) is not int or value['version'] != 1 or value['ownership_policy'] not in (POLICY, POCKET_POLICY):
+    if type(value['version']) is not int or value['version'] != 1 or value['ownership_policy'] not in (POLICY, POCKET_POLICY, POCKET_V2_POLICY):
         raise ValueError('installed_configuration_version')
     finite_budget(value['budget'])
     profiles = value['profiles']
@@ -289,6 +301,7 @@ def installation(value):
                     value['ownership_policy'] != POLICY):
                 raise ValueError('daemon_enrollment_binding')
         config = configuration(value['configuration'])
+        role_policy = POCKET_SPLIT if config['ownership_policy'] == POCKET_V2_POLICY else SPLIT
         if (value['scope'] != scope_for(config) or value['ownership_policy'] != config['ownership_policy'] or value['configuration_digest'] != digest(config)):
             raise ValueError('installed_configuration_digest')
         _closed(value['roles'], 'control staging receipts ipc')
@@ -296,7 +309,7 @@ def installation(value):
         for role, record in value['roles'].items():
             _closed(record, 'device inode uid gid mode')
             if (any(type(v) is not int or v < 0 for v in record.values()) or record['inode'] == 0 or
-                    (record['uid'], record['gid'], record['mode']) != expectation(SPLIT, role, directory=True)):
+                    (record['uid'], record['gid'], record['mode']) != expectation(role_policy, role, directory=True)):
                 raise ValueError('installed_role_record')
             key = record['device'], record['inode']
             if key in seen: raise ValueError('distinct_volume_roles_required')
@@ -322,9 +335,9 @@ def role_records(roots, *, policy=SPLIT):
     return result
 
 
-def family_policy(family=None):
+def family_policy(family=None, config=None):
     if family is None:
-        return SPLIT
+        return SPLIT if config is None else configuration_policy(config)
     from service.installed_export import FAMILY
     if family is not FAMILY:
         raise ValueError('explicit_export_family_required')

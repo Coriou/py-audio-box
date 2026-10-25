@@ -830,10 +830,10 @@ class InstalledObserver:
     def inventory(self, owners, *, stopped=False):
         policy=self.policy
         if owners:
-            ip.roots_checked({r:v['source'] for r,v in policy['roots'].items()},policy=ip.SPLIT)
+            ip.roots_checked({r:v['source'] for r,v in policy['roots'].items()},policy=ip.configuration_policy(self.config))
             if ip.pocket(self.config):
                 for suffix in ('core', 'core/assets'):
-                    ip.directory_identity(Path(policy['roots']['control']['source'])/suffix, policy=ip.SPLIT, role='control')
+                    ip.directory_identity(Path(policy['roots']['control']['source'])/suffix, policy=ip.configuration_policy(self.config), role='control')
         mounts=self.mountinfo(); _installed_mount_proof(policy,mounts)
         before=_installed_sources(policy,self.config)
         security=_json_output(self.docker._read(['info','--format','{"security":{{json .SecurityOptions}},"cgroup":{{json .CgroupVersion}},"name":{{json .Name}},"os":{{json .OperatingSystem}}}']))
@@ -958,23 +958,23 @@ def installed_launch_authority(config, scope):
                 check(); return json.loads(encode(policy))
             def _public(self):
                 roots={r:Path(v['source']) for r,v in observer.policy['roots'].items()}
-                raw=read_file(roots['receipts']/'p1-init.json',policy=ip.SPLIT,role='receipts')
+                raw=read_file(roots['receipts']/'p1-init.json',policy=ip.configuration_policy(observer.config),role='receipts')
                 private=recovery.host_json(raw)
                 ip.initialization(private)
                 public=private['public']
                 ip.host_enrollment(public,observer.policy,observer.config,observer.scope)
-                enrolled=recovery.host_json(read_file(roots['receipts']/'p1-enrolled.json',policy=ip.SPLIT,role='receipts'))
+                enrolled=recovery.host_json(read_file(roots['receipts']/'p1-enrolled.json',policy=ip.configuration_policy(observer.config),role='receipts'))
                 if enrolled != dict(deployment_id=public['deployment_id'],digest=digest(public)):
                     raise ValueError('installed_enrollment_binding')
                 return roots,public
             def preflight(self, owners):
                 check(); roots,public=self._public()
                 observer.inventory(owners,stopped=True)
-                with ip.locked_file(roots['control']/'core/control.lock',policy=ip.SPLIT,role='control'):
-                    with ip.locked_file(roots['receipts']/'lane.lock',policy=ip.SPLIT,role='receipts'):
-                        state=_registration_snapshot(roots,observer.scope)
+                with ip.locked_file(roots['control']/'core/control.lock',policy=ip.configuration_policy(observer.config),role='control'):
+                    with ip.locked_file(roots['receipts']/'lane.lock',policy=ip.configuration_policy(observer.config),role='receipts'):
+                        state=_registration_snapshot(roots,observer.scope,policy=ip.configuration_policy(observer.config))
                         from worker.runtime_journal import read_snapshot
-                        journal,maintenance=read_snapshot(roots['receipts'],policy=ip.SPLIT)
+                        journal,maintenance=read_snapshot(roots['receipts'],policy=ip.configuration_policy(observer.config))
                         if maintenance is not None: raise ValueError('installed_maintenance_pending')
                         recovery.installed_clean_history(state,journal)
                         retained,_,_,_=_installed_history_read(observer,public,fd,state['registrations'])
@@ -991,8 +991,8 @@ def installed_launch_authority(config, scope):
                 by_id={c['id']:c for c in first['consumers']}
                 if any(by_id[c['id']]['running'] != (c['role']=='worker') for c in owners):
                     raise ValueError('installed_shutdown_owner_state')
-                with ip.locked_file(roots['control']/'core/control.lock',policy=ip.SPLIT,role='control'):
-                    state=_registration_snapshot(roots,observer.scope)
+                with ip.locked_file(roots['control']/'core/control.lock',policy=ip.configuration_policy(observer.config),role='control'):
+                    state=_registration_snapshot(roots,observer.scope,policy=ip.configuration_policy(observer.config))
                     records=[r for r in state['registrations'] if r['containers']==owners]
                     if len(records)!=1: raise ValueError('installed_shutdown_registration')
                     with ip.parent_fd(roots['ipc']) as (parent,name):
@@ -1000,10 +1000,10 @@ def installed_launch_authority(config, scope):
                     try:
                         hello=_registration_hello(_registration_child('hello',dict(ipc_fd=ipc),(ipc,)),records[0])
                         from worker.runtime_journal import read_snapshot
-                        journal,maintenance=read_snapshot(roots['receipts'],policy=ip.SPLIT)
+                        journal,maintenance=read_snapshot(roots['receipts'],policy=ip.configuration_policy(observer.config))
                         if maintenance is not None: raise ValueError('installed_maintenance_pending')
                         recovery.installed_clean_history(state,journal)
-                        if (read_snapshot(roots['receipts'],policy=ip.SPLIT)!=(journal,maintenance) or
+                        if (read_snapshot(roots['receipts'],policy=ip.configuration_policy(observer.config))!=(journal,maintenance) or
                                 _registration_hello(_registration_child('hello',dict(ipc_fd=ipc),(ipc,)),records[0])!=hello):
                             raise ValueError('installed_shutdown_journal_changed')
                     finally: os.close(ipc)
@@ -1023,7 +1023,7 @@ def installed_launch_authority(config, scope):
                 with ip.parent_fd(roots['ipc']) as (parent,name):
                     ipc=os.open(name,os.O_RDONLY|os.O_DIRECTORY|os.O_NOFOLLOW,dir_fd=parent)
                 try:
-                    ip.check(os.fstat(ipc),ip.SPLIT,'ipc',directory=True)
+                    ip.check(os.fstat(ipc),ip.configuration_policy(observer.config),'ipc',directory=True)
                     deadline=time.monotonic()+10
                     while True:
                         check()
@@ -1145,13 +1145,13 @@ def _registration_read_at(directory,name):
     finally: os.close(fd)
 
 
-def _registration_snapshot(roots,scope):
-    with recovery.private_database(roots['control']/'core/core.sqlite',policy=ip.SPLIT) as path:
+def _registration_snapshot(roots,scope, *, policy=ip.SPLIT):
+    with recovery.private_database(roots['control']/'core/core.sqlite',policy=policy) as path:
         with closing(sqlite3.connect(path.as_uri()+'?mode=ro',uri=True,timeout=0,isolation_level=None)) as db:
             db.execute('PRAGMA query_only=ON'); db.execute('PRAGMA trusted_schema=OFF')
             end=time.monotonic()+2
             db.set_progress_handler(lambda:int(time.monotonic()>end),1000)
-            state=recovery.snapshot(roots,db,scope,policy=ip.SPLIT)
+            state=recovery.snapshot(roots,db,scope,policy=policy)
     data=state['evidence_projection']['data']
     if (state['faults'] or state['inventory']['reasons'] or not state['allocation_coherent'] or
             any(r['phase']!='terminal' for r in state['journal_records']) or
@@ -1352,8 +1352,8 @@ def _register_installed(observer,selected,authority_fd,check,*,child=_registrati
     launch_ids=_installed_launcher_records(observer,authority_fd)
     if launch_ids is not None and {c['role']:c['id'] for c in selected}!=launch_ids:
         raise ValueError('installed_launch_container_binding')
-    roots=ip.roots_checked({r:v['source'] for r,v in observer.policy['roots'].items()},policy=ip.SPLIT)
-    with ip.locked_file(roots['control']/'core/control.lock',policy=ip.SPLIT,role='control') as lock_fd:
+    roots=ip.roots_checked({r:v['source'] for r,v in observer.policy['roots'].items()},policy=ip.configuration_policy(observer.config))
+    with ip.locked_file(roots['control']/'core/control.lock',policy=ip.configuration_policy(observer.config),role='control') as lock_fd:
         with ExitStack() as stack:
             try:
                 fds={}
@@ -1361,11 +1361,11 @@ def _register_installed(observer,selected,authority_fd,check,*,child=_registrati
                     with ip.parent_fd(roots[role]) as (parent,name):
                         fd=os.open(name,os.O_RDONLY|os.O_DIRECTORY|os.O_NOFOLLOW,dir_fd=parent)
                     stack.callback(os.close,fd); fds[role]=fd
-                    ip.check(os.fstat(fd),ip.SPLIT,role,directory=True)
+                    ip.check(os.fstat(fd),ip.configuration_policy(observer.config),role,directory=True)
                     expected=observer.policy['roots'][role]
                     if (os.fstat(fd).st_dev,os.fstat(fd).st_ino)!=(expected['device'],expected['inode']):
                         raise ValueError('installed_registration_roots_changed')
-                check(); before=_registration_snapshot(roots,observer.scope)
+                check(); before=_registration_snapshot(roots,observer.scope,policy=ip.configuration_policy(observer.config))
                 public=json.loads(before['evidence_projection']['data']['p1_installation'][0][3])
                 ip.host_enrollment(public,observer.policy,observer.config,observer.scope)
                 retained,provenance,identities,retained_bytes=_installed_history_read(observer,public,authority_fd,before['registrations'])
@@ -1378,7 +1378,7 @@ def _register_installed(observer,selected,authority_fd,check,*,child=_registrati
                 if any(c not in owners for c in selected): raise ValueError('installed_selected_not_current')
                 changed=any(c not in owners for r in retained.values() for c in r['containers'])
                 from worker.runtime_journal import read_snapshot
-                journal,maintenance=read_snapshot(roots['receipts'],policy=ip.SPLIT)
+                journal,maintenance=read_snapshot(roots['receipts'],policy=ip.configuration_policy(observer.config))
                 if maintenance is not None or len(journal['records'])>=64:
                     raise ValueError('installed_history_lane_budget')
                 if digest(dict(payload=journal,sha256=digest(journal)))!=before['journal_digest']:
@@ -1454,11 +1454,11 @@ def _register_installed(observer,selected,authority_fd,check,*,child=_registrati
                 request=dict(public=public,registration=candidate,prestate=prestate,
                     control_fd=fds['control'],staging_fd=fds['staging'],lock_fd=lock_fd)
                 if len(encode(request).encode())>65536: raise ValueError('installed_child_request_budget')
-                if _registration_snapshot(roots,observer.scope)['source_digest']!=before['source_digest']:
+                if _registration_snapshot(roots,observer.scope,policy=ip.configuration_policy(observer.config))['source_digest']!=before['source_digest']:
                     raise ValueError('installed_registration_prestate_changed')
                 child('writer',request,(fds['control'],fds['staging'],lock_fd))
                 fault('insert');check()
-                after=_registration_snapshot(roots,observer.scope)
+                after=_registration_snapshot(roots,observer.scope,policy=ip.configuration_policy(observer.config))
                 expected=prestate if any(r[0]==rid for r in prestate) else prestate+[[rid,encode(candidate),rid]]
                 if [list(r) for r in after['evidence_projection']['data']['p1_registrations']]!=expected:
                     raise ValueError('installed_registration_poststate')
@@ -1495,7 +1495,7 @@ def _installed_handoff(observer, owners, rid, authority_fd, check, *, notify=Non
     check(); raw,identity = _registration_read_at(authority_fd,name)
     value = recovery.host_json(raw)
     roots = {r:Path(v['source']) for r,v in observer.policy['roots'].items()}
-    state = _registration_snapshot(roots,observer.scope)
+    state = _registration_snapshot(roots,observer.scope,policy=ip.configuration_policy(observer.config))
     public = json.loads(state['evidence_projection']['data']['p1_installation'][0][3])
     _installed_provenance(value,observer,public)
     record = value['registration']

@@ -282,7 +282,7 @@ def main(argv=None):
                 if args.command=='complete' and not re.fullmatch('[0-9a-f]{64}',args.initialization_digest or ''):
                     raise ValueError('initialization_digest_required')
                 result=initialize_split({r:v['source'] for r,v in policy['roots'].items()},scope,config,
-                    authority=authority.initialize_authority,policy=ip.SPLIT,complete=args.initialization_digest)
+                    authority=authority.initialize_authority,policy=ip.configuration_policy(config),complete=args.initialization_digest)
                 result=dict(phase='initialized',result=result)
             else:
                 result=getattr(Launcher(config,scope,policy,authority,directory),args.command)()

@@ -124,6 +124,62 @@ class InstalledPocketJourney(PocketPublicJourneyTests):
             return runner(spec,text,bundles,{spec.reference_id:'/references/assets/'+spec.reference_id},**kwargs)
         finally:os.close(fd)
 
+    def test_fresh_v2_enrollment_registration_and_legacy_immutability(self):
+        from service import persistent_init, host_install
+        config = copy.deepcopy(self.config)
+        config['ownership_policy'] = ip.POCKET_V2_POLICY
+        self.assertIs(ip.configuration_policy(config), ip.POCKET_SPLIT)
+        self.assertIsNot(ip.POCKET_SPLIT, ip.EXPORT_SPLIT)
+        self.assertEqual(ip.expectation(ip.POCKET_SPLIT, 'staging', directory=True), (0,10001,0o1753))
+        self.assertEqual(ip.expectation(ip.SPLIT, 'staging', directory=True), (0,0,0o1733))
+        for role in ('control','receipts','ipc'):
+            self.assertEqual(ip.expectation(ip.POCKET_SPLIT,role,directory=True),ip.expectation(ip.SPLIT,role,directory=True))
+        class Registration(test_installed_registration.Registration):
+            def new_split_fixture(inner):
+                f=test_split_init.SplitInit();f.setUp();f.config=copy.deepcopy(config)
+                f.run_init=lambda **kw: persistent_init.initialize_split(f.roots,f.scope,f.config,
+                    authority=f.authority,policy=ip.POCKET_SPLIT,launch_child=f.child,**kw)
+                return f
+        r=Registration();r.setUp();self.addCleanup(r.doCleanups)
+        self.assertEqual(r.public['scope'],ip.POCKET_V2_SCOPE)
+        self.assertEqual(r.public['roles']['staging']['gid'],10001)
+        self.assertEqual(r.public['roles']['staging']['mode'],0o1753)
+        ip.installation(r.public)
+        forged=copy.deepcopy(r.public);forged['roles']['staging'].update(gid=0,mode=0o1733)
+        with self.assertRaises(ValueError):ip.installation(forged)
+        with self.assertRaises(ValueError):
+            persistent_init.initialize_split(r.roots,r.scope,config,authority=r.fixture.authority,
+                policy=ip.SPLIT,launch_child=r.fixture.child)
+        # Registration reads the full staging inventory under the explicit token.
+        rid=r.run_registration()
+        # Control startup binds the protected configuration to retained enrollment.
+        record=json.loads(r.rows()[0][1])
+        from service import recovery
+        from service.persistent_init import digest
+        processes=[dict(id=c['id'],image=c['image'],started=c['started'],pid=90+i,
+            start_ticks=100+i,pid_namespace=200+i,cgroup='/docker/'+c['id'])
+            for i,c in enumerate(record['containers'])]
+        gate=dict(version=1,registration_id=rid,registration=record,
+            configuration_digest=digest(config),enrollment_digest=digest(r.public),
+            provenance_digest='e'*64,processes=processes)
+        args=(r.roots['control']/'core',config,gate,r.hello,
+              dict(start_ticks=100,pid_namespace=200,cgroup='0::/'))
+        self.assertEqual(recovery.installed_startup_read(*args,policy=ip.POCKET_SPLIT)['registration_id'],rid)
+        with self.assertRaises(ValueError):recovery.installed_startup_read(*args,policy=ip.SPLIT)
+        state=host_install._registration_snapshot(r.roots,r.scope,policy=ip.POCKET_SPLIT)
+        self.assertFalse(state['faults'])
+        with self.assertRaises(ValueError):host_install._registration_snapshot(r.roots,r.scope,policy=ip.SPLIT)
+        self.assertEqual(self.config['ownership_policy'],ip.POCKET_POLICY)
+        legacy=self.gate_fixture.fixture.fixture
+        retained=legacy.bytes()
+        with self.assertRaisesRegex(ValueError,'new_empty_installation_required'):
+            persistent_init.initialize_split(legacy.roots,legacy.scope,config,
+                authority=legacy.authority,policy=ip.POCKET_SPLIT,launch_child=legacy.child)
+        self.assertEqual(legacy.bytes(),retained)
+        legacy_public=json.loads((legacy.roots['receipts']/'p1-init.json').read_bytes())['public']
+        self.assertEqual((legacy_public['roles']['staging']['gid'],legacy_public['roles']['staging']['mode']),(0,0o1733))
+
+
     def test_closed_policy_enrollment_and_reference_free_factory(self):
         self.assertEqual(ip.configuration(self.config),self.config)
         public=self.gate_fixture.fixture.public
@@ -157,6 +213,11 @@ class InstalledPocketJourney(PocketPublicJourneyTests):
         self.assertIn(ip.POCKET_POLICY,command)
         self.assertIn('type=bind,source='+reference['source']+',destination=/references/assets,readonly',command)
         self.assertNotIn('--cap-add=DAC_READ_SEARCH',command)
+        v2=copy.deepcopy(f.config);v2['ownership_policy']=ip.POCKET_V2_POLICY
+        policy=copy.deepcopy(f.policy);policy['configuration_digest']=h.digest(v2)
+        command_v2=package.command('worker',v2,policy,f.scope)
+        self.assertIn(ip.POCKET_V2_POLICY,command_v2)
+        self.assertIn('type=bind,source='+reference['source']+',destination=/references/assets,readonly',command_v2)
         for field,value in (('rw',True),('source',f.policy['roots']['control']['source']),('destination','/control'),('type','volume')):
             old=reference[field];reference[field]=value
             try:
