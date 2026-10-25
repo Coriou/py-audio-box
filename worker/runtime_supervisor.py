@@ -1,4 +1,4 @@
-"""Linux PID1 trusted single-lane parent/reaper; never imports service/engine code."""
+"""Linux PID1 trusted single-lane parent/reaper; no inference in the parent."""
 import copy
 from datetime import datetime, timezone
 import hashlib
@@ -19,13 +19,23 @@ from worker.transport import canonical, Refused, Session
 
 
 class RuntimeSupervisor:
-    def __init__(self, root='/receipts', ipc='/ipc', *, bundles=None, references=None, qwen_contexts=None, inventory=None, qwen_profiles=None, pocket_reference_roots=None, installed_pocket=False, audio_converters=None, converter_image_digest=None, export_reference_roots=None):
+    def __init__(self, root='/receipts', ipc='/ipc', *, bundles=None, references=None, qwen_contexts=None, inventory=None, qwen_profiles=None, pocket_reference_roots=None, installed_pocket=False, audio_converters=None, converter_image_digest=None, export_reference_roots=None, export_configuration=None, expected_worker_image=None):
         if os.getpid() != 1:
             raise RuntimeError('pid1_required')
         from types import MappingProxyType
+        self._export_configuration = None
+        if export_configuration is not None:
+            self._export_configuration = export_startup(export_configuration, expected_worker_image)
+        elif expected_worker_image is not None:
+            raise ValueError('explicit_export_configuration_required')
         self.audio_converters = copy.deepcopy(audio_converters or {})
         self.converter_image_digest = converter_image_digest
         self.export_reference_roots = dict(export_reference_roots or {})
+        if self._export_configuration is not None:
+            if installed_pocket or audio_converters or export_reference_roots or converter_image_digest:
+                raise ValueError('export_configuration_is_sole_authority')
+            self.converter_image_digest = self._export_configuration['images']['worker']
+            self.export_reference_roots = {p:'/references/assets' for p in self._export_configuration['audio_export']['principals']}
         self.installed_pocket = installed_pocket
         self.bundles = MappingProxyType(dict(bundles or {}))
         self.references = MappingProxyType(copy.deepcopy(references or {}))
@@ -91,6 +101,9 @@ class RuntimeSupervisor:
                 raise Refused('closed_body')
             value = dict(boot=self.boot, lane=self.journal.value['lane'], quarantined=self.failed or any(
                 r['phase'] != 'terminal' and (not self.active or self.active['id'] != r['id']) for r in self.journal.value['records']), launches=self.launches)
+            if getattr(self, '_export_configuration', None) is not None:
+                from service.installed_export import export_seal
+                value['export_seal'] = export_seal(self._export_configuration)
             if self.journal.maintenance is not None: value['maintenance']=self.journal.maintenance
             return value
         if op == 'prepare':
@@ -338,17 +351,46 @@ class RuntimeSupervisor:
         execution(context)
         reg=context['execution']['converter']
         profile=context['plan']['resolved']['profile']['id']
-        if self.audio_converters.get((principal,profile))!=reg:
+        installed = getattr(self, '_export_configuration', None)
+        if installed is not None:
+            from service import installed_export as ex
+            allowed = installed['audio_export']
+            if (principal not in allowed['principals'] or
+                    ex._encoded(context['plan']['resolved']['profile']) != ex._encoded(ex.oracle.profile_snapshot(allowed['profile'])) or
+                    ex._encoded(reg) != ex._encoded(allowed['converter'])):
+                raise Refused('unregistered_export_inputs')
+            p = allowed['profile']
+            if (p['support'] != 'qualified' or p['installation'] != 'installed' or p['configuration'] != 'valid' or
+                    p['readiness'] != 'ready' or p['verification'] != 'measured' or not p['qualification_receipt']):
+                raise Refused('export_profile_not_ready')
+            exe = ex.verify_local_converter(installed); os.close(exe)
+        elif self.audio_converters.get((principal,profile))!=reg:
             raise Refused('unregistered_converter')
-        exe=verify_converter(reg,self.converter_image_digest); os.close(exe)
+        if installed is None:
+            exe=verify_converter(reg,self.converter_image_digest); os.close(exe)
         root=self.export_reference_roots.get(principal)
         if root is None or str(root)!='/references/assets': raise Refused('unregistered_reference_mapping')
         a=context['plan']['assets'][0]
-        fd=_open(Path(root)/a['id'],owner_uid=owner_uid)
+        if installed is not None:
+            from worker.managed_reference import acquire
+            try:
+                fd = acquire(a['id'])
+            except BaseException:
+                self.failed = True
+                raise
+        else:
+            fd=_open(Path(root)/a['id'],owner_uid=owner_uid)
         try:
+            if installed is not None:
+                from worker.managed_reference import check_fd
+                check_fd(fd, owner_uid=owner_uid)
             info=os.fstat(fd)
             if not 0<info.st_size<=MAX_SOURCE: raise Refused('missing_media')
             raw=read_bounded(fd,MAX_SOURCE); measured=pcm(raw)
+            after=os.fstat(fd)
+            if installed is not None and (len(raw) != info.st_size or
+                    any(getattr(info,k) != getattr(after,k) for k in ('st_dev','st_ino','st_size','st_mtime_ns','st_ctime_ns'))):
+                raise Refused('missing_media')
             if any(a[k]!=v for k,v in measured.items()): raise Refused('missing_media')
             os.lseek(fd,0,0)
             return fd
@@ -531,25 +573,50 @@ class RuntimeSupervisor:
                     pass
 
 
+def export_startup(value, expected_worker_image, *, owner_uid=0):
+    """Explicit trusted startup input; Docker image corroboration belongs upstream.
+
+    No readiness or measured capability is conferred by validating this seal.
+    """
+    from service import installed_export as ex
+    config = ex.configuration(value)
+    if type(expected_worker_image) is not str or expected_worker_image != config['images']['worker']:
+        raise ValueError('trusted_worker_image_required')
+    fd = ex.verify_local_converter(config, owner_uid=owner_uid)
+    os.close(fd)
+    return config
+
+
 def main():
     import argparse
     parser = argparse.ArgumentParser()
-    parser.add_argument('--installed-policy', choices=('docker-kokoro-split-v1','docker-pocket-split-v1'))
+    parser.add_argument('--installed-policy', choices=('docker-kokoro-split-v1','docker-pocket-split-v1','docker-kokoro-export-split-v2'))
     parser.add_argument('--configuration-file')
+    parser.add_argument('--expected-worker-image')
     args = parser.parse_args()
     os.umask(0o077)
     try:
         bundles = None
         pocket_roots = None
         installed_pocket = False
+        export_config = None
         if args.installed_policy is not None:
             from service import install_policy as ip
             from service.execution_context import installed_configuration, installed_mapping
             if args.configuration_file is None: raise ValueError('installed_configuration_required')
             if (os.getuid(), os.geteuid(), os.getgid(), os.getegid()) != (0, 0, 10001, 10001) or os.getgroups() not in ([], [10001]):
                 raise ValueError('installed_worker_identity')
-            config = installed_configuration(args.configuration_file, policy=ip.SPLIT)
-            if config['ownership_policy'] != args.installed_policy: raise ValueError('installed_worker_policy_binding')
+            from service import installed_export as ex
+            if args.installed_policy == ex.POLICY:
+                from service.auth import private_input
+                from service.recovery import host_json
+                export_config = export_startup(host_json(private_input(args.configuration_file, mode=0o440, limit=48000)), args.expected_worker_image)
+                config = {k: copy.deepcopy(v) for k,v in export_config.items() if k != 'audio_export'}
+                config.update(version=1, ownership_policy=ip.POLICY)
+            else:
+                if args.expected_worker_image is not None: raise ValueError('explicit_export_family_required')
+                config = installed_configuration(args.configuration_file, policy=ip.SPLIT)
+            if (export_config or config)['ownership_policy'] != args.installed_policy: raise ValueError('installed_worker_policy_binding')
             bundles = installed_mapping(config, policy=ip.SPLIT)
             installed_pocket = ip.pocket(config)
             if installed_pocket: pocket_roots = {p:'/references/assets' for p in config['contexts']}
@@ -559,9 +626,11 @@ def main():
                 ip.read_private(Path('/receipts')/name, limit, policy=ip.SPLIT, role='receipts')
             for name in ('lifecycle.key', 'execution.key'):
                 ip.read_private(Path('/ipc')/name, 4096, policy=ip.SPLIT, role='ipc')
-        elif args.configuration_file is not None:
+        elif args.configuration_file is not None or args.expected_worker_image is not None:
             raise ValueError('explicit_fixed_install_policy_required')
-        RuntimeSupervisor(bundles=bundles, pocket_reference_roots=pocket_roots, installed_pocket=installed_pocket).serve()
+        RuntimeSupervisor(bundles=bundles, pocket_reference_roots=pocket_roots,
+            installed_pocket=installed_pocket, export_configuration=export_config,
+            expected_worker_image=args.expected_worker_image).serve()
     except (OSError, ValueError, KeyError, TypeError):
         print('lifecycle supervisor unavailable; lane quarantined', flush=True)
         raise SystemExit(2)
