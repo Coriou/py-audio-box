@@ -512,6 +512,41 @@ class PocketPublicJourneyTests(PreparationFixture):
 
 
 class PocketPreparationInventoryTests(PreparationFixture):
+    def test_detached_preparation_files_require_exact_typed_owner_and_namespace(self):
+        from service.reconciliation import Reconciliation, typed_references
+        from service import recovery
+        from tests.worker.test_runtime_conditioning import filesystem_policy
+        from worker.runtime_conditioning import remove_empty
+        b=self.base;a,proposal,stage=self.proposal()
+        b.core._publish(a.job['id'],proposal,stage_root=b.stage,engine_uid=os.getuid())
+        with b.core.transaction():b.admission.store.release_tx(a.job['id'],confirmed_reap=True)
+        b.store.update(b.store.current(),acked=1,phase='terminal')
+        with filesystem_policy(b.stage,stage):remove_empty(stage.name,20000)
+        scan=Reconciliation(b.core,b.stage)
+        self.assertFalse(scan.reconcile_startup()['blocked'])
+        data={table:[dict(zip([column[0] for column in cursor.description],r)) for r in cursor.fetchall()]
+              for table in ('jobs','assets','artifacts','publications','publication_work','dispatches','dispatch_settings','resource_reservations')
+              for cursor in [b.core.db.execute('SELECT * FROM '+table)]}
+        recovery._installed_detached_documents(data)
+        joined=typed_references(scan,data,None,None,oracle.SCHEMA)
+        contexts=joined[3];owners=list(joined[5].values())
+        rows=[r for r in scan.rows.values() if r['name'] in ('reference.wav','audition.wav')]
+        self.assertEqual({r['name'] for r in rows},{'reference.wav','audition.wav'})
+        for row in rows:
+            self.assertEqual(row['classification'],'owned_synthetic_transient')
+            self.assertTrue(recovery._installed_prepared_inventory(row,contexts,owners))
+            for change in (dict(owner=None),dict(owner=dict(row['owner'],job_id='foreign')),
+                           dict(namespace='worker_staging/foreign'),dict(namespace='assets'),
+                           dict(name='conditioning'),dict(name='other.wav')):
+                with self.subTest(file=row['name'],change=change):
+                    self.assertFalse(recovery._installed_prepared_inventory(dict(row,**change),contexts,owners))
+            alias=copy.deepcopy(row);alias['identity'][5]=2
+            self.assertFalse(recovery._installed_prepared_inventory(alias,contexts,owners))
+            self.assertFalse(recovery._installed_prepared_inventory(row,{},owners))
+            changed=copy.deepcopy(contexts)
+            changed[row['owner']['job_id']]['plan']['reference_roles']['reference_kind']='other'
+            self.assertFalse(recovery._installed_prepared_inventory(row,changed,owners))
+
     def test_failed_prepare_plans_are_not_assets_but_original_still_required(self):
         from service.reconciliation import Reconciliation, typed_references
         from service import recovery

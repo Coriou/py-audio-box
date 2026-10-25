@@ -3146,6 +3146,27 @@ def _installed_detached_documents(data, *, publication_format=1):
                 if row['outcome']:oracle.validate('job',json.loads(row['outcome']))
 
 
+def _installed_prepared_inventory(row, contexts, owners):
+    """Exact retained Pocket preparation files, from already typed joined rows."""
+    import stat
+    from worker.runtime_protocol import execution
+    from worker.engines.pocket_prepare import PocketPreparation
+    owner = row['owner']
+    if (owner is None or owner not in owners or
+            row['name'] not in ('reference.wav', 'audition.wav') or
+            row['namespace'] not in ('worker_staging/'+owner['staging_id'],
+                                     'internal_staging/'+owner['staging_id']) or
+            not stat.S_ISREG(row['identity'][2]) or row['identity'][5] != 1):
+        return False
+    context = contexts.get(owner['job_id'])
+    if context is None:
+        return False
+    plan = context['plan']
+    return (plan['operation'] == 'voice_prepare' and
+            plan.get('reference_roles', {}).get('reference_kind') == 'prepared_reference' and
+            type(execution(context)) is PocketPreparation)
+
+
 def _installed_detached_source(state, journal, *, family=None):
     """Validate retained bytes only; never open an old root or SQLite file."""
     from service import install_policy as ip
@@ -3233,7 +3254,9 @@ def _installed_detached_source(state, journal, *, family=None):
                 raise ValueError('installed_history_inventory_asset')
             retained_assets.add(row['name'])
         elif (row['owner'] is None or (regular and links!=1) or
-                not (row['namespace']=='owners' or row['namespace'] in ('internal_staging','worker_staging') or row['name']=='output.wav')):
+                not (row['namespace']=='owners' or row['namespace'] in ('internal_staging','worker_staging') or row['name']=='output.wav' or
+                     (public['scope']==ip.POCKET_V2_SCOPE and
+                      _installed_prepared_inventory(row,result[3],owners)))):
             raise ValueError('installed_history_inventory_owner')
     if retained_assets!=set(assets)|set(refs): raise ValueError('installed_history_inventory_coverage')
     counts=dict(__import__('collections').Counter(r['classification'] for r in source['inventory']))
