@@ -134,7 +134,7 @@ class Helper:
         except FileNotFoundError: return False
 
     def terminal_helpers(self):
-        return {self.read(n)['helper'] for n in os.listdir(self.fds['authority']) if n.startswith('operation-') and n.endswith('.done')}
+        return {self.read(n)['helper'] for n in ip.directory_entries(self.fds['authority']) if n.startswith('operation-') and n.endswith('.done')}
 
     def snapshot(self):
         value=self.rpc('snapshot',{})
@@ -142,7 +142,7 @@ class Helper:
         if value['daemon']!=self.b['daemon'] or value['volumes']!=self.b['volumes']:
             raise ValueError('daemon_snapshot_binding')
         known={self.own['Id']: (self.phase,self.nonce,self.own['State']['StartedAt'])}
-        for name in os.listdir(self.fds['authority']):
+        for name in ip.directory_entries(self.fds['authority']):
             if name.startswith('operation-') and name.endswith('.done'):
                 terminal=self.read(name); dv.closed(terminal,'phase nonce helper started result')
                 known[terminal['helper']]=(terminal['phase'],terminal['nonce'],terminal['started'])
@@ -190,7 +190,7 @@ class Helper:
             self.mounts_checked()
             authority=os.fstat(self.fds['authority'])
             if self.phase=='install':
-                if os.listdir(self.fds['authority']): raise ValueError('daemon_new_authority_required')
+                if ip.directory_entries(self.fds['authority']): raise ValueError('daemon_new_authority_required')
                 if (authority.st_uid,authority.st_gid,stat.S_IMODE(authority.st_mode)) not in ((0,0,0o755),(0,0,0o700)):
                     raise ValueError('daemon_fresh_authority_identity')
                 # First exact snapshot can only contain this helper. Bootstrap
@@ -205,7 +205,7 @@ class Helper:
                     raise ValueError('daemon_authority_binding')
             if self.read('launch.lock')!=dict(policy=self.policy): raise ValueError('daemon_launch_lock_binding')
             stack.enter_context(ip.locked_file(self.authority/'launch.lock',policy=ip.SPLIT,role='receipts'))
-            entries=os.listdir(self.fds['authority'])
+            entries=ip.directory_entries(self.fds['authority'])
             import re
             allowed={'launch.lock','normalization-intent.json','binding.json','import-intent.json','import-done.json',
                 'roots-normalization-intent.json','init-done.json','containers.json','container-creation-intent.json',
@@ -246,7 +246,7 @@ class Helper:
         self.write('import-intent.json',dict(files=[{k:v for k,v in e.items() if k!='source'} for e in entries]))
         for role in ('models','config','credential'):
             fd=self.fds[role]; s=os.fstat(fd)
-            if os.listdir(fd) or (s.st_uid,s.st_gid,stat.S_IMODE(s.st_mode)) not in ((0,0,0o755),(0,0,0o700)):
+            if ip.directory_entries(fd) or (s.st_uid,s.st_gid,stat.S_IMODE(s.st_mode)) not in ((0,0,0o755),(0,0,0o700)):
                 raise ValueError('daemon_empty_input_volume_required')
             os.fchmod(fd,0o700); os.fsync(fd)
         directories=set()
@@ -301,7 +301,7 @@ class Helper:
         self.write('roots-normalization-intent.json',dict(roots={r:list(self.original[r]) for r in ip.ROLES}))
         for role in ip.ROLES:
             fd=self.fds[role]; s=os.fstat(fd)
-            if os.listdir(fd) or (s.st_uid,s.st_gid,stat.S_IMODE(s.st_mode)) not in ((0,0,0o755),(0,0,0o700)):
+            if ip.directory_entries(fd) or (s.st_uid,s.st_gid,stat.S_IMODE(s.st_mode)) not in ((0,0,0o755),(0,0,0o700)):
                 raise ValueError('daemon_fresh_data_volume_required')
             os.fchmod(fd,0o700); os.fsync(fd)
         from service.persistent_init import initialize_split
@@ -528,7 +528,7 @@ class Helper:
         # A stopped retained pair needs a matching clean stop receipt, unless it
         # is the never-started pair from this fresh exclusive create transaction.
         if any(c['State']['Status']!='created' for c in pair.values()):
-            receipts=[self.read(n) for n in os.listdir(self.fds['authority']) if n.startswith('stopped-') and n.endswith('.json')]
+            receipts=[self.read(n) for n in ip.directory_entries(self.fds['authority']) if n.startswith('stopped-') and n.endswith('.json')]
             if self.export:
                 from service.installed_export import stopped_receipt
                 matches = []
@@ -580,8 +580,16 @@ def main(*, family=None):
         if action!='begin': raise ValueError('daemon_helper_begin')
         result=Helper(phase,nonce,request,wire,family=family).run()
         wire.send('complete',dict(result=result))
-    except (Exception,KeyboardInterrupt):
-        # No backend/manifest/credential fragments in stderr or protocol output.
+    except (Exception,KeyboardInterrupt) as exc:
+        # Source location only: never serialize exception messages, request data,
+        # backend paths, manifests or credentials into the diagnostic channel.
+        trace = exc.__traceback__
+        while trace is not None and trace.tb_next is not None:
+            trace = trace.tb_next
+        if trace is not None:
+            code = trace.tb_frame.f_code
+            print('daemon_helper_refused:'+type(exc).__name__+':'+
+                code.co_name+':'+str(trace.tb_lineno),file=sys.stderr)
         raise SystemExit(2) from None
 
 

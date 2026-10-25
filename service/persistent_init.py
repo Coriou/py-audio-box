@@ -391,7 +391,7 @@ def initialize_split(roots, scope, config, *, authority, policy, complete=None,
         receipts = roots['receipts']; record_path = receipts/'p1-init.json'
         def read(path, role): return read_file(path, policy=policy, role=role)
         if complete is None:
-            if any(os.listdir(fd) for fd in held.values()): raise ValueError('new_empty_installation_required')
+            if any(ip.directory_entries(fd) for fd in held.values()): raise ValueError('new_empty_installation_required')
             for fd in held.values():
                 s = os.fstat(fd)
                 if (s.st_uid,s.st_gid,stat.S_IMODE(s.st_mode)) != (0,0,0o700):
@@ -427,7 +427,7 @@ def initialize_split(roots, scope, config, *, authority, policy, complete=None,
             s = os.fstat(fd)
             if (s.st_uid,s.st_gid,stat.S_IMODE(s.st_mode)) != (uid,gid,mode):
                 if ((s.st_uid,s.st_gid,stat.S_IMODE(s.st_mode)) != (0,0,0o700) or
-                        set(os.listdir(fd)) != ({'p1-init.json'} if role == 'receipts' else set())):
+                        set(ip.directory_entries(fd)) != ({'p1-init.json'} if role == 'receipts' else set())):
                     raise ValueError('partial_role_transition_quarantine')
                 os.fchown(fd,uid,gid); os.fchmod(fd,mode); os.fsync(fd)
             ip.check(os.fstat(fd),policy,role,directory=True); stable(); fault('role_'+role)
@@ -443,7 +443,7 @@ def initialize_split(roots, scope, config, *, authority, policy, complete=None,
             receipts={'p1-init.json','p1-enrolled.json','p1-core-intent','p1-core-done','journal.json','initialized','lane.lock'})
         allowed['receipts'].update('p1-created-'+r+'-'+n for r,n in files)
         for role,fd in held.items():
-            if set(os.listdir(fd))-allowed[role]: raise ValueError('unexplained_initialization_entries')
+            if set(ip.directory_entries(fd))-allowed[role]: raise ValueError('unexplained_initialization_entries')
         for (role,name),data in files.items():
             path = roots[role]/name; intent = receipts/('p1-created-'+role+'-'+name)
             binding = digest(dict(role=role,name=name,sha256=hashlib.sha256(data).hexdigest())).encode()

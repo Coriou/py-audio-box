@@ -72,6 +72,18 @@ def check(info, policy, role, *, directory=False):
         raise ValueError('installed_role_identity')
 
 
+def directory_entries(fd):
+    """List a held inode from a fresh directory offset after namespace writes."""
+    scan = os.open('.', os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=fd)
+    try:
+        before, current = os.fstat(fd), os.fstat(scan)
+        if (before.st_dev, before.st_ino) != (current.st_dev, current.st_ino):
+            raise ValueError('installed_root_changed')
+        return os.listdir(scan)
+    finally:
+        os.close(scan)
+
+
 @contextmanager
 def parent_fd(path):
     """Walk the literal absolute chain; never resolve away a symlink first."""
