@@ -10,11 +10,14 @@ from unittest.mock import patch, Mock
 from service import daemon_volumes as dv, daemon_helper as dh, daemon_client as dc
 from service import installed_export as ex, install_child as ic
 from service.core import encode
-from tests.service.test_daemon_volumes import Session, container
+from tests.service.test_daemon_volumes import Session, container, assert_quarantined_stop
 
 
 class ExportDaemonTests(unittest.TestCase):
     def session(self): return Session(self,family=ex.FAMILY)
+
+    def test_export_quarantined_stop_preserves_fault_and_refuses_restart(self):
+        assert_quarantined_stop(self,self.session())
 
     def initialized(self):
         s=self.session(); s.run('install'); s.run('init'); return s

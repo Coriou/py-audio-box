@@ -597,7 +597,7 @@ def launch_status(*, family=None):
             gate=decode_projection(ip.read_private(GATE_DIRECTORY/GATE_NAME,GATE_LIMIT,policy=ip.SPLIT,role='control'), family=family)
             if gate['registration_id']!=result['registration_id']: raise ValueError('installed_startup_gate_binding')
             if not _listener_ready(gate['configuration_digest'],launch_policy=gate.get('launch_policy')):
-                print(encode(dict(phase='not_ready'))); return
+                print(encode(dict(phase='not_ready',registration_id=result['registration_id']))); return
             print(encode({k:result[k] for k in ('phase','registration_id')}))
         finally: os.close(value)
         _directory_stable(fd,GATE_DIRECTORY)

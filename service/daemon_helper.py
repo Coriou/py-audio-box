@@ -370,6 +370,28 @@ class Helper:
             installed_clean_history(state,journal,family=self.family if self.export else None)
             return json.loads(encode(dict(state=state,journal=journal)))
 
+    def quarantined_reap(self, record):
+        """Read-only death proof after both exact containers exited normally.
+
+        This discharges no Core fault, reservation, recovery or clean-stop gate.
+        """
+        from worker.runtime_journal import read_snapshot
+        from service.worker_transport import Authority
+        from worker.native_protocol import terminal_receipt
+        with ip.locked_file(self.root['receipts']/'lane.lock',policy=ip.SPLIT,role='receipts'):
+            journal,maintenance=read_snapshot(self.root['receipts'],policy=ip.SPLIT)
+            if maintenance is not None: raise ValueError('daemon_maintenance_pending')
+            if journal['lane']!=record['lane']: raise ValueError('daemon_stopped_lane_changed')
+            for row in journal['records']:
+                if row['phase']!='terminal': raise ValueError('daemon_stopped_unreaped')
+                authority=Authority(*row['allocation']['snapshot'])
+                if (authority.binding!=row['allocation']['binding'] or
+                        not isinstance(row['boot'],str) or not re.fullmatch('[0-9a-f]{32}',row['boot']) or
+                        not row['id'].startswith(journal['lane']+'/'+row['boot']+'/')):
+                    raise ValueError('daemon_stopped_allocation_binding')
+                uid=terminal_receipt(row['receipt'],authority=authority,runtime_id=row['id'])
+                if uid!=row['uid']: raise ValueError('daemon_stopped_receipt_uid')
+
     def observe(self,ids,public):
         first=self.pair(ids); startup=self.startup()
         facts=self.rpc('facts',dict(id=ids['control'],role='control'))
@@ -511,21 +533,26 @@ class Helper:
         live=[c['State']['Running'] for c in pair.values()]
         if all(live):
             marker=self.rpc('marker',dict(id=ids['control'],role='control'))
-            if marker.get('phase')!='ready': raise ValueError('daemon_live_not_ready')
+            allowed=('ready','not_ready') if self.phase=='stop' else ('ready',)
+            if (set(marker)!={'phase','registration_id'} or marker.get('phase') not in allowed or
+                    not isinstance(marker['registration_id'],str) or not re.fullmatch('[0-9a-f]{64}',marker['registration_id'])):
+                raise ValueError('daemon_live_not_ready')
             rid=marker['registration_id']; provenance=self.read('registration-'+rid+'.json')
             record=provenance['registration']
             if digest(record)!=rid or record['evidence']!=self.evidence or provenance['enrollment_digest']!=digest(public): raise ValueError('daemon_retained_registration')
-            result=self.ready(ids,public,rid,record)
-            if self.phase!='stop': return result
+            if self.phase!='stop': return self.ready(ids,public,rid,record)
+            current=self.observe(ids,public); dv.observation(current,record,self.config,self.b,public,family=self.family)
+            if self.rpc('marker',dict(id=ids['control'],role='control'))!=marker: raise ValueError('daemon_stop_marker_changed')
             self.rpc('term',dict(id=ids['control'],role='control'))
             self.wait(lambda:self.inspect('control',ids),lambda c:not c['State']['Running'] and c['State']['ExitCode']==0)
-            hello=self.startup(); self.clean()
-            if self.startup()!=hello: raise ValueError('daemon_shutdown_hello_changed')
             self.rpc('term',dict(id=ids['worker'],role='worker'))
             self.wait(lambda:self.inspect('worker',ids),lambda c:not c['State']['Running'] and c['State']['ExitCode']==0)
-            history=self.clean(lane_lock=True)
             stopped=self.pair(ids)
             if any(c['State']['Running'] or c['State']['ExitCode']!=0 for c in stopped.values()): raise ValueError('daemon_stopped_unknown')
+            if marker['phase']=='not_ready':
+                self.quarantined_reap(record)
+                return dict(phase='stopped_quarantined',containers=ids)
+            history=self.clean(lane_lock=True)
             self.write('stopped-'+self.nonce+'.json',dict(containers=stopped,history=history))
             return dict(phase='stopped',containers=ids)
         if any(live) or any(c['State']['ExitCode']!=0 for c in pair.values()): raise ValueError('daemon_dirty_partial_runtime')

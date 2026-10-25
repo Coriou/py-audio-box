@@ -567,7 +567,13 @@ class ListenerProbeTests(unittest.TestCase):
 
 
 class ReadinessReaderTests(unittest.TestCase):
+    def test_not_ready_reader_retains_validated_registration(self):
+        self._reader(False)
+
     def test_exec_reader_checks_pid1_gate_and_listener_without_claiming_to_be_pid1(self):
+        self._reader(True)
+
+    def _reader(self, listener):
         import contextlib
         import io
         f=host_fixtures.InstalledHost();f.setUp();self.addCleanup(f.doCleanups)
@@ -578,9 +584,9 @@ class ReadinessReaderTests(unittest.TestCase):
         with patch.object(e,'GATE_DIRECTORY',directory),patch.object(e,'_control_identity'), \
              patch.object(e,'_read_pid1_incarnation',return_value={'injected-pid1':True}), \
              patch.object(e.ip,'read_private',return_value=b'gate'),patch.object(e,'decode_projection',return_value=dict(registration_id='a'*64,configuration_digest='b'*64)), \
-             patch.object(e,'_listener_ready',return_value=True),contextlib.redirect_stdout(output):
+             patch.object(e,'_listener_ready',return_value=listener),contextlib.redirect_stdout(output):
             e.launch_status()
-        self.assertEqual(json.loads(output.getvalue()),dict(phase='ready',registration_id='a'*64))
+        self.assertEqual(json.loads(output.getvalue()),dict(phase='ready' if listener else 'not_ready',registration_id='a'*64))
 
 
 class ProvisioningTests(unittest.TestCase):

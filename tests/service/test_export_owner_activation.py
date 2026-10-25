@@ -199,6 +199,13 @@ class ExportOwnerTests(ProductionAPIFixture, unittest.TestCase):
         self.assertEqual(self.s.run('status')['phase'],'stopped')
         self.assertEqual(self.s.run('up')['phase'],'ready')
 
+    def test_helper_quarantined_marker_can_stop_but_cannot_reopen(self):
+        self.setup_family()
+        self.s.marker['phase']='not_ready'
+        self.assertEqual(self.s.run('stop')['phase'],'stopped_quarantined')
+        self.assertFalse(list(self.s.roots['authority'].glob('stopped-*.json')))
+        with self.assertRaisesRegex(ValueError,'clean_stop_receipt_required'):self.s.run('up')
+
     def client_parity(self,request,receipt,output,content):
         import asyncio,contextlib,io,httpx
         from pathlib import Path

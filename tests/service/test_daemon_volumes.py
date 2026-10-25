@@ -198,8 +198,57 @@ class Session:
     def install(self): self.run('install'); self.run('init'); return self.run('up')
 
 
+def assert_quarantined_stop(test,s):
+    s.install();s.marker['phase']='not_ready'
+    database=s.roots['control']/'core/core.sqlite'
+    with sqlite3.connect(database) as db:
+        db.execute("INSERT INTO resource_faults VALUES ('INERT retained fault')")
+        db.execute("UPDATE resource_monitor SET state='fault'")
+    start=len(s.calls)
+    result=s.run('stop')
+    test.assertEqual(result,dict(phase='stopped_quarantined',containers=json.loads((s.roots['authority']/'containers.json').read_bytes())))
+    test.assertEqual([p['role'] for action,p in s.calls[start:] if action=='term'],['control','worker'])
+    test.assertFalse(list(s.roots['authority'].glob('stopped-*.json')))
+    with sqlite3.connect(database) as db:test.assertEqual(db.execute('SELECT reason FROM resource_faults').fetchall(),[('INERT retained fault',)])
+    before=len(s.calls)
+    with test.assertRaises(ValueError):s.run('up')
+    test.assertFalse(any(action=='start' for action,_ in s.calls[before:]))
+
+
 class DaemonTests(unittest.TestCase):
     def setUp(self): self.s=Session(self)
+
+    def test_quarantined_stop_exact_order_preserves_fault_and_no_clean_receipt(self):
+        assert_quarantined_stop(self,self.s)
+
+    def test_stop_refuses_wrong_registration_or_stale_boot_before_term(self):
+        for fault in ('registration','boot'):
+            s=Session(self);s.install()
+            if fault=='registration':s.marker=dict(phase='not_ready',registration_id='f'*64)
+            else:s.marker['phase']='not_ready';s.boot='f'*32
+            start=len(s.calls)
+            with self.assertRaises((ValueError,OSError)):s.run('stop')
+            self.assertFalse(any(action=='term' for action,_ in s.calls[start:]))
+
+    def test_ready_stop_checks_clean_history_after_both_terms(self):
+        s=self.s;s.install();start=len(s.calls)
+        with patch.object(dh.Helper,'clean',side_effect=ValueError('INERT retained fault')):
+            with self.assertRaisesRegex(ValueError,'retained fault'):s.run('stop')
+        self.assertEqual([p['role'] for action,p in s.calls[start:] if action=='term'],['control','worker'])
+        self.assertFalse(list(s.roots['authority'].glob('stopped-*.json')))
+
+    def test_quarantined_stop_requires_terminal_journal_and_bounded_exit(self):
+        s=self.s;s.install();s.marker['phase']='not_ready'
+        with patch('worker.runtime_journal.read_snapshot',return_value=(dict(lane=s.startup()['hello']['lane'],records=[dict(phase='started')]),None)):
+            with self.assertRaisesRegex(ValueError,'daemon_stopped_unreaped'):s.run('stop')
+        self.assertFalse(list(s.roots['authority'].glob('stopped-*.json')))
+
+    def test_stop_exit_timeout_never_terms_worker_or_writes_clean_receipt(self):
+        s=self.s;s.install();s.marker['phase']='not_ready';start=len(s.calls)
+        with patch.object(dh.Helper,'wait',side_effect=ValueError('daemon_runtime_wait_timeout_retained')):
+            with self.assertRaisesRegex(ValueError,'wait_timeout'):s.run('stop')
+        self.assertEqual([p['role'] for action,p in s.calls[start:] if action=='term'],['control'])
+        self.assertFalse(list(s.roots['authority'].glob('stopped-*.json')))
 
     def test_docker_canonical_capabilities_and_omitted_init(self):
         s = self.s
