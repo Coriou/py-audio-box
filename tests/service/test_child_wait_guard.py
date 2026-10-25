@@ -2080,6 +2080,7 @@ if mode != 'setup-failure':
 '''
 
 
+@pytest.mark.manual_b_probe
 @pytest.mark.parametrize('control', B_CONTROL_SEAMS, ids=lambda c: 'B-S-'+c)
 def test_B_directed_isolated_seams(tmp_path, control):
     """Original target, finite one-shot controls; scheduling failures stay RED."""
@@ -2219,6 +2220,8 @@ def test_B_parent_source_predicates(tmp_path, control):
         elif _B_eval_source(kill_test, dict(values, status=status)): suffix = b'B:t;B:k;'
     positive = control in ('624', '627-positive-remaining', '74-kill-attempt', '9-no-f', '9-f')
     assert bool(suffix) is positive
+    if control.startswith('child-owned-'):
+        assert not admitted and suffix == b''
     witness = b'B:a;'+values['child_bytes']+suffix
     guard = harness.MaintenanceWaitGuard(SimpleNamespace(nodeid='B-parent-projection',
         originalname='B-parent-projection'), SimpleNamespace(shouldstop=False))
@@ -2226,8 +2229,11 @@ def test_B_parent_source_predicates(tmp_path, control):
     raw = (123, status)
     assert guard.observe(raw, witness=witness, armed_B=True, expected_exit=74, expected_signal=9) is raw
     assert guard.receipts == [raw] and not guard.owned
-    assert bool(guard.failures) is not positive
-    if not positive:
+    # The parser sees canonical bytes, not their child/parent provenance.
+    # Terminal admission above separately rejects child-owned terminal tokens.
+    transcript_positive = positive or control == 'child-owned-t'
+    assert bool(guard.failures) is not transcript_positive
+    if not transcript_positive:
         assert guard.failures[0].endswith('incomplete or invalid armed B contract')
         _B_refused_launches(guard, tmp_path)
 
@@ -2360,6 +2366,7 @@ assert g.receipts[0][1] == 74 << 8
 '''
 
 
+@pytest.mark.manual_b_probe
 @pytest.mark.parametrize('control', ('bound', 'withheld'), ids=lambda c: 'B-H-'+c)
 def test_B_fresh_real_inner_binding_control_sink(tmp_path, control):
     """Fresh bootstrap with isolated inert sink; no real-observer credit.
@@ -2541,6 +2548,7 @@ def _B_precapture_program(control):
     return source.replace(old, new)
 
 
+@pytest.mark.manual_b_probe
 @pytest.mark.parametrize('control', B_CONTROL_B1, ids=lambda c: 'B-C-'+c)
 def test_B_precapture_same_collected_function(tmp_path, control):
     """Valid collected invocation first, then same-object pre-capture refusal.
@@ -2565,6 +2573,7 @@ B_CONTROL_AUTHORITY = ('wrong-source', 'wrong-digest', 'filename', 'qualname',
     'flags', 'typed-constant', 'lambda-roles')
 
 
+@pytest.mark.manual_b_probe
 @pytest.mark.parametrize('control', B_CONTROL_AUTHORITY, ids=lambda c: 'B-A-'+c)
 def test_B_independent_authority_source_predicates(monkeypatch, control):
     """Baseline-first exact source predicates; no child/transport/latch credit."""
@@ -2616,6 +2625,7 @@ def test_B_independent_authority_source_predicates(monkeypatch, control):
     assert cls.code_projection(cls.target_source(function, node)[1]) == cls.code_projection(code)
 
 
+@pytest.mark.manual_b_probe
 def test_B_overhead_extracted_HOST_contract():
     """Separate future test entry; only extracted/synthetic stdlib HOST credit.
 

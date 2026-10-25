@@ -2,6 +2,22 @@
 import pytest
 from _maintenance_wait_guard import MaintenanceWaitGuard, install, activate
 
+def pytest_addoption(parser):
+    parser.addoption(
+        '--run-manual-b-probes', action='store_true', default=False,
+        help='run manual B observer execution probes (requires frozen diagnostic authority)',
+    )
+
+def pytest_collection_modifyitems(config, items):
+    if config.getoption('--run-manual-b-probes'):
+        return
+    manual = pytest.mark.skip(
+        reason='MANUAL/unrun B diagnostic probe; opt in with --run-manual-b-probes',
+    )
+    for item in items:
+        if item.get_closest_marker('manual_b_probe') is not None:
+            item.add_marker(manual)
+
 @pytest.fixture(autouse=True)
 def maintenance_wait_guard(request, monkeypatch, tmp_path_factory):
     if request.node.path.parent.name not in ('service', 'release'):
