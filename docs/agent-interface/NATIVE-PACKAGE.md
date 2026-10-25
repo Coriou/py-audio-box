@@ -210,3 +210,32 @@ durable import-intent linkage, authenticated installed credential/lifespan wirin
 topology/mount validation and supported fresh owned voice onboarding. Until that
 native history gate is reviewed, **all retained Core roots remain refused**.
 Actual Metal is UNAVAILABLE / UNQUALIFIED; no reviewed arm64 wheelhouse is supplied.
+
+r309 supersedes r307's first-start-only limitation for the private owner factory.
+The native policy runs on the Core owner thread under lifetime exclusion, before
+import recovery, reconciliation writes or scheduling. It accepts a clean zero-job
+owner or fewer than 64 succeeded, single-attempt, non-clone native jobs with the
+same immutable configured five-field identity and boot. Exact native canonical
+schema/SQL constraints, closed documents/frozen Authority, retained reservations,
+confirmed durable outcomes/ACKs, actual publication bytes and publication intent,
+matching retained supervisor terminal receipt/proposal/output, and exact private
+import-intent plus import-complete are required. Unknown namespaces, diagnostics,
+unfinished commands/work, missing or changed trust and incomplete/legacy imports
+refuse without repair, cleanup, ACK or boot learning. NativeRuntime remains on the
+control writer; TLS receives only detached Authority, never Core or SQLite.
+
+The startup consumer may construct a runtime with completed imports pending proof;
+this alone leaves its admission closed. Only the native validator discharges that
+in-memory closure after all proofs. The normal enrollment/startup preparation
+consumer still refuses pending imports. Linux installed history and its explicit
+native-history refusal remain unchanged. The launch count must equal the retained
+completed native job count; unknown host launches refuse. A host restart with a
+changed boot still needs separately designed stopped/reconciled renewal.
+
+Failed/cancelled/retried/clone histories, queued work, crash recovery, maintenance
+or Linux-enrolled roots, legacy imports without intent/completion, and histories
+outside the finite reader budgets remain unsupported. No configured profile is
+promoted. Authenticated installed public lifespan/credentials, topology/mounts,
+fresh voice onboarding and hardware qualification remain separate. No arm64
+wheelhouse is supplied; actual Metal remains UNAVAILABLE / UNQUALIFIED. CPU/CUDA
+release rows and the known legacy lib/tts.py digest RED remain unwaived.

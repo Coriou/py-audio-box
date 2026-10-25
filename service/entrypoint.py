@@ -554,11 +554,11 @@ if __name__ == '__main__':
 
 
 def create_native_owner(*, record_file, configuration_file, templates_file, owner_root, staging):
-    """Private installed first-start factory; no listener or readiness promotion.
+    """Private native owner factory; no listener or readiness promotion.
 
     The caller owns Dispatcher.close(), including failed/unknown close retention.
     Runtime/contexts are constructed on the existing control-writer thread.
-    Any retained Core, spool or staging work refuses pending native history policy.
+    Retained histories require the separate native completed-history policy.
     """
     from service.dispatcher import Dispatcher
     from service.native_activation import NativeActivation

@@ -393,7 +393,7 @@ def preflight(config_path, manifest_path):
     return config
 
 
-def enrolled_runtime(configuration_file, *, connector=None):
+def enrolled_runtime(configuration_file, *, connector=None, _completed_history=False):
     """Private control-side enrollment consumer, never public registration.
 
     Exact configured current boot is required. Existing NativeRuntime owns its
@@ -415,7 +415,8 @@ def enrolled_runtime(configuration_file, *, connector=None):
         staging=config['staging'], local_import_uid=os.getuid(), connector=connector)
     hello = runtime.call('hello', {})
     if (any(hello[key] != value for key, value in config['native'].items()) or
-            hello['quarantined'] is not False or not runtime.admission_open):
+            hello['quarantined'] is not False or runtime.failed or
+            (not _completed_history and not runtime.admission_open)):
         raise Refused('native_package_control_hello')
     return runtime
 
@@ -524,19 +525,19 @@ def enroll_native(record_file, *, configuration_file, templates_file, owner_root
     return before
 
 
-def native_startup_inputs(record_file, *, configuration_file, templates_file, owner_root, connector=None):
+def native_startup_inputs(record_file, *, configuration_file, templates_file, owner_root, connector=None, _completed_history=False):
     """Reopen durable source enrollment and prepare exact runtime/contexts.
 
     This alone does NOT authorize Dispatcher construction or read history.
-    NativeActivation is the private first-start consumer: it repeats binding under
-    Core exclusion and refuses every retained Core/spool/staging history.
+    NativeActivation repeats binding and validates completed history under Core
+    exclusion. Its private pending-import mode grants no admission authority.
     """
     directory(str(literal(str(record_file)).parent))
     # Canonical bytes preserve primitive types (True/1/1.0 compare equal in Python).
     saved = canonical(document(record_file))
     before, contexts, templates = _enrollment_snapshot(configuration_file, templates_file, owner_root)
     if saved != canonical(before): raise Refused('native_enrollment_binding')
-    runtime = enrolled_runtime(configuration_file, connector=connector)
+    runtime = enrolled_runtime(configuration_file, connector=connector, _completed_history=_completed_history)
     after, _, _ = _enrollment_snapshot(configuration_file, templates_file, owner_root)
     if canonical(after) != canonical(before) or canonical(document(record_file)) != saved:
         raise Refused('native_enrollment_changed')
