@@ -113,3 +113,21 @@ refuse on Darwin arm64. This does not authenticate the installed distribution's
 file provenance or prove native extensions load. Source distributions and runtime
 aggregate archives are unsupported; absent compatible wheels leave unavailable.
 Inert tests use explicitly nonqualifying metadata-only ZIPs, never native wheels.
+
+r299 metadata relation: installed metadata and each selected wheel must both close
+against the exact declared distribution set. Their canonical active edge sets
+(normalized dependency name and canonical version specifier) must agree exactly;
+equivalent but differently expressed constraints can conservatively refuse.
+Valid inactive markers are ignored, including optional-extra edges; malformed
+markers refuse. Active URLs and extras refuse. Wheel Requires-Python remains
+checked. This relation proves neither installed binary provenance/ABI nor source
+authenticity.
+
+Before ZIP constructors, classic single-disk ZIP preflight caps source archives
+at 64 MiB/512 entries and wheels at 4 GiB/32768 entries, with a 4 MiB central
+directory ceiling. ZIP64 and trailing data are unsupported. Metadata is capped
+at 65536 bytes; source members and launcher must declare exact expected sizes
+before bounded stream reads (expected length plus one). Exact membership and
+source-byte comparison remain required. These are package processing limits,
+under the same immutable operator-managed input premise, not an extraction or
+hostile-writer sandbox.

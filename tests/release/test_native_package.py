@@ -53,7 +53,7 @@ class NativePackageTests(unittest.TestCase):
 
     def validate(self, value=None):
         with patch.object(n,'python_identity',return_value=self.identity), \
-             patch.object(n,'dependency_closure'):
+             patch.object(n,'dependency_closure',return_value={name:frozenset() for name in self.versions}):
             return n.runtime_manifest(value or self.manifest)
 
     def test_manifest_exact_hash_and_nonqualifying_status(self):
@@ -141,10 +141,10 @@ class NativePackageTests(unittest.TestCase):
             with self.assertRaises(Refused):n.dependency_closure(self.versions)
         from types import SimpleNamespace
         with patch.object(n,'distributions',return_value=self.versions), \
-             patch.object(n.importlib.metadata,'distributions',return_value=[SimpleNamespace(requires=['missing>=1'])]):
+             patch.object(n.importlib.metadata,'distributions',return_value=[SimpleNamespace(metadata={'Name':'torch'},requires=['missing>=1'])]):
             with self.assertRaises(Refused):n.dependency_closure(self.versions)
         with patch.object(n,'distributions',return_value=self.versions), \
-             patch.object(n.importlib.metadata,'distributions',return_value=[SimpleNamespace(requires=['torch==1'])]):
+             patch.object(n.importlib.metadata,'distributions',return_value=[SimpleNamespace(metadata={'Name':'torch'},requires=['torch==1'])]):
             n.dependency_closure(self.versions)
 
     def test_wheel_platform_name_version_and_metadata_refuse(self):
@@ -156,6 +156,93 @@ class NativePackageTests(unittest.TestCase):
         self.wheel.chmod(0o600)
         with zipfile.ZipFile(self.wheel,'w') as wheel:wheel.writestr('bad','NO METADATA')
         with self.assertRaises(Refused):n.wheel_identity(str(self.wheel),['packaging'],self.versions)
+
+    def rewrite_metadata(self, headers):
+        self.wheel.chmod(0o600)
+        with zipfile.ZipFile(self.wheel, 'w') as wheel:
+            wheel.writestr('packaging-1.dist-info/METADATA',
+                'Name: packaging\nVersion: 1\n' + headers)
+            wheel.writestr('packaging-1.dist-info/WHEEL', 'Tag: py3-none-any\n')
+        self.manifest['artifacts'][0]['sha256'] = n.file_hash(str(self.wheel))
+
+    def test_selected_wheel_active_dependencies_refuse(self):
+        for raw in ('missing>=99', 'torch>=99', 'torch @ https://example.invalid/a.whl',
+                    'torch[extra]>=1', 'torch; invalid_marker == "x"'):
+            with self.subTest(raw=raw):
+                self.rewrite_metadata('Requires-Dist: ' + raw + '\n')
+                with self.assertRaises(Refused): self.validate()
+
+    def test_selected_wheel_and_installed_graph_agreement(self):
+        from types import SimpleNamespace
+        installed = [SimpleNamespace(metadata={'Name': name}, version='1', requires=[])
+                     for name in self.versions]
+        self.rewrite_metadata('Requires-Dist: torch>=1\n')
+        with patch.object(n, 'python_identity', return_value=self.identity), \
+             patch.object(n.importlib.metadata, 'distributions', return_value=installed):
+            with self.assertRaisesRegex(Refused, 'metadata_disagreement'):
+                n.runtime_manifest(self.manifest)
+            installed[0].requires = ['Torch >= 1; python_version >= "0"']
+            self.assertEqual(n.runtime_manifest(self.manifest), hashlib.sha256(canonical(self.manifest)).hexdigest())
+            installed[0].requires = ['torch<2']
+            with self.assertRaisesRegex(Refused, 'metadata_disagreement'):
+                n.runtime_manifest(self.manifest)
+
+    def test_inactive_valid_markers_and_requires_python(self):
+        inactive = ['missing>=99; python_version < "0"',
+                    'torch[extra] @ https://example.invalid/a ; extra == "optional"']
+        self.rewrite_metadata(''.join('Requires-Dist: '+raw+'\n' for raw in inactive))
+        self.validate()
+        self.assertEqual(n.active_edges(inactive, self.versions), frozenset())
+        for raw in ('torch>=99', 'torch[extra]', 'torch @ https://example.invalid/a',
+                    'torch; invalid_marker == "x"'):
+            with self.assertRaises(Refused): n.active_edges([raw], self.versions)
+        self.rewrite_metadata('Requires-Python: >=99\n')
+        with self.assertRaises(Refused): self.validate()
+
+    def test_launcher_declared_overlimit_never_opens_member(self):
+        bad = self.root/'bad.zip'
+        with zipfile.ZipFile(self.source) as source, zipfile.ZipFile(bad, 'w') as out:
+            for info in source.infolist():
+                out.writestr(info, source.read(info) if not info.filename.endswith('/native-worker.py')
+                             else n.LAUNCHER + b'X')
+        original = n.zip_read
+        def spy(archive, info, limit):
+            self.assertFalse(info.filename.endswith('/native-worker.py'))
+            return original(archive, info, limit)
+        with patch.object(n, 'zip_read', side_effect=spy), \
+             self.assertRaisesRegex(Refused, 'launcher'):
+            n.verify_archive(bad)
+
+    def test_metadata_declared_overlimit_never_reads_member(self):
+        self.rewrite_metadata('X: ' + 'X'*65536)
+        with patch.object(n, 'zip_read', side_effect=AssertionError('read entered')) as spy, \
+             self.assertRaisesRegex(Refused, 'wheel_metadata'):
+            n.wheel_identity(str(self.wheel), ['packaging'], self.versions)
+        spy.assert_not_called()
+
+    def test_zip_bounds_before_constructor_and_bounded_stream(self):
+        import struct
+        raw = bytearray(self.source.read_bytes())
+        offset = raw.rfind(b'PK\x05\x06')
+        for field, value, fmt in ((10, 513, '<H'), (12, 4194305, '<I')):
+            changed = bytearray(raw); struct.pack_into(fmt, changed, offset+field, value)
+            bad = self.file('bounds.zip', changed)
+            with patch.object(n.zipfile, 'ZipFile', side_effect=AssertionError('constructor entered')), \
+                 self.assertRaisesRegex(Refused, 'zip_bounds'):
+                n.verify_archive(bad)
+        class Stream(io.BytesIO):
+            def read(inner, size=-1):
+                self.assertEqual(size, 4)
+                return super().read(size)
+        from types import SimpleNamespace
+        with patch.object(n.zipfile.ZipFile, 'open', return_value=Stream(b'xxxx')):
+            with zipfile.ZipFile(self.wheel) as wheel, self.assertRaises(Refused):
+                n.zip_read(wheel, SimpleNamespace(file_size=3), 3)
+
+    def test_archive_deterministic_bytes(self):
+        other = self.root/'second.zip'
+        self.assertEqual(n.archive(other), hashlib.sha256(self.source.read_bytes()).hexdigest())
+        self.assertEqual(other.read_bytes(), self.source.read_bytes())
 
     def preflight_fixture(self):
         from tests.service.test_native_runtime import NativeFixture

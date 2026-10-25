@@ -11,6 +11,7 @@ import os
 from pathlib import Path
 import platform
 import stat
+import struct
 import sys
 import zipfile
 
@@ -120,7 +121,6 @@ def dependency_closure(expected):
     This checks metadata only. Binary loader/ABI compatibility remains unrun.
     Extras are deliberately unsupported in this first package portion.
     """
-    from packaging.requirements import Requirement
     from packaging.utils import canonicalize_name
     if (type(expected) is not dict or not expected or len(expected) > 512 or
             any(type(k) is not str or canonicalize_name(k) != k or type(v) is not str or
@@ -129,18 +129,63 @@ def dependency_closure(expected):
     if not {'packaging', 'torch', 'transformers', 'qwen-tts'} <= set(expected):
         raise Refused('native_package_missing_dependencies')
     if distributions() != expected: raise Refused('native_package_dependency_mismatch')
-    for dist in importlib.metadata.distributions():
-        for raw in dist.requires or ():
+    return {canonicalize_name(dist.metadata['Name']):
+            active_edges(dist.requires or (), expected) for dist in importlib.metadata.distributions()}
+
+
+def active_edges(requirements, expected):
+    """Canonical active graph; inactive valid markers carry no edge authority."""
+    from packaging.requirements import Requirement
+    from packaging.utils import canonicalize_name
+    edges = set()
+    if len(requirements) > 512: raise Refused('native_package_dependency_closure')
+    try:
+        for raw in requirements:
+            if len(raw) > 4096: raise Refused('native_package_dependency_closure')
             requirement = Requirement(raw)
             if requirement.marker and not requirement.marker.evaluate({'extra': ''}): continue
             name = canonicalize_name(requirement.name)
             if (requirement.url or requirement.extras or name not in expected or
                     expected[name] not in requirement.specifier):
                 raise Refused('native_package_dependency_closure')
+            edges.add((name, str(requirement.specifier)))
+    except (ValueError, TypeError, KeyError):
+        raise Refused('native_package_dependency_closure') from None
+    return frozenset(edges)
+
+
+def zip_preflight(path, *, source=False):
+    """Bound constructor allocation before ZipFile reads its central directory.
+
+    Single-disk classic ZIP only; ZIP64 and trailing data are unsupported.
+    Operator artifacts remain immutable under the documented trusted-writer premise.
+    """
+    limit = 64 * 1024 * 1024 if source else 4 * 1024 * 1024 * 1024
+    with open(path, 'rb') as stream:
+        size = os.fstat(stream.fileno()).st_size
+        if size > limit or size < 22: raise Refused('native_package_zip_bounds')
+        stream.seek(max(0, size - 65557))
+        tail = stream.read(65557)
+        offset = tail.rfind(b'PK\x05\x06')
+        if offset < 0 or len(tail) - offset < 22: raise Refused('native_package_zip_bounds')
+        _, disk, central_disk, disk_count, count, central_size, central_offset, comment = struct.unpack_from('<4s4H2IH', tail, offset)
+        end = size - len(tail) + offset
+        if (disk or central_disk or disk_count != count or count > (512 if source else 32768) or
+                central_size > 4 * 1024 * 1024 or central_offset == 0xffffffff or
+                central_offset + central_size != end or offset + 22 + comment != len(tail)):
+            raise Refused('native_package_zip_bounds')
+
+
+def zip_read(archive, info, limit):
+    if info.file_size > limit: raise Refused('native_package_zip_member')
+    with archive.open(info) as stream:
+        raw = stream.read(limit + 1)
+    if len(raw) != info.file_size or len(raw) > limit: raise Refused('native_package_zip_member')
+    return raw
 
 
 def wheel_identity(path, names, expected):
-    """Authenticate wheel identity/tags only; never infer native ABI success."""
+    """Validate wheel identity, tags and active edges; never infer ABI success."""
     from email.parser import BytesParser
     from packaging.tags import sys_tags, parse_tag
     from packaging.utils import parse_wheel_filename, canonicalize_name
@@ -150,19 +195,21 @@ def wheel_identity(path, names, expected):
         name, version, _, tags = parse_wheel_filename(Path(path).name)
         if name != names[0] or str(version) != expected[name] or not tags.intersection(set(sys_tags())):
             raise Refused('native_package_wheel_platform')
+        zip_preflight(path)
         with zipfile.ZipFile(path) as wheel:
             metadata = [i for i in wheel.infolist() if i.filename.endswith('.dist-info/METADATA')]
             headers = [i for i in wheel.infolist() if i.filename.endswith('.dist-info/WHEEL')]
             if len(metadata) != 1 or len(headers) != 1 or any(i.file_size > 65536 for i in metadata + headers):
                 raise Refused('native_package_wheel_metadata')
-            info = BytesParser().parsebytes(wheel.read(metadata[0]))
-            header = BytesParser().parsebytes(wheel.read(headers[0]))
+            info = BytesParser().parsebytes(zip_read(wheel, metadata[0], 65536))
+            header = BytesParser().parsebytes(zip_read(wheel, headers[0], 65536))
             actual_tags = set()
             for tag in header.get_all('Tag', []): actual_tags.update(parse_tag(tag))
             if (canonicalize_name(info['Name']) != name or info['Version'] != expected[name] or
                     tags != actual_tags or info['Requires-Python'] and
                     platform.python_version() not in SpecifierSet(info['Requires-Python'])):
                 raise Refused('native_package_wheel_metadata')
+            return active_edges(info.get_all('Requires-Dist', []), expected)
     except Refused:
         raise
     except (ValueError, TypeError, KeyError, zipfile.BadZipFile):
@@ -184,7 +231,7 @@ def runtime_manifest(value):
         raise Refused('native_package_python_identity')
     if file_hash(expected['executable'], executable=True) != expected['sha256']:
         raise Refused('native_package_python_hash')
-    dependency_closure(value['distributions'])
+    installed_edges = dependency_closure(value['distributions'])
     artifacts = value['artifacts']
     if type(artifacts) is not list or not 1 <= len(artifacts) <= 1024:
         raise Refused('native_package_artifacts')
@@ -197,7 +244,9 @@ def runtime_manifest(value):
                 not set(names) <= set(value['distributions']) or covered.intersection(names) or
                 artifact['path'] in paths): raise Refused('native_package_artifacts')
         if file_hash(artifact['path']) != artifact['sha256']: raise Refused('native_package_artifact_hash')
-        wheel_identity(artifact['path'], names, value['distributions'])
+        edges = wheel_identity(artifact['path'], names, value['distributions'])
+        if edges != installed_edges[names[0]]:
+            raise Refused('native_package_metadata_disagreement')
         covered.update(names); paths.add(artifact['path'])
     if covered != set(value['distributions']): raise Refused('native_package_missing_artifacts')
     archive = value['source_archive']
@@ -248,6 +297,7 @@ def archive(destination):
 
 
 def verify_archive(path):
+    zip_preflight(path, source=True)
     with zipfile.ZipFile(path) as source:
         expected = {'native-worker/' + name for name in members()} | {'native-worker/native-worker.py'}
         if len(source.namelist()) != len(expected) or set(source.namelist()) != expected:
@@ -257,9 +307,11 @@ def verify_archive(path):
             local = ROOT / name
             if any(part.is_symlink() for part in (local, *local.parents)):
                 raise Refused('native_package_source_changed')
-            if info.file_size != local.stat().st_size or source.read(info) != local.read_bytes():
+            if info.file_size != local.stat().st_size or zip_read(source, info, local.stat().st_size) != local.read_bytes():
                 raise Refused('native_package_source_changed')
-        if source.read('native-worker/native-worker.py') != LAUNCHER: raise Refused('native_package_launcher')
+        launcher = source.getinfo('native-worker/native-worker.py')
+        if launcher.file_size != len(LAUNCHER): raise Refused('native_package_launcher')
+        if zip_read(source, launcher, len(LAUNCHER)) != LAUNCHER: raise Refused('native_package_launcher')
 
 
 def preflight(config_path, manifest_path):
