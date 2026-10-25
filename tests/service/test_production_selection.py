@@ -97,6 +97,7 @@ class ProductionSelectionTests(unittest.TestCase):
     def refused(self, reasons, payload=None, key='refuse'):
         before = self.dispatcher.call('jobs','alice')
         response = self.request('POST','/v1/operations/speech_generate',payload=payload or self.payload,key=key)
+        self.assertEqual(response.status_code,503,response.text)
         self.assertEqual(response.json()['code'],'not_ready',response.text)
         for reason in reasons: self.assertIn(reason,response.json()['action'])
         self.assertEqual(self.dispatcher.call('jobs','alice'),before)
@@ -215,6 +216,60 @@ class ProductionSelectionTests(unittest.TestCase):
             self.wait(lambda:len(self.runtime.authorities)==2)
             self.assertEqual(self.runtime.authorities[-1].context['execution']['descriptor']['device'],'cuda:0')
             self.cancel(result.structuredContent)
+
+    def discovery_profile(self, profile_id='qwen-cuda'):
+        with patch.object(QwenContexts,'resolve',side_effect=AssertionError('discovery resolved context')):
+            caps = self.request('GET','/v1/capabilities')
+            detail = self.request('GET','/skeleton/profiles/'+profile_id)
+        self.assertEqual(caps.status_code,200,caps.text)
+        self.assertEqual(detail.status_code,200,detail.text)
+        profile = detail.json()
+        self.assertIn(profile,caps.json()['profiles'])
+        return profile
+
+    def test_orphan_measurement_discovery_and_submission_refuse_without_allocation(self):
+        self.composition.measurements = {'not-a-candidate':self.measurements['gpu0']}
+        profile = self.discovery_profile()
+        self.assertEqual(profile['readiness'],'not_ready')
+        self.assertIn('measurement_required',profile['next_action'])
+        self.refused(['measurement_required'],key='orphan')
+
+    def test_measurement_is_profile_scoped_and_bound_metadata_remains_ready(self):
+        self.assertEqual(self.discovery_profile()['readiness'],'ready')
+        other = copy.deepcopy(self.profiles[0]); other['id'] = 'other-cuda'
+        self.dispatcher.profiles.append(other)
+        profile = self.discovery_profile('other-cuda')
+        self.assertEqual(profile['readiness'],'not_ready')
+        self.assertIn('measurement_required',profile['next_action'])
+        self.refused(['candidate_identity_or_readiness_refused'],payload=dict(self.payload,profile_override='other-cuda'),key='other')
+        receipt = self.submit(key='bound-positive')
+        self.wait(lambda:self.runtime.authorities)
+        self.cancel(receipt)
+
+    def test_stale_execution_measurements_never_promise_ready(self):
+        self.composition.measurements = {name:Measurement('0'*64,m.performance)
+                                         for name,m in self.measurements.items()}
+        profile = self.discovery_profile()
+        self.assertEqual(profile['readiness'],'not_ready')
+        self.assertIn('measurement_required',profile['next_action'])
+        self.refused(['measurement_identity_changed'],key='stale-binding')
+
+    def test_unknown_metadata_requires_verification_and_unmeasured_policy_is_explicit(self):
+        with patch.object(QwenContexts,'selection_metadata',None):
+            profile = self.discovery_profile()
+        self.assertEqual(profile['readiness'],'not_ready')
+        self.assertIn('measurement_binding_verification_required',profile['next_action'])
+        self.composition.policy = SelectionPolicy(workload='different-workload')
+        profile = self.discovery_profile()
+        self.assertEqual(profile['readiness'],'not_ready')
+        self.assertIn('measurement_required',profile['next_action'])
+        self.refused(['measurement_required'],key='workload-mismatch')
+        self.composition.measurements = {}
+        self.composition.policy = SelectionPolicy(allow_unmeasured=True)
+        self.assertEqual(self.discovery_profile()['readiness'],'ready')
+        receipt = self.submit(key='explicit-unmeasured')
+        self.wait(lambda:self.runtime.authorities)
+        self.cancel(receipt)
 
 
 class SelectionContractTests(unittest.TestCase):

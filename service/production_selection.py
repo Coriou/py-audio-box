@@ -230,9 +230,26 @@ def discovery(dispatcher):
         if isinstance(composition, ContextComposition):
             if composition.runtime is not dispatcher.runtime: reasons.append('runtime_binding_changed')
             if composition.concurrency > p['limits']['expensive_slots']: reasons.append('concurrency_exceeded')
-            if not composition.policy.allow_unmeasured and not any(
-                    m.performance.workload == composition.policy.workload for m in composition.measurements.values()):
-                reasons.append('measurement_required')
+            # A receipt for another key/profile is not evidence for this profile.
+            # Unknown providers cannot prove an execution binding from metadata;
+            # do not resolve them (which can read owned media and verify bundles).
+            bound = False
+            unknown = False
+            for name, provider in composition.candidates:
+                describe = getattr(provider, 'selection_metadata', None)
+                if describe is None:
+                    unknown = True
+                    continue
+                measurement = composition.measurements.get(name)
+                for snapshot, execution_hash in describe():
+                    if snapshot != oracle.profile_snapshot(p):
+                        continue
+                    if (measurement is not None and composition.policy.workload
+                            and measurement.performance.workload == composition.policy.workload
+                            and measurement.execution_sha256 == execution_hash):
+                        bound = True
+            if not composition.policy.allow_unmeasured and not bound:
+                reasons.append('measurement_binding_verification_required' if unknown else 'measurement_required')
         family = DeviceFamily.MPS if p['device'] == 'metal' else DeviceFamily(p['device'])
         if inventory is not None and not any(d.family == family and d.available and d.supported
                                              for d in inventory.devices):
