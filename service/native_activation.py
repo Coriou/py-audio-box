@@ -159,12 +159,16 @@ def completed_history(core, runtime):
         require(stored['fingerprint'] == oracle.fingerprint(stored['principal'],
                 stored['operation'], a.context['plan']['request']))
         ops = [row['op'] for row in commands if row['dispatch_id'] == d['seq']]
-        require(all(op in ops for op in ('prepare','start','collect','ack')))
-        require(ops.count('prepare') == ops.count('start') == 1 and ops[:2] == ['prepare','start'])
-        collected = ops.index('collect'); acknowledged = ops.index('ack')
-        require(collected < acknowledged and all(op in ('observe','stop') for op in ops[2:collected]) and
-                all(op == 'collect' for op in ops[collected:acknowledged]) and
-                all(op == 'ack' for op in ops[acknowledged:]))
+        # Finite clean-completion producer: prepare/start, observation/stop loop,
+        # one collect, then ACK (including replay). _tick launches collect only
+        # from a returned STOPPED observe and successful collect records outcome.
+        # Observe values are not journalled: corroborate terminal proof below,
+        # rather than inventing historical observation states or RPC retries.
+        require(ops[:2] == ['prepare','start'] and ops.count('collect') == 1)
+        collected = ops.index('collect')
+        require(collected >= 3 and ops[collected-1] == 'observe' and
+                all(op in ('observe','stop') for op in ops[2:collected]) and
+                bool(ops[collected+1:]) and all(op == 'ack' for op in ops[collected+1:]))
         require(d['runtime'] is not None and d['fixture'] == 'qwen')
         require(p.native_execution(context).task != 'clone')
         require(job['state'] == 'succeeded' and job['stage'] == 'completed' and len(job['attempts']) == 1 and job['attempts'][0]['reaped'] is True)

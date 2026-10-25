@@ -22,7 +22,7 @@ class NativeHistoryTests(unittest.TestCase):
     open = NativeLifecycleTests.open
     close = NativeLifecycleTests.close
 
-    def prepare(self):
+    def prepare(self, *, observe_count=1):
         self.root.chmod(0o700)
         base = self.f.f.fixture.root
         for name in ('ca','cert','key'):
@@ -41,6 +41,18 @@ class NativeHistoryTests(unittest.TestCase):
         with patch('worker.native_child.parent_exchange',side_effect=self.f.exchange):
             try:
                 d=self.open()
+                if observe_count > 1:
+                    # Let the real Dispatcher record repeated ALIVE observations;
+                    # only the final one gets the fixture's actual terminal proof.
+                    observed=0
+                    def before(q):
+                        nonlocal observed
+                        if q['op']=='observe':
+                            observed+=1
+                            if observed >= observe_count and self.f.s.active:
+                                self.f.finish()
+                            self.f.s.tick()
+                    self.f.before=before
                 result=d.call('production_generate','alice',self.context['plan']['request'],key='retained')
                 self.job=self.wait(lambda:(j if (j:=d.call('job',result['job_id']))['state']=='succeeded' else None))
                 self.wait(lambda:d.call('status')['phase']=='idle')
@@ -178,6 +190,39 @@ class NativeHistoryTests(unittest.TestCase):
 
     def test_missing_start_command_refuses(self):
         self.refusal(lambda c:c.db.execute("DELETE FROM dispatch_commands WHERE op='start'"))
+
+    def test_collect_without_observe_refuses(self):
+        self.refusal(lambda c:c.db.execute("DELETE FROM dispatch_commands WHERE op='observe'"))
+
+    def rewrite_commands(self, c, ops):
+        dispatch=c.db.execute('SELECT seq FROM dispatches').fetchone()[0]
+        c.db.execute('DELETE FROM dispatch_commands')
+        c.db.executemany('INSERT INTO dispatch_commands(dispatch_id,op,state) VALUES (?, ?, ?)',
+                        [(dispatch,op,'returned') for op in ops])
+
+    def test_duplicate_returned_collect_refuses(self):
+        self.refusal(lambda c:self.rewrite_commands(c,
+            ['prepare','start','observe','collect','collect','ack']))
+
+    def test_stop_between_terminal_observe_and_collect_refuses(self):
+        self.refusal(lambda c:self.rewrite_commands(c,
+            ['prepare','start','observe','stop','collect','ack']))
+
+    def test_observe_after_collect_refuses(self):
+        self.refusal(lambda c:self.rewrite_commands(c,
+            ['prepare','start','observe','collect','observe','ack']))
+
+    def test_missing_ack_command_refuses(self):
+        self.refusal(lambda c:c.db.execute("DELETE FROM dispatch_commands WHERE op='ack'"))
+
+    def test_actual_repeated_observations_reopen(self):
+        self.prepare(observe_count=3)
+        with sqlite3.connect(self.root/'core.sqlite') as db:
+            ops=[r[0] for r in db.execute('SELECT op FROM dispatch_commands ORDER BY seq')]
+        self.assertEqual(ops,['prepare','start','observe','observe','observe','collect','ack'])
+        try:
+            self.assertFalse(self.reopen().call('status')['quarantined'])
+        finally:self.close()
 
     def test_command_order_refuses(self):
         self.refusal(lambda c:c.db.execute("UPDATE dispatch_commands SET op='ack' WHERE op='prepare'"))
