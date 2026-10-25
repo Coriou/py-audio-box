@@ -323,6 +323,20 @@ class NativeQwenContexts:
             oracle.admission(dict(operation='speech_generate',input_sha256=oracle.plan_hash(snapshot['plan'])),snapshot,profiles)
             self._contexts[key] = json.dumps(snapshot,allow_nan=False)
 
+    def authorize_origins(self, original, current, mapping):
+        from worker.native_protocol import origin_template_pairs
+        pairs = origin_template_pairs(original, current, mapping)
+        from worker.transport import canonical
+        configured = [dict(principal=key[0],profile=key[1],voice_version=key[2],context=json.loads(raw))
+                      for key, raw in self._contexts.items()]
+        if sorted(canonical(b) for _, b in pairs) != sorted(canonical(c) for c in configured):
+            raise Refused('native_origin')
+        self._origins = {canonical(b['context']): a['context'] for a, b in pairs}
+
+    def _origin(self, context):
+        from worker.transport import canonical
+        return copy.deepcopy(getattr(self, '_origins', {}).get(canonical(context), context))
+
     def _clone_templates(self, principal):
         return [json.loads(raw) for key, raw in self._contexts.items()
                 if key[0] == principal and execution(json.loads(raw)).task == 'clone'
@@ -350,7 +364,9 @@ class NativeQwenContexts:
         if len(templates) != 1: raise Refused('not_ready')
         core.voices._asset(principal,reference)
         asset = core.asset(reference)
-        context = owned_clone_context(templates[0], principal, request, asset, version=version)
+        context = owned_clone_context(self._origin(templates[0]), principal, request, asset, version=version)
+        from worker.native_protocol import origin_execution_context
+        context = origin_execution_context(context, templates[0])
         spec = execution(context)
         current_native_hardware(spec,self._inventory)
         raw = _read(core.root/'assets'/reference,spec.reference_bytes,spec.reference_sha256)
@@ -391,7 +407,8 @@ class NativeQwenContexts:
                    and execution(json.loads(raw)).preset == preset]
         if len(matches) != 1: raise Refused('unsupported_control')
         current_native_hardware(execution(matches[0]), self._inventory)
-        return owned_preset_context(matches[0], principal, preset, voice_id)
+        from worker.native_protocol import origin_execution_context
+        return origin_execution_context(owned_preset_context(self._origin(matches[0]), principal, preset, voice_id), matches[0])
 
     def preset_version(self, principal, preset, voice_id):
         return self._preset_context(principal, preset, voice_id)['plan']['voice_versions'][0]

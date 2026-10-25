@@ -1,7 +1,7 @@
-# Native Qwen package SOURCE portion (r297)
+# Native Qwen package and owner lifecycle (r349 SOURCE candidate)
 
-This separate `native-qwen-v1` archive is a worker source package, not a complete
-Lot B installation. Linux Kokoro/Pocket enrollment, root/PID1/UID rules, images,
+This separate `native-qwen-v1` archive is a worker source package, not a qualified
+installed deployment. Linux Kokoro/Pocket enrollment, root/PID1/UID rules, images,
 locks and history readers are unchanged. The current native owner and public
 control path is described below; packaging, topology and hardware qualification
 remain incomplete. Do not use Linux registration for native history.
@@ -180,8 +180,8 @@ startup wiring: **do not pass its result directly to an installed Dispatcher as 
 authority**; NativeActivation supplies owner-thread fences and the current history
 policy below. The preparation function acquires no Core lock and reads no history.
 Topology/mount validation remains incomplete. Linux enrollment/history is unchanged.
-A clean new native boot requires separately designed stopped/reconciled renewal;
-this write-once slice deliberately refuses automatic rotation.
+A clean new native boot uses the explicit stopped transaction below. Automatic
+rotation remains unavailable.
 
 
 ## Current native owner history policy (r341 SOURCE candidate)
@@ -209,11 +209,11 @@ owned process receipt proves that history in this slice. Native retry remains
 unavailable. Failed verification with retained output also refuses. Existing
 validated success publication/import policy is preserved; no new terminal intent
 recovery is authorized. The launch count must equal this finite dispatched history.
-At capacity, retain evidence and refuse; bounded renewal is still required.
+At capacity, retain evidence and refuse; renewal does not reclaim capacity.
 
-This is the first same-boot vertical slice of r334 delivery 2. New-boot/trust
-renewal, topology/mount/peer validation and real dependency packaging remain
-required subsequent parts. Delivery 2 is **incomplete**. Metal is UNQUALIFIED;
+The explicit new-boot/trust source transaction is described below. Installed
+topology/mount/peer validation and real dependency packaging remain required.
+Delivery 2 is **incomplete**. Metal is UNQUALIFIED;
 actual release remains NO-GO. Linux history policy remains separate.
 
 ## Explicit native public control launch (r317 SOURCE candidate)
@@ -264,8 +264,8 @@ authentication, scopes and errors. Native discovery returns configured native
 profile metadata without promotion; `/skeleton` separates activation from speech
 and reports `ready_for_speech:false`, UNAVAILABLE / UNQUALIFIED.
 
-This is source wiring, not a complete installed journey. Topology/mount validation and stopped/reconciled renewal
-remain subsequent slices. No reviewed arm64 wheelhouse, compatible installed ABI,
+This is source wiring, not a complete installed journey. Topology/mount validation
+and installed qualification remain open. No reviewed arm64 wheelhouse, compatible installed ABI,
 actual hardware/model/MPS, denied-peer/topology, audio, cancellation/crash/resource
 or completed installed restart qualification is supplied. CPU/CUDA qualification
 remain separate; the closed legacy reconciliation ledger is unchanged.
@@ -300,15 +300,16 @@ No per-voice enrollment editing is needed. Public jobs list/wait/events/cancel a
 voice management share canonical HTTP with thin CLI/MCP; native retry remains
 unavailable. This source journey does not qualify arm64 ABI, topology or Metal.
 
-## r345 stopped-renewal Lot A source candidate
+## Explicit stopped renewal and stable voice origins
 
-This section supersedes earlier prerequisite sections concerning stopped renewal.
+Use one retained owner and the following private maintenance path for renewal.
 
 The private `scripts/native-installed.py` maintenance parser exposes
 `renewal-begin`, `renewal-retire`, `renewal-provision`, and `renewal-commit`.
 **Independent review is required before adoption or operator use.** These are
 source/inert capabilities; installed topology, dependencies and hardware remain
-unqualified. Lot B's public existing-preset/clone journey remains incomplete.
+unqualified. Existing owned preset and saved-clone versions use the retained
+origin family without catalogue seeding or per-voice enrollment changes.
 
 Under Core lifetime maintenance ownership, begin takes the original enrollment
 (or the exact committed successor envelope), explicit successor control/templates,
@@ -325,7 +326,10 @@ bounded `retirement-export` through the private operator custody boundary.
 Provision takes the intent, export and an empty private new host root. It seals
 old Core history offline and writes the immutable host `predecessor` document.
 The supervisor consumes that document before initializing its new journal,
-including the supplied boot/lane and cumulative charges. A successor root cannot
+including the supplied boot/lane, cumulative charges, original/current template
+rows and their closed origin mapping. Both sides validate the canonical permitted
+differences independently; provision the same current templates on the host.
+Only native execution binding and same-inventory probe timestamps may change. A successor root cannot
 be constructed a second time using that boot: another explicit clean renewal is
 required. No credentials, certificates or trust are generated by these commands.
 
@@ -349,9 +353,19 @@ The envelope's closed `origins` list contains at most 64 entries with exactly
 `principal`, `origin_sha256`, and `current_sha256`. Digests identify canonical full
 registration rows in retained origin/current template documents; each principal
 and origin pair is unique, and each hop binds its predecessor's current hash.
-This is a format for Lot B, **not authorization to derive/rebind old owned voices**.
-Lot A fixtures use a fixed explicitly enrolled immutable version. Public old-voice
-reuse still needs independently matching control/supervisor origin derivation.
+The control reads original templates through the committed chain. The host uses
+its privately provisioned originals and independently matches current enrollment.
+Ambiguous/unknown origins refuse; working allocations never become templates.
+Preset IDs continue to hash the full original template. Saved clone IDs, reference
+bytes, transcript, settings and provenance stay immutable. Future generation
+builds a new context and Authority with current native/hardware binding; old
+Authority and sealed receipts remain historical evidence only.
+
+After reopen, use the same public version IDs with a **new** generation key. Old
+keys return their old results before fresh resolution and spend no allocation.
+New preset registrations derive from the same original family. New preparations
+use current execution binding and the ordinary results/save path. Never edit
+VoiceStore rows, rewrite old contexts, or add trust fields to a public version.
 
 Registration, journal, host byte, control spool and history limits remain cumulative.
 Capacity refusal means retain this owner and its evidence; further execution needs

@@ -198,8 +198,8 @@ def capacity(dimension, used, limit, extra=1):
 def compatible(old_config, old_templates, new_config, new_templates):
     """Closed permitted differences, with canonical primitive/type comparison.
 
-    This fixed-version Lot A relation deliberately leaves origin derivation closed.
-    All voice versions, settings, profiles, budgets and topology remain exact.
+    All template versions, settings, profiles, budgets and topology remain exact;
+    origin authorization is separately validated by both execution consumers.
     """
     def control(value):
         value = copy.deepcopy(value)
@@ -628,7 +628,7 @@ def validate_origins(value):
 
 
 def origin_mapping(old, new, previous=None):
-    """Lot B format only: exact templates, no permission to derive old voices."""
+    """Carry stable original row identities through exact compatible hops."""
     require(len(old['registrations'])==len(new['registrations']))
     result=[]
     for a,b in zip(old['registrations'],new['registrations']):
@@ -772,8 +772,15 @@ def host_predecessor(intent, directory):
     charges['allocation_registrations']+=len(origins)
     for key,limit in (('journal_records',63),('allocation_registrations',63),('host_bytes',64*1024**2),('journal_bytes',1048576)):
         capacity(key,charges[key],limit)
+    first = document(Path(directory)/'001.intent')['predecessor']
+    original = n.document(first['templates_file'])
+    current = n.document(intent['successor']['templates_file'])
+    previous = None if intent['epoch'] == 1 else document(Path(directory)/f"{intent['epoch']-1:03d}.enrollment")['origins']
+    mapping = origin_mapping(n.document(intent['predecessor']['templates_file']), current, previous)
+    p.origin_template_pairs(original['registrations'], current['registrations'], mapping)
     return dict(kind='native-host-predecessor-v1',native=intent['successor']['native'],
-        export_sha256=[digest(e) for e in exports],charges=charges)
+        export_sha256=[digest(e) for e in exports],charges=charges,
+        origin_templates=original['registrations'],current_templates=current['registrations'],origins=mapping)
 
 
 def provision(intent_file, *, export_file, host_root):
@@ -823,8 +830,9 @@ def preallocate(core, context):
 
 
 def validate_host_predecessor(value):
-    p._closed(value, ('kind','native','export_sha256','charges'))
+    p._closed(value, ('kind','native','export_sha256','charges','origin_templates','current_templates','origins'))
     require(value['kind']=='native-host-predecessor-v1')
+    p.origin_template_pairs(value['origin_templates'],value['current_templates'],value['origins'])
     validate_native(value['native'])
     require(type(value['export_sha256']) is list and 1<=len(value['export_sha256'])<=7)
     for item in value['export_sha256']: p._hex(item,64)
@@ -855,3 +863,16 @@ def member_source(owner, binding):
         if any(row['binding']==binding for row in intent['membership']): matches.append(intent['predecessor'])
     require(len(matches)==1,'native_history_unclean')
     return matches[0]
+
+
+def origin_authorization(root):
+    """Resolve retained originals only through the validated committed chain."""
+    values = namespace(root)
+    if not values: return None
+    current = tip(root)
+    require(current is not None)
+    first = values['001.intent']['predecessor']
+    original = n.document(first['templates_file'])['registrations']
+    rows = n.document(current['source']['templates_file'])['registrations']
+    p.origin_template_pairs(original, rows, current['origins'])
+    return original, rows, current['origins']

@@ -184,6 +184,17 @@ class NativeSupervisor:
         if type(registrations) is not dict or not 1<=len(registrations)<=64: raise Refused('native_registration')
         self.registrations=copy.deepcopy(registrations)
         self._preset_templates=copy.deepcopy(registrations)
+        self._origin_contexts = {}
+        if self.journal.retained is not None:
+            retained = self.journal.retained
+            pairs = p.origin_template_pairs(retained['origin_templates'], retained['current_templates'], retained['origins'])
+            configured = [canonical(dict(principal=r['snapshot'][0]['principal_id'],
+                profile=r['snapshot'][1]['plan']['resolved']['profile']['id'],
+                voice_version=p.native_execution(r['snapshot'][1]).voice_revision,context=r['snapshot'][1]))
+                for r in self._preset_templates.values()]
+            if sorted(configured) != sorted(canonical(b) for _, b in pairs):
+                raise Refused('native_origin')
+            self._origin_contexts = {canonical(b['context']): a['context'] for a, b in pairs}
         self.python,self.entry=python,child_entry
         self.popen,self.pair,self.signal_group,self.identity=popen,pair,signal_group,identity
         self.clock,self.utc=clock,utc
@@ -257,8 +268,10 @@ class NativeSupervisor:
                     try:
                         source = registered['snapshot']
                         version = snapshot[1]['plan']['voice_versions'][0]
-                        derived = owned_preset_context(source[1], source[0]['principal_id'],
+                        original = self._origin_contexts.get(canonical(source[1]), source[1])
+                        derived = owned_preset_context(original, source[0]['principal_id'],
                             registered['execution'].preset, version['voice_id'])
+                        derived = p.origin_execution_context(derived, source[1])
                         candidate = copy.deepcopy(source); candidate[1] = derived
                         if canonical(template(candidate)) != expected: continue
                         reg = copy.deepcopy(registered)
@@ -276,8 +289,10 @@ class NativeSupervisor:
                         # The provisioned profile must explicitly support preparation.
                         if not any(c['operation']=='voice_prepare' and c['mode']=='prepare'
                                    for c in source[1]['plan']['resolved']['profile']['compatibility']): continue
-                        derived = owned_clone_context(source[1], source[0]['principal_id'], target['request'],
+                        original = self._origin_contexts.get(canonical(source[1]), source[1])
+                        derived = owned_clone_context(original, source[0]['principal_id'], target['request'],
                             target['assets'][0], version=(target['voice_versions'][0] if target['operation']=='speech_generate' else None))
+                        derived = p.origin_execution_context(derived, source[1])
                         if target['operation'] == 'voice_prepare':
                             # Production assigns deterministic output role IDs after resolution.
                             token = oracle.canonical_hash([snapshot[0]['principal_id'], snapshot[0]['idempotency_key'], target['request']])
@@ -290,7 +305,7 @@ class NativeSupervisor:
                         matches.append(reg)
                     except (Refused, KeyError, ValueError, IndexError):
                         continue
-            if not matches: raise Refused('native_registration')
+            if len(matches) != 1: raise Refused('native_registration')
             oracle.admission(authority.job,authority.context,authority.profiles)
             authority.check(authority.message(),'execute')
             reg=copy.deepcopy(matches[0]);reg['snapshot']=json.loads(authority._snapshot)
