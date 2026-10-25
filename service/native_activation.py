@@ -193,6 +193,24 @@ def completed_history(core, runtime):
         require(reservation['state'] == 'retained' and reservation['category'] == 'inference' and
                 canonical(demand) == canonical(expected_demand))
         publication = publications[jid]; artifact = json.loads(publication['artifact']); manifest = json.loads(publication['manifest'])
+        # Shared publication readers use scalar equality. Native retained history
+        # promises exact immutable copies, including JSON numeric representation.
+        owner = dict(job_id=frozen['id'], generation=frozen['generation'],
+            input_sha256=frozen['input_sha256'], attempt_id=frozen['attempts'][0]['id'],
+            owner_id=frozen['attempts'][0]['owner_id'], staging_id=frozen['attempts'][0]['staging_id'])
+        require(canonical({k:manifest[k] for k in owner}) == canonical(owner))
+        expected_artifact = dict(owner, id=manifest['artifact_id'],
+            asset_ids=[o['id'] for o in manifest['outputs']],
+            project_revision=0, manifest_sha256=oracle.canonical_hash(manifest),
+            identity=a.context['plan']['resolved']['identity'])
+        require(canonical(artifact) == canonical(expected_artifact))
+        for work in typed['publication_work']:
+            if work['job_id'] != jid: continue
+            intent = json.loads(work['binding'])
+            intent_artifact = intent['artifact'] if 'version' in intent else intent
+            require(canonical(intent_artifact) == canonical(artifact))
+            if 'version' in intent:
+                require(canonical(intent['manifest']) == canonical(manifest))
         hashes = {}
         for asset in manifest['outputs']:
             raw = _read(core.root/'assets'/asset['id'],1048576)

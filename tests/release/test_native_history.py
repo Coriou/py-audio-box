@@ -240,6 +240,27 @@ class NativeHistoryTests(unittest.TestCase):
     def test_artifact_primitive_substitution_refuses(self):
         self.change_document('artifacts','metadata',lambda a:a.update(generation=float(a['generation'])))
 
+    def test_publication_intent_generation_float_refuses_before_startup(self):
+        self.change_document('publication_work','binding',lambda a:a.update(generation=float(a['generation'])))
+
+    def test_publication_intent_revision_float_refuses_before_startup(self):
+        self.change_document('publication_work','binding',lambda a:a.update(project_revision=float(a['project_revision'])))
+
+    def change_artifact_copies(self, key):
+        # Keep all three copies identical: isolate their join to frozen job/plan.
+        def change(c):
+            for table,column in (('publications','artifact'),('artifacts','metadata'),('publication_work','binding')):
+                value=json.loads(c.db.execute('SELECT '+column+' FROM '+table).fetchone()[0])
+                value[key]=float(value[key])
+                c.db.execute('UPDATE '+table+' SET '+column+'=?',(json.dumps(value),))
+        self.refusal(change)
+
+    def test_identical_publication_copies_generation_float_refuse(self):
+        self.change_artifact_copies('generation')
+
+    def test_identical_publication_copies_revision_float_refuse(self):
+        self.change_artifact_copies('project_revision')
+
     def test_retained_float_dimension_refuses(self):
         self.change_document('resource_reservations','demand',lambda d:d.update(slots=1.0))
 
