@@ -11,6 +11,9 @@ import sys
 from functools import lru_cache
 from importlib.metadata import version
 
+# Trusted runtime closure ceiling, independent of generated audio limits.
+MAX_LIBRARY_BYTES = 32 * 1024 * 1024
+
 
 @lru_cache(maxsize=1)
 def install():
@@ -35,7 +38,7 @@ def install():
                     total = 0
                     while block := source.read(65536):
                         total += len(block)
-                        if total > 32 * 1024 * 1024:
+                        if total > MAX_LIBRARY_BYTES:
                             raise ValueError('espeak library exceeds bound')
                         view = memoryview(block)
                         while view:

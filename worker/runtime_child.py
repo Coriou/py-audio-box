@@ -129,6 +129,12 @@ def contain_kokoro(context):
     if spec is None: raise ValueError('execution_required')
     resource.setrlimit(resource.RLIMIT_AS, (spec.memory_bytes, spec.memory_bytes))
     file_limit = max(spec.max_output_bytes, getattr(spec, 'reference_bytes', 0))
+    if spec.engine == 'kokoro':
+        # Linux applies FSIZE to anonymous memfd writes too. eSpeak isolates its
+        # trusted library there; the engine independently measures/rejects WAVs
+        # above max_output_bytes before staging or publication.
+        from lib.tts_backends.espeak_memfd import MAX_LIBRARY_BYTES
+        file_limit = max(file_limit, MAX_LIBRARY_BYTES)
     resource.setrlimit(resource.RLIMIT_FSIZE, (file_limit, file_limit))
     resource.setrlimit(resource.RLIMIT_NPROC, (48, 48))
     for name in ('OMP_NUM_THREADS', 'OPENBLAS_NUM_THREADS', 'MKL_NUM_THREADS', 'NUMEXPR_NUM_THREADS'):
