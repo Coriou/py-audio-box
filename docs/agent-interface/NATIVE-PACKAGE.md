@@ -2,8 +2,8 @@
 
 This separate `native-qwen-v1` archive is a worker source package, not a complete
 Lot B installation. Linux Kokoro/Pocket enrollment, root/PID1/UID rules, images,
-locks and history readers are unchanged. There is no native installed activation,
-Docker launcher, enrollment transaction, readiness promotion or fresh catalogue
+locks and history readers are unchanged. The bounded private first-start owner factory is described below; there is no
+complete native installed activation, Docker launcher, enrollment transaction, readiness promotion or fresh catalogue
 bootstrap in this portion. Do not use Linux registration for native history.
 Actual Metal speech remains UNAVAILABLE / UNQUALIFIED.
 
@@ -177,10 +177,36 @@ no hostile same-UID writer premise applies; this is not hostile-writer isolation
 inputs, repeats the bracket and returns existing runtime/context objects plus
 profiles/budget. Missing, malformed, changed or unhealthy state refuses; boot is
 never learned or updated from hello. This function is preparation for future
-startup wiring: **do not pass its result to an installed Dispatcher as activation
-authority**. It acquires no Core lock and reads no completed history. Native
+startup wiring: **do not pass its result directly to an installed Dispatcher as activation
+authority**; the r307 private NativeActivation consumer adds first-start fences. It acquires no Core lock and reads no completed history. Native
 owner-thread pre/post acquisition checks, completed-history and publication/import
 uncertainty validation, installed lifespan/entrypoint wiring and topology/mount
 validation remain closed. Existing Linux enrollment/history policy is unchanged.
 A clean new native boot requires separately designed stopped/reconciled renewal;
 this write-once slice deliberately refuses automatic rotation.
+
+
+r307 adds the private `service.entrypoint.create_native_owner(record_file=...,
+configuration_file=..., templates_file=..., owner_root=..., staging=...)` SOURCE
+factory. It consumes the explicit durable enrollment on the existing Dispatcher
+control-writer thread, constructs NativeRuntime there, and repeats owner/trust/
+record/hello binding after Core lifetime exclusion. It takes no public runtime,
+connector or trusted configuration object. The caller owns ordinary Dispatcher
+close/drain; a failed close retains its owner obligation and is not retried.
+
+This is **first start only**: the enrolled owner directory must already exist and
+be completely empty. Every initialized Core, even a clean empty database from a
+previous activation, refuses. Any spool or staging entry refuses, including a
+completed import. Current native hello must have exactly the configured boot,
+no quarantine and zero launches. There is no boot learning, renewal, history
+waiver, repair or deletion. A successful source owner construction does not
+promote configured profile readiness or qualify Metal.
+
+This factory does not yet mount the authenticated public installed ASGI app or
+provide a native installed command/lifespan/topology policy. Existing Linux
+factory and history readers remain separate and unchanged. Remaining completion
+gate: strict native completed-history schema/receipt/Authority/publication and
+durable import-intent linkage, authenticated installed credential/lifespan wiring,
+topology/mount validation and supported fresh owned voice onboarding. Until that
+native history gate is reviewed, **all retained Core roots remain refused**.
+Actual Metal is UNAVAILABLE / UNQUALIFIED; no reviewed arm64 wheelhouse is supplied.

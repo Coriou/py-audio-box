@@ -199,6 +199,7 @@ class Core:
         self.owner = self._db = None
         try:
             fresh = not self.root.exists() or (self.root.is_dir() and not any(self.root.iterdir()))
+            self.fresh_initialized = fresh
             persistence.mkdir_durable(self.root, sync_dir)
             if self.root.is_symlink() or self.root.stat().st_uid != os.getuid():
                 raise ValueError('foreign_root')
