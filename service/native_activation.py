@@ -6,6 +6,7 @@ from pathlib import Path
 
 from worker.transport import Refused, canonical
 from service import native_package as n
+from service import native_renewal as renewal
 
 
 class NativeActivation:
@@ -32,7 +33,8 @@ class NativeActivation:
         self.was_empty = not any(root.iterdir())
         if not self.was_empty and not (root/'core.sqlite').is_file():
             raise Refused('native_retained_history_unsupported')
-        self.saved = canonical(n.document(self.record_file))
+        from service.native_renewal import selected_source
+        self.saved = canonical(selected_source(self.record_file,self.inputs['owner_root']))
         values = n.native_startup_inputs(self.record_file, **self.inputs, _completed_history=True)
         runtime = values['runtime']
         if runtime.staging != dispatcher.staging.absolute(): raise Refused('native_staging_binding')
@@ -50,13 +52,21 @@ class NativeActivation:
     def check_hello(self, hello):
         if (any(hello.get(k) != v for k,v in self.runtime.native.items()) or
                 hello.get('quarantined') is not False or
+                canonical(hello.get('inventory')) != canonical(n.document(self.inputs['templates_file'])['inventory']) or
                 type(hello.get('launches')) is not int or hello['launches'] != self.expected_launches):
             raise Refused('native_activation_hello')
+        values=renewal.namespace(self.inputs['owner_root'])
+        if values:
+            latest=sorted(k for k in values if k.endswith('.intent'))[-1]
+            expected=renewal.host_predecessor(values[latest],Path(self.inputs['owner_root'])/'native-renewal')
+            if hello.get('retention')!=renewal.digest(expected): raise Refused('native_renewal_capacity_binding')
 
     def retained_check(self, core):
         # Core invokes this under flock, before any schema initialization/migration.
         if self.was_empty != core.fresh_initialized:
             raise Refused('native_retained_history_unsupported')
+        core._native_retention_runtime=self.runtime
+        core._native_retention_templates=n.document(self.inputs['templates_file'])
         self.expected_launches = 0 if core.fresh_initialized else completed_history(core, self.runtime)
 
     def postcheck(self, dispatcher):
@@ -65,12 +75,12 @@ class NativeActivation:
             raise Refused('native_retained_history_unsupported')
         if dispatcher.runtime is not self.runtime: raise Refused('native_owner_binding')
         before, _, _ = n._enrollment_snapshot(**{k:v for k,v in self.inputs.items() if k != 'connector'})
-        if canonical(before) != self.saved or canonical(n.document(self.record_file)) != self.saved:
+        if canonical(before) != self.saved or canonical(renewal.selected_source(self.record_file,self.inputs['owner_root'])) != self.saved:
             raise Refused('native_enrollment_changed')
         if not self.runtime.admission_open: raise Refused('native_retained_work_unsupported')
         self.check_hello(self.runtime.call('hello', {}))
         after, _, _ = n._enrollment_snapshot(**{k:v for k,v in self.inputs.items() if k != 'connector'})
-        if canonical(after) != self.saved or canonical(n.document(self.record_file)) != self.saved:
+        if canonical(after) != self.saved or canonical(renewal.selected_source(self.record_file,self.inputs['owner_root'])) != self.saved:
             raise Refused('native_enrollment_changed')
         if not self.runtime.admission_open: raise Refused('native_retained_work_unsupported')
 
@@ -99,10 +109,13 @@ def completed_history(core, runtime, *, retired=None):
     from service.worker_transport import Authority
     from service.native_runtime import _read
     from worker import native_protocol as p
+    if retired is None and (core.root/'native-renewal').exists():
+        from service.native_renewal import EpochEvidence
+        retired=EpochEvidence(core,runtime)
     if retired is not None:
         from service.native_renewal import RetiredEvidence
-        if type(retired) is not RetiredEvidence: raise Refused('native_history_evidence_unavailable')
-        retired.check_membership(core, runtime)
+        if type(retired) not in (RetiredEvidence, renewal.EpochEvidence): raise Refused('native_history_evidence_unavailable')
+        if type(retired) is RetiredEvidence: retired.check_membership(core, runtime)
     if threading.get_ident() != runtime.owner: raise Refused('native_owner_required')
     def require(ok):
         if not ok: raise Refused('native_history_unclean')
@@ -160,9 +173,13 @@ def completed_history(core, runtime, *, retired=None):
         job = json.loads(stored['job']); context = json.loads(stored['context'])
         d = dispatches[jid]; a = Authority(*json.loads(d['authority']))
         require(d['authority'].encode() == a._snapshot and d['binding'] == a.binding)
-        require(canonical(p.native_binding(a.context)) == canonical(runtime.native) and
+        require(canonical(p.native_binding(a.context)) == canonical(retired.native(a.binding) if hasattr(retired,'native') else runtime.native) and
                 canonical(a.context) == canonical(context))
         require(stored['retry_of'] is None)
+        # Immutable selected versions remain present even if aliases/archive change.
+        from service.voice_store import VoiceStore
+        for version in context['plan']['voice_versions']:
+            require(canonical(VoiceStore(core).version(stored['principal'],version['id']))==canonical(version))
         require(stored['fingerprint'] == oracle.fingerprint(stored['principal'],
                 stored['operation'], a.context['plan']['request']))
         ops = [row['op'] for row in commands if row['dispatch_id'] == d['seq']]
@@ -189,7 +206,7 @@ def completed_history(core, runtime, *, retired=None):
         if retired is None:
             retained = runtime._rpc('collect',{},authority=a,runtime_id=d['runtime'])
         else:
-            retained = retired.collect(a, d['runtime'])
+            retained = retired.collect(a,d['runtime'],runtime) if hasattr(retired,'native') else retired.collect(a,d['runtime'])
         require(canonical(retained['receipt']) == canonical(receipt))
         reservation = reservations[jid]; demand = json.loads(reservation['demand'])
         from service.admission import native_demand
@@ -290,10 +307,11 @@ def completed_history(core, runtime, *, retired=None):
     scan = Reconciliation.__new__(Reconciliation)
     scan.core,scan.db,scan.staging = core,core.db,runtime.staging
     scan.entry_limit,scan.byte_limit,scan.seconds = 2048,16*1024**2,1
+    scan.native_renewal_resume = bool(getattr(retired,'resuming',False))
     scan._collect()
     require(not scan.reasons and all(row['classification'] in ('committed_referenced','owned_synthetic_transient') for row in scan.rows.values()))
     require(not runtime.failed)
     # Only after every proof: discharge in-memory import closure, no ACK or writes.
     runtime.import_completed.update(runtime.import_closed)
     runtime.import_closed.clear()
-    return len(jobs)
+    return sum(canonical(p.native_binding(json.loads(d['authority'])[1]))==canonical(runtime.native) for d in dispatches.values())

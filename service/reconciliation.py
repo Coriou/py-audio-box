@@ -253,7 +253,7 @@ class Reconciliation:
                     info = os.stat(entry.name, dir_fd=root_fd, follow_symlinks=False)
                     if entry.name == 'native-renewal' and policy is None:
                         from service.native_renewal import namespace
-                        evidence = namespace(self.core.root)
+                        evidence = namespace(self.core.root,resume=getattr(self,'native_renewal_resume',False))
                         for name, value in evidence.items():
                             raw = encode(value).encode()
                             self._charge(len(raw))

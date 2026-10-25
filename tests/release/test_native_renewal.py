@@ -122,6 +122,7 @@ class RenewalFilesTests(unittest.TestCase):
         with self.assertRaisesRegex(Refused,'native_retention_capacity.*used=63.*retain owner'):
             r.capacity('history',63,63)
         with self.assertRaises(Refused): r.capacity('history',True,63)
+        with self.assertRaises(Refused): r.capacity('history',-1,63)
 
 
 class RenewalHistoryTests(unittest.TestCase):
@@ -148,8 +149,6 @@ class RenewalHistoryTests(unittest.TestCase):
         with patch.object(n.p,'tls_context',side_effect=AssertionError('no old private key required')):
             seal=r.seal(self.intent,export_file=self.f.s.journal.root/'retirement-export')
             self.assertEqual(r.seal(self.intent,export_file=self.f.s.journal.root/'retirement-export'),seal)
-        with self.assertRaisesRegex(Refused,'native_renewal_successor_unavailable'):
-            r.commit(self.intent,export_file=self.f.s.journal.root/'retirement-export')
         self.assertEqual(self.record.read_bytes(),old)
         with self.assertRaisesRegex(Refused,'native_renewal_pending'): n.native_startup_inputs(self.record,**self.kw)
         with self.assertRaisesRegex(Refused,'native_root_retired'):
@@ -214,4 +213,246 @@ class RenewalNegativeHistoryTests(RenewalHistoryTests):
 
 
 class RenewalFailedHistoryTests(RenewalHistoryTests):
+    terminal_mode='failed'
+
+
+class RenewalCompletionTests(RenewalHistoryTests):
+    """Fixed explicit version only; Lot B public origin authorization is absent."""
+    def successor_inputs(self, epoch):
+        from datetime import datetime, timezone
+        base=Path(self.kw['configuration_file']).parent
+        config=n.document(self.kw['configuration_file'])
+        templates=n.document(self.kw['templates_file'])
+        native=dict(config['native'],configuration_sha256=f'{epoch:064x}',lane=f'{epoch:032x}',boot=f'{epoch+8:032x}')
+        config['native']=native
+        for key in ('cafile','certfile','keyfile'):
+            path=base/(key+str(epoch));path.write_bytes(b'INERT-NEW-'+str(epoch).encode());path.chmod(0o600)
+            config[key]=str(path)
+        self.f.cert=b'fixture-server-certificate-'+str(epoch).encode()
+        import hashlib
+        self.f.pin=hashlib.sha256(self.f.cert).hexdigest();config['peer_sha256']=self.f.pin
+        templates['inventory']['devices'][0]['probed_at']=datetime.now(timezone.utc).isoformat()
+        for row in templates['registrations']:
+            row['context']['execution']['native']=native.copy()
+            row['context']['execution']['hardware']=copy.deepcopy(templates['inventory'])
+        paths={}
+        for key,value in (('configuration_file',config),('templates_file',templates)):
+            path=base/(key+str(epoch));path.write_bytes(canonical(value));path.chmod(0o600);paths[key]=str(path)
+        return paths,config,templates
+
+    def renew(self, epoch, *, fault=None):
+        from worker.native_supervisor import NativeSupervisor
+        from worker.engines.qwen_execution import inventory_from_wire
+        paths,config,templates=self.successor_inputs(epoch)
+        intent=r.begin(self.record,**paths,owner_root=str(self.root),request_id=str(epoch)*32)
+        intent_path=self.root/'native-renewal'/f'{epoch:03d}.intent'
+        old=self.f.s;old.journal.lock.close()
+        r.retire(intent_path,host_root=old.journal.root)
+        export_file=old.journal.root/'retirement-export'
+        host=old.journal.root.parent/('successor'+str(epoch));host.mkdir(mode=0o700)
+        r.provision(intent_path,export_file=export_file,host_root=host)
+        registered=copy.deepcopy(old._preset_templates)
+        for reg in registered.values():
+            reg['snapshot'][1]=copy.deepcopy(templates['registrations'][0]['context'])
+            reg['inventory']=inventory_from_wire(templates['inventory'])
+        self.f.f.h=type(self.f.f.h)()
+        successor=NativeSupervisor(host,deployment_id=config['native']['deployment_id'],
+            configuration_sha256=config['native']['configuration_sha256'],peer_pin=old.pin,
+            runtime_manifest_sha256=old.manifest,registrations=registered,python=old.python,child_entry=old.entry,
+            popen=old.popen,pair=old.pair,signal_group=old.signal_group,identity=old.identity,
+            clock=old.clock,utc=old.utc,free_bytes=old.free_bytes,free_ram=old.free_ram)
+        self.addCleanup(successor.journal.lock.close)
+        self.f.s=successor;self.f.native=config['native'];self.f.before=lambda q:None
+        if fault: fault(intent_path,export_file)
+        result=r.commit(intent_path,export_file=export_file,connector=self.f.connect)
+        self.assertEqual(r.commit(intent_path,export_file=export_file,connector=self.f.connect),result)
+        self.record=intent_path.with_suffix('.enrollment')
+        self.kw.update(paths)
+        return old,successor
+
+    def reopen(self):
+        from service.native_activation import NativeActivation
+        from service.dispatcher import Dispatcher
+        self.activation=NativeActivation(self.record,**self.kw)
+        self.dispatcher=Dispatcher(self.root,staging=self.f.stage,installed_activation=self.activation)
+        self.wait(lambda:self.dispatcher.call('status')['reconciled'])
+        return self.dispatcher
+
+    def next_job(self, key):
+        with patch('worker.native_child.parent_exchange',side_effect=self.f.exchange):
+            try:
+                d=self.reopen()
+                self.f.before=lambda q:self.f.finish() if q['op'] in ('observe','collect') and self.f.s.active else None
+                result=d.call('production_generate','alice',self.context['plan']['request'],key=key)
+                job=self.wait(lambda:(j if (j:=d.call('job',result['job_id']))['state'] in ('succeeded','failed') else None))
+                self.assertEqual(job['state'],'succeeded',job)
+                self.wait(lambda:d.call('status')['phase']=='idle')
+                return job
+            finally:self.close()
+
+    def test_two_epochs_offline_old_history_new_allocation_and_stale_path(self):
+        self.prepare();original=self.record;raw=original.read_bytes();old_job=self.job
+        old,first=self.renew(1)
+        with self.assertRaisesRegex(Refused,'stale_enrollment'):
+            n.native_startup_inputs(original,**self.kw)
+        self.next_job('epoch-one')
+        old2,second=self.renew(2)
+        self.next_job('epoch-two')
+        self.assertEqual(original.read_bytes(),raw)
+        self.assertEqual(second.journal.retained['charges']['journal_records'],2)
+        self.assertEqual(second.journal.retained['charges']['allocation_registrations'],3)
+        try:
+            d=self.reopen()
+            self.assertEqual(d.call('job',old_job['id']),old_job)
+            self.assertEqual(d.call('production_generate','alice',self.context['plan']['request'],key='retained')['job_id'],old_job['id'])
+            self.assertEqual(second.launches,1)
+        finally:self.close()
+        self.assertTrue((old.journal.root/'retirement').exists())
+        self.assertTrue((old2.journal.root/'retirement').exists())
+
+    def test_commit_rename_failure_resumes_exact_owned_phase(self):
+        self.prepare()
+        def fault(intent,export):
+            real=r.os.rename
+            def rename(a,b):
+                if str(b).endswith('.commit'): raise OSError('injected commit rename')
+                return real(a,b)
+            with patch.object(r.os,'rename',side_effect=rename):
+                with self.assertRaisesRegex(OSError,'injected'):r.commit(intent,export_file=export,connector=self.f.connect)
+            self.assertTrue(intent.with_suffix('.commit.stage').exists())
+        self.renew(1,fault=fault)
+        self.next_job('after-resume')
+
+    def test_second_boot_during_commit_refuses_without_commit(self):
+        self.prepare()
+        def fault(intent,export):
+            calls=0
+            def mutate(q,v):
+                nonlocal calls
+                if q['op']=='hello':
+                    calls+=1
+                    if calls>=3: v['value']['boot']='f'*32
+                return v
+            self.f.mutate=mutate
+            with self.assertRaises(Refused):r.commit(intent,export_file=export,connector=self.f.connect)
+            self.assertFalse(intent.with_suffix('.commit').exists())
+            self.f.mutate=lambda q,v:v
+        self.renew(1,fault=fault)
+        self.next_job('after-explicit-resume')
+
+    def test_catalogue_alias_change_does_not_invalidate_terminal_seal(self):
+        self.prepare();self.renew(1)
+        try:
+            d=self.reopen()
+            version=self.context['plan']['voice_versions'][0]
+            # Normal public mutation and cursor read extend mutable catalogue data.
+            voice=d.call('voice_get','alice',version['voice_id'])
+            d.call('production_aliases','alice',dict(voice_id=version['voice_id'],aliases=['renewed-alias'],expected_revision=voice['revision']),key='alias')
+            d.call('voice_list','alice',limit=20)
+        finally:self.close()
+        self.next_job('after-alias')
+
+    def test_host_cumulative_limits_and_no_restart_identity_reuse(self):
+        self.prepare();old,new=self.renew(1)
+        retained=copy.deepcopy(new.journal.retained)
+        for key,limit in (('journal_records',63),('allocation_registrations',63),('host_bytes',64*1024**2),('journal_bytes',1048576)):
+            value=copy.deepcopy(retained);value['charges'][key]=limit
+            with self.assertRaisesRegex(Refused,'native_retention_capacity'):r.validate_host_predecessor(value)
+            value['charges'][key]=True
+            with self.assertRaises(Refused):r.validate_host_predecessor(value)
+        self.assertEqual(new.journal.retained,retained)
+        new.journal.lock.close()
+        from worker.native_supervisor import NativeSupervisor
+        with self.assertRaisesRegex(Refused,'new_boot_required'):
+            NativeSupervisor(new.journal.root,deployment_id=new.journal.deployment,configuration_sha256=new.journal.configuration,
+                peer_pin=new.pin,runtime_manifest_sha256=new.manifest,registrations=new._preset_templates,
+                python=new.python,child_entry=new.entry)
+
+    def test_sealed_row_change_and_unknown_namespace_refuse_without_repair(self):
+        self.prepare();self.renew(1)
+        with sqlite3.connect(self.root/'core.sqlite') as db:
+            db.execute("UPDATE jobs SET fingerprint='altered'")
+        with self.assertRaises(Refused):self.reopen()
+        with sqlite3.connect(self.root/'core.sqlite') as db:
+            self.assertEqual(db.execute('SELECT fingerprint FROM jobs').fetchone()[0],'altered')
+        file=self.root/'native-renewal'/'foreign';file.write_bytes(b'RETAIN');file.chmod(0o600)
+        with self.assertRaises(Refused):r.namespace(self.root)
+        self.assertEqual(file.read_bytes(),b'RETAIN')
+
+    def phase_fault(self, suffix, operation):
+        self.prepare()
+        def fault(intent,export):
+            if operation=='rename':
+                real=r.os.rename
+                def rename(a,b):
+                    if str(b).endswith('.'+suffix):raise OSError('injected '+suffix)
+                    return real(a,b)
+                target=patch.object(r.os,'rename',side_effect=rename)
+            else:
+                real=r.os.fsync
+                # Failure after the named final rename is visible; explicit resume
+                # must re-fsync it. No host crash or real child is involved.
+                def fsync(fd):
+                    if intent.with_suffix('.'+suffix).exists():raise OSError('injected '+suffix)
+                    return real(fd)
+                target=patch.object(r.os,'fsync',side_effect=fsync)
+            with target:
+                with self.assertRaisesRegex(OSError,'injected'):r.commit(intent,export_file=export,connector=self.f.connect)
+        self.renew(1,fault=fault)
+        self.next_job('phase-resumed')
+
+    def test_enrollment_rename_resumes(self):self.phase_fault('enrollment','rename')
+    def test_seal_final_fsync_resumes(self):self.phase_fault('seal','fsync')
+    def test_commit_final_fsync_resumes(self):self.phase_fault('commit','fsync')
+
+    def test_eight_total_epochs_and_ninth_refuses_before_intent(self):
+        self.prepare()
+        for epoch in range(1,8):self.renew(epoch)
+        cert,pin=self.f.cert,self.f.pin
+        paths,_,_=self.successor_inputs(8)
+        self.f.cert,self.f.pin=cert,pin
+        with self.assertRaisesRegex(Refused,'native_retention_capacity.*epochs'):
+            r.begin(self.record,**paths,owner_root=str(self.root),request_id='8'*32)
+        self.assertEqual(len([k for k in r.namespace(self.root) if k.endswith('.commit')]),7)
+        self.assertFalse((self.root/'native-renewal'/'008.intent').exists())
+        self.next_job('last-epoch')
+
+    def test_commit_replay_after_later_job_does_not_reseal_database(self):
+        self.prepare();old,new=self.renew(1)
+        path=self.root/'native-renewal'/'001.intent'
+        committed=path.with_suffix('.commit').read_bytes()
+        self.next_job('later')
+        self.assertEqual(canonical(r.commit(path,export_file=old.journal.root/'retirement-export')),committed)
+
+
+    def test_control_spool_capacity_refuses_before_queued_job_and_replay_is_free(self):
+        self.prepare();self.renew(1)
+        try:
+            d=self.reopen()
+            before=d.call('jobs','alice')
+            with patch('service.native_runtime.QUOTA',1):
+                # Public replay precedes context/admission and spends nothing.
+                self.assertEqual(d.call('production_generate','alice',self.context['plan']['request'],key='retained')['job_id'],self.job['id'])
+                with self.assertRaises(Refused):d.call('production_generate','alice',self.context['plan']['request'],key='capacity-refused')
+            self.assertEqual(d.call('jobs','alice'),before)
+            self.assertEqual(self.f.s.launches,0)
+        finally:self.close()
+
+
+    def test_current_peer_inventory_mismatch_refuses_activation(self):
+        self.prepare();self.renew(1)
+        def mutate(q,v):
+            if q['op']=='hello':v['value']['inventory']['host']['architecture']='x86_64'
+            return v
+        self.f.mutate=mutate
+        with self.assertRaisesRegex(Refused,'native_activation_hello'):self.reopen()
+        self.assertEqual(self.f.s.launches,0)
+
+
+
+class RenewalCompletionCancelledTests(RenewalCompletionTests):
+    terminal_mode='cancelled'
+
+
+class RenewalCompletionFailedTests(RenewalCompletionTests):
     terminal_mode='failed'

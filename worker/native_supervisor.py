@@ -108,6 +108,12 @@ class Journal(_JournalValidation):
         fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
         self.execution_guard()
         self.deployment, self.configuration = deployment, configuration
+        self.retained=None
+        if (self.root/'predecessor').exists():
+            from service.native_renewal import document, validate_host_predecessor
+            self.retained=document(self.root/'predecessor')
+            validate_host_predecessor(self.retained)
+            if (self.retained['native']['deployment_id'],self.retained['native']['configuration_sha256']) != (deployment,configuration): raise Refused('native_renewal_capacity_binding')
         path = self.root/'native.json'
         if path.exists():
             raw = read_private(path, 1048576)
@@ -122,15 +128,20 @@ class Journal(_JournalValidation):
                     if len(data)!=r['output']['bytes'] or hashlib.sha256(data).hexdigest()!=r['output']['sha256']: raise Refused('native_journal')
                     validate_proposal(r['snapshot'],r['proposal'],data,p.native_execution(r['snapshot'][1]))
         else:
-            if set(x.name for x in self.root.iterdir())!={'native.lock'}: raise Refused('native_storage')
+            if set(x.name for x in self.root.iterdir())!=({'native.lock'} | ({'predecessor'} if self.retained is not None else set())): raise Refused('native_storage')
             self.save(dict(version='native-journal-v1', deployment_id=deployment,
-                configuration_sha256=configuration, lane=secrets.token_hex(16), records=[]))
-        expected={'native.lock','native.json'} | {r['token'] for r in self.value['records']}
+                configuration_sha256=configuration, lane=secrets.token_hex(16) if self.retained is None else self.retained['native']['lane'], records=[]))
+        from service.native_renewal import host_registrations
+        expected={'native.lock','native.json'} | {f'registration-{b}' for b in host_registrations(self.root)} | ({'predecessor'} if self.retained is not None else set()) | {r['token'] for r in self.value['records']}
         if set(x.name for x in self.root.iterdir())!=expected: raise Refused('native_storage')
         for r in self.value['records']: private(self.root/r['token'],True)
 
     def execution_guard(self):
+        if getattr(self,'retained',None) is not None:
+            from service.native_renewal import document
+            if canonical(document(self.root/'predecessor'))!=canonical(self.retained): raise Refused('native_renewal_capacity_binding')
         # Partial publication is deliberately as blocking as a completed marker.
+        if any(path.name.startswith('registration-') and path.name.endswith('.stage') for path in self.root.iterdir()): raise Refused('native_unknown')
         if any(path.name.startswith('retirement') for path in self.root.iterdir()):
             raise Refused('native_root_retired')
 
@@ -138,7 +149,8 @@ class Journal(_JournalValidation):
         self.execution_guard()
         self.validate(value)
         raw = canonical(dict(payload=value,sha256=hashlib.sha256(canonical(value)).hexdigest()))
-        if len(raw)>1048576: raise Refused('native_journal_limit')
+        from service.native_renewal import capacity
+        capacity('journal_bytes',sum(f.stat().st_size for f in self.root.glob('registration-*'))+(0 if self.retained is None else self.retained['charges']['journal_bytes']),1048576,extra=len(raw))
         # Never truncate a pre-existing temporary file after an uncertain write.
         fd = os.open(self.root/'native.tmp',os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW,0o600)
         with os.fdopen(fd,'wb') as stream:
@@ -165,8 +177,10 @@ class NativeSupervisor:
                  free_bytes=None, free_ram=available_ram):
         for v,n in ((deployment_id,32),(configuration_sha256,64),(peer_pin,64),(runtime_manifest_sha256,64)): p._hex(v,n)
         if not Path(python).is_absolute() or child_entry!=str(Path(__file__).with_name('native_child.py').resolve()): raise Refused('native_command')
+        if (Path(root)/'predecessor').exists() and (Path(root)/'native.json').exists(): raise Refused('native_renewal_new_boot_required')
         self.journal=Journal(root,deployment_id,configuration_sha256)
-        self.boot=secrets.token_hex(16); self.pin=peer_pin; self.manifest=runtime_manifest_sha256
+        if self.journal.retained is not None and self.journal.retained['native']['runtime_manifest_sha256']!=runtime_manifest_sha256: raise Refused('native_renewal_incompatible')
+        self.boot=secrets.token_hex(16) if self.journal.retained is None else self.journal.retained['native']['boot']; self.pin=peer_pin; self.manifest=runtime_manifest_sha256
         if type(registrations) is not dict or not 1<=len(registrations)<=64: raise Refused('native_registration')
         self.registrations=copy.deepcopy(registrations)
         self._preset_templates=copy.deepcopy(registrations)
@@ -285,7 +299,11 @@ class NativeSupervisor:
             if binding in self.registrations:
                 if self.registrations[binding]!=reg: raise Refused('native_registration')
                 return binding
-            if len(self.registrations)>=64: raise Refused('native_registration')
+            from service.native_renewal import host_registrations, capacity
+            used=len(set(self.registrations)|set(host_registrations(self.journal.root)))+(0 if self.journal.retained is None else self.journal.retained['charges']['allocation_registrations']-len(self._preset_templates))
+            capacity('registrations',used,63)
+            from service.native_renewal import publish
+            publish(self.journal.root/('registration-'+binding),snapshot,cap=48000)
             self.registrations[binding]=reg
             return binding
 
@@ -319,7 +337,11 @@ class NativeSupervisor:
                 from worker.engines.qwen_execution import inventory_wire
                 inventories=[inventory_wire(r['inventory']) for r in self.registrations.values()]
                 if not inventories or any(i!=inventories[0] for i in inventories): raise Refused('native_registration')
-                return dict(deployment_id=self.journal.deployment,configuration_sha256=self.journal.configuration,lane=self.journal.value['lane'],boot=self.boot,quarantined=self.quarantined,launches=self.launches,runtime_manifest_sha256=self.manifest,inventory=inventories[0])
+                result=dict(deployment_id=self.journal.deployment,configuration_sha256=self.journal.configuration,lane=self.journal.value['lane'],boot=self.boot,quarantined=self.quarantined,launches=self.launches,runtime_manifest_sha256=self.manifest,inventory=inventories[0])
+                if self.journal.retained is not None:
+                    from service.native_renewal import digest
+                    result['retention']=digest(self.journal.retained)
+                return result
             if q['lane']!=self.journal.value['lane']: raise Refused('native_session')
             if op=='prepare': return self.prepare(q)
             r=next((r for r in self.journal.value['records'] if r['id']==q['runtime_id']),None)
@@ -378,13 +400,16 @@ class NativeSupervisor:
             if r['binding']==binding and r['snapshot']==snapshot: return dict(runtime_id=r['id'],state=self.state(r))
             a,b=r['snapshot'][0],snapshot[0]
             if (a['id'],a['generation'],a['attempts'][-1])==(b['id'],b['generation'],b['attempts'][-1]): raise Refused('native_binding')
-        if self.quarantined or any(r['phase']!='terminal' for r in self.journal.value['records']) or len(self.journal.value['records'])>=64 or sum(not r['acked'] for r in self.journal.value['records'])>=8: raise Refused('native_busy')
+        from service.native_renewal import capacity
+        capacity('journal_records',len(self.journal.value['records'])+(0 if self.journal.retained is None else self.journal.retained['charges']['journal_records']),63)
+        if self.quarantined or any(r['phase']!='terminal' for r in self.journal.value['records']) or sum(not r['acked'] for r in self.journal.value['records'])>=8: raise Refused('native_busy')
+        capacity('journal_bytes',len(read_private(self.journal.root/'native.json',1048576))+sum(f.stat().st_size for f in self.journal.root.glob('registration-*'))+(0 if self.journal.retained is None else self.journal.retained['charges']['journal_bytes']),1048576,extra=3*p.FRAME_LIMIT)
         r=dict(id='/'.join((self.journal.value['lane'],self.boot,secrets.token_hex(16))),boot=self.boot,binding=binding,snapshot=snapshot,phase='prepared',acked=False,input_size=0,receipt=None,proposal=None,output=None,token=secrets.token_hex(16))
         if binding not in self.registrations:
             self.register_snapshot(snapshot)
         reg=self.registration(r); e=reg['execution']
-        reserved=sum(2*(p.native_execution(x['snapshot'][1]).reference_bytes+p.native_execution(x['snapshot'][1]).max_output_bytes) for x in self.journal.value['records'])
-        if reserved+2*(e.reference_bytes+e.max_output_bytes)>QUOTA: raise Refused('native_quota')
+        reserved=(0 if self.journal.retained is None else self.journal.retained['charges']['host_bytes'])+sum(2*(p.native_execution(x['snapshot'][1]).reference_bytes+p.native_execution(x['snapshot'][1]).max_output_bytes) for x in self.journal.value['records'])
+        capacity('host_bytes',reserved,QUOTA,extra=2*(e.reference_bytes+e.max_output_bytes))
         if self.free_bytes()<6*1024**3+snapshot[1]['plan']['resolved']['profile']['limits']['disk_bytes']: raise Refused('native_disk_gate')
         if self.free_ram()<e.memory_bytes: raise Refused('native_ram_gate')
         from worker.engines.qwen import verify_bundle

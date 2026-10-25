@@ -251,10 +251,11 @@ def response(value, *, request):
         if op=='prepare': runtime_id(v['runtime_id'],request['lane'],request['boot'])
         elif v['runtime_id'] != request['runtime_id']: raise Refused('native_response')
     elif op=='hello':
-        _closed(v, ('deployment_id','configuration_sha256','lane','boot','quarantined','launches','runtime_manifest_sha256','inventory'))
+        _closed(v, ('deployment_id','configuration_sha256','lane','boot','quarantined','launches','runtime_manifest_sha256','inventory')+ (('retention',) if 'retention' in v else ()))
         if (v['deployment_id'],v['configuration_sha256']) != (request['deployment_id'],request['configuration_sha256']): raise Refused('native_response')
         for k in ('lane','boot'): _hex(v[k],32)
         _hex(v['runtime_manifest_sha256'],64); _int(v['launches'],0,64)
+        if 'retention' in v: _hex(v['retention'],64)
         if type(v['quarantined']) is not bool: raise Refused('native_response')
         from worker.engines.qwen_execution import inventory_from_wire
         inventory_from_wire(v['inventory'])

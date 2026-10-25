@@ -247,7 +247,7 @@ class Core:
             except BlockingIOError:
                 raise ValueError('control_busy') from None
             from service.native_renewal import startup_guard
-            startup_guard(self.root)
+            startup_guard(self.root,activation=_native_activation is not None)
             for name in ('staging', 'assets', 'owners'):
                 path = self.root / name
                 if not fresh and not path.is_dir():
@@ -437,6 +437,8 @@ class Core:
         fingerprint = oracle.fingerprint(principal, operation, dict(request=plan['request'],retry_of=retry_of) if retry_of else plan['request'])
         duplicate = self.execution_duplicate(principal, operation, key, plan['request'], context=context, retry_of=retry_of)
         if duplicate is not None: return duplicate
+        from service.native_renewal import preallocate
+        preallocate(self,context)
         from worker.runtime_protocol import execution, dispatch_mode
         spec=execution(context)
         if spec is not None and (_admission is None or _profiles is None or _dispatch_settings is None or _dispatch_settings[0]!=dispatch_mode(spec)):
