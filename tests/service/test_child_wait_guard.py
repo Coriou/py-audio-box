@@ -2489,8 +2489,8 @@ def _B_precapture_program(control):
                 isinstance(call.args[0].func, ast.Name) and call.args[0].func.id == '_t1_legacy_pipe_roots' and
                 len(call.args[0].args) == 1 and isinstance(call.args[0].args[0], ast.Name) and
                 call.args[0].args[0].id == 'tmp_path' and not call.args[0].keywords)
-            call.args[0] = ast.copy_location(ast.Dict(keys=[ast.Constant('B1')],
-                values=[ast.Constant(None)]), call.args[0])
+            call.args[0] = ast.copy_location(ast.Dict(keys=[None, ast.Constant('B1')],
+                values=[call.args[0], ast.Constant(None)]), call.args[0])
             ast.fix_missing_locations(tree)
             if node.config.getoption('assertmode') == 'rewrite':
                 from _pytest.assertion.rewrite import rewrite_asserts
@@ -2548,7 +2548,31 @@ def _B_precapture_program(control):
             return
             if mode in admission:"""
     assert source.count(old) == 1
-    return source.replace(old, new)
+    source = source.replace(old, new)
+    armed = "                assert any(s.endswith('incomplete or invalid armed B contract') for s in guard.failures)"
+    assert source.count(armed) == 1
+    source = source.replace(armed, """                if mode == 'outer-binding':
+                    assert guard.failures == [NODE+': incomplete or invalid escaping B parent contract',
+                        NODE+': missing terminal maintenance receipt']
+                else:
+                    assert any(s.endswith('incomplete or invalid armed B contract') for s in guard.failures)""")
+    terminal = '    assert len(g.receipts) == 1 and not g.owned'
+    assert source.count(terminal) == 1
+    source = source.replace(terminal, """    if mode == 'outer-binding':
+        # Authority rejection retains unresolved receipt debt, never terminal credit.
+        assert not g.receipts and len(g.owned) == 1
+    else:
+        assert len(g.receipts) == 1 and not g.owned""")
+    child = "if mode != 'setup-failure':\n    if diagnostic_enabled:"
+    assert source.count(child) == 1
+    source = source.replace(child, """if mode == 'outer-binding':
+    assert not [r for r in records if 'final-rejected' in r['steps'] or
+        'final-accepted' in r['steps'] or 'scheduling-after-real-eagain' in r['steps']]
+    assert 'admission-baseline' in parent and 'admission-mutated-rejected' in parent
+    assert 'both-next-launches-refused' in parent
+elif mode != 'setup-failure':
+    if diagnostic_enabled:""")
+    return source
 
 
 @pytest.mark.manual_b_probe
@@ -2611,8 +2635,8 @@ def test_B_independent_authority_source_predicates(monkeypatch, control):
         elif control == 'qualname': changed = code.replace(co_qualname=code.co_qualname+'.foreign')
         elif control == 'flags': changed = code.replace(co_flags=code.co_flags ^ 0x1000000)
         elif control == 'typed-constant':
-            clock = roles['clock']; assert clock.co_consts == (100,)
-            changed_clock = clock.replace(co_consts=(100.0,))
+            clock = roles['clock']; assert clock.co_consts == (None, 100)
+            changed_clock = clock.replace(co_consts=(None, 100.0))
             assert changed_clock.co_consts == clock.co_consts
             assert cls.code_projection(changed_clock) != cls.code_projection(clock)
             changed = code.replace(co_consts=tuple(changed_clock if c is clock else c for c in code.co_consts))
