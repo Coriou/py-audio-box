@@ -365,7 +365,7 @@ class Core:
         """
         plan = context['plan']
         operation = plan['operation']
-        fingerprint = oracle.fingerprint(principal, operation, plan['request'])
+        fingerprint = oracle.fingerprint(principal, operation, dict(request=plan['request'],retry_of=retry_of) if retry_of else plan['request'])
         row = self.db.execute('SELECT fingerprint,job FROM jobs WHERE principal=? AND operation=? AND key=?',(principal,operation,key)).fetchone()
         if row:
             oracle.require(row[0] == fingerprint, 'idempotency_conflict')
@@ -391,12 +391,13 @@ class Core:
             self._input_assets(principal, plan)
             if retry_of:
                 old, previous = self._load(retry_of)
-                oracle.require(old['state'] in ('failed','cancelled') and old['principal_id'] == principal and encode(previous) == encode(context)
+                oracle.require(old['state'] in ('failed','cancelled') and all(a['reaped'] for a in old['attempts']) and old['principal_id'] == principal and encode(previous) == encode(context)
                                and old['input_sha256'] == oracle.plan_hash(previous['plan'])
                                and old['input_sha256'] == oracle.plan_hash(plan), 'invalid_retry')
             count = sum(json.loads(r[0])['state'] in ('queued','running','cancel_requested') for r in self.db.execute('SELECT job FROM jobs'))
             if count >= min(32, plan['resolved']['profile']['limits']['queue']): raise ValueError('queue_full')
             job = dict(id=new_id('job'), operation=operation,input_sha256=oracle.plan_hash(plan),principal_id=principal,idempotency_key=key,state='queued',generation=0,attempts=[],artifact_ids=[],stage='queued',deadline='')
+            if retry_of: job['retry_of'] = retry_of
             oracle.validate('job', job)
             self.db.execute('INSERT INTO jobs(id,principal,operation,key,fingerprint,job,context,retry_of) VALUES (?,?,?,?,?,?,?,?)', (job['id'],principal,operation,key,fingerprint,encode(job),encode(context),retry_of))
             self.db.execute('INSERT INTO events(job_id,state) VALUES (?,?)', (job['id'],'queued'))

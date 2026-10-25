@@ -292,7 +292,7 @@
       "cli": "voice archive",
       "mcp": "speech_voice_archive",
       "request": "voice_archive_request",
-      "response": "receipt",
+      "response": "voice",
       "idempotency": true,
       "scope": "production-write",
       "headers": [
@@ -306,7 +306,8 @@
         "not_ready",
         "resource_limit",
         "unsupported_control",
-        "revision_conflict"
+        "revision_conflict",
+        "voice_archived"
       ]
     },
     {
@@ -1085,6 +1086,131 @@
         "not_found",
         "not_ready",
         "resource_limit"
+      ]
+    },
+    {
+      "id": "jobs_list",
+      "http": {
+        "method": "GET",
+        "route": "/v1/jobs",
+        "input_location": "query_and_path"
+      },
+      "cli": "jobs list",
+      "mcp": "speech_jobs_list",
+      "request": "jobs_list_request",
+      "response": "jobs_page",
+      "idempotency": false,
+      "scope": "read",
+      "headers": [],
+      "errors": [
+        "invalid_request",
+        "forbidden",
+        "not_found",
+        "not_ready",
+        "resource_limit",
+        "missing_media",
+        "unsupported_control"
+      ]
+    },
+    {
+      "id": "job_events",
+      "http": {
+        "method": "GET",
+        "route": "/v1/jobs/{job_id}/events",
+        "input_location": "query_and_path"
+      },
+      "cli": "job events",
+      "mcp": "speech_job_events",
+      "request": "job_events_request",
+      "response": "job_events_page",
+      "idempotency": false,
+      "scope": "read",
+      "headers": [],
+      "errors": [
+        "invalid_request",
+        "forbidden",
+        "not_found",
+        "not_ready",
+        "resource_limit",
+        "missing_media",
+        "unsupported_control"
+      ]
+    },
+    {
+      "id": "job_wait",
+      "http": {
+        "method": "GET",
+        "route": "/v1/jobs/{job_id}/wait",
+        "input_location": "query_and_path"
+      },
+      "cli": "job wait",
+      "mcp": "speech_job_wait",
+      "request": "job_wait_request",
+      "response": "job_wait_result",
+      "idempotency": false,
+      "scope": "read",
+      "headers": [],
+      "errors": [
+        "invalid_request",
+        "forbidden",
+        "not_found",
+        "not_ready",
+        "resource_limit",
+        "missing_media",
+        "unsupported_control"
+      ]
+    },
+    {
+      "id": "profile_get",
+      "http": {
+        "method": "GET",
+        "route": "/v1/profiles/{profile_id}",
+        "input_location": "query_and_path"
+      },
+      "cli": "profile get",
+      "mcp": "speech_profile_get",
+      "request": "profile_get_request",
+      "response": "profile",
+      "idempotency": false,
+      "scope": "read",
+      "headers": [],
+      "errors": [
+        "invalid_request",
+        "forbidden",
+        "not_found",
+        "not_ready",
+        "resource_limit",
+        "missing_media",
+        "unsupported_control"
+      ]
+    },
+    {
+      "id": "voice_aliases",
+      "http": {
+        "method": "POST",
+        "route": "/v1/operations/voice_aliases",
+        "input_location": "json"
+      },
+      "cli": "voice aliases",
+      "mcp": "speech_voice_aliases",
+      "request": "voice_aliases_request",
+      "response": "voice",
+      "idempotency": true,
+      "scope": "production-write",
+      "headers": [
+        "Idempotency-Key"
+      ],
+      "errors": [
+        "invalid_request",
+        "forbidden",
+        "not_found",
+        "idempotency_conflict",
+        "not_ready",
+        "resource_limit",
+        "unsupported_control",
+        "revision_conflict",
+        "alias_conflict",
+        "voice_archived"
       ]
     }
   ],

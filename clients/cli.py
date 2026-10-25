@@ -29,7 +29,7 @@ def main(argv=None):
     version = vsubs.add_parser('version')
     vget = version.add_subparsers(dest='version_verb', required=True).add_parser('get')
     vget.add_argument('voice_version_id')
-    for name in ('prepare', 'save', 'preset-register'):
+    for name in ('prepare', 'save', 'preset-register', 'aliases', 'archive'):
         action = vsubs.add_parser(name)
         action.add_argument('--request', required=True, help='Canonical JSON request object.')
         action.add_argument('--idempotency-key', required=True)
@@ -39,6 +39,13 @@ def main(argv=None):
     generate = speech.add_parser('generate'); generate.add_argument('--request', required=True); generate.add_argument('--idempotency-key', required=True)
     jobs = commands.add_parser('job').add_subparsers(dest='verb', required=True)
     jobs.add_parser('get').add_argument('job_id')
+    for name in ('events','wait'):
+        action = jobs.add_parser(name); action.add_argument('job_id'); action.add_argument('--cursor',default='')
+        action.add_argument('--limit' if name == 'events' else '--wait-seconds',type=int,default=20 if name == 'events' else 5)
+    retry = jobs.add_parser('retry'); retry.add_argument('job_id'); retry.add_argument('--input-sha256',required=True); retry.add_argument('--idempotency-key',required=True)
+    listing = commands.add_parser('jobs').add_subparsers(dest='verb',required=True).add_parser('list')
+    listing.add_argument('--cursor',default=''); listing.add_argument('--limit',type=int,default=20)
+    commands.add_parser('profile').add_subparsers(dest='verb',required=True).add_parser('get').add_argument('profile_id')
     cancel = jobs.add_parser('cancel'); cancel.add_argument('job_id'); cancel.add_argument('--idempotency-key', required=True)
     artifacts = commands.add_parser('artifact').add_subparsers(dest='verb', required=True)
     artifacts.add_parser('get').add_argument('artifact_id')
@@ -58,7 +65,7 @@ def main(argv=None):
         elif args.command == 'operation-detail':
             from urllib.parse import quote
             result = http.get('/skeleton/operations/' + quote(args.operation_id, safe=''))
-        elif args.command == 'speech' or (args.command == 'voice' and args.verb in ('prepare','save','preset-register')):
+        elif args.command == 'speech' or (args.command == 'voice' and args.verb in ('prepare','save','preset-register','aliases','archive')):
             import json
             operation = 'speech_generate' if args.command == 'speech' else 'voice_'+args.verb.replace('-', '_')
             payload = json.loads(args.request)
@@ -67,7 +74,15 @@ def main(argv=None):
                 payload['audition_text'] = args.audition_text
             result = http.call(operation, payload, key=args.idempotency_key)
         elif args.command == 'voice' and args.verb == 'results': result = http.call('voice_results',dict(job_id=args.job_id))
-        elif args.command == 'job': result = http.call('job_'+args.verb,dict(job_id=args.job_id), **({'key':args.idempotency_key} if args.verb == 'cancel' else {}))
+        elif args.command == 'jobs': result = http.call('jobs_list',dict(cursor=args.cursor,limit=args.limit))
+        elif args.command == 'profile': result = http.call('profile_get',dict(profile_id=args.profile_id))
+        elif args.command == 'job':
+            payload = dict(job_id=args.job_id)
+            if args.verb == 'retry': payload['input_sha256'] = args.input_sha256
+            if args.verb in ('events','wait'):
+                payload['cursor'] = args.cursor
+                payload.update(dict(limit=args.limit) if args.verb == 'events' else dict(wait_seconds=args.wait_seconds))
+            result = http.call('job_'+args.verb,payload, **({'key':args.idempotency_key} if args.verb in ('cancel','retry') else {}))
         elif args.command == 'artifact': result = http.call('artifact_get',dict(artifact_id=args.artifact_id))
         elif args.command == 'voices': result = http.call('voices_list', {'limit': args.limit, 'cursor': args.cursor})
         elif args.command == 'voice' and args.verb == 'versions':

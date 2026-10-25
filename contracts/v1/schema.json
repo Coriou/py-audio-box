@@ -710,6 +710,10 @@
         },
         "deadline": {
           "type": "string"
+        },
+        "retry_of": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
         }
       },
       "required": [
@@ -4257,6 +4261,210 @@
       "required": [
         "family",
         "index"
+      ],
+      "additionalProperties": false
+    },
+    "jobs_list_request": {
+      "type": "object",
+      "properties": {
+        "cursor": {
+          "type": "string",
+          "maxLength": 96
+        },
+        "limit": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 20
+        }
+      },
+      "required": [
+        "cursor",
+        "limit"
+      ],
+      "additionalProperties": false
+    },
+    "job_events_request": {
+      "type": "object",
+      "properties": {
+        "job_id": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+        },
+        "cursor": {
+          "type": "string",
+          "maxLength": 96
+        },
+        "limit": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 20
+        }
+      },
+      "required": [
+        "job_id",
+        "cursor",
+        "limit"
+      ],
+      "additionalProperties": false
+    },
+    "job_wait_request": {
+      "type": "object",
+      "properties": {
+        "job_id": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+        },
+        "cursor": {
+          "type": "string",
+          "maxLength": 96
+        },
+        "wait_seconds": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 5
+        }
+      },
+      "required": [
+        "job_id",
+        "cursor",
+        "wait_seconds"
+      ],
+      "additionalProperties": false
+    },
+    "jobs_page": {
+      "type": "object",
+      "properties": {
+        "items": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/job"
+          },
+          "maxItems": 20
+        },
+        "next_cursor": {
+          "anyOf": [
+            {
+              "type": "string",
+              "maxLength": 96
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "items",
+        "next_cursor"
+      ],
+      "additionalProperties": false
+    },
+    "job_events_page": {
+      "type": "object",
+      "properties": {
+        "job": {
+          "$ref": "#/$defs/job"
+        },
+        "events": {
+          "type": "array",
+          "maxItems": 20,
+          "items": {
+            "type": "object",
+            "properties": {
+              "cursor": {
+                "type": "string",
+                "maxLength": 96
+              },
+              "state": {
+                "enum": [
+                  "queued",
+                  "running",
+                  "cancel_requested",
+                  "cancelled",
+                  "succeeded",
+                  "failed"
+                ]
+              }
+            },
+            "required": [
+              "cursor",
+              "state"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "next_cursor": {
+          "type": "string",
+          "maxLength": 96
+        }
+      },
+      "required": [
+        "job",
+        "events",
+        "next_cursor"
+      ],
+      "additionalProperties": false
+    },
+    "job_wait_result": {
+      "type": "object",
+      "properties": {
+        "job": {
+          "$ref": "#/$defs/job"
+        },
+        "events": {
+          "type": "array",
+          "maxItems": 20,
+          "items": {
+            "type": "object",
+            "properties": {
+              "cursor": {
+                "type": "string",
+                "maxLength": 96
+              },
+              "state": {
+                "enum": [
+                  "queued",
+                  "running",
+                  "cancel_requested",
+                  "cancelled",
+                  "succeeded",
+                  "failed"
+                ]
+              }
+            },
+            "required": [
+              "cursor",
+              "state"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "next_cursor": {
+          "type": "string",
+          "maxLength": 96
+        },
+        "deadline_reached": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "job",
+        "events",
+        "next_cursor",
+        "deadline_reached"
+      ],
+      "additionalProperties": false
+    },
+    "profile_get_request": {
+      "type": "object",
+      "properties": {
+        "profile_id": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+        }
+      },
+      "required": [
+        "profile_id"
       ],
       "additionalProperties": false
     }
