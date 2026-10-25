@@ -1,3 +1,7 @@
+For the new `installed-daemon-volumes-v1` ordinary Docker-client candidate, see
+[DOCKER-VOLUMES.md](DOCKER-VOLUMES.md). This document describes the unchanged
+strict daemon-host alternative and its separate evidence boundary.
+
 # CPU Docker setup: daemon-side boundary
 
 Source candidate only. Clean installation and audible Kokoro speech on Linux and

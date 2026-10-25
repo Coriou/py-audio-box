@@ -1,0 +1,73 @@
+# installed-daemon-volumes-v1 topology reference only. speech-box coordinates final IDs directly;
+# do not use compose up/down (would bypass registration/retained-ID ownership).
+name: speech-box-daemon-volumes
+x-common: &common
+  pull_policy: never
+  restart: "no"
+  read_only: true
+  cap_drop: [ALL]
+  security_opt: ["no-new-privileges:true"]
+  ipc: private
+  cgroup: private
+  mem_limit: ${SPEECH_RAM_BYTES:?explicit enrolled RAM bytes}
+  memswap_limit: ${SPEECH_RAM_BYTES:?explicit enrolled RAM bytes}
+  pids_limit: ${SPEECH_PIDS:?explicit enrolled PID budget}
+services:
+  control:
+    <<: *common
+    image: ${SPEECH_CONTROL_IMAGE:?local immutable sha256 image ID}
+    entrypoint: [python]
+    command: ["-I", "-B", "-c", "import sys;sys.path.insert(0,'/opt/speech');from service.entrypoint import daemon_main;daemon_main()"]
+    user: "10001:10001"
+    network_mode: bridge
+    ports: ["127.0.0.1:${SPEECH_PORT:?explicit port}:8000"]
+    cpus: ${SPEECH_CONTROL_CPUS:?explicit CPU budget}
+    tmpfs: ["/tmp:rw,noexec,nosuid,nodev,size=${SPEECH_CONTROL_TMP_BYTES:?},nr_inodes=${SPEECH_CONTROL_TMP_INODES:?},mode=1777"]
+    volumes:
+      - {type: volume, source: control, target: /control, volume: {nocopy: true}}
+      - {type: volume, source: ipc, target: /ipc, read_only: true, volume: {nocopy: true}}
+      - {type: volume, source: staging, target: /staging, read_only: true, volume: {nocopy: true}}
+      - {type: volume, source: models, target: /models, read_only: true, volume: {nocopy: true}}
+      - {type: volume, source: config, target: /etc/speech-box/config, read_only: true, volume: {nocopy: true}}
+      - {type: volume, source: credential, target: /etc/speech-box/credentials, read_only: true, volume: {nocopy: true}}
+  worker:
+    <<: *common
+    image: ${SPEECH_WORKER_IMAGE:?local immutable sha256 image ID}
+    entrypoint: [python]
+    command: ["-I", "-B", "-c", "import sys;sys.path.insert(0,'/opt/speech');from worker.runtime_supervisor import main;main()", "--installed-policy", "docker-kokoro-split-v1", "--configuration-file", "/etc/speech-box/config/install.json"]
+    user: "0:10001"
+    cap_add: [SETUID, SETGID, KILL]
+    network_mode: none
+    cpus: ${SPEECH_WORKER_CPUS:?explicit CPU budget}
+    tmpfs: ["/tmp:rw,noexec,nosuid,nodev,size=${SPEECH_WORKER_TMP_BYTES:?},nr_inodes=${SPEECH_WORKER_TMP_INODES:?},mode=1777"]
+    volumes:
+      - {type: volume, source: receipts, target: /receipts, volume: {nocopy: true}}
+      - {type: volume, source: ipc, target: /ipc, volume: {nocopy: true}}
+      - {type: volume, source: staging, target: /staging, volume: {nocopy: true}}
+      - {type: volume, source: models, target: /models, read_only: true, volume: {nocopy: true}}
+      - {type: volume, source: config, target: /etc/speech-box/config, read_only: true, volume: {nocopy: true}}
+volumes:
+  control:
+    external: true
+    name: ${SPEECH_CONTROL_VOLUME:?exact volume}
+  receipts:
+    external: true
+    name: ${SPEECH_RECEIPTS_VOLUME:?exact volume}
+  ipc:
+    external: true
+    name: ${SPEECH_IPC_VOLUME:?exact volume}
+  staging:
+    external: true
+    name: ${SPEECH_STAGING_VOLUME:?exact volume}
+  authority:
+    external: true
+    name: ${SPEECH_AUTHORITY_VOLUME:?exact volume; helper only, never runtime}
+  models:
+    external: true
+    name: ${SPEECH_MODELS_VOLUME:?exact volume}
+  config:
+    external: true
+    name: ${SPEECH_CONFIG_VOLUME:?exact volume}
+  credential:
+    external: true
+    name: ${SPEECH_CREDENTIAL_VOLUME:?exact volume}

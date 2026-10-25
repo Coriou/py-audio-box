@@ -18,7 +18,7 @@ from service.persistent_init import digest
 
 GATE_DIRECTORY = Path('/tmp/speech-box-activation')
 GATE_NAME = 'gate.json'
-GATE_LIMIT = 16384
+GATE_LIMIT = 65536
 
 # Strong process-lifetime responsibility, including failed/unknown close outcomes.
 _INSTALLED_LIFECYCLES = {}
@@ -54,10 +54,13 @@ class _ThreadResult:
 
 def projection(value):
     from service.recovery import closed, validate_registration
+    if value.get('launch_policy') == 'installed-daemon-volumes-v1':
+        from service.daemon_helper import gate_projection
+        return gate_projection(value)
     closed(value, 'version registration_id registration configuration_digest enrollment_digest provenance_digest processes')
     if type(value['version']) is not int or value['version'] != 1:
         raise ValueError('installed_gate_version')
-    if len(encode(value).encode()) > GATE_LIMIT:
+    if len(encode(value).encode()) > 16384:
         raise ValueError('installed_gate_budget')
     for key in ('registration_id', 'configuration_digest', 'enrollment_digest', 'provenance_digest'):
         if not isinstance(value[key], str) or not re.fullmatch('[0-9a-f]{64}', value[key]):
@@ -217,7 +220,7 @@ def _read_pid1_incarnation():
     return result
 
 
-def checked_waiting_gate(waiting, configuration, runtime, *, root='/control/core'):
+def checked_waiting_gate(waiting, configuration, runtime, *, root='/control/core', launch_policy=None):
     """Pre-owner check only. The caller must repeat binding after Core acquisition.
 
     Holding the existing control lock excludes registrars/owners through all
@@ -229,7 +232,7 @@ def checked_waiting_gate(waiting, configuration, runtime, *, root='/control/core
     with ip.locked_file(Path(root)/'control.lock',policy=ip.SPLIT,role='control'):
         before = local_incarnation()
         hello = runtime.call('hello', {})
-        checked = installed_startup_read(root,configuration,gate,hello,before,policy=ip.SPLIT)
+        checked = installed_startup_read(root,configuration,gate,hello,before,policy=ip.SPLIT,launch_policy=launch_policy)
         if (runtime.call('hello', {}) != hello or local_incarnation() != before or
                 waiting.read() != gate):
             raise ValueError('installed_startup_bracket_changed')
@@ -250,7 +253,8 @@ def main():
 
 class InstalledActivation:
     """Internal startup dependency; public projection alone never activates."""
-    def __init__(self, waiting, configuration):
+    def __init__(self, waiting, configuration, *, launch_policy=None):
+        self.launch_policy = launch_policy
         self.waiting = waiting
         self.configuration = ip.configuration(configuration)
         self.checked = None
@@ -265,7 +269,7 @@ class InstalledActivation:
 
     def prepare(self, runtime, root):
         if self.prepared is not None: raise ValueError('installed_activation_reuse')
-        self.checked = checked_waiting_gate(self.waiting, self.configuration, runtime, root=root)
+        self.checked = checked_waiting_gate(self.waiting, self.configuration, runtime, root=root, launch_policy=self.launch_policy)
         self.prepared = runtime, Path(root).absolute()
 
     def precheck(self, dispatcher):
@@ -294,14 +298,14 @@ class InstalledActivation:
         before = local_incarnation()
         hello = dispatcher.runtime.call('hello', {})
         checked = installed_startup_read(dispatcher.root, self.configuration, gate,
-                                        hello, before, policy=ip.SPLIT)
+                                        hello, before, policy=ip.SPLIT, launch_policy=self.launch_policy)
         if (checked != self.checked or self.waiting.read() != gate or
                 dispatcher.runtime.call('hello', {}) != hello or local_incarnation() != before):
             raise ValueError('installed_post_owner_binding_changed')
 
 
 def create_installed_app(*, configuration_file, credential_file, root='/control/core',
-                         staging='/staging', runtime=None, waiting=None):
+                         staging='/staging', runtime=None, waiting=None, launch_policy=None):
     """Factory-only ASGI entry, with one owner acquired/closed by lifespan.
 
     No listener is created here. Explicit files and the trusted host notification
@@ -319,7 +323,7 @@ def create_installed_app(*, configuration_file, credential_file, root='/control/
     runtime = runtime or SupervisorRuntime('/ipc')
     def dependencies():
         notification = waiting if waiting is not None else WaitingControl()
-        activation = InstalledActivation(notification, config)
+        activation = InstalledActivation(notification, config, launch_policy=launch_policy)
         return notification, lambda: activation.prepare(runtime, root), lambda: Dispatcher(
             root, staging=staging, runtime=runtime, profiles=config['profiles'],
             budget=config['budget'], production_contexts=contexts, installed_activation=activation)
@@ -522,13 +526,22 @@ def _installed_server(config):
     return InstalledServer(config)
 
 
-def installed_main():
+def installed_main(*, launch_policy=None):
     """PID1 command factory; Uvicorn listener follows checked owner acquisition."""
     import asyncio
     import uvicorn
     _control_identity()
     os.umask(0o077)
-    app = create_installed_app(configuration_file=ip.CONFIG_DESTINATION, credential_file=ip.CREDENTIAL_DESTINATION)
+    if launch_policy is None:
+        config_file, credential_file = ip.CONFIG_DESTINATION, ip.CREDENTIAL_DESTINATION
+    elif launch_policy == 'installed-daemon-volumes-v1':
+        from service import daemon_volumes as dv
+        from service.daemon_runtime import publish_control
+        publish_control()
+        config_file, credential_file = dv.CONFIG, dv.CREDENTIAL
+    else: raise ValueError('installed_explicit_launch_policy')
+    app = create_installed_app(configuration_file=config_file, credential_file=credential_file,
+        **({} if launch_policy is None else dict(launch_policy=launch_policy)))
     server = _installed_server(uvicorn.Config(app,host='0.0.0.0',port=8000,access_log=False,
         log_level='critical',timeout_graceful_shutdown=10))
 
@@ -578,3 +591,8 @@ def create_native_owner(*, record_file, configuration_file, templates_file, owne
     activation = NativeActivation(record_file, configuration_file=configuration_file,
         templates_file=templates_file, owner_root=owner_root)
     return Dispatcher(owner_root, staging=staging, installed_activation=activation)
+
+
+def daemon_main():
+    from service.daemon_volumes import POLICY
+    installed_main(launch_policy=POLICY)

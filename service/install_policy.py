@@ -264,7 +264,13 @@ def installation(value):
         _closed(value, 'deployment_id revision scope host profile_budget_digest')
         hashes = [value['profile_budget_digest']]
     elif value.get('scope') in SCOPES:
-        _closed(value, 'deployment_id revision scope host configuration configuration_digest ownership_policy roles')
+        _closed(value, 'deployment_id revision scope host configuration configuration_digest ownership_policy roles'+(' launch' if 'launch' in value else ''))
+        if 'launch' in value:
+            from service import daemon_volumes as dv
+            dv.binding(value['launch'])
+            if (value['host'] != dv.scope(value['launch']) or value['configuration_digest'] != value['launch']['configuration_digest'] or
+                    value['ownership_policy'] != POLICY):
+                raise ValueError('daemon_enrollment_binding')
         config = configuration(value['configuration'])
         if (value['scope'] != scope_for(config) or value['ownership_policy'] != config['ownership_policy'] or value['configuration_digest'] != digest(config)):
             raise ValueError('installed_configuration_digest')
@@ -380,6 +386,7 @@ def host_enrollment(public, policy, config, scope):
     """Corroborate closed retained public enrollment against protected authority."""
     from service.persistent_init import digest
     installation(public); host_policy(policy,config,scope)
+    if 'launch' in public: raise ValueError('strict_host_launch_policy_required')
     if (public['scope']!=scope_for(config) or public['host']!=scope or
             public['configuration']!=config or public['configuration_digest']!=policy['configuration_digest']):
         raise ValueError('installed_expected_enrollment_binding')

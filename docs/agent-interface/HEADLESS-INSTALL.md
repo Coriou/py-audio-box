@@ -1,3 +1,7 @@
+For the distinct ordinary Mac/Linux Docker-client lane, see
+[DOCKER-VOLUMES.md](DOCKER-VOLUMES.md). The strict host route below retains its
+original Linux-root, host-path and host-inspection requirements.
+
 # Packaged headless installation
 
 For daemon-side CPU policy generation and the explicit Intel Mac Linux-VM

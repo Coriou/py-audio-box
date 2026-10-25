@@ -4,7 +4,7 @@ import hmac
 from worker.transport import Session, Refused, authenticate, receive, send
 
 VERSION = 'lifecycle-v1'
-OPS = frozenset(('hello', 'prepare', 'start', 'observe', 'stop', 'collect', 'ack'))
+OPS = frozenset(('hello', 'startup', 'prepare', 'start', 'observe', 'stop', 'collect', 'ack'))
 
 
 def session(secret, uid, gid):

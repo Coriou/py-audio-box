@@ -315,7 +315,7 @@ def _split_create(path, data, role, *, parent_identity=None):
 
 
 def initialize_split(roots, scope, config, *, authority, policy, complete=None,
-                     launch_child=_launch_split_child, fault=lambda _: None):
+                     launch_child=_launch_split_child, fault=lambda _: None, daemon_binding=None):
     """Create-only internal transaction; authority is a trusted host inspection callback.
 
     The callback must freshly inspect daemon/context/named-volume identities and
@@ -327,6 +327,11 @@ def initialize_split(roots, scope, config, *, authority, policy, complete=None,
     from contextlib import ExitStack
     from service import install_policy as ip
     ip.require(policy); validate_scope(scope); config = ip.configuration(config)
+    if daemon_binding is not None:
+        from service import daemon_volumes as dv
+        dv.binding(daemon_binding)
+        if scope != dv.scope(daemon_binding) or digest(config) != daemon_binding['configuration_digest'] or config['ownership_policy'] != ip.POLICY:
+            raise ValueError('daemon_initialization_binding')
     if launch_child is _launch_split_child:
         import sys
         if sys.platform != 'linux' or os.geteuid() != 0:
@@ -385,6 +390,7 @@ def initialize_split(roots, scope, config, *, authority, policy, complete=None,
                 for role,(dev,ino) in original.items()}
             public = dict(deployment_id=secrets.token_hex(16), revision=1, scope=ip.scope_for(config), host=scope,
                 configuration=config, configuration_digest=digest(config), ownership_policy=config['ownership_policy'], roles=target)
+            if daemon_binding is not None: public['launch'] = daemon_binding
             private = dict(public=public, seed=secrets.token_hex(32))
             ip.initialization(private)
             # Receipts is still root:root 0700 here. Intent precedes ANY transition.
@@ -395,7 +401,7 @@ def initialize_split(roots, scope, config, *, authority, policy, complete=None,
             if raw_private != encode(private).encode() or hashlib.sha256(raw_private).hexdigest() != complete: raise ValueError('matching_initialization_record_required')
             ip._closed(private, 'public seed'); public = private['public']
         ip.initialization(private)
-        if (public['host'] != scope or public['configuration'] != config or
+        if (public.get('launch') != daemon_binding or public['host'] != scope or public['configuration'] != config or
                 any((r['device'],r['inode']) != original[k] for k,r in public['roles'].items()) or
                 not isinstance(private['seed'],str) or len(private['seed']) != 64):
             raise ValueError('initialization_scope_mismatch')

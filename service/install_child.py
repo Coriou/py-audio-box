@@ -107,7 +107,7 @@ def registration_writer(public, registration, prestate, control, lock_fd, *, fau
     ip.installation(public); recovery.validate_registration(registration)
     if (public['scope'] not in ip.SCOPES or registration['scope'] != public['host'] or
             registration['deployment_id'] != public['deployment_id'] or
-            registration['evidence'] != 'actual-host-inspection'):
+            registration['evidence'] != ('daemon-volumes-inspection-v1' if 'launch' in public else 'actual-host-inspection')):
         raise ValueError('installed_registration_binding')
     if type(prestate) is not list or len(encode(prestate).encode()) > recovery.HOST_CAPSULE_BYTES:
         raise ValueError('installed_registration_prestate')
@@ -196,3 +196,85 @@ def registration_entry(kind):
         drop_control()
         registration_writer(request['public'],request['registration'],request['prestate'],control,descriptors[2])
     else: raise ValueError('installed_child_entrypoint')
+
+
+CONTAINER_CONTROL = Path('/control')
+CONTAINER_STAGING = Path('/staging')
+
+
+def prepare_container(public, control_fd, staging_fd):
+    """Existing fixed mount view; never unshare/mount/chroot or host paths.
+
+    Only the daemon helper's Core/writer phases mount these roots. Models and
+    credentials are absent from that helper, not hidden by pathname convention.
+    """
+    from service import install_policy as ip
+    from service import daemon_volumes as dv
+    ip.installation(public)
+    if public.get('launch',{}).get('policy')!=dv.POLICY:
+        raise ValueError('explicit_daemon_container_view_required')
+    descriptors=(control_fd,staging_fd)
+    if any(type(fd) is not int or fd<3 for fd in descriptors) or len(set(descriptors))!=2:
+        raise ValueError('closed_initializer_descriptors')
+    for role,fd in zip(('control','staging'),descriptors):
+        info=os.fstat(fd); ip.check(info,ip.SPLIT,role,directory=True)
+        record=public['roles'][role]
+        if (info.st_dev,info.st_ino)!=(record['device'],record['inode']): raise ValueError('installed_root_changed')
+        path=CONTAINER_CONTROL if role=='control' else CONTAINER_STAGING
+        with ip.parent_fd(path) as (parent,name):
+            actual=os.stat(name,dir_fd=parent,follow_symlinks=False)
+            if (actual.st_dev,actual.st_ino)!=(info.st_dev,info.st_ino) or not stat.S_ISDIR(actual.st_mode):
+                raise ValueError('container_view_identity_changed')
+    return CONTAINER_CONTROL,CONTAINER_STAGING
+
+
+def close_other_descriptors(keep=()):
+    # Linux-only fresh exec. Enumeration is bounded; unexpected excess refuses.
+    names=os.listdir('/proc/self/fd')
+    if len(names)>64: raise ValueError('container_child_descriptor_budget')
+    for name in names:
+        fd=int(name)
+        if fd>2 and fd not in keep:
+            try: os.close(fd)
+            except OSError as exc:
+                if exc.errno!=9: raise
+
+
+def verify_dropped_capabilities():
+    fields=dict(line.split(':',1) for line in Path('/proc/self/status').read_text().splitlines() if ':' in line)
+    if (any(int(fields[k].strip(),16) for k in ('CapInh','CapPrm','CapEff','CapAmb')) or
+            fields['NoNewPrivs'].strip()!='1'):
+        raise ValueError('container_child_retained_capabilities')
+
+
+def container_entry(kind):
+    """Three finite trusted entrypoints; no arbitrary action/path/SQL protocol."""
+    import json
+    from service import install_policy as ip
+    from service.core import encode
+    if sys.platform!='linux' or os.getuid()!=0 or os.geteuid()!=0:
+        raise ValueError('linux_root_initializer_required')
+    raw=sys.stdin.buffer.read(65537)
+    if len(raw)>65536: raise ValueError('installed_child_request_budget')
+    request=json.loads(raw)
+    if kind=='hello':
+        ip._closed(request,'ipc_fd')
+        fd=request['ipc_fd']
+        if type(fd) is not int or fd<3: raise ValueError('installed_child_descriptor')
+        ip.check(os.fstat(fd),ip.SPLIT,'ipc',directory=True)
+        close_other_descriptors((fd,)); drop_control(); verify_dropped_capabilities()
+        from service.supervisor_runtime import installed_hello_at
+        print(encode(installed_hello_at(fd,startup=True)))
+        return
+    if kind=='core': ip._closed(request,'public control_fd staging_fd')
+    elif kind=='writer': ip._closed(request,'public registration prestate control_fd staging_fd lock_fd')
+    else: raise ValueError('installed_child_entrypoint')
+    control,staging=prepare_container(request['public'],request['control_fd'],request['staging_fd'])
+    keep=(request['lock_fd'],) if kind=='writer' else ()
+    if keep and (type(keep[0]) is not int or keep[0]<3 or keep[0] in (request['control_fd'],request['staging_fd'])):
+        raise ValueError('installed_child_descriptor')
+    close_other_descriptors(keep); drop_control(); verify_dropped_capabilities()
+    if kind=='core':
+        from service.persistent_init import _split_core
+        _split_core(request['public'],control,staging)
+    else: registration_writer(request['public'],request['registration'],request['prestate'],control,keep[0])
