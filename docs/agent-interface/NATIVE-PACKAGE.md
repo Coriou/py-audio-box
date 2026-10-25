@@ -131,3 +131,16 @@ before bounded stream reads (expected length plus one). Exact membership and
 source-byte comparison remain required. These are package processing limits,
 under the same immutable operator-managed input premise, not an extraction or
 hostile-writer sandbox.
+
+The r301 singleton policy requires exactly one case-insensitive Name and Version
+in installed and selected-wheel METADATA, and at most one Requires-Python and
+Metadata-Version. Any duplicate, including an identical or folded duplicate,
+refuses before graph acceptance. A present Requires-Python must admit the current
+interpreter. WHEEL Wheel-Version and Root-Is-Purelib are optional in this bounded
+preflight, but may occur only once; present values must be 1.0 and true/false,
+respectively. Repeated Tag and Requires-Dist remain intentional.
+
+After the byte-bounded ZIP constructor, actual central entries must equal the
+preflight EOCD count and satisfy the source/wheel entry ceiling before any member
+read. This corrects bounded count accounting; it adds no unbounded-allocation or
+installed-runtime qualification claim.

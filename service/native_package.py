@@ -105,13 +105,38 @@ def python_identity():
                 implementation=platform.python_implementation(), machine=platform.machine(), system=platform.system())
 
 
+def singleton(info, name, *, required=False):
+    """Email header names are case insensitive; even identical repeats refuse."""
+    values = info.get_all(name, [])
+    if len(values) > 1 or (required and len(values) != 1):
+        raise Refused('native_package_metadata_singleton')
+    if values and not values[0].strip():
+        raise Refused('native_package_metadata_singleton')
+    return values[0] if values else None
+
+
+def metadata_identity(info):
+    from packaging.specifiers import SpecifierSet
+    name = singleton(info, 'Name', required=True)
+    version = singleton(info, 'Version', required=True)
+    requires_python = singleton(info, 'Requires-Python')
+    singleton(info, 'Metadata-Version')
+    try:
+        if requires_python and platform.python_version() not in SpecifierSet(requires_python):
+            raise Refused('native_package_python_constraint')
+    except ValueError:
+        raise Refused('native_package_python_constraint') from None
+    return name, version
+
+
 def distributions():
     from packaging.utils import canonicalize_name
     result = {}
     for dist in importlib.metadata.distributions():
-        name = canonicalize_name(dist.metadata['Name'])
+        raw_name, version = metadata_identity(dist.metadata)
+        name = canonicalize_name(raw_name)
         if name in result: raise Refused('native_package_distribution_duplicate')
-        result[name] = dist.version
+        result[name] = version
     return result
 
 
@@ -129,7 +154,7 @@ def dependency_closure(expected):
     if not {'packaging', 'torch', 'transformers', 'qwen-tts'} <= set(expected):
         raise Refused('native_package_missing_dependencies')
     if distributions() != expected: raise Refused('native_package_dependency_mismatch')
-    return {canonicalize_name(dist.metadata['Name']):
+    return {canonicalize_name(metadata_identity(dist.metadata)[0]):
             active_edges(dist.requires or (), expected) for dist in importlib.metadata.distributions()}
 
 
@@ -174,6 +199,14 @@ def zip_preflight(path, *, source=False):
                 central_size > 4 * 1024 * 1024 or central_offset == 0xffffffff or
                 central_offset + central_size != end or offset + 22 + comment != len(tail)):
             raise Refused('native_package_zip_bounds')
+        return count
+
+
+def zip_count(archive, declared, *, source=False):
+    entries = archive.infolist()
+    if len(entries) != declared or len(entries) > (512 if source else 32768):
+        raise Refused('native_package_zip_bounds')
+    return entries
 
 
 def zip_read(archive, info, limit):
@@ -189,25 +222,29 @@ def wheel_identity(path, names, expected):
     from email.parser import BytesParser
     from packaging.tags import sys_tags, parse_tag
     from packaging.utils import parse_wheel_filename, canonicalize_name
-    from packaging.specifiers import SpecifierSet
     if len(names) != 1: raise Refused('native_package_wheel_identity')
     try:
         name, version, _, tags = parse_wheel_filename(Path(path).name)
         if name != names[0] or str(version) != expected[name] or not tags.intersection(set(sys_tags())):
             raise Refused('native_package_wheel_platform')
-        zip_preflight(path)
+        declared = zip_preflight(path)
         with zipfile.ZipFile(path) as wheel:
-            metadata = [i for i in wheel.infolist() if i.filename.endswith('.dist-info/METADATA')]
-            headers = [i for i in wheel.infolist() if i.filename.endswith('.dist-info/WHEEL')]
+            entries = zip_count(wheel, declared)
+            metadata = [i for i in entries if i.filename.endswith('.dist-info/METADATA')]
+            headers = [i for i in entries if i.filename.endswith('.dist-info/WHEEL')]
             if len(metadata) != 1 or len(headers) != 1 or any(i.file_size > 65536 for i in metadata + headers):
                 raise Refused('native_package_wheel_metadata')
             info = BytesParser().parsebytes(zip_read(wheel, metadata[0], 65536))
             header = BytesParser().parsebytes(zip_read(wheel, headers[0], 65536))
+            raw_name, raw_version = metadata_identity(info)
+            wheel_version = singleton(header, 'Wheel-Version')
+            pure = singleton(header, 'Root-Is-Purelib')
+            if wheel_version not in (None, '1.0') or pure not in (None, 'true', 'false'):
+                raise Refused('native_package_wheel_metadata')
             actual_tags = set()
             for tag in header.get_all('Tag', []): actual_tags.update(parse_tag(tag))
-            if (canonicalize_name(info['Name']) != name or info['Version'] != expected[name] or
-                    tags != actual_tags or info['Requires-Python'] and
-                    platform.python_version() not in SpecifierSet(info['Requires-Python'])):
+            if (canonicalize_name(raw_name) != name or raw_version != expected[name] or
+                    tags != actual_tags):
                 raise Refused('native_package_wheel_metadata')
             return active_edges(info.get_all('Requires-Dist', []), expected)
     except Refused:
@@ -297,8 +334,9 @@ def archive(destination):
 
 
 def verify_archive(path):
-    zip_preflight(path, source=True)
+    declared = zip_preflight(path, source=True)
     with zipfile.ZipFile(path) as source:
+        zip_count(source, declared, source=True)
         expected = {'native-worker/' + name for name in members()} | {'native-worker/native-worker.py'}
         if len(source.namelist()) != len(expected) or set(source.namelist()) != expected:
             raise Refused('native_package_source_members')

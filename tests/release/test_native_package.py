@@ -1,5 +1,6 @@
 """Nonqualifying inert package manifests; no interpreter, socket or ML launch."""
 import copy
+from email.parser import Parser
 import contextlib
 import hashlib
 import importlib.util
@@ -141,10 +142,10 @@ class NativePackageTests(unittest.TestCase):
             with self.assertRaises(Refused):n.dependency_closure(self.versions)
         from types import SimpleNamespace
         with patch.object(n,'distributions',return_value=self.versions), \
-             patch.object(n.importlib.metadata,'distributions',return_value=[SimpleNamespace(metadata={'Name':'torch'},requires=['missing>=1'])]):
+             patch.object(n.importlib.metadata,'distributions',return_value=[SimpleNamespace(metadata=Parser().parsestr('Name: torch\nVersion: 1\n'),requires=['missing>=1'])]):
             with self.assertRaises(Refused):n.dependency_closure(self.versions)
         with patch.object(n,'distributions',return_value=self.versions), \
-             patch.object(n.importlib.metadata,'distributions',return_value=[SimpleNamespace(metadata={'Name':'torch'},requires=['torch==1'])]):
+             patch.object(n.importlib.metadata,'distributions',return_value=[SimpleNamespace(metadata=Parser().parsestr('Name: torch\nVersion: 1\n'),requires=['torch==1'])]):
             n.dependency_closure(self.versions)
 
     def test_wheel_platform_name_version_and_metadata_refuse(self):
@@ -157,12 +158,12 @@ class NativePackageTests(unittest.TestCase):
         with zipfile.ZipFile(self.wheel,'w') as wheel:wheel.writestr('bad','NO METADATA')
         with self.assertRaises(Refused):n.wheel_identity(str(self.wheel),['packaging'],self.versions)
 
-    def rewrite_metadata(self, headers):
+    def rewrite_metadata(self, headers, *, base="Name: packaging\nVersion: 1\n", wheel_headers="Tag: py3-none-any\n"):
         self.wheel.chmod(0o600)
         with zipfile.ZipFile(self.wheel, 'w') as wheel:
             wheel.writestr('packaging-1.dist-info/METADATA',
-                'Name: packaging\nVersion: 1\n' + headers)
-            wheel.writestr('packaging-1.dist-info/WHEEL', 'Tag: py3-none-any\n')
+                base + headers)
+            wheel.writestr('packaging-1.dist-info/WHEEL', wheel_headers)
         self.manifest['artifacts'][0]['sha256'] = n.file_hash(str(self.wheel))
 
     def test_selected_wheel_active_dependencies_refuse(self):
@@ -174,7 +175,7 @@ class NativePackageTests(unittest.TestCase):
 
     def test_selected_wheel_and_installed_graph_agreement(self):
         from types import SimpleNamespace
-        installed = [SimpleNamespace(metadata={'Name': name}, version='1', requires=[])
+        installed = [SimpleNamespace(metadata=Parser().parsestr('Name: '+name+'\nVersion: 1\n'), version='1', requires=[])
                      for name in self.versions]
         self.rewrite_metadata('Requires-Dist: torch>=1\n')
         with patch.object(n, 'python_identity', return_value=self.identity), \
@@ -198,6 +199,95 @@ class NativePackageTests(unittest.TestCase):
             with self.assertRaises(Refused): n.active_edges([raw], self.versions)
         self.rewrite_metadata('Requires-Python: >=99\n')
         with self.assertRaises(Refused): self.validate()
+
+    def test_wheel_singleton_duplicates_before_dependency_acceptance(self):
+        for field, original, other in (('Name', 'packaging', 'contradictory'),
+                                       ('Version', '1', 'NaN'),
+                                       ('Requires-Python', '>=0', '>=99')):
+            for spelling in (field, field.swapcase()):
+                for value in (original, other):
+                    for folded in ('', '\n '):
+                        with self.subTest(field=spelling, value=value, folded=bool(folded)):
+                            base = 'Name: packaging\nVersion: 1\n'
+                            if field == 'Requires-Python': base += 'Requires-Python: >=0\n'
+                            self.rewrite_metadata(spelling+': '+folded+value+'\n', base=base)
+                            with patch.object(n, 'active_edges', side_effect=AssertionError('edges entered')), \
+                                 self.assertRaisesRegex(Refused, 'metadata_singleton'):
+                                self.validate()
+
+    def test_wheel_missing_identity_and_single_python_constraint(self):
+        for base in ('Name: packaging\n', 'Version: 1\n'):
+            self.rewrite_metadata('', base=base)
+            with self.assertRaisesRegex(Refused, 'metadata_singleton'): self.validate()
+        self.rewrite_metadata('Requires-Python: >=0\n')
+        self.validate()
+        self.rewrite_metadata('Requires-Python: >=99\n')
+        with self.assertRaisesRegex(Refused, 'python_constraint'): self.validate()
+
+    def test_wheel_headers_singletons_and_repeated_tags_requirements(self):
+        for field, value, other in (('Wheel-Version', '1.0', '2.0'),
+                                    ('Root-Is-Purelib', 'true', 'false')):
+            for duplicate in (value, other):
+                self.rewrite_metadata('', wheel_headers='Tag: py3-none-any\n'+field+': '+value+'\n'+
+                                      field.swapcase()+':\n '+duplicate+'\n')
+                with self.subTest(field=field, duplicate=duplicate), \
+                     self.assertRaisesRegex(Refused, 'metadata_singleton'): self.validate()
+        for field, value in (('Wheel-Version', '2.0'), ('Root-Is-Purelib', 'maybe')):
+            self.rewrite_metadata('', wheel_headers='Tag: py3-none-any\n'+field+': '+value+'\n')
+            with self.assertRaisesRegex(Refused, 'wheel_metadata'): self.validate()
+        self.rewrite_metadata('Requires-Dist: missing>=99; python_version < "0"\n'
+                              'Requires-Dist: torch[extra]; extra == "optional"\n',
+                              wheel_headers='Wheel-Version: 1.0\nRoot-Is-Purelib: true\n'
+                                            'Tag: py3-none-any\ntAg: py3-none-any\n')
+        self.validate()
+        self.rewrite_metadata('Requires-Dist: torch>=1\nRequires-Dist: transformers>=1\n')
+        self.assertEqual(n.wheel_identity(str(self.wheel), ['packaging'], self.versions),
+                         frozenset({('torch', '>=1'), ('transformers', '>=1')}))
+
+    def test_installed_metadata_singletons(self):
+        from types import SimpleNamespace
+        installed = [SimpleNamespace(metadata=Parser().parsestr('Name: '+name+'\nVersion: 1\n'),
+                                     requires=[]) for name in self.versions]
+        with patch.object(n.importlib.metadata, 'distributions', return_value=installed):
+            self.assertEqual(n.distributions(), self.versions)
+            for field, value, other in (('Name', 'packaging', 'other'), ('Version', '1', '2'),
+                                        ('Requires-Python', '>=0', '>=99')):
+                for duplicate in (value, other):
+                    raw = 'Name: packaging\nVersion: 1\n'
+                    if field == 'Requires-Python': raw += 'Requires-Python: >=0\n'
+                    installed[0].metadata = Parser().parsestr(raw+field.swapcase()+':\n '+duplicate+'\n')
+                    with self.subTest(field=field, duplicate=duplicate), \
+                         self.assertRaisesRegex(Refused, 'metadata_singleton'):
+                        n.dependency_closure(self.versions)
+            for raw in ('Name: packaging\n', 'Version: 1\n',
+                        'Name: packaging\nVersion: 1\nRequires-Python: >=99\n'):
+                installed[0].metadata = Parser().parsestr(raw)
+                with self.assertRaises(Refused): n.dependency_closure(self.versions)
+
+    def test_source_and_wheel_eocd_count_mismatch_before_member_reads(self):
+        import struct
+        # 96 tiny wheel entries reproduce a low lying count without a large archive.
+        self.rewrite_metadata('')
+        with zipfile.ZipFile(self.wheel, 'a') as wheel:
+            for index in range(94): wheel.writestr('inert/'+str(index), b'')
+        for path, source in ((self.source, True), (self.wheel, False)):
+            original = path.read_bytes()
+            with zipfile.ZipFile(path) as archive: actual = len(archive.infolist())
+            self.assertEqual(n.zip_preflight(path, source=source), actual)
+            if not source: self.assertEqual(actual, 96)
+            for count in (0, 1, actual-1, actual+1):
+                changed = bytearray(original); offset = changed.rfind(b'PK\x05\x06')
+                struct.pack_into('<HH', changed, offset+8, count, count)
+                path.chmod(0o600); path.write_bytes(changed)
+                with self.subTest(source=source, count=count), \
+                     patch.object(n, 'zip_read', side_effect=AssertionError('member read entered')) as reads, \
+                     self.assertRaisesRegex(Refused, 'zip_bounds'):
+                    if source: n.verify_archive(path)
+                    else: n.wheel_identity(str(path), ['packaging'], self.versions)
+                reads.assert_not_called()
+            path.write_bytes(original)
+            if source: n.verify_archive(path)
+            else: n.wheel_identity(str(path), ['packaging'], self.versions)
 
     def test_launcher_declared_overlimit_never_opens_member(self):
         bad = self.root/'bad.zip'
