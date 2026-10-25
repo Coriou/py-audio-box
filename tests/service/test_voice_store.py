@@ -155,7 +155,7 @@ class VoiceStoreTests(unittest.TestCase):
         initialize(self.core);self.register();self.reopen();self.reopen()
         self.assertEqual(self.core.db.execute("SELECT snapshot FROM revisions WHERE project='prior'").fetchone(),('{}',))
         self.assertEqual(self.store.get('alice',self.version['voice_id'])['revision'],1)
-        self.assertEqual(self.core.db.execute('PRAGMA user_version').fetchone(),(1,))
+        self.assertEqual(self.core.db.execute('PRAGMA user_version').fetchone(),(2,))
 
     def test_same_column_schema_refusal_preserves_all_rows(self):
         self.register()
