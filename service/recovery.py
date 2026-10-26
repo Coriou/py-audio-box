@@ -3983,6 +3983,10 @@ def installed_startup_read(root, configuration, gate, hello, incarnation, *, pol
     from service import daemon_volumes as dv
     if launch_policy not in ((pd.launch(family),) if pocket_daemon else (None,dv.POLICY)) or (gate.get('launch_policy') != launch_policy):
         raise ValueError('installed_explicit_launch_policy')
+    # Family selection above has already required the exact executable token,
+    # configuration policy and launch binding. Do not recognize launch strings
+    # independently of that authority (including the Qwen CPU family).
+    daemon_launch = pocket_daemon or launch_policy == dv.POLICY
     closed(incarnation,'start_ticks pid_namespace cgroup')
     if (any(type(incarnation[k]) is not int or incarnation[k] < 1 for k in ('start_ticks','pid_namespace')) or
             incarnation['cgroup'] != '0::/'):
@@ -4027,7 +4031,7 @@ def installed_startup_read(root, configuration, gate, hello, incarnation, *, pol
                 selected = None
                 for rid,raw,h in db.execute('SELECT id,record,digest FROM p1_registrations'):
                     record = host_json(raw.encode()); validate_registration(record)
-                    if record['evidence'] != (dv.EVIDENCE if launch_policy in (dv.POLICY,pd.LAUNCH) else 'actual-host-inspection'):
+                    if record['evidence'] != (dv.EVIDENCE if daemon_launch else 'actual-host-inspection'):
                         raise ValueError('installed_registration_evidence_policy')
                     if (digest(record) != h or rid != h or record['deployment_id'] != identity or
                             record['scope'] != public['host']):
@@ -4042,7 +4046,7 @@ def installed_startup_read(root, configuration, gate, hello, incarnation, *, pol
                 owners = {c['role']:c for c in selected['containers']}
                 if any(owners[r]['image'] != config['images'][r] for r in ('control','worker')):
                     raise ValueError('installed_startup_image')
-                if launch_policy in (dv.POLICY,pd.LAUNCH):
+                if daemon_launch:
                     if public.get('launch',{}).get('policy') != launch_policy:
                         raise ValueError('daemon_startup_enrollment')
                     dv.observation(gate['observation'],selected,config,public['launch'],public,family=family)

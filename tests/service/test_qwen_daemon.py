@@ -148,3 +148,54 @@ class QwenDaemonTests(InstalledQwenTests):
         self.assertTrue((s.roots['authority']/'containers.json').exists())
         s.fail_action=None
         with self.assertRaisesRegex(ValueError,'daemon_incomplete_operation_retained'):s.run('up')
+
+
+    def test_real_startup_registration_enters_recovery_closed_family(self):
+        from service import recovery, install_policy as ip
+        from service.entrypoint import projection
+        from service.persistent_init import digest
+        import json
+        s=self.session(); s.install()
+        public=json.loads((s.roots['receipts']/'p1-init.json').read_bytes())['public']
+        gate=projection(copy.deepcopy(s.gate),family=qd.FAMILY)
+        hello=s.startup()['hello']
+        local=gate['observation']['local']['control']
+        incarnation={k:local[k] for k in ('start_ticks','pid_namespace','cgroup')}
+        def read(g=gate,config=None,family=qd.FAMILY,launch=qd.LAUNCH):
+            return recovery.installed_startup_read(s.roots['control']/'core',s.config if config is None else config,
+                g,hello,incarnation,policy=ip.QWEN_SPLIT,launch_policy=launch,family=family)
+        self.assertEqual(read()['registration_id'],gate['registration_id'])
+        for family in (None,pd.FAMILY,object()):
+            with self.subTest(family=family),self.assertRaises(ValueError):read(family=family)
+        for launch in (None,dv.POLICY,pd.LAUNCH,'unrelated'):
+            with self.subTest(launch=launch),self.assertRaises(ValueError):read(launch=launch)
+        for key in ('configuration_digest','enrollment_digest'):
+            bad=copy.deepcopy(gate);bad[key]='f'*64
+            with self.subTest(key=key),self.assertRaises(ValueError):read(bad)
+        for role in ('control','worker'):
+            bad=copy.deepcopy(gate);bad['observation']['inspections'][role]['Image']='sha256:'+'f'*64
+            with self.subTest(role=role),self.assertRaises(ValueError):read(bad)
+        bad=copy.deepcopy(gate);bad['observation']['local']['control']['uid']=0
+        with self.assertRaises(ValueError):read(bad)
+        bad=copy.deepcopy(s.config);bad['contexts']['mallory']=bad['contexts'].pop('alice')
+        with self.assertRaises(ValueError):read(config=bad)
+        # A second startup retains the historical registration; recovery must
+        # validate both daemon evidence rows, then select the current boot.
+        first=gate['registration_id'];s.run('stop');s.run('up')
+        gate=projection(copy.deepcopy(s.gate),family=qd.FAMILY)
+        hello=s.startup()['hello'];local=gate['observation']['local']['control']
+        incarnation={k:local[k] for k in ('start_ticks','pid_namespace','cgroup')}
+        self.assertNotEqual(first,gate['registration_id'])
+        self.assertEqual(read(gate)['registration_id'],gate['registration_id'])
+
+    def test_qwen_helper_nonce_and_sequence_remain_closed(self):
+        import io
+        from service.core import encode
+        for nonce,step in (('b'*32,1),('a'*32,2)):
+            frame=dict(version=1,nonce=nonce,phase='up',step=step,action='snapshot',payload={})
+            import os
+            reader,writer=os.pipe()
+            with os.fdopen(reader,'rb',buffering=0) as source,os.fdopen(writer,'wb',buffering=0) as sink:
+                wire=dc.Wire(source,sink,'a'*32,'up')
+                wire.pending=(encode(frame)+'\n').encode()
+                with self.subTest(nonce=nonce,step=step),self.assertRaisesRegex(ValueError,'daemon_phase_replay'):wire.receive()

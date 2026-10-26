@@ -328,3 +328,57 @@ global references (not a full F821 lint result).
 Installed HTTP/CLI/MCP, cancellation/reap, restart/history and publication stages
 remain unqualified. This source/test result does not establish actual corrected
 startup. Review, commit and new images precede any actual retry.
+
+### r441 startup registration source correction
+
+At `af82dd52750cb58f313d89495a344551ad998152`, actual04's Qwen
+startup registration correctly used `daemon-volumes-inspection-v1`, but
+`installed_startup_read` selected that evidence only for Kokoro/Pocket launch
+strings. Qwen therefore failed `installed_registration_evidence_policy`;
+a second identical discriminator would also have skipped daemon observation.
+Recovery now derives both decisions from the already validated explicit family
+and exact launch policy. The Qwen family token, Qwen configuration/CPU tuple,
+immutable control/worker images, enrollment/configuration digests, UID/GID roles,
+launch identity, current hello and daemon observations still undergo their
+existing closed validators. No alias or producer policy was added. Native,
+Kokoro, Pocket and export selection semantics are unchanged.
+
+The normal-source regression produces registration through the daemon helper,
+passes its gate through `entrypoint.projection`, then invokes the real recovery
+reader against temporary SQLite without mocking the failing policy check. It
+covers current and historical registration rows across stop/up, wrong family,
+unrelated launch, configuration/enrollment digest, image, principal and UID
+refusal. A separate real Wire parser regression rejects nonce/sequence replay.
+
+Private evidence: `~/.local/state/py-audio-box/qwen-registration-r441/`.
+One offline compile-first run: 98 tests, 90 passed, 6 errors, 2 failures;
+both new regressions passed. The runner's overly broad ML blocker also blocked
+NumPy used by existing inert audio fixtures, causing the eight journey results;
+this is not a green aggregate test qualification. No retry was performed.
+Container exit/wait 1, PID 0, OOM false, source stable during the run; only that
+stopped test container was removed. This is source/test evidence, not installed
+startup or real model qualification. Actual04 history and installation remain
+unchanged.
+
+Before any parent-owned future `up`, the private operator plan must establish
+continuous creation custody even if no public result is returned. Persist the
+exact helper ID immediately after `daemon_client` creates it, bound to the
+handle's binding digest, phase and nonce (`.helper-NONCE`, `.id`, `.terminal`).
+Capture each `create` RPC's returned control/worker inspection and full ID before
+allowing the next startup step; persist its role, immutable image, deployment,
+binding and helper nonce/step association in the owner ledger and register its
+stop/wait cleanup immediately. The current client producer is
+`Docker.action('create')`; helper authority already writes
+`container-creation-intent.json`, `created-control.json`, `created-worker.json`
+and `containers.json` before service startup. Collect those retained authority
+receipts and helper protocol creation responses on both success and failure;
+do not depend on `up` stdout or a healthy public `stop`.
+
+The collector must keep the owner/monitor alive while reconciling its ledger
+against those exact receipts and deployment/binding-scoped inspections, retain
+logs and final states, stop live owned service IDs, synchronously wait every
+child/container, inspect PID 0 and OOM state, and confirm the running set equals
+the preexisting set before joining the monitor. Continue bounded disk,
+source-hash and OOM checks throughout cleanup. Uncertain identity or missing
+creation receipts remain an explicit custody failure for the parent plan.
+No private operator implementation is changed by r441.
