@@ -97,10 +97,18 @@ class QwenLifecycleTests(unittest.TestCase):
         c=self.contexts.resolve('alice','speech_generate',self.context['plan']['request'])
         return Production(self.core).generate('alice',key,c,_admission=self.admission,_profiles=self.profiles)
 
+    def create_stage(self, stage):
+        # Publish the exact mode without changing the writer's global umask.
+        with tempfile.TemporaryDirectory(dir=self.root) as private:
+            pending=Path(private)/'stage'
+            pending.mkdir(mode=0o700)
+            pending.chmod(0o770)
+            pending.rename(stage)
+
     def proposal(self, *, authority=None):
         if authority is None:
             self.submit();authority=self.store.allocate(self.profiles,'qwen',8)['authority']
-        stage=self.stage/authority.job['attempts'][-1]['staging_id'];stage.mkdir(mode=0o770);stage.chmod(0o770)
+        stage=self.stage/authority.job['attempts'][-1]['staging_id'];self.create_stage(stage)
         self.calls=[];sent=[];outer=self
         class Backend:
             def __init__(inner,**kw):outer.calls.append(kw)
@@ -206,8 +214,11 @@ class QwenLifecycleTests(unittest.TestCase):
             contain_kokoro(self.context)
             self.assertEqual(limits.call_args_list[0].args,(resource.RLIMIT_AS,(self.spec.memory_bytes,)*2))
             self.assertEqual(os.environ['OMP_NUM_THREADS'],'2')
-        calls=[];config=dict(fixture='qwen',context=self.context,job=dict(attempts=[dict(staging_id='stage')]))
-        with patch('sys.argv',['worker','3']),patch('worker.runtime_child.socket.socket'),patch('worker.runtime_child.receive',return_value=config),patch('worker.runtime_child.contain_kokoro',side_effect=lambda c:calls.append('limits')),patch('worker.runtime_child.run_generation',side_effect=lambda *a:calls.append('generation')),patch('worker.runtime_child.os.chmod'):
+        calls=[];anchor=time.monotonic()+8
+        config=dict(fixture='qwen',context=self.context,qwen_cpu_cutoff=anchor,
+                    job=dict(deadline=(datetime.now(timezone.utc)+timedelta(seconds=8)).isoformat(),
+                             attempts=[dict(staging_id='stage')]))
+        with patch('sys.argv',['worker','3']),patch('worker.runtime_child.socket.socket'),patch('worker.runtime_child.receive',return_value=config),patch('worker.runtime_child.contain_kokoro',side_effect=lambda c:calls.append('limits')),patch('worker.runtime_child.run_generation',side_effect=lambda *a:(self.assertLessEqual(a[3],anchor),calls.append('generation'))),patch('worker.runtime_child.os.chmod'):
             main()
         self.assertEqual(calls,['limits','generation'])
 
@@ -252,7 +263,8 @@ class QwenLifecycleTests(unittest.TestCase):
             core=Core(target)
             try:
                 scan=Reconciliation(core,history.roots['staging'])
-                self.assertFalse(scan.reconcile_startup()['blocked'])
+                summary=scan.reconcile_startup()
+                self.assertFalse(summary['blocked'],dict(summary=summary,rows=list(scan.rows.values())))
                 for identity,row in scan.rows.items():
                     persisted=json.loads(core.db.execute('SELECT record FROM p1_inventory_objects WHERE id=?',(identity,)).fetchone()[0])
                     latest=json.loads(core.db.execute('SELECT record FROM p1_inventory_history WHERE object_id=? ORDER BY seq DESC LIMIT 1',(identity,)).fetchone()[0])
@@ -269,7 +281,114 @@ class QwenLifecycleTests(unittest.TestCase):
         recovery._validate_diagnostic_eligibility(state['evidence_projection'],state['affected'],[])
         self.assertFalse(state['inventory']['reasons'])
 
+    def lifecycle_diagnostics(self):
+        """Retain exceptions before Dispatcher discards their cause; always re-raise."""
+        import traceback
+        captures=[]
+        def instrument(owner,name):
+            original=getattr(owner,name)
+            def capture(*args,**kwargs):
+                try:return original(*args,**kwargs)
+                except Exception as exc:
+                    record=dict(where=owner.__name__+'.'+name,exception=type(exc).__name__,
+                                message=str(exc),traceback=traceback.format_exc())
+                    captures.append(record)
+                    print('QWEN_DIAGNOSTIC '+json.dumps(record),flush=True)
+                    raise
+            self.enterContext(patch.object(owner,name,new=capture))
+        instrument(Admission,'check');instrument(Core,'_publish')
+        # The dispatcher's own resource_violation is outside these three calls.
+        # Observe its still-active exception at the terminal mapping boundary.
+        from service.dispatcher import Dispatcher
+        import sys
+        original_fail=Dispatcher._fail
+        def failing(dispatcher,job,stage):
+            if stage=='verification_failed':
+                exc=sys.exception()
+                record=dict(where='Dispatcher.verification_failed',
+                            exception=type(exc).__name__,message=str(exc),
+                            traceback=''.join(traceback.format_exception(exc)))
+                captures.append(record)
+                print('QWEN_DIAGNOSTIC '+json.dumps(record),flush=True)
+            return original_fail(dispatcher,job,stage)
+        self.enterContext(patch.object(Dispatcher,'_fail',new=failing))
+        return captures,instrument
+
+    def assert_scanner_interleavings(self):
+        """Force each namespace race once using an actual CPU ICL allocation."""
+        t=QwenLifecycleTests();t.setUp()
+        try:
+            t.submit();a=t.store.allocate(t.profiles,'qwen',8)['authority']
+            stage=t.stage/a.job['attempts'][-1]['staging_id']
+            t.create_stage(stage)
+            namespace=stage/'conditioning';namespace.mkdir(mode=0o700)
+            original=os.open;seen=[]
+            def removing(path,*args,**kwargs):
+                if path=='conditioning' and kwargs.get('dir_fd') is not None:
+                    namespace.rmdir();seen.append('removed-before-open')
+                return original(path,*args,**kwargs)
+            with patch.object(os,'open',side_effect=removing):
+                t.admission.store._measure_staging(t.stage)
+            self.assertEqual(seen,['removed-before-open'])
+            print('QWEN_RACE '+json.dumps(dict(interleaving=seen,accepted=True)),flush=True)
+            stage.chmod(0o750);seen=[]
+            def changing(path,*args,**kwargs):
+                if path==stage.name and kwargs.get('dir_fd') is not None:
+                    stage.chmod(0o770);seen.append('chmod-between-stat-and-open')
+                return original(path,*args,**kwargs)
+            with patch.object(os,'open',side_effect=changing):
+                with self.assertRaisesRegex(ValueError,'^resource_namespace_changed$') as caught:
+                    t.admission.store._measure_staging(t.stage)
+            self.assertEqual(seen,['chmod-between-stat-and-open'])
+            print('QWEN_RACE '+json.dumps(dict(interleaving=seen,cause=str(caught.exception))),flush=True)
+        finally:t.doCleanups()
+
+    def test_stage_published_only_after_exact_mode_is_set(self):
+        stage=self.stage/'atomic-stage';original=Path.chmod;seen=[]
+        def changing(path,mode,*args,**kwargs):
+            if path.name=='stage' and path.parent!=self.root:
+                self.assertFalse(stage.exists())
+                self.admission.store._measure_staging(self.stage)
+                seen.append('private-mode-change')
+            return original(path,mode,*args,**kwargs)
+        with patch.object(Path,'chmod',new=changing):self.create_stage(stage)
+        self.assertEqual(seen,['private-mode-change'])
+        self.assertEqual(stage.stat().st_mode & 0o777,0o770)
+        self.assertEqual(stage.stat().st_uid,os.getuid())
+        self.admission.store._measure_staging(self.stage)
+
+    def test_icl_scanner_refuses_namespace_substitution_and_payload_loss(self):
+        for defect in ('inode','mode','nonempty','file'):
+            with self.subTest(defect=defect):
+                t=QwenLifecycleTests();t.setUp()
+                try:
+                    t.submit();a=t.store.allocate(t.profiles,'qwen',8)['authority']
+                    stage=t.stage/a.job['attempts'][-1]['staging_id']
+                    t.create_stage(stage)
+                    namespace=stage/'conditioning';namespace.mkdir(mode=0o700)
+                    if defect=='mode':namespace.chmod(0o750)
+                    if defect in ('nonempty','file'):(namespace/'unexpected').write_bytes(b'retain')
+                    original=os.open
+                    def change(path,*args,**kwargs):
+                        if path=='conditioning' and kwargs.get('dir_fd') is not None:
+                            if defect=='inode':
+                                namespace.rename(stage/'substituted')
+                                namespace.mkdir(mode=0o700)
+                            elif defect=='file':
+                                (namespace/'unexpected').unlink()
+                                # A disappearing file has no directory waiver.
+                                raise FileNotFoundError('unexpected payload removal')
+                            else:namespace.rmdir()
+                        return original(path,*args,**kwargs)
+                    with patch.object(os,'open',side_effect=change):
+                        with self.assertRaises((ValueError,OSError)):
+                            t.admission.store._measure_staging(t.stage)
+                    if defect=='nonempty':self.assertEqual((namespace/'unexpected').read_bytes(),b'retain')
+                finally:t.doCleanups()
+
     def test_dispatcher_generate_artifact_and_cancel_reap(self):
+        self.assert_scanner_interleavings()
+        captures,instrument=self.lifecycle_diagnostics()
         from service.dispatcher import Dispatcher
         from service.worker_transport import TransportObservation
         from worker.lifecycle import Observation, State
@@ -300,13 +419,14 @@ class QwenLifecycleTests(unittest.TestCase):
                 _,proposal,stage=outer.proposal(authority=authority)
                 (stage/'conditioning').rmdir() if (stage/'conditioning').exists() else None
                 return receipt,TransportObservation('proposal','injected-test-only',message=proposal['message'],manifest=proposal['manifest'])
+        instrument(Runtime,'collect')
         def wait(predicate):
             end=time.monotonic()+5
             while time.monotonic()<end:
                 value=predicate()
                 if value:return value
                 time.sleep(.02)
-            self.fail('bounded dispatcher wait expired')
+            self.fail(dict(reason='bounded dispatcher wait expired',captures=captures,status=dispatcher.call('status')))
         # Separate persistent owner root, seeded with one explicitly owned preset.
         from service.core import Core
         for cancel in (False,True):
@@ -337,7 +457,7 @@ class QwenLifecycleTests(unittest.TestCase):
                 self.assertEqual(dispatcher.call('status')['reservations'][-1]['state'],'executing')
                 if cancel:
                     attempt_stage=self.stage/runtime.authority.job['attempts'][-1]['staging_id']
-                    attempt_stage.mkdir(mode=0o770);attempt_stage.chmod(0o770)
+                    self.create_stage(attempt_stage)
                     namespace=attempt_stage/'conditioning';namespace.mkdir(mode=0o700)
                     dispatcher.call('production_cancel','alice',dict(job_id=result['job_id']),key='cancel-intent')
                     wait(runtime.stopped.is_set)
@@ -346,7 +466,7 @@ class QwenLifecycleTests(unittest.TestCase):
                     self.assertTrue(namespace.is_dir())
                 runtime.finish.set()
                 job=wait(lambda:(j if (j:=dispatcher.call('job',result['job_id']))['state'] in ('succeeded','cancelled','failed') else None))
-                self.assertEqual(job['state'],'cancelled' if cancel else 'succeeded',job)
+                self.assertEqual(job['state'],'cancelled' if cancel else 'succeeded',dict(job=job,captures=captures,status=dispatcher.call('status')))
                 wait(lambda:dispatcher.call('status')['reservations'][-1]['state']=='retained')
                 wait(lambda:dispatcher.call('status')['phase']=='idle')
                 if not cancel:
@@ -423,6 +543,7 @@ class QwenLifecycleTests(unittest.TestCase):
         self.bundle.chmod(0o500)
 
     def test_http_cli_mcp_saved_reference_generation_and_authorization(self):
+        captures,instrument=self.lifecycle_diagnostics()
         import asyncio
         import contextlib
         import httpx
@@ -450,13 +571,19 @@ class QwenLifecycleTests(unittest.TestCase):
                 from worker.runtime_conditioning import remove_empty
                 (stage/'conditioning').rmdir() if (stage/'conditioning').exists() else None
                 return dict(runtime_id=identity,binding=a.binding,reaped=True,engine_uid=os.getuid(),reap_method='pid1-waitpid-echild',reaped_children=3,timely=True,original_deadline=a.job['deadline']),TransportObservation('proposal','injected',message=p['message'],manifest=p['manifest'])
+        instrument(Runtime,'collect')
         self.runtime=Runtime()
         self.core.close()
         self.dispatcher=Dispatcher(self.root/'core',staging=self.stage,runtime=self.runtime,profiles=self.profiles,production_contexts=self.contexts)
         self.addCleanup(self.dispatcher.close)
         self.app=create_voice_app(self.dispatcher,credentials=StaticCredentials([
             Credential('writer','alice',frozenset({'read','production-write'})),Credential('bob','bob',frozenset({'read','production-write'})),Credential('reader','alice',frozenset({'read'}))]))
-        self.wait=lambda fn:ProductionAPIFixture.wait(self,fn)
+        def diagnostic_wait(fn):
+            try:return ProductionAPIFixture.wait(self,fn)
+            except Exception:
+                print('QWEN_WAIT '+json.dumps(dict(captures=captures,status=self.dispatcher.call('status'))),flush=True)
+                raise
+        self.wait=diagnostic_wait
         request=lambda method,path,**kw:ProductionAPIFixture.request(self,method,path,**kw)
         self.wait(lambda:self.dispatcher.call('status')['reconciled'])
         payload=self.context['plan']['request'];endpoint='/v1/operations/speech_generate'
@@ -509,3 +636,5 @@ class QwenDescendantGateTests(conditioning_tests.ConditioningSupervisorTests):
     def setUp(self):
         super().setUp()
         self.row['allocation']['fixture']='qwen'
+        self.enterContext(patch('worker.runtime_protocol.execution',return_value=SimpleNamespace(
+            engine='qwen',device='cpu',task='clone',x_vector_only=True)))

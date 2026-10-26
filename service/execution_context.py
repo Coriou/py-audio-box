@@ -285,6 +285,99 @@ class QwenContexts:
         verify_qwen_local(context,self._bundles,self._references,self._inventory)
         return context
 
+    def resolve_owned(self, core, principal, operation, request):
+        from worker.runtime_protocol import managed_qwen_cpu
+        from worker.engines.qwen_execution import current_hardware
+        if principal not in self._contexts: raise Refused('not_ready')
+        template=json.loads(self._contexts[principal])
+        if not managed_qwen_cpu(execution(template)):
+            return self.resolve(principal, operation, request)
+        if operation not in ('voice_prepare','speech_generate'): raise Refused('not_ready')
+        version=None
+        if operation == 'speech_generate':
+            version=core.voices.version(principal,request['voice_version_id'])
+            if len(version['reference_asset_ids']) != 1: raise Refused('execution_reference_mismatch')
+            reference=version['reference_asset_ids'][0]
+        else:
+            reference=request['asset_id']
+        core.voices._asset(principal,reference)
+        asset=core.asset(reference)
+        context=cpu_clone_context(template,principal,request,asset,version=version)
+        spec=execution(context)
+        current_hardware(spec,self._inventory)
+        references=copy.deepcopy(context['execution']['references'])
+        references[reference]['path']=core.root/'assets'/reference
+        verify_qwen_local(context,self._bundles,references,self._inventory)
+        return context
+
+    def capabilities(self, principal):
+        from worker.runtime_protocol import managed_qwen_cpu
+        if principal not in self._contexts: return None
+        context=json.loads(self._contexts[principal])
+        clone=managed_qwen_cpu(execution(context))
+        return dict(engine='qwen',profile=context['plan']['resolved']['profile'],installed=False,
+            operations=(['voice_prepare','voice_results','voice_save'] if clone else [])+
+                ['speech_generate','job_get','job_cancel','artifact_get'],
+            next_action='asset_upload → voice_prepare → voice_results → voice_save → speech_generate')
+
+
+def cpu_clone_context(template, principal, request, asset, *, version=None):
+    """Owner/supervisor shared reconstruction; the template alone owns execution."""
+    from contracts import validate as oracle
+    from worker.runtime_protocol import managed_qwen_cpu, QWEN_CPU_SECONDS
+    from worker.engines.qwen_prepare import QwenPreparation
+    from worker.engines.qwen_execution import QwenExecution
+    from worker.transport import canonical
+    spec = execution(template)
+    if not managed_qwen_cpu(spec) or spec.reference_text is not None:
+        raise Refused('cpu_xvector_required')
+    operation = 'voice_prepare' if version is None else 'speech_generate'
+    oracle.validate(operation+'_request', request)
+    context = copy.deepcopy(template); plan = context['plan']; resolved = plan['resolved']
+    identity = resolved['identity']['effective']
+    if request['identity'] != identity: raise Refused('identity_substitution')
+    if (asset['channels'], asset['media_format'], asset['media_subtype']) != (1,'wav','PCM_16'):
+        raise Refused('reference_format')
+    descriptor = spec.identity()
+    descriptor.pop('phase', None)
+    descriptor.update(reference_id=asset['id'], reference_sha256=asset['sha256'],
+        reference_frames=asset['frames'], reference_rate=asset['sample_rate'],
+        reference_bytes=44+2*asset['frames'], timeout_s=QWEN_CPU_SECONDS)
+    if descriptor['reference_bytes'] > 1048576 or asset['frames'] > asset['sample_rate']*60:
+        raise Refused('preparation_reference_limit')
+    settings = copy.deepcopy(resolved['settings'])
+    cfg = dict(mode='qwen_clone',reference_asset_id=asset['id'],reference_text='',conditioning='x_vector')
+    if version is None:
+        if request['reference_text'] != '': raise Refused('unsupported_parameter')
+        if not request.get('audition_text','').strip(): raise Refused('explicit_audition_required')
+        if request['in_tick'] != 0 or request['out_tick']*asset['sample_rate'] != asset['frames']*48000:
+            raise Refused('unsupported_segment')
+        descriptor.update(voice_id='preparation',voice_revision='prepare-'+oracle.canonical_hash([principal,request]))
+        plan.update(operation=operation,request=copy.deepcopy(request),voice_versions=[],assets=[copy.deepcopy(asset)])
+        plan['reference_roles'] = dict(version='reference-roles-v1',reference_kind='prepared_reference',
+            reference_asset_id='pending',audition_asset_id='pending-audition',audition_text=request['audition_text'])
+        cfg['reference_asset_id']='pending'
+        selected=dict(kind='prepare',conditioning='x_vector',output_format='wav_pcm16')
+        resolved.update(kind='prepare',settings=selected,settings_sha256=oracle.canonical_hash(selected),
+            reuse_settings=settings,reuse_configuration=cfg)
+        derived=QwenPreparation(**descriptor)
+    else:
+        expected=dict(identity=identity,settings=settings,settings_sha256=oracle.canonical_hash(settings),
+            origin='clone',provenance=asset['provenance'],reference_asset_ids=[asset['id']],
+            reference_asset_sha256={asset['id']:asset['sha256']},reference_text='',configuration=cfg,design_lineage=None)
+        if any(canonical(version.get(k)) != canonical(v) for k,v in expected.items()): raise Refused('saved_version_required')
+        descriptor.update(voice_id=version['voice_id'],voice_revision=version['id'])
+        derived=QwenExecution(**descriptor)
+        plan.update(operation=operation,request=copy.deepcopy(request),voice_versions=[copy.deepcopy(version)],assets=[copy.deepcopy(asset)])
+        plan.pop('reference_roles',None)
+        resolved.update(kind='speech',reuse_settings=None,reuse_configuration=None)
+    context['execution'].update(descriptor=derived.identity(),references={asset['id']:dict(
+        path='/references/assets/'+asset['id'],voice_id=derived.voice_id,voice_revision=derived.voice_revision,
+        checkpoint=derived.checkpoint,revision=derived.revision,text=None)})
+    freeze(plan)
+    execution(context)
+    return context
+
 
 def verify_qwen_local(context, bundles, references, inventory, *, owner_uid=None):
     """Same full verifier for control and independent Linux supervisor."""

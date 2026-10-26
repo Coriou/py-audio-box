@@ -66,6 +66,8 @@ class QwenExecution:
             if value is not None and (type(value) is not str or not value.strip() or len(value.encode()) > 65536): raise Refused('execution_control')
         if type(self.x_vector_only) is not bool: raise Refused('execution_control')
         if self.task == 'clone':
+            if self.device == 'cpu' and self.x_vector_only and self.reference_text is not None:
+                raise Refused('reference_conditioning')
             if self.preset is not None or self.instruct is not None: raise Refused('unsupported_control')
             if type(self.reference_id) is not str or not re.fullmatch(r'[A-Za-z0-9_-]{1,256}', self.reference_id): raise Refused('reference_identity')
             if type(self.reference_sha256) is not str or not re.fullmatch('[0-9a-f]{64}', self.reference_sha256): raise Refused('reference_identity')

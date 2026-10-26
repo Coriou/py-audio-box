@@ -73,3 +73,55 @@ No image build, model download,
 host ML import, paid API, key read, staging, commit or push is part of this change. r409's original
 runtime RESULT established offline imports/version checks, not inference or
 release authority.
+
+## Lot A — managed CPU x-vector source journey
+
+The Linux source lane now reconstructs preparation and saved-voice executions
+from one trusted CPU clone template. Public `reference_text` must be empty;
+the private typed descriptor and loader use `None`. Native transcript/ICL
+preparation keeps its existing contract. Preparation accepts only the complete
+canonical mono PCM16 WAV, at most 1 MiB and 60 seconds, and synthesizes the
+separately authored audition. Existing candidate publication and CAS save retain
+the reference independently of the audition. Saved generation uses the frozen
+spoken plan and the Core-owned immutable version, never a public filesystem path.
+
+For an explicitly configured source harness, `QwenContexts` supplies owner
+resolution. The supervisor must separately register the **whole original
+context** under `(principal, 'qwen-cpu', 'managed-clone')` in `qwen_contexts`.
+Exact-version registrations retain their existing meaning. The supervisor
+reconstructs and corroborates the complete derived context, verifies the current
+hardware/profile, and obtains the exact private reference through the existing
+reaped UID10001 descriptor helper. This does not add an installed family or
+configuration policy. The mounted reference root remains `/references/assets`.
+
+Managed Qwen uses the control-owned `0770` conditioning namespace. Validated
+reference bytes become a float32 waveform/rate tuple before backend spawn;
+there is no named reference snapshot in the scanned staging namespace. The same
+post-reap empty-directory helper and terminal receipt/ACK ordering are retained.
+Only the exact managed Qwen CPU conditioning disappearance joins the existing
+Pocket resource-monitor exception; foreign entries and substitutions still fail.
+
+`QWEN_CPU_SECONDS = 1800` is the CPU dispatch ceiling, persisted in existing
+dispatch settings and bounded by the selected profile. The supervisor anchors
+its monotonic cutoff once from the original job deadline before expensive input
+verification. Start and the child retain that anchor; backend startup and
+inference receive only remaining time. Observe/result handling cannot replenish
+it. Lifecycle RPC timeouts remain separate. Native and other-engine budgets
+retain their existing ceilings. A new retry job follows existing reap/ACK gates
+and retains frozen inputs; restarting an old attempt cannot renew its cutoff.
+
+Added offline injected fixtures cover preparation/reference/audition provenance,
+CAS and exact replay, immutable reopen/generation, HTTP/CLI/MCP upload through
+publication, cancellation and retry after reap/ACK and reopen, descriptor and
+namespace refusals, loader tuple transfer, and execution beyond 30 seconds under
+the original cutoff. The final bounded offline run passed **115 tests**, with no
+failures, errors or skips. Astra independently verified the source and receipt
+hashes. This documentation update follows that verified snapshot; executable
+source is unchanged. Engines were injected and real model imports were blocked.
+
+Recovery now accepts exact typed Qwen preparation pairs alongside Pocket pairs.
+Fresh installed Qwen enrollment, current installed CPU
+availability after the existing 300-second observation window, archive closure,
+and integrated daemon retention remain Lot B work. Integrated A+B review and
+operational qualification are still required. There is no installed CPU release
+or real inference claim.

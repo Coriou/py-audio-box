@@ -6,6 +6,12 @@ from worker.transport import Session, Refused, authenticate, receive, send
 
 # Trusted public Pocket v2 start response only; never an execution deadline.
 POCKET_START_RPC_SECONDS = 10
+QWEN_CPU_SECONDS = 1800
+
+
+def managed_qwen_cpu(spec):
+    return (spec is not None and spec.engine == 'qwen' and spec.device == 'cpu'
+            and spec.task == 'clone' and spec.x_vector_only)
 
 VERSION = 'lifecycle-v1'
 OPS = frozenset(('hello', 'startup', 'prepare', 'start', 'observe', 'stop', 'collect', 'ack'))
@@ -220,8 +226,8 @@ def qwen_relation(context, *, lane):
                       voice_revision=spec.voice_revision,checkpoint=spec.checkpoint,revision=spec.revision,text=spec.reference_text)
         if (value['references'] != {spec.reference_id:expected} or v['origin'] != 'clone' or
             v['reference_asset_ids'] != [spec.reference_id] or v.get('reference_asset_sha256') != {spec.reference_id:spec.reference_sha256} or
-            v['reference_text'] != spec.reference_text or v['configuration'] != dict(mode=mode,reference_asset_id=spec.reference_id,
-                reference_text=spec.reference_text,conditioning='x_vector' if spec.x_vector_only else 'icl') or len(plan['assets']) != 1): raise Refused('execution_reference_mismatch')
+            v['reference_text'] != ('' if spec.x_vector_only else spec.reference_text) or v['configuration'] != dict(mode=mode,reference_asset_id=spec.reference_id,
+                reference_text='' if spec.x_vector_only else spec.reference_text,conditioning='x_vector' if spec.x_vector_only else 'icl') or len(plan['assets']) != 1): raise Refused('execution_reference_mismatch')
         a=plan['assets'][0]
         if any(a[k] != v for k,v in dict(id=spec.reference_id,sha256=spec.reference_sha256,frames=spec.reference_frames,
                 sample_rate=spec.reference_rate,channels=1,media_format='wav',media_subtype='PCM_16').items()): raise Refused('execution_reference_mismatch')
@@ -239,16 +245,18 @@ def qwen_preparation(context, *, lane):
     from contracts import validate as oracle
     from worker.engines.qwen_prepare import QwenPreparation
     spec = QwenPreparation.from_wire(context['execution']['descriptor'])
-    if lane != 'native': raise Refused('native_preparation_required')
+    if lane != 'native' and not managed_qwen_cpu(spec): raise Refused('cpu_xvector_required')
+    transcript = '' if spec.x_vector_only else spec.reference_text
+    conditioning = 'x_vector' if spec.x_vector_only else 'icl'
     plan = context['plan']; request = plan['request']; resolved = plan['resolved']; roles = plan.get('reference_roles', {})
     if (plan['operation'] != 'voice_prepare' or plan['voice_versions'] or len(plan['assets']) != 1 or
-            request['asset_id'] != spec.reference_id or request['reference_text'] != spec.reference_text or
+            request['asset_id'] != spec.reference_id or request['reference_text'] != transcript or
             not request.get('audition_text','').strip() or roles.get('audition_text') != request['audition_text'] or
             request['in_tick'] != 0 or request['out_tick']*spec.reference_rate != spec.reference_frames*48000 or
             roles.get('reference_kind') != 'prepared_reference' or
-            resolved['settings'] != dict(kind='prepare',conditioning='icl',output_format='wav_pcm16') or
+            resolved['settings'] != dict(kind='prepare',conditioning=conditioning,output_format='wav_pcm16') or
             resolved['reuse_configuration'] != dict(mode='qwen_clone', reference_asset_id=roles.get('reference_asset_id'),
-                reference_text=spec.reference_text, conditioning='icl') or
+                reference_text=transcript, conditioning=conditioning) or
             len(request['audition_text'].encode()) > spec.max_text_bytes):
         raise Refused('execution_plan_mismatch')
     audition_context = copy.deepcopy(context); p = audition_context['plan']; r = p['resolved']
@@ -257,8 +265,8 @@ def qwen_preparation(context, *, lane):
         text=request['audition_text'], identity=request['identity'], fallback='forbid',variants=1,reuse='never'))
     p['voice_versions'] = [dict(id=spec.voice_revision,voice_id=spec.voice_id,identity=request['identity'],
         origin='clone',reference_asset_ids=[spec.reference_id],reference_asset_sha256={spec.reference_id:spec.reference_sha256},
-        reference_text=spec.reference_text,configuration=dict(mode='qwen_clone',reference_asset_id=spec.reference_id,
-            reference_text=spec.reference_text,conditioning='icl'),settings=settings)]
+        reference_text=transcript,configuration=dict(mode='qwen_clone',reference_asset_id=spec.reference_id,
+            reference_text=transcript,conditioning=conditioning),settings=settings)]
     r.update(kind='speech',settings=settings,settings_sha256=oracle.canonical_hash(settings),reuse_configuration=None,reuse_settings=None)
     audition_context['execution']['descriptor'] = spec.generation().identity()
     qwen_relation(audition_context,lane=lane)

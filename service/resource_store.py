@@ -137,7 +137,7 @@ class ResourceStore:
         return total
 
     def _measure_staging(self, root):
-        """FD-bound scan; only exact Pocket empty-namespace removal may race.
+        """FD-bound scan; only exact managed empty-namespace removal may race.
 
         The existing trusted supervisor removes only the empty conditioning name
         after engine reap. An absent directory occupies no current bytes; sizes
@@ -154,7 +154,7 @@ class ResourceStore:
         count=0
         def identity(info):
             return info.st_dev,info.st_ino,info.st_mode,info.st_uid,info.st_gid
-        def removed(parent, path, name):
+        def removed(parent, path, name, observed=None):
             if name!='conditioning' or path.parent!=root:
                 return False
             parent_info=os.fstat(parent)
@@ -167,9 +167,17 @@ class ResourceStore:
             job,context=self.core._load(rows[0][0])
             oracle.stored_context(job,context)
             spec=execution(context)
-            if (spec is None or spec.engine!='pocket-tts' or job['state'] not in ('running','cancel_requested') or
+            if (spec is None or not (spec.engine=='pocket-tts' or (spec.engine=='qwen' and spec.device=='cpu' and spec.task=='clone')) or job['state'] not in ('running','cancel_requested') or
                     not job['attempts'] or job['attempts'][-1]['staging_id']!=path.name):
                 return False
+            if spec.engine=='qwen' and not spec.x_vector_only:
+                # ICL is child-owned mode0700 with the stage's allocated group.
+                # Only an observed directory is eligible. The trusted post-reap
+                # helper uses kernel-empty rmdir, never removes payload files.
+                if (observed is None or not stat.S_ISDIR(observed.st_mode) or
+                        observed.st_uid!=parent_info.st_gid or observed.st_gid!=parent_info.st_gid or
+                        stat.S_IMODE(observed.st_mode)!=0o700 or observed.st_dev!=parent_info.st_dev):
+                    return False
             try:os.stat(name,dir_fd=parent,follow_symlinks=False)
             except FileNotFoundError:return True
             return False  # Substitution/reappearance is uncertainty, never absence.
@@ -192,14 +200,14 @@ class ResourceStore:
                     if stat.S_ISDIR(info.st_mode):
                         try:child=os.open(entry.name,flags,dir_fd=fd)
                         except FileNotFoundError:
-                            if removed(fd,path,entry.name):continue
+                            if removed(fd,path,entry.name,info):continue
                             raise
                         try:
                             if identity(os.fstat(child))!=identity(info):raise ValueError('resource_namespace_changed')
                             total+=scan(child,path/entry.name)
                             try:after=os.stat(entry.name,dir_fd=fd,follow_symlinks=False)
                             except FileNotFoundError:
-                                if not removed(fd,path,entry.name):raise
+                                if not removed(fd,path,entry.name,info):raise
                             else:
                                 if identity(after)!=identity(info):raise ValueError('resource_namespace_changed')
                         finally:os.close(child)

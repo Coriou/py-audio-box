@@ -38,14 +38,21 @@ def run_generation(connection, config, staging, cutoff, *, backend_factory=None)
         current_hardware(spec,inventory)
         stage = attempt['staging_id']
         if Path(stage).name != stage or stage in ('.', '..'): raise Refused('invalid_stage')
-        if spec.task == 'clone':
+        from worker.runtime_protocol import managed_qwen_cpu
+        managed = managed_qwen_cpu(spec)
+        if managed and type(config.get('reference_fd')) is not int:
+            raise Refused('managed_reference_descriptor')
+        if spec.task == 'clone' and not managed:
             directory = os.open(Path(staging)/stage, os.O_RDONLY|os.O_DIRECTORY|os.O_NOFOLLOW)
             try: os.mkdir('conditioning',0o700,dir_fd=directory)
             finally: os.close(directory)
-        result = execute(spec,speech_text(context['plan']),context['execution']['bundles'],
+        preparing = context['plan']['operation'] == 'voice_prepare'
+        text = context['plan']['reference_roles']['audition_text'] if preparing else speech_text(context['plan'])
+        result = execute(spec,text,context['execution']['bundles'],
                          context['execution']['references'],inventory,
                          reference_temp_dir=Path(staging)/stage/'conditioning' if spec.task == 'clone' else None,
-                         backend_factory=backend_factory,managed_owner_uid=10001)
+                         backend_factory=backend_factory,managed_owner_uid=10001,
+                         **(dict(reference_fd=config.get('reference_fd'),managed_namespace=True,cutoff=cutoff) if managed else {}))
     elif spec.engine == 'pocket-tts':
         from worker.engines.pocket import execute
         stage = attempt['staging_id']
@@ -160,6 +167,21 @@ def pocket_cutoff(config):
     return min(anchored,now+min(180,profile,max(0,remaining)))
 
 
+def qwen_cpu_cutoff(config):
+    """Use the supervisor's one original anchor, including time spent before start."""
+    import math
+    from worker.runtime_protocol import execution, QWEN_CPU_SECONDS
+    spec=execution(config['context'])
+    if spec is None or spec.engine != 'qwen' or spec.device != 'cpu':
+        raise ValueError('qwen_cpu_execution_required')
+    anchored=config.get('qwen_cpu_cutoff')
+    if type(anchored) not in (int,float) or not math.isfinite(anchored) or anchored <= 0:
+        raise ValueError('bounded_original_deadline_required')
+    profile=config['context']['plan']['resolved']['profile']['limits']['deadline_seconds']
+    remaining=(datetime.fromisoformat(config['job']['deadline'])-datetime.now(timezone.utc)).total_seconds()
+    return min(anchored,time.monotonic()+max(0,min(QWEN_CPU_SECONDS,profile,remaining)))
+
+
 def main():
     connection = socket.socket(fileno=int(sys.argv[1]))
     config = receive(connection, time.monotonic() + 2)
@@ -221,7 +243,7 @@ def main():
         contain_kokoro(config['context'])
         if mode=='audio_export':
             run_export(connection,config,'/staging',time.monotonic()+min(25,(datetime.fromisoformat(config['job']['deadline'])-datetime.now(timezone.utc)).total_seconds()))
-        else: run_generation(connection, config, '/staging', pocket_cutoff(config) if mode=='pocket' else time.monotonic()+30)
+        else: run_generation(connection, config, '/staging', pocket_cutoff(config) if mode=='pocket' else qwen_cpu_cutoff(config) if mode=='qwen' and execution(config['context']).device=='cpu' else time.monotonic()+30)
     else:
         from worker.runtime_protocol import execution
         if execution(config['context']) is not None: raise ValueError('execution_dispatch_mismatch')

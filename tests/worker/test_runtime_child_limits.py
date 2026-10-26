@@ -59,3 +59,23 @@ finally:
             return json.loads(result.stdout)
         self.assertEqual(probe(480044), {'size': 480044, 'error': errno.EFBIG})
         self.assertEqual(probe(MAX_LIBRARY_BYTES), {'size': 600000, 'error': None})
+
+
+class QwenOriginalCutoffTests(unittest.TestCase):
+    def test_long_cpu_attempt_keeps_original_anchor_and_expiry(self):
+        from datetime import datetime,timezone,timedelta
+        from worker.runtime_child import qwen_cpu_cutoff
+        now=datetime.now(timezone.utc)
+        config=dict(qwen_cpu_cutoff=1800.,job=dict(deadline=(now+timedelta(seconds=1800)).isoformat()),
+            context=dict(plan=dict(resolved=dict(profile=dict(limits=dict(deadline_seconds=1800))))))
+        spec=SimpleNamespace(engine='qwen',device='cpu')
+        with patch('worker.runtime_protocol.execution',return_value=spec),patch('worker.runtime_child.time.monotonic',return_value=100.):
+            original=qwen_cpu_cutoff(config)
+        with patch('worker.runtime_protocol.execution',return_value=spec),patch('worker.runtime_child.time.monotonic',return_value=140.):
+            self.assertEqual(qwen_cpu_cutoff(config),original)
+        with patch('worker.runtime_protocol.execution',return_value=spec),patch('worker.runtime_child.time.monotonic',return_value=1901.):
+            self.assertLess(qwen_cpu_cutoff(config),1901.)
+        # Restart cannot invent an anchor from the remaining wall-clock deadline.
+        del config['qwen_cpu_cutoff']
+        with patch('worker.runtime_protocol.execution',return_value=spec),self.assertRaisesRegex(ValueError,'original_deadline'):
+            qwen_cpu_cutoff(config)

@@ -87,12 +87,14 @@ class PocketDeadlineTests(unittest.TestCase):
             for invalid in (None,True,0,-1,float('inf'),float('nan')):
                 with self.subTest(anchor=invalid),self.assertRaises(ValueError):child.pocket_cutoff(dict(config,pocket_cutoff=invalid))
 
-    def test_main_preserves_kokoro_qwen_30_bound_and_pocket_anchored_bound(self):
-        for mode,expected in (('kokoro',130),('qwen',130),('pocket',220)):
+    def test_main_preserves_non_cpu_30_bound_and_cpu_pocket_anchors(self):
+        for mode,device,expected in (('kokoro','cpu',130),('qwen','mps',130),('qwen','cuda:0',130),('qwen','cpu',1900),('pocket','cpu',220)):
             config=dict(fixture=mode,context={})
             events=[]
-            with self.subTest(mode=mode),patch('sys.argv',['child','3']),patch.object(child.socket,'socket'),patch.object(child,'receive',return_value=config),patch('worker.runtime_protocol.execution',return_value=SimpleNamespace(engine=mode)),patch('worker.runtime_protocol.dispatch_mode',return_value=mode),patch.object(child,'contain_kokoro',side_effect=lambda context:events.append('limits')),patch.object(child,'pocket_cutoff',return_value=220) as cutoff,patch.object(child.time,'monotonic',return_value=100),patch.object(child,'run_generation',side_effect=lambda *args:events.append(args[-1])):
+            with self.subTest(mode=mode,device=device),patch('sys.argv',['child','3']),patch.object(child.socket,'socket'),patch.object(child,'receive',return_value=config),patch('worker.runtime_protocol.execution',return_value=SimpleNamespace(engine=mode,device=device)),patch('worker.runtime_protocol.dispatch_mode',return_value=mode),patch.object(child,'contain_kokoro',side_effect=lambda context:events.append('limits')),patch.object(child,'pocket_cutoff',return_value=220) as cutoff,patch.object(child,'qwen_cpu_cutoff',return_value=1900) as qwen_cutoff,patch.object(child.time,'monotonic',return_value=100),patch.object(child,'run_generation',side_effect=lambda *args:events.append(args[-1])):
                 child.main()
                 self.assertEqual(events,['limits',expected])
                 if mode=='pocket':cutoff.assert_called_once_with(config)
                 else:cutoff.assert_not_called()
+                if mode=='qwen' and device=='cpu':qwen_cutoff.assert_called_once_with(config)
+                else:qwen_cutoff.assert_not_called()

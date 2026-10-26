@@ -1,4 +1,4 @@
-"""Typed native transcript clone preparation: whole canonical mono PCM16 only."""
+"""Typed complete-reference clone preparation: whole canonical mono PCM16 only."""
 from dataclasses import dataclass, fields
 from .qwen_execution import QwenExecution
 from worker.transport import Refused
@@ -10,8 +10,10 @@ class QwenPreparation(QwenExecution):
 
     def __post_init__(self):
         super().__post_init__()
-        if self.phase != 'prepare' or self.task != 'clone' or self.x_vector_only:
+        if self.phase != 'prepare' or self.task != 'clone':
             raise Refused('typed_preparation_required')
+        if self.x_vector_only and (self.device != 'cpu' or self.reference_text is not None):
+            raise Refused('cpu_xvector_required')
         if self.reference_bytes != 44 + 2*self.reference_frames or self.reference_bytes > 1048576:
             raise Refused('preparation_reference_limit')
 

@@ -1,8 +1,10 @@
 """SOURCE-only Qwen seam. Trusted mappings must remain sealed until child reap.
 
 No service activation, acquisition, public prompt deserialization or OS containment.
-The backend owns its spawned model child; supervisor descendant integration is pending.
+The backend owns its spawned model child; Linux supervisor retains descendant reap.
 """
+from contextlib import nullcontext
+import time
 import hashlib
 import io
 import json
@@ -148,7 +150,7 @@ def verify_bundle(root, manifest_digest, checkpoint, revision, language, *, owne
     return root, m
 
 
-def verify_inputs(e, bundles, references, inventory, *, owner_uid=None):
+def verify_inputs(e, bundles, references, inventory, *, owner_uid=None, reference_fd=None):
     from .qwen_prepare import QwenPreparation
     if type(e) is QwenPreparation: e = e.generation()
     if type(e) is not QwenExecution: raise Refused('typed_execution_required')
@@ -163,43 +165,73 @@ def verify_inputs(e, bundles, references, inventory, *, owner_uid=None):
         if e.reference_id not in references: raise Refused('unauthorized_reference')
         r = references[e.reference_id]
         if type(r) is not dict or set(r) != {'path','voice_id','voice_revision','checkpoint','revision','text'} or (r['voice_id'],r['voice_revision'],r['checkpoint'],r['revision'],r['text']) != (e.voice_id,e.voice_revision,e.checkpoint,e.revision,e.reference_text): raise Refused('reference_identity')
-        reference = _read(r['path'],e.reference_bytes,e.reference_sha256,owner_uid=owner_uid)
+        if reference_fd is None:
+            reference = _read(r['path'],e.reference_bytes,e.reference_sha256,owner_uid=owner_uid)
+        else:
+            from .pocket import read_reference_fd
+            reference = read_reference_fd(reference_fd,e,owner_uid=owner_uid)
         if len(reference) != e.reference_bytes: raise Refused('reference_size')
         _reference_pcm16(reference,e.reference_rate,e.reference_frames)
     return root, reference
 
 
-def execute(execution, text, bundles, references, inventory, *, reference_temp_dir=None, backend_factory=None, managed_owner_uid=None):
+def execute(execution, text, bundles, references, inventory, *, reference_temp_dir=None, backend_factory=None, managed_owner_uid=None, reference_fd=None, managed_namespace=False, cutoff=None):
     e = execution
     from .qwen_prepare import QwenPreparation
     if type(e) is QwenPreparation: e = e.generation()
     if type(e) is not QwenExecution: raise Refused('typed_execution_required')
     if type(text) is not str or not text.strip() or len(text.encode()) > e.max_text_bytes: raise Refused('text_limit')
-    root, reference = verify_inputs(e,bundles,references,inventory,owner_uid=managed_owner_uid)
+    root, reference = verify_inputs(e,bundles,references,inventory,owner_uid=managed_owner_uid,reference_fd=reference_fd)
+    selected = None
+    if type(execution) is QwenPreparation:
+        from .qwen_prepare import selected_reference
+        selected, _ = selected_reference(execution,reference)
+    def remaining():
+        budget = e.timeout_s if cutoff is None else min(e.timeout_s,cutoff-time.monotonic())
+        if budget <= 0: raise Refused('expired_result')
+        return budget
+    remaining()
     if backend_factory is None:
         from lib.tts_backends.qwen import QwenBackend
         backend_factory = QwenBackend
     # Namespace validation precedes backend construction, including lazy model imports.
-    if reference is not None:
+    if reference is not None and not managed_namespace:
         if reference_temp_dir is None: raise Refused('snapshot_namespace')
         fd = _open(reference_temp_dir,True)
         try:
             if os.fstat(fd).st_mode & 0o777 != 0o700: raise Refused('snapshot_namespace')
         finally: os.close(fd)
+    if managed_namespace:
+        from lib.tts_backends.pocket_snapshot import managed_directory
+        namespace = lambda: managed_directory(reference_temp_dir)
+    else:
+        namespace = nullcontext
+    with namespace():
+        remaining()
     backend = backend_factory(model_name=str(root),num_threads=e.threads,dtype_str=e.dtype,revision=e.revision,offline=True,device=e.device,attention=e.attention)
     try:
         params = dict(text=text,language=e.language, **{k:getattr(e,k) for k in ('temperature','top_p','top_k','repetition_penalty','max_new_tokens')})
         if e.task == 'clone':
-            with tempfile.NamedTemporaryFile(suffix='.wav',dir=reference_temp_dir) as snapshot:
-                snapshot.write(reference); snapshot.flush()
-                result = backend.synthesise_clone(params, snapshot.name, e.reference_text, e.x_vector_only, e.timeout_s)
+            if managed_namespace:
+                # A bounded immutable payload is decoded before the backend's spawn
+                # boundary. No named snapshot can race the control resource scan.
+                with namespace():
+                    result = backend.synthesise_clone(params, reference, e.reference_text, e.x_vector_only, remaining())
+            else:
+                with tempfile.NamedTemporaryFile(suffix='.wav',dir=reference_temp_dir) as snapshot:
+                    snapshot.write(reference); snapshot.flush()
+                    result = backend.synthesise_clone(params, snapshot.name, e.reference_text, e.x_vector_only, remaining())
         elif e.task == 'custom_voice':
-            result = backend.synthesise_preset(params,e.preset,e.instruct,e.timeout_s)
+            result = backend.synthesise_preset(params,e.preset,e.instruct,remaining())
         else:
-            result = backend.synthesise_design(params,e.instruct,e.timeout_s)
+            result = backend.synthesise_design(params,e.instruct,remaining())
         if type(getattr(result, 'metadata', None)) is not dict or (result.metadata.get('checkpoint'), result.metadata.get('revision')) != (str(root), e.revision):
             raise Refused('result_model_identity')
-        return _encode(e,text,result)
+        remaining()
+        encoded = _encode(e,text,result)
+        if selected is not None:
+            return dict(reference=dict(data=selected,sha256=e.reference_sha256,frames=e.reference_frames),audition=encoded)
+        return encoded
     finally:
         backend.close()
 
@@ -233,7 +265,7 @@ def _encode(execution, text, result):
     return dict(data=output, frames=frames, size_bytes=len(output), sha256=hashlib.sha256(output).hexdigest(), identity=dict(execution.identity(), text_sha256=hashlib.sha256(text.encode()).hexdigest()))
 
 
-def verify_service_inputs(spec, bundles, references, inventory, *, owner_uid=None):
+def verify_service_inputs(spec, bundles, references, inventory, *, owner_uid=None, reference_fd=None):
     """Trusted managed service storage is sealed for the full attempt."""
     owner = os.getuid() if owner_uid is None else owner_uid
     if set(bundles) != {spec.bundle_id}: raise Refused('owned_mapping_required')
@@ -244,4 +276,4 @@ def verify_service_inputs(spec, bundles, references, inventory, *, owner_uid=Non
             if info.st_uid != owner or info.st_mode & 0o222 or path.is_symlink(): raise Refused('sealed_bundle_required')
     expected = {spec.reference_id} if spec.task == 'clone' else set()
     if set(references) != expected: raise Refused('owned_mapping_required')
-    return verify_inputs(spec,bundles,references,inventory,owner_uid=owner)
+    return verify_inputs(spec,bundles,references,inventory,owner_uid=owner,reference_fd=reference_fd)

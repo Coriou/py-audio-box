@@ -477,14 +477,43 @@ def typed_references(self, data, b2, _before, document):
         elif isinstance(value, str):
             refs.setdefault(value, set()).add(source if len(source)<=256 else source.split(':')[0]+':'+hashlib.sha256(source.encode()).hexdigest())
         else: self.reasons.add('unknown_reference_kind')
-    def walk(value, definition, source, path=(), planned_prepare=False):
+    def walk(value, definition, source, path=(), planned_prepare=False, constraint=False):
         if definition == 'asset' and isinstance(value, dict): add(value.get('id'), source)
         node = schema[definition] if isinstance(definition, str) else definition
+        if not isinstance(node, dict):
+            raise Incomplete('unknown_reference_schema')
         if '$ref' in node:
             name = node['$ref'].split('/')[-1]
             if name == 'asset' and isinstance(value, dict): add(value.get('id'), source)
             return walk(value, name, source, path, planned_prepare)
-        for union in ('oneOf', 'anyOf', 'allOf'):
+        # Applicators constrain the same instance; they do not replace the
+        # enclosing object's declared properties. Conditional predicates are
+        # validation only; collect references from the active consequence.
+        if constraint:
+            supported = {'type', 'properties', 'required', 'additionalProperties',
+                         'if', 'then', 'else', 'allOf', 'oneOf', 'anyOf', 'not',
+                         'const', 'enum', 'title', 'description', 'items',
+                         'minItems', 'maxItems', 'uniqueItems', 'minLength',
+                         'maxLength', 'pattern', 'minimum', 'maximum',
+                         'exclusiveMinimum', 'exclusiveMaximum', 'multipleOf'}
+            # Negation here is the retained required-field exclusion only.
+            if ('not' in node and (not isinstance(node['not'], dict) or
+                    set(node['not']) != {'required'})):
+                raise Incomplete('unknown_reference_schema')
+            if (set(node) - supported or
+                    isinstance(node.get('additionalProperties'), dict)):
+                raise Incomplete('unknown_reference_schema')
+            if not validator.evolve(schema=node).is_valid(value):
+                self.reasons.add('unknown_reference_kind')
+        if 'if' in node:
+            branch = 'then' if validator.evolve(schema=node['if']).is_valid(value) else 'else'
+            if branch in node:
+                walk(value, node[branch], source, path, planned_prepare, True)
+        elif 'then' in node or 'else' in node:
+            raise Incomplete('unknown_reference_schema')
+        for branch in node.get('allOf', []):
+            walk(value, branch, source, path, planned_prepare, True)
+        for union in ('oneOf', 'anyOf'):
             if union in node:
                 # Delegate type, $ref and discriminator applicability to the
                 # same Draft 2020-12 implementation used by the contract oracle.
@@ -492,11 +521,13 @@ def typed_references(self, data, b2, _before, document):
                             if validator.evolve(schema=n).is_valid(value)]
                 if union == 'oneOf' and len(branches) != 1:
                     self.reasons.add('unknown_reference_kind')
-                if union == 'allOf' and len(branches) != len(node[union]):
-                    self.reasons.add('unknown_reference_kind')
                 if not branches: self.reasons.add('unknown_reference_kind')
-                for branch in branches: walk(value, branch, source, path, planned_prepare)
-                return
+                for branch in branches:
+                    walk(value, branch, source, path, planned_prepare,
+                         constraint or 'properties' in node or 'items' in node)
+                # Sibling unions constrain declared fields rather than replacing them.
+                if 'properties' not in node and 'items' not in node:
+                    return
         if 'type' in node and not validator.evolve(schema={'type': node['type']}).is_valid(value):
             self.reasons.add('unknown_reference_kind')
             return
@@ -504,10 +535,11 @@ def typed_references(self, data, b2, _before, document):
             self.reasons.add('unknown_reference_kind')
         if isinstance(value, list):
             if 'items' in node:
-                for item in value: walk(item, node['items'], source, path, planned_prepare)
+                for item in value: walk(item, node['items'], source, path, planned_prepare, constraint)
         elif isinstance(value, dict):
             properties = node.get('properties', {})
-            if set(value) - properties.keys(): self.reasons.add('unknown_reference_schema')
+            if (not constraint or node.get('additionalProperties') is False) and set(value) - properties.keys():
+                self.reasons.add('unknown_reference_schema')
             for key, item in value.items():
                 if key not in properties: continue
                 # Only these closed prepare-plan fields declare future outputs.
@@ -522,7 +554,7 @@ def typed_references(self, data, b2, _before, document):
                 elif key in reference_keys:
                     if validator.evolve(schema=properties[key]).is_valid(item): add(item, source)
                     else: self.reasons.add('unknown_reference_kind')
-                else: walk(item, properties[key], source, path+(key,), planned_prepare)
+                else: walk(item, properties[key], source, path+(key,), planned_prepare, constraint)
     def context(value, source):
         if set(value) == {'plan','bundles','execution'}:
             from worker.runtime_protocol import execution

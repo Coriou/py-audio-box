@@ -115,6 +115,39 @@ class QwenTests(unittest.TestCase):
         path.write_bytes(raw[:-1]+b'x')
         with self.assertRaises(Refused): self.run_engine(e,{'ref':r})
 
+    def test_managed_preparation_pair_has_no_named_snapshot_and_original_remaining_time(self):
+        import os
+        from contextlib import nullcontext
+        from unittest.mock import patch
+        from worker.engines.qwen_prepare import QwenPreparation
+        self.make_bundle(mode='base')
+        out=io.BytesIO()
+        with wave.open(out,'wb') as w:
+            w.setparams((1,2,24000,0,'NONE','none'));w.writeframes(b'\0\0'*4)
+        raw=out.getvalue();path=self.root/'ref.wav';path.write_bytes(raw);path.chmod(0o600)
+        e=replace(self.e,task='clone',preset=None,reference_id='ref',reference_sha256=hashlib.sha256(raw).hexdigest(),
+            reference_bytes=len(raw),reference_frames=4,reference_rate=24000,reference_text=None,x_vector_only=True,timeout_s=1800)
+        spec=QwenPreparation(**e.identity())
+        refs={'ref':dict(path='/must/not/open',voice_id=e.voice_id,voice_revision=e.voice_revision,checkpoint=e.checkpoint,revision=e.revision,text=None)}
+        self.backend.synthesise_clone.return_value.metadata=dict(checkpoint=str(self.bundle),revision=e.revision)
+        fd=os.open(path,os.O_RDONLY)
+        try:
+            with patch('lib.tts_backends.pocket_snapshot.managed_directory',side_effect=lambda p:nullcontext()), \
+                    patch('worker.engines.qwen.tempfile.NamedTemporaryFile',side_effect=AssertionError('named snapshot')), \
+                    patch('time.monotonic',return_value=140.):
+                result=execute(spec,'audition',{'bundle':self.bundle},refs,self.inventory,reference_temp_dir=self.root,
+                    backend_factory=self.factory,reference_fd=fd,managed_namespace=True,managed_owner_uid=os.getuid(),cutoff=1900.)
+            self.assertEqual(result['reference']['data'],raw)
+            self.assertNotEqual(result['reference']['sha256'],result['audition']['sha256'])
+            call=self.backend.synthesise_clone.call_args.args
+            self.assertEqual(call[1:],(raw,None,True,1760.))
+            self.factory.reset_mock()
+            with patch('time.monotonic',return_value=1901.),self.assertRaisesRegex(Refused,'expired'):
+                execute(spec,'audition',{'bundle':self.bundle},refs,self.inventory,reference_temp_dir=self.root,
+                    backend_factory=self.factory,reference_fd=fd,managed_namespace=True,managed_owner_uid=os.getuid(),cutoff=1900.)
+            self.factory.assert_not_called()
+        finally:os.close(fd)
+
     def test_result_identity_mismatch(self):
         self.backend.synthesise_preset.return_value.metadata=dict(checkpoint='wrong',revision='exact-revision')
         with self.assertRaises(Refused): self.run_engine()

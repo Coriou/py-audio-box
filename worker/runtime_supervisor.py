@@ -14,7 +14,7 @@ import threading
 import time
 
 from worker.runtime_journal import Journal, MAX_RECORDS, MAX_UNACKED
-from worker.runtime_protocol import authenticate, receive, send, session, request, execution_session
+from worker.runtime_protocol import authenticate, receive, send, session, request, execution_session, managed_qwen_cpu, QWEN_CPU_SECONDS
 from worker.transport import canonical, Refused, Session
 
 
@@ -131,6 +131,8 @@ class RuntimeSupervisor:
             from worker.runtime_protocol import execution, dispatch_mode
             spec = execution(context)
             if (body['fixture'] in ('kokoro','pocket','qwen','audio_export')) != (spec is not None) or (spec is not None and body['fixture'] != dispatch_mode(spec)): raise Refused('execution_dispatch_mismatch')
+            anchored = time.monotonic()
+            budget = (datetime.fromisoformat(job['deadline']) - datetime.now(timezone.utc)).total_seconds()
             if spec is not None and spec.engine!='audio-export' and context['execution']['bundles'] != self.bundles:
                 raise Refused('unregistered_mount_mapping')
             if spec is not None and spec.engine == 'audio-export':
@@ -152,9 +154,7 @@ class RuntimeSupervisor:
             if not isinstance(stage, str) or Path(stage).name != stage or stage in ('.', '..'):
                 raise Refused('stage_id')
             # Install the original monotonic budget before ACK/start. Never recompute.
-            anchored = time.monotonic()
-            budget = (datetime.fromisoformat(job['deadline']) - datetime.now(timezone.utc)).total_seconds()
-            maximum=min(180,context['plan']['resolved']['profile']['limits']['deadline_seconds']) if spec is not None and spec.engine=='pocket-tts' else 30
+            maximum=min(180,context['plan']['resolved']['profile']['limits']['deadline_seconds']) if spec is not None and spec.engine=='pocket-tts' else min(QWEN_CPU_SECONDS,context['plan']['resolved']['profile']['limits']['deadline_seconds']) if spec is not None and spec.engine=='qwen' and spec.device=='cpu' else 30
             if not 0 < budget <= maximum:
                 raise Refused('bounded_original_deadline_required')
             cutoff = anchored+budget
@@ -209,7 +209,7 @@ class RuntimeSupervisor:
             uid = row['uid']
             # Nonresident setup helper, reaped before engine launch. No extra caps.
             setup='import os,sys; os.umask(0); os.mkdir(sys.argv[1],0o770)'
-            if spec is not None and spec.engine=='pocket-tts':
+            if spec is not None and (spec.engine=='pocket-tts' or managed_qwen_cpu(spec)):
                 setup+='; os.mkdir(sys.argv[1]+"/conditioning",0o770)'
             subprocess.run(['python', '-c', setup,
                             '/staging/'+stage], user=10001, group=uid, extra_groups=[],
@@ -223,7 +223,12 @@ class RuntimeSupervisor:
                           protected_stages=[r['allocation']['snapshot'][0]['attempts'][-1]['staging_id'] for r in self.journal.value['records'] if r['id'] != row['id']])
             if spec is not None and spec.engine=='pocket-tts':
                 config['pocket_cutoff']=self.active['cutoff']  # Original prepare anchor, never renewed.
+            if spec is not None and spec.engine=='qwen' and spec.device=='cpu':
+                config['qwen_cpu_cutoff']=self.active['cutoff']
             try:
+                if managed_qwen_cpu(spec):
+                    reference_fd=self.verify_qwen(context,profiles,job['principal_id'],retain_fd=True)
+                    config['reference_fd']=reference_fd
                 if spec is not None and spec.engine=='audio-export':
                     reference_fd=self.verify_export(context,job['principal_id'])
                     config['reference_fd']=reference_fd
@@ -459,29 +464,61 @@ class RuntimeSupervisor:
         else:
             verify_inputs(spec, self.bundles, references, owner_uid=owner_uid)
 
-    def verify_qwen(self, context, profiles, principal):
+    def verify_qwen(self, context, profiles, principal, *, retain_fd=False):
         from worker.engines.qwen_execution import current_hardware, inventory_wire
         from worker.engines.qwen import verify_service_inputs
         from worker.runtime_protocol import execution
         from contracts import validate as oracle
         spec=execution(context)
         profile=context['plan']['resolved']['profile']
-        if (self.qwen_contexts.get((principal, profile['id'], context['plan']['request']['voice_version_id'])) != context['execution'] or
-            context['execution']['hardware'] != inventory_wire(self.inventory) or
-            profiles != self.qwen_profiles): raise Refused('unregistered_qwen_context')
-        oracle.admission(dict(operation='speech_generate',input_sha256=oracle.plan_hash(context['plan'])),context,self.qwen_profiles)
+        managed=managed_qwen_cpu(spec)
+        if managed:
+            # Explicit operator registration of the WHOLE trusted template. Existing
+            # exact-version registrations never implicitly authorize this lane.
+            template=self.qwen_contexts.get((principal,'qwen-cpu','managed-clone'))
+            if template is None: raise Refused('unregistered_qwen_context')
+            from service.execution_context import cpu_clone_context
+            plan=context['plan']
+            version=plan['voice_versions'][0] if plan['operation']=='speech_generate' else None
+            expected=cpu_clone_context(template,principal,plan['request'],plan['assets'][0],version=version)
+            # Production assigns pair IDs after owner resolution. Corroborate
+            # every other plan field, including frozen spoken text and budgets.
+            if plan['operation']=='voice_prepare':
+                for field in ('reference_asset_id','audition_asset_id'):
+                    expected['plan']['reference_roles'][field]=plan['reference_roles'][field]
+                expected['plan']['resolved']['reuse_configuration']['reference_asset_id']=plan['reference_roles']['reference_asset_id']
+            if expected != context: raise Refused('unregistered_qwen_context')
+        elif self.qwen_contexts.get((principal, profile['id'], context['plan']['request']['voice_version_id'])) != context['execution']:
+            raise Refused('unregistered_qwen_context')
+        if context['execution']['hardware'] != inventory_wire(self.inventory) or profiles != self.qwen_profiles:
+            raise Refused('unregistered_qwen_context')
+        oracle.admission(dict(operation=context['plan']['operation'],input_sha256=oracle.plan_hash(context['plan'])),context,self.qwen_profiles)
         selected=next(p for p in self.qwen_profiles if p['id'] == profile['id'])
         if selected['verification'] != 'measured' or not selected['qualification_receipt'] or 'synthetic' in selected['qualification_receipt'].lower(): raise Refused('real_qualification_required')
         current_hardware(spec,self.inventory)
-        if context['execution']['references'] != self.references: raise Refused('unregistered_reference_mapping')
-        verify_service_inputs(spec,self.bundles,self.references,self.inventory,owner_uid=10001)
+        if managed:
+            from worker.managed_reference import acquire
+            try: fd=acquire(spec.reference_id)
+            except BaseException:
+                self.failed=True
+                raise
+            try:
+                verify_service_inputs(spec,self.bundles,context['execution']['references'],self.inventory,owner_uid=10001,reference_fd=fd)
+                if retain_fd:
+                    result,fd=fd,None
+                    return result
+            finally:
+                if fd is not None: os.close(fd)
+        else:
+            if context['execution']['references'] != self.references: raise Refused('unregistered_reference_mapping')
+            verify_service_inputs(spec,self.bundles,self.references,self.inventory,owner_uid=10001)
 
     def conditioning(self, row):
         stage = row['allocation']['snapshot'][0]['attempts'][-1]['staging_id']
         from service import install_policy as ip
         from worker.runtime_protocol import execution
         spec=execution(row['allocation']['snapshot'][1])
-        if spec is not None and spec.engine=='pocket-tts':
+        if spec is not None and (spec.engine=='pocket-tts' or managed_qwen_cpu(spec)):
             command=['python','-c','from worker.runtime_conditioning import pocket_main; pocket_main()',stage,str(row['uid'])]
         else:
             command = ['python', '-m', 'worker.runtime_conditioning', stage, str(row['uid'])]

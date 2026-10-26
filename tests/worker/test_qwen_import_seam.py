@@ -5,6 +5,7 @@ import importlib.abc
 import json
 from pathlib import Path
 import sys
+import subprocess
 import tempfile
 import types
 import unittest
@@ -35,6 +36,32 @@ def isolated(root, legacy=False):
 
 
 class ImportSeamTests(unittest.TestCase):
+    def test_private_wav_bytes_become_spawn_safe_waveform_rate(self):
+        result = subprocess.run([sys.executable, '-B', '-c',
+            'from tests.worker.test_qwen_import_seam import ImportSeamTests; '
+            'ImportSeamTests().check_private_waveform()'], cwd=ROOT,
+            capture_output=True, text=True, timeout=30)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
+    def check_private_waveform(self):
+        import io, pickle, wave
+        import numpy as np
+        from lib.tts_backends.qwen import QwenBackend
+        raw=io.BytesIO()
+        with wave.open(raw,'wb') as w:
+            w.setparams((1,2,24000,0,'NONE','none'));w.writeframes(b'\x00\x80\x00\x40')
+        backend=object.__new__(QwenBackend)
+        backend.generate_audio=Mock(return_value='injected')
+        self.assertEqual(backend.synthesise_clone(dict(text='audition'),raw.getvalue(),None,True,1800),'injected')
+        method,params,timeout=backend.generate_audio.call_args.args
+        self.assertEqual(method,'_service_clone')
+        waveform,rate=pickle.loads(pickle.dumps(params['ref_audio']))
+        self.assertEqual(rate,24000);self.assertEqual(waveform.dtype,np.dtype('float32'))
+        self.assertEqual(waveform.shape,(2,))
+        np.testing.assert_array_equal(waveform,np.array([-1.,.5],dtype='float32'))
+        self.assertIsNone(params['ref_text']);self.assertTrue(params['x_vector_only_mode'])
+        self.assertGreater(timeout,0);self.assertLessEqual(timeout,1800)
+
     def exercise_native(self, root):
         # Enter the full loader, not an AST extraction or a fake loader.
         with isolated(root), tempfile.TemporaryDirectory() as tmp:
@@ -108,7 +135,7 @@ class ImportSeamTests(unittest.TestCase):
                     z.extractall(Path(tmp)/'extracted')
                 self.exercise_native(Path(tmp)/'extracted/speech-box')
 
-    def exercise(self, root, legacy=False):
+    def check_cold_imports(self, root, legacy=False):
         with isolated(root, legacy):
             class NoML(importlib.abc.MetaPathFinder):
                 def find_spec(self, fullname, path=None, target=None):
@@ -124,6 +151,19 @@ class ImportSeamTests(unittest.TestCase):
                 self.assertNotIn('tts' if legacy else 'lib.tts', sys.modules)
             finally:
                 sys.meta_path.remove(finder)
+
+    def exercise(self, root, legacy=False):
+        # A fresh interpreter proves cold imports even after other tests loaded
+        # NumPy, without unloading/reloading its native extension in this process.
+        result = subprocess.run([sys.executable, '-B', '-c',
+            'from pathlib import Path; '
+            'from tests.worker.test_qwen_import_seam import ImportSeamTests; '
+            'ImportSeamTests().check_cold_imports(Path(__import__("sys").argv[1]), '
+            '__import__("sys").argv[2] == "True")', str(root), str(legacy)],
+            cwd=ROOT, capture_output=True, text=True, timeout=30)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        with isolated(root, legacy):
+            backend = importlib.import_module('tts_backends.qwen' if legacy else 'lib.tts_backends.qwen')
             before_path = sys.path[:]
             events = []
             torch = types.ModuleType('torch')
@@ -148,7 +188,8 @@ class ImportSeamTests(unittest.TestCase):
                     self.requests = iter([
                         ('generate_custom_voice', (), {'text': 'hello', 'speaker': 'Ryan'}),
                         ('generate_voice_design', (), {'text': 'hello', 'instruct': 'warm'}),
-                        ('_service_clone', (), dict(text='hello', ref_audio='inert.wav', ref_text='source', x_vector_only_mode=False))])
+                        ('_service_clone', (), dict(text='hello', ref_audio='inert.wav', ref_text='source', x_vector_only_mode=False)),
+                        ('_service_clone', (), dict(text='audition', ref_audio=([.25,-.25],24000), ref_text=None, x_vector_only_mode=True))])
                 def send(self, message): self.messages.append(message)
                 def recv(self):
                     try: return next(self.requests)
@@ -164,8 +205,10 @@ class ImportSeamTests(unittest.TestCase):
                         connection = Connection()
                         backend._worker_impl(connection, dict(model_name=tmp, num_threads=2,
                             dtype_str=dtype, revision='exact-revision', offline=True, device=device, attention=attention))
-                        self.assertEqual(connection.messages[:4], [('ready', {'revision': 'exact-revision'}),
-                            ('ok', 'preset-result'), ('ok', 'design-result'), ('ok', 'clone-result')])
+                        self.assertEqual(connection.messages[:5], [('ready', {'revision': 'exact-revision'}),
+                            ('ok', 'preset-result'), ('ok', 'design-result'), ('ok', 'clone-result'), ('ok', 'clone-result')])
+                        prompts=[event[1] for event in events if event[0]=='prompt']
+                        self.assertEqual(prompts[-1],dict(ref_audio=([.25,-.25],24000),ref_text=None,x_vector_only_mode=True))
                         self.assertTrue(connection.closed)
                         self.assertEqual(factory.call_args.args, (tmp,))
                         self.assertEqual(factory.call_args.kwargs, dict(device_map=device, dtype=getattr(torch, dtype),

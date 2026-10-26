@@ -3147,10 +3147,11 @@ def _installed_detached_documents(data, *, publication_format=1):
 
 
 def _installed_prepared_inventory(row, contexts, owners):
-    """Exact retained Pocket preparation files, from already typed joined rows."""
+    """Exact retained Pocket/Qwen preparation pairs from typed joined rows."""
     import stat
     from worker.runtime_protocol import execution
     from worker.engines.pocket_prepare import PocketPreparation
+    from worker.engines.qwen_prepare import QwenPreparation
     owner = row['owner']
     if (owner is None or owner not in owners or
             row['name'] not in ('reference.wav', 'audition.wav') or
@@ -3164,7 +3165,7 @@ def _installed_prepared_inventory(row, contexts, owners):
     plan = context['plan']
     return (plan['operation'] == 'voice_prepare' and
             plan.get('reference_roles', {}).get('reference_kind') == 'prepared_reference' and
-            type(execution(context)) is PocketPreparation)
+            type(execution(context)) in (PocketPreparation, QwenPreparation))
 
 
 def _installed_detached_source(state, journal, *, family=None):

@@ -306,6 +306,21 @@ class QwenBackend:
     # Closed service methods. The legacy dynamic dispatcher remains private to
     # legacy callers; no method name or arbitrary kwargs crosses this interface.
     def synthesise_clone(self, params, reference, reference_text, x_vector_only, timeout_s):
+        entered = time.monotonic() if type(reference) is bytes else None
+        if type(reference) is bytes:
+            # The private service seam supplies validated canonical PCM16 bytes.
+            # qwen-tts accepts (waveform, rate); this survives spawn without paths.
+            import io, wave
+            import numpy as np
+            with wave.open(io.BytesIO(reference), 'rb') as source:
+                if source.getnchannels() != 1 or source.getsampwidth() != 2:
+                    raise ValueError('reference_format')
+                rate = source.getframerate()
+                pcm = source.readframes(source.getnframes())
+            reference = (np.frombuffer(pcm, dtype='<i2').astype('float32') / 32768., rate)
+        if entered is not None and timeout_s is not None and timeout_s > 0:
+            timeout_s -= time.monotonic() - entered
+            if timeout_s <= 0: raise TimeoutError('Qwen reference decoding exceeded original deadline')
         return self.generate_audio('_service_clone', dict(params, ref_audio=reference,
             ref_text=reference_text, x_vector_only_mode=x_vector_only), timeout_s)
 
