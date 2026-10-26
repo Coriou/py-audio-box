@@ -259,3 +259,33 @@ keys. No JSON bytes, model pins, or manifest identity are rewritten.
 
 This source fix requires review, commit and rebuild before a separately
 authorized actual measurement; it supplies no inference or audio qualification.
+
+### Numeric UID startup environment (r429 source fix)
+
+Before importing `lib.tts` (and therefore Torch/Qwen), the spawned Qwen owner
+sets HOME, user names, temporary paths, TorchInductor/Triton/Torch and Hugging
+Face cache paths to controlled private state under `/tmp/qwen-child-*`.
+Inherited values are overwritten. The parent creates the mode-0700 directory
+and owns its plain path without a GC/atexit deletion finalizer. Cleanup requires
+a confirmed integer child exit status after join, or a process-start failure
+with no child obligation. Unknown status or failed reap retains storage even
+after owner disposal; a detected unreaped child disables reuse. Start attempts
+are recorded before `Process.start()`: exceptions can follow OS child creation
+even with no PID and false `is_alive()`. Ambiguity retains process ownership and
+private storage and disables reuse until successful join and integer exit status
+confirm reap. Failures before start invocation have no child obligation. Later
+verified reap permits idempotent cleanup, but does not re-enable the backend.
+There is no passwd entry requirement or device/model fallback. Model paths,
+offline policy, UID 20000 and container isolation remain unchanged. Writable
+space remains subject to the runtime's bounded temporary filesystem; no image
+environment change is required.
+
+Retained Torch source corroborates `cache_dir()` -> `default_cache_dir()` ->
+`getpass.getuser()` -> passwd lookup when user environment is absent.
+`torch/_inductor/codecache.py:2669` also calls `default_cache_dir()` directly
+at module import, bypassing TORCHINDUCTOR_CACHE_DIR. Controlled USER/LOGNAME
+and temporary paths therefore accompany the explicit cache override.
+The prior actual trace loses the dependency traceback at the child error
+transport, so the exact historical intervening import frames are unavailable.
+Offline import-seam checks supply source evidence only. Review, commit and
+rebuild precede any separately authorized inference/runtime qualification.

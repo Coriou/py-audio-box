@@ -36,6 +36,180 @@ def isolated(root, legacy=False):
 
 
 class ImportSeamTests(unittest.TestCase):
+    def test_failed_reap_storage_survives_owner_gc(self):
+        import gc
+        import multiprocessing as mp
+        import shutil
+        import time
+        import weakref
+        from lib.tts_backends.qwen import QwenBackend
+        owner = QwenBackend(model_name='Qwen3-TTS-12Hz-0.6B-Base')
+        root = Path(tempfile.mkdtemp(prefix='qwen-child-', dir='/tmp'))
+        owner._runtime_directory = root
+        process = mp.get_context('spawn').Process(target=time.sleep, args=(60,))
+        process.start()
+        owner._process = process
+        ref = weakref.ref(owner)
+        try:
+            # Actual child/status; only the parent's reap operation fails.
+            def failed_join(*args):
+                raise OSError('injected reap failure')
+            with patch.object(process, 'join', side_effect=failed_join):
+                with self.assertRaises(OSError):
+                    owner.close()
+                self.assertTrue(owner._failed_reap)
+                del owner
+                gc.collect()
+                self.assertIsNone(ref())
+                self.assertTrue(root.is_dir())
+            process.join(5)
+            if process.is_alive():
+                process.kill()
+                process.join(5)
+            self.assertIs(type(process.exitcode), int)
+        finally:
+            if process.is_alive():
+                process.kill()
+                process.join(5)
+            if type(process.exitcode) is int:
+                process.close()
+                shutil.rmtree(root)
+
+    def test_confirmed_reap_cleans_storage_and_close_is_idempotent(self):
+        import multiprocessing as mp
+        import time
+        from lib.tts_backends.qwen import QwenBackend
+        owner = QwenBackend(model_name='Qwen3-TTS-12Hz-0.6B-Base')
+        root = Path(tempfile.mkdtemp(prefix='qwen-child-', dir='/tmp'))
+        owner._runtime_directory = root
+        process = mp.get_context('spawn').Process(target=time.sleep, args=(60,))
+        process.start()
+        owner._process = process
+        owner.close()
+        self.assertFalse(root.exists())
+        self.assertIsNone(owner._process)
+        self.assertIsNone(owner._runtime_directory)
+        owner.close()
+
+    def test_start_raises_after_spawn_without_published_pid(self):
+        import multiprocessing as mp
+        import time
+        from lib.tts_backends.qwen import QwenBackend
+        real = mp.get_context('spawn').Process(target=time.sleep, args=(60,))
+
+        class AmbiguousProcess:
+            pid = None
+            exitcode = None
+            verified = False
+
+            def start(self):
+                real.start()
+                raise OSError('post-spawn failure before pid publication')
+
+            def is_alive(self):
+                return False  # Public metadata cannot establish absence.
+
+            def join(self, timeout):
+                if not self.verified:
+                    raise AssertionError('no published process handle')
+                real.join(timeout)
+                self.exitcode = real.exitcode
+
+            def close(self):
+                real.close()
+
+        stub = AmbiguousProcess()
+        context = Mock()
+        context.Pipe.return_value = (Mock(), Mock())
+        context.Process.return_value = stub
+        owner = QwenBackend(model_name='Qwen3-TTS-12Hz-0.6B-Base')
+        try:
+            with patch('lib.tts_backends.qwen.mp.get_context', return_value=context):
+                with self.assertRaisesRegex(AssertionError, 'no published process handle'):
+                    owner.invoke('unused')
+            root = owner._runtime_directory
+            self.assertTrue(real.is_alive())
+            self.assertTrue(root.is_dir())
+            self.assertIs(owner._process, stub)
+            self.assertTrue(owner._failed_reap)
+            with self.assertRaisesRegex(RuntimeError, 'disabled'):
+                owner.invoke('unused')
+            owner.__del__()
+            self.assertTrue(root.is_dir())
+            self.assertIs(owner._process, stub)
+            real.terminate()
+            real.join(5)
+            self.assertIs(type(real.exitcode), int)
+            stub.verified = True
+            owner.close()  # Genuine reap now available through the existing API.
+            self.assertFalse(root.exists())
+            owner.close()
+        finally:
+            if not real._closed and real.pid is not None:
+                if real.is_alive():
+                    real.kill()
+                real.join(5)
+                if type(real.exitcode) is int:
+                    stub.verified = True
+                    owner.close()
+
+    def test_missing_passwd_environment_before_loader_import(self):
+        code = r"""
+import os, sys, pwd, getpass, tempfile, importlib.abc, importlib.util
+from pathlib import Path
+from unittest.mock import patch
+from lib.tts_backends.qwen import _worker_impl
+keys = ('HOME','XDG_CACHE_HOME','TMPDIR','TMP','TEMP','TORCHINDUCTOR_CACHE_DIR',
+        'TRITON_CACHE_DIR','HF_HOME','HF_HUB_CACHE','HUGGINGFACE_HUB_CACHE',
+        'TRANSFORMERS_CACHE','TORCH_HOME','USER','LOGNAME')
+for key in keys: os.environ[key] = '/host-secret/poison'
+# Simulate the exact numeric-UID failure, even on a machine with passwd entries.
+def missing(*args): raise KeyError('getpwuid(): uid not found: 20000')
+pwd.getpwuid = missing
+with patch.dict(os.environ):
+    for key in ('USER','LOGNAME','LNAME','USERNAME'): os.environ.pop(key, None)
+    try: getpass.getuser()
+    except KeyError: pass
+    else: raise AssertionError('passwd simulation failed')
+roots = []
+class Loader(importlib.abc.MetaPathFinder, importlib.abc.Loader):
+    def find_spec(self, fullname, path=None, target=None):
+        if fullname == 'lib.tts': return importlib.util.spec_from_loader(fullname, self)
+    def create_module(self, spec): return None
+    def exec_module(self, module):
+        root = Path(os.environ['HOME']).parent
+        assert root.parent == Path('/tmp') and root.name.startswith('qwen-child-')
+        assert root.stat().st_mode & 0o777 == 0o700
+        roots.append(root)
+        for key in keys[:-2]:
+            path = Path(os.environ[key])
+            assert path.is_relative_to(root) and path.is_dir(), key
+        assert tempfile.gettempdir() == os.environ['TMPDIR']
+        assert getpass.getuser() == 'qwen-worker'
+        assert os.environ['HF_HUB_OFFLINE'] == os.environ['TRANSFORMERS_OFFLINE'] == '1'
+        # Corroborated Inductor cache selection: explicit cache avoids getuser.
+        cache = os.environ.get('TORCHINDUCTOR_CACHE_DIR')
+        assert cache or getpass.getuser()
+        def load(**settings): raise ImportError('inert upstream stop')
+        module._load_tts_model_local = load
+class Connection:
+    def __init__(self): self.messages=[]; self.closed=False
+    def send(self, message): self.messages.append(message)
+    def close(self): self.closed=True
+sys.meta_path.insert(0, Loader())
+for _ in range(2):
+    sys.modules.pop('lib.tts', None)
+    connection=Connection()
+    _worker_impl(connection, {'offline':True})
+    assert connection.messages == [('error', ('ImportError','inert upstream stop'))]
+    assert connection.closed and not roots[-1].exists()
+    assert all(os.environ[key] == '/host-secret/poison' for key in keys)
+assert roots[0] != roots[1]
+"""
+        result = subprocess.run([sys.executable, '-B', '-c', code], cwd=ROOT,
+            capture_output=True, text=True, timeout=30)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
     def test_private_wav_bytes_become_spawn_safe_waveform_rate(self):
         result = subprocess.run([sys.executable, '-B', '-c',
             'from tests.worker.test_qwen_import_seam import ImportSeamTests; '
