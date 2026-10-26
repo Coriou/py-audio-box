@@ -3,8 +3,21 @@ ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 HF_HUB_OFFLINE=1 TRANSFORMERS_O
 RUN apt-get update && apt-get install -y --no-install-recommends ffmpeg libsndfile1 && rm -rf /var/lib/apt/lists/*
 # Match the repository lock's CPU torch/torchaudio pair. No model packages or weights.
 RUN pip install --no-cache-dir torch==2.10.0+cpu torchaudio==2.10.0+cpu --index-url https://download.pytorch.org/whl/cpu
-RUN pip install --no-cache-dir numpy==1.26.4 soundfile==0.12.1 pytest==8.4.2 pyyaml==6.0.3 redis==7.2.0 langid==1.1.6 jsonschema==4.26.0
+# Reuse the hashed control/test closure: FastAPI, HTTPX, MCP, pytest,
+# tiktoken and NumPy. Do not install Kokoro, Pocket, Qwen or STT engines.
+COPY tests/release/requirements.lock /tmp/test-requirements.lock
+RUN pip install --no-cache-dir --require-hashes -r /tmp/test-requirements.lock
+RUN pip install --no-cache-dir soundfile==0.12.1 pyyaml==6.0.3 redis==7.2.0 langid==1.1.6
+# Tokenizer data only (no model weights); runtime has no network or writable cache.
+ENV TIKTOKEN_CACHE_DIR=/opt/tiktoken-cache
+RUN python -c "import tiktoken; tiktoken.get_encoding('o200k_base')"
+# Historical macOS-shaped temporary paths share the Linux scratch filesystem.
+RUN mkdir -p /private && ln -s /tmp /private/tmp
 WORKDIR /app
+COPY service /app/service
+COPY worker /app/worker
+COPY clients /app/clients
+COPY requirements /app/requirements
 COPY contracts /app/contracts
 COPY lib /app/lib
 COPY apps /app/apps
@@ -16,4 +29,16 @@ COPY run /app/run
 COPY run-direct /app/run-direct
 COPY run.ps1 /app/run.ps1
 COPY pyproject.toml /app/pyproject.toml
-CMD ["python", "-m", "pytest", "tests", "-m", "not integration and not redis_integration", "-q"]
+COPY headless-dist-manifest.json native-dist-manifest.json Dockerfile.cpu /app/
+COPY docs/agent-interface/AUDIO-EXPORT.md /app/docs/agent-interface/AUDIO-EXPORT.md
+COPY docs/agent-interface/CPU-DOCKER.md /app/docs/agent-interface/CPU-DOCKER.md
+COPY docs/agent-interface/CPU-QUICKSTART.md /app/docs/agent-interface/CPU-QUICKSTART.md
+COPY docs/agent-interface/DOCKER-VOLUMES.md /app/docs/agent-interface/DOCKER-VOLUMES.md
+COPY docs/agent-interface/HEADLESS-INSTALL.md /app/docs/agent-interface/HEADLESS-INSTALL.md
+COPY docs/agent-interface/NATIVE-PACKAGE.md /app/docs/agent-interface/NATIVE-PACKAGE.md
+COPY docs/agent-interface/POCKET-QUICKSTART.md /app/docs/agent-interface/POCKET-QUICKSTART.md
+COPY docs/agent-interface/reviews/CPU-KOKORO-INSTALLED-r407-parent.md /app/docs/agent-interface/reviews/CPU-KOKORO-INSTALLED-r407-parent.md
+COPY docs/agent-interface/reviews/CPU-RELEASE-r407-parent.md /app/docs/agent-interface/reviews/CPU-RELEASE-r407-parent.md
+COPY docs/agent-interface/reviews/H2-PUBLICATION-V2-r373-sol.md /app/docs/agent-interface/reviews/H2-PUBLICATION-V2-r373-sol.md
+# Keep the default image invocation identical to the bounded runner selection.
+CMD ["python", "-m", "pytest", "tests", "-m", "not integration and not redis_integration and not manual_b_probe", "--ignore=tests/local", "--ignore=tests/remote", "--ignore=tests/release/test_dispatcher.py", "--ignore=tests/release/test_packaged_lifecycle.py", "--ignore=tests/release/test_admission.py", "-p", "no:cacheprovider", "-q"]
