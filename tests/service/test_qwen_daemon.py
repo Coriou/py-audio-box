@@ -8,6 +8,48 @@ from tests.service.test_daemon_volumes import binding, container
 
 
 class QwenDaemonTests(InstalledQwenTests):
+    def test_real_worker_entrypoint_configures_qwen_before_serve(self):
+        from types import SimpleNamespace
+        from service import execution_context as ec, install_policy as ip
+        from worker import runtime_supervisor as rs
+        from worker.engines import qwen_execution as qe
+        from worker.runtime_protocol import execution
+
+        supervisor = SimpleNamespace(qwen_contexts={})
+        mapping = {'inert-bundle': '/sealed/inert-bundle'}
+        with patch('sys.argv', ['worker', '--installed-policy', qd.POLICY,
+                                '--configuration-file', '/config/install.json']), \
+                patch.object(rs.os, 'getuid', return_value=0), \
+                patch.object(rs.os, 'geteuid', return_value=0), \
+                patch.object(rs.os, 'getgid', return_value=10001), \
+                patch.object(rs.os, 'getegid', return_value=10001), \
+                patch.object(rs.os, 'getgroups', return_value=[]), \
+                patch.object(rs.os, 'umask'), \
+                patch.object(ec, 'installed_configuration', return_value=self.config) as load, \
+                patch.object(ec, 'installed_mapping', return_value=mapping), \
+                patch.object(ip, 'directory_identity'), patch.object(ip, 'read_private'), \
+                patch.object(rs, 'RuntimeSupervisor', return_value=supervisor) as factory, \
+                patch.object(qe, 'installed_cpu_hardware', wraps=qe.installed_cpu_hardware) as hardware, \
+                patch('sys.platform', 'linux'), \
+                patch.object(rs.os, 'sched_getaffinity', return_value={0, 1}, create=True):
+            from unittest.mock import Mock
+            def served():
+                self.assertTrue(supervisor._qwen_daemon)
+                self.assertFalse(supervisor._pocket_daemon)
+                self.assertEqual(supervisor.qwen_profiles, self.config['profiles'])
+                for principal, context in self.config['contexts'].items():
+                    self.assertEqual(supervisor.qwen_contexts[(principal, 'qwen-cpu', 'managed-clone')], context)
+                self.assertIsNotNone(supervisor.inventory)
+                self.assertEqual(hardware.call_count, len(self.config['contexts']))
+            supervisor.serve = Mock(side_effect=served)
+            rs.qwen_daemon_main()
+            supervisor.serve.assert_called_once_with()
+            load.assert_called_once_with('/config/install.json', policy=ip.SPLIT)
+            self.assertIs(factory.call_args.kwargs['installed_policy'], ip.QWEN_SPLIT)
+            self.assertEqual(factory.call_args.kwargs['bundles'], mapping)
+            context = self.config['contexts']['alice']
+            hardware.assert_called_once_with(execution(context), supervisor.inventory, family=qd.FAMILY)
+
     def test_exact_commands_and_readonly_subpath(self):
         b=binding(self.config);b['policy']=qd.LAUNCH
         dv.binding(b,family=qd.FAMILY)

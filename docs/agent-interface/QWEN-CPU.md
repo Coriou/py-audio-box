@@ -314,6 +314,17 @@ UID/mode, lock, configuration, manifest and receipt checks remain required.
 A stopped helper alone never proves import completion. Failed/expired imports
 retain intent and partial volumes; initialization requires verified import-done.
 
-The prior actual engine inference passed; public installed import and all later
-installed HTTP/CLI/MCP, cancellation/reap, restart/history and publication stages
-remain unqualified. Review, commit and new images precede any actual retry.
+Actual r432 CPU measurement, public installed import (247.79 seconds) and
+initialization (80.83 seconds) passed. Public up failed in the worker Qwen
+startup branch because `execution` was not imported. The r433 source correction
+imports that parser at module scope. Its regression calls `qwen_daemon_main()`
+through real argument parsing, configuration/family validation, execution parsing
+and CPU hardware validation, with injected filesystem/identity boundaries and a
+fake supervisor/serve boundary. The single offline pinned-image run passed 15
+focused tests; no ML runtime was allowed. Ruff/Pyflakes were unavailable; a
+targeted symtable global-name check of the six startup modules found no unresolved
+global references (not a full F821 lint result).
+
+Installed HTTP/CLI/MCP, cancellation/reap, restart/history and publication stages
+remain unqualified. This source/test result does not establish actual corrected
+startup. Review, commit and new images precede any actual retry.

@@ -14,7 +14,7 @@ import threading
 import time
 
 from worker.runtime_journal import Journal, MAX_RECORDS, MAX_UNACKED
-from worker.runtime_protocol import authenticate, receive, send, session, request, execution_session, managed_qwen_cpu, QWEN_CPU_SECONDS
+from worker.runtime_protocol import authenticate, receive, send, session, request, execution, execution_session, managed_qwen_cpu, QWEN_CPU_SECONDS
 from worker.transport import canonical, Refused, Session
 
 
