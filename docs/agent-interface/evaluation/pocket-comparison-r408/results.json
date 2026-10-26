@@ -1,0 +1,907 @@
+{
+  "schema_version": 1,
+  "date": "2026-10-26",
+  "source_commit": "f82e671",
+  "plan": {
+    "scope": "offline cold-process CPU narration pilot; no engine promotion or perceptual verdict",
+    "ids": [
+      "fr-01",
+      "fr-03",
+      "fr-07",
+      "fr-10",
+      "fr-paragraph-3"
+    ],
+    "repeats": 2,
+    "threads": 2,
+    "cpus": 2,
+    "memory_bytes": 4294967296,
+    "timeout_per_attempt": 180,
+    "reference_sha256": "ca1021790719c2099a10cdb7ce9c2e94a8968fa137d95cb4f6997baea5d48e5b",
+    "source": "f82e671",
+    "qwen": "not measured: no verified local bundle found; no download authorized for this pilot",
+    "cold_policy": "fresh process per take; filesystem cache uncontrolled",
+    "memory_scope": "sampled owned process group RSS sum; shared pages may count more than once; lower bound"
+  },
+  "human_listening": "UNMEASURED",
+  "qwen": "NOT_MEASURED; no verified local bundle found in bounded host and 16 Docker model-volume inventories",
+  "winner": null,
+  "engine_promotion": false,
+  "prior_initialization_failures": {
+    "attempts": 20,
+    "code": "KeyError",
+    "cause": "TorchInductor getpass.getuser for UID absent from passwd; explicit temporary TORCHINDUCTOR_CACHE_DIR supplied in successful Pocket run",
+    "audio_produced": false,
+    "retained": true
+  },
+  "backends": {
+    "kokoro": {
+      "image": "sha256:48c681c67deff15018597d552983b83ddf2233403ecc3d16d6cec7d368b093b6",
+      "container": {
+        "exit_code": 0,
+        "oom_killed": false,
+        "network": "none",
+        "memory_bytes": 4294967296,
+        "nano_cpus": 2000000000
+      },
+      "environment": {
+        "platform": "Linux-7.2.12-orbstack-00394-gbecdd6130068-x86_64-with-glibc2.36",
+        "machine": "x86_64",
+        "python": "3.11.17",
+        "logical_cpus": 12,
+        "cpu_model": "Intel(R) Core(TM) i7-8700B CPU @ 3.20GHz",
+        "cgroup_cpu_max": "200000 100000",
+        "cgroup_memory_max": "4294967296",
+        "cgroup_cpuset": "0-11",
+        "meminfo": "MemTotal:       16448292 kB\nMemFree:        14246516 kB\nMemAvailable:   14977668 kB\nBuffers:             152 kB\nCached:          1018680 kB\nSwapCached:            0 kB\nActive:           727964 kB\nInactive:         724300 kB\nActive(anon):     712144 kB\nInactive(anon):    77544 kB\nActive(file):      15820 kB\nInactive(file):   646756 kB\nUnevictable:           0 kB\nMlocked:               0 kB\nSwapTotal:      17496860 kB\nSwapFree:       17496860 kB\nDirty:               400 kB\nWriteback:           240 kB\nAnonPages:        413892 kB\nMapped:            80980 kB\nShmem:            356168 kB\nKReclaimable:     405328 kB\nSlab:             498560 kB\nSReclaimable:     405328 kB\nSUnreclaim:        93232 kB\nKernelStack:        7440 kB\nPageTables:         6444 kB\nSecPageTables:         0 kB\nNFS_Unstable:          0 kB\nBounce:                0 kB\nWritebackTmp:          0 kB\nCommitLimit:    25721004 kB\nCommitted_AS:    2611948 kB\nVmallocTotal:   34359738367 kB\nVmallocUsed:       71432 kB\nVmallocChunk:          0 kB\nPercpu:             8256 kB\nAnonHugePages:         0 kB\nShmemHugePages:        0 kB\nShmemPmdMapped:        0 kB\nFileHugePages:         0 kB\nFilePmdMapped:         0 kB\nBalloon:               0 kB\nGPUActive:             0 kB\nGPUReclaim:            0 kB\nDirectMap4k:       22528 kB\nDirectMap2M:     5220352 kB\nDirectMap1G:    11534336 kB",
+        "packages": {
+          "numpy": "2.4.6",
+          "torch": null,
+          "torchaudio": null,
+          "soundfile": "0.12.1",
+          "kokoro": null,
+          "onnxruntime": "1.31.0",
+          "pocket-tts": null,
+          "qwen-tts": null,
+          "faster-whisper": null
+        },
+        "image_digest": "sha256:48c681c67deff15018597d552983b83ddf2233403ecc3d16d6cec7d368b093b6",
+        "image_digest_source": "operator"
+      },
+      "metrics": {
+        "cold_wall_sec": {
+          "count": 10,
+          "median": 5.6753103004994045,
+          "min": 4.071750947005057,
+          "max": 10.335529997995764
+        },
+        "audio_duration_sec": {
+          "count": 10,
+          "median": 3.4133333333333336,
+          "min": 1.9413333333333334,
+          "max": 12.309333333333333
+        },
+        "cold_wall_rtf": {
+          "count": 10,
+          "median": 1.6553347375481309,
+          "min": 0.8306966258936034,
+          "max": 2.130755765110335
+        },
+        "sampled_group_rss_peak_bytes": {
+          "count": 10,
+          "median": 528119808.0,
+          "min": 506245120,
+          "max": 672395264
+        }
+      },
+      "backend_specific_timings": {
+        "timings.total_seconds": {
+          "count": 10,
+          "median": 4.905396850997931,
+          "min": 3.3797937449999154,
+          "max": 9.610172164000687
+        },
+        "backend_metadata.generation_seconds": {
+          "count": 10,
+          "median": 2.455716342497908,
+          "min": 1.4241685399974813,
+          "max": 7.6456482089997735
+        },
+        "backend_metadata.model_load_seconds": {
+          "count": 10,
+          "median": 0.8435383764990547,
+          "min": 0.7652418409998063,
+          "max": 1.285678911001014
+        },
+        "backend_metadata.load_seconds": {
+          "count": 10,
+          "median": 0.8435383764990547,
+          "min": 0.7652418409998063,
+          "max": 1.285678911001014
+        }
+      },
+      "asset_manifest": {
+        "access": "Public upstream release; local engineering qualification only",
+        "backend": "kokoro",
+        "checkpoint": "Kokoro-82M-v1.0-onnx-fp32",
+        "files": [
+          {
+            "bytes": 325532387,
+            "origin": "https://github.com/thewh1teagle/kokoro-onnx/releases/download/model-files-v1.0/kokoro-v1.0.onnx",
+            "path": "model.onnx",
+            "revision": "model-files-v1.0",
+            "sha256": "7d5df8ecf7d4b1878015a32686053fd0eebe2bc377234608764cc0ef3636a6c5"
+          },
+          {
+            "bytes": 28214398,
+            "origin": "https://github.com/thewh1teagle/kokoro-onnx/releases/download/model-files-v1.0/voices-v1.0.bin",
+            "path": "voices.bin",
+            "revision": "model-files-v1.0",
+            "sha256": "bca610b8308e8d99f32e6fe4197e7ec01679264efed0cac9140fe9c29f1fbf7d"
+          }
+        ],
+        "language": "fr",
+        "license": "Apache-2.0 weights; MIT kokoro-onnx runtime",
+        "revision": "model-files-v1.0",
+        "schema_version": 1,
+        "versions": {
+          "espeakng-loader": "0.2.4",
+          "kokoro-onnx": "0.6.1",
+          "onnxruntime": "1.31.0",
+          "phonemizer": "3.4.0"
+        }
+      },
+      "attempts": [
+        {
+          "id": "fr-01",
+          "repeat": 1,
+          "backend": "kokoro",
+          "status": "ok",
+          "wall_sec": 5.7760085629997775,
+          "duration_sec": 3.4133333333333336,
+          "rtf_wall": 1.692190008691341,
+          "sampled_group_rss_peak_bytes": 528658432,
+          "rss_samples": 114,
+          "sample_rate": 24000,
+          "channels": 1,
+          "wav_sha256": "cee920f67af241373ed0391eff2dcbb65d374dc9eb690ac1123ab066272ecb27",
+          "backend_metadata": {
+            "backend": "kokoro",
+            "runtime": "onnxruntime",
+            "providers": [
+              "CPUExecutionProvider"
+            ],
+            "cpu_mem_arena": false,
+            "checkpoint": "Kokoro-82M-v1.0-onnx-fp32",
+            "text_submitted": "Bonjour, je vous présente le projet de rénovation du quartier.",
+            "preset": "ff_siwis",
+            "generation_seconds": 2.310720219000359,
+            "model_load_seconds": 1.2325918639980955,
+            "load_seconds": 1.2325918639980955,
+            "model_reused": false,
+            "request_index": 1
+          }
+        },
+        {
+          "id": "fr-01",
+          "repeat": 2,
+          "backend": "kokoro",
+          "status": "ok",
+          "wall_sec": 5.524409911995463,
+          "duration_sec": 3.4133333333333336,
+          "rtf_wall": 1.6184794664049207,
+          "sampled_group_rss_peak_bytes": 527581184,
+          "rss_samples": 109,
+          "sample_rate": 24000,
+          "channels": 1,
+          "wav_sha256": "cee920f67af241373ed0391eff2dcbb65d374dc9eb690ac1123ab066272ecb27",
+          "backend_metadata": {
+            "backend": "kokoro",
+            "runtime": "onnxruntime",
+            "providers": [
+              "CPUExecutionProvider"
+            ],
+            "cpu_mem_arena": false,
+            "checkpoint": "Kokoro-82M-v1.0-onnx-fp32",
+            "text_submitted": "Bonjour, je vous présente le projet de rénovation du quartier.",
+            "preset": "ff_siwis",
+            "generation_seconds": 2.5999488789966563,
+            "model_load_seconds": 0.8550833109984524,
+            "load_seconds": 0.8550833109984524,
+            "model_reused": false,
+            "request_index": 1
+          }
+        },
+        {
+          "id": "fr-03",
+          "repeat": 1,
+          "backend": "kokoro",
+          "status": "ok",
+          "wall_sec": 6.4087554840007215,
+          "duration_sec": 4.736,
+          "rtf_wall": 1.3532000599663687,
+          "sampled_group_rss_peak_bytes": 553615360,
+          "rss_samples": 126,
+          "sample_rate": 24000,
+          "channels": 1,
+          "wav_sha256": "9265aae49a55b6e2f615169a9c7df38870cfb8d9a3ab8535a490793ae13cf66b",
+          "backend_metadata": {
+            "backend": "kokoro",
+            "runtime": "onnxruntime",
+            "providers": [
+              "CPUExecutionProvider"
+            ],
+            "cpu_mem_arena": false,
+            "checkpoint": "Kokoro-82M-v1.0-onnx-fp32",
+            "text_submitted": "Le budget est de 1 250,50 euros, sans dépasser ce montant.",
+            "preset": "ff_siwis",
+            "generation_seconds": 3.3404957599996123,
+            "model_load_seconds": 1.043771515993285,
+            "load_seconds": 1.043771515993285,
+            "model_reused": false,
+            "request_index": 1
+          }
+        },
+        {
+          "id": "fr-03",
+          "repeat": 2,
+          "backend": "kokoro",
+          "status": "ok",
+          "wall_sec": 5.958840510997106,
+          "duration_sec": 4.736,
+          "rtf_wall": 1.258201121409862,
+          "sampled_group_rss_peak_bytes": 548577280,
+          "rss_samples": 117,
+          "sample_rate": 24000,
+          "channels": 1,
+          "wav_sha256": "9265aae49a55b6e2f615169a9c7df38870cfb8d9a3ab8535a490793ae13cf66b",
+          "backend_metadata": {
+            "backend": "kokoro",
+            "runtime": "onnxruntime",
+            "providers": [
+              "CPUExecutionProvider"
+            ],
+            "cpu_mem_arena": false,
+            "checkpoint": "Kokoro-82M-v1.0-onnx-fp32",
+            "text_submitted": "Le budget est de 1 250,50 euros, sans dépasser ce montant.",
+            "preset": "ff_siwis",
+            "generation_seconds": 3.1440694109987817,
+            "model_load_seconds": 0.8191930660032085,
+            "load_seconds": 0.8191930660032085,
+            "model_reused": false,
+            "request_index": 1
+          }
+        },
+        {
+          "id": "fr-07",
+          "repeat": 1,
+          "backend": "kokoro",
+          "status": "ok",
+          "wall_sec": 5.242725609001354,
+          "duration_sec": 3.050666666666667,
+          "rtf_wall": 1.7185507896639054,
+          "sampled_group_rss_peak_bytes": 516657152,
+          "rss_samples": 104,
+          "sample_rate": 24000,
+          "channels": 1,
+          "wav_sha256": "922166536487182a2fd877e5b986078c473682c5ab98311e8b61360fa85e8191",
+          "backend_metadata": {
+            "backend": "kokoro",
+            "runtime": "onnxruntime",
+            "providers": [
+              "CPUExecutionProvider"
+            ],
+            "cpu_mem_arena": false,
+            "checkpoint": "Kokoro-82M-v1.0-onnx-fp32",
+            "text_submitted": "Énéal accompagne les équipes d’Édifice dans cette mission.",
+            "preset": "ff_siwis",
+            "generation_seconds": 2.31148380599916,
+            "model_load_seconds": 0.8466855709993979,
+            "load_seconds": 0.8466855709993979,
+            "model_reused": false,
+            "request_index": 1
+          }
+        },
+        {
+          "id": "fr-07",
+          "repeat": 2,
+          "backend": "kokoro",
+          "status": "ok",
+          "wall_sec": 5.574612037999032,
+          "duration_sec": 3.050666666666667,
+          "rtf_wall": 1.8273422327356965,
+          "sampled_group_rss_peak_bytes": 521560064,
+          "rss_samples": 110,
+          "sample_rate": 24000,
+          "channels": 1,
+          "wav_sha256": "922166536487182a2fd877e5b986078c473682c5ab98311e8b61360fa85e8191",
+          "backend_metadata": {
+            "backend": "kokoro",
+            "runtime": "onnxruntime",
+            "providers": [
+              "CPUExecutionProvider"
+            ],
+            "cpu_mem_arena": false,
+            "checkpoint": "Kokoro-82M-v1.0-onnx-fp32",
+            "text_submitted": "Énéal accompagne les équipes d’Édifice dans cette mission.",
+            "preset": "ff_siwis",
+            "generation_seconds": 2.1309748939966084,
+            "model_load_seconds": 1.285678911001014,
+            "load_seconds": 1.285678911001014,
+            "model_reused": false,
+            "request_index": 1
+          }
+        },
+        {
+          "id": "fr-10",
+          "repeat": 1,
+          "backend": "kokoro",
+          "status": "ok",
+          "wall_sec": 4.071750947005057,
+          "duration_sec": 1.9413333333333334,
+          "rtf_wall": 2.097399182866616,
+          "sampled_group_rss_peak_bytes": 506986496,
+          "rss_samples": 80,
+          "sample_rate": 24000,
+          "channels": 1,
+          "wav_sha256": "688a9d4027578d6451ba55c654cc1a193b5258dffaf4025fff81a890b12aa722",
+          "backend_metadata": {
+            "backend": "kokoro",
+            "runtime": "onnxruntime",
+            "providers": [
+              "CPUExecutionProvider"
+            ],
+            "cpu_mem_arena": false,
+            "checkpoint": "Kokoro-82M-v1.0-onnx-fp32",
+            "text_submitted": "Je ne souhaite pas annuler le rendez-vous.",
+            "preset": "ff_siwis",
+            "generation_seconds": 1.4241685399974813,
+            "model_load_seconds": 0.7787373329992988,
+            "load_seconds": 0.7787373329992988,
+            "model_reused": false,
+            "request_index": 1
+          }
+        },
+        {
+          "id": "fr-10",
+          "repeat": 2,
+          "backend": "kokoro",
+          "status": "ok",
+          "wall_sec": 4.136507192000863,
+          "duration_sec": 1.9413333333333334,
+          "rtf_wall": 2.130755765110335,
+          "sampled_group_rss_peak_bytes": 506245120,
+          "rss_samples": 82,
+          "sample_rate": 24000,
+          "channels": 1,
+          "wav_sha256": "688a9d4027578d6451ba55c654cc1a193b5258dffaf4025fff81a890b12aa722",
+          "backend_metadata": {
+            "backend": "kokoro",
+            "runtime": "onnxruntime",
+            "providers": [
+              "CPUExecutionProvider"
+            ],
+            "cpu_mem_arena": false,
+            "checkpoint": "Kokoro-82M-v1.0-onnx-fp32",
+            "text_submitted": "Je ne souhaite pas annuler le rendez-vous.",
+            "preset": "ff_siwis",
+            "generation_seconds": 1.4534518360014772,
+            "model_load_seconds": 0.7742397629990592,
+            "load_seconds": 0.7742397629990592,
+            "model_reused": false,
+            "request_index": 1
+          }
+        },
+        {
+          "id": "fr-paragraph-3",
+          "repeat": 1,
+          "backend": "kokoro",
+          "status": "ok",
+          "wall_sec": 10.225321666999662,
+          "duration_sec": 12.309333333333333,
+          "rtf_wall": 0.8306966258936034,
+          "sampled_group_rss_peak_bytes": 672395264,
+          "rss_samples": 201,
+          "sample_rate": 24000,
+          "channels": 1,
+          "wav_sha256": "f414b440efdfd63a9b7fa7a7e4238b16605b399ffbddc7beab495370a578413e",
+          "backend_metadata": {
+            "backend": "kokoro",
+            "runtime": "onnxruntime",
+            "providers": [
+              "CPUExecutionProvider"
+            ],
+            "cpu_mem_arena": false,
+            "checkpoint": "Kokoro-82M-v1.0-onnx-fp32",
+            "text_submitted": "La SAS emploie une équipe dédiée à l’IA et à la recherche. Je ne souhaite pas annuler le rendez-vous. Il reste exactement trois dossiers, et non trente. Le numéro de dossier est A-2047, version B.",
+            "preset": "ff_siwis",
+            "generation_seconds": 7.6456482089997735,
+            "model_load_seconds": 0.7652418409998063,
+            "load_seconds": 0.7652418409998063,
+            "model_reused": false,
+            "request_index": 1
+          }
+        },
+        {
+          "id": "fr-paragraph-3",
+          "repeat": 2,
+          "backend": "kokoro",
+          "status": "ok",
+          "wall_sec": 10.335529997995764,
+          "duration_sec": 12.309333333333333,
+          "rtf_wall": 0.8396498590226195,
+          "sampled_group_rss_peak_bytes": 669691904,
+          "rss_samples": 203,
+          "sample_rate": 24000,
+          "channels": 1,
+          "wav_sha256": "f414b440efdfd63a9b7fa7a7e4238b16605b399ffbddc7beab495370a578413e",
+          "backend_metadata": {
+            "backend": "kokoro",
+            "runtime": "onnxruntime",
+            "providers": [
+              "CPUExecutionProvider"
+            ],
+            "cpu_mem_arena": false,
+            "checkpoint": "Kokoro-82M-v1.0-onnx-fp32",
+            "text_submitted": "La SAS emploie une équipe dédiée à l’IA et à la recherche. Je ne souhaite pas annuler le rendez-vous. Il reste exactement trois dossiers, et non trente. Le numéro de dossier est A-2047, version B.",
+            "preset": "ff_siwis",
+            "generation_seconds": 7.577024302001519,
+            "model_load_seconds": 0.8403911819987115,
+            "load_seconds": 0.8403911819987115,
+            "model_reused": false,
+            "request_index": 1
+          }
+        }
+      ]
+    },
+    "pocket-tts": {
+      "image": "sha256:793f998d30407c1a7b2172fb2ef80563c35cfd979784387303e1a1de4b25ef42",
+      "container": {
+        "exit_code": 0,
+        "oom_killed": false,
+        "network": "none",
+        "memory_bytes": 4294967296,
+        "nano_cpus": 2000000000
+      },
+      "environment": {
+        "platform": "Linux-7.2.12-orbstack-00394-gbecdd6130068-x86_64-with-glibc2.36",
+        "machine": "x86_64",
+        "python": "3.11.17",
+        "logical_cpus": 12,
+        "cpu_model": "Intel(R) Core(TM) i7-8700B CPU @ 3.20GHz",
+        "cgroup_cpu_max": "200000 100000",
+        "cgroup_memory_max": "4294967296",
+        "cgroup_cpuset": "0-11",
+        "meminfo": "MemTotal:       16448292 kB\nMemFree:        14616292 kB\nMemAvailable:   15133036 kB\nBuffers:             140 kB\nCached:           672340 kB\nSwapCached:            0 kB\nActive:           587884 kB\nInactive:         538396 kB\nActive(anon):     325752 kB\nInactive(anon):   353032 kB\nActive(file):     262132 kB\nInactive(file):   185364 kB\nUnevictable:           0 kB\nMlocked:               0 kB\nSwapTotal:      17496860 kB\nSwapFree:       17496860 kB\nDirty:               392 kB\nWriteback:           240 kB\nAnonPages:        434116 kB\nMapped:            59912 kB\nShmem:            224852 kB\nKReclaimable:     406000 kB\nSlab:             499280 kB\nSReclaimable:     406000 kB\nSUnreclaim:        93280 kB\nKernelStack:        7376 kB\nPageTables:         6328 kB\nSecPageTables:         0 kB\nNFS_Unstable:          0 kB\nBounce:                0 kB\nWritebackTmp:          0 kB\nCommitLimit:    25721004 kB\nCommitted_AS:    2482132 kB\nVmallocTotal:   34359738367 kB\nVmallocUsed:       71448 kB\nVmallocChunk:          0 kB\nPercpu:             8256 kB\nAnonHugePages:         0 kB\nShmemHugePages:        0 kB\nShmemPmdMapped:        0 kB\nFileHugePages:         0 kB\nFilePmdMapped:         0 kB\nBalloon:               0 kB\nGPUActive:             0 kB\nGPUReclaim:            0 kB\nDirectMap4k:       22528 kB\nDirectMap2M:     5220352 kB\nDirectMap1G:    11534336 kB",
+        "packages": {
+          "numpy": "2.4.6",
+          "torch": "2.10.0+cpu",
+          "torchaudio": null,
+          "soundfile": "0.12.1",
+          "kokoro": null,
+          "onnxruntime": null,
+          "pocket-tts": "3.3.0",
+          "qwen-tts": null,
+          "faster-whisper": null
+        },
+        "image_digest": "sha256:793f998d30407c1a7b2172fb2ef80563c35cfd979784387303e1a1de4b25ef42",
+        "image_digest_source": "operator"
+      },
+      "metrics": {
+        "cold_wall_sec": {
+          "count": 10,
+          "median": 39.51048650550001,
+          "min": 29.717484645996592,
+          "max": 101.13336669900309
+        },
+        "audio_duration_sec": {
+          "count": 10,
+          "median": 2.6799999999999997,
+          "min": 1.68,
+          "max": 9.28
+        },
+        "cold_wall_rtf": {
+          "count": 10,
+          "median": 15.137033056458147,
+          "min": 10.885180823451451,
+          "max": 17.688978955950354
+        },
+        "sampled_group_rss_peak_bytes": {
+          "count": 10,
+          "median": 1117083648.0,
+          "min": 1102909440,
+          "max": 1118584832
+        }
+      },
+      "backend_specific_timings": {
+        "timings.total_seconds": {
+          "count": 10,
+          "median": 38.31832364750153,
+          "min": 28.560028343999875,
+          "max": 99.97777559699898
+        },
+        "backend_metadata.model_load_seconds": {
+          "count": 10,
+          "median": 1.475644262500282,
+          "min": 1.0241604639959405,
+          "max": 1.6138404849989456
+        },
+        "backend_metadata.load_seconds": {
+          "count": 10,
+          "median": 1.475644262500282,
+          "min": 1.0241604639959405,
+          "max": 1.6138404849989456
+        },
+        "backend_metadata.reference_snapshot_seconds": {
+          "count": 10,
+          "median": 0.0068519345004460774,
+          "min": 0.002123217003827449,
+          "max": 0.007083347001753282
+        },
+        "backend_metadata.conditioning_seconds": {
+          "count": 10,
+          "median": 3.3976879410001857,
+          "min": 3.085883448999084,
+          "max": 3.4795454810009687
+        },
+        "backend_metadata.generation_seconds": {
+          "count": 10,
+          "median": 25.648224141499668,
+          "min": 16.612744719997863,
+          "max": 87.34711614599655
+        }
+      },
+      "asset_manifest": {
+        "access": "HF gated access authorized by operator",
+        "backend": "pocket-tts",
+        "checkpoint": "pocket-tts-fr-3.3.0",
+        "files": [
+          {
+            "bytes": 219029196,
+            "origin": "https://huggingface.co/kyutai/pocket-tts/resolve/d0ebc5deb50bc6b225f686782f124dd37e2dca0a/languages/french/model.safetensors",
+            "path": "model.safetensors",
+            "revision": "d0ebc5deb50bc6b225f686782f124dd37e2dca0a",
+            "sha256": "dd5fe98f5577ecfd56db9af8057cd05fe20cbc91560042aec8a56cfb01c34995"
+          },
+          {
+            "bytes": 246403,
+            "origin": "https://huggingface.co/kyutai/pocket-tts/resolve/d0ebc5deb50bc6b225f686782f124dd37e2dca0a/languages/french/tokenizer.json",
+            "path": "tokenizer.json",
+            "revision": "d0ebc5deb50bc6b225f686782f124dd37e2dca0a",
+            "sha256": "6211acffe9cb95172f71f0051f18e26ea305b2b32ea00b331ee976551c70887f"
+          },
+          {
+            "bytes": 1036,
+            "origin": "https://files.pythonhosted.org/packages/1e/c0/9bf4453c170bfe15cbe71d9ec7bbd7052bea0275e5c0645f59be373b83ab/pocket_tts-3.3.0-py3-none-any.whl",
+            "path": "config.yaml",
+            "revision": "d0ebc5deb50bc6b225f686782f124dd37e2dca0a",
+            "sha256": "19e672c8edce70d2646d198068287e5712c9ab0c1ec69050f8d6af0dd1e08f61"
+          }
+        ],
+        "language": "fr",
+        "license": "CC-BY-4.0",
+        "revision": "d0ebc5deb50bc6b225f686782f124dd37e2dca0a",
+        "schema_version": 1,
+        "versions": {
+          "pocket-tts": "3.3.0",
+          "tokenizers": "0.23.3",
+          "torch": "2.10.0+cpu"
+        }
+      },
+      "attempts": [
+        {
+          "id": "fr-01",
+          "repeat": 1,
+          "backend": "pocket-tts",
+          "status": "ok",
+          "wall_sec": 40.91949048300012,
+          "duration_sec": 2.8,
+          "rtf_wall": 14.614103743928615,
+          "sampled_group_rss_peak_bytes": 1118199808,
+          "rss_samples": 805,
+          "sample_rate": 24000,
+          "channels": 1,
+          "wav_sha256": "a34e1457960ffef72a06848eccacc7c5f74d6a51379cfe239557b9b8081c3c87",
+          "backend_metadata": {
+            "backend": "pocket-tts",
+            "runtime": "pytorch",
+            "device": "cpu",
+            "checkpoint": "pocket-tts-fr-3.3.0",
+            "reference_sha256": "ca1021790719c2099a10cdb7ce9c2e94a8968fa137d95cb4f6997baea5d48e5b",
+            "text_submitted": "Bonjour, je vous présente le projet de rénovation du quartier.",
+            "seed": 1729,
+            "model_load_seconds": 1.5328252219987917,
+            "load_seconds": 1.5328252219987917,
+            "model_reused": false,
+            "request_index": 1,
+            "reference_state_reused": false,
+            "reference_snapshot_seconds": 0.007025232000160031,
+            "conditioning_seconds": 3.396903941000346,
+            "generation_seconds": 26.636921632998565
+          }
+        },
+        {
+          "id": "fr-01",
+          "repeat": 2,
+          "backend": "pocket-tts",
+          "status": "ok",
+          "wall_sec": 38.101482527999906,
+          "duration_sec": 2.56,
+          "rtf_wall": 14.883391612499963,
+          "sampled_group_rss_peak_bytes": 1109676032,
+          "rss_samples": 750,
+          "sample_rate": 24000,
+          "channels": 1,
+          "wav_sha256": "9c8d9d9c2983cd40cec7a2b55eb4ccaab661485d6868eaddf0d39c249fb2e4b7",
+          "backend_metadata": {
+            "backend": "pocket-tts",
+            "runtime": "pytorch",
+            "device": "cpu",
+            "checkpoint": "pocket-tts-fr-3.3.0",
+            "reference_sha256": "ca1021790719c2099a10cdb7ce9c2e94a8968fa137d95cb4f6997baea5d48e5b",
+            "text_submitted": "Bonjour, je vous présente le projet de rénovation du quartier.",
+            "seed": 1730,
+            "model_load_seconds": 1.1806161350032198,
+            "load_seconds": 1.1806161350032198,
+            "model_reused": false,
+            "request_index": 1,
+            "reference_state_reused": false,
+            "reference_snapshot_seconds": 0.002123217003827449,
+            "conditioning_seconds": 3.1379048960006912,
+            "generation_seconds": 24.65952665000077
+          }
+        },
+        {
+          "id": "fr-03",
+          "repeat": 1,
+          "backend": "pocket-tts",
+          "status": "ok",
+          "wall_sec": 42.215585548998206,
+          "duration_sec": 2.88,
+          "rtf_wall": 14.658189426735488,
+          "sampled_group_rss_peak_bytes": 1118584832,
+          "rss_samples": 830,
+          "sample_rate": 24000,
+          "channels": 1,
+          "wav_sha256": "40da5b37fae6e8fba9feb6f5c2d9be475ccb81aad721e0f086ad4420f2f7e333",
+          "backend_metadata": {
+            "backend": "pocket-tts",
+            "runtime": "pytorch",
+            "device": "cpu",
+            "checkpoint": "pocket-tts-fr-3.3.0",
+            "reference_sha256": "ca1021790719c2099a10cdb7ce9c2e94a8968fa137d95cb4f6997baea5d48e5b",
+            "text_submitted": "Le budget est de 1 250,50 euros, sans dépasser ce montant.",
+            "seed": 1729,
+            "model_load_seconds": 1.4764240099975723,
+            "load_seconds": 1.4764240099975723,
+            "model_reused": false,
+            "request_index": 1,
+            "reference_state_reused": false,
+            "reference_snapshot_seconds": 0.006094657001085579,
+            "conditioning_seconds": 3.3984719410000253,
+            "generation_seconds": 27.391030767998018
+          }
+        },
+        {
+          "id": "fr-03",
+          "repeat": 2,
+          "backend": "pocket-tts",
+          "status": "ok",
+          "wall_sec": 45.964312825999514,
+          "duration_sec": 2.88,
+          "rtf_wall": 15.959830842360942,
+          "sampled_group_rss_peak_bytes": 1102909440,
+          "rss_samples": 904,
+          "sample_rate": 24000,
+          "channels": 1,
+          "wav_sha256": "41a389eff5ad00c378fef151e05ba692d2607d3661e5b97f0f4d87e7a043b9a6",
+          "backend_metadata": {
+            "backend": "pocket-tts",
+            "runtime": "pytorch",
+            "device": "cpu",
+            "checkpoint": "pocket-tts-fr-3.3.0",
+            "reference_sha256": "ca1021790719c2099a10cdb7ce9c2e94a8968fa137d95cb4f6997baea5d48e5b",
+            "text_submitted": "Le budget est de 1 250,50 euros, sans dépasser ce montant.",
+            "seed": 1730,
+            "model_load_seconds": 1.503463834997092,
+            "load_seconds": 1.503463834997092,
+            "model_reused": false,
+            "request_index": 1,
+            "reference_state_reused": false,
+            "reference_snapshot_seconds": 0.006986485001107212,
+            "conditioning_seconds": 3.4703922670014435,
+            "generation_seconds": 27.6348341740013
+          }
+        },
+        {
+          "id": "fr-07",
+          "repeat": 1,
+          "backend": "pocket-tts",
+          "status": "ok",
+          "wall_sec": 36.424329032997775,
+          "duration_sec": 2.32,
+          "rtf_wall": 15.700141824568007,
+          "sampled_group_rss_peak_bytes": 1118199808,
+          "rss_samples": 717,
+          "sample_rate": 24000,
+          "channels": 1,
+          "wav_sha256": "ba46ac23585c9f8f2234f723d2237a632bec5e3b2a60d8ed71261f77b8614aa9",
+          "backend_metadata": {
+            "backend": "pocket-tts",
+            "runtime": "pytorch",
+            "device": "cpu",
+            "checkpoint": "pocket-tts-fr-3.3.0",
+            "reference_sha256": "ca1021790719c2099a10cdb7ce9c2e94a8968fa137d95cb4f6997baea5d48e5b",
+            "text_submitted": "Énéal accompagne les équipes d’Édifice dans cette mission.",
+            "seed": 1729,
+            "model_load_seconds": 1.6138404849989456,
+            "load_seconds": 1.6138404849989456,
+            "model_reused": false,
+            "request_index": 1,
+            "reference_state_reused": false,
+            "reference_snapshot_seconds": 0.007083347001753282,
+            "conditioning_seconds": 3.444431566997082,
+            "generation_seconds": 22.34574117399461
+          }
+        },
+        {
+          "id": "fr-07",
+          "repeat": 2,
+          "backend": "pocket-tts",
+          "status": "ok",
+          "wall_sec": 36.93761880099919,
+          "duration_sec": 2.4,
+          "rtf_wall": 15.39067450041633,
+          "sampled_group_rss_peak_bytes": 1117077504,
+          "rss_samples": 727,
+          "sample_rate": 24000,
+          "channels": 1,
+          "wav_sha256": "01a7d8de81439372b54b2dba3f317b4abf7a3be9f3e799b553802b6416ddfaca",
+          "backend_metadata": {
+            "backend": "pocket-tts",
+            "runtime": "pytorch",
+            "device": "cpu",
+            "checkpoint": "pocket-tts-fr-3.3.0",
+            "reference_sha256": "ca1021790719c2099a10cdb7ce9c2e94a8968fa137d95cb4f6997baea5d48e5b",
+            "text_submitted": "Énéal accompagne les équipes d’Édifice dans cette mission.",
+            "seed": 1730,
+            "model_load_seconds": 1.5386200189968804,
+            "load_seconds": 1.5386200189968804,
+            "model_reused": false,
+            "request_index": 1,
+            "reference_state_reused": false,
+            "reference_snapshot_seconds": 0.006980337006098125,
+            "conditioning_seconds": 3.4795454810009687,
+            "generation_seconds": 23.013406231999397
+          }
+        },
+        {
+          "id": "fr-10",
+          "repeat": 1,
+          "backend": "pocket-tts",
+          "status": "ok",
+          "wall_sec": 30.443408197999815,
+          "duration_sec": 1.84,
+          "rtf_wall": 16.545330542391202,
+          "sampled_group_rss_peak_bytes": 1114750976,
+          "rss_samples": 599,
+          "sample_rate": 24000,
+          "channels": 1,
+          "wav_sha256": "99c54e85b1d8fdc55738829950d5bcabc3da38f88c3fb9285cc93e0f1fb90ab0",
+          "backend_metadata": {
+            "backend": "pocket-tts",
+            "runtime": "pytorch",
+            "device": "cpu",
+            "checkpoint": "pocket-tts-fr-3.3.0",
+            "reference_sha256": "ca1021790719c2099a10cdb7ce9c2e94a8968fa137d95cb4f6997baea5d48e5b",
+            "text_submitted": "Je ne souhaite pas annuler le rendez-vous.",
+            "seed": 1729,
+            "model_load_seconds": 1.0241604639959405,
+            "load_seconds": 1.0241604639959405,
+            "model_reused": false,
+            "request_index": 1,
+            "reference_state_reused": false,
+            "reference_snapshot_seconds": 0.0022185879934113473,
+            "conditioning_seconds": 3.085883448999084,
+            "generation_seconds": 17.848035517003154
+          }
+        },
+        {
+          "id": "fr-10",
+          "repeat": 2,
+          "backend": "pocket-tts",
+          "status": "ok",
+          "wall_sec": 29.717484645996592,
+          "duration_sec": 1.68,
+          "rtf_wall": 17.688978955950354,
+          "sampled_group_rss_peak_bytes": 1108873216,
+          "rss_samples": 585,
+          "sample_rate": 24000,
+          "channels": 1,
+          "wav_sha256": "4f73de994034c0af76514321fa2a03f5c6641680d3eec78fb94e384de72874d5",
+          "backend_metadata": {
+            "backend": "pocket-tts",
+            "runtime": "pytorch",
+            "device": "cpu",
+            "checkpoint": "pocket-tts-fr-3.3.0",
+            "reference_sha256": "ca1021790719c2099a10cdb7ce9c2e94a8968fa137d95cb4f6997baea5d48e5b",
+            "text_submitted": "Je ne souhaite pas annuler le rendez-vous.",
+            "seed": 1730,
+            "model_load_seconds": 1.0552921160051483,
+            "load_seconds": 1.0552921160051483,
+            "model_reused": false,
+            "request_index": 1,
+            "reference_state_reused": false,
+            "reference_snapshot_seconds": 0.00581457199587021,
+            "conditioning_seconds": 3.351598051005567,
+            "generation_seconds": 16.612744719997863
+          }
+        },
+        {
+          "id": "fr-paragraph-3",
+          "repeat": 1,
+          "backend": "pocket-tts",
+          "status": "ok",
+          "wall_sec": 101.13336669900309,
+          "duration_sec": 9.28,
+          "rtf_wall": 10.897992101185679,
+          "sampled_group_rss_peak_bytes": 1117089792,
+          "rss_samples": 1989,
+          "sample_rate": 24000,
+          "channels": 1,
+          "wav_sha256": "23c19bf37add35d4e37c993ee777341262319e4fed205f5d7fe92b2f28c30e74",
+          "backend_metadata": {
+            "backend": "pocket-tts",
+            "runtime": "pytorch",
+            "device": "cpu",
+            "checkpoint": "pocket-tts-fr-3.3.0",
+            "reference_sha256": "ca1021790719c2099a10cdb7ce9c2e94a8968fa137d95cb4f6997baea5d48e5b",
+            "text_submitted": "La SAS emploie une équipe dédiée à l’IA et à la recherche. Je ne souhaite pas annuler le rendez-vous. Il reste exactement trois dossiers, et non trente. Le numéro de dossier est A-2047, version B.",
+            "seed": 1729,
+            "model_load_seconds": 1.4748645150029915,
+            "load_seconds": 1.4748645150029915,
+            "model_reused": false,
+            "request_index": 1,
+            "reference_state_reused": false,
+            "reference_snapshot_seconds": 0.006812393003201578,
+            "conditioning_seconds": 3.4420677269954467,
+            "generation_seconds": 87.34711614599655
+          }
+        },
+        {
+          "id": "fr-paragraph-3",
+          "repeat": 2,
+          "backend": "pocket-tts",
+          "status": "ok",
+          "wall_sec": 98.4020346440011,
+          "duration_sec": 9.04,
+          "rtf_wall": 10.885180823451451,
+          "sampled_group_rss_peak_bytes": 1117212672,
+          "rss_samples": 1934,
+          "sample_rate": 24000,
+          "channels": 1,
+          "wav_sha256": "38fbe7f22b47a44d70665e68d1f096ada338ec4fca919c54dc88f528170a5ce3",
+          "backend_metadata": {
+            "backend": "pocket-tts",
+            "runtime": "pytorch",
+            "device": "cpu",
+            "checkpoint": "pocket-tts-fr-3.3.0",
+            "reference_sha256": "ca1021790719c2099a10cdb7ce9c2e94a8968fa137d95cb4f6997baea5d48e5b",
+            "text_submitted": "La SAS emploie une équipe dédiée à l’IA et à la recherche. Je ne souhaite pas annuler le rendez-vous. Il reste exactement trois dossiers, et non trente. Le numéro de dossier est A-2047, version B.",
+            "seed": 1730,
+            "model_load_seconds": 1.0867661829979625,
+            "load_seconds": 1.0867661829979625,
+            "model_reused": false,
+            "request_index": 1,
+            "reference_state_reused": false,
+            "reference_snapshot_seconds": 0.006891475997690577,
+            "conditioning_seconds": 3.3292605379974702,
+            "generation_seconds": 85.14728631199978
+          }
+        }
+      ]
+    }
+  },
+  "rss_scope": "Sampled owned process-group RSS sum; shared pages may be counted multiple times; sampled lower bound, not container or host peak.",
+  "corpus_sha256": "4e86820d96973821817acf6061bf31def56c1be6adafd6ae0306779d89cc78c5",
+  "utility_sha256": "9e68f34273a4e86eaf5cd7c03ae52cee4626a077b4fac0cd7a091f1bd62bcec4"
+}
