@@ -242,3 +242,20 @@ the RPC can apply; the generic fixture's STOPPED mutation must not overwrite it.
 STOPPED confirmation errors and UNKNOWN replies retain durable observation
 evidence and quarantine without collection or ACK. These remain offline source
 checks, with no installed runtime, release or audio acceptance claim.
+
+### Config metadata validation (r427 source fix)
+
+For the reviewed Base BPE checkpoint, only `config.json`'s root,
+`talker_config`, `speaker_encoder_config`, and
+`talker_config.code_predictor_config` may contain `_name_or_path` metadata,
+and only as the exact empty string. These are upstream `PretrainedConfig`
+objects; the field records provenance rather than selecting an asset. The
+pinned config contains one such field, in the code predictor. Other locations
+retain asset-reference validation. Real `*_path`/`*_file` declarations remain
+nonempty strings naming listed local assets; remote code declarations remain
+refused. Base `vocab.json` is instead a nonempty token-to-nonnegative-integer
+mapping (booleans and containers refused), so token spellings are not loader
+keys. No JSON bytes, model pins, or manifest identity are rewritten.
+
+This source fix requires review, commit and rebuild before a separately
+authorized actual measurement; it supplies no inference or audio qualification.

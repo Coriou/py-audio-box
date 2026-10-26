@@ -53,24 +53,38 @@ def _managed_snapshot(root, manifest, names, caps, owner_uid):
     except ValueError as exc:
         raise Refused('bundle_config') from exc
     if caps.modes != ('custom_voice',) and manifest['execution']['presets']: raise Refused('bundle_capabilities')
-    def inspect(value, key='', directory=''):
+    # PretrainedConfig provenance, not a loader argument. Only the reviewed
+    # Base config's explicit PretrainedConfig nodes may carry an empty value.
+    metadata_nodes = {(), ('talker_config',), ('speaker_encoder_config',),
+                      ('talker_config', 'code_predictor_config')}
+    def inspect(value, key='', directory='', location=(), filename=''):
         if key in ('auto_map', 'custom_pipelines') or key == 'trust_remote_code' and value is not False: raise Refused('remote_code')
+        if (key == '_name_or_path' and filename == 'config.json'
+                and tokenizer_layout == 'base-bpe' and location[:-1] in metadata_nodes):
+            if type(value) is not str or value != '': raise Refused('unlisted_config_path')
+            return
         # Path declarations have one meaning: a nonempty listed local asset.
         # Validate before recursion so containers cannot erase their enclosing key.
         if key.endswith(('_file', '_path')):
             if type(value) is not str or not value.strip(): raise Refused('unlisted_config_path')
             if str(Path(directory)/value) not in names or Path(value).is_absolute() or '..' in Path(value).parts: raise Refused('unlisted_config_path')
         if isinstance(value, dict):
-            for k, v in value.items(): inspect(v, k, directory)
+            for k, v in value.items(): inspect(v, k, directory, location + (k,), filename)
         elif isinstance(value, list):
-            for v in value: inspect(v, key, directory)
+            for v in value: inspect(v, key, directory, location + (None,), filename)
         elif isinstance(value, str):
             if '://' in value: raise Refused('remote_config')
     for name in names:
         if not name.endswith('.json'): continue
         value = json.loads(_read(root/name, 16*1024*1024, owner_uid=owner_uid))
         if type(value) is not dict: raise Refused('bundle_config')
-        inspect(value, directory=str(Path(name).parent) if Path(name).parent != Path('.') else '')
+        if name == 'vocab.json' and tokenizer_layout == 'base-bpe':
+            # BPE token strings are data, including tokens named _path/_file.
+            # Containers, booleans and strings cannot turn this into config.
+            if not value or any(type(v) is not int or v < 0 for v in value.values()):
+                raise Refused('bundle_config')
+        else:
+            inspect(value, directory=str(Path(name).parent) if Path(name).parent != Path('.') else '', filename=name)
         if name.endswith('.safetensors.index.json'):
             weights = value.get('weight_map')
             if type(weights) is not dict or not weights or any(type(v) is not str or str(Path(name).parent/v) not in names or not v.endswith('.safetensors') for v in weights.values()): raise Refused('bundle_config')

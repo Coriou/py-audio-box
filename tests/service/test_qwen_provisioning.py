@@ -16,6 +16,10 @@ from lib.tts_backends.contract import AudioResult
 from lib.tts_backends.assets import verified_bundle
 
 
+# Exact 4494-byte pinned config; no model tensors or ML imports.
+PINNED_BASE_CONFIG = b'{\n  "architectures": [\n    "Qwen3TTSForConditionalGeneration"\n  ],\n  "assistant_token_id": 77091,\n  "im_end_token_id": 151645,\n  "im_start_token_id": 151644,\n  "tts_bos_token_id": 151672,\n  "tts_eos_token_id": 151673,\n  "tts_pad_token_id": 151671,\n  "model_type": "qwen3_tts",\n  "tokenizer_type": "qwen3_tts_tokenizer_12hz",\n  "tts_model_size": "0b6",\n  "tts_model_type": "base",\n  "speaker_encoder_config": {\n    "enc_dim": 1024,\n    "sample_rate": 24000\n  },\n  "talker_config": {\n    "attention_bias": false,\n    "attention_dropout": 0,\n    "code_predictor_config": {\n      "_name_or_path": "",\n      "add_cross_attention": false,\n      "architectures": null,\n      "attention_bias": false,\n      "attention_dropout": 0,\n      "bad_words_ids": null,\n      "begin_suppress_tokens": null,\n      "bos_token_id": null,\n      "chunk_size_feed_forward": 0,\n      "cross_attention_hidden_size": null,\n      "decoder_start_token_id": null,\n      "diversity_penalty": 0.0,\n      "do_sample": false,\n      "early_stopping": false,\n      "encoder_no_repeat_ngram_size": 0,\n      "eos_token_id": null,\n      "exponential_decay_length_penalty": null,\n      "finetuning_task": null,\n      "forced_bos_token_id": null,\n      "forced_eos_token_id": null,\n      "head_dim": 128,\n      "hidden_act": "silu",\n      "hidden_size": 1024,\n      "id2label": {\n        "0": "LABEL_0",\n        "1": "LABEL_1"\n      },\n      "initializer_range": 0.02,\n      "intermediate_size": 3072,\n      "is_decoder": false,\n      "is_encoder_decoder": false,\n      "label2id": {\n        "LABEL_0": 0,\n        "LABEL_1": 1\n      },\n      "layer_types": [\n        "full_attention",\n        "full_attention",\n        "full_attention",\n        "full_attention",\n        "full_attention"\n      ],\n      "length_penalty": 1.0,\n      "max_length": 20,\n      "max_position_embeddings": 65536,\n      "max_window_layers": 28,\n      "min_length": 0,\n      "model_type": "qwen3_tts_talker_code_predictor",\n      "no_repeat_ngram_size": 0,\n      "num_attention_heads": 16,\n      "num_beam_groups": 1,\n      "num_beams": 1,\n      "num_code_groups": 16,\n      "num_hidden_layers": 5,\n      "num_key_value_heads": 8,\n      "num_return_sequences": 1,\n      "output_attentions": false,\n      "output_hidden_states": false,\n      "output_scores": false,\n      "pad_token_id": null,\n      "prefix": null,\n      "problem_type": null,\n      "pruned_heads": {},\n      "remove_invalid_values": false,\n      "repetition_penalty": 1.0,\n      "return_dict": true,\n      "return_dict_in_generate": false,\n      "rms_norm_eps": 1e-06,\n      "rope_scaling": null,\n      "rope_theta": 1000000,\n      "sep_token_id": null,\n      "sliding_window": null,\n      "suppress_tokens": null,\n      "task_specific_params": null,\n      "temperature": 1.0,\n      "tf_legacy_loss": false,\n      "tie_encoder_decoder": false,\n      "tie_word_embeddings": false,\n      "tokenizer_class": null,\n      "top_k": 50,\n      "top_p": 1.0,\n      "dtype": null,\n      "torchscript": false,\n      "typical_p": 1.0,\n      "use_bfloat16": false,\n      "use_cache": true,\n      "use_sliding_window": false,\n      "vocab_size": 2048\n    },\n    "codec_bos_id": 2149,\n    "codec_eos_token_id": 2150,\n    "codec_think_id": 2154,\n    "codec_language_id": {\n        "chinese": 2055,\n        "english": 2050,\n        "german": 2053,\n        "italian": 2070,\n        "portuguese": 2071,\n        "spanish": 2054,\n        "japanese": 2058,\n        "korean": 2064,\n        "french": 2061,\n        "russian": 2069\n    },\n    "codec_nothink_id": 2155,\n    "codec_pad_id": 2148,\n    "codec_think_bos_id": 2156,\n    "codec_think_eos_id": 2157,\n    "spk_id": {\n    },\n    "spk_is_dialect": {\n    },\n    "head_dim": 128,\n    "hidden_act": "silu",\n    "hidden_size": 1024,\n    "initializer_range": 0.02,\n    "intermediate_size": 3072,\n    "max_position_embeddings": 32768,\n    "model_type": "qwen3_tts_talker",\n    "num_attention_heads": 16,\n    "num_code_groups": 16,\n    "num_hidden_layers": 28,\n    "num_key_value_heads": 8,\n    "position_id_per_seconds": 13,\n    "rms_norm_eps": 1e-06,\n    "rope_scaling": {\n      "interleaved": true,\n      "mrope_section": [\n        24,\n        20,\n        20\n      ],\n      "rope_type": "default",\n      "type": "default"\n    },\n    "rope_theta": 1000000,\n    "sliding_window": null,\n    "text_hidden_size": 2048,\n    "text_vocab_size": 151936,\n    "use_cache": true,\n    "use_sliding_window": false,\n    "vocab_size": 3072\n  },\n  "transformers_version": "4.57.3"\n}\n'
+
+
 class QwenProvisioningTests(unittest.TestCase):
     cleanup = existing.ProvisioningTests.cleanup
     run_provision = existing.ProvisioningTests.run_provision
@@ -53,6 +57,51 @@ class QwenProvisioningTests(unittest.TestCase):
                 tts_model_size='0b6',tokenizer_type='qwen3_tts_tokenizer_12hz',
                 architectures=['Qwen3TTSForConditionalGeneration']))})
         self.repin()
+
+    def test_pinned_config_metadata_and_vocabulary_shared_validator(self):
+        self.base_fixture()
+        self.assertEqual(hashlib.sha256(PINNED_BASE_CONFIG).hexdigest(),
+                         '2e714c787c8edb98b05432685cddb634add2de4d4e645f653d68251ef72ba011')
+        self.data['config.json'] = PINNED_BASE_CONFIG
+        self.data['vocab.json'] = manifest_bytes({'_file':2458, '_path':2638,
+                                                'auto_map':5, 'https://token':6})
+        self.repin()
+        bundle = self.run_provision()
+        self.assertEqual((bundle/'config.json').read_bytes(), PINNED_BASE_CONFIG)
+        self.assertEqual(verify_bundle(bundle, manifest_sha256(self.expected),
+                         self.expected['checkpoint'], 'a'*40, 'English')[0], bundle)
+        original = json.loads(PINNED_BASE_CONFIG)
+        def metadata_paths(node, path=()):
+            found = []
+            for key, value in node.items():
+                if key == '_name_or_path': found.append(path + (key,))
+                if type(value) is dict: found.extend(metadata_paths(value, path + (key,)))
+            return found
+        self.assertEqual(metadata_paths(original),
+                         [('talker_config','code_predictor_config','_name_or_path')])
+        for path in ((), ('talker_config',), ('speaker_encoder_config',),
+                     ('talker_config','code_predictor_config')):
+            for value in ('', None, True, 1, {}, [], 'model.safetensors',
+                          'missing.json', '/absolute', '../escape', 'https://remote.invalid/x'):
+                config = copy.deepcopy(original)
+                node = config
+                for key in path: node = node[key]
+                node['_name_or_path'] = value
+                self.data['config.json'] = manifest_bytes(config); self.repin()
+                with self.subTest(path=path, value=value):
+                    if value == '' and type(value) is str: self.run_provision()
+                    else:
+                        with self.assertRaises(Refused): self.run_provision()
+        for changes in ({'unknown': {'_name_or_path':''}},
+                        {'unknown': [{'_name_or_path':''}]}, {'auto_map':{}},
+                        {'trust_remote_code':True}, {'weights_path':''},
+                        {'weights_file':'missing.json'}):
+            self.data['config.json'] = manifest_bytes({**original, **changes}); self.repin()
+            with self.subTest(changes=changes), self.assertRaises(Refused): self.run_provision()
+        self.data['config.json'] = PINNED_BASE_CONFIG
+        for value in (True, None, {}, [], '', 'model.safetensors', 'https://remote.invalid'):
+            self.data['vocab.json'] = manifest_bytes({'_path':value}); self.repin()
+            with self.subTest(vocab=value), self.assertRaises(Refused): self.run_provision()
 
     def test_base_descriptor_layout_is_explicit(self):
         from service.provisioning import validate_expected
