@@ -3256,7 +3256,7 @@ def _installed_detached_source(state, journal, *, family=None):
             retained_assets.add(row['name'])
         elif (row['owner'] is None or (regular and links!=1) or
                 not (row['namespace']=='owners' or row['namespace'] in ('internal_staging','worker_staging') or row['name']=='output.wav' or
-                     (public['scope']==ip.POCKET_V2_SCOPE and
+                     (public['scope'] in (ip.POCKET_V2_SCOPE, ip.QWEN_SCOPE) and
                       _installed_prepared_inventory(row,result[3],owners)))):
             raise ValueError('installed_history_inventory_owner')
     if retained_assets!=set(assets)|set(refs): raise ValueError('installed_history_inventory_coverage')
@@ -3966,10 +3966,11 @@ def installed_startup_read(root, configuration, gate, hello, incarnation, *, pol
     from service.entrypoint import projection
     ip.require(policy)
     from service import installed_pocket_daemon as pd
-    pocket_daemon = family is pd.FAMILY
+    from service import installed_qwen_daemon as qd
+    pocket_daemon = family in (pd.FAMILY, qd.FAMILY)
     if pocket_daemon:
-        if policy is not ip.POCKET_SPLIT or launch_policy != pd.LAUNCH: raise ValueError('installed_explicit_launch_policy')
-        pd.configuration(configuration)
+        if policy is not ip.family_policy(family) or launch_policy != pd.launch(family): raise ValueError('installed_explicit_launch_policy')
+        ip.family_configuration(configuration, family)
     elif family is not None:
         from service import installed_export as ex
         if family is not ex.FAMILY or policy is not ip.EXPORT_SPLIT or launch_policy!=ex.LAUNCH:
@@ -3980,7 +3981,7 @@ def installed_startup_read(root, configuration, gate, hello, incarnation, *, pol
         raise ValueError('installed_explicit_launch_policy')
     projection(gate, family=family)
     from service import daemon_volumes as dv
-    if launch_policy not in ((pd.LAUNCH,) if pocket_daemon else (None,dv.POLICY)) or (gate.get('launch_policy') != launch_policy):
+    if launch_policy not in ((pd.launch(family),) if pocket_daemon else (None,dv.POLICY)) or (gate.get('launch_policy') != launch_policy):
         raise ValueError('installed_explicit_launch_policy')
     closed(incarnation,'start_ticks pid_namespace cgroup')
     if (any(type(incarnation[k]) is not int or incarnation[k] < 1 for k in ('start_ticks','pid_namespace')) or

@@ -46,7 +46,8 @@ def gate_projection(value, *, family=None, configuration=None, binding=None, pub
     for role in ('control','worker'): dv.local(observation['local'][role],role,family=family)
     from service.host_install import _registration_hello
     _registration_hello(observation['hello'],r,family=family if export or configuration is not None else None,configuration=configuration)
-    if export or (family is pd.FAMILY and public is not None):
+    from service import installed_qwen_daemon as qd
+    if export or (family in (pd.FAMILY, qd.FAMILY) and public is not None):
         ip.family_installation(public, family)
         if (digest(configuration)!=value['configuration_digest'] or digest(public)!=value['enrollment_digest'] or
                 ex._encoded(public['configuration'])!=ex._encoded(configuration)):
@@ -60,7 +61,8 @@ def child(kind, request, descriptors, *, family=None):
     from service import installed_export as ex
     from service import installed_pocket_daemon as pd
     pd.require(family)
-    entry='pocket_container_entry' if family is pd.FAMILY else 'export_container_entry' if family is ex.FAMILY else 'container_entry'
+    from service import installed_qwen_daemon as qd
+    entry='qwen_container_entry' if family is qd.FAMILY else 'pocket_container_entry' if family is pd.FAMILY else 'export_container_entry' if family is ex.FAMILY else 'container_entry'
     if kind not in ('core','hello','writer'): raise ValueError('daemon_child_kind')
     raw=encoded(request)
     if len(raw)>65536: raise ValueError('daemon_child_budget')
@@ -81,11 +83,12 @@ class Helper:
         from service import installed_export as ex
         from service import installed_pocket_daemon as pd
         pd.require(family)
-        self.family=family; self.export=family is ex.FAMILY; self.pocket=family is pd.FAMILY
+        from service import installed_qwen_daemon as qd
+        self.family=family; self.export=family is ex.FAMILY; self.pocket=family in (pd.FAMILY, qd.FAMILY)
         self.policy=pd.launch(family)
         self.evidence=ex.EVIDENCE if self.export else dv.EVIDENCE
         self.config=ip.family_configuration(request['configuration'],family); self.b=dv.binding(request['binding'],family=family)
-        if self.config['ownership_policy']!=(ex.POLICY if self.export else ip.POCKET_V2_POLICY if self.pocket else ip.POLICY) or digest(self.config)!=self.b['configuration_digest']:
+        if self.config['ownership_policy']!=(ex.POLICY if self.export else qd.POLICY if family is qd.FAMILY else pd.POLICY if self.pocket else ip.POLICY) or digest(self.config)!=self.b['configuration_digest']:
             raise ValueError('daemon_kokoro_configuration_required')
         if (self.b['cpu']['worker']<max(c['execution']['descriptor']['threads'] for c in self.config['contexts'].values())*10**9 or
                 any(t['bytes']>self.config['budget']['ram_bytes'] for t in self.b['tmpfs'].values())):
@@ -245,7 +248,7 @@ class Helper:
 
     def input_import(self):
         # Manifest validation is shared with client; source paths never enter helper.
-        entries=manifest([dict(e,source='unused') for e in self.manifest])
+        entries=manifest([dict(e,source='unused') for e in self.manifest],family=self.family)
         self.write('import-intent.json',dict(files=[{k:v for k,v in e.items() if k!='source'} for e in entries]))
         for role in ('models','config','credential'):
             fd=self.fds[role]; s=os.fstat(fd)
@@ -634,4 +637,9 @@ def export_main():
 
 def pocket_main():
     from service.installed_pocket_daemon import FAMILY
+    return main(family=FAMILY)
+
+
+def qwen_main():
+    from service.installed_qwen_daemon import FAMILY
     return main(family=FAMILY)

@@ -160,3 +160,34 @@ def current_native_hardware(spec, inventory, *, now=None):
             raise ValueError()
     except (StopIteration, ValueError, TypeError):
         raise Refused('stale_or_unavailable_device') from None
+
+
+def installed_cpu_hardware(spec, inventory, *, family):
+    """Live CPU corroboration separate from immutable recorded probe timestamp.
+
+    Only the explicitly selected installed family can use this rule. No history
+    bytes or frozen hardware identity are renewed by this observation.
+    """
+    from service import installed_qwen_daemon as qd
+    if family is not qd.FAMILY: raise Refused('explicit_installed_family_required')
+    qd.validate_spec(spec)
+    return observed_cpu_hardware(spec, inventory)
+
+
+def observed_cpu_hardware(spec, inventory):
+    """Worker-local CPU observation; caller owns explicit installed permission."""
+    import os
+    import sys
+    from worker.hardware import DeviceFamily
+    from worker.runtime_protocol import managed_qwen_cpu
+    if not managed_qwen_cpu(spec) or (spec.dtype,spec.attention) != ('float32','sdpa'):
+        raise Refused('installed_cpu_execution_required')
+    inventory_from_wire(inventory_wire(inventory))
+    if (sys.platform != 'linux' or inventory.host.system != 'linux' or
+            inventory.host.deployment != 'docker'):
+        raise Refused('installed_cpu_topology')
+    devices=[d for d in inventory.devices if d.family == DeviceFamily.CPU and d.index == 0]
+    if len(devices)!=1 or not devices[0].supported or not devices[0].available:
+        raise Refused('stale_or_unavailable_device')
+    if len(os.sched_getaffinity(0)) < spec.threads:
+        raise Refused('stale_or_unavailable_device')

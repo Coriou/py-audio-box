@@ -70,3 +70,8 @@ def read_export_control():
 def read_pocket_control():
     from service.installed_pocket_daemon import FAMILY
     return read_control(family=FAMILY)
+
+
+def read_qwen_control():
+    from service.installed_qwen_daemon import FAMILY
+    return read_control(family=FAMILY)

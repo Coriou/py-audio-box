@@ -54,6 +54,10 @@ class _ThreadResult:
 
 def projection(value, *, family=None):
     from service import installed_pocket_daemon as pd
+    from service import installed_qwen_daemon as qd
+    if family is qd.FAMILY:
+        from service.daemon_helper import gate_projection
+        return gate_projection(value, family=family)
     if family is pd.FAMILY:
         from service.daemon_helper import gate_projection
         return gate_projection(value, family=family)
@@ -395,6 +399,8 @@ def create_installed_app(*, configuration_file, credential_file, root='/control/
     else:
         config = installed_configuration(configuration_file, policy=ip.SPLIT)
         config = ip.family_configuration(config, family)
+        from service import installed_qwen_daemon as qd
+        if ip.qwen(config) and family is not qd.FAMILY: raise ValueError('explicit_qwen_daemon_required')
         kokoro = config
     credentials = installed_credentials(credential_file, config['contexts'])
     if family is ex.FAMILY:
@@ -727,4 +733,21 @@ def publish_pocket(raw):
 
 def pocket_launch_status():
     from service.installed_pocket_daemon import FAMILY
+    return launch_status(family=FAMILY)
+
+
+def daemon_qwen_main():
+    from service.installed_qwen_daemon import FAMILY, LAUNCH
+    return installed_main(launch_policy=LAUNCH, family=FAMILY)
+
+
+
+def publish_qwen(raw):
+    from service.installed_qwen_daemon import FAMILY
+    return publish(raw, family=FAMILY)
+
+
+
+def qwen_launch_status():
+    from service.installed_qwen_daemon import FAMILY
     return launch_status(family=FAMILY)

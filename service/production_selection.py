@@ -274,7 +274,16 @@ def discovery(dispatcher):
     inventory = (composition.inventory if isinstance(composition, ContextComposition) else
                  getattr(composition, '_inventory', None))
     age = composition.max_age_seconds if isinstance(composition, ContextComposition) else 300
-    if hasattr(dispatcher.runtime, 'cached_availability'):
+    from service import installed_qwen_daemon as qd
+    installed_cpu = getattr(composition, 'installed_family', None) is qd.FAMILY
+    if installed_cpu:
+        try:
+            for raw in composition._contexts.values():
+                import json
+                dispatcher.runtime.check_availability(json.loads(raw))
+        except (ValueError, RuntimeError, OSError):
+            inventory = HardwareInventory(inventory.host, ())
+    elif hasattr(dispatcher.runtime, 'cached_availability'):
         inventory = dispatcher.runtime.cached_availability()
         if inventory is None and getattr(composition, '_inventory', None) is not None:
             inventory = HardwareInventory(composition._inventory.host, ())

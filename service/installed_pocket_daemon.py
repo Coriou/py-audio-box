@@ -39,7 +39,8 @@ def installation(value):
 
 
 def require(family):
-    if family is None or family is FAMILY: return
+    from service import installed_qwen_daemon as qd
+    if family is None or family is FAMILY or family is qd.FAMILY: return
     from service import installed_export as ex
     if family is not ex.FAMILY:
         raise ValueError('explicit_installed_family_required')
@@ -49,13 +50,16 @@ def launch(family):
     from service import daemon_volumes as dv
     if family is None: return dv.POLICY
     if family is FAMILY: return LAUNCH
+    from service import installed_qwen_daemon as qd
+    if family is qd.FAMILY: return qd.LAUNCH
     from service import installed_export as ex
     require(family)
     return ex.LAUNCH
 
 
 def is_export(family):
-    if family is None or family is FAMILY: return False
+    from service import installed_qwen_daemon as qd
+    if family is None or family is FAMILY or family is qd.FAMILY: return False
     from service import installed_export as ex
     if family is not ex.FAMILY: raise ValueError('explicit_installed_family_required')
     return True

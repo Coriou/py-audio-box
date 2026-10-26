@@ -31,14 +31,14 @@ def remove_empty(stage, child_uid, *, policy=None, managed_namespace=False):
             type(child_uid) is not int or not 20000 <= child_uid < 20000+64):
         raise ConditioningRefused('conditioning_allocation')
     from service import install_policy as ip
-    if policy is not None and policy is not ip.POCKET_SPLIT:
+    if policy is not None and policy is not ip.POCKET_SPLIT and policy is not ip.QWEN_SPLIT:
         raise ConditioningRefused('conditioning_policy')
     flags = os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC
     # Linux O_PATH permits traversal of mode1733 without directory-read access.
     root = os.open('/staging', os.O_PATH | flags)
     try:
         root_stat = os.fstat(root)
-        _directory(root_stat, *(ip.expectation(policy, 'staging', directory=True) if policy is ip.POCKET_SPLIT else (0, 0, 0o1733)))
+        _directory(root_stat, *(ip.expectation(policy, 'staging', directory=True) if policy in (ip.POCKET_SPLIT, ip.QWEN_SPLIT) else (0, 0, 0o1733)))
         def root_bound():
             if _identity(os.stat('/staging', follow_symlinks=False)) != _identity(root_stat):
                 raise ConditioningRefused('conditioning_root_changed')
@@ -80,9 +80,9 @@ def main(*, _managed_namespace=False):
     from service import install_policy as ip
     policy = None
     if len(sys.argv) == 4:
-        if sys.argv[3] != ip.POCKET_V2_POLICY:
+        if sys.argv[3] not in (ip.POCKET_V2_POLICY, ip.QWEN_POLICY):
             raise ConditioningRefused('conditioning_policy')
-        policy = ip.POCKET_SPLIT
+        policy = ip.QWEN_SPLIT if sys.argv[3] == ip.QWEN_POLICY else ip.POCKET_SPLIT
     remove_empty(sys.argv[1], uid, policy=policy, **(dict(managed_namespace=True) if _managed_namespace else {}))
 
 

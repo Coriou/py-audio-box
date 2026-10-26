@@ -35,7 +35,10 @@ def run_generation(connection, config, staging, cutoff, *, backend_factory=None)
         from worker.engines.qwen import execute
         from worker.engines.qwen_execution import inventory_from_wire, current_hardware
         inventory = inventory_from_wire(context['execution']['hardware'])
-        current_hardware(spec,inventory)
+        if config.get('installed_qwen_cpu') is True:
+            from worker.engines.qwen_execution import observed_cpu_hardware
+            observed_cpu_hardware(spec,inventory)
+        else: current_hardware(spec,inventory)
         stage = attempt['staging_id']
         if Path(stage).name != stage or stage in ('.', '..'): raise Refused('invalid_stage')
         from worker.runtime_protocol import managed_qwen_cpu

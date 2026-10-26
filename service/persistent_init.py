@@ -341,14 +341,15 @@ def initialize_split(roots, scope, config, *, authority, policy, complete=None,
     from service import installed_export as ex
     from service import installed_pocket_daemon as pd
     export = family is ex.FAMILY
-    pocket_daemon = family is pd.FAMILY
+    from service import installed_qwen_daemon as qd
+    pocket_daemon = family in (pd.FAMILY, qd.FAMILY)
     if policy is not ip.family_policy(family, config): raise ValueError('explicit_fixed_install_policy_required')
     if (export or pocket_daemon) and (daemon_binding is None or launch_child is _launch_split_child):
         raise ValueError('export_private_initializer_binding_required')
     if daemon_binding is not None:
         from service import daemon_volumes as dv
         dv.binding(daemon_binding, family=family)
-        if scope != dv.scope(daemon_binding, family=family) or digest(config) != daemon_binding['configuration_digest'] or config['ownership_policy'] != (ex.POLICY if export else pd.POLICY if pocket_daemon else ip.POLICY):
+        if scope != dv.scope(daemon_binding, family=family) or digest(config) != daemon_binding['configuration_digest'] or config['ownership_policy'] != (ex.POLICY if export else qd.POLICY if family is qd.FAMILY else pd.POLICY if pocket_daemon else ip.POLICY):
             raise ValueError('daemon_initialization_binding')
     if launch_child is _launch_split_child:
         import sys

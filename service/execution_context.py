@@ -19,6 +19,21 @@ def verify_local(context, local_bundles, *, policy=None):
     if spec is None: return
     if set(local_bundles) != {spec.bundle_id}: raise Refused('owned_bundle_required')
     root = Path(local_bundles[spec.bundle_id])
+    if spec.engine == 'qwen':
+        from worker.engines.qwen import verify_bundle
+        if not root.is_absolute() or any(p.is_symlink() for p in (root, *root.parents)):
+            raise Refused('owned_bundle_required')
+        for directory, dirs, files in os.walk(root,followlinks=False):
+            for path in (Path(directory), *(Path(directory)/n for n in dirs+files)):
+                info=path.lstat()
+                if info.st_uid != owner or info.st_mode & 0o222 or path.is_symlink():
+                    raise Refused('sealed_bundle_required')
+        _, manifest=verify_bundle(root,spec.manifest_sha256,spec.checkpoint,spec.revision,spec.language,owner_uid=owner,execution=spec)
+        if policy is not None:
+            from service import installed_qwen_daemon as qd
+            if policy is not ip.QWEN_SPLIT: raise Refused('explicit_installed_family_required')
+            qd.manifest(manifest)
+        return
     # Trusted operator storage only; no hostile concurrent mutation claim.
     if not root.is_absolute() or any(p.is_symlink() for p in (root, *root.parents)):
         raise Refused('owned_bundle_required')
@@ -236,22 +251,34 @@ class QwenContexts:
     Linux generation only. No installer activation or caller-selected descriptor.
     Hardware provenance expires at resolution/admission, never in history readers.
     """
-    def __init__(self, contexts, local_bundles, local_references, inventory, profiles):
+    def __init__(self, contexts, local_bundles, local_references, inventory, profiles, *, installed_family=None):
         from worker.engines.qwen_execution import inventory_wire, current_hardware
         from contracts import validate as oracle
+        from service import installed_qwen_daemon as qd
+        if installed_family is not None and installed_family is not qd.FAMILY: raise Refused('explicit_installed_family_required')
+        self.installed_family = installed_family
         self._contexts = {}
         for principal, context in contexts.items():
             snapshot = copy.deepcopy(context)
             spec = execution(snapshot)
             if spec is None or spec.engine != 'qwen': raise Refused('qwen_execution_required')
             if snapshot['execution']['hardware'] != inventory_wire(inventory): raise Refused('hardware_identity')
-            current_hardware(spec, inventory)
+            self._hardware(spec, inventory)
             oracle.admission(dict(operation='speech_generate',input_sha256=oracle.plan_hash(snapshot['plan'])),snapshot,profiles)
-            verify_qwen_local(snapshot, local_bundles, local_references, inventory)
+            if installed_family is None:
+                verify_qwen_local(snapshot, local_bundles, {k:local_references[k] for k in snapshot['execution']['references']}, inventory)
+            else:
+                from worker.engines.qwen import verify_bundle
+                verify_bundle(local_bundles[spec.bundle_id],spec.manifest_sha256,spec.checkpoint,spec.revision,spec.language,owner_uid=10001,execution=spec)
             self._contexts[principal] = json.dumps(snapshot, allow_nan=False)
         self._inventory = copy.deepcopy(inventory)
         self._bundles = copy.deepcopy(local_bundles)
         self._references = copy.deepcopy(local_references)
+
+    def _hardware(self, spec, inventory):
+        from worker.engines.qwen_execution import current_hardware, installed_cpu_hardware
+        if self.installed_family is None: return current_hardware(spec, inventory)
+        return installed_cpu_hardware(spec, inventory, family=self.installed_family)
 
     def selection_metadata(self):
         """Configured snapshots only; no media/bundle verification or resolution.
@@ -281,7 +308,7 @@ class QwenContexts:
         context['plan']['request'] = copy.deepcopy(request)
         freeze(context['plan'])
         spec = execution(context)
-        current_hardware(spec,self._inventory)
+        self._hardware(spec,self._inventory)
         verify_qwen_local(context,self._bundles,self._references,self._inventory)
         return context
 
@@ -304,10 +331,10 @@ class QwenContexts:
         asset=core.asset(reference)
         context=cpu_clone_context(template,principal,request,asset,version=version)
         spec=execution(context)
-        current_hardware(spec,self._inventory)
+        self._hardware(spec,self._inventory)
         references=copy.deepcopy(context['execution']['references'])
         references[reference]['path']=core.root/'assets'/reference
-        verify_qwen_local(context,self._bundles,references,self._inventory)
+        verify_qwen_local(context,self._bundles,references,self._inventory,owner_uid=10001 if self.installed_family is not None else None)
         return context
 
     def capabilities(self, principal):
@@ -315,7 +342,7 @@ class QwenContexts:
         if principal not in self._contexts: return None
         context=json.loads(self._contexts[principal])
         clone=managed_qwen_cpu(execution(context))
-        return dict(engine='qwen',profile=context['plan']['resolved']['profile'],installed=False,
+        return dict(engine='qwen',profile=context['plan']['resolved']['profile'],installed=self.installed_family is not None,
             operations=(['voice_prepare','voice_results','voice_save'] if clone else [])+
                 ['speech_generate','job_get','job_cancel','artifact_get'],
             next_action='asset_upload → voice_prepare → voice_results → voice_save → speech_generate')
@@ -391,6 +418,14 @@ def installed_contexts(config, mapping):
     """One explicitly selected installed engine; reference-free Pocket factory."""
     from service import install_policy as ip
     config = ip.configuration(config)
+    if ip.qwen(config):
+        from service import installed_qwen_daemon as qd
+        from worker.engines.qwen_execution import inventory_from_wire
+        inventories=[c['execution']['hardware'] for c in config['contexts'].values()]
+        if any(i != inventories[0] for i in inventories): raise Refused('hardware_identity')
+        references={}
+        for c in config['contexts'].values(): references.update(c['execution']['references'])
+        return QwenContexts(config['contexts'], mapping, references, inventory_from_wire(inventories[0]), config['profiles'], installed_family=qd.FAMILY)
     if ip.pocket(config):
         return PocketContexts(config['contexts'], mapping, installed=True)
     return KokoroContexts(config['contexts'], mapping)

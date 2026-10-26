@@ -16,7 +16,12 @@ POCKET_POLICY = 'docker-pocket-split-v1'
 POCKET_SCOPE = 'owned-pocket-v1'
 POCKET_V2_POLICY = 'docker-pocket-split-v2'
 POCKET_V2_SCOPE = 'owned-pocket-v2'
-SCOPES = (SCOPE, POCKET_SCOPE, POCKET_V2_SCOPE)
+QWEN_POLICY = 'docker-qwen-cpu-split-v1'
+QWEN_SCOPE = 'owned-qwen-cpu-v1'
+SCOPES = (SCOPE, POCKET_SCOPE, POCKET_V2_SCOPE, QWEN_SCOPE)
+
+def qwen(config):
+    return config['ownership_policy'] == QWEN_POLICY
 
 
 def pocket(config):
@@ -24,6 +29,7 @@ def pocket(config):
 
 
 def scope_for(config):
+    if qwen(config): return QWEN_SCOPE
     return (POCKET_V2_SCOPE if config['ownership_policy'] == POCKET_V2_POLICY else
             POCKET_SCOPE if pocket(config) else SCOPE)
 ROLES = ('control', 'staging', 'receipts', 'ipc')
@@ -38,11 +44,13 @@ class _SplitPolicy:
 SPLIT = _SplitPolicy()
 # Fresh Pocket roots only; distinct from export despite the shared fixed tuple.
 POCKET_SPLIT = _SplitPolicy(scope=POCKET_V2_SCOPE, name=POCKET_V2_POLICY)
+QWEN_SPLIT = _SplitPolicy(scope=QWEN_SCOPE, name=QWEN_POLICY)
 
 
 def configuration_policy(config):
     """Select only from a validated trusted configuration, never filesystem metadata."""
     checked = configuration(config)
+    if qwen(checked): return QWEN_SPLIT
     return POCKET_SPLIT if checked['ownership_policy'] == POCKET_V2_POLICY else SPLIT
 
 # Fresh export-family roots only. The trusted control group can enumerate
@@ -52,7 +60,7 @@ EXPORT_SPLIT = _SplitPolicy(scope='owned-kokoro-export-v2', name='docker-kokoro-
 
 def require(policy):
     # No caller-supplied UID map, equivalent object, or metadata-selected string.
-    if policy is not SPLIT and policy is not EXPORT_SPLIT and policy is not POCKET_SPLIT:
+    if policy is not SPLIT and policy is not EXPORT_SPLIT and policy is not POCKET_SPLIT and policy is not QWEN_SPLIT:
         raise ValueError('explicit_fixed_install_policy_required')
 
 
@@ -61,7 +69,7 @@ def expectation(policy, role, *, directory=False):
     if role not in ROLES:
         raise ValueError('exact_volume_roles_required')
     if directory:
-        if policy in (EXPORT_SPLIT, POCKET_SPLIT) and role == 'staging':
+        if policy in (EXPORT_SPLIT, POCKET_SPLIT, QWEN_SPLIT) and role == 'staging':
             return (0, 10001, 0o1753)
         return {'control': (10001, 10001, 0o700),
                 'receipts': (0, 0, 0o2700),
@@ -242,17 +250,19 @@ def configuration(value):
     if len(encode(value).encode()) > 48000:
         raise ValueError('installed_configuration_budget')
     value = json.loads(encode(value))
-    if type(value['version']) is not int or value['version'] != 1 or value['ownership_policy'] not in (POLICY, POCKET_POLICY, POCKET_V2_POLICY):
+    if type(value['version']) is not int or value['version'] != 1 or value['ownership_policy'] not in (POLICY, POCKET_POLICY, POCKET_V2_POLICY, QWEN_POLICY):
         raise ValueError('installed_configuration_version')
     finite_budget(value['budget'])
     profiles = value['profiles']
-    if type(profiles) is not list or len(profiles) != 1 or profiles[0]['id'] != ('pocket-cpu' if pocket(value) else 'kokoro-cpu'):
+    if type(profiles) is not list or len(profiles) != 1 or profiles[0]['id'] != ('qwen-cpu' if qwen(value) else 'pocket-cpu' if pocket(value) else 'kokoro-cpu'):
         raise ValueError('installed_profiles')
     oracle.validate('profile', profiles[0])
     if profiles[0]['device'] != 'cpu' or profiles[0]['topology'] != 'networkless_container':
         raise ValueError('installed_profile_topology')
     if pocket(value) and {(c['operation'], c['mode'], c['identity']['engine']) for c in profiles[0]['compatibility']} != {('voice_prepare','prepare','pocket-tts'),('speech_generate','pocket_clone','pocket-tts')}:
         raise ValueError('installed_pocket_capabilities')
+    if qwen(value) and {(c['operation'],c['mode'],c['identity']['engine']) for c in profiles[0]['compatibility']} != {('voice_prepare','prepare','qwen'),('speech_generate','qwen_clone','qwen')}:
+        raise ValueError('installed_qwen_capabilities')
     _closed(value['images'], 'control worker')
     if any(not isinstance(v, str) or not re.fullmatch('sha256:[0-9a-f]{64}', v) for v in value['images'].values()):
         raise ValueError('installed_image_digest')
@@ -267,7 +277,12 @@ def configuration(value):
         spec = execution(context)
         if spec is None or context['plan']['resolved']['profile'] != oracle.profile_snapshot(profiles[0]):
             raise ValueError('installed_context_profile')
-        if pocket(value):
+        if qwen(value):
+            from service.installed_qwen_daemon import validate_spec
+            validate_spec(spec)
+            if any(r['path'] != '/references/assets/'+key for key,r in context['execution']['references'].items()):
+                raise ValueError('installed_qwen_reference_mapping')
+        elif pocket(value):
             if spec.engine != 'pocket-tts' or context['execution']['references'] != {spec.reference_id:'/references/assets/'+spec.reference_id}:
                 raise ValueError('installed_pocket_context')
         elif spec.engine != 'kokoro':
@@ -298,14 +313,16 @@ def installation(value):
             from service import daemon_volumes as dv
             from service import installed_pocket_daemon as pd
             pocket_launch = value['ownership_policy'] == POCKET_V2_POLICY
-            family = pd.FAMILY if pocket_launch else None
+            from service import installed_qwen_daemon as qd
+            qwen_launch = value['ownership_policy'] == QWEN_POLICY
+            family = qd.FAMILY if qwen_launch else pd.FAMILY if pocket_launch else None
             dv.binding(value['launch'], family=family)
             if (value['host'] != dv.scope(value['launch'], family=family) or value['configuration_digest'] != value['launch']['configuration_digest'] or
-                    value['ownership_policy'] != (POCKET_V2_POLICY if pocket_launch else POLICY) or
-                    (pocket_launch and value['deployment_id'] != value['launch']['installation'])):
+                    value['ownership_policy'] != (QWEN_POLICY if qwen_launch else POCKET_V2_POLICY if pocket_launch else POLICY) or
+                    ((pocket_launch or qwen_launch) and value['deployment_id'] != value['launch']['installation'])):
                 raise ValueError('daemon_enrollment_binding')
         config = configuration(value['configuration'])
-        role_policy = POCKET_SPLIT if config['ownership_policy'] == POCKET_V2_POLICY else SPLIT
+        role_policy = configuration_policy(config)
         if (value['scope'] != scope_for(config) or value['ownership_policy'] != config['ownership_policy'] or value['configuration_digest'] != digest(config)):
             raise ValueError('installed_configuration_digest')
         _closed(value['roles'], 'control staging receipts ipc')
@@ -342,7 +359,10 @@ def role_records(roots, *, policy=SPLIT):
 def family_policy(family=None, config=None):
     if family is None:
         return SPLIT if config is None else configuration_policy(config)
-    from service import installed_pocket_daemon as pd
+    from service import installed_pocket_daemon as pd, installed_qwen_daemon as qd
+    if family is qd.FAMILY:
+        if config is not None: qd.configuration(config)
+        return QWEN_SPLIT
     if family is pd.FAMILY:
         if config is not None: pd.configuration(config)
         return POCKET_SPLIT
@@ -447,6 +467,8 @@ def family_configuration(value, family=None):
     if family is None:
         return configuration(value)
     from service import installed_export as ex, installed_pocket_daemon as pd
+    from service import installed_qwen_daemon as qd
+    if family is qd.FAMILY: return qd.configuration(value)
     if family is pd.FAMILY: return pd.configuration(value)
     if family is not ex.FAMILY:
         raise ValueError('explicit_installed_family_required')
@@ -457,6 +479,8 @@ def family_installation(value, family=None):
     if family is None:
         return installation(value)
     from service import installed_export as ex, installed_pocket_daemon as pd
+    from service import installed_qwen_daemon as qd
+    if family is qd.FAMILY: return qd.installation(value)
     if family is pd.FAMILY: return pd.installation(value)
     if family is not ex.FAMILY:
         raise ValueError('explicit_installed_family_required')

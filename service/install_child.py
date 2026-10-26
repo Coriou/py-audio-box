@@ -332,3 +332,8 @@ def export_container_entry(kind):
 def pocket_container_entry(kind):
     from service.installed_pocket_daemon import FAMILY
     return container_entry(kind, family=FAMILY)
+
+
+def qwen_container_entry(kind):
+    from service.installed_qwen_daemon import FAMILY
+    return container_entry(kind, family=FAMILY)

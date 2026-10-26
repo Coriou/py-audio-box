@@ -23,10 +23,24 @@ class SupervisorRuntime:
         self.ipc = Path(ipc)
         self.interrupt = interrupt
 
+    def check_availability(self, context):
+        from service import installed_qwen_daemon as qd
+        from worker.runtime_protocol import execution
+        from worker.engines.qwen_execution import inventory_from_wire, installed_cpu_hardware
+        if self.family is not qd.FAMILY: raise ValueError('installed_qwen_family_required')
+        qd.configuration(self.configuration)
+        hardware=context['execution']['hardware']
+        if not any(c['execution']['hardware']==hardware for c in self.configuration['contexts'].values()):
+            raise ValueError('hardware_identity')
+        inventory=inventory_from_wire(hardware)
+        installed_cpu_hardware(execution(context),inventory,family=qd.FAMILY)
+        self.call('hello', {})
+        return inventory
+
     def call(self, op, body, timeout=1.5):
-        from service import installed_pocket_daemon as pd
+        from service import installed_pocket_daemon as pd, installed_qwen_daemon as qd
         from worker.runtime_protocol import POCKET_START_RPC_SECONDS
-        pocket_start = op == 'start' and self.family is pd.FAMILY
+        pocket_start = op == 'start' and self.family in (pd.FAMILY, qd.FAMILY)
         maximum = POCKET_START_RPC_SECONDS if pocket_start else 2
         if not 0 < timeout <= maximum:
             raise ValueError('bounded_communication_required')
@@ -57,9 +71,9 @@ class SupervisorRuntime:
             binding=authority.binding, fixture=fixture))['runtime_id']
 
     def start(self, identity):
-        from service import installed_pocket_daemon as pd
+        from service import installed_pocket_daemon as pd, installed_qwen_daemon as qd
         from worker.runtime_protocol import POCKET_START_RPC_SECONDS
-        timeout = POCKET_START_RPC_SECONDS if self.family is pd.FAMILY else 1.5
+        timeout = POCKET_START_RPC_SECONDS if self.family in (pd.FAMILY, qd.FAMILY) else 1.5
         return self.call('start', dict(runtime_id=identity), timeout)
 
     def observe(self, runtime_id, timeout):

@@ -61,7 +61,12 @@ class Admission:
                 if spec.device == 'mps':
                     if self.native_availability is None: raise ValueError('native_availability_required')
                     self.native_availability(context)
-                else: current_hardware(spec, inventory_from_wire(context['execution']['hardware']))
+                else:
+                    from service import installed_qwen_daemon as qd
+                    provider=getattr(self.native_availability, '__self__', None)
+                    if getattr(provider, 'family', None) is qd.FAMILY:
+                        self.native_availability(context)
+                    else: current_hardware(spec, inventory_from_wire(context['execution']['hardware']))
                 if spec.device == 'mps':
                     from worker.native_protocol import native_binding
                     native_binding(context)

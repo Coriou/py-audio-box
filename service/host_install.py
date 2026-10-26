@@ -646,12 +646,12 @@ def _model_tree(path, config, deadline):
             if stat.S_ISDIR(s.st_mode): pending.append(child); continue
             file_before=ip.identity(_source_stat(child,directory=False))
             relative=str(child.relative_to(path))
-            if ip.pocket(config) and child.name != 'manifest.json':
+            if (ip.pocket(config) or ip.qwen(config)) and child.name != 'manifest.json':
                 hashed,size=_sealed_model_digest(child, min(2*1024**3,4*1024**3-total),deadline)
                 raw=None
             else:
                 raw=_public_file(child,uid=10001,gid=10001,mode=0o444,
-                                 limit=min(512*1024**2,(4 if ip.pocket(config) else 2)*1024**3-total),deadline=deadline)
+                                 limit=min(512*1024**2,(4 if ip.pocket(config) or ip.qwen(config) else 2)*1024**3-total),deadline=deadline)
                 hashed,size=hashlib.sha256(raw).hexdigest(),len(raw)
             total+=size
             files[relative]=(hashed,size)
@@ -668,8 +668,11 @@ def _model_tree(path, config, deadline):
     allowed=set(expected)
     for name,bundle in expected.items():
         hashed,_,manifest=files[name]
-        if hashed!=bundle['manifest_sha256'] or manifest.get('backend')!=('pocket-tts' if ip.pocket(config) else 'kokoro') or manifest.get('schema_version')!=1 or (manifest.get('checkpoint'),manifest.get('revision'))!=(bundle['checkpoint'],bundle['revision']):
+        if hashed!=bundle['manifest_sha256'] or manifest.get('backend')!=('qwen' if ip.qwen(config) else 'pocket-tts' if ip.pocket(config) else 'kokoro') or manifest.get('schema_version')!=1 or (manifest.get('checkpoint'),manifest.get('revision'))!=(bundle['checkpoint'],bundle['revision']):
             raise ValueError('installed_model_manifest')
+        if ip.qwen(config):
+            from service.installed_qwen_daemon import manifest as installed_manifest
+            installed_manifest(manifest)
         if ip.pocket(config):
             from service.pocket_install import manifest as installed_manifest
             installed_manifest(manifest)
@@ -1162,6 +1165,10 @@ def _registration_snapshot(roots,scope, *, policy=ip.SPLIT):
 
 def _registration_hello(hello,registration=None, *, family=None, configuration=None):
     from service import installed_pocket_daemon as pd
+    from service import installed_qwen_daemon as qd
+    if family is qd.FAMILY:
+        qd.configuration(configuration)
+        return _registration_hello(hello, registration)
     if family is pd.FAMILY:
         pd.configuration(configuration)
         return _registration_hello(hello, registration)

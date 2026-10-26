@@ -207,7 +207,8 @@ def qwen_relation(context, *, lane):
         if (spec.device,spec.dtype,spec.attention) != ('mps','float32','sdpa') or resolved['profile']['topology'] != 'packaged_native': raise Refused('native_topology')
     elif spec.device == 'mps': raise Refused('qwen_generation_only')
     if value['bundles'] != {spec.bundle_id:'/models/bundles/'+spec.bundle_id}: raise Refused('owned_mount_mapping')
-    identity=dict(engine='qwen',model=spec.checkpoint,bundle_sha256=spec.manifest_sha256,device='metal' if lane == 'native' else ('cuda' if spec.device.startswith('cuda:') else 'cpu'),precision=spec.dtype)
+    from service.installed_qwen_daemon import public_model
+    identity=dict(engine='qwen',model=public_model(spec),bundle_sha256=spec.manifest_sha256,device='metal' if lane == 'native' else ('cuda' if spec.device.startswith('cuda:') else 'cpu'),precision=spec.dtype)
     request=plan['request']; versions=plan['voice_versions']
     profile_id='qwen-mps' if lane == 'native' else ('qwen-cuda' if spec.device.startswith('cuda:') else 'qwen-cpu')
     if (plan['operation'] != 'speech_generate' or resolved['profile']['id'] != profile_id or

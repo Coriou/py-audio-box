@@ -119,9 +119,51 @@ failures, errors or skips. Astra independently verified the source and receipt
 hashes. This documentation update follows that verified snapshot; executable
 source is unchanged. Engines were injected and real model imports were blocked.
 
-Recovery now accepts exact typed Qwen preparation pairs alongside Pocket pairs.
+At the Lot A checkpoint, recovery accepted exact typed Qwen preparation pairs alongside Pocket pairs.
 Fresh installed Qwen enrollment, current installed CPU
 availability after the existing 300-second observation window, archive closure,
-and integrated daemon retention remain Lot B work. Integrated A+B review and
-operational qualification are still required. There is no installed CPU release
+and integrated daemon retention were still Lot B work, completed in source below.
+Operational qualification remains required. There is no installed CPU release
 or real inference claim.
+
+## LotB installed daemon source family
+
+The explicit `speech-box docker-qwen` command selects a fresh Qwen CPU daemon
+installation. Its public finite commands are `install`, `up`, `status`, and
+`stop`; `install` runs import and initialization as separate helper phases; restart uses `stop` then `up` with the same retained handle. Acquisition
+and image building are separate operator actions. Startup never downloads,
+repairs, pulls, or chooses a model from filesystem metadata.
+
+Only Qwen/Qwen3-TTS-12Hz-0.6B-Base revision
+`5d83992436eae1d760afd27aff78a71d676296fc`, the canonical eleven-file descriptor,
+CPU float32 SDPA, and transcript-free x-vector cloning are allowed. The source
+recipe remains the existing `worker-qwen` target, including its pinned SoX source
+build and reviewed wheels. These source changes do not qualify that image.
+
+The helper retains registration and locks. Core runs as UID 10001; the supervisor
+runs as root with the existing dropped-capability isolated execution children.
+Workers receive only the read-only `core/assets` volume subpath. The existing
+checked reference descriptor bridge, inherited descriptor, 0770 namespace,
+original 1800-second deadline, ACK/reap, cancellation, publication, and ownership
+fences apply. Public API, CLI, and MCP use the existing dispatcher journey:
+upload → prepare → inspect results → CAS save → frozen spoken generation.
+Duplicate replay remains ahead of live checks; historical identity is immutable.
+
+Installed CPU availability is checked separately from the frozen Linux hardware
+observation. No recorded timestamp is refreshed. Non-installed Linux contexts
+retain their existing five-minute observation expiry. Apple and CUDA are deferred.
+
+Lot B passed independent Astra source review and 30 exact-final-source offline
+tests, with no failures, errors or skips. This prose update follows that verified
+snapshot. Actual target-image build and installed CPU qualification remain.
+The earlier 24 GiB capacity admission observation is not future capacity proof.
+No dirty-source archive is a release. Source tests establish neither installed
+runtime nor hardware or audio quality acceptance.
+
+The installed CPU public identity is exactly `Qwen3-TTS-12Hz-0.6B-Base`
+(the existing public model-name convention without an upstream namespace).
+Plans, saved voices, replay and history retain that identity. Execution
+descriptors and bundle metadata retain checkpoint `Qwen/Qwen3-TTS-12Hz-0.6B-Base`
+and revision `5d83992436eae1d760afd27aff78a71d676296fc`: one exact binding,
+without alias normalization or fallback. The eleven-file manifest pin and
+CPU float32/SDPA requirements are unchanged.

@@ -238,6 +238,7 @@ class Docker:
 
     def action(self,action,payload,config,b,source):
         from service import installed_pocket_daemon as pd
+        from service import installed_qwen_daemon as qd
         export = pd.is_export(getattr(self,'family',None))
         # Input chunks do no daemon action. The held phase's exact snapshots
         # bracket the stream; avoid a Docker-info process for every input chunk.
@@ -258,8 +259,8 @@ class Docker:
             elif action=='term': self.call(['container','kill','--signal=TERM',identity])
             if action in ('start','term','inspect'): result=self.container(identity)
             else:
-                code=(('from service.entrypoint import pocket_launch_status;pocket_launch_status()' if getattr(self,'family',None) is pd.FAMILY else 'from service.entrypoint import export_launch_status;export_launch_status()' if export else 'from service.entrypoint import launch_status;launch_status()') if action=='marker' else
-                    ('from service.daemon_runtime import read_pocket_control;read_pocket_control()' if getattr(self,'family',None) is pd.FAMILY else 'from service.daemon_runtime import read_export_control;read_export_control()' if export else 'from service.daemon_runtime import read_control;read_control()'))
+                code=(('from service.entrypoint import qwen_launch_status;qwen_launch_status()' if getattr(self,'family',None) is qd.FAMILY else 'from service.entrypoint import pocket_launch_status;pocket_launch_status()' if getattr(self,'family',None) is pd.FAMILY else 'from service.entrypoint import export_launch_status;export_launch_status()' if export else 'from service.entrypoint import launch_status;launch_status()') if action=='marker' else
+                    ('from service.daemon_runtime import read_qwen_control;read_qwen_control()' if getattr(self,'family',None) is qd.FAMILY else 'from service.daemon_runtime import read_pocket_control;read_pocket_control()' if getattr(self,'family',None) is pd.FAMILY else 'from service.daemon_runtime import read_export_control;read_export_control()' if export else 'from service.daemon_runtime import read_control;read_control()'))
                 if role!='control': raise ValueError('daemon_control_reader_only')
                 result=parse(self.call(['exec','--user','10001:10001',identity,'python','-I','-B','-c',
                     "import sys;sys.path.insert(0,'/opt/speech');"+code]))
@@ -271,7 +272,7 @@ class Docker:
             if len(raw)>65536: raise ValueError('daemon_gate_budget')
             deadline=min(self.end,time.monotonic()+10)
             p=subprocess.Popen(self.argv(['exec','--interactive','--user','10001:10001',identity,'python','-I','-B','-c',
-                "import sys;sys.path.insert(0,'/opt/speech');from service.entrypoint import "+("publish_pocket" if getattr(self,"family",None) is pd.FAMILY else "publish_export" if export else "publish")+" as publish;publish(sys.stdin.buffer.read(65537))"]),
+                "import sys;sys.path.insert(0,'/opt/speech');from service.entrypoint import "+("publish_qwen" if getattr(self,"family",None) is qd.FAMILY else "publish_pocket" if getattr(self,"family",None) is pd.FAMILY else "publish_export" if export else "publish")+" as publish;publish(sys.stdin.buffer.read(65537))"]),
                 stdin=subprocess.PIPE,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL,env=self.env)
             collect(p,raw,0,deadline,'daemon_notify',self.retained)
             result={}
@@ -386,7 +387,10 @@ class Wire:
         return value['action'],value['payload']
 
 
-def manifest(entries):
+def manifest(entries, *, family=None):
+    from service import installed_pocket_daemon as pd, installed_qwen_daemon as qd
+    pd.require(family)
+    qwen = family is qd.FAMILY
     if type(entries) is not list or not 2<=len(entries)<=4096: raise ValueError('daemon_input_manifest')
     seen=set(); total=0; out=[]
     for e in entries:
@@ -395,10 +399,10 @@ def manifest(entries):
         if (role not in ('models','config','credential') or not isinstance(path,str) or len(path)>256 or
             path.startswith('/') or any(p in ('','.','..') for p in path.split('/')) or
             (role=='config' and path!='install.json') or (role=='credential' and path!='control.key') or
-            (role,path) in seen or type(size) is not int or not 1<=size<=512*1024**2 or
+            (role,path) in seen or type(size) is not int or not 1<=size<=(2*1024**3 if qwen and role=='models' else 512*1024**2) or
             (role!='credential' and not dv.HEX.fullmatch(e['sha256']))): raise ValueError('daemon_input_manifest')
         total+=size; seen.add((role,path)); out.append(e)
-    if total>TOTAL or sum(e['role']=='config' for e in out)!=1 or sum(e['role']=='credential' for e in out)!=1:
+    if total>(4*1024**3 if qwen else TOTAL) or sum(e['role']=='config' for e in out)!=1 or sum(e['role']=='credential' for e in out)!=1:
         raise ValueError('daemon_input_budget')
     return out
 
@@ -415,7 +419,7 @@ def main(argv=None, *, family=None):
         if a.command=='install':
             if not a.context or not a.request: raise ValueError('daemon_install_inputs_required')
             request=parse(read(a.request)); dv.closed(request,'configuration helper_image inputs cpu tmpfs control_port')
-            inputs=manifest(request['inputs']); config=request['configuration']
+            inputs=manifest(request['inputs'],family=family); config=request['configuration']
             if family is not None:
                 config=ip.family_configuration(config,family)
             if export:
@@ -492,4 +496,9 @@ def export_main(argv=None):
 
 def pocket_main(argv=None):
     from service.installed_pocket_daemon import FAMILY
+    return main(argv, family=FAMILY)
+
+
+def qwen_main(argv=None):
+    from service.installed_qwen_daemon import FAMILY
     return main(argv, family=FAMILY)

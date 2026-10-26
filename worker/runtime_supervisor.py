@@ -37,10 +37,12 @@ class RuntimeSupervisor:
             self.converter_image_digest = self._export_configuration['images']['worker']
             self.export_reference_roots = {p:'/references/assets' for p in self._export_configuration['audio_export']['principals']}
         from service import install_policy as ip
-        if installed_policy is not None and installed_policy is not ip.SPLIT and installed_policy is not ip.POCKET_SPLIT:
+        if installed_policy is not None and installed_policy is not ip.SPLIT and installed_policy is not ip.POCKET_SPLIT and installed_policy is not ip.QWEN_SPLIT:
             raise ValueError('explicit_fixed_install_policy_required')
         if installed_policy is ip.POCKET_SPLIT and (not installed_pocket or export_configuration is not None):
             raise ValueError('installed_pocket_policy_binding')
+        if installed_policy is ip.QWEN_SPLIT and (installed_pocket or export_configuration is not None):
+            raise ValueError('installed_qwen_policy_binding')
         self.installed_policy = installed_policy
         self.installed_pocket = installed_pocket
         self.bundles = MappingProxyType(dict(bundles or {}))
@@ -103,6 +105,9 @@ class RuntimeSupervisor:
             from service.daemon_runtime import facts
             if getattr(self,'_export_configuration',None) is not None:
                 from service.installed_export import FAMILY
+                local=facts('worker',family=FAMILY)
+            elif getattr(self, '_qwen_daemon', False):
+                from service.installed_qwen_daemon import FAMILY
                 local=facts('worker',family=FAMILY)
             elif getattr(self, '_pocket_daemon', False):
                 from service.installed_pocket_daemon import FAMILY
@@ -225,6 +230,9 @@ class RuntimeSupervisor:
                 config['pocket_cutoff']=self.active['cutoff']  # Original prepare anchor, never renewed.
             if spec is not None and spec.engine=='qwen' and spec.device=='cpu':
                 config['qwen_cpu_cutoff']=self.active['cutoff']
+                from service import install_policy as ip
+                if getattr(self, 'installed_policy', None) is ip.QWEN_SPLIT:
+                    config['installed_qwen_cpu']=True
             try:
                 if managed_qwen_cpu(spec):
                     reference_fd=self.verify_qwen(context,profiles,job['principal_id'],retain_fd=True)
@@ -495,7 +503,12 @@ class RuntimeSupervisor:
         oracle.admission(dict(operation=context['plan']['operation'],input_sha256=oracle.plan_hash(context['plan'])),context,self.qwen_profiles)
         selected=next(p for p in self.qwen_profiles if p['id'] == profile['id'])
         if selected['verification'] != 'measured' or not selected['qualification_receipt'] or 'synthetic' in selected['qualification_receipt'].lower(): raise Refused('real_qualification_required')
-        current_hardware(spec,self.inventory)
+        from service import install_policy as ip
+        if getattr(self, 'installed_policy', None) is ip.QWEN_SPLIT:
+            from service.installed_qwen_daemon import FAMILY
+            from worker.engines.qwen_execution import installed_cpu_hardware
+            installed_cpu_hardware(spec,self.inventory,family=FAMILY)
+        else: current_hardware(spec,self.inventory)
         if managed:
             from worker.managed_reference import acquire
             try: fd=acquire(spec.reference_id)
@@ -522,8 +535,8 @@ class RuntimeSupervisor:
             command=['python','-c','from worker.runtime_conditioning import pocket_main; pocket_main()',stage,str(row['uid'])]
         else:
             command = ['python', '-m', 'worker.runtime_conditioning', stage, str(row['uid'])]
-        if getattr(self, 'installed_policy', None) is ip.POCKET_SPLIT:
-            command.append(ip.POCKET_V2_POLICY)
+        if getattr(self, 'installed_policy', None) in (ip.POCKET_SPLIT, ip.QWEN_SPLIT):
+            command.append(self.installed_policy.name)
         proc = subprocess.Popen(command,
             user=10001, group=row['uid'], extra_groups=[], close_fds=True,
             stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
@@ -553,8 +566,8 @@ class RuntimeSupervisor:
         try:
             authenticate(connection, session(self.secret, 10001, 10001), cutoff, control=False)
             op, body = request(receive(connection, cutoff))
-            if (op == 'start' and getattr(self, '_pocket_daemon', False) and
-                    getattr(self, 'installed_pocket', False)):
+            if (op == 'start' and ((getattr(self, '_pocket_daemon', False) and
+                    getattr(self, 'installed_pocket', False)) or getattr(self, '_qwen_daemon', False))):
                 if set(body) != {'runtime_id'} or not isinstance(body['runtime_id'], str):
                     raise Refused('closed_identity_body')
                 from worker.runtime_protocol import POCKET_START_RPC_SECONDS
@@ -659,15 +672,17 @@ def export_startup(value, expected_worker_image, *, owner_uid=0):
     return config
 
 
-def main(*, _pocket_daemon=False):
+def main(*, _pocket_daemon=False, _qwen_daemon=False):
     import argparse
     parser = argparse.ArgumentParser()
-    parser.add_argument('--installed-policy', choices=('docker-kokoro-split-v1','docker-pocket-split-v1','docker-pocket-split-v2','docker-kokoro-export-split-v2'))
+    parser.add_argument('--installed-policy', choices=('docker-kokoro-split-v1','docker-pocket-split-v1','docker-pocket-split-v2','docker-kokoro-export-split-v2','docker-qwen-cpu-split-v1'))
     parser.add_argument('--configuration-file')
     parser.add_argument('--expected-worker-image')
     args = parser.parse_args()
     if _pocket_daemon and args.installed_policy != 'docker-pocket-split-v2':
         raise ValueError('pocket_daemon_v2_configuration_required')
+    if _qwen_daemon != (args.installed_policy == 'docker-qwen-cpu-split-v1'):
+        raise ValueError('explicit_qwen_daemon_required')
     os.umask(0o077)
     try:
         bundles = None
@@ -711,6 +726,20 @@ def main(*, _pocket_daemon=False):
             installed_pocket=installed_pocket, installed_policy=installed_policy, export_configuration=export_config,
             expected_worker_image=args.expected_worker_image)
         if _pocket_daemon and not installed_pocket: raise ValueError('pocket_daemon_v2_configuration_required')
+        if _qwen_daemon:
+            from service import installed_qwen_daemon as qd
+            from worker.engines.qwen_execution import inventory_from_wire, installed_cpu_hardware
+            qd.configuration(config)
+            inventory=None
+            supervisor.qwen_profiles=copy.deepcopy(config['profiles'])
+            for principal,context in config['contexts'].items():
+                observed=inventory_from_wire(context['execution']['hardware'])
+                installed_cpu_hardware(execution(context),observed,family=qd.FAMILY)
+                if inventory is not None and inventory != observed: raise ValueError('hardware_identity')
+                inventory=observed
+                supervisor.qwen_contexts[(principal,'qwen-cpu','managed-clone')]=copy.deepcopy(context)
+            supervisor.inventory=inventory
+        supervisor._qwen_daemon = _qwen_daemon
         supervisor._pocket_daemon = _pocket_daemon
         supervisor.serve()
     except (OSError, ValueError, KeyError, TypeError):
@@ -724,3 +753,7 @@ if __name__ == '__main__':
 
 def pocket_daemon_main():
     return main(_pocket_daemon=True)
+
+
+def qwen_daemon_main():
+    return main(_qwen_daemon=True)

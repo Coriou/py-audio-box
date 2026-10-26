@@ -64,6 +64,8 @@ def volume(value, role, installation):
 def binding(value, *, family=None):
     if family is not None:
         from service import installed_export as ex, installed_pocket_daemon as pd
+        from service import installed_qwen_daemon as qd
+        if family is qd.FAMILY: return qd.binding(value)
         if family is pd.FAMILY: return pd.binding(value)
         if family is not ex.FAMILY: raise ValueError('explicit_export_family_required')
         return ex.binding(value)
@@ -119,6 +121,7 @@ def mounts(role, b, phase=None, *, family=None):
 def command(role, config, b, *, phase=None, nonce=None, family=None):
     from service import installed_pocket_daemon as pd
     binding(b, family=family)
+    from service import installed_qwen_daemon as qd
     export = pd.is_export(family)
     if role=='helper' and (phase not in PHASES or not re.fullmatch('[0-9a-f]{32}',nonce or '')):
         raise ValueError('daemon_helper_phase')
@@ -143,12 +146,12 @@ def command(role, config, b, *, phase=None, nonce=None, family=None):
     for m in mounts(role,b,phase,family=family):
         args+=['--mount','type=volume,source='+m['Name']+',destination='+m['Destination']+',volume-nocopy'+('' if m['RW'] else ',readonly')+(',volume-subpath=core/assets' if m['Destination']=='/references/assets' else '')]
     if helper:
-        code=('from service.daemon_helper import pocket_main;pocket_main()' if family is pd.FAMILY else 'from service.daemon_helper import export_main;export_main()' if export else 'from service.daemon_helper import main;main()'); extra=[phase,nonce]
+        code=('from service.daemon_helper import qwen_main;qwen_main()' if family is qd.FAMILY else 'from service.daemon_helper import pocket_main;pocket_main()' if family is pd.FAMILY else 'from service.daemon_helper import export_main;export_main()' if export else 'from service.daemon_helper import main;main()'); extra=[phase,nonce]
     elif role=='control':
-        code=('from service.entrypoint import daemon_pocket_main;daemon_pocket_main()' if family is pd.FAMILY else 'from service.entrypoint import daemon_export_main;daemon_export_main()' if export else 'from service.entrypoint import daemon_main;daemon_main()'); extra=[]
+        code=('from service.entrypoint import daemon_qwen_main;daemon_qwen_main()' if family is qd.FAMILY else 'from service.entrypoint import daemon_pocket_main;daemon_pocket_main()' if family is pd.FAMILY else 'from service.entrypoint import daemon_export_main;daemon_export_main()' if export else 'from service.entrypoint import daemon_main;daemon_main()'); extra=[]
     else:
-        code=('from worker.runtime_supervisor import pocket_daemon_main;pocket_daemon_main()' if family is pd.FAMILY else 'from worker.runtime_supervisor import main;main()')
-        extra=['--installed-policy',pd.POLICY if family is pd.FAMILY else ex.POLICY if export else 'docker-kokoro-split-v1','--configuration-file',CONFIG]
+        code=('from worker.runtime_supervisor import qwen_daemon_main;qwen_daemon_main()' if family is qd.FAMILY else 'from worker.runtime_supervisor import pocket_daemon_main;pocket_daemon_main()' if family is pd.FAMILY else 'from worker.runtime_supervisor import main;main()')
+        extra=['--installed-policy',qd.POLICY if family is qd.FAMILY else pd.POLICY if family is pd.FAMILY else ex.POLICY if export else 'docker-kokoro-split-v1','--configuration-file',CONFIG]
         if export: extra+=['--expected-worker-image',config['images']['worker']]
     args += ['--entrypoint','python',b['helper_image'] if helper else config['images'][role],'-I','-B','-c',
         "import sys;sys.path.insert(0,'/opt/speech');"+code]+extra
