@@ -66,7 +66,9 @@ environment setting. This pilot does not modify the installed worker policy.
 ## Listening and decision boundary
 
 The local kit contains twenty neutral, shuffled WAV filenames, `listen.html`, a
-rating worksheet and a separate `blind-map.json`. WAV copies were SHA-256 checked;
+rating worksheet and a separate `blind-map.json`. The HTML embeds the original
+WAV bytes so playback also works when an asset viewer serves only that single
+file; it does not depend on sibling-file URLs. WAV copies were SHA-256 checked;
 all are mono PCM24 at 24 kHz. The listening page contains no backend names or source
 paths. Rate naturalness and exact spoken text before opening the mapping. Check
 `1 250,50`, names, negation, omissions, additions and repetitions explicitly.
