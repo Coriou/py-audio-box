@@ -167,3 +167,37 @@ descriptors and bundle metadata retain checkpoint `Qwen/Qwen3-TTS-12Hz-0.6B-Base
 and revision `5d83992436eae1d760afd27aff78a71d676296fc`: one exact binding,
 without alias normalization or fallback. The eleven-file manifest pin and
 CPU float32/SDPA requirements are unchanged.
+
+### Bounded live observation history
+
+Only the explicitly checked installed Qwen CPU family uses internal authenticated
+state polls through the dispatcher's existing single executor. ALIVE polls add no
+command rows. A STOPPED poll schedules a journaled `observe`; only its matching
+STOPPED reply permits collection. A contradictory confirmation quarantines.
+UNKNOWN is confirmed through the durable observation path; failed or unbound polls
+retain an uncertain `observe` and quarantine. These reads change neither the
+original deadline nor the independent watchdog's TERM/KILL and reap obligations.
+
+Cancellation and resource stops share one stop request per runtime, serviced before
+the cadence guard, including after pending start or observation I/O. Receipt
+verification, publication, reservation release and ACK ordering remain unchanged.
+Five clean attempts retain 25 lifecycle commands (prepare, start, terminal observe,
+collect, ACK per attempt), plus at most five stops. ACK retries and diagnostic
+failures retain additional history. This is not unlimited retention: the aggregate
+2048-row ceiling counts every SQL table, including inventory and sqlite_sequence;
+the 16 MiB and other inventory/worker limits still apply. Existing history remains
+charged. Simulated duration tests are source evidence, not installed CPU or audio
+qualification. The bounded r420 run passed 180 tests and 103 subtests in 103.73
+seconds; Astra verified the exact source and receipts. This prose correction
+follows that snapshot. Actual qualification must still measure final aggregate
+installation capacity.
+
+The r420 correction preserves exact job, event, dispatch, command and saved-voice
+rows across reopen, while charging new inventory scans, objects and history to
+the same aggregate ceiling. The full-table injected journey runs five simulated
+1800-second attempts with pair publication, save, failed generation, retry and
+reopen replay. UNKNOWN-after-cancel uses an ambiguous stop reply configured before
+the RPC can apply; the generic fixture's STOPPED mutation must not overwrite it.
+STOPPED confirmation errors and UNKNOWN replies retain durable observation
+evidence and quarantine without collection or ACK. These remain offline source
+checks, with no installed runtime, release or audio acceptance claim.

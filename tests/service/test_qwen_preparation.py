@@ -46,6 +46,24 @@ class CPUPreparationFixture(unittest.TestCase):
             audition_text='A separate audition.',identity=v['identity'])
         self.calls=[];self.collection_errors=[]
 
+    def retained_tables(self, root):
+        """Count every retained SQL table, including sqlite_sequence, after close."""
+        import sqlite3
+        # Core's database path is supplied by the fixture, not guessed by a reader.
+        from contextlib import closing
+        with closing(sqlite3.connect(Path(root).as_uri()+'?mode=ro',uri=True)) as db:
+            names=[row[0] for row in db.execute("SELECT name FROM sqlite_master WHERE type='table'")]
+            return {name:db.execute('SELECT count(*) FROM "'+name.replace('"','""')+'"').fetchone()[0]
+                    for name in names}
+
+    def retained_identity(self, database):
+        import sqlite3
+        from contextlib import closing
+        with closing(sqlite3.connect(Path(database).as_uri()+'?mode=ro',uri=True)) as db:
+            return {name:db.execute('SELECT * FROM '+name+' ORDER BY rowid').fetchall()
+                    for name in ('jobs','events','dispatches','dispatch_commands',
+                                 'catalogue_requests','catalogue_versions')}
+
     def resolve(self, request=None, principal='alice'):
         return self.contexts.resolve_owned(self.b.core,principal,'voice_prepare',request or self.request)
 
@@ -247,25 +265,43 @@ class CPUPreparationTests(CPUPreparationFixture):
         from worker.lifecycle import Observation,State
         from tests.release.test_native_managed_clone import ManagedCloneTests
         outer=self;b=self.b
+        from types import SimpleNamespace
+        clock=[0.0];durations=[]
+        def monotonic():
+            clock[0]+=.04
+            return clock[0]
+        self.enterContext(patch('service.dispatcher.time',SimpleNamespace(monotonic=monotonic)))
+        # Select the installed read-poll policy through the existing injected seam;
+        # this is still fake runtime evidence, with real production SQL tables.
+        self.enterContext(patch.object(Dispatcher,'_qwen_state_poll',return_value=True))
         class Runtime:
             def call(inner,op,body):return dict(quarantined=False) if op=='hello' else dict(acked=True)
             def prepare(inner,a,fixture):inner.authority=a;return 'injected/cpu-xvector'
-            def start(inner,identity):return dict(state='alive')
-            def observe(inner,identity,timeout):return Observation(identity,State.STOPPED)
+            def start(inner,identity):
+                inner.started=clock[0];inner.polled=False
+                return dict(state='alive')
+            def observe(inner,identity,timeout):
+                if not inner.polled:
+                    inner.polled=True;clock[0]+=1800
+                    durations.append(clock[0]-inner.started)
+                    return Observation(identity,State.ALIVE)
+                return Observation(identity,State.STOPPED)
             def collect(inner,a,identity):
+                if a.context['plan']['request'].get('text')=='Failed speech':
+                    return dict(runtime_id=identity,binding=a.binding,reaped=True,engine_uid=os.getuid(),reap_method='pid1-waitpid-echild',reaped_children=1,timely=False,original_deadline=a.job['deadline']),None
                 _,p,stage=outer.collected_proposal(a);(stage/'conditioning').rmdir()
                 return dict(runtime_id=identity,binding=a.binding,reaped=True,engine_uid=os.getuid(),reap_method='pid1-waitpid-echild',reaped_children=1,timely=True,original_deadline=a.job['deadline']),TransportObservation('proposal','injected',message=p['message'],manifest=p['manifest'])
         b.core.close();root=b.root/'core'
-        receipts={}
+        receipts={};retained=None;identity=None
         for reopen in (False,True):
             dispatcher=Dispatcher(root,staging=b.stage,runtime=Runtime(),profiles=self.profiles,production_contexts=self.contexts)
             b.core=dispatcher.core;self.dispatcher=dispatcher
             try:
                 app=create_voice_app(dispatcher,credentials=StaticCredentials([Credential('writer','alice',frozenset({'read','production-write'}))]))
                 self.wait(lambda:dispatcher.call('status')['reconciled'])
-                def complete(receipt):
+                def complete(receipt,expected='succeeded'):
                     self.wait(lambda:dispatcher.call('job',receipt['job_id'])['state'] in ('succeeded','failed'))
-                    self.assertEqual(dispatcher.call('job',receipt['job_id'])['state'],'succeeded')
+                    self.assertEqual(dispatcher.call('job',receipt['job_id'])['state'],expected)
                     self.wait(lambda:dispatcher.call('status')['phase']=='idle')
                 def cli(args):
                     output=io.StringIO()
@@ -290,10 +326,33 @@ class CPUPreparationTests(CPUPreparationFixture):
                     self.assertEqual(saved,tool('voice_save',save,'public-save'))
                     request=dict(b.context['plan']['request'],voice_version_id=saved['version']['id'],text='Public frozen speech.')
                     generated=http.call('speech_generate',request,key='public-generate');complete(generated)
-                    current=dict(prep=prep,saved=saved,generated=generated)
+                    failed=http.call('speech_generate',dict(request,text='Failed speech'),key='failed');complete(failed,'failed')
+                    failed_job=dispatcher.call('job',failed['job_id'])
+                    retried=http.call('job_retry',dict(job_id=failed_job['id'],input_sha256=failed_job['input_sha256']),key='retried');complete(retried,'failed')
+                    extra=http.call('speech_generate',dict(request,text='Additional speech'),key='extra');complete(extra)
+                    current=dict(prep=prep,saved=saved,generated=generated,failed=failed,retried=retried,extra=extra)
                     if reopen:self.assertEqual(current,receipts)
                     else:receipts=current
-            finally:dispatcher.close()
+            finally:
+                database=root/'core.sqlite'
+                dispatcher.close()
+            counts=self.retained_tables(database)
+            self.assertLessEqual(sum(counts.values()),2048)
+            self.assertEqual(len(durations),5)
+            self.assertTrue(all(duration>=1800 for duration in durations))
+            self.assertEqual(counts['jobs'],5)
+            self.assertEqual(counts['dispatch_commands'],25)
+            current_identity=self.retained_identity(database)
+            if reopen:
+                self.assertEqual(current_identity,identity)
+                growth={name:counts[name]-retained[name] for name in counts}
+                self.assertEqual(growth['p1_inventory_scans'],1)
+                self.assertGreater(growth['p1_inventory_objects'],0)
+                self.assertGreater(growth['p1_inventory_history'],0)
+                self.assertEqual(sum(counts.values())-sum(retained.values()),
+                                 sum(growth[name] for name in ('p1_inventory_scans',
+                                     'p1_inventory_objects','p1_inventory_history')))
+            else:retained=counts;identity=current_identity
 
     def test_cancel_preparation_and_generation_wait_for_reap_ack_then_retry_after_reopen(self):
         import threading
@@ -350,7 +409,11 @@ class CPUPreparationTests(CPUPreparationFixture):
                 self.assertEqual(dispatcher.call('job',job['id'])['artifact_ids'],[])
                 self.assertGreater(runtime.acks,0)
                 frozen=runtime.authority.context
-            finally:dispatcher.close()
+            finally:
+                database=root/'core.sqlite'
+                dispatcher.close()
+            before_retry=self.retained_tables(database)
+            self.assertLessEqual(sum(before_retry.values()),2048)
             resumed=Runtime(finish=True)
             dispatcher=Dispatcher(root,staging=b.stage,runtime=resumed,profiles=self.profiles,production_contexts=self.contexts);b.core=dispatcher.core;self.dispatcher=dispatcher
             try:
@@ -363,6 +426,10 @@ class CPUPreparationTests(CPUPreparationFixture):
                 wait(lambda:dispatcher.call('job',receipt['job_id'])['state']=='succeeded')
                 wait(lambda:dispatcher.call('status')['phase']=='idle')
             finally:dispatcher.close()
+            after_retry=self.retained_tables(database)
+            self.assertEqual(set(before_retry),set(after_retry))
+            self.assertGreater(sum(after_retry.values()),sum(before_retry.values()))
+            self.assertLessEqual(sum(after_retry.values()),2048)
 
 
 class CPUConditioningMonitorTests(CPUPreparationFixture):

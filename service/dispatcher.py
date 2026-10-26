@@ -469,8 +469,14 @@ class Dispatcher:
             self.runtime.bind(row['authority'],row['runtime'])
             self.runtime.interrupt(row['runtime'])
 
+    def _qwen_state_poll(self):
+        from service.installed_qwen_daemon import FAMILY
+        return (self.installed_checked and
+                getattr(self.installed_activation, 'family', None) is FAMILY and
+                getattr(self.runtime, 'family', None) is FAMILY)
+
     def _launch(self,row,op,fn):
-        command=self.store.command(row,op)
+        command=None if op=='poll' else self.store.command(row,'observe' if op=='confirm' else op)
         self.fault('before_'+op)
         self.pending=(self.pool.submit(fn),row,op,command)
 
@@ -493,7 +499,8 @@ class Dispatcher:
     def _service_stop(self,row):
         # One bounded stop request per bound runtime, including after pending I/O.
         # Failed/unknown stop is not death: observation/receipt must still follow.
-        if (self.stop_obligation and row and row['runtime'] and not row['outcome']
+        if ((self.stop_obligation or (row and self.core.job(row['job_id'])['state']=='cancel_requested'))
+                and row and row['runtime'] and not row['outcome']
                 and not row['receipt'] and row['runtime'] not in self.resource_stop_sent and not self.pending):
             self._launch(row,'stop',lambda:self.runtime.terminate(row['runtime'],1.5))
             self.resource_stop_sent.add(row['runtime'])
@@ -512,28 +519,39 @@ class Dispatcher:
             self.pending=None
             try:
                 value=future.result()
+                if op=='poll' and (value.runtime_id!=row['runtime'] or value.state not in (State.ALIVE,State.STOPPED,State.UNKNOWN)):
+                    raise ValueError('unbound_observation')
                 if op=='collect' and hasattr(self.runtime,'finalize_collect'):
                     value=self.runtime.finalize_collect(value)
             except Exception:
+                if op=='poll':command=self.store.command(row,'observe')
                 self.store.complete(command,False)
                 if op=='ack':self.next_poll=time.monotonic()+.2;return
                 self.store.update(row,phase='unknown');self.quarantined=True
                 self.reconciled=True;self.next_poll=time.monotonic()+.2;return
             self.fault('after_'+op)
-            self.store.complete(command,True)
+            if command is not None:self.store.complete(command,True)
+            if op=='poll':
+                if (value.state!=State.ALIVE or (hasattr(self.runtime,'import_uncertain') and
+                        self.runtime.import_uncertain(row['runtime']))):
+                    # A read is only a hint; collect requires durable STOPPED confirmation.
+                    self._launch(row,'confirm' if value.state==State.STOPPED else 'observe',
+                                 lambda:self.runtime.observe(row['runtime'],1.5));return
             if op=='prepare':
                 self.fault('preregistration')
                 self.store.update(row,runtime=value,phase='bound')
                 self.fault('prestart')
                 bound=self.store.current()
-                if self._service_stop(bound):return
                 if self.core.job(bound['job_id'])['state']=='cancel_requested':
                     self._interrupt_transfer(bound['job_id'])
-                    self._launch(bound,'stop',lambda:self.runtime.terminate(value,1.5));return
+                if self._service_stop(bound):return
                 self._launch(bound,'start',lambda:self.runtime.start(value));return
             if op=='start':self.store.update(row,phase='observing');self.fault('postspawn')
-            elif op=='observe':
+            elif op in ('observe','confirm'):
                 if value.runtime_id!=row['runtime']:raise ValueError('unbound_observation')
+                if op=='confirm' and value.state!=State.STOPPED:
+                    self.store.update(row,phase='unknown');self.quarantined=True
+                    self.reconciled=True;self.next_poll=time.monotonic()+.2;return
                 self.reconciled=True
                 self.quarantined=value.state==State.UNKNOWN or self.resource_fault or (hasattr(self.runtime,'import_uncertain') and self.runtime.import_uncertain(row['runtime']))
                 if value.state==State.STOPPED:
@@ -544,8 +562,6 @@ class Dispatcher:
                         self.fault('observation_reap')
                         self._launch(row,'collect',lambda:self.runtime.collect(row['authority'],row['runtime']));return
                 self.store.update(row,phase='unknown' if self.quarantined else 'observing')
-                if value.state==State.ALIVE and not self.stop_obligation and self.core.job(row['job_id'])['state']=='cancel_requested':
-                    self._launch(row,'stop',lambda:self.runtime.terminate(row['runtime'],1.5));return
             elif op=='collect':
                 if value is None:raise ValueError('terminal_receipt_missing')
                 self._terminal(row,*value)
@@ -571,7 +587,8 @@ class Dispatcher:
                 self.store.update(row,phase='unknown');self.quarantined=True;self.reconciled=True
             if row['runtime'] is None:
                 self.quarantined=True;self.reconciled=True;return
-            self._launch(row,'observe',lambda:self.runtime.observe(row['runtime'],1.5));return
+            op='poll' if self._qwen_state_poll() and row['phase']=='observing' and not self.quarantined else 'observe'
+            self._launch(row,op,lambda:self.runtime.observe(row['runtime'],1.5));return
         if self.closing:
             self.stopping=True
             return

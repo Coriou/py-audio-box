@@ -80,9 +80,12 @@ def running(d,r,key='a'):
 def test_serialized_responsive_cancel_unknown_and_retry(pair):
     d,r=pair;job=running(d,r)
     t=time.monotonic();assert d.call('job',job['id'])['state']=='running'
+    # Configure the stop reply before cancellation can launch its pending RPC.
+    # Default terminate overwrites UNKNOWN with STOPPED; that forced fixture
+    # race says nothing about an ambiguous supervisor observation.
+    r.terminate=lambda identity,timeout:setattr(r,'state',State.UNKNOWN)
     assert d.call('cancel',job['id'])['state']=='cancel_requested'
     assert time.monotonic()-t<.5
-    r.state=State.UNKNOWN
     wait(d,lambda:d.call('status')['quarantined'])
     assert d.call('job',job['id'])['state']=='cancel_requested'
     assert d.call('submit','p','a')['id']==job['id']
@@ -759,6 +762,125 @@ def test_alive_poll_cadence_bounds_real_command_journal_and_keeps_stop_immediate
         # Resource stop obligations likewise run before the next-poll guard.
         owner.pending=None;owner.stop_obligation=True;owner.next_poll=clock[0]+100
         owner._tick()
-        assert owner.pending[2]=='stop'
-        assert runtime.terminate.call_count==2
+        assert owner.pending is None
+        assert runtime.terminate.call_count==1
     finally:db.close()
+
+
+@pytest.fixture
+def qwen_poll_owner(monkeypatch):
+    """Real command SQL with immediate or explicitly held single-executor futures."""
+    from concurrent.futures import Future
+    from contextlib import nullcontext
+    import sqlite3
+    from types import SimpleNamespace
+    from unittest.mock import Mock
+    from service.dispatch_store import DispatchStore
+    from service.installed_qwen_daemon import FAMILY
+    from service import dispatcher as module
+    clock=[0.0];monkeypatch.setattr(module.time,'monotonic',lambda:clock[0])
+    db=sqlite3.connect(':memory:')
+    db.execute('CREATE TABLE dispatch_commands(seq INTEGER PRIMARY KEY,dispatch_id INTEGER,op TEXT,state TEXT)')
+    core=SimpleNamespace(db=db,transaction=lambda:nullcontext(),job=Mock(return_value={'state':'running'}))
+    row=dict(seq=1,job_id='job',runtime='runtime',phase='observing',outcome=None,receipt=None,authority='authority')
+    store=DispatchStore.__new__(DispatchStore);store.core=core;store.db=db
+    store.current=lambda:None if row.get('acked') else row
+    store.update=lambda unused,**fields:row.update(fields)
+    runtime=SimpleNamespace(family=FAMILY,observe=Mock(return_value=Observation('runtime',State.ALIVE)),
+        terminate=Mock(),start=Mock(),collect=Mock(return_value=('receipt',None)),call=Mock(return_value={'acked':True}))
+    def submit(fn):
+        future=Future()
+        try:future.set_result(fn())
+        except Exception as exc:future.set_exception(exc)
+        return future
+    owner=Dispatcher.__new__(Dispatcher)
+    owner.core=core;owner.store=store;owner.runtime=runtime;owner.pool=SimpleNamespace(submit=submit)
+    owner.enrolled=False;owner.installed_checked=True;owner.installed_activation=SimpleNamespace(family=FAMILY)
+    owner.pending=None;owner.next_poll=0;owner.resource_fault=False;owner.persistence_fault=False
+    owner.stop_obligation=False;owner.resource_stop_sent=set();owner.quarantined=False;owner.reconciled=True
+    owner.integrity_fault=False;owner.closing=False;owner.fault=lambda _:None;owner._resource_check=Mock()
+    def terminal(unused,receipt,observation):
+        assert receipt=='receipt'
+        assert not runtime.call.called  # ACK follows receipt/reap processing.
+        row.update(outcome='terminal',receipt=receipt)
+    owner._terminal=terminal
+    yield owner,row,runtime,clock,db,submit
+    db.close()
+
+
+@pytest.mark.parametrize('held',[False,True])
+def test_qwen_five_1800_second_attempts_have_25_commands(qwen_poll_owner,held):
+    from concurrent.futures import Future
+    owner,row,runtime,clock,db,submit=qwen_poll_owner
+    for attempt in range(5):
+        row.update(seq=attempt+1,phase='bound',outcome=None,receipt=None,acked=0)
+        owner.next_poll=0;runtime.call.reset_mock()
+        owner._launch(row,'prepare',lambda:'runtime')
+        owner._tick();owner._tick()  # prepare -> start -> observing
+        for second in range(1800):
+            clock[0]+=1
+            if held:
+                future=Future();owner.pool.submit=lambda fn:future
+                owner._tick()
+                for _ in range(3):owner._tick()
+                assert owner.pending[0] is future
+                future.set_result(Observation('runtime',State.ALIVE))
+                owner.pool.submit=submit
+            else:owner._tick()
+            owner._tick()
+        runtime.observe.return_value=Observation('runtime',State.STOPPED)
+        clock[0]+=1
+        owner._tick();owner._tick()
+        assert owner.pending[2]=='confirm'
+        owner._tick();assert owner.pending[2]=='collect'
+        owner._tick();clock[0]+=1;owner._tick();owner._tick()
+        assert row['acked']==1
+        runtime.observe.return_value=Observation('runtime',State.ALIVE)
+    assert db.execute('SELECT count(*) FROM dispatch_commands').fetchone()[0]==25
+    assert db.execute("SELECT count(*) FROM dispatch_commands WHERE state!='returned'").fetchone()[0]==0
+
+
+@pytest.mark.parametrize('pending_op',['prepare','start','poll','observe'])
+def test_cancel_pending_io_and_replays_share_resource_stop_latch(qwen_poll_owner,pending_op):
+    from concurrent.futures import Future
+    owner,row,runtime,clock,db,submit=qwen_poll_owner
+    future=Future()
+    command=None if pending_op=='poll' else owner.store.command(row,pending_op)
+    owner.pending=(future,row,pending_op,command)
+    owner.core.job.return_value={'state':'cancel_requested'}
+    owner.next_poll=999
+    owner._tick();assert not runtime.terminate.called
+    future.set_result('runtime' if pending_op=='prepare' else
+                      None if pending_op=='start' else Observation('runtime',State.ALIVE))
+    owner._tick();assert owner.pending[2]=='stop'
+    owner._tick()
+    for _ in range(10):
+        owner.next_poll=0;owner.stop_obligation=True;owner._tick();owner._tick()
+    assert runtime.terminate.call_count==1
+    assert db.execute("SELECT count(*) FROM dispatch_commands WHERE op='stop'").fetchone()[0]==1
+
+
+@pytest.mark.parametrize('result',['error','unknown','contradiction','identity','stopped_error','stopped_unknown'])
+def test_qwen_poll_failure_and_terminal_confirmation_evidence(qwen_poll_owner,result):
+    owner,row,runtime,clock,db,submit=qwen_poll_owner
+    if result=='error':runtime.observe.side_effect=OSError('uncertain')
+    elif result=='identity':runtime.observe.return_value=Observation('other',State.ALIVE)
+    elif result=='unknown':runtime.observe.return_value=Observation('runtime',State.UNKNOWN)
+    elif result=='stopped_error':runtime.observe.side_effect=[Observation('runtime',State.STOPPED),OSError('uncertain confirmation')]
+    elif result=='stopped_unknown':runtime.observe.side_effect=[Observation('runtime',State.STOPPED),Observation('runtime',State.UNKNOWN)]
+    else:runtime.observe.side_effect=[Observation('runtime',State.STOPPED),Observation('runtime',State.ALIVE)]
+    owner._tick();owner._tick()
+    if result in ('unknown','contradiction','stopped_error','stopped_unknown'):owner._tick()
+    assert owner.quarantined
+    assert row['phase']=='unknown'
+    assert not runtime.collect.called and not runtime.call.called
+    assert row['outcome'] is None and row['receipt'] is None
+    assert db.execute('SELECT op,state FROM dispatch_commands').fetchall()==[
+        ('observe','uncertain' if result in ('error','identity','stopped_error') else 'returned')]
+
+
+def test_poll_requires_both_checked_installed_qwen_tokens(qwen_poll_owner):
+    owner,row,runtime,clock,db,submit=qwen_poll_owner
+    assert owner._qwen_state_poll()
+    owner.installed_checked=False;assert not owner._qwen_state_poll()
+    owner.installed_checked=True;runtime.family=object();assert not owner._qwen_state_poll()
