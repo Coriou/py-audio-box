@@ -296,6 +296,9 @@ class Docker:
         return result
 
     def exchange(self,identity,phase,nonce,config,b,source):
+        from service import installed_qwen_daemon as qd
+        qwen_import=getattr(self,'family',None) is qd.FAMILY and phase=='install'
+        expires=time.time()+max(0,self.end-time.monotonic()) if qwen_import else None
         own=self.container(identity); dv.inspect_container(own,'helper',config,b,phase=phase,nonce=nonce,family=getattr(self,'family',None))
         p=subprocess.Popen(self.argv(['container','start','--attach','--interactive',identity]),stdin=subprocess.PIPE,
             stdout=subprocess.PIPE,stderr=subprocess.DEVNULL,env=self.env,bufsize=0,close_fds=True)
@@ -308,6 +311,7 @@ class Docker:
                 if p.poll() is not None or time.monotonic()>=self.end: raise ValueError('daemon_helper_start_unknown')
                 time.sleep(.02)
             manifest=[{k:v for k,v in e.items() if k!='source'} for e in source]
+            if qwen_import: wire.send('import-deadline',dict(expires=expires))
             wire.send('begin',dict(configuration=config,binding=b,helper=own,manifest=manifest))
             while True:
                 action,payload=wire.receive()
@@ -409,7 +413,7 @@ def manifest(entries, *, family=None):
 
 def main(argv=None, *, family=None):
     # Family comes only from the distinct private entrypoint, never a request.
-    from service import install_policy as ip, installed_pocket_daemon as pd
+    from service import install_policy as ip, installed_pocket_daemon as pd, installed_qwen_daemon as qd
     pd.require(family)
     export = pd.is_export(family)
     p=argparse.ArgumentParser(description=('Explicit fresh Pocket CPU Docker volume installation; actual qualification remains separate.' if family is pd.FAMILY else 'Explicit local Docker volume installation; no acquisition or repair.'))
@@ -475,6 +479,9 @@ def main(argv=None, *, family=None):
             if d.frozen!=b['daemon']: raise ValueError('daemon_handle_context_changed')
             phases=(a.command,)
         for phase in phases:
+            if family is qd.FAMILY:
+                # Anchor before helper creation, never on file/chunk progress.
+                d.end=time.monotonic()+(qd.IMPORT_SECONDS if phase=='install' else 120)
             nonce=secrets.token_hex(16)
             intent=a.handle+'.helper-'+nonce
             exclusive(intent,dict(phase=phase,nonce=nonce,binding=dv.digest(b)))

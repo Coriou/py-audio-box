@@ -67,3 +67,25 @@ def manifest(value):
     if hashlib.sha256(manifest_bytes(value)).hexdigest() != MANIFEST_SHA256:
         raise ValueError('installed_qwen_exact_manifest_required')
     return value
+
+# 2,516,100,892 pinned bytes reached only 973,078,528 bytes in the
+# observed 100-second import. 600 seconds also covers full descriptor rehash
+# at the 4 GiB admission ceiling, without chunk renewal. Transfer alone
+# would require 6.83 MiB/s at that ceiling; final rehash shares the same cap.
+IMPORT_SECONDS = 600
+
+
+def import_deadline(expires):
+    """Convert the sender's original UTC expiry once to a local monotonic cap.
+
+    Docker's host and helper monotonic clocks have different epochs. UTC is
+    used only at this handshake; subsequent progress cannot renew either cap.
+    """
+    import math
+    import time
+    if type(expires) not in (int, float) or not math.isfinite(expires):
+        raise ValueError('qwen_import_deadline')
+    remaining = expires - time.time()
+    if not 0 < remaining <= IMPORT_SECONDS:
+        raise ValueError('qwen_import_deadline')
+    return time.monotonic() + remaining

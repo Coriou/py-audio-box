@@ -289,3 +289,31 @@ The prior actual trace loses the dependency traceback at the child error
 transport, so the exact historical intervening import frames are unavailable.
 Offline import-seam checks supply source evidence only. Review, commit and
 rebuild precede any separately authorized inference/runtime qualification.
+
+### Bounded public model import (r431 source fix)
+
+The Qwen `docker-qwen install` import has a fixed 600-second budget, anchored
+before helper creation. The sender transmits its original UTC expiry once; the
+helper validates the finite remaining budget (at most 600 seconds), converts it
+to its local monotonic clock, and uses it for the wire, chunk RPCs, and final
+sealed-tree descriptor verification. No file or chunk renews this deadline.
+Host and Docker UTC clocks must agree; clock skew can cause a conservative
+refusal. There is no CLI timeout override. Qwen initialization and later client
+phases retain 120 seconds; helper initialization retains 100 seconds. Pocket and
+Kokoro budgets are unchanged.
+
+This bound follows r430's actual failure: the canonical eleven-file bundle is
+2,516,100,892 bytes, and at least 973,078,528 bytes had reached the destination
+before the 100-second helper deadline. That observation suggests roughly
+9.3 MiB/s and about 259 seconds for transfer alone. 600 seconds allows transfer
+and final rehash. At the 4 GiB total cap, transfer alone requires about
+6.83 MiB/s; rehash must also finish within the same budget.
+It is a source budget decision, not proof that a fresh installation will finish.
+The existing 2 GiB per-file, 4 GiB total, no-follow paths, incremental SHA256,
+UID/mode, lock, configuration, manifest and receipt checks remain required.
+A stopped helper alone never proves import completion. Failed/expired imports
+retain intent and partial volumes; initialization requires verified import-done.
+
+The prior actual engine inference passed; public installed import and all later
+installed HTTP/CLI/MCP, cancellation/reap, restart/history and publication stages
+remain unqualified. Review, commit and new images precede any actual retry.

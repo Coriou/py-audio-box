@@ -35,6 +35,13 @@ class QwenDaemonTests(InstalledQwenTests):
     def test_large_model_import_is_explicit_family_only(self):
         entries=[dict(role='models',path='bundles/b/model.safetensors',source='unused',bytes=1024**3,sha256='a'*64),dict(role='config',path='install.json',source='unused',bytes=1,sha256='b'*64),dict(role='credential',path='control.key',source='unused',bytes=1)]
         dc.manifest(entries,family=qd.FAMILY)
+        for size in (2*1024**3+1,4*1024**3+1):
+            oversized=copy.deepcopy(entries);oversized[0]['bytes']=size
+            with self.assertRaises(ValueError):dc.manifest(oversized,family=qd.FAMILY)
+        oversized=copy.deepcopy(entries)
+        oversized[0]['bytes']=2*1024**3
+        oversized.insert(1,dict(oversized[0],path='bundles/b/second.safetensors'))
+        with self.assertRaises(ValueError):dc.manifest(oversized,family=qd.FAMILY)
         for family in (None,pd.FAMILY):
             with self.assertRaises(ValueError):dc.manifest(entries,family=family)
 

@@ -103,6 +103,7 @@ class Helper:
         self.stable(); self.wire.send(action,payload)
         returned,value=self.wire.receive()
         if returned!=action: raise ValueError('daemon_phase_action_mismatch')
+        if time.monotonic()>=self.end: raise ValueError('daemon_helper_deadline')
         self.stable(); return value
 
     def stable(self):
@@ -287,7 +288,8 @@ class Helper:
             os.fchown(self.fds[role],10001 if role=='models' else 0,10001)
             os.fchmod(self.fds[role],0o555 if role=='models' else 0o750); os.fsync(self.fds[role])
         from service.host_install import _model_tree, _public_file
-        model_digest=_model_tree(self.root['models'],self.config,time.monotonic()+30)
+        from service import installed_qwen_daemon as qd
+        model_digest=_model_tree(self.root['models'],self.config,self.end if self.family is qd.FAMILY else time.monotonic()+30)
         config_raw=_public_file(self.root['config']/'install.json',uid=0,gid=10001,mode=0o440,limit=65536,deadline=time.monotonic()+2)
         if config_raw!=encoded(self.config): raise ValueError('daemon_config_content')
         from service.auth import installed_credentials
@@ -299,6 +301,7 @@ class Helper:
             if not set(self.config['audio_export']['principals']) <= admitted:
                 raise ValueError('daemon_export_credential_principals')
         result=dict(identities={r:list(self.original[r]) for r in ('models','config','credential')},model_digest=model_digest)
+        if time.monotonic()>=self.end: raise ValueError('daemon_helper_deadline')
         self.write('import-done.json',result)
         return dict(phase='imported')
 
@@ -599,6 +602,20 @@ class Helper:
         return result
 
 
+def begin(wire,phase,family):
+    from service import installed_qwen_daemon as qd
+    end=None
+    if family is qd.FAMILY and phase=='install':
+        action,budget=wire.receive()
+        if action!='import-deadline': raise ValueError('qwen_import_deadline_required')
+        dv.closed(budget,'expires')
+        end=qd.import_deadline(budget['expires'])
+        wire.deadline=end
+    action,request=wire.receive()
+    if action!='begin': raise ValueError('daemon_helper_begin')
+    return request,end
+
+
 def main(*, family=None):
     try:
         if sys.platform!='linux' or os.getresuid()!=(0,0,0) or os.getresgid()!=(0,0,0): raise ValueError('daemon_helper_linux_root')
@@ -613,9 +630,10 @@ def main(*, family=None):
                 any(int(fields[k].strip(),16) for k in ('CapInh','CapAmb'))):
             raise ValueError('daemon_helper_capability_identity')
         wire=Wire(sys.stdin.buffer,sys.stdout.buffer,nonce,phase)
-        action,request=wire.receive()
-        if action!='begin': raise ValueError('daemon_helper_begin')
-        result=Helper(phase,nonce,request,wire,family=family).run()
+        request,end=begin(wire,phase,family)
+        helper=Helper(phase,nonce,request,wire,family=family)
+        if end is not None: helper.end=end
+        result=helper.run()
         wire.send('complete',dict(result=result))
     except (Exception,KeyboardInterrupt) as exc:
         # Source location only: never serialize exception messages, request data,
