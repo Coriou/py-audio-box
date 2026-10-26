@@ -98,7 +98,9 @@ def _qwen_descriptor(value):
         if (name.endswith('.json') and entry['bytes'] > 16*1024**2) or entry['bytes'] > 8*1024**3 or authority(entry['origin']) not in origins or entry['origin'] in urls or entry['revision'] != value['revision']:
             raise ValueError('Qwen asset identity or bound')
         names.add(name); urls.add(entry['origin']); total += entry['bytes']
-    if total > 16*1024**3 or not {'config.json','generation_config.json','tokenizer_config.json','tokenizer.json','speech_tokenizer/config.json','speech_tokenizer/preprocessor_config.json'} <= names or not any(n.startswith('speech_tokenizer/') and n.endswith('.safetensors') for n in names) or not any('/' not in n and n.endswith('.safetensors') for n in names):
+    from lib.tts_backends.assets import qwen_tokenizer_layout
+    qwen_tokenizer_layout(names, value['checkpoint'])
+    if total > 16*1024**3 or not {'config.json','generation_config.json','speech_tokenizer/config.json','speech_tokenizer/preprocessor_config.json'} <= names or not any(n.startswith('speech_tokenizer/') and n.endswith('.safetensors') for n in names) or not any('/' not in n and n.endswith('.safetensors') for n in names):
         raise ValueError('Incomplete bounded Qwen snapshot')
     if any(any(n.startswith(other + '/') for other in names) for n in names): raise ValueError('File/directory conflict')
 

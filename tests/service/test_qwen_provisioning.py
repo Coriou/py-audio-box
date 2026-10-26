@@ -44,6 +44,50 @@ class QwenProvisioningTests(unittest.TestCase):
     def spec(self):
         return QwenExecution('bundle',manifest_sha256(self.expected),self.expected['checkpoint'],'a'*40,'custom_voice',self.expected['language'],'voice','v1',2,100,100,244,4096,24000,preset='Ryan')
 
+    def base_fixture(self):
+        self.expected['checkpoint']='Qwen/Qwen3-TTS-12Hz-0.6B-Base'
+        self.expected['execution']['presets']=[]
+        del self.data['tokenizer.json']
+        self.data.update({'vocab.json':b'{"hello":1}', 'merges.txt':b'#version: 0.2\nh e\n',
+            'config.json':manifest_bytes(dict(model_type='qwen3_tts',tts_model_type='base',
+                tts_model_size='0b6',tokenizer_type='qwen3_tts_tokenizer_12hz',
+                architectures=['Qwen3TTSForConditionalGeneration']))})
+        self.repin()
+
+    def test_base_descriptor_layout_is_explicit(self):
+        from service.provisioning import validate_expected
+        self.base_fixture()
+        self.assertEqual(validate_expected(self.expected),self.expected)
+        for name in ('vocab.json','merges.txt','tokenizer_config.json'):
+            bad=copy.deepcopy(self.expected)
+            bad['files']=[f for f in bad['files'] if f['path'] != name]
+            with self.subTest(name=name),self.assertRaises(ValueError): validate_expected(bad)
+        bad=copy.deepcopy(self.expected); bad['checkpoint']='other-model'
+        with self.assertRaises(ValueError): validate_expected(bad)
+
+    def test_base_shared_bundle_config_and_hash_fences(self):
+        self.base_fixture()
+        bundle=self.run_provision()
+        digest=manifest_sha256(self.expected)
+        self.assertEqual(verify_bundle(bundle,digest,self.expected['checkpoint'],'a'*40,'English')[0],bundle)
+        # No whole-weight read is needed by either provisioning or execution.
+        with patch.object(Path,'read_bytes',side_effect=AssertionError('whole file read')):
+            verify_bundle(bundle,digest,self.expected['checkpoint'],'a'*40,'English')
+        path=bundle/'speech_tokenizer/model.safetensors'
+        path.chmod(0o600); path.write_bytes(b'wrong codec!')
+        with self.assertRaises(Refused): verify_bundle(bundle,digest,self.expected['checkpoint'],'a'*40,'English')
+
+    def test_base_hashed_config_refusals(self):
+        self.base_fixture()
+        original=json.loads(self.data['config.json'])
+        for changes in (dict(tts_model_size=True),dict(tts_model_type='custom_voice'),
+                        dict(tokenizer_type='other'),dict(architectures=True),
+                        dict(sample_rate=True),dict(auto_map={}),
+                        dict(asset_path='https://outside.invalid/model')):
+            self.data['config.json']=manifest_bytes({**original,**changes}); self.repin()
+            with self.subTest(changes=changes),self.assertRaises((ValueError,Refused)):
+                self.run_provision()
+
     def test_provision_shared_verifier_actual_inputs_and_injected_execution(self):
         for language in ('English','French'):
             self.expected['language'] = language

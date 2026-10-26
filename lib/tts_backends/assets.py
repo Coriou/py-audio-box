@@ -13,6 +13,19 @@ def sha256(path):
     return digest.hexdigest()
 
 
+def qwen_tokenizer_layout(names, checkpoint):
+    """Keep the legacy tokenizer contract; admit the reviewed Base BPE layout."""
+    if 'tokenizer_config.json' not in names:
+        raise ValueError('Incomplete Qwen tokenizer')
+    bpe = {'vocab.json', 'merges.txt'} & names
+    if 'tokenizer.json' in names and not bpe:
+        return 'tokenizer'
+    if (checkpoint == 'Qwen/Qwen3-TTS-12Hz-0.6B-Base'
+            and 'tokenizer.json' not in names and bpe == {'vocab.json', 'merges.txt'}):
+        return 'base-bpe'
+    raise ValueError('Unsupported Qwen tokenizer layout')
+
+
 def verified_bundle(directory, backend):
     if backend == 'qwen':
         # Deliberate backend contract: upstream names, no global fr/en widening.

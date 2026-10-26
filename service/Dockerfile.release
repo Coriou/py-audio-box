@@ -72,3 +72,74 @@ COPY contracts /opt/speech/contracts
 COPY lib /opt/speech/lib
 USER 0:10001
 CMD ["python", "-I", "-B", "-c", "import sys;sys.path.insert(0,'/opt/speech');from worker.runtime_supervisor import main;main()", "--installed-policy", "docker-pocket-split-v1", "--configuration-file", "/etc/speech-box/install.json"]
+
+
+# LOT1 source recipe, Linux amd64 only. No production install policy yet.
+FROM python:3.11-slim-bookworm@sha256:0a310eeecf4e1f5a0743f9a6520c90c88d089c903ca5fd283f501e3a805f5f89 AS worker-qwen
+ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 TORCH_DEVICE=cpu HF_HOME=/tmp/huggingface HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 GRADIO_ANALYTICS_ENABLED=False MALLOC_MMAP_THRESHOLD_=131072
+WORKDIR /opt/speech
+# r409's 16 Debian package artifacts; base dependencies remain digest-pinned above.
+# The security archive is separate; every downloaded byte is checked before dpkg.
+RUN test "$(dpkg --print-architecture)" = amd64
+RUN python - <<'PYQWEN'
+import hashlib, pathlib, urllib.request
+root = pathlib.Path('/opt/qwen-debs')
+root.mkdir()
+artifacts = [
+('https://deb.debian.org/debian/pool/main/a/alsa-lib/libasound2-data_1.2.8-1_all.deb', 'fe0780d2d3674b2977e0acb0d48b448ad72ba1642564b7dc537f55e839984c2d', 20488),
+('https://deb.debian.org/debian/pool/main/a/alsa-lib/libasound2_1.2.8-1+b1_amd64.deb', '44c77b076a7b11ae99712439022d822245b1994c435da564ebd320bb676faf4c', 361788),
+('https://deb.debian.org/debian/pool/main/g/gcc-12/libgomp1_12.2.0-14+deb12u1_amd64.deb', '48fec46bda7f5b1638b9e959889bfbc20491247d402d120bb152687eb48143d7', 115772),
+('https://deb.debian.org/debian/pool/main/libg/libgsm/libgsm1_1.0.22-1_amd64.deb', '1116dc3dbd0f5e7f6becebd5d5a9a9cbd40fc268f7a3e3f6863dd4a26627627a', 30940),
+('https://deb.debian.org/debian/pool/main/libt/libtool/libltdl7_2.4.7-7~deb12u1_amd64.deb', '8070b550321d4bd1c298f52f75374898d39112b709026d2ea5362ef1277b775a', 393000),
+('https://deb.debian.org/debian/pool/main/f/file/libmagic-mgc_5.44-3_amd64.deb', 'bad01673ba5dfb9b5db4f3ae6a71f18d492cb6801eab45ad3c7d483c0a1f6ad2', 304888),
+('https://deb.debian.org/debian/pool/main/f/file/libmagic1_5.44-3_amd64.deb', 'a241c2adc7438a7e217f32544028489981768a349d3e48673392703255c7b88e', 103752),
+('https://deb.debian.org/debian/pool/main/o/opencore-amr/libopencore-amrnb0_0.1.6-1_amd64.deb', 'adc9ff8f56b8a8e0b8a5bf90e8d07ce7d4acc306e3f60e37989e281f649df53f', 96456),
+('https://deb.debian.org/debian/pool/main/o/opencore-amr/libopencore-amrwb0_0.1.6-1_amd64.deb', 'a8a98630f0f2976a90b2421adaa7659340db116595f39ef9b54975d85c876ef7', 51964),
+('https://security.debian.org/debian-security/pool/updates/main/libp/libpng1.6/libpng16-16_1.6.39-2+deb12u6_amd64.deb', '940b91d40d51c825de7f7aa133aecff1ffa25a91f12cb6aa6926c9ad55cd640c', 277048),
+('https://deb.debian.org/debian/pool/main/s/sox/libsox-fmt-alsa_14.4.2+git20190427-3.5_amd64.deb', '0b7ff80396e299796c00afce57779fdb0272e33eb94d2526145babf8f9ca45a6', 41516),
+('https://deb.debian.org/debian/pool/main/s/sox/libsox-fmt-base_14.4.2+git20190427-3.5_amd64.deb', '099fa9188b9516b2a93314d9d3e3bd02b165f59469bb6d67d91743e4c13d9e74', 62964),
+('https://deb.debian.org/debian/pool/main/s/sox/libsox3_14.4.2+git20190427-3.5_amd64.deb', '0e2d255fce05d3caca5abd00a2c44f2c0e3708bd0f7b3a9954ed371ad6e71204', 255728),
+('https://deb.debian.org/debian/pool/main/libv/libvorbis/libvorbisfile3_1.3.7-1_amd64.deb', '68f84034ae1c9fa0ab6a45f5b6c406a50faae4421f0d78874260aefa2df68efc', 26084),
+('https://deb.debian.org/debian/pool/main/w/wavpack/libwavpack1_5.6.0-1_amd64.deb', 'be9730c554786476b6a1a0f0c888c25f15d6cf8dd88954885494111b0e44482c', 85720),
+('https://deb.debian.org/debian/pool/main/s/sox/sox_14.4.2+git20190427-3.5_amd64.deb', '6793a4824f96f0008be4d5defba8b07a0f3f9054708b0ed2332a4ede4c43b5b5', 132652),
+ ]
+for i, (url, digest, size) in enumerate(artifacts):
+    target = root / (str(i) + '.deb')
+    h = hashlib.sha256()
+    count = 0
+    with urllib.request.urlopen(url, timeout=60) as source, target.open('xb') as out:
+        while chunk := source.read(1024 * 1024):
+            count += len(chunk)
+            if count > size:
+                raise ValueError('Debian artifact size exceeded')
+            h.update(chunk)
+            out.write(chunk)
+    if count != size or h.hexdigest() != digest:
+        raise ValueError('Debian artifact differs from reviewed pin')
+PYQWEN
+RUN dpkg -i /opt/qwen-debs/*.deb && rm -rf /opt/qwen-debs
+COPY requirements/qwen-installed.lock /opt/speech/qwen-installed.lock
+# Exact r409 prerequisites; setuptools 82 supplies bdist_wheel.
+COPY requirements/qwen-sox-build.lock /opt/speech/qwen-sox-build.lock
+RUN pip install --no-cache-dir --only-binary=:all: --no-deps --require-hashes -r qwen-sox-build.lock
+# Keep the reviewed source hash canonical; only SoX may build, without
+# dependency resolution or an isolated environment acquiring more code.
+RUN python - <<'PYSOX'
+from pathlib import Path
+lines = Path('qwen-installed.lock').read_text().splitlines(keepends=True)
+sox = [line for line in lines if line.startswith('sox==')]
+assert len(sox) == 1
+Path('qwen-sox-source.lock').write_text(''.join(sox))
+Path('qwen-wheels.lock').write_text(''.join(line for line in lines if not line.startswith('sox==')))
+PYSOX
+RUN pip install --no-cache-dir --only-binary=:all: --no-deps --require-hashes -r qwen-wheels.lock && \
+    pip install --no-cache-dir --no-deps --no-build-isolation --no-binary=sox --require-hashes -r qwen-sox-source.lock && \
+    pip check
+COPY service /opt/speech/service
+COPY worker /opt/speech/worker
+COPY contracts /opt/speech/contracts
+COPY lib /opt/speech/lib
+USER 0:10001
+# LOT2 must supply the certified daemon-role launch and exact image/config seals.
+# Refuse direct launch rather than introducing an unregistered install policy.
+CMD ["python", "-I", "-B", "-c", "raise SystemExit('explicit private Qwen daemon launch required')"]

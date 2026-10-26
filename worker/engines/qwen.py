@@ -45,7 +45,11 @@ def _managed_snapshot(root, manifest, names, caps, owner_uid):
     Config bytes are never rewritten or generated from a model-name guess.
     """
     if manifest['language'] not in ('English', 'French') or any(l not in ('English','French') for l in manifest['execution']['languages']): raise Refused('bundle_language')
-    if not {'tokenizer.json','tokenizer_config.json'} <= names: raise Refused('bundle_config')
+    from lib.tts_backends.assets import qwen_tokenizer_layout
+    try:
+        tokenizer_layout = qwen_tokenizer_layout(names, manifest['checkpoint'])
+    except ValueError as exc:
+        raise Refused('bundle_config') from exc
     if caps.modes != ('custom_voice',) and manifest['execution']['presets']: raise Refused('bundle_capabilities')
     def inspect(value, key='', directory=''):
         if key in ('auto_map', 'custom_pipelines') or key == 'trust_remote_code' and value is not False: raise Refused('remote_code')
@@ -69,6 +73,12 @@ def _managed_snapshot(root, manifest, names, caps, owner_uid):
             weights = value.get('weight_map')
             if type(weights) is not dict or not weights or any(type(v) is not str or str(Path(name).parent/v) not in names or not v.endswith('.safetensors') for v in weights.values()): raise Refused('bundle_config')
     config = json.loads(_read(root/'config.json', 16*1024*1024, owner_uid=owner_uid))
+    if tokenizer_layout == 'base-bpe':
+        expected = {'model_type': 'qwen3_tts', 'tts_model_type': 'base',
+                    'tts_model_size': '0b6', 'tokenizer_type': 'qwen3_tts_tokenizer_12hz',
+                    'architectures': ['Qwen3TTSForConditionalGeneration']}
+        if any(config.get(key) != value for key, value in expected.items()):
+            raise Refused('bundle_config')
     talker = config.get('talker_config', {})
     if type(talker) is not dict: raise Refused('bundle_config')
     # When present upstream declarations are authoritative, never inferred pins.

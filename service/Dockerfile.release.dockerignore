@@ -18,6 +18,10 @@
 !requirements/
 !requirements/kokoro.lock
 !requirements/pocket-installed.lock
+!requirements/qwen-installed.lock
+!requirements/qwen-sox-build.lock
+!requirements/tts/
+!requirements/tts/qwen-0.6b-base.expected.json
 !requirements/tts-assets.json
 **/__pycache__
 **/*.pyc

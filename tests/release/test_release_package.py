@@ -366,7 +366,7 @@ print('isolated Pocket and authenticated client archive closure')
     def test_release_context_and_cpu_base(self):
         recipe=(ROOT/'service/Dockerfile.release').read_text()
         cpu=(ROOT/'Dockerfile.cpu').read_text().splitlines()[0].removeprefix('FROM ')
-        self.assertEqual(recipe.count('FROM '+cpu+' AS '),4)
+        self.assertEqual(recipe.count('FROM '+cpu+' AS '),5)
         self.assertNotIn('3.14',recipe);self.assertNotIn('service.api:app',recipe)
         self.assertIn('-r kokoro.lock -r requirements.lock',recipe)
         self.assertNotIn('tini',recipe)  # supervisor and control must remain PID1
@@ -401,6 +401,101 @@ print('isolated Pocket and authenticated client archive closure')
         self.assertIn('fastapi==0.143.2',lock)
         self.assertIn('starlette==1.8.0',lock)
         self.assertIn('--hash=sha256:',lock)
+
+
+class QwenLot1SourceTests(unittest.TestCase):
+    def _entries(self, name):
+        import re
+        raw=(ROOT/name).read_text()
+        starts=list(re.finditer(r'^([a-zA-Z0-9_-]+)==',raw,re.M))
+        return {m[1]:raw[m.start():(starts[i+1].start() if i+1<len(starts) else len(raw))]
+                for i,m in enumerate(starts)}
+
+    def test_cpu_and_installed_hash_closure(self):
+        import re
+        import tomllib
+        cpu=self._entries('requirements/qwen-cpu.lock')
+        self.assertEqual(len(cpu),86)
+        poetry={p['name']:p for p in tomllib.loads((ROOT/'poetry.lock').read_text())['package']}
+        for name,entry in cpu.items():
+            version=entry.split()[0].split('==')[1]
+            self.assertEqual(version,poetry[name]['version'])
+            hashes=re.findall(r'--hash=sha256:([a-f0-9]{64})',entry)
+            self.assertTrue(hashes,name)
+            self.assertTrue(set(hashes)<={f['hash'][7:] for f in poetry[name]['files']},name)
+        for name,version in {'torch':'2.10.0+cpu','torchaudio':'2.10.0+cpu',
+                             'qwen-tts':'0.1.1','transformers':'4.57.3','tokenizers':'0.22.2'}.items():
+            self.assertTrue(cpu[name].startswith(name+'=='+version+' '))
+        installed=self._entries('requirements/qwen-installed.lock')
+        service=self._entries('service/requirements.lock')
+        self.assertEqual(installed,{**service,**cpu})
+        self.assertFalse(any(n.startswith('nvidia-') or n in ('pocket-tts','kokoro-onnx') for n in installed))
+
+    def test_sox_source_exception_uses_existing_pinned_build_tools(self):
+        import tomllib
+        build=self._entries('requirements/qwen-sox-build.lock')
+        self.assertEqual(set(build),{'setuptools','numpy'})
+        poetry={p['name']:p for p in tomllib.loads((ROOT/'poetry.lock').read_text())['package']}
+        for name,entry in build.items():
+            pin,hash_arg=entry.split()
+            self.assertEqual(pin,name+'=='+poetry[name]['version'])
+            self.assertIn(hash_arg.removeprefix('--hash='),
+                          {f['hash'] for f in poetry[name]['files'] if f['file'].endswith('.whl')})
+        recipe=(ROOT/'service/Dockerfile.release').read_text().split(' AS worker-qwen',1)[1]
+        self.assertIn('--only-binary=:all: --no-deps --require-hashes -r qwen-sox-build.lock',recipe)
+        self.assertIn('--no-deps --no-build-isolation --no-binary=sox --require-hashes -r qwen-sox-source.lock',recipe)
+        self.assertIn("assert len(sox) == 1",recipe)
+        self.assertIn("if not line.startswith('sox==')",recipe)
+        self.assertNotIn('--no-binary=:all:',recipe)
+
+    def test_exact_public_base_snapshot_and_nested_tokenizer_hash(self):
+        import re
+        d=json.loads((ROOT/'requirements/tts/qwen-0.6b-base.expected.json').read_text())
+        self.assertEqual(d['checkpoint'],'Qwen/Qwen3-TTS-12Hz-0.6B-Base')
+        self.assertEqual(d['revision'],'5d83992436eae1d760afd27aff78a71d676296fc')
+        self.assertEqual(len(d['files']),11)
+        self.assertEqual(sum(f['bytes'] for f in d['files']),2516100892)
+        files={f['path']:f for f in d['files']}
+        self.assertEqual(len(files),11)
+        self.assertEqual(files['speech_tokenizer/model.safetensors']['sha256'],
+            '836b7b357f5ea43e889936a3709af68dfe3751881acefe4ecf0dbd30ba571258')
+        self.assertEqual(files['model.safetensors']['sha256'],
+            '180b3b10eb1c9f1b4db7806d5475bae3071c0243c299d49926bab1da3b6946f6')
+        for f in files.values():
+            self.assertRegex(f['sha256'],r'^[a-f0-9]{64}$')
+            self.assertEqual(f['revision'],d['revision'])
+            self.assertEqual(f['origin'],'https://huggingface.co/'+d['checkpoint']+'/resolve/'+d['revision']+'/'+f['path'])
+        cpu=self._entries('requirements/qwen-cpu.lock')
+        for name,version in d['versions'].items():
+            self.assertTrue(cpu[name].startswith(name+'=='+version+' '))
+        from worker.engines.qwen import validate_declarations
+        validate_declarations(d['execution'],d['language'])
+        from service.provisioning import validate_expected
+        self.assertEqual(validate_expected(d),d)
+
+    def test_qwen_build_context_exact_inclusions(self):
+        rules=(ROOT/'service/Dockerfile.release.dockerignore').read_text().splitlines()
+        for name in ('requirements/qwen-installed.lock','requirements/qwen-sox-build.lock',
+                     'requirements/tts/qwen-0.6b-base.expected.json'):
+            self.assertIn('!'+name,rules)
+        for broad in ('!requirements/**','!requirements/*','!.env','!**'):
+            self.assertNotIn(broad,rules)
+
+    def test_recipe_is_offline_owned_and_has_no_private_paths(self):
+        recipe=(ROOT/'service/Dockerfile.release').read_text().split(' AS worker-qwen',1)[1]
+        for text in ('HF_HUB_OFFLINE=1','TRANSFORMERS_OFFLINE=1','USER 0:10001',
+                     '--only-binary=:all: --no-deps --require-hashes -r qwen-wheels.lock',
+                     'h.hexdigest() != digest','dpkg -i /opt/qwen-debs/*.deb'):
+            self.assertIn(text,recipe)
+        self.assertNotIn('apt-get',recipe)
+        self.assertEqual(recipe.count("https://deb.debian.org/debian/"),15)
+        self.assertEqual(recipe.count("https://security.debian.org/debian-security/"),1)
+        for name in ('requirements/qwen-cpu.in','requirements/qwen-cpu.lock',
+                     'requirements/qwen-installed.lock','requirements/tts/qwen-0.6b-base.expected.json'):
+            raw=(ROOT/name).read_text()
+            for forbidden in ('/Users/','/private/','file://','/opt/qwen-eval','/system-sox'):
+                self.assertNotIn(forbidden,raw)
+        self.assertNotIn('docker-qwen-split-v1',recipe)
 
 
 class ProtectedLaunchRecordsTests(unittest.TestCase):
