@@ -1,0 +1,168 @@
+{
+  "date": "2026-10-26",
+  "evidence": "One listener qualitative feedback on blind samples; observations paraphrased without numeric scoring.",
+  "reference_observation": "Great, natural French human voice; perceived young woman.",
+  "samples": [
+    {
+      "neutral_id": "sample001",
+      "backend": "pocket-tts",
+      "id": "fr-01",
+      "repeat": 2,
+      "sha256": "9c8d9d9c2983cd40cec7a2b55eb4ccaab661485d6868eaddf0d39c249fb2e4b7",
+      "listener_observation": "Good; possibly same voice as reference."
+    },
+    {
+      "neutral_id": "sample002",
+      "backend": "kokoro",
+      "id": "fr-07",
+      "repeat": 2,
+      "sha256": "922166536487182a2fd877e5b986078c473682c5ab98311e8b61360fa85e8191",
+      "listener_observation": "English-sounding voice reading French; accompagne incomplete."
+    },
+    {
+      "neutral_id": "sample003",
+      "backend": "kokoro",
+      "id": "fr-paragraph-3",
+      "repeat": 2,
+      "sha256": "f414b440efdfd63a9b7fa7a7e4238b16605b399ffbddc7beab495370a578413e",
+      "listener_observation": "Slightly robotic, French, clearly AI; unnatural rhythm."
+    },
+    {
+      "neutral_id": "sample004",
+      "backend": "pocket-tts",
+      "id": "fr-paragraph-3",
+      "repeat": 1,
+      "sha256": "23c19bf37add35d4e37c993ee777341262319e4fed205f5d7fe92b2f28c30e74",
+      "listener_observation": "More natural voice; missing A-2047, version B."
+    },
+    {
+      "neutral_id": "sample005",
+      "backend": "kokoro",
+      "id": "fr-10",
+      "repeat": 2,
+      "sha256": "688a9d4027578d6451ba55c654cc1a193b5258dffaf4025fff81a890b12aa722",
+      "listener_observation": "Clear French, clearly AI; similar voice to sample003."
+    },
+    {
+      "neutral_id": "sample006",
+      "backend": "pocket-tts",
+      "id": "fr-paragraph-3",
+      "repeat": 2,
+      "sha256": "38fbe7f22b47a44d70665e68d1f096ada338ec4fca919c54dc88f528170a5ce3",
+      "listener_observation": "Better voice; missing A-2047, version B."
+    },
+    {
+      "neutral_id": "sample007",
+      "backend": "kokoro",
+      "id": "fr-01",
+      "repeat": 1,
+      "sha256": "cee920f67af241373ed0391eff2dcbb65d374dc9eb690ac1123ab066272ecb27",
+      "listener_observation": "Alright; sounds AI."
+    },
+    {
+      "neutral_id": "sample008",
+      "backend": "kokoro",
+      "id": "fr-01",
+      "repeat": 2,
+      "sha256": "cee920f67af241373ed0391eff2dcbb65d374dc9eb690ac1123ab066272ecb27",
+      "listener_observation": "Similar to sample007."
+    },
+    {
+      "neutral_id": "sample009",
+      "backend": "pocket-tts",
+      "id": "fr-01",
+      "repeat": 1,
+      "sha256": "a34e1457960ffef72a06848eccacc7c5f74d6a51379cfe239557b9b8081c3c87",
+      "listener_observation": "More natural voice."
+    },
+    {
+      "neutral_id": "sample010",
+      "backend": "pocket-tts",
+      "id": "fr-07",
+      "repeat": 2,
+      "sha256": "01a7d8de81439372b54b2dba3f317b4abf7a3be9f3e799b553802b6416ddfaca",
+      "listener_observation": "Decent voice; perceived low-quality MP3-like artifact."
+    },
+    {
+      "neutral_id": "sample011",
+      "backend": "kokoro",
+      "id": "fr-07",
+      "repeat": 1,
+      "sha256": "922166536487182a2fd877e5b986078c473682c5ab98311e8b61360fa85e8191",
+      "listener_observation": "English-sounding AI voice reading French."
+    },
+    {
+      "neutral_id": "sample012",
+      "backend": "pocket-tts",
+      "id": "fr-07",
+      "repeat": 1,
+      "sha256": "ba46ac23585c9f8f2234f723d2237a632bec5e3b2a60d8ed71261f77b8614aa9",
+      "listener_observation": "Decent; preferred voice."
+    },
+    {
+      "neutral_id": "sample013",
+      "backend": "pocket-tts",
+      "id": "fr-03",
+      "repeat": 1,
+      "sha256": "40da5b37fae6e8fba9feb6f5c2d9be475ccb81aad721e0f086ad4420f2f7e333",
+      "listener_observation": "Amount incorrect: un deux-cent cinquante cinquante; too fast and hard to understand."
+    },
+    {
+      "neutral_id": "sample014",
+      "backend": "kokoro",
+      "id": "fr-03",
+      "repeat": 2,
+      "sha256": "9265aae49a55b6e2f615169a9c7df38870cfb8d9a3ab8535a490793ae13cf66b",
+      "listener_observation": "Number correct."
+    },
+    {
+      "neutral_id": "sample015",
+      "backend": "pocket-tts",
+      "id": "fr-10",
+      "repeat": 2,
+      "sha256": "4f73de994034c0af76514321fa2a03f5c6641680d3eec78fb94e384de72874d5",
+      "listener_observation": "Good."
+    },
+    {
+      "neutral_id": "sample016",
+      "backend": "pocket-tts",
+      "id": "fr-10",
+      "repeat": 1,
+      "sha256": "99c54e85b1d8fdc55738829950d5bcabc3da38f88c3fb9285cc93e0f1fb90ab0",
+      "listener_observation": "Good."
+    },
+    {
+      "neutral_id": "sample017",
+      "backend": "kokoro",
+      "id": "fr-paragraph-3",
+      "repeat": 1,
+      "sha256": "f414b440efdfd63a9b7fa7a7e4238b16605b399ffbddc7beab495370a578413e",
+      "listener_observation": "Robotic but everything understood."
+    },
+    {
+      "neutral_id": "sample018",
+      "backend": "kokoro",
+      "id": "fr-03",
+      "repeat": 1,
+      "sha256": "9265aae49a55b6e2f615169a9c7df38870cfb8d9a3ab8535a490793ae13cf66b",
+      "listener_observation": "Amount correct."
+    },
+    {
+      "neutral_id": "sample019",
+      "backend": "kokoro",
+      "id": "fr-10",
+      "repeat": 1,
+      "sha256": "688a9d4027578d6451ba55c654cc1a193b5258dffaf4025fff81a890b12aa722",
+      "listener_observation": "Okay."
+    },
+    {
+      "neutral_id": "sample020",
+      "backend": "pocket-tts",
+      "id": "fr-03",
+      "repeat": 2,
+      "sha256": "41a389eff5ad00c378fef151e05ba692d2607d3661e5b97f0f4d87e7a043b9a6",
+      "listener_observation": "Amount still incorrect; voice too fast."
+    }
+  ],
+  "decision": "Pocket naturalness often preferred, but reported omissions and wrong amounts prevent exact-text quality acceptance. Kokoro has reported robotic prosody and French pronunciation defects. Qwen not measured."
+}
