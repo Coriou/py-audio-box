@@ -420,6 +420,8 @@ def owned_clone_context(template, principal, request, asset, *, version=None):
         derived = QwenExecution(**descriptor)
         plan.update(operation='speech_generate',request=copy.deepcopy(request),voice_versions=[copy.deepcopy(version)],assets=[copy.deepcopy(asset)])
         plan.pop('reference_roles',None)
+    from lib.spoken_text import freeze
+    freeze(plan)
     context['execution']['descriptor'] = derived.identity()
     context['execution']['references'] = {asset['id']:dict(path='/references/assets/'+asset['id'],
         voice_id=derived.voice_id, voice_revision=derived.voice_revision, checkpoint=derived.checkpoint,

@@ -44,8 +44,10 @@ class Admission:
     def demand(self,context,profiles):
         plan=context['plan']
         oracle.admission(dict(operation=plan['operation'],input_sha256=oracle.plan_hash(plan)),context,profiles)
+        from lib.spoken_text import speech_text
+        expanded = speech_text(plan)
         limits=plan['resolved']['profile']['limits'];request=plan['request']
-        if len(request.get('text',request.get('reference_text','')))>limits['text_chars'] or request.get('variants',1)>limits['variants']:raise ValueError('resource_input_limit')
+        if max(len(expanded),len(request.get('text',request.get('reference_text',''))))>limits['text_chars'] or request.get('variants',1)>limits['variants']:raise ValueError('resource_input_limit')
         if len(encode(context).encode())>48000:raise ValueError('resource_plan_limit')
         from worker.runtime_protocol import execution
         spec = execution(context)

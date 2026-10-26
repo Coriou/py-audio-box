@@ -1356,6 +1356,9 @@
         },
         "device_override": {
           "$ref": "#/$defs/execution_device_override"
+        },
+        "text_rendering": {
+          "$ref": "#/$defs/text_rendering_v1"
         }
       },
       "required": [
@@ -2822,6 +2825,9 @@
             },
             "resolved": {
               "$ref": "#/$defs/resolved_execution"
+            },
+            "speech_text": {
+              "$ref": "#/$defs/speech_text_v1"
             }
           },
           "required": [
@@ -2833,7 +2839,41 @@
             "assets",
             "resolved"
           ],
-          "additionalProperties": false
+          "additionalProperties": false,
+          "allOf": [
+            {
+              "if": {
+                "properties": {
+                  "request": {
+                    "required": [
+                      "text_rendering"
+                    ]
+                  }
+                }
+              },
+              "then": {
+                "required": [
+                  "speech_text"
+                ]
+              }
+            },
+            {
+              "if": {
+                "required": [
+                  "speech_text"
+                ]
+              },
+              "then": {
+                "properties": {
+                  "request": {
+                    "required": [
+                      "text_rendering"
+                    ]
+                  }
+                }
+              }
+            }
+          ]
         },
         {
           "type": "object",
@@ -4781,6 +4821,267 @@
         "outputs",
         "candidates",
         "audio_export"
+      ],
+      "additionalProperties": false
+    },
+    "text_rendering_v1": {
+      "type": "object",
+      "properties": {
+        "profile": {
+          "const": "numeric-v1"
+        },
+        "version": {
+          "type": "integer",
+          "const": 1
+        },
+        "locale": {
+          "enum": [
+            "fr-FR",
+            "en-GB"
+          ]
+        },
+        "annotations": {
+          "type": "array",
+          "maxItems": 64,
+          "items": {
+            "oneOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "type": {
+                    "const": "amount"
+                  },
+                  "start": {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  "end": {
+                    "type": "integer",
+                    "minimum": 1
+                  },
+                  "literal": {
+                    "type": "string"
+                  },
+                  "currency": {
+                    "const": "EUR"
+                  },
+                  "amount": {
+                    "type": "string",
+                    "pattern": "^(0|[1-9][0-9]{0,5})(\\.[0-9]{1,2})?$"
+                  },
+                  "minor_units": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 99999999
+                  }
+                },
+                "required": [
+                  "type",
+                  "start",
+                  "end",
+                  "literal",
+                  "currency"
+                ],
+                "additionalProperties": false,
+                "oneOf": [
+                  {
+                    "required": [
+                      "amount"
+                    ],
+                    "not": {
+                      "required": [
+                        "minor_units"
+                      ]
+                    }
+                  },
+                  {
+                    "required": [
+                      "minor_units"
+                    ],
+                    "not": {
+                      "required": [
+                        "amount"
+                      ]
+                    }
+                  }
+                ]
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "type": {
+                    "const": "identifier"
+                  },
+                  "start": {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  "end": {
+                    "type": "integer",
+                    "minimum": 1
+                  },
+                  "literal": {
+                    "type": "string"
+                  },
+                  "policy": {
+                    "const": "spell-letters-digits"
+                  }
+                },
+                "required": [
+                  "type",
+                  "start",
+                  "end",
+                  "literal",
+                  "policy"
+                ],
+                "additionalProperties": false
+              }
+            ]
+          }
+        }
+      },
+      "required": [
+        "profile",
+        "version",
+        "locale",
+        "annotations"
+      ],
+      "additionalProperties": false
+    },
+    "speech_text_v1": {
+      "type": "object",
+      "properties": {
+        "profile": {
+          "const": "numeric-v1"
+        },
+        "version": {
+          "type": "integer",
+          "const": 1
+        },
+        "locale": {
+          "enum": [
+            "fr-FR",
+            "en-GB"
+          ]
+        },
+        "annotations": {
+          "type": "array",
+          "maxItems": 64,
+          "items": {
+            "oneOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "type": {
+                    "const": "amount"
+                  },
+                  "start": {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  "end": {
+                    "type": "integer",
+                    "minimum": 1
+                  },
+                  "literal": {
+                    "type": "string"
+                  },
+                  "currency": {
+                    "const": "EUR"
+                  },
+                  "amount": {
+                    "type": "string",
+                    "pattern": "^(0|[1-9][0-9]{0,5})(\\.[0-9]{1,2})?$"
+                  },
+                  "minor_units": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 99999999
+                  }
+                },
+                "required": [
+                  "type",
+                  "start",
+                  "end",
+                  "literal",
+                  "currency"
+                ],
+                "additionalProperties": false,
+                "oneOf": [
+                  {
+                    "required": [
+                      "amount"
+                    ],
+                    "not": {
+                      "required": [
+                        "minor_units"
+                      ]
+                    }
+                  },
+                  {
+                    "required": [
+                      "minor_units"
+                    ],
+                    "not": {
+                      "required": [
+                        "amount"
+                      ]
+                    }
+                  }
+                ]
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "type": {
+                    "const": "identifier"
+                  },
+                  "start": {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  "end": {
+                    "type": "integer",
+                    "minimum": 1
+                  },
+                  "literal": {
+                    "type": "string"
+                  },
+                  "policy": {
+                    "const": "spell-letters-digits"
+                  }
+                },
+                "required": [
+                  "type",
+                  "start",
+                  "end",
+                  "literal",
+                  "policy"
+                ],
+                "additionalProperties": false
+              }
+            ]
+          }
+        },
+        "original_text": {
+          "type": "string"
+        },
+        "spoken_text": {
+          "type": "string"
+        },
+        "render_sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        }
+      },
+      "required": [
+        "profile",
+        "version",
+        "locale",
+        "annotations",
+        "original_text",
+        "spoken_text",
+        "render_sha256"
       ],
       "additionalProperties": false
     }

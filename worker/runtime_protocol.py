@@ -1,4 +1,5 @@
 """Closed private lifecycle-v1. Canonical execution/result remains 1.3.0."""
+from lib.spoken_text import speech_text
 import hashlib
 import hmac
 from worker.transport import Session, Refused, authenticate, receive, send
@@ -36,6 +37,7 @@ def execution(context):
     value = context.get('execution')
     plan = context['plan']; profile = plan['resolved']['profile']
     request = plan['request']
+    speech_text(plan)
     if request.get('profile_override') not in (None, profile['id']):
         raise Refused('profile_override_unavailable')
     override = request.get('device_override')
@@ -80,7 +82,7 @@ def execution(context):
             spec.max_frames*2 > limits['decoded_ticks'] or
             spec.max_output_bytes > limits['upload_bytes'] or
             spec.max_output_bytes*2 > limits['disk_bytes'] or
-            len(request['text'].encode('utf-8')) > spec.max_text_bytes):
+            len(speech_text(plan).encode('utf-8')) > spec.max_text_bytes):
         raise Refused('execution_budget_mismatch')
     return spec
 
@@ -130,7 +132,7 @@ def pocket_execution(context):
             spec.max_frames*48000 > limits['decoded_ticks']*spec.sample_rate or
             spec.max_output_bytes > limits['upload_bytes'] or
             2*(spec.max_output_bytes+spec.reference_bytes) > limits['disk_bytes'] or
-            len(request['text'].encode('utf-8')) > spec.max_text_bytes):
+            len(speech_text(plan).encode('utf-8')) > spec.max_text_bytes):
         raise Refused('execution_budget_mismatch')
     return spec
 
@@ -227,7 +229,7 @@ def qwen_relation(context, *, lane):
     if (spec.threads != limits['threads'] or spec.memory_bytes != limits['ram_bytes'] or
         spec.max_frames*48000 > limits['decoded_ticks']*spec.sample_rate or spec.max_output_bytes > limits['upload_bytes'] or
         2*(spec.max_output_bytes+spec.reference_bytes) > limits['disk_bytes'] or
-        len(request['text'].encode()) > spec.max_text_bytes): raise Refused('execution_budget_mismatch')
+        len(speech_text(plan).encode()) > spec.max_text_bytes): raise Refused('execution_budget_mismatch')
     return spec
 
 

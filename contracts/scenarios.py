@@ -57,6 +57,8 @@ def transcript(operation, project, profiles, requests, *, version=None, device='
         reuse_cfg['reference_asset_id']=reference_id
         resolved['reuse_configuration']=copy.deepcopy(reuse_cfg)
         plan['reference_roles']=dict(version='reference-roles-v1',reference_kind='prepared_reference' if kind=='prepare' else 'generated_reference',reference_asset_id=reference_id,audition_asset_id='output-'+kind,audition_text=request.get('audition_text','Explicit generated audition.') if kind=='prepare' else request['reference_text'])
+    from lib.spoken_text import freeze
+    freeze(plan)
     job=dict(id='job-'+kind,operation=operation,input_sha256=c.plan_hash(plan),principal_id='principal1',idempotency_key='request-'+kind,state='running',generation=1,attempts=[dict(id='attempt-'+kind,generation=1,owner_id='worker1',staging_id='stage-'+kind,reaped=False)],artifact_ids=[],stage='loading',deadline='2026-10-16T00:10:00Z')
     attempt=job['attempts'][0]
     output=copy.deepcopy(p['assets'][0]);output['id']='output-'+kind
@@ -113,3 +115,35 @@ def preset_registration(preset, voice_id, expected_revision=0):
     request = dict(preset=preset, voice_id=voice_id, expected_revision=expected_revision)
     c.validate('voice_preset_register_request', request)
     return request
+
+
+def spoken_transcript(raw):
+    """Derive the opt-in example without changing existing fixture generation."""
+    from lib.spoken_text import freeze
+    result = copy.deepcopy(raw)
+    plan = result['context']['plan']
+    plan['request'].update(text='Le budget est de 1 250,50 euros, sans dépasser ce montant.',
+        text_rendering=dict(profile='numeric-v1', version=1, locale='fr-FR', annotations=[
+            dict(type='amount',start=17,end=31,literal='1 250,50 euros',currency='EUR',amount='1250.50')]))
+    freeze(plan)
+    # Rebind complete detached plans as well as request/input identities.
+    old_plan = raw['context']['plan']
+    old_request = raw['context']['plan']['request']
+    old_hash = c.plan_hash(raw['context']['plan'])
+    new_hash = c.plan_hash(plan)
+    def replace(value):
+        if isinstance(value, dict):
+            if value == old_plan: return copy.deepcopy(plan)
+            if value == old_request: return copy.deepcopy(plan['request'])
+            return {key: replace(child) for key,child in value.items()}
+        if isinstance(value, list): return [replace(child) for child in value]
+        return new_hash if value == old_hash else value
+    result = replace(result)
+    old_manifest_hash = raw['artifact']['manifest_sha256']
+    new_manifest_hash = c.canonical_hash(result['verified_manifest'])
+    def rebind_manifest(value):
+        if isinstance(value, dict):
+            return {key: rebind_manifest(child) for key,child in value.items()}
+        if isinstance(value, list): return [rebind_manifest(child) for child in value]
+        return new_manifest_hash if value == old_manifest_hash else value
+    return rebind_manifest(result)

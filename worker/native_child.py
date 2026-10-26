@@ -9,6 +9,7 @@ import sys
 if __name__ == "__main__":
     sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+from lib.spoken_text import speech_text
 from worker.transport import Refused
 
 _guard_installed = False
@@ -183,7 +184,7 @@ def run_socket(connection, *, inference=None, guard=True):
     oracle.stored_context(config['snapshot'][0],config['snapshot'][1])
     if (spec.device,spec.dtype,spec.attention) != ('mps','float32','sdpa') or spec.task not in ('clone','custom_voice'): raise Refused('native_execution')
     if guard: install_spawn_guard()
-    result=(infer if inference is None else inference)(spec,(config['snapshot'][1]['plan']['request']['audition_text'] if config['snapshot'][1]['plan']['operation']=='voice_prepare' else config['snapshot'][1]['plan']['request']['text']),config['bundles'],config['references'],inventory_from_wire(config['inventory']),reference_temp_dir=config['conditioning'],managed_owner_uid=os.getuid())
+    result=(infer if inference is None else inference)(spec,(config['snapshot'][1]['plan']['request']['audition_text'] if config['snapshot'][1]['plan']['operation']=='voice_prepare' else speech_text(config['snapshot'][1]['plan'])),config['bundles'],config['references'],inventory_from_wire(config['inventory']),reference_temp_dir=config['conditioning'],managed_owner_uid=os.getuid())
     value=proposal(config['snapshot'],result,spec)
     validate_proposal(config['snapshot'],value,result['data'],spec)
     wire_send(connection,dict(token=config['token'],binding=config['binding'],proposal=value,bytes=len(result['data']),sha256=result['sha256']),cutoff)

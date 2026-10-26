@@ -210,6 +210,8 @@ class SyntheticContexts:
         if operation == 'speech_generate' and (request['fallback'] != 'forbid' or request['variants'] != 1 or request['reuse'] != 'never'):
             raise ValueError('unsupported_control')
         plan['request'] = json.loads(json.dumps(request))
+        from lib.spoken_text import freeze
+        freeze(plan)
         if operation == 'voice_prepare':
             resolved['reuse_configuration']['reference_text'] = request['reference_text']
         return context
@@ -245,7 +247,7 @@ def production_call(dispatcher, principal, operation, payload, key=None):
                 'unpublished_candidate':'not_ready','stale_candidate':'missing_media',
                 'foreign_media':'missing_media','asset_metadata_mismatch':'missing_media',
                 'invalid_trim':'invalid_request','invalid_range':'invalid_request',
-                'settings_mismatch':'unsupported_control','unsupported_parameter':'unsupported_control','resource_input_limit':'resource_limit',
+                'invalid_text_rendering':'invalid_request','speech_text_mismatch':'invalid_request','speech_text_language_mismatch':'unsupported_control','profile_limit':'resource_limit','settings_mismatch':'unsupported_control','unsupported_parameter':'unsupported_control','resource_input_limit':'resource_limit',
                 'resource_plan_limit':'resource_limit','plan_limit':'resource_limit',
                 'queue_full':'resource_limit','disk_quota':'resource_limit','disk_free_reserve':'resource_limit',
                 'resource_runtime_unsupported':'unsupported_control'}.get(code, code)

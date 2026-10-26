@@ -64,7 +64,7 @@ def generate():
         if 'const' in spec:return spec['const']
         if 'enum' in spec:return spec['enum'][0]
         if 'anyOf' in spec:return example(spec['anyOf'][0])
-        if spec.get('type')=='object':return {k:example(v) for k,v in spec['properties'].items() if k not in ('profile_override','device_override')}
+        if spec.get('type')=='object':return {k:example(v) for k,v in spec['properties'].items() if k not in ('profile_override','device_override','text_rendering')}
         if spec.get('type')=='array':return [example(spec['items']) for _ in range(spec.get('minItems',0))]
         if spec.get('type') in ('integer','number'):return max(1,spec.get('minimum',0))
         if spec.get('type')=='boolean':return False
@@ -81,6 +81,8 @@ def generate():
         dump(ROOT/('transcript-'+operation+'.json'),transcript(operation,production(30),profiles,requests))
     for operation in ('voice_prepare','voice_design'):
         dump(ROOT/('transcript-'+operation+'-roles.json'),transcript(operation,production(30),profiles,requests,reference_roles=True))
+    from .scenarios import spoken_transcript
+    dump(ROOT/'transcript-speech_generate-spoken-v1.json',spoken_transcript(transcript('speech_generate',production(30),profiles,requests)))
     dump(ROOT/'transcript-audio_export.json',audio_export_fixture())
     dump(ROOT/'job.json',dict(id='job1',operation='speech_generate',input_sha256=H,principal_id='principal1',idempotency_key='request1',state='running',generation=1,attempts=[dict(id='attempt1',generation=1,owner_id='worker1',reaped=False,staging_id='staging1')],artifact_ids=[],stage='loading',deadline='2026-10-16T00:10:00Z'))
     dump(ROOT/'artifact.json',dict(id='artifact1',job_id='job1',generation=1,asset_ids=['impulse'],input_sha256=H,project_revision=1,manifest_sha256=H,identity=RESOLUTION,attempt_id='attempt1',owner_id='worker1',staging_id='staging1'))

@@ -1,4 +1,5 @@
 """Operator-only immutable local snapshots. No discovery/download or readiness inference."""
+from lib.spoken_text import freeze
 import copy
 import hashlib
 import json
@@ -62,6 +63,7 @@ class KokoroContexts:
             raise Refused('not_ready')
         context = json.loads(self._contexts[principal])
         context['plan']['request'] = copy.deepcopy(request)
+        freeze(context['plan'])
         execution(context)
         return context
 
@@ -97,6 +99,7 @@ class KokoroContexts:
         template['plan']['voice_versions'] = [copy.deepcopy(version)]
         template['plan']['request'] = copy.deepcopy(request)
         oracle.validate('speech_generate_request', request)
+        freeze(template['plan'])
         execution(template)
         return template
 
@@ -160,6 +163,7 @@ class PocketContexts:
         if operation == 'speech_generate' and request.get('voice_version_id') != context['plan']['voice_versions'][0]['id']:
             raise Refused('saved_version_required')
         context['plan']['request'] = copy.deepcopy(request)
+        freeze(context['plan'])
         execution(context)
         return context
 
@@ -218,6 +222,7 @@ class PocketContexts:
         plan['assets'] = [asset]
         resolved.update(settings=settings, settings_sha256=oracle.canonical_hash(settings))
         context['execution'].update(descriptor=spec.identity(), references={reference_id:'/references/assets/'+reference_id})
+        freeze(plan)
         execution(context)
         # Full sealed bundle and reference byte/PCM verification, before admission.
         from worker.engines.pocket import verify_inputs
@@ -274,6 +279,7 @@ class QwenContexts:
         context = json.loads(self._contexts[principal])
         if request['voice_version_id'] != context['plan']['voice_versions'][0]['id']: raise Refused('saved_version_required')
         context['plan']['request'] = copy.deepcopy(request)
+        freeze(context['plan'])
         spec = execution(context)
         current_hardware(spec,self._inventory)
         verify_qwen_local(context,self._bundles,self._references,self._inventory)
@@ -433,6 +439,7 @@ class NativeQwenContexts:
         from worker.transport import canonical
         if canonical(context['plan']['voice_versions']) != canonical([version]): raise Refused('saved_version_required')
         context['plan']['request'] = copy.deepcopy(request)
+        freeze(context['plan'])
         self._current(context)
         return context
 

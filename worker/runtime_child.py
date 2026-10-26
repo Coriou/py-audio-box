@@ -1,4 +1,5 @@
 """Closed synthetic/Kokoro/Pocket/Qwen child. No management capability or service imports."""
+from lib.spoken_text import speech_text
 import json
 from datetime import datetime, timezone
 import os
@@ -41,7 +42,7 @@ def run_generation(connection, config, staging, cutoff, *, backend_factory=None)
             directory = os.open(Path(staging)/stage, os.O_RDONLY|os.O_DIRECTORY|os.O_NOFOLLOW)
             try: os.mkdir('conditioning',0o700,dir_fd=directory)
             finally: os.close(directory)
-        result = execute(spec,context['plan']['request']['text'],context['execution']['bundles'],
+        result = execute(spec,speech_text(context['plan']),context['execution']['bundles'],
                          context['execution']['references'],inventory,
                          reference_temp_dir=Path(staging)/stage/'conditioning' if spec.task == 'clone' else None,
                          backend_factory=backend_factory,managed_owner_uid=10001)
@@ -56,12 +57,12 @@ def run_generation(connection, config, staging, cutoff, *, backend_factory=None)
         preparing = context['plan']['operation'] == 'voice_prepare'
         if preparing:
             from worker.engines.pocket_prepare import execute
-        text = context['plan']['reference_roles']['audition_text'] if preparing else context['plan']['request']['text']
+        text = context['plan']['reference_roles']['audition_text'] if preparing else speech_text(context['plan'])
         result = execute(spec, text, context['execution']['bundles'],
                          context['execution']['references'], reference_temp_dir=Path(staging)/stage/'conditioning',
                          backend_factory=backend_factory, managed_owner_uid=10001, reference_fd=config.get('reference_fd'), managed_namespace=True)
     else:
-        result = execute(spec, context['plan']['request']['text'], context['execution']['bundles'], backend_factory=backend_factory)
+        result = execute(spec, speech_text(context['plan']), context['execution']['bundles'], backend_factory=backend_factory)
     if time.monotonic() >= cutoff: raise Refused('expired_result')
     stage = attempt['staging_id']
     if Path(stage).name != stage or stage in ('.', '..'): raise Refused('invalid_stage')

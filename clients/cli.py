@@ -9,6 +9,19 @@ from service.catalogue import Failure, compact
 from clients.http import HTTP
 
 
+def strict_json(raw):
+    import json
+    def pairs(items):
+        result = {}
+        for key, value in items:
+            if key in result: raise ValueError('duplicate_json_key')
+            result[key] = value
+        return result
+    def nonfinite(value):
+        raise ValueError('nonfinite_json')
+    return json.loads(raw, object_pairs_hook=pairs, parse_constant=nonfinite)
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description='Named HTTP reads; capabilities describe configured service availability')
     parser.add_argument('--url', default=None)
@@ -70,7 +83,7 @@ def main(argv=None):
         elif args.command in ('speech','audio') or (args.command == 'voice' and args.verb in ('prepare','save','preset-register','aliases','archive')):
             import json
             operation = 'audio_export' if args.command == 'audio' else 'speech_generate' if args.command == 'speech' else 'voice_'+args.verb.replace('-', '_')
-            payload = json.loads(args.request)
+            payload = strict_json(args.request)
             if operation == 'voice_prepare' and args.audition_text is not None:
                 if 'audition_text' in payload and payload['audition_text'] != args.audition_text: raise ValueError('conflicting_audition_text')
                 payload['audition_text'] = args.audition_text

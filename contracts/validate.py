@@ -25,6 +25,10 @@ def validate(kind, value):
         return value
     Draft202012Validator({**SCHEMA, '$ref': '#/$defs/' + kind}).validate(value)
     intrinsic(value)
+    if kind == 'speech_generate_request' and 'text_rendering' in value:
+        from lib.spoken_text import rendering_request
+        try: rendering_request(value)
+        except ValueError: raise ContractError('invalid_text_rendering') from None
     if kind == 'project':
         project(value)
     elif kind == 'voice_version':
@@ -329,6 +333,8 @@ def frozen_plan(plan, bundles=None):
         from worker.audio_export import execution
         execution(dict(plan=plan,bundles={} if bundles is None else bundles,execution=dict(converter=plan['resolved']['identity']['converter'])))
         return
+    from lib.spoken_text import speech_text
+    speech_text(plan)
     request=plan['request'];op=plan['operation'];r=plan['resolved'];identity=r['identity']
     resolution(identity)
     require(r['kind']=={'speech_generate':'speech','voice_prepare':'prepare','voice_design':'design','project_render':'render'}[op], 'operation_mismatch')
