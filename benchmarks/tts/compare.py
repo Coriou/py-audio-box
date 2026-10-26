@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Build a local performance summary and blind listening kit from cold TTS runs."""
 import argparse
+import base64
 import csv
 import hashlib
 import html
@@ -43,6 +44,11 @@ def local_audio(root, name):
     if not path.resolve().is_relative_to(root.resolve()):
         raise ValueError('audio escapes run directory')
     return path
+
+
+def audio_source(path):
+    """Keep playback independent of how a viewer serves the HTML asset."""
+    return "data:audio/wav;base64," + base64.b64encode(path.read_bytes()).decode("ascii")
 
 
 def digest(path):
@@ -167,12 +173,12 @@ def main(argv=None):
             mapping.append(dict(neutral_id=alias, backend=backend, id=record['id'], repeat=record['repeat'], source_audio=str(audio), audio=filename, sha256=sha))
             writer.writerow([alias, '', '', '', '', ''])
             critical = ', '.join(record.get('critical_literals', []))
-            cards.append(f'<section><h2>{alias}</h2><p>{html.escape(record["text"])}</p><p>Critical values: {html.escape(critical)}</p><audio controls preload="none" src="{filename}"></audio></section>')
+            cards.append(f'<section><h2>{alias}</h2><p>{html.escape(record["text"])}</p><p>Critical values: {html.escape(critical)}</p><audio controls preload="none" src="{audio_source(args.out / filename)}"></audio></section>')
     reference_html = ''
     if reference:
         shutil.copyfile(reference, args.out / 'reference.wav')
         summary['reference'] = dict(audio='reference.wav', sha256=digest(reference), meaning='Listening reference; shared speaker identity across engines is not assumed.')
-        reference_html = '<h2>Listening reference</h2><p>This reference does not imply that every sample targets the same speaker identity.</p><audio controls preload="none" src="reference.wav"></audio>'
+        reference_html = '<h2>Listening reference</h2><p>This reference does not imply that every sample targets the same speaker identity.</p><audio controls preload="none" src="' + audio_source(args.out / 'reference.wav') + '"></audio>'
     write_json(args.out / 'blind-map.json', mapping)
     write_json(args.out / 'summary.json', summary)
     (args.out / 'listen.html').write_text('<!doctype html><html lang="en"><meta charset="utf-8"><title>Blind listening</title><style>body{max-width:850px;margin:3rem auto;padding:1rem;font:18px sans-serif}section{padding:1rem 0;border-top:1px solid #ccc}audio{width:100%}</style><h1>Blind listening</h1><p>Human listening is UNMEASURED. Rate naturalness from 1 to 5 and record exact-text and critical-value errors in rating-worksheet.csv. Leave speaker fidelity unrated until you choose to unblind; N/A may apply to preset narration. Do not open blind-map.json or summary.json until ratings are complete. No quality winner is inferred.</p>' + reference_html + ''.join(cards) + '</html>')
