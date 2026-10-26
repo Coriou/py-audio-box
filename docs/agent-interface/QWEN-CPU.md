@@ -23,12 +23,53 @@ its existing independent service lock.
 The `worker-qwen` stage lives in the existing release Dockerfile. It installs
 its own runtime into the image, with no Pocket venv or external temporary mount.
 It embeds the versions, public Debian artifact URLs, byte counts and SHA-256
-hashes of r409's 16-package SoX closure. The pinned Bookworm base supplies the
-remaining base dependencies. Downloads are size bounded and hash checked before
+hashes of the 24-package SoX closure completed from r409's retained official
+Bookworm Packages metadata. The original 16 pins remain unchanged. The pinned
+Bookworm base supplies libc6 >= 2.34, gcc-12-base = 12.2.0-14+deb12u1,
+libbz2-1.0, liblzma5 >= 5.1.1alpha+20120614 and zlib1g >= 1:1.2.11.dfsg;
+the recipe checks this boundary before installation. Downloads are size bounded and hash checked before
 `dpkg -i`; no apt resolver or unversioned package acquisition is used. Artifact
 unavailability or a mismatch fails the build. The recipe is amd64 only. The
 retained private system-stage footprint was about 52 MiB; this is not a build
 space estimate. No binaries or private experiment paths are distributed.
+
+
+The actual worker build at source `6349441fad721fd9ab688b79766df86d72564c1e`
+failed at `dpkg`, before any pip step: libsox-fmt-base and libvorbisfile3 lacked
+FLAC/Ogg/sndfile/Vorbis dependencies. r409's extraction had resolved against a
+different base (`793f998d…`), so its downloaded subset was insufficient for this
+slim image. Recursive Depends/Pre-Depends review adds the five missing packages
+and libsndfile1's three MP3/Opus dependencies. Exact added pins are below; URLs
+are `https://deb.debian.org/debian/` plus the Filename fields retained in the
+source test fixture and embedded in the Dockerfile.
+
+| Package | Version | Bytes | SHA-256 |
+| --- | --- | ---: | --- |
+| libflac12 | 1.4.2+ds-2 | 198124 | `4d8431c274eef13ec9ee2c0bf988c34b4342367dec053b7f69a432525be5b1fe` |
+| libogg0 | 1.3.5-3 | 23412 | `f67acb0477aed0354f411172e37af338f3ac6bd4f3766134a2cf5539884b5a28` |
+| libsndfile1 | 1.2.0-1+deb12u1 | 196540 | `02dc3f08fe8476e82e005f412e3b7289ff641180f33a9be8073f4bde61c85e8e` |
+| libvorbis0a | 1.3.7-1 | 93028 | `01c14f9d1109650077a4c5c337c285476a6932d4d448f5a190c2b845724dbf21` |
+| libvorbisenc2 | 1.3.7-1 | 80568 | `75dd4d6f904c7db82f5112e60d8efea9e81dfedf94e970c5da7af2b3d81643c0` |
+| libmp3lame0 | 3.100-6 | 364932 | `b1292c749172e7623547ecf684da57d3ec6ca22109f08b11bbb9e6be6e6beb95` |
+| libmpg123-0 | 1.31.2-1+deb12u1 | 146980 | `a10ad0d59995b859797a5f20d2833672051d0b2c7dab4c71f2e79258b2e3f631` |
+| libopus0 | 1.3.1-3 | 195192 | `c172e212f9039e741916aa8e12f3670d1e049dc0c16685325641288c2d83faa7` |
+
+Provenance: r409's retained main Packages.lz4 SHA-256 is
+`38163a87d0269f1af22bdddc092bf8e6c605f981642a09561e60565358f15e07`;
+security Packages.lz4 is
+`2fee886f46c37e24a2741b8da6ac8c3b1fde2d76f479771caa0b77def424b795`.
+The retained main InRelease date is 2026-07-11 10:16:37 UTC; security is
+2026-10-26 04:42:52 UTC. These are the same retained index bytes used by r409,
+not a newly resolved apt closure. The base sources' 20261005T000000Z snapshot
+comment and the base digest are unchanged; the retained acquisition actually
+used deb.debian.org. This repair neither advances those pins nor introduces a
+snapshot-date claim for the mirror metadata.
+
+The static test embeds the relevant original Packages fields for all 24
+artifacts, checks URL/hash/size/version pins, recursively traverses dependency
+alternatives, and checks the explicit base boundary. No extra manifest or build
+context inclusion is needed. This is a source repair only: parent review,
+commit, fresh build admission and an actual worker build remain required.
 
 Inference is offline (`HF_HUB_OFFLINE=1`, `TRANSFORMERS_OFFLINE=1`). Model
 provisioning must remain a separate, explicit operator action. The public,
@@ -69,8 +110,8 @@ The bounded source-test container rerun uses an existing image, read-only source
 and root, no network, and model-import blocking. It passed 53 tests, but the final
 wheel-install `--no-deps` adjustment occurred during that run and received
 separate source checks; this was not an exact-final-source rerun.
-No image build, model download,
-host ML import, paid API, key read, staging, commit or push is part of this change. r409's original
+That earlier source-validation lot performed no image build, model download,
+host ML import, paid API, key read, staging, commit or push. r409's original
 runtime RESULT established offline imports/version checks, not inference or
 release authority.
 

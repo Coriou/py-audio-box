@@ -481,6 +481,257 @@ class QwenLot1SourceTests(unittest.TestCase):
         for broad in ('!requirements/**','!requirements/*','!.env','!**'):
             self.assertNotIn(broad,rules)
 
+    def test_debian_recursive_closure_from_retained_packages_metadata(self):
+        import re
+        # Official r409 Packages fields, not generated from Dockerfile pins.
+        # Main lz4 SHA256: 38163a87d0269f1af22bdddc092bf8e6c605f981642a09561e60565358f15e07
+        # Security lz4 SHA256: 2fee886f46c37e24a2741b8da6ac8c3b1fde2d76f479771caa0b77def424b795
+        metadata = r"""Package: libasound2-data
+Version: 1.2.8-1
+Filename: pool/main/a/alsa-lib/libasound2-data_1.2.8-1_all.deb
+Size: 20488
+SHA256: fe0780d2d3674b2977e0acb0d48b448ad72ba1642564b7dc537f55e839984c2d
+
+Package: libasound2
+Version: 1.2.8-1+b1
+Depends: libasound2-data (>= 1.2.8-1), libc6 (>= 2.34)
+Filename: pool/main/a/alsa-lib/libasound2_1.2.8-1+b1_amd64.deb
+Size: 361788
+SHA256: 44c77b076a7b11ae99712439022d822245b1994c435da564ebd320bb676faf4c
+
+Package: libgomp1
+Version: 12.2.0-14+deb12u1
+Depends: gcc-12-base (= 12.2.0-14+deb12u1), libc6 (>= 2.34)
+Filename: pool/main/g/gcc-12/libgomp1_12.2.0-14+deb12u1_amd64.deb
+Size: 115772
+SHA256: 48fec46bda7f5b1638b9e959889bfbc20491247d402d120bb152687eb48143d7
+
+Package: libgsm1
+Version: 1.0.22-1
+Depends: libc6 (>= 2.4)
+Filename: pool/main/libg/libgsm/libgsm1_1.0.22-1_amd64.deb
+Size: 30940
+SHA256: 1116dc3dbd0f5e7f6becebd5d5a9a9cbd40fc268f7a3e3f6863dd4a26627627a
+
+Package: libltdl7
+Version: 2.4.7-7~deb12u1
+Depends: libc6 (>= 2.34)
+Filename: pool/main/libt/libtool/libltdl7_2.4.7-7~deb12u1_amd64.deb
+Size: 393000
+SHA256: 8070b550321d4bd1c298f52f75374898d39112b709026d2ea5362ef1277b775a
+
+Package: libmagic-mgc
+Version: 1:5.44-3
+Filename: pool/main/f/file/libmagic-mgc_5.44-3_amd64.deb
+Size: 304888
+SHA256: bad01673ba5dfb9b5db4f3ae6a71f18d492cb6801eab45ad3c7d483c0a1f6ad2
+
+Package: libmagic1
+Version: 1:5.44-3
+Depends: libbz2-1.0, libc6 (>= 2.33), liblzma5 (>= 5.1.1alpha+20120614), zlib1g (>= 1:1.1.4), libmagic-mgc (= 1:5.44-3)
+Filename: pool/main/f/file/libmagic1_5.44-3_amd64.deb
+Size: 103752
+SHA256: a241c2adc7438a7e217f32544028489981768a349d3e48673392703255c7b88e
+
+Package: libopencore-amrnb0
+Version: 0.1.6-1
+Depends: libc6 (>= 2.14)
+Filename: pool/main/o/opencore-amr/libopencore-amrnb0_0.1.6-1_amd64.deb
+Size: 96456
+SHA256: adc9ff8f56b8a8e0b8a5bf90e8d07ce7d4acc306e3f60e37989e281f649df53f
+
+Package: libopencore-amrwb0
+Version: 0.1.6-1
+Depends: libc6 (>= 2.14)
+Filename: pool/main/o/opencore-amr/libopencore-amrwb0_0.1.6-1_amd64.deb
+Size: 51964
+SHA256: a8a98630f0f2976a90b2421adaa7659340db116595f39ef9b54975d85c876ef7
+
+Package: libpng16-16
+Version: 1.6.39-2+deb12u6
+Depends: libc6 (>= 2.29), zlib1g (>= 1:1.2.11.dfsg)
+Filename: pool/updates/main/libp/libpng1.6/libpng16-16_1.6.39-2+deb12u6_amd64.deb
+Size: 277048
+SHA256: 940b91d40d51c825de7f7aa133aecff1ffa25a91f12cb6aa6926c9ad55cd640c
+
+Package: libsox-fmt-alsa
+Version: 14.4.2+git20190427-3.5
+Depends: libasound2 (>= 1.0.16), libc6 (>= 2.2.5), libsox3 (>= 14.4.2~)
+Filename: pool/main/s/sox/libsox-fmt-alsa_14.4.2+git20190427-3.5_amd64.deb
+Size: 41516
+SHA256: 0b7ff80396e299796c00afce57779fdb0272e33eb94d2526145babf8f9ca45a6
+
+Package: libsox-fmt-base
+Version: 14.4.2+git20190427-3.5
+Depends: libc6 (>= 2.14), libflac12 (>= 1.3.0), libgsm1 (>= 1.0.18), libogg0 (>= 1.0rc3), libopencore-amrnb0 (>= 0.1.6), libopencore-amrwb0 (>= 0.1.6), libsndfile1 (>= 1.0.20), libsox3 (>= 14.4.2~), libvorbis0a (>= 1.1.2), libvorbisenc2 (>= 1.1.2), libvorbisfile3 (>= 1.1.2), libwavpack1 (>= 4.40.0)
+Filename: pool/main/s/sox/libsox-fmt-base_14.4.2+git20190427-3.5_amd64.deb
+Size: 62964
+SHA256: 099fa9188b9516b2a93314d9d3e3bd02b165f59469bb6d67d91743e4c13d9e74
+
+Package: libsox3
+Version: 14.4.2+git20190427-3.5
+Depends: libc6 (>= 2.33), libgomp1 (>= 4.9), libgsm1 (>= 1.0.18), libltdl7 (>= 2.4.7), libmagic1 (>= 5.12), libpng16-16 (>= 1.6.2-1), zlib1g (>= 1:1.1.4)
+Filename: pool/main/s/sox/libsox3_14.4.2+git20190427-3.5_amd64.deb
+Size: 255728
+SHA256: 0e2d255fce05d3caca5abd00a2c44f2c0e3708bd0f7b3a9954ed371ad6e71204
+
+Package: libvorbisfile3
+Version: 1.3.7-1
+Depends: libc6 (>= 2.14), libogg0 (>= 1.1.0), libvorbis0a (= 1.3.7-1)
+Filename: pool/main/libv/libvorbis/libvorbisfile3_1.3.7-1_amd64.deb
+Size: 26084
+SHA256: 68f84034ae1c9fa0ab6a45f5b6c406a50faae4421f0d78874260aefa2df68efc
+
+Package: libwavpack1
+Version: 5.6.0-1
+Depends: libc6 (>= 2.33)
+Filename: pool/main/w/wavpack/libwavpack1_5.6.0-1_amd64.deb
+Size: 85720
+SHA256: be9730c554786476b6a1a0f0c888c25f15d6cf8dd88954885494111b0e44482c
+
+Package: sox
+Version: 14.4.2+git20190427-3.5
+Depends: libsox-fmt-alsa (= 14.4.2+git20190427-3.5) | libsox-fmt-ao (= 14.4.2+git20190427-3.5) | libsox-fmt-oss (= 14.4.2+git20190427-3.5) | libsox-fmt-pulse (= 14.4.2+git20190427-3.5), libsox-fmt-base (= 14.4.2+git20190427-3.5), libsox3 (= 14.4.2+git20190427-3.5), libc6 (>= 2.34)
+Filename: pool/main/s/sox/sox_14.4.2+git20190427-3.5_amd64.deb
+Size: 132652
+SHA256: 6793a4824f96f0008be4d5defba8b07a0f3f9054708b0ed2332a4ede4c43b5b5
+
+Package: libflac12
+Version: 1.4.2+ds-2
+Depends: libc6 (>= 2.33), libogg0 (>= 1.0rc3)
+Filename: pool/main/f/flac/libflac12_1.4.2+ds-2_amd64.deb
+Size: 198124
+SHA256: 4d8431c274eef13ec9ee2c0bf988c34b4342367dec053b7f69a432525be5b1fe
+
+Package: libogg0
+Version: 1.3.5-3
+Depends: libc6 (>= 2.14)
+Filename: pool/main/libo/libogg/libogg0_1.3.5-3_amd64.deb
+Size: 23412
+SHA256: f67acb0477aed0354f411172e37af338f3ac6bd4f3766134a2cf5539884b5a28
+
+Package: libsndfile1
+Version: 1.2.0-1+deb12u1
+Depends: libc6 (>= 2.33), libflac12 (>= 1.3.0), libmp3lame0 (>= 3.100), libmpg123-0 (>= 1.28.0), libogg0 (>= 1.3.0), libopus0 (>= 1.1), libvorbis0a (>= 1.2.3), libvorbisenc2 (>= 1.1.2)
+Filename: pool/main/libs/libsndfile/libsndfile1_1.2.0-1+deb12u1_amd64.deb
+Size: 196540
+SHA256: 02dc3f08fe8476e82e005f412e3b7289ff641180f33a9be8073f4bde61c85e8e
+
+Package: libvorbis0a
+Version: 1.3.7-1
+Depends: libc6 (>= 2.29), libogg0 (>= 1.1.0)
+Filename: pool/main/libv/libvorbis/libvorbis0a_1.3.7-1_amd64.deb
+Size: 93028
+SHA256: 01c14f9d1109650077a4c5c337c285476a6932d4d448f5a190c2b845724dbf21
+
+Package: libvorbisenc2
+Version: 1.3.7-1
+Depends: libc6 (>= 2.4), libvorbis0a (= 1.3.7-1)
+Filename: pool/main/libv/libvorbis/libvorbisenc2_1.3.7-1_amd64.deb
+Size: 80568
+SHA256: 75dd4d6f904c7db82f5112e60d8efea9e81dfedf94e970c5da7af2b3d81643c0
+
+Package: libmp3lame0
+Version: 3.100-6
+Depends: libc6 (>= 2.29)
+Filename: pool/main/l/lame/libmp3lame0_3.100-6_amd64.deb
+Size: 364932
+SHA256: b1292c749172e7623547ecf684da57d3ec6ca22109f08b11bbb9e6be6e6beb95
+
+Package: libmpg123-0
+Version: 1.31.2-1+deb12u1
+Depends: libc6 (>= 2.33)
+Filename: pool/main/m/mpg123/libmpg123-0_1.31.2-1+deb12u1_amd64.deb
+Size: 146980
+SHA256: a10ad0d59995b859797a5f20d2833672051d0b2c7dab4c71f2e79258b2e3f631
+
+Package: libopus0
+Version: 1.3.1-3
+Depends: libc6 (>= 2.29)
+Filename: pool/main/o/opus/libopus0_1.3.1-3_amd64.deb
+Size: 195192
+SHA256: c172e212f9039e741916aa8e12f3670d1e049dc0c16685325641288c2d83faa7"""
+        packages = {}
+        for paragraph in metadata.split('\n\n'):
+            fields = dict(line.split(': ', 1) for line in paragraph.splitlines())
+            packages[fields['Package']] = fields
+        recipe = (ROOT/'service/Dockerfile.release').read_text().split(' AS worker-qwen',1)[1]
+        script = recipe.split("<<'PYQWEN'\n",1)[1].split('\nPYQWEN',1)[0]
+        tree = ast.parse(script)
+        artifacts = ast.literal_eval(next(node.value for node in tree.body
+            if isinstance(node,ast.Assign) and any(isinstance(t,ast.Name) and t.id=='artifacts' for t in node.targets)))
+        expected = {}
+        for name, fields in packages.items():
+            archive = 'https://security.debian.org/debian-security/' if fields['Filename'].startswith('pool/updates/') else 'https://deb.debian.org/debian/'
+            expected[name] = (archive+fields['Filename'], fields['SHA256'], int(fields['Size']))
+        self.assertEqual(set(artifacts),set(expected.values()))
+        self.assertEqual(len(artifacts),len(packages))
+        # Only these base packages may terminate recursive dependency traversal.
+        base = {'libc6','gcc-12-base','libbz2-1.0','liblzma5','zlib1g'}
+        # Debian version ordering (epoch, upstream, revision); no host dpkg or ML imports.
+        def compare_version(left, right):
+            def split(value):
+                epoch, sep, rest = value.partition(':')
+                value = rest if sep else epoch
+                upstream, sep, revision = value.rpartition('-')
+                return int(epoch) if rest else 0, upstream if sep else value, revision if sep else '0'
+            def part(a, b):
+                def order(c):
+                    return -1 if c == '~' else 0 if not c else ord(c) if c.isalpha() else ord(c)+256
+                while a or b:
+                    while (a and not a[0].isdigit()) or (b and not b[0].isdigit()):
+                        x = a[0] if a and not a[0].isdigit() else ''
+                        y = b[0] if b and not b[0].isdigit() else ''
+                        if order(x) != order(y):
+                            return (order(x)>order(y))-(order(x)<order(y))
+                        a, b = a[len(x):], b[len(y):]
+                    x, y = re.match(r'\d*',a)[0], re.match(r'\d*',b)[0]
+                    nx, ny = int(x or '0'), int(y or '0')
+                    if nx != ny:
+                        return (nx>ny)-(nx<ny)
+                    a, b = a[len(x):], b[len(y):]
+                return 0
+            le, lu, lr = split(left)
+            re_, ru, rr = split(right)
+            return (le>re_)-(le<re_) or part(lu,ru) or part(lr,rr)
+        self.assertLess(compare_version('14.4.2~','14.4.2'),0)
+        self.assertGreater(compare_version('1:1.2.13','1:1.2.11.dfsg'),0)
+        seen = set()
+        def visit(name):
+            if name in seen or name in base:
+                return
+            self.assertIn(name,packages)
+            seen.add(name)
+            fields = packages[name]
+            for kind in ('Depends','Pre-Depends'):
+                for group in filter(None,fields.get(kind,'').split(', ')):
+                    alternatives = [re.fullmatch(r'([\w.+-]+)(?: \((>=|=) ([^)]+)\))?',part) for part in group.split(' | ')]
+                    self.assertTrue(all(alternatives),group)
+                    chosen = next((m for m in alternatives if m[1] in packages or m[1] in base),None)
+                    self.assertIsNotNone(chosen,group)
+                    dep,op,version = chosen.groups()
+                    if op and dep in packages:
+                        comparison = compare_version(packages[dep]['Version'],version)
+                        if op == '=':
+                            self.assertEqual(comparison,0,group)
+                        else:
+                            self.assertGreaterEqual(comparison,0,group)
+                    if dep in base:
+                        if op:
+                            flag = 'eq' if op == '=' else 'ge'
+                            # Strongest libc/zlib requirement covers weaker edges.
+                            bound = {'libc6':'2.34','zlib1g':'1:1.2.11.dfsg'}.get(dep,version)
+                            self.assertGreaterEqual(compare_version(bound,version),0,group)
+                            self.assertIn(f"{dep})\" {flag} {bound}",recipe)
+                        else:
+                            self.assertIn('dpkg-query -W '+dep,recipe)
+                    visit(dep)
+        for seed in ('sox','libgomp1'):
+            visit(seed)
+        self.assertEqual(seen,set(packages))
+        # A truncated fix of only the five error names cannot pass this graph.
+        self.assertTrue({'libmp3lame0','libmpg123-0','libopus0'} <= seen)
+
     def test_recipe_is_offline_owned_and_has_no_private_paths(self):
         recipe=(ROOT/'service/Dockerfile.release').read_text().split(' AS worker-qwen',1)[1]
         for text in ('HF_HUB_OFFLINE=1','TRANSFORMERS_OFFLINE=1','USER 0:10001',
@@ -488,7 +739,7 @@ class QwenLot1SourceTests(unittest.TestCase):
                      'h.hexdigest() != digest','dpkg -i /opt/qwen-debs/*.deb'):
             self.assertIn(text,recipe)
         self.assertNotIn('apt-get',recipe)
-        self.assertEqual(recipe.count("https://deb.debian.org/debian/"),15)
+        self.assertEqual(recipe.count("https://deb.debian.org/debian/"),23)
         self.assertEqual(recipe.count("https://security.debian.org/debian-security/"),1)
         for name in ('requirements/qwen-cpu.in','requirements/qwen-cpu.lock',
                      'requirements/qwen-installed.lock','requirements/tts/qwen-0.6b-base.expected.json'):

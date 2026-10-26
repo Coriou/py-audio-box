@@ -78,7 +78,8 @@ CMD ["python", "-I", "-B", "-c", "import sys;sys.path.insert(0,'/opt/speech');fr
 FROM python:3.11-slim-bookworm@sha256:0a310eeecf4e1f5a0743f9a6520c90c88d089c903ca5fd283f501e3a805f5f89 AS worker-qwen
 ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 TORCH_DEVICE=cpu HF_HOME=/tmp/huggingface HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 GRADIO_ANALYTICS_ENABLED=False MALLOC_MMAP_THRESHOLD_=131072
 WORKDIR /opt/speech
-# r409's 16 Debian package artifacts; base dependencies remain digest-pinned above.
+# r409 retained Bookworm metadata, completed for this digest-pinned slim base.
+# 24 artifacts: includes libsndfile1's MP3/Opus transitive dependencies.
 # The security archive is separate; every downloaded byte is checked before dpkg.
 RUN test "$(dpkg --print-architecture)" = amd64
 RUN python - <<'PYQWEN'
@@ -102,6 +103,14 @@ artifacts = [
 ('https://deb.debian.org/debian/pool/main/libv/libvorbis/libvorbisfile3_1.3.7-1_amd64.deb', '68f84034ae1c9fa0ab6a45f5b6c406a50faae4421f0d78874260aefa2df68efc', 26084),
 ('https://deb.debian.org/debian/pool/main/w/wavpack/libwavpack1_5.6.0-1_amd64.deb', 'be9730c554786476b6a1a0f0c888c25f15d6cf8dd88954885494111b0e44482c', 85720),
 ('https://deb.debian.org/debian/pool/main/s/sox/sox_14.4.2+git20190427-3.5_amd64.deb', '6793a4824f96f0008be4d5defba8b07a0f3f9054708b0ed2332a4ede4c43b5b5', 132652),
+('https://deb.debian.org/debian/pool/main/f/flac/libflac12_1.4.2+ds-2_amd64.deb', '4d8431c274eef13ec9ee2c0bf988c34b4342367dec053b7f69a432525be5b1fe', 198124),
+('https://deb.debian.org/debian/pool/main/libo/libogg/libogg0_1.3.5-3_amd64.deb', 'f67acb0477aed0354f411172e37af338f3ac6bd4f3766134a2cf5539884b5a28', 23412),
+('https://deb.debian.org/debian/pool/main/libs/libsndfile/libsndfile1_1.2.0-1+deb12u1_amd64.deb', '02dc3f08fe8476e82e005f412e3b7289ff641180f33a9be8073f4bde61c85e8e', 196540),
+('https://deb.debian.org/debian/pool/main/libv/libvorbis/libvorbis0a_1.3.7-1_amd64.deb', '01c14f9d1109650077a4c5c337c285476a6932d4d448f5a190c2b845724dbf21', 93028),
+('https://deb.debian.org/debian/pool/main/libv/libvorbis/libvorbisenc2_1.3.7-1_amd64.deb', '75dd4d6f904c7db82f5112e60d8efea9e81dfedf94e970c5da7af2b3d81643c0', 80568),
+('https://deb.debian.org/debian/pool/main/l/lame/libmp3lame0_3.100-6_amd64.deb', 'b1292c749172e7623547ecf684da57d3ec6ca22109f08b11bbb9e6be6e6beb95', 364932),
+('https://deb.debian.org/debian/pool/main/m/mpg123/libmpg123-0_1.31.2-1+deb12u1_amd64.deb', 'a10ad0d59995b859797a5f20d2833672051d0b2c7dab4c71f2e79258b2e3f631', 146980),
+('https://deb.debian.org/debian/pool/main/o/opus/libopus0_1.3.1-3_amd64.deb', 'c172e212f9039e741916aa8e12f3670d1e049dc0c16685325641288c2d83faa7', 195192),
  ]
 for i, (url, digest, size) in enumerate(artifacts):
     target = root / (str(i) + '.deb')
@@ -117,7 +126,12 @@ for i, (url, digest, size) in enumerate(artifacts):
     if count != size or h.hexdigest() != digest:
         raise ValueError('Debian artifact differs from reviewed pin')
 PYQWEN
-RUN dpkg -i /opt/qwen-debs/*.deb && rm -rf /opt/qwen-debs
+RUN dpkg-query -W libbz2-1.0 && \
+    dpkg --compare-versions "$(dpkg-query -W -f='${Version}' libc6)" ge 2.34 && \
+    dpkg --compare-versions "$(dpkg-query -W -f='${Version}' gcc-12-base)" eq 12.2.0-14+deb12u1 && \
+    dpkg --compare-versions "$(dpkg-query -W -f='${Version}' liblzma5)" ge 5.1.1alpha+20120614 && \
+    dpkg --compare-versions "$(dpkg-query -W -f='${Version}' zlib1g)" ge 1:1.2.11.dfsg && \
+    dpkg -i /opt/qwen-debs/*.deb && rm -rf /opt/qwen-debs
 COPY requirements/qwen-installed.lock /opt/speech/qwen-installed.lock
 # Exact r409 prerequisites; setuptools 82 supplies bdist_wheel.
 COPY requirements/qwen-sox-build.lock /opt/speech/qwen-sox-build.lock
