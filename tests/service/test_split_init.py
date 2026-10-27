@@ -12,7 +12,7 @@ from types import SimpleNamespace
 import unittest
 from unittest.mock import patch
 
-from service import install_policy as ip, persistent_init as init, recovery, install_child
+from service import install_policy as ip, persistent_init as init, recovery, install_child, reconciliation
 from tests.service.test_install_child import Namespace
 from service.admission import DEFAULT_BUDGET
 from service.core import encode
@@ -411,12 +411,44 @@ class SplitInit(unittest.TestCase):
                 init._split_core({},self.roots['control'],self.roots['staging'])
 
 
+class InventoryDeadlineTests(unittest.TestCase):
+    def test_scanner_deadline_boundary(self):
+        import time
+        original_time=reconciliation.time
+        original_monotonic=time.monotonic
+        for now in (100.999999,101.0,101.000001):
+            with self.subTest(now=now):
+                scanner=reconciliation.Reconciliation.__new__(reconciliation.Reconciliation)
+                scanner.entry_limit=2048
+                scanner.byte_limit=scanner.scalar_limit=scanner.media_limit=16*1024**2
+                scanner.entries=scanner.bytes=scanner.media_bytes=0
+                scanner.separate_media=False
+                scanner.seconds=1
+                scanner.end=100.0+scanner.seconds
+                clock=SimpleNamespace(monotonic=lambda:now,time=original_time.time)
+                with patch.object(reconciliation,'time',clock):
+                    self.assertIs(time.monotonic,original_monotonic)
+                    if now>scanner.end:
+                        with self.assertRaisesRegex(reconciliation.Incomplete,'^inventory_budget$'):
+                            scanner._charge()
+                    else:
+                        scanner._charge()
+                self.assertIs(reconciliation.time,original_time)
+                self.assertEqual(scanner.entries,1)
+                self.assertEqual((scanner.bytes,scanner.media_bytes),(0,0))
+
+
 def _completion_case(point):
     def case(self):
-        self.crash(point);before=self.bytes();self.run_init(complete=self.completion())
-        for k,v in before.items():self.assertEqual(self.bytes()[k],v)
-        self.assertEqual(len(self.calls),1)
-        self.assertEqual(recovery.inspect(self.roots,self.scope,policy=ip.SPLIT)['inventory']['reasons'],[])
+        # Completion semantics must not depend on scheduler pauses. Replace only
+        # the scanner's module reference, never the shared time module used by
+        # threads; keep its wall clock and every production budget unchanged.
+        clock=SimpleNamespace(monotonic=lambda:100.0,time=reconciliation.time.time)
+        with patch.object(reconciliation,'time',clock):
+            self.crash(point);before=self.bytes();self.run_init(complete=self.completion())
+            for k,v in before.items():self.assertEqual(self.bytes()[k],v)
+            self.assertEqual(len(self.calls),1)
+            self.assertEqual(recovery.inspect(self.roots,self.scope,policy=ip.SPLIT)['inventory']['reasons'],[])
     return case
 
 
