@@ -73,6 +73,8 @@ jobs:
             apple-speech/report.json
             apple-speech/English.json
             apple-speech/French.json
+            apple-speech/English-progress.json
+            apple-speech/French-progress.json
             apple-speech/English.wav
             apple-speech/French.wav
             apple-speech/English.log

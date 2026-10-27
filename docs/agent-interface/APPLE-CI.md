@@ -79,11 +79,16 @@ The entire job has a 12-minute deadline.
 `scripts/ci-apple-speech.py` calls the product `native_child.infer` verifier,
 spawn guard, complete local loader, native backend and PCM encoder in an owned
 subprocess. It tries one short English preset, then French only after English
-succeeds. Each child gets 30 seconds including verification/load and a sampled
-6 GiB RSS ceiling. RSS sampling is an early-stop guard, **not** an OS memory
+succeeds. Each child gets a 180-second total bound: input verification up to 30 seconds,
+cold model loading up to 120 seconds, short generation up to 30 seconds, and
+encoding up to 15 seconds, all within the same total. An observational subclass
+calls the actual native backend unchanged and persists phase timings plus the
+upstream selected device. This direct probe does not relax the installed
+supervisor's existing 30-second total deadline. It retains a sampled 6 GiB RSS ceiling. RSS sampling is an early-stop guard, **not** an OS memory
 reservation or a bound on all Metal allocations. The default MPS allocator limit
 remains enabled. Failure stops the sequence; there is no OOM retry or fallback.
 The parent kills and reaps its child and removes only its private model tree.
+A timeout establishes only a budget overrun, not hardware incompatibility.
 
 Only small reports/logs and successful short WAV files are uploaded. Successful
 WAV reports contain format/duration/hash, wall time, RTF and peak process RSS;

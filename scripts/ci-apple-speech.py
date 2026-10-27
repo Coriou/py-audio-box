@@ -49,10 +49,24 @@ def public_open(url):
         PublicRedirects()).open(download_url(url), timeout=20)
 
 
-def owned_child(argv, env, log_path, observation):
+def phase_remaining(progress, now):
+    for key, cap in (('verification_seconds', 30), ('cold_load_seconds', 120), ('generation_seconds', 30),
+                     ('total_seconds', 180)):
+        if progress.get(key, 0) > cap:
+            raise TimeoutError('native_completed_phase_timeout_' + key)
+    stage = progress['stage']
+    limit = {'input_verification': 30, 'cold_load': 120,
+             'generation': 30, 'encoding': 15, 'complete': 15}[stage]
+    remaining = limit - (now - progress['stage_started'])
+    if remaining <= 0:
+        raise TimeoutError('native_phase_timeout_' + stage)
+    return remaining
+
+
+def owned_child(argv, env, log_path, observation, *, seconds=30, progress_path=None):
     """Drain a bounded pipe; check deadlines even after a zero exit."""
     started = time.monotonic()
-    cutoff = started + 30
+    cutoff = started + seconds
     peak_rss = total = 0
     child = subprocess.Popen(argv, env=env, stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT, start_new_session=True, bufsize=0)
@@ -63,7 +77,11 @@ def owned_child(argv, env, log_path, observation):
             while True:
                 remaining = cutoff - time.monotonic()
                 if remaining <= 0:
-                    raise TimeoutError('native_child_30_seconds')
+                    raise TimeoutError(f'native_child_{seconds}_seconds')
+                if progress_path is not None and progress_path.exists():
+                    progress = json.loads(progress_path.read_bytes())
+                    observation['progress'] = progress
+                    remaining = min(remaining, phase_remaining(progress, time.monotonic()))
                 code = child.poll()
                 if eof and code is not None:
                     if code: raise RuntimeError('native_child_failed_see_language_log')
@@ -89,7 +107,7 @@ def owned_child(argv, env, log_path, observation):
                     total += keep
                     if keep < len(block): raise ValueError('child_log_limit')
             if time.monotonic() > cutoff:
-                raise TimeoutError('native_child_30_seconds')
+                raise TimeoutError(f'native_child_{seconds}_seconds')
     finally:
         if child.poll() is None:
             os.killpg(child.pid, signal.SIGKILL)
@@ -152,6 +170,43 @@ def infer(bundle, output, language):
     from worker import native_child
     from worker.engines.qwen_execution import QwenExecution
     from worker.hardware import Host, Device, DeviceFamily, HardwareInventory
+    from lib.tts_backends import qwen_native
+    progress_path = output / (language + '-progress.json')
+    progress = {}
+    def stage(name, **values):
+        progress.update(stage=name, stage_started=time.monotonic(), **values)
+        temporary = progress_path.with_suffix('.tmp')
+        save(temporary, progress)
+        temporary.replace(progress_path)
+    original_backend = qwen_native.NativeQwenBackend
+    class MeasuredBackend(original_backend):
+        # Observational wrapper only: actual product loader/backend still run.
+        def __init__(self, **kwargs):
+            stage('cold_load', verification_seconds=time.monotonic()-started)
+            load_started = time.monotonic()
+            try:
+                super().__init__(**kwargs)
+            except BaseException:
+                stage('cold_load', cold_load_seconds=time.monotonic()-load_started,
+                      cold_load_failed=True)
+                raise
+            import torch
+            stage('cold_load', cold_load_seconds=time.monotonic()-load_started,
+                selected_device=str(self._model.device),
+                mps_allocated_after_load=torch.mps.current_allocated_memory(),
+                mps_driver_after_load=torch.mps.driver_allocated_memory(),
+                mps_recommended_max_bytes=torch.mps.recommended_max_memory())
+        def synthesise_preset(self, *args, **kwargs):
+            stage('generation')
+            generation_started = time.monotonic()
+            try:
+                value = super().synthesise_preset(*args, **kwargs)
+            except BaseException:
+                stage('generation', generation_seconds=time.monotonic()-generation_started,
+                      generation_failed=True)
+                raise
+            stage('encoding', generation_seconds=time.monotonic()-generation_started)
+            return value
     expected = json.loads(DESCRIPTOR.read_text())
     raw = (bundle / 'manifest.json').read_bytes()
     text = {'English': 'Hello. The test is complete.',
@@ -166,8 +221,13 @@ def infer(bundle, output, language):
         (Device(DeviceFamily.MPS, 0, True, True, datetime.now(timezone.utc).isoformat()),))
     native_child.install_spawn_guard()
     started = time.monotonic()
-    result = native_child.infer(spec, text, {'native-ci': bundle}, {}, inventory,
-                                managed_owner_uid=os.getuid())
+    stage('input_verification')
+    qwen_native.NativeQwenBackend = MeasuredBackend
+    try:
+        result = native_child.infer(spec, text, {'native-ci': bundle}, {}, inventory,
+                                    managed_owner_uid=os.getuid())
+    finally:
+        qwen_native.NativeQwenBackend = original_backend
     data = result['data']
     with wave.open(io.BytesIO(data), 'rb') as wav:
         frames, rate = wav.getnframes(), wav.getframerate()
@@ -177,9 +237,11 @@ def infer(bundle, output, language):
         if not any(pcm):
             raise ValueError('silent_wav')
     seconds = time.monotonic() - started
+    stage('complete', total_seconds=seconds)
     (output / (language + '.wav')).write_bytes(data)
     save(output / (language + '.json'), dict(status='passed', language=language,
-        text=text, device='mps', fallback_enabled=False, seconds=seconds,
+        text=text, requested_device='mps', selected_device=progress.get('selected_device'),
+        phases=progress, fallback_enabled=False, seconds=seconds,
         duration_seconds=frames/rate, rtf=seconds/(frames/rate),
         peak_rss_bytes=resource.getrusage(resource.RUSAGE_SELF).ru_maxrss,
         sha256=hashlib.sha256(data).hexdigest(), bytes=len(data),
@@ -229,7 +291,8 @@ def run(output):
                     observation = report['children'][language] = {}
                     owned_child([sys.executable, str(Path(__file__).resolve()),
                         '--child', str(bundle), '--language', language, '--output', str(output)],
-                        env, output / (language + '.log'), observation)
+                        env, output / (language + '.log'), observation,
+                        seconds=180, progress_path=output / (language + '-progress.json'))
                     report[language] = 'passed'
             finally:
                 for p in bundle.rglob('*'):

@@ -14,6 +14,16 @@ SPEC.loader.exec_module(ci)
 
 
 class AppleSpeechTests(unittest.TestCase):
+    def test_separate_cold_load_generation_and_total_bounds(self):
+        self.assertEqual(ci.phase_remaining({'stage':'cold_load','stage_started':0},60),60)
+        self.assertEqual(ci.phase_remaining({'stage':'generation','stage_started':60},75),15)
+        for progress,now in (({'stage':'cold_load','stage_started':0},121),
+                ({'stage':'generation','stage_started':0},31),
+                ({'stage':'encoding','stage_started':31,'generation_seconds':31},31),
+                ({'stage':'complete','stage_started':181,'total_seconds':181},181)):
+            with self.subTest(progress=progress),self.assertRaises(TimeoutError):
+                ci.phase_remaining(progress,now)
+
     def test_owned_temp_alias_is_canonical_before_product_no_follow_walk(self):
         from worker.engines.pocket import _open
         with tempfile.TemporaryDirectory() as tmp:
