@@ -4,7 +4,8 @@ FROM python:3.11-slim-bookworm
 LABEL org.opencontainers.image.licenses="AGPL-3.0-only"
 COPY LICENSE THIRD_PARTY_NOTICES.md /app/
 ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1
-RUN apt-get update && apt-get install -y --no-install-recommends ffmpeg libsndfile1 && rm -rf /var/lib/apt/lists/*
+# procps supplies the real /bin/ps used by bounded child RSS/log/reap regressions.
+RUN apt-get update && apt-get install -y --no-install-recommends ffmpeg libsndfile1 procps && rm -rf /var/lib/apt/lists/*
 # Match the repository lock's CPU torch/torchaudio pair. No model packages or weights.
 RUN pip install --no-cache-dir torch==2.10.0+cpu torchaudio==2.10.0+cpu --index-url https://download.pytorch.org/whl/cpu
 # Reuse the hashed control/test closure: FastAPI, HTTPX, MCP, pytest,
@@ -47,6 +48,7 @@ COPY docs/agent-interface/CPU-QUICKSTART.md /app/docs/agent-interface/CPU-QUICKS
 COPY docs/agent-interface/DOCKER-VOLUMES.md /app/docs/agent-interface/DOCKER-VOLUMES.md
 COPY docs/agent-interface/HEADLESS-INSTALL.md /app/docs/agent-interface/HEADLESS-INSTALL.md
 COPY docs/agent-interface/NATIVE-PACKAGE.md /app/docs/agent-interface/NATIVE-PACKAGE.md
+COPY docs/agent-interface/APPLE-CI.md docs/agent-interface/NATIVE-DEPENDENCY.md /app/docs/agent-interface/
 COPY docs/TTS_SPOKEN_TEXT.md /app/docs/TTS_SPOKEN_TEXT.md
 COPY docs/agent-interface/POCKET-QUICKSTART.md /app/docs/agent-interface/POCKET-QUICKSTART.md
 COPY docs/agent-interface/QWEN-CPU.md /app/docs/agent-interface/QWEN-CPU.md
