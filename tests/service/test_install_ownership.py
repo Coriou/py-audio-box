@@ -231,8 +231,25 @@ class InstallOwnership(unittest.TestCase):
                 scanner=Reconciliation.__new__(Reconciliation)
                 scanner.core=SimpleNamespace(root=roots['control']/'core');scanner.db=db;scanner.staging=roots['staging']
                 scanner.entry_limit=2048;scanner.byte_limit=16*1024**2;scanner.seconds=1
-                # Simulated privileged caller sees real control-owned files.
-                with patch.object(os,'getuid',return_value=0):
+                # Keep control and root identities distinct even in root CI.
+                # Inject only ownership; retain real modes, links, inode/device,
+                # timestamps and canonical descriptor/path validation.
+                control_uid,control_gid,root_uid=10001,10001,0
+                real_stat,real_fstat=os.stat,os.fstat
+                expectation=policy.expectation
+                def owned(observe):
+                    def observed(*args,**kwargs):
+                        info=observe(*args,**kwargs)
+                        fields={name:getattr(info,name) for name in dir(info) if name.startswith('st_')}
+                        fields.update(st_uid=control_uid,st_gid=control_gid)
+                        return SimpleNamespace(**fields)
+                    return observed
+                def control_expectation(selected,role,**kwargs):
+                    return control_uid,control_gid,expectation(selected,role,**kwargs)[2]
+                with patch.object(os,'getuid',return_value=root_uid), \
+                     patch.object(os,'stat',side_effect=owned(real_stat)), \
+                     patch.object(os,'fstat',side_effect=owned(real_fstat)), \
+                     patch.object(policy,'expectation',side_effect=control_expectation):
                     scanner._collect(policy=policy.SPLIT)
                     self.assertEqual(scanner.reasons,set())
                     scanner._collect()
