@@ -23,8 +23,7 @@ def input_schema(operation):
 
 def tools():
     items = [Tool(name=OPERATIONS[op]['mcp'],
-        description=('HTTP. ' +
-            ('Explicit opt-in bytes only; at most 3072 decoded bytes. Larger downloads: python -m clients.cli asset content ID --output FILE.' if op == 'asset_content' else 'Register the configured preset from speech_status; generation only, no cloning or qualification.' if op == 'voice_preset_register' else '')).rstrip(),
+        description=('Explicit opt-in bytes only; at most 3072 decoded bytes. Larger downloads: python -m clients.cli asset content ID --output FILE.' if op == 'asset_content' else 'Register configured speech_status preset; generation only, no cloning or qualification.' if op == 'voice_preset_register' else ''),
         inputSchema=input_schema(op)) for op in dict.fromkeys((*IMPLEMENTED, *VOICE_READS, *PRODUCTION_OPERATIONS))]
     if os.environ.get('SPEECH_UPLOAD_ROOT'):
         items.append(Tool(name='speech_asset_upload_file', description='Upload a client-host WAV from an operator-authorized filesystem root (SPEECH_UPLOAD_ROOT). Grants host filesystem read permission within that root; relative no-follow paths only. Creates an asset, not a cloned voice. No inline audio.', inputSchema={'type':'object','properties':{'path':{'type':'string','minLength':1,'maxLength':4096}},'required':['path'],'additionalProperties':False}))
