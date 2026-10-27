@@ -20,7 +20,7 @@ ROOT = Path(__file__).resolve().parents[1]
 DOCS = ['README.md', 'docs/AGENT-GUIDE.md', 'docs/LEGACY-TOOLBOX.md', 'docs/agent-interface/CPU-QUICKSTART.md',
         'docs/agent-interface/POCKET-QUICKSTART.md', 'docs/agent-interface/HEADLESS-INSTALL.md']
 CLI_DOCS = DOCS
-EXTRA_MCP_TOOLS = {'speech_asset_upload_file', 'speech_skeleton_status', 'speech_operation_detail'}
+EXTRA_MCP_TOOLS = {'speech_asset_upload_file', 'speech_status', 'speech_skeleton_status', 'speech_operation_detail'}
 
 
 def slug(heading):
@@ -49,6 +49,31 @@ def commands(text):
 
 
 class DocsOnboarding(unittest.TestCase):
+    def test_agent_commands_use_client_python_and_canonical_status(self):
+        guide = (ROOT/'docs/AGENT-GUIDE.md').read_text()
+        self.assertNotRegex(guide, r'(?<![\w/.-])python -m clients\.cli')
+        self.assertIn('.venv-client/bin/python -m clients.cli status', guide)
+        self.assertIn('speech_status', guide)
+        self.assertIn('deprecated aliases', guide)
+        self.assertIn('text-fidelity failures', guide)
+
+    def test_pocket_recipe_pins_and_checks_descriptor(self):
+        doc = (ROOT/'docs/agent-interface/POCKET-QUICKSTART.md').read_text()
+        descriptor = json.loads((ROOT/'requirements/tts/pocket-fr.expected.json').read_text())
+        for name, size, digest in (
+            ('model.safetensors', 219029196, 'dd5fe98f5577ecfd56db9af8057cd05fe20cbc91560042aec8a56cfb01c34995'),
+            ('tokenizer.json', 246403, '6211acffe9cb95172f71f0051f18e26ea305b2b32ea00b331ee976551c70887f')):
+            self.assertIn(str(size), doc)
+            self.assertIn(digest, doc)
+            self.assertIn(digest, json.dumps(descriptor))
+            self.assertIn('fresh-pocket-cache/' + name, doc)
+        self.assertIn('set -eu', doc)
+        self.assertIn('hf auth login', doc)
+        self.assertIn('--revision d0ebc5deb50bc6b225f686782f124dd37e2dca0a', doc)
+        self.assertLess(doc.index('mkdir -m 700'), doc.index('mv /absolute/private'))
+        self.assertIn("hashlib.file_digest(source, 'sha256')", doc)
+        self.assertIn('config.yaml', doc)
+
     def test_relative_links_and_anchors_resolve(self):
         broken = []
         for name in DOCS:

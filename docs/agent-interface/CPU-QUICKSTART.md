@@ -104,3 +104,8 @@ audio outside model context: use `python -m clients.cli asset content ID --outpu
 in the configured client environment for a complete hash-verified exclusive file.
 
 Next: [agent guide](../AGENT-GUIDE.md).
+
+This preview supports presets and gated Pocket French cloning only; Pocket has
+retained text-fidelity failures. Qwen English cloning is not ready. Native
+CPU/Metal and CUDA are unqualified. Existing linux/amd64 Docker images use
+emulation on Apple Silicon, an untested path; CI imports do not qualify runtime.

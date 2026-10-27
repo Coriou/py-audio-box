@@ -47,13 +47,13 @@ def schema(kind):
     return result
 
 
-def problem(code, message, field='', action='Read /skeleton; only synthetic fixture reads are available.'):
+def problem(code, message, field='', action='Read /v1/status for supported operations and next action.'):
     return validate('error', dict(code=code, message=message, field=field, action=action,
                                  current_revision=0, changed_ids=[]))
 
 
 class Failure(Exception):
-    def __init__(self, code, message, field='', action='Read /skeleton; only synthetic fixture reads are available.'):
+    def __init__(self, code, message, field='', action='Read /v1/status for supported operations and next action.'):
         self.body = problem(code, message, field, action)
         self.status = ERROR_STATUS[code]
 

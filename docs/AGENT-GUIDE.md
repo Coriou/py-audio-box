@@ -4,7 +4,12 @@ How an agent (or a script) gets from *"use py-audio-box, clone this voice and ma
 it the default voice for X"* to downloaded audio. Every step is a named operation
 that HTTP, CLI and MCP all share. CLI commands are shown first and the MCP tool
 names follow. Each operation's exact schema is available from
-`python -m clients.cli operation-detail OPERATION_ID` (MCP: `speech_operation_detail`).
+`.venv-client/bin/python -m clients.cli operation-detail OPERATION_ID` (MCP: `speech_operation_detail`).
+
+Run these commands from the checkout after creating the client environment
+with the client setup in the quick start below (`.venv-client/bin/python`).
+JSON identity placeholders must be replaced with the complete advertised object;
+there is no automatic identity selection.
 
 ## 0. Connect
 
@@ -19,9 +24,13 @@ then needs only:
   prompts, arguments or logs.
 
 ```sh
-python -m clients.cli discover     # MCP: speech_discover
-python -m clients.cli status       # MCP: speech_skeleton_status
+.venv-client/bin/python -m clients.cli discover     # MCP: speech_discover
+.venv-client/bin/python -m clients.cli status       # MCP: speech_status
 ```
+
+`status` / `speech_status` reads canonical `/v1/status`. For one preview release,
+`/skeleton` and direct calls to `speech_skeleton_status` remain deprecated aliases;
+MCP advertises only `speech_status`. Status takes no arguments or query fields.
 
 `discover` lists the **operations this installation supports** and its profiles.
 Preparation and generation requests carry an `identity` object (`engine`, `model`, `bundle_sha256`,
@@ -38,7 +47,7 @@ extra chunks. Nothing is trimmed or resampled for you. Make sure the user is
 entitled to clone the voice.
 
 ```sh
-python -m clients.cli asset upload /path/to/reference.wav   # → {"id": ASSET_ID, ...}
+.venv-client/bin/python -m clients.cli asset upload /path/to/reference.wav   # → {"id": ASSET_ID, ...}
 ```
 
 MCP: `speech_asset_upload_file {"path": "reference.wav"}`. This tool exists only
@@ -47,7 +56,7 @@ when the operator sets `SPEECH_UPLOAD_ROOT`, and paths are relative to that root
 ## 2. Prepare (clone) and save the voice
 
 ```sh
-python -m clients.cli voice prepare --idempotency-key prep-1 --request '{
+.venv-client/bin/python -m clients.cli voice prepare --idempotency-key prep-1 --request '{
   "asset_id": "ASSET_ID", "in_tick": 0, "out_tick": OUT_TICK,
   "reference_text": "", "audition_text": "Bonjour.", "identity": IDENTITY}'
 ```
@@ -57,8 +66,8 @@ example `frames * 48000 / sample_rate` for the whole file. The call returns a
 `job_id`. Wait for the job (step 4), then:
 
 ```sh
-python -m clients.cli voice results JOB_ID          # → candidates[0].id, audition audio
-python -m clients.cli voice save --idempotency-key save-1 --request '{
+.venv-client/bin/python -m clients.cli voice results JOB_ID          # → candidates[0].id, audition audio
+.venv-client/bin/python -m clients.cli voice save --idempotency-key save-1 --request '{
   "job_id": "JOB_ID", "candidate_id": "CANDIDATE_ID",
   "voice_id": "maya", "expected_revision": 0}'    # → version.id
 ```
@@ -70,11 +79,16 @@ MCP: put `idempotency_key` inside the arguments for `speech_voice_prepare` and
 On a preset-only (Kokoro) install, replace this step with
 
 ```sh
-python -m clients.cli voice preset-register --idempotency-key preset-1 --request '{"preset":"ff_siwis","voice_id":"maya","expected_revision":0}'
+.venv-client/bin/python -m clients.cli voice preset-register --idempotency-key preset-1 --request '{"preset":"ff_siwis","voice_id":"maya","expected_revision":0}'
 ```
 Use a preset selector advertised by `status`.
 
 ## Make it the default voice for X
+
+This is a preview: cloning is French only through gated Pocket, with retained
+text-fidelity failures. Qwen English cloning is not ready; native CPU/Metal and
+CUDA are unqualified. Existing amd64 Docker images use emulation on Apple Silicon
+and that path is untested. Import-only CI does not qualify runtime speech.
 
 The service has no special "default voice" setting. A default is a **voice
 alias** that you name by convention, for example `default.narration` or
@@ -82,8 +96,8 @@ alias** that you name by convention, for example `default.narration` or
 always point at one voice:
 
 ```sh
-python -m clients.cli voice get maya                       # → revision
-python -m clients.cli voice aliases --idempotency-key alias-1 --request '{
+.venv-client/bin/python -m clients.cli voice get maya                       # → revision
+.venv-client/bin/python -m clients.cli voice aliases --idempotency-key alias-1 --request '{
   "voice_id": "maya", "aliases": ["default.narration"], "expected_revision": REVISION}'
 ```
 
@@ -95,7 +109,7 @@ Resolving a released alias returns `not_found` until assigned again; resolving
 the archived ID returns `voice_archived`. Later, in any workflow:
 
 ```sh
-python -m clients.cli voice resolve default.narration      # MCP: speech_voice_resolve
+.venv-client/bin/python -m clients.cli voice resolve default.narration      # MCP: speech_voice_resolve
 ```
 
 The call returns the voice, with `version_ids` ordered oldest to newest. Use the
@@ -105,7 +119,7 @@ last ID, unless the user pinned a particular version, then fetch that version's
 ## 3. Generate speech
 
 ```sh
-python -m clients.cli speech generate --idempotency-key gen-1 --request '{
+.venv-client/bin/python -m clients.cli speech generate --idempotency-key gen-1 --request '{
   "voice_version_id": "VERSION_ID", "text": "Bonjour.", "identity": VERSION_IDENTITY,
   "fallback": "forbid", "variants": 1, "reuse": "never"}'
 ```
@@ -116,11 +130,11 @@ MCP: `speech_speech_generate`. Text and variant limits come from the profile's
 ## 4. Wait, inspect and cancel jobs
 
 ```sh
-python -m clients.cli job wait JOB_ID --wait-seconds 5   # repeat until state is terminal
-python -m clients.cli job get JOB_ID                     # state: succeeded | failed | cancelled | ...
-python -m clients.cli job events JOB_ID
-python -m clients.cli job cancel JOB_ID --idempotency-key cancel-1
-python -m clients.cli jobs list
+.venv-client/bin/python -m clients.cli job wait JOB_ID --wait-seconds 5   # repeat until state is terminal
+.venv-client/bin/python -m clients.cli job get JOB_ID                     # state: succeeded | failed | cancelled | ...
+.venv-client/bin/python -m clients.cli job events JOB_ID
+.venv-client/bin/python -m clients.cli job cancel JOB_ID --idempotency-key cancel-1
+.venv-client/bin/python -m clients.cli jobs list
 ```
 
 Only one expensive job runs at a time on CPU. Others queue, up to the profile's
@@ -129,9 +143,9 @@ Only one expensive job runs at a time on CPU. Others queue, up to the profile's
 ## 5. Download the audio
 
 ```sh
-python -m clients.cli job get JOB_ID                     # → artifact_ids
-python -m clients.cli artifact get ARTIFACT_ID           # → asset_ids
-python -m clients.cli asset content ASSET_ID --output /path/new-file.wav
+.venv-client/bin/python -m clients.cli job get JOB_ID                     # → artifact_ids
+.venv-client/bin/python -m clients.cli artifact get ARTIFACT_ID           # → asset_ids
+.venv-client/bin/python -m clients.cli asset content ASSET_ID --output /path/new-file.wav
 ```
 
 The CLI writes the file only after the full download matches its SHA-256, and it

@@ -1,24 +1,46 @@
 # Apple Silicon CI: first dependency slice
 
-Implemented against `25d92e393b0f5d6e9038c51a9c89e38d96fd0678`.
-Local validation is source-only. No GitHub workflow was triggered, no host ML
-was imported, and no model weights were downloaded. Apple Silicon / Metal
-synthesis is **UNQUALIFIED**. The existing unit workflow and Dockerfile are
-outside this slice.
+This workflow is authored source, not evidence that this revision has executed.
+Native dependency feasibility, client protocol closure, tensor probes and installed
+synthesis are separate evidence tiers. Apple CPU/Metal synthesis remains
+**UNQUALIFIED**; ARM64 runtime is **not_run**.
 
-The automatic push/PR job installs the native wheel closure with pip
-`--require-hashes --only-binary=:all:`, runs `pip check`, then imports real
-Torch, torchaudio, Transformers, tokenizers and Qwen. It checks Darwin/arm64,
-CPython 3.11, exact direct versions, the Qwen loader symbol, a CPU tensor
-operation, and real MPS built/available flags. It never constructs a model.
-Only `tests.test_ci_apple_silicon` and `tests.worker.test_native_protocol` run;
-the latter uses inert TLS fixtures. No Linux-wide unittest discovery occurs.
-Imports and CPU checks do not establish synthesis compatibility.
+The automatic `dependencies` job provisions SoX (`brew install sox`,
+`sox --version`), installs the existing native binary hash lock and runs pip
+check. Its report records native Python/architecture, exact dependency versions,
+SoX executable/version, CPU tensor result and MPS built/available flags, without
+constructing a model. The report is printed and uploaded even after failure;
+missing reports fail visibly. No import or tensor pass qualifies synthesis.
 
-[GitHub's runner reference](https://docs.github.com/en/actions/reference/runners/github-hosted-runners)
-lists standard `macos-15` as M1 arm64, 3 CPUs, 7 GB RAM, 14 GB SSD, free for
-public repositories. Private repositories consume their minutes allowance.
-No large/paid runner is selected. Each job has a 20 minute deadline.
+The distinct `clients` job uses native arm64 CPython 3.11 on `macos-15`.
+It creates fresh `.venv-client` and `.venv-service` environments, installs
+`requirements/client.lock` and `service/requirements.lock` respectively with
+`--only-binary=:all: --require-hashes`, and runs pip check in each. It executes
+the real CLI help parser, then `tests.clients.test_voice_clients` using the
+actual temporary Core/Dispatcher ASGI fixture. Explicitly selected
+`tests.test_ci_apple_silicon.MacClientSmoke` starts a loopback fixture HTTP
+service and actual MCP stdio child, initializes ClientSession, lists tools,
+calls speech_discover and compares MCP/CLI discovery with HTTP. It loads no
+engine. The fixture has an OS-assigned port, private HOME/environment, bounded
+readiness/RPC waits and owned termination/kill/wait. SDK stdio context owns its
+child cleanup. The inert host suite requires no FastAPI/MCP; dependency absence
+in the selected real smoke is a failure, never a successful skip.
+
+`apple-ci/clients.json` identifies commit, runner image/OS/architecture, Python,
+installed SDK versions and separate passed/failed/not_run stage fields.
+Skipped downstream steps do not claim installation or runtime qualification.
+An incompatible Mac hash-locked wheel fails the job: retain its exact pip
+package/pin diagnostic as the first blocker. A dedicated Mac client closure is
+a narrow follow-up, not authorization to relock the dependency graph.
+
+Jobs have 20 minute deadlines; child installs have 300 second deadlines,
+fixture readiness 15 seconds and MCP protocol 30 seconds. Only explicit
+Darwin-safe tests run, never Linux-wide discovery. Reports are exact JSON paths,
+with 7-day retention and missing-file errors; no workspace, credentials, weights
+or model cache is uploaded. No Docker, model construction/acquisition, secrets,
+paid runner or weight cache is configured. Standard public runner compute is
+$0; artifact storage remains subject to repository quotas and retention.
+See [GitHub runner documentation](https://docs.github.com/en/actions/reference/runners/github-hosted-runners).
 
 ## Lock provenance
 
@@ -93,3 +115,37 @@ Local checks: `python3 -m unittest tests.test_ci_apple_silicon
 .github/workflows/apple-silicon.yml`, and `git diff --check`. No actual native
 dependency installation/import, hosted CI run, synthesis, or Apple hardware
 qualification is claimed by these source checks.
+
+## Next finite ARM64 preview slice — not implemented / not_run
+
+Use existing Kokoro CPU through linux/arm64 Docker on free `ubuntu-24.04-arm`,
+paired with the current amd64 baseline. Native macOS CPU requires a new adapter
+and is outside this package. Full ARM64 synthesis is not required to describe a
+preview on already qualified platforms.
+
+1. Create separate `requirements/kokoro-linux-arm64.lock` and
+   `service/requirements-linux-arm64.lock` at existing compatible pins using
+   uv 0.11.15: `uv pip compile INPUT --constraint EXISTING_LOCK --python-version
+   3.11 --python-platform aarch64-manylinux_2_28 --generate-hashes --no-build
+   -o NEW_LOCK`. Metadata resolution is not wheel-install or synthesis evidence.
+2. Add explicit `--platform` to `scripts/cpu-kokoro-export.py`, defaulting to
+   linux/amd64; thread it through probe create, build config, image architecture,
+   installation policy and retained receipts. Inspect downstream guards; never
+   bypass amd64 guards to accept ARM64 evidence.
+3. Add an architecture-specific descriptor. The existing Kokoro build descriptor
+   pins an amd64 FFmpeg SHA256 (`0dafc136...`); never reuse it for ARM64. Verify
+   exact ARM64 Debian package versions, executable hash and base-image manifest
+   membership. ARM64 availability of the base digest remains unverified. Preserve
+   amd64 defaults and all resource bounds.
+4. Parameterize only control/worker-export release-image lock selection. Preserve
+   Pocket/Qwen policy and qualification. Add one bounded pinned-action workflow
+   pairing amd64 and ubuntu-24.04-arm with exact model provenance.
+5. Future separately authorized runs must exercise installed HTTP/CLI/MCP
+   generate/export/download/restart and retain actual WAVs, receipts,
+   image/source/model hashes and qualification.json. No secret-dependent Pocket
+   or paid Metal lane. Pinned bounded CPU-STT fidelity acquisition/run requires
+   separate authorization; absent fidelity cannot pass the synthesis gate.
+
+Stop at the first exact pin/platform blocker and preserve amd64 behavior. No
+model or dependency upgrades are implied. Import-only or lock-only green means
+dependency feasibility, never Apple CPU runtime qualification.

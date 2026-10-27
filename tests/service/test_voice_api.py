@@ -32,6 +32,27 @@ class VoiceAPIFixture(VoiceDispatcherFixture):
         return asyncio.run(run())
 
 class VoiceAPITests(VoiceAPIFixture, unittest.TestCase):
+    def test_status_alias_auth_query_and_envelope_parity(self):
+        for target in (self.app, app):
+            for token in ('alice-secret', '', 'bad', 'write-secret'):
+                for query in ('', '?scan=true'):
+                    with self.subTest(fixture=target is app, token=token, query=query):
+                        canonical = self.request('/v1/status' + query, token, target)
+                        old = self.request('/skeleton' + query, token, target)
+                        self.assertEqual(canonical.status_code, old.status_code)
+                        self.assertEqual(canonical.json(), old.json())
+                        self.assertLessEqual(len(canonical.content), 2048)
+                        if target is self.app and token != 'alice-secret':
+                            self.assertEqual(canonical.status_code, 403)
+                        elif query:
+                            self.assertEqual(canonical.status_code, 422)
+                        else:
+                            self.assertEqual(canonical.status_code, 200)
+                            self.assertFalse(canonical.json()['ready_for_speech'])
+        self.credentials.revoke('alice-secret')
+        for path in ('/v1/status', '/skeleton'):
+            self.assertEqual(self.request(path).status_code, 403)
+
     def advertised_errors(self, operation):
         response = self.request('/skeleton/operations/'+operation)
         self.assertEqual(response.status_code, 200)

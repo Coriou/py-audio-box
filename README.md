@@ -21,11 +21,16 @@ containers on your machine. No GPU is needed, and there is no browser UI.
 | Jobs: wait, events, cancel, retry, list | **Implemented** | Wait, cancel and download exercised in installed runs |
 | "Default voice for X" | **Convention, not a feature** | Set an alias such as `default.narration`, then resolve it; see the [agent guide](docs/AGENT-GUIDE.md#make-it-the-default-voice-for-x) |
 | Qwen 0.6B cloning, CPU (EN/FR) | **Not ready** | Implemented in source; installed startup and inference not yet passed ([status](docs/agent-interface/QWEN-CPU.md#current-status--2026-10-27)) |
-| Apple Silicon (Metal), NVIDIA CUDA | **Unqualified** | CPU containers only |
+| Apple Silicon (Metal), NVIDIA CUDA | **Unqualified** | Native CPU/Metal unqualified; amd64 Docker on Apple Silicon uses untested emulation |
 | Listening / perceptual quality | **Partial** | Owner listened to r409 comparison samples and accepted three r414 spoken-text pairs; French liaison unresolved. No per-engine perceptual release acceptance; installed-run outputs not listened |
 | Projects, blocks, clips, render (contract) | **Not implemented** | Defined in `contracts/v1`; not advertised by `discover` |
 | Published images / packages | **None** | Build from source |
 | Web UI | **Not planned for this release** | A future UI would use the same HTTP API |
+
+Preview scope: cloning is French only through gated Pocket, with retained
+text-fidelity failures. Qwen English cloning is not ready; native CPU/Metal and
+CUDA remain unqualified. On Apple Silicon, existing linux/amd64 Docker images
+use emulation; this path is untested. Import-only CI is not runtime readiness.
 
 Each installation runs **one engine**, and `discover` reports what that
 installation can actually do. Treat `discover`, not this table, as the source of

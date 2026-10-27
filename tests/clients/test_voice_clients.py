@@ -47,11 +47,28 @@ class VoiceClientTests(VoiceAPIFixture, unittest.TestCase):
                     response=asyncio.run(mcp.call_tool(tool,payload))
                     self.assertFalse(response.isError)
                     self.assertEqual(response.structuredContent,body)
+                output = io.StringIO()
+                with contextlib.redirect_stdout(output): self.assertEqual(main(['status']), 0)
+                status = json.loads(output.getvalue())
+                self.assertEqual(status, transport.get('/v1/status'))
+                for spelling in ('speech_status', 'speech_skeleton_status'):
+                    response = asyncio.run(mcp.call_tool(spelling, {}))
+                    self.assertFalse(response.isError)
+                    self.assertEqual(response.structuredContent, status)
+                    response = asyncio.run(mcp.call_tool(spelling, {'extra': 1}))
+                    self.assertTrue(response.isError)
+                    self.assertEqual(response.structuredContent['code'], 'invalid_request')
                 names={t.name for t in mcp.tools()}
+                self.assertIn('speech_status', names)
+                self.assertNotIn('speech_skeleton_status', names)
                 self.assertIn('speech_voice_version_get',names)
                 self.assertIn('speech_voice_resolve',names)
                 self.assertNotIn('idempotency_key',mcp.input_schema('voice_resolve')['properties'])
             with patch.dict('os.environ',{'SPEECH_CREDENTIAL':'write-secret'}):
+                for spelling in ('speech_status', 'speech_skeleton_status'):
+                    response = asyncio.run(mcp.call_tool(spelling, {}))
+                    self.assertTrue(response.isError)
+                    self.assertEqual(response.structuredContent['code'], 'forbidden')
                 response=asyncio.run(mcp.call_tool('speech_voice_get',{'voice_id':self.version['voice_id']}))
                 self.assertTrue(response.isError)
                 self.assertEqual(response.structuredContent['code'],'forbidden')

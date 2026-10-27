@@ -185,7 +185,8 @@
         "not_ready",
         "resource_limit",
         "unsupported_control"
-      ]
+      ],
+      "status": "planned"
     },
     {
       "id": "voice_prepare",
@@ -240,7 +241,8 @@
         "resource_limit",
         "unsupported_control"
       ],
-      "reference_contract": "reference-roles-v1 staged; absent roles are synthetic fixture compatibility only; production activation requires domain/worker migration"
+      "reference_contract": "reference-roles-v1 staged; absent roles are synthetic fixture compatibility only; production activation requires domain/worker migration",
+      "status": "planned"
     },
     {
       "id": "voice_preset_register",
@@ -385,7 +387,8 @@
         "not_ready",
         "resource_limit",
         "unsupported_control"
-      ]
+      ],
+      "status": "planned"
     },
     {
       "id": "project_get",
@@ -405,7 +408,8 @@
         "invalid_request",
         "forbidden",
         "not_found"
-      ]
+      ],
+      "status": "planned"
     },
     {
       "id": "block_text",
@@ -432,7 +436,8 @@
         "resource_limit",
         "unsupported_control",
         "revision_conflict"
-      ]
+      ],
+      "status": "planned"
     },
     {
       "id": "blocks_generate",
@@ -459,7 +464,8 @@
         "resource_limit",
         "unsupported_control",
         "revision_conflict"
-      ]
+      ],
+      "status": "planned"
     },
     {
       "id": "blocks_reorder",
@@ -486,7 +492,8 @@
         "resource_limit",
         "unsupported_control",
         "revision_conflict"
-      ]
+      ],
+      "status": "planned"
     },
     {
       "id": "speaker_assign",
@@ -513,7 +520,8 @@
         "resource_limit",
         "unsupported_control",
         "revision_conflict"
-      ]
+      ],
+      "status": "planned"
     },
     {
       "id": "clip_put",
@@ -540,7 +548,8 @@
         "resource_limit",
         "unsupported_control",
         "revision_conflict"
-      ]
+      ],
+      "status": "planned"
     },
     {
       "id": "clip_split",
@@ -567,7 +576,8 @@
         "resource_limit",
         "unsupported_control",
         "revision_conflict"
-      ]
+      ],
+      "status": "planned"
     },
     {
       "id": "clip_delete",
@@ -594,7 +604,8 @@
         "resource_limit",
         "unsupported_control",
         "revision_conflict"
-      ]
+      ],
+      "status": "planned"
     },
     {
       "id": "track_put",
@@ -621,7 +632,8 @@
         "resource_limit",
         "unsupported_control",
         "revision_conflict"
-      ]
+      ],
+      "status": "planned"
     },
     {
       "id": "take_select",
@@ -648,7 +660,8 @@
         "resource_limit",
         "unsupported_control",
         "revision_conflict"
-      ]
+      ],
+      "status": "planned"
     },
     {
       "id": "project_assemble",
@@ -675,7 +688,8 @@
         "resource_limit",
         "unsupported_control",
         "revision_conflict"
-      ]
+      ],
+      "status": "planned"
     },
     {
       "id": "project_ripple",
@@ -702,7 +716,8 @@
         "resource_limit",
         "unsupported_control",
         "revision_conflict"
-      ]
+      ],
+      "status": "planned"
     },
     {
       "id": "project_restore",
@@ -729,7 +744,8 @@
         "resource_limit",
         "unsupported_control",
         "revision_conflict"
-      ]
+      ],
+      "status": "planned"
     },
     {
       "id": "project_render",
@@ -756,7 +772,8 @@
         "resource_limit",
         "unsupported_control",
         "revision_conflict"
-      ]
+      ],
+      "status": "planned"
     },
     {
       "id": "job_get",
@@ -860,7 +877,8 @@
         "not_ready",
         "resource_limit",
         "unsupported_control"
-      ]
+      ],
+      "status": "planned"
     },
     {
       "id": "migration_preview",
@@ -886,7 +904,8 @@
         "not_ready",
         "resource_limit",
         "unsupported_control"
-      ]
+      ],
+      "status": "planned"
     },
     {
       "id": "migration_apply",
@@ -913,7 +932,8 @@
         "resource_limit",
         "unsupported_control",
         "revision_conflict"
-      ]
+      ],
+      "status": "planned"
     },
     {
       "id": "blocks_put",
@@ -935,7 +955,8 @@
         "revision_conflict",
         "invalid_request",
         "forbidden"
-      ]
+      ],
+      "status": "planned"
     },
     {
       "id": "blocks_delete",
@@ -957,7 +978,8 @@
         "revision_conflict",
         "invalid_request",
         "forbidden"
-      ]
+      ],
+      "status": "planned"
     },
     {
       "id": "track_delete",
@@ -979,7 +1001,8 @@
         "revision_conflict",
         "invalid_request",
         "forbidden"
-      ]
+      ],
+      "status": "planned"
     },
     {
       "id": "project_history",
@@ -999,7 +1022,8 @@
         "revision_conflict",
         "invalid_request",
         "forbidden"
-      ]
+      ],
+      "status": "planned"
     },
     {
       "id": "asset_content",
@@ -1089,7 +1113,8 @@
         "invalid_request",
         "forbidden",
         "not_found"
-      ]
+      ],
+      "status": "planned"
     },
     {
       "id": "voice_versions_list",

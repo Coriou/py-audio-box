@@ -24,7 +24,9 @@ def test_http_cli_mcp_parity_and_errors(configured_url, tmp_path):
     result = cli(url,'discover')
     assert result.returncode == 0 and json.loads(result.stdout) == expected
     assert expected['operations'] == list(IMPLEMENTED) and expected['engines'] == [] and expected['profiles'] == []
-    assert HTTP(url).get('/skeleton')['ready_for_speech'] is False
+    assert HTTP(url).get('/v1/status')['ready_for_speech'] is False
+    for route in ('/v1/status', '/skeleton'):
+        assert httpx.get(url+route+'?scan=true',trust_env=False).status_code == 422
     for operation in OPERATIONS:
         detail = HTTP(url).get('/skeleton/operations/'+operation)
         assert detail['operation'] == OPERATIONS[operation]
@@ -48,8 +50,20 @@ def test_http_cli_mcp_parity_and_errors(configured_url, tmp_path):
             async with ClientSession(reader,writer) as session:
                 init = await session.initialize()
                 assert init.protocolVersion
+                assert init.serverInfo.name == 'py-audio-box'
                 tools = (await session.list_tools()).tools
-                assert {t.name for t in tools} == {OPERATIONS[o]['mcp'] for o in (*IMPLEMENTED,*VOICE_READS,*PRODUCTION_OPERATIONS)} | {'speech_skeleton_status','speech_operation_detail'}
+                assert {t.name for t in tools} == {OPERATIONS[o]['mcp'] for o in (*IMPLEMENTED,*VOICE_READS,*PRODUCTION_OPERATIONS)} | {'speech_status','speech_operation_detail'}
+                assert 'speech_skeleton_status' not in {t.name for t in tools}
+                status = HTTP(url).get('/v1/status')
+                assert status == HTTP(url).get('/skeleton')
+                status_cli = cli(url, 'status')
+                assert status_cli.returncode == 0 and json.loads(status_cli.stdout) == status
+                for spelling in ('speech_status', 'speech_skeleton_status'):
+                    # Exercise SDK dispatch, including hidden aliases with input validation disabled.
+                    response = await asyncio.wait_for(session.call_tool(spelling, {}), 10)
+                    assert not response.isError and response.structuredContent == status
+                    response = await asyncio.wait_for(session.call_tool(spelling, {'scan': True}), 10)
+                    assert response.isError and response.structuredContent['code'] == 'invalid_request'
                 discovered = await session.call_tool('speech_discover',{})
                 assert discovered.structuredContent == expected and not discovered.isError
                 bad = await session.call_tool('speech_discover',{'scan':True})
@@ -109,3 +123,23 @@ assert operation_detail('speech_generate')['availability'] == 'unavailable'
 '''
     probe = subprocess.run([sys.executable,'-c',code],capture_output=True,text=True,timeout=15)
     assert probe.returncode == 0, probe.stderr
+
+
+def test_optional_upload_discovery_is_bounded(monkeypatch):
+    from clients.mcp import tools
+    from service.catalogue import compact
+    from tests.release.measure import measure
+    monkeypatch.delenv('SPEECH_UPLOAD_ROOT', raising=False)
+    baseline = tools()
+    default = measure()
+    assert default['initial_connection_tokens'] <= 3500
+    assert default['metrics']['skeleton_status']['utf8_bytes'] <= 2048
+    monkeypatch.setenv('SPEECH_UPLOAD_ROOT', '/private/operator-authorized')
+    optional = tools()
+    assert len(optional) == len(baseline) + 1
+    extra = next(t for t in optional if t.name == 'speech_asset_upload_file')
+    assert [t for t in optional if t.name != extra.name] == baseline
+    assert len(compact(extra.model_dump(mode='json', exclude_none=True)).encode()) <= 1024
+    # A single finite opt-in tool adds no status aliases or audio payload.
+    assert 'speech_skeleton_status' not in {t.name for t in optional}
+    assert measure()['initial_connection_tokens'] <= default['initial_connection_tokens'] + 256

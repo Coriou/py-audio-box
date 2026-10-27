@@ -162,3 +162,14 @@ def test_binary_fixture_boundary():
     for value in ({}, {'$fixture_binary_base64':'!'}, {'$fixture_binary_base64':'YR=='}, {'$fixture_binary_base64':1}, {**sample,'extra':True}):
         with pytest.raises(c.ContractError,match='invalid_binary_fixture'):c.fixture_request('asset_upload_request',value)
     with pytest.raises(c.ContractError,match='invalid_size'):c.fixture_request('asset_upload_request',{'$fixture_binary_base64':''})
+
+
+def test_planned_metadata_is_exact_unserved_complement():
+    from service.catalogue import IMPLEMENTED, VOICE_READS, ASSET_OPERATIONS, PRODUCTION_OPERATIONS
+    ops = json.loads((ROOT/'contracts/v1/operations.json').read_text())['operations']
+    served = set(IMPLEMENTED) | set(VOICE_READS) | set(ASSET_OPERATIONS) | set(PRODUCTION_OPERATIONS)
+    planned = {op['id'] for op in ops if op.get('status') == 'planned'}
+    assert len(ops) == 50 and len(served) == len(planned) == 25
+    assert planned == {op['id'] for op in ops} - served
+    assert all('status' not in op for op in ops if op['id'] in served)
+    assert all('status' not in c.SCHEMA['$defs'][op['request']].get('properties', {}) for op in ops)

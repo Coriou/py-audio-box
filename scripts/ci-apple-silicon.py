@@ -8,6 +8,11 @@ import os
 from pathlib import Path
 import platform
 import signal
+import shutil
+import asyncio
+import socket
+import tempfile
+import time
 import subprocess
 import sys
 
@@ -46,6 +51,10 @@ def write_report(path, report):
 
 def deps_check():
     validate_platform()
+    sox = shutil.which('sox')
+    if not sox:
+        raise RuntimeError('SoX executable missing; provision brew install sox')
+    sox_version = subprocess.check_output([sox, '--version'], timeout=10, text=True).strip()
     versions = {name: metadata.version(name) for name in EXPECTED}
     validate_versions(versions)
     for name in ('torch', 'torchaudio', 'transformers', 'tokenizers', 'qwen_tts'):
@@ -62,6 +71,7 @@ def deps_check():
             'python': platform.python_version(), 'versions': versions,
             'mps_built': torch.backends.mps.is_built(),
             'mps_available': torch.backends.mps.is_available(),
+            'sox_executable': sox, 'sox_version': sox_version,
             'cpu_tensor': 'passed', 'models_loaded': False}
 
 
@@ -104,11 +114,161 @@ def bounded_probe(report):
         raise RuntimeError(f'MPS probe child failed (exit {code}); see JSON report')
 
 
+
+def require_client_dependencies():
+    # Deliberately fail on absence; never substitute modules or skip a smoke.
+    for name in ('fastapi', 'mcp', 'uvicorn', 'jsonschema', 'httpx'):
+        importlib.import_module(name)
+
+
+def owned_run(argv, *, env, cwd, timeout=300):
+    child = subprocess.Popen(argv, env=env, cwd=cwd, start_new_session=True)
+    try:
+        code = child.wait(timeout=timeout)
+        if code:
+            raise RuntimeError(f'{argv[:3]} failed (exit {code}); see step log')
+    finally:
+        reap(child)
+
+
+def reap(child):
+    if child.poll() is None:
+        child.terminate()
+        try:
+            child.wait(timeout=5)
+        except subprocess.TimeoutExpired:
+            os.killpg(child.pid, signal.SIGKILL)
+            child.wait(timeout=5)
+    else:
+        child.wait()
+
+
+def client_smoke():
+    require_client_dependencies()
+    from mcp import ClientSession, StdioServerParameters
+    from mcp.client.stdio import stdio_client
+    import httpx
+    root = Path(__file__).resolve().parents[1]
+    # No inherited credentials, proxy settings, upload grants or model caches.
+    with tempfile.TemporaryDirectory(prefix='apple-client-') as private:
+        env = {k: v for k, v in os.environ.items()
+               if k in ('PATH', 'SYSTEMROOT', 'TMPDIR')}
+        env.update(HOME=private, HF_HUB_OFFLINE='1', TRANSFORMERS_OFFLINE='1',
+                   PYTHONDONTWRITEBYTECODE='1', PYTHONPATH=str(root))
+        with socket.socket() as listener:
+            listener.bind(('127.0.0.1', 0)); listener.listen(16)
+            env['SPEECH_URL'] = f'http://127.0.0.1:{listener.getsockname()[1]}'
+            child = subprocess.Popen([sys.executable, str(Path(__file__).resolve()),
+                                      '_fixture', '--fd', str(listener.fileno())],
+                                     cwd=private, env=env, pass_fds=(listener.fileno(),),
+                                     start_new_session=True)
+        try:
+            deadline = time.monotonic() + 15
+            with httpx.Client(timeout=1, trust_env=False) as http:
+                while True:
+                    if child.poll() is not None:
+                        raise RuntimeError('fixture exited before readiness')
+                    try:
+                        response = http.get(env['SPEECH_URL'] + '/v1/capabilities')
+                        response.raise_for_status(); expected = response.json(); break
+                    except httpx.HTTPError:
+                        if time.monotonic() >= deadline:
+                            raise RuntimeError('fixture readiness exceeded 15 seconds')
+                        time.sleep(.1)
+            cli = subprocess.run([sys.executable, '-m', 'clients.cli', 'discover'],
+                                 env=env, cwd=private, timeout=15,
+                                 check=True, capture_output=True, text=True)
+            if json.loads(cli.stdout) != expected:
+                raise RuntimeError('CLI fixture response mismatch')
+            async def protocol():
+                params = StdioServerParameters(command=sys.executable,
+                    args=['-m', 'clients.mcp'], env=env, cwd=private)
+                async with stdio_client(params) as streams:
+                    async with ClientSession(*streams) as session:
+                        await session.initialize()
+                        tools = await session.list_tools()
+                        if 'speech_discover' not in {tool.name for tool in tools.tools}:
+                            raise RuntimeError('discover tool absent')
+                        result = await session.call_tool('speech_discover', {})
+                        if result.isError or result.structuredContent != expected:
+                            raise RuntimeError('MCP fixture response mismatch')
+            async def bounded_protocol():
+                await asyncio.wait_for(protocol(), timeout=30)
+            asyncio.run(bounded_protocol())
+        finally:
+            reap(child)
+    return {'protocol': 'passed', 'fixture_calls': 'passed'}
+
+
+def clients_check(path):
+    root = Path(__file__).resolve().parents[1]
+    report = dict(status='failed', commit=os.environ.get('GITHUB_SHA', 'unknown'),
+        runner_image=os.environ.get('ImageOS', 'unknown'),
+        runner_version=os.environ.get('ImageVersion', 'unknown'),
+        os=platform.platform(), arch=platform.machine(), python=platform.python_version(),
+        cli_install='not_run', mcp_install='not_run', cli_help='not_run',
+        voice_clients='not_run', protocol='not_run', fixture_calls='not_run',
+        runtime_qualified=False, versions={})
+    env = dict(os.environ, PYTHONDONTWRITEBYTECODE='1')
+    current = None
+    try:
+        validate_platform()
+        for label, directory, lock in (
+                ('cli_install', '.venv-client', 'requirements/client.lock'),
+                ('mcp_install', '.venv-service', 'service/requirements.lock')):
+            current = label
+            target = root / directory
+            if target.exists():
+                raise RuntimeError(f'{directory} must be fresh')
+            owned_run([sys.executable, '-m', 'venv', str(target)], env=env, cwd=root, timeout=60)
+            python = str(target / 'bin/python')
+            owned_run([python, '-m', 'pip', 'install', '--only-binary=:all:',
+                       '--require-hashes', '--index-url', 'https://pypi.org/simple',
+                       '-r', lock], env=env, cwd=root, timeout=300)
+            owned_run([python, '-m', 'pip', 'check'], env=env, cwd=root, timeout=30)
+            report[label] = 'passed'
+            if label == 'cli_install':
+                current = 'cli_help'
+                owned_run([python, '-m', 'clients.cli', '--help'], env=env, cwd=root, timeout=15)
+                report[current] = 'passed'
+        current = None
+        raw = subprocess.check_output([python, '-c',
+            "import json; from importlib.metadata import version; print(json.dumps({n:version(n) for n in ('mcp','fastapi','httpx','jsonschema','uvicorn')}))"],
+            env=env, cwd=root, timeout=15, text=True)
+        report['versions'] = json.loads(raw)
+        current = 'voice_clients'
+        owned_run([python, '-m', 'unittest', 'tests.clients.test_voice_clients', '-v'], env=env, cwd=root, timeout=120)
+        report[current] = 'passed'
+        current = 'protocol'
+        owned_run([python, '-m', 'unittest',
+                   'tests.test_ci_apple_silicon.MacClientSmoke', '-v'], env=env, cwd=root, timeout=60)
+        report.update(protocol='passed', fixture_calls='passed', status='passed')
+    except Exception as exc:
+        if current:
+            report[current] = 'failed'
+        report['error'] = str(exc)[:2000]
+        raise
+    finally:
+        write_report(path, report)
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('mode', choices=('deps-check', 'mps-probe', '_mps-child'))
-    parser.add_argument('--report', type=Path, required=True)
+    parser.add_argument('mode', choices=('deps-check', 'mps-probe', '_mps-child', 'clients-check', '_fixture'))
+    parser.add_argument('--report', type=Path)
+    parser.add_argument('--fd', type=int)
     args = parser.parse_args()
+    if args.mode == '_fixture':
+        import uvicorn
+        from service.api import app
+        listener = socket.socket(fileno=args.fd)
+        uvicorn.Server(uvicorn.Config(app, log_level='warning')).run(sockets=[listener])
+        return
+    if args.report is None:
+        parser.error('--report is required')
+    if args.mode == 'clients-check':
+        clients_check(args.report)
+        return
     try:
         if args.mode == 'mps-probe':
             validate_platform()
@@ -118,6 +278,8 @@ def main():
         write_report(args.report, dict(status='passed', mode=args.mode, **report))
     except Exception as exc:
         write_report(args.report, {'status': 'failed', 'mode': args.mode,
+                                   'platform': platform.system(), 'machine': platform.machine(),
+                                   'python': platform.python_version(),
                                    'error': str(exc)[:2000]})
         raise
 

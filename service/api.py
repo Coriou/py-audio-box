@@ -36,7 +36,7 @@ async def invalid_handler(request, exc):
 
 @app.exception_handler(HTTPException)
 async def http_handler(request, exc):
-    return JSONResponse(problem('not_found', 'Route or method unavailable in the 0C skeleton.'), status_code=404)
+    return JSONResponse(problem('not_found', 'Route or method unavailable.'), status_code=404)
 
 @app.middleware('http')
 async def fixture_header(request: Request, call_next):
@@ -60,8 +60,9 @@ def asset(asset_id: str, query: Annotated[EmptyQuery, Query()]):
 def content(asset_id: str, query: Annotated[ContentQuery, Query()]):
     return read('asset_content', {'asset_id': asset_id, **query.model_dump()})
 
-@app.get('/skeleton')
-def summary():
+@app.get('/v1/status')
+@app.get('/skeleton', deprecated=True)
+def summary(query: Annotated[EmptyQuery, Query()] = EmptyQuery()):
     return {'fixture': True, 'contract_version': '1.3.0', 'ready_for_speech': False,
         'implemented': list(IMPLEMENTED), 'unavailable_operations': len(OPERATIONS)-len(IMPLEMENTED),
         'details': '/skeleton/operations/{operation_id}', 'profiles': '/skeleton/profiles/{profile_id}',
@@ -153,7 +154,7 @@ def create_voice_app(dispatcher, *, credentials, upload_deadline=15.0, installed
             body['engines'] = sorted({c['identity']['engine'] for p in installed['profiles'] for c in p['compatibility']})
             body['checked_at'] = datetime.now(timezone.utc).isoformat()
             for profile in body['profiles']:
-                profile['next_action'] = configured['next_action'] if configured and configured['engine']=='pocket-tts' else 'Read /skeleton configured_presets; explicitly call voice_preset_register, then speech_generate. Clone preparation is unavailable.'
+                profile['next_action'] = configured['next_action'] if configured and configured['engine']=='pocket-tts' else 'Read /v1/status configured_presets; explicitly call voice_preset_register, then speech_generate. Clone preparation is unavailable.'
             if not dispatcher.call('status')['persistent_activation']:
                 for profile in body['profiles']: profile['readiness'] = 'not_ready'
         selected_profiles = dispatcher.call('configured_profiles', request.state.principal)
@@ -169,7 +170,8 @@ def create_voice_app(dispatcher, *, credentials, upload_deadline=15.0, installed
         if not dispatcher.call('status')['retry_available']: body['operations'] = [op for op in body['operations'] if op != 'job_retry']
         return body
 
-    @production.get('/skeleton')
+    @production.get('/v1/status')
+    @production.get('/skeleton', deprecated=True)
     def production_status(request: Request, query: Annotated[EmptyQuery, Query()]):
         if installed is not None:
             from service.persistent_init import digest

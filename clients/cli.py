@@ -77,7 +77,7 @@ def main(argv=None):
     http = HTTP(args.url, credential=args.credential or os.environ.get('SPEECH_CREDENTIAL'))
     try:
         if args.command == 'discover': result = http.call('discover', {})
-        elif args.command == 'status': result = http.get('/skeleton')
+        elif args.command == 'status': result = http.get('/v1/status')
         elif args.command == 'operation-detail':
             from urllib.parse import quote
             result = http.get('/skeleton/operations/' + quote(args.operation_id, safe=''))
@@ -118,7 +118,7 @@ def main(argv=None):
             temporary = None
             try:
                 digest = hashlib.sha256(); total = 0
-                with tempfile.NamedTemporaryFile(dir=args.output.parent, prefix='.speech-0c-', delete=False) as out:
+                with tempfile.NamedTemporaryFile(dir=args.output.parent, prefix='.py-audio-box-', delete=False) as out:
                     temporary = Path(out.name)
                     for start in range(0, total_bytes, 65536):
                         end = min(start + 65536, total_bytes)
