@@ -36,7 +36,9 @@ COPY docs/agent-interface/CPU-QUICKSTART.md /app/docs/agent-interface/CPU-QUICKS
 COPY docs/agent-interface/DOCKER-VOLUMES.md /app/docs/agent-interface/DOCKER-VOLUMES.md
 COPY docs/agent-interface/HEADLESS-INSTALL.md /app/docs/agent-interface/HEADLESS-INSTALL.md
 COPY docs/agent-interface/NATIVE-PACKAGE.md /app/docs/agent-interface/NATIVE-PACKAGE.md
+COPY docs/TTS_SPOKEN_TEXT.md /app/docs/TTS_SPOKEN_TEXT.md
 COPY docs/agent-interface/POCKET-QUICKSTART.md /app/docs/agent-interface/POCKET-QUICKSTART.md
+COPY docs/agent-interface/QWEN-CPU.md /app/docs/agent-interface/QWEN-CPU.md
 COPY docs/agent-interface/reviews/CPU-KOKORO-INSTALLED-r407-parent.md /app/docs/agent-interface/reviews/CPU-KOKORO-INSTALLED-r407-parent.md
 COPY docs/agent-interface/reviews/CPU-RELEASE-r407-parent.md /app/docs/agent-interface/reviews/CPU-RELEASE-r407-parent.md
 COPY docs/agent-interface/reviews/H2-PUBLICATION-V2-r373-sol.md /app/docs/agent-interface/reviews/H2-PUBLICATION-V2-r373-sol.md
