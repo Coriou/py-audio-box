@@ -1,4 +1,8 @@
 FROM python:3.11-slim-bookworm
+
+# License label describes project source; base images and dependencies retain their terms.
+LABEL org.opencontainers.image.licenses="AGPL-3.0-only"
+COPY LICENSE THIRD_PARTY_NOTICES.md /app/
 ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1
 RUN apt-get update && apt-get install -y --no-install-recommends ffmpeg libsndfile1 && rm -rf /var/lib/apt/lists/*
 # Match the repository lock's CPU torch/torchaudio pair. No model packages or weights.
@@ -33,6 +37,10 @@ COPY run.ps1 /app/run.ps1
 COPY pyproject.toml /app/pyproject.toml
 COPY poetry.lock /app/poetry.lock
 COPY headless-dist-manifest.json native-dist-manifest.json Dockerfile.cpu /app/
+# User-facing onboarding docs and their link targets (tests/test_docs_onboarding.py).
+COPY README.md /app/README.md
+COPY docs/AGENT-GUIDE.md docs/LEGACY-TOOLBOX.md docs/TTS_BENCHMARK.md docs/TTS_MEMORY.md docs/TTS_POCKET_CPU_PILOT.md /app/docs/
+COPY docs/agent-interface/README.md /app/docs/agent-interface/README.md
 COPY docs/agent-interface/AUDIO-EXPORT.md /app/docs/agent-interface/AUDIO-EXPORT.md
 COPY docs/agent-interface/CPU-DOCKER.md /app/docs/agent-interface/CPU-DOCKER.md
 COPY docs/agent-interface/CPU-QUICKSTART.md /app/docs/agent-interface/CPU-QUICKSTART.md
@@ -47,3 +55,9 @@ COPY docs/agent-interface/reviews/CPU-RELEASE-r407-parent.md /app/docs/agent-int
 COPY docs/agent-interface/reviews/H2-PUBLICATION-V2-r373-sol.md /app/docs/agent-interface/reviews/H2-PUBLICATION-V2-r373-sol.md
 # Keep the default image invocation identical to the bounded runner selection.
 CMD ["python", "-m", "pytest", "tests", "-m", "not integration and not redis_integration and not manual_b_probe", "--ignore=tests/local", "--ignore=tests/remote", "--ignore=tests/release/test_dispatcher.py", "--ignore=tests/release/test_packaged_lifecycle.py", "--ignore=tests/release/test_admission.py", "-p", "no:cacheprovider", "-q"]
+
+# Inputs for source distribution metadata and static image-context checks.
+COPY docs/SOURCE-LICENSE.md /app/docs/SOURCE-LICENSE.md
+COPY studio/package.json studio/package-lock.json /app/studio/
+COPY Dockerfile Dockerfile.cuda Dockerfile.cuda-base Dockerfile.watcher Dockerfile.tests /app/
+COPY .dockerignore /app/.dockerignore

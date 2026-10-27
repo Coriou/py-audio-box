@@ -1,5 +1,9 @@
 # syntax=docker/dockerfile:1
 FROM python:3.11-slim-bookworm@sha256:0a310eeecf4e1f5a0743f9a6520c90c88d089c903ca5fd283f501e3a805f5f89 AS control
+
+# License label describes project source; base images and dependencies retain their terms.
+LABEL org.opencontainers.image.licenses="AGPL-3.0-only"
+COPY LICENSE THIRD_PARTY_NOTICES.md /opt/speech/
 ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1
 WORKDIR /opt/speech
 COPY service/requirements.lock /opt/speech/requirements.lock
@@ -13,6 +17,10 @@ EXPOSE 8000
 CMD ["python", "-I", "-B", "-c", "import sys;sys.path.insert(0,'/opt/speech');from service.entrypoint import installed_main;installed_main()"]
 
 FROM python:3.11-slim-bookworm@sha256:0a310eeecf4e1f5a0743f9a6520c90c88d089c903ca5fd283f501e3a805f5f89 AS worker
+
+# License label describes project source; base images and dependencies retain their terms.
+LABEL org.opencontainers.image.licenses="AGPL-3.0-only"
+COPY LICENSE THIRD_PARTY_NOTICES.md /opt/speech/
 ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 TORCH_DEVICE=cpu HF_HOME=/tmp/huggingface MALLOC_MMAP_THRESHOLD_=131072
 WORKDIR /opt/speech
 RUN apt-get update && apt-get install -y --no-install-recommends libsndfile1 espeak-ng ffmpeg && rm -rf /var/lib/apt/lists/*
@@ -31,6 +39,10 @@ CMD ["python", "-I", "-B", "-c", "import sys;sys.path.insert(0,'/opt/speech');fr
 # input. Never inherit worker's unversioned apt layer. Actual acquisition/build,
 # resolved complete closure review and finished image qualification are separate.
 FROM python:3.11-slim-bookworm@sha256:0a310eeecf4e1f5a0743f9a6520c90c88d089c903ca5fd283f501e3a805f5f89 AS worker-export
+
+# License label describes project source; base images and dependencies retain their terms.
+LABEL org.opencontainers.image.licenses="AGPL-3.0-only"
+COPY LICENSE THIRD_PARTY_NOTICES.md /opt/speech/
 ARG EXPORT_FFMPEG_PACKAGE_VERSION
 ARG EXPORT_SNDFILE_PACKAGE_VERSION
 ARG EXPORT_ESPEAK_PACKAGE_VERSION
@@ -61,6 +73,10 @@ CMD ["python", "-I", "-B", "-c", "raise SystemExit('explicit private export daem
 
 # Explicit alternative image; never installs Kokoro into the Pocket worker.
 FROM python:3.11-slim-bookworm@sha256:0a310eeecf4e1f5a0743f9a6520c90c88d089c903ca5fd283f501e3a805f5f89 AS worker-pocket
+
+# License label describes project source; base images and dependencies retain their terms.
+LABEL org.opencontainers.image.licenses="AGPL-3.0-only"
+COPY LICENSE THIRD_PARTY_NOTICES.md /opt/speech/
 ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 TORCH_DEVICE=cpu HF_HOME=/tmp/huggingface HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 MALLOC_MMAP_THRESHOLD_=131072
 WORKDIR /opt/speech
 RUN apt-get update && apt-get install -y --no-install-recommends libsndfile1 && rm -rf /var/lib/apt/lists/*
@@ -76,6 +92,10 @@ CMD ["python", "-I", "-B", "-c", "import sys;sys.path.insert(0,'/opt/speech');fr
 
 # LOT1 source recipe, Linux amd64 only. No production install policy yet.
 FROM python:3.11-slim-bookworm@sha256:0a310eeecf4e1f5a0743f9a6520c90c88d089c903ca5fd283f501e3a805f5f89 AS worker-qwen
+
+# License label describes project source; base images and dependencies retain their terms.
+LABEL org.opencontainers.image.licenses="AGPL-3.0-only"
+COPY LICENSE THIRD_PARTY_NOTICES.md /opt/speech/
 ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 TORCH_DEVICE=cpu HF_HOME=/tmp/huggingface HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 GRADIO_ANALYTICS_ENABLED=False MALLOC_MMAP_THRESHOLD_=131072
 WORKDIR /opt/speech
 # r409 retained Bookworm metadata, completed for this digest-pinned slim base.

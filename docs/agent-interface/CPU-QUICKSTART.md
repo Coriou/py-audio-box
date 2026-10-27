@@ -6,17 +6,10 @@ FFmpeg export, then installs the fresh `docker-kokoro-export-split-v2` family.
 HTTP, CLI and MCP share the canonical service; no browser or GPU is required.
 The expected manifest and build pins are inputs, not runtime qualification.
 
-The `actual-install14` run passed authenticated HTTP, CLI and MCP, speech,
-PCM24 export, verified download and same-installation restart on Linux/amd64
-under OrbStack. See the [bounded installed report](reviews/CPU-KOKORO-INSTALLED-r407-parent.md).
-The separate ordinary Docker-client Pocket installed journey has also passed;
-see the [bounded CPU release report](reviews/CPU-RELEASE-r407-parent.md).
-The fresh public05 nine-job journey also passed its final clean stop. Its retained
-history used 872 of 2048 inspection rows; this is finite measured acceptance,
-not a guarantee of unlimited retained jobs or history.
-
-Listening for these installed runs remains **UNMEASURED**, the protected-host lane **UNRUN**, and the CPU
-regressions/source archive checks have passed. CUDA and Apple Metal remain unqualified.
+**Status:** this recipe has passed end to end on Linux/amd64 (OrbStack): HTTP, CLI
+and MCP, speech, PCM24 export, verified download and restart. Listening quality for these installed runs is
+unmeasured, and CUDA and Apple Metal are unqualified. Evidence:
+[installed run report](reviews/CPU-KOKORO-INSTALLED-r407-parent.md).
 
 Use Python 3.11 and a local rootful Docker daemon with cgroup v2 and
 `linux/amd64` support. Docker Desktop/OrbStack must expose an explicit local Unix
@@ -109,3 +102,5 @@ use CLI `asset upload FILE` or authenticated HTTP first and supply the asset ID.
 MCP direct audio content is limited to 3072 decoded bytes per call. Keep complete
 audio outside model context: use `python -m clients.cli asset content ID --output FILE`
 in the configured client environment for a complete hash-verified exclusive file.
+
+Next: [agent guide](../AGENT-GUIDE.md).

@@ -4,6 +4,7 @@ version = "0.1.0"
 description = "Reusable python/poetry toolbox container (ffmpeg, audio tooling, etc.)"
 authors = ["you <you@example.com>"]
 package-mode = false
+license = "AGPL-3.0-only"
 
 [[tool.poetry.source]]
 name = "pytorch-cpu"
@@ -55,6 +56,9 @@ markers = [
 
 # Independent stdlib archive distribution; legacy Poetry project is unchanged.
 [tool.speech-box-headless]
+# Custom archive metadata, not PEP 639 packaging configuration.
+license = "AGPL-3.0-only"
+license-files = ["LICENSE", "THIRD_PARTY_NOTICES.md"]
 name = "speech-box"
 version = "0.1.0"
 manifest = "headless-dist-manifest.json"

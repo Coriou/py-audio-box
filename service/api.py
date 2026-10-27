@@ -229,6 +229,10 @@ def create_voice_app(dispatcher, *, credentials, upload_deadline=15.0, installed
     def metadata(voice_id: str, request: Request, query: Annotated[EmptyQuery, Query()]):
         return voice_read(dispatcher, request.state.principal, 'voice_get', dict(voice_id=voice_id))
 
+    @production.get('/v1/voice-names/{name}')
+    def resolve(name: str, request: Request, query: Annotated[EmptyQuery, Query()]):
+        return voice_read(dispatcher, request.state.principal, 'voice_resolve', dict(name=name))
+
     @production.get('/v1/voice-versions/{voice_version_id}')
     def version(voice_version_id: str, request: Request, query: Annotated[EmptyQuery, Query()]):
         return voice_read(dispatcher, request.state.principal, 'voice_version_get',

@@ -7,6 +7,9 @@
   "voice_get": {
     "voice_id": "example"
   },
+  "voice_resolve": {
+    "name": "example"
+  },
   "asset_get": {
     "asset_id": "example"
   },

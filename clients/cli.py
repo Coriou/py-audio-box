@@ -39,6 +39,7 @@ def main(argv=None):
     vsubs = voice.add_subparsers(dest='verb', required=True)
     vl = vsubs.add_parser('versions'); vl.add_argument('voice_id'); vl.add_argument('--limit',type=int,default=20); vl.add_argument('--cursor',default='')
     vg = vsubs.add_parser('get'); vg.add_argument('voice_id')
+    vr = vsubs.add_parser('resolve'); vr.add_argument('name')
     version = vsubs.add_parser('version')
     vget = version.add_subparsers(dest='version_verb', required=True).add_parser('get')
     vget.add_argument('voice_version_id')
@@ -88,6 +89,7 @@ def main(argv=None):
                 if 'audition_text' in payload and payload['audition_text'] != args.audition_text: raise ValueError('conflicting_audition_text')
                 payload['audition_text'] = args.audition_text
             result = http.call(operation, payload, key=args.idempotency_key)
+        elif args.command == 'voice' and args.verb == 'resolve': result = http.call('voice_resolve',dict(name=args.name))
         elif args.command == 'voice' and args.verb == 'results': result = http.call('voice_results',dict(job_id=args.job_id))
         elif args.command == 'jobs': result = http.call('jobs_list',dict(cursor=args.cursor,limit=args.limit))
         elif args.command == 'profile': result = http.call('profile_get',dict(profile_id=args.profile_id))

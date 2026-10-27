@@ -25,3 +25,5 @@
 !requirements/tts-assets.json
 **/__pycache__
 **/*.pyc
+!LICENSE
+!THIRD_PARTY_NOTICES.md

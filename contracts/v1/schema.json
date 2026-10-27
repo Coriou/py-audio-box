@@ -1156,6 +1156,19 @@
       ],
       "additionalProperties": false
     },
+    "voice_resolve_request": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+        }
+      },
+      "required": [
+        "name"
+      ],
+      "additionalProperties": false
+    },
     "asset_get_request": {
       "type": "object",
       "properties": {

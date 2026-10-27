@@ -10,7 +10,7 @@ CATALOGUE = json.loads((ROOT / 'contracts/v1/operations.json').read_text())
 OPERATIONS = {op['id']: op for op in CATALOGUE['operations']}
 IMPLEMENTED = ('discover', 'voices_list', 'asset_get', 'asset_content')
 ERROR_STATUS = json.loads((ROOT / 'contracts/v1/errors.json').read_text())['http_status']
-VOICE_READS = ('voices_list', 'voice_get', 'voice_version_get', 'voice_versions_list')
+VOICE_READS = ('voices_list', 'voice_get', 'voice_resolve', 'voice_version_get', 'voice_versions_list')
 ASSET_OPERATIONS = ('asset_upload', 'asset_get', 'asset_content')
 PRODUCTION_OPERATIONS = ('audio_export', 'voice_preset_register', 'voice_prepare', 'voice_results', 'voice_save', 'speech_generate', 'job_get', 'job_cancel', 'artifact_get', 'jobs_list', 'job_events', 'job_wait', 'job_retry', 'voice_aliases', 'voice_archive', 'profile_get')
 # Artifact reads retain both converter identity and export provenance. Each

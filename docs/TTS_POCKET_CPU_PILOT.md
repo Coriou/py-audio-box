@@ -47,7 +47,8 @@ without OOM.
 The actual source was `f82e671`; the existing cold harness used the RSS sampler
 from `benchmarks/tts/warm.py`. Exact image IDs, asset manifests, script coverage,
 seeds (Pocket 1729/1730; Kokoro has no seed), measurements and audio hashes are in
-[the sanitized results](agent-interface/evaluation/pocket-comparison-r408/results.json).
+the sanitized results (source checkout only:
+`docs/agent-interface/evaluation/pocket-comparison-r408/results.json`).
 The reference hash is
 `ca1021790719c2099a10cdb7ce9c2e94a8968fa137d95cb4f6997baea5d48e5b`.
 No weights, credentials or recordings are committed.
@@ -66,7 +67,8 @@ environment setting. This pilot does not modify the installed worker policy.
 ## Human listening findings
 
 On 26 October, Ben reviewed the reference and all twenty neutral samples before
-unblinding. [The sample-by-sample record](agent-interface/evaluation/pocket-comparison-r408/listening-review.json)
+unblinding. The sample-by-sample record (source checkout only:
+`docs/agent-interface/evaluation/pocket-comparison-r408/listening-review.json`)
 preserves the mapping and paraphrased observations, without invented scores.
 
 - Pocket generally received the more natural/human voice descriptions. Samples

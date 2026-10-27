@@ -1,9 +1,14 @@
-# Agent interface navigation
+# Agent interface: design history and evidence
 
-Current headless API/CLI/MCP candidate: [installation and cloud onboarding](HEADLESS-INSTALL.md),
-[Kokoro CPU recipe](CPU-QUICKSTART.md), [Pocket CPU recipe](POCKET-QUICKSTART.md),
-and [current Qwen CPU status](QWEN-CPU.md#current-status--2026-10-27).
-Public release qualification is not ready; no web UI release is planned here.
+**Using the service?** Start with the [main README](../../README.md) and the
+[agent guide](../AGENT-GUIDE.md). Install with the [Kokoro CPU recipe](CPU-QUICKSTART.md)
+or the [Pocket cloning recipe](POCKET-QUICKSTART.md), and see
+[HEADLESS-INSTALL.md](HEADLESS-INSTALL.md) for reference. Qwen status:
+[QWEN-CPU.md](QWEN-CPU.md#current-status--2026-10-27).
+
+Everything below, along with `reviews/`, `evaluation/`, `phase-*/` and `lots/`, is
+planning history and retained evidence for maintainers. None of it is needed to
+install or use the service.
 
 ## Historical planning packet
 

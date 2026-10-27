@@ -35,6 +35,7 @@ class VoiceClientTests(VoiceAPIFixture, unittest.TestCase):
                 HTTP().call('voice_get',{'voice_id':self.version['voice_id']})
             with patch.dict('os.environ',{'SPEECH_CREDENTIAL':'alice-secret'}):
                 for args, operation, payload in [
+                    (['voice','resolve',self.version['voice_id']],'voice_resolve',{'name':self.version['voice_id']}),
                     (['voices','list'],'voices_list',{'limit':20,'cursor':''}),
                     (['voice','get',self.version['voice_id']],'voice_get',{'voice_id':self.version['voice_id']}),
                     (['voice','version','get',self.version['id']],'voice_version_get',{'voice_version_id':self.version['id']})]:
@@ -48,6 +49,8 @@ class VoiceClientTests(VoiceAPIFixture, unittest.TestCase):
                     self.assertEqual(response.structuredContent,body)
                 names={t.name for t in mcp.tools()}
                 self.assertIn('speech_voice_version_get',names)
+                self.assertIn('speech_voice_resolve',names)
+                self.assertNotIn('idempotency_key',mcp.input_schema('voice_resolve')['properties'])
             with patch.dict('os.environ',{'SPEECH_CREDENTIAL':'write-secret'}):
                 response=asyncio.run(mcp.call_tool('speech_voice_get',{'voice_id':self.version['voice_id']}))
                 self.assertTrue(response.isError)

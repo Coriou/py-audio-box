@@ -66,6 +66,8 @@ def voice_read(dispatcher, principal, operation, payload):
                     if operation == 'voices_list' else dispatcher.call('voice_version_summaries', principal, payload['voice_id'], after=after, limit=payload['limit']))
             result = dict(items=[(r['voice']['id'] if operation == 'voices_list' else r['id']) for r in rows],
                           next_cursor=str(rows[-1]['cursor']) if len(rows) == payload['limit'] else None)
+        elif operation == 'voice_resolve':
+            result = dispatcher.call('voice_resolve', principal, payload['name'])
         elif operation == 'voice_get':
             result = dispatcher.call('voice_get', principal, payload['voice_id'])
         else:

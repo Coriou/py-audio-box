@@ -66,6 +66,29 @@
       ]
     },
     {
+      "id": "voice_resolve",
+      "http": {
+        "method": "GET",
+        "route": "/v1/voice-names/{name}",
+        "input_location": "query_and_path"
+      },
+      "cli": "voice resolve",
+      "mcp": "speech_voice_resolve",
+      "request": "voice_resolve_request",
+      "response": "voice",
+      "idempotency": false,
+      "scope": "read",
+      "headers": [],
+      "errors": [
+        "invalid_request",
+        "forbidden",
+        "not_found",
+        "not_ready",
+        "resource_limit",
+        "voice_archived"
+      ]
+    },
+    {
       "id": "asset_get",
       "http": {
         "method": "GET",
@@ -292,6 +315,7 @@
       "cli": "voice archive",
       "mcp": "speech_voice_archive",
       "request": "voice_archive_request",
+      "description": "Archive atomically releases non-ID aliases for reuse by this principal. The immutable voice ID, tombstone and versions remain reserved; resolving the archived ID returns voice_archived, while released aliases return not_found until reassigned.",
       "response": "voice",
       "idempotency": true,
       "scope": "production-write",

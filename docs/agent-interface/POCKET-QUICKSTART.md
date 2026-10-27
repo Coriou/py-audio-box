@@ -1,22 +1,10 @@
 # Pocket French CPU, without a UI
 
-The ordinary Docker-client `pocket-public-install05` run at source `7c56f72`
-passed the public recipe's probe/install, authenticated HTTP preparation/save/
-generation/download, clean stop and same-container restart. Two additional
-distinct references passed complete preparation/save/generation workflows.
-Cancellation of an actually running job reached cancelled, reaped and idle ACK.
-A second checked stop/restart retained the same container IDs, voices and jobs;
-both saved versions then produced new audio with SHA-256 checked downloads.
-Identical-key replay returned the same receipt and changed payloads returned 409.
-See the [bounded CPU release report](reviews/CPU-RELEASE-r407-parent.md).
-
-The fresh public05 nine-job journey also passed its final clean stop. Its retained
-history used 872 of 2048 inspection rows; this is finite measured acceptance,
-not a guarantee of unlimited retained jobs or history.
-
-Listening/perceptual acceptance for these installed runs remains **UNMEASURED**, the protected-host lane
-**UNRUN**, and the CPU regressions/source archive checks have passed. CUDA and Apple Metal
-remain **UNQUALIFIED**.
+**Status:** this recipe has passed end to end on Linux/amd64 Docker: upload, prepare,
+save, generate, verified download, cancellation, restart and reuse of saved voices.
+Listening quality for these installed runs is unmeasured, the retained pilot shows text-fidelity failures,
+and CUDA and Apple Metal are unqualified. Evidence:
+[CPU release report](reviews/CPU-RELEASE-r407-parent.md).
 
 This create-only worked recipe builds the public `control` and `worker-pocket`
 Linux/amd64 Docker targets, checks a supplied pinned model cache, measures one
@@ -130,3 +118,5 @@ use CLI `asset upload FILE` or authenticated HTTP first and supply the asset ID.
 MCP direct audio content is limited to 3072 decoded bytes per call. Keep complete
 audio outside model context: use `python -m clients.cli asset content ID --output FILE`
 in the configured client environment for a complete hash-verified exclusive file.
+
+Next: [agent guide](../AGENT-GUIDE.md).

@@ -4,6 +4,8 @@
   "platform": "Darwin arm64 worker; operator-managed interpreter and dependencies",
   "qualification": "unqualified",
   "files": [
+    "LICENSE",
+    "THIRD_PARTY_NOTICES.md",
     "clients/__init__.py",
     "clients/cli.py",
     "clients/http.py",
@@ -31,6 +33,7 @@
     "contracts/v1/operations.json",
     "contracts/v1/schema.json",
     "contracts/validate.py",
+    "docs/SOURCE-LICENSE.md",
     "docs/TTS_SPOKEN_TEXT.md",
     "docs/agent-interface/AUDIO-EXPORT.md",
     "docs/agent-interface/NATIVE-PACKAGE.md",

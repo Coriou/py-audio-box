@@ -94,20 +94,49 @@ class VoiceStoreTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError,'alias_conflict'):
             self.store.aliases('alice','id-collision','other',[voice],expected_revision=1)
 
-    def test_archive_preserves_old_references_and_reserves_names(self):
+    def test_archive_preserves_ids_versions_and_releases_aliases(self):
         saved=self.register();voice=self.version['voice_id']
         self.store.aliases('alice','alias',voice,['favorite'],expected_revision=1)
+        self.store.register('bob','seed',self.version,expected_revision=0)
+        self.store.aliases('bob','alias',voice,['favorite'],expected_revision=1)
+        with self.assertRaisesRegex(ValueError,'revision_conflict'):
+            self.store.archive('alice','stale',voice,expected_revision=1)
+        self.assertEqual(self.store.resolve('alice','favorite')['id'],voice)
         archived=self.store.archive('alice','archive',voice,expected_revision=2)
+        self.assertEqual((archived['revision'],archived['aliases']),(3,[]))
         self.assertEqual(archived,self.store.archive('alice','archive',voice,expected_revision=2))
         self.reopen()
         self.assertEqual(self.store.version('alice',self.version['id']),saved['version'])
         self.assertEqual(self.store.list('alice'),[])
         self.assertTrue(self.store.list('alice',include_archived=True)[0]['voice']['archived'])
-        with self.assertRaisesRegex(ValueError,'voice_archived'):self.store.resolve('alice','favorite')
+        with self.assertRaisesRegex(ValueError,'not_found'):self.store.resolve('alice','favorite')
+        with self.assertRaisesRegex(ValueError,'voice_archived'):self.store.resolve('alice',voice)
+        self.assertEqual(self.store.resolve('bob','favorite')['id'],voice)
         v=copy.deepcopy(self.version);v['id']='later'
         with self.assertRaisesRegex(ValueError,'voice_archived'):self.register('later',3,v)
-        v.update(voice_id='favorite')
-        with self.assertRaisesRegex(ValueError,'alias_conflict'):self.register('reuse',0,v)
+        v.update(voice_id='replacement')
+        self.register('replacement',0,v)
+        self.store.aliases('alice','reuse','replacement',['favorite'],expected_revision=1)
+        self.assertEqual(self.store.resolve('alice','favorite')['id'],'replacement')
+        # Replaying archive must not remove a newly assigned alias.
+        self.assertEqual(archived,self.store.archive('alice','archive',voice,expected_revision=2))
+        self.assertEqual(self.store.resolve('alice','favorite')['id'],'replacement')
+        with self.assertRaisesRegex(ValueError,'idempotency_conflict'):
+            self.store.archive('alice','archive',voice,expected_revision=3)
+        self.assertEqual(self.store.get('alice',voice)['aliases'],[])
+        self.assertEqual(self.core.db.execute('SELECT name FROM catalogue_names WHERE principal=? AND voice_id=?',('alice',voice)).fetchall(),[(voice,)])
+
+    def test_archive_alias_release_rolls_back_with_tombstone_failure(self):
+        self.register(); voice=self.version['voice_id']
+        self.store.aliases('alice','alias',voice,['default.narration'],expected_revision=1)
+        # Fail after alias deletion, before the archive transaction can commit.
+        self.core.db.execute("CREATE TEMP TRIGGER reject_archive BEFORE UPDATE ON catalogue_voices WHEN NEW.archived=1 BEGIN SELECT RAISE(ABORT,'archive blocked'); END")
+        with self.assertRaisesRegex(sqlite3.IntegrityError,'archive blocked'):
+            self.store.archive('alice','archive',voice,expected_revision=2)
+        self.assertEqual(self.store.resolve('alice','default.narration')['revision'],2)
+        self.assertFalse(self.store.get('alice',voice)['archived'])
+        self.core.db.execute('DROP TRIGGER reject_archive')
+        self.assertEqual(self.store.archive('alice','archive',voice,expected_revision=2)['revision'],3)
 
     def test_managed_asset_verified_and_hash_frozen(self):
         v,asset=self.media();saved=self.register(version=v)['version']

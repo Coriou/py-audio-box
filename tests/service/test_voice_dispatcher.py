@@ -61,3 +61,65 @@ class VoiceDispatcherTests(VoiceDispatcherFixture, unittest.TestCase):
         self.assertEqual(observed,[self.dispatcher.thread.ident])
         with self.assertRaisesRegex(ValueError,'invalid_request'):
             self.dispatcher.call('asset_ingest','alice',object())
+
+class VoiceResolvePublicTests(VoiceDispatcherFixture, unittest.TestCase):
+    def test_public_resolve_names_errors_and_budget(self):
+        from service.domain import voice_read
+        from service.catalogue import Failure
+        voice_id = self.version['voice_id']
+        self.dispatcher.close()
+        core = Core(self.root)
+        try:
+            core.voices.aliases('alice','alias',voice_id,['default-reading'],expected_revision=1)
+        finally:
+            core.close()
+        self.dispatcher = Dispatcher(self.root,staging=Path(self.tmp.name)/'staging')
+        def resolve(name, principal='alice'):
+            return voice_read(self.dispatcher,principal,'voice_resolve',dict(name=name))
+        expected = self.dispatcher.call('voice_get','alice',voice_id)
+        for name in (voice_id,'default-reading'):
+            self.assertEqual(resolve(name),expected)
+            with self.assertRaises(Failure) as error: resolve(name,'bob')
+            self.assertEqual(error.exception.body['code'],'not_found')
+        for payload in ({},dict(name='bad!'),dict(name=voice_id,principal='bob')):
+            with self.assertRaises(Failure) as error:
+                voice_read(self.dispatcher,'alice','voice_resolve',payload)
+            self.assertEqual(error.exception.body['code'],'invalid_request')
+        with self.assertRaises(Failure) as error: resolve('unknown')
+        self.assertEqual(error.exception.body['code'],'not_found')
+        with patch('service.catalogue.VOICE_RESPONSE_BYTES',1):
+            with self.assertRaises(Failure) as error: resolve(voice_id)
+            self.assertEqual(error.exception.body['code'],'resource_limit')
+        from service.domain import production_call
+        archived = production_call(self.dispatcher,'alice','voice_archive',
+                                   dict(voice_id=voice_id,expected_revision=2),'archive')
+        self.assertEqual((archived['revision'],archived['aliases']),(3,[]))
+        for name in (voice_id,'default-reading'):
+            with self.assertRaises(Failure) as error: resolve(name)
+            self.assertEqual(error.exception.body['code'],'voice_archived' if name == voice_id else 'not_found')
+
+        self.dispatcher.close()
+        core = Core(self.root)
+        try:
+            replacement = dict(self.version, id='replacement-version', voice_id='replacement')
+            core.voices.register('alice','replacement',replacement,expected_revision=0)
+        finally:
+            core.close()
+        self.dispatcher = Dispatcher(self.root,staging=Path(self.tmp.name)/'staging')
+        assigned = production_call(self.dispatcher,'alice','voice_aliases',
+                                  dict(voice_id='replacement',aliases=['default-reading'],expected_revision=1),'reuse')
+        self.assertEqual(resolve('default-reading'),assigned)
+        production_call(self.dispatcher,'alice','voice_archive',
+                        dict(voice_id=voice_id,expected_revision=2),'archive')
+        self.assertEqual(resolve('default-reading')['id'],'replacement')
+        with self.assertRaises(Failure) as error: resolve('default-reading','bob')
+        self.assertEqual(error.exception.body['code'],'not_found')
+
+    def test_cli_resolve_parse(self):
+        import contextlib
+        import io
+        from clients.cli import main
+        with patch('clients.cli.HTTP') as transport, contextlib.redirect_stdout(io.StringIO()):
+            transport.return_value.call.return_value = {}
+            self.assertEqual(main(['voice','resolve','default-reading']),0)
+            transport.return_value.call.assert_called_once_with('voice_resolve',dict(name='default-reading'))

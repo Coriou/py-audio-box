@@ -267,6 +267,7 @@ class VoiceStore:
             voice = self.get(principal,voice_id)
             oracle.revision(expected_revision,voice['revision'])
             oracle.require(not voice['archived'], 'voice_archived')
+            self.db.execute('DELETE FROM catalogue_names WHERE principal=? AND voice_id=? AND name!=?', (principal,voice_id,voice_id))
             self.db.execute('UPDATE catalogue_voices SET archived=1,revision=revision+1 WHERE principal=? AND id=?', (principal,voice_id))
             return self.get(principal,voice_id)
         return self._mutate(principal,'voice_archive',key,dict(voice_id=voice_id,expected_revision=expected_revision),apply)

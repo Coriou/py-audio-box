@@ -101,6 +101,51 @@ class VoiceAPITests(VoiceAPIFixture, unittest.TestCase):
         response = self.request('/v1/voices/'+self.version['voice_id'])
         self.assert_operation_error(response, 'voice_get', 'resource_limit', 429)
 
+    def test_resolve_names_errors_isolation_and_validation(self):
+        voice_id = self.version['voice_id']
+        # Seed aliases and archive only while no Dispatcher owns the root.
+        self.dispatcher.close()
+        core = Core(self.root)
+        try:
+            core.voices.aliases('alice','resolve-alias',voice_id,['default-reading'],expected_revision=1)
+        finally:
+            core.close()
+        self.dispatcher = Dispatcher(self.root,staging=Path(self.tmp.name)/'staging')
+        self.app = create_voice_app(self.dispatcher,credentials=self.credentials)
+        expected = self.request('/v1/voices/'+voice_id).json()
+        for name in (voice_id,'default-reading'):
+            self.assertEqual(self.request('/v1/voice-names/'+name).json(),expected)
+            self.assert_operation_error(self.request('/v1/voice-names/'+name,'bob-secret'),'voice_resolve','not_found',404)
+        self.assert_operation_error(self.request('/v1/voice-names/unknown'),'voice_resolve','not_found',404)
+        for suffix in ('bad!','default-reading?principal=bob'):
+            self.assert_operation_error(self.request('/v1/voice-names/'+suffix),'voice_resolve','invalid_request',422)
+        self.assert_operation_error(self.request('/v1/voice-names/default-reading','write-secret'),'voice_resolve','forbidden',403)
+        with patch('service.catalogue.VOICE_RESPONSE_BYTES',1):
+            self.assert_operation_error(self.request('/v1/voice-names/default-reading'),'voice_resolve','resource_limit',429)
+        async def mutate(operation, payload, key):
+            async with httpx.AsyncClient(transport=httpx.ASGITransport(app=self.app),base_url='http://test') as client:
+                return await client.post('/v1/operations/'+operation,
+                    headers={'Authorization':'Bearer write-secret','Idempotency-Key':key},json=payload)
+        archived = asyncio.run(mutate('voice_archive',dict(voice_id=voice_id,expected_revision=2),'resolve-archive'))
+        self.assertEqual(archived.status_code,200,archived.text)
+        self.assertEqual((archived.json()['revision'],archived.json()['aliases']),(3,[]))
+        self.assert_operation_error(self.request('/v1/voice-names/'+voice_id),'voice_resolve','voice_archived',409)
+        self.assert_operation_error(self.request('/v1/voice-names/default-reading'),'voice_resolve','not_found',404)
+        self.dispatcher.close()
+        core = Core(self.root)
+        try:
+            core.voices.register('alice','replacement',dict(self.version,id='replacement-version',voice_id='replacement'),expected_revision=0)
+        finally:
+            core.close()
+        self.dispatcher = Dispatcher(self.root,staging=Path(self.tmp.name)/'staging')
+        self.app = create_voice_app(self.dispatcher,credentials=self.credentials)
+        response = asyncio.run(mutate('voice_aliases',
+            dict(voice_id='replacement',aliases=['default-reading'],expected_revision=1),'reuse'))
+        self.assertEqual(response.status_code,200,response.text)
+        self.assertEqual(self.request('/v1/voice-names/default-reading').json()['id'],'replacement')
+        self.assert_operation_error(self.request('/v1/voice-names/default-reading','bob-secret'),'voice_resolve','not_found',404)
+        self.assertEqual(self.request('/v1/voice-versions/'+self.version['id']).json(),self.version)
+
     def test_discovery_and_lazy_schema(self):
         reads={('configured_capabilities','alice'):None,
                ('configured_profiles','alice'):[],
@@ -113,6 +158,7 @@ class VoiceAPITests(VoiceAPIFixture, unittest.TestCase):
             body = self.request('/v1/capabilities').json()
             self.assertEqual(body['profiles'],[])
             self.assertIn('voice_get',body['operations'])
+            self.assertIn('voice_resolve',body['operations'])
             self.assertIn('asset_get',body['operations'])
             self.assertFalse(self.request('/skeleton/operations/voice_get').json()['fixture'])
             self.assertNotIn('audio_export',body['operations'])
