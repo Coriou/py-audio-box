@@ -56,6 +56,45 @@ def gate_projection(value, *, family=None, configuration=None, binding=None, pub
     return value
 
 
+# Fixed vocabulary: no messages, notes, paths, locals or dynamic class names.
+_DIAGNOSTIC_CLASSES=frozenset(('ValueError','OSError','RuntimeError','TimeoutError',
+    'FileNotFoundError','PermissionError','BlockingIOError','KeyboardInterrupt'))
+_DIAGNOSTIC_FUNCTIONS=frozenset(('run','runtime','rpc','wait','startup','child','collect',
+    'snapshot','stable','held','register','observe','ready','inspect','main','begin',
+    'locked_file','revalidate','read','write','clean','public','initialize','input_import'))
+_DIAGNOSTIC_FILES=frozenset(('service/daemon_helper.py','service/daemon_client.py',
+    'service/install_policy.py','service/supervisor_runtime.py'))
+
+
+def diagnostic(exc, phase, code):
+    """Bounded provenance only; callable before cleanup can replace a failure."""
+    phase=phase if phase in dv.PHASES else 'unknown'
+    code=code if code in ('operation_failed','prior_failure','final_refusal') else 'final_refusal'
+    name=type(exc).__name__ if type(exc).__name__ in _DIAGNOSTIC_CLASSES else 'Exception'
+    function,line='unknown',0
+    trace=exc.__traceback__
+    while trace is not None:
+        frame=trace.tb_frame.f_code
+        if (any(frame.co_filename.endswith('/'+path) for path in _DIAGNOSTIC_FILES) and
+                frame.co_name in _DIAGNOSTIC_FUNCTIONS):
+            function,line=frame.co_name,trace.tb_lineno
+        trace=trace.tb_next
+    print('daemon_helper_diagnostic:'+phase+':'+code+':'+name+':'+function+':'+str(line),file=sys.stderr)
+    if code=='final_refusal':
+        print('daemon_helper_refused:'+name+':'+function+':'+str(line),file=sys.stderr)
+
+
+def refusal(exc, phase):
+    # Cleanup can replace a failure before run() sees it (e.g. an inner lock).
+    # Walk bounded exception objects, never formatted tracebacks or notes.
+    chain=[];seen={id(exc)};prior=exc.__cause__ or exc.__context__
+    while prior is not None and id(prior) not in seen and len(chain)<8:
+        seen.add(id(prior));chain.append(prior)
+        prior=prior.__cause__ or prior.__context__
+    for prior in reversed(chain):diagnostic(prior,phase,'prior_failure')
+    diagnostic(exc,phase,'final_refusal')
+
+
 def child(kind, request, descriptors, *, family=None):
     """Retain all enclosing exclusions through actual exit/reap, even on failure."""
     from service import installed_export as ex
@@ -593,11 +632,17 @@ class Helper:
 
     def run(self):
         with self.held():
-            if self.phase=='install': result=self.input_import()
-            elif self.phase=='init': result=self.initialize()
-            else: result=self.runtime()
-            self.snapshot()
-            self.write('operation-'+self.nonce+'.done',dict(phase=self.phase,nonce=self.nonce,helper=self.own['Id'],started=self.own['State']['StartedAt'],result=result))
+            try:
+                if self.phase=='install': result=self.input_import()
+                elif self.phase=='init': result=self.initialize()
+                else: result=self.runtime()
+                self.snapshot()
+                self.write('operation-'+self.nonce+'.done',dict(phase=self.phase,nonce=self.nonce,helper=self.own['Id'],started=self.own['State']['StartedAt'],result=result))
+            except (Exception,KeyboardInterrupt) as exc:
+                # Record the original while exclusions are still held. ExitStack
+                # still runs every callback and propagates any cleanup failure.
+                diagnostic(exc,self.phase,'operation_failed')
+                raise
         # No success frame until final held-context checks have completed.
         return result
 
@@ -636,15 +681,7 @@ def main(*, family=None):
         result=helper.run()
         wire.send('complete',dict(result=result))
     except (Exception,KeyboardInterrupt) as exc:
-        # Source location only: never serialize exception messages, request data,
-        # backend paths, manifests or credentials into the diagnostic channel.
-        trace = exc.__traceback__
-        while trace is not None and trace.tb_next is not None:
-            trace = trace.tb_next
-        if trace is not None:
-            code = trace.tb_frame.f_code
-            print('daemon_helper_refused:'+type(exc).__name__+':'+
-                code.co_name+':'+str(trace.tb_lineno),file=sys.stderr)
+        refusal(exc,locals().get('phase','unknown'))
         raise SystemExit(2) from None
 
 
