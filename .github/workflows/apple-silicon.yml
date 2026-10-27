@@ -51,7 +51,9 @@ jobs:
     if: >-
       (github.event_name == 'push' && github.ref == 'refs/heads/feat/apple-silicon-native' &&
        contains(github.event.head_commit.message, '[apple-speech]')) ||
-      (github.event_name == 'workflow_dispatch' && inputs.qwen_speech)
+      (github.event_name == 'workflow_dispatch' && inputs.qwen_speech &&
+       (github.ref == 'refs/heads/feat/apple-silicon-native' || github.ref == 'refs/heads/main'))
+    needs: [dependencies, clients]
     runs-on: macos-15
     timeout-minutes: 12
     env:
@@ -66,11 +68,12 @@ jobs:
         with:
           python-version: '3.11'
           architecture: arm64
-      - run: brew install sox
       - run: >-
           python -m pip install --require-hashes --only-binary=:all:
           --index-url https://pypi.org/simple -r requirements/qwen-macos-arm64.lock
       - run: python -m pip check
+      - name: Fresh guarded import in the actual speech environment before any download
+        run: python scripts/ci-native-import.py --output apple-speech-import
       - name: One cold native EN then FR inference attempt (no retry)
         run: python scripts/ci-apple-speech.py --output apple-speech
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
@@ -87,6 +90,9 @@ jobs:
             apple-speech/French.wav
             apple-speech/English.log
             apple-speech/French.log
+            apple-speech-import/report.json
+            apple-speech-import/owner.json
+            apple-speech-import/child.log
           retention-days: 7
           if-no-files-found: error
   dependencies:
@@ -108,10 +114,6 @@ jobs:
         with:
           python-version: '3.11'
           architecture: arm64
-      - name: Provision native SoX prerequisite
-        run: |
-          brew install sox
-          sox --version
       - name: Install exact native wheel closure
         run: >-
           python -m pip install --require-hashes --only-binary=:all:
@@ -119,8 +121,7 @@ jobs:
       - run: python -m pip check
       - name: Native real imports and CPU operation (no weights)
         run: python scripts/ci-apple-silicon.py deps-check --report apple-ci/dependencies.json
-      - name: Branch-only fresh real locked native bootstrap under permanent guard (no weights)
-        if: github.ref == 'refs/heads/feat/apple-silicon-native' && github.event_name != 'pull_request'
+      - name: Fresh real locked native bootstrap under permanent guard (no weights)
         run: python scripts/ci-native-import.py --output apple-ci/native-import
       - name: Real bounded MPS operation with CPU fallback disabled
         run: python scripts/ci-apple-silicon.py mps-probe --report apple-ci/mps-probe.json
@@ -186,7 +187,9 @@ jobs:
           if-no-files-found: error
           include-hidden-files: false
   mps-probe:
-    if: github.event_name == 'workflow_dispatch' && inputs.mps_probe
+    if: >-
+      github.event_name == 'workflow_dispatch' && inputs.mps_probe &&
+      (github.ref == 'refs/heads/feat/apple-silicon-native' || github.ref == 'refs/heads/main')
     needs: dependencies
     runs-on: macos-15
     timeout-minutes: 20

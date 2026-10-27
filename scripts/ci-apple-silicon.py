@@ -67,8 +67,8 @@ def sox_version(sox):
     banner = subprocess.check_output([sox, '--version'], timeout=10, text=True).strip()
     if re.search(r'\bSoX v?\d+(?:\.\d+)+', banner):
         return banner
-    # Some Homebrew builds print only "SoX v". Record the installed package,
-    # not a claimed pin: brew install sox deliberately follows Homebrew.
+    # Some existing Homebrew builds print only "SoX v". Observe their installed
+    # package version without provisioning anything or claiming a package pin.
     brew = shutil.which('brew')
     if brew:
         try:
@@ -84,9 +84,9 @@ def sox_version(sox):
 def deps_check():
     validate_platform()
     sox = shutil.which('sox')
-    if not sox:
-        raise RuntimeError('SoX executable missing; provision brew install sox')
-    installed_sox_version = sox_version(sox)
+    # The pinned native 12 Hz path has no SoX calls. Only the unsupported
+    # legacy 25 Hz family uses PySox; observe an existing executable optionally.
+    installed_sox_version = sox_version(sox) if sox else None
     versions = {name: metadata.version(name) for name in EXPECTED}
     validate_versions(versions)
     for name in ('torch', 'torchaudio', 'transformers', 'tokenizers', 'qwen_tts'):
@@ -104,6 +104,7 @@ def deps_check():
             'mps_built': torch.backends.mps.is_built(),
             'mps_available': torch.backends.mps.is_available(),
             'sox_executable': sox, 'sox_version': installed_sox_version,
+            'sox_required_for_native_12hz': False,
             'resources': host_resources(),
             'cpu_tensor': 'passed', 'models_loaded': False}
 

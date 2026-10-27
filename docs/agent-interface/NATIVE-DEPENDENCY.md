@@ -81,10 +81,12 @@ upstream bytes fail closed. Remove the patch when an official compatible release
 fixes both sites, after the same guard regression passes. Do not accept a newly
 computed hash without reviewing the source delta.
 
-The branch-only Apple CI runs `scripts/ci-native-import.py`: a fresh isolated
+Every relevant Apple push/PR CI runs `scripts/ci-native-import.py`: a fresh isolated
 interpreter installs the product permanent guard, calls the real loader's shared
 bootstrap, imports actual 12 Hz classes and drives config-only 12 Hz dispatch to
-the expected missing-weight error. It compares installed dependency bytes with
+the expected missing-weight error, using the product `device_map='mps'`,
+`dtype=torch.float32` and `attn_implementation='sdpa'` arguments.
+It compares installed dependency bytes with
 the locked wheel, checks PySox/25 Hz modeling stayed unloaded and verifies an
 explicit spawn is still refused. Missing dependencies/import errors retain their
 original exception and traceback; they are not successful skips. Parent deadline

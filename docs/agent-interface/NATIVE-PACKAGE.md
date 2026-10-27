@@ -419,13 +419,15 @@ Capacity refusal means retain this owner and its evidence; further execution nee
 a separately implemented retention/archival policy. Renewal creates no capacity.
 Metal remains UNQUALIFIED and release NO-GO; legacy reconciliation remains CLOSED.
 
-## Native SoX prerequisite and evidence boundary
+## Native 12 Hz dependencies and evidence boundary
 
-Native Qwen requires the SoX executable on PATH. Provision it separately with
-`brew install sox` and verify `sox --version`. Apple dependency CI records its
-resolved executable/version beside Python, architecture, package versions, CPU
-operation and MPS availability. This is a native prerequisite, not a synthesis
-claim. Client hash-locked installation and fixture HTTP/MCP protocol tests are
+The pinned native 12 Hz Qwen route does not use the SoX executable. Its patched
+dependency defers the unsupported legacy 25 Hz family, the only Qwen code that
+uses PySox. No Homebrew SoX installation is needed for this route; an existing
+executable is optionally recorded by dependency CI. See the exact artifact,
+inspection and upgrade boundary in [NATIVE-DEPENDENCY.md](NATIVE-DEPENDENCY.md).
+This does not extend support to 25 Hz or qualify synthesis. Client hash-locked
+installation and fixture HTTP/MCP protocol tests are
 separate from native model runtime qualification; see [APPLE-CI.md](APPLE-CI.md).
 Linux/arm64 Kokoro preview is a documented next slice, not implemented or
 qualified here. Native CPU, Metal synthesis and physical-Mac performance remain

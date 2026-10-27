@@ -80,6 +80,9 @@ def owned_child(argv, env, log_path, observation, *, seconds=30, progress_path=N
                 if remaining <= 0:
                     raise TimeoutError(f'native_child_{seconds}_seconds')
                 if progress_path is not None and progress_path.exists():
+                    # Darwin CPython 3.11 uses the same monotonic clock across
+                    # processes (since Python 3.10 on macOS). Child timestamps
+                    # are comparable to this parent, not portable persisted time.
                     progress = json.loads(progress_path.read_bytes())
                     observation['progress'] = progress
                     remaining = min(remaining, phase_remaining(progress, time.monotonic()))

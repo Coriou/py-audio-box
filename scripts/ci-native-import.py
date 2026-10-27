@@ -49,6 +49,7 @@ def child(report_path):
         from qwen_tts import Qwen3TTSTokenizer
         from qwen_tts.core import Qwen3TTSTokenizerV2Config, Qwen3TTSTokenizerV2Model
         from transformers import AutoModel
+        import torch
         if not callable(model_class.from_pretrained) or not callable(Qwen3TTSTokenizerV2Model.forward):
             raise ValueError('real_loader_classes_missing')
         report['stage'] = '12hz_dispatch_without_weights'
@@ -58,10 +59,13 @@ def child(report_path):
             save(root/'config.json', {'model_type': 'qwen3_tts_tokenizer_12hz'})
             save(root/'preprocessor_config.json', {'feature_extractor_type': 'WhisperFeatureExtractor'})
             try:
-                Qwen3TTSTokenizer.from_pretrained(str(root), local_files_only=True)
+                Qwen3TTSTokenizer.from_pretrained(str(root), local_files_only=True,
+                    device_map='mps', dtype=torch.float32, attn_implementation='sdpa')
             except OSError as exc:
                 if 'no file named' not in str(exc): raise
                 report['expected_missing_weights'] = str(exc)
+                report['dispatch_options'] = dict(device_map='mps', dtype='float32',
+                                                  attn_implementation='sdpa', local_files_only=True)
             else:
                 raise AssertionError('config_only_fixture_must_not_construct_model')
         if AutoModel._model_mapping[Qwen3TTSTokenizerV2Config] is not Qwen3TTSTokenizerV2Model:

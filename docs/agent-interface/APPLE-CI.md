@@ -10,13 +10,12 @@ Neither an import pass nor an MPS tensor pass qualifies installed speech.
 On a native Apple Silicon terminal, use CPython 3.11 (not Rosetta). These commands
 install the pinned Python dependencies and check prerequisites; they do **not**
 install or start the speech service, download weights, or create credentials.
-Homebrew must already be installed. The SoX package follows Homebrew and is
-recorded, rather than claimed to be pinned.
+The pinned 12 Hz native route does not use the SoX executable; no Homebrew
+installation is required by these checks. Existing SoX is observed optionally.
 
 ```sh
 uname -m                         # must print arm64
 python3.11 -c 'import platform; assert platform.machine() == "arm64"'
-brew install sox
 python3.11 -m venv .venv-apple
 .venv-apple/bin/python -m pip install --require-hashes --only-binary=:all: \
   --index-url https://pypi.org/simple -r requirements/qwen-macos-arm64.lock
@@ -25,8 +24,8 @@ python3.11 -m venv .venv-apple
 .venv-apple/bin/python scripts/ci-apple-silicon.py mps-probe --report apple-ci/mps-probe.json
 ```
 
-A wrong OS/architecture or Python version is refused. Missing SoX reports
-`SoX executable missing; provision brew install sox`. A failed MPS operation
+A wrong OS/architecture or Python version is refused. Missing optional SoX is
+recorded as absent. A failed MPS operation
 fails the check; it never silently switches to CPU. Preserve the JSON report.
 See [native package lifecycle](NATIVE-PACKAGE.md) for the existing explicit
 operator-managed source package. There is no qualified native service quickstart.
@@ -36,9 +35,8 @@ operator-managed source package. There is no qualified native service quickstart
 `.github/workflows/apple-silicon.yml` uses public-repository standard `macos-15`
 arm64 runners, pinned action commits, read-only repository permissions and no
 secrets. Dependencies and clients are separate jobs, each limited to 20 minutes.
-Path filters limit this workflow. The exact development branch
-`feat/apple-silicon-native` is excluded from the separate Linux Unit push matrix;
-PR Unit checks remain enabled.
+Path filters limit this workflow. Normal Linux Unit push and PR coverage remains
+enabled, including this development branch.
 
 The dependencies job installs `requirements/qwen-macos-arm64.lock` with hashes
 and binary-only wheels, runs pip check, real imports and a CPU operation, then
@@ -59,18 +57,30 @@ HOME, `.env`, credential, model tree or hub cache is uploaded. The native Qwen
 lock retains torch/torchaudio 2.10.0, qwen-tts 0.1.1, transformers 4.57.3 and
 tokenizers 0.22.2; newer upstream releases are not implicitly adopted.
 The native lock uses the narrowly patched Qwen wheel described in
-[native dependency provenance](NATIVE-DEPENDENCY.md). On this feature branch,
-a separate fresh interpreter exercises real locked 12 Hz imports under the
+[native dependency provenance](NATIVE-DEPENDENCY.md). On every relevant Apple
+push/PR run, a separate fresh interpreter exercises real locked 12 Hz imports under the
 permanent native spawn guard without weights; passing that gate is not synthesis.
 
 ## Opt-in cold native inference prerequisite
 
 Before merge, push **this exact branch** with `[apple-speech]` in the final commit
 message to run the finite `native-speech` job. Ordinary pushes do not download
-weights. After the workflow exists on the default branch, manual dispatch with
-`qwen_speech=true` is also available. The older manual tensor-only input remains
+weights. Manual dispatch with `qwen_speech=true` accepts only
+`refs/heads/feat/apple-silicon-native` or `refs/heads/main`; arbitrary branch/tag
+refs are refused by the job condition. The same allowlist covers the manual
+tensor probe. Once registered by a push, this workflow can be dispatched by
+numeric workflow ID through the GitHub API/CLI before merge; the UI may require
+the file on the default branch. See
+[GitHub dispatch documentation](https://docs.github.com/en/actions/reference/workflows-and-actions/events-that-trigger-workflows#workflow_dispatch).
+The older manual tensor-only input remains
 available, although automatic dependency checks now already execute that probe.
 Do not rerun an expensive failure automatically.
+
+The speech job needs successful dependency and client jobs. Guarded imports run
+unconditionally in the dependency job and again in the fresh speech environment
+before any model acquisition. For a deliberate qualification attempt, first
+require successful no-weight Apple CI and normal Unit CI at the exact source
+SHA, then dispatch the trusted ref and verify its resolved SHA has not moved.
 
 The job installs the same lock and downloads only the public, ungated
 `Qwen/Qwen3-TTS-12Hz-0.6B-CustomVoice` snapshot at
@@ -93,6 +103,10 @@ reservation or a bound on all Metal allocations. The default MPS allocator limit
 remains enabled. Failure stops the sequence; there is no OOM retry or fallback.
 The parent kills and reaps its child and removes only its private model tree.
 A timeout establishes only a budget overrun, not hardware incompatibility.
+Phase timestamps assume Darwin CPython 3.11's system-wide monotonic clock,
+which is comparable across parent and child processes (since Python 3.10 on
+macOS); they are not portable persisted timestamps. See
+[Python's monotonic clock documentation](https://docs.python.org/3.11/library/time.html#time.monotonic).
 
 Only small reports/logs and successful short WAV files are uploaded. Successful
 WAV reports contain format/duration/hash, wall time, RTF and peak process RSS;

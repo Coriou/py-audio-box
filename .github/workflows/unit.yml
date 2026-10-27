@@ -1,8 +1,6 @@
 name: Unit contracts
 on:
   push:
-    branches-ignore:
-      - feat/apple-silicon-native
   pull_request:
 permissions:
   contents: read

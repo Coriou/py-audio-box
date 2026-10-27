@@ -16,6 +16,26 @@ SPEC.loader.exec_module(ci)
 
 
 class AppleCITests(unittest.TestCase):
+    def test_native_12hz_dependency_check_does_not_require_sox(self):
+        class Tensor:
+            device=types.SimpleNamespace(type='cpu')
+            def __add__(self, other): return self
+            def tolist(self): return [2.,3.]
+        torch=types.SimpleNamespace(tensor=lambda *a,**kw:Tensor(),
+            backends=types.SimpleNamespace(mps=types.SimpleNamespace(
+                is_built=lambda:True,is_available=lambda:True)))
+        qwen=types.SimpleNamespace(Qwen3TTSModel=types.SimpleNamespace(from_pretrained=lambda:None))
+        with patch.object(ci,'validate_platform'),patch.object(ci.shutil,'which',return_value=None), \
+                patch.object(ci,'sox_version') as version,patch.object(ci.metadata,'version',side_effect=ci.EXPECTED.get), \
+                patch.object(ci.importlib,'import_module'),patch.object(ci,'host_resources',return_value={}), \
+                patch.dict(ci.sys.modules,{'torch':torch,'qwen_tts':qwen}):
+            report=ci.deps_check()
+        version.assert_not_called()
+        self.assertIsNone(report['sox_executable'])
+        self.assertIsNone(report['sox_version'])
+        self.assertFalse(report['sox_required_for_native_12hz'])
+        self.assertEqual(report['cpu_tensor'],'passed')
+
     def test_sox_version_banner_and_homebrew_fallback(self):
         with patch.object(ci.subprocess, 'check_output', return_value='sox: SoX v14.4.2\n') as run:
             self.assertEqual(ci.sox_version('/bin/sox'), 'sox: SoX v14.4.2')
