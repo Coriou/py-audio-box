@@ -1,5 +1,6 @@
 """Injected namespace operations, real SQLite canonicalization; no privileged OS calls."""
 from contextlib import contextmanager
+import sys
 import os
 from pathlib import Path
 import sqlite3
@@ -65,7 +66,7 @@ class Namespace:
 class Canonicalization(unittest.TestCase):
     def test_fd_style_symlink_canonicalizes_to_backing_path(self):
         import tempfile
-        with tempfile.TemporaryDirectory(dir='/private/tmp') as temp:
+        with tempfile.TemporaryDirectory(dir='/private/tmp' if sys.platform == 'darwin' else '/tmp') as temp:
             root = Path(temp); (root/'backing').mkdir()
             (root/'fd-alias').symlink_to(root/'backing', target_is_directory=True)
             with sqlite3.connect(root/'fd-alias/db') as db:

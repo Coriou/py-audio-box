@@ -1,4 +1,5 @@
 """Injected r378 contract inputs only; no installation or qualification proof."""
+import sys
 import copy
 import hashlib
 import json
@@ -132,7 +133,7 @@ class InstalledExportContractTests(unittest.TestCase):
         return c, exe, lib
 
     def test_local_immutable_closure_and_hash_no_execution(self):
-        with tempfile.TemporaryDirectory(dir='/private/tmp') as tmp:
+        with tempfile.TemporaryDirectory(dir='/private/tmp' if sys.platform == 'darwin' else '/tmp') as tmp:
             c, exe, lib = self.local_converter(Path(tmp))
             fd = ex.verify_local_converter(c, owner_uid=os.getuid())
             try:
@@ -151,7 +152,7 @@ class InstalledExportContractTests(unittest.TestCase):
                 ex.verify_local_converter(c, owner_uid=os.getuid())
 
     def test_local_alias_and_symlink_closure_refuse(self):
-        with tempfile.TemporaryDirectory(dir='/private/tmp') as tmp:
+        with tempfile.TemporaryDirectory(dir='/private/tmp' if sys.platform == 'darwin' else '/tmp') as tmp:
             c, exe, lib = self.local_converter(Path(tmp))
             alias = Path(tmp) / 'alias'
             alias.symlink_to(lib)

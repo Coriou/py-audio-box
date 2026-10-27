@@ -1,4 +1,5 @@
 """Unittest only: private temporary files, injected downloader, no ML/network."""
+import sys
 import copy
 import hashlib
 import json
@@ -12,7 +13,7 @@ from lib.tts_backends.assets import verified_bundle
 
 class ProvisioningTests(unittest.TestCase):
     def setUp(self):
-        self.temp = tempfile.TemporaryDirectory(dir='/private/tmp')
+        self.temp = tempfile.TemporaryDirectory(dir='/private/tmp' if sys.platform == 'darwin' else '/tmp')
         self.addCleanup(self.cleanup)
         self.root = Path(self.temp.name) / 'models'
         self.data = {'model.onnx': b'model', 'voices.bin': b'voices'}

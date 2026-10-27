@@ -1,4 +1,5 @@
 """Installed activation source tests; injected identity/host/reap/backend, no listener."""
+import sys
 import asyncio
 import copy
 import json
@@ -443,7 +444,7 @@ class ActivationTests(unittest.TestCase):
 class PrivateInputs(unittest.TestCase):
     def setUp(self):
         import tempfile
-        tmp=tempfile.TemporaryDirectory(dir='/private/tmp');self.addCleanup(tmp.cleanup)
+        tmp=tempfile.TemporaryDirectory(dir='/private/tmp' if sys.platform == 'darwin' else '/tmp');self.addCleanup(tmp.cleanup)
         self.root=Path(tmp.name);self.path=self.root/'credential'
         self.raw=encode(dict(version=1,credentials=[dict(token='s'*64,principal='alice',scopes=['read','production-write'])])).encode()
         self.path.write_bytes(self.raw);self.path.chmod(0o640)

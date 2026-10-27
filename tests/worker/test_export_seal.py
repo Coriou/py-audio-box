@@ -1,4 +1,5 @@
 """r382 inert worker tests; image/UID/process facts are injected, never qualified."""
+import sys
 import copy
 import os
 from pathlib import Path
@@ -19,7 +20,7 @@ from worker.runtime_supervisor import RuntimeSupervisor, export_startup, main
 class ExportSealTests(unittest.TestCase):
     def setUp(self):
         f=InstalledExportContractTests(); f.setUp(); self.addCleanup(f.doCleanups)
-        self.tmp=tempfile.TemporaryDirectory(dir='/private/tmp'); self.addCleanup(self.tmp.cleanup)
+        self.tmp=tempfile.TemporaryDirectory(dir='/private/tmp' if sys.platform == 'darwin' else '/tmp'); self.addCleanup(self.tmp.cleanup)
         self.config,self.exe,self.lib=f.local_converter(Path(self.tmp.name))
         self.image=self.config['images']['worker']
         self.s=RuntimeSupervisor.__new__(RuntimeSupervisor)
