@@ -176,25 +176,37 @@ def test_pocket_mock_reference_contract(tmp_path, monkeypatch):
 
 
 def test_pocket_relative_bundle_relocation(tmp_path, monkeypatch):
-    import shutil
     import yaml
     from tts_backends.pocket_tts import PocketBackend
     original = tmp_path / 'original'
     original.mkdir()
     bundle(original, 'pocket-tts', {'config.yaml': b'weights_path: model.safetensors\n', 'model.safetensors': b'approved weights'})
     relocated = tmp_path / 'relocated'
-    shutil.copytree(original, relocated)
+    approved = {name: (original / name).read_bytes() for name in ('config.yaml', 'manifest.json')}
+    original.rename(relocated)
+    assert not original.exists()
+    caller_cwd = Path.cwd().resolve()
     class Model:
         @classmethod
         def load_model(cls, config):
+            assert Path.cwd().resolve() == relocated.resolve()
+            assert Path(config) == relocated / 'config.yaml'
+            assert Path(config).read_bytes() == approved['config.yaml']
             value = yaml.safe_load(Path(config).read_text())
             weights = Path(value['weights_path'])
-            assert weights == relocated / 'model.safetensors'
-            assert weights.read_bytes() == b'approved weights'
+            assert weights == Path('model.safetensors')
+            assert not weights.is_absolute()
+            resolved = (Path.cwd() / weights).resolve()
+            assert resolved == relocated / 'model.safetensors'
+            assert resolved.read_bytes() == b'approved weights'
             return cls()
     monkeypatch.setitem(sys.modules, 'pocket_tts', types.SimpleNamespace(TTSModel=Model))
     model = PocketBackend(relocated)
+    assert Path.cwd().resolve() == caller_cwd
+    assert {name: (relocated / name).read_bytes() for name in approved} == approved
     model.close()
+    assert Path.cwd().resolve() == caller_cwd
+    assert {name: (relocated / name).read_bytes() for name in approved} == approved
 
 
 def test_cpu_cli_help_does_not_import_inference():

@@ -135,13 +135,13 @@ if [[ "$mode" == prepare ]]; then
 import hashlib, json, os, sys, time
 from pathlib import Path
 sys.path.insert(0,'.')
-from scripts.ci_unit_shards import VERSION, SELECTION, digest, write, source_hash
+from scripts.ci_unit_shards import VERSION, SHARDS, SELECTION, digest, write, source_hash
 p=Path(sys.argv[1]); h=hashlib.sha256()
 with p.open('rb') as f:
     for b in iter(lambda:f.read(65536),b''):
         assert time.monotonic() < float(os.environ['WORK_STARTED'])+1020
         h.update(b)
-write(sys.argv[2],dict(sha=os.environ['GITHUB_SHA'],run=os.environ['GITHUB_RUN_ID'],attempt=os.environ['GITHUB_RUN_ATTEMPT'],image=os.environ['IMAGE_ID'],archive_sha=h.hexdigest(),archive_bytes=p.stat().st_size,version=VERSION,shards=6,selection_hash=digest(SELECTION),source_hash=source_hash()))
+write(sys.argv[2],dict(sha=os.environ['GITHUB_SHA'],run=os.environ['GITHUB_RUN_ID'],attempt=os.environ['GITHUB_RUN_ATTEMPT'],image=os.environ['IMAGE_ID'],archive_sha=h.hexdigest(),archive_bytes=p.stat().st_size,version=VERSION,shards=len(SHARDS),selection_hash=digest(SELECTION),source_hash=source_hash()))
 IDENTITY
   stamp identity-finished
   setup_limit=1020

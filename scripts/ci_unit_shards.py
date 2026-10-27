@@ -18,11 +18,14 @@ import subprocess
 import sys
 import time
 
+# Capture before pytest or test fixtures can patch process-global os.write.
+_MACHINE_WRITE = os.write
+
 BASE_SOURCE_HASH = 'b76e998b7ed8c335ed9294781e81fc725e8a30078a05250b1669adeaca92eca8'
 VERSION = 1
 CAP = 2 * 1024 * 1024
 PREFIX = b'PAB_UNIT_V1:'
-SHARDS = [f'{i:02}' for i in range(1, 7)]
+SHARDS = [f'{i:02}' for i in range(1, 12)]
 SELECTION = ['tests', '-m', 'not integration and not redis_integration and not manual_b_probe',
              '--ignore=tests/local', '--ignore=tests/remote',
              '--ignore=tests/release/test_dispatcher.py',
@@ -59,6 +62,79 @@ def read(path):
 
 TIMING_WEIGHTS = read(Path(__file__).with_name("ci_unit_timing_weights.json"))
 RECOVERY = "tests/service/test_recovery.py"
+
+
+ATOM_POLICY = 'recovery-independent-items-v1'
+HISTORY_ATOM = RECOVERY + '::test_t1_nonempty_B_C_actual_prefix_history'
+
+
+REVIEWED_REMAINING = {
+    'test_t1_every_ABC_descriptor_all_directions': ('H', ('damage', 'kind')),
+    'test_t1_nonempty_C_current_source_before_any_writer': ('H', ('damage', 'point')),
+    'test_t1_nonempty_third_production_generation': ('H', ('independent_setup',)),
+    'test_kfifth_fourth_query_missing_certificate_cannot_write': ('H', ('missing',)),
+    'test_successor_nonempty_production_composition': ('H', ('independent_setup',)),
+    'test_t1_exact_utf8_envelope': ('G', ('seed', 'size')),
+    'test_t1_strict_closed_frame': ('G', ('raw',)),
+    'test_t1_actual_pipe_transport': ('T', ('mode',)),
+    'test_t1_successor_strict_refusal_twice': ('H', ('damage',)),
+    'test_t1_preparation_budget_before_rehearsal_or_acceptance': ('H', ('same_consumer',)),
+    'test_t1_isolated_canonical_preparation_boundary': ('H', ('delta', 'same_consumer')),
+    'test_t1_additional_successor_refusals': ('H', ('damage',)),
+    'test_t1_genuine_terminal_receipt_control': ('H', ('damage',)),
+    'test_t1_actual_sqlite_snapshot_capacity': ('H', ('pages', 'same_consumer')),
+    'test_t1_actual_journal_document_capacity': ('H', ('same_consumer', 'size')),
+    'test_t1_actual_capacity_refusal_both_routes': ('H', ('failure', 'same_consumer')),
+    'test_t1_real_private_file_inclusive_bound': ('T', ('delta', 'limit')),
+    'test_t1_actual_receipt_namespace_inclusive_bound': ('T', ('delta', 'dimension')),
+    'test_t1_repeated_successor_strict_writers_observed': ('H', ('damage',)),
+    'test_t1_actual_population_certificate_capacity': ('H', ('population', 'same_consumer')),
+    'test_t1_preparation_free_reserve_boundary': ('H', ('delta', 'same_consumer')),
+}
+
+def item_atom(item, config):
+    """Only exact reviewed module functions own complete per-item atoms."""
+    import pytest
+    cls = item.getparent(pytest.Class)
+    atom = cls.nodeid if cls is not None else item.parent.nodeid + '::' + (getattr(item, 'originalname', None) or item.name)
+    file = item.path.relative_to(config.rootpath).as_posix()
+    if cls is not None or file != RECOVERY:
+        return atom
+    reviewed = ('H', ('generation', 'point')) if atom == HISTORY_ATOM else REVIEWED_REMAINING.get(atom.removeprefix(RECOVERY + '::'))
+    if reviewed is None:
+        return atom
+    profile, parameters = reviewed
+    assert hasattr(item, 'callspec'), 'history atom requires reviewed parametrization'
+    assert tuple(sorted(item.callspec.params)) == parameters, 'unreviewed history fixture parameter names'
+    assert all(scope.value == 'function' for scope in item.callspec._arg2scope.values()), 'unreviewed history fixture parameter scope'
+    expected = {'installation': (RECOVERY, 'function'),
+                'b23_host': (RECOVERY, 'function'),
+                'maintenance_wait_guard': ('tests/conftest.py', 'function'),
+                'tmp_path': (None, 'function'), 'monkeypatch': (None, 'function'),
+                'tmp_path_factory': (None, 'session')}
+    if profile != 'H':
+        for name in ('installation', 'b23_host'):
+            expected.pop(name)
+    if profile == 'G':
+        expected.pop('tmp_path')
+    info = item._fixtureinfo
+    from _pytest.python import get_direct_param_fixture_func
+    for name in item.callspec.params:
+        definitions = info.name2fixturedefs.get(name, ())
+        assert len(definitions) == 1 and definitions[0].func is get_direct_param_fixture_func and definitions[0].scope == 'function', 'unreviewed indirect history parameter: ' + name
+        expected[name] = (None, 'function')
+    assert set(info.names_closure) == set(expected) | {'request'}, 'unreviewed history fixture closure'
+    for name, (source, scope) in expected.items():
+        definitions = info.name2fixturedefs.get(name, ())
+        assert len(definitions) == 1, 'unreviewed history fixture override: ' + name
+        definition = definitions[-1]
+        assert definition.scope == scope, 'unreviewed history fixture scope: ' + name
+        path = Path(definition.func.__globals__['__file__']).resolve()
+        if source:
+            assert path == (config.rootpath / source).resolve(), 'unreviewed history fixture source: ' + name
+        else:
+            assert path.parent.name == '_pytest', 'unreviewed builtin fixture override: ' + name
+    return item.nodeid
 
 
 def source_hash():
@@ -155,7 +231,7 @@ class Record:
     def frame(self, value):
         data=b'\n'+PREFIX+canonical(value)+b'\n'
         while data:
-            count=os.write(MACHINE_FD,data)
+            count=_MACHINE_WRITE(MACHINE_FD,data)
             assert count>0
             data=data[count:]
 
@@ -195,16 +271,14 @@ def pytest_mode(args):
             yield
             rows=[]
             for item in items:
-                cls = item.getparent(pytest.Class)
-                parent = cls if cls is not None else item.parent
-                atom = cls.nodeid if cls is not None else parent.nodeid + '::' + (getattr(item,'originalname',None) or item.name)
+                atom = item_atom(item, config)
                 rows.append(dict(node=item.nodeid, file=item.path.relative_to(config.rootpath).as_posix(), atom=atom))
             assert len(self.raw)==len(set(self.raw)), 'duplicate raw collection'
             raw_index={n:i for i,n in enumerate(self.raw)}
             atoms={a:i for i,a in enumerate(dict.fromkeys(r['atom'] for r in rows))}
             compact=[dict(node=raw_index[r['node']],file=r['file'],atom=atoms[r['atom']]) for r in rows]
             self.node_index={r['node']:i for i,r in enumerate(rows)}
-            self.manifest = dict(identity=json.loads(args.identity), version=VERSION,
+            self.manifest = dict(atom_policy=ATOM_POLICY, identity=json.loads(args.identity), version=VERSION,
                                  selection=SELECTION, raw=self.raw, deselected=self.deselected[:],
                                  skips=self.skips[:], errors=self.errors[:], rows=compact, atoms=list(atoms))
             validate_baseline(self.manifest)
@@ -404,8 +478,9 @@ def aggregate(root, identity, dependencies, input_result='success'):
         manifest=read(prep/'manifest.json'); allocation=read(prep/'plan.json')
         assert manifest['identity']==identity and manifest['version']==VERSION, 'prepare identity'
         validate_baseline(manifest)
+        assert manifest.get('atom_policy')==ATOM_POLICY, 'atom policy'
         assert manifest['selection']==SELECTION and not manifest['errors'], 'selection/errors'
-        assert identity['version']==VERSION and identity['shards']==6 and identity['selection_hash']==digest(SELECTION), 'configuration identity'
+        assert identity['version']==VERSION and identity['shards']==len(SHARDS) and identity['selection_hash']==digest(SELECTION), 'configuration identity'
         assert len(manifest['raw'])==len(set(manifest['raw'])), 'raw duplicates'
         rows=[dict(r,node=manifest['raw'][r['node']], atom=manifest['atoms'][r['atom']])
               for r in manifest['rows']]

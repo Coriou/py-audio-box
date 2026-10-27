@@ -108,14 +108,25 @@ class ManagedPocketNamespaceTests(unittest.TestCase):
                 self.assertEqual(events,['construct','synthesise','close'])
                 self.assertEqual(os.environ['TORCHINDUCTOR_CACHE_DIR'],'/retained-prior')
 
-    def test_supervisor_setup_precedes_launch_and_only_pocket_gets_literal_namespace(self):
+    def test_supervisor_setup_precedes_launch_and_managed_pocket_and_qwen_clone_get_literal_namespace(self):
         from unittest.mock import Mock
         from worker.runtime_supervisor import RuntimeSupervisor
         class SetupComplete(Exception):pass
-        for engine in ('pocket-tts','qwen','kokoro'):
-            stage=self.root/engine
+        from dataclasses import replace
+        from worker.engines.qwen_execution import QwenExecution
+        preset=QwenExecution('bundle','a'*64,'operator-checkpoint','exact-revision',
+            'custom_voice','English','voice','v1',2,100,100,244,4096,24000,preset='Ryan')
+        clone=replace(preset,task='clone',preset=None,reference_id='ref',
+            reference_sha256='b'*64,reference_bytes=52,reference_frames=4,
+            reference_rate=24000,reference_text=None,x_vector_only=True)
+        cases=(('pocket',SimpleNamespace(engine='pocket-tts'),True),
+               ('qwen-preset',preset,False),('qwen-clone',clone,True),
+               ('kokoro',SimpleNamespace(engine='kokoro'),False))
+        for stage_id,spec,conditioning in cases:
+            engine=spec.engine
+            stage=self.root/stage_id
             supervisor=RuntimeSupervisor.__new__(RuntimeSupervisor)
-            row=dict(id='runtime',phase='prepared',uid=20000,allocation=dict(snapshot=[dict(principal_id='alice',attempts=[dict(staging_id=engine)]),{},[],[]]))
+            row=dict(id='runtime',phase='prepared',uid=20000,allocation=dict(snapshot=[dict(principal_id='alice',attempts=[dict(staging_id=stage_id)]),{},[],[]]))
             supervisor.lookup=lambda identity:row
             supervisor.failed=False;supervisor.active=dict(id='runtime',cutoff=100)
             supervisor.change=Mock(side_effect=lambda record,**changes:dict(record,**changes))
@@ -130,9 +141,14 @@ class ManagedPocketNamespaceTests(unittest.TestCase):
                     with patch('sys.argv',['setup',str(stage)]):exec(arguments[2],{})
                 finally:os.umask(prior)
                 self.assertEqual(stat.S_IMODE(stage.stat().st_mode),0o770)
-                self.assertEqual((stage/'conditioning').exists(),engine=='pocket-tts')
-                if engine=='pocket-tts':self.assertEqual(stat.S_IMODE((stage/'conditioning').stat().st_mode),0o770)
+                self.assertEqual((stage/'conditioning').exists(),conditioning)
+                if conditioning:self.assertEqual(stat.S_IMODE((stage/'conditioning').stat().st_mode),0o770)
                 raise SetupComplete()
-            with self.subTest(engine=engine),patch('worker.runtime_protocol.execution',return_value=SimpleNamespace(engine=engine)),patch('worker.runtime_supervisor.time.monotonic',return_value=0),patch('worker.runtime_supervisor.subprocess.run',side_effect=setup),patch('worker.runtime_supervisor.subprocess.Popen') as launch:
+            with self.subTest(case=stage_id),patch('worker.runtime_protocol.execution',return_value=spec),patch('worker.runtime_supervisor.time.monotonic',return_value=0),patch('worker.runtime_supervisor.subprocess.run',side_effect=setup),patch('worker.runtime_supervisor.subprocess.Popen') as launch:
                 with self.assertRaises(SetupComplete):supervisor.operation('start',dict(runtime_id='runtime'))
                 launch.assert_not_called()
+                context=row['allocation']['snapshot'][1]
+                if engine=='pocket-tts':supervisor.verify_pocket.assert_called_once_with(context,'alice')
+                else:supervisor.verify_pocket.assert_not_called()
+                if engine=='qwen':supervisor.verify_qwen.assert_called_once_with(context,[],'alice')
+                else:supervisor.verify_qwen.assert_not_called()
