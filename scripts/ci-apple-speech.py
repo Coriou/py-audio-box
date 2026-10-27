@@ -26,7 +26,8 @@ DESCRIPTOR = ROOT / 'requirements/tts/qwen-0.6b-customvoice-macos.expected.json'
 MAX_RSS = 6 * 1024**3
 MAX_LOG = 1024**2
 DOWNLOAD_HOSTS = frozenset(('huggingface.co', 'cas-bridge.xethub.hf.co',
-    'cdn-lfs.huggingface.co', 'cdn-lfs-us-1.hf.co', 'cdn-lfs-eu-1.hf.co'))
+    'cdn-lfs.huggingface.co', 'cdn-lfs-us-1.hf.co', 'cdn-lfs-eu-1.hf.co',
+    'us.aws.cdn.hf.co'))
 
 
 def download_url(url):

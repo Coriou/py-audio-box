@@ -25,6 +25,8 @@ class AppleSpeechTests(unittest.TestCase):
                 handler.redirect_request(request,None,302,'found',{},url)
         target='https://cas-bridge.xethub.hf.co/object?Signature=public-download'
         self.assertEqual(handler.redirect_request(request,None,302,'found',{},target).full_url,target)
+        self.assertEqual(ci.download_url('https://us.aws.cdn.hf.co/object?Signature=public'),
+                         'https://us.aws.cdn.hf.co/object?Signature=public')
 
     def test_late_zero_exit_is_failure_and_reaped(self):
         child=Mock(returncode=0);child.poll.return_value=0
