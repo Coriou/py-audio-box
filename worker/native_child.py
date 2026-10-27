@@ -71,9 +71,12 @@ def infer(execution, text, bundles, references, inventory, *,
     from worker.engines.qwen_prepare import QwenPreparation, selected_reference
     if type(execution) is QwenPreparation: selected_reference(execution, raw)
     from lib.tts_backends.qwen_native import NativeQwenBackend
-    return execute(execution, text, bundles, references, inventory,
+    result = execute(execution, text, bundles, references, inventory,
         reference_temp_dir=reference_temp_dir, managed_owner_uid=managed_owner_uid,
         backend_factory=NativeQwenBackend)
+    # Native transport sends audition PCM; reference metadata is reconstructed
+    # from the verified, immutable preparation descriptor.
+    return result['audition'] if type(execution) is QwenPreparation else result
 
 
 def wire_send(connection,value,cutoff):

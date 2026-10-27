@@ -312,6 +312,56 @@ class ManagedCloneDerivationTests(unittest.TestCase):
             with self.subTest(mutation=mutate),self.assertRaises((ValueError,Refused)):
                 native_child.validate_proposal(snapshot,changed,raw,spec)
 
+    def test_real_preparation_adapter_transports_audition_and_preserves_reference(self):
+        from worker import native_child
+        from worker.engines.qwen_prepare import QwenPreparation
+        real_infer = native_child.infer
+        observed = []
+        def infer(spec, *args, **kwargs):
+            self.assertIs(type(spec), QwenPreparation)
+            result = real_infer(spec, *args, **kwargs)
+            self.assertEqual(set(result), {'data', 'frames', 'sha256', 'size_bytes', 'identity'})
+            self.assertEqual(result['frames'], 1)
+            self.assertEqual(result['size_bytes'], 46)
+            self.assertEqual(result['sha256'], hashlib.sha256(result['data']).hexdigest())
+            self.assertNotEqual(result['data'], self.f.reference_raw)
+            self.assertNotEqual(result['sha256'], self.asset['sha256'])
+            observed.append((result, kwargs['reference_temp_dir']))
+            return result
+        # Only the backend is inert: actual infer, child framing, parent exchange,
+        # proposal validation and supervisor collection all execute.
+        with patch('worker.native_child.infer', side_effect=infer):
+            authority, rid = self.launch_preparation()
+        self.assertEqual(len(observed), 1)
+        result, conditioning = observed[0]
+        from pathlib import Path
+        self.assertFalse(Path(conditioning).exists())
+        pending = self.f.runtime.collect(authority, rid)
+        self.assertIsNotNone(pending)
+        self.assertEqual(pending.raw, result['data'])
+        reference, audition = pending.proposal['manifest']['outputs']
+        self.assertEqual((reference['sha256'], reference['frames']), (self.asset['sha256'], 4))
+        self.assertEqual((audition['sha256'], audition['frames']), (result['sha256'], 1))
+        directory = self.f.spool/authority.binding
+        self.assertEqual((directory/'import-reference').read_bytes(), self.f.reference_raw)
+        self.assertEqual((directory/'import').read_bytes(), result['data'])
+
+    def test_preparation_proposal_keeps_distinct_role_media_metadata(self):
+        from worker import native_child, native_protocol as p
+        snapshot = self.prepared(); spec = p.native_execution(snapshot[1])
+        # Deliberately distinct digest and frame count prevent reference-as-audition
+        # adapters from satisfying the role contract accidentally.
+        result = dict(sha256='a'*64, frames=3)
+        value = native_child.proposal(snapshot, result, spec)
+        reference, audition = value['manifest']['outputs']
+        self.assertEqual((reference['sha256'], reference['frames']), (self.asset['sha256'], 4))
+        self.assertEqual((audition['sha256'], audition['frames']), ('a'*64, 3))
+        roles = value['manifest']['candidates'][0]['reference_roles']
+        self.assertEqual(roles['reference']['asset'], reference)
+        self.assertEqual(roles['audition']['asset'], audition)
+        self.assertEqual(roles['reference']['transcript'], self.request['reference_text'])
+        self.assertEqual(roles['audition']['text'], self.request['audition_text'])
+
     def test_saved_reuse_rederives_exact_reference_and_settings(self):
         from worker.native_protocol import owned_clone_context
         from worker.synthetic import candidates
