@@ -22,6 +22,7 @@ COPY contracts /app/contracts
 COPY lib /app/lib
 COPY apps /app/apps
 COPY tests /app/tests
+COPY diagnostics/p-one-node/one_node_observer.py /app/tests/one_node_observer.py
 COPY benchmarks /app/benchmarks
 COPY scripts /app/scripts
 COPY run-cpu /app/run-cpu

@@ -206,7 +206,7 @@ class QwenBackend:
         self._process = self._connection = None
         self._lock = threading.Lock()
         self._failed_reap = False
-        self._start_attempted = False
+        self._started = False
         self._runtime_directory = None
         owner_ref = weakref.ref(self)
         def on_exit():
@@ -227,7 +227,20 @@ class QwenBackend:
         if callback is not None:
             atexit.unregister(callback)
         process, connection = self._process, self._connection
-        if process is not None and (self._start_attempted or process.pid is not None):
+        # Process.close() validates that an unpublished/unstarted process has
+        # no live child. A rejected close must still take the reap path.
+        if (process is not None and not self._started and process.pid is None
+                and getattr(process, '_popen', None) is None):
+            try:
+                process.close()
+            except ValueError:
+                pass  # A partial start can own a child without a public PID.
+            except BaseException:
+                self._failed_reap = True
+                raise
+            else:
+                process = None
+        if process is not None:
             try:
                 if process.is_alive():
                     process.terminate()
@@ -241,12 +254,10 @@ class QwenBackend:
                 self._failed_reap = True
                 raise
             process.close()
-        elif process is not None:
-            process.close()
         if connection is not None:
             connection.close()
         self._process = self._connection = None
-        self._start_attempted = False
+        self._started = False
         directory = self.__dict__.get('_runtime_directory')
         if directory is not None:
             shutil.rmtree(directory)
@@ -310,9 +321,8 @@ class QwenBackend:
                         # No automatic finalizer: unresolved children retain storage.
                         self._runtime_directory = Path(tempfile.mkdtemp(prefix='qwen-child-', dir='/tmp'))
                         self._process = ctx.Process(target=_worker, args=(child, self.settings, str(self._runtime_directory)), daemon=True)
-                        # start() can raise after OS child creation, before pid publication.
-                        self._start_attempted = True
                         self._process.start()
+                        self._started = True
                     except (OSError, EOFError) as exc:
                         raise self._worker_failure(method, 'spawn', before) from exc
                     finally:

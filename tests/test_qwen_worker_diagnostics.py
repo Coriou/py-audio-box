@@ -10,7 +10,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'lib'))
 from tts_backends import qwen
 
 
-def diagnostic_worker(connection, settings):
+def diagnostic_worker(connection, settings, runtime_dir):
     if settings.get('early_exit'):
         os._exit(23)
     connection.send(('ready', {'revision': 'test-revision'}))
@@ -123,6 +123,8 @@ def test_spawn_failures_close_both_pipe_ends(monkeypatch, failure_stage):
         closed = False
         def start(self):
             raise OSError('synthetic spawn failure')
+        def is_alive(self):
+            return False
         def join(self, timeout):
             raise AssertionError('cannot join unstarted process')
         def close(self):
@@ -141,9 +143,82 @@ def test_spawn_failures_close_both_pipe_ends(monkeypatch, failure_stage):
     monkeypatch.setattr(qwen.mp, 'get_context', lambda method: Context())
     monkeypatch.setattr(qwen, '_memory_snapshot', lambda: {})
     model = backend(monkeypatch)
-    with pytest.raises(qwen.QwenWorkerError):
+    with pytest.raises(qwen.QwenWorkerError) as caught:
         model.invoke('healthy', timeout_s=10)
+    assert isinstance(caught.value.__cause__, OSError)
+    assert caught.value.details['stage'] == 'spawn'
+    assert caught.value.details['exitcode'] is None
     assert parent.closed and child.closed
     if failure_stage == 'start':
         assert process.closed
     assert model._process is None
+
+
+@pytest.mark.parametrize('join_fails', [False, True])
+def test_partial_start_retains_child_until_reaped(monkeypatch, join_fails):
+    events = []
+
+    class Connection:
+        closed = False
+        def close(self):
+            self.closed = True
+
+    class Process:
+        pid = None
+        exitcode = None
+        alive = False
+        closed = False
+        def start(self):
+            self.pid = 123
+            self.alive = True
+            raise OSError('synthetic partial start')
+        def is_alive(self):
+            return self.alive
+        def terminate(self):
+            events.append('terminate')
+        def kill(self):
+            events.append('kill')
+            self.alive = False
+            self.exitcode = -signal.SIGKILL
+        def join(self, timeout):
+            events.append(('join', timeout))
+            if join_fails:
+                raise RuntimeError('synthetic join failure')
+        def close(self):
+            assert not self.alive and type(self.exitcode) is int
+            events.append('close')
+            self.closed = True
+
+    parent, child, process = Connection(), Connection(), Process()
+
+    class Context:
+        def Pipe(self):
+            return parent, child
+        def Process(self, **kwargs):
+            return process
+
+    monkeypatch.setattr(qwen.mp, 'get_context', lambda method: Context())
+    monkeypatch.setattr(qwen, '_memory_snapshot', lambda: {})
+    model = backend(monkeypatch)
+    try:
+        if join_fails:
+            with pytest.raises(RuntimeError, match='synthetic join failure'):
+                model.invoke('healthy', timeout_s=10)
+            assert model._failed_reap
+            assert model._process is process and process.alive
+            assert not process.closed and not parent.closed and child.closed
+            assert model._runtime_directory.is_dir()
+            with pytest.raises(RuntimeError, match='disabled after failed worker reap'):
+                model.invoke('healthy', timeout_s=10)
+        else:
+            with pytest.raises(qwen.QwenWorkerError) as caught:
+                model.invoke('healthy', timeout_s=10)
+            assert isinstance(caught.value.__cause__, OSError)
+            assert caught.value.details['stage'] == 'spawn'
+            assert events == [('join', 0.1), 'terminate', ('join', 2),
+                              'kill', ('join', 2), 'close']
+            assert parent.closed and child.closed and process.closed
+            assert model._process is None and model._runtime_directory is None
+    finally:
+        join_fails = False
+        model.close()

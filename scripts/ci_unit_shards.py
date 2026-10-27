@@ -1,7 +1,8 @@
 """Bounded unit CI transport, deterministic allocation and fail-closed receipts.
 
 Only collect/run import pytest. r502 seeds are rounded heartbeat-interval file
-proxies, not per-test durations. All hashes cover canonical JSON bytes.
+proxies, not per-test durations. Frozen r510 timings are scheduling estimates,
+not runtime upper bounds. All hashes cover canonical JSON bytes.
 """
 import argparse
 import base64
@@ -56,6 +57,10 @@ def read(path):
     return json.loads(data)
 
 
+TIMING_WEIGHTS = read(Path(__file__).with_name("ci_unit_timing_weights.json"))
+RECOVERY = "tests/service/test_recovery.py"
+
+
 def source_hash():
     excluded={b'.github/workflows/unit.yml',b'scripts/ci-unit.sh',b'scripts/ci_unit_shards.py'}
     entries=subprocess.check_output(['git','ls-tree','-rz','--full-tree','HEAD']).split(b'\0')
@@ -84,20 +89,37 @@ def plan(rows):
                 atoms.append((row['atom'], []))
             atoms[-1][1].append((index, row))
         assert len({a[0] for a in atoms}) == len(atoms), 'noncontiguous atom'
-        packs = [entries] if len(entries) <= 192 else []
+        def atom_cost(key, atom):
+            weight = TIMING_WEIGHTS['atom_weights'].get(key)
+            if weight and weight['count'] == len(atom):
+                return weight['cost_us']
+            return 750000 * len(atom)
+
+        packs = [entries] if file != RECOVERY and len(entries) <= 192 else []
         if not packs:
             pack = []
-            for _, atom in atoms:
-                if pack and len(pack) + len(atom) > 192:
+            pack_cost = 0
+            for key, atom in atoms:
+                cost = atom_cost(key, atom) if file == RECOVERY else 0
+                if pack and (len(pack) + len(atom) > 192 or
+                             (file == RECOVERY and pack_cost + cost > 180000000)):
                     packs.append(pack)
                     pack = []
+                    pack_cost = 0
                 pack += atom
+                pack_cost += cost
             if pack:
                 packs.append(pack)
+        weight = TIMING_WEIGHTS['file_weights'].get(file)
         for pack in packs:
             count = len(pack)
             cost = 750000 * count
-            if file in SEEDS and len(entries) == SEEDS[file][1]:
+            if file == RECOVERY:
+                keys = {row['atom'] for _, row in pack}
+                cost = sum(atom_cost(key, atom) for key, atom in atoms if key in keys)
+            elif weight and weight['count'] == len(entries):
+                cost = (weight['cost_us'] * count + len(entries)-1)//len(entries)
+            elif file in SEEDS and len(entries) == SEEDS[file][1]:
                 cost = max(cost, (1250000 * SEEDS[file][0] * count + len(entries)-1)//len(entries))
             groups.append(dict(file=file, first=pack[0][0], count=count, cost=cost,
                                oversized=count > 192, indices=[i for i, _ in pack]))
@@ -385,7 +407,8 @@ def aggregate(root, identity, dependencies, input_result='success'):
         assert manifest['selection']==SELECTION and not manifest['errors'], 'selection/errors'
         assert identity['version']==VERSION and identity['shards']==6 and identity['selection_hash']==digest(SELECTION), 'configuration identity'
         assert len(manifest['raw'])==len(set(manifest['raw'])), 'raw duplicates'
-        rows=[dict(r,node=manifest['raw'][r['node']]) for r in manifest['rows']]
+        rows=[dict(r,node=manifest['raw'][r['node']], atom=manifest['atoms'][r['atom']])
+              for r in manifest['rows']]
         assert Counter(r['node'] for r in rows)+Counter(manifest['deselected'])==Counter(manifest['raw']), 'selection accounting'
         assert allocation==plan(rows), 'canonical plan mismatch'
         gate=read(prep/'receipt.json')

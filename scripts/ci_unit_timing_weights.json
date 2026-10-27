@@ -1,0 +1,1296 @@
+{
+  "atom_weights": {
+    "tests/service/test_recovery.py::test_a2_recognizes_b1_healthy_and_unknown_columns_refuse": {
+      "cost_us": 100000,
+      "count": 1
+    },
+    "tests/service/test_recovery.py::test_b22_complete_intent_selection": {
+      "cost_us": 50000,
+      "count": 3
+    },
+    "tests/service/test_recovery.py::test_b22_correction_bundle_boundaries": {
+      "cost_us": 1750000,
+      "count": 9
+    },
+    "tests/service/test_recovery.py::test_b22_correction_bundle_damage_no_repair": {
+      "cost_us": 1300000,
+      "count": 7
+    },
+    "tests/service/test_recovery.py::test_b22_correction_prior_receipts_every_resume": {
+      "cost_us": 13600000,
+      "count": 12
+    },
+    "tests/service/test_recovery.py::test_b22_correction_process_death_owned_restart": {
+      "cost_us": 850000,
+      "count": 2
+    },
+    "tests/service/test_recovery.py::test_b22_prefix_actual_barrier_failure_preserves_output": {
+      "cost_us": 750000,
+      "count": 4
+    },
+    "tests/service/test_recovery.py::test_b22_prefix_changed_resume_refuses": {
+      "cost_us": 2000000,
+      "count": 10
+    },
+    "tests/service/test_recovery.py::test_b22_prefix_crash_resume": {
+      "cost_us": 4200000,
+      "count": 21
+    },
+    "tests/service/test_recovery.py::test_b22_prefix_damaged_journal_preserves_status_and_coverage": {
+      "cost_us": 2800000,
+      "count": 18
+    },
+    "tests/service/test_recovery.py::test_b22_prefix_exact_inputs_and_archive_loss": {
+      "cost_us": 750000,
+      "count": 7
+    },
+    "tests/service/test_recovery.py::test_b22_prefix_partial_evidence_never_remints": {
+      "cost_us": 1550000,
+      "count": 10
+    },
+    "tests/service/test_recovery.py::test_b22_prefix_pending_and_exact_expired_resume": {
+      "cost_us": 400000,
+      "count": 1
+    },
+    "tests/service/test_recovery.py::test_b22_prefix_real_allocated_work_is_not_transitioned": {
+      "cost_us": 1600000,
+      "count": 2
+    },
+    "tests/service/test_recovery.py::test_b22_prefix_receipt_only_resume_without_new_identity": {
+      "cost_us": 400000,
+      "count": 2
+    },
+    "tests/service/test_recovery.py::test_b22_prefix_retains_prior_completed_history": {
+      "cost_us": 1150000,
+      "count": 3
+    },
+    "tests/service/test_recovery.py::test_b22_prefix_terminal_media_and_history_unchanged": {
+      "cost_us": 1700000,
+      "count": 2
+    },
+    "tests/service/test_recovery.py::test_b22_prefix_unaccepted_expiry_and_locks": {
+      "cost_us": 150000,
+      "count": 1
+    },
+    "tests/service/test_recovery.py::test_b22b_actual_io_denial": {
+      "cost_us": 950000,
+      "count": 3
+    },
+    "tests/service/test_recovery.py::test_b22b_changed_output_refuses": {
+      "cost_us": 2550000,
+      "count": 11
+    },
+    "tests/service/test_recovery.py::test_b22b_expiry_and_both_locks": {
+      "cost_us": 150000,
+      "count": 1
+    },
+    "tests/service/test_recovery.py::test_b22b_faults": {
+      "cost_us": 2950000,
+      "count": 12
+    },
+    "tests/service/test_recovery.py::test_b22b_process_death_fresh_interpreter": {
+      "cost_us": 1150000,
+      "count": 1
+    },
+    "tests/service/test_recovery.py::test_b22b_rotation_pending_resume": {
+      "cost_us": 400000,
+      "count": 1
+    },
+    "tests/service/test_recovery.py::test_b22b_unknown_dispatch_coverage": {
+      "cost_us": 2400000,
+      "count": 4
+    },
+    "tests/service/test_recovery.py::test_b22c_actual_certificate_barrier_denial": {
+      "cost_us": 1400000,
+      "count": 2
+    },
+    "tests/service/test_recovery.py::test_b22c_atomic_core_completion": {
+      "cost_us": 250000,
+      "count": 1
+    },
+    "tests/service/test_recovery.py::test_b22c_atomic_faults": {
+      "cost_us": 9250000,
+      "count": 9
+    },
+    "tests/service/test_recovery.py::test_b22c_certificate_creation_intent_never_remints": {
+      "cost_us": 2750000,
+      "count": 5
+    },
+    "tests/service/test_recovery.py::test_b22c_completed_immutable_inputs_and_history_refuse": {
+      "cost_us": 8300000,
+      "count": 8
+    },
+    "tests/service/test_recovery.py::test_b22c_completed_no_scan_and_pending_resolution_has_no_effect": {
+      "cost_us": 1500000,
+      "count": 1
+    },
+    "tests/service/test_recovery.py::test_b22c_completed_resolution_current_joins_two_startups": {
+      "cost_us": 8700000,
+      "count": 7
+    },
+    "tests/service/test_recovery.py::test_b22c_core_complete_receipt_pending_blocks_startup": {
+      "cost_us": 1100000,
+      "count": 2
+    },
+    "tests/service/test_recovery.py::test_b22c_denied_fault_update_inherited_checking_new_epoch": {
+      "cost_us": 1000000,
+      "count": 1
+    },
+    "tests/service/test_recovery.py::test_b22c_dispatch_diagnostic_history_is_exactly_accounted": {
+      "cost_us": 1300000,
+      "count": 1
+    },
+    "tests/service/test_recovery.py::test_b22c_exact_degraded_resolution_and_strict_unavailability": {
+      "cost_us": 4700000,
+      "count": 4
+    },
+    "tests/service/test_recovery.py::test_b22c_process_death_fresh_interpreter_twice": {
+      "cost_us": 3750000,
+      "count": 2
+    },
+    "tests/service/test_recovery.py::test_b22c_real_actions_history_and_resolution_guards": {
+      "cost_us": 2500000,
+      "count": 3
+    },
+    "tests/service/test_recovery.py::test_b22c_scan_refusal_retains_pending_authority": {
+      "cost_us": 2200000,
+      "count": 3
+    },
+    "tests/service/test_recovery.py::test_b22c_sql_write_denial_rolls_back_all_core_authority": {
+      "cost_us": 1050000,
+      "count": 1
+    },
+    "tests/service/test_recovery.py::test_b22c_terminal_history_and_permanent_retirement": {
+      "cost_us": 2050000,
+      "count": 2
+    },
+    "tests/service/test_recovery.py::test_b22c_uncertified_core_revalidates_owned_restart_evidence": {
+      "cost_us": 4150000,
+      "count": 4
+    },
+    "tests/service/test_recovery.py::test_b22c_unknown_dispatch_requires_exact_death": {
+      "cost_us": 2350000,
+      "count": 4
+    },
+    "tests/service/test_recovery.py::test_b22d_actual_io_denials": {
+      "cost_us": 6750000,
+      "count": 6
+    },
+    "tests/service/test_recovery.py::test_b22d_complete_production_writer_and_noop": {
+      "cost_us": 1100000,
+      "count": 1
+    },
+    "tests/service/test_recovery.py::test_b22d_completed_later_ordinary_activity_no_scans_or_mutations": {
+      "cost_us": 1450000,
+      "count": 1
+    },
+    "tests/service/test_recovery.py::test_b22d_correction_completed_replay_pending_exact_attempt": {
+      "cost_us": 4200000,
+      "count": 2
+    },
+    "tests/service/test_recovery.py::test_b22d_correction_completed_replay_pending_successor": {
+      "cost_us": 37150000,
+      "count": 18
+    },
+    "tests/service/test_recovery.py::test_b22d_correction_unfinished_current_registration": {
+      "cost_us": 2650000,
+      "count": 3
+    },
+    "tests/service/test_recovery.py::test_b22d_fault_matrix": {
+      "cost_us": 38150000,
+      "count": 37
+    },
+    "tests/service/test_recovery.py::test_b22d_half_startup_twice": {
+      "cost_us": 2150000,
+      "count": 2
+    },
+    "tests/service/test_recovery.py::test_b22d_prior_completed_creation_evidence_retained": {
+      "cost_us": 14100000,
+      "count": 6
+    },
+    "tests/service/test_recovery.py::test_b22d_process_death_owned_fresh_resume_twice": {
+      "cost_us": 9250000,
+      "count": 4
+    },
+    "tests/service/test_recovery.py::test_b22d_r2_completed_replay_crash_successor_fresh_interpreter": {
+      "cost_us": 6350000,
+      "count": 2
+    },
+    "tests/service/test_recovery.py::test_b22d_r2_retained_successor_prefix": {
+      "cost_us": 51150000,
+      "count": 25
+    },
+    "tests/service/test_recovery.py::test_b22d_r3_receipt_only_crash_fresh_interpreter": {
+      "cost_us": 3700000,
+      "count": 1
+    },
+    "tests/service/test_recovery.py::test_b22d_r3_receipt_only_marker_precedes_acceptance": {
+      "cost_us": 1750000,
+      "count": 1
+    },
+    "tests/service/test_recovery.py::test_b22d_r3_receipt_only_successor": {
+      "cost_us": 38850000,
+      "count": 18
+    },
+    "tests/service/test_recovery.py::test_b22d_r3_receipt_only_tamper": {
+      "cost_us": 57650000,
+      "count": 32
+    },
+    "tests/service/test_recovery.py::test_b22d_r4_other_completed_core_descriptor": {
+      "cost_us": 19750000,
+      "count": 8
+    },
+    "tests/service/test_recovery.py::test_b22d_real_journal_hello_fresh_registration_dispatcher_stays_closed": {
+      "cost_us": 1750000,
+      "count": 1
+    },
+    "tests/service/test_recovery.py::test_b22d_wrong_evidence_refuses_without_rewrite": {
+      "cost_us": 11700000,
+      "count": 16
+    },
+    "tests/service/test_recovery.py::test_b23_closed_authority_entrypoints_exist": {
+      "cost_us": 50000,
+      "count": 1
+    },
+    "tests/service/test_recovery.py::test_b23_closed_capsule_freeze_and_apply_closed": {
+      "cost_us": 100000,
+      "count": 1
+    },
+    "tests/service/test_recovery.py::test_b23_closed_capsule_negative_matrix": {
+      "cost_us": 950000,
+      "count": 18
+    },
+    "tests/service/test_recovery.py::test_b23_complete_retained_union_including_old_stopped_owners": {
+      "cost_us": 100000,
+      "count": 1
+    },
+    "tests/service/test_recovery.py::test_b23_expired_trusted_transport_cannot_override_os_clock": {
+      "cost_us": 100000,
+      "count": 1
+    },
+    "tests/service/test_recovery.py::test_b23_fixed_subprocess_bounds_and_sanitized_errors": {
+      "cost_us": 50000,
+      "count": 7
+    },
+    "tests/service/test_recovery.py::test_b23_freeze_failure_retains_containers_closed_authority": {
+      "cost_us": 400000,
+      "count": 8
+    },
+    "tests/service/test_recovery.py::test_b23_fresh_resume_retains_original_proof_and_rejects_restarted_owner": {
+      "cost_us": 100000,
+      "count": 1
+    },
+    "tests/service/test_recovery.py::test_b23_incarnation_times_preserve_nanosecond_order": {
+      "cost_us": 50000,
+      "count": 1
+    },
+    "tests/service/test_recovery.py::test_b23_local_proc_tree_os_boundary": {
+      "cost_us": 100000,
+      "count": 11
+    },
+    "tests/service/test_recovery.py::test_b23_preflight_refusals_before_stop_or_mutation": {
+      "cost_us": 1750000,
+      "count": 29
+    },
+    "tests/service/test_recovery.py::test_b23_reader_checks_actual_role_mounts": {
+      "cost_us": 250000,
+      "count": 4
+    },
+    "tests/service/test_recovery.py::test_b23_reader_exact_fixed_ro_transport_retains_evidence": {
+      "cost_us": 50000,
+      "count": 1
+    },
+    "tests/service/test_recovery.py::test_b23_reader_refuses_untrusted_transport": {
+      "cost_us": 950000,
+      "count": 18
+    },
+    "tests/service/test_recovery.py::test_b23_registration_brackets_authenticated_hello": {
+      "cost_us": 50000,
+      "count": 1
+    },
+    "tests/service/test_recovery.py::test_b23_registration_provenance_refuses_before_registration": {
+      "cost_us": 400000,
+      "count": 8
+    },
+    "tests/service/test_recovery.py::test_b23_resume_does_not_replace_original_lane_epoch_after_rotation": {
+      "cost_us": 100000,
+      "count": 1
+    },
+    "tests/service/test_recovery.py::test_b23_retained_inventory_works_with_both_live_owner_locks": {
+      "cost_us": 50000,
+      "count": 1
+    },
+    "tests/service/test_recovery.py::test_b23_retained_owner_omission_and_boot_ambiguity": {
+      "cost_us": 200000,
+      "count": 3
+    },
+    "tests/service/test_recovery.py::test_b23_shipped_reader_absent_mount_never_falls_back": {
+      "cost_us": 50000,
+      "count": 1
+    },
+    "tests/service/test_recovery.py::test_b23a_r1_reader_nested_role_mount_refuses": {
+      "cost_us": 1450000,
+      "count": 24
+    },
+    "tests/service/test_recovery.py::test_b23a_r1_unknown_storage_refuses_before_stop": {
+      "cost_us": 950000,
+      "count": 16
+    },
+    "tests/service/test_recovery.py::test_b2_archive_namespace_is_closed_retained_evidence": {
+      "cost_us": 150000,
+      "count": 1
+    },
+    "tests/service/test_recovery.py::test_b2_bound_documents_refuse_valid_row_digest_tampering": {
+      "cost_us": 17150000,
+      "count": 22
+    },
+    "tests/service/test_recovery.py::test_b2_cancel_requested_action_uses_frozen_job_state": {
+      "cost_us": 600000,
+      "count": 1
+    },
+    "tests/service/test_recovery.py::test_b2_closed_records_refuse": {
+      "cost_us": 850000,
+      "count": 7
+    },
+    "tests/service/test_recovery.py::test_b2_coherent_executing_unbound_and_unknown_plan": {
+      "cost_us": 1050000,
+      "count": 2
+    },
+    "tests/service/test_recovery.py::test_b2_completion_requires_grounded_evidence": {
+      "cost_us": 5950000,
+      "count": 8
+    },
+    "tests/service/test_recovery.py::test_b2_cross_volume_startup_before_mutation": {
+      "cost_us": 900000,
+      "count": 5
+    },
+    "tests/service/test_recovery.py::test_b2_nonempty_plan_pure_self_verify": {
+      "cost_us": 250000,
+      "count": 1
+    },
+    "tests/service/test_recovery.py::test_b2_nonempty_publication_self_reference_and_namespace": {
+      "cost_us": 800000,
+      "count": 1
+    },
+    "tests/service/test_recovery.py::test_b2_optional_schema_and_plan_self_binding": {
+      "cost_us": 100000,
+      "count": 1
+    },
+    "tests/service/test_recovery.py::test_b2_partial_schema_core_refuses": {
+      "cost_us": 50000,
+      "count": 1
+    },
+    "tests/service/test_recovery.py::test_b2_pending_direct_core_refusal_twice": {
+      "cost_us": 250000,
+      "count": 2
+    },
+    "tests/service/test_recovery.py::test_b2_prior_history_is_bound": {
+      "cost_us": 450000,
+      "count": 3
+    },
+    "tests/service/test_recovery.py::test_b2_receipt_pending_always_blocks_two_restarts": {
+      "cost_us": 400000,
+      "count": 3
+    },
+    "tests/service/test_recovery.py::test_b2_rehashed_documents_still_require_grounding": {
+      "cost_us": 1500000,
+      "count": 2
+    },
+    "tests/service/test_recovery.py::test_b2_rehashed_nonterminal_output_preserves_contract": {
+      "cost_us": 20750000,
+      "count": 34
+    },
+    "tests/service/test_recovery.py::test_b2_retirement_precedes_both_publication_bodies": {
+      "cost_us": 1600000,
+      "count": 2
+    },
+    "tests/service/test_recovery.py::test_b2_schema_install_is_atomic_and_configuration_bound": {
+      "cost_us": 100000,
+      "count": 1
+    },
+    "tests/service/test_recovery.py::test_b2_second_completion_retains_prior_evidence": {
+      "cost_us": 1200000,
+      "count": 3
+    },
+    "tests/service/test_recovery.py::test_b2_unexplained_execution_refuses_without_mutation": {
+      "cost_us": 450000,
+      "count": 2
+    },
+    "tests/service/test_recovery.py::test_b2_worker_completed_hello_matches_core": {
+      "cost_us": 150000,
+      "count": 1
+    },
+    "tests/service/test_recovery.py::test_b2_worker_refuses_before_boot_or_listen": {
+      "cost_us": 1300000,
+      "count": 11
+    },
+    "tests/service/test_recovery.py::test_bad_typed_reference_refused": {
+      "cost_us": 100000,
+      "count": 1
+    },
+    "tests/service/test_recovery.py::test_bounded_core_lease_parent_release_child_pid_refusal": {
+      "cost_us": 50000,
+      "count": 1
+    },
+    "tests/service/test_recovery.py::test_bounded_core_maintenance_refuses_before_effects": {
+      "cost_us": 150000,
+      "count": 10
+    },
+    "tests/service/test_recovery.py::test_bounded_core_prefork_deterministic_parent_release": {
+      "cost_us": 50000,
+      "count": 1
+    },
+    "tests/service/test_recovery.py::test_bounded_core_prefork_lease_failure": {
+      "cost_us": 50000,
+      "count": 2
+    },
+    "tests/service/test_recovery.py::test_changed_state_scope_and_consumers_refuse": {
+      "cost_us": 650000,
+      "count": 7
+    },
+    "tests/service/test_recovery.py::test_core_creation_intent_never_remints": {
+      "cost_us": 100000,
+      "count": 3
+    },
+    "tests/service/test_recovery.py::test_crash_wal_inspection_preserves_source": {
+      "cost_us": 350000,
+      "count": 4
+    },
+    "tests/service/test_recovery.py::test_create_versions_and_read_only_inspection": {
+      "cost_us": 50000,
+      "count": 1
+    },
+    "tests/service/test_recovery.py::test_docker_host_projection_fixed_and_unknown_consumer": {
+      "cost_us": 50000,
+      "count": 1
+    },
+    "tests/service/test_recovery.py::test_enrolled_missing_journal_never_reinitializes": {
+      "cost_us": 50000,
+      "count": 1
+    },
+    "tests/service/test_recovery.py::test_enrolled_root_cannot_bypass_closed_activation_via_diagnostic_default": {
+      "cost_us": 50000,
+      "count": 1
+    },
+    "tests/service/test_recovery.py::test_explicit_matching_partial_completion": {
+      "cost_us": 200000,
+      "count": 7
+    },
+    "tests/service/test_recovery.py::test_finite_inspection_refuses_oversized_records": {
+      "cost_us": 100000,
+      "count": 1
+    },
+    "tests/service/test_recovery.py::test_gate_requires_actual_host_boot_configuration_and_enrollment": {
+      "cost_us": 100000,
+      "count": 1
+    },
+    "tests/service/test_recovery.py::test_host_state_change_invalidates_proposal": {
+      "cost_us": 100000,
+      "count": 1
+    },
+    "tests/service/test_recovery.py::test_kfifth_actual_death_monitor_refuses_before_writers": {
+      "cost_us": 5650000,
+      "count": 2
+    },
+    "tests/service/test_recovery.py::test_kfifth_attempted_output_quarantines_before_writers": {
+      "cost_us": 57100000,
+      "count": 20
+    },
+    "tests/service/test_recovery.py::test_kfifth_completed_current_changes_observational": {
+      "cost_us": 4100000,
+      "count": 1
+    },
+    "tests/service/test_recovery.py::test_kfifth_every_completed_descriptor_both_directions": {
+      "cost_us": 245200000,
+      "count": 54
+    },
+    "tests/service/test_recovery.py::test_kfifth_fourth_query_cannot_bypass_unfinished_finish": {
+      "cost_us": 4800000,
+      "count": 1
+    },
+    "tests/service/test_recovery.py::test_kfifth_full_current_source_before_writers": {
+      "cost_us": 88450000,
+      "count": 32
+    },
+    "tests/service/test_recovery.py::test_kfifth_production_history_actual_prefix": {
+      "cost_us": 164500000,
+      "count": 23
+    },
+    "tests/service/test_recovery.py::test_kfifth_production_owner_changes_before_writers": {
+      "cost_us": 8350000,
+      "count": 3
+    },
+    "tests/service/test_recovery.py::test_kfifth_reached_actual_death_prefix": {
+      "cost_us": 68450000,
+      "count": 24
+    },
+    "tests/service/test_recovery.py::test_kpre_acceptance_barriers_journal": {
+      "cost_us": 41650000,
+      "count": 18
+    },
+    "tests/service/test_recovery.py::test_kpre_actual_death_owned_fresh_resume": {
+      "cost_us": 4550000,
+      "count": 2
+    },
+    "tests/service/test_recovery.py::test_kpre_additional_closed_inputs": {
+      "cost_us": 14850000,
+      "count": 8
+    },
+    "tests/service/test_recovery.py::test_kpre_after_attempt_never_recaptures": {
+      "cost_us": 39300000,
+      "count": 18
+    },
+    "tests/service/test_recovery.py::test_kpre_capture_failures_burn_without_outputs": {
+      "cost_us": 21400000,
+      "count": 10
+    },
+    "tests/service/test_recovery.py::test_kpre_deleted_bundle_sql_is_not_no_attempt": {
+      "cost_us": 8900000,
+      "count": 4
+    },
+    "tests/service/test_recovery.py::test_kpre_each_no_attempt_window_rechecks": {
+      "cost_us": 272250000,
+      "count": 120
+    },
+    "tests/service/test_recovery.py::test_kpre_history_and_observational_replay": {
+      "cost_us": 37450000,
+      "count": 12
+    },
+    "tests/service/test_recovery.py::test_kpre_history_identity_collision_refuses_before_capture": {
+      "cost_us": 3900000,
+      "count": 2
+    },
+    "tests/service/test_recovery.py::test_kpre_no_attempt_both_busy_locks": {
+      "cost_us": 4800000,
+      "count": 2
+    },
+    "tests/service/test_recovery.py::test_kpre_no_attempt_closed_refusal_twice": {
+      "cost_us": 54250000,
+      "count": 28
+    },
+    "tests/service/test_recovery.py::test_kpre_pending_replacement_temporary_quarantines": {
+      "cost_us": 11700000,
+      "count": 4
+    },
+    "tests/service/test_recovery.py::test_kpre_predecessor_damage_no_capture": {
+      "cost_us": 9650000,
+      "count": 5
+    },
+    "tests/service/test_recovery.py::test_kpre_recapture_actual_death_fresh_retry": {
+      "cost_us": 15950000,
+      "count": 5
+    },
+    "tests/service/test_recovery.py::test_kpre_recapture_connections_at_actual_use_and_close": {
+      "cost_us": 2150000,
+      "count": 1
+    },
+    "tests/service/test_recovery.py::test_lifetime_guard_real_semantic_refusal_and_unrelated_child": {
+      "cost_us": 100000,
+      "count": 1
+    },
+    "tests/service/test_recovery.py::test_lifetime_guard_reporting_overrides_caught_negative": {
+      "cost_us": 50000,
+      "count": 1
+    },
+    "tests/service/test_recovery.py::test_lifetime_private_reader_closes_before_teardown": {
+      "cost_us": 100000,
+      "count": 12
+    },
+    "tests/service/test_recovery.py::test_lifetime_startup_lock_discovery_never_creates_paths": {
+      "cost_us": 50000,
+      "count": 1
+    },
+    "tests/service/test_recovery.py::test_lifetime_startup_lock_release_does_not_unlock_other_owner": {
+      "cost_us": 50000,
+      "count": 1
+    },
+    "tests/service/test_recovery.py::test_lifetime_wait_guard_unit": {
+      "cost_us": 50000,
+      "count": 6
+    },
+    "tests/service/test_recovery.py::test_locks_fail_closed": {
+      "cost_us": 50000,
+      "count": 2
+    },
+    "tests/service/test_recovery.py::test_lotk_actual_death_fresh_owned_resume": {
+      "cost_us": 3300000,
+      "count": 2
+    },
+    "tests/service/test_recovery.py::test_lotk_actual_linux_child_file_and_sqlite_cap": {
+      "cost_us": 750000,
+      "count": 1
+    },
+    "tests/service/test_recovery.py::test_lotk_actual_linux_sqlite_checkpoint_cap": {
+      "cost_us": 750000,
+      "count": 1
+    },
+    "tests/service/test_recovery.py::test_lotk_caller_capability_cannot_select_process_or_limit": {
+      "cost_us": 50000,
+      "count": 1
+    },
+    "tests/service/test_recovery.py::test_lotk_cap_parent_limits_checked_on_helper_failure": {
+      "cost_us": 50000,
+      "count": 2
+    },
+    "tests/service/test_recovery.py::test_lotk_cap_witness_rejection_controls": {
+      "cost_us": 100000,
+      "count": 28
+    },
+    "tests/service/test_recovery.py::test_lotk_declared_ext4_namespace_only": {
+      "cost_us": 50000,
+      "count": 6
+    },
+    "tests/service/test_recovery.py::test_lotk_exact_supplied_snapshot_is_not_recaptured": {
+      "cost_us": 450000,
+      "count": 1
+    },
+    "tests/service/test_recovery.py::test_lotk_f1_all_private_connections_at_actual_use": {
+      "cost_us": 650000,
+      "count": 1
+    },
+    "tests/service/test_recovery.py::test_lotk_fixed_cap_setup_ignores_environment_and_parent_limit": {
+      "cost_us": 300000,
+      "count": 1
+    },
+    "tests/service/test_recovery.py::test_lotk_fresh_unfinished_resume_reinstalls_fixed_cap": {
+      "cost_us": 500000,
+      "count": 1
+    },
+    "tests/service/test_recovery.py::test_lotk_io_failure_burns_session_no_partial_healthy_authority": {
+      "cost_us": 1600000,
+      "count": 3
+    },
+    "tests/service/test_recovery.py::test_lotk_old_archive_drift_refuses_owned_handoff": {
+      "cost_us": 1350000,
+      "count": 1
+    },
+    "tests/service/test_recovery.py::test_lotk_original_connection_pins_standard_unix_vfs": {
+      "cost_us": 300000,
+      "count": 1
+    },
+    "tests/service/test_recovery.py::test_lotk_owned_handoff_tamper_refuses_before_acceptance": {
+      "cost_us": 1600000,
+      "count": 5
+    },
+    "tests/service/test_recovery.py::test_lotk_private_connection_rejects_escape_and_preserves_wal": {
+      "cost_us": 500000,
+      "count": 1
+    },
+    "tests/service/test_recovery.py::test_lotk_refuses_before_original_writable_open": {
+      "cost_us": 2300000,
+      "count": 8
+    },
+    "tests/service/test_recovery.py::test_lotk_same_lock_owned_snapshot_completes_without_recapture": {
+      "cost_us": 750000,
+      "count": 1
+    },
+    "tests/service/test_recovery.py::test_lotp_capacity_rehearsal_preserves_actual_wal_prestate": {
+      "cost_us": 900000,
+      "count": 1
+    },
+    "tests/service/test_recovery.py::test_lotp_closed_request_cannot_supply_authority": {
+      "cost_us": 250000,
+      "count": 10
+    },
+    "tests/service/test_recovery.py::test_lotp_completed_history_preparation": {
+      "cost_us": 13500000,
+      "count": 12
+    },
+    "tests/service/test_recovery.py::test_lotp_degraded_terminal_exact_decisions": {
+      "cost_us": 4450000,
+      "count": 6
+    },
+    "tests/service/test_recovery.py::test_lotp_early_refusals_precede_original_writer": {
+      "cost_us": 2900000,
+      "count": 16
+    },
+    "tests/service/test_recovery.py::test_lotp_final_capsule_revalidation_before_return": {
+      "cost_us": 1100000,
+      "count": 2
+    },
+    "tests/service/test_recovery.py::test_lotp_frozen_output_and_source_oracles": {
+      "cost_us": 6350000,
+      "count": 7
+    },
+    "tests/service/test_recovery.py::test_lotp_late_refusal_retains_unaccepted_plan": {
+      "cost_us": 2000000,
+      "count": 5
+    },
+    "tests/service/test_recovery.py::test_lotp_preparation_alone_no_acceptance_or_ordinary_healing": {
+      "cost_us": 950000,
+      "count": 1
+    },
+    "tests/service/test_recovery.py::test_lotp_prior_history_exact_exclusion": {
+      "cost_us": 2750000,
+      "count": 4
+    },
+    "tests/service/test_recovery.py::test_lotp_production_intent_actual_death_fresh_resume": {
+      "cost_us": 4550000,
+      "count": 2
+    },
+    "tests/service/test_recovery.py::test_lotp_production_intent_faults_no_partial_authority": {
+      "cost_us": 13200000,
+      "count": 12
+    },
+    "tests/service/test_recovery.py::test_lotp_production_nonempty_complete": {
+      "cost_us": 11400000,
+      "count": 9
+    },
+    "tests/service/test_recovery.py::test_lotp_rehearsal_connections_hardened_at_actual_use": {
+      "cost_us": 1250000,
+      "count": 1
+    },
+    "tests/service/test_recovery.py::test_lotp_single_immutable_plan_proof_first_and_preaccept_exit": {
+      "cost_us": 1700000,
+      "count": 1
+    },
+    "tests/service/test_recovery.py::test_missing_enrollment_refuses_persistent_dispatcher_before_core_creation": {
+      "cost_us": 50000,
+      "count": 1
+    },
+    "tests/service/test_recovery.py::test_nonempty_plan_remains_verifiable_and_dispatch_reference_is_retained": {
+      "cost_us": 550000,
+      "count": 1
+    },
+    "tests/service/test_recovery.py::test_partial_core_schema_quarantined_without_health_creation": {
+      "cost_us": 50000,
+      "count": 1
+    },
+    "tests/service/test_recovery.py::test_partial_file_write_refuses_resume_without_replacement": {
+      "cost_us": 50000,
+      "count": 1
+    },
+    "tests/service/test_recovery.py::test_partial_missing_key_never_reminted": {
+      "cost_us": 50000,
+      "count": 1
+    },
+    "tests/service/test_recovery.py::test_plan_binds_other_plan_evidence": {
+      "cost_us": 250000,
+      "count": 3
+    },
+    "tests/service/test_recovery.py::test_plan_immutable_bound_and_unavailable": {
+      "cost_us": 100000,
+      "count": 1
+    },
+    "tests/service/test_recovery.py::test_populated_old_preserved": {
+      "cost_us": 50000,
+      "count": 5
+    },
+    "tests/service/test_recovery.py::test_private_snapshot_copy_error_cleans_only_private": {
+      "cost_us": 50000,
+      "count": 1
+    },
+    "tests/service/test_recovery.py::test_private_snapshot_source_change_refuses_and_cleans": {
+      "cost_us": 50000,
+      "count": 1
+    },
+    "tests/service/test_recovery.py::test_real_fsync_failure_retains_identity_and_never_reseeds": {
+      "cost_us": 100000,
+      "count": 9
+    },
+    "tests/service/test_recovery.py::test_t1_actual_file_stat_guard_boundary": {
+      "cost_us": 50000,
+      "count": 3
+    },
+    "tests/service/test_recovery.py::test_t1_actual_pipe_overflow_precedes_decoder": {
+      "cost_us": 50000,
+      "count": 1
+    },
+    "tests/service/test_recovery.py::test_t1_cleanup_missing_process_receipts": {
+      "cost_us": 100000,
+      "count": 2
+    },
+    "tests/service/test_recovery.py::test_t1_cleanup_refuses_inside_caller_exception_handler": {
+      "cost_us": 150000,
+      "count": 3
+    },
+    "tests/service/test_recovery.py::test_t1_close_ownership_cleanup": {
+      "cost_us": 2000000,
+      "count": 64
+    },
+    "tests/service/test_recovery.py::test_t1_durable_completion_lost_result_no_false_success": {
+      "cost_us": 4500000,
+      "count": 1
+    },
+    "tests/service/test_recovery.py::test_t1_owned_proposal_reads_cannot_mutate_sender": {
+      "cost_us": 950000,
+      "count": 1
+    },
+    "tests/service/test_recovery.py::test_t1_preparation_semantics_both_codec_ends": {
+      "cost_us": 6150000,
+      "count": 7
+    },
+    "tests/service/test_recovery.py::test_t1_reap_interruption_ownership": {
+      "cost_us": 3400000,
+      "count": 48
+    },
+    "tests/service/test_recovery.py::test_t1_rehearsal_receipt_reserve_isolated_namespace": {
+      "cost_us": 12650000,
+      "count": 12
+    },
+    "tests/service/test_recovery.py::test_t1_successful_exact_size_pipe_waitpid_eintr": {
+      "cost_us": 550000,
+      "count": 8
+    },
+    "tests/service/test_recovery.py::test_typed_plan_retains_publication_job_and_dispatch_assets": {
+      "cost_us": 450000,
+      "count": 1
+    },
+    "tests/service/test_recovery.py::test_unknown_inventory_refuses_plan_but_is_visible_in_inspect": {
+      "cost_us": 100000,
+      "count": 1
+    }
+  },
+  "basis": "r510 successful finished phase durations only; design data, not acceptance",
+  "file_weights": {
+    "tests/clients/test_production_clients.py": {
+      "cost_us": 4150000,
+      "count": 4
+    },
+    "tests/clients/test_spoken_text_clients.py": {
+      "cost_us": 100000,
+      "count": 4
+    },
+    "tests/clients/test_upload_clients.py": {
+      "cost_us": 200000,
+      "count": 2
+    },
+    "tests/clients/test_voice_clients.py": {
+      "cost_us": 200000,
+      "count": 1
+    },
+    "tests/contracts/test_contracts.py": {
+      "cost_us": 1900000,
+      "count": 15
+    },
+    "tests/contracts/test_corrections.py": {
+      "cost_us": 1550000,
+      "count": 33
+    },
+    "tests/contracts/test_frozen_boundary.py": {
+      "cost_us": 18250000,
+      "count": 67
+    },
+    "tests/contracts/test_legacy_controls.py": {
+      "cost_us": 50000,
+      "count": 3
+    },
+    "tests/contracts/test_output_boundary.py": {
+      "cost_us": 12000000,
+      "count": 29
+    },
+    "tests/contracts/test_reference_roles.py": {
+      "cost_us": 1050000,
+      "count": 7
+    },
+    "tests/contracts/test_spoken_text_plan.py": {
+      "cost_us": 200000,
+      "count": 7
+    },
+    "tests/release/test_compactness.py": {
+      "cost_us": 350000,
+      "count": 1
+    },
+    "tests/release/test_headless_install.py": {
+      "cost_us": 12350000,
+      "count": 31
+    },
+    "tests/release/test_native_activation.py": {
+      "cost_us": 2600000,
+      "count": 18
+    },
+    "tests/release/test_native_enrollment.py": {
+      "cost_us": 1250000,
+      "count": 10
+    },
+    "tests/release/test_native_history.py": {
+      "cost_us": 162800000,
+      "count": 141
+    },
+    "tests/release/test_native_launch.py": {
+      "cost_us": 2600000,
+      "count": 18
+    },
+    "tests/release/test_native_live_availability.py": {
+      "cost_us": 11750000,
+      "count": 3
+    },
+    "tests/release/test_native_managed_clone.py": {
+      "cost_us": 17450000,
+      "count": 15
+    },
+    "tests/release/test_native_onboarding.py": {
+      "cost_us": 2550000,
+      "count": 6
+    },
+    "tests/release/test_native_origin_voices.py": {
+      "cost_us": 191350000,
+      "count": 54
+    },
+    "tests/release/test_native_package.py": {
+      "cost_us": 3200000,
+      "count": 27
+    },
+    "tests/release/test_native_renewal.py": {
+      "cost_us": 288150000,
+      "count": 167
+    },
+    "tests/release/test_qwen_cpu_package.py": {
+      "cost_us": 600000,
+      "count": 3
+    },
+    "tests/release/test_release_package.py": {
+      "cost_us": 5550000,
+      "count": 40
+    },
+    "tests/release/test_spoken_text_package.py": {
+      "cost_us": 250000,
+      "count": 1
+    },
+    "tests/release/test_worker_boundary.py": {
+      "cost_us": 50000,
+      "count": 1
+    },
+    "tests/service/test_adapters.py": {
+      "cost_us": 7650000,
+      "count": 3
+    },
+    "tests/service/test_admission.py": {
+      "cost_us": 38900000,
+      "count": 80
+    },
+    "tests/service/test_audio_export.py": {
+      "cost_us": 15000000,
+      "count": 23
+    },
+    "tests/service/test_child_wait_guard.py": {
+      "cost_us": 394350000,
+      "count": 167
+    },
+    "tests/service/test_core.py": {
+      "cost_us": 20600000,
+      "count": 73
+    },
+    "tests/service/test_cpu_pocket_recipe.py": {
+      "cost_us": 50000,
+      "count": 4
+    },
+    "tests/service/test_cpu_public_recipe.py": {
+      "cost_us": 700000,
+      "count": 16
+    },
+    "tests/service/test_cpu_setup.py": {
+      "cost_us": 2050000,
+      "count": 27
+    },
+    "tests/service/test_daemon_helper_diagnostics.py": {
+      "cost_us": 50000,
+      "count": 5
+    },
+    "tests/service/test_daemon_import_deadline.py": {
+      "cost_us": 20250000,
+      "count": 33
+    },
+    "tests/service/test_daemon_volumes.py": {
+      "cost_us": 37700000,
+      "count": 101
+    },
+    "tests/service/test_dispatcher.py": {
+      "cost_us": 53350000,
+      "count": 71
+    },
+    "tests/service/test_engine_admission.py": {
+      "cost_us": 750000,
+      "count": 5
+    },
+    "tests/service/test_export_daemon.py": {
+      "cost_us": 21550000,
+      "count": 15
+    },
+    "tests/service/test_export_initialization.py": {
+      "cost_us": 11350000,
+      "count": 56
+    },
+    "tests/service/test_export_owner_activation.py": {
+      "cost_us": 43550000,
+      "count": 13
+    },
+    "tests/service/test_export_publication_size.py": {
+      "cost_us": 5050000,
+      "count": 4
+    },
+    "tests/service/test_export_retained_history.py": {
+      "cost_us": 85150000,
+      "count": 24
+    },
+    "tests/service/test_historical_retry.py": {
+      "cost_us": 350000,
+      "count": 3
+    },
+    "tests/service/test_host_install.py": {
+      "cost_us": 950000,
+      "count": 7
+    },
+    "tests/service/test_ingest.py": {
+      "cost_us": 550000,
+      "count": 16
+    },
+    "tests/service/test_install_child.py": {
+      "cost_us": 50000,
+      "count": 2
+    },
+    "tests/service/test_install_directory.py": {
+      "cost_us": 50000,
+      "count": 2
+    },
+    "tests/service/test_install_ownership.py": {
+      "cost_us": 150000,
+      "count": 14
+    },
+    "tests/service/test_installed_activation.py": {
+      "cost_us": 15600000,
+      "count": 26
+    },
+    "tests/service/test_installed_export.py": {
+      "cost_us": 350000,
+      "count": 10
+    },
+    "tests/service/test_installed_host_policy.py": {
+      "cost_us": 1500000,
+      "count": 24
+    },
+    "tests/service/test_installed_pocket.py": {
+      "cost_us": 29600000,
+      "count": 34
+    },
+    "tests/service/test_installed_preset.py": {
+      "cost_us": 2750000,
+      "count": 3
+    },
+    "tests/service/test_installed_qwen.py": {
+      "cost_us": 16550000,
+      "count": 18
+    },
+    "tests/service/test_installed_registration.py": {
+      "cost_us": 10100000,
+      "count": 31
+    },
+    "tests/service/test_installed_restart.py": {
+      "cost_us": 50150000,
+      "count": 32
+    },
+    "tests/service/test_maintenance_schema.py": {
+      "cost_us": 50000,
+      "count": 7
+    },
+    "tests/service/test_native_lifecycle.py": {
+      "cost_us": 12100000,
+      "count": 9
+    },
+    "tests/service/test_native_runtime.py": {
+      "cost_us": 6300000,
+      "count": 26
+    },
+    "tests/service/test_owned_startup_snapshot.py": {
+      "cost_us": 100000,
+      "count": 7
+    },
+    "tests/service/test_packaged_lifecycle.py": {
+      "cost_us": 650000,
+      "count": 14
+    },
+    "tests/service/test_persistence.py": {
+      "cost_us": 27050000,
+      "count": 87
+    },
+    "tests/service/test_pocket_daemon.py": {
+      "cost_us": 6850000,
+      "count": 13
+    },
+    "tests/service/test_pocket_lifecycle.py": {
+      "cost_us": 7400000,
+      "count": 13
+    },
+    "tests/service/test_pocket_preparation.py": {
+      "cost_us": 9650000,
+      "count": 14
+    },
+    "tests/service/test_pocket_start_rpc.py": {
+      "cost_us": 100000,
+      "count": 14
+    },
+    "tests/service/test_production.py": {
+      "cost_us": 2350000,
+      "count": 4
+    },
+    "tests/service/test_production_admission.py": {
+      "cost_us": 200000,
+      "count": 3
+    },
+    "tests/service/test_production_api.py": {
+      "cost_us": 2500000,
+      "count": 5
+    },
+    "tests/service/test_production_reconciliation.py": {
+      "cost_us": 1250000,
+      "count": 2
+    },
+    "tests/service/test_production_selection.py": {
+      "cost_us": 6900000,
+      "count": 19
+    },
+    "tests/service/test_profiles.py": {
+      "cost_us": 50000,
+      "count": 13
+    },
+    "tests/service/test_provisioned_engine.py": {
+      "cost_us": 50000,
+      "count": 1
+    },
+    "tests/service/test_provisioning.py": {
+      "cost_us": 400000,
+      "count": 25
+    },
+    "tests/service/test_public_job_control.py": {
+      "cost_us": 2600000,
+      "count": 5
+    },
+    "tests/service/test_publication_format.py": {
+      "cost_us": 7700000,
+      "count": 42
+    },
+    "tests/service/test_qwen_daemon.py": {
+      "cost_us": 10100000,
+      "count": 17
+    },
+    "tests/service/test_qwen_lifecycle.py": {
+      "cost_us": 9000000,
+      "count": 21
+    },
+    "tests/service/test_qwen_preparation.py": {
+      "cost_us": 9800000,
+      "count": 9
+    },
+    "tests/service/test_qwen_provisioning.py": {
+      "cost_us": 1500000,
+      "count": 15
+    },
+    "tests/service/test_reconciliation_conditionals.py": {
+      "cost_us": 300000,
+      "count": 6
+    },
+    "tests/service/test_reference_publication.py": {
+      "cost_us": 11150000,
+      "count": 7
+    },
+    "tests/service/test_split_init.py": {
+      "cost_us": 5400000,
+      "count": 39
+    },
+    "tests/service/test_upload_api.py": {
+      "cost_us": 1600000,
+      "count": 6
+    },
+    "tests/service/test_voice_api.py": {
+      "cost_us": 1250000,
+      "count": 4
+    },
+    "tests/service/test_worker_lifecycle.py": {
+      "cost_us": 2600000,
+      "count": 19
+    },
+    "tests/test_audio_judge.py": {
+      "cost_us": 400000,
+      "count": 20
+    },
+    "tests/test_audio_selection.py": {
+      "cost_us": 50000,
+      "count": 3
+    },
+    "tests/test_ci_apple_silicon.py": {
+      "cost_us": 50000,
+      "count": 4
+    },
+    "tests/test_clone_prompt_compatibility.py": {
+      "cost_us": 50000,
+      "count": 16
+    },
+    "tests/test_cloud_voice_workflow.py": {
+      "cost_us": 1900000,
+      "count": 5
+    },
+    "tests/test_cpu_output_publication.py": {
+      "cost_us": 50000,
+      "count": 2
+    },
+    "tests/test_fidelity.py": {
+      "cost_us": 350000,
+      "count": 20
+    },
+    "tests/test_job_watcher.py": {
+      "cost_us": 100000,
+      "count": 16
+    },
+    "tests/test_jobqueue.py": {
+      "cost_us": 50000,
+      "count": 13
+    },
+    "tests/test_registry_security.py": {
+      "cost_us": 100000,
+      "count": 13
+    },
+    "tests/test_spoken_text.py": {
+      "cost_us": 450000,
+      "count": 8
+    },
+    "tests/test_stt_check.py": {
+      "cost_us": 400000,
+      "count": 56
+    },
+    "tests/test_tts_benchmark.py": {
+      "cost_us": 2050000,
+      "count": 4
+    },
+    "tests/test_voice_cpu_batch.py": {
+      "cost_us": 16750000,
+      "count": 32
+    },
+    "tests/worker/test_engine_kokoro.py": {
+      "cost_us": 250000,
+      "count": 7
+    },
+    "tests/worker/test_engine_lifecycle.py": {
+      "cost_us": 3050000,
+      "count": 13
+    },
+    "tests/worker/test_hardware.py": {
+      "cost_us": 200000,
+      "count": 4
+    },
+    "tests/worker/test_native_protocol.py": {
+      "cost_us": 50000,
+      "count": 5
+    },
+    "tests/worker/test_production_synthetic.py": {
+      "cost_us": 50000,
+      "count": 3
+    },
+    "tests/worker/test_worker_audio_export.py": {
+      "cost_us": 150000,
+      "count": 9
+    }
+  },
+  "identity": {
+    "archive_bytes": 499212290,
+    "archive_sha": "4768f0da2f5695af2570b050bd1032c2389219a9a39ab9f7b9dbc3683745ffe2",
+    "attempt": "1",
+    "image": "sha256:1c06230b5166fd758ce378ece3216e9bc78cca3d4f3756dab420fcc32a4d3d7e",
+    "run": "40451590068",
+    "selection_hash": "eddf20aeeca40a90318ce071ac3f07b7b6f1e0a1484023261efc3bccb951b89f",
+    "sha": "dbbc4f61048f92c7acde25ce4e56bb8f77ac0f8d",
+    "shards": 6,
+    "source_hash": "b76e998b7ed8c335ed9294781e81fc725e8a30078a05250b1669adeaca92eca8",
+    "version": 1
+  },
+  "recovery_source_sha256": "42f7f6e2e4820b32fe3e4bbcf7da5d0acfd4fe0abbabd352f454399eb690e9d7"
+}
