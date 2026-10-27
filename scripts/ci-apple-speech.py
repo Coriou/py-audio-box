@@ -9,6 +9,7 @@ import json
 import os
 from pathlib import Path
 import resource
+import selectors
 import shutil
 import signal
 import subprocess
@@ -16,12 +17,86 @@ import sys
 import tempfile
 import time
 import urllib.request
+from urllib.parse import urlsplit
 import wave
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 DESCRIPTOR = ROOT / 'requirements/tts/qwen-0.6b-customvoice-macos.expected.json'
 MAX_RSS = 6 * 1024**3
+MAX_LOG = 1024**2
+DOWNLOAD_HOSTS = frozenset(('huggingface.co', 'cas-bridge.xethub.hf.co',
+    'cdn-lfs.huggingface.co', 'cdn-lfs-us-1.hf.co', 'cdn-lfs-eu-1.hf.co'))
+
+
+def download_url(url):
+    parsed = urlsplit(url)
+    if (parsed.scheme != 'https' or parsed.hostname not in DOWNLOAD_HOSTS
+            or parsed.username or parsed.password or parsed.port not in (None, 443)
+            or parsed.fragment):
+        raise ValueError('download_outside_reviewed_https_hosts')
+    return url
+
+
+class PublicRedirects(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        return super().redirect_request(req, fp, code, msg, headers, download_url(newurl))
+
+
+def public_open(url):
+    return urllib.request.build_opener(urllib.request.ProxyHandler({}),
+        PublicRedirects()).open(download_url(url), timeout=20)
+
+
+def owned_child(argv, env, log_path, observation):
+    """Drain a bounded pipe; check deadlines even after a zero exit."""
+    started = time.monotonic()
+    cutoff = started + 30
+    peak_rss = total = 0
+    child = subprocess.Popen(argv, env=env, stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT, start_new_session=True, bufsize=0)
+    try:
+        with selectors.DefaultSelector() as selector, log_path.open('xb') as log:
+            selector.register(child.stdout, selectors.EVENT_READ)
+            eof = False
+            while True:
+                remaining = cutoff - time.monotonic()
+                if remaining <= 0:
+                    raise TimeoutError('native_child_30_seconds')
+                code = child.poll()
+                if eof and code is not None:
+                    if code: raise RuntimeError('native_child_failed_see_language_log')
+                    break
+                if code is None:
+                    try:
+                        rss = subprocess.check_output(['/bin/ps', '-o', 'rss=', '-p', str(child.pid)],
+                            timeout=min(.5, remaining), text=True).strip()
+                    except subprocess.CalledProcessError:
+                        if child.poll() is None: raise
+                        rss = ''
+                    peak_rss = max(peak_rss, int(rss or '0')*1024)
+                    if peak_rss > MAX_RSS:
+                        raise MemoryError('native_child_6_GiB_RSS_limit')
+                for key, _ in selector.select(timeout=min(.1, max(0, cutoff-time.monotonic()))):
+                    block = os.read(key.fd, 65536)
+                    if not block:
+                        selector.unregister(key.fileobj)
+                        eof = True
+                        continue
+                    keep = min(len(block), MAX_LOG-total)
+                    log.write(block[:keep])
+                    total += keep
+                    if keep < len(block): raise ValueError('child_log_limit')
+            if time.monotonic() > cutoff:
+                raise TimeoutError('native_child_30_seconds')
+    finally:
+        if child.poll() is None:
+            os.killpg(child.pid, signal.SIGKILL)
+        child.wait(timeout=5)
+        child.stdout.close()
+        observation.update(child_reaped=True, child_exit=child.returncode,
+            child_seconds=time.monotonic()-started, sampled_peak_rss_bytes=peak_rss,
+            log_bytes=total)
 
 
 def save(path, value):
@@ -43,7 +118,7 @@ def acquire(root, expected):
         target.parent.mkdir(parents=True, exist_ok=True)
         digest = hashlib.sha256()
         remaining = entry['bytes']
-        with urllib.request.urlopen(entry['origin'], timeout=20) as source, target.open('xb') as dst:
+        with public_open(entry['origin']) as source, target.open('xb') as dst:
             while remaining:
                 if time.monotonic() >= cutoff:
                     raise TimeoutError('download_180_seconds')
@@ -114,13 +189,15 @@ def run(output):
         descriptor_sha256=hashlib.sha256(DESCRIPTOR.read_bytes()).hexdigest(),
         python=sys.version, physical_memory_bytes=int(subprocess.check_output(
             ['/usr/sbin/sysctl', '-n', 'hw.memsize'], timeout=5)),
-        download='not_run', English='not_run', French='not_run',
+        runtime='not_run', download='not_run', English='not_run', French='not_run', children={},
         installed_qualified=False, cpu_comparison='not_run_native_owner_requires_mps',
         versions={n: importlib.metadata.version(n) for n in expected['versions']})
-    stage = 'download'
+    stage = 'runtime'
     try:
         if report['versions'] != expected['versions']:
             raise ValueError('runtime_version_mismatch')
+        report['runtime'] = 'passed'
+        stage = 'download'
         with tempfile.TemporaryDirectory(prefix='apple-speech-') as private:
             bundle = Path(private) / 'bundle'
             bundle.mkdir(mode=0o700)
@@ -141,39 +218,10 @@ def run(output):
                     env.update(HF_HUB_OFFLINE='1', TRANSFORMERS_OFFLINE='1',
                         HF_HUB_DISABLE_TELEMETRY='1', PYTORCH_ENABLE_MPS_FALLBACK='0',
                         TOKENIZERS_PARALLELISM='false', OMP_NUM_THREADS='2')
-                    with (output / (language + '.log')).open('wb') as log:
-                        child = subprocess.Popen([sys.executable, str(Path(__file__).resolve()),
-                            '--child', str(bundle), '--language', language, '--output', str(output)],
-                            env=env, stdout=log, stderr=log, start_new_session=True)
-                        cutoff = time.monotonic() + 30
-                        started = time.monotonic()
-                        peak_rss = 0
-                        try:
-                            while child.poll() is None:
-                                if time.monotonic() >= cutoff:
-                                    raise TimeoutError('native_child_30_seconds')
-                                try:
-                                    rss = subprocess.check_output(['/bin/ps', '-o', 'rss=', '-p', str(child.pid)],
-                                        timeout=2, text=True).strip()
-                                except subprocess.CalledProcessError:
-                                    if child.poll() is not None: break
-                                    raise
-                                peak_rss = max(peak_rss, int(rss or '0')*1024)
-                                if peak_rss > MAX_RSS:
-                                    raise MemoryError('native_child_6_GiB_RSS_limit')
-                                if log.tell() > 1024**2:
-                                    raise ValueError('child_log_limit')
-                                time.sleep(.25)
-                            if child.wait() != 0:
-                                raise RuntimeError('native_child_failed_see_child_log')
-                        finally:
-                            if child.poll() is None:
-                                os.killpg(child.pid, signal.SIGKILL)
-                            child.wait(timeout=5)
-                            report['child_reaped'] = True
-                            report['child_exit'] = child.returncode
-                            report['child_seconds'] = time.monotonic() - started
-                            report['sampled_peak_rss_bytes'] = peak_rss
+                    observation = report['children'][language] = {}
+                    owned_child([sys.executable, str(Path(__file__).resolve()),
+                        '--child', str(bundle), '--language', language, '--output', str(output)],
+                        env, output / (language + '.log'), observation)
                     report[language] = 'passed'
             finally:
                 for p in bundle.rglob('*'):

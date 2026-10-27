@@ -32,6 +32,8 @@ Preview scope: cloning is French only through gated Pocket, with retained
 text-fidelity failures. Qwen English cloning is not ready; native CPU/Metal and
 CUDA remain unqualified. On Apple Silicon, existing linux/amd64 Docker images
 use emulation; this path is untested. Import-only CI is not runtime readiness.
+For executable native prerequisite checks and the remaining installation gates,
+see [Apple Silicon diagnostics](docs/agent-interface/APPLE-CI.md).
 
 Each installation runs **one engine**, and `discover` reports what that
 installation can actually do. Treat `discover`, not this table, as the source of

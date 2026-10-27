@@ -38,6 +38,10 @@ class NativeQwenBackend:
         if self._revision != revision:
             self.close()
             raise ValueError('result_model_identity')
+        # Verify the upstream owner's selected device, not just requested flags.
+        if getattr(getattr(self._model, 'device', None), 'type', None) != device:
+            self.close()
+            raise ValueError('native_device_mismatch')
 
     def close(self):
         # No process API, implicit retry, cache flush or asynchronous cleanup.

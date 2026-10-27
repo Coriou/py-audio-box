@@ -1,151 +1,130 @@
-# Apple Silicon CI: first dependency slice
+# Apple Silicon: evidence gates and native diagnostics
 
-This workflow is authored source, not evidence that this revision has executed.
-Native dependency feasibility, client protocol closure, tensor probes and installed
-synthesis are separate evidence tiers. Apple CPU/Metal synthesis remains
-**UNQUALIFIED**; ARM64 runtime is **not_run**.
+Native macOS speech is **unqualified**. The native installed owner currently
+supports Qwen MPS/float32/SDPA only. It does not select a CPU fallback. Docker
+on macOS is a separate Linux CPU topology; amd64 images also require emulation.
+Neither an import pass nor an MPS tensor pass qualifies installed speech.
 
-The automatic `dependencies` job provisions SoX (`brew install sox`,
-`sox --version`), installs the existing native binary hash lock and runs pip
-check. Its report records native Python/architecture, exact dependency versions,
-SoX executable/version, CPU tensor result and MPS built/available flags, without
-constructing a model. The report is printed and uploaded even after failure;
-missing reports fail visibly. No import or tensor pass qualifies synthesis.
+## Executable prerequisite check
 
-The distinct `clients` job uses native arm64 CPython 3.11 on `macos-15`.
-It creates fresh `.venv-client` and `.venv-service` environments, installs
-`requirements/client.lock` and `service/requirements.lock` respectively with
-`--only-binary=:all: --require-hashes`, and runs pip check in each. It executes
-the real CLI help parser, then `tests.clients.test_voice_clients` using the
-actual temporary Core/Dispatcher ASGI fixture. Explicitly selected
-`tests.test_ci_apple_silicon.MacClientSmoke` starts a loopback fixture HTTP
-service and actual MCP stdio child, initializes ClientSession, lists tools,
-calls speech_discover and compares MCP/CLI discovery with HTTP. It loads no
-engine. The fixture has an OS-assigned port, private HOME/environment, bounded
-readiness/RPC waits and owned termination/kill/wait. SDK stdio context owns its
-child cleanup. The inert host suite requires no FastAPI/MCP; dependency absence
-in the selected real smoke is a failure, never a successful skip.
+On a native Apple Silicon terminal, use CPython 3.11 (not Rosetta). These commands
+install the pinned Python dependencies and check prerequisites; they do **not**
+install or start the speech service, download weights, or create credentials.
+Homebrew must already be installed. The SoX package follows Homebrew and is
+recorded, rather than claimed to be pinned.
 
-`apple-ci/clients.json` identifies commit, runner image/OS/architecture, Python,
-installed SDK versions and separate passed/failed/not_run stage fields.
-Skipped downstream steps do not claim installation or runtime qualification.
-An incompatible Mac hash-locked wheel fails the job: retain its exact pip
-package/pin diagnostic as the first blocker. A dedicated Mac client closure is
-a narrow follow-up, not authorization to relock the dependency graph.
+```sh
+uname -m                         # must print arm64
+python3.11 -c 'import platform; assert platform.machine() == "arm64"'
+brew install sox
+python3.11 -m venv .venv-apple
+.venv-apple/bin/python -m pip install --require-hashes --only-binary=:all: \
+  --index-url https://pypi.org/simple -r requirements/qwen-macos-arm64.lock
+.venv-apple/bin/python -m pip check
+.venv-apple/bin/python scripts/ci-apple-silicon.py deps-check --report apple-ci/dependencies.json
+.venv-apple/bin/python scripts/ci-apple-silicon.py mps-probe --report apple-ci/mps-probe.json
+```
 
-Jobs have 20 minute deadlines; child installs have 300 second deadlines,
-fixture readiness 15 seconds and MCP protocol 30 seconds. Only explicit
-Darwin-safe tests run, never Linux-wide discovery. Reports are exact JSON paths,
-with 7-day retention and missing-file errors; no workspace, credentials, weights
-or model cache is uploaded. No Docker, model construction/acquisition, secrets,
-paid runner or weight cache is configured. Standard public runner compute is
-$0; artifact storage remains subject to repository quotas and retention.
-See [GitHub runner documentation](https://docs.github.com/en/actions/reference/runners/github-hosted-runners).
+A wrong OS/architecture or Python version is refused. Missing SoX reports
+`SoX executable missing; provision brew install sox`. A failed MPS operation
+fails the check; it never silently switches to CPU. Preserve the JSON report.
+See [native package lifecycle](NATIVE-PACKAGE.md) for the existing explicit
+operator-managed source package. There is no qualified native service quickstart.
 
-## Lock provenance
+## Automatic free hosted checks
 
-Generated with existing `uv 0.11.15`, targeting `aarch64-apple-darwin`, Python
-3.11, binary-only, hashes enabled. No environment installation or builds.
-The 91-package closure fixes qwen-tts 0.1.1, torch 2.10.0 (without `+cpu`),
-torchaudio 2.10.0, transformers 4.57.3 and tokenizers 0.22.2. Transitive
-versions are fixed in the lock; resolution does not prove imports will pass.
+`.github/workflows/apple-silicon.yml` uses public-repository standard `macos-15`
+arm64 runners, pinned action commits, read-only repository permissions and no
+secrets. Dependencies and clients are separate jobs, each limited to 20 minutes.
+Path filters limit this workflow. The exact development branch
+`feat/apple-silicon-native` is excluded from the separate Linux Unit push matrix;
+PR Unit checks remain enabled.
 
-An ephemeral local metadata gateway forwarded public PyPI Simple/PEP 658
-metadata, preserving advertised SHA256 values, exposing only universal,
-macOS ARM64/universal2 wheel links, and refusing wheel payload requests.
-Each resolution attempt had a cumulative 10 MiB network-body cap. An initial
-uncompressed attempt hit the cap and produced no lock; the successful
-compressed attempt transferred 8,512,514 bytes (91 packages, 14.30 seconds).
-A preceding URL-encoding attempt failed resolution after 2,572,197 bytes.
-These are per-attempt bounds, not a claim of less than 10 MiB total traffic.
-No large wheel payload was acquired. The lock header records the equivalent
-upstream PyPI compile command; the temporary gateway is not an install index.
+The dependencies job installs `requirements/qwen-macos-arm64.lock` with hashes
+and binary-only wheels, runs pip check, real imports and a CPU operation, then
+executes a real MPS arithmetic operation with fallback disabled before Torch
+import. The MPS child has a 30-second deadline and exact wait/reap ownership.
+The conservative default MPS watermark is retained. Reports identify source,
+runner image/version, physical RAM, free disk, Python/dependency versions,
+selected tensor device, MPS allocation/working-set values and peak child RSS.
+Physical RAM and free disk are capacity observations, not available-RAM admission.
 
-Independent bounded PyPI version-JSON checks confirmed these lock hashes:
+The clients job creates fresh CLI/service virtual environments from their hash
+locks. It exercises actual CLI help, the temporary HTTP/Core/Dispatcher fixture
+and MCP stdio initialization, tool listing and discovery parity. It loads no
+engine and therefore does not establish real public speech generation.
 
-| Native artifact | SHA256 |
-| --- | --- |
-| torch-2.10.0-2-cp311-none-macosx_11_0_arm64.whl | `418997cb02d0a0f1497cf6a09f63166f9f5df9f3e16c8a716ab76a72127c714f` |
-| torch-2.10.0-cp311-none-macosx_11_0_arm64.whl | `b7bd80f3477b830dd166c707c5b0b82a898e7b16f59a7d9d42778dd058272e8b` |
-| torchaudio-2.10.0-cp311-cp311-macosx_11_0_arm64.whl | `bcab0e39eb18da84cba1a0c87f600abb6ce97c882200cb46e841caea106f037f` |
-| qwen_tts-0.1.1-py3-none-any.whl | `11a290d8dabc7ef91a90c54478c8ab19b3edb1d85c0882313721892bdc4af15d` |
+Reports are explicit JSON artifact paths with seven-day retention. No workspace,
+HOME, `.env`, credential, model tree or hub cache is uploaded. The native Qwen
+lock retains torch/torchaudio 2.10.0, qwen-tts 0.1.1, transformers 4.57.3 and
+tokenizers 0.22.2; newer upstream releases are not implicitly adopted.
 
-Sources: [Torch](https://pypi.org/pypi/torch/2.10.0/json),
-[torchaudio](https://pypi.org/pypi/torchaudio/2.10.0/json),
-[Qwen](https://pypi.org/pypi/qwen-tts/0.1.1/json).
-Hash lists can contain multiple compatible wheel builds/ABI versions;
-pip selects a wheel compatible with the actual CPython 3.11 runner.
+## Opt-in cold native inference prerequisite
 
-Official action tag refs were checked with `git ls-remote` against the action
-repositories: checkout v4.3.1 `34e114876b0b11c390a56381ad16ebd13914f8d5`,
-setup-python v5.6.0 `a26af69be951a213d495a4c3e4e4022e16d87065`, and
-upload-artifact v4.6.2 `ea165f8d65b6e75b540449e92b4886f43607fa02`.
-[Checkout release](https://github.com/actions/checkout/releases/tag/v4.3.1),
-[Python release](https://github.com/actions/setup-python/releases/tag/v5.6.0),
-[artifact release](https://github.com/actions/upload-artifact/releases/tag/v4.6.2).
+Before merge, push **this exact branch** with `[apple-speech]` in the final commit
+message to run the finite `native-speech` job. Ordinary pushes do not download
+weights. After the workflow exists on the default branch, manual dispatch with
+`qwen_speech=true` is also available. The older manual tensor-only input remains
+available, although automatic dependency checks now already execute that probe.
+Do not rerun an expensive failure automatically.
 
-## Manual tensor probe and remaining gate
+The job installs the same lock and downloads only the public, ungated
+`Qwen/Qwen3-TTS-12Hz-0.6B-CustomVoice` snapshot at
+`85e237c12c027371202489a0ec509ded67b5e4b5`. Its descriptor pins every file's
+size and SHA256 (2,498,383,610 bytes total). No token, gated acceptance, persistent
+weight cache or paid runner is involved. Acquisition checks at least 10 GiB free
+disk and enforces a 180-second between-read deadline plus 20-second socket timeout.
+The entire job has a 12-minute deadline.
 
-After the parent publishes this workflow to the default branch, GitHub makes
-`workflow_dispatch` available. No dispatch has occurred here. Select
-`mps_probe=true` to run the separate job after dependency checks succeed.
-It starts a fresh child with fallback disabled before Torch import, retains
-PyTorch's conservative default memory watermark, checks MPS availability,
-allocates two values explicitly on MPS, performs arithmetic, synchronizes,
-checks the result's MPS device and copied values, and fails without fallback.
-The parent enforces 30 seconds, kills the process group on expiry, and waits
-for the exact child. The workflow deadline additionally bounds the job.
+`scripts/ci-apple-speech.py` calls the product `native_child.infer` verifier,
+spawn guard, complete local loader, native backend and PCM encoder in an owned
+subprocess. It tries one short English preset, then French only after English
+succeeds. Each child gets 30 seconds including verification/load and a sampled
+6 GiB RSS ceiling. RSS sampling is an early-stop guard, **not** an OS memory
+reservation or a bound on all Metal allocations. The default MPS allocator limit
+remains enabled. Failure stops the sequence; there is no OOM retry or fallback.
+The parent kills and reaps its child and removes only its private model tree.
 
-Only `apple-ci/mps-probe.json` is uploaded, with a 10 MiB serialization bound
-and 7 day retention. There is no workspace/directory artifact upload, no
-r409 private clones, audio, weights, `.env`, or Hugging Face cache publication.
-No secrets, `pull_request_target`, persistent checkout credentials, caches,
-model downloads or synthetic success substitutions are configured.
+Only small reports/logs and successful short WAV files are uploaded. Successful
+WAV reports contain format/duration/hash, wall time, RTF and peak process RSS;
+nonempty nonsilent PCM alone does not establish speech fidelity or the expected
+ending. There is no paid STT. This is a direct native inference prerequisite,
+**not** an installed HTTP/CLI/MCP synthesis test. It grants no native-ready claim.
+CPU comparison is explicitly not run because the installed native owner requires
+MPS. Public install/enrollment, synthesis/download/restart/cancel, cloning,
+alias/default conventions, cache reuse and cold installer qualification remain
+separate required gates. Do not relax trust, containment, memory or deadline
+checks to pass them.
 
-A successful tensor probe establishes only that small MPS tensor operation.
-Full Qwen synthesis remains deferred until a public reference fixture and a
-measured fit within 7 GB are known. The next finite gate must use the product
-native child with a 30 second synthesis limit, exact checkpoint/revision and
-public input provenance, actual MPS device evidence, bounded output and
-resource measurements, and verified termination/reap. It must not use
-`PYTORCH_MPS_HIGH_WATERMARK_RATIO=0` or CPU fallback to obtain a pass.
+## Why this order
 
-Local checks: `python3 -m unittest tests.test_ci_apple_silicon
- tests.worker.test_native_protocol -v`, `actionlint
-.github/workflows/apple-silicon.yml`, and `git diff --check`. No actual native
-dependency installation/import, hosted CI run, synthesis, or Apple hardware
-qualification is claimed by these source checks.
+[GitHub's official runner table](https://docs.github.com/en/actions/reference/runners/github-hosted-runners)
+lists the standard public arm64 macOS runner as M1, three CPUs and 7 GB RAM;
+standard public runner compute is free. Artifact storage remains quota-dependent.
+This hardware benchmark is not a guarantee for everyday Macs.
 
-## Next finite ARM64 preview slice — not implemented / not_run
+[PyTorch's MPS guide](https://docs.pytorch.org/docs/stable/notes/mps.html) requires
+moving tensors/modules to the device; availability flags alone are insufficient.
+[Its allocator documentation](https://docs.pytorch.org/docs/stable/mps_environment_variables.html)
+explains CPU fallback and warns that disabling the high watermark can cause
+system failure. This workflow disables fallback and preserves the watermark.
 
-Use existing Kokoro CPU through linux/arm64 Docker on free `ubuntu-24.04-arm`,
-paired with the current amd64 baseline. Native macOS CPU requires a new adapter
-and is outside this package. Full ARM64 synthesis is not required to describe a
-preview on already qualified platforms.
+[Qwen's official implementation](https://github.com/QwenLM/Qwen3-TTS) demonstrates
+explicit device/dtype/attention selection and reusable clone prompts. The
+[CustomVoice model card](https://huggingface.co/Qwen/Qwen3-TTS-12Hz-0.6B-CustomVoice)
+identifies Apache-2.0 weights, English/French support and Ryan as an English
+speaker. Upstream CUDA examples do not prove Metal compatibility. The pinned
+0.6B CustomVoice BPE layout is admitted explicitly; arbitrary checkpoint aliases,
+remote code, unlisted config paths and malformed vocabulary remain refused.
 
-1. Create separate `requirements/kokoro-linux-arm64.lock` and
-   `service/requirements-linux-arm64.lock` at existing compatible pins using
-   uv 0.11.15: `uv pip compile INPUT --constraint EXISTING_LOCK --python-version
-   3.11 --python-platform aarch64-manylinux_2_28 --generate-hashes --no-build
-   -o NEW_LOCK`. Metadata resolution is not wheel-install or synthesis evidence.
-2. Add explicit `--platform` to `scripts/cpu-kokoro-export.py`, defaulting to
-   linux/amd64; thread it through probe create, build config, image architecture,
-   installation policy and retained receipts. Inspect downstream guards; never
-   bypass amd64 guards to accept ARM64 evidence.
-3. Add an architecture-specific descriptor. The existing Kokoro build descriptor
-   pins an amd64 FFmpeg SHA256 (`0dafc136...`); never reuse it for ARM64. Verify
-   exact ARM64 Debian package versions, executable hash and base-image manifest
-   membership. ARM64 availability of the base digest remains unverified. Preserve
-   amd64 defaults and all resource bounds.
-4. Parameterize only control/worker-export release-image lock selection. Preserve
-   Pocket/Qwen policy and qualification. Add one bounded pinned-action workflow
-   pairing amd64 and ubuntu-24.04-arm with exact model provenance.
-5. Future separately authorized runs must exercise installed HTTP/CLI/MCP
-   generate/export/download/restart and retain actual WAVs, receipts,
-   image/source/model hashes and qualification.json. No secret-dependent Pocket
-   or paid Metal lane. Pinned bounded CPU-STT fidelity acquisition/run requires
-   separate authorization; absent fidelity cannot pass the synthesis gate.
+[Kokoro upstream](https://github.com/hexgrad/kokoro) describes Apache-licensed
+weights. The repository uses the separate
+[kokoro-onnx implementation](https://github.com/thewh1teagle/kokoro-onnx), fixed to
+CPUExecutionProvider, so a Torch MPS flag does not accelerate that adapter.
+[Pocket upstream](https://github.com/kyutai-labs/pocket-tts) targets CPU and does
+not officially support a GPU device argument; its current language/features
+must not be projected onto this repository's older pinned model/package.
+Pocket gated assets require users' own authorized terms acceptance.
 
-Stop at the first exact pin/platform blocker and preserve amd64 behavior. No
-model or dependency upgrades are implied. Import-only or lock-only green means
-dependency feasibility, never Apple CPU runtime qualification.
+Application source remains **AGPL-3.0-only**. Dependency and model licenses remain
+separate; an upstream MIT/Apache license does not relicense this application.

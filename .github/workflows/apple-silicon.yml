@@ -17,7 +17,9 @@ on:
       - 'lib/**'
       - 'worker/**'
       - 'tests/worker/test_native_protocol.py'
+      - 'tests/worker/test_native_qwen.py'
       - 'tests/test_ci_apple_silicon.py'
+      - 'tests/test_ci_apple_speech.py'
       - 'docs/agent-interface/APPLE-CI.md'
   pull_request:
     paths: *paths

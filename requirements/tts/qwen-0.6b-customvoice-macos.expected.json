@@ -11,7 +11,7 @@
     "torch": "2.10.0",
     "transformers": "4.57.3",
     "tokenizers": "0.22.2",
-    "safetensors": "0.7.0"
+    "safetensors": "0.8.0"
   },
   "allowed_origins": [
     "https://huggingface.co"

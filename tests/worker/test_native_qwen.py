@@ -87,7 +87,8 @@ class NativeQwenTests(unittest.TestCase):
         def generate(**kwargs):
             events.append(('generate',kwargs))
             return [[.1,-.1]],24000
-        model=types.SimpleNamespace(generate_custom_voice=generate)
+        model=types.SimpleNamespace(generate_custom_voice=generate,
+                                    device=types.SimpleNamespace(type='mps'))
         factory=Mock(return_value=model)
         hub=types.SimpleNamespace(snapshot_download=Mock(side_effect=AssertionError('download')))
         # Force the complete loader to use injected Torch even if another test
@@ -109,6 +110,12 @@ class NativeQwenTests(unittest.TestCase):
                 with self.assertRaises(native_child.SpawnRefused):
                     native_child.infer(self.spec,'hello',{'bundle':self.fixture.bundle},{},self.inventory)
                 hub.snapshot_download.assert_not_called()
+                model.device.type='cpu'
+                from lib.tts_backends.qwen_native import NativeQwenBackend
+                with self.assertRaisesRegex(ValueError,'native_device_mismatch'):
+                    NativeQwenBackend(model_name=str(self.fixture.bundle),num_threads=2,
+                        dtype_str='float32',revision=self.spec.revision,offline=True,
+                        device='mps',attention='sdpa')
         finally:
             sys.modules.pop('lib.tts',None)
             if saved is not None:sys.modules['lib.tts']=saved
