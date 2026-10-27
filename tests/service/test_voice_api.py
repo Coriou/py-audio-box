@@ -21,7 +21,8 @@ class VoiceAPIFixture(VoiceDispatcherFixture):
         self.credentials = StaticCredentials([
             Credential('alice-secret', 'alice', frozenset({'read'})),
             Credential('bob-secret', 'bob', frozenset({'read'})),
-            Credential('write-secret', 'alice', frozenset({'production-write'}))])
+            Credential('write-secret', 'alice', frozenset({'production-write'})),
+            Credential('rw-secret', 'alice', frozenset({'read', 'production-write'}))])
         self.app = create_voice_app(self.dispatcher, credentials=self.credentials)
 
     def request(self, path, token='alice-secret', target=None):
@@ -125,7 +126,7 @@ class VoiceAPITests(VoiceAPIFixture, unittest.TestCase):
         async def mutate(operation, payload, key):
             async with httpx.AsyncClient(transport=httpx.ASGITransport(app=self.app),base_url='http://test') as client:
                 return await client.post('/v1/operations/'+operation,
-                    headers={'Authorization':'Bearer write-secret','Idempotency-Key':key},json=payload)
+                    headers={'Authorization':'Bearer rw-secret','Idempotency-Key':key},json=payload)
         archived = asyncio.run(mutate('voice_archive',dict(voice_id=voice_id,expected_revision=2),'resolve-archive'))
         self.assertEqual(archived.status_code,200,archived.text)
         self.assertEqual((archived.json()['revision'],archived.json()['aliases']),(3,[]))

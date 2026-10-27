@@ -19,6 +19,51 @@ IMAGES = ('Dockerfile', 'Dockerfile.cpu', 'Dockerfile.cuda', 'Dockerfile.cuda-ba
           'Dockerfile.watcher', 'Dockerfile.tests', 'service/Dockerfile.release')
 
 
+def copied_inputs(root, dockerfile):
+    """Check local COPY closure in a checkout or its /app image layout.
+
+    Directory contents map into the destination, rather than below its basename.
+    Unsupported flags and external stages fail closed instead of hiding inputs.
+    """
+    copied = set()
+    for line in dockerfile.replace('\\\n', ' ').splitlines():
+        instruction, _, arguments = line.strip().partition(' ')
+        if instruction.upper() != 'COPY':
+            continue
+        arguments = arguments.strip()
+        parts = json.loads(arguments) if arguments.startswith('[') else shlex.split(arguments)
+        if (not isinstance(parts, list) or len(parts) < 2 or
+                any(not isinstance(p, str) or p.startswith('--') for p in parts)):
+            raise AssertionError('Unsupported COPY: ' + line)
+        sources, destination = parts[:-1], parts[-1]
+        dest = Path(destination)
+        if dest.is_absolute():
+            try:
+                dest = dest.relative_to('/app')
+            except ValueError:
+                # Non-/app build inputs (e.g. /tmp lock) still require source bytes.
+                dest = None
+        if dest is not None and '..' in dest.parts:
+            raise AssertionError('Unsafe COPY destination: ' + destination)
+        for source in sources:
+            relative = Path(source)
+            if relative.is_absolute() or '..' in relative.parts or any(c in source for c in '*?['):
+                raise AssertionError('Unsupported COPY source: ' + source)
+            path = root / relative
+            target = root / dest if dest is not None else None
+            if target is not None and (destination.endswith('/') or len(sources) > 1 or target.is_dir()):
+                target = target / relative.name
+            if path.is_dir():
+                copied.update(str(p.relative_to(root)) for p in path.rglob('*') if p.is_file())
+            elif path.is_file():
+                copied.add(source)
+            elif target is not None and target.is_file():
+                copied.add(source)
+            else:
+                raise AssertionError('Missing COPY source and destination: ' + source)
+    return copied
+
+
 class SourceDistributionTests(unittest.TestCase):
     def test_canonical_license_and_source_election(self):
         data = (ROOT / 'LICENSE').read_bytes()
@@ -91,19 +136,38 @@ class SourceDistributionTests(unittest.TestCase):
         self.assertEqual([r for r in rules if r in ('!LICENSE', '!THIRD_PARTY_NOTICES.md')],
                          ['!LICENSE', '!THIRD_PARTY_NOTICES.md'])
 
+    def test_copy_closure_checkout_and_image_destinations(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / 'original').mkdir()
+            (root / 'original/input.py').write_text('source')
+            self.assertEqual(copied_inputs(root, 'COPY original/input.py /app/renamed.py'),
+                             {'original/input.py'})
+            (root / 'original/input.py').unlink()
+            (root / 'renamed.py').write_text('image')
+            self.assertEqual(copied_inputs(root, 'COPY ["original/input.py", "/app/renamed.py"]'),
+                             {'original/input.py'})
+            (root / 'renamed.py').unlink()
+            with self.assertRaisesRegex(AssertionError, 'Missing COPY'):
+                copied_inputs(root, 'COPY original/input.py /app/renamed.py')
+            (root / 'original-dir/nested').mkdir(parents=True)
+            (root / 'original-dir/nested/data').write_text('source directory')
+            (root / 'installed/nested').mkdir(parents=True)
+            (root / 'installed/nested/data').write_text('directory contents')
+            self.assertEqual(copied_inputs(root, 'COPY original-dir /app/installed/'),
+                             {'original-dir/nested/data'})
+            (root / 'installed/a.txt').write_text('a')
+            (root / 'installed/b.txt').write_text('b')
+            self.assertEqual(copied_inputs(root, 'COPY a.txt b.txt /app/installed/'),
+                             {'a.txt', 'b.txt'})
+            with self.assertRaisesRegex(AssertionError, 'Missing COPY'):
+                copied_inputs(root, 'COPY absent.txt /app/installed/')
+            for instruction in ('COPY --from=builder x /app/x', 'COPY ../x /app/x'):
+                with self.assertRaises(AssertionError):
+                    copied_inputs(root, instruction)
+
     def test_test_image_copies_static_check_inputs(self):
-        # Expand actual COPY sources to verify the tests can run in the narrow image.
-        copied = set()
-        for line in (ROOT / 'Dockerfile.tests').read_text().splitlines():
-            if line.startswith('COPY '):
-                parts = shlex.split(line)[1:]
-                for source in parts[:-1]:
-                    path = ROOT / source
-                    self.assertTrue(path.exists(), source)
-                    if path.is_dir():
-                        copied.update(str(p.relative_to(ROOT)) for p in path.rglob('*') if p.is_file())
-                    else:
-                        copied.add(source)
+        copied = copied_inputs(ROOT, (ROOT / 'Dockerfile.tests').read_text())
         self.assertTrue(set(IMAGES + LEGAL + ('studio/package.json', 'studio/package-lock.json',
                                              'service/Dockerfile.release.dockerignore', '.dockerignore')) <= copied)
 

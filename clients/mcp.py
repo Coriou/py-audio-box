@@ -23,7 +23,7 @@ def input_schema(operation):
 
 def tools():
     items = [Tool(name=OPERATIONS[op]['mcp'],
-        description=('Service-dependent HTTP. ' +
+        description=('HTTP. ' +
             ('Explicit opt-in bytes only; at most 3072 decoded bytes. Larger downloads: python -m clients.cli asset content ID --output FILE.' if op == 'asset_content' else 'Register the configured preset from speech_skeleton_status; generation only, no cloning or qualification.' if op == 'voice_preset_register' else '')).rstrip(),
         inputSchema=input_schema(op)) for op in dict.fromkeys((*IMPLEMENTED, *VOICE_READS, *PRODUCTION_OPERATIONS))]
     if os.environ.get('SPEECH_UPLOAD_ROOT'):
