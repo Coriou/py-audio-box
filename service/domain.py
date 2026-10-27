@@ -12,7 +12,7 @@ from service.catalogue import (ASSETS, ASSET_FILES, Failure, HTTP_BYTES, IMPLEME
 
 def read(operation, payload):
     if operation not in IMPLEMENTED:
-        raise Failure('not_found', 'Operation is unavailable in the 0C skeleton.', 'operation')
+        raise Failure('not_found', 'Operation is unavailable in the synthetic evaluation service.', 'operation')
     op = OPERATIONS[operation]
     try:
         validate(op['request'], payload)

@@ -16,7 +16,7 @@ class HTTP:
                 response = client.get(path, params=params, headers={'Authorization': 'Bearer ' + self.credential} if self.credential else {})
                 body = response.json()
         except (httpx.HTTPError, ValueError):
-            raise ConnectionError('Skeleton HTTP transport unavailable.') from None
+            raise ConnectionError('Speech HTTP transport unavailable.') from None
         if response.status_code != 200:
             validate('error', body)
             error = Failure(body['code'], body['message'], body['field'], body['action'])
@@ -99,7 +99,7 @@ class HTTP:
 
     def call(self, operation, payload, *, key=None):
         if operation not in (*IMPLEMENTED, *VOICE_READS, *PRODUCTION_OPERATIONS):
-            raise Failure('not_found', 'Operation unavailable in the 0C skeleton.', 'operation')
+            raise Failure('not_found', 'Operation unavailable in the synthetic evaluation service.', 'operation')
         op = OPERATIONS[operation]
         validate(op['request'], payload)
         if op['http']['method'] == 'POST':

@@ -189,7 +189,7 @@ def context(expected):
 def journey(output, port, token):
     from clients.http import HTTP
     http = HTTP('http://127.0.0.1:'+str(port), credential=token)
-    status = http.get('/skeleton')
+    status = http.get('/v1/status')
     save(output/'status-before.json', status)
     if not status['activation_ready'] or not status['ready_for_speech']: raise ValueError('service_not_ready')
     registered = http.call('voice_preset_register', dict(preset='ff_siwis', voice_id='cpu-siwis', expected_revision=0), key='cpu-preset')
@@ -334,7 +334,7 @@ def main():
     # Retain stop proof separately: starting again must use the existing handle.
     result = commands.run([sys.executable,'-I','-B','-c',entrypoint,'up','--handle',str(handle)], timeout=300, maximum=1024**2)
     save(output/'restart-result.json', json.loads(result))
-    restarted = __import__('clients.http',fromlist=['HTTP']).HTTP('http://127.0.0.1:'+str(args.port),credential=token).get('/skeleton')
+    restarted = __import__('clients.http',fromlist=['HTTP']).HTTP('http://127.0.0.1:'+str(args.port),credential=token).get('/v1/status')
     save(output/'status-after-restart.json', restarted)
     if not restarted['activation_ready'] or not restarted['ready_for_speech']:
         raise ValueError('restart_not_ready')

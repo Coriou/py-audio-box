@@ -80,7 +80,7 @@ def main(argv=None):
         elif args.command == 'status': result = http.get('/v1/status')
         elif args.command == 'operation-detail':
             from urllib.parse import quote
-            result = http.get('/skeleton/operations/' + quote(args.operation_id, safe=''))
+            result = http.get('/v1/operations/' + quote(args.operation_id, safe=''))
         elif args.command in ('speech','audio') or (args.command == 'voice' and args.verb in ('prepare','save','preset-register','aliases','archive')):
             import json
             operation = 'audio_export' if args.command == 'audio' else 'speech_generate' if args.command == 'speech' else 'voice_'+args.verb.replace('-', '_')
@@ -139,7 +139,7 @@ def main(argv=None):
         from service.catalogue import problem
         print(compact(problem('invalid_request', 'Request does not match canonical schema.', 'request'))); return 2
     except ConnectionError:
-        print(compact({'transport_error':'Skeleton HTTP transport unavailable.'})); return 3
+        print(compact({'transport_error':'Speech HTTP transport unavailable.'})); return 3
     except (OSError, ValueError) as exc:
         # No local paths, payloads, URLs or tracebacks in model-facing errors.
         from service.catalogue import problem

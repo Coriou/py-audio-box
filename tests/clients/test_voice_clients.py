@@ -18,11 +18,13 @@ from service.catalogue import Failure
 class VoiceClientTests(VoiceAPIFixture, unittest.TestCase):
     def test_client_parity_credentials_and_errors(self):
         outer = self
+        requested_paths = []
         class ASGIClient:
             def __init__(self, **kwargs): pass
             def __enter__(self): return self
             def __exit__(self,*args): pass
             def get(self,path,params=None,headers=None):
+                requested_paths.append(path)
                 async def run():
                     async with httpx.AsyncClient(transport=httpx.ASGITransport(app=outer.app),base_url='http://test') as client:
                         return await client.get(path,params=params,headers=headers)
@@ -58,6 +60,16 @@ class VoiceClientTests(VoiceAPIFixture, unittest.TestCase):
                     response = asyncio.run(mcp.call_tool(spelling, {'extra': 1}))
                     self.assertTrue(response.isError)
                     self.assertEqual(response.structuredContent['code'], 'invalid_request')
+                for operation_id in ('voice_get', 'missing'):
+                    requested_paths.clear()
+                    output = io.StringIO()
+                    with contextlib.redirect_stdout(output):
+                        code = main(['operation-detail', operation_id])
+                    response = asyncio.run(mcp.call_tool('speech_operation_detail', {'operation_id': operation_id}))
+                    self.assertEqual(code, 0 if operation_id == 'voice_get' else 2)
+                    self.assertEqual(response.isError, operation_id == 'missing')
+                    self.assertEqual(json.loads(output.getvalue()), response.structuredContent)
+                    self.assertEqual(requested_paths, ['/v1/operations/' + operation_id] * 2)
                 names={t.name for t in mcp.tools()}
                 self.assertIn('speech_status', names)
                 self.assertNotIn('speech_skeleton_status', names)

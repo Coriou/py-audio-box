@@ -186,8 +186,8 @@ still be qualified on the separately authorized Linux target.
 ## First configured Kokoro voice
 
 A fresh installation has an empty voice catalogue. Startup does not register voices.
-With an active `read` + `production-write` credential, read `/skeleton` (CLI `status`,
-MCP `speech_skeleton_status`) for `configured_presets`, exact model/bundle identity
+With an active `read` + `production-write` credential, read `/v1/status` (CLI `status`,
+MCP `speech_status`) for `configured_presets`, exact model/bundle identity
 and activation status. This installation supports the configured Kokoro preset for
 generation; clone preparation is unavailable. Registration does not qualify hardware.
 

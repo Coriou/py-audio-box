@@ -62,7 +62,7 @@ async def call_tool(name, arguments):
         elif name == 'speech_operation_detail':
             if set(arguments) != {'operation_id'} or not isinstance(arguments['operation_id'], str) or len(arguments['operation_id']) > 128:
                 raise Failure('invalid_request', 'Supply one operation_id.', 'operation_id')
-            body = await asyncio.to_thread(transport.get, '/skeleton/operations/' + quote(arguments['operation_id'], safe=''))
+            body = await asyncio.to_thread(transport.get, '/v1/operations/' + quote(arguments['operation_id'], safe=''))
         else:
             operation = next((op for op in dict.fromkeys((*IMPLEMENTED, *VOICE_READS, *PRODUCTION_OPERATIONS)) if OPERATIONS[op]['mcp'] == name), None)
             if operation is None: raise Failure('not_found', 'Tool unavailable.', 'tool')

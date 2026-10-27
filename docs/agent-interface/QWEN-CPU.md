@@ -12,8 +12,10 @@ fresh disk admission is short by about 3 GB. Historical actual05 measurement
 remains unresolved. Those historical results do not qualify this HEAD.
 Public API/CLI/MCP cloning, cancellation/reap, restart/history and listening still
 need actual acceptance. Public release qualification is **NOT READY**.
-Older Apple dependency CI passed with MPS skipped; Apple synthesis/Metal remain
-unqualified. CUDA is deferred and unqualified.
+Apple CI at source `97aed4b` passed dependency imports, a CPU tensor operation and
+CLI/MCP fixture and stdio protocol calls on macos-15 arm64. MPS built/available
+flags were true; the MPS tensor probe did not run. No synthesis was exercised;
+Apple synthesis/Metal and CUDA remain unqualified.
 
 The pinned [repository descriptor](../../requirements/tts/qwen-0.6b-base.expected.json)
 declares Apache-2.0 and an operator-reviewed public read-only snapshot with no

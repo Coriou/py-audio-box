@@ -95,6 +95,7 @@ class ProductionClientTests(ProductionAPIFixture,unittest.TestCase):
             with patch('service.production_selection.discovery',return_value=self.profiles):
                 profile=cli(['profile','get',profile_id])
                 self.assertEqual(tool('profile_get',dict(profile_id=profile_id)),profile)
+                self.assertEqual(transport.get('/v1/profiles/'+profile_id),profile)
                 self.assertEqual(transport.get('/skeleton/profiles/'+profile_id),profile)
             version=transport.call('voice_version_get',dict(voice_version_id=saved['version']['id']))
             aliases=dict(voice_id='voice',aliases=['speaker'],expected_revision=1)

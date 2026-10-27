@@ -111,7 +111,7 @@ for review. The CLI never reports success after a failed authority exit.
 
 ## Public first speech and reopen
 
-Use authenticated CLI `status` and `discover` (MCP `speech_skeleton_status` and
+Use authenticated CLI `status` and `discover` (MCP `speech_status` and
 `speech_discover`) to read activation and configured presets. Explicitly register
 that preset using `voice preset-register --request <JSON> --idempotency-key first`.
 Generate with its returned immutable version ID through `speech generate`; read

@@ -53,6 +53,24 @@ class VoiceAPITests(VoiceAPIFixture, unittest.TestCase):
         for path in ('/v1/status', '/skeleton'):
             self.assertEqual(self.request(path).status_code, 403)
 
+    def test_detail_alias_auth_and_payload_parity(self):
+        profile_id = json.loads(Path('contracts/fixtures/v1/capabilities.json').read_text())['profiles'][0]['id']
+        for target in (self.app, app):
+            for suffix in ('operations/voice_get', 'operations/missing',
+                           'profiles/' + profile_id, 'profiles/missing'):
+                for token in ('alice-secret', '', 'bad', 'write-secret'):
+                    with self.subTest(fixture=target is app, suffix=suffix, token=token):
+                        canonical = self.request('/v1/' + suffix, token, target)
+                        old = self.request('/skeleton/' + suffix, token, target)
+                        self.assertEqual(canonical.status_code, old.status_code)
+                        self.assertEqual(canonical.json(), old.json())
+                        if target is self.app and token != 'alice-secret':
+                            self.assertEqual(canonical.status_code, 403)
+        self.credentials.revoke('alice-secret')
+        for prefix in ('/v1/', '/skeleton/'):
+            self.assertEqual(self.request(prefix + 'operations/voice_get').status_code, 403)
+            self.assertEqual(self.request(prefix + 'profiles/' + profile_id).status_code, 403)
+
     def advertised_errors(self, operation):
         response = self.request('/skeleton/operations/'+operation)
         self.assertEqual(response.status_code, 200)

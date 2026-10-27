@@ -90,8 +90,9 @@ with this checkout as its working directory. Supply `SPEECH_URL` and
 `SPEECH_CREDENTIAL` privately through the agent host's secret configuration.
 The adapter calls the same authenticated HTTP service and named operation schemas;
 it loads no model. Do not put the credential in command arguments or publish the
-installation output directory. Native macOS SDK wheel availability is a separate
-client prerequisite; the CPU runtime itself remains in Linux Docker.
+installation output directory. Apple CI on macos-15 arm64 installs this same lock
+and passes CLI/MCP fixture and stdio protocol calls; this is client evidence only,
+with no synthesis qualification. The CPU runtime remains in Linux Docker.
 
 For reference uploads from MCP, optionally set `SPEECH_UPLOAD_ROOT` in the agent
 host to an absolute operator-authorized directory, for example

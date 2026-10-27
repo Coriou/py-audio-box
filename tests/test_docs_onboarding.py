@@ -49,6 +49,12 @@ def commands(text):
 
 
 class DocsOnboarding(unittest.TestCase):
+    def test_install_instructions_use_advertised_status_tool(self):
+        for name in ('HEADLESS-INSTALL.md', 'CPU-DOCKER.md'):
+            text = (ROOT/'docs/agent-interface'/name).read_text()
+            self.assertIn('speech_status', text)
+            self.assertNotIn('speech_skeleton_status', text)
+
     def test_agent_commands_use_client_python_and_canonical_status(self):
         guide = (ROOT/'docs/AGENT-GUIDE.md').read_text()
         self.assertNotRegex(guide, r'(?<![\w/.-])python -m clients\.cli')

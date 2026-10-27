@@ -6,7 +6,8 @@ for agents that call the same operations. Everything runs in Linux Docker
 containers on your machine. No GPU is needed, and there is no browser UI.
 
 > **Status: pre-release.** The CPU Kokoro (preset) and Pocket (French cloning)
-> installs have passed end-to-end runs on Linux/amd64 Docker. Nothing is
+> installs passed end-to-end runs on Linux/amd64 Docker at an earlier source
+> revision (2026-10-25); these runs were not repeated on this commit. Nothing is
 > published, source is licensed under AGPL-3.0-only, and audio quality has
 > not been accepted. Check the [readiness table](#what-works-today) before
 > relying on any feature.
@@ -15,14 +16,14 @@ containers on your machine. No GPU is needed, and there is no browser UI.
 
 | Capability | State | Notes |
 | --- | --- | --- |
-| Preset speech, CPU (Kokoro, French bundle) | **Works**: installed run passed at r407 source (2026-10-25) | HTTP, CLI and MCP; speech, PCM24 export, download, restart |
-| Reference voice cloning, CPU (Pocket, French) | **Works, with quality caveats** | Gated Hugging Face model; the pilot showed material text-fidelity failures |
+| Preset speech, CPU (Kokoro, French bundle) | **Works**: installed run passed at an earlier source revision (2026-10-25); not repeated on this commit | HTTP, CLI and MCP; speech, PCM24 export, download, restart |
+| Reference voice cloning, CPU (Pocket, French) | **Works, with quality caveats**: installed run passed at an earlier source revision (2026-10-25); not repeated on this commit | Gated Hugging Face model; the pilot showed material text-fidelity failures |
 | Voice catalogue: save, versions, aliases, archive | **Implemented** | Save and reuse exercised in installed runs; aliases and archive are unit-tested only |
 | Jobs: wait, events, cancel, retry, list | **Implemented** | Wait, cancel and download exercised in installed runs |
 | "Default voice for X" | **Convention, not a feature** | Set an alias such as `default.narration`, then resolve it; see the [agent guide](docs/AGENT-GUIDE.md#make-it-the-default-voice-for-x) |
 | Qwen 0.6B cloning, CPU (EN/FR) | **Not ready** | Implemented in source; installed startup and inference not yet passed ([status](docs/agent-interface/QWEN-CPU.md#current-status--2026-10-27)) |
 | Apple Silicon (Metal), NVIDIA CUDA | **Unqualified** | Native CPU/Metal unqualified; amd64 Docker on Apple Silicon uses untested emulation |
-| Listening / perceptual quality | **Partial** | Owner listened to r409 comparison samples and accepted three r414 spoken-text pairs; French liaison unresolved. No per-engine perceptual release acceptance; installed-run outputs not listened |
+| Listening / perceptual quality | **Partial** | Owner listened to earlier comparison samples and accepted three spoken-text pairs; French liaison unresolved. No per-engine perceptual release acceptance; installed-run outputs not listened |
 | Projects, blocks, clips, render (contract) | **Not implemented** | Defined in `contracts/v1`; not advertised by `discover` |
 | Published images / packages | **None** | Build from source |
 | Web UI | **Not planned for this release** | A future UI would use the same HTTP API |

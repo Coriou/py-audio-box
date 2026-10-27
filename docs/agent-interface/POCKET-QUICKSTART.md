@@ -1,6 +1,7 @@
 # Pocket French CPU, without a UI
 
-**Status: preview; French cloning only.** this recipe has passed end to end on Linux/amd64 Docker: upload, prepare,
+**Status: preview; French cloning only.** This recipe passed end to end on Linux/amd64 Docker
+at an earlier source revision (2026-10-25), not repeated on this commit: upload, prepare,
 save, generate, verified download, cancellation, restart and reuse of saved voices.
 Listening quality for these installed runs is unmeasured, the retained pilot shows text-fidelity failures,
 and CUDA and Apple Metal are unqualified. Evidence:
@@ -137,8 +138,8 @@ For stdio MCP on a supported Linux/amd64 Python 3.11 client, create a separate
 virtual environment and install `service/requirements.lock` with
 `--only-binary=:all: --require-hashes`. Configure its command as
 `python -m clients.mcp`, working directory this checkout, and inject
-`SPEECH_URL` and `SPEECH_CREDENTIAL` privately. MCP loads no model. macOS MCP SDK
-wheel availability is a separate client prerequisite. This recipe establishes
+`SPEECH_URL` and `SPEECH_CREDENTIAL` privately. MCP loads no model. Apple CI on macos-15 arm64 installs the same lock and
+passes CLI/MCP fixture and stdio protocol calls; no synthesis is qualified. This recipe establishes
 no CUDA, Metal, listening or release-wide qualification. The ordinary Docker-client
 cancellation/reap check passed as recorded above.
 

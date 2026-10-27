@@ -13,7 +13,7 @@ from service.catalogue import (Failure, IMPLEMENTED, OPERATIONS, FIXTURES,
 from service.domain import read
 import json
 
-app = FastAPI(title='0C synthetic evaluation skeleton', docs_url=None, redoc_url=None)
+app = FastAPI(title='Synthetic speech evaluation', docs_url=None, redoc_url=None)
 
 class EmptyQuery(BaseModel):
     model_config = ConfigDict(extra='forbid')
@@ -65,17 +65,19 @@ def content(asset_id: str, query: Annotated[ContentQuery, Query()]):
 def summary(query: Annotated[EmptyQuery, Query()] = EmptyQuery()):
     return {'fixture': True, 'contract_version': '1.3.0', 'ready_for_speech': False,
         'implemented': list(IMPLEMENTED), 'unavailable_operations': len(OPERATIONS)-len(IMPLEMENTED),
-        'details': '/skeleton/operations/{operation_id}', 'profiles': '/skeleton/profiles/{profile_id}',
+        'details': '/v1/operations/{operation_id}', 'profiles': '/v1/profiles/{profile_id}',
         'ui': '/evaluation/', 'store': 'none',
         'source_types_note': 'Canonical source_types names intended sources; acquisition is unavailable.',
         'byte_transfer': 'Explicit asset_content only; direct MCP 3072 decoded bytes; larger bytes via CLI file.',
         'worker': 'Optional networkless UDS boundary probe only; no job execution.'}
 
-@app.get('/skeleton/operations/{operation_id}')
+@app.get('/v1/operations/{operation_id}')
+@app.get('/skeleton/operations/{operation_id}', deprecated=True)
 def detail(operation_id: str):
     return operation_detail(operation_id)
 
-@app.get('/skeleton/profiles/{profile_id}')
+@app.get('/v1/profiles/{profile_id}')
+@app.get('/skeleton/profiles/{profile_id}', deprecated=True)
 def profile(profile_id: str):
     profiles = json.loads((FIXTURES / 'capabilities.json').read_text())['profiles']
     for item in profiles:
@@ -84,10 +86,10 @@ def profile(profile_id: str):
 
 @app.get('/', response_class=HTMLResponse)
 def index():
-    return '''<!doctype html><html lang="en"><title>0C synthetic evaluation</title>
+    return '''<!doctype html><html lang="en"><title>Synthetic speech evaluation</title>
     <h1>Synthetic evaluation only</h1><p>No speech generation, credentials, service persistence or qualified ML profiles.</p>
     <p>The editor saves locally in this browser. It is not connected to the service API.</p>
-    <a href="/evaluation/">Open unchanged 0B editor evaluation</a> · <a href="/skeleton">Read skeleton status</a></html>'''
+    <a href="/evaluation/">Open editor evaluation</a> · <a href="/v1/status">Read service status</a></html>'''
 
 # Compiled 0B fixture is packaged under an explicitly synthetic evaluation path.
 ui = Path(os.environ.get('SPEECH_EVALUATION_UI', '/opt/speech/evaluation'))
@@ -205,7 +207,8 @@ def create_voice_app(dispatcher, *, credentials, upload_deadline=15.0, installed
         return dict(synthetic=True, ready_for_speech=False, engine_qualification='none',
                     context_configuration='operator-required', store='borrowed-owner')
 
-    @production.get('/skeleton/operations/{operation_id}')
+    @production.get('/v1/operations/{operation_id}')
+    @production.get('/skeleton/operations/{operation_id}', deprecated=True)
     def voice_detail(operation_id: str, request: Request):
         if operation_id not in ('discover', *VOICE_READS, *ASSET_OPERATIONS, *PRODUCTION_OPERATIONS):
             raise Failure('not_found', 'Operation unavailable.', 'operation_id')
@@ -357,5 +360,5 @@ def create_voice_app(dispatcher, *, credentials, upload_deadline=15.0, installed
         production.add_api_route(op['http']['route'],
             (control_read_endpoint(operation) if operation in ('jobs_list','job_events','job_wait','profile_get') else read_endpoint(operation)) if op['http']['method'] == 'GET' else mutation_endpoint(operation),
             methods=[op['http']['method']])
-    production.add_api_route('/skeleton/profiles/{profile_id}',control_read_endpoint('profile_get'),methods=['GET'])
+    production.add_api_route('/skeleton/profiles/{profile_id}',control_read_endpoint('profile_get'),methods=['GET'],deprecated=True)
     return production

@@ -908,7 +908,7 @@ class ListenerProbeTests(unittest.TestCase):
             self.assertIs(e._listener_ready('a'*64),False)
             body['configuration_digest']='a'*64;body['status']['persistent_activation']=False
             self.assertIs(e._listener_ready('a'*64),False)
-        self.assertEqual(requests[0][0],('GET','/skeleton'))
+        self.assertEqual([args for args, _ in requests], [('GET','/v1/status')] * 3)
         self.assertEqual(requests[0][1]['headers']['Authorization'],'Bearer '+token)
 
 

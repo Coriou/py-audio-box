@@ -7,6 +7,7 @@ import json
 import os
 from pathlib import Path
 import platform
+import re
 import signal
 import shutil
 import asyncio
@@ -49,12 +50,30 @@ def write_report(path, report):
         stream.write(data)
 
 
+def sox_version(sox):
+    banner = subprocess.check_output([sox, '--version'], timeout=10, text=True).strip()
+    if re.search(r'\bSoX v?\d+(?:\.\d+)+', banner):
+        return banner
+    # Some Homebrew builds print only "SoX v". Record the installed package,
+    # not a claimed pin: brew install sox deliberately follows Homebrew.
+    brew = shutil.which('brew')
+    if brew:
+        try:
+            package = subprocess.check_output([brew, 'list', '--versions', 'sox'],
+                                              timeout=10, text=True).strip()
+        except (subprocess.SubprocessError, OSError):
+            package = ''
+        if re.fullmatch(r'sox \d[\w. +_-]*', package):
+            return 'Homebrew package: ' + package
+    return 'unknown (SoX banner contains no version)'
+
+
 def deps_check():
     validate_platform()
     sox = shutil.which('sox')
     if not sox:
         raise RuntimeError('SoX executable missing; provision brew install sox')
-    sox_version = subprocess.check_output([sox, '--version'], timeout=10, text=True).strip()
+    installed_sox_version = sox_version(sox)
     versions = {name: metadata.version(name) for name in EXPECTED}
     validate_versions(versions)
     for name in ('torch', 'torchaudio', 'transformers', 'tokenizers', 'qwen_tts'):
@@ -71,7 +90,7 @@ def deps_check():
             'python': platform.python_version(), 'versions': versions,
             'mps_built': torch.backends.mps.is_built(),
             'mps_available': torch.backends.mps.is_available(),
-            'sox_executable': sox, 'sox_version': sox_version,
+            'sox_executable': sox, 'sox_version': installed_sox_version,
             'cpu_tensor': 'passed', 'models_loaded': False}
 
 

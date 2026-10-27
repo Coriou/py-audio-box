@@ -16,6 +16,19 @@ SPEC.loader.exec_module(ci)
 
 
 class AppleCITests(unittest.TestCase):
+    def test_sox_version_banner_and_homebrew_fallback(self):
+        with patch.object(ci.subprocess, 'check_output', return_value='sox: SoX v14.4.2\n') as run:
+            self.assertEqual(ci.sox_version('/bin/sox'), 'sox: SoX v14.4.2')
+            run.assert_called_once_with(['/bin/sox', '--version'], timeout=10, text=True)
+        with patch.object(ci.shutil, 'which', return_value='/bin/brew'), patch.object(
+                ci.subprocess, 'check_output', side_effect=['sox: SoX v', 'sox 14.4.2_6\n']) as run:
+            self.assertEqual(ci.sox_version('/bin/sox'), 'Homebrew package: sox 14.4.2_6')
+            self.assertEqual(run.call_args.args[0], ['/bin/brew', 'list', '--versions', 'sox'])
+        for failure in ('', subprocess.CalledProcessError(1, 'brew'), subprocess.TimeoutExpired('brew', 10)):
+            with self.subTest(failure=failure), patch.object(ci.shutil, 'which', return_value='/bin/brew'), patch.object(
+                    ci.subprocess, 'check_output', side_effect=['sox: SoX v', failure]):
+                self.assertTrue(ci.sox_version('/bin/sox').startswith('unknown'))
+
     def test_missing_client_dependency_fails(self):
         with patch.object(ci.importlib, 'import_module', side_effect=ModuleNotFoundError('fastapi')):
             with self.assertRaisesRegex(ModuleNotFoundError, 'fastapi'):

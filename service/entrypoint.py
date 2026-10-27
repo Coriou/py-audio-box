@@ -563,7 +563,7 @@ def _listener_ready(configuration_digest, *, launch_policy=None):
     token=value['credentials'][0]['token']
     connection=HTTPConnection('127.0.0.1',8000,timeout=2)
     try:
-        connection.request('GET','/skeleton',headers={'Authorization':'Bearer '+token})
+        connection.request('GET','/v1/status',headers={'Authorization':'Bearer '+token})
         response=connection.getresponse()
         raw=response.read(65537)
         if response.status!=200 or len(raw)>65536: return False

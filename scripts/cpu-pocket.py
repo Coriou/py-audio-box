@@ -92,7 +92,7 @@ def journey(output, port, token, ctx):
     from clients.http import HTTP
     http=HTTP('http://127.0.0.1:'+str(port),credential=token)
     def status():
-        s=http.get('/skeleton'); core=s.get('status',{})
+        s=http.get('/v1/status'); core=s.get('status',{})
         if not s.get('activation_ready') or not core.get('persistent_activation') or any(core.get(k) for k in ('resource_fault','persistence_fault','integrity_fault','quarantined')): raise ValueError('service_activation_fault')
         return s
     def submit(op,payload,key):
@@ -218,7 +218,7 @@ def main():
     if before.get('containers')!=after.get('containers') or not before.get('containers'): raise ValueError('restart_container_identity_changed')
     # The finite client validates the retained binding and exact daemon-owned IDs.
     from clients.http import HTTP
-    status=HTTP('http://127.0.0.1:'+str(a.port),credential=token).get('/skeleton');save(output/'status-after-restart.json',status)
+    status=HTTP('http://127.0.0.1:'+str(a.port),credential=token).get('/v1/status');save(output/'status-after-restart.json',status)
     if not status['activation_ready'] or not status['ready_for_speech']: raise ValueError('restart_not_ready')
     print('Pocket CPU running on http://127.0.0.1:'+str(a.port))
     print('Private credential, handle and retained evidence: '+str(output))
