@@ -14,6 +14,17 @@ SPEC.loader.exec_module(ci)
 
 
 class AppleSpeechTests(unittest.TestCase):
+    def test_owned_temp_alias_is_canonical_before_product_no_follow_walk(self):
+        from worker.engines.pocket import _open
+        with tempfile.TemporaryDirectory() as tmp:
+            root=Path(tmp);owned=root/'owned';owned.mkdir(mode=0o700)
+            alias=root/'alias';alias.symlink_to(owned,target_is_directory=True)
+            bundle=ci.new_bundle(alias)
+            self.assertEqual(bundle.parent,owned.resolve())
+            fd=_open(bundle,True,owner_uid=ci.os.getuid());ci.os.close(fd)
+            # Product guards still reject the alias; they were not relaxed.
+            with self.assertRaises(OSError):_open(alias/'bundle',True,owner_uid=ci.os.getuid())
+
     def test_download_redirect_policy(self):
         import urllib.request
         handler=ci.PublicRedirects()

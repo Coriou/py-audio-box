@@ -107,6 +107,14 @@ def save(path, value):
     path.write_bytes(raw)
 
 
+def new_bundle(private):
+    # Only our fresh TemporaryDirectory is canonicalized. The product's model
+    # and runtime path validators continue refusing aliases supplied by callers.
+    bundle = Path(private).resolve(strict=True) / 'bundle'
+    bundle.mkdir(mode=0o700)
+    return bundle
+
+
 def acquire(root, expected):
     """Cold, hash-checked public files only; no hub cache, token or retry."""
     from service.provisioning import validate_expected
@@ -200,8 +208,7 @@ def run(output):
         report['runtime'] = 'passed'
         stage = 'download'
         with tempfile.TemporaryDirectory(prefix='apple-speech-') as private:
-            bundle = Path(private) / 'bundle'
-            bundle.mkdir(mode=0o700)
+            bundle = new_bundle(private)
             try:
                 acquire(bundle, expected)
                 report['download'] = 'passed'
