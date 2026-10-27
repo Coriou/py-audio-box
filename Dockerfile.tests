@@ -29,6 +29,7 @@ COPY run /app/run
 COPY run-direct /app/run-direct
 COPY run.ps1 /app/run.ps1
 COPY pyproject.toml /app/pyproject.toml
+COPY poetry.lock /app/poetry.lock
 COPY headless-dist-manifest.json native-dist-manifest.json Dockerfile.cpu /app/
 COPY docs/agent-interface/AUDIO-EXPORT.md /app/docs/agent-interface/AUDIO-EXPORT.md
 COPY docs/agent-interface/CPU-DOCKER.md /app/docs/agent-interface/CPU-DOCKER.md
