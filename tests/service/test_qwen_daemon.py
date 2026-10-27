@@ -66,6 +66,15 @@ class QwenDaemonTests(InstalledQwenTests):
         assets=next(m for m in dv.mounts('worker',b,family=qd.FAMILY) if m['Destination']=='/references/assets')
         self.assertIs(assets['RW'],False)
 
+    def test_legacy_helper_mount_policy_remains_eight_private_roles(self):
+        b=binding(self.config); b['policy']=qd.LAUNCH
+        self.assertNotIn('model_storage',qd.binding(b))
+        for phase in dv.PHASES:
+            self.assertEqual(dv.helper_roles(b,phase),dv.HELPER_ROLES[phase])
+            mounts=dv.mounts('helper',b,phase,family=qd.FAMILY)
+            self.assertTrue(all(m['RW'] for m in mounts))
+            self.assertFalse(any(m['Destination']=='/model-catalog' for m in mounts))
+
     def test_fixed_package_route_and_no_repair(self):
         with patch.object(dc,'qwen_main') as command:
             package_install.main(['docker-qwen','status','--handle','explicit.json'])

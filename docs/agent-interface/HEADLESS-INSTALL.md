@@ -442,3 +442,18 @@ dependency CI passed with MPS skipped; Apple synthesis/Metal remain unqualified.
 CUDA is deferred/unqualified. Public release qualification is not ready. The owner
 must also state the project source license and retain selected model notices and
 attribution before distribution; model descriptors do not choose a project license.
+
+## Explicit shared Qwen daemon storage
+
+The optional fresh Docker Qwen route is documented in
+[DOCKER-VOLUMES](DOCKER-VOLUMES.md#opt-in-shared-qwen-models-source-contract),
+including exact `docker-models` requests/receipts, `--shared-models SELECTION.json`,
+manifest-key configuration and retained failure recovery. It uses seven private
+installation volumes plus one prepublished RO model object. No download/import is
+implicit. It does not convert strict-host, legacy or native installations; native
+paths/manifest/owner/freshness authority and provisioning active pointers are unchanged.
+Permanent reservations/failed candidates have no automatic GC. Catalog loss can
+conservatively block coordination; full rehash I/O and the trusted daemon-owner
+boundary remain. Recovery cannot resume failed installation. The Owner work budget
+is not a hard reap/return guarantee. Archive/help source checks confer no installed
+runtime or release qualification.

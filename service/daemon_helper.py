@@ -133,7 +133,8 @@ class Helper:
                 any(t['bytes']>self.config['budget']['ram_bytes'] for t in self.b['tmpfs'].values())):
             raise ValueError('daemon_resource_budget')
         self.own=dv.inspect_container(request['helper'],'helper',self.config,self.b,phase=phase,nonce=nonce,family=family)
-        self.manifest=request['manifest']; self.root={r:Path(dv.ROOTS[r]) for r in dv.HELPER_ROLES[phase]} if roots is None else roots
+        self.shared='model_storage' in self.b; self.store=None; self.attachments=None
+        self.manifest=request['manifest']; self.root={r:Path('/model-catalog' if r=='catalog' else dv.ROOTS[r]) for r in dv.helper_roles(self.b,phase)} if roots is None else roots
         self.child=(lambda kind,request,fds:child(kind,request,fds,family=family)) if child_runner is child else child_runner; self.fds={}; self.original={}; self.scope=dv.scope(self.b,family=family)
         self.authority=self.root['authority']; self.end=time.monotonic()+100
 
@@ -187,6 +188,27 @@ class Helper:
         dv.closed(value,'daemon volumes consumers')
         if value['daemon']!=self.b['daemon'] or value['volumes']!=self.b['volumes']:
             raise ValueError('daemon_snapshot_binding')
+        if self.shared:
+            from service import shared_model_helper as sh, shared_models as sm
+            authority=self.attachments
+            readers=authority.readers()
+            p=authority.published
+            expected=self.store.event(p['attempt'],'intent')['expected']
+            controller=sh.Controller(self.store.catalog,None,self.b['helper_image'],expected)
+            actors=[p['writer'],p['verifier']]+controller.readers(self.store,p['candidate'])
+            controller.rpc=lambda action,payload: dict(daemon=value['daemon'],candidate=p['candidate'],consumers=value['consumers'])
+            controller.consumers(p['candidate'],actors,self.store,installations=authority)
+            own=[]
+            private=[v['Mountpoint'] for r,v in self.b['volumes'].items() if r!='models']
+            for c in value['consumers']:
+                item=readers.get(c['Id'])
+                if item and item[0]['installation']==self.b['installation']: own.append(c)
+                else:
+                    for mount in c['Mounts']:
+                        source=mount.get('Source','')
+                        if sm.source_overlap(source,private):
+                            raise ValueError('shared_foreign_private_overlap')
+            value=dict(value,consumers=own)
         known={self.own['Id']: (self.phase,self.nonce,self.own['State']['StartedAt'])}
         for name in ip.directory_entries(self.fds['authority']):
             if name.startswith('operation-') and name.endswith('.done'):
@@ -220,7 +242,7 @@ class Helper:
     def held(self):
         with ExitStack() as stack:
             # Literal role roots; their daemon Mountpoints are never client paths.
-            for role in dv.HELPER_ROLES[self.phase]:
+            for role in dv.helper_roles(self.b,self.phase):
                 path=self.root[role]
                 with ip.parent_fd(path) as (parent,name):
                     fd=os.open(name,os.O_RDONLY|os.O_DIRECTORY|os.O_NOFOLLOW,dir_fd=parent)
@@ -228,12 +250,25 @@ class Helper:
                 if not stat.S_ISDIR(s.st_mode) or (s.st_dev,s.st_ino) in self.original.values():
                     raise ValueError('daemon_helper_distinct_roots')
                 self.fds[role]=fd; self.original[role]=(s.st_dev,s.st_ino)
+            if self.shared:
+                self.mounts_checked()
+                from service import shared_models as sm
+                selected=self.b['model_storage']
+                catalog=sm.Catalog(self.root['catalog'],self.b['daemon'],selected['catalog'],self.end)
+                self.store=stack.enter_context(catalog.held(selected['manifest_sha256']))
+                self.attachments=sm.Installations(self.store)
+                if self.attachments.bound(self.b['installation'])!=(self.b,self.config): raise ValueError('shared_own_binding')
+                p=self.attachments.published
+                if self.phase in ('install','init','up','status'):
+                    expected=self.store.event(p['attempt'],'intent')['expected']
+                    if sm.verify_tree(self.root['models'],expected,self.end)!=p['observation']:
+                        raise ValueError('shared_published_tree_changed')
             try: fcntl.flock(self.fds['authority'],fcntl.LOCK_EX|fcntl.LOCK_NB)
             except BlockingIOError: raise ValueError('daemon_launch_lock_busy') from None
             # Real mountinfo corroborates exact mounted destinations and no child
             # mounts/aliases. Called by installed entrypoint; fixtures adapt only
             # this filesystem observation, never manufacture host PID evidence.
-            self.mounts_checked()
+            if not self.shared: self.mounts_checked()
             authority=os.fstat(self.fds['authority'])
             if self.phase=='install':
                 if ip.directory_entries(self.fds['authority']): raise ValueError('daemon_new_authority_required')
@@ -276,11 +311,11 @@ class Helper:
         from service.recovery import _host_mount_topology
         observed=_host_mount_topology()
         targets={m['target']:m for m in observed}
-        for role in dv.HELPER_ROLES[self.phase]:
+        for role in dv.helper_roles(self.b,self.phase):
             path=str(self.root[role])
-            if path not in targets or 'rw' not in targets[path]['options'] or any(m['target'].startswith(path+'/') for m in observed):
+            if path not in targets or ('ro' if self.shared and role=='models' else 'rw') not in targets[path]['options'] or any(m['target'].startswith(path+'/') for m in observed):
                 raise ValueError('daemon_helper_mountinfo')
-        selected=[targets[str(self.root[r])] for r in dv.HELPER_ROLES[self.phase]]
+        selected=[targets[str(self.root[r])] for r in dv.helper_roles(self.b,self.phase)]
         if any(a['device']==b['device'] and (a['root']==b['root'] or a['root'].startswith(b['root'].rstrip('/')+'/')) for a in selected for b in selected if a is not b):
             raise ValueError('daemon_helper_mount_alias')
         # Docker's inspected role map was checked independently in __init__.
@@ -289,8 +324,10 @@ class Helper:
     def input_import(self):
         # Manifest validation is shared with client; source paths never enter helper.
         entries=manifest([dict(e,source='unused') for e in self.manifest],family=self.family)
+        if self.shared and any(e['role']=='models' for e in entries): raise ValueError('shared_config_credential_only')
+        input_roles=('config','credential') if self.shared else ('models','config','credential')
         self.write('import-intent.json',dict(files=[{k:v for k,v in e.items() if k!='source'} for e in entries]))
-        for role in ('models','config','credential'):
+        for role in input_roles:
             fd=self.fds[role]; s=os.fstat(fd)
             if ip.directory_entries(fd) or (s.st_uid,s.st_gid,stat.S_IMODE(s.st_mode)) not in ((0,0,0o755),(0,0,0o700)):
                 raise ValueError('daemon_empty_input_volume_required')
@@ -323,7 +360,7 @@ class Helper:
             try:
                 os.fchown(fd,10001,10001); os.fchmod(fd,0o555); os.fsync(fd)
             finally: os.close(fd)
-        for role in ('models','config','credential'):
+        for role in input_roles:
             os.fchown(self.fds[role],10001 if role=='models' else 0,10001)
             os.fchmod(self.fds[role],0o555 if role=='models' else 0o750); os.fsync(self.fds[role])
         from service.host_install import _model_tree, _public_file
@@ -362,6 +399,7 @@ class Helper:
             authority=observe,policy=ip.family_policy(self.family),daemon_binding=self.b,family=self.family,
             launch_child=lambda raw:self.child('core',json.loads(raw),tuple(json.loads(raw)[k] for k in ('control_fd','staging_fd'))))
         self.write('init-done.json',result)
+        if self.shared: self.attachments.enrolled(self.b,self.public())
         return dict(phase='initialized',**result)
 
     def public(self):
@@ -564,8 +602,11 @@ class Helper:
             ids={}
             for role in ('control','worker'):
                 self.snapshot()
+                attachment=__import__('secrets').token_hex(16) if self.shared else None
+                if self.shared: self.attachments.attachment(self.b,self.config,role,None,attachment)
                 c=self.rpc('create',dict(role=role)); dv.inspect_container(c,role,self.config,self.b,family=self.family)
                 if c['State']['Running'] is not False or c['State']['Status']!='created': raise ValueError('daemon_created_container_state')
+                if self.shared: self.attachments.created(self.b,attachment,c)
                 ids[role]=c['Id']; self.write('created-'+role+'.json',dict(id=c['Id']))
             if len(set(ids.values()))!=2: raise ValueError('daemon_duplicate_runtime_id')
             self.write('containers.json',ids)

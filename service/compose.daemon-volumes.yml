@@ -85,3 +85,11 @@ volumes:
 # Unsupported subpath daemons refuse. Never replace with the whole control
 # volume, a Mac bind or a daemon Mountpoint bind. Owner activation/retained
 # history are unavailable; new-family up/status/stop currently refuse.
+
+# Explicit shared Qwen alternative (reference only; v1 topology above is unchanged):
+# speech-box docker-qwen install --context CONTEXT --request shared-install.json \
+#   --handle fresh-qwen.json --shared-models shared-selection.json
+# The coordinator allocates seven private volumes and attaches one already-published
+# model object RO with nocopy. Helpers alone mount pab-model-store-v1; runtime does not.
+# Compose does not initialize/import/publish the store or own attachment authority.
+# See docs/agent-interface/DOCKER-VOLUMES.md for closed selection/receipt schemas.

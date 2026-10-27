@@ -221,6 +221,10 @@ class Docker:
     def snapshot(self,b):
         self.check()
         volumes={r:self.json(['volume','inspect',v['Name']])[0] for r,v in b['volumes'].items()}
+        if 'model_storage' in b:
+            selected=b['model_storage']['catalog']
+            current=self.json(['volume','inspect',selected['Name']])
+            if len(current)!=1 or {k:current[0][k] for k in selected}!=selected: raise ValueError('shared_catalog_incarnation')
         # Reduce only Docker volume records; no client host stat of Mountpoints.
         volumes={r:{k:v[k] for k in ('Name','Driver','Options','Scope','Mountpoint','CreatedAt','Labels')} for r,v in volumes.items()}
         if volumes!=b['volumes']: raise ValueError('daemon_volume_changed')
@@ -228,9 +232,11 @@ class Docker:
         if len(ids)>512: raise ValueError('daemon_consumer_budget')
         paths=[v['Mountpoint'].rstrip('/') for v in volumes.values()]; names={v['Name'] for v in volumes.values()}
         consumers=[]
+        if 'model_storage' in b:
+            from service import shared_models as sm
         for identity in ids:
             c=self.container(identity)
-            if any(m.get('Name') in names or (bool(m.get('Source')) and any(m.get('Source','').rstrip('/')==p or
+            if any(m.get('Name') in names or ('model_storage' in b and sm.source_overlap(m.get('Source'),paths)) or (bool(m.get('Source')) and any(m.get('Source','').rstrip('/')==p or
                 m.get('Source','').startswith(p+'/') or p.startswith(m.get('Source','').rstrip('/')+'/')
                 for p in paths)) for m in c['Mounts']): consumers.append(c)
         self.check()
@@ -417,13 +423,21 @@ def main(argv=None, *, family=None):
     pd.require(family)
     export = pd.is_export(family)
     p=argparse.ArgumentParser(description=('Explicit fresh Pocket CPU Docker volume installation; actual qualification remains separate.' if family is pd.FAMILY else 'Explicit local Docker volume installation; no acquisition or repair.'))
-    p.add_argument('command',choices=('install','up','status','stop')); p.add_argument('--context'); p.add_argument('--request'); p.add_argument('--handle',required=True)
+    p.add_argument('--shared-models',help='Fresh Qwen selection JSON: descriptor, catalog, models, publication_sha256'); p.add_argument('command',choices=('install','up','status','stop')); p.add_argument('--context'); p.add_argument('--request'); p.add_argument('--handle',required=True)
     a=p.parse_args(argv)
     try:
+        shared=None; store_client=None
+        if a.shared_models and (a.command!='install' or family is not qd.FAMILY): raise ValueError('shared_fresh_qwen_only')
+        if a.shared_models:
+            from service import shared_models as sm
+            shared=parse(read(a.shared_models)); dv.closed(shared,'descriptor catalog models publication_sha256')
+            key=sm.descriptor(shared['descriptor'])[0]; sm.volume(shared['catalog']); sm.token(shared['publication_sha256'])
+            sm.volume(shared['models'],key,shared['models'].get('Labels',{}).get('speech-box.attempt'))
         if a.command=='install':
             if not a.context or not a.request: raise ValueError('daemon_install_inputs_required')
             request=parse(read(a.request)); dv.closed(request,'configuration helper_image inputs cpu tmpfs control_port')
             inputs=manifest(request['inputs'],family=family); config=request['configuration']
+            if shared and any(e['role']=='models' for e in inputs): raise ValueError('shared_config_credential_only')
             if family is not None:
                 config=ip.family_configuration(config,family)
             if export:
@@ -452,11 +466,29 @@ def main(argv=None, *, family=None):
                 configuration_digest=dv.digest(config),cpu=request['cpu'],tmpfs=request['tmpfs'],control_port=request['control_port'])
             candidate=dict(b,volumes={r:dict(Name='pab-'+installation+'-'+r,Driver='local',Options=None,Scope='local',
                 Mountpoint='/pending/'+r,CreatedAt='pending',Labels={'speech-box.installation':installation,'speech-box.role':r}) for r in dv.ROLES})
-            dv.binding(candidate,family=family)
+            if shared:
+                # Detached metadata permits only pre-mutation syntax/resource
+                # admission. The protected reservation below authenticates it.
+                b['model_storage']=dict(kind=sm.STORAGE,manifest_sha256=key,bundle_id=key,
+                    catalog=shared['catalog'],publication_sha256=shared['publication_sha256'],reference_id=installation)
+                b['volumes']['models']=shared['models']
+                candidate['model_storage']=b['model_storage']; candidate['volumes']['models']=shared['models']
+                qd.binding_configuration(candidate,config)
+            else: dv.binding(candidate,family=family)
             for image in [b['helper_image'],*config['images'].values()]:
                 if d.call(['image','inspect',image,'--format','{{.Id}}'])!=image: raise ValueError('daemon_loaded_image_required')
             exclusive(a.handle,dict(kind='creation-intent',binding=b,configuration=config))
-            for role in dv.ROLES:
+            if shared:
+                from service.shared_model_client import Client
+                directory=Path(a.handle+'.shared'); directory.mkdir(mode=0o700)
+                d.end=time.monotonic()+qd.IMPORT_SECONDS
+                store_client=Client(d,b['helper_image'],directory,d.end,time.time()+qd.IMPORT_SECONDS,shared['descriptor'])
+                store_client.catalog_volume(False)
+                if store_client.catalog!=shared['catalog']: raise ValueError('shared_selected_catalog')
+                published=store_client.coordinate('reserve',dict(installation=installation,configuration=config,
+                    catalog=shared['catalog'],publication_sha256=shared['publication_sha256']))
+                if published['candidate']!=shared['models']: raise ValueError('shared_selected_candidate')
+            for role in (r for r in dv.ROLES if not shared or r!='models'):
                 name='pab-'+installation+'-'+role
                 existing=d.call(['volume','ls','--format','{{.Name}}']).splitlines()
                 if name in existing: raise ValueError('daemon_existing_volume_refused')
@@ -469,6 +501,7 @@ def main(argv=None, *, family=None):
                 dv.volume(v,role,installation); b['volumes'][role]=v
                 exclusive(a.handle+'.created-'+role,v); d.check()
             dv.binding(b,family=family)
+            if shared: store_client.coordinate('bind',dict(binding=b,configuration=config))
             exclusive(a.handle+'.binding',dict(binding=b,configuration=config))
             phases=('install','init')
         else:
@@ -477,17 +510,30 @@ def main(argv=None, *, family=None):
             b=dv.binding(retained['binding'],family=family); config=retained['configuration']; inputs=[]
             d=Docker(endpoint=b['daemon']['endpoint'],family=family)
             if d.frozen!=b['daemon']: raise ValueError('daemon_handle_context_changed')
+            if 'model_storage' in b:
+                from service import shared_models as sm
+                from service.shared_model_client import Client
+                # Lifecycle selection comes only from the retained binding.
+                # Helpers read the descriptor from protected publication attempts.
+                directory=Path(a.handle+'.shared-'+secrets.token_hex(16)); directory.mkdir(mode=0o700)
+                store_client=Client(d,b['helper_image'],directory,time.monotonic()+120,time.time()+120)
+                store_client.catalog_volume(False)
+                if store_client.catalog!=b['model_storage']['catalog']: raise ValueError('shared_selected_catalog')
             phases=(a.command,)
         for phase in phases:
             if family is qd.FAMILY:
                 # Anchor before helper creation, never on file/chunk progress.
-                d.end=time.monotonic()+(qd.IMPORT_SECONDS if phase=='install' else 120)
+                if not (store_client and phase=='install'): d.end=time.monotonic()+(qd.IMPORT_SECONDS if phase=='install' else 120)
             nonce=secrets.token_hex(16)
             intent=a.handle+'.helper-'+nonce
             exclusive(intent,dict(phase=phase,nonce=nonce,binding=dv.digest(b)))
+            if store_client:
+                store_client.end=d.end; store_client.expires=time.time()+max(0,d.end-time.monotonic())
+                store_client.coordinate('attachment-intent',dict(binding=b,configuration=config,role='helper',phase=phase,nonce=nonce))
             identity=d.call(dv.command('helper',config,b,phase=phase,nonce=nonce,family=family))
             if not dv.HEX.fullmatch(identity): raise ValueError('daemon_helper_id')
             exclusive(intent+'.id',dict(id=identity))
+            if store_client: store_client.coordinate('attachment-created',dict(binding=b,nonce=nonce,inspection=d.container(identity)))
             result=d.exchange(identity,phase,nonce,config,b,inputs if phase=='install' else [])
             exclusive(intent+'.terminal',dict(id=identity,result=result))
         print(encoded(result).decode())

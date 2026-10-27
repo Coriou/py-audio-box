@@ -418,3 +418,21 @@ the preexisting set before joining the monitor. Continue bounded disk,
 source-hash and OOM checks throughout cleanup. Uncertain identity or missing
 creation receipts remain an explicit custody failure for the parent plan.
 No private operator implementation is changed by r441.
+
+## Shared daemon models — source-only opt-in
+
+Fresh Qwen Docker installations can explicitly select an already published local
+object with `docker-qwen install --shared-models SELECTION.json`. Follow the
+[exact requests, receipts and executable preparation examples](DOCKER-VOLUMES.md#opt-in-shared-qwen-models-source-contract).
+`docker-models init/import/verify/recover-import` is offline and explicit; install
+never downloads or imports implicitly. Seven installation-private volumes remain;
+one published model object is mounted RO. Only newly authored shared configuration
+uses manifest key K as every bundle ID. Legacy eight-volume and native host-path
+configuration, frozen contexts and readiness rules remain unchanged.
+
+Permanent reservations and failed candidates retain disk; no automatic GC occurs.
+Full rehash still incurs payload I/O, catalog availability can conservatively block
+lifecycle coordination, and daemon administrators remain trusted. Exact store
+recovery cannot resume a failed installation. Owner's deadline does not guarantee
+hard return/reap. These source contracts do not qualify Docker/runtime or release;
+all current Qwen resource, startup, public journey and listening limits above remain.

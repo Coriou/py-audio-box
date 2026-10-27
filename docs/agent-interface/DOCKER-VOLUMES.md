@@ -234,3 +234,169 @@ and mount enforcement, PID1 descendant reap, desktop loopback forwarding, and
 cold/warm resource behavior remain separate actual qualification gates. The public SOURCE fixture models published speech, control reopen, clean
 worker stop/up, old-key replay and new-key generation on the same retained IDs.
 Its injected terminal/ACK journal is not real post-speech worker qualification.
+
+## Opt-in shared Qwen models (source contract)
+
+The reviewed A+B+C implementation adds `docker-models` and fresh
+`docker-qwen install --shared-models SELECTION.json`. This is source evidence
+only: actual Docker/runtime/capacity/audio and release qualification remain open.
+The v1 recipe above and legacy Qwen eight-private-volume installs are unchanged.
+Generic, Pocket, export, strict-host and native routes do not accept shared daemon
+records as authority. Old binaries may refuse the new closed binding; no migration
+or downgrade is promised.
+
+The store is daemon-local. `pab-model-store-v1` is a helper-only catalog, never a
+runtime mount. Each published object is one physical local volume named
+`pab-model-sha256-<K>-<32hex-attempt>`. It contains only the sealed tree
+`/models/bundles/<K>/manifest.json` and every descriptor file plus its exact parent
+directory closure. Files are UID/GID 10001:10001 mode 0444; directories 0555.
+K is SHA256 of the exact canonical runtime manifest bytes, including its newline,
+not the acquisition descriptor hash or inode-sensitive tree observation digest.
+The production Qwen K is
+`d2d42c4a726518f747bb094f5b5180746a4a965020f9abc5ee739ee3d1c76fa8`.
+
+### Prepare explicit offline requests
+
+Run the following from the extracted trusted headless distribution. Supply an
+absolute `BUNDLE` directory containing the already reviewed descriptor payload;
+this script reads metadata only and performs no acquisition. `IMAGE` must be an
+already-loaded immutable helper image ID, `CONTEXT` an explicit admitted local
+Unix context. Choose fresh output paths for every invocation.
+
+```sh
+export BUNDLE=/absolute/path/to/reviewed-qwen-bundle
+export CONTEXT=orbstack
+export IMAGE='sha256:REPLACE_WITH_EXISTING_64_LOWERCASE_HEX_IMAGE_ID'
+python3 - <<'PY_SHARED_REQUEST'
+import json, os
+from pathlib import Path
+from service.shared_models import descriptor
+expected = json.loads(Path('requirements/tts/qwen-0.6b-base.expected.json').read_text())
+key, raw, files, directories = descriptor(expected)
+bundle = Path(os.environ['BUNDLE'])
+assert bundle.is_absolute()
+def save(name, value):
+    with open(name, 'x') as stream:
+        json.dump(value, stream, sort_keys=True, separators=(',', ':'))
+save('model-import.json', {'descriptor': expected, 'sources': {
+    entry['path']: str(bundle / entry['path']) for entry in expected['files']}})
+save('model-check.json', {'descriptor': expected, 'sources': {}})
+print(key)
+PY_SHARED_REQUEST
+python3 speech-box docker-models init --context "$CONTEXT" --image "$IMAGE" --output store-init
+python3 speech-box docker-models import --context "$CONTEXT" --image "$IMAGE" --request model-import.json --output store-import > publication.json
+python3 speech-box docker-models verify --context "$CONTEXT" --image "$IMAGE" --request model-check.json --output store-check > verified-publication.json
+```
+
+The shell IMAGE value above is a placeholder: replace it before executing.
+The request has exactly `descriptor` (the complete reviewed acquisition descriptor)
+and `sources` (descriptor-relative file paths to absolute no-follow single-link
+regular local files). Do not include `manifest.json` in sources: the importer
+constructs its exact canonical bytes. A fresh import requires every payload source.
+Verify, recovery and reuse can use empty sources. Init accepts no request; all
+commands require context, image and a fresh private output directory. There is no
+implicit download/import in installation, up or native provisioning.
+
+Each successful import/verify/recover-import prints the same immutable publication
+object with exactly `schema, daemon, catalog, key, attempt, candidate, observation,
+writer, verifier`. Schema is `shared-model-store-v1`; key is K, attempt is 32
+lowercase hex. Catalog and candidate are exact reduced Docker records with keys
+`Name, Driver, Options, Scope, Mountpoint, CreatedAt, Labels`; retain their returned
+values, including incarnation timestamps and opaque daemon Mountpoints. Catalog
+labels are exactly `{"speech-box.model-store":"shared-model-store-v1"}`;
+candidate adds `speech-box.manifest: K` and `speech-box.attempt: attempt`.
+Driver/scope are `local`, options null or empty. Daemon has exactly `endpoint, id, os, architecture, security, cgroup`, as in
+the existing closed Docker binding record. Observation is exactly `{root: [device, inode], tree_sha256}`.
+Each writer/verifier proof is exactly `{id, nonce, image, inspection_sha256, started,
+finished}` (64hex ID/digest, 32hex nonce, immutable image ID, terminal timestamps).
+Init returns the catalog schema record `{schema, daemon, catalog}`. These public
+records contain no credentials and do not substitute for protected catalog authority.
+
+Output directories contain exclusive `intent.json` with exactly
+`schema, operation, context, image, key, attempt, expires`, and monotonically
+numbered `NNNNNN-<kind>.json` receipts. Kinds are `volume-intent` (`name, labels`),
+`volume-created` (reduced volume), `helper-intent` (`role, nonce, command_sha256,
+candidate`), `helper-created` (`id, role, nonce`), `start-intent` (`id, role, nonce`),
+`terminal` (`id, role, inspection_sha256`) and `complete` (command result).
+Retain the whole directory, exact container IDs and protected catalog records,
+including failed attempts; stdout alone cannot recover unknown create outcomes.
+
+### Select the publication for a fresh installation
+
+```sh
+python3 - <<'PY_SHARED_SELECTION'
+import json
+from pathlib import Path
+from service.shared_models import digest
+published = json.loads(Path('publication.json').read_text())
+expected = json.loads(Path('model-check.json').read_text())['descriptor']
+selection = dict(descriptor=expected, catalog=published['catalog'],
+                 models=published['candidate'], publication_sha256=digest(published))
+with open('shared-selection.json', 'x') as stream:
+    json.dump(selection, stream, sort_keys=True, separators=(',', ':'))
+PY_SHARED_SELECTION
+python3 speech-box docker-qwen install --context "$CONTEXT" --request shared-install.json --handle fresh-qwen.json --shared-models shared-selection.json
+python3 speech-box docker-qwen up --handle fresh-qwen.json
+python3 speech-box docker-qwen status --handle fresh-qwen.json
+python3 speech-box docker-qwen stop --handle fresh-qwen.json
+```
+
+The selection has exactly the four keys shown. `publication_sha256` hashes compact,
+sorted, UTF-8 JSON without a newline (`service.shared_models.digest`), distinct
+from K's manifest serialization. It is authenticated under the protected key lock.
+Author and review `shared-install.json` separately: its exact keys remain
+`configuration, helper_image, inputs, cpu, tmpfs, control_port`, as in the family
+request. Inputs must be only config/install.json (with exact bytes/SHA256) and
+credential/control.key (bytes, no hash); model entries refuse. Config bytes are
+canonical JSON equal to configuration. For this NEW shared configuration only,
+every Qwen execution bundle_id and bundle mapping must consistently use K and
+`/models/bundles/<K>`. Do not rewrite frozen contexts, existing Core or handles.
+The production manifest pin, CPU execution and resource/readiness gates still apply.
+
+Install reserves a permanent catalog reference before allocating seven fresh
+private volumes: control, receipts, staging, IPC, authority, config, credential.
+The models role is the selected published object, RO even in the install helper.
+The final binding adds exactly `model_storage` with `kind` =
+`shared-model-bundle-v1`, `manifest_sha256` = K, `bundle_id` = K, exact `catalog`,
+`publication_sha256`, and `reference_id` = installation ID. Bound configuration,
+attachment intent/exact IDs, then enrollment are protected separate records.
+Runtime control/worker never mount the catalog. Subsequent up/status/stop select
+only the retained handle/binding; no selection, request or context override.
+Keep all handle siblings and `.shared*` receipt directories.
+
+### Recovery, retention and availability
+
+After reviewing the retained exact attempt and all actor outcomes, an operator can
+request only that store import's recovery (set ATTEMPT to its exact retained
+32-hex attempt, never a newly invented value):
+
+```sh
+python3 speech-box docker-models recover-import --context "$CONTEXT" --image "$IMAGE" --request model-check.json --attempt "$ATTEMPT" --output store-recovery > recovered-publication.json
+```
+
+Recover-import requires the exact retained attempt and descriptor, terminal writer
+proof and a complete fresh RO verification. It cannot resume a failed installation,
+enroll it, clear its incomplete intent or repair bytes. Unknown writer/create
+outcomes, active/restarted actors and malformed/conflicting publication refuse.
+A lost success after publication reuses the identical object after full verification;
+a new import may allocate a new candidate only after old writer custody is proven.
+No operation removes the old candidate or overwrites a publication.
+
+Reservations, incomplete attachments, failed candidates, stopped helpers and enrolled
+references are permanent holds. Stop, process exit and elapsed time release nothing.
+There is no automatic GC, refcount decrement, lease expiry, cleanup or retry/reset.
+This change frees no historical disk space. Missing/busy/corrupt catalog or ambiguous
+consumer authority can conservatively refuse coordinated lifecycle operations,
+including stop; running engines do not mount the catalog. Never reconstruct trust
+from labels alone or bypass refusal by deleting evidence.
+
+Reuse saves transfer/allocation, not SHA256 I/O or model RAM. Import/reuse/attach
+and install/init/up/status verification read the full sealed payload (about 2.5 GB
+for the pinned bundle), exact inventory and stable identities; stop does not add a
+full rehash to TERM custody. Tamper is a shared failure domain and refuses rather
+than repairs. Root-protected catalog and RO mounts rely on the trusted Docker
+administrator/VM/kernel: retained terminal RW importers are not immutable against
+a daemon owner restarting or replacing them. Native host paths remain separate.
+The nonrenewing 600-second Owner deadline is a work budget, not a hard reap/return
+guarantee; permanent close/wait/reap faults can retain custody beyond it.
+No storage receipt or source test grants runtime or release readiness.

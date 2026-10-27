@@ -36,14 +36,30 @@ def binding(value):
         raise ValueError('qwen_daemon_launch_required')
     projected = copy.deepcopy(value)
     projected['policy'] = dv.POLICY
-    dv.binding(projected)
+    dv._binding(projected, shared='model_storage' in projected)
     return copy.deepcopy(value)
+
+
+def binding_configuration(value, config):
+    from service import daemon_volumes as dv
+    binding(value); configuration(config)
+    if dv.digest(config) != value['configuration_digest']:
+        raise ValueError('daemon_configuration_binding')
+    if 'model_storage' in value:
+        key = value['model_storage']['manifest_sha256']
+        if set(config['bundles']) != {key} or config['bundles'][key]['manifest_sha256'] != key:
+            raise ValueError('shared_configuration_binding')
+        for context in config['contexts'].values():
+            spec = context['execution']['descriptor']
+            if spec['bundle_id'] != key or spec['manifest_sha256'] != key:
+                raise ValueError('shared_configuration_binding')
+    return value
 
 
 def installation(value):
     value = ip.installation(value)
     configuration(value['configuration'])
-    binding(value['launch'])
+    binding_configuration(value['launch'], value['configuration'])
     if value['deployment_id'] != value['launch']['installation']:
         raise ValueError('qwen_daemon_installation_binding')
     return value

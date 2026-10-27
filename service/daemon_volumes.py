@@ -69,14 +69,37 @@ def binding(value, *, family=None):
         if family is pd.FAMILY: return pd.binding(value)
         if family is not ex.FAMILY: raise ValueError('explicit_export_family_required')
         return ex.binding(value)
-    closed(value, 'policy installation daemon volumes helper_image configuration_digest cpu tmpfs control_port')
+    return _binding(value)
+
+
+def canonical_mountpoint(path):
+    # Validate retained Linux spelling; never normalize daemon metadata.
+    return (type(path) is str and path.startswith('/') and
+            all(part not in ('', '.', '..') for part in path.split('/')[1:]) and
+            not any(c in path for c in ('\x00', '\n', ',')))
+
+
+def _binding(value, *, shared=False):
+    # Private entry used only after explicit Qwen family selection.
+    closed(value, 'policy installation daemon volumes helper_image configuration_digest cpu tmpfs control_port'+(' model_storage' if shared else ''))
     if value['policy']!=POLICY or not re.fullmatch('[0-9a-f]{32}',value['installation']):
         raise ValueError('daemon_new_installation_policy')
     daemon(value['daemon']); closed(value['volumes'],' '.join(ROLES))
     paths=[]
     for role,v in value['volumes'].items():
-        volume(v,role,value['installation']); paths.append(v['Mountpoint'].rstrip('/'))
-    if len(set(paths))!=8 or any(a.startswith(b+'/') for a in paths for b in paths if a!=b):
+        if not (shared and role == 'models'):
+            volume(v,role,value['installation'])
+        paths.append(v['Mountpoint'] if shared else v['Mountpoint'].rstrip('/'))
+    if shared:
+        catalog = value['model_storage']['catalog']
+        paths.append(catalog['Mountpoint'])
+        if not all(canonical_mountpoint(p) for p in paths):
+            raise ValueError('daemon_volume_alias')
+        from service import shared_models as sm
+        sm.storage(value['model_storage'], value)
+        if len({v['Name'] for v in value['volumes'].values()} | {catalog['Name']}) != 9:
+            raise ValueError('daemon_volume_alias')
+    if len(set(paths))!=(9 if shared else 8) or any(a.startswith(b+'/') for a in paths for b in paths if a!=b):
         raise ValueError('daemon_volume_alias')
     if not IMAGE.fullmatch(value['helper_image']) or not HEX.fullmatch(value['configuration_digest']):
         raise ValueError('daemon_image_configuration_binding')
@@ -99,15 +122,27 @@ def scope(value, *, family=None):
         for r in ('control','receipts','staging','ipc')})
 
 
+def helper_roles(b, phase):
+    names = HELPER_ROLES[phase]
+    if 'model_storage' in b:
+        names = tuple(dict.fromkeys((*names, 'models', 'catalog')))
+    return names
+
+
 def mounts(role, b, phase=None, *, family=None):
     binding(b, family=family)
-    if role=='helper': names=HELPER_ROLES[phase]
+    if role=='helper': names=helper_roles(b, phase)
     elif role=='control': names=('control','ipc','staging','models','config','credential')
     elif role=='worker': names=('receipts','ipc','staging','models','config')
     else: raise ValueError('daemon_role')
     writable=set(names) if role=='helper' else ({'control'} if role=='control' else {'receipts','ipc','staging'})
-    result = [dict(Type='volume',Name=b['volumes'][r]['Name'],Source=b['volumes'][r]['Mountpoint'],
-        Destination=ROOTS[r],RW=r in writable,Propagation='') for r in names]
+    volumes = dict(b['volumes']); roots = dict(ROOTS)
+    if 'model_storage' in b:
+        from service import shared_models as sm
+        volumes['catalog'] = b['model_storage']['catalog']; roots['catalog'] = sm.CATALOG_ROOT
+        writable.discard('models')
+    result = [dict(Type='volume',Name=volumes[r]['Name'],Source=volumes[r]['Mountpoint'],
+        Destination=roots[r],RW=r in writable,Propagation='') for r in names]
     if family is not None and role=='worker':
         result.append(dict(Type='volume',Name=b['volumes']['control']['Name'],
             # Docker reports the volume root here, including for subpath mounts.
@@ -130,6 +165,7 @@ def command(role, config, b, *, phase=None, nonce=None, family=None):
         if export:
             from service import installed_export as ex
         ip.family_configuration(config, family)
+        if family is qd.FAMILY: qd.binding_configuration(b, config)
         if digest(config)!=b['configuration_digest']: raise ValueError('daemon_configuration_binding')
     helper=role=='helper'; budget=config['budget']; t=b['tmpfs']['control' if helper else role]
     args=['container','create','--pull=never','--restart=no','--read-only','--user',

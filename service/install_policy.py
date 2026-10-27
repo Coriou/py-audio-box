@@ -325,6 +325,8 @@ def installation(value):
         role_policy = configuration_policy(config)
         if (value['scope'] != scope_for(config) or value['ownership_policy'] != config['ownership_policy'] or value['configuration_digest'] != digest(config)):
             raise ValueError('installed_configuration_digest')
+        if 'launch' in value and qwen_launch:
+            qd.binding_configuration(value['launch'], config)
         _closed(value['roles'], 'control staging receipts ipc')
         seen = set()
         for role, record in value['roles'].items():
