@@ -107,7 +107,7 @@ def test_audio_contract_invalid_layout():
         AudioResult(np.array([float('nan')]), 24000)
 
 
-def fake_backend_worker(connection, settings):
+def fake_backend_worker(connection, settings, runtime_dir):
     connection.send(('ready', None))
     try:
         while True:
@@ -168,7 +168,7 @@ def test_backend_atexit_does_not_retain_owner():
     assert ref() is None
 
 
-def test_worker_redirects_load_and_method_stdout(monkeypatch, capsys):
+def test_worker_redirects_load_and_method_stdout(monkeypatch, capsys, tmp_path):
     import tts
     from tts_backends.qwen import _worker
     class Model:
@@ -190,7 +190,7 @@ def test_worker_redirects_load_and_method_stdout(monkeypatch, capsys):
         def close(self):
             pass
     monkeypatch.setattr(tts, '_load_tts_model_local', load)
-    _worker(Connection(), {})
+    _worker(Connection(), {}, str(tmp_path))
     captured = capsys.readouterr()
     assert captured.out == ''
     assert 'model loading diagnostics' in captured.err
