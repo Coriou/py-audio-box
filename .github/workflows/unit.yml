@@ -11,4 +11,61 @@ jobs:
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
       - name: Build CPU test image and run contracts without network
-        run: scripts/run-unit-tests.sh
+        shell: bash
+        run: |
+          set -euo pipefail
+          diagnostics="$RUNNER_TEMP/unit-diagnostics"
+          mkdir -p "$diagnostics"
+          container_id=''
+          finish() {
+            result=$?
+            trap - EXIT INT TERM
+            set +e
+            if [[ -n "$container_id" ]]; then
+              # Cancellation: stop only our container, then collect terminal state.
+              running=$(timeout 10s docker inspect --format '{{.State.Running}}' "$container_id" 2>>"$diagnostics/diagnostics.stderr")
+              if [[ "$running" == true ]]; then
+                timeout 25s docker stop --time 10 "$container_id" >>"$diagnostics/cleanup.log" 2>&1
+                timeout 15s docker wait "$container_id" >>"$diagnostics/cleanup.log" 2>&1
+              fi
+              timeout 10s docker inspect --format '{"Status":{{json .State.Status}},"Running":{{json .State.Running}},"OOMKilled":{{json .State.OOMKilled}},"ExitCode":{{json .State.ExitCode}},"Error":{{json .State.Error}}}' "$container_id" >"$diagnostics/state.json" 2>>"$diagnostics/diagnostics.stderr"
+              timeout 30s docker logs --tail 2000 "$container_id" >"$diagnostics/container.stdout" 2>"$diagnostics/container.stderr"
+              cat "$diagnostics/state.json" "$diagnostics/container.stdout" "$diagnostics/container.stderr"
+              running=$(timeout 10s docker inspect --format '{{.State.Running}}' "$container_id" 2>>"$diagnostics/diagnostics.stderr")
+              if [[ "$running" == false ]]; then
+                timeout 10s docker rm "$container_id" >>"$diagnostics/cleanup.log" 2>&1
+              fi
+            fi
+            printf '%s\n' "$result" >"$diagnostics/step-exit-code.txt"
+            exit "$result"
+          }
+          trap finish EXIT
+          trap 'exit 130' INT
+          trap 'exit 143' TERM
+          image="${PAB_TEST_IMAGE:-py-audio-box-unit-tests}"
+          docker build -f Dockerfile.tests -t "$image" . 2>&1 | tee "$diagnostics/build.log"
+          # Keep the runner's unit scope and all security/resource limits unchanged.
+          selection=(tests -m 'not integration and not redis_integration and not manual_b_probe'
+            --ignore=tests/local --ignore=tests/remote
+            --ignore=tests/release/test_dispatcher.py
+            --ignore=tests/release/test_packaged_lifecycle.py
+            --ignore=tests/release/test_admission.py
+            -p no:cacheprovider -x -vv --tb=short)
+          name="pab-unit-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}-${RANDOM}-${RANDOM}"
+          container_id=$(docker create --name "$name" --network none --cpus 2 --memory 1g --memory-swap 1g \
+            --pids-limit 128 --read-only --tmpfs /tmp:rw,nosuid,nodev,size=1g \
+            "$image" python -m pytest "${selection[@]}" 2>"$diagnostics/create.stderr")
+          docker start "$container_id" >"$diagnostics/start.stdout" 2>"$diagnostics/start.stderr"
+          # docker wait blocks until actual termination; its stdout is the test exit code.
+          docker wait "$container_id" >"$diagnostics/container-exit-code.txt" 2>"$diagnostics/wait.stderr"
+          result=$(cat "$diagnostics/container-exit-code.txt")
+          [[ "$result" =~ ^[0-9]+$ && "$result" -le 255 ]] || exit 125
+          exit "$result"
+      - name: Upload unit diagnostics
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: unit-diagnostics-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/unit-diagnostics/
+          if-no-files-found: warn
+          retention-days: 7
