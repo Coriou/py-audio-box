@@ -144,6 +144,21 @@ def reap(child):
 
 
 def client_smoke():
+    # The caller owns this fresh result path across child failure/timeout.
+    path = os.environ.get('APPLE_CLIENT_RESULT')
+    progress = {'fixture_calls': 'failed', 'protocol': 'not_run'}
+    def persist():
+        if path:
+            write_report(path, progress)
+    persist()
+    try:
+        _client_smoke(progress, persist)
+        return progress
+    finally:
+        persist()
+
+
+def _client_smoke(progress, persist):
     require_client_dependencies()
     from mcp import ClientSession, StdioServerParameters
     from mcp.client.stdio import stdio_client
@@ -180,6 +195,9 @@ def client_smoke():
                                  check=True, capture_output=True, text=True)
             if json.loads(cli.stdout) != expected:
                 raise RuntimeError('CLI fixture response mismatch')
+            progress['fixture_calls'] = 'passed'
+            progress['protocol'] = 'failed'
+            persist()
             async def protocol():
                 params = StdioServerParameters(command=sys.executable,
                     args=['-m', 'clients.mcp'], env=env, cwd=private)
@@ -195,9 +213,10 @@ def client_smoke():
             async def bounded_protocol():
                 await asyncio.wait_for(protocol(), timeout=30)
             asyncio.run(bounded_protocol())
+            progress['protocol'] = 'passed'
+            persist()
         finally:
             reap(child)
-    return {'protocol': 'passed', 'fixture_calls': 'passed'}
 
 
 def clients_check(path):
@@ -239,10 +258,24 @@ def clients_check(path):
         current = 'voice_clients'
         owned_run([python, '-m', 'unittest', 'tests.clients.test_voice_clients', '-v'], env=env, cwd=root, timeout=120)
         report[current] = 'passed'
-        current = 'protocol'
-        owned_run([python, '-m', 'unittest',
-                   'tests.test_ci_apple_silicon.MacClientSmoke', '-v'], env=env, cwd=root, timeout=60)
-        report.update(protocol='passed', fixture_calls='passed', status='passed')
+        current = None
+        with tempfile.TemporaryDirectory(prefix='apple-client-result-') as private:
+            result_path = Path(private) / 'stages.json'
+            smoke_env = dict(env, APPLE_CLIENT_RESULT=str(result_path))
+            try:
+                owned_run([python, '-m', 'unittest',
+                           'tests.test_ci_apple_silicon.MacClientSmoke', '-v'],
+                          env=smoke_env, cwd=root, timeout=60)
+            finally:
+                if result_path.exists():
+                    stages = json.loads(result_path.read_text())
+                    for stage in ('fixture_calls', 'protocol'):
+                        if stages.get(stage) not in ('passed', 'failed', 'not_run'):
+                            raise RuntimeError(f'invalid smoke stage: {stage}')
+                        report[stage] = stages[stage]
+            if any(report[stage] != 'passed' for stage in ('fixture_calls', 'protocol')):
+                raise RuntimeError('smoke did not report both stages passed')
+        report['status'] = 'passed'
     except Exception as exc:
         if current:
             report[current] = 'failed'

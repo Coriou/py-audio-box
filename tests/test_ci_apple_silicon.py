@@ -4,7 +4,11 @@ from pathlib import Path
 import subprocess
 import tempfile
 import unittest
-from unittest.mock import Mock, patch
+from unittest.mock import AsyncMock, Mock, patch
+from contextlib import asynccontextmanager, ExitStack
+import json
+import os
+import types
 
 SPEC = importlib.util.spec_from_file_location('apple_ci', Path(__file__).resolve().parents[1] / 'scripts/ci-apple-silicon.py')
 ci = importlib.util.module_from_spec(SPEC)
@@ -41,6 +45,75 @@ class AppleCITests(unittest.TestCase):
             for stage in ('mcp_install', 'protocol', 'fixture_calls'):
                 self.assertEqual(report[stage], 'not_run')
             self.assertFalse(report['runtime_qualified'])
+
+    def test_real_smoke_stage_failure_reporting(self):
+        # Inject at actual CLI/MCP boundaries, run the real smoke control flow
+        # and parent merger. No installation or functional transport evidence.
+        for failure in ('startup', 'cli', 'cli_timeout', 'mcp', 'mcp_timeout', None):
+            with self.subTest(failure=failure), tempfile.TemporaryDirectory() as tmp, ExitStack() as stack:
+                path = Path(tmp) / 'clients.json'
+                expected = {'operations': []}
+                child = Mock(pid=123)
+                child.poll.return_value = 1 if failure == 'startup' else None
+                response = Mock()
+                response.json.return_value = expected
+                http = Mock()
+                http.__enter__ = Mock(return_value=http)
+                http.__exit__ = Mock(return_value=False)
+                http.get.return_value = response
+                session = Mock()
+                session.initialize = AsyncMock(side_effect=(
+                    RuntimeError('MCP injected') if failure == 'mcp' else
+                    TimeoutError('MCP timeout') if failure == 'mcp_timeout' else None))
+                session.list_tools = AsyncMock(return_value=types.SimpleNamespace(
+                    tools=[types.SimpleNamespace(name='speech_discover')]))
+                session.call_tool = AsyncMock(return_value=types.SimpleNamespace(
+                    isError=False, structuredContent=expected))
+                @asynccontextmanager
+                async def context(*args, **kwargs):
+                    yield session
+                @asynccontextmanager
+                async def streams(*args, **kwargs):
+                    yield (None, None)
+                modules = {'mcp': types.SimpleNamespace(ClientSession=context,
+                    StdioServerParameters=Mock()),
+                    'mcp.client': types.ModuleType('mcp.client'),
+                    'mcp.client.stdio': types.SimpleNamespace(stdio_client=streams),
+                    'httpx': types.SimpleNamespace(Client=Mock(return_value=http), HTTPError=OSError)}
+                stack.enter_context(patch.dict(ci.sys.modules, modules))
+                stack.enter_context(patch.object(ci, 'require_client_dependencies'))
+                stack.enter_context(patch.object(ci, 'validate_platform'))
+                stack.enter_context(patch.object(ci.platform, 'platform', return_value='test-host'))
+                stack.enter_context(patch.object(ci.subprocess, 'Popen', return_value=child))
+                reap = stack.enter_context(patch.object(ci, 'reap'))
+                cli = stack.enter_context(patch.object(ci.subprocess, 'run'))
+                cli.return_value.stdout = json.dumps({} if failure == 'cli' else expected)
+                if failure == 'cli_timeout':
+                    cli.side_effect = subprocess.TimeoutExpired('cli', 15)
+                stack.enter_context(patch.object(ci.subprocess, 'check_output', return_value='{}'))
+                def run(argv, *, env, cwd, timeout):
+                    if 'tests.test_ci_apple_silicon.MacClientSmoke' in argv:
+                        self.assertEqual(timeout, 60)
+                        with patch.dict(os.environ, env):
+                            ci.client_smoke()
+                stack.enter_context(patch.object(ci, 'owned_run', side_effect=run))
+                if failure:
+                    with self.assertRaises(Exception):
+                        ci.clients_check(path)
+                else:
+                    ci.clients_check(path)
+                report = json.loads(path.read_text())
+                fixture_failed = failure in ('startup', 'cli', 'cli_timeout')
+                self.assertEqual(report['fixture_calls'], 'failed' if fixture_failed else 'passed')
+                self.assertEqual(report['protocol'], 'not_run' if fixture_failed else
+                                 'failed' if failure else 'passed')
+                self.assertEqual(report['status'], 'failed' if failure else 'passed')
+                for stage in ('cli_install', 'mcp_install', 'cli_help', 'voice_clients'):
+                    self.assertEqual(report[stage], 'passed')  # simulated only
+                if fixture_failed:
+                    session.initialize.assert_not_called()
+                reap.assert_called_once_with(child)
+                self.assertFalse(report['runtime_qualified'])
 
     def test_exact_dependency_versions(self):
         ci.validate_versions(dict(ci.EXPECTED))

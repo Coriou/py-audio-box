@@ -93,7 +93,7 @@ python3.11 -m venv .venv-client
 .venv-client/bin/python -m pip install --only-binary=:all: --require-hashes -r requirements/client.lock
 .venv-client/bin/python scripts/cpu-pocket.py \
   --context YOUR_LOCAL_DOCKER_CONTEXT \
-  --model-cache /absolute/private/pocket-cache \
+  --model-cache /absolute/private/fresh-pocket-cache \
   --reference /absolute/private/reference.wav \
   --output /absolute/existing-parent/fresh-pocket-install \
   --port 18766 --principal operator

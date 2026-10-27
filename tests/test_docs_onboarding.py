@@ -73,6 +73,20 @@ class DocsOnboarding(unittest.TestCase):
         self.assertLess(doc.index('mkdir -m 700'), doc.index('mv /absolute/private'))
         self.assertIn("hashlib.file_digest(source, 'sha256')", doc)
         self.assertIn('config.yaml', doc)
+        blocks = re.findall(r'```(?:sh|bash)?\n(.*?)```', doc, re.S)
+        acquisition = []
+        install_caches = []
+        for block in blocks:
+            for line in re.sub(r'\\\n\s*', ' ', block).splitlines():
+                argv = shlex.split(line, comments=True)
+                if argv and argv[0] == 'mv':
+                    acquisition.append(str(Path(argv[-1]).parent))
+                if 'scripts/cpu-pocket.py' in argv and '--model-cache' in argv:
+                    install_caches.append(argv[argv.index('--model-cache') + 1])
+        self.assertEqual(len(acquisition), 2)
+        self.assertEqual(install_caches, [acquisition[0]])
+        self.assertEqual(set(acquisition), set(install_caches))
+
 
     def test_relative_links_and_anchors_resolve(self):
         broken = []
