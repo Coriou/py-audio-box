@@ -169,11 +169,12 @@ class QwenTests(unittest.TestCase):
         from unittest.mock import patch
         tree=ast.parse((ROOT/'lib/tts.py').read_text())
         node=next(n for n in tree.body if isinstance(n,ast.FunctionDef) and n.name=='_load_tts_model_local')
+        bootstrap=next(n for n in tree.body if isinstance(n,ast.FunctionDef) and n.name=='_qwen_model_class')
         torch=Mock(); torch.cuda.is_available.return_value=True; torch.cuda.device_count.return_value=2
         torch.backends.mps.is_available.return_value=True
         model=Mock(); model.from_pretrained.return_value=types.SimpleNamespace()
         env=dict(Path=Path,torch=torch,_DTYPE_MAP={'float32':'fp32'},best_dtype=Mock(return_value='fp32'),get_device=Mock(side_effect=AssertionError('auto policy called')),_has_flash_attn=Mock(side_effect=AssertionError('auto attention called')))
-        exec(compile(ast.Module(body=[node],type_ignores=[]),'loader','exec'),env)
+        exec(compile(ast.Module(body=[bootstrap,node],type_ignores=[]),'loader','exec'),env)
         with patch.dict(sys.modules,{'qwen_tts':types.SimpleNamespace(Qwen3TTSModel=model),'huggingface_hub':types.SimpleNamespace(snapshot_download=Mock(side_effect=AssertionError('acquisition called')))}), patch('platform.system',return_value='Darwin'),patch('platform.machine',return_value='arm64'):
             for device in ('cpu','cuda:1','mps'):
                 env['_load_tts_model_local'](str(self.bundle),2,'float32','exact-revision',True,device,'eager')

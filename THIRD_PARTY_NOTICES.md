@@ -16,6 +16,13 @@ apply; the project metadata and OCI license label describe project source only.
 Redistributing installed dependencies or images also requires retaining their
 applicable license texts and notices; this file is not a complete image notice inventory.
 
+The native-only `requirements/wheels/qwen_tts-0.1.1-1native12hz-py3-none-any.whl`
+is a modified Apache-2.0 Qwen-TTS dependency, Copyright 2026 The Alibaba Qwen team.
+Its original LICENSE is retained; modified source files are marked and its NOTICE
+identifies the lazy 25 Hz import change. Reproduction, exact hashes and upgrade
+impact are in `docs/agent-interface/NATIVE-DEPENDENCY.md`. This dependency's
+license does not relicense application source or model weights.
+
 Pinned model declarations in `requirements/tts/` distinguish Kokoro weights
 (Apache-2.0) and runtime (MIT), Qwen (Apache-2.0), and Pocket French weights
 (CC-BY-4.0 with gated operator access). Preserve their revisions, attribution,

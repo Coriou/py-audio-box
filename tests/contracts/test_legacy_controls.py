@@ -56,6 +56,7 @@ class LegacyControlsTests(unittest.TestCase):
                 snapshot = Mock(return_value='/inert/snapshots/resolved-revision')
                 env = dict(Path=Path, torch=torch, get_device=Mock(return_value=device),
                            best_dtype=Mock(return_value='fake-dtype'), _has_flash_attn=Mock(return_value=flash))
+                self.function('_qwen_model_class', env)
                 load = self.function('_load_tts_model_local', env)
                 with patch.dict(sys.modules, {
                         'qwen_tts': types.SimpleNamespace(Qwen3TTSModel=types.SimpleNamespace(from_pretrained=upstream)),

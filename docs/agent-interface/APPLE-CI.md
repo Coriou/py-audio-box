@@ -58,6 +58,10 @@ Reports are explicit JSON artifact paths with seven-day retention. No workspace,
 HOME, `.env`, credential, model tree or hub cache is uploaded. The native Qwen
 lock retains torch/torchaudio 2.10.0, qwen-tts 0.1.1, transformers 4.57.3 and
 tokenizers 0.22.2; newer upstream releases are not implicitly adopted.
+The native lock uses the narrowly patched Qwen wheel described in
+[native dependency provenance](NATIVE-DEPENDENCY.md). On this feature branch,
+a separate fresh interpreter exercises real locked 12 Hz imports under the
+permanent native spawn guard without weights; passing that gate is not synthesis.
 
 ## Opt-in cold native inference prerequisite
 

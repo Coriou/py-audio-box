@@ -50,7 +50,8 @@ def public_open(url):
 
 
 def phase_remaining(progress, now):
-    for key, cap in (('verification_seconds', 30), ('cold_load_seconds', 120), ('generation_seconds', 30),
+    for key, cap in (('verification_seconds', 30), ('cold_load_seconds', 120),
+                     ('generation_seconds', 30), ('encoding_seconds', 15),
                      ('total_seconds', 180)):
         if progress.get(key, 0) > cap:
             raise TimeoutError('native_completed_phase_timeout_' + key)
@@ -237,12 +238,15 @@ def infer(bundle, output, language):
         if not any(pcm):
             raise ValueError('silent_wav')
     seconds = time.monotonic() - started
-    stage('complete', total_seconds=seconds)
+    encoding_seconds = time.monotonic()-progress['stage_started'] if progress['stage'] == 'encoding' else 0
+    stage('complete', total_seconds=seconds, encoding_seconds=encoding_seconds)
     (output / (language + '.wav')).write_bytes(data)
     save(output / (language + '.json'), dict(status='passed', language=language,
         text=text, requested_device='mps', selected_device=progress.get('selected_device'),
         phases=progress, fallback_enabled=False, seconds=seconds,
-        duration_seconds=frames/rate, rtf=seconds/(frames/rate),
+        duration_seconds=frames/rate,
+        rtf=progress.get('generation_seconds', 0)/(frames/rate), rtf_scope='generation',
+        cold_total_rtf=seconds/(frames/rate),
         peak_rss_bytes=resource.getrusage(resource.RUSAGE_SELF).ru_maxrss,
         sha256=hashlib.sha256(data).hexdigest(), bytes=len(data),
         ending_verified=False, installed_qualified=False))

@@ -5,6 +5,12 @@ on:
       - '.github/workflows/apple-silicon.yml'
       - 'scripts/ci-apple-silicon.py'
       - 'scripts/ci-apple-speech.py'
+      - 'scripts/ci-native-import.py'
+      - 'scripts/build-native-qwen-wheel.py'
+      - 'requirements/wheels/**'
+      - 'requirements/upstream/**'
+      - 'tests/test_native_qwen_artifact.py'
+      - 'docs/agent-interface/NATIVE-DEPENDENCY.md'
       - 'requirements/tts/qwen-0.6b-customvoice-macos.expected.json'
       - 'requirements/qwen-macos-arm64.*'
       - 'clients/**'
@@ -18,6 +24,8 @@ on:
       - 'worker/**'
       - 'tests/worker/test_native_protocol.py'
       - 'tests/worker/test_native_qwen.py'
+      - 'tests/worker/test_engine_qwen.py'
+      - 'tests/contracts/test_legacy_controls.py'
       - 'tests/test_ci_apple_silicon.py'
       - 'tests/test_ci_apple_speech.py'
       - 'docs/agent-interface/APPLE-CI.md'
@@ -111,13 +119,26 @@ jobs:
       - run: python -m pip check
       - name: Native real imports and CPU operation (no weights)
         run: python scripts/ci-apple-silicon.py deps-check --report apple-ci/dependencies.json
+      - name: Branch-only fresh real locked native bootstrap under permanent guard (no weights)
+        if: github.ref == 'refs/heads/feat/apple-silicon-native' && github.event_name != 'pull_request'
+        run: python scripts/ci-native-import.py --output apple-ci/native-import
       - name: Real bounded MPS operation with CPU fallback disabled
         run: python scripts/ci-apple-silicon.py mps-probe --report apple-ci/mps-probe.json
       - name: Explicit Darwin-safe source contracts (inert protocol and CI harness)
         run: >-
           python -m unittest tests.test_ci_apple_silicon tests.test_ci_apple_speech
           tests.worker.test_native_protocol tests.worker.test_native_qwen
-          tests.service.test_qwen_provisioning -v
+          tests.service.test_qwen_provisioning tests.test_native_qwen_artifact -v
+      - name: Native archive and selected artifact closure (no runtime)
+        run: >-
+          python -m unittest
+          tests.release.test_native_package.NativePackageTests.test_archive_exact_members_secrets_excluded_extracted_help
+          tests.release.test_native_package.NativePackageTests.test_archive_deterministic_bytes
+          tests.release.test_native_package.NativePackageTests.test_selected_wheel_active_dependencies_refuse -v
+      - name: Legacy loader and explicit device forwarding remain unchanged
+        run: >-
+          python -m unittest tests.contracts.test_legacy_controls
+          tests.worker.test_engine_qwen.QwenTests.test_local_loader_exact_device_and_no_auto_fallback -v
       - name: Print dependency evidence (missing report fails visibly)
         if: always()
         run: cat apple-ci/dependencies.json
@@ -128,6 +149,9 @@ jobs:
           path: |
             apple-ci/dependencies.json
             apple-ci/mps-probe.json
+            apple-ci/native-import/report.json
+            apple-ci/native-import/owner.json
+            apple-ci/native-import/child.log
           retention-days: 7
           if-no-files-found: error
           include-hidden-files: false

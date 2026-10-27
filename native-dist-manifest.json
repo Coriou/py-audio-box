@@ -37,6 +37,7 @@
     "docs/TTS_SPOKEN_TEXT.md",
     "docs/agent-interface/AUDIO-EXPORT.md",
     "docs/agent-interface/NATIVE-PACKAGE.md",
+    "docs/agent-interface/NATIVE-DEPENDENCY.md",
     "lib/__init__.py",
     "lib/audio.py",
     "lib/fidelity.py",

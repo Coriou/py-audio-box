@@ -20,6 +20,7 @@ class AppleSpeechTests(unittest.TestCase):
         for progress,now in (({'stage':'cold_load','stage_started':0},121),
                 ({'stage':'generation','stage_started':0},31),
                 ({'stage':'encoding','stage_started':31,'generation_seconds':31},31),
+                ({'stage':'complete','stage_started':16,'encoding_seconds':16},16),
                 ({'stage':'complete','stage_started':181,'total_seconds':181},181)):
             with self.subTest(progress=progress),self.assertRaises(TimeoutError):
                 ci.phase_remaining(progress,now)
@@ -72,6 +73,12 @@ class AppleSpeechTests(unittest.TestCase):
         import re
         lock=(ci.ROOT/'requirements/qwen-macos-arm64.lock').read_text()
         pins=dict(re.findall(r'^([a-z0-9-]+)==([^\s]+)',lock,re.M))
+        from packaging.utils import parse_wheel_filename
+        wheel=next((ci.ROOT/'requirements/wheels').glob('qwen_tts-*.whl'))
+        name,version,_,_=parse_wheel_filename(wheel.name)
+        self.assertIn('./requirements/wheels/'+wheel.name,lock)
+        self.assertIn(ci.hashlib.sha256(wheel.read_bytes()).hexdigest(),lock)
+        pins[str(name)]=str(version)
         for name,version in json.loads(ci.DESCRIPTOR.read_text())['versions'].items():
             self.assertEqual(pins[name],version,name)
 
@@ -94,6 +101,8 @@ class AppleSpeechTests(unittest.TestCase):
                         report=json.loads((root/'English.json').read_text())
                         self.assertFalse(report['installed_qualified'])
                         self.assertFalse(report['ending_verified'])
+                        self.assertEqual(report['rtf_scope'],'generation')
+                        self.assertIn('cold_total_rtf',report)
                     else:
                         with self.assertRaisesRegex(ValueError,'silent_wav'):ci.infer(root,root,'English')
 
