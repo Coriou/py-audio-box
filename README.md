@@ -3,8 +3,14 @@
 Headless CPU speech candidate for API, CLI and MCP clients, including GitHub and
 cloud agents. Start with the [CPU worked recipe](docs/agent-interface/CPU-QUICKSTART.md)
 and the [headless installation guide](docs/agent-interface/HEADLESS-INSTALL.md).
-For reference cloning, use the [Pocket CPU recipe](docs/agent-interface/POCKET-QUICKSTART.md).
+For reference cloning, see the [Pocket CPU recipe](docs/agent-interface/POCKET-QUICKSTART.md)
+and [current Qwen CPU status](docs/agent-interface/QWEN-CPU.md#current-status--2026-10-27).
+For pinned GitHub/cloud onboarding, use the [source sequence](docs/agent-interface/HEADLESS-INSTALL.md#pinned-source-onboarding).
 There is no browser UI.
+
+Kokoro, Pocket and Qwen use separate installations. Qwen is implemented in source;
+current measurement/startup is disk-blocked, historical actual05 import/init passed,
+and its activation timeout remains unresolved. Public release qualification is not ready.
 
 Kokoro preset speech and Pocket reference cloning use separate installations.
 The ordinary Docker-client installer exposes separate `docker-export` and
@@ -19,10 +25,27 @@ The fresh public05 nine-job journey also passed its final clean stop. Its retain
 history used 872 of 2048 inspection rows; this is finite measured acceptance,
 not a guarantee of unlimited retained jobs or history.
 
-Listening remains **UNMEASURED**, the protected-host lane **UNRUN**, and the CPU
+Listening for those installed runs remains **UNMEASURED**, the protected-host lane **UNRUN**, and the CPU
 regressions/source archive checks have passed. CUDA and Apple Metal are **unqualified** and are not
 gates for this CPU candidate. Build the headless images from the pinned source;
 availability of published headless images is not established.
+
+## Model choice and repository declarations
+
+| Engine | Pinned model / declared access and license | Scope |
+| --- | --- | --- |
+| Kokoro | [Kokoro-82M-v1.0-onnx-fp32, model-files-v1.0](requirements/tts/kokoro-fr.expected.json); public release; Apache-2.0 weights, MIT kokoro-onnx runtime | Presets only; no reference cloning, instructions or seed |
+| Pocket | [pocket-tts-fr-3.3.0, d0ebc5deb50bc6b225f686782f124dd37e2dca0a](requirements/tts/pocket-fr.expected.json); operator-authorized HF gated access; CC-BY-4.0 | French reference cloning; retained pilot has material text-fidelity failures |
+| Qwen | [Base 0.6B, 5d83992436eae1d760afd27aff78a71d676296fc](requirements/tts/qwen-0.6b-base.expected.json); public read-only snapshot, no token required; Apache-2.0 | CPU float32/SDPA, English/French declarations, x-vector-only cloning; startup and listening unresolved |
+
+These are pinned repository declarations, not live upstream terms verification or
+licenses for every transitive dependency. Pocket operators must obtain HF access
+and accept upstream conditions before acquisition; local metadata is no acceptance
+receipt and the recipe neither logs in nor accepts terms for them.
+[Retained Pocket pilot feedback](docs/TTS_POCKET_CPU_PILOT.md) includes material
+fidelity failures; installed-run listening is unmeasured, not clean cloning approval.
+No root project source license is declared. Before distribution, the owner must
+state the intended source license and retain applicable model notices/attribution.
 
 ## Legacy toolbox
 
@@ -49,7 +72,10 @@ make build        # build the shared CPU image (~5 min, cached on rebuild)
 
 ---
 
-## Published images (`ghcr.io/coriou/voice-tools`)
+## Legacy toolbox published-image references (`ghcr.io/coriou/voice-tools`)
+
+These legacy tags/pulls are not headless control/worker artifacts; current registry
+availability was not checked. Headless publication is not established.
 
 | Tag         | PyTorch      | CUDA toolkit | flash-attn | GPU support                                       | Notes                                                                                                                                                      |
 | ----------- | ------------ | ------------ | ---------- | ------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -657,6 +683,9 @@ SMOKE_ENABLE_CUSTOMVOICE=1 make smoke-matrix
 ## Agent / automation guidelines
 
 When an AI agent or script works with this repo:
+
+The following guidelines apply to the legacy toolbox; the headless client uses
+the separate Python 3.11 environments documented above.
 
 - **Don't install packages on the host.** All Python work happens inside the container.
 - **The image is already built.** Use `./run <app>` or `docker compose run --rm pab …` directly; only run `make build` if `pyproject.toml` or `Dockerfile` changed. For GPU hosts, use `TOOLBOX_VARIANT=gpu ./run …` and run `make build-gpu` after Dockerfile changes.

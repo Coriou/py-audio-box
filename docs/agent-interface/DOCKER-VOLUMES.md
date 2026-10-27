@@ -1,11 +1,21 @@
 # Ordinary Docker-client installation candidate
 
-`installed-daemon-volumes-v1` is a **new-installation SOURCE candidate** for
+This page describes the generic/v1 schema and its historical SOURCE evidence.
+For historical actual ordinary-client results, use the engine-specific
+[Kokoro export-v2 recipe](CPU-QUICKSTART.md) (`actual-install14`) and
+[Pocket v2 recipe](POCKET-QUICKSTART.md) (`pocket-public-install05`, source `7c56f72`).
+Those results do not qualify v1 or every family/platform.
+[Qwen CPU](QWEN-CPU.md#current-status--2026-10-27) has a source family, with
+current startup disk-blocked and historical activation timeout unresolved.
+Use fresh resource/disk admission for the selected recipe/operator plan; the
+historical 6 GiB gate is not a universal sufficiency threshold.
+
+At the v1 checkpoint, `installed-daemon-volumes-v1` was a **new-installation SOURCE candidate** for
 Kokoro CPU. Independent review and actual qualification remain required. Linux,
 THIS Intel Mac Docker Desktop, and THIS Intel Mac OrbStack are separate UNRUN
-qualification rows. No commands here were operationally executed for this lane.
+qualification rows at that checkpoint. No commands here were operationally executed for that v1 lane.
 Release NO-GO; Metal UNQUALIFIED; legacy CLOSED. Accepted native freshness and
-renewal remain unchanged. The 6 GiB heavy-operation gate is unchanged.
+renewal remain unchanged.
 
 The operator machine needs the trusted source distribution, Python stdlib and the
 Docker CLI. Linux service dependencies run in the preprovided pinned image. No
@@ -174,7 +184,7 @@ Authorization: Bearer <secret>
 Idempotency-Key: first-preset
 Content-Type: application/json
 
-{"preset":"af_heart","voice_id":"my-voice","expected_revision":0}
+{"preset":"ff_siwis","voice_id":"my-voice","expected_revision":0}
 ```
 
 Use the returned immutable `version.id` for generation. The closed generation request is:
@@ -206,7 +216,7 @@ Events/wait return canonical cursors; use the returned cursor for continuation.
 For the thin clients, the corresponding commands are:
 
 ```sh
-python3 -m clients.cli voice preset-register --request '{"preset":"af_heart","voice_id":"my-voice","expected_revision":0}' --idempotency-key first-preset
+python3 -m clients.cli voice preset-register --request '{"preset":"ff_siwis","voice_id":"my-voice","expected_revision":0}' --idempotency-key first-preset
 python3 -m clients.cli speech generate --request '<closed generation JSON>' --idempotency-key first-generation
 python3 -m clients.cli job events <job-id>
 python3 -m clients.cli job wait <job-id> --wait-seconds 5
@@ -217,7 +227,8 @@ docker` operator surface is stdlib-only. HTTP clients may use curl with a protec
 header/config file instead of placing a credential in argv. Reuse the same request
 and key after control reopen to receive the same job without another launch; a new
 key requests a new generation using the same immutable version. Verify retrieved
-asset bytes against returned SHA256. SOURCE fixtures use synthetic media/runtime
+asset bytes against returned SHA256. The following qualification caveats describe
+this page's v1 SOURCE fixtures; later family-specific results are linked above. SOURCE fixtures use synthetic media/runtime
 observations; audible Kokoro, actual installed dependencies/Python 3.11, kernel UID
 and mount enforcement, PID1 descendant reap, desktop loopback forwarding, and
 cold/warm resource behavior remain separate actual qualification gates. The public SOURCE fixture models published speech, control reopen, clean

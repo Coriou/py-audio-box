@@ -15,7 +15,7 @@ The fresh public05 nine-job journey also passed its final clean stop. Its retain
 history used 872 of 2048 inspection rows; this is finite measured acceptance,
 not a guarantee of unlimited retained jobs or history.
 
-Listening remains **UNMEASURED**, the protected-host lane **UNRUN**, and the CPU
+Listening for these installed runs remains **UNMEASURED**, the protected-host lane **UNRUN**, and the CPU
 regressions/source archive checks have passed. CUDA and Apple Metal remain unqualified.
 
 Use Python 3.11 and a local rootful Docker daemon with cgroup v2 and
@@ -27,6 +27,12 @@ reserves 128 MiB per job; retained reservations share that quota across jobs.
 This quota does not cover the host's image, model and build storage needs.
 Builds acquire Debian packages and hash-locked Python wheels; model acquisition
 uses bounded downloads from the pinned upstream release.
+
+The [pinned descriptor](../../requirements/tts/kokoro-fr.expected.json) declares
+Apache-2.0 weights and MIT kokoro-onnx runtime, from a public upstream release.
+This is preset speech only, without reference cloning, instructions or seed.
+See the [three-engine comparison](../../README.md#model-choice-and-repository-declarations)
+and [current Qwen status](QWEN-CPU.md#current-status--2026-10-27).
 
 From the source checkout:
 
@@ -93,3 +99,13 @@ The adapter calls the same authenticated HTTP service and named operation schema
 it loads no model. Do not put the credential in command arguments or publish the
 installation output directory. Native macOS SDK wheel availability is a separate
 client prerequisite; the CPU runtime itself remains in Linux Docker.
+
+For reference uploads from MCP, optionally set `SPEECH_UPLOAD_ROOT` in the agent
+host to an absolute operator-authorized directory, for example
+`/absolute/private/authorized-references`. This grants host filesystem read scope
+within that root and exposes `speech_asset_upload_file` with `{"path":"reference.wav"}`.
+Paths must be relative, with no `..` or symlink following. Without this setting,
+use CLI `asset upload FILE` or authenticated HTTP first and supply the asset ID.
+MCP direct audio content is limited to 3072 decoded bytes per call. Keep complete
+audio outside model context: use `python -m clients.cli asset content ID --output FILE`
+in the configured client environment for a complete hash-verified exclusive file.

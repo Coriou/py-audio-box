@@ -1,5 +1,7 @@
 For the distinct ordinary Mac/Linux Docker-client lane, see
-[DOCKER-VOLUMES.md](DOCKER-VOLUMES.md). The strict host route below retains its
+[DOCKER-VOLUMES.md](DOCKER-VOLUMES.md), with family-specific worked results in
+[CPU-QUICKSTART.md](CPU-QUICKSTART.md) and [POCKET-QUICKSTART.md](POCKET-QUICKSTART.md).
+The strict host route below retains its
 original Linux-root, host-path and host-inspection requirements.
 
 # Packaged headless installation
@@ -17,7 +19,7 @@ apply automatically to the ordinary Docker-client route.
 
 For a build/provision/measure/install worked example, use
 [CPU-QUICKSTART.md](CPU-QUICKSTART.md). The pinned French Kokoro engine and PCM24
-converter have passed actual contained execution with the current runtime image.
+converter have passed historical actual contained execution with their recorded runtime image.
 The `actual-install14` installed HTTP speech/export/download/stop/restart journey
 and actual CLI/MCP checks have passed on Linux/amd64 under OrbStack; see the
 [bounded installed report](reviews/CPU-KOKORO-INSTALLED-r407-parent.md). This is not
@@ -39,14 +41,21 @@ The fresh public05 nine-job journey also passed its final clean stop. Its retain
 history used 872 of 2048 inspection rows; this is finite measured acceptance,
 not a guarantee of unlimited retained jobs or history.
 
-Listening remains **UNMEASURED**, the protected-host lane **UNRUN**, and the CPU
+Qwen CPU has a separate finite `docker-qwen` source family; see its
+[current status and historical evidence](QWEN-CPU.md#current-status--2026-10-27).
+Current measurement/startup is disk-blocked; historical actual05 measurement/import/init
+passed, but activation timed out. No qualified Qwen worked recipe is claimed.
+
+Listening for the installed runs above remains **UNMEASURED**, the protected-host lane **UNRUN**, and the CPU
 regressions/source archive checks have passed. CUDA and Apple Metal
 remain **UNQUALIFIED**; neither is a gate for this CPU candidate. Published
 headless image availability is not established: build and enroll exact local
 images from the reviewed source.
 
 This source unit supplies the finite `speech-box init`, `complete`, `up`,
-`status`, and `stop` command. Qualification of this protected Linux-host lane
+`status`, and `stop` command. The ordinary-client families are `docker`,
+`docker-export`, `docker-pocket`, and `docker-qwen`, each with finite
+`install/up/status/stop` commands; Qwen remains operationally unqualified. Qualification of this protected Linux-host lane
 remains separate from the passed ordinary Docker-client Kokoro journey. Do not interpret an
 injected test, dependency resolution, source archive or Dockerfile as that evidence.
 
@@ -84,11 +93,14 @@ x86_64 manylinux_2_28 against official PyPI metadata; no compatibility inference
 is made from the Python 3.14 test environment. Installing these dependencies or building an image alone does not qualify the
 installed runtime; use the end-to-end checklist below.
 
-`service/Dockerfile.release` has control, Kokoro CPU worker and alternative Pocket CPU worker targets using the existing
+`service/Dockerfile.release` has `control`, `worker`, `worker-export`, `worker-pocket` and
+`worker-qwen` targets using the existing
 pinned Python 3.11 CPU base. The Kokoro worker installs the unchanged `requirements/kokoro.lock`
 and control/service lock together. Only explicitly allowed source/data/locks enter
 the build context. Image construction is a separately authorized release operation.
-Build/load the two images before installation and enroll their exact local
+Build/load control and the selected family's worker before installation; the
+control image is reused for finite helpers. Qwen source inclusion does not
+qualify its installed runtime. Enroll their exact local
 `sha256:` image IDs. `up` performs no build, download, pull or model provisioning.
 `compose.release.yml` documents the fixed policy; use the finite command for the
 transaction, rather than Compose up/down, which cannot perform registration or
@@ -180,9 +192,9 @@ and activation status. This installation supports the configured Kokoro preset f
 generation; clone preparation is unavailable. Registration does not qualify hardware.
 
 Explicitly POST `/v1/operations/voice_preset_register` with `Idempotency-Key` and
-`{"preset":"af_heart","voice_id":"my-voice","expected_revision":0}` (replace the
+`{"preset":"ff_siwis","voice_id":"my-voice","expected_revision":0}` (replace the
 selector with the advertised configured selector). CLI:
-`python -m clients.cli voice preset-register --request '{"preset":"af_heart","voice_id":"my-voice","expected_revision":0}' --idempotency-key first-preset`.
+`python -m clients.cli voice preset-register --request '{"preset":"ff_siwis","voice_id":"my-voice","expected_revision":0}' --idempotency-key first-preset`.
 MCP: `speech_voice_preset_register` with those fields plus `idempotency_key`.
 The response contains the immutable `version.id`; use that ID for `speech_generate`.
 List with `voices list`, inspect with `voice version get ID`, then use the existing
@@ -311,6 +323,51 @@ conditioning directory remains UNKNOWN and retained;
 there is no recursive removal, general recovery or relaxed restart guard.
 
 
+## Pinned source onboarding
+
+This review uses audited commit `9fff9c1faf9c6ca0f66f95d3d6065e82aea732cd`;
+it is not an approved release. A release owner must later name the approved
+candidate and its artifact identities. On a suitable Linux/amd64 Docker runner:
+
+```sh
+git clone https://github.com/Coriou/py-audio-box.git
+cd py-audio-box
+git checkout --detach 9fff9c1faf9c6ca0f66f95d3d6065e82aea732cd
+python3.11 -m venv .venv-client
+.venv-client/bin/python -m pip install --only-binary=:all: --require-hashes -r requirements/client.lock
+```
+
+Choose one lane and obtain its model access before execution:
+[Kokoro presets/export](CPU-QUICKSTART.md) or [Pocket French cloning](POCKET-QUICKSTART.md).
+Their worked commands build/provision/measure/install and retrieve the first
+verified artifact. Supply an explicit existing local Unix Docker context and a
+fresh output path beneath a persistent private evidence parent outside `/tmp`.
+Keep credentials, model access and reference audio private. Apply fresh resource
+admission and the chosen recipe's exact limits before any heavy operation.
+For Qwen, read the [blocked status and remaining evidence](QWEN-CPU.md#current-status--2026-10-27)
+instead of treating source availability as a ready recipe.
+
+The legacy Poetry non-package toolbox and its `voice-tools` pulls are separate
+from this headless client/archive. No published headless image is established;
+there is no headless registry pull shortcut. The standalone `speech-box` archive
+path above remains separate: Pocket's worked script needs a Git checkout even
+though it is included in that archive. Archive creation is source evidence only.
+
+After the chosen recipe, use its printed URL and privately configured credential:
+
+```sh
+.venv-client/bin/python -m clients.cli status
+.venv-client/bin/python -m clients.cli discover
+.venv-client/bin/python -m clients.cli operation-detail speech_generate
+.venv-client/bin/python -m clients.cli asset content ID --output /absolute/private/new-output.wav
+```
+
+Set `SPEECH_URL` and `SPEECH_CREDENTIAL` privately in the client host; replace `ID`
+with the returned asset ID and use a new output file. CLI `--url` is global and
+precedes the subcommand. `--request` accepts a JSON object, not a filename;
+idempotent writes require `--idempotency-key`. For MCP SDK setup, follow the
+selected quickstart's separate environment, not the client lock alone.
+
 ## GitHub/cloud agent CPU acceptance checklist
 
 Use a disposable, suitable Linux Docker runner with enough disk for pinned
@@ -322,7 +379,9 @@ required daemon policy cannot qualify this installation.
 
 Run heavy builds and actual synthesis serially. Bound source tests to 2 CPUs and 1 GiB memory. Actual engine/install checks use
 the explicit limits in their selected recipe (Kokoro 2 GiB, Pocket up to 4 GiB
-per container); retain explicit timeouts and finite output limits. A
+per container). Qwen uses its selected configuration and fresh parent-owned
+admission, not Pocket's 4 GiB/180-second recipe bounds. Retain explicit timeouts
+and finite output limits. A
 resource refusal or timeout is a failed/incomplete check, not permission to
 silently increase limits. Do not run concurrent model engines on this host.
 
@@ -334,7 +393,7 @@ silently increase limits. Do not run concurrent model engines on this host.
    and operation schemas. Record activation and execution availability separately.
 3. Register the advertised Kokoro preset through `voice preset-register`; retain
    the request, idempotency key and returned immutable version ID. For the separate
-   Pocket lane, upload a reference, prepare, retrieve the audition and save the
+   Pocket or separately qualified Qwen lane, upload a reference, prepare, retrieve the audition and save the
    voice through public operations instead.
 4. Submit `speech generate` using the returned version and the advertised schema.
    Follow `job events` / bounded `job wait` until terminal; a healthy worker or
@@ -355,3 +414,31 @@ provide current closed request schemas. Equivalent authenticated HTTP/MCP calls
 are valid; neither a web UI nor direct Core/database writes belong in acceptance.
 The final report must distinguish source checks, actual engine execution, actual
 installed public journeys and human listening, and mark every unrun step UNRUN.
+
+For MCP reference uploads, optionally configure `SPEECH_UPLOAD_ROOT` as an absolute
+operator-authorized directory in the agent host. It grants filesystem read scope
+and exposes `speech_asset_upload_file` with a relative `path` (no `..`, no symlink
+following). Otherwise upload through CLI `asset upload FILE` or authenticated HTTP
+and pass the returned asset ID. MCP direct content is limited to 3072 decoded
+bytes per call; retrieve full verified audio with
+`python -m clients.cli asset content ID --output FILE` outside model context.
+
+### Evidence snapshot — 2026-10-27
+
+Audited HEAD `9fff9c1faf9c6ca0f66f95d3d6065e82aea732cd`; reported Unit CI
+`40488015700`: 4573 tests / 1600 subtests, 11 shards. These unit results do not
+qualify any installed lane. Historical rows retain their own source/image IDs.
+
+| Lane | Engine measurement | Import/init | Up/activation | Public API/CLI/MCP | Cancellation/reap | Restart/history | Listening |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| Kokoro export-v2, actual-install14 | Historical pass | Historical pass | Historical pass | Historical pass | Separate acceptance needed | Historical bounded pass | Installed run unmeasured |
+| Pocket v2, public05 (`7c56f72`) | Historical pass | Historical pass | Historical pass | HTTP pass; CLI/MCP contracts shared, no independent full cloning pass claimed | Historical pass | Historical bounded pass | Installed run unmeasured; backend pilot fidelity failures |
+| Qwen CPU | Current unrun/disk-blocked; actual05 ~135 s historical pass | actual05 historical pass | Historical activation timeout unresolved; corrected startup unrun | Unqualified | Unqualified | Unqualified | Prior numbers/liaisons rejected; no approval |
+
+Fresh current Qwen admission, startup, public cloning/download, cancellation/reap,
+restart/history and human listening remain parent-owned gates. Retain exact source,
+image, lock and model identities, failures and terminal outcomes. Older Apple
+dependency CI passed with MPS skipped; Apple synthesis/Metal remain unqualified.
+CUDA is deferred/unqualified. Public release qualification is not ready. The owner
+must also state the project source license and retain selected model notices and
+attribution before distribution; model descriptors do not choose a project license.

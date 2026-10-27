@@ -1,6 +1,42 @@
-# Qwen CPU LOT1 — source only
+# Qwen CPU — current status and historical checkpoints
 
-This is an unbuilt, unqualified Linux amd64 / CPython 3.11 runtime recipe.
+## Current status — 2026-10-27
+
+Audited source: `9fff9c1faf9c6ca0f66f95d3d6065e82aea732cd`.
+The `docker-qwen` source family exists (`install`, `up`, `status`, `stop`).
+Reported Unit CI `40488015700` passed 4573 tests / 1600 subtests across 11 shards;
+this is source/contracts evidence, not installed runtime or acoustic acceptance.
+Current corrected CPU measurement/startup and public journey are **NOT EXECUTED**:
+fresh disk admission is short by about 3 GB. Historical actual05 measurement
+(~135 seconds) and installed import/init passed; `up` activation timed out and
+remains unresolved. Those historical results do not qualify this HEAD.
+Public API/CLI/MCP cloning, cancellation/reap, restart/history and listening still
+need actual acceptance. Public release qualification is **NOT READY**.
+Older Apple dependency CI passed with MPS skipped; Apple synthesis/Metal remain
+unqualified. CUDA is deferred and unqualified.
+
+The pinned [repository descriptor](../../requirements/tts/qwen-0.6b-base.expected.json)
+declares Apache-2.0 and an operator-reviewed public read-only snapshot with no
+token required, revision `5d83992436eae1d760afd27aff78a71d676296fc`.
+These are repository declarations, not a live upstream terms verification.
+Managed CPU cloning uses empty public `reference_text`, private `None` and
+`x_vector_only_mode=True`; it is not transcript/ICL-quality evidence. Whole
+canonical mono PCM16 references must satisfy both <=1 MiB and <=60 seconds.
+The separately authored audition is generated audio; save retains the reference,
+not the audition. No presets or other Qwen checkpoint are enabled by this family.
+The model-free `numeric-v1` renderer supports explicit EUR amount and spelled
+identifier annotations for `fr-FR`/`en-GB` (4096 characters, at most 64 ordered,
+disjoint spans). It freezes the spoken plan; it does not automatically normalize
+arbitrary numbers or guarantee model text fidelity, pronunciation or
+French liaisons. Prior French numbers/liaisons were rejected by human listening.
+There is no quality approval.
+
+## Historical LOT1 — source-only checkpoint
+
+The earlier statements below describe their named checkpoints, not current
+availability. Later source fixes and historical runs do not erase their failures.
+
+At LOT1 this was an unbuilt, unqualified Linux amd64 / CPython 3.11 runtime recipe.
 It does not make the full headless CPU or Apple release journey available.
 Human listening confirmed incorrect French numbers and missing liaisons. There
 is no quality approval; earlier release planning does not supersede that feedback.
@@ -16,7 +52,7 @@ installed lock; the recipe separates that entry from the wheel-only remainder.
 prerequisites. SoX builds without dependency resolution or build isolation;
 Setuptools supplies bdist_wheel. No other sdist is permitted.
 The installed lock uses the Pocket composition rule: runtime pins win overlaps,
-and service-only pinned, hashed packages are added. This composition has not
+and service-only pinned, hashed packages are added. At LOT1 this composition had not
 been installed or checked for runtime compatibility. The control image keeps
 its existing independent service lock.
 
@@ -95,7 +131,7 @@ Base config identity before accepting the managed snapshot. These source checks
 do not establish installed execution or inference qualification.
 The headless distribution manifest remains unchanged for the parent's LOT3.
 
-There is no Qwen production install policy or enable command in this lot.
+At the historical LOT1 checkpoint there was no Qwen production install policy or enable command.
 Direct image launch refuses. LOT2 must wire the existing certified daemon-role
 worker protocol with the UID 10001 child, ownership, capabilities, configuration
 and image seals intact. Do not bypass those gates or add a parallel launcher.
@@ -115,7 +151,7 @@ host ML import, paid API, key read, staging, commit or push. r409's original
 runtime RESULT established offline imports/version checks, not inference or
 release authority.
 
-## Lot A — managed CPU x-vector source journey
+## Historical Lot A — managed CPU x-vector source journey
 
 The Linux source lane now reconstructs preparation and saved-voice executions
 from one trusted CPU clone template. Public `reference_text` must be empty;
@@ -314,7 +350,7 @@ UID/mode, lock, configuration, manifest and receipt checks remain required.
 A stopped helper alone never proves import completion. Failed/expired imports
 retain intent and partial volumes; initialization requires verified import-done.
 
-Actual r432 CPU measurement, public installed import (247.79 seconds) and
+Historical r432 CPU measurement, public installed import (247.79 seconds) and
 initialization (80.83 seconds) passed. Public up failed in the worker Qwen
 startup branch because `execution` was not imported. The r433 source correction
 imports that parser at module scope. Its regression calls `qwen_daemon_main()`
@@ -329,7 +365,7 @@ Installed HTTP/CLI/MCP, cancellation/reap, restart/history and publication stage
 remain unqualified. This source/test result does not establish actual corrected
 startup. Review, commit and new images precede any actual retry.
 
-### r441 startup registration source correction
+### Historical r441 startup registration source correction
 
 At `af82dd52750cb58f313d89495a344551ad998152`, actual04's Qwen
 startup registration correctly used `daemon-volumes-inspection-v1`, but

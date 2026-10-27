@@ -1,10 +1,18 @@
-# Agent interface planning packet
+# Agent interface navigation
 
-Date: 2026-10-15. Planning only; no service API or studio has been implemented.
+Current headless API/CLI/MCP candidate: [installation and cloud onboarding](HEADLESS-INSTALL.md),
+[Kokoro CPU recipe](CPU-QUICKSTART.md), [Pocket CPU recipe](POCKET-QUICKSTART.md),
+and [current Qwen CPU status](QWEN-CPU.md#current-status--2026-10-27).
+Public release qualification is not ready; no web UI release is planned here.
+
+## Historical planning packet
+
+Date: 2026-10-15. The planning statements below describe that checkpoint; the
+headless service has since been implemented. Studio plans remain historical/deferred context.
 
 **Implementation agents:** start with [IMPLEMENTATION-START.md](IMPLEMENTATION-START.md), then the shared sections and assigned phase of [IMPLEMENTATION-PLAN.md](IMPLEMENTATION-PLAN.md). The latter is the canonical delivery plan, authored by Astra and independently read for scope and integration consistency. Its phase gates supersede older delivery sequences and research feature lists. No phase is complete merely because the plan exists.
 
-[Orchestration protocol](ORCHESTRATION-PROTOCOL.md): Sol-low implementation, independent Sol-low review per lot, orchestrator-owned integration and final Astra review/corrections. [Execution ledger](EXECUTION-LEDGER.md) starts with launch preparation and Phase 0 pending; application implementation has not started.
+[Orchestration protocol](ORCHESTRATION-PROTOCOL.md): Sol-low implementation, independent Sol-low review per lot, orchestrator-owned integration and final Astra review/corrections. [Execution ledger](EXECUTION-LEDGER.md) starts with launch preparation and Phase 0 pending; at that historical checkpoint application implementation had not started.
 
 Latest scope: STT/contextual dictation is deferred from v1; the user will test it in TxCode first. The [fresh global Astra review](review-fresh-product-astra.md) is complete: GO to write the thorough product plan now. Recommended baseline is our existing backend plus selected studio components; no mandatory Voicebox fork/prototype. Earlier STT reviews remain research evidence, not current release requirements. Voicebox is not adopted or a selected dependency.
 
@@ -44,7 +52,7 @@ STT/deeper comparison research (2026-10-15):
 - [Published editor headless probe](evaluation/editor/README.md), [Voicebox export-function probe](evaluation/voicebox/README.md), [Mac Docker socket smoke](evaluation/ipc/README.md), and [host inventory](evaluation/host.json).
 - [Final public-data CPU evaluation](evaluation/stt/RESULTS.md): two timeouts/partial EN-only output; whisper.cpp blocked before inference. No efficient CPU starter is qualified.
 
-The expanded research preserves a Docker-first shared service and full studio; a native dictation sibling remains unselected. CPU/model support and acceleration are qualified per profile rather than inferred from an upstream hardware list.
+The historical expanded research proposed a Docker-first shared service and full studio; a native dictation sibling remains unselected. CPU/model support and acceleration are qualified per profile rather than inferred from an upstream hardware list.
 
 Contextual dictation clarification (2026-10-15):
 

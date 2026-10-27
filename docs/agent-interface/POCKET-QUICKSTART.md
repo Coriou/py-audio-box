@@ -14,7 +14,7 @@ The fresh public05 nine-job journey also passed its final clean stop. Its retain
 history used 872 of 2048 inspection rows; this is finite measured acceptance,
 not a guarantee of unlimited retained jobs or history.
 
-Listening/perceptual acceptance remains **UNMEASURED**, the protected-host lane
+Listening/perceptual acceptance for these installed runs remains **UNMEASURED**, the protected-host lane
 **UNRUN**, and the CPU regressions/source archive checks have passed. CUDA and Apple Metal
 remain **UNQUALIFIED**.
 
@@ -26,7 +26,12 @@ HTTP. It stops and restarts the same containers and leaves the service running.
 HTTP is canonical; CLI and MCP use the same operations. No host ML environment,
 UI, implicit model download, GPU or fallback is involved.
 
-Use a clean checkout, Python 3.11, and a local Unix Docker endpoint selected by an
+The [retained backend pilot](../TTS_POCKET_CPU_PILOT.md) records material
+text-fidelity failures; clean/exact-text cloning has not passed acceptance.
+See the [model comparison](../../README.md#model-choice-and-repository-declarations).
+
+This is a Git source-checkout recipe: the script runs `git rev-parse HEAD`, so
+it is not a repo-free extracted-archive recipe. Use a clean checkout, Python 3.11, and a local Unix Docker endpoint selected by an
 existing Docker context. The complete pinned worker closure is
 `requirements/pocket-installed.lock`. Image construction needs network access;
 the model acquisition and license/access acceptance are separate operator work.
@@ -38,6 +43,14 @@ The installed disk quota is 1 GiB, with 64 MiB free-space admission and an 8 MiB
 reservation per retained job. The latter covers the preparation protocol’s two output copies and six
 reference/segment copies at the full 1 MiB input ceiling (7731544 bytes total).
 Retained jobs still consume quota; ordinary Core capacity checks remain active.
+
+The [pinned descriptor](../../requirements/tts/pocket-fr.expected.json) declares
+CC-BY-4.0 and operator-authorized HF gated access. Obtain HF access and accept
+upstream conditions before acquisition. The recipe neither logs in nor accepts
+conditions on your behalf; a metadata field does not authenticate acceptance.
+The eight-second reference bound below belongs to this recipe, not a universal
+upstream model limit. Empty `reference_text` and separately authored audition
+text have different roles; saving retains the reference, not the audition.
 
 Acquire authorized gated Hugging Face files with your own authenticated HF CLI:
 repository `kyutai/pocket-tts`, immutable revision
@@ -107,3 +120,13 @@ virtual environment and install `service/requirements.lock` with
 wheel availability is a separate client prerequisite. This recipe establishes
 no CUDA, Metal, listening or release-wide qualification. The ordinary Docker-client
 cancellation/reap check passed as recorded above.
+
+For reference uploads from MCP, optionally set `SPEECH_UPLOAD_ROOT` in the agent
+host to an absolute operator-authorized directory, for example
+`/absolute/private/authorized-references`. This grants host filesystem read scope
+within that root and exposes `speech_asset_upload_file` with `{"path":"reference.wav"}`.
+Paths must be relative, with no `..` or symlink following. Without this setting,
+use CLI `asset upload FILE` or authenticated HTTP first and supply the asset ID.
+MCP direct audio content is limited to 3072 decoded bytes per call. Keep complete
+audio outside model context: use `python -m clients.cli asset content ID --output FILE`
+in the configured client environment for a complete hash-verified exclusive file.
