@@ -151,3 +151,47 @@ Pocket gated assets require users' own authorized terms acceptance.
 
 Application source remains **AGPL-3.0-only**. Dependency and model licenses remain
 separate; an upstream MIT/Apache license does not relicense this application.
+
+
+## RSS sampler and diagnostic failure boundaries
+
+The harness reads the owned PID in process: Darwin uses
+[`proc_pid_rusage`](https://github.com/apple-oss-distributions/xnu/blob/main/libsyscall/wrappers/libproc/libproc.c)
+with Apple's 96-byte
+[`rusage_info_v0`](https://github.com/apple-oss-distributions/xnu/blob/main/bsd/sys/resource.h).
+`ri_resident_size` is bytes; `ri_proc_start_abstime` binds process identity and
+`ri_proc_exit_abstime` detects exit. Linux uses
+[`/proc/PID/stat`](https://man7.org/linux/man-pages/man5/proc_pid_stat.5.html)
+starttime and resident pages multiplied by the OS page size. Linux never loads
+Darwin symbols. The parent retains PID ownership until first identity binding;
+subsequent identity changes, permissions and malformed reads fail closed.
+
+One reader thread samples every 0.1 seconds; it is never replaced on failure.
+The owner independently enforces elapsed/phase deadlines, the existing 6 GiB
+sampled RSS limit, bounded output and kill/wait cleanup. No fresh observation
+within 0.5 seconds is a sampler failure. A blocked reader cannot block cleanup;
+its stop status is retained. Reports distinguish sampler errors, last valid
+sample and age, sampled peak, owner failure, requested termination/signals,
+observed exit and reaping. A sampled peak is not an RSS bound, and lost sampling
+never proves memory safety. RSS does not measure all Metal/unified allocations.
+Python stdout is unbuffered; progress JSON is capped at 64 KiB. Phase timestamps
+assume parent and child share the same system-wide monotonic clock (Darwin
+CPython 3.11); they are not portable across hosts or clock namespaces.
+
+The previous cold-load `ps` 0.5-second timeout was a sampler transport failure,
+not evidence of Qwen incompatibility, Metal failure or OOM. Its original receipt
+is retained separately; this source repair does not qualify inference.
+
+### Proposed cache separation (not implemented)
+
+Each current probe downloads into a new private tree and removes it during
+cleanup, so a harness failure discards roughly 2.5 GB of verified weights.
+A future diagnostic lane could cache only permitted public weights under an
+exact checkpoint/revision/file-path/size/SHA256/policy key, without restore-key
+fallbacks, tokens, user configuration or audio. Revalidate all files and reject
+symlinks/traversal; atomically promote only a complete verified immutable tree.
+Record cache hit/miss and validation separately from process cold-load timing;
+OS page-cache state remains uncontrolled. Respect cache quotas and model terms.
+Keep the final installer acceptance lane explicitly cache-disabled with a fresh
+root. Diagnostic cache reuse would prove neither cold installation nor installed
+product reuse. No cache or model acquisition is added by this sampler patch.

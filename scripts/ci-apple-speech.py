@@ -6,6 +6,7 @@ import hashlib
 import importlib.metadata
 import io
 import json
+import math
 import os
 from pathlib import Path
 import resource
@@ -22,9 +23,11 @@ import wave
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
+from scripts.ci_process_rss import Sampler
 DESCRIPTOR = ROOT / 'requirements/tts/qwen-0.6b-customvoice-macos.expected.json'
 MAX_RSS = 6 * 1024**3
 MAX_LOG = 1024**2
+RSS_STALE_SECONDS = .5
 DOWNLOAD_HOSTS = frozenset(('huggingface.co', 'cas-bridge.xethub.hf.co',
     'cdn-lfs.huggingface.co', 'cdn-lfs-us-1.hf.co', 'cdn-lfs-eu-1.hf.co',
     'us.aws.cdn.hf.co'))
@@ -53,54 +56,94 @@ def phase_remaining(progress, now):
     for key, cap in (('verification_seconds', 30), ('cold_load_seconds', 120),
                      ('generation_seconds', 30), ('encoding_seconds', 15),
                      ('total_seconds', 180)):
-        if progress.get(key, 0) > cap:
+        value = progress.get(key, 0)
+        if type(value) not in (int, float) or not math.isfinite(value) or value < 0:
+            raise ValueError('invalid_phase_duration_' + key)
+        if value > cap:
             raise TimeoutError('native_completed_phase_timeout_' + key)
     stage = progress['stage']
+    start = progress['stage_started']
+    if type(start) not in (int, float) or not math.isfinite(start) or start > now:
+        raise ValueError('invalid_phase_start')
     limit = {'input_verification': 30, 'cold_load': 120,
              'generation': 30, 'encoding': 15, 'complete': 15}[stage]
-    remaining = limit - (now - progress['stage_started'])
+    remaining = limit - (now - start)
     if remaining <= 0:
         raise TimeoutError('native_phase_timeout_' + stage)
     return remaining
 
 
+class SamplerLost(RuntimeError):
+    pass
+
+
+def read_progress(path):
+    with path.open('rb') as stream:
+        raw = stream.read(65537)
+    if len(raw) > 65536:
+        raise ValueError('phase_progress_limit')
+    value = json.loads(raw)
+    if type(value) is not dict:
+        raise ValueError('phase_progress_object_required')
+    return value
+
+
 def owned_child(argv, env, log_path, observation, *, seconds=30, progress_path=None):
-    """Drain a bounded pipe; check deadlines even after a zero exit."""
+    """Independent owner deadline, one asynchronous RSS reader, bounded output."""
     started = time.monotonic()
     cutoff = started + seconds
-    peak_rss = total = 0
-    child = subprocess.Popen(argv, env=env, stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT, start_new_session=True, bufsize=0)
+    total = 0
+    failure = None
+    sampler = None
+    sampler_started = False
+    rss_lost = False
+    termination = dict(requested_reason=None, signals=[])
+    child = subprocess.Popen(argv, env=dict(env, PYTHONUNBUFFERED='1'),
+        stdout=subprocess.PIPE, stderr=subprocess.STDOUT, start_new_session=True, bufsize=0)
+    observation.update(child_pid=child.pid, rss_limit_bytes=MAX_RSS,
+        rss_bound_proven=False, termination=termination)
     try:
+        sampler = Sampler(child.pid)
+        sampler.start()
+        sampler_started = True
         with selectors.DefaultSelector() as selector, log_path.open('xb') as log:
             selector.register(child.stdout, selectors.EVENT_READ)
             eof = False
             while True:
-                remaining = cutoff - time.monotonic()
+                now = time.monotonic()
+                remaining = cutoff - now
                 if remaining <= 0:
                     raise TimeoutError(f'native_child_{seconds}_seconds')
                 if progress_path is not None and progress_path.exists():
-                    # Darwin CPython 3.11 uses the same monotonic clock across
-                    # processes (since Python 3.10 on macOS). Child timestamps
-                    # are comparable to this parent, not portable persisted time.
-                    progress = json.loads(progress_path.read_bytes())
+                    # Darwin CPython 3.11 uses a system-wide monotonic clock.
+                    progress = read_progress(progress_path)
                     observation['progress'] = progress
                     remaining = min(remaining, phase_remaining(progress, time.monotonic()))
-                code = child.poll()
+                state = sampler.snapshot()
+                # Do not reap/release the PID before the reader binds its first
+                # start identity (or reports exit/failure). A zombie cannot reuse
+                # its PID; late samples are discarded after request_stop below.
+                code = child.poll() if state['count'] or state['error'] else child.returncode
+                if state['error']:
+                    observation['sampler_error'] = state['error']
+                    if state['error']['type'] != 'ProcessGone' or child.poll() is None:
+                        rss_lost = True
+                        raise SamplerLost('RSS reader failed: ' + state['error']['type'] + ': ' + state['error']['message'])
+                    observation['sampler_target_exit_confirmed'] = True
+                if code is None:
+                    last = state['last']
+                    age = now - (last['observed_at'] if last else started)
+                    if age > RSS_STALE_SECONDS:
+                        rss_lost = True
+                        observation['sampler_error'] = dict(type='StaleSample',
+                            message='no fresh RSS observation within 0.5 seconds', age_seconds=age)
+                        raise SamplerLost('RSS observation stale')
+                    if state['peak'] is not None and state['peak'] > MAX_RSS:
+                        raise MemoryError('native_child_6_GiB_RSS_limit')
                 if eof and code is not None:
                     if code: raise RuntimeError('native_child_failed_see_language_log')
                     break
-                if code is None:
-                    try:
-                        rss = subprocess.check_output(['/bin/ps', '-o', 'rss=', '-p', str(child.pid)],
-                            timeout=min(.5, remaining), text=True).strip()
-                    except subprocess.CalledProcessError:
-                        if child.poll() is None: raise
-                        rss = ''
-                    peak_rss = max(peak_rss, int(rss or '0')*1024)
-                    if peak_rss > MAX_RSS:
-                        raise MemoryError('native_child_6_GiB_RSS_limit')
-                for key, _ in selector.select(timeout=min(.1, max(0, cutoff-time.monotonic()))):
+                for key, _ in selector.select(timeout=min(.05, max(0, cutoff-time.monotonic()))):
                     block = os.read(key.fd, 65536)
                     if not block:
                         selector.unregister(key.fileobj)
@@ -112,14 +155,63 @@ def owned_child(argv, env, log_path, observation, *, seconds=30, progress_path=N
                     if keep < len(block): raise ValueError('child_log_limit')
             if time.monotonic() > cutoff:
                 raise TimeoutError(f'native_child_{seconds}_seconds')
+    except BaseException as exc:
+        failure = exc
+        observation['owner_failure'] = dict(type=type(exc).__name__, message=str(exc)[:1000])
+        raise
     finally:
+        cleanup_error = None
+        if sampler_started:
+            sampler.request_stop()  # Stop accepting samples before any final reap.
         if child.poll() is None:
-            os.killpg(child.pid, signal.SIGKILL)
-        child.wait(timeout=5)
-        child.stdout.close()
-        observation.update(child_reaped=True, child_exit=child.returncode,
-            child_seconds=time.monotonic()-started, sampled_peak_rss_bytes=peak_rss,
-            log_bytes=total)
+            termination['requested_reason'] = type(failure).__name__ + ': ' + str(failure)[:1000] if failure else 'owner_cleanup'
+            request = dict(signal='SIGKILL', number=int(signal.SIGKILL), process_group=child.pid,
+                           requested_at=time.monotonic(), accepted=False)
+            termination['signals'].append(request)
+            try:
+                os.killpg(child.pid, signal.SIGKILL)
+                request['accepted'] = True
+            except OSError as exc:
+                request['error'] = dict(type=type(exc).__name__, errno=exc.errno, message=str(exc)[:1000])
+        try:
+            child.wait(timeout=5)
+            observation['child_reaped'] = True
+        except BaseException as exc:
+            cleanup_error = exc
+            observation['child_reaped'] = False
+            observation['cleanup_error'] = dict(type=type(exc).__name__, message=str(exc)[:1000])
+        finally:
+            child.stdout.close()
+            observation.update(child_exit=child.returncode,
+                child_seconds=time.monotonic()-started, log_bytes=total)
+            stopped = sampler.stop() if sampler_started else None
+            state = sampler.snapshot() if sampler_started else dict(last=None, peak=None, count=0, error=None)
+            late_sampler_error = None
+            if state['error']:
+                observation.setdefault('sampler_error', state['error'])
+                if state['error']['type'] == 'ProcessGone' and child.returncode is not None:
+                    observation['sampler_target_exit_confirmed'] = True
+                else:
+                    rss_lost = True
+                    late_sampler_error = SamplerLost('RSS reader failed during cleanup')
+            if stopped is False:
+                rss_lost = True
+                late_sampler_error = SamplerLost('RSS reader thread did not stop; no replacement created')
+            last = state['last']
+            if last is None:
+                rss_lost = True
+                late_sampler_error = SamplerLost('no valid RSS observation obtained')
+            observation.update(sampler_thread_stopped=stopped, rss_observation_lost=rss_lost,
+                rss_samples=state['count'], last_valid_rss_sample=last,
+                last_valid_rss_age_seconds=None if last is None else time.monotonic()-last['observed_at'],
+                sampled_peak_rss_bytes=state['peak'],
+                rss_guard_status='lost' if rss_lost else 'sampled' if last else 'unobserved')
+            observation['observed_exit'] = dict(returncode=child.returncode,
+                signal=signal.Signals(-child.returncode).name if type(child.returncode) is int and child.returncode < 0 else None)
+        if cleanup_error is not None and failure is None:
+            raise cleanup_error
+        if late_sampler_error is not None and failure is None:
+            raise late_sampler_error
 
 
 def save(path, value):
@@ -296,7 +388,7 @@ def run(output):
                         HF_HUB_DISABLE_TELEMETRY='1', PYTORCH_ENABLE_MPS_FALLBACK='0',
                         TOKENIZERS_PARALLELISM='false', OMP_NUM_THREADS='2')
                     observation = report['children'][language] = {}
-                    owned_child([sys.executable, str(Path(__file__).resolve()),
+                    owned_child([sys.executable, '-u', str(Path(__file__).resolve()),
                         '--child', str(bundle), '--language', language, '--output', str(output)],
                         env, output / (language + '.log'), observation,
                         seconds=180, progress_path=output / (language + '-progress.json'))

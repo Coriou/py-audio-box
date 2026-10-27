@@ -107,7 +107,7 @@ def run(output):
             HF_HUB_DISABLE_TELEMETRY='1', TOKENIZERS_PARALLELISM='false', OMP_NUM_THREADS='2',
             PYTORCH_ENABLE_MPS_FALLBACK='0')
         try:
-            owner.owned_child([sys.executable, '-I', '-B', str(Path(__file__).resolve()),
+            owner.owned_child([sys.executable, '-I', '-B', '-u', str(Path(__file__).resolve()),
                 '--child-report', str(output.resolve()/'report.json')], env,
                 output/'child.log', observation, seconds=60)
         except BaseException as exc:

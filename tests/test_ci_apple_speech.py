@@ -54,7 +54,9 @@ class AppleSpeechTests(unittest.TestCase):
         child=Mock(returncode=0);child.poll.return_value=0
         selector=Mock();selector.__enter__=Mock(return_value=selector);selector.__exit__=Mock(return_value=False)
         selector.select.return_value=[(type('Key',(),{'fd':10,'fileobj':child.stdout})(),1)]
-        with tempfile.TemporaryDirectory() as tmp,patch.object(ci.subprocess,'Popen',return_value=child),patch.object(ci.selectors,'DefaultSelector',return_value=selector),patch.object(ci.os,'read',return_value=b''),patch.object(ci.time,'monotonic',side_effect=[0,29,29,31,31]):
+        sampler=Mock();sampler.stop.return_value=True
+        sampler.snapshot.return_value=dict(last=None,peak=None,count=0,error=None)
+        with tempfile.TemporaryDirectory() as tmp,patch.object(ci,'Sampler',return_value=sampler),patch.object(ci.subprocess,'Popen',return_value=child),patch.object(ci.selectors,'DefaultSelector',return_value=selector),patch.object(ci.os,'read',return_value=b''),patch.object(ci.time,'monotonic',side_effect=[0,29,29,31,31]):
             result={}
             with self.assertRaisesRegex(TimeoutError,'30_seconds'):
                 ci.owned_child(['unused'],{},Path(tmp)/'child.log',result)

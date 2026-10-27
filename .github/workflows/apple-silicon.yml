@@ -6,6 +6,7 @@ on:
       - 'scripts/ci-apple-silicon.py'
       - 'scripts/ci-apple-speech.py'
       - 'scripts/ci-native-import.py'
+      - 'scripts/ci_process_rss.py'
       - 'scripts/build-native-qwen-wheel.py'
       - 'requirements/wheels/**'
       - 'requirements/upstream/**'
@@ -28,6 +29,7 @@ on:
       - 'tests/contracts/test_legacy_controls.py'
       - 'tests/test_ci_apple_silicon.py'
       - 'tests/test_ci_apple_speech.py'
+      - 'tests/test_ci_process_rss.py'
       - 'docs/agent-interface/APPLE-CI.md'
   pull_request:
     paths: *paths
@@ -127,7 +129,7 @@ jobs:
         run: python scripts/ci-apple-silicon.py mps-probe --report apple-ci/mps-probe.json
       - name: Explicit Darwin-safe source contracts (inert protocol and CI harness)
         run: >-
-          python -m unittest tests.test_ci_apple_silicon tests.test_ci_apple_speech
+          python -m unittest tests.test_ci_apple_silicon tests.test_ci_apple_speech tests.test_ci_process_rss
           tests.worker.test_native_protocol tests.worker.test_native_qwen
           tests.service.test_qwen_provisioning tests.test_native_qwen_artifact -v
       - name: Native archive and selected artifact closure (no runtime)
