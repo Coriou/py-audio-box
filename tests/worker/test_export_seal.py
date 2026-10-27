@@ -11,7 +11,7 @@ from service import installed_export as ex
 from service.host_install import _registration_hello
 from service.supervisor_runtime import SupervisorRuntime
 from tests.service.test_installed_export import InstalledExportContractTests
-from tests.worker.test_audio_export import fixture
+from tests.worker.test_worker_audio_export import fixture
 from worker import managed_reference as m
 from worker.runtime_supervisor import RuntimeSupervisor, export_startup, main
 
