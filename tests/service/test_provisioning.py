@@ -256,6 +256,9 @@ class RecoveryAndBoundsTests(unittest.TestCase):
     def test_private_root_fifo_and_hardlink_admission(self):
         import os
         self.root.mkdir(mode=0o755)
+        # Keep the intentionally non-private mode independent of the process umask.
+        self.root.chmod(0o755)
+        self.assertEqual(self.root.stat().st_mode & 0o777, 0o755)
         with self.assertRaises(ValueError): self.run_provision()
         self.root.chmod(0o700)
         lock = self.root / '.provision.lock'
