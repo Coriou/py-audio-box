@@ -1,7 +1,7 @@
 """Real disposable SQLite/files, injected OS UID boundary. NO actual Linux UID proof."""
 import sys
 import copy
-from contextlib import ExitStack
+from contextlib import ExitStack, contextmanager
 import fcntl
 import json
 import os
@@ -20,8 +20,25 @@ from tests.service.test_engine_admission import configuration as engine_configur
 from tests.service import test_provisioning as provisioning_fixtures
 
 
+_REAL_VALIDATE_SPLIT_DATABASE = init._validate_split_database
+
+
+@contextmanager
+def _semantic_inventory_clock():
+    # Replace only the scanner module reference; SQL and process clocks stay real.
+    clock=SimpleNamespace(monotonic=lambda:100.0,time=reconciliation.time.time)
+    with patch.object(reconciliation,'time',clock):
+        yield
+
+
+def _validate_split_database(*args,**kwargs):
+    with _semantic_inventory_clock():
+        return _REAL_VALIDATE_SPLIT_DATABASE(*args,**kwargs)
+
+
 class SplitInit(unittest.TestCase):
     def setUp(self):
+        self.enterContext(patch.object(init,'_validate_split_database',_validate_split_database))
         self.temp=tempfile.TemporaryDirectory(dir=getattr(self,'temporary_parent','/private/tmp' if sys.platform == 'darwin' else '/tmp')); self.addCleanup(self.temp.cleanup)
         self.root=Path(self.temp.name)
         self.roots={r:self.root/r for r in ip.ROLES}
@@ -411,7 +428,87 @@ class SplitInit(unittest.TestCase):
                 init._split_core({},self.roots['control'],self.roots['staging'])
 
 
+class InventoryClockFixtureTests(unittest.TestCase):
+    def test_first_and_direct_initialization_restore_clock(self):
+        import time
+        original_clock=reconciliation.time
+        monotonic=time.monotonic
+        validator=init._validate_split_database
+        collect=reconciliation.Reconciliation._collect
+        seen=[]
+        def observed(scanner,**kwargs):
+            self.assertIs(time.monotonic,monotonic)
+            self.assertEqual(reconciliation.time.monotonic(),100.0)
+            self.assertIs(reconciliation.time.time,original_clock.time)
+            seen.append(scanner)
+            return collect(scanner,**kwargs)
+        for direct in (False,True):
+            with self.subTest(direct=direct):
+                fixture=SplitInit();fixture.setUp()
+                try:
+                    with patch.object(reconciliation.Reconciliation,'_collect',observed):
+                        if direct:
+                            init.initialize_split(fixture.roots,fixture.scope,fixture.config,
+                                authority=fixture.authority,policy=ip.SPLIT,launch_child=fixture.child)
+                        else:fixture.run_init()
+                    self.assertIs(reconciliation.time,original_clock)
+                    self.assertIs(time.monotonic,monotonic)
+                finally:fixture.doCleanups()
+                self.assertIs(init._validate_split_database,validator)
+        self.assertEqual(len(seen),2)
+
+    def test_nested_cleanup_and_exception_restore_bindings(self):
+        import time
+        validator=init._validate_split_database
+        clock=reconciliation.time
+        monotonic=time.monotonic
+        outer=SplitInit();outer.setUp()
+        try:
+            outer_validator=init._validate_split_database
+            inner=SplitInit();inner.setUp()
+            try:
+                with patch.object(reconciliation.Reconciliation,'_collect',side_effect=RuntimeError('scanner failure')):
+                    with self.assertRaisesRegex(RuntimeError,'^scanner failure$'):inner.run_init()
+                self.assertIs(reconciliation.time,clock)
+                self.assertIs(time.monotonic,monotonic)
+            finally:inner.doCleanups()
+            self.assertIs(init._validate_split_database,outer_validator)
+            outer.run_init()
+            self.assertIs(reconciliation.time,clock)
+        finally:outer.doCleanups()
+        self.assertIs(init._validate_split_database,validator)
+        self.assertIs(time.monotonic,monotonic)
+
+
 class InventoryDeadlineTests(unittest.TestCase):
+    def test_unwrapped_validator_expiry_refuses_enrollment(self):
+        fixture=SplitInit();fixture.setUp()
+        self.addCleanup(fixture.doCleanups)
+        fixture.crash('database')
+        public=json.loads((fixture.roots['receipts']/'p1-init.json').read_bytes())['public']
+        before=fixture.bytes()
+        original_clock=reconciliation.time
+        charge=reconciliation.Reconciliation._charge
+        observed=[]
+        ticks=iter((100.0,102.0))
+        clock=SimpleNamespace(monotonic=lambda:next(ticks),time=original_clock.time)
+        def checked(scanner,*args,**kwargs):
+            try:return charge(scanner,*args,**kwargs)
+            except reconciliation.Incomplete:
+                self.assertLess(scanner.entries,scanner.entry_limit)
+                self.assertLess(scanner.bytes,min(scanner.byte_limit,scanner.scalar_limit))
+                self.assertLess(scanner.media_bytes,scanner.media_limit)
+                self.assertEqual(scanner.end,101.0)
+                observed.append(scanner.entries)
+                raise
+        with patch.object(reconciliation,'time',clock), patch.object(reconciliation.Reconciliation,'_charge',checked):
+            with self.assertRaisesRegex(reconciliation.Incomplete,'^inventory_budget$'):
+                _REAL_VALIDATE_SPLIT_DATABASE(fixture.roots,public,policy=ip.SPLIT)
+        self.assertEqual(observed,[1])
+        self.assertIs(reconciliation.time,original_clock)
+        self.assertEqual(fixture.bytes(),before)
+        self.assertFalse((fixture.roots['receipts']/'p1-enrolled.json').exists())
+
     def test_scanner_deadline_boundary(self):
         import time
         original_time=reconciliation.time
@@ -440,11 +537,8 @@ class InventoryDeadlineTests(unittest.TestCase):
 
 def _completion_case(point):
     def case(self):
-        # Completion semantics must not depend on scheduler pauses. Replace only
-        # the scanner's module reference, never the shared time module used by
-        # threads; keep its wall clock and every production budget unchanged.
-        clock=SimpleNamespace(monotonic=lambda:100.0,time=reconciliation.time.time)
-        with patch.object(reconciliation,'time',clock):
+        # Retain the completion/recovery inspection scope as well as validation.
+        with _semantic_inventory_clock():
             self.crash(point);before=self.bytes();self.run_init(complete=self.completion())
             for k,v in before.items():self.assertEqual(self.bytes()[k],v)
             self.assertEqual(len(self.calls),1)
