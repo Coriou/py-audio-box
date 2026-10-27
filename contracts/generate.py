@@ -43,6 +43,10 @@ def generate():
             f.setparams((1,2,48000,frames,'NONE','not compressed'));f.writeframes(struct.pack('<'+str(frames)+'h',*data))
     dump(ROOT/'production-30.json',production(30))
     dump(ROOT/'production-100.json',production(100,True))
+    dump(ROOT/'voice-catalogue.json',dict(
+        evidence='H0 trusted domain fixture; no public HTTP or model readiness claim',
+        register=dict(version=preset_version(0,production(30)['assets'][0]['provenance']),expected_revision=0),
+        aliases=dict(voice_id='voice.0',aliases=['my-voice'],expected_revision=1)))
     profiles=[]
     for device in ('cpu','cuda','metal'):
         profiles.append(dict(config_revision='config-1',compatibility=[],id=device+'-synthetic',device=device,topology='packaged_native' if device=='metal' else 'networkless_container',support='unqualified',installation='absent',configuration='valid',readiness='not_ready',verification='synthetic',checked_at='2026-10-16T00:00:00Z',qualification_receipt='',limits=dict(expensive_slots=1 if device=='cpu' else 2,resident_models=1,threads=2,queue=32,upload_bytes=16777216,decoded_ticks=48000*600,text_chars=10000,variants=4,disk_bytes=1073741824,deadline_seconds=600,ram_bytes=4294967296,vram_bytes=0 if device=='cpu' else 8589934592),next_action='Inventory host and qualify exact backend/model/precision before advertising support.'))

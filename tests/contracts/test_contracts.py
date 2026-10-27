@@ -64,9 +64,11 @@ def test_determinism(tmp_path, monkeypatch):
         # ROOT also locates schema/operations via its parents; keep that layout.
         shutil.copytree(ROOT/'contracts/v1', package/'v1')
         output=package/'fixtures/v1'
+        assert not output.exists()
         monkeypatch.setattr(generate, 'ROOT', output)
         generate.generate()
         outputs.append({p.name:p.read_bytes() for p in output.glob('*')})
+        assert set(outputs[-1])==set(before)
     assert outputs[0]==outputs[1]
     assert outputs[0]==before
 
