@@ -2,8 +2,7 @@ import ast
 import copy
 import hashlib
 import json
-import subprocess
-import sys
+import shutil
 from pathlib import Path
 import pytest
 from jsonschema import Draft202012Validator, ValidationError
@@ -55,10 +54,21 @@ def test_exact_text_ids_defaults_and_source_control_coverage():
     p=load('production-30.json');assert p['blocks'][0]['text']=='  Ligne 000 — café!\nExact text.  '
     assert p['voices'][0]['id']=='voice.0' and p['voices'][0]['aliases']==['legacy_0']
 
-def test_determinism():
-    paths=list(FIX.glob('*'));before={p.name:p.read_bytes() for p in paths}
-    subprocess.run([sys.executable,'-m','contracts.generate'],cwd=ROOT,check=True)
-    assert before=={p.name:p.read_bytes() for p in FIX.glob('*')}
+def test_determinism(tmp_path, monkeypatch):
+    from contracts import generate
+
+    before={p.name:p.read_bytes() for p in FIX.glob('*')}
+    outputs=[]
+    for run in ('first', 'second'):
+        package=tmp_path/run/'contracts'
+        # ROOT also locates schema/operations via its parents; keep that layout.
+        shutil.copytree(ROOT/'contracts/v1', package/'v1')
+        output=package/'fixtures/v1'
+        monkeypatch.setattr(generate, 'ROOT', output)
+        generate.generate()
+        outputs.append({p.name:p.read_bytes() for p in output.glob('*')})
+    assert outputs[0]==outputs[1]
+    assert outputs[0]==before
 
 def test_revision_idempotency():
     c.revision(3,3)
