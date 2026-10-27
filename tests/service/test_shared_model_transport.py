@@ -404,6 +404,8 @@ raise SystemExit(2 if mode=='nonzero' else 0)
                 with self.assertRaises(ValueError):c.run('init')
                 assert not list(c.directory.glob('*-complete.json'))
                 assert not docker.retained
+                assert c.failure_context['role']=='controller'
+                assert c.failure_context['stage'] in ('begin-sent','response','eof')
 
     def test_verify_and_recover_need_no_host_payload(self):
         expected,data,key,root=self.bundle
@@ -494,3 +496,182 @@ raise SystemExit(2 if mode=='nonzero' else 0)
         other=client(root,docker,expected,data,2)
         with self.assertRaises((ValueError,FileNotFoundError)):other.run('verify')
         assert other.bytes==0 and docker.allocations==1
+
+
+class SharedModelDiagnosticTests(SharedModelCase):
+    def test_nested_action_context_success_and_failure_boundaries(self):
+        import io
+        from unittest.mock import MagicMock
+        expected,data,key,root=self.bundle
+        parent_id,child_id='1'*64,'2'*64
+        parent_nonce,child_nonce='a'*32,'b'*32
+        for mode in ('outer-check-failure','child-failure','success'):
+            with self.subTest(mode=mode):
+                docker=FakeDocker(root)
+                docker.argv=lambda args: ['inert']
+                docker.container=lambda identity: dict(Id=identity)
+                c=sc.Client(docker,IMAGE,root,time.monotonic()+20,time.time()+20)
+                candidate=dict(Labels={'speech-box.attempt':'c'*32})
+                c.created[child_id]=dict(role='writer',nonce=child_nonce,candidate=candidate,started=False)
+                payload=dict(id=child_id,role='writer',nonce=child_nonce,image=IMAGE,candidate=candidate,expected=None)
+                child_done=False; replies=[]
+                def check():
+                    if mode=='outer-check-failure' and child_done:
+                        raise ValueError('shared_catalog_incarnation')
+                def receipt(kind,value):
+                    nonlocal child_done
+                    if kind=='terminal' and value['id']==child_id: child_done=True
+                class Wire:
+                    def __init__(self,stdout,stdin,nonce,role,**kw):
+                        self.role=role; self.received=0
+                    def send(self,action,value):
+                        if action=='run-helper': replies.append(dict(c.failure_context))
+                    def receive(self):
+                        self.received+=1
+                        if self.role=='writer' and mode=='child-failure':
+                            raise ValueError('daemon_phase_eof_retained')
+                        if self.role=='controller' and self.received==1:return 'run-helper',payload
+                        return 'complete',dict(result={})
+                    def finish(self):pass
+                def process(*a,**kw):
+                    return MagicMock(stdin=io.BytesIO(),stdout=io.BytesIO())
+                with patch.object(c,'check',check),patch.object(c,'receipt',receipt),patch.object(sh,'inspect'),patch.object(sc.subprocess,'Popen',process),patch.object(sc,'Owner'),patch.object(sc,'Wire',Wire):
+                    if mode=='success':
+                        c.exchange(parent_id,'controller',parent_nonce,'import')
+                    else:
+                        with self.assertRaisesRegex(ValueError,'shared_catalog_incarnation' if mode=='outer-check-failure' else 'daemon_phase_eof_retained') as caught:
+                            c.exchange(parent_id,'controller',parent_nonce,'import')
+                        record=sh.failure_record(caught.exception,**c.failure_context)
+                        child=mode=='child-failure'
+                        assert record['id']==(child_id if child else parent_id)
+                        assert record['nonce']==(child_nonce if child else parent_nonce)
+                        assert record['role']==('writer' if child else 'controller')
+                        assert record['stage']==('begin-sent' if child else 'response')
+                    if mode=='success':
+                        assert replies==[dict(identity=parent_id,role='controller',nonce=parent_nonce,operation='import',stage='response')]
+                        assert c.failure_context==dict(replies[0],stage='terminal')
+                    else: assert replies==[]
+
+    def test_helper_roles_preserve_refusal_and_safe_cause(self):
+        import contextlib
+        import io
+        expected,data,key,root=self.bundle
+        secret='TOKEN=credential seed=/private/secret.env'
+        class Wire:
+            def __init__(self,*a,**kw): pass
+            def receive(self):
+                return 'begin',dict(expires=time.time()+20,operation=operation,
+                    daemon=DAEMON,catalog=metadata(root),candidate=metadata(root,key,'b'*32),
+                    expected=expected,attempt='b'*32,image=IMAGE)
+            def send(self,*a): raise AssertionError('must not complete')
+        for role,operation,target in (('controller','init','Catalog'),('writer','import','import_tree'),('verifier','verify','verify_tree')):
+            for error in (ValueError(secret),OSError(5,secret,'/private/secret.env'),ValueError('shared_catalog_inventory')):
+                with self.subTest(role=role,error=type(error).__name__):
+                    # Raise through actual write_at so the syscall frame survives.
+                    def fail(*a,**kw):
+                        try: raise RuntimeError(secret)
+                        except RuntimeError:
+                            if isinstance(error,OSError):
+                                fd=os.open(root,os.O_RDONLY|os.O_DIRECTORY)
+                                try:
+                                    with patch.object(sm.os,'fsync',side_effect=error):
+                                        sm.write_at(fd,'injected-'+role+'.json',{})
+                                finally: os.close(fd)
+                            raise error
+                    out=io.StringIO()
+                    with patch.object(sys,'argv',['helper',role,'a'*32]),patch.object(sh,'Wire',Wire),patch.object(sh,'mount_policy'),patch.object(sm,'volume'),patch.object(sh,'Controller'),contextlib.redirect_stderr(out):
+                        if target=='Catalog':
+                            with patch.object(sm.Catalog,'init',fail):
+                                with self.assertRaises(SystemExit) as caught: sh.main()
+                        else:
+                            with patch.object(sh if role=='writer' else sm,target,side_effect=fail):
+                                with self.assertRaises(SystemExit) as caught: sh.main()
+                    assert caught.exception.code=='shared helper refused; retained state requires review'
+                    raw=out.getvalue();record=json.loads(raw)
+                    assert raw.count('\n')==1 and len(raw)<=4097
+                    assert secret not in raw and '/private' not in raw and 'RuntimeError' not in raw
+                    assert record['role']==role and record['nonce']=='a'*32
+                    assert record['operation']==operation and record['stage']=='operation'
+                    assert record['exception']==type(error).__name__
+                    if isinstance(error,OSError):
+                        assert record['errno']==5
+                        assert any(f['file']=='shared_models.py' and f['function']=='write_at' and f['line']>0 for f in record['frames'])
+                    assert record['code']==('shared_catalog_inventory' if error.args==('shared_catalog_inventory',) else 'unknown')
+
+    def test_unknown_context_bounds_and_diagnostic_failure(self):
+        import io
+        import contextlib
+        secret='TOKEN=secret/private/config'
+        class Broken:
+            def write(self,*a): raise OSError(secret)
+        with patch.object(sys,'stderr',Broken()):
+            sh.diagnostic(ValueError(secret),role=secret,nonce=secret,operation=secret,stage=secret)
+        record=sh.failure_record(ValueError(secret),role=secret,nonce=secret,operation=secret,stage=secret)
+        assert all(record[k]=='unknown' for k in ('role','nonce','operation','stage','code'))
+        assert record['frames']==[] and not record['frames_available']
+        class Wire:
+            def __init__(self,*a):pass
+            def receive(self):raise ValueError(secret)
+        with patch.object(sys,'argv',['helper','controller','a'*32]),patch.object(sh,'Wire',Wire),patch.object(sys,'stderr',Broken()):
+            with self.assertRaises(SystemExit) as caught:sh.main()
+        assert caught.exception.code=='shared helper refused; retained state requires review'
+        # Deep recursion is capped and never formats source or chained content.
+        def recurse(n):
+            if n:return recurse(n-1)
+            raise ValueError(secret)
+        try:recurse(100)
+        except ValueError as exc:
+            raw=json.dumps(sh.failure_record(exc))
+            assert len(raw)<4096 and secret not in raw
+
+    def test_client_local_receipt_and_failed_receipt_independence(self):
+        import io
+        import contextlib
+        expected,data,key,root=self.bundle
+        for broken in (False,True):
+            output=root/('failure-'+str(broken))
+            error=ValueError('daemon_phase_eof_retained')
+            class Client:
+                def __init__(self,*a):
+                    self.failure_context=dict(identity='f'*64,role='controller',nonce='a'*32,operation='init',stage='begin-sent')
+                def run(self,*a):raise error
+            real=sc.exclusive
+            def exclusive(path,value):
+                if broken and path.name=='failure.json':raise OSError('SECRET')
+                return real(path,value)
+            stderr=io.StringIO()
+            with patch.object(sc,'Docker'),patch.object(sc,'Client',Client),patch.object(sc,'exclusive',exclusive),contextlib.redirect_stderr(stderr):
+                with self.assertRaises(SystemExit) as caught:
+                    sc.main(['init','--context','inert','--image',IMAGE,'--output',str(output)])
+            assert caught.exception.code=='shared models refused; retained state requires review'
+            record=json.loads(stderr.getvalue())
+            assert record['code']=='daemon_phase_eof_retained' and record['stage']=='begin-sent'
+            assert record['id']=='f'*64 and record['nonce']=='a'*32
+            if not broken:assert json.loads((output/'failure.json').read_text())==record
+
+    def test_unvalidated_request_and_exact_code_allowlist(self):
+        import io
+        import contextlib
+        secret='TOKEN=secret'
+        class Wire:
+            def __init__(self,*a):pass
+            def receive(self):return 'begin',dict(operation=secret)
+        output=io.StringIO()
+        with patch.object(sys,'argv',['helper','controller','a'*32]),patch.object(sh,'Wire',Wire),contextlib.redirect_stderr(output):
+            with self.assertRaises(SystemExit):sh.main()
+        record=json.loads(output.getvalue())
+        assert record['operation']=='unknown' and record['stage']=='receive'
+        assert secret not in output.getvalue()
+        for value in ('shared_catalog_inventory '+secret,'shared_catalog_inventory'+secret,'shared_catalog_inventory\n'):
+            assert sh.failure_record(ValueError(value))['code']=='unknown'
+        class ValueErrorImpostor(ValueError):pass
+        ValueErrorImpostor.__name__=secret
+        assert sh.failure_record(ValueErrorImpostor(secret))['exception']=='Exception'
+        # Fixed allowed frame names are capped even in a deep matching traceback.
+        scope={}
+        exec(compile("def run(n):\n if n: return run(n-1)\n raise ValueError('secret')",'/private/secret/service/shared_models.py','exec'),scope)
+        try:scope['run'](100)
+        except ValueError as exc:
+            record=sh.failure_record(exc)
+        assert len(record['frames'])==8
+        assert '/private' not in json.dumps(record) and 'secret' not in json.dumps(record)

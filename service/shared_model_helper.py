@@ -20,6 +20,144 @@ CAPS = {'controller': [], 'writer': ['CHOWN','FOWNER','DAC_OVERRIDE'], 'verifier
 TMPFS = 'rw,noexec,nosuid,nodev,size=16777216,nr_inodes=1024,mode=1777'
 
 
+
+# Closed diagnostic vocabulary: never serialize exception messages or chains.
+_DIAGNOSTIC_CODES = frozenset((
+    'daemon_action_not_allowed', 'daemon_action_role', 'daemon_closed_record',
+    'daemon_configuration_binding', 'daemon_configuration_budget', 'daemon_consumer_budget',
+    'daemon_container_changed', 'daemon_container_local_alias',
+    'daemon_container_local_identity', 'daemon_container_local_roots',
+    'daemon_container_mount_binding', 'daemon_container_security_binding',
+    'daemon_container_started_at', 'daemon_container_state', 'daemon_context',
+    'daemon_control_reader_only', 'daemon_cpu_budget', 'daemon_duplicate_field',
+    'daemon_endpoint_identity_changed', 'daemon_evidence_binding',
+    'daemon_evidence_cross_view_identity', 'daemon_evidence_incarnation',
+    'daemon_evidence_role_identity', 'daemon_exact_container_id',
+    'daemon_existing_volume_refused', 'daemon_explicit_context_required',
+    'daemon_explicit_volume_mounts_required', 'daemon_export_credential_principals',
+    'daemon_export_exact_mount_options', 'daemon_frame_budget',
+    'daemon_fresh_local_volume_required', 'daemon_gate_budget', 'daemon_handle_context_changed',
+    'daemon_handle_selection_only', 'daemon_helper_exit_unknown', 'daemon_helper_id',
+    'daemon_helper_phase', 'daemon_helper_start_unknown', 'daemon_image_configuration_binding',
+    'daemon_input_budget', 'daemon_input_changed', 'daemon_input_file', 'daemon_input_frame',
+    'daemon_input_manifest', 'daemon_install_inputs_required', 'daemon_loaded_image_required',
+    'daemon_local_rootful_linux_amd64_required', 'daemon_new_installation_policy',
+    'daemon_no_copyup_mount_required', 'daemon_phase_eof_retained', 'daemon_phase_replay',
+    'daemon_phase_timeout', 'daemon_phase_write_timeout', 'daemon_pinned_images_required',
+    'daemon_port_budget', 'daemon_private_input_budget', 'daemon_requested_mount_binding',
+    'daemon_resource_budget', 'daemon_role', 'daemon_terminal_eof_timeout',
+    'daemon_tmpfs_budget', 'daemon_trailing_protocol', 'daemon_volume_alias',
+    'daemon_volume_changed', 'daemon_volume_create_changed', 'explicit_export_family_required',
+    'shared_absolute_source_required', 'shared_actor_id_changed',
+    'shared_actor_incarnation_changed', 'shared_actor_intent', 'shared_actual_mounts',
+    'shared_attachment_binding', 'shared_attachment_outcome_unknown',
+    'shared_attachment_record', 'shared_attachment_role', 'shared_attempt_budget',
+    'shared_attempt_descriptor', 'shared_attempt_grammar', 'shared_begin',
+    'shared_candidate_incarnation', 'shared_candidate_not_empty', 'shared_candidate_not_fresh',
+    'shared_candidate_required', 'shared_catalog_directory_changed', 'shared_catalog_identity',
+    'shared_catalog_incarnation', 'shared_catalog_inventory', 'shared_catalog_root_changed',
+    'shared_config_credential_only', 'shared_consumer_budget', 'shared_consumer_changed',
+    'shared_controller_payload_forbidden', 'shared_deadline', 'shared_duplicate_attachment',
+    'shared_duplicate_consumer', 'shared_duplicate_helper', 'shared_enrolled_binding',
+    'shared_enrollment_binding', 'shared_enrollment_required', 'shared_event',
+    'shared_exact_published_attempt', 'shared_exact_recovery_attempt', 'shared_expiry',
+    'shared_explicit_init_required', 'shared_explicit_request', 'shared_explicit_sources',
+    'shared_explicit_writer_sources', 'shared_extra_directory', 'shared_extra_file',
+    'shared_file_extended', 'shared_file_hash', 'shared_file_identity',
+    'shared_filesystem_policy', 'shared_fresh_attachment', 'shared_fresh_catalog_owner',
+    'shared_fresh_helper_required', 'shared_fresh_qwen_only', 'shared_helper_allowlist',
+    'shared_helper_failed_retained', 'shared_helper_role', 'shared_helper_security',
+    'shared_helper_timeout_retained', 'shared_identity', 'shared_image',
+    'shared_immutable_image', 'shared_incomplete_tree', 'shared_init_request',
+    'shared_input_allowlist', 'shared_input_chunk', 'shared_input_hash',
+    'shared_inspect_allowlist', 'shared_installation_operation',
+    'shared_installation_record_grammar', 'shared_inventory_budget', 'shared_key_allowlist',
+    'shared_literal_mount_policy', 'shared_local_image_required', 'shared_lock_changed',
+    'shared_lock_contents', 'shared_locks_directory_changed', 'shared_manifest_bytes',
+    'shared_not_published', 'shared_operation', 'shared_orphan_attempt_record',
+    'shared_orphan_reader_record', 'shared_partial_bootstrap', 'shared_payload_budget',
+    'shared_publication_actor_record', 'shared_publication_attempt',
+    'shared_publication_changed', 'shared_publication_conflict', 'shared_publication_exists',
+    'shared_publication_identity', 'shared_published_tree_changed', 'shared_qwen_descriptor',
+    'shared_reader_budget', 'shared_reader_candidate', 'shared_reader_intent',
+    'shared_reader_outcome_unknown', 'shared_reader_record', 'shared_record_budget',
+    'shared_record_changed', 'shared_record_encoding', 'shared_reference_binding',
+    'shared_reference_grammar', 'shared_requested_mounts', 'shared_reservation_identity',
+    'shared_root_changed', 'shared_root_identity', 'shared_rpc_action',
+    'shared_rpc_not_allowed', 'shared_selected_candidate', 'shared_selected_catalog',
+    'shared_selected_publication', 'shared_snapshot_identity', 'shared_source_changed',
+    'shared_source_file', 'shared_sources', 'shared_start_allowlist', 'shared_storage_binding',
+    'shared_terminal_required', 'shared_terminal_time', 'shared_tree_changed',
+    'shared_unknown_attempt', 'shared_unknown_consumer', 'shared_verifier_rpc', 'shared_volume',
+    'shared_volume_alias', 'shared_volume_create_unknown', 'shared_volume_inspection',
+    'shared_volume_inventory_budget', 'shared_writer_fresh_allocation_required',
+    'shared_writer_rpc',
+))
+_DIAGNOSTIC_FUNCTIONS = frozenset((
+    '__enter__', '__exit__', '__init__', '_binding', '_create', 'action', 'actor', 'append',
+    'argv', 'attachment', 'attempts', 'bind', 'binding', 'bound', 'cadence', 'call',
+    'canonical_mountpoint', 'catalog_volume', 'check', 'chunk', 'classify', 'closed', 'collect',
+    'command', 'consumers', 'container', 'coordinate', 'create_helper', 'create_volume',
+    'created', 'daemon', 'deadline', 'descriptor', 'digest', 'directory', 'disjoint', 'encoded',
+    'enrolled', 'event', 'exchange', 'exclusive', 'export_main', 'fail', 'file_identity',
+    'finish', 'flock', 'held', 'helper_roles', 'identity', 'import_tree', 'init', 'input',
+    'inspect', 'inspect_container', 'inspect_volume', 'json', 'labels', 'local', 'main',
+    'manifest', 'mount_policy', 'mounts', 'name', 'names_at', 'new_reader', 'observation',
+    'open_root', 'pairs', 'parse', 'pocket_main', 'policy', 'publication', 'publish',
+    'qwen_main', 'read', 'read_at', 'readers', 'receipt', 'receive', 'reference_name',
+    'remaining', 'reservation', 'reserve', 'reuse', 'root_fd', 'rpc', 'run', 'scope',
+    'selector', 'send', 'snapshot', 'source_overlap', 'stable', 'storage', 'terminal', 'token',
+    'validate', 'verify_tree', 'volume', 'walk', 'write_at',
+))
+_DIAGNOSTIC_FILES = frozenset(('shared_models.py', 'shared_model_helper.py', 'shared_model_client.py', 'daemon_client.py', 'daemon_volumes.py'))
+_DIAGNOSTIC_TYPES = (ValueError, OSError, RuntimeError, TimeoutError,
+    FileNotFoundError, PermissionError, BlockingIOError, BrokenPipeError,
+    EOFError, TypeError, KeyError, KeyboardInterrupt, SystemExit)
+OPERATIONS = ('init','import','verify','recover-import','reserve','bind',
+    'attachment-intent','attachment-created')
+_DIAGNOSTIC_STAGES = ('unknown','receive','validated','mount','operation',
+    'complete','eof','start','begin-sent','response','reply-sent','terminal')
+
+
+def failure_record(exc, *, role='unknown', nonce='unknown', operation='unknown',
+                   stage='unknown', identity='unknown'):
+    """At most eight frames, no source/locals/paths/messages/chained errors."""
+    kind=type(exc)
+    known=kind in _DIAGNOSTIC_TYPES
+    code='unknown'
+    if kind is ValueError and len(exc.args)==1 and type(exc.args[0]) is str and exc.args[0] in _DIAGNOSTIC_CODES:
+        code=exc.args[0]
+    number=exc.errno if known and isinstance(exc,OSError) else None
+    if type(number) is not int or not -2147483648<=number<=2147483647: number=None
+    frames=[]; trace=exc.__traceback__
+    for _ in range(64):
+        if trace is None: break
+        source=trace.tb_frame.f_code
+        basename=source.co_filename.rsplit('/',1)[-1]
+        if (basename in _DIAGNOSTIC_FILES and source.co_name in _DIAGNOSTIC_FUNCTIONS
+                and 0<trace.tb_lineno<=1000000):
+            frames.append(dict(file=basename,function=source.co_name,line=trace.tb_lineno))
+            frames=frames[-8:]
+        trace=trace.tb_next
+    return dict(version=1,schema='shared-model-failure-v1',
+        role=role if type(role) is str and role in ROLES else 'unknown',
+        nonce=nonce if type(nonce) is str and sm.ATTEMPT.fullmatch(nonce) else 'unknown',
+        id=identity if type(identity) is str and sm.HEX.fullmatch(identity) else 'unknown',
+        operation=operation if type(operation) is str and operation in OPERATIONS else 'unknown',
+        stage=stage if type(stage) is str and stage in _DIAGNOSTIC_STAGES else 'unknown',
+        exception=kind.__name__ if known else 'Exception',code=code,errno=number,
+        frames=frames,frames_available=bool(frames))
+
+
+def diagnostic(exc, **context):
+    # Best effort must never replace the original refusal, including on EPIPE.
+    try:
+        raw=encoded(failure_record(exc,**context))
+        if len(raw)<=4096: sys.stderr.write(raw.decode('ascii')+'\n')
+    except BaseException:
+        pass
+
+
 def mounts(role, catalog, candidate=None):
     if role not in ROLES: raise ValueError('shared_helper_role')
     if role == 'controller':
@@ -356,26 +494,33 @@ def main():
     role,nonce=sys.argv[1:]
     if role not in ROLES: raise SystemExit('shared helper refused')
     wire=Wire(sys.stdin.buffer,sys.stdout.buffer,nonce,role)
+    operation='unknown'; stage='receive'
     try:
         action,request=wire.receive()
         if action!='begin': raise ValueError('shared_begin')
         sm.closed(request,'expires operation daemon catalog candidate expected attempt image'+(' selection' if request.get('operation') in ('reserve','bind','attachment-intent','attachment-created') else ''))
         end=sm.deadline(request['expires']); wire.deadline=end
         sm.dv.daemon(request['daemon']); sm.volume(request['catalog'])
+        if type(request['operation']) is str and request['operation'] in OPERATIONS:
+            operation=request['operation']
+        stage='validated'
         def rpc(action,payload):
             sm.remaining(end); wire.send(action,payload)
             returned,value=wire.receive()
             if returned!=action: raise ValueError('shared_rpc_action')
             sm.remaining(end); return value
+        stage='mount'
         if role=='controller':
             mount_policy(sm.CATALOG_ROOT,False)
             catalog=sm.Catalog(sm.CATALOG_ROOT,request['daemon'],request['catalog'],end)
             controller=Controller(catalog,rpc,request['image'],request['expected'])
+            stage='operation'
             result=(catalog.init() if request['operation']=='init' else controller.coordinate(request['operation'],request['selection']) if 'selection' in request else controller.run(request['operation'],request['attempt']))
         else:
             key=sm.descriptor(request['expected'])[0]
             sm.volume(request['candidate'],key,request['attempt'])
             mount_policy(sm.MODEL_ROOT,role=='verifier')
+            stage='operation'
             if role=='writer':
                 def chunk(name,offset):
                     result=rpc('input',dict(path=name,offset=offset)); sm.closed(result,'data')
@@ -383,6 +528,8 @@ def main():
                 result=import_tree(sm.MODEL_ROOT,request['expected'],chunk,end)
             else: result=sm.verify_tree(sm.MODEL_ROOT,request['expected'],end)
         wire.send('complete',dict(result=result))
+        stage='complete'
         wire.finish()
-    except BaseException:
+    except BaseException as exc:
+        diagnostic(exc,role=role,nonce=nonce,operation=operation,stage=stage)
         raise SystemExit('shared helper refused; retained state requires review') from None

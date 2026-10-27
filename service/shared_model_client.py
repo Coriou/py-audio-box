@@ -23,6 +23,7 @@ class Client:
         if not sm.dv.IMAGE.fullmatch(image): raise ValueError('shared_immutable_image')
         self.docker,self.image,self.directory,self.end,self.expires=docker,image,Path(directory),end,expires
         self.expected,self.sources=expected,sources or {}
+        self.failure_context={}
         self.catalog=None; self.created={}; self.candidates={}; self.writer_claimed=set(); self.sequence=0; self.source_identities={}
         if expected is not None:
             key,_,files,_=sm.descriptor(expected)
@@ -164,7 +165,9 @@ class Client:
                     any(payload[k]!=own[k] for k in ('role','nonce','candidate'))):
                 raise ValueError('shared_start_allowlist')
             own['started']=True
+            parent_context=self.failure_context
             result=self.exchange(payload['id'],own['role'],own['nonce'],'import' if own['role']=='writer' else 'verify',own['candidate'])
+            self.failure_context=parent_context
         elif action=='inspect':
             sm.closed(payload,'id role image nonce candidate')
             if payload['role'] not in ('writer','verifier') or payload['image']!=self.image:
@@ -179,6 +182,8 @@ class Client:
         self.check(); return result
 
     def exchange(self,identity,role,nonce,operation,candidate=None,attempt=None):
+        context=dict(identity=identity,role=role,nonce=nonce,operation=operation,stage='start')
+        self.failure_context=context
         self.check()
         sh.inspect(self.docker.container(identity),role,self.image,nonce,self.catalog,candidate)
         self.receipt('start-intent',dict(id=identity,role=role,nonce=nonce))
@@ -190,20 +195,27 @@ class Client:
                 candidate=candidate,expected=self.expected,attempt=attempt if candidate is None else candidate['Labels']['speech-box.attempt'],image=self.image)
             if operation in ('reserve','bind','attachment-intent','attachment-created'): request['selection']=self.selection
             wire.send('begin',request)
+            context['stage']='begin-sent'
             while True:
                 action,payload=wire.receive()
+                context['stage']='response'
                 if action=='complete':
                     sm.closed(payload,'result'); result=payload['result']; break
                 if role=='writer':
                     if action!='input': raise ValueError('shared_writer_rpc')
                 elif role=='verifier': raise ValueError('shared_verifier_rpc')
                 elif action=='input': raise ValueError('shared_controller_payload_forbidden')
-                wire.send(action,self.action(action,payload))
+                reply=self.action(action,payload)
+                self.failure_context=context
+                wire.send(action,reply)
+                context['stage']='reply-sent'
             p.stdin.close(); wire.finish()
+            context['stage']='eof'
         c=self.docker.container(identity)
         sh.inspect(c,role,self.image,nonce,self.catalog,candidate,terminal=True)
         self.check()
         value=dict(inspection=c,result=result)
+        context['stage']='terminal'
         self.receipt('terminal',dict(id=identity,role=role,inspection_sha256=sm.digest(c)))
         return value
 
@@ -214,6 +226,7 @@ class Client:
         return self.run(operation)
 
     def run(self,operation,attempt=None):
+        self.failure_context={}
         if self.docker.call(['image','inspect',self.image,'--format','{{.Id}}'])!=self.image:
             raise ValueError('shared_local_image_required')
         self.catalog_volume(operation=='init')
@@ -233,6 +246,7 @@ def main(argv=None):
     parser.add_argument('--attempt',help='Exact retained 32-hex attempt for recover-import')
     parser.add_argument('--output',required=True,help='Fresh private intent/receipt directory')
     args=parser.parse_args(argv)
+    client=None; output=None; output_owned=False
     try:
         end=time.monotonic()+600; expires=time.time()+600
         if (args.command=='recover-import') != (args.attempt is not None): raise ValueError('shared_exact_recovery_attempt')
@@ -248,11 +262,17 @@ def main(argv=None):
             sources={'bundles/'+key+'/'+name:path for name,path in request['sources'].items()}
         output=Path(args.output)
         output.mkdir(mode=0o700,parents=False,exist_ok=False)
+        output_owned=True
         os.chmod(output,0o700)
         exclusive(output/'intent.json',dict(schema=sm.SCHEMA,operation=args.command,context=args.context,image=args.image,
                     key=None if expected is None else key,attempt=args.attempt,expires=expires))
         docker=Docker(args.context); docker.end=end
         client=Client(docker,args.image,output,end,expires,expected,sources)
         print(encoded(client.run(args.command,args.attempt)).decode())
-    except (Exception,KeyboardInterrupt):
+    except (Exception,KeyboardInterrupt) as exc:
+        context=client.failure_context if client is not None else {}
+        sh.diagnostic(exc,**context)
+        if output_owned:
+            try: exclusive(output/'failure.json',sh.failure_record(exc,**context))
+            except BaseException: pass
         raise SystemExit('shared models refused; retained state requires review') from None
