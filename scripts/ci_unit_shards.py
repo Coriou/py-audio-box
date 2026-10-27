@@ -229,7 +229,9 @@ def pytest_mode(args):
                 self.record.send(b'],'+canonical(self.header)[1:])
                 self.record.finish()
 
-    code=pytest.main(SELECTION + (['--collect-only','-ra'] if args.mode=='collect' else []), plugins=[Audit()])
+    # Set verbosity explicitly: repeated -q would only cancel SELECTION's -vv.
+    # The audit emits every node; terminal trees/items only delay receipt EOF.
+    code=pytest.main(SELECTION + (['--collect-only','--verbosity=-2','-ra'] if args.mode=='collect' else []), plugins=[Audit()])
     return int(code)
 
 
