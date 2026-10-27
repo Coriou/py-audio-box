@@ -1,0 +1,658 @@
+# Legacy toolbox (Docker `./run` apps)
+
+This is the original Qwen3-TTS/audio toolbox (`./run voice-*`, job runner/watcher, Vast.ai).
+It is separate from the headless API/CLI/MCP service described in the
+[main README](../README.md) and keeps its own registry, images and Makefile targets.
+
+
+A portable, cacheable Python runtime for ML/audio scripts.
+Everything runs in Docker — zero host installs, fast re-runs, shared cache across all apps.
+
+Optional isolated CPU engines: [Kokoro presets and Pocket clone setup](../apps/voice-cpu/README.md).
+Qwen remains the default. [Benchmark and listening protocol](TTS_BENCHMARK.md)
+separates runtime measurements from human acoustic acceptance.
+See also [resident memory tuning and measurements](TTS_MEMORY.md).
+
+---
+
+## Prerequisites
+
+- **Docker** with Compose v2 (`docker compose` — not the old `docker-compose`)
+- No Python, Poetry, ffmpeg, or GPU drivers needed on the host for CPU mode
+
+First-time setup:
+
+```bash
+make build        # build the shared CPU image (~5 min, cached on rebuild)
+```
+
+---
+
+## Legacy toolbox published-image references (`ghcr.io/coriou/voice-tools`)
+
+These legacy tags/pulls are not headless control/worker artifacts; current registry
+availability was not checked. Headless publication is not established.
+
+| Tag         | PyTorch      | CUDA toolkit | flash-attn | GPU support                                       | Notes                                                                                                                                                      |
+| ----------- | ------------ | ------------ | ---------- | ------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `latest`    | 2.10.0+cpu   | —            | —          | None (CPU only)                                   | Default; runs on any linux/amd64 host                                                                                                                      |
+| `cuda-base` | 2.6.0+cu124  | CUDA 12.4    | ✅ 2.8.3   | **SM 7.0 – SM 9.0** (Volta → Hopper)              | **Heavy base layer** (~4 GB). All Python/Poetry deps + torch + flash-attn. Rarely rebuilt. Used as `FROM` for `:cuda`.                                     |
+| `cuda`      | 2.6.0+cu124  | CUDA 12.4    | ✅ 2.8.3   | **SM 7.0 – SM 9.0** (Volta → Hopper)              | **Recommended for GPU inference.** Thin app layer (~74 MB) on top of `:cuda-base`. Rebuilt on every code change in seconds.                                |
+| `cuda128`   | 2.10.0+cu128 | CUDA 12.8    | ❌         | SM 8.0+ (intended: SM 10.0 data-centre Blackwell) | No flash-attn wheel exists for torch 2.10+cu128. Consumer Blackwell (SM 12.0 — RTX 50-series) has additional kernel dispatch issues and is not recommended |
+
+**GPU architecture quick-reference:**
+
+| SM   | Architecture       | Example cards             | `:cuda`           | `:cuda128` |
+| ---- | ------------------ | ------------------------- | ----------------- | ---------- |
+| 7.0  | Volta              | V100                      | ✅ (sdpa)         | —          |
+| 7.5  | Turing             | RTX 2080, T4              | ✅ (sdpa)         | —          |
+| 8.0  | Ampere             | A100                      | ✅ **flash-attn** | ✅ (sdpa)  |
+| 8.6  | Ampere             | RTX 3090                  | ✅ **flash-attn** | ✅ (sdpa)  |
+| 8.9  | Ada Lovelace       | RTX 4090, L40             | ✅ **flash-attn** | ✅ (sdpa)  |
+| 9.0  | Hopper             | H100, H200                | ✅ **flash-attn** | ✅ (sdpa)  |
+| 10.0 | Blackwell DC       | B200, GB200               | —                 | ✅ (sdpa)  |
+| 12.0 | Blackwell consumer | RTX 5070 Ti / 5080 / 5090 | —                 | ⚠️ broken  |
+
+> Qwen3-TTS can use flash-attn or PyTorch SDPA depending on the image and device.
+> Missing flash-attn does not by itself establish CPU execution; confirm the selected
+> device and profile the workload. Performance depends on checkpoint, script, runtime
+> and hardware. RTF is synthesis seconds divided by generated audio seconds: lower
+> is faster; RTF 0.1 means ten times faster than real time. No GPU speedup is guaranteed.
+
+```bash
+docker pull ghcr.io/coriou/voice-tools:latest      # CPU
+docker pull ghcr.io/coriou/voice-tools:cuda-base   # GPU base layer (torch+flash-attn) — rebuild rarely
+docker pull ghcr.io/coriou/voice-tools:cuda        # GPU thin app layer — rebuild after code changes
+docker pull ghcr.io/coriou/voice-tools:cuda128     # GPU — data-centre Blackwell
+```
+
+> **Image split strategy:** `:cuda` is a ~74 MB layer on top of `:cuda-base` (~4 GB).
+> On a cold host, pulling `:cuda-base` once is the slow step; all subsequent `:cuda` deploys
+> only transfer the thin app layer and complete in seconds. Run `make publish-cuda-base` only
+> when Python deps or torch/flash-attn versions change. Run `make publish-cuda` (or just
+> `make publish`) after every code change.
+
+---
+
+## Platforms
+
+### CPU (legacy Docker workflow)
+
+The legacy default image selects CPU execution. Its platform instructions below
+are separate from the headless installer requirements and qualification status.
+
+```bash
+make build
+./run voice-synth speak --voice my-voice --text "Hello"
+```
+
+### GPU (NVIDIA — faster inference)
+
+Requires an NVIDIA GPU and the [NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/install-guide.html).
+
+```bash
+# 1. Install NVIDIA Container Toolkit on the host (once)
+#    Linux / WSL 2:
+#      sudo apt-get install -y nvidia-container-toolkit
+#      sudo nvidia-ctk runtime configure --runtime=docker && sudo systemctl restart docker
+#    Windows (Docker Desktop):
+#      Settings → Docker Engine → add the nvidia runtime (see docker-compose.gpu.yml)
+
+# 2. Build the CUDA image (once; layers shared with the CPU image)
+make build-gpu
+
+# 3. Run any app with GPU acceleration
+TOOLBOX_VARIANT=gpu ./run voice-synth speak --voice my-voice --text "Hello"
+TOOLBOX_VARIANT=gpu ./run voice-register --url "..." --voice-name my-voice --text "Hello"
+```
+
+Acceleration details:
+
+- `TOOLBOX_VENDOR=gpu` overlays `docker-compose.gpu.yml` — no other flags needed
+- Device is detected at runtime via `torch.cuda.is_available()`
+- `--dtype` defaults to `auto`: `float16` on pre-Ampere GPUs (Maxwell / Pascal /
+  Volta / Turing), `bfloat16` on Ampere+
+- Demucs (voice-split) and Silero VAD run on GPU automatically
+- Whisper (voice-clone / voice-synth QA) switches to `float16` on GPU
+- Qwen3-TTS uses the detected device; measure GPU/CPU speed on the same script and checkpoint.
+
+### Docker requires sudo on Linux
+
+If your account can only access Docker through `sudo`, use the launcher's explicit
+option (also compatible with `TOOLBOX_VARIANT=gpu`):
+
+```sh
+TOOLBOX_DOCKER_SUDO=1 ./run voice-synth --help
+TOOLBOX_DOCKER_SUDO=1 TOOLBOX_VARIANT=gpu ./run voice-synth speak --voice my-voice --text "Hello"
+```
+
+This runs `sudo -- docker compose …`; sudo may ask for your password. The default
+remains ordinary `docker`. The launcher never retries a failed generation with
+sudo automatically. This option applies to the Bash `./run` launcher.
+
+### Model downloads time out on a Linux Docker bridge
+
+If downloads work with `docker run --network host` on the same machine, opt into
+host networking through the Bash launcher:
+
+```sh
+TOOLBOX_DOCKER_SUDO=1 TOOLBOX_NETWORK=host TOOLBOX_VARIANT=gpu ./run voice-synth speak --voice my-voice --text "Hello"
+```
+
+Omit sudo or GPU options if unnecessary. `TOOLBOX_NETWORK=host` adds
+`docker-compose.host.yml`, sharing the Docker host's network namespace. It targets
+Linux Docker Engine; Docker Desktop requires host networking to be enabled in
+its settings ([Docker documentation](https://docs.docker.com/engine/network/drivers/host/)).
+Unset the option (or use `TOOLBOX_NETWORK=default`) to retain the usual Compose
+network. No automatic network retry or model-cache change occurs. A timeout alone
+does not establish the underlying DNS, proxy or firewall cause.
+
+### Windows
+
+The `./run` bash script works in Git Bash and WSL 2.
+For native PowerShell there is a `run.ps1` equivalent:
+
+```powershell
+# CPU
+.\run.ps1 voice-synth speak --voice my-voice --text "Hello"
+
+# GPU
+$env:TOOLBOX_VARIANT = "gpu"
+.\run.ps1 voice-synth speak --voice my-voice --text "Hello"
+```
+
+Everything else (`make`, `docker compose`) works identically on Windows
+(use Git Bash or enable make via `winget install GnuWin32.Make`).
+
+## Cheat sheet
+
+### Register a voice (one command, fully cached)
+
+```bash
+# From a YouTube URL
+./run voice-register \
+    --url "https://www.youtube.com/watch?v=XXXX" \
+    --voice-name david-attenborough \
+    --text "Nature is the greatest artist."
+
+# From a local audio file  (put the file in ./work/ first)
+./run voice-register \
+    --audio /work/my-recording.wav \
+    --voice-name my-voice \
+    --text "Hello, this is a test."
+
+# With a timestamp range (skip the rest of the audio)
+./run voice-register \
+    --url "https://www.youtube.com/watch?v=XXXX" \
+    --start 1:23 --end 5:00 \
+    --voice-name speaker \
+    --text "Hello world."
+
+# Same, from a local file
+./run voice-register \
+    --audio /work/interview.mp3 \
+    --start 0:45 --end 3:30 \
+    --voice-name interviewee \
+    --text "Hello world."
+```
+
+Timestamp formats: `90` (seconds), `1:30` (MM:SS), `1:30.5`, `1:02:30` (HH:MM:SS).
+
+### Synthesise with a registered voice
+
+```bash
+./run voice-synth speak --voice david-attenborough --text "Welcome."
+./run voice-synth speak --voice david-attenborough --text "..." --variants 4 --qa
+./run voice-synth speak --voice david-attenborough --text "..." --variants 4 --select-best --seed 7
+./run voice-synth speak --voice david-attenborough --tone excited --text "..."
+./run voice-synth speak --voice david-attenborough --profile stable --save-profile-default --text "..."
+./run voice-synth list-voices
+
+# Qwen3 built-in CustomVoice speakers
+./run voice-synth list-speakers
+./run voice-synth speak --speaker Ryan --text "Welcome." --instruct "Warm, confident newsreader delivery"
+./run voice-synth speak --speaker Ryan --text "Welcome." --instruct-style warm
+
+# Register built-in speaker profiles as named voices (Phase 2)
+./run voice-synth register-builtin --voice-name newsroom --speaker Ryan \
+  --instruct-default "Calm, clear and warm delivery"
+./run voice-synth register-builtin --voice-name newsroom --speaker Ryan \
+  --instruct-default-style serious_doc
+./run voice-synth register-builtin --voice-name newsroom --speaker Ryan \
+  --tone promo --tone-instruct "Energetic, upbeat promo read"
+./run voice-synth register-builtin --voice-name newsroom --speaker Ryan \
+  --tone promo --tone-instruct-style energetic
+./run voice-synth speak --voice newsroom --text "Top story tonight."
+./run voice-synth speak --voice newsroom --tone promo --text "Breaking update."
+
+# JSON output for agents / APIs
+./run voice-synth list-voices --json
+./run voice-synth list-speakers --json
+./run voice-synth capabilities --json --strict
+
+# Rollout guard for new CustomVoice flows (default is enabled)
+QWEN3_ENABLE_CUSTOMVOICE=0 ./run voice-synth capabilities --json
+```
+
+### Extract voice clips only (no synthesis)
+
+```bash
+# YouTube
+./run voice-split --url "https://www.youtube.com/watch?v=XXXX" --clips 5 --length 30
+./run voice-split --url "..." --start 10:00 --end 15:00 --clips 5 --voice-name my-voice
+
+# Local file
+./run voice-split --audio /work/recording.wav --clips 5 --length 30
+./run voice-split --audio /work/recording.wav --start 0:30 --end 4:00 --voice-name my-voice
+```
+
+### Build clone prompt from an existing clip
+
+```bash
+./run voice-clone synth --voice david-attenborough --text "Nature is the greatest artist."
+./run voice-clone synth --ref-audio /work/myclip.wav --text "Hello, world"
+./run voice-clone synth --voice david-attenborough --text "..." --variants 4 --select-best --profile stable
+```
+
+### Interactive reference selection (optional)
+
+Add `--interactive` (or `-i`) to any pipeline command to manually pick the best clip / segment
+instead of relying on automatic scoring:
+
+```bash
+# Full pipeline — prompts at both stages (clip selection + segment selection)
+./run voice-register \
+    --url "https://www.youtube.com/watch?v=XXXX" \
+    --voice-name my-voice \
+    --text "Hello." \
+    --interactive
+
+# Clip selection only (voice-split step)
+./run voice-split \
+    --url "..." --voice-name my-voice \
+    --interactive
+
+# Segment selection only (voice-clone step)
+./run voice-clone synth \
+    --voice my-voice --text "Hello." \
+    --interactive
+```
+
+**How it works — two sequential prompts:**
+
+1. **Clip selection** (voice-split): after Demucs extracts all clips to
+   `./work/<voice-name>/`, a numbered menu is printed:
+
+   ```
+   [0] clip_ref_from_0.0s.wav   (30.0s)  ← auto-selected (best score)
+   [1] clip_01_from_3.1s.wav    (30.0s)
+   [2] clip_02_from_14.7s.wav   (30.0s)
+   ```
+
+   Listen to the files (they're already in `./work/<voice-name>/` on your host),
+   then enter a number — or press Enter to keep the auto-selected clip.
+
+2. **Segment selection** (voice-clone): after Whisper + acoustic heuristics score all VAD candidates,
+   a second menu is printed:
+   ```
+   [0] candidate_00.wav  3.1s–11.6s (8.5s) [English p=0.98] score=0.891  ← auto-selected
+   [1] candidate_01.wav  0.0s–9.2s  (9.2s) [English p=0.97] score=0.723
+       transcript: "Welcome back everybody..."
+   ```
+   Candidate WAVs are in `/cache/voice-clone/refs/<hash>/candidates/` inside the
+   container (or `./cache/voice-clone/refs/*/candidates/` on your host). Enter a
+   number or press Enter to keep the auto-selected candidate.
+
+The chosen segment is written back to the cache as `best_segment.json`, so after you make your
+selection subsequent non-interactive runs (e.g. `voice-synth speak`) reuse your choice.
+
+```bash
+./run voice-synth rename-voice old-slug new-slug
+./run voice-synth delete-voice my-voice --yes
+./run voice-synth export-voice my-voice          # → /work/my-voice.zip
+./run voice-synth import-voice --zip /work/my-voice.zip
+```
+
+### Job runner (Redis stream producer tooling)
+
+```bash
+# Validate jobs + estimate per-source text load
+./run job-runner plan /app/jobs.example.yaml
+
+# Enqueue YAML jobs (idempotent by request_id)
+./run job-runner enqueue /app/jobs.example.yaml
+
+# Enqueue directly from beatsheet.json
+./run job-runner enqueue-beatsheet /work/beatsheet.json --voice newsroom
+
+# Compile deterministic execution manifest + staged text files
+./run job-runner compile /app/jobs.example.yaml --out /work/job-batch
+
+# Queue health + per-request result lookup
+./run job-runner status --json
+./run job-runner result topic:beat-001 --json
+```
+
+### Job watcher (daemon)
+
+```bash
+# One scheduling cycle (safe for validation)
+make watcher-once
+
+# Long-running daemon
+make watcher-up
+make watcher-logs
+make watcher-down
+```
+
+Environment contract and runtime details: `apps/job-watcher/README.md`.
+
+### Utilities
+
+```bash
+make shell            # interactive bash shell inside the container
+make shell-gpu        # same, GPU image
+make clean-work       # delete ./work/ outputs
+make clean-cache      # wipe ./cache/ (models + downloads re-run)
+./run                 # list all available apps
+```
+
+Outputs land in `./work/` on your host.
+Everything expensive (model weights, downloads, Demucs runs) is cached in `./cache/` —
+re-runs with different flags are nearly instant.
+
+---
+
+## Repository structure
+
+```
+apps/
+  <name>/
+    <name>.py       ← entry point (required, must match dir name)
+    README.md       ← app-level docs: purpose, args, output format
+cache/              ← shared persistent cache — gitignored, never delete unless resetting
+  voices/
+    <slug>/         ← named voice registry; shared across all apps
+work/               ← default output directory — gitignored
+lib/
+  voices.py         ← shared voice-registry library (zero extra deps)
+Dockerfile          ← single shared image: Python 3.11 + Poetry + ffmpeg + torch stack
+docker-compose.yml  ← mounts: ./  → /app, ./work → /work, ./cache → /cache
+pyproject.toml      ← Python dependencies for the shared image
+poetry.lock         ← committed — pins exact versions for reproducible builds
+run                 ← launcher: ./run <app> [args…]
+Makefile            ← shortcuts for build / shell / clean
+```
+
+---
+
+## Voice registry
+
+All apps share a named voice registry at `/cache/voices/<slug>/`.
+A **slug** is lowercase ASCII with hyphens (e.g. `david-attenborough`).
+
+### Directory layout
+
+```
+/cache/voices/
+  david-attenborough/
+    voice.json          ← identity + engine profile (+ optional generation defaults)
+    source_clip.wav     ← raw clip from voice-split (44.1 kHz)
+    ref.wav             ← processed 24 kHz segment from voice-clone
+    prompts/
+      <hash>_<model>_full_v1.pkl        ← clone prompt (used by voice-synth)
+      <hash>_<model>_full_v1.meta.json
+```
+
+Each stage is optional — a voice progresses from `source_clip.wav` → `ref.wav`
+→ `prompts/*.pkl` as you run the pipeline steps.
+
+### Progressive pipeline
+
+```bash
+# Step 1 — register the voice with a source clip
+./run voice-split --url "..." --voice-name david-attenborough           # YouTube
+./run voice-split --audio /work/clip.wav --voice-name my-voice          # local file
+./run voice-split --url "..." --start 1:30 --end 4:00 --voice-name speaker  # trimmed
+
+# Step 2 — process ref + build prompt  (first time: ~45s; cached thereafter)
+./run voice-clone synth --voice david-attenborough --text "..."
+
+# Step 3 — fast synthesis (model load + generate only, no VAD or Whisper)
+./run voice-synth speak --voice david-attenborough --text "..."
+
+# Alternate Step 3 — register/use a built-in profile under the same named-voice UX
+./run voice-synth register-builtin --voice-name newsroom --speaker Ryan \
+  --instruct-default "Calm, clear and warm delivery"
+./run voice-synth speak --voice newsroom --text "Top story tonight."
+./run voice-synth speak --voice newsroom --instruct-style serious_doc --text "Top story tonight."
+
+# ── Or do all three steps with one command ────────────────────────────────────
+./run voice-register \
+    --url "..." \
+    --voice-name david-attenborough \
+    --text "Nature is the greatest artist."
+
+# Inspect all registered voices + their pipeline status
+./run voice-synth list-voices
+
+# Rename / delete / share voices
+./run voice-synth rename-voice old-slug new-slug
+./run voice-synth delete-voice my-voice --yes
+./run voice-synth export-voice my-voice               # → /work/my-voice.zip
+./run voice-synth import-voice --zip /work/my-voice.zip
+```
+
+### Shared library
+
+`lib/voices.py` contains `VoiceRegistry` and `validate_slug`, imported by all
+apps via:
+
+```python
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent / "lib"))
+from voices import VoiceRegistry, validate_slug
+```
+
+Zero external dependencies — stdlib only.
+
+---
+
+## Mount contract (inside the container)
+
+| Host path | Container path | What goes there                                                   |
+| --------- | -------------- | ----------------------------------------------------------------- |
+| `./`      | `/app`         | All source code (live bind-mount — edits take effect immediately) |
+| `./work`  | `/work`        | Default output directory for all apps                             |
+| `./cache` | `/cache`       | Shared persistent cache: models, downloads, segments              |
+
+Scripts should default `--cache /cache` and `--out /work`.
+`XDG_CACHE_HOME` is also set to `/cache` inside the container, so tools like HuggingFace
+Hub and Torch Hub write there automatically.
+
+---
+
+## Creating a new app
+
+### 1. Scaffold
+
+```
+apps/
+  my-tool/
+    my-tool.py    ← entry point
+    README.md     ← see conventions below
+```
+
+### 2. Entry point conventions (`my-tool.py`)
+
+```python
+#!/usr/bin/env python3
+"""One-line description."""
+
+import argparse
+from pathlib import Path
+
+def main() -> None:
+    ap = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+    ap.add_argument("--out",   default="/work",   help="Output directory")
+    ap.add_argument("--cache", default="/cache",  help="Persistent cache directory")
+    # ... your args
+    args = ap.parse_args()
+    # ... your logic
+
+if __name__ == "__main__":
+    main()
+```
+
+Key rules:
+
+- `--cache` defaults to `/cache` (the shared mount)
+- `--out` defaults to `/work`
+- Use `argparse.ArgumentDefaultsHelpFormatter` so `--help` is always informative
+- Cache expensive work to disk under `--cache`; check before recomputing
+- Print `[cache hit]` lines so it's obvious what was skipped
+
+### 3. Run it
+
+```bash
+./run my-tool --help
+./run my-tool --out /work
+```
+
+No config changes needed. `./run` discovers apps by scanning `apps/*/`.
+
+### 4. (Optional) Add a Makefile shortcut
+
+```makefile
+.PHONY: my-tool
+my-tool:  ## Run my-tool. Usage: make my-tool ARGS='--flag value'
+	./run my-tool $(ARGS)
+```
+
+### 5. App README conventions
+
+Each `apps/<name>/README.md` should cover:
+
+- What the app does (1–3 sentences)
+- Usage examples (copy-paste ready `./run` commands)
+- All CLI flags with types and defaults
+- Output format / file naming
+- What gets cached and where
+
+---
+
+## Dependencies
+
+All apps share one image. To add a Python package:
+
+```bash
+# 1. Add it to pyproject.toml
+# 2. Regenerate the lock file (no local Poetry needed)
+docker compose run --rm pab bash -c "poetry lock"
+
+# 3. Rebuild
+make build
+```
+
+To add a system package (ffmpeg, sox, …): edit the `apt-get install` block in `Dockerfile`, then `make build`.
+
+`poetry.lock` is committed — it guarantees reproducible builds and makes `make build` faster
+(only the install layer re-runs when deps change).
+
+---
+
+## Makefile reference
+
+```
+make build                  Build (or rebuild) the CPU toolbox image
+make build-gpu              Build the CUDA 12.4 GPU image  →  voice-tools:cuda
+make build-no-cache         Force a clean CPU rebuild (no layer cache)
+make build-gpu-no-cache     Force a clean GPU rebuild (no layer cache)
+make shell                  Interactive bash shell inside the CPU container
+make shell-gpu              Interactive bash shell inside the GPU container
+make clean-work             Delete output files in ./work/
+make clean-cache            Wipe ./cache/ — models and downloads will re-run
+make publish                Build + push all images to GHCR (cpu → latest, cuda → cuda)
+make publish-cpu            Build + push CPU image only
+make publish-cuda-base      Build + push CUDA base image (torch+flash-attn heavy layer — rarely needed)
+make publish-cuda           Build + push CUDA thin app image (fast; do this after code changes)
+make pull                   Pull /work/ from remote host into ./work_remote/  (requires REMOTE_HOST=...)
+make push-code              Push local repo to remote /app/  (requires REMOTE_HOST=...)
+make test-jobqueue-redis    Run real Redis integration tests for jobqueue (spins temporary redis)
+```
+
+Remote sync examples:
+
+```
+make pull REMOTE_HOST=root@1.2.3.4 REMOTE_PORT=22222
+make push-code REMOTE_HOST=root@1.2.3.4 REMOTE_PORT=22222
+```
+
+Vast.ai cloud deployment:
+
+```
+make vast-search            Show best-value qualifying GPU offers on vast.ai
+make vast-status            Show your currently running vast.ai instances
+make vast-shell             Provision a GPU instance and drop into an interactive SSH shell
+make vast-run               Full pipeline: provision → push cache/work → run task → pull results → destroy
+make vast-destroy           Destroy a specific instance  [ID=12345]
+make vast-pull              Pull /work from a running instance  [ID=12345 JOB=name]
+make job-runner             Run the job-runner app through ./run
+make jobs-plan              Validate and preview a jobs YAML file [FILE=/app/jobs.example.yaml]
+make jobs-enqueue           Enqueue a jobs YAML file idempotently [FILE=/app/jobs.example.yaml]
+make jobs-status            Print queue status from Redis
+make watcher-once           Run one watcher scheduling cycle
+make watcher-up             Start watcher daemon (docker-compose.watcher.yml)
+make watcher-logs           Tail watcher daemon logs
+make watcher-down           Stop watcher daemon
+```
+
+Full pipeline example (provision → synthesise → pull results → destroy):
+
+```bash
+./scripts/vast-deploy.sh \
+  --push-cache ./cache/voices \
+  --push-work /tmp/my_text.txt \
+  -- "voice-synth speak --voice my-voice --text-file /work/my_text.txt --language French"
+```
+
+The `:cuda` image is a ~74 MB app layer on top of `:cuda-base`. On a host that already has
+`:cuda-base` cached, cold-start time is under 60 s. The default query targets Ampere/Ada/Hopper
+GPUs (SM 8.0–11.9) with ≥ 500 Mb/s download and ≥ 20 GB VRAM.
+
+See `scripts/vast-deploy.sh --help` for the full flag reference.
+
+App shortcuts (pass extra flags via `ARGS=`):
+
+```
+make voice-split     ARGS='--url "https://..." --clips 5 --length 30'
+make voice-split     ARGS='--audio /work/file.wav --clips 5'
+make voice-clone     ARGS='synth --ref-audio /work/myclip.wav --text "Hello, world"'
+make voice-synth     ARGS='speak --voice <slug> --text "Hello"'
+make voice-register  ARGS='--url "https://..." --voice-name my-voice --text "Hello"'
+make voice-register  ARGS='--audio /work/file.wav --voice-name my-voice --text "Hello"'
+make smoke-matrix    # full capability + clone + built-in + designed smoke matrix
+SMOKE_ENABLE_CUSTOMVOICE=1 make smoke-matrix
+```
+
+---
+
+## Agent / automation guidelines
+
+When an AI agent or script works with this repo:
+
+The following guidelines apply to the legacy toolbox; the headless client uses
+the separate Python 3.11 environments documented above.
+
+- **Don't install packages on the host.** All Python work happens inside the container.
+- **The image is already built.** Use `./run <app>` or `docker compose run --rm pab …` directly; only run `make build` if `pyproject.toml` or `Dockerfile` changed. For GPU hosts, use `TOOLBOX_VARIANT=gpu ./run …` and run `make build-gpu` after Dockerfile changes.
+- **Cache is safe to read, never safe to delete mid-run.** The `./cache` directory is the source of truth for all expensive computation. Treat it as append-only during a run.
+- **Adding an app = adding a file.** Drop `apps/<name>/<name>.py` and it's runnable with `./run <name>`. No registration, no config changes.
+- **Check `--help` first.** Every script uses `ArgumentDefaultsHelpFormatter`; `./run <app> --help` is always the authoritative reference for flags and defaults.
+- **Output is always in `./work/`** (mounted at `/work`) unless `--out` is overridden. Look there for results.
+- **Prefer `--voice <slug>` over `--ref-audio <path>`.** Named voice slugs are the canonical way to reference voices across all apps. Run `./run voice-synth list-voices` to enumerate available voices. Register a new voice with `--voice-name <slug>` on `voice-split`, `voice-clone synth`, or `voice-synth design-voice`. When `--voice <slug>` is used with `voice-clone synth`, the built prompt is automatically registered back to that voice — no separate `--voice-name` needed.
+- **Built-in voices can also be named voices.** Use `./run voice-synth register-builtin --voice-name <slug> --speaker <name>` to store CustomVoice profiles in the same registry, then call them with `./run voice-synth speak --voice <slug> ...`.
+- **CustomVoice rollout is feature-flagged.** `QWEN3_ENABLE_CUSTOMVOICE` defaults to `1`. Set `QWEN3_ENABLE_CUSTOMVOICE=0` to disable `list-speakers`, `register-builtin`, `speak --speaker`, and named voices with `engine=custom_voice`.
+- **Use deterministic profiles for repeatability.** `--profile stable|balanced|expressive` is available in both `voice-clone synth` and `voice-synth speak`. For multi-take ranking use `--variants N --select-best --seed <N>`, and persist preferred defaults per named voice with `--save-profile-default`.
+- **Probe capabilities before autonomous runs.** `./run voice-synth capabilities --json --strict --require-runtime-speakers` provides a fail-fast API/device/speaker check.
+- **Use `voice-register` for one-shot pipeline runs.** `./run voice-register --url "..." --voice-name <slug> --text "..."` (YouTube) or `./run voice-register --audio /work/file.wav --voice-name <slug> --text "..."` (local file) chain voice-split → voice-clone synth and leave a fully synthesis-ready voice in a single command. Pass `--start`/`--end` (e.g. `--start 1:30 --end 5:00`) to trim the source before processing. Re-runs are safe and cached.
+- **GPU mode is opt-in.** Prefix any `./run` command with `TOOLBOX_VARIANT=gpu` to use the GPU image (requires `make build-gpu` once). On Windows PowerShell use `$env:TOOLBOX_VARIANT = "gpu"` then the normal `.\run.ps1` command. No `--dtype` flag needed; dtype is chosen automatically.

@@ -1,0 +1,970 @@
+"""Inert package/finite-coordinator tests. Docker/host observations are injected."""
+import ast
+import copy
+import json
+import os
+from pathlib import Path
+import subprocess
+import sys
+import tempfile
+import unittest
+from unittest.mock import patch
+import zipfile
+
+from service import package_install as p, host_install as h, entrypoint as e
+from tests.service import test_installed_host_policy as host_fixtures
+
+ROOT=Path(__file__).resolve().parents[2]
+
+
+class Transport:
+    def __init__(self, fixture):
+        self.context=fixture.scope['context']; self.deadline=0
+        self.calls=[]; self.containers={}; self.marker={'phase':'waiting'}
+        self.exit=0; self.auto_exit=True; self.fail=None
+        self.config=fixture.config
+    def _read(self,args):
+        self.calls.append(args)
+        if self.fail and self.fail(args): raise ValueError('injected_unknown')
+        if args[:2]==['image','inspect']: return args[2]
+        if args[:2]==['container','create']:
+            role='control' if len(self.containers)==0 else 'worker'
+            identity=('1' if role=='control' else '2')*64
+            self.containers[identity]=dict(role=role,running=False,started='2026-10-24T01:00:00Z',exit=0)
+            return identity
+        if args[:2]==['container','start']:
+            self.containers[args[2]]['running']=True
+            if self.containers[args[2]]['role']=='control':self.marker={'phase':'waiting'}
+            self.containers[args[2]]['started']='2026-10-24T02:00:00Z'
+            return args[2]
+        if args[:2]==['container','kill']:
+            if self.auto_exit:
+                self.containers[args[-1]]['running']=False
+                self.containers[args[-1]]['exit']=self.exit
+            return args[-1]
+        if args[:2]==['container','inspect']:
+            c=self.containers[args[2]]
+            if '"exit"' in args[-1]:
+                return json.dumps(dict(running=c['running'],restarting=False,exit=c['exit']))
+            result=dict(id=args[2],image=self.config['images'][c['role']],started=c['started'])
+            # Tests exercise the actual closed inspect decoder too.
+            fields='finished running restarting pid restart pidmode privileged capadd cgroupns mounts user capdrop security readonly groups devices device_requests device_rules userns ipcns utsns memory swap pids nanocpus period quota cpuset network ports publish_all tmpfs'.split()
+            result.update({k:None for k in fields})
+            return json.dumps(result)
+        if args[0]=='exec': return json.dumps(self.marker)
+        raise AssertionError(args)
+
+
+class Authority:
+    def __init__(self, transport): self.events=[]; self.transport=transport; self.fail=None
+    def event(self,name):
+        self.events.append(name)
+        if self.fail==name: raise ValueError('dirty_unknown')
+    def initialize_authority(self): self.event('fresh')
+    def preflight(self,owners): self.event('preflight')
+    def wait_worker(self): self.event('hello')
+    def register_and_notify(self,owners):
+        self.event('register_notify')
+        assert all(c['running'] for c in self.transport.containers.values())
+        self.transport.marker=dict(phase='ready',registration_id='a'*64)
+        return 'a'*64
+    def confirm_ready(self,owners,rid): self.event('observe')
+    def clean_shutdown(self,owners): self.event('clean_shutdown')
+
+
+class FixtureLauncher(p.Launcher):
+    """Only privileged protected document I/O is replaced; real disposable files."""
+    def document(self,name,value=None):
+        path=self.directory/name
+        if value is not None:
+            with path.open('x') as out: json.dump(value,out)
+        return json.loads(path.read_text())
+
+
+class CoordinatorTests(unittest.TestCase):
+    def setUp(self):
+        fixture=self.fixture=host_fixtures.InstalledHost();fixture.setUp();self.addCleanup(fixture.doCleanups)
+        self.temp=tempfile.TemporaryDirectory(); self.addCleanup(self.temp.cleanup)
+        self.transport=Transport(fixture); self.authority=Authority(self.transport)
+        self.now=0
+        def sleep(seconds): self.now+=seconds
+        self.launcher=FixtureLauncher(fixture.config,fixture.scope,fixture.policy,self.authority,self.temp.name,
+            docker=self.transport,clock=lambda:self.now,sleep=sleep)
+    def test_start_register_readiness_and_clean_same_id_restart(self):
+        first=self.launcher.up(); ids=first['containers']
+        self.assertEqual(first['phase'],'ready')
+        self.assertEqual(self.authority.events,['fresh','hello','register_notify','observe'])
+        starts=[a[2] for a in self.transport.calls if a[:2]==['container','start']]
+        self.assertEqual(starts,[ids['control'],ids['worker']])
+        self.launcher.stop()
+        self.assertLess(self.authority.events.index('clean_shutdown'),self.authority.events.index('preflight'))
+        creates=sum(a[:2]==['container','create'] for a in self.transport.calls)
+        second=self.launcher.up()
+        self.assertEqual(second['containers'],ids)
+        self.assertEqual(sum(a[:2]==['container','create'] for a in self.transport.calls),creates)
+        self.assertTrue(all('stop' not in a and 'rm' not in a and 'pull' not in a for a in self.transport.calls))
+    def test_already_live_is_observed_without_registration(self):
+        self.launcher.up(); self.authority.events.clear()
+        self.launcher.up(); self.assertEqual(self.authority.events,['observe'])
+    def test_partial_create_is_retained_and_never_retried(self):
+        self.transport.fail=lambda a:a[:2]==['container','create'] and len(self.transport.containers)==1
+        with self.assertRaises(ValueError): self.launcher.up()
+        calls=len(self.transport.calls); self.transport.fail=None
+        with self.assertRaises(FileExistsError): self.launcher.up()
+        self.assertEqual(calls,len(self.transport.calls))
+        self.assertTrue((Path(self.temp.name)/'created-control.json').exists())
+    def test_register_failure_never_polls_ready_or_stops(self):
+        self.authority.fail='register_notify'
+        with self.assertRaises(ValueError): self.launcher.up()
+        self.assertEqual(sum(a[0]=='exec' for a in self.transport.calls),1)  # waiting phase only
+        self.assertFalse(any(a[:2]==['container','kill'] for a in self.transport.calls))
+        self.assertTrue(all(c['running'] for c in self.transport.containers.values()))
+    def test_dirty_preflight_does_not_start_retained_containers(self):
+        self.launcher.up(); self.launcher.stop(); self.transport.calls.clear()
+        self.authority.fail='preflight'
+        with self.assertRaises(ValueError): self.launcher.up()
+        self.assertFalse(any(a[:2]==['container','start'] for a in self.transport.calls))
+    def test_dirty_shutdown_never_signals_worker(self):
+        self.launcher.up(); self.authority.fail='clean_shutdown'
+        with self.assertRaises(ValueError): self.launcher.stop()
+        kills=[a for a in self.transport.calls if a[:2]==['container','kill']]
+        self.assertEqual(len(kills),1)
+        self.assertTrue(self.transport.containers['2'*64]['running'])
+    def test_timeout_never_escalates(self):
+        self.launcher.up(); self.transport.auto_exit=False
+        self.launcher.end=self.now+.15
+        with self.assertRaisesRegex(ValueError,'timeout'): self.launcher.stop()
+        kills=[a for a in self.transport.calls if a[:2]==['container','kill']]
+        self.assertEqual(kills,[['container','kill','--signal=TERM','1'*64]])
+        self.assertNotIn('clean_shutdown',self.authority.events)
+    def test_nonzero_exit_retains_worker(self):
+        self.launcher.up();self.transport.exit=2
+        with self.assertRaisesRegex(ValueError,'unknown'):self.launcher.stop()
+        self.assertTrue(self.transport.containers['2'*64]['running'])
+    def test_readiness_must_bind_registration(self):
+        self.launcher.up(); self.transport.marker['registration_id']='b'*64
+        with self.assertRaisesRegex(ValueError,'binding'):self.launcher.ready(self.launcher.retained(),'a'*64)
+    def test_readiness_timeout_retains_all(self):
+        self.launcher.up(); self.transport.marker={'phase':'waiting'};self.launcher.end=self.now+.1
+        with self.assertRaisesRegex(ValueError,'timeout'):self.launcher.ready(self.launcher.retained(),'a'*64)
+        self.assertTrue(all(c['running'] for c in self.transport.containers.values()))
+    def test_command_matches_closed_observer_policy(self):
+        f=self.fixture
+        for role in ('control','worker'):
+            args=p.command(role,f.config,f.policy,f.scope)
+            self.assertEqual(args[:3],['container','create','--pull=never'])
+            self.assertIn('--read-only',args);self.assertIn('--cap-drop=ALL',args)
+            self.assertIn(f.config['images'][role],args)
+            self.assertFalse(any('docker.sock' in a or 'p1-host-authority' in a for a in args))
+            self.assertNotIn('NEVER-RETURN-THIS-CREDENTIAL',str(args))
+            self.assertEqual(sum(a.startswith('--cap-add=') for a in args),3 if role=='worker' else 0)
+            sources=[args[i+1] for i,a in enumerate(args) if a=='--mount']
+            self.assertEqual(len(sources),6 if role=='control' else 5)
+            self.assertEqual(any('control.key' in a for a in sources),role=='control')
+    def test_invalid_policy_refuses_before_transport(self):
+        policy=copy.deepcopy(self.fixture.policy);policy['cpu']['worker']=0
+        with self.assertRaises(ValueError):p.command('worker',self.fixture.config,policy,self.fixture.scope)
+        self.assertEqual(self.transport.calls,[])
+    def test_cli_errors_are_redacted(self):
+        with patch.object(Path,'read_bytes',side_effect=ValueError('TOP-SECRET')):
+            with self.assertRaises(SystemExit) as error:p.main(['up','--configuration','missing','--scope','missing'])
+        self.assertNotIn('TOP-SECRET',str(error.exception))
+
+
+class CLIResultPublicationTests(unittest.TestCase):
+    """Real CLI/public input parsing; held authority and operations are inert."""
+    def check_publication(self, command, fail_exit):
+        import contextlib
+        import io
+        from types import SimpleNamespace
+        f=host_fixtures.InstalledHost();f.setUp();self.addCleanup(f.doCleanups)
+        scope=f.root/'scope.json';scope.write_text(json.dumps(f.scope))
+        policy=f.root/'policy.json';policy.write_text(json.dumps(f.policy))
+        argv=[command,'--configuration',str(f.root/'install.json'),'--scope',str(scope)]
+        if command=='init':argv+=['--host-policy',str(policy)]
+        if command=='complete':argv+=['--initialization-digest','b'*64]
+        events=[]
+        class Output(io.StringIO):
+            def write(self, value):
+                if value:events.append('output')
+                return super().write(value)
+        output=Output()
+        # Retained state models an obligation that must survive exit refusal.
+        retained=f.root/'retained-obligation';retained.write_bytes(b'unchanged')
+        @contextlib.contextmanager
+        def held(config, scope):
+            self.assertEqual(config,f.config);self.assertEqual(scope,f.scope)
+            events.append('enter')
+            yield SimpleNamespace(policy=f.policy,initialize_authority=lambda:None)
+            events.append('exit-check')
+            if fail_exit:raise ValueError('installed_host_policy_changed PRIVATE-ERROR')
+            events.append('exited')
+        def operation(*args, **kwargs):
+            self.assertEqual(events,['enter'])
+            events.append('computed')
+            return dict(phase='stopped' if command=='stop' else 'ready',registration_id='a'*64)
+        # All transport is forbidden even if a CLI branch accidentally reaches it.
+        with patch.object(p.sys,'version_info',(3,11)), \
+             patch.object(h,'installed_launch_authority',side_effect=held), \
+             patch.object(h,'create_installed_authority') as create, \
+             patch('service.persistent_init.initialize_split',side_effect=operation) as initialize, \
+             patch.object(p.Launcher,command if command in ('up','stop','status') else 'up',side_effect=operation) as launch, \
+             patch.object(h.Docker,'_read',side_effect=AssertionError('transport forbidden')), \
+             contextlib.redirect_stdout(output):
+            original=os.umask(0o077)
+            try:
+                if fail_exit:
+                    with self.assertRaises(SystemExit) as error:p.main(argv)
+                    self.assertEqual(str(error.exception),'speech-box refused; retained state requires review')
+                else:self.assertIsNone(p.main(argv))
+            finally:os.umask(original)
+        self.assertEqual(retained.read_bytes(),b'unchanged')
+        self.assertEqual(initialize.call_count, int(command in ('init','complete')))
+        self.assertEqual(launch.call_count, int(command in ('up','stop','status')))
+        self.assertEqual(create.call_count,int(command=='init'))
+        if fail_exit:
+            self.assertEqual(output.getvalue(),'')
+            self.assertEqual(events,['enter','computed','exit-check'])
+        else:
+            value=json.loads(output.getvalue())
+            self.assertEqual(len(output.getvalue().splitlines()),1)
+            self.assertEqual(value['phase'],'initialized' if command in ('init','complete') else
+                             'stopped' if command=='stop' else 'ready')
+            self.assertEqual(events[:4],['enter','computed','exit-check','exited'])
+            self.assertTrue(events[4:]);self.assertEqual(set(events[4:]),{'output'})
+
+    def test_context_exit_failure_emits_no_result(self):
+        for command in ('status','up','stop','init','complete'):
+            with self.subTest(command=command):self.check_publication(command,True)
+
+    def test_success_is_published_only_after_context_exit(self):
+        for command in ('status','up','stop','init','complete'):
+            with self.subTest(command=command):self.check_publication(command,False)
+
+
+class ArchiveTests(unittest.TestCase):
+    def test_deterministic_extracted_help_without_checkout(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            first=Path(tmp)/'one.zip';second=Path(tmp)/'two.zip'
+            self.assertEqual(p.archive(ROOT,first),p.archive(ROOT,second))
+            with zipfile.ZipFile(first) as z:
+                self.assertFalse(any('__pycache__' in n or '/tests/' in n or '/.git/' in n for n in z.namelist()))
+                for name in json.loads((ROOT/'headless-dist-manifest.json').read_text())['files']:
+                    self.assertEqual(z.read('speech-box/'+name),(ROOT/name).read_bytes(),name)
+                z.extractall(Path(tmp)/'extracted')
+            package=Path(tmp)/'extracted/speech-box'
+            result=subprocess.run([sys.executable,'-I','-B',str(package/'speech-box'),'--help'],cwd=tmp,
+                env={'PATH':os.defpath},capture_output=True,text=True,timeout=5)
+            self.assertEqual(result.returncode,0,result.stderr)
+            self.assertIn('init,complete,up,stop,status,archive',result.stdout)
+            self.assertTrue((package/'contracts/v1/schema.json').is_file())
+            self.assertTrue((package/'requirements/kokoro.lock').is_file())
+            code="import sys,pathlib;sys.path.insert(0,"+repr(str(package))+");import service.host_install,service.entrypoint,worker.runtime_supervisor,contracts.validate,lib.tts_backends.assets;assert all(str(pathlib.Path(m.__file__)).startswith("+repr(str(package))+") for m in (service.host_install,service.entrypoint,worker.runtime_supervisor,contracts.validate,lib.tts_backends.assets));print('packaged imports only')"
+            imported=subprocess.run([sys.executable,'-I','-B','-c',code],cwd=tmp,
+                env={'PATH':os.defpath},capture_output=True,text=True,timeout=5)
+            self.assertEqual(imported.returncode,0,imported.stderr)
+    def test_pocket_archive_bytes_and_isolated_dependency_closure(self):
+        modules = ('clients.cli', 'clients.http', 'clients.mcp', 'service.execution_context',
+                   'worker.managed_reference', 'service.pocket_install', 'worker.runtime_conditioning', 'worker.engines.pocket',
+                   'worker.engines.pocket_execution', 'worker.engines.pocket_prepare')
+        manifest = json.loads((ROOT/'headless-dist-manifest.json').read_text())
+        files = set(manifest['files'])
+        # Inspect lazy imports too, without executing generation or housekeeping.
+        pending = list(modules) + ['worker.runtime_supervisor', 'worker.runtime_child']
+        visited = set()
+        while pending:
+            module = pending.pop()
+            if module in visited:
+                continue
+            visited.add(module)
+            name = module.replace('.', '/') + '.py'
+            if not (ROOT/name).is_file():
+                name = module.replace('.', '/') + '/__init__.py'
+            self.assertIn(name, files, module)
+            package = module.split('.') if name.endswith('/__init__.py') else module.split('.')[:-1]
+            for node in ast.walk(ast.parse((ROOT/name).read_bytes())):
+                dependencies = []
+                if isinstance(node, ast.Import):
+                    dependencies = [alias.name for alias in node.names]
+                elif isinstance(node, ast.ImportFrom):
+                    base = (package[:len(package)-node.level+1] if node.level else [])
+                    base += (node.module or '').split('.') if node.module else []
+                    prefix = '.'.join(base)
+                    dependencies = [prefix] + [prefix+'.'+alias.name for alias in node.names]
+                for dependency in dependencies:
+                    parts = dependency.split('.')
+                    for end in range(1, len(parts)+1):
+                        local = '.'.join(parts[:end])
+                        path = ROOT/local.replace('.', '/')
+                        if path.with_suffix('.py').is_file() or (path/'__init__.py').is_file():
+                            pending.append(local)
+        with tempfile.TemporaryDirectory() as tmp:
+            archive = Path(tmp)/'pocket.zip'
+            p.archive(ROOT, archive)
+            with zipfile.ZipFile(archive) as z:
+                self.assertEqual(set(z.namelist()),
+                    {'speech-box/'+name for name in files} | {'speech-box/speech-box'})
+                self.assertEqual(len(z.namelist()), len(files)+1)
+                for module in modules:
+                    name = module.replace('.', '/')+'.py'
+                    self.assertEqual(z.read('speech-box/'+name), (ROOT/name).read_bytes())
+                z.extractall(Path(tmp)/'extracted')
+            package = Path(tmp)/'extracted/speech-box'
+            for module in modules:
+                name = module.replace('.', '/')+'.py'
+                self.assertEqual((package/name).read_bytes(), (ROOT/name).read_bytes())
+            # Resolve the literal -m target from the archived supervisor, but never
+            # execute __main__, remove_empty, engine generation, or a backend.
+            code = """
+import ast, importlib, importlib.abc, importlib.util, pathlib, sys
+package = pathlib.Path(sys.argv[1])
+checkout = pathlib.Path(sys.argv[2])
+assert all(not pathlib.Path(p).is_relative_to(checkout) for p in sys.path if p)
+sys.path.insert(0, str(package))
+class ForbidHeavy(importlib.abc.MetaPathFinder):
+    def find_spec(self, fullname, path=None, target=None):
+        if fullname.split('.')[0] in {'torch', 'torchaudio', 'numpy', 'soundfile',
+                'pocket_tts', 'kokoro', 'transformers', 'huggingface_hub', 'onnxruntime'}:
+            raise AssertionError('heavy import forbidden: '+fullname)
+sys.meta_path.insert(0, ForbidHeavy())
+supervisor = importlib.import_module('worker.runtime_supervisor')
+tree = ast.parse(pathlib.Path(supervisor.__file__).read_bytes())
+assert any(isinstance(n, ast.List) and len(n.elts) >= 3
+    and isinstance(n.elts[1], ast.Constant) and n.elts[1].value == '-m'
+    and isinstance(n.elts[2], ast.Constant) and n.elts[2].value == 'worker.runtime_conditioning'
+    for n in ast.walk(tree))
+for name in ('clients.cli', 'clients.http', 'clients.mcp', 'service.execution_context',
+             'worker.managed_reference', 'service.pocket_install', 'worker.runtime_conditioning', 'worker.engines.pocket',
+             'worker.engines.pocket_execution', 'worker.engines.pocket_prepare', 'worker.runtime_child'):
+    spec = importlib.util.find_spec(name)
+    assert pathlib.Path(spec.origin).is_relative_to(package), name
+    importlib.import_module(name)
+for name, module in tuple(sys.modules.items()):
+    if name.split('.')[0] in {'clients', 'worker', 'service', 'contracts', 'lib'}:
+        assert pathlib.Path(module.__file__).is_relative_to(package), name
+from clients import mcp
+schema = mcp.input_schema('voice_prepare')
+assert schema['properties']['audition_text']['maxLength'] == 10000
+assert schema['additionalProperties'] is False
+assert 'idempotency_key' in schema['required']
+print('isolated Pocket and authenticated client archive closure')
+"""
+            result = subprocess.run([sys.executable, '-I', '-B', '-c', code,
+                str(package), str(ROOT)], cwd=tmp, env={'PATH': os.defpath},
+                capture_output=True, text=True, timeout=5)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertEqual(result.stdout.strip(), 'isolated Pocket and authenticated client archive closure')
+
+    def test_manifest_exact_files_and_no_legacy_metadata_change(self):
+        manifest=json.loads((ROOT/'headless-dist-manifest.json').read_text())
+        self.assertEqual(len(manifest['files']),len(set(manifest['files'])))
+        self.assertTrue(all((ROOT/n).is_file() for n in manifest['files']))
+        import tomllib
+        meta=tomllib.loads((ROOT/'pyproject.toml').read_text())
+        self.assertEqual(meta['tool']['poetry']['name'],'voice-tools')
+        self.assertFalse(meta['tool']['poetry']['package-mode'])
+    def test_release_context_and_cpu_base(self):
+        recipe=(ROOT/'service/Dockerfile.release').read_text()
+        cpu=(ROOT/'Dockerfile.cpu').read_text().splitlines()[0].removeprefix('FROM ')
+        self.assertEqual(recipe.count('FROM '+cpu+' AS '),5)
+        self.assertNotIn('3.14',recipe);self.assertNotIn('service.api:app',recipe)
+        self.assertIn('-r kokoro.lock -r requirements.lock',recipe)
+        self.assertNotIn('tini',recipe)  # supervisor and control must remain PID1
+        ignore=(ROOT/'service/Dockerfile.release.dockerignore').read_text().splitlines()
+        self.assertEqual(ignore[0],'**')
+        self.assertFalse(any(n.startswith('!tests') or n.startswith('!studio') for n in ignore))
+        self.assertNotIn('build:',(ROOT/'service/compose.release.yml').read_text())
+    def test_pocket_worker_lock_is_exact_existing_hash_metadata_union(self):
+        import re
+        def entries(path):
+            raw=path.read_text()
+            starts=list(re.finditer(r'^([a-zA-Z0-9_-]+)==',raw,re.M))
+            return {m[1]:raw[m.start():(starts[i+1].start() if i+1<len(starts) else len(raw))]
+                    for i,m in enumerate(starts)}
+        pocket=entries(ROOT/'requirements/pocket.lock')
+        service=entries(ROOT/'service/requirements.lock')
+        actual=entries(ROOT/'requirements/pocket-installed.lock')
+        self.assertEqual(actual,{**service,**pocket})
+        for entry in actual.values():self.assertIn('--hash=sha256:',entry)
+        self.assertTrue(actual['fastapi'].startswith('fastapi==0.143.1 '))
+        self.assertNotIn('kokoro-onnx',actual)
+        from service.pocket_install import runtime_versions
+        for name,version in runtime_versions().items():
+            self.assertTrue(actual[name].startswith(name+'=='+version+' '))
+        recipe=(ROOT/'service/Dockerfile.release').read_text().split(' AS worker-pocket',1)[1]
+        self.assertIn('--require-hashes -r pocket-installed.lock',recipe)
+        self.assertNotIn('kokoro.lock',recipe)
+
+    def test_lock_versions_preserved_and_hashes_present(self):
+        lock=(ROOT/'service/requirements.lock').read_text()
+        self.assertIn('--python-version 3.11',lock)
+        self.assertIn('fastapi==0.143.2',lock)
+        self.assertIn('starlette==1.8.0',lock)
+        self.assertIn('--hash=sha256:',lock)
+
+
+class QwenLot1SourceTests(unittest.TestCase):
+    def _entries(self, name):
+        import re
+        raw=(ROOT/name).read_text()
+        starts=list(re.finditer(r'^([a-zA-Z0-9_-]+)==',raw,re.M))
+        return {m[1]:raw[m.start():(starts[i+1].start() if i+1<len(starts) else len(raw))]
+                for i,m in enumerate(starts)}
+
+    def test_cpu_and_installed_hash_closure(self):
+        import re
+        import tomllib
+        cpu=self._entries('requirements/qwen-cpu.lock')
+        self.assertEqual(len(cpu),86)
+        poetry={p['name']:p for p in tomllib.loads((ROOT/'poetry.lock').read_text())['package']}
+        for name,entry in cpu.items():
+            version=entry.split()[0].split('==')[1]
+            self.assertEqual(version,poetry[name]['version'])
+            hashes=re.findall(r'--hash=sha256:([a-f0-9]{64})',entry)
+            self.assertTrue(hashes,name)
+            self.assertTrue(set(hashes)<={f['hash'][7:] for f in poetry[name]['files']},name)
+        for name,version in {'torch':'2.10.0+cpu','torchaudio':'2.10.0+cpu',
+                             'qwen-tts':'0.1.1','transformers':'4.57.3','tokenizers':'0.22.2'}.items():
+            self.assertTrue(cpu[name].startswith(name+'=='+version+' '))
+        installed=self._entries('requirements/qwen-installed.lock')
+        service=self._entries('service/requirements.lock')
+        self.assertEqual(installed,{**service,**cpu})
+        self.assertFalse(any(n.startswith('nvidia-') or n in ('pocket-tts','kokoro-onnx') for n in installed))
+
+    def test_sox_source_exception_uses_existing_pinned_build_tools(self):
+        import tomllib
+        build=self._entries('requirements/qwen-sox-build.lock')
+        self.assertEqual(set(build),{'setuptools','numpy'})
+        poetry={p['name']:p for p in tomllib.loads((ROOT/'poetry.lock').read_text())['package']}
+        for name,entry in build.items():
+            pin,hash_arg=entry.split()
+            self.assertEqual(pin,name+'=='+poetry[name]['version'])
+            self.assertIn(hash_arg.removeprefix('--hash='),
+                          {f['hash'] for f in poetry[name]['files'] if f['file'].endswith('.whl')})
+        recipe=(ROOT/'service/Dockerfile.release').read_text().split(' AS worker-qwen',1)[1]
+        self.assertIn('--only-binary=:all: --no-deps --require-hashes -r qwen-sox-build.lock',recipe)
+        self.assertIn('--no-deps --no-build-isolation --no-binary=sox --require-hashes -r qwen-sox-source.lock',recipe)
+        self.assertIn("assert len(sox) == 1",recipe)
+        self.assertIn("if not line.startswith('sox==')",recipe)
+        self.assertNotIn('--no-binary=:all:',recipe)
+
+    def test_exact_public_base_snapshot_and_nested_tokenizer_hash(self):
+        import re
+        d=json.loads((ROOT/'requirements/tts/qwen-0.6b-base.expected.json').read_text())
+        self.assertEqual(d['checkpoint'],'Qwen/Qwen3-TTS-12Hz-0.6B-Base')
+        self.assertEqual(d['revision'],'5d83992436eae1d760afd27aff78a71d676296fc')
+        self.assertEqual(len(d['files']),11)
+        self.assertEqual(sum(f['bytes'] for f in d['files']),2516100892)
+        files={f['path']:f for f in d['files']}
+        self.assertEqual(len(files),11)
+        self.assertEqual(files['speech_tokenizer/model.safetensors']['sha256'],
+            '836b7b357f5ea43e889936a3709af68dfe3751881acefe4ecf0dbd30ba571258')
+        self.assertEqual(files['model.safetensors']['sha256'],
+            '180b3b10eb1c9f1b4db7806d5475bae3071c0243c299d49926bab1da3b6946f6')
+        for f in files.values():
+            self.assertRegex(f['sha256'],r'^[a-f0-9]{64}$')
+            self.assertEqual(f['revision'],d['revision'])
+            self.assertEqual(f['origin'],'https://huggingface.co/'+d['checkpoint']+'/resolve/'+d['revision']+'/'+f['path'])
+        cpu=self._entries('requirements/qwen-cpu.lock')
+        for name,version in d['versions'].items():
+            self.assertTrue(cpu[name].startswith(name+'=='+version+' '))
+        from worker.engines.qwen import validate_declarations
+        validate_declarations(d['execution'],d['language'])
+        from service.provisioning import validate_expected
+        self.assertEqual(validate_expected(d),d)
+
+    def test_qwen_build_context_exact_inclusions(self):
+        rules=(ROOT/'service/Dockerfile.release.dockerignore').read_text().splitlines()
+        for name in ('requirements/qwen-installed.lock','requirements/qwen-sox-build.lock',
+                     'requirements/tts/qwen-0.6b-base.expected.json'):
+            self.assertIn('!'+name,rules)
+        for broad in ('!requirements/**','!requirements/*','!.env','!**'):
+            self.assertNotIn(broad,rules)
+
+    def test_debian_recursive_closure_from_retained_packages_metadata(self):
+        import re
+        # Official r409 Packages fields, not generated from Dockerfile pins.
+        # Main lz4 SHA256: 38163a87d0269f1af22bdddc092bf8e6c605f981642a09561e60565358f15e07
+        # Security lz4 SHA256: 2fee886f46c37e24a2741b8da6ac8c3b1fde2d76f479771caa0b77def424b795
+        metadata = r"""Package: libasound2-data
+Version: 1.2.8-1
+Filename: pool/main/a/alsa-lib/libasound2-data_1.2.8-1_all.deb
+Size: 20488
+SHA256: fe0780d2d3674b2977e0acb0d48b448ad72ba1642564b7dc537f55e839984c2d
+
+Package: libasound2
+Version: 1.2.8-1+b1
+Depends: libasound2-data (>= 1.2.8-1), libc6 (>= 2.34)
+Filename: pool/main/a/alsa-lib/libasound2_1.2.8-1+b1_amd64.deb
+Size: 361788
+SHA256: 44c77b076a7b11ae99712439022d822245b1994c435da564ebd320bb676faf4c
+
+Package: libgomp1
+Version: 12.2.0-14+deb12u1
+Depends: gcc-12-base (= 12.2.0-14+deb12u1), libc6 (>= 2.34)
+Filename: pool/main/g/gcc-12/libgomp1_12.2.0-14+deb12u1_amd64.deb
+Size: 115772
+SHA256: 48fec46bda7f5b1638b9e959889bfbc20491247d402d120bb152687eb48143d7
+
+Package: libgsm1
+Version: 1.0.22-1
+Depends: libc6 (>= 2.4)
+Filename: pool/main/libg/libgsm/libgsm1_1.0.22-1_amd64.deb
+Size: 30940
+SHA256: 1116dc3dbd0f5e7f6becebd5d5a9a9cbd40fc268f7a3e3f6863dd4a26627627a
+
+Package: libltdl7
+Version: 2.4.7-7~deb12u1
+Depends: libc6 (>= 2.34)
+Filename: pool/main/libt/libtool/libltdl7_2.4.7-7~deb12u1_amd64.deb
+Size: 393000
+SHA256: 8070b550321d4bd1c298f52f75374898d39112b709026d2ea5362ef1277b775a
+
+Package: libmagic-mgc
+Version: 1:5.44-3
+Filename: pool/main/f/file/libmagic-mgc_5.44-3_amd64.deb
+Size: 304888
+SHA256: bad01673ba5dfb9b5db4f3ae6a71f18d492cb6801eab45ad3c7d483c0a1f6ad2
+
+Package: libmagic1
+Version: 1:5.44-3
+Depends: libbz2-1.0, libc6 (>= 2.33), liblzma5 (>= 5.1.1alpha+20120614), zlib1g (>= 1:1.1.4), libmagic-mgc (= 1:5.44-3)
+Filename: pool/main/f/file/libmagic1_5.44-3_amd64.deb
+Size: 103752
+SHA256: a241c2adc7438a7e217f32544028489981768a349d3e48673392703255c7b88e
+
+Package: libopencore-amrnb0
+Version: 0.1.6-1
+Depends: libc6 (>= 2.14)
+Filename: pool/main/o/opencore-amr/libopencore-amrnb0_0.1.6-1_amd64.deb
+Size: 96456
+SHA256: adc9ff8f56b8a8e0b8a5bf90e8d07ce7d4acc306e3f60e37989e281f649df53f
+
+Package: libopencore-amrwb0
+Version: 0.1.6-1
+Depends: libc6 (>= 2.14)
+Filename: pool/main/o/opencore-amr/libopencore-amrwb0_0.1.6-1_amd64.deb
+Size: 51964
+SHA256: a8a98630f0f2976a90b2421adaa7659340db116595f39ef9b54975d85c876ef7
+
+Package: libpng16-16
+Version: 1.6.39-2+deb12u6
+Depends: libc6 (>= 2.29), zlib1g (>= 1:1.2.11.dfsg)
+Filename: pool/updates/main/libp/libpng1.6/libpng16-16_1.6.39-2+deb12u6_amd64.deb
+Size: 277048
+SHA256: 940b91d40d51c825de7f7aa133aecff1ffa25a91f12cb6aa6926c9ad55cd640c
+
+Package: libsox-fmt-alsa
+Version: 14.4.2+git20190427-3.5
+Depends: libasound2 (>= 1.0.16), libc6 (>= 2.2.5), libsox3 (>= 14.4.2~)
+Filename: pool/main/s/sox/libsox-fmt-alsa_14.4.2+git20190427-3.5_amd64.deb
+Size: 41516
+SHA256: 0b7ff80396e299796c00afce57779fdb0272e33eb94d2526145babf8f9ca45a6
+
+Package: libsox-fmt-base
+Version: 14.4.2+git20190427-3.5
+Depends: libc6 (>= 2.14), libflac12 (>= 1.3.0), libgsm1 (>= 1.0.18), libogg0 (>= 1.0rc3), libopencore-amrnb0 (>= 0.1.6), libopencore-amrwb0 (>= 0.1.6), libsndfile1 (>= 1.0.20), libsox3 (>= 14.4.2~), libvorbis0a (>= 1.1.2), libvorbisenc2 (>= 1.1.2), libvorbisfile3 (>= 1.1.2), libwavpack1 (>= 4.40.0)
+Filename: pool/main/s/sox/libsox-fmt-base_14.4.2+git20190427-3.5_amd64.deb
+Size: 62964
+SHA256: 099fa9188b9516b2a93314d9d3e3bd02b165f59469bb6d67d91743e4c13d9e74
+
+Package: libsox3
+Version: 14.4.2+git20190427-3.5
+Depends: libc6 (>= 2.33), libgomp1 (>= 4.9), libgsm1 (>= 1.0.18), libltdl7 (>= 2.4.7), libmagic1 (>= 5.12), libpng16-16 (>= 1.6.2-1), zlib1g (>= 1:1.1.4)
+Filename: pool/main/s/sox/libsox3_14.4.2+git20190427-3.5_amd64.deb
+Size: 255728
+SHA256: 0e2d255fce05d3caca5abd00a2c44f2c0e3708bd0f7b3a9954ed371ad6e71204
+
+Package: libvorbisfile3
+Version: 1.3.7-1
+Depends: libc6 (>= 2.14), libogg0 (>= 1.1.0), libvorbis0a (= 1.3.7-1)
+Filename: pool/main/libv/libvorbis/libvorbisfile3_1.3.7-1_amd64.deb
+Size: 26084
+SHA256: 68f84034ae1c9fa0ab6a45f5b6c406a50faae4421f0d78874260aefa2df68efc
+
+Package: libwavpack1
+Version: 5.6.0-1
+Depends: libc6 (>= 2.33)
+Filename: pool/main/w/wavpack/libwavpack1_5.6.0-1_amd64.deb
+Size: 85720
+SHA256: be9730c554786476b6a1a0f0c888c25f15d6cf8dd88954885494111b0e44482c
+
+Package: sox
+Version: 14.4.2+git20190427-3.5
+Depends: libsox-fmt-alsa (= 14.4.2+git20190427-3.5) | libsox-fmt-ao (= 14.4.2+git20190427-3.5) | libsox-fmt-oss (= 14.4.2+git20190427-3.5) | libsox-fmt-pulse (= 14.4.2+git20190427-3.5), libsox-fmt-base (= 14.4.2+git20190427-3.5), libsox3 (= 14.4.2+git20190427-3.5), libc6 (>= 2.34)
+Filename: pool/main/s/sox/sox_14.4.2+git20190427-3.5_amd64.deb
+Size: 132652
+SHA256: 6793a4824f96f0008be4d5defba8b07a0f3f9054708b0ed2332a4ede4c43b5b5
+
+Package: libflac12
+Version: 1.4.2+ds-2
+Depends: libc6 (>= 2.33), libogg0 (>= 1.0rc3)
+Filename: pool/main/f/flac/libflac12_1.4.2+ds-2_amd64.deb
+Size: 198124
+SHA256: 4d8431c274eef13ec9ee2c0bf988c34b4342367dec053b7f69a432525be5b1fe
+
+Package: libogg0
+Version: 1.3.5-3
+Depends: libc6 (>= 2.14)
+Filename: pool/main/libo/libogg/libogg0_1.3.5-3_amd64.deb
+Size: 23412
+SHA256: f67acb0477aed0354f411172e37af338f3ac6bd4f3766134a2cf5539884b5a28
+
+Package: libsndfile1
+Version: 1.2.0-1+deb12u1
+Depends: libc6 (>= 2.33), libflac12 (>= 1.3.0), libmp3lame0 (>= 3.100), libmpg123-0 (>= 1.28.0), libogg0 (>= 1.3.0), libopus0 (>= 1.1), libvorbis0a (>= 1.2.3), libvorbisenc2 (>= 1.1.2)
+Filename: pool/main/libs/libsndfile/libsndfile1_1.2.0-1+deb12u1_amd64.deb
+Size: 196540
+SHA256: 02dc3f08fe8476e82e005f412e3b7289ff641180f33a9be8073f4bde61c85e8e
+
+Package: libvorbis0a
+Version: 1.3.7-1
+Depends: libc6 (>= 2.29), libogg0 (>= 1.1.0)
+Filename: pool/main/libv/libvorbis/libvorbis0a_1.3.7-1_amd64.deb
+Size: 93028
+SHA256: 01c14f9d1109650077a4c5c337c285476a6932d4d448f5a190c2b845724dbf21
+
+Package: libvorbisenc2
+Version: 1.3.7-1
+Depends: libc6 (>= 2.4), libvorbis0a (= 1.3.7-1)
+Filename: pool/main/libv/libvorbis/libvorbisenc2_1.3.7-1_amd64.deb
+Size: 80568
+SHA256: 75dd4d6f904c7db82f5112e60d8efea9e81dfedf94e970c5da7af2b3d81643c0
+
+Package: libmp3lame0
+Version: 3.100-6
+Depends: libc6 (>= 2.29)
+Filename: pool/main/l/lame/libmp3lame0_3.100-6_amd64.deb
+Size: 364932
+SHA256: b1292c749172e7623547ecf684da57d3ec6ca22109f08b11bbb9e6be6e6beb95
+
+Package: libmpg123-0
+Version: 1.31.2-1+deb12u1
+Depends: libc6 (>= 2.33)
+Filename: pool/main/m/mpg123/libmpg123-0_1.31.2-1+deb12u1_amd64.deb
+Size: 146980
+SHA256: a10ad0d59995b859797a5f20d2833672051d0b2c7dab4c71f2e79258b2e3f631
+
+Package: libopus0
+Version: 1.3.1-3
+Depends: libc6 (>= 2.29)
+Filename: pool/main/o/opus/libopus0_1.3.1-3_amd64.deb
+Size: 195192
+SHA256: c172e212f9039e741916aa8e12f3670d1e049dc0c16685325641288c2d83faa7"""
+        packages = {}
+        for paragraph in metadata.split('\n\n'):
+            fields = dict(line.split(': ', 1) for line in paragraph.splitlines())
+            packages[fields['Package']] = fields
+        recipe = (ROOT/'service/Dockerfile.release').read_text().split(' AS worker-qwen',1)[1]
+        script = recipe.split("<<'PYQWEN'\n",1)[1].split('\nPYQWEN',1)[0]
+        tree = ast.parse(script)
+        artifacts = ast.literal_eval(next(node.value for node in tree.body
+            if isinstance(node,ast.Assign) and any(isinstance(t,ast.Name) and t.id=='artifacts' for t in node.targets)))
+        expected = {}
+        for name, fields in packages.items():
+            archive = 'https://security.debian.org/debian-security/' if fields['Filename'].startswith('pool/updates/') else 'https://deb.debian.org/debian/'
+            expected[name] = (archive+fields['Filename'], fields['SHA256'], int(fields['Size']))
+        self.assertEqual(set(artifacts),set(expected.values()))
+        self.assertEqual(len(artifacts),len(packages))
+        # Only these base packages may terminate recursive dependency traversal.
+        base = {'libc6','gcc-12-base','libbz2-1.0','liblzma5','zlib1g'}
+        # Debian version ordering (epoch, upstream, revision); no host dpkg or ML imports.
+        def compare_version(left, right):
+            def split(value):
+                epoch, sep, rest = value.partition(':')
+                value = rest if sep else epoch
+                upstream, sep, revision = value.rpartition('-')
+                return int(epoch) if rest else 0, upstream if sep else value, revision if sep else '0'
+            def part(a, b):
+                def order(c):
+                    return -1 if c == '~' else 0 if not c else ord(c) if c.isalpha() else ord(c)+256
+                while a or b:
+                    while (a and not a[0].isdigit()) or (b and not b[0].isdigit()):
+                        x = a[0] if a and not a[0].isdigit() else ''
+                        y = b[0] if b and not b[0].isdigit() else ''
+                        if order(x) != order(y):
+                            return (order(x)>order(y))-(order(x)<order(y))
+                        a, b = a[len(x):], b[len(y):]
+                    x, y = re.match(r'\d*',a)[0], re.match(r'\d*',b)[0]
+                    nx, ny = int(x or '0'), int(y or '0')
+                    if nx != ny:
+                        return (nx>ny)-(nx<ny)
+                    a, b = a[len(x):], b[len(y):]
+                return 0
+            le, lu, lr = split(left)
+            re_, ru, rr = split(right)
+            return (le>re_)-(le<re_) or part(lu,ru) or part(lr,rr)
+        self.assertLess(compare_version('14.4.2~','14.4.2'),0)
+        self.assertGreater(compare_version('1:1.2.13','1:1.2.11.dfsg'),0)
+        seen = set()
+        def visit(name):
+            if name in seen or name in base:
+                return
+            self.assertIn(name,packages)
+            seen.add(name)
+            fields = packages[name]
+            for kind in ('Depends','Pre-Depends'):
+                for group in filter(None,fields.get(kind,'').split(', ')):
+                    alternatives = [re.fullmatch(r'([\w.+-]+)(?: \((>=|=) ([^)]+)\))?',part) for part in group.split(' | ')]
+                    self.assertTrue(all(alternatives),group)
+                    chosen = next((m for m in alternatives if m[1] in packages or m[1] in base),None)
+                    self.assertIsNotNone(chosen,group)
+                    dep,op,version = chosen.groups()
+                    if op and dep in packages:
+                        comparison = compare_version(packages[dep]['Version'],version)
+                        if op == '=':
+                            self.assertEqual(comparison,0,group)
+                        else:
+                            self.assertGreaterEqual(comparison,0,group)
+                    if dep in base:
+                        if op:
+                            flag = 'eq' if op == '=' else 'ge'
+                            # Strongest libc/zlib requirement covers weaker edges.
+                            bound = {'libc6':'2.34','zlib1g':'1:1.2.11.dfsg'}.get(dep,version)
+                            self.assertGreaterEqual(compare_version(bound,version),0,group)
+                            self.assertIn(f"{dep})\" {flag} {bound}",recipe)
+                        else:
+                            self.assertIn('dpkg-query -W '+dep,recipe)
+                    visit(dep)
+        for seed in ('sox','libgomp1'):
+            visit(seed)
+        self.assertEqual(seen,set(packages))
+        # A truncated fix of only the five error names cannot pass this graph.
+        self.assertTrue({'libmp3lame0','libmpg123-0','libopus0'} <= seen)
+
+    def test_recipe_is_offline_owned_and_has_no_private_paths(self):
+        recipe=(ROOT/'service/Dockerfile.release').read_text().split(' AS worker-qwen',1)[1]
+        for text in ('HF_HUB_OFFLINE=1','TRANSFORMERS_OFFLINE=1','USER 0:10001',
+                     '--only-binary=:all: --no-deps --require-hashes -r qwen-wheels.lock',
+                     'h.hexdigest() != digest','dpkg -i /opt/qwen-debs/*.deb'):
+            self.assertIn(text,recipe)
+        self.assertNotIn('apt-get',recipe)
+        self.assertEqual(recipe.count("https://deb.debian.org/debian/"),23)
+        self.assertEqual(recipe.count("https://security.debian.org/debian-security/"),1)
+        for name in ('requirements/qwen-cpu.in','requirements/qwen-cpu.lock',
+                     'requirements/qwen-installed.lock','requirements/tts/qwen-0.6b-base.expected.json'):
+            raw=(ROOT/name).read_text()
+            for forbidden in ('/Users/','/private/','file://','/opt/qwen-eval','/system-sox'):
+                self.assertNotIn(forbidden,raw)
+        self.assertNotIn('docker-qwen-split-v1',recipe)
+
+
+class ProtectedLaunchRecordsTests(unittest.TestCase):
+    def setUp(self):
+        from tests.service import test_installed_registration
+        f=self.fixture=test_installed_registration.Registration(); f.setUp(); self.addCleanup(f.doCleanups)
+    def documents(self):
+        f=self.fixture
+        ids={c['role']:c['id'] for c in f.owners}
+        values={'creation-intent.json':dict(version=1,configuration_digest=h.digest(f.config)),
+                'containers.json':dict(version=1,configuration_digest=h.digest(f.config),containers=ids),
+                **{'created-'+role+'.json':dict(id=identity) for role,identity in ids.items()}}
+        for name,value in values.items():h._host_write(f.authority/name,value)
+        return ids
+    def test_real_registration_accepts_only_complete_bound_launcher_records(self):
+        self.documents();rid=self.fixture.run_registration()
+        self.assertEqual(self.fixture.rows()[0][0],rid)
+    def test_partial_creation_blocks_before_registration_child(self):
+        f=self.fixture
+        h._host_write(f.authority/'creation-intent.json',dict(version=1,configuration_digest=h.digest(f.config)))
+        with self.assertRaisesRegex(ValueError,'partial_creation'):f.run_registration()
+        self.assertEqual(f.children,[]);self.assertEqual(f.rows(),[])
+    def test_changed_created_identity_blocks_before_registration_child(self):
+        self.documents();f=self.fixture
+        path=f.authority/'created-control.json';path.write_text(h.encode(dict(id='f'*64)))
+        with self.assertRaisesRegex(ValueError,'creation_identity'):f.run_registration()
+        self.assertEqual(f.children,[])
+    def test_unknown_authority_document_still_refuses(self):
+        self.documents();f=self.fixture
+        h._host_write(f.authority/'unknown.json',{})
+        with self.assertRaisesRegex(ValueError,'unknown_authority'):f.run_registration()
+        self.assertEqual(f.children,[])
+
+
+class InstalledCommandTests(unittest.TestCase):
+    def test_factory_pid1_startup_publication_and_clean_exit_no_listener(self):
+        import asyncio
+        from types import SimpleNamespace
+        with tempfile.TemporaryDirectory() as tmp:
+            directory=Path(tmp); fd=os.open(directory,os.O_RDONLY|os.O_DIRECTORY)
+            self.addCleanup(os.close,fd)
+            life=dict(notification=SimpleNamespace(fd=fd,read=lambda:dict(registration_id='a'*64)),closed=False,error=None)
+            app=SimpleNamespace(state=SimpleNamespace(installed_lifecycle=life))
+            class Server:
+                def __init__(self,config):self.started=False;self.should_exit=False
+                async def serve(self):
+                    self.started=True
+                    while not (directory/e.STARTUP_NAME).exists():await asyncio.sleep(.001)
+                    life['closed']=True
+            with patch.object(e,'_control_identity'),patch.object(e,'create_installed_app',return_value=app) as factory, \
+                 patch.object(e,'local_incarnation',return_value={'injected':True}), \
+                 patch('uvicorn.Config'),patch('uvicorn.Server',Server):
+                original=os.umask(0o077)
+                try:e.installed_main()
+                finally:os.umask(original)
+            factory.assert_called_once_with(configuration_file=e.ip.CONFIG_DESTINATION,credential_file=e.ip.CREDENTIAL_DESTINATION)
+            self.assertEqual(json.loads((directory/e.STARTUP_NAME).read_text()),
+                dict(phase='ready',registration_id='a'*64,incarnation={'injected':True}))
+    def test_factory_failure_exits_nonzero_without_publishing(self):
+        from types import SimpleNamespace
+        app=SimpleNamespace(state=SimpleNamespace())
+        class Server:
+            def __init__(self,config):self.started=False;self.should_exit=False
+            async def serve(self):return
+        with patch.object(e,'_control_identity'),patch.object(e,'create_installed_app',return_value=app), \
+             patch('uvicorn.Config'),patch('uvicorn.Server',Server):
+            original=os.umask(0o077)
+            try:
+                with self.assertRaises(SystemExit) as result:e.installed_main()
+            finally:os.umask(original)
+        self.assertEqual(result.exception.code,2)
+
+
+class SignalPolicyTests(unittest.TestCase):
+    def test_repeated_signal_only_requests_normal_shutdown(self):
+        import signal
+        handlers={};calls=[]
+        def install(sig,handler):
+            previous=handlers.get(sig,signal.SIG_DFL);handlers[sig]=handler;calls.append((sig,handler));return previous
+        with patch('signal.signal',side_effect=install),patch('signal.raise_signal') as rethrow:
+            server=e._installed_server(__import__('uvicorn').Config('unused'))
+            with server.capture_signals():
+                handlers[signal.SIGTERM](signal.SIGTERM,None)
+                handlers[signal.SIGINT](signal.SIGINT,None)
+                self.assertTrue(server.should_exit);self.assertFalse(server.force_exit)
+            rethrow.assert_not_called()
+            self.assertEqual(handlers[signal.SIGTERM],signal.SIG_DFL)
+
+
+class GeneratedTopologyTests(unittest.TestCase):
+    def test_generated_create_arguments_satisfy_real_closed_topology_validator(self):
+        from decimal import Decimal
+        f=host_fixtures.InstalledHost();f.setUp();self.addCleanup(f.doCleanups)
+        consumers=[]
+        for template,owner in zip(f.containers,f.owners):
+            role=owner['role'];args=p.command(role,f.config,f.policy,f.scope)
+            options={};i=2
+            flags=('--read-only',)
+            while i<len(args) and args[i].startswith('--'):
+                option=args[i]
+                if '=' in option:
+                    key,value=option.split('=',1);i+=1
+                elif option in flags:
+                    key,value=option,True;i+=1
+                else:
+                    key,value=option,args[i+1];i+=2
+                options.setdefault(key,[]).append(value)
+            self.assertEqual(args[i],f.config['images'][role])
+            c=copy.deepcopy(template)
+            c.update(user=options['--user'][0],restart=options['--restart'][0],readonly=options['--read-only'][0],
+                security=options['--security-opt'],capdrop=options['--cap-drop'],capadd=options.get('--cap-add',[]),
+                ipcns=options['--ipc'][0],cgroupns=options['--cgroupns'][0],network=options['--network'][0],
+                memory=int(options['--memory'][0]),swap=int(options['--memory-swap'][0]),pids=int(options['--pids-limit'][0]),
+                nanocpus=int(Decimal(options['--cpus'][0])*10**9))
+            destination,settings=options['--tmpfs'][0].split(':',1);c['tmpfs']={destination:settings}
+            c['ports']={}
+            if '--publish' in options:
+                host,port,container=options['--publish'][0].rsplit(':',2)
+                c['ports']={container+'/tcp':[dict(HostIp=host,HostPort=port)]}
+            c['mounts']=[]
+            for mount in options['--mount']:
+                parts=dict(item.split('=',1) for item in mount.split(',') if '=' in item)
+                name=parts['source'] if parts['type']=='volume' else ''
+                source=f.policy['roots'][name]['source'] if name else parts['source']
+                c['mounts'].append(dict(type=parts['type'],name=name,source=source,
+                    destination=parts['destination'],rw='readonly' not in mount.split(',')))
+            consumers.append(c)
+        topology=dict(scope=f.scope,volumes=f.volumes,consumers=consumers,policy=h.ip.HOST_POLICY,
+            configuration_digest=h.digest(f.config),host_policy_digest=h.digest(f.policy))
+        self.assertIs(h.validate_installed_topology(topology,f.scope,f.owners,f.config,f.policy),topology)
+
+
+class ListenerProbeTests(unittest.TestCase):
+    def test_probe_uses_only_fixed_credential_for_validated_launch_policy(self):
+        from service import daemon_volumes as dv, installed_export as ex
+        for policy,path in ((None,e.ip.CREDENTIAL_DESTINATION),(dv.POLICY,dv.CREDENTIAL),(ex.LAUNCH,dv.CREDENTIAL)):
+            with self.subTest(policy=policy), patch('service.auth.private_input',side_effect=FileNotFoundError) as read:
+                with self.assertRaises(FileNotFoundError):e._listener_ready('a'*64,launch_policy=policy)
+                read.assert_called_once_with(path,mode=0o640,limit=48000)
+        with patch('service.auth.private_input') as read:
+            with self.assertRaises(ValueError):e._listener_ready('a'*64,launch_policy='caller/path')
+            read.assert_not_called()
+
+    def test_probe_binds_live_activation_and_never_returns_token_or_body(self):
+        from types import SimpleNamespace
+        token='PRIVATE-TOKEN-NEVER-OUTPUT'
+        body=dict(synthetic=False,ready_for_speech=True,configuration_digest='a'*64,
+            status=dict(persistent_activation=True),private_rows=['never-return'])
+        requests=[]
+        class Connection:
+            def __init__(self,*args,**kw):self.closed=False
+            def request(self,*args,**kwargs):requests.append((args,kwargs))
+            def getresponse(self):return SimpleNamespace(status=200,read=lambda limit:json.dumps(body).encode())
+            def close(self):self.closed=True
+        with patch('service.auth.private_input',return_value=json.dumps(dict(credentials=[dict(token=token)])).encode()), \
+             patch('http.client.HTTPConnection',Connection):
+            self.assertIs(e._listener_ready('a'*64),True)
+            body['configuration_digest']='b'*64
+            self.assertIs(e._listener_ready('a'*64),False)
+            body['configuration_digest']='a'*64;body['status']['persistent_activation']=False
+            self.assertIs(e._listener_ready('a'*64),False)
+        self.assertEqual(requests[0][0],('GET','/skeleton'))
+        self.assertEqual(requests[0][1]['headers']['Authorization'],'Bearer '+token)
+
+
+class ReadinessReaderTests(unittest.TestCase):
+    def test_not_ready_reader_retains_validated_registration(self):
+        self._reader(False)
+
+    def test_exec_reader_checks_pid1_gate_and_listener_without_claiming_to_be_pid1(self):
+        self._reader(True)
+
+    def _reader(self, listener):
+        import contextlib
+        import io
+        f=host_fixtures.InstalledHost();f.setUp();self.addCleanup(f.doCleanups)
+        directory=f.root/'activation';directory.mkdir(mode=0o700);f.owner(directory,10001,10001)
+        result=dict(phase='ready',registration_id='a'*64,incarnation={'injected-pid1':True})
+        path=directory/e.STARTUP_NAME;path.write_text(h.encode(result));path.chmod(0o600);f.owner(path,10001,10001)
+        output=io.StringIO()
+        with patch.object(e,'GATE_DIRECTORY',directory),patch.object(e,'_control_identity'), \
+             patch.object(e,'_read_pid1_incarnation',return_value={'injected-pid1':True}), \
+             patch.object(e.ip,'read_private',return_value=b'gate'),patch.object(e,'decode_projection',return_value=dict(registration_id='a'*64,configuration_digest='b'*64)), \
+             patch.object(e,'_listener_ready',return_value=listener),contextlib.redirect_stdout(output):
+            e.launch_status()
+        self.assertEqual(json.loads(output.getvalue()),dict(phase='ready' if listener else 'not_ready',registration_id='a'*64))
+
+
+class ProvisioningTests(unittest.TestCase):
+    def test_create_only_authority_has_exact_files_and_retains_second_attempt(self):
+        import stat
+        from types import SimpleNamespace
+        f=host_fixtures.InstalledHost();f.setUp();self.addCleanup(f.doCleanups)
+        real_directory=h._root_authority_directory
+        directory=f.authority_fixture()
+        # Remove only this test fixture's prepared authority leaf to exercise
+        # creation. Root identities/trusted ancestry are injected, not changed.
+        (directory/'launch.lock').unlink();(directory/'host-policy.json').unlink();directory.rmdir()
+        real_fstat=os.fstat
+        def root_observation(fd):
+            info=real_fstat(fd)
+            fields={k:getattr(info,k) for k in dir(info) if k.startswith('st_')}
+            fields.update(st_uid=0,st_gid=0)
+            if stat.S_ISDIR(info.st_mode):fields['st_mode']=info.st_mode & ~0o022
+            return SimpleNamespace(**fields)
+        observed=[]
+        observer=SimpleNamespace(initialize_authority=lambda:observed.append('checked-empty-inputs'))
+        with patch.object(h,'InstalledObserver',return_value=observer),patch.object(os,'fstat',side_effect=root_observation), \
+             patch.object(h,'_root_authority_directory',side_effect=real_directory):
+            h.create_installed_authority(f.config,f.scope,f.policy)
+            before={n.name:n.read_bytes() for n in directory.iterdir()}
+            with self.assertRaises(FileExistsError):h.create_installed_authority(f.config,f.scope,f.policy)
+            self.assertEqual(before,{n.name:n.read_bytes() for n in directory.iterdir()})
+        self.assertEqual(set(before),{'host-policy.json','launch.lock'})
+        self.assertEqual(before['launch.lock'],b'')
+        self.assertEqual(json.loads(before['host-policy.json']),f.policy)
+        self.assertEqual(observed,['checked-empty-inputs','checked-empty-inputs'])
+        self.assertNotIn(b'NEVER-RETURN-THIS-CREDENTIAL',b''.join(before.values()))
+
+
+if __name__=='__main__':unittest.main()

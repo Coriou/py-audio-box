@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "platform": "linux/amd64",
+  "dockerfile": "service/Dockerfile.release",
+  "build_args": {
+    "EXPORT_FFMPEG_PACKAGE_VERSION": "7:5.1.9-0+deb12u1",
+    "EXPORT_SNDFILE_PACKAGE_VERSION": "1.2.0-1+deb12u1",
+    "EXPORT_ESPEAK_PACKAGE_VERSION": "1.51+dfsg-10+deb12u2",
+    "EXPORT_FFMPEG_SHA256": "0dafc1360bb07743f76abeb1e4ae16b0aaa1331e9041a0e8d6a8524111dc0cbb"
+  }
+}

@@ -2,6 +2,8 @@
 cache/
 work/
 work_remote/
+# Qualification models, recordings and receipts stay outside runtime build contexts.
+docs/agent-interface/evaluation/
 .env
 SETUP.local.md
 
@@ -14,6 +16,8 @@ __pycache__/
 
 # Virtual envs
 .venv/
+.venv-client/
+.venv-mcp/
 venv/
 
 # Dev/IDE artefacts

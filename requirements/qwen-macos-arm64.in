@@ -1,0 +1,6 @@
+# Native macOS arm64, CPython 3.11; PyPI (no Linux +cpu index).
+qwen-tts==0.1.1
+torch==2.10.0
+torchaudio==2.10.0
+transformers==4.57.3
+tokenizers==0.22.2

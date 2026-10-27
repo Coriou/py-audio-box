@@ -1,0 +1,23 @@
+# Existing pinned dependency image; no install, provisioning or runtime downloads.
+# Local tag is verified against its immutable image ID by test-worker-w1.sh.
+FROM speech-core-1a-tests:f1-f2 AS dependencies
+FROM python:3.14.8-slim-bookworm@sha256:48b13b003dda20b16f9442b8475aa05fe21bf6579a8c881db92ffb4d8fd20f83 AS worker
+ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1
+WORKDIR /opt/speech
+COPY --from=dependencies /usr/local /usr/local
+COPY contracts/__init__.py contracts/validate.py ./contracts/
+COPY contracts/v1 ./contracts/v1
+COPY worker/__init__.py worker/transport.py worker/isolated_synthetic.py worker/supervised_synthetic.py ./worker/
+USER 10002:10001
+CMD ["python", "-m", "worker.supervised_synthetic"]
+
+FROM dependencies AS control
+USER root
+COPY service ./service
+COPY worker ./worker
+COPY contracts ./contracts
+COPY clients ./clients
+COPY tests/service ./tests/service
+COPY tests/release ./tests/release
+USER 10001:10001
+CMD ["python", "-m", "tests.release.test_worker_lifecycle_boundary"]

@@ -27,6 +27,8 @@ class KokoroBackend:
         self._providers = tuple(session.get_providers())
         if self._providers != ('CPUExecutionProvider',):
             raise BackendError('unsupported_provider', 'Kokoro CPU requires only CPUExecutionProvider')
+        from .espeak_memfd import install
+        install()
         self.model = Kokoro.from_session(session, str(self.root / 'voices.bin'))
         self._voices = frozenset(self.model.get_voices())
         self.load_seconds = time.monotonic() - started

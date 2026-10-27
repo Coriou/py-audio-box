@@ -1,8 +1,11 @@
 FROM python:3.11-slim-bookworm
 
+# License label describes project source; base images and dependencies retain their terms.
+LABEL org.opencontainers.image.licenses="AGPL-3.0-only"
+COPY LICENSE THIRD_PARTY_NOTICES.md /app/
+
 LABEL org.opencontainers.image.source="https://github.com/Coriou/py-audio-box"
 LABEL org.opencontainers.image.description="ML/audio toolbox — voice cloning, synthesis, separation"
-# Project redistribution license is not declared; dependency licenses are separate.
 
 ARG POETRY_VERSION=1.8.3
 

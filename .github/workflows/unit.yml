@@ -5,10 +5,223 @@ on:
 permissions:
   contents: read
 jobs:
-  unit:
+  prepare:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v4
-      - name: Build CPU test image and run contracts without network
-        run: scripts/run-unit-tests.sh
+      - name: Start shared work budget before checkout
+        id: clock
+        shell: bash
+        run: |
+          python3 - <<'PYTHON'
+          import os, time
+          with open(os.environ['GITHUB_ENV'], 'a') as f:
+              f.write(f'WORK_STARTED={time.monotonic()}\n')
+          with open(os.environ['GITHUB_OUTPUT'], 'a') as f:
+              f.write('sha12='+os.environ['GITHUB_SHA'][:12]+'\n')
+          PYTHON
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        timeout-minutes: 1
+      - name: Build once, bound image archive, and collect the complete selection
+        shell: bash
+        run: bash scripts/ci-unit.sh prepare "$RUNNER_TEMP/prepare" "$RUNNER_TEMP/image"
+      - name: Reserve bounded image upload inside shared work deadline
+        run: |
+          python3 - <<'PYTHON'
+          import os, time
+          assert time.monotonic()+120 < float(os.environ['WORK_STARTED'])+1020
+          PYTHON
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: success()
+        timeout-minutes: 2
+        with:
+          name: pab-unit-${{ github.run_id }}-${{ github.run_attempt }}-${{ steps.clock.outputs.sha12 }}-image
+          path: ${{ runner.temp }}/image/
+          if-no-files-found: error
+          retention-days: 1
+          compression-level: 0
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        timeout-minutes: 2
+        with:
+          name: pab-unit-${{ github.run_id }}-${{ github.run_attempt }}-${{ steps.clock.outputs.sha12 }}-prepare
+          path: ${{ runner.temp }}/prepare/
+          if-no-files-found: error
+          retention-days: 7
+          compression-level: 0
+  unit-shard:
+    needs: prepare
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      max-parallel: 6
+      matrix:
+        shard: ['01', '02', '03', '04', '05', '06', '07', '08', '09', '10', '11']
+    steps:
+      - name: Start shared work budget before checkout
+        id: clock
+        shell: bash
+        run: |
+          python3 - <<'PYTHON'
+          import os, time
+          with open(os.environ['GITHUB_ENV'], 'a') as f:
+              f.write(f'WORK_STARTED={time.monotonic()}\n')
+          with open(os.environ['GITHUB_OUTPUT'], 'a') as f:
+              f.write('sha12='+os.environ['GITHUB_SHA'][:12]+'\n')
+          PYTHON
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        timeout-minutes: 1
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        timeout-minutes: 1
+        with:
+          name: pab-unit-${{ github.run_id }}-${{ github.run_attempt }}-${{ steps.clock.outputs.sha12 }}-prepare
+          path: ${{ runner.temp }}/input/prepare/
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        timeout-minutes: 2
+        with:
+          name: pab-unit-${{ github.run_id }}-${{ github.run_attempt }}-${{ steps.clock.outputs.sha12 }}-image
+          path: ${{ runner.temp }}/image/
+      - name: Verify and load exact image, fully collect, then execute assigned nodes
+        shell: bash
+        run: bash scripts/ci-unit.sh shard "$RUNNER_TEMP/shard" "$RUNNER_TEMP/image" '${{ matrix.shard }}' "$RUNNER_TEMP/input/prepare"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        timeout-minutes: 2
+        with:
+          name: pab-unit-${{ github.run_id }}-${{ github.run_attempt }}-${{ steps.clock.outputs.sha12 }}-shard-${{ matrix.shard }}-of-11
+          path: ${{ runner.temp }}/shard/
+          if-no-files-found: error
+          retention-days: 7
+          compression-level: 0
+  unit:
+    if: always()
+    needs: [prepare, unit-shard]
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Start shared work budget before checkout
+        id: clock
+        shell: bash
+        run: |
+          python3 - <<'PYTHON'
+          import os, time
+          with open(os.environ['GITHUB_ENV'], 'a') as f:
+              f.write(f'WORK_STARTED={time.monotonic()}\n')
+          with open(os.environ['GITHUB_OUTPUT'], 'a') as f:
+              f.write('sha12='+os.environ['GITHUB_SHA'][:12]+'\n')
+          PYTHON
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        timeout-minutes: 1
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        if: always()
+        timeout-minutes: 1
+        with:
+          name: pab-unit-${{ github.run_id }}-${{ github.run_attempt }}-${{ steps.clock.outputs.sha12 }}-prepare
+          path: ${{ runner.temp }}/receipts/prepare/
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        if: always()
+        timeout-minutes: 1
+        with:
+          name: pab-unit-${{ github.run_id }}-${{ github.run_attempt }}-${{ steps.clock.outputs.sha12 }}-shard-01-of-11
+          path: ${{ runner.temp }}/receipts/shard-01/
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        if: always()
+        timeout-minutes: 1
+        with:
+          name: pab-unit-${{ github.run_id }}-${{ github.run_attempt }}-${{ steps.clock.outputs.sha12 }}-shard-02-of-11
+          path: ${{ runner.temp }}/receipts/shard-02/
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        if: always()
+        timeout-minutes: 1
+        with:
+          name: pab-unit-${{ github.run_id }}-${{ github.run_attempt }}-${{ steps.clock.outputs.sha12 }}-shard-03-of-11
+          path: ${{ runner.temp }}/receipts/shard-03/
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        if: always()
+        timeout-minutes: 1
+        with:
+          name: pab-unit-${{ github.run_id }}-${{ github.run_attempt }}-${{ steps.clock.outputs.sha12 }}-shard-04-of-11
+          path: ${{ runner.temp }}/receipts/shard-04/
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        if: always()
+        timeout-minutes: 1
+        with:
+          name: pab-unit-${{ github.run_id }}-${{ github.run_attempt }}-${{ steps.clock.outputs.sha12 }}-shard-05-of-11
+          path: ${{ runner.temp }}/receipts/shard-05/
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        if: always()
+        timeout-minutes: 1
+        with:
+          name: pab-unit-${{ github.run_id }}-${{ github.run_attempt }}-${{ steps.clock.outputs.sha12 }}-shard-06-of-11
+          path: ${{ runner.temp }}/receipts/shard-06/
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        if: always()
+        timeout-minutes: 1
+        with:
+          name: pab-unit-${{ github.run_id }}-${{ github.run_attempt }}-${{ steps.clock.outputs.sha12 }}-shard-07-of-11
+          path: ${{ runner.temp }}/receipts/shard-07/
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        if: always()
+        timeout-minutes: 1
+        with:
+          name: pab-unit-${{ github.run_id }}-${{ github.run_attempt }}-${{ steps.clock.outputs.sha12 }}-shard-08-of-11
+          path: ${{ runner.temp }}/receipts/shard-08/
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        if: always()
+        timeout-minutes: 1
+        with:
+          name: pab-unit-${{ github.run_id }}-${{ github.run_attempt }}-${{ steps.clock.outputs.sha12 }}-shard-09-of-11
+          path: ${{ runner.temp }}/receipts/shard-09/
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        if: always()
+        timeout-minutes: 1
+        with:
+          name: pab-unit-${{ github.run_id }}-${{ github.run_attempt }}-${{ steps.clock.outputs.sha12 }}-shard-10-of-11
+          path: ${{ runner.temp }}/receipts/shard-10/
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        if: always()
+        timeout-minutes: 1
+        with:
+          name: pab-unit-${{ github.run_id }}-${{ github.run_attempt }}-${{ steps.clock.outputs.sha12 }}-shard-11-of-11
+          path: ${{ runner.temp }}/receipts/shard-11/
+      - name: Require all jobs, identities, assignments and completed protocols
+        if: always()
+        shell: bash
+        env:
+          INPUT_RESULT: ${{ job.status }}
+          PREPARE_RESULT: ${{ needs.prepare.result }}
+          SHARDS_RESULT: ${{ needs.unit-shard.result }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/aggregate"
+          python3 - <<'PYTHON'
+          import json, os, sys, time
+          from pathlib import Path
+          sys.path.insert(0,'.')
+          from scripts.ci_unit_shards import read, write, aggregate
+          output=Path(os.environ['RUNNER_TEMP'])/'aggregate'
+          try:
+              assert time.monotonic() < float(os.environ['WORK_STARTED'])+600
+              root=Path(os.environ['RUNNER_TEMP'])/'receipts'
+              try:
+                  identity=read(root/'prepare/identity.json')
+              except Exception:
+                  identity={}
+              if identity:
+                  assert identity['sha']==os.environ['GITHUB_SHA']
+                  assert identity['run']==os.environ['GITHUB_RUN_ID'] and identity['attempt']==os.environ['GITHUB_RUN_ATTEMPT']
+              result=aggregate(root,identity,dict(prepare=os.environ['PREPARE_RESULT'],shards=os.environ['SHARDS_RESULT']),input_result=os.environ['INPUT_RESULT'])
+              write(output/'summary.json',result)
+          except Exception as exc:
+              write(output/'summary.json',getattr(exc,'summary',dict(ok=False,error=str(exc)[:2000])))
+              raise
+          PYTHON
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        timeout-minutes: 2
+        with:
+          name: pab-unit-${{ github.run_id }}-${{ github.run_attempt }}-${{ steps.clock.outputs.sha12 }}-aggregate
+          path: ${{ runner.temp }}/aggregate/
+          if-no-files-found: error
+          retention-days: 7
+          compression-level: 0

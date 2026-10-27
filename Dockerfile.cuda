@@ -14,6 +14,10 @@
 
 FROM ghcr.io/coriou/voice-tools:cuda-base
 
+# License label describes project source; base images and dependencies retain their terms.
+LABEL org.opencontainers.image.licenses="AGPL-3.0-only"
+COPY LICENSE THIRD_PARTY_NOTICES.md /app/
+
 # This is the only layer that changes when app source changes.
 COPY . /app
 

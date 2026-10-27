@@ -1,0 +1,3881 @@
+{
+  "version": "1.0.0",
+  "commands": [
+    {
+      "source": "apps/audio-export/audio-export.py",
+      "sha256": "e66f7d31a645d064c9618abf312b91ecfa21d3b65ce8df0c365c5bd9a9b6b075",
+      "coverage": "unchanged_legacy",
+      "rationale": "Existing command remains callable through run/run-cpu; service promotion requires typed adapter and preservation tests, never arbitrary argv. Internal ASR/QA/alignment and all controls/default expressions below are retained.",
+      "controls": [
+        {
+          "line": 39,
+          "kind": "add_argument",
+          "arguments": [
+            "'--input'"
+          ],
+          "keywords": {
+            "required": "True",
+            "type": "Path"
+          }
+        },
+        {
+          "line": 40,
+          "kind": "add_argument",
+          "arguments": [
+            "'--output'"
+          ],
+          "keywords": {
+            "required": "True",
+            "type": "Path"
+          }
+        },
+        {
+          "line": 41,
+          "kind": "add_argument",
+          "arguments": [
+            "'--rate'"
+          ],
+          "keywords": {
+            "required": "True",
+            "type": "int",
+            "choices": "(24000, 44100, 48000, 96000)"
+          }
+        },
+        {
+          "line": 42,
+          "kind": "add_argument",
+          "arguments": [
+            "'--channels'"
+          ],
+          "keywords": {
+            "required": "True",
+            "type": "int",
+            "choices": "(1, 2)"
+          }
+        },
+        {
+          "line": 43,
+          "kind": "add_argument",
+          "arguments": [
+            "'--loudness'"
+          ],
+          "keywords": {
+            "type": "float",
+            "help": "'Optional single-pass FFmpeg loudnorm target in LUFS; verify delivery loudness separately'"
+          }
+        }
+      ],
+      "constants": {},
+      "environment_controls": []
+    },
+    {
+      "source": "apps/job-runner/job-runner.py",
+      "sha256": "88ea104318bc10333608ddc60c30d67875f9e8905c8de735b9aadeb49aced31f",
+      "coverage": "unchanged_legacy",
+      "rationale": "Existing command remains callable through run/run-cpu; service promotion requires typed adapter and preservation tests, never arbitrary argv. Internal ASR/QA/alignment and all controls/default expressions below are retained.",
+      "controls": [
+        {
+          "line": 1421,
+          "kind": "add_parser",
+          "arguments": [
+            "'plan'"
+          ],
+          "keywords": {
+            "formatter_class": "argparse.ArgumentDefaultsHelpFormatter",
+            "help": "'Validate YAML + voice availability and preview jobs.'"
+          }
+        },
+        {
+          "line": 1426,
+          "kind": "add_argument",
+          "arguments": [
+            "'yaml_file'"
+          ],
+          "keywords": {
+            "help": "'Path to the jobs YAML file.'"
+          }
+        },
+        {
+          "line": 1427,
+          "kind": "add_argument",
+          "arguments": [
+            "'--cache'"
+          ],
+          "keywords": {
+            "default": "'/cache'",
+            "help": "'Voice cache directory.'"
+          }
+        },
+        {
+          "line": 1428,
+          "kind": "add_argument",
+          "arguments": [
+            "'--json'"
+          ],
+          "keywords": {
+            "action": "'store_true'",
+            "help": "'Output as JSON.'"
+          }
+        },
+        {
+          "line": 1430,
+          "kind": "add_parser",
+          "arguments": [
+            "'enqueue'"
+          ],
+          "keywords": {
+            "formatter_class": "argparse.ArgumentDefaultsHelpFormatter",
+            "help": "'Idempotent enqueue from YAML to Redis stream.'"
+          }
+        },
+        {
+          "line": 1435,
+          "kind": "add_argument",
+          "arguments": [
+            "'yaml_file'"
+          ],
+          "keywords": {
+            "help": "'Path to the jobs YAML file.'"
+          }
+        },
+        {
+          "line": 1436,
+          "kind": "add_argument",
+          "arguments": [
+            "'--cache'"
+          ],
+          "keywords": {
+            "default": "'/cache'",
+            "help": "'Voice cache directory.'"
+          }
+        },
+        {
+          "line": 1437,
+          "kind": "add_argument",
+          "arguments": [
+            "'--redis-url'"
+          ],
+          "keywords": {
+            "default": "None",
+            "help": "'Redis connection URL.'"
+          }
+        },
+        {
+          "line": 1438,
+          "kind": "add_argument",
+          "arguments": [
+            "'--json'"
+          ],
+          "keywords": {
+            "action": "'store_true'",
+            "help": "'Output as JSON.'"
+          }
+        },
+        {
+          "line": 1440,
+          "kind": "add_parser",
+          "arguments": [
+            "'enqueue-beatsheet'"
+          ],
+          "keywords": {
+            "formatter_class": "argparse.ArgumentDefaultsHelpFormatter",
+            "help": "'Enqueue jobs from a beatsheet JSON or YAML file (v1/v2 format).'"
+          }
+        },
+        {
+          "line": 1445,
+          "kind": "add_argument",
+          "arguments": [
+            "'beatsheet_path'"
+          ],
+          "keywords": {
+            "help": "'Path to beatsheet file (.json or .yaml). v2 beatsheets may omit --voice/--speaker if ttsDefaults is set.'"
+          }
+        },
+        {
+          "line": 1450,
+          "kind": "add_argument",
+          "arguments": [
+            "'--voice'"
+          ],
+          "keywords": {
+            "default": "None",
+            "help": "'CLI-level default voice slug. Overridden by beatsheet.ttsDefaults.voice and beat.tts.voice.'"
+          }
+        },
+        {
+          "line": 1455,
+          "kind": "add_argument",
+          "arguments": [
+            "'--speaker'"
+          ],
+          "keywords": {
+            "default": "None",
+            "help": "'CLI-level default built-in speaker. Overridden by beatsheet.ttsDefaults.speaker and beat.tts.speaker.'"
+          }
+        },
+        {
+          "line": 1460,
+          "kind": "add_argument",
+          "arguments": [
+            "'--language'"
+          ],
+          "keywords": {
+            "default": "'English'",
+            "help": "'Synthesis language.'"
+          }
+        },
+        {
+          "line": 1461,
+          "kind": "add_argument",
+          "arguments": [
+            "'--tone'"
+          ],
+          "keywords": {
+            "default": "None",
+            "help": "'Tone modifier.'"
+          }
+        },
+        {
+          "line": 1462,
+          "kind": "add_argument",
+          "arguments": [
+            "'--instruct'"
+          ],
+          "keywords": {
+            "default": "None",
+            "help": "'Instruct prompt.'"
+          }
+        },
+        {
+          "line": 1463,
+          "kind": "add_argument",
+          "arguments": [
+            "'--instruct-style'"
+          ],
+          "keywords": {
+            "default": "None",
+            "dest": "'instruct_style'",
+            "help": "'Instruct style.'"
+          }
+        },
+        {
+          "line": 1464,
+          "kind": "add_argument",
+          "arguments": [
+            "'--profile'"
+          ],
+          "keywords": {
+            "default": "None",
+            "help": "'Generation profile.'"
+          }
+        },
+        {
+          "line": 1465,
+          "kind": "add_argument",
+          "arguments": [
+            "'--variants'"
+          ],
+          "keywords": {
+            "type": "int",
+            "default": "1",
+            "help": "'Number of take variants.'"
+          }
+        },
+        {
+          "line": 1466,
+          "kind": "add_argument",
+          "arguments": [
+            "'--select-best'"
+          ],
+          "keywords": {
+            "action": "'store_true'",
+            "dest": "'select_best'",
+            "help": "'Auto-select best take.'"
+          }
+        },
+        {
+          "line": 1467,
+          "kind": "add_argument",
+          "arguments": [
+            "'--chunk'"
+          ],
+          "keywords": {
+            "action": "'store_true'",
+            "help": "'Enable text chunking.'"
+          }
+        },
+        {
+          "line": 1469,
+          "kind": "add_argument",
+          "arguments": [
+            "'--align-words'"
+          ],
+          "keywords": {
+            "action": "'store_true'",
+            "default": "True",
+            "dest": "'align_words'",
+            "help": "'Run whisper QA on generated audio to extract word-level timestamps (default).'"
+          }
+        },
+        {
+          "line": 1470,
+          "kind": "add_argument",
+          "arguments": [
+            "'--no-align-words'"
+          ],
+          "keywords": {
+            "action": "'store_false'",
+            "dest": "'align_words'",
+            "help": "'Disable word-level timestamp alignment.'"
+          }
+        },
+        {
+          "line": 1471,
+          "kind": "add_argument",
+          "arguments": [
+            "'--temperature'"
+          ],
+          "keywords": {
+            "type": "float",
+            "default": "None",
+            "help": "'Sampling temperature.'"
+          }
+        },
+        {
+          "line": 1472,
+          "kind": "add_argument",
+          "arguments": [
+            "'--top-p'"
+          ],
+          "keywords": {
+            "type": "float",
+            "default": "None",
+            "dest": "'top_p'",
+            "help": "'Nucleus sampling top-p.'"
+          }
+        },
+        {
+          "line": 1473,
+          "kind": "add_argument",
+          "arguments": [
+            "'--repetition-penalty'"
+          ],
+          "keywords": {
+            "type": "float",
+            "default": "None",
+            "dest": "'repetition_penalty'",
+            "help": "'Repetition penalty.'"
+          }
+        },
+        {
+          "line": 1474,
+          "kind": "add_argument",
+          "arguments": [
+            "'--max-new-tokens'"
+          ],
+          "keywords": {
+            "type": "int",
+            "default": "None",
+            "dest": "'max_new_tokens'",
+            "help": "'Max new tokens.'"
+          }
+        },
+        {
+          "line": 1475,
+          "kind": "add_argument",
+          "arguments": [
+            "'--cache'"
+          ],
+          "keywords": {
+            "default": "'/cache'",
+            "help": "'Voice cache directory.'"
+          }
+        },
+        {
+          "line": 1476,
+          "kind": "add_argument",
+          "arguments": [
+            "'--redis-url'"
+          ],
+          "keywords": {
+            "default": "None",
+            "help": "'Redis connection URL.'"
+          }
+        },
+        {
+          "line": 1477,
+          "kind": "add_argument",
+          "arguments": [
+            "'--json'"
+          ],
+          "keywords": {
+            "action": "'store_true'",
+            "help": "'Output as JSON.'"
+          }
+        },
+        {
+          "line": 1479,
+          "kind": "add_parser",
+          "arguments": [
+            "'compile'"
+          ],
+          "keywords": {
+            "formatter_class": "argparse.ArgumentDefaultsHelpFormatter",
+            "help": "'Compile deterministic manifest and staged text files.'"
+          }
+        },
+        {
+          "line": 1484,
+          "kind": "add_argument",
+          "arguments": [
+            "'yaml_file'"
+          ],
+          "keywords": {
+            "help": "'Path to the jobs YAML file.'"
+          }
+        },
+        {
+          "line": 1485,
+          "kind": "add_argument",
+          "arguments": [
+            "'--out'"
+          ],
+          "keywords": {
+            "required": "True",
+            "help": "'Output directory for manifest and staged files.'"
+          }
+        },
+        {
+          "line": 1486,
+          "kind": "add_argument",
+          "arguments": [
+            "'--run-id'"
+          ],
+          "keywords": {
+            "default": "None",
+            "help": "'Explicit run ID (auto-generated if omitted).'"
+          }
+        },
+        {
+          "line": 1487,
+          "kind": "add_argument",
+          "arguments": [
+            "'--cache'"
+          ],
+          "keywords": {
+            "default": "'/cache'",
+            "help": "'Voice cache directory.'"
+          }
+        },
+        {
+          "line": 1488,
+          "kind": "add_argument",
+          "arguments": [
+            "'--json'"
+          ],
+          "keywords": {
+            "action": "'store_true'",
+            "help": "'Output as JSON.'"
+          }
+        },
+        {
+          "line": 1490,
+          "kind": "add_parser",
+          "arguments": [
+            "'run'"
+          ],
+          "keywords": {
+            "formatter_class": "argparse.ArgumentDefaultsHelpFormatter",
+            "help": "'Compile and execute jobs locally (validation / dry-run).'"
+          }
+        },
+        {
+          "line": 1495,
+          "kind": "add_argument",
+          "arguments": [
+            "'yaml_file'"
+          ],
+          "keywords": {
+            "help": "'Path to the jobs YAML file.'"
+          }
+        },
+        {
+          "line": 1496,
+          "kind": "add_argument",
+          "arguments": [
+            "'--out'"
+          ],
+          "keywords": {
+            "default": "None",
+            "help": "'Output directory (temp dir if omitted).'"
+          }
+        },
+        {
+          "line": 1497,
+          "kind": "add_argument",
+          "arguments": [
+            "'--run-id'"
+          ],
+          "keywords": {
+            "default": "None",
+            "help": "'Explicit run ID.'"
+          }
+        },
+        {
+          "line": 1498,
+          "kind": "add_argument",
+          "arguments": [
+            "'--cache'"
+          ],
+          "keywords": {
+            "default": "'/cache'",
+            "help": "'Voice cache directory.'"
+          }
+        },
+        {
+          "line": 1499,
+          "kind": "add_argument",
+          "arguments": [
+            "'--dry-run'"
+          ],
+          "keywords": {
+            "action": "'store_true'",
+            "help": "'Skip actual synthesis.'"
+          }
+        },
+        {
+          "line": 1500,
+          "kind": "add_argument",
+          "arguments": [
+            "'--fail-fast'"
+          ],
+          "keywords": {
+            "action": "'store_true'",
+            "help": "'Abort on first failure.'"
+          }
+        },
+        {
+          "line": 1501,
+          "kind": "add_argument",
+          "arguments": [
+            "'--json'"
+          ],
+          "keywords": {
+            "action": "'store_true'",
+            "help": "'Output as JSON.'"
+          }
+        },
+        {
+          "line": 1503,
+          "kind": "add_parser",
+          "arguments": [
+            "'execute-manifest'"
+          ],
+          "keywords": {
+            "formatter_class": "argparse.ArgumentDefaultsHelpFormatter",
+            "help": "'Execute a pre-compiled manifest.json.'"
+          }
+        },
+        {
+          "line": 1508,
+          "kind": "add_argument",
+          "arguments": [
+            "'manifest_json'"
+          ],
+          "keywords": {
+            "help": "'Path to the manifest JSON file.'"
+          }
+        },
+        {
+          "line": 1509,
+          "kind": "add_argument",
+          "arguments": [
+            "'--dry-run'"
+          ],
+          "keywords": {
+            "action": "'store_true'",
+            "help": "'Skip actual synthesis.'"
+          }
+        },
+        {
+          "line": 1510,
+          "kind": "add_argument",
+          "arguments": [
+            "'--fail-fast'"
+          ],
+          "keywords": {
+            "action": "'store_true'",
+            "help": "'Abort on first failure.'"
+          }
+        },
+        {
+          "line": 1511,
+          "kind": "add_argument",
+          "arguments": [
+            "'--json'"
+          ],
+          "keywords": {
+            "action": "'store_true'",
+            "help": "'Output as JSON.'"
+          }
+        },
+        {
+          "line": 1513,
+          "kind": "add_parser",
+          "arguments": [
+            "'status'"
+          ],
+          "keywords": {
+            "formatter_class": "argparse.ArgumentDefaultsHelpFormatter",
+            "help": "'Show queue status, pending counts, lock state, and watcher health.'"
+          }
+        },
+        {
+          "line": 1518,
+          "kind": "add_argument",
+          "arguments": [
+            "'--redis-url'"
+          ],
+          "keywords": {
+            "default": "None",
+            "help": "'Redis connection URL.'"
+          }
+        },
+        {
+          "line": 1519,
+          "kind": "add_argument",
+          "arguments": [
+            "'--lease-idle-ms'"
+          ],
+          "keywords": {
+            "type": "int",
+            "default": "int(os.getenv('WATCHER_LEASE_IDLE_MS', '180000'))",
+            "help": "'PEL idle threshold for stale detection (ms).'"
+          }
+        },
+        {
+          "line": 1525,
+          "kind": "add_argument",
+          "arguments": [
+            "'--json'"
+          ],
+          "keywords": {
+            "action": "'store_true'",
+            "help": "'Output as JSON.'"
+          }
+        },
+        {
+          "line": 1527,
+          "kind": "add_parser",
+          "arguments": [
+            "'result'"
+          ],
+          "keywords": {
+            "formatter_class": "argparse.ArgumentDefaultsHelpFormatter",
+            "help": "'Fetch the result or failure record for a request_id.'"
+          }
+        },
+        {
+          "line": 1532,
+          "kind": "add_argument",
+          "arguments": [
+            "'request_id'"
+          ],
+          "keywords": {
+            "help": "'The request ID to look up.'"
+          }
+        },
+        {
+          "line": 1533,
+          "kind": "add_argument",
+          "arguments": [
+            "'--redis-url'"
+          ],
+          "keywords": {
+            "default": "None",
+            "help": "'Redis connection URL.'"
+          }
+        },
+        {
+          "line": 1534,
+          "kind": "add_argument",
+          "arguments": [
+            "'--json'"
+          ],
+          "keywords": {
+            "action": "'store_true'",
+            "help": "'Output as JSON.'"
+          }
+        },
+        {
+          "line": 1536,
+          "kind": "add_parser",
+          "arguments": [
+            "'report'"
+          ],
+          "keywords": {
+            "formatter_class": "argparse.ArgumentDefaultsHelpFormatter",
+            "help": "'Status of all jobs in a YAML file (cross-references Redis).'"
+          }
+        },
+        {
+          "line": 1541,
+          "kind": "add_argument",
+          "arguments": [
+            "'yaml_file'"
+          ],
+          "keywords": {
+            "help": "'Path to the jobs YAML file.'"
+          }
+        },
+        {
+          "line": 1542,
+          "kind": "add_argument",
+          "arguments": [
+            "'--redis-url'"
+          ],
+          "keywords": {
+            "default": "None",
+            "help": "'Redis connection URL.'"
+          }
+        },
+        {
+          "line": 1543,
+          "kind": "add_argument",
+          "arguments": [
+            "'--json'"
+          ],
+          "keywords": {
+            "action": "'store_true'",
+            "help": "'Output as JSON.'"
+          }
+        },
+        {
+          "line": 1545,
+          "kind": "add_parser",
+          "arguments": [
+            "'history'"
+          ],
+          "keywords": {
+            "formatter_class": "argparse.ArgumentDefaultsHelpFormatter",
+            "help": "'Show recent job history (done/failed) from Redis.'"
+          }
+        },
+        {
+          "line": 1550,
+          "kind": "add_argument",
+          "arguments": [
+            "'--redis-url'"
+          ],
+          "keywords": {
+            "default": "None"
+          }
+        },
+        {
+          "line": 1551,
+          "kind": "add_argument",
+          "arguments": [
+            "'--limit'"
+          ],
+          "keywords": {
+            "type": "int",
+            "default": "20",
+            "help": "'Max records to show (0 = all).'"
+          }
+        },
+        {
+          "line": 1552,
+          "kind": "add_argument",
+          "arguments": [
+            "'--status'"
+          ],
+          "keywords": {
+            "choices": "['done', 'failed', 'all']",
+            "default": "'all'",
+            "help": "'Filter by outcome.'"
+          }
+        },
+        {
+          "line": 1558,
+          "kind": "add_argument",
+          "arguments": [
+            "'--json'"
+          ],
+          "keywords": {
+            "action": "'store_true'"
+          }
+        },
+        {
+          "line": 1560,
+          "kind": "add_parser",
+          "arguments": [
+            "'retry'"
+          ],
+          "keywords": {
+            "formatter_class": "argparse.ArgumentDefaultsHelpFormatter",
+            "help": "'Requeue a terminal-failed job for another attempt.'"
+          }
+        },
+        {
+          "line": 1565,
+          "kind": "add_argument",
+          "arguments": [
+            "'request_id'"
+          ],
+          "keywords": {
+            "help": "'The request ID to retry.'"
+          }
+        },
+        {
+          "line": 1566,
+          "kind": "add_argument",
+          "arguments": [
+            "'--redis-url'"
+          ],
+          "keywords": {
+            "default": "None",
+            "help": "'Redis connection URL.'"
+          }
+        },
+        {
+          "line": 1567,
+          "kind": "add_argument",
+          "arguments": [
+            "'--yes'"
+          ],
+          "keywords": {
+            "action": "'store_true'",
+            "help": "'Skip confirmation prompt.'"
+          }
+        },
+        {
+          "line": 1568,
+          "kind": "add_argument",
+          "arguments": [
+            "'--json'"
+          ],
+          "keywords": {
+            "action": "'store_true'",
+            "help": "'Output as JSON.'"
+          }
+        },
+        {
+          "line": 1570,
+          "kind": "add_parser",
+          "arguments": [
+            "'flush'"
+          ],
+          "keywords": {
+            "formatter_class": "argparse.ArgumentDefaultsHelpFormatter",
+            "help": "'Delete transient queue keys. --hard also clears result/failed hashes.'"
+          }
+        },
+        {
+          "line": 1575,
+          "kind": "add_argument",
+          "arguments": [
+            "'--redis-url'"
+          ],
+          "keywords": {
+            "default": "None",
+            "help": "'Redis connection URL.'"
+          }
+        },
+        {
+          "line": 1576,
+          "kind": "add_argument",
+          "arguments": [
+            "'--hard'"
+          ],
+          "keywords": {
+            "action": "'store_true'",
+            "help": "'Also delete result and failed hashes.'"
+          }
+        },
+        {
+          "line": 1577,
+          "kind": "add_argument",
+          "arguments": [
+            "'--yes'"
+          ],
+          "keywords": {
+            "action": "'store_true'",
+            "help": "'Skip confirmation prompt.'"
+          }
+        },
+        {
+          "line": 1578,
+          "kind": "add_argument",
+          "arguments": [
+            "'--json'"
+          ],
+          "keywords": {
+            "action": "'store_true'",
+            "help": "'Output as JSON.'"
+          }
+        },
+        {
+          "line": 1580,
+          "kind": "add_parser",
+          "arguments": [
+            "'package-status'"
+          ],
+          "keywords": {
+            "formatter_class": "argparse.ArgumentDefaultsHelpFormatter",
+            "help": "'Show the status of a local topic package (job.json summary).'"
+          }
+        },
+        {
+          "line": 1585,
+          "kind": "add_argument",
+          "arguments": [
+            "'topic_id'"
+          ],
+          "keywords": {
+            "help": "'Topic ID (slug used as package directory name).'"
+          }
+        },
+        {
+          "line": 1586,
+          "kind": "add_argument",
+          "arguments": [
+            "'--output-root'"
+          ],
+          "keywords": {
+            "default": "None",
+            "help": "f'Base directory for packages (default: $WATCHER_OUTPUT_ROOT or {DEFAULT_OUTPUT_ROOT}).'"
+          }
+        },
+        {
+          "line": 1591,
+          "kind": "add_argument",
+          "arguments": [
+            "'--beats'"
+          ],
+          "keywords": {
+            "action": "'store_true'",
+            "help": "'Also list done beat audio paths.'"
+          }
+        },
+        {
+          "line": 1592,
+          "kind": "add_argument",
+          "arguments": [
+            "'--json'"
+          ],
+          "keywords": {
+            "action": "'store_true'",
+            "help": "'Output the raw job.json as JSON.'"
+          }
+        }
+      ],
+      "constants": {
+        "_LIB": "str(Path(__file__).resolve().parent.parent.parent / 'lib')",
+        "DEFAULT_REDIS_URL": "'redis://127.0.0.1:6379/0'",
+        "MANIFEST_SCHEMA_VERSION": "1",
+        "EXECUTION_SCHEMA_VERSION": "1",
+        "VOICE_SYNTH_SCRIPT": "Path(__file__).resolve().parent.parent / 'voice-synth' / 'voice-synth.py'",
+        "_JOB_SPEC_KEYS": "{'request_id', 'queued_at', 'voice', 'speaker', 'text', 'language', 'tone', 'instruct', 'instruct_style', 'profile', 'variants', 'select_best', 'chunk', 'align_words', 'temperature', 'top_p', 'repetition_penalty', 'max_new_tokens', 'output_name', 'callback_data', 'attempt'}",
+        "_TTS_FIELDS": "('voice', 'speaker', 'language', 'tone', 'instruct', 'instruct_style', 'profile', 'variants', 'select_best', 'chunk', 'align_words', 'temperature', 'top_p', 'repetition_penalty', 'max_new_tokens')",
+        "DEFAULT_OUTPUT_ROOT": "os.getenv('WATCHER_OUTPUT_ROOT', '/work_remote/jobs_out')"
+      },
+      "environment_controls": [
+        {
+          "line": 1345,
+          "expression": "os.getenv('WATCHER_OUTPUT_ROOT', '/work_remote/jobs_out')"
+        },
+        {
+          "line": 436,
+          "expression": "os.getenv('REDIS_URL')"
+        },
+        {
+          "line": 1522,
+          "expression": "os.getenv('WATCHER_LEASE_IDLE_MS', '180000')"
+        }
+      ]
+    },
+    {
+      "source": "apps/job-watcher/job-watcher.py",
+      "sha256": "dace10917e50b4d522b942a9a3a455008e5ba6ef163011b35a31ce302326d2e7",
+      "coverage": "unchanged_legacy",
+      "rationale": "Existing command remains callable through run/run-cpu; service promotion requires typed adapter and preservation tests, never arbitrary argv. Internal ASR/QA/alignment and all controls/default expressions below are retained.",
+      "controls": [
+        {
+          "line": 1768,
+          "kind": "add_argument",
+          "arguments": [
+            "'--once'"
+          ],
+          "keywords": {
+            "action": "'store_true'",
+            "help": "'Run at most one scheduling cycle and exit.'"
+          }
+        },
+        {
+          "line": 1769,
+          "kind": "add_argument",
+          "arguments": [
+            "'--consumer-name'"
+          ],
+          "keywords": {
+            "default": "_default_consumer_name()"
+          }
+        },
+        {
+          "line": 1770,
+          "kind": "add_argument",
+          "arguments": [
+            "'--ping'"
+          ],
+          "keywords": {
+            "action": "'store_true'",
+            "help": "\"Print 'ok' and exit 0 without connecting to Redis. Used by healthchecks.\""
+          }
+        }
+      ],
+      "constants": {
+        "_LIB": "str(Path(__file__).resolve().parent.parent.parent / 'lib')",
+        "RETRY_BACKOFF_SECONDS": "(30, 120, 600)",
+        "DEFAULT_VAST_IMAGE": "os.getenv('VAST_IMAGE', 'ghcr.io/coriou/voice-tools:cuda')",
+        "DEFAULT_VAST_DISK_GB": "int(os.getenv('VAST_DISK', '60'))",
+        "DEFAULT_VAST_REPO": "os.getenv('VAST_REPO', 'https://github.com/Coriou/py-audio-box')",
+        "DEFAULT_VAST_QUERY": "os.getenv('VAST_QUERY', 'reliability > 0.98 gpu_ram >= 20 compute_cap >= 800 compute_cap < 1200 inet_down >= 500 disk_space >= 50 rented=False')"
+      },
+      "environment_controls": [
+        {
+          "line": 50,
+          "expression": "os.getenv('VAST_IMAGE', 'ghcr.io/coriou/voice-tools:cuda')"
+        },
+        {
+          "line": 52,
+          "expression": "os.getenv('VAST_REPO', 'https://github.com/Coriou/py-audio-box')"
+        },
+        {
+          "line": 53,
+          "expression": "os.getenv('VAST_QUERY', 'reliability > 0.98 gpu_ram >= 20 compute_cap >= 800 compute_cap < 1200 inet_down >= 500 disk_space >= 50 rented=False')"
+        },
+        {
+          "line": 51,
+          "expression": "os.getenv('VAST_DISK', '60')"
+        },
+        {
+          "line": 93,
+          "expression": "os.getenv(name)"
+        },
+        {
+          "line": 103,
+          "expression": "os.getenv(name)"
+        },
+        {
+          "line": 220,
+          "expression": "os.getenv('VAST_SSH_KEY')"
+        },
+        {
+          "line": 251,
+          "expression": "os.getenv('VAST_MAX_DURATION')"
+        },
+        {
+          "line": 253,
+          "expression": "os.getenv('GHCR_TOKEN')"
+        },
+        {
+          "line": 202,
+          "expression": "os.getenv('WATCHER_EXECUTOR_MODE', 'vast')"
+        },
+        {
+          "line": 203,
+          "expression": "os.getenv('WATCHER_SINK_MODE', 'local')"
+        },
+        {
+          "line": 215,
+          "expression": "os.getenv(name)"
+        },
+        {
+          "line": 224,
+          "expression": "os.getenv('REDIS_URL')"
+        },
+        {
+          "line": 225,
+          "expression": "os.getenv('VAST_API_KEY', '')"
+        },
+        {
+          "line": 227,
+          "expression": "os.getenv('S3_BUCKET', '')"
+        },
+        {
+          "line": 228,
+          "expression": "os.getenv('RCLONE_REMOTE', '')"
+        },
+        {
+          "line": 233,
+          "expression": "os.getenv('S3_PREFIX', 'voice-results')"
+        },
+        {
+          "line": 247,
+          "expression": "os.getenv('VAST_QUERY', DEFAULT_VAST_QUERY)"
+        },
+        {
+          "line": 248,
+          "expression": "os.getenv('VAST_IMAGE', DEFAULT_VAST_IMAGE)"
+        },
+        {
+          "line": 250,
+          "expression": "os.getenv('VAST_REPO', DEFAULT_VAST_REPO)"
+        },
+        {
+          "line": 252,
+          "expression": "os.getenv('GHCR_USER', 'Coriou')"
+        },
+        {
+          "line": 231,
+          "expression": "os.getenv('WATCHER_OUTPUT_ROOT', '/work_remote/jobs_out')"
+        },
+        {
+          "line": 244,
+          "expression": "os.getenv('WATCHER_VOICES_DIR', '/cache/voices')"
+        },
+        {
+          "line": 245,
+          "expression": "os.getenv('WATCHER_WORK_DIR', '/work_remote')"
+        },
+        {
+          "line": 221,
+          "expression": "os.getenv('VAST_SSH_KEY')"
+        }
+      ]
+    },
+    {
+      "source": "apps/voice-clone/voice-clone.py",
+      "sha256": "bf82f8a89aa97143625b1954410908fb4229bbca410210ee65d988283cd5af5c",
+      "coverage": "unchanged_legacy",
+      "rationale": "Existing command remains callable through run/run-cpu; service promotion requires typed adapter and preservation tests, never arbitrary argv. Internal ASR/QA/alignment and all controls/default expressions below are retained.",
+      "controls": [
+        {
+          "line": 1549,
+          "kind": "add_argument",
+          "arguments": [
+            "'--model'"
+          ],
+          "keywords": {
+            "default": "DEFAULT_TTS_MODEL",
+            "help": "'Qwen3-TTS model — HF repo ID or local path'"
+          }
+        },
+        {
+          "line": 1553,
+          "kind": "add_argument",
+          "arguments": [
+            "'--whisper-model'"
+          ],
+          "keywords": {
+            "default": "DEFAULT_WHISPER",
+            "help": "'faster-whisper model size for ref transcription'"
+          }
+        },
+        {
+          "line": 1557,
+          "kind": "add_argument",
+          "arguments": [
+            "'--ref-language'"
+          ],
+          "keywords": {
+            "default": "'Auto'",
+            "choices": "QWEN3_LANGUAGES",
+            "help": "\"Language of the reference audio. 'Auto' = use whisper auto-detection. Set explicitly if detection is unreliable for your accent/language.\""
+          }
+        },
+        {
+          "line": 1566,
+          "kind": "add_argument",
+          "arguments": [
+            "'--language'"
+          ],
+          "keywords": {
+            "default": "'Auto'",
+            "choices": "QWEN3_LANGUAGES",
+            "help": "\"Target synthesis language. 'Auto' detects from the target text (langid, ≥3 words) then falls back to the detected ref language.\""
+          }
+        },
+        {
+          "line": 1575,
+          "kind": "add_argument",
+          "arguments": [
+            "'--x-vector-only'"
+          ],
+          "keywords": {
+            "action": "'store_true'",
+            "help": "'Build voice prompt from speaker embedding only — no ref_text needed. Faster but cloning quality may be reduced.'"
+          }
+        },
+        {
+          "line": 1582,
+          "kind": "add_argument",
+          "arguments": [
+            "'--threads'"
+          ],
+          "keywords": {
+            "type": "int",
+            "default": "os.cpu_count() or 8",
+            "help": "'CPU threads for torch + faster-whisper (default: all logical cores)'"
+          }
+        },
+        {
+          "line": 1586,
+          "kind": "add_argument",
+          "arguments": [
+            "'--dtype'"
+          ],
+          "keywords": {
+            "default": "'auto'",
+            "choices": "['auto', 'bfloat16', 'float32', 'float16']",
+            "help": "'Model weight dtype.  auto (default): float32 on CPU; bfloat16 on CUDA Ampere+; float16 on older CUDA GPUs (Maxwell / Pascal / Volta / Turing).'"
+          }
+        },
+        {
+          "line": 1593,
+          "kind": "add_argument",
+          "arguments": [
+            "'--seed'"
+          ],
+          "keywords": {
+            "type": "int",
+            "default": "None",
+            "help": "'Random seed for reproducible synthesis'"
+          }
+        },
+        {
+          "line": 1597,
+          "kind": "add_argument",
+          "arguments": [
+            "'--cache'"
+          ],
+          "keywords": {
+            "default": "'/cache'",
+            "help": "'Persistent cache directory'"
+          }
+        },
+        {
+          "line": 1598,
+          "kind": "add_argument",
+          "arguments": [
+            "'--force'"
+          ],
+          "keywords": {
+            "action": "'store_true'",
+            "help": "'Ignore all cached results and recompute from scratch'"
+          }
+        },
+        {
+          "line": 1602,
+          "kind": "add_argument",
+          "arguments": [
+            "'--interactive'",
+            "'-i'"
+          ],
+          "keywords": {
+            "action": "'store_true'",
+            "help": "'After scoring VAD candidates, show a numbered menu so you can listen to each candidate WAV and pick the best reference segment manually. Bypasses the cached segment selection.'"
+          }
+        },
+        {
+          "line": 1623,
+          "kind": "add_parser",
+          "arguments": [
+            "'migrate-registry'"
+          ],
+          "keywords": {
+            "help": "'Preview additive registry schema migration'"
+          }
+        },
+        {
+          "line": 1624,
+          "kind": "add_argument",
+          "arguments": [
+            "'--voice'"
+          ],
+          "keywords": {
+            "required": "True",
+            "metavar": "'SLUG'"
+          }
+        },
+        {
+          "line": 1625,
+          "kind": "add_argument",
+          "arguments": [
+            "'--cache'"
+          ],
+          "keywords": {
+            "default": "'/cache'"
+          }
+        },
+        {
+          "line": 1626,
+          "kind": "add_argument",
+          "arguments": [
+            "'--apply'"
+          ],
+          "keywords": {
+            "action": "'store_true'",
+            "help": "'Apply migration after preserving original JSON backup'"
+          }
+        },
+        {
+          "line": 1629,
+          "kind": "add_parser",
+          "arguments": [
+            "'synth'"
+          ],
+          "keywords": {
+            "help": "'Clone a voice and synthesise new text (full pipeline)'",
+            "formatter_class": "argparse.ArgumentDefaultsHelpFormatter"
+          }
+        },
+        {
+          "line": 1635,
+          "kind": "add_argument",
+          "arguments": [
+            "'--ref-audio'"
+          ],
+          "keywords": {
+            "metavar": "'PATH'",
+            "help": "'Reference voice recording (WAV / MP3 / etc.)'"
+          }
+        },
+        {
+          "line": 1637,
+          "kind": "add_argument",
+          "arguments": [
+            "'--voice'"
+          ],
+          "keywords": {
+            "metavar": "'SLUG'",
+            "help": "'Named voice from the registry (see voice-synth list-voices)'"
+          }
+        },
+        {
+          "line": 1639,
+          "kind": "add_argument",
+          "arguments": [
+            "'--voice-name'"
+          ],
+          "keywords": {
+            "default": "None",
+            "metavar": "'SLUG'",
+            "help": "'Register (or update) this result as a named voice in /cache/voices/'"
+          }
+        },
+        {
+          "line": 1641,
+          "kind": "add_argument",
+          "arguments": [
+            "'--text'"
+          ],
+          "keywords": {
+            "default": "None",
+            "help": "'Text to synthesise'"
+          }
+        },
+        {
+          "line": 1643,
+          "kind": "add_argument",
+          "arguments": [
+            "'--text-file'"
+          ],
+          "keywords": {
+            "default": "None",
+            "metavar": "'FILE'",
+            "help": "'Read synthesis text from a file'"
+          }
+        },
+        {
+          "line": 1645,
+          "kind": "add_argument",
+          "arguments": [
+            "'--ref-text'"
+          ],
+          "keywords": {
+            "default": "None",
+            "help": "'Transcript of the reference audio. Uses this transcript for prompt build and skips final whisper transcription + quality gate.'"
+          }
+        },
+        {
+          "line": 1653,
+          "kind": "add_argument",
+          "arguments": [
+            "'--ref-start'"
+          ],
+          "keywords": {
+            "type": "float",
+            "default": "None",
+            "metavar": "'SEC'",
+            "help": "'Manual reference segment start (seconds)'"
+          }
+        },
+        {
+          "line": 1655,
+          "kind": "add_argument",
+          "arguments": [
+            "'--ref-end'"
+          ],
+          "keywords": {
+            "type": "float",
+            "default": "None",
+            "metavar": "'SEC'",
+            "help": "'Manual reference segment end (seconds)'"
+          }
+        },
+        {
+          "line": 1657,
+          "kind": "add_argument",
+          "arguments": [
+            "'--tone'"
+          ],
+          "keywords": {
+            "default": "None",
+            "metavar": "'NAME'",
+            "help": "\"Tone label for this reference clip, e.g. 'neutral', 'sad', 'excited'. Stored in the prompt meta and indexed in the voice registry so 'voice-synth speak --tone NAME' can select it. Tone/style comes from the reference audio itself — record or extract a clip that already sounds the way you want.\""
+          }
+        },
+        {
+          "line": 1667,
+          "kind": "add_argument",
+          "arguments": [
+            "'--prompt-prefix'"
+          ],
+          "keywords": {
+            "default": "None",
+            "help": "'Text prepended verbatim to the synthesis text (will be spoken)'"
+          }
+        },
+        {
+          "line": 1669,
+          "kind": "add_argument",
+          "arguments": [
+            "'--prompt-suffix'"
+          ],
+          "keywords": {
+            "default": "None",
+            "help": "'Text appended verbatim to the synthesis text (will be spoken)'"
+          }
+        },
+        {
+          "line": 1671,
+          "kind": "add_argument",
+          "arguments": [
+            "'--variants'"
+          ],
+          "keywords": {
+            "type": "int",
+            "default": "1",
+            "help": "'Generate N takes with seeds base_seed + i'"
+          }
+        },
+        {
+          "line": 1673,
+          "kind": "add_argument",
+          "arguments": [
+            "'--select-best'"
+          ],
+          "keywords": {
+            "action": "'store_true'",
+            "help": "'Deterministically rank variants and copy the best to best.wav (weighted intelligibility + pacing sanity + duration fit).'"
+          }
+        },
+        {
+          "line": 1681,
+          "kind": "add_argument",
+          "arguments": [
+            "'--profile'"
+          ],
+          "keywords": {
+            "default": "None",
+            "choices": "GENERATION_PROFILE_CHOICES",
+            "help": "'Generation profile. If omitted, uses voice default when available, else balanced.'"
+          }
+        },
+        {
+          "line": 1690,
+          "kind": "add_argument",
+          "arguments": [
+            "'--save-profile-default'"
+          ],
+          "keywords": {
+            "action": "'store_true'",
+            "help": "'Persist resolved profile + sampling defaults to voice.json generation_defaults (requires --voice or --voice-name).'"
+          }
+        },
+        {
+          "line": 1699,
+          "kind": "add_argument",
+          "arguments": [
+            "'--temperature'"
+          ],
+          "keywords": {
+            "type": "float",
+            "default": "None",
+            "help": "'Sampling temperature (Transformers generate kwarg)'"
+          }
+        },
+        {
+          "line": 1701,
+          "kind": "add_argument",
+          "arguments": [
+            "'--top-p'"
+          ],
+          "keywords": {
+            "type": "float",
+            "default": "None",
+            "dest": "'top_p'",
+            "help": "'Top-p nucleus sampling'"
+          }
+        },
+        {
+          "line": 1703,
+          "kind": "add_argument",
+          "arguments": [
+            "'--repetition-penalty'"
+          ],
+          "keywords": {
+            "type": "float",
+            "default": "None",
+            "dest": "'repetition_penalty'",
+            "help": "'Repetition penalty'"
+          }
+        },
+        {
+          "line": 1706,
+          "kind": "add_argument",
+          "arguments": [
+            "'--max-new-tokens'"
+          ],
+          "keywords": {
+            "type": "int",
+            "default": "None",
+            "dest": "'max_new_tokens'",
+            "help": "'Maximum generated tokens'"
+          }
+        },
+        {
+          "line": 1709,
+          "kind": "add_argument",
+          "arguments": [
+            "'--timeout'"
+          ],
+          "keywords": {
+            "type": "float",
+            "default": "None",
+            "dest": "'timeout'",
+            "help": "'Wall-clock timeout in seconds for the synthesis step. Defaults to 4× the CPU ETA estimate. Pass 0 to disable entirely.'"
+          }
+        },
+        {
+          "line": 1716,
+          "kind": "add_argument",
+          "arguments": [
+            "'--force-bad-ref'"
+          ],
+          "keywords": {
+            "action": "'store_true'",
+            "help": "'Explicitly override failed ASR reference quality checks (records reasons)'"
+          }
+        },
+        {
+          "line": 1720,
+          "kind": "add_argument",
+          "arguments": [
+            "'--out'"
+          ],
+          "keywords": {
+            "default": "'/work'",
+            "help": "'Output directory for WAV + meta.json'"
+          }
+        },
+        {
+          "line": 1725,
+          "kind": "add_parser",
+          "arguments": [
+            "'prepare-ref'"
+          ],
+          "keywords": {
+            "help": "'Run stages 1–3 only (normalise, VAD score, transcribe)'",
+            "formatter_class": "argparse.ArgumentDefaultsHelpFormatter"
+          }
+        },
+        {
+          "line": 1731,
+          "kind": "add_argument",
+          "arguments": [
+            "'--ref-audio'"
+          ],
+          "keywords": {
+            "metavar": "'PATH'",
+            "help": "'Reference voice recording (WAV / MP3 / etc.)'"
+          }
+        },
+        {
+          "line": 1733,
+          "kind": "add_argument",
+          "arguments": [
+            "'--voice'"
+          ],
+          "keywords": {
+            "metavar": "'SLUG'",
+            "help": "'Named voice from the registry'"
+          }
+        },
+        {
+          "line": 1735,
+          "kind": "add_argument",
+          "arguments": [
+            "'--voice-name'"
+          ],
+          "keywords": {
+            "default": "None",
+            "metavar": "'SLUG'",
+            "help": "'Register (or update) result as a named voice in /cache/voices/'"
+          }
+        },
+        {
+          "line": 1737,
+          "kind": "add_argument",
+          "arguments": [
+            "'--ref-text'"
+          ],
+          "keywords": {
+            "default": "None",
+            "help": "'Exact transcript of the reference audio. Uses this transcript for prompt build and skips final whisper transcription + quality gate.'"
+          }
+        },
+        {
+          "line": 1745,
+          "kind": "add_argument",
+          "arguments": [
+            "'--ref-start'"
+          ],
+          "keywords": {
+            "type": "float",
+            "default": "None",
+            "metavar": "'SEC'"
+          }
+        },
+        {
+          "line": 1746,
+          "kind": "add_argument",
+          "arguments": [
+            "'--ref-end'"
+          ],
+          "keywords": {
+            "type": "float",
+            "default": "None",
+            "metavar": "'SEC'"
+          }
+        },
+        {
+          "line": 1747,
+          "kind": "add_argument",
+          "arguments": [
+            "'--force-bad-ref'"
+          ],
+          "keywords": {
+            "action": "'store_true'",
+            "help": "'Bypass transcript quality gate'"
+          }
+        },
+        {
+          "line": 1752,
+          "kind": "add_parser",
+          "arguments": [
+            "'self-test'"
+          ],
+          "keywords": {
+            "help": "'End-to-end smoke test using the Qwen3-TTS demo reference clip'",
+            "formatter_class": "argparse.ArgumentDefaultsHelpFormatter"
+          }
+        },
+        {
+          "line": 1757,
+          "kind": "add_argument",
+          "arguments": [
+            "'--out'"
+          ],
+          "keywords": {
+            "default": "'/work'",
+            "help": "'Output directory for test WAV + meta.json'"
+          }
+        }
+      ],
+      "constants": {
+        "_LIB": "str(Path(__file__).resolve().parent.parent.parent / 'lib')",
+        "MIN_REF_SECONDS": "3.0",
+        "MAX_REF_SECONDS": "12.0",
+        "SWEET_SPOT_SECONDS": "8.5",
+        "CANDIDATE_COUNT": "3",
+        "QUALITY_GATE_LOGPROB": "-1.2",
+        "QUALITY_GATE_LANGUAGE_PROBABILITY": "0.8",
+        "REFERENCE_QUALITY_POLICY_VERSION": "1",
+        "CANDIDATE_SCORING_VERSION": "2",
+        "TAKES_META_SCHEMA_VERSION": "1",
+        "SELF_TEST_SYNTH_TEXT": "'The quick brown fox jumps over the lazy dog.'",
+        "_INSTRUCTION_HACK_PATTERNS": "[re.compile('^\\\\s*\\\\[[^\\\\]]{2,120}\\\\]'), re.compile('^\\\\s*\\\\([^)]{2,120}\\\\)'), re.compile('^\\\\s*(style|tone|emotion|mood)\\\\s*:', re.IGNORECASE), re.compile('\\\\bin the style of\\\\b', re.IGNORECASE), re.compile('\\\\b(speak|read|say)\\\\s+(this|it)\\\\s+(in|with)\\\\b', re.IGNORECASE)]"
+      },
+      "environment_controls": []
+    },
+    {
+      "source": "apps/voice-cpu/voice-cpu.py",
+      "sha256": "701737a96073c40a2aa186ec56e79b8fbe8c5c07c54caf4cc637d437417fbbcf",
+      "coverage": "unchanged_legacy",
+      "rationale": "Existing command remains callable through run/run-cpu; service promotion requires typed adapter and preservation tests, never arbitrary argv. Internal ASR/QA/alignment and all controls/default expressions below are retained.",
+      "controls": [
+        {
+          "line": 23,
+          "kind": "add_parser",
+          "arguments": [
+            "'speak'"
+          ],
+          "keywords": {}
+        },
+        {
+          "line": 24,
+          "kind": "add_argument",
+          "arguments": [
+            "'--backend'"
+          ],
+          "keywords": {
+            "choices": "['kokoro', 'pocket-tts']",
+            "required": "True"
+          }
+        },
+        {
+          "line": 25,
+          "kind": "add_argument",
+          "arguments": [
+            "'--assets'"
+          ],
+          "keywords": {
+            "type": "Path",
+            "required": "True"
+          }
+        },
+        {
+          "line": 26,
+          "kind": "add_argument",
+          "arguments": [
+            "'--language'"
+          ],
+          "keywords": {
+            "choices": "['fr', 'en']",
+            "required": "True"
+          }
+        },
+        {
+          "line": 28,
+          "kind": "add_argument",
+          "arguments": [
+            "'--preset'"
+          ],
+          "keywords": {}
+        },
+        {
+          "line": 29,
+          "kind": "add_argument",
+          "arguments": [
+            "'--reference'"
+          ],
+          "keywords": {
+            "type": "Path"
+          }
+        },
+        {
+          "line": 31,
+          "kind": "add_argument",
+          "arguments": [
+            "'--text'"
+          ],
+          "keywords": {}
+        },
+        {
+          "line": 32,
+          "kind": "add_argument",
+          "arguments": [
+            "'--text-file'"
+          ],
+          "keywords": {
+            "type": "Path"
+          }
+        },
+        {
+          "line": 33,
+          "kind": "add_argument",
+          "arguments": [
+            "'--output'"
+          ],
+          "keywords": {
+            "type": "Path",
+            "required": "True"
+          }
+        },
+        {
+          "line": 34,
+          "kind": "add_argument",
+          "arguments": [
+            "'--seed'"
+          ],
+          "keywords": {
+            "type": "int"
+          }
+        },
+        {
+          "line": 35,
+          "kind": "add_argument",
+          "arguments": [
+            "'--threads'"
+          ],
+          "keywords": {
+            "type": "int",
+            "default": "2"
+          }
+        },
+        {
+          "line": 36,
+          "kind": "add_argument",
+          "arguments": [
+            "'--json'"
+          ],
+          "keywords": {
+            "action": "'store_true'"
+          }
+        },
+        {
+          "line": 37,
+          "kind": "add_argument",
+          "arguments": [
+            "'--timeout'"
+          ],
+          "keywords": {
+            "type": "float",
+            "default": "600",
+            "help": "'Wall-clock limit including model load (seconds)'"
+          }
+        },
+        {
+          "line": 38,
+          "kind": "add_parser",
+          "arguments": [
+            "'batch'"
+          ],
+          "keywords": {
+            "help": "'Sequential homogeneous jobs sharing one supervised model'"
+          }
+        },
+        {
+          "line": 39,
+          "kind": "add_argument",
+          "arguments": [
+            "'--backend'"
+          ],
+          "keywords": {
+            "choices": "['kokoro', 'pocket-tts']",
+            "required": "True"
+          }
+        },
+        {
+          "line": 40,
+          "kind": "add_argument",
+          "arguments": [
+            "'--assets'"
+          ],
+          "keywords": {
+            "type": "Path",
+            "required": "True"
+          }
+        },
+        {
+          "line": 41,
+          "kind": "add_argument",
+          "arguments": [
+            "'--language'"
+          ],
+          "keywords": {
+            "choices": "['fr', 'en']",
+            "required": "True"
+          }
+        },
+        {
+          "line": 43,
+          "kind": "add_argument",
+          "arguments": [
+            "'--preset'"
+          ],
+          "keywords": {}
+        },
+        {
+          "line": 44,
+          "kind": "add_argument",
+          "arguments": [
+            "'--reference'"
+          ],
+          "keywords": {
+            "type": "Path"
+          }
+        },
+        {
+          "line": 45,
+          "kind": "add_argument",
+          "arguments": [
+            "'--jobs'"
+          ],
+          "keywords": {
+            "type": "Path",
+            "required": "True",
+            "help": "'JSON list of id/text/output jobs'"
+          }
+        },
+        {
+          "line": 46,
+          "kind": "add_argument",
+          "arguments": [
+            "'--report'"
+          ],
+          "keywords": {
+            "type": "Path",
+            "required": "True",
+            "help": "'Fresh JSON result path'"
+          }
+        },
+        {
+          "line": 47,
+          "kind": "add_argument",
+          "arguments": [
+            "'--seed'"
+          ],
+          "keywords": {
+            "type": "int"
+          }
+        },
+        {
+          "line": 48,
+          "kind": "add_argument",
+          "arguments": [
+            "'--threads'"
+          ],
+          "keywords": {
+            "type": "int",
+            "default": "2"
+          }
+        },
+        {
+          "line": 49,
+          "kind": "add_argument",
+          "arguments": [
+            "'--timeout'"
+          ],
+          "keywords": {
+            "type": "float",
+            "default": "600",
+            "help": "'Each job deadline including first model load'"
+          }
+        },
+        {
+          "line": 50,
+          "kind": "add_argument",
+          "arguments": [
+            "'--continue-on-error'"
+          ],
+          "keywords": {
+            "action": "'store_true'"
+          }
+        },
+        {
+          "line": 51,
+          "kind": "add_argument",
+          "arguments": [
+            "'--json'"
+          ],
+          "keywords": {
+            "action": "'store_true'"
+          }
+        }
+      ],
+      "constants": {},
+      "environment_controls": []
+    },
+    {
+      "source": "apps/voice-register/voice-register.py",
+      "sha256": "5eadbfff834d8f92f070c8bbaaac8b7bd57177e01acf56f176c5b9be18138e22",
+      "coverage": "unchanged_legacy",
+      "rationale": "Existing command remains callable through run/run-cpu; service promotion requires typed adapter and preservation tests, never arbitrary argv. Internal ASR/QA/alignment and all controls/default expressions below are retained.",
+      "controls": [
+        {
+          "line": 92,
+          "kind": "add_argument",
+          "arguments": [
+            "'--url'"
+          ],
+          "keywords": {
+            "metavar": "'URL'",
+            "help": "'YouTube (or any yt-dlp-supported) URL to extract the voice from'"
+          }
+        },
+        {
+          "line": 97,
+          "kind": "add_argument",
+          "arguments": [
+            "'--audio'"
+          ],
+          "keywords": {
+            "metavar": "'PATH'",
+            "help": "'Path to a local audio file (WAV, MP3, M4A, FLAC, …). Skips the download step. Mount the file into the container with -v /host/path:/container/path.'"
+          }
+        },
+        {
+          "line": 107,
+          "kind": "add_argument",
+          "arguments": [
+            "'--start'"
+          ],
+          "keywords": {
+            "default": "None",
+            "metavar": "'TIMESTAMP'",
+            "help": "'Trim start time in the source audio. Accepts: seconds (90 / 1:30.5), MM:SS (1:30), HH:MM:SS (1:02:30). Only audio from this point onwards is processed.'"
+          }
+        },
+        {
+          "line": 116,
+          "kind": "add_argument",
+          "arguments": [
+            "'--end'"
+          ],
+          "keywords": {
+            "default": "None",
+            "metavar": "'TIMESTAMP'",
+            "help": "'Trim end time in the source audio. Same formats as --start. Only audio up to this point is processed.'"
+          }
+        },
+        {
+          "line": 125,
+          "kind": "add_argument",
+          "arguments": [
+            "'--voice-name'"
+          ],
+          "keywords": {
+            "required": "True",
+            "metavar": "'SLUG'",
+            "help": "\"Named voice slug to create/update in /cache/voices/<slug>/. Lowercase letters, digits, hyphens only (e.g. 'david-attenborough').\""
+          }
+        },
+        {
+          "line": 134,
+          "kind": "add_argument",
+          "arguments": [
+            "'--text'"
+          ],
+          "keywords": {
+            "required": "True",
+            "help": "\"Text to synthesise as a quality check once the voice is ready. A short sentence works best (e.g. 'Hello, welcome to the show.').\""
+          }
+        },
+        {
+          "line": 144,
+          "kind": "add_argument",
+          "arguments": [
+            "'--clips'"
+          ],
+          "keywords": {
+            "type": "int",
+            "default": "3",
+            "help": "'Number of random voice clips to export alongside the registry clip. These land in --out for preview; use 0 to skip random clips (the deterministic registry clip is always exported).'"
+          }
+        },
+        {
+          "line": 153,
+          "kind": "add_argument",
+          "arguments": [
+            "'--length'"
+          ],
+          "keywords": {
+            "type": "float",
+            "default": "30",
+            "help": "'Target clip length in seconds (passed to voice-split)'"
+          }
+        },
+        {
+          "line": 158,
+          "kind": "add_argument",
+          "arguments": [
+            "'--cookies'"
+          ],
+          "keywords": {
+            "default": "None",
+            "metavar": "'FILE'",
+            "help": "'Netscape cookies.txt path for authenticated YouTube downloads'"
+          }
+        },
+        {
+          "line": 163,
+          "kind": "add_argument",
+          "arguments": [
+            "'--max-scan-seconds'"
+          ],
+          "keywords": {
+            "type": "float",
+            "default": "None",
+            "metavar": "'SECS'",
+            "help": "'Limit raw VAD scan to the first N seconds (useful for quick tests)'"
+          }
+        },
+        {
+          "line": 170,
+          "kind": "add_argument",
+          "arguments": [
+            "'--language'"
+          ],
+          "keywords": {
+            "default": "'Auto'",
+            "help": "\"Synthesis language for the test synthesis. 'Auto' detects from --text then from the ref audio. Set explicitly if detection is off (e.g. 'English', 'French').\""
+          }
+        },
+        {
+          "line": 179,
+          "kind": "add_argument",
+          "arguments": [
+            "'--tone'"
+          ],
+          "keywords": {
+            "default": "None",
+            "metavar": "'NAME'",
+            "help": "\"Tone label for the extracted prompt (e.g. 'neutral', 'warm'). Stored in voice.json['tones'] so voice-synth speak --tone NAME can select it later.\""
+          }
+        },
+        {
+          "line": 188,
+          "kind": "add_argument",
+          "arguments": [
+            "'--ref-text'"
+          ],
+          "keywords": {
+            "default": "None",
+            "metavar": "'TEXT'",
+            "help": "'Exact transcript of the reference audio clip. When supplied, the final Whisper transcript+quality gate step is skipped and this text is used for prompt build.'"
+          }
+        },
+        {
+          "line": 197,
+          "kind": "add_argument",
+          "arguments": [
+            "'--ref-language'"
+          ],
+          "keywords": {
+            "default": "'Auto'",
+            "help": "'Language of the reference audio for whisper transcription'"
+          }
+        },
+        {
+          "line": 202,
+          "kind": "add_argument",
+          "arguments": [
+            "'--whisper-model'"
+          ],
+          "keywords": {
+            "default": "'small'",
+            "help": "\"faster-whisper model size for ref transcription ('tiny', 'small', 'medium', …)\""
+          }
+        },
+        {
+          "line": 207,
+          "kind": "add_argument",
+          "arguments": [
+            "'--model'"
+          ],
+          "keywords": {
+            "default": "'Qwen/Qwen3-TTS-12Hz-0.6B-Base'",
+            "help": "'Qwen3-TTS model repo ID or local path for the clone-synth step'"
+          }
+        },
+        {
+          "line": 212,
+          "kind": "add_argument",
+          "arguments": [
+            "'--dtype'"
+          ],
+          "keywords": {
+            "default": "'auto'",
+            "choices": "['auto', 'bfloat16', 'float32', 'float16']",
+            "help": "'Model weight dtype passed to voice-clone.  auto (default): float32 on CPU; bfloat16 on CUDA Ampere+; float16 on older CUDA GPUs (Maxwell / Pascal / Volta / Turing).'"
+          }
+        },
+        {
+          "line": 220,
+          "kind": "add_argument",
+          "arguments": [
+            "'--seed'"
+          ],
+          "keywords": {
+            "type": "int",
+            "default": "None",
+            "help": "'Random seed for reproducible synthesis'"
+          }
+        },
+        {
+          "line": 225,
+          "kind": "add_argument",
+          "arguments": [
+            "'--max-new-tokens'"
+          ],
+          "keywords": {
+            "type": "int",
+            "default": "None",
+            "dest": "'max_new_tokens'",
+            "help": "'Hard cap on generated audio tokens (passed to voice-clone synth). Defaults to an estimate based on --text length.'"
+          }
+        },
+        {
+          "line": 233,
+          "kind": "add_argument",
+          "arguments": [
+            "'--timeout'"
+          ],
+          "keywords": {
+            "type": "float",
+            "default": "None",
+            "help": "'Wall-clock timeout in seconds for the synthesis step (passed to voice-clone synth). Defaults to 4× the CPU ETA estimate. Pass 0 to disable.'"
+          }
+        },
+        {
+          "line": 242,
+          "kind": "add_argument",
+          "arguments": [
+            "'--force-bad-ref'"
+          ],
+          "keywords": {
+            "action": "'store_true'",
+            "help": "'Bypass the transcript quality gate (proceed even on low-confidence ref)'"
+          }
+        },
+        {
+          "line": 249,
+          "kind": "add_argument",
+          "arguments": [
+            "'--out'"
+          ],
+          "keywords": {
+            "default": "'/work'",
+            "help": "'Output directory for WAV clips'"
+          }
+        },
+        {
+          "line": 250,
+          "kind": "add_argument",
+          "arguments": [
+            "'--cache'"
+          ],
+          "keywords": {
+            "default": "'/cache'",
+            "help": "'Persistent cache directory'"
+          }
+        },
+        {
+          "line": 251,
+          "kind": "add_argument",
+          "arguments": [
+            "'--force'"
+          ],
+          "keywords": {
+            "action": "'store_true'",
+            "help": "'Ignore all cached results and recompute every stage from scratch'"
+          }
+        },
+        {
+          "line": 256,
+          "kind": "add_argument",
+          "arguments": [
+            "'--skip-synth'"
+          ],
+          "keywords": {
+            "action": "'store_true'",
+            "help": "'Stop after building the clone prompt; do not run the test synthesis. The voice is ready to use immediately. Useful to save time when you plan to synthesise with voice-synth speak separately.'"
+          }
+        },
+        {
+          "line": 265,
+          "kind": "add_argument",
+          "arguments": [
+            "'--interactive'",
+            "'-i'"
+          ],
+          "keywords": {
+            "action": "'store_true'",
+            "help": "'Enable interactive selection at both pipeline steps:\\n  1. voice-split: pick the best extracted clip before registering.\\n  2. voice-clone: pick the best VAD sub-segment before building the prompt.\\nRun from a real terminal (not a batch script) so you can listen to the\\ncandidate files and type a number at each prompt.'"
+          }
+        }
+      ],
+      "constants": {},
+      "environment_controls": []
+    },
+    {
+      "source": "apps/voice-split/voice-split.py",
+      "sha256": "40abc911ddd9ace8dfb75c3fbead0b89b48f0f30f2daaebfb9bb0d6a90d4b649",
+      "coverage": "unchanged_legacy",
+      "rationale": "Existing command remains callable through run/run-cpu; service promotion requires typed adapter and preservation tests, never arbitrary argv. Internal ASR/QA/alignment and all controls/default expressions below are retained.",
+      "controls": [
+        {
+          "line": 459,
+          "kind": "add_argument",
+          "arguments": [
+            "'--url'"
+          ],
+          "keywords": {
+            "metavar": "'URL'",
+            "help": "'YouTube (or any yt-dlp-supported) URL to extract audio from'"
+          }
+        },
+        {
+          "line": 464,
+          "kind": "add_argument",
+          "arguments": [
+            "'--audio'"
+          ],
+          "keywords": {
+            "metavar": "'PATH'",
+            "help": "'Path to a local audio file (WAV, MP3, M4A, FLAC, …). Skips the download step. Mount the file into the container with -v /host/path:/container/path.'"
+          }
+        },
+        {
+          "line": 474,
+          "kind": "add_argument",
+          "arguments": [
+            "'--start'"
+          ],
+          "keywords": {
+            "default": "None",
+            "metavar": "'TIMESTAMP'",
+            "type": "parse_timestamp",
+            "help": "'Trim start time in the source audio. Accepts: seconds (90 / 1:30.5), MM:SS (1:30), HH:MM:SS (1:02:30). Only audio from this point onwards is processed.'"
+          }
+        },
+        {
+          "line": 483,
+          "kind": "add_argument",
+          "arguments": [
+            "'--end'"
+          ],
+          "keywords": {
+            "default": "None",
+            "metavar": "'TIMESTAMP'",
+            "type": "parse_timestamp",
+            "help": "'Trim end time in the source audio. Same formats as --start. Only audio up to this point is processed.'"
+          }
+        },
+        {
+          "line": 491,
+          "kind": "add_argument",
+          "arguments": [
+            "'--out'"
+          ],
+          "keywords": {
+            "default": "'/work'",
+            "help": "'Root output directory. Clips are written to <out>/<voice-name>/ (or <out>/<source-id>/ when --voice-name is omitted) so multiple voices never collide.'"
+          }
+        },
+        {
+          "line": 493,
+          "kind": "add_argument",
+          "arguments": [
+            "'--clips'"
+          ],
+          "keywords": {
+            "type": "int",
+            "default": "10",
+            "help": "'Number of clips to produce'"
+          }
+        },
+        {
+          "line": 494,
+          "kind": "add_argument",
+          "arguments": [
+            "'--length'"
+          ],
+          "keywords": {
+            "type": "float",
+            "default": "30",
+            "help": "'Target clip length in seconds'"
+          }
+        },
+        {
+          "line": 495,
+          "kind": "add_argument",
+          "arguments": [
+            "'--window-len'"
+          ],
+          "keywords": {
+            "type": "float",
+            "default": "None",
+            "metavar": "'SECS'",
+            "help": "'Demucs chunk size in seconds (default: 4× --length, e.g. 120s for 30s clips)'"
+          }
+        },
+        {
+          "line": 500,
+          "kind": "add_argument",
+          "arguments": [
+            "'--candidates'"
+          ],
+          "keywords": {
+            "type": "int",
+            "default": "None",
+            "metavar": "'N'",
+            "help": "'Number of candidate windows to run Demucs on (default: 2× --clips)'"
+          }
+        },
+        {
+          "line": 505,
+          "kind": "add_argument",
+          "arguments": [
+            "'--cache'"
+          ],
+          "keywords": {
+            "default": "'/cache'",
+            "help": "'Persistent cache directory'"
+          }
+        },
+        {
+          "line": 506,
+          "kind": "add_argument",
+          "arguments": [
+            "'--seed'"
+          ],
+          "keywords": {
+            "type": "int",
+            "default": "None",
+            "help": "'Random seed for reproducibility'"
+          }
+        },
+        {
+          "line": 507,
+          "kind": "add_argument",
+          "arguments": [
+            "'--max-scan-seconds'"
+          ],
+          "keywords": {
+            "type": "float",
+            "default": "None",
+            "metavar": "'SECS'",
+            "help": "'Limit raw VAD scan to first N seconds (useful for quick tests)'"
+          }
+        },
+        {
+          "line": 512,
+          "kind": "add_argument",
+          "arguments": [
+            "'--cookies'"
+          ],
+          "keywords": {
+            "default": "None",
+            "metavar": "'FILE'",
+            "help": "'Netscape cookies.txt for YouTube downloads (mount into container)'"
+          }
+        },
+        {
+          "line": 517,
+          "kind": "add_argument",
+          "arguments": [
+            "'--voice-name'"
+          ],
+          "keywords": {
+            "default": "None",
+            "metavar": "'SLUG'",
+            "help": "\"Register best extracted clip as a named voice in /cache/voices/<slug>/. Slug must be lowercase with hyphens only (e.g. 'david-attenborough').\""
+          }
+        },
+        {
+          "line": 525,
+          "kind": "add_argument",
+          "arguments": [
+            "'--interactive'",
+            "'-i'"
+          ],
+          "keywords": {
+            "action": "'store_true'",
+            "help": "'After exporting clips, show a numbered menu so you can listen to each one and pick which clip to register as the voice reference. Requires --voice-name.'"
+          }
+        }
+      ],
+      "constants": {
+        "_LIB": "str(Path(__file__).resolve().parent.parent.parent / 'lib')"
+      },
+      "environment_controls": []
+    },
+    {
+      "source": "apps/voice-synth/voice-synth.py",
+      "sha256": "0a6de494056f771aaa342f8fb2f492fcbc6c50a4030dda1f07a91d7faa4d8abd",
+      "coverage": "unchanged_legacy",
+      "rationale": "Existing command remains callable through run/run-cpu; service promotion requires typed adapter and preservation tests, never arbitrary argv. Internal ASR/QA/alignment and all controls/default expressions below are retained.",
+      "controls": [
+        {
+          "line": 2013,
+          "kind": "add_argument",
+          "arguments": [
+            "'--model'"
+          ],
+          "keywords": {
+            "default": "model_default",
+            "help": "model_help or 'Qwen3-TTS model (HF repo ID or local path)'"
+          }
+        },
+        {
+          "line": 2021,
+          "kind": "add_argument",
+          "arguments": [
+            "'--whisper-model'"
+          ],
+          "keywords": {
+            "default": "DEFAULT_WHISPER",
+            "help": "'faster-whisper model for QA transcription'"
+          }
+        },
+        {
+          "line": 2023,
+          "kind": "add_argument",
+          "arguments": [
+            "'--language'"
+          ],
+          "keywords": {
+            "default": "'Auto'",
+            "choices": "QWEN3_LANGUAGES",
+            "help": "'Synthesis language; Auto = detect from text then ref'"
+          }
+        },
+        {
+          "line": 2025,
+          "kind": "add_argument",
+          "arguments": [
+            "'--threads'"
+          ],
+          "keywords": {
+            "type": "int",
+            "default": "os.cpu_count() or 8",
+            "help": "'CPU threads for torch + whisper (default: all logical cores)'"
+          }
+        },
+        {
+          "line": 2027,
+          "kind": "add_argument",
+          "arguments": [
+            "'--dtype'"
+          ],
+          "keywords": {
+            "default": "'auto'",
+            "choices": "['auto', 'bfloat16', 'float32', 'float16']",
+            "help": "'Model weight dtype.  auto (default): float32 on CPU; bfloat16 on CUDA Ampere+; float16 on older CUDA GPUs (Maxwell / Pascal / Volta / Turing).'"
+          }
+        },
+        {
+          "line": 2034,
+          "kind": "add_argument",
+          "arguments": [
+            "'--seed'"
+          ],
+          "keywords": {
+            "type": "int",
+            "default": "None",
+            "help": "'Base random seed (variant i uses seed+i)'"
+          }
+        },
+        {
+          "line": 2036,
+          "kind": "add_argument",
+          "arguments": [
+            "'--cache'"
+          ],
+          "keywords": {
+            "default": "'/cache'",
+            "help": "'Persistent cache directory'"
+          }
+        },
+        {
+          "line": 2047,
+          "kind": "add_parser",
+          "arguments": [
+            "'list-voices'"
+          ],
+          "keywords": {
+            "help": "'List named voices (clone + built-in) and legacy prompts'",
+            "formatter_class": "argparse.ArgumentDefaultsHelpFormatter"
+          }
+        },
+        {
+          "line": 2050,
+          "kind": "add_argument",
+          "arguments": [
+            "'--cache'"
+          ],
+          "keywords": {
+            "default": "'/cache'"
+          }
+        },
+        {
+          "line": 2051,
+          "kind": "add_argument",
+          "arguments": [
+            "'--json'"
+          ],
+          "keywords": {
+            "action": "'store_true'",
+            "help": "'Emit machine-readable JSON'"
+          }
+        },
+        {
+          "line": 2054,
+          "kind": "add_parser",
+          "arguments": [
+            "'list-speakers'"
+          ],
+          "keywords": {
+            "help": "'List built-in speakers for a Qwen3 CustomVoice model (requires QWEN3_ENABLE_CUSTOMVOICE=1)'",
+            "formatter_class": "argparse.ArgumentDefaultsHelpFormatter"
+          }
+        },
+        {
+          "line": 2059,
+          "kind": "add_argument",
+          "arguments": [
+            "'--model'"
+          ],
+          "keywords": {
+            "default": "DEFAULT_CUSTOM_MODEL",
+            "help": "'Qwen3 CustomVoice model (HF repo ID or local path)'"
+          }
+        },
+        {
+          "line": 2064,
+          "kind": "add_argument",
+          "arguments": [
+            "'--threads'"
+          ],
+          "keywords": {
+            "type": "int",
+            "default": "os.cpu_count() or 8",
+            "help": "'CPU threads for torch (default: all logical cores)'"
+          }
+        },
+        {
+          "line": 2066,
+          "kind": "add_argument",
+          "arguments": [
+            "'--dtype'"
+          ],
+          "keywords": {
+            "default": "'auto'",
+            "choices": "['auto', 'bfloat16', 'float32', 'float16']",
+            "help": "'Model weight dtype.  auto (default): float32 on CPU; bfloat16 on CUDA Ampere+; float16 on older CUDA GPUs (Maxwell / Pascal / Volta / Turing).'"
+          }
+        },
+        {
+          "line": 2073,
+          "kind": "add_argument",
+          "arguments": [
+            "'--cache'"
+          ],
+          "keywords": {
+            "default": "'/cache'",
+            "help": "'Persistent cache directory'"
+          }
+        },
+        {
+          "line": 2074,
+          "kind": "add_argument",
+          "arguments": [
+            "'--json'"
+          ],
+          "keywords": {
+            "action": "'store_true'",
+            "help": "'Emit machine-readable JSON'"
+          }
+        },
+        {
+          "line": 2077,
+          "kind": "add_parser",
+          "arguments": [
+            "'capabilities'"
+          ],
+          "keywords": {
+            "help": "'Probe runtime/device/model capabilities for CI/agent usage'",
+            "formatter_class": "argparse.ArgumentDefaultsHelpFormatter"
+          }
+        },
+        {
+          "line": 2082,
+          "kind": "add_argument",
+          "arguments": [
+            "'--model'"
+          ],
+          "keywords": {
+            "default": "DEFAULT_CUSTOM_MODEL",
+            "help": "'CustomVoice model used for runtime speaker probing'"
+          }
+        },
+        {
+          "line": 2087,
+          "kind": "add_argument",
+          "arguments": [
+            "'--threads'"
+          ],
+          "keywords": {
+            "type": "int",
+            "default": "os.cpu_count() or 8",
+            "help": "'CPU threads used when model probing is enabled'"
+          }
+        },
+        {
+          "line": 2089,
+          "kind": "add_argument",
+          "arguments": [
+            "'--dtype'"
+          ],
+          "keywords": {
+            "default": "'auto'",
+            "choices": "['auto', 'bfloat16', 'float32', 'float16']",
+            "help": "'Model weight dtype used for runtime speaker probing. Ignored when --skip-speaker-probe is set.'"
+          }
+        },
+        {
+          "line": 2096,
+          "kind": "add_argument",
+          "arguments": [
+            "'--skip-speaker-probe'"
+          ],
+          "keywords": {
+            "action": "'store_true'",
+            "help": "'Skip model load and use the static built-in speaker fallback list'"
+          }
+        },
+        {
+          "line": 2101,
+          "kind": "add_argument",
+          "arguments": [
+            "'--require-runtime-speakers'"
+          ],
+          "keywords": {
+            "action": "'store_true'",
+            "help": "'Fail strict mode if speakers are not obtained from a live model load (fallback/static lists are treated as errors).'"
+          }
+        },
+        {
+          "line": 2109,
+          "kind": "add_argument",
+          "arguments": [
+            "'--strict'"
+          ],
+          "keywords": {
+            "action": "'store_true'",
+            "help": "'Exit non-zero when API compatibility or speaker probing fails'"
+          }
+        },
+        {
+          "line": 2114,
+          "kind": "add_argument",
+          "arguments": [
+            "'--json'"
+          ],
+          "keywords": {
+            "action": "'store_true'",
+            "help": "'Emit machine-readable JSON'"
+          }
+        },
+        {
+          "line": 2117,
+          "kind": "add_parser",
+          "arguments": [
+            "'register-builtin'"
+          ],
+          "keywords": {
+            "help": "'Register/update a named built-in CustomVoice profile (requires QWEN3_ENABLE_CUSTOMVOICE=1)'",
+            "formatter_class": "argparse.ArgumentDefaultsHelpFormatter"
+          }
+        },
+        {
+          "line": 2122,
+          "kind": "add_argument",
+          "arguments": [
+            "'--voice-name'"
+          ],
+          "keywords": {
+            "required": "True",
+            "metavar": "'SLUG'",
+            "help": "'Named voice slug in /cache/voices/<slug>/'"
+          }
+        },
+        {
+          "line": 2124,
+          "kind": "add_argument",
+          "arguments": [
+            "'--speaker'"
+          ],
+          "keywords": {
+            "required": "True",
+            "help": "'Built-in Qwen3 CustomVoice speaker'"
+          }
+        },
+        {
+          "line": 2126,
+          "kind": "add_argument",
+          "arguments": [
+            "'--instruct-default'"
+          ],
+          "keywords": {
+            "default": "None",
+            "metavar": "'TEXT'",
+            "help": "'Default instruction used when speaking this named voice without --tone'"
+          }
+        },
+        {
+          "line": 2130,
+          "kind": "add_argument",
+          "arguments": [
+            "'--instruct-default-style'"
+          ],
+          "keywords": {
+            "default": "None",
+            "metavar": "'NAME'",
+            "help": "'Named instruction template for default delivery (mutually exclusive with --instruct-default).'"
+          }
+        },
+        {
+          "line": 2137,
+          "kind": "add_argument",
+          "arguments": [
+            "'--tone'"
+          ],
+          "keywords": {
+            "default": "None",
+            "metavar": "'NAME'",
+            "help": "'Optional tone label to store for this built-in voice (e.g. neutral, promo)'"
+          }
+        },
+        {
+          "line": 2141,
+          "kind": "add_argument",
+          "arguments": [
+            "'--tone-instruct'"
+          ],
+          "keywords": {
+            "default": "None",
+            "metavar": "'TEXT'",
+            "help": "'Instruction preset for --tone (requires --tone)'"
+          }
+        },
+        {
+          "line": 2145,
+          "kind": "add_argument",
+          "arguments": [
+            "'--tone-instruct-style'"
+          ],
+          "keywords": {
+            "default": "None",
+            "metavar": "'NAME'",
+            "help": "'Named instruction template for --tone preset (requires --tone; mutually exclusive with --tone-instruct).'"
+          }
+        },
+        {
+          "line": 2152,
+          "kind": "add_argument",
+          "arguments": [
+            "'--language-default'"
+          ],
+          "keywords": {
+            "default": "'English'",
+            "choices": "QWEN3_LANGUAGES",
+            "help": "'Default language used when --language Auto is selected'"
+          }
+        },
+        {
+          "line": 2156,
+          "kind": "add_argument",
+          "arguments": [
+            "'--display-name'"
+          ],
+          "keywords": {
+            "default": "None",
+            "help": "'Optional display label stored in voice.json'"
+          }
+        },
+        {
+          "line": 2158,
+          "kind": "add_argument",
+          "arguments": [
+            "'--description'"
+          ],
+          "keywords": {
+            "default": "None",
+            "help": "'Optional description stored in voice.json'"
+          }
+        },
+        {
+          "line": 2160,
+          "kind": "add_argument",
+          "arguments": [
+            "'--model'"
+          ],
+          "keywords": {
+            "default": "DEFAULT_CUSTOM_MODEL",
+            "help": "'Qwen3 CustomVoice model (HF repo ID or local path)'"
+          }
+        },
+        {
+          "line": 2165,
+          "kind": "add_argument",
+          "arguments": [
+            "'--threads'"
+          ],
+          "keywords": {
+            "type": "int",
+            "default": "os.cpu_count() or 8",
+            "help": "'CPU threads for torch (default: all logical cores)'"
+          }
+        },
+        {
+          "line": 2167,
+          "kind": "add_argument",
+          "arguments": [
+            "'--dtype'"
+          ],
+          "keywords": {
+            "default": "'auto'",
+            "choices": "['auto', 'bfloat16', 'float32', 'float16']",
+            "help": "'Model weight dtype.  auto (default): float32 on CPU; bfloat16 on CUDA Ampere+; float16 on older CUDA GPUs (Maxwell / Pascal / Volta / Turing).'"
+          }
+        },
+        {
+          "line": 2174,
+          "kind": "add_argument",
+          "arguments": [
+            "'--cache'"
+          ],
+          "keywords": {
+            "default": "'/cache'",
+            "help": "'Persistent cache directory'"
+          }
+        },
+        {
+          "line": 2177,
+          "kind": "add_parser",
+          "arguments": [
+            "'speak'"
+          ],
+          "keywords": {
+            "help": "'Synthesise text from a named voice (--voice) or built-in speaker (--speaker, requires QWEN3_ENABLE_CUSTOMVOICE=1)'",
+            "formatter_class": "argparse.ArgumentDefaultsHelpFormatter"
+          }
+        },
+        {
+          "line": 2183,
+          "kind": "add_argument",
+          "arguments": [
+            "'--voice'"
+          ],
+          "keywords": {
+            "help": "'Voice ID (or path to .pkl) from list-voices'"
+          }
+        },
+        {
+          "line": 2185,
+          "kind": "add_argument",
+          "arguments": [
+            "'--speaker'"
+          ],
+          "keywords": {
+            "help": "'Built-in Qwen3 CustomVoice speaker (see list-speakers)'"
+          }
+        },
+        {
+          "line": 2187,
+          "kind": "add_argument",
+          "arguments": [
+            "'--instruct'"
+          ],
+          "keywords": {
+            "default": "None",
+            "help": "'Optional instruction string for --speaker mode (e.g. style, delivery, emotion).'"
+          }
+        },
+        {
+          "line": 2194,
+          "kind": "add_argument",
+          "arguments": [
+            "'--instruct-style'"
+          ],
+          "keywords": {
+            "default": "None",
+            "metavar": "'NAME'",
+            "help": "'Named instruction template. Supported in --speaker mode and for named CustomVoice profiles in --voice mode.'"
+          }
+        },
+        {
+          "line": 2201,
+          "kind": "add_argument",
+          "arguments": [
+            "'--text'"
+          ],
+          "keywords": {
+            "default": "None",
+            "help": "'Text to synthesise'"
+          }
+        },
+        {
+          "line": 2203,
+          "kind": "add_argument",
+          "arguments": [
+            "'--text-file'"
+          ],
+          "keywords": {
+            "default": "None",
+            "metavar": "'FILE'",
+            "help": "'Read synthesis text from a file'"
+          }
+        },
+        {
+          "line": 2205,
+          "kind": "add_argument",
+          "arguments": [
+            "'--tone'"
+          ],
+          "keywords": {
+            "default": "None",
+            "metavar": "'NAME'",
+            "help": "\"--voice mode only. Clone/designed voices: select a tone-labelled clone prompt. Named built-in voices: select a stored tone instruction preset. Register clone tones with: voice-clone synth --tone NAME. Register built-in tones with: voice-synth register-builtin --tone NAME --tone-instruct '...' (or --tone-instruct-style NAME).\""
+          }
+        },
+        {
+          "line": 2215,
+          "kind": "add_argument",
+          "arguments": [
+            "'--variants'"
+          ],
+          "keywords": {
+            "type": "int",
+            "default": "1",
+            "help": "'Number of takes to generate with different seeds'"
+          }
+        },
+        {
+          "line": 2217,
+          "kind": "add_argument",
+          "arguments": [
+            "'--select-best'"
+          ],
+          "keywords": {
+            "action": "'store_true'",
+            "help": "'Deterministically rank generated takes and copy the best to best.wav (weighted intelligibility + pacing sanity + duration fit).'"
+          }
+        },
+        {
+          "line": 2226,
+          "kind": "add_argument",
+          "arguments": [
+            "'--chunk'"
+          ],
+          "keywords": {
+            "dest": "'chunk'",
+            "action": "'store_true'",
+            "help": "'Split long text into separate generation calls and concatenate'"
+          }
+        },
+        {
+          "line": 2228,
+          "kind": "add_argument",
+          "arguments": [
+            "'--no-chunk'"
+          ],
+          "keywords": {
+            "dest": "'chunk'",
+            "action": "'store_false'",
+            "help": "'Generate the full supplied text in one call per take (default)'"
+          }
+        },
+        {
+          "line": 2230,
+          "kind": "set_defaults",
+          "arguments": [],
+          "keywords": {
+            "chunk": "False"
+          }
+        },
+        {
+          "line": 2231,
+          "kind": "add_argument",
+          "arguments": [
+            "'--chunk-max-chars'"
+          ],
+          "keywords": {
+            "type": "int",
+            "default": "200"
+          }
+        },
+        {
+          "line": 2232,
+          "kind": "add_argument",
+          "arguments": [
+            "'--sentence-pause-ms'"
+          ],
+          "keywords": {
+            "type": "int",
+            "default": "300"
+          }
+        },
+        {
+          "line": 2233,
+          "kind": "add_argument",
+          "arguments": [
+            "'--paragraph-pause-ms'"
+          ],
+          "keywords": {
+            "type": "int",
+            "default": "600"
+          }
+        },
+        {
+          "line": 2234,
+          "kind": "add_argument",
+          "arguments": [
+            "'--continuation-pause-ms'"
+          ],
+          "keywords": {
+            "type": "int",
+            "default": "100"
+          }
+        },
+        {
+          "line": 2235,
+          "kind": "add_argument",
+          "arguments": [
+            "'--qa'"
+          ],
+          "keywords": {
+            "action": "'store_true'",
+            "help": "'Run whisper QA on each take and print intelligibility score'"
+          }
+        },
+        {
+          "line": 2237,
+          "kind": "add_argument",
+          "arguments": [
+            "'--align-words'"
+          ],
+          "keywords": {
+            "action": "'store_true'",
+            "help": "'Run faster-whisper on generated audio to extract word-level timestamps'"
+          }
+        },
+        {
+          "line": 2239,
+          "kind": "add_argument",
+          "arguments": [
+            "'--profile'"
+          ],
+          "keywords": {
+            "default": "None",
+            "choices": "GENERATION_PROFILE_CHOICES",
+            "help": "'Generation profile. If omitted, uses the voice default profile when available; otherwise falls back to balanced.'"
+          }
+        },
+        {
+          "line": 2248,
+          "kind": "add_argument",
+          "arguments": [
+            "'--save-profile-default'"
+          ],
+          "keywords": {
+            "action": "'store_true'",
+            "help": "'--voice mode only. Persist the resolved profile + sampling defaults to voice.json generation_defaults.'"
+          }
+        },
+        {
+          "line": 2257,
+          "kind": "add_argument",
+          "arguments": [
+            "'--temperature'"
+          ],
+          "keywords": {
+            "type": "float",
+            "default": "None"
+          }
+        },
+        {
+          "line": 2258,
+          "kind": "add_argument",
+          "arguments": [
+            "'--top-p'"
+          ],
+          "keywords": {
+            "type": "float",
+            "default": "None",
+            "dest": "'top_p'"
+          }
+        },
+        {
+          "line": 2259,
+          "kind": "add_argument",
+          "arguments": [
+            "'--repetition-penalty'"
+          ],
+          "keywords": {
+            "type": "float",
+            "default": "None",
+            "dest": "'repetition_penalty'"
+          }
+        },
+        {
+          "line": 2261,
+          "kind": "add_argument",
+          "arguments": [
+            "'--max-new-tokens'"
+          ],
+          "keywords": {
+            "type": "int",
+            "default": "None",
+            "dest": "'max_new_tokens'"
+          }
+        },
+        {
+          "line": 2263,
+          "kind": "add_argument",
+          "arguments": [
+            "'--out'"
+          ],
+          "keywords": {
+            "default": "'/work'",
+            "help": "'Output root directory (used when --out-exact is not set)'"
+          }
+        },
+        {
+          "line": 2268,
+          "kind": "add_argument",
+          "arguments": [
+            "'--out-exact'"
+          ],
+          "keywords": {
+            "default": "None",
+            "metavar": "'DIR'",
+            "help": "'Write take_XX.wav, best.wav, takes.meta.json, and text.txt directly inside DIR (no timestamped subfolder).'"
+          }
+        },
+        {
+          "line": 2277,
+          "kind": "add_argument",
+          "arguments": [
+            "'--json-result'"
+          ],
+          "keywords": {
+            "default": "None",
+            "metavar": "'FILE'",
+            "help": "'Write compact machine-readable speak result summary to FILE.'"
+          }
+        },
+        {
+          "line": 2293,
+          "kind": "add_parser",
+          "arguments": [
+            "'design-voice'"
+          ],
+          "keywords": {
+            "help": "'Create a voice from natural language (VoiceDesign → Clone; slow on CPU)'",
+            "formatter_class": "argparse.ArgumentDefaultsHelpFormatter"
+          }
+        },
+        {
+          "line": 2299,
+          "kind": "add_argument",
+          "arguments": [
+            "'--instruct'"
+          ],
+          "keywords": {
+            "help": "'Natural language voice description (persona, style, timbre)'"
+          }
+        },
+        {
+          "line": 2303,
+          "kind": "add_argument",
+          "arguments": [
+            "'--instruct-style'"
+          ],
+          "keywords": {
+            "default": "None",
+            "metavar": "'NAME'",
+            "help": "'Named instruction template from lib/styles.yaml'"
+          }
+        },
+        {
+          "line": 2309,
+          "kind": "add_argument",
+          "arguments": [
+            "'--ref-text'"
+          ],
+          "keywords": {
+            "required": "True",
+            "help": "'Script text spoken in the designed voice (short, ~1–2 sentences)'"
+          }
+        },
+        {
+          "line": 2311,
+          "kind": "add_argument",
+          "arguments": [
+            "'--design-model'"
+          ],
+          "keywords": {
+            "default": "DEFAULT_DESIGN_MODEL",
+            "help": "'Qwen3-TTS VoiceDesign model'"
+          }
+        },
+        {
+          "line": 2313,
+          "kind": "add_argument",
+          "arguments": [
+            "'--clone-model'"
+          ],
+          "keywords": {
+            "default": "DEFAULT_TTS_MODEL",
+            "help": "'Qwen3-TTS Base model for building the clone prompt'"
+          }
+        },
+        {
+          "line": 2315,
+          "kind": "add_argument",
+          "arguments": [
+            "'--out'"
+          ],
+          "keywords": {
+            "default": "'/work'",
+            "help": "'Output directory for the designed ref clip'"
+          }
+        },
+        {
+          "line": 2317,
+          "kind": "add_argument",
+          "arguments": [
+            "'--voice-name'"
+          ],
+          "keywords": {
+            "default": "None",
+            "metavar": "'SLUG'",
+            "help": "'Register the designed voice as a named voice in /cache/voices/'"
+          }
+        },
+        {
+          "line": 2322,
+          "kind": "add_parser",
+          "arguments": [
+            "'rename-voice'"
+          ],
+          "keywords": {
+            "help": "'Rename a voice in the registry'",
+            "formatter_class": "argparse.ArgumentDefaultsHelpFormatter"
+          }
+        },
+        {
+          "line": 2325,
+          "kind": "add_argument",
+          "arguments": [
+            "'old_name'"
+          ],
+          "keywords": {
+            "help": "'Current voice slug'"
+          }
+        },
+        {
+          "line": 2326,
+          "kind": "add_argument",
+          "arguments": [
+            "'new_name'"
+          ],
+          "keywords": {
+            "help": "'New voice slug'"
+          }
+        },
+        {
+          "line": 2327,
+          "kind": "add_argument",
+          "arguments": [
+            "'--cache'"
+          ],
+          "keywords": {
+            "default": "'/cache'"
+          }
+        },
+        {
+          "line": 2330,
+          "kind": "add_parser",
+          "arguments": [
+            "'delete-voice'"
+          ],
+          "keywords": {
+            "help": "'Permanently delete a voice and all its files'",
+            "formatter_class": "argparse.ArgumentDefaultsHelpFormatter"
+          }
+        },
+        {
+          "line": 2333,
+          "kind": "add_argument",
+          "arguments": [
+            "'voice'"
+          ],
+          "keywords": {
+            "help": "'Voice slug to delete'"
+          }
+        },
+        {
+          "line": 2334,
+          "kind": "add_argument",
+          "arguments": [
+            "'--yes'"
+          ],
+          "keywords": {
+            "action": "'store_true'",
+            "help": "'Skip confirmation prompt'"
+          }
+        },
+        {
+          "line": 2336,
+          "kind": "add_argument",
+          "arguments": [
+            "'--cache'"
+          ],
+          "keywords": {
+            "default": "'/cache'"
+          }
+        },
+        {
+          "line": 2339,
+          "kind": "add_parser",
+          "arguments": [
+            "'export-voice'"
+          ],
+          "keywords": {
+            "help": "'Export a voice to a shareable zip archive'",
+            "formatter_class": "argparse.ArgumentDefaultsHelpFormatter"
+          }
+        },
+        {
+          "line": 2342,
+          "kind": "add_argument",
+          "arguments": [
+            "'voice'"
+          ],
+          "keywords": {
+            "help": "'Voice slug to export'"
+          }
+        },
+        {
+          "line": 2343,
+          "kind": "add_argument",
+          "arguments": [
+            "'--dest'"
+          ],
+          "keywords": {
+            "default": "None",
+            "metavar": "'FILE'",
+            "help": "'Output zip path (default: /work/<voice>.zip)'"
+          }
+        },
+        {
+          "line": 2345,
+          "kind": "add_argument",
+          "arguments": [
+            "'--out'"
+          ],
+          "keywords": {
+            "default": "'/work'",
+            "help": "'Output directory (used when --dest omitted)'"
+          }
+        },
+        {
+          "line": 2346,
+          "kind": "add_argument",
+          "arguments": [
+            "'--cache'"
+          ],
+          "keywords": {
+            "default": "'/cache'"
+          }
+        },
+        {
+          "line": 2349,
+          "kind": "add_parser",
+          "arguments": [
+            "'import-voice'"
+          ],
+          "keywords": {
+            "help": "'Import a voice from a zip archive (exported by export-voice)'",
+            "formatter_class": "argparse.ArgumentDefaultsHelpFormatter"
+          }
+        },
+        {
+          "line": 2352,
+          "kind": "add_argument",
+          "arguments": [
+            "'--zip'"
+          ],
+          "keywords": {
+            "required": "True",
+            "metavar": "'FILE'",
+            "help": "'Path to the .zip file to import'"
+          }
+        },
+        {
+          "line": 2354,
+          "kind": "add_argument",
+          "arguments": [
+            "'--force'"
+          ],
+          "keywords": {
+            "action": "'store_true'",
+            "help": "'Overwrite if a voice with the same slug already exists'"
+          }
+        },
+        {
+          "line": 2356,
+          "kind": "add_argument",
+          "arguments": [
+            "'--cache'"
+          ],
+          "keywords": {
+            "default": "'/cache'"
+          }
+        }
+      ],
+      "constants": {
+        "_LIB": "str(Path(__file__).resolve().parent.parent.parent / 'lib')",
+        "CHUNK_SILENCE_MS": "300",
+        "TAKES_META_SCHEMA_VERSION": "1",
+        "CAPABILITIES_SCHEMA_VERSION": "1",
+        "SPEAK_JSON_RESULT_SCHEMA_VERSION": "1",
+        "_OWNED_MODELS": "ContextVar('voice_synth_owned_models', default=None)",
+        "_ASR_LANGUAGE_CODES": "dict(zip(QWEN3_LANGUAGES, ['auto'] * len(QWEN3_LANGUAGES)))"
+      },
+      "environment_controls": [
+        {
+          "line": 188,
+          "expression": "os.environ.get('TTS_MODEL_REVISION')"
+        },
+        {
+          "line": 1890,
+          "expression": "os.environ.get('TTS_MODEL_REVISION')"
+        }
+      ]
+    }
+  ],
+  "launchers": [
+    {
+      "source": "run",
+      "sha256": "5c443259a99e4715294af5349c0f73147b69bef2f561a0298472978f95c675b8",
+      "coverage": "unchanged_legacy",
+      "rationale": "Retain launcher, environment selection, mounts and argument forwarding unchanged.",
+      "environment_controls": [
+        "TOOLBOX_DOCKER_SUDO",
+        "TOOLBOX_NETWORK",
+        "TOOLBOX_VARIANT"
+      ]
+    },
+    {
+      "source": "run-cpu",
+      "sha256": "b56438b0cdb9584036f386fbbcfdb1e181fb1bd617d1732b3006c2974d0d04e3",
+      "coverage": "unchanged_legacy",
+      "rationale": "Retain launcher, environment selection, mounts and argument forwarding unchanged.",
+      "environment_controls": []
+    },
+    {
+      "source": "run-direct",
+      "sha256": "4318b391d18192e789200c23c904799da618dc0850e5994ff4582a36814abaac",
+      "coverage": "unchanged_legacy",
+      "rationale": "Retain launcher, environment selection, mounts and argument forwarding unchanged.",
+      "environment_controls": []
+    },
+    {
+      "source": "run.ps1",
+      "sha256": "cde80b39fc036b92d5537ac97334d8da70ea7b658fb43ecafee374d8cf958074",
+      "coverage": "unchanged_legacy",
+      "rationale": "Retain launcher, environment selection, mounts and argument forwarding unchanged.",
+      "environment_controls": [
+        "TOOLBOX_VARIANT"
+      ]
+    }
+  ],
+  "shared_sources": [
+    {
+      "source": "lib/tts.py",
+      "sha256": "fb8b65eab87e8286db56644af71b2ce547a29e9a73ee52235fe48aa6ca663528",
+      "constants": {
+        "PROMPT_SCHEMA_VERSION": "1",
+        "DEFAULT_TTS_MODEL": "'Qwen/Qwen3-TTS-12Hz-0.6B-Base'",
+        "DEFAULT_CUSTOM_MODEL": "'Qwen/Qwen3-TTS-12Hz-0.6B-CustomVoice'",
+        "DEFAULT_DESIGN_MODEL": "'Qwen/Qwen3-TTS-12Hz-1.7B-VoiceDesign'",
+        "DEFAULT_WHISPER": "'small'",
+        "WHISPER_COMPUTE": "'int8'",
+        "MAX_NEW_TOKENS_DEFAULT": "4096",
+        "AUDIO_TOKENS_PER_SEC": "12",
+        "CHARS_PER_SECOND": "13.0",
+        "TOKEN_MARGIN": "3.5",
+        "CPU_TOKENS_PER_SEC": "0.18",
+        "GENERATION_PROFILE_DEFAULT": "'balanced'",
+        "GENERATION_PROFILE_CHOICES": "tuple(sorted(GENERATION_PROFILE_PRESETS.keys()))",
+        "_MAX_NEW_TOKENS_POLICY_SCALE": "{'stable': 0.9, 'balanced': 1.0, 'expressive': 1.2}",
+        "QWEN3_LANGUAGES": "['Auto', 'Chinese', 'English', 'Japanese', 'Korean', 'German', 'French', 'Russian', 'Portuguese', 'Spanish', 'Italian']",
+        "QWEN3_CUSTOM_SPEAKERS": "['Vivian', 'Serena', 'Uncle_Fu', 'Dylan', 'Eric', 'Ryan', 'Aiden', 'Ono_Anna', 'Sohee']",
+        "QWEN3_CUSTOMVOICE_FLAG_ENV": "'QWEN3_ENABLE_CUSTOMVOICE'",
+        "_TRUE_ENV_VALUES": "{'1', 'true', 'yes', 'on', 'enabled'}",
+        "_FALSE_ENV_VALUES": "{'0', 'false', 'no', 'off', 'disabled'}",
+        "STYLES_YAML": "Path(__file__).resolve().parent / 'styles.yaml'"
+      },
+      "coverage": "unchanged_legacy",
+      "environment_controls": [
+        {
+          "line": 182,
+          "expression": "os.getenv(name)"
+        },
+        {
+          "line": 211,
+          "expression": "os.getenv(QWEN3_CUSTOMVOICE_FLAG_ENV)"
+        },
+        {
+          "line": 745,
+          "expression": "os.getenv('TTS_MODEL_REVISION')"
+        },
+        {
+          "line": 492,
+          "expression": "os.getenv('TORCH_DEVICE', '')"
+        }
+      ]
+    },
+    {
+      "source": "lib/voices.py",
+      "sha256": "1b705208e448fe5c0d6663a0550b598be3e4110fa24b2bbaf477ab50436094c2",
+      "constants": {
+        "SLUG_RE": "re.compile('^[a-z0-9]([a-z0-9-]{0,62}[a-z0-9])?$')",
+        "VALID_ENGINES": "{'clone_prompt', 'custom_voice', 'designed_clone'}"
+      },
+      "coverage": "unchanged_legacy",
+      "environment_controls": []
+    },
+    {
+      "source": "lib/jobqueue.py",
+      "sha256": "1888cf394f79a7af4814ca08503d7d53dc4e55f5aad4b13d5b2c1fe1ef06917e",
+      "constants": {
+        "REDIS_STREAM_KEY": "'pab:jobs:stream'",
+        "REDIS_GROUP_KEY": "'pab:jobs:group'",
+        "REDIS_RESULT_KEY": "'pab:jobs:result'",
+        "REDIS_FAILED_KEY": "'pab:jobs:failed'",
+        "REDIS_REQUEST_INDEX_KEY": "'pab:jobs:req:index'",
+        "REDIS_FIRST_QUEUED_KEY": "'pab:jobs:first_queued'",
+        "REDIS_RETRY_ZSET_KEY": "'pab:jobs:retry:zset'",
+        "REDIS_WATCHER_LOCK_KEY": "'pab:watcher:lock'",
+        "REDIS_WATCHER_HEARTBEAT_KEY": "'pab:watcher:heartbeat'",
+        "REDIS_WATCHER_INSTANCE_KEY": "'pab:watcher:instance'",
+        "REDIS_METRICS_PREFIX": "'pab:metrics:'",
+        "WATCHER_CONSUMER_GROUP": "'watchers'",
+        "STREAM_JOB_FIELD": "'job'",
+        "CONTENT_HASH_FIELDS": "('voice', 'speaker', 'text', 'language', 'tone', 'instruct', 'instruct_style', 'profile', 'variants', 'select_best', 'chunk', 'align_words', 'temperature', 'top_p', 'repetition_penalty', 'max_new_tokens')",
+        "LOCK_RENEW_LUA": "'\\nif redis.call(\"GET\", KEYS[1]) == ARGV[1] then\\n  redis.call(\"PEXPIRE\", KEYS[1], ARGV[2])\\n  return 1\\nend\\nreturn 0\\n'.strip()",
+        "LOCK_RELEASE_LUA": "'\\nif redis.call(\"GET\", KEYS[1]) == ARGV[1] then\\n  return redis.call(\"DEL\", KEYS[1])\\nend\\nreturn 0\\n'.strip()",
+        "ENQUEUE_JOB_LUA": "'\\nif redis.call(\"HEXISTS\", KEYS[2], ARGV[1]) == 1 then\\n  return {0, \"already_done\"}\\nend\\nif redis.call(\"HEXISTS\", KEYS[1], ARGV[1]) == 1 then\\n  return {0, \"duplicate_request\"}\\nend\\nlocal stream_id = redis.call(\"XADD\", KEYS[3], \"*\", ARGV[4], ARGV[2])\\nredis.call(\"HSET\", KEYS[1], ARGV[1], \"queued\")\\nredis.call(\"SETNX\", KEYS[4], ARGV[3])\\nreturn {1, stream_id}\\n'.strip()"
+      },
+      "coverage": "unchanged_legacy",
+      "environment_controls": []
+    }
+  ],
+  "headless_operation_coverage": [
+    {
+      "status": "fixture_read",
+      "owner": "H2",
+      "operations": [
+        "discover",
+        "voices_list",
+        "asset_get",
+        "asset_content"
+      ],
+      "reason": "Existing HTTP/CLI/MCP synthetic reads; production auth/domain wiring remains required."
+    },
+    {
+      "status": "required_voice",
+      "owner": "H1/H2",
+      "operations": [
+        "voice_get",
+        "voice_prepare",
+        "voice_design",
+        "voice_save",
+        "voice_archive",
+        "voice_results",
+        "voice_version_get",
+        "voice_preset_register"
+      ],
+      "reason": "H0 provides register/get/version/versions/list/aliases/archive domain; H1 prepares candidates and saves through it; H2 exposes transport."
+    },
+    {
+      "status": "required_media_production",
+      "owner": "H1/H2",
+      "operations": [
+        "artifact_get",
+        "asset_upload",
+        "asset_acquire",
+        "speech_generate",
+        "project_create",
+        "project_get",
+        "block_text",
+        "blocks_generate",
+        "blocks_reorder",
+        "speaker_assign",
+        "take_select",
+        "project_assemble",
+        "project_render",
+        "blocks_put",
+        "blocks_delete",
+        "project_revision_get"
+      ],
+      "reason": "Headless scripts, exact revisions, takes, assembly and export remain required."
+    },
+    {
+      "status": "required_control",
+      "owner": "H2/H3/H4",
+      "operations": [
+        "job_get",
+        "job_cancel",
+        "job_retry",
+        "provision",
+        "migration_preview",
+        "migration_apply"
+      ],
+      "reason": "Preserve durable control semantics and explicit provisioning; no operational activation in H0."
+    },
+    {
+      "status": "deferred_editor_only",
+      "owner": "future web",
+      "operations": [
+        "clip_put",
+        "clip_split",
+        "clip_delete",
+        "track_put",
+        "track_delete",
+        "project_ripple",
+        "project_restore",
+        "project_history"
+      ],
+      "reason": "Visual multitrack gesture/edit-history scaffolding deferred; ordered headless assembly and immutable revision reads are retained above."
+    }
+  ],
+  "headless_missing_contracts": [
+    {
+      "operations": [
+        "voice_aliases",
+        "voice_versions_list",
+        "voice_import",
+        "voice_export",
+        "asset_segment",
+        "job_list",
+        "job_wait",
+        "job_events",
+        "profile_detail"
+      ],
+      "status": "planned_required",
+      "owner": "H1 domain / H2 contracts and adapters",
+      "reason": "Finite missing transport contracts; names are requirements, not callable routes. H0 alias/version-list methods and schemas are domain-only."
+    },
+    {
+      "operations": [
+        "audio_export"
+      ],
+      "status": "implemented_source_unqualified",
+      "owner": "H2 r366",
+      "reason": "Closed HTTP/CLI/MCP managed PCM24 export and supervised worker source; inert fixture lifecycle only. Real converter image digest, sealed registration and installed-family enrollment/qualification remain parent-owned UNRUN. Legacy behavior unchanged; release NO-GO, legacy CLOSED."
+    }
+  ],
+  "headless_legacy_bridges": [
+    {
+      "source": "voice-synth",
+      "commands": [
+        "list-voices",
+        "list-speakers",
+        "capabilities",
+        "register-builtin",
+        "speak",
+        "design-voice",
+        "rename-voice",
+        "delete-voice",
+        "export-voice",
+        "import-voice"
+      ],
+      "bridge": "discover/profile detail; voice list/register/prepare/design/save/aliases/archive/import/export; speech_generate",
+      "owner": "H1/H2/H4"
+    },
+    {
+      "source": "voice-clone",
+      "commands": [
+        "migrate-registry",
+        "synth",
+        "prepare-ref",
+        "self-test"
+      ],
+      "bridge": "migration preview/apply; managed ingest/segment, voice_prepare, explicit audition via speech_generate and voice_save; self-test retained legacy smoke",
+      "owner": "H1/H2/H4"
+    },
+    {
+      "source": "voice-register",
+      "commands": [
+        "(one-shot)"
+      ],
+      "bridge": "managed ingest/prepare/audition/save; preserve explicit speaker, tones, reference selection and quality gates",
+      "owner": "H1/H2"
+    },
+    {
+      "source": "voice-split",
+      "commands": [
+        "(one-shot)"
+      ],
+      "bridge": "managed acquisition/segment selection and optional VAD/separation/transcription; direct clean reference remains supported",
+      "owner": "H1/H2"
+    },
+    {
+      "source": "voice-cpu",
+      "commands": [
+        "speak",
+        "batch"
+      ],
+      "bridge": "speech_generate and ordered jobs with explicit Pocket/Kokoro profiles; retain homogeneous model reuse",
+      "owner": "H1/H2/H4"
+    },
+    {
+      "source": "audio-export",
+      "commands": [
+        "(one-shot)"
+      ],
+      "bridge": "typed audio_export with managed IDs, rate/channels/PCM24/loudness; project assembly/render handles stitch",
+      "owner": "H1/H2"
+    },
+    {
+      "source": "job-runner",
+      "commands": [
+        "plan",
+        "enqueue",
+        "enqueue-beatsheet",
+        "compile",
+        "run",
+        "execute-manifest",
+        "status",
+        "result",
+        "report",
+        "history",
+        "retry",
+        "flush",
+        "package-status"
+      ],
+      "bridge": "required typed script plan/blocks/generate/assembly and job list/get/wait/events/retry/artifact reports; retain Redis CLI separately; flush is scoped administration with dependency refusal, never arbitrary DB clear",
+      "owner": "H1/H2/H3"
+    },
+    {
+      "source": "job-watcher",
+      "commands": [
+        "(daemon)"
+      ],
+      "bridge": "preserve Redis consumer, leases and monitoring as legacy compatibility; new service uses existing supervisor, no public daemon/argv bus",
+      "owner": "H3"
+    }
+  ],
+  "headless_control_policy": "All commands/defaults/environment controls already inventoried above remain unchanged legacy compatibility. Bridge all audio controls (profiles/tones/variants/ranking/chunking/QA/alignment, exact texts, refs, model revisions) as typed capabilities/settings or explicit unsupported_control; paths become managed IDs. Launchers/Redis admin and self-test remain independent compatibility workflows. No silent registry sync, pickle imports or default substitution."
+}

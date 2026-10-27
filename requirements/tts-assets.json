@@ -2,5 +2,18 @@
   "kokoro": {
     "model.onnx": "7d5df8ecf7d4b1878015a32686053fd0eebe2bc377234608764cc0ef3636a6c5",
     "voices.bin": "bca610b8308e8d99f32e6fe4197e7ec01679264efed0cac9140fe9c29f1fbf7d"
+  },
+  "managed_provisioning": {
+    "status": "operator-expected-manifest-required",
+    "backend": "kokoro",
+    "schema_version": 1,
+    "required_inputs": [
+      "independently reviewed expected byte sizes and SHA256 for model.onnx and voices.bin",
+      "reviewed upstream origin and revision for each file",
+      "checkpoint, explicit immutable top-level model revision and language identity",
+      "exact installed runtime package versions",
+      "license and access acceptance metadata"
+    ],
+    "qualification": "none; existing hashes alone do not qualify or activate a real profile"
   }
 }

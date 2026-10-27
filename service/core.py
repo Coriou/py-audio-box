@@ -1,0 +1,908 @@
+"""Phase 1A synthetic durable domain. Trusted control API, never an HTTP payload API.
+
+One Core owns a data root. Canonical dictionaries retain contract 1.3.0 exactly.
+Synthetic prepare and speech (one variant, no reuse) use the same durable fences.
+"""
+from __future__ import annotations
+import copy
+from contextlib import contextmanager
+from datetime import datetime, timedelta, timezone
+import fcntl
+import errno
+import hashlib
+import json
+import os
+from pathlib import Path
+import socket
+import sqlite3
+import stat
+import subprocess
+import sys
+import threading
+import time
+from uuid import uuid4
+import wave
+
+from contracts import validate as oracle
+from service import persistence
+
+
+def encode(value):
+    return json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(',', ':'), allow_nan=False)
+
+
+def new_id(prefix):
+    return prefix + '-' + uuid4().hex
+
+
+def sync_dir(path):
+    fd = os.open(path, os.O_RDONLY | os.O_DIRECTORY)
+    try: os.fsync(fd)
+    finally: os.close(fd)
+
+
+class CompletionObserver:
+    """Control-only, conservative completion evidence; never a child timestamp.
+
+    Observation at/after cutoff fails even if the OS exit happened earlier.
+    No SQLite or publication runs on this thread. Lost evidence on control death
+    is handled by ordinary interrupted-job recovery, never inferred from output.
+    """
+    def __init__(self, process, cutoff):
+        self.process, self.cutoff = process, cutoff
+        self.expired = False
+        self.reaped = False
+        self.thread = threading.Thread(target=self._observe, daemon=True)
+        self.thread.start()
+
+    def _observe(self):
+        try:
+            self.process.wait(timeout=max(0, self.cutoff-time.monotonic()))
+            self.expired = time.monotonic() >= self.cutoff
+        except subprocess.TimeoutExpired:
+            self.expired = True
+        if self.expired and self.process.poll() is None:
+            self.process.kill()
+        try:
+            self.process.wait(timeout=3)
+            self.reaped = True
+        except subprocess.TimeoutExpired:
+            pass  # finish retains active ownership and quarantines the lane
+
+    def collect(self):
+        self.thread.join(timeout=max(0, self.cutoff-time.monotonic())+4)
+        if self.thread.is_alive() or not self.reaped:
+            raise ValueError('lane_quarantined')
+        return self.expired
+
+
+# One slot owns the entire lifetime, including construction and uncertain close.
+# Fixed cardinality only: this is not a whole-process FD or byte budget.
+CORE_OWNERSHIP_LIMIT = 64
+_core_registry_pid = os.getpid()
+_core_registry_mutex = threading.Lock()
+_core_registry = [None] * CORE_OWNERSHIP_LIMIT
+_CORE_ACTION = '; close Cores on their creating threads or restart the process'
+
+
+@contextmanager
+def _core_bookkeeping():
+    # In a fork child the inherited mutex may be locked. Never touch it there.
+    if os.getpid() != _core_registry_pid:
+        raise ValueError('core_ownership_inherited_process'+_CORE_ACTION)
+    if not _core_registry_mutex.acquire(blocking=False):
+        raise ValueError('core_ownership_busy'+_CORE_ACTION)
+    try:
+        yield
+    finally:
+        _core_registry_mutex.release()
+
+
+class _ConstructorCleanup:
+    """One process/thread-bound ownership record, never a Core or exception graph."""
+    __slots__ = ('db', 'owner', 'pid', 'thread', 'root_key', 'root_identity',
+                 'state', 'slot', 'constructor_failed')
+
+    def __init__(self, root_key, slot):
+        self.db = self.owner = None
+        self.pid, self.thread = os.getpid(), threading.current_thread()
+        self.root_key, self.root_identity = root_key, None
+        self.state, self.slot, self.constructor_failed = 'constructing', slot, False
+
+    def _identity(self):
+        if os.getpid() != self.pid or os.getpid() != _core_registry_pid:
+            raise ValueError('core_ownership_inherited_process'+_CORE_ACTION)
+        if threading.current_thread() is not self.thread:
+            raise RuntimeError('constructor_cleanup_requires_owning_thread')
+
+    def bind_root(self, identity):
+        self._identity()
+        with _core_bookkeeping():
+            if any(r is not None and r is not self and r.root_identity == identity
+                   for r in _core_registry):
+                raise ValueError('control_busy')
+            self.root_identity = identity
+
+    def close(self):
+        self._identity()  # PID before mutex, Thread before any resource calls.
+        with _core_bookkeeping():
+            if self.state == 'closed': return
+            if _core_registry[self.slot] is not self:
+                raise RuntimeError('core_ownership_stale_record')
+            if self.state == 'closing': raise ValueError('core_ownership_close_reentrant')
+            if self.state == 'live':
+                raise ValueError('live_owner_close')
+            self.state = 'closing'
+        try:
+            if self.db is not None:
+                self.db.close()
+                # Successful return is the sole DB-release proof.
+                with _core_bookkeeping(): self.db = None
+            if self.owner is not None:
+                self.owner.close()
+            with _core_bookkeeping():
+                if _core_registry[self.slot] is not self:
+                    raise RuntimeError('core_ownership_stale_record')
+                _core_registry[self.slot] = None
+                self.state = 'closed'
+        except BaseException:
+            # No resource operation or fallible diagnostic under this mutex.
+            # If bookkeeping is unavailable, closing remains conservatively held.
+            try:
+                with _core_bookkeeping(): self.state = 'uncertain'
+            except BaseException: pass
+            raise
+
+
+def _reserve_core(root):
+    key = os.path.normcase(os.path.abspath(root))
+    with _core_bookkeeping():
+        if any(r is not None and r.root_key == key for r in _core_registry):
+            raise ValueError('control_busy')
+        slot = next((i for i, r in enumerate(_core_registry) if r is None), None)
+        if slot is None:
+            raise ValueError('core_ownership_capacity'+_CORE_ACTION)
+        record = _ConstructorCleanup(key, slot)
+        _core_registry[slot] = record
+        return record
+
+
+@contextmanager
+def _core_maintenance_lease():
+    # Parent alone releases this lease. Child keeps the inherited locked mutex
+    # and rejects all registry entry points by PID before touching that mutex.
+    with _core_bookkeeping():
+        if any(r is not None for r in _core_registry):
+            raise ValueError('b2_maintenance_core_ownership_busy'+_CORE_ACTION)
+        yield
+
+
+@contextmanager
+def native_maintenance(root):
+    """Existing Core registry + lifetime lock, without constructing/recovering Core.
+
+    Only an existing private owner is admissible. SQLite is opened read-only and
+    query-only; constructor cleanup retains the same uncertain-close obligations.
+    """
+    from service import native_package as n
+    root = n.directory(str(Path(root).absolute()))
+    record = _reserve_core(root)
+    try:
+        info = root.stat()
+        record.bind_root((info.st_dev, info.st_ino))
+        # Maintenance must never create a missing lock or database.
+        from service.native_runtime import _read
+        _read(root/'control.lock', 0)
+        fd = os.open(root/'control.lock', os.O_RDWR | os.O_NOFOLLOW | os.O_NONBLOCK)
+        record.owner = os.fdopen(fd, 'r+b')
+        fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        _read(root/'core.sqlite', 16*1024**2)
+        record.db = sqlite3.connect((root/'core.sqlite').as_uri()+'?mode=ro',
+                                   uri=True, isolation_level=None)
+        record.db.execute('PRAGMA query_only=ON')
+        record.db.execute('BEGIN')
+        class ReadOnlyOwner:
+            # Pure retained-media reader, no recovery/schema/owner constructor.
+            asset = Core.asset
+        owner = ReadOnlyOwner()
+        owner.root, owner.db = root, record.db
+        yield owner
+    finally:
+        record.close()
+
+
+# Read-only compatibility view for the existing F2 constructor probes. It owns
+# no additional records/resources; all retention is in the fixed registry.
+from collections.abc import Set as _AbstractSet
+class _FailedConstructorView(_AbstractSet):
+    def __iter__(self):
+        with _core_bookkeeping():
+            return iter(tuple(r for r in _core_registry if r is not None and r.constructor_failed))
+    def __len__(self): return sum(1 for _ in self)
+    def __contains__(self, record): return any(r is record for r in self)
+    def _from_iterable(self, values): return set(values)
+
+_failed_constructor_cleanup = _FailedConstructorView()
+
+
+class Core:
+    def __init__(self, root: Path, *, historical_local=False, _native_activation=None, _publication_creation=2, _installed_family=None):
+        if type(_publication_creation) is not int or _publication_creation not in (1,2):
+            raise ValueError('internal_publication_creation')
+        if _installed_family is not None:
+            from service.installed_export import _Expectation
+            if type(_installed_family) is not _Expectation or _native_activation is not None or _publication_creation != 2:
+                raise ValueError('checked_installed_family_required')
+        self._installed_family = _installed_family
+        self.historical_local = historical_local
+        self.root = Path(root).absolute()
+        if _installed_family is not None:
+            _installed_family.check_root(self.root)
+        self._ownership = _reserve_core(self.root)
+        self.owner = self._db = None
+        try:
+            fresh = not self.root.exists() or (self.root.is_dir() and not any(self.root.iterdir()))
+            self.fresh_initialized = fresh
+            if not fresh and (_publication_creation==1 or _native_activation is not None):
+                # Installed/native constructor choice is also a pre-writer gate.
+                from service.recovery import private_database
+                from contextlib import closing
+                with private_database(self.root/'core.sqlite') as private:
+                    with closing(sqlite3.connect(private.as_uri()+'?mode=ro',uri=True,timeout=0)) as check:
+                        check.execute('PRAGMA trusted_schema=OFF')
+                        if persistence.store_format(check)!=1:
+                            raise ValueError('installed_native_publication_v2_unsupported')
+            if not fresh and _installed_family is not None:
+                from service.recovery import private_database
+                from contextlib import closing
+                with private_database(self.root/'core.sqlite') as private:
+                    with closing(sqlite3.connect(private.as_uri()+'?mode=ro',uri=True,timeout=0)) as check:
+                        check.execute('PRAGMA trusted_schema=OFF')
+                        _installed_family.check(check)
+            persistence.mkdir_durable(self.root, sync_dir)
+            if self.root.is_symlink() or self.root.stat().st_uid != os.getuid():
+                raise ValueError('foreign_root')
+            if not fresh and not (self.root/'core.sqlite').is_file():
+                raise persistence.PublicationQuarantine('incomplete_core_initialization')
+            info = self.root.stat()
+            self._ownership.bind_root((info.st_dev, info.st_ino))
+            self.root.chmod(0o700)
+            self.owner = self._ownership.owner = os.fdopen(os.open(self.root / 'control.lock', os.O_RDWR|os.O_CREAT|os.O_NOFOLLOW,0o600),'r+b')
+            try: fcntl.flock(self.owner, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            except BlockingIOError:
+                raise ValueError('control_busy') from None
+            from service.native_renewal import startup_guard
+            startup_guard(self.root,activation=_native_activation is not None)
+            for name in ('staging', 'assets', 'owners'):
+                path = self.root / name
+                if not fresh and not path.is_dir():
+                    raise persistence.PublicationQuarantine('incomplete_core_namespace')
+                persistence.mkdir_durable(path, sync_dir)
+                if path.is_symlink() or path.stat().st_uid != os.getuid():
+                    raise ValueError('foreign_namespace')
+                path.chmod(0o700)
+            database=self.root/'core.sqlite'
+            if fresh:
+                fd=os.open(database,os.O_WRONLY|os.O_CREAT|os.O_EXCL,0o600)
+                try: os.fsync(fd)
+                finally: os.close(fd)
+                sync_dir(self.root)
+            elif database.is_symlink() or database.stat().st_uid!=os.getuid():
+                raise persistence.PublicationQuarantine('foreign_database')
+            self._db = self._ownership.db = sqlite3.connect(self.root / 'core.sqlite', timeout=2, isolation_level=None)
+            version = self.db.execute('PRAGMA user_version').fetchone()[0]
+            if version == 2 and (_publication_creation == 1 or _native_activation is not None):
+                raise ValueError('installed_native_publication_v2_unsupported')
+            if _native_activation is not None:
+                from service.native_activation import NativeActivation
+                if type(_native_activation) is not NativeActivation:
+                    raise ValueError('checked_native_activation_required')
+                _publication_creation=1
+                _native_activation.retained_check(self)
+            if not fresh and _installed_family is not None:
+                _installed_family.check(self.db)
+            self.db.execute('PRAGMA journal_mode=WAL')
+            self.db.execute('PRAGMA synchronous=FULL')
+            self.db.execute('PRAGMA foreign_keys=ON')
+            version = self.db.execute('PRAGMA user_version').fetchone()[0]
+            if version not in (0, 1, 2): raise ValueError('unsupported_store_version')
+            if version == 2 and (_publication_creation == 1 or _native_activation is not None):
+                raise ValueError('installed_native_publication_v2_unsupported')
+            if version == 0 and not fresh:
+                raise persistence.PublicationQuarantine('incomplete_core_schema')
+            if version == 0:
+                self.db.executescript('''BEGIN IMMEDIATE;
+            CREATE TABLE jobs(seq INTEGER PRIMARY KEY AUTOINCREMENT, id TEXT UNIQUE NOT NULL,
+              principal TEXT NOT NULL, operation TEXT NOT NULL, key TEXT NOT NULL,
+              fingerprint TEXT NOT NULL, job TEXT NOT NULL, context TEXT NOT NULL,
+              retry_of TEXT REFERENCES jobs(id), UNIQUE(principal,operation,key));
+            CREATE TABLE revisions(project TEXT NOT NULL, revision INTEGER NOT NULL,
+              snapshot TEXT NOT NULL, PRIMARY KEY(project,revision));
+            CREATE TABLE events(seq INTEGER PRIMARY KEY AUTOINCREMENT, job_id TEXT NOT NULL REFERENCES jobs(id), state TEXT NOT NULL);
+            CREATE TABLE publications(job_id TEXT PRIMARY KEY REFERENCES jobs(id), manifest TEXT NOT NULL, artifact TEXT NOT NULL, message TEXT NOT NULL);
+            CREATE TABLE assets(id TEXT PRIMARY KEY, metadata TEXT NOT NULL);
+            CREATE TABLE artifacts(id TEXT PRIMARY KEY, metadata TEXT NOT NULL);
+            ''')
+                try:
+                    self.p1 = persistence.initialize(self.db, fresh=True,creation=_publication_creation)
+                    self.db.execute('COMMIT')
+                except BaseException:
+                    self.db.execute('ROLLBACK')
+                    raise
+            else:
+                self.p1 = persistence.initialize(self.db, fresh=False)
+            self.publication_format = persistence.store_format(self.db) if self.p1 else None
+            if not self.p1:
+                self.db.execute('PRAGMA query_only=ON')  # Also fence direct schema writers.
+            # SQLite FULL protects WAL commits; persist the database/WAL namespace too.
+            sync_dir(self.root)
+            sync_dir(self.root.parent)
+            self.active = None
+            self._publication_storage_failed = False
+            self._transaction_serial = 0
+            from service.voice_store import VoiceStore, initialize as initialize_voices
+            if not fresh and self.publication_format==2 and not self.db.execute("SELECT 1 FROM sqlite_master WHERE name='voice_catalogue_format'").fetchone():
+                raise persistence.PublicationQuarantine('incomplete_core_initialization')
+            initialize_voices(self)
+            self.voices = VoiceStore(self)
+            with _core_bookkeeping(): self._ownership.state = 'live'
+        except BaseException as primary:
+            self._ownership.constructor_failed = True
+            try:
+                self._ownership.close()
+            except BaseException as secondary:
+                primary.add_note('constructor cleanup failed: '+type(secondary).__name__)
+            raise
+
+    @property
+    def db(self):
+        # A failed close makes the Core terminal even if SQLite is still live.
+        if self._ownership.state not in ('constructing', 'live', 'closed'):
+            raise sqlite3.ProgrammingError('Core closed for normal work')
+        return self._db
+
+    def close(self):
+        self._ownership._identity()
+        if self.active is not None: raise ValueError('live_owner_close')
+        with _core_bookkeeping():
+            if self._ownership.state == 'live': self._ownership.state = 'permitted'
+        self._ownership.close()
+
+    @contextmanager
+    def transaction(self, *, _deferred=False):
+        if not self.p1:
+            raise persistence.PublicationQuarantine('pre_p1_inspect_only')
+        self._transaction_serial += 1
+        self.db.execute('BEGIN' if _deferred else 'BEGIN IMMEDIATE')
+        try:
+            yield
+            self.db.execute('COMMIT')
+        except BaseException:
+            try:
+                self.db.execute('ROLLBACK')
+            except sqlite3.Error:
+                # Do not expose an uncommitted local success after rollback denial.
+                # DB-API rollback is a bounded fallback; failure closes this handle.
+                try: self.db.rollback()
+                except sqlite3.Error: self.db.close()
+                # Preserve the original COMMIT/write error, including ambiguity.
+            raise
+
+    def _load(self, job_id):
+        row = self.db.execute('SELECT job,context FROM jobs WHERE id=?', (job_id,)).fetchone()
+        if row is None: raise ValueError('not_found')
+        return json.loads(row[0]), json.loads(row[1])
+
+    def _save(self, job):
+        oracle.validate('job', job)
+        self.db.execute('UPDATE jobs SET job=? WHERE id=?', (encode(job), job['id']))
+        self.db.execute('INSERT INTO events(job_id,state) VALUES (?,?)', (job['id'], job['state']))
+
+    def job(self, job_id: str) -> dict:
+        return self._load(job_id)[0]
+
+    def jobs(self, principal: str, after: int = 0, limit: int = 20) -> list:
+        if not 0 <= after or not 1 <= limit <= 20: raise ValueError('invalid_range')
+        return [dict(cursor=r[0], job=json.loads(r[1])) for r in self.db.execute(
+            'SELECT seq,job FROM jobs WHERE principal=? AND seq>? ORDER BY seq LIMIT ?', (principal,after,limit))]
+
+    def events(self, job_id: str, after: int = 0, limit: int = 20) -> list:
+        if not 0 <= after or not 1 <= limit <= 20: raise ValueError('invalid_range')
+        return [dict(cursor=r[0], state=r[1]) for r in self.db.execute(
+            'SELECT seq,state FROM events WHERE job_id=? AND seq>? ORDER BY seq LIMIT ?', (job_id,after,limit))]
+
+    def create_project(self, project: dict) -> dict:
+        oracle.validate('project', project)
+        if project['revision'] != 1: raise ValueError('revision_conflict')
+        with self.transaction():
+            self.db.execute('INSERT INTO revisions VALUES (?,?,?)', (project['id'],1,encode(project)))
+        return copy.deepcopy(project)
+
+    def project(self, project_id: str, revision: int | None = None) -> dict:
+        row = self.db.execute('SELECT snapshot FROM revisions WHERE project=? AND (? IS NULL OR revision=?) ORDER BY revision DESC LIMIT 1', (project_id,revision,revision)).fetchone()
+        if row is None: raise ValueError('not_found')
+        return json.loads(row[0])
+
+    def edit_text(self, project_id: str, expected_revision: int, block_id: str, text: str) -> dict:
+        with self.transaction():
+            before = self.project(project_id)
+            oracle.revision(expected_revision, before['revision'])
+            after = copy.deepcopy(before)
+            block = next((b for b in after['blocks'] if b['id'] == block_id), None)
+            if block is None: raise ValueError('not_found')
+            block['text'] = text
+            after['revision'] += 1
+            oracle.edit_semantics(before, after, 'block_text')
+            self.db.execute('INSERT INTO revisions VALUES (?,?,?)', (project_id,after['revision'],encode(after)))
+        return after
+
+    def execution_duplicate(self, principal, operation, key, request, *, context=None, retry_of=None):
+        """Replay request hashes only with their durable retry lineage.
+
+        Pre-public-control retries used the ordinary request digest. Never infer
+        lineage from that digest or from the optional serialized job property.
+        This read is also used inside the submission transaction.
+        """
+        row = self.db.execute('SELECT fingerprint,job,context,retry_of FROM jobs WHERE principal=? AND operation=? AND key=?',
+                              (principal,operation,key)).fetchone()
+        if row is None: return None
+        fingerprint, raw_job, raw_context, lineage = row
+        job = json.loads(raw_job)
+        expected = oracle.fingerprint(principal, operation,
+            dict(request=request,retry_of=retry_of) if retry_of else request)
+        legacy = oracle.fingerprint(principal, operation, request)
+        oracle.require(lineage == retry_of and fingerprint in (expected, legacy)
+                       and job['principal_id'] == principal and job['operation'] == operation
+                       and job['idempotency_key'] == key
+                       and job.get('retry_of', lineage) == lineage, 'idempotency_conflict')
+        if retry_of:
+            source = self.db.execute('SELECT principal,operation,job,context FROM jobs WHERE id=?', (retry_of,)).fetchone()
+            oracle.require(source is not None and source[0] == principal and source[1] == operation,
+                           'idempotency_conflict')
+            previous = json.loads(source[2])
+            stored = json.loads(raw_context)
+            oracle.require(context is not None and encode(stored) == encode(context) == encode(json.loads(source[3]))
+                           and previous['id'] == retry_of and previous['principal_id'] == principal
+                           and previous['operation'] == operation and stored['plan']['operation'] == operation
+                           and stored['plan']['request'] == request
+                           and job['input_sha256'] == previous['input_sha256'] == oracle.plan_hash(stored['plan']),
+                           'idempotency_conflict')
+        return job
+
+    def require_export_format(self, operation):
+        if operation == 'audio_export' and (not self.p1 or persistence.store_format(self.db) != 2):
+            raise ValueError('publication_format_migration_required')
+
+    def submit_execution(self, principal: str, key: str, context: dict, *, retry_of: str | None = None, _dispatch_settings=None, _admission=None, _profiles=None) -> dict:
+        """One trusted submission transaction for synthetic and closed engine contexts.
+
+        Resolve context in control before calling. Duplicate lookup precedes resolution.
+        """
+        plan = context['plan']
+        operation = plan['operation']
+        fingerprint = oracle.fingerprint(principal, operation, dict(request=plan['request'],retry_of=retry_of) if retry_of else plan['request'])
+        duplicate = self.execution_duplicate(principal, operation, key, plan['request'], context=context, retry_of=retry_of)
+        if duplicate is not None: return duplicate
+        if self._installed_family is not None:
+            self._installed_family.check(self.db)
+        self.require_export_format(operation)
+        from service.native_renewal import preallocate
+        preallocate(self,context)
+        from worker.runtime_protocol import execution, dispatch_mode
+        spec=execution(context)
+        if spec is not None and (_admission is None or _profiles is None or _dispatch_settings is None or _dispatch_settings[0]!=dispatch_mode(spec)):
+            raise ValueError('authenticated_dispatch_required')
+        if _admission is not None:
+            _admission.demand(context,_profiles)
+        from contextlib import nullcontext
+        with (_admission._preflight() if _admission is not None else nullcontext()), self.transaction():
+            duplicate = self.execution_duplicate(principal, operation, key, plan['request'], context=context, retry_of=retry_of)
+            if duplicate is not None: return duplicate
+            if operation not in ('speech_generate', 'voice_prepare', 'audio_export'): raise NotImplementedError(operation)
+            if len(encode(context).encode()) > 48000: raise ValueError('plan_limit')
+            oracle.plan_hash(plan)
+            oracle.frozen_plan(plan, context['bundles'])
+            if operation == 'speech_generate' and (plan['request']['variants'] != 1 or plan['request']['reuse'] != 'never'):
+                raise NotImplementedError('only single synthetic result without reuse')
+            self._input_assets(principal, plan)
+            if retry_of:
+                old, previous = self._load(retry_of)
+                oracle.require(old['state'] in ('failed','cancelled') and all(a['reaped'] for a in old['attempts']) and old['principal_id'] == principal and encode(previous) == encode(context)
+                               and old['input_sha256'] == oracle.plan_hash(previous['plan'])
+                               and old['input_sha256'] == oracle.plan_hash(plan), 'invalid_retry')
+            count = sum(json.loads(r[0])['state'] in ('queued','running','cancel_requested') for r in self.db.execute('SELECT job FROM jobs'))
+            if count >= min(32, plan['resolved']['profile']['limits']['queue']): raise ValueError('queue_full')
+            job = dict(id=new_id('job'), operation=operation,input_sha256=oracle.plan_hash(plan),principal_id=principal,idempotency_key=key,state='queued',generation=0,attempts=[],artifact_ids=[],stage='queued',deadline='')
+            if retry_of: job['retry_of'] = retry_of
+            oracle.validate('job', job)
+            self.db.execute('INSERT INTO jobs(id,principal,operation,key,fingerprint,job,context,retry_of) VALUES (?,?,?,?,?,?,?,?)', (job['id'],principal,operation,key,fingerprint,encode(job),encode(context),retry_of))
+            self.db.execute('INSERT INTO events(job_id,state) VALUES (?,?)', (job['id'],'queued'))
+            if _admission is not None:
+                _admission.reserve_tx(job,context,_profiles)
+            if _dispatch_settings is not None:
+                self.db.execute('INSERT INTO dispatch_settings VALUES (?,?,?)',(job['id'],*_dispatch_settings))
+        return job
+
+    def submit_synthetic(self, *args, **kwargs):
+        """Historical synthetic entry point, sharing the sole submission transaction."""
+        return self.submit_execution(*args, **kwargs)
+
+    def start(self, *, delay: float = 0) -> dict | None:
+        if not self.historical_local: raise ValueError('dispatcher_required')
+        if self.active is not None: raise ValueError('lane_busy')
+        if self.reconcile(): raise ValueError('lane_quarantined')
+        with self.transaction():
+            row = next((json.loads(r[0]) for r in self.db.execute('SELECT job FROM jobs ORDER BY seq') if json.loads(r[0])['state']=='queued'), None)
+            if row is None: return None
+            job = row
+            attempt = dict(id=new_id('attempt'),generation=job['generation']+1,owner_id=new_id('owner'),staging_id=new_id('stage'),reaped=False)
+            stage = self.root / 'staging' / attempt['staging_id']
+            stage.mkdir(mode=0o700)
+            job.update(state='running',stage='synthetic',generation=attempt['generation'],attempts=[*job['attempts'],attempt],deadline=(datetime.now(timezone.utc)+timedelta(seconds=min(30,self._load(job['id'])[1]['plan']['resolved']['profile']['limits']['deadline_seconds']))).isoformat())
+            self._save(job)
+        # Anchor persisted wall deadline once to a monotonic control cutoff.
+        cutoff = time.monotonic() + (datetime.fromisoformat(job['deadline'])-datetime.now(timezone.utc)).total_seconds()
+        lock = open(self.root / 'owners' / attempt['owner_id'], 'a+b')
+        fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        parent, child = socket.socketpair(socket.AF_UNIX, socket.SOCK_STREAM)
+        try:
+            process = subprocess.Popen([sys.executable,'-m','worker.synthetic',str(child.fileno()),str(lock.fileno()),str(stage),str(delay)],pass_fds=(child.fileno(),lock.fileno()),stdin=subprocess.DEVNULL,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL,start_new_session=True)
+            self.active = (job['id'],process,parent,lock)
+            process.completion = CompletionObserver(process, cutoff)
+            _, context = self._load(job['id'])
+            message = self._message(job, context, 'execute')
+            # Synthetic execution deliberately bypasses real-hardware admission only.
+            parent.sendall((encode(message)+'\n').encode())
+        finally: child.close()
+        return job
+
+    def _input_assets(self, principal, plan):
+        ids = oracle.required_asset_ids(plan)
+        for asset in plan['assets']:
+            self.voices._asset(principal, asset['id'])
+            oracle.require(self.asset(asset['id']) == asset, 'asset_metadata_mismatch')
+        oracle.require(set(ids) == {a['id'] for a in plan['assets']}, 'asset_dependencies_mismatch')
+        return ids
+
+    def _message(self, job, context, kind):
+        a = job['attempts'][-1]
+        return dict(protocol_version='1.3.0',kind=kind,job_id=job['id'],attempt_id=a['id'],generation=a['generation'],input_sha256=job['input_sha256'],input_asset_ids=oracle.required_asset_ids(context['plan']),staging_id=a['staging_id'],owner_id=a['owner_id'],identity=context['plan']['resolved']['identity'],deadline=job['deadline'],stage='completed' if kind=='result' else 'loading',result_asset_ids=[],plan=context['plan'])
+
+    def request_cancel(self, job_id: str, *, _cancel_unstarted=False, _admission=None) -> dict:
+        with self.transaction():
+            job,_ = self._load(job_id)
+            if job['state'] in ('queued','running'):
+                job['state']='cancel_requested'; self._save(job)
+                if _cancel_unstarted and not job['attempts']:
+                    job.update(state='cancelled',stage='never_started');self._save(job)
+                    if _admission is not None:_admission.store.release_tx(job['id'],unstarted=True)
+        return job
+
+    def finish(self, *, cancel: bool = False, fault=None) -> dict:
+        """Wait/reap known child; verified result can win cancellation. Fault hooks E2 only."""
+        if not self.historical_local: raise ValueError('dispatcher_required')
+        if self.active is None: raise ValueError('no_owner')
+        job_id, process, connection, lock = self.active
+        if cancel:
+            self.request_cancel(job_id)
+            if process.poll() is None: process.terminate()
+        expired = process.completion.collect()
+        connection.settimeout(2)
+        raw = bytearray()
+        try:
+            while len(raw) <= 1024*1024:
+                try: chunk = connection.recv(65536)
+                except ConnectionResetError:
+                    raw.clear()
+                    break
+                if not chunk: break
+                raw.extend(chunk)
+            if len(raw)>1024*1024: raise ValueError('result_limit')
+            proposal=json.loads(raw) if raw and not expired else None
+            if proposal:
+                self._publish(job_id, proposal, fault=fault)
+            else:
+                with self.transaction():
+                    job,_=self._load(job_id)
+                    job['state']='cancelled' if job['state']=='cancel_requested' else 'failed'
+                    job['stage']='deadline' if expired else 'reaped';job['attempts'][-1]['reaped']=True;self._save(job)
+        finally:
+            connection.close(); lock.close(); self.active=None
+        self.reconcile()
+        return self.job(job_id)
+
+    def _verified(self, job, proposal, *, stage_root=None, engine_uid=None):
+        message, manifest = proposal['message'], proposal['manifest']
+        _,context=self._load(job['id'])
+        owner=job['attempts'][-1]['owner_id'] # bound to the private socket inherited only by our child
+        oracle.worker_message(message,job,self._input_assets(job['principal_id'], context['plan']),transport_owner=owner,context=context)
+        oracle.validate('result_manifest',manifest)
+        roles=context['plan'].get('reference_roles')
+        if roles:
+            oracle.require(context['plan']['operation']=='voice_prepare' and roles['reference_kind']=='prepared_reference', 'result_mismatch')
+            names={roles['reference_asset_id']:'reference.wav',roles['audition_asset_id']:'audition.wav'}
+            oracle.require([o['id'] for o in manifest['outputs']]==list(names), 'result_mismatch')
+            from worker.runtime_protocol import execution
+            if execution(context) is None:
+                from worker.synthetic import fixture_outputs
+                _, fixture_files=fixture_outputs(message)
+                fixtures=dict(fixture_files)
+        else:
+            oracle.require(len(manifest['outputs'])==1, 'result_mismatch')
+            names={manifest['outputs'][0]['id']:'output.wav'}
+        oracle.require(len(manifest['outputs'])==len(names) and {o['id'] for o in manifest['outputs']}==set(names), 'result_mismatch')
+        data_by_id={};hashes={}
+        for output in manifest['outputs']:
+            filename=names[output['id']]
+            path=(Path(stage_root) if stage_root is not None else self.root/'staging')/job['attempts'][-1]['staging_id']/filename
+            stage=path.parent
+            oracle.require(not stage.is_symlink() and stage.stat().st_uid==os.getuid() and stat.S_IMODE(stage.stat().st_mode)==(0o770 if stage_root is not None else 0o700), 'foreign_stage')
+            from worker.runtime_protocol import execution, generated_source
+            spec=execution(context)
+            byte_limit=(spec.reference_bytes+44 if filename=='reference.wav' else spec.max_output_bytes) if spec else 1024*1024
+            fd=os.open(path, os.O_RDONLY|os.O_NOFOLLOW)
+            with os.fdopen(fd,'rb') as stream:
+                info=os.fstat(stream.fileno())
+                oracle.require(stat.S_ISREG(info.st_mode) and info.st_uid==(engine_uid if stage_root is not None else os.getuid()) and info.st_nlink==1 and info.st_size<=byte_limit, 'foreign_media')
+                data=stream.read(byte_limit+1)
+            import io
+            if context['plan']['operation']=='audio_export':
+                from worker.audio_export import pcm
+                measured=pcm(data,rate=spec.sample_rate,channels=spec.channels,bits=24)
+            else:
+                with wave.open(io.BytesIO(data),'rb') as wav:
+                    measured=dict(sha256=hashlib.sha256(data).hexdigest(),frames=wav.getnframes(),sample_rate=wav.getframerate(),channels=wav.getnchannels(),media_format='wav',media_subtype={2:'PCM_16',3:'PCM_24',4:'PCM_32'}.get(wav.getsampwidth(),'OTHER'))
+                    oracle.require(len(wav.readframes(wav.getnframes()))==measured['frames']*measured['channels']*wav.getsampwidth(), 'missing_media')
+            oracle.require(measured=={k:output[k] for k in measured}, 'media_mismatch')
+            if context['plan']['operation']=='audio_export':
+                from worker.audio_export import verify_output
+                verify_output(context,data,output)
+            elif spec is None and roles:
+                oracle.require(data==fixtures[filename], 'synthetic_policy')
+            elif spec is None:
+                expected=dict(kind='synthetic',source_sha256=measured['sha256'],source_id='phase-1a-silence',missing_fields=[])
+                oracle.require(output['provenance']==expected and measured['frames']==4800 and measured['sample_rate']==48000 and measured['channels']==1 and measured['media_subtype']=='PCM_16', 'synthetic_policy')
+            elif roles and filename=='reference.wav':
+                from worker.engines.pocket_prepare import selected_reference
+                if spec.engine == 'qwen':
+                    from worker.engines.qwen_prepare import selected_reference
+                from worker.engines.pocket import _read
+                raw=_read(self.root/'assets'/spec.reference_id,spec.reference_bytes,spec.reference_sha256)
+                prepared,frames=selected_reference(spec,raw)
+                oracle.require(data==prepared and measured['frames']==frames and measured['sample_rate']==spec.reference_rate, 'prepared_policy')
+            else:
+                expected=dict(kind='generated',source_sha256=measured['sha256'],source_id=generated_source(context),missing_fields=[])
+                oracle.require(output['provenance']==expected and 0<measured['frames']<=spec.max_frames and measured['sample_rate']==spec.sample_rate and measured['channels']==1 and measured['media_subtype']=='PCM_16' and len(data)==44+2*measured['frames'], 'generated_policy')
+            data_by_id[output['id']]=data
+            hashes[output['id']]=measured['sha256']
+        artifact=dict(id=manifest['artifact_id'],job_id=job['id'],generation=job['generation'],asset_ids=[o['id'] for o in manifest['outputs']],input_sha256=job['input_sha256'],project_revision=0,manifest_sha256=oracle.canonical_hash(manifest),identity=context['plan']['resolved']['identity'],attempt_id=job['attempts'][-1]['id'],owner_id=owner,staging_id=job['attempts'][-1]['staging_id'])
+        if context['plan']['operation']=='audio_export': artifact['audio_export']=manifest['audio_export']
+        oracle.publication(job,job['attempts'][-1],artifact,hashes,transport_owner=owner,context=context,manifest=manifest,verified_result=message,allowed_assets=self._input_assets(job['principal_id'], context['plan']))
+        return (data_by_id if roles else data),manifest,artifact,message
+
+    @persistence.storage_session
+    def _publish(self, job_id, proposal, fault=None, *, stage_root=None, engine_uid=None):
+        job,_=self._load(job_id)
+        try:
+            data,manifest,artifact,message=self._verified(job,proposal,stage_root=stage_root,engine_uid=engine_uid)
+        except OSError as exc:
+            if exc.errno in (errno.ENOENT, errno.ELOOP):
+                raise oracle.ContractError('missing_or_symlink_result') from exc
+            raise
+        if not self.p1:
+            raise persistence.PublicationQuarantine('pre_p1_root')
+        if isinstance(data,bytes): data={manifest['outputs'][0]['id']:data}
+        entries=[dict(destination=o['id'],temporary=new_id('adoption'),sha256=o['sha256'],byte_length=len(data[o['id']])) for o in manifest['outputs']]
+        # Preserve historical single-output rows byte-for-byte in shape.
+        e=entries[0]; columns=(e['destination'],e['temporary'],e['sha256'],e['byte_length'])
+        binding=encode(artifact if len(entries)==1 else dict(version='prepared-reference-adoption-v1',artifact=artifact,manifest=manifest,files=entries))
+        persistence.publication_intent((binding,*columns),publication=dict(artifact=encode(artifact),manifest=encode(manifest)),job=job,context=self._load(job_id)[1],publication_format=self.publication_format)
+        with self.transaction():
+            self.db.execute('INSERT INTO publications VALUES (?,?,?,?)', (job_id,encode(manifest),encode(artifact),encode(message)))
+            self.db.execute('INSERT INTO publication_work VALUES (?,?,?,?,?,?)', (job_id,binding,*columns))
+        sync_dir(self.root)
+        if fault: fault('before_adoption')
+        for index,e in enumerate(entries):
+            if fault: fault('before_file_'+str(index))
+            destination=self.root/'assets'/e['destination']
+            temporary=destination.parent/e['temporary']
+            with open(temporary,'xb') as stream:
+                if self._installed_family is not None:
+                    os.fchmod(stream.fileno(), 0o600)
+                persistence.write_complete(stream, data[e['destination']])
+            if fault: fault('after_file_'+str(index))
+            os.link(temporary,destination,follow_symlinks=False)
+            if fault: fault('after_link_'+str(index))
+            if fault: fault('after_link')
+        self._publication_barrier(job_id, manifest, artifact)
+        if fault: fault('after_adoption')
+        self._commit_publication(job_id)
+        if fault: fault('after_commit')
+
+    def _publication_barrier(self, job_id, manifest, artifact):
+        if not self.p1:
+            raise persistence.PublicationQuarantine('pre_p1_intent')
+        row=self.db.execute('SELECT binding,destination,temporary,sha256,byte_length FROM publication_work WHERE job_id=?',(job_id,)).fetchone()
+        if row is None:
+            raise persistence.PublicationQuarantine('missing_publication_provenance')
+        job,context=self._load(job_id)
+        bound,entries=persistence.publication_intent(row,publication=dict(artifact=encode(artifact),manifest=encode(manifest)),job=job,context=context,publication_format=self.publication_format)
+        stored=json.loads(row[0])
+        if encode(bound)!=encode(artifact) or ('version' in stored and encode(stored['manifest'])!=encode(manifest)):
+            raise persistence.PublicationQuarantine('publication_work_mismatch')
+        job,context=self._load(job_id)
+        attempt=job['attempts'][-1]
+        oracle.publication(job,attempt,artifact,{e['destination']:e['sha256'] for e in entries},transport_owner=attempt['owner_id'],
+            context=context,manifest=manifest,
+            verified_result=json.loads(self.db.execute('SELECT message FROM publications WHERE job_id=?',(job_id,)).fetchone()[0]),allowed_assets=self._input_assets(job['principal_id'], context['plan']))
+        directory=self.root/'assets'
+        for e in entries:
+            destination,temporary,digest,length=(e[k] for k in ('destination','temporary','sha256','byte_length'))
+            path=directory/destination
+            try: path.lstat()
+            except FileNotFoundError:
+                raise ValueError('incomplete_adoption') from None
+            alias=directory/temporary
+            try: alias_info=alias.lstat()
+            except FileNotFoundError: alias_info=None
+            if alias_info is not None:
+                first=persistence.verify_file(path,digest,length,links=2,publication_format=self.publication_format,job=job,context=context)
+                second=persistence.verify_file(alias,digest,length,links=2,publication_format=self.publication_format,job=job,context=context)
+                if (first.st_dev,first.st_ino)!=(second.st_dev,second.st_ino):
+                    raise persistence.PublicationQuarantine('foreign_publication_alias')
+                for (asset_id,) in self.db.execute('SELECT id FROM assets'):
+                    try:
+                        other=(directory/asset_id).lstat()
+                    except FileNotFoundError:
+                        raise persistence.PublicationQuarantine('unavailable_published_inode') from None
+                    if (other.st_dev,other.st_ino)==(first.st_dev,first.st_ino):
+                        raise persistence.PublicationQuarantine('published_inode_alias')
+                alias.unlink()  # Only the exact recorded redundant protocol alias.
+                sync_dir(directory)
+            persistence.verify_file(path,digest,length,links=1,publication_format=self.publication_format,job=job,context=context)
+            sync_dir(directory)
+
+    @persistence.storage_session
+    def _commit_publication(self, job_id):
+        job,_=self._load(job_id)
+        if job['state'] in ('succeeded','failed','cancelled'):
+            return  # Read durable state after ambiguous COMMIT; never rewrite history.
+        row=self.db.execute('SELECT manifest,artifact FROM publications WHERE job_id=?',(job_id,)).fetchone()
+        manifest,artifact=map(json.loads,row)
+        self._publication_barrier(job_id,manifest,artifact)
+        with self.transaction():
+            job,_=self._load(job_id)
+            oracle.require(job['state'] in ('running','cancel_requested'), 'invalid_transition')
+            for output in manifest['outputs']:
+                self.db.execute('INSERT INTO assets VALUES (?,?)',(output['id'],encode(output)))
+            self.db.execute('INSERT INTO artifacts VALUES (?,?)',(artifact['id'],encode(artifact)))
+            job.update(state='succeeded',stage='completed',artifact_ids=[artifact['id']])
+            job['attempts'][-1]['reaped']=True
+            self._save(job)
+
+    def reconcile(self) -> bool:
+        """No retries, kills or blind deletion. An inherited lock fences a living fake owner."""
+        if not self.historical_local: raise ValueError('dispatcher_required')
+        if not self.p1:
+            return any(json.loads(raw)['state'] not in ('succeeded','failed','cancelled')
+                       for (raw,) in self.db.execute('SELECT job FROM jobs'))
+        quarantined=False
+        for (raw,) in self.db.execute('SELECT job FROM jobs').fetchall():
+            job=json.loads(raw)
+            if job['state'] not in ('running','cancel_requested'): continue
+            if not job['attempts']:
+                with self.transaction():
+                    job.update(state='cancelled',stage='never_started');self._save(job)
+                continue
+            if self.active and self.active[0]==job['id']: quarantined=True;continue
+            a=job['attempts'][-1]
+            with open(self.root/'owners'/a['owner_id'],'a+b') as lock:
+                try: fcntl.flock(lock,fcntl.LOCK_EX|fcntl.LOCK_NB)
+                except BlockingIOError: quarantined=True;continue
+                row=self.db.execute('SELECT manifest FROM publications WHERE job_id=?',(job['id'],)).fetchone()
+                if row:
+                    try: self._commit_publication(job['id'])
+                    except (persistence.PublicationQuarantine, sqlite3.Error):
+                        quarantined=True
+                    except OSError:
+                        quarantined=True
+                    except (ValueError,oracle.ContractError):
+                        with self.transaction():
+                            job.update(state='failed',stage='publication_interrupted');a['reaped']=True;self._save(job)
+                else:
+                    with self.transaction():
+                        job.update(state='cancelled' if job['state']=='cancel_requested' else 'failed',stage='interrupted');a['reaped']=True;self._save(job)
+        return quarantined
+
+    def artifact(self, artifact_id: str) -> dict:
+        row=self.db.execute('SELECT metadata FROM artifacts WHERE id=?',(artifact_id,)).fetchone()
+        if row is None: raise ValueError('not_found')
+        artifact=json.loads(row[0])
+        oracle.validate('artifact',artifact)
+        if not self.p1:
+            if self.historical_local is not True:
+                raise persistence.PublicationQuarantine('pre_p1_inspect_only')
+            # Explicit legacy inspection verifies metadata and owned media only;
+            # it does not confer the P1 public-artifact provenance authority.
+            oracle.require(artifact['id']==artifact_id, 'foreign_media')
+            job,context=self._load(artifact['job_id'])
+            retained=self.db.execute('SELECT manifest,artifact FROM publications WHERE job_id=?',(job['id'],)).fetchone()
+            if retained is None:
+                raise persistence.PublicationQuarantine('legacy_artifact_mismatch')
+            manifest=json.loads(retained[0]);oracle.validate('result_manifest',manifest)
+            plan=context['plan'];attempt=job['attempts'][-1]
+            owner=dict(job_id=job['id'],generation=job['generation'],input_sha256=job['input_sha256'],
+                       attempt_id=attempt['id'],owner_id=attempt['owner_id'],staging_id=attempt['staging_id'])
+            expected=dict(owner,id=manifest['artifact_id'],asset_ids=[o['id'] for o in manifest['outputs']],
+                          project_revision=plan['project']['revision'] if plan['operation']=='project_render' else 0,
+                          manifest_sha256=oracle.canonical_hash(manifest),identity=plan['resolved']['identity'])
+            if (job['state']!='succeeded' or job['artifact_ids']!=[artifact_id] or
+                    job['operation']!=plan['operation'] or manifest['operation']!=plan['operation'] or
+                    job['input_sha256']!=oracle.plan_hash(plan) or
+                    {k:manifest[k] for k in owner}!=owner or artifact!=expected or
+                    json.loads(retained[1])!=expected):
+                raise persistence.PublicationQuarantine('legacy_artifact_mismatch')
+            for asset_id in artifact['asset_ids']: self.asset(asset_id)
+            return artifact
+        job_id=artifact.get('job_id')
+        data={}
+        for table, columns, key in (
+                ('jobs','id,job,context','id'), ('publications','job_id,manifest,artifact','job_id'),
+                ('publication_work','job_id,binding,destination,temporary,sha256,byte_length','job_id')):
+            names=columns.split(',')
+            data[table]=[dict(zip(names,r)) for r in self.db.execute(
+                'SELECT '+columns+' FROM '+table+' WHERE '+key+'=?',(job_id,))]
+        artifact=persistence.public_artifact(dict(id=artifact_id,metadata=row[0]),data,publication_format=self.publication_format)
+        for asset_id in artifact['asset_ids']: self.asset(asset_id)
+        return artifact
+
+    def asset(self, asset_id: str) -> dict:
+        row=self.db.execute('SELECT metadata FROM assets WHERE id=?',(asset_id,)).fetchone()
+        if row is None: raise ValueError('not_found')
+        metadata=json.loads(row[0])
+        oracle.validate('asset', metadata)
+        oracle.require(metadata['id']==asset_id and '/' not in asset_id and asset_id not in ('.','..'), 'foreign_media')
+        from service.ingest import MAX_BYTES, open_directory, reference_budget
+        budget = MAX_BYTES if reference_budget(metadata) else 1024*1024
+        if metadata['provenance']['kind']=='audio_export':
+            if not self.p1:
+                raise persistence.PublicationQuarantine('pre_p1_inspect_only')
+            # Asset provenance alone is not authority to enlarge a read. Bind it
+            # to the same retained producer used by the public artifact reader.
+            matches=list(self.db.execute('SELECT job_id FROM publication_work WHERE destination=? LIMIT 2',(asset_id,)))
+            oracle.require(len(matches)==1,'foreign_media')
+            job_id=matches[0][0]
+            retained=self.db.execute('SELECT artifact FROM publications WHERE job_id=?',(job_id,)).fetchone()
+            oracle.require(retained is not None,'foreign_media')
+            aid=json.loads(retained[0])['id']
+            public=self.db.execute('SELECT metadata FROM artifacts WHERE id=?',(aid,)).fetchone()
+            oracle.require(public is not None,'foreign_media')
+            raw=public[0];data={}
+            for table,columns,key in (
+                    ('jobs','id,job,context','id'),('publications','job_id,manifest,artifact','job_id'),
+                    ('publication_work','job_id,binding,destination,temporary,sha256,byte_length','job_id')):
+                data[table]=[dict(zip(columns.split(','),r)) for r in self.db.execute('SELECT '+columns+' FROM '+table+' WHERE '+key+'=?',(job_id,))]
+            persistence.public_artifact(dict(id=aid,metadata=raw),data,publication_format=self.publication_format)
+            job,context=self._load(job_id)
+            budget=persistence.publication_limit(self.publication_format,job,context)
+        directory = open_directory(self.root/'assets')
+        try:
+            fd=os.open(metadata['id'],os.O_RDONLY|os.O_NOFOLLOW,dir_fd=directory)
+        finally:
+            os.close(directory)
+        with os.fdopen(fd,'rb') as stream:
+            info=os.fstat(stream.fileno())
+            oracle.require(stat.S_ISREG(info.st_mode) and info.st_uid==os.getuid() and info.st_nlink==1 and info.st_size<=budget, 'foreign_media')
+            digest = hashlib.sha256()
+            length = 0
+            while True:
+                chunk = stream.read(min(65536, budget + 1 - length))
+                if not chunk: break
+                length += len(chunk)
+                oracle.require(length <= budget, 'foreign_media')
+                digest.update(chunk)
+            after = os.fstat(stream.fileno())
+            oracle.require((info.st_dev, info.st_ino, info.st_size, info.st_mtime_ns, info.st_ctime_ns) ==
+                           (after.st_dev, after.st_ino, after.st_size, after.st_mtime_ns, after.st_ctime_ns)
+                           and length == info.st_size and digest.hexdigest()==metadata['sha256'], 'missing_media')
+        return metadata
