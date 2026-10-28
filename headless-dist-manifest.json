@@ -43,6 +43,7 @@
     "docs/agent-interface/CPU-QUICKSTART.md",
     "docs/agent-interface/DOCKER-VOLUMES.md",
     "docs/agent-interface/HEADLESS-INSTALL.md",
+    "docs/agent-interface/NATIVE-KOKORO.md",
     "docs/agent-interface/NATIVE-PACKAGE.md",
     "docs/agent-interface/APPLE-CI.md",
     "docs/agent-interface/NATIVE-DEPENDENCY.md",

@@ -7,7 +7,8 @@ Qwen float32 remains experimental (one diagnostic 4 s WAV took about 74 s to
 generate); the tested pretrained FP16 candidate failed sampling. Neither is an
 installed 30 s request readiness claim.
 
-From the source checkout, in a native Apple arm64 CPython 3.11 shell:
+From the source checkout, on macOS 14 or later in a native Apple arm64
+CPython 3.11 shell (the selected NumPy/ONNX wheels require macOS 14; CI tests 15):
 
 ```sh
 python3.11 -c 'import platform; assert platform.machine() == "arm64", "Use native Python, not Rosetta"'
