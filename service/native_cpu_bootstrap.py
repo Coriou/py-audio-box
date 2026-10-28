@@ -14,6 +14,7 @@ import uuid
 
 ROOT=Path(__file__).resolve().parents[1]
 _OWNED={}
+_FINISHED=[]
 
 
 def host():
@@ -58,7 +59,7 @@ def bounded(argv,root,name,seconds):
                 if process.poll() is None:
                     try:os.killpg(process.pid,signal.SIGTERM)
                     except ProcessLookupError:pass
-                    try:process.wait(timeout=.2)
+                    try:process.wait(timeout=2 if name=='finish-setup' or name.startswith('resume-') else .2)
                     except subprocess.TimeoutExpired:
                         if process.poll() is None:
                             try:os.killpg(process.pid,signal.SIGKILL)
@@ -67,7 +68,15 @@ def bounded(argv,root,name,seconds):
                 else:process.wait(timeout=1)
             except BaseException as cleanup:
                 raise RuntimeError('setup process cleanup unknown; retain installation and logs') from cleanup
-            else:_OWNED.pop(process.pid,None)
+            else:
+                _OWNED.pop(process.pid,None)
+                nested=process.returncode==0
+                if name=='finish-setup' or name.startswith('resume-'):
+                    try:
+                        receipt=json.loads((root/('bootstrap-cleanup-'+str(process.pid)+'.json')).read_bytes())
+                        nested=receipt['pid']==process.pid and receipt['cleanup_confirmed'] is True
+                    except (OSError,ValueError,KeyError):nested=False
+                _FINISHED.append(dict(phase=name,pid=process.pid,exit=process.returncode,reaped=True,nested_cleanup_confirmed=nested))
 
 
 def provenance(root):
@@ -118,7 +127,7 @@ def setup(root,*,download_model=False,port=8788,resume=False,download_seconds=60
         next_action='Use the installed native-worker.py doctor, then explicitly create a finite qualification session.'),sort_keys=True))
 
 
-def main(argv=None):
+def _main(argv=None):
     arguments=list(sys.argv[1:] if argv is None else argv)
     if not arguments or arguments[0] in ('--help','-h'):
         parser=argparse.ArgumentParser(description=__doc__)
@@ -150,3 +159,34 @@ def main(argv=None):
             os.execv(str(python),[str(python),'-I','-B',str(entry),*arguments])
     from service.native_cpu_setup import main as installed_main
     return installed_main(arguments)
+
+
+def main(argv=None):
+    arguments=list(sys.argv[1:] if argv is None else argv)
+    setup_role=bool(arguments and arguments[0] in ('setup','finish-setup'))
+    previous=None;offset=len(_FINISHED)
+    if setup_role:
+        def interrupt(number,frame):raise KeyboardInterrupt('Setup interrupted; preserve retained state.')
+        previous=signal.signal(signal.SIGTERM,interrupt)
+    try:return _main(arguments)
+    finally:
+        if setup_role:
+            signal.signal(signal.SIGTERM,previous)
+            if '--root' in arguments and arguments.index('--root')+1<len(arguments):
+                root=root_path(arguments[arguments.index('--root')+1])
+                phases=_FINISHED[offset:]
+                claimed=bool(phases) or arguments[0]=='finish-setup' and ((root/'bootstrap.json').is_file() or (root/'setup-record.json').is_file())
+                if claimed and root.is_dir() and root.stat().st_uid==os.getuid() and stat.S_IMODE(root.stat().st_mode)==0o700:
+                    confirmed=not _OWNED and all(p['nested_cleanup_confirmed'] for p in phases)
+                    mp=sys.modules.get('multiprocessing')
+                    active=[] if mp is None else [p.pid for p in mp.active_children()]
+                    for directory in [root/'preflight',*list(root.glob('resume-preflight-*'))[:64]]:
+                        if directory.exists():
+                            try:
+                                owner=json.loads((directory/'owner.json').read_bytes())
+                                confirmed=confirmed and owner['child_reaped'] is True and owner['sampler_thread_stopped'] is True
+                            except (OSError,ValueError,KeyError):confirmed=False
+                    value=dict(pid=os.getpid(),phases=phases,active_owned_pids=list(_OWNED),active_multiprocessing_pids=active,
+                        cleanup_confirmed=confirmed and not active)
+                    fd=os.open(root/('bootstrap-cleanup-'+str(os.getpid())+'.json'),os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW,0o600)
+                    with os.fdopen(fd,'wb') as stream:stream.write(json.dumps(value,sort_keys=True,separators=(',',':')).encode());stream.flush();os.fsync(stream.fileno())

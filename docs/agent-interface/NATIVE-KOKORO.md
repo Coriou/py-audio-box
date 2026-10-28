@@ -219,6 +219,32 @@ from a preflight pass or a future raw backend WAV alone. A model dispatch requir
 separate explicit authorization and final exact-source gates; none follows from
 running the prerequisite job.
 
+The separate `installed_journey` workflow input defaults false and is mutually
+exclusive with `en_backend`. It is restricted to manual dispatch on main or the
+Apple development branch, with one standard runner/job capped at 12 minutes.
+`scripts/ci-native-kokoro-installed.py --run-installed-journey --output NEW`
+implements the proposed fresh setup/doctor/finite-session/actual service journey:
+one HTTP generation with exact-key CLI and real MCP stdio replay/download,
+running and queued cancellation, then restart and a fourth job using the same
+immutable provision. No session renewal, retry, FR or cloning run is included.
+It remains an opt-in qualification tool, not ordinary admission or a completed
+Mac product claim. The measured local doctor/selftest receipt path remains
+subsequent work.
+
+The controller keeps the original 600 s total across its installed-Python exec,
+including setup/network/download/MCP work and a 20 s cleanup reserve. It owns
+setup/service/CLI/MCP handles separately and uses the existing sampled OS reader.
+MCP uses the real newline JSON-RPC protocol with a directly owned handle, rather
+than the [pinned SDK helper that creates a separate group and hides its handle](https://github.com/modelcontextprotocol/python-sdk/blob/v1.30.0/src/mcp/client/stdio/__init__.py).
+Its protocol version follows the [pinned SDK types](https://github.com/modelcontextprotocol/python-sdk/blob/v1.30.0/src/mcp/types.py).
+MCP byte reconstruction is at most 128 KiB, 43 ranges of at most 3072 bytes and
+20 s total, with whole-WAV hash comparison. Product deadlines remain 30/30/60 s.
+Setup responds to SIGTERM by unwinding its owned phase groups and recording a
+private cleanup receipt. Service shutdown uses the product custodian first;
+forced cleanup requires fresh owned identity and no unresolved model work.
+Unknown/live custody retains the temporary installation and fails the journey.
+Artifacts explicitly exclude private credentials, keys, model and setup trees.
+
 After backend proof, the smallest public-control-plane seam is a distinct typed
 native CPU execution/context and child dispatch, reusing the existing immutable
 Kokoro engine contract and bounded supervisor cancel/reap lifecycle. It must

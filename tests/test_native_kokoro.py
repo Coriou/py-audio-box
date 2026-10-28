@@ -44,12 +44,21 @@ class NativeKokoroTests(unittest.TestCase):
         pins=dict(re.findall(r'^([a-z0-9-]+)==([^\s]+)',(ROOT/'requirements/kokoro.lock').read_text(),re.M))
         for name,version in n.EXPECTED.items(): self.assertEqual(pins[name],version)
         from service import native_package as package
+        from service import native_cpu_package as cpu_package
         with tempfile.TemporaryDirectory() as tmp:
             archive=Path(tmp)/'native.zip'; package.archive(archive); package.verify_archive(archive)
             with zipfile.ZipFile(archive) as z:
-                for name in ('lib/tts_backends/kokoro_native.py','docs/agent-interface/NATIVE-KOKORO.md'):
+                self.assertEqual(z.read('native-worker/lib/tts_backends/kokoro_native.py'),(ROOT/'lib/tts_backends/kokoro_native.py').read_bytes())
+                self.assertNotIn('native-worker/docs/agent-interface/NATIVE-KOKORO.md',z.namelist())
+                self.assertNotIn('native-worker/scripts/native-kokoro.py',z.namelist())
+                self.assertFalse(any(name.endswith('.lock') for name in z.namelist()))
+            cpu=Path(tmp)/'cpu.zip';cpu_package.archive(cpu);cpu_package.verify_archive(cpu)
+            with zipfile.ZipFile(cpu) as z:
+                for name in ('lib/tts_backends/kokoro_native.py','docs/agent-interface/NATIVE-KOKORO.md',
+                        'scripts/native-kokoro.py','requirements/kokoro.lock','requirements/client.lock','service/requirements.lock'):
                     self.assertEqual(z.read('native-worker/'+name),(ROOT/name).read_bytes())
         self.assertEqual(package.VARIANT,'native-qwen-v1')
+        self.assertEqual(cpu_package.VARIANT,'native-kokoro-cpu-v1')
         workflow=(ROOT/'.github/workflows/apple-kokoro.yml').read_text()
         self.assertIn('--require-hashes --only-binary=:all:',workflow)
         self.assertIn('-r requirements/kokoro.lock',workflow)

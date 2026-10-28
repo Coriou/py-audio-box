@@ -27,6 +27,23 @@ class CPUBootstrapTests(unittest.TestCase):
         with self.assertRaises(TimeoutError):b.bounded([sys.executable,'-c','import time; time.sleep(30)'],self.root,'deadline',.15)
         self.assertFalse(b._OWNED)
 
+    def test_real_setup_interrupt_unwinds_its_separate_phase_group(self):
+        import time
+        inner="from pathlib import Path; import os,time; Path("+repr(str(self.root/'inner.pid'))+").write_text(str(os.getpid())); time.sleep(5)"
+        code="from pathlib import Path; from service import native_cpu_bootstrap as b; import sys; root=Path("+repr(str(self.root))+ "); b._main=lambda args:b.bounded([sys.executable,'-c',"+repr(inner)+"],root,'fixture-phase',30); b.main(['setup','--root',str(root),'--download-model'])"
+        process=subprocess.Popen([sys.executable,'-B','-c',code],cwd=package.common.ROOT,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL,start_new_session=True)
+        try:
+            end=time.monotonic()+3
+            while not (self.root/'inner.pid').exists() and time.monotonic()<end:time.sleep(.02)
+            self.assertTrue((self.root/'inner.pid').exists())
+            process.terminate();process.wait(timeout=5)
+            receipt=json.loads((self.root/('bootstrap-cleanup-'+str(process.pid)+'.json')).read_bytes())
+            self.assertEqual(receipt['active_owned_pids'],[])
+            self.assertEqual(receipt['phases'][0]['pid'],int((self.root/'inner.pid').read_text()))
+            self.assertTrue(receipt['phases'][0]['reaped'])
+        finally:
+            if process.poll() is None:process.kill();process.wait(timeout=1)
+
     def test_completed_setup_child_still_obeys_log_limit(self):
         with self.assertRaisesRegex(ValueError,'log limit'):
             b.bounded([sys.executable,'-c','import sys; sys.stdout.write("x"*(1024**2+1))'],self.root,'oversize',5)

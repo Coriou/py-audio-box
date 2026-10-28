@@ -11,6 +11,8 @@ on:
       - 'scripts/native-kokoro.py'
       - 'scripts/ci-native-kokoro.py'
       - 'scripts/ci-native-kokoro-speech.py'
+      - 'scripts/ci-native-kokoro-installed.py'
+      - 'tests/test_ci_native_kokoro_installed.py'
       - 'requirements/tts/kokoro-en-macos.expected.json'
       - 'tests/test_ci_native_kokoro_speech.py'
       - 'scripts/ci-apple-speech.py'
@@ -40,6 +42,10 @@ on:
         description: One cold EN Kokoro backend test (353.75 MB, no installed qualification)
         type: boolean
         default: false
+      installed_journey:
+        description: One fresh installed EN journey (353.75 MB, four jobs maximum, no ordinary readiness promotion)
+        type: boolean
+        default: false
 permissions:
   contents: read
 concurrency:
@@ -52,6 +58,9 @@ jobs:
     env:
       PIP_DISABLE_PIP_VERSION_CHECK: '1'
     steps:
+      - name: Reject multiple model experiments
+        if: github.event_name == 'workflow_dispatch' && inputs.en_backend && inputs.installed_journey
+        run: exit 1
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
         with:
           persist-credentials: false
@@ -83,6 +92,7 @@ jobs:
           tests.service.test_native_cpu_public_source tests.service.test_native_cpu_tls
           tests.service.test_native_cpu_install
           tests.service.test_native_cpu_recovery
+          tests.test_ci_native_kokoro_installed
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         if: always()
         with:
@@ -98,6 +108,7 @@ jobs:
   en-backend:
     if: >-
       github.event_name == 'workflow_dispatch' && inputs.en_backend &&
+      !inputs.installed_journey &&
       (github.ref == 'refs/heads/feat/apple-silicon-native' || github.ref == 'refs/heads/main')
     needs: prerequisites
     runs-on: macos-15
@@ -134,5 +145,38 @@ jobs:
             kokoro-speech/progress.json
             kokoro-speech/acquire.log
             kokoro-speech/infer.log
+          retention-days: 7
+          if-no-files-found: error
+
+  installed-journey:
+    if: >-
+      github.event_name == 'workflow_dispatch' && inputs.installed_journey &&
+      !inputs.en_backend &&
+      (github.ref == 'refs/heads/feat/apple-silicon-native' || github.ref == 'refs/heads/main')
+    needs: prerequisites
+    runs-on: macos-15
+    timeout-minutes: 12
+    env:
+      PIP_DISABLE_PIP_VERSION_CHECK: '1'
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        with:
+          python-version: '3.11'
+          architecture: arm64
+      - name: One explicit fresh installed product journey (no retry)
+        run: python scripts/ci-native-kokoro-installed.py --run-installed-journey --output kokoro-installed
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        if: always()
+        with:
+          name: apple-kokoro-installed-journey
+          path: |
+            kokoro-installed/report.json
+            kokoro-installed/safe-logs/*.log
+            kokoro-installed/English.wav
+            kokoro-installed/English-restart.wav
+            kokoro-installed/LISTEN.html
           retention-days: 7
           if-no-files-found: error
