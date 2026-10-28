@@ -54,9 +54,11 @@ class Admission:
         if spec is not None:
             if profiles is None: raise ValueError('no_authority')
             selected = next(p for p in profiles if p['id']==plan['resolved']['profile']['id'])
-            if selected['verification'] != 'measured' or not selected['qualification_receipt'] or 'synthetic' in selected['qualification_receipt'].lower():
-                raise ValueError('real_qualification_required')
             from worker.engines.native_kokoro import NativeKokoroExecution
+            from worker.native_cpu_qualification import permitted
+            qualifying=type(spec) is NativeKokoroExecution and permitted(context,selected)
+            if not qualifying and (selected['verification'] != 'measured' or not selected['qualification_receipt'] or 'synthetic' in selected['qualification_receipt'].lower()):
+                raise ValueError('real_qualification_required')
             if type(spec) is NativeKokoroExecution:
                 if self.native_availability is None: raise ValueError('native_availability_required')
                 self.native_availability(context)
@@ -109,6 +111,12 @@ class Admission:
     def reserve_tx(self,job,context,profiles):
         if self.unaccounted:raise ValueError('resource_reconstruction_required')
         d=self.demand(context,profiles)
+        if context['plan']['resolved']['profile']['id']=='kokoro-native-cpu':
+            from worker.native_cpu_qualification import current
+            session=current()
+            if session is not None:
+                profile=next(p for p in profiles if p['id']=='kokoro-native-cpu')
+                session.reserve(self.core,context,profile,job)
         self.store.reserve_tx(job['id'],'inference',d)
 
     def _preflight(self):

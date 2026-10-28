@@ -295,7 +295,8 @@ class Core:
                 raise ValueError('installed_native_publication_v2_unsupported')
             if _native_activation is not None:
                 from service.native_activation import NativeActivation
-                if type(_native_activation) is not NativeActivation:
+                from service.native_cpu_activation import NativeCPUActivation
+                if type(_native_activation) not in (NativeActivation,NativeCPUActivation):
                     raise ValueError('checked_native_activation_required')
                 _publication_creation=1
                 _native_activation.retained_check(self)

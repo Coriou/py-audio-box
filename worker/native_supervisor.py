@@ -198,7 +198,7 @@ class NativeSupervisor:
         if (Path(root)/'predecessor').exists() and (Path(root)/'native.json').exists(): raise Refused('native_renewal_new_boot_required')
         self.journal=(Journal if self.journal_type is None else self.journal_type)(root,deployment_id,configuration_sha256)
         if self.journal.retained is not None and self.journal.retained['native']['runtime_manifest_sha256']!=runtime_manifest_sha256: raise Refused('native_renewal_incompatible')
-        self.boot=secrets.token_hex(16) if self.journal.retained is None else self.journal.retained['native']['boot']; self.pin=peer_pin; self.manifest=runtime_manifest_sha256
+        self.boot=self.new_boot() if self.journal.retained is None else self.journal.retained['native']['boot']; self.pin=peer_pin; self.manifest=runtime_manifest_sha256
         if type(registrations) is not dict or not 1<=len(registrations)<=64: raise Refused('native_registration')
         self.registrations=copy.deepcopy(registrations)
         self._preset_templates=copy.deepcopy(registrations)
@@ -227,6 +227,8 @@ class NativeSupervisor:
         self.cutoffs={}; self.job_cutoffs={}; self.cancelled=set(); self.slots=threading.BoundedSemaphore(3)
         self.shutdown_event=threading.Event(); self.transfer_slot=threading.BoundedSemaphore(1)
 
+    def new_boot(self):return secrets.token_hex(16)
+
     def make_availability(self, registrations, manifest, provider, utc, clock):
         from worker.native_availability import Availability, host_observation
         from worker.engines.qwen_execution import inventory_wire
@@ -241,6 +243,9 @@ class NativeSupervisor:
 
     def model_started(self, active, record):
         pass
+
+    def owner_failure(self,exc):
+        self.failed=True
 
     def exchange(self, connection, config, cutoff, on_loaded):
         from worker.native_child import parent_exchange
@@ -681,7 +686,7 @@ class NativeSupervisor:
             self.terminal(r,[process],timely,proposal,output)
             with self.handle_lock:
                 self.active=None
-        except Exception: self.failed=True
+        except Exception as exc:self.owner_failure(exc)
 
     def watchdog(self):
         while not self.shutdown_event.wait(.02): self.tick()
@@ -710,15 +715,18 @@ class NativeSupervisor:
 
 
 def serve(supervisor, context, host, port, *, proven_host_network=False,
-          socket_factory=socket.socket):
+          socket_factory=socket.socket, _listener=None):
     """Production listener; never invoked by inert tests or imported for side effects."""
     import ssl
     host,port=p.numeric_bind(host,port,proven_host_network=proven_host_network)
     if context.minimum_version!=ssl.TLSVersion.TLSv1_3 or context.maximum_version!=ssl.TLSVersion.TLSv1_3 or context.verify_mode!=ssl.CERT_REQUIRED: raise Refused('native_tls')
-    watchdog=threading.Thread(target=supervisor.watchdog,daemon=True); watchdog.start()
     connections=threading.BoundedSemaphore(4)
-    with socket_factory(socket.AF_INET6 if ':' in host else socket.AF_INET,socket.SOCK_STREAM) as listener:
-        listener.bind((host,port)); listener.listen(8); listener.settimeout(.2)
+    live=set();live_lock=threading.Lock()
+    with (socket_factory(socket.AF_INET6 if ':' in host else socket.AF_INET,socket.SOCK_STREAM) if _listener is None else _listener) as listener:
+        if _listener is None:listener.bind((host,port))
+        elif type(listener) is not socket.socket or listener.getsockname()!=(host,port):raise Refused('native_listener_binding')
+        listener.listen(8); listener.settimeout(.2)
+        watchdog=threading.Thread(target=supervisor.watchdog,daemon=True); watchdog.start()
         try:
             while not supervisor.shutdown_event.is_set():
                 try: raw,_=listener.accept()
@@ -729,8 +737,16 @@ def serve(supervisor, context, host, port, *, proven_host_network=False,
                 except Exception: raw.close(); connections.release(); continue
                 def handle(connection=connection):
                     try: supervisor.serve_connection(connection)
-                    finally: connections.release()
-                threading.Thread(target=handle,daemon=True).start()
+                    finally:
+                        connections.release()
+                        with live_lock:live.discard(threading.current_thread())
+                thread=threading.Thread(target=handle,daemon=True)
+                with live_lock:live.add(thread)
+                try:thread.start()
+                except BaseException:
+                    with live_lock:live.discard(thread)
+                    connection.close();connections.release()
+                    raise
         finally:
             with supervisor.handle_lock:
                 if supervisor.active and supervisor.active.get('decision') is None: supervisor.active['cancel']=True
@@ -738,6 +754,10 @@ def serve(supervisor, context, host, port, *, proven_host_network=False,
             while supervisor.active and time.monotonic()<end: supervisor.tick(); time.sleep(.02)
             supervisor.shutdown_event.set(); watchdog.join(timeout=1)
             if supervisor.active: raise Refused('native_unknown')
+            end=time.monotonic()+1
+            with live_lock:pending=tuple(live)
+            for thread in pending:thread.join(timeout=max(0,end-time.monotonic()))
+            if any(thread.is_alive() for thread in pending):raise Refused('native_connections_unknown')
 
 
 def main():

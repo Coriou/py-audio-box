@@ -443,13 +443,17 @@ def stored_context(job, context):
 
 
 def admission(job, context, profiles):
-    """Control-owned installed/qualification state; mocks are E1 only."""
+    """Ordinary readiness, or explicit private bounded native CPU qualification."""
     plan=stored_context(job,context);snapshot=plan['resolved']['profile']
     matches=[p for p in profiles if p['id']==snapshot['id']]
     require(len(matches)==1, 'unknown_profile')
     p=matches[0];validate('profile',p)
     require(profile_snapshot(p)==snapshot, 'profile_mismatch')
-    require(p['readiness']=='ready' and p['support']=='qualified' and p['installation']=='installed' and p['configuration']=='valid', 'not_ready')
+    admitted=p['readiness']=='ready' and p['support']=='qualified' and p['installation']=='installed' and p['configuration']=='valid'
+    if not admitted and p['id']=='kokoro-native-cpu':
+        from worker.native_cpu_qualification import permitted
+        admitted=permitted(context,p,job)
+    require(admitted, 'not_ready')
 
 
 def worker_message(message, job, allowed_assets, *, transport_owner, context, current_profiles=()):

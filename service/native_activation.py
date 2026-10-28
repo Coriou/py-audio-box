@@ -94,11 +94,12 @@ class NativeActivation:
             _INSTALLED_LIFECYCLES.pop(id(self), None)
 
 
-def completed_history(core, runtime, *, retired=None):
+def completed_history(core, runtime, *, retired=None, _cpu=False):
     """Read-only native policy under Core exclusion, before recovery or scheduling.
 
     Single-attempt successes and receipt-only failed/cancelled jobs are supported.
-    Never-started jobs and terminal publication/import uncertainty still refuse.
+    Never-started jobs refuse except exact CPU queued cancellations with no
+    attempt/dispatch and a retained reservation. Publication/import uncertainty refuses.
     Clone references must remain owned and byte-identical in Core and transport.
     All reservation, filesystem and unknown evidence is retained on refusal.
     """
@@ -109,6 +110,10 @@ def completed_history(core, runtime, *, retired=None):
     from service.worker_transport import Authority
     from service.native_runtime import _read
     from worker import native_protocol as p
+    if _cpu:
+        from service.native_cpu_runtime import NativeCPURuntime
+        from worker import native_cpu_protocol as p
+        if type(runtime) is not NativeCPURuntime or retired is not None or (core.root/'native-renewal').exists():raise Refused('native_cpu_history_family')
     if retired is None and (core.root/'native-renewal').exists():
         from service.native_renewal import EpochEvidence
         retired=EpochEvidence(core,runtime)
@@ -166,15 +171,37 @@ def completed_history(core, runtime, *, retired=None):
     reservations = {row['id']:row for row in typed['resource_reservations']}
     publications = {row['job_id']:row for row in typed['publications']}
     require(len(dispatches) == len(typed['dispatches']) and len(jobs) < 64)
-    require(set(jobs) == set(dispatches) == set(reservations))
+    require(set(jobs) == set(reservations))
+    require(set(dispatches)<=set(jobs) if _cpu else set(jobs)==set(dispatches))
     require(set(publications) == {row['job_id'] for row in typed['publication_work']} <= set(jobs))
     require({d.name for d in runtime.spool.iterdir()} == {d['binding'] for d in dispatches.values()})
     for jid, stored in jobs.items():
         job = json.loads(stored['job']); context = json.loads(stored['context'])
+        if _cpu and jid not in dispatches:
+            # Only a queued cancellation can have no worker journal entry. Do
+            # not infer a reap/receipt or accept an interrupted dispatch here.
+            require(job['state']=='cancelled' and job['stage']=='never_started' and
+                    job['attempts']==[] and job['artifact_ids']==[] and job['deadline']=='' and
+                    stored['retry_of'] is None and jid not in publications)
+            p.native_execution(context)
+            observed=p.native_binding(context)
+            require(all(observed[k]==runtime.native[k] for k in observed if k!='boot'))
+            require(stored['principal']==job['principal_id'] and stored['operation']==job['operation']=='speech_generate')
+            require(stored['fingerprint']==oracle.fingerprint(stored['principal'],stored['operation'],context['plan']['request']))
+            require(job['input_sha256']==oracle.plan_hash(context['plan']))
+            from service.voice_store import VoiceStore
+            for version in context['plan']['voice_versions']:
+                require(canonical(VoiceStore(core).version(stored['principal'],version['id']))==canonical(version))
+            from service.admission import native_demand
+            reservation=reservations[jid]
+            require(reservation['state']=='retained' and reservation['category']=='inference' and
+                    canonical(json.loads(reservation['demand']))==canonical(native_demand(context)))
+            continue
         d = dispatches[jid]; a = Authority(*json.loads(d['authority']))
         require(d['authority'].encode() == a._snapshot and d['binding'] == a.binding)
-        require(canonical(p.native_binding(a.context)) == canonical(retired.native(a.binding) if hasattr(retired,'native') else runtime.native) and
-                canonical(a.context) == canonical(context))
+        observed=p.native_binding(a.context)
+        expected=retired.native(a.binding) if hasattr(retired,'native') else runtime.native
+        require((all(observed[k]==expected[k] for k in observed if k!='boot') if _cpu else canonical(observed)==canonical(expected)) and canonical(a.context)==canonical(context))
         require(stored['retry_of'] is None)
         # Immutable selected versions remain present even if aliases/archive change.
         from service.voice_store import VoiceStore
@@ -193,7 +220,7 @@ def completed_history(core, runtime, *, retired=None):
         require(collected >= 3 and ops[collected-1] == 'observe' and
                 all(op in ('observe','stop') for op in ops[2:collected]) and
                 bool(ops[collected+1:]) and all(op == 'ack' for op in ops[collected+1:]))
-        require(d['runtime'] is not None and d['fixture'] == 'qwen')
+        require(d['runtime'] is not None and d['fixture'] == ('kokoro' if _cpu else 'qwen'))
         spec = p.native_execution(context)
         require(job['state'] in ('succeeded','failed','cancelled') and len(job['attempts']) == 1 and job['attempts'][0]['reaped'] is True)
         require(job['stage'] == ('completed' if job['state'] == 'succeeded' else 'deadline_or_reaped'))

@@ -39,7 +39,7 @@ COPY run-direct /app/run-direct
 COPY run.ps1 /app/run.ps1
 COPY pyproject.toml /app/pyproject.toml
 COPY poetry.lock /app/poetry.lock
-COPY headless-dist-manifest.json native-dist-manifest.json Dockerfile.cpu /app/
+COPY headless-dist-manifest.json native-dist-manifest.json native-cpu-dist-manifest.json Dockerfile.cpu /app/
 # User-facing onboarding docs and their link targets (tests/test_docs_onboarding.py).
 COPY README.md /app/README.md
 COPY docs/AGENT-GUIDE.md docs/LEGACY-TOOLBOX.md docs/TTS_BENCHMARK.md docs/TTS_MEMORY.md docs/TTS_POCKET_CPU_PILOT.md /app/docs/

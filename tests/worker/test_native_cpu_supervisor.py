@@ -12,6 +12,22 @@ from tests.worker.native_cpu_fixtures import Fixture,Handle,Channel,Sampler
 
 
 class CPUSupervisorTests(unittest.TestCase):
+    def test_owner_failure_is_retained_only_after_confirmed_wait_and_blocks_reopen(self):
+        import json
+        from worker.native_cpu_supervisor import CPUJournal
+        self.s.active=dict(waited=False)
+        cause=ValueError('inert validation cause')
+        error=RuntimeError('inert owner failure');error.__cause__=cause
+        self.s.owner_failure(error)
+        path=self.f.root/'owner-failure.json'
+        self.assertFalse(path.exists());self.assertTrue(self.s.failed)
+        self.s.active['waited']=True;self.s.owner_failure(error)
+        saved=json.loads(path.read_bytes())
+        self.assertEqual((saved['type'],saved['cause_type']),('RuntimeError','ValueError'))
+        self.assertEqual(path.stat().st_mode&0o777,0o600)
+        self.s.journal.lock.close()
+        with self.assertRaisesRegex(Refused,'retained_owner_failure'):CPUJournal(self.f.root,'a'*32,'b'*64)
+
     def test_base_factory_keeps_legacy_journal_injection_separate_from_cpu(self):
         from worker.native_supervisor import NativeSupervisor
         with patch('worker.native_supervisor.Journal',side_effect=Refused('inert_journal_factory')) as factory:

@@ -146,12 +146,18 @@ def choose(dispatcher, contexts, request, *, inventory=None, measurements=None,
             DeviceFamily.CUDA if spec and spec.device.startswith('cuda:') else DeviceFamily.CPU)
         index = int(spec.device.split(':')[1]) if family == DeviceFamily.CUDA else 0
         native = hasattr(dispatcher.runtime, 'native')
+        from worker.engines.native_kokoro import NativeKokoroExecution
+        native_cpu=type(spec) is NativeKokoroExecution
+        if native_cpu:
+            from service.native_cpu_runtime import NativeCPURuntime
+            if type(dispatcher.runtime) is not NativeCPURuntime or context['execution'].get('native')!=dispatcher.runtime.native:
+                blocked.append('native_binding_changed');continue
         if spec and family == DeviceFamily.MPS and context['execution'].get('native') != getattr(dispatcher.runtime, 'native', None):
             blocked.append('native_binding_changed'); continue
-        if spec and ((family == DeviceFamily.MPS) != native):
+        if spec and ((family == DeviceFamily.MPS or native_cpu) != native):
             blocked.append('runtime_topology_incompatible'); continue
         if inventory is None:
-            if spec and spec.engine == 'qwen':
+            if spec and (spec.engine == 'qwen' or native_cpu):
                 from worker.engines.qwen_execution import inventory_from_wire
                 inv = inventory_from_wire(context['execution']['hardware'])
             else:
@@ -167,6 +173,11 @@ def choose(dispatcher, contexts, request, *, inventory=None, measurements=None,
         ident = resolved['identity']['effective']
         if request['identity'] != ident:
             blocked.append('identity_mismatch'); continue
+        if native_cpu:
+            from worker.native_cpu_qualification import permitted
+            if permitted(context,p):
+                if len(contexts)!=1:raise SelectionUnavailable(['qualification_single_candidate_required'])
+                return context  # Explicit bounded test authority; never measured/ready.
         conditioning = oracle.canonical_hash(plan['voice_versions'] if plan['voice_versions'] else
                                              resolved.get('reuse_configuration'))
         measurement = (measurements or {}).get(name)

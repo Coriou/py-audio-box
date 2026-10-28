@@ -266,6 +266,12 @@ def production_call(dispatcher, principal, operation, payload, key=None):
         elif str(exc) == 'disk_free_reserve':
             detail = 'Available disk space cannot preserve the configured free-space reserve.'
             action = 'Operator must restore free disk space under the retention policy or review the configured free-space reserve; do not automatically retry mutations.'
+        elif str(exc)=='native_cpu_qualification_expired':
+            detail='The finite native CPU qualification session has expired or cannot fit another bounded job.'
+            action='Retained job/artifact reads remain available. Keep the evidence; sessions are not automatically renewed.'
+        elif str(exc) in ('native_cpu_qualification_job_limit','native_cpu_qualification_queue_budget','native_cpu_history_capacity'):
+            detail='The finite native CPU qualification resource or job limit has been reached.'
+            action='Keep retained state and review qualification evidence; do not automatically retry or renew the session.'
         raise Failure(code, detail, action=action) from None
     except (OSError, sqlite3.Error, TimeoutError, queue.Full):
         raise Failure('not_ready', 'Owner unavailable; mutation outcome may be unknown.', action='Do not automatically retry mutations.') from None

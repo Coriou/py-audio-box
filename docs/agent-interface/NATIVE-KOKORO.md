@@ -1,11 +1,81 @@
-# Native Apple CPU candidate: Kokoro prerequisites
+# Native Apple CPU preview: Kokoro presets
 
-This is a **no-weight prerequisite check**, not an installed speech capability.
+This is an **unqualified preview**, not an installed speech readiness claim.
 Kokoro provides preset voices, **not cloning**. Qwen CustomVoice presets do not
-qualify Qwen Base cloning either; native Base/MLX cloning remains separate work.
+qualify Qwen Base cloning either. Native Base has a source path with no cloning
+runtime qualification; no MLX adapter is implemented. See [cloning scope](NATIVE-CLONING.md).
 Qwen float32 remains experimental (one diagnostic 4 s WAV took about 74 s to
 generate); the tested pretrained FP16 candidate failed sampling. Neither is an
 installed 30 s request readiness claim.
+
+## Source installer and explicit qualification mode
+
+The commands below describe the implemented preview path. The full fresh-install
+journey still needs its separately authorized Apple run; these are not a claim
+that installation or speech has passed on this source. Requires macOS 14+,
+native arm64 CPython 3.11 and a new private installation directory. No Docker,
+Homebrew, model token or manually authored identity/receipt JSON is required.
+
+```sh
+ROOT="$HOME/Library/Application Support/py-audio-box/native-kokoro"
+python3.11 scripts/native-kokoro.py setup --root "$ROOT" --download-model
+python3.11 scripts/native-kokoro.py doctor --root "$ROOT"
+```
+
+Setup installs only hash-pinned binary wheels, checks actual guarded service,
+client, TLS, ONNX CPU and phonemizer prerequisites before downloading the pinned
+public 353,746,785-byte model. It creates its own copied venv, sealed source
+archive, immutable verified model store, private local CA/client/server keys and
+bearer credential. No existing environment credential is copied. Logs and partial
+state remain on failure; setup does not retry or overwrite an existing directory.
+Package installation is bounded to 180 s and model acquisition to 120 s. The
+[pip secure-install guidance](https://pip.pypa.io/en/stable/topics/secure-installs/)
+and [cryptography X.509 tutorial](https://cryptography.io/en/stable/x509/tutorial/)
+describe the underlying hash checking and certificate APIs. Retained keys expire
+after 90 days; this preview has no automatic certificate renewal.
+
+Ordinary `serve --root "$ROOT"` keeps the profile **unqualified/not_ready** and
+refuses synthesis. A deliberate qualification run can instead create one finite
+authority, then serve with it:
+
+```sh
+python3.11 scripts/native-kokoro.py qualification-session --root "$ROOT"
+python3.11 scripts/native-kokoro.py serve --root "$ROOT" --qualification-session
+```
+
+This private installation-bound authority permits at most six jobs within the
+original 600 s host-boot/monotonic window. Restart cannot renew it. It creates no
+qualification receipt or production readiness. The checked owner holds the lock,
+validates source/interpreter/dependencies/model identity, and uses mutual TLS for
+the internal worker. The authenticated public API binds only `127.0.0.1:8788`.
+Stop with Ctrl-C and confirm clean shutdown before restarting the same command;
+unknown ownership or journal/history discrepancies refuse activation.
+
+In a second shell, while that explicit session is active:
+
+```sh
+python3.11 scripts/native-kokoro.py client --root "$ROOT" status
+python3.11 scripts/native-kokoro.py client --root "$ROOT" voice resolve default.narration
+python3.11 scripts/native-kokoro.py speak --root "$ROOT" --text 'Hello. The test is complete.' --output "$HOME/native-kokoro.wav"
+```
+
+Activation registers `kokoro.en.af_heart` and `default.narration` once. `speak`
+uses the public HTTP resolve/generate/wait/artifact operations and the existing
+CLI's verified, exclusive-file download. The `client` command exposes ordinary
+CLI operations, including `job get`, `job cancel --idempotency-key ...` and
+`asset content ... --output ...`. `mcp --root "$ROOT"` starts the existing stdio
+MCP server with the same local credential, read from its private file rather
+than printed or passed as an argument. HTTP/CLI/MCP share catalogue, ownership,
+idempotency, job and artifact contracts. Model files remain in the immutable
+installation store across service restarts; this is distinct from a model cache
+or a persistent loaded model. Each synthesis job loads once.
+
+Only English `af_heart`, explicit CPU/float32, two threads and short text up to
+256 UTF-8 bytes are supported by this preview. No automatic Qwen CPU fallback,
+Metal selection, clone/reference inputs, instructions, seed or alternate preset
+is accepted. A future installed run must still establish actual free-memory
+admission, HTTP/CLI/MCP WAV delivery, cancellation/reap and restart/provision
+reuse. Source and no-weight checks cannot establish those runtime claims.
 
 From the source checkout, on macOS 14 or later in a native Apple arm64
 CPython 3.11 shell (the selected NumPy/ONNX wheels require macOS 14; CI tests 15):
@@ -116,10 +186,10 @@ qualified here. Source now has a separate `native-kokoro-cpu-v1` protocol,
 CPU-only metadata provider and typed catalogue/control transport. It reuses the
 existing Kokoro engine and native owner lifecycle. Source tests cover bounded
 startup/request handshakes, CPU proposals, cancellation/reaping, completed journal
-reopen and saved preset identity. The CPU source seam is not yet connected to an
-installer/activation factory; no installed public journey or CPU default is
-advertised from those tests. Combined independent product review remains required
-before integration.
+reopen and saved preset identity. The CPU source seam now connects to a separate
+create-only installer and checked activation factory. No installed public journey
+or CPU default is qualified from source tests. Combined independent product
+review remains required before integration.
 
 CPU product budgets are separate: 30 s startup, 30 s generation and one fixed
 60 s job, compared with the diagnostic's observed 1.71 s load/1.66 s generation.

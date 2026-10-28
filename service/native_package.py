@@ -319,8 +319,12 @@ LAUNCHER = b"import sys\nfrom pathlib import Path\nsys.path.insert(0,str(Path(__
 
 
 def archive(destination):
+    return _archive(destination,members(),LAUNCHER)
+
+
+def _archive(destination,files,launcher):
     with zipfile.ZipFile(destination, 'x', compression=zipfile.ZIP_DEFLATED) as out:
-        for name in sorted(members()):
+        for name in sorted(files):
             path = ROOT / name
             if any(part.is_symlink() for part in (path, *path.parents)) or not path.is_file():
                 raise Refused('native_package_source')
@@ -329,18 +333,22 @@ def archive(destination):
             out.writestr(info, path.read_bytes())
         info = zipfile.ZipInfo('native-worker/native-worker.py', (1980, 1, 1, 0, 0, 0))
         info.external_attr = 0o100644 << 16
-        out.writestr(info, LAUNCHER)
+        out.writestr(info, launcher)
     return hashlib.sha256(Path(destination).read_bytes()).hexdigest()
 
 
 def verify_archive(path):
+    return _verify_archive(path,members(),LAUNCHER)
+
+
+def _verify_archive(path,files,launcher_bytes):
     declared = zip_preflight(path, source=True)
     with zipfile.ZipFile(path) as source:
         zip_count(source, declared, source=True)
-        expected = {'native-worker/' + name for name in members()} | {'native-worker/native-worker.py'}
+        expected = {'native-worker/' + name for name in files} | {'native-worker/native-worker.py'}
         if len(source.namelist()) != len(expected) or set(source.namelist()) != expected:
             raise Refused('native_package_source_members')
-        for name in members():
+        for name in files:
             info = source.getinfo('native-worker/' + name)
             local = ROOT / name
             if any(part.is_symlink() for part in (local, *local.parents)):
@@ -348,8 +356,8 @@ def verify_archive(path):
             if info.file_size != local.stat().st_size or zip_read(source, info, local.stat().st_size) != local.read_bytes():
                 raise Refused('native_package_source_changed')
         launcher = source.getinfo('native-worker/native-worker.py')
-        if launcher.file_size != len(LAUNCHER): raise Refused('native_package_launcher')
-        if zip_read(source, launcher, len(LAUNCHER)) != LAUNCHER: raise Refused('native_package_launcher')
+        if launcher.file_size != len(launcher_bytes): raise Refused('native_package_launcher')
+        if zip_read(source, launcher, len(launcher_bytes)) != launcher_bytes: raise Refused('native_package_launcher')
 
 
 def preflight(config_path, manifest_path):

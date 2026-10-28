@@ -44,3 +44,13 @@ class NativeCPUContexts(KokoroContexts):
         if operation!='speech_generate' or principal not in self._contexts:raise Refused('not_ready')
         template=json.loads(self._contexts[principal]);version=template['plan']['voice_versions'][0]
         return self.resolve_registered(principal,request,version)
+
+    def capabilities(self,principal):
+        if principal not in self._contexts:return None
+        context=json.loads(self._contexts[principal])
+        session=getattr(self,'qualification',None)
+        return dict(engine='kokoro',device='cpu',clone_prepare=False,profile=context['plan']['resolved']['profile'],
+            operations=['voice_preset_register','speech_generate','job_get','job_cancel','artifact_get'],
+            qualification_session=None if session is None else dict(max_jobs=session.value['max_jobs'],
+                remaining_seconds=max(0,session.value['started_monotonic']+session.value['seconds']-session.clock())),
+            next_action='Resolve default.narration; speech requires the explicit finite qualification session. Installation is not speech qualification.')

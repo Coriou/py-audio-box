@@ -99,6 +99,10 @@ def execution(context):
 def generated_source(context):
     spec = execution(context)
     if spec is None: raise Refused('execution_required')
+    from worker.engines.native_kokoro import NativeKokoroExecution
+    if type(spec) is NativeKokoroExecution:
+        from worker.native_cpu_protocol import generated_source as native_cpu_source
+        return native_cpu_source(context)
     from worker.transport import canonical
     return spec.engine+'-execution-sha256:'+hashlib.sha256(canonical(spec.identity())).hexdigest()
 

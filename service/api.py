@@ -118,7 +118,8 @@ def create_voice_app(dispatcher, *, credentials, upload_deadline=15.0, installed
             raise ValueError('checked_installed_activation_required')
     if native_installed:
         from service.native_activation import NativeActivation
-        if installed is not None or type(dispatcher.installed_activation) is not NativeActivation or not dispatcher.installed_checked:
+        from service.native_cpu_activation import NativeCPUActivation
+        if installed is not None or type(dispatcher.installed_activation) not in (NativeActivation,NativeCPUActivation) or not dispatcher.installed_checked:
             raise ValueError('checked_native_activation_required')
     production = FastAPI(title='Authenticated installed speech control' if installed is not None or native_installed else 'Authenticated synthetic production control', docs_url=None,
                          redoc_url=None, openapi_url=None)
@@ -195,11 +196,12 @@ def create_voice_app(dispatcher, *, credentials, upload_deadline=15.0, installed
         configured = dispatcher.call('configured_capabilities', request.state.principal)
         if native_installed:
             status = dispatcher.call('status')
+            cpu=type(dispatcher.installed_activation) is NativeCPUActivation
             return dict(synthetic=False, ready_for_speech=False, installed=True,
                         activation_ready=status['persistent_activation'], status=status,
                         configured_capabilities=configured, store='installed-native-owner',
                         configured_presets=dispatcher.call('configured_presets', request.state.principal),
-                        qualification='UNAVAILABLE / UNQUALIFIED; source activation does not qualify speech')
+                        qualification=('UNQUALIFIED native CPU preset preview; only an explicit finite qualification session admits test jobs.' if cpu else 'UNAVAILABLE / UNQUALIFIED; source activation does not qualify speech'))
         if configured:
             return dict(synthetic=False, ready_for_speech=False, installed=False,
                         configured_capabilities=configured, store='borrowed-owner',

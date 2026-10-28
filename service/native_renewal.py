@@ -797,6 +797,9 @@ def provision(intent_file, *, export_file, host_root):
 def preallocate(core, context):
     """Before creating a queued job; replay has already returned."""
     if not context.get('execution',{}).get('native'): return
+    if context['plan']['resolved']['profile']['id']=='kokoro-native-cpu':
+        from service.native_cpu_capacity import preallocate as cpu_preallocate
+        return cpu_preallocate(core,context)
     count=core.db.execute('SELECT count(*) FROM jobs').fetchone()[0]
     capacity('history',count,63)
     templates=getattr(core,'_native_retention_templates',None)

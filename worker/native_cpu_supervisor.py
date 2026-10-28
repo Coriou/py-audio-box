@@ -21,6 +21,7 @@ class CPUJournal(Journal):
     version=p.JOURNAL_VERSION
 
     def __init__(self,root,*args):
+        if (Path(root)/'owner-failure.json').exists() or (Path(root)/'owner-failure.json').is_symlink():raise Refused('native_cpu_retained_owner_failure')
         if (Path(root)/'predecessor').exists():raise Refused('native_cpu_renewal_unsupported')
         super().__init__(root,*args)
 
@@ -34,7 +35,12 @@ class NativeCPUSupervisor(NativeSupervisor):
     job_seconds=JOB_SECONDS
     disk_reserve_bytes=1024**3
 
-    def __init__(self,*args,sampler_factory=None,**kwargs):
+    def __init__(self,*args,sampler_factory=None,qualification=None,_boot=None,**kwargs):
+        from worker.native_cpu_qualification import Session
+        if qualification is not None and type(qualification) is not Session:raise Refused('native_cpu_qualification_authority')
+        self.qualification=qualification
+        if _boot is not None:p._hex(_boot,32)
+        self._configured_boot=_boot
         if sampler_factory is None:
             from scripts.ci_process_rss import Sampler
             sampler_factory=Sampler
@@ -43,6 +49,32 @@ class NativeCPUSupervisor(NativeSupervisor):
             from scripts.ci_process_rss import ProcessRSS
             kwargs['identity']=lambda handle:str(ProcessRSS(handle.pid).sample()['identity'])
         super().__init__(*args,**kwargs)
+
+    def new_boot(self):
+        return super().new_boot() if self._configured_boot is None else self._configured_boot
+
+    def owner_failure(self,exc):
+        super().owner_failure(exc)
+        self.owner_error=dict(type=type(exc).__name__,message=str(exc)[:1000],
+            cause_type=type(exc.__cause__).__name__ if exc.__cause__ else None,
+            cause=str(exc.__cause__)[:1000] if exc.__cause__ else None)
+        # A diagnostic write cannot delay a live model's independent kill path.
+        # After confirmed wait, retain the first owner validation/storage cause.
+        if self.active is not None and self.active.get('waited'):
+            try:
+                fd=os.open(self.journal.root/'owner-failure.json',os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW,0o600)
+                with os.fdopen(fd,'wb') as stream:stream.write(canonical(self.owner_error));stream.flush();os.fsync(stream.fileno())
+            except Exception as failure:self.owner_error['write_error']=dict(type=type(failure).__name__,message=str(failure)[:1000])
+
+    def dispatch(self,request):
+        if self.qualification is None:return super().dispatch(request)
+        with self.qualification.scope():return super().dispatch(request)
+
+    def prepare(self,q):
+        from worker.native_cpu_qualification import MAX_JOBS
+        if self.qualification is not None and not any(r['binding']==q['binding'] for r in self.journal.value['records']) and len(self.journal.value['records'])>=MAX_JOBS:
+            raise Refused('native_cpu_qualification_job_limit')
+        return super().prepare(q)
 
     def make_availability(self,registrations,manifest,provider,utc,clock):
         inventories=[r['inventory'] for r in registrations.values()]
@@ -58,7 +90,12 @@ class NativeCPUSupervisor(NativeSupervisor):
         from contracts import validate as oracle
         reg=candidate if candidate is not None else self.registrations.get(r['binding'])
         if reg is None or canonical(reg['snapshot'])!=canonical(r['snapshot']):raise Refused('native_cpu_registration')
-        job,context,assets,profiles=r['snapshot'];oracle.admission(job,context,profiles)
+        job,context,assets,profiles=r['snapshot']
+        if self.qualification is not None and not current:
+            oracle.stored_context(job,context)
+            selected=next(p for p in profiles if p['id']=='kokoro-native-cpu')
+            self.qualification.authorize(context,selected,job,live=False)
+        else:oracle.admission(job,context,profiles)
         attempt=oracle.active_attempt(job)
         if job['state'] not in ('running','cancel_requested') or attempt['reaped'] or assets:
             raise Refused('native_cpu_attempt')

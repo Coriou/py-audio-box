@@ -585,9 +585,9 @@ class NativeRuntime:
                 proposal['message'],proposal['manifest'],time.monotonic())
         finally: os.close(stagefd)
 
-    @staticmethod
-    def _validate_output(authority,proposal,output,raw,spec):
+    @classmethod
+    def _validate_output(cls,authority,proposal,output,raw,spec):
         if len(raw)!=output['bytes'] or len(raw)>min(spec.max_output_bytes,1048576) or hashlib.sha256(raw).hexdigest()!=output['sha256']:
             raise Refused('native_output')
         from worker.native_child import validate_proposal
-        validate_proposal(json.loads(authority._snapshot),proposal,raw,spec)
+        validate_proposal(json.loads(authority._snapshot),proposal,raw,spec,**({} if cls.protocol is p else dict(protocol=cls.protocol)))
