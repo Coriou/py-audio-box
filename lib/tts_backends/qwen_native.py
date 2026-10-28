@@ -14,13 +14,16 @@ class NativeQwenBackend:
     """Closed preset/clone routes; prompts never leave this model owner."""
 
     def __init__(self, *, model_name, num_threads, dtype_str, revision,
-                 offline, device, attention, diagnostic_request_seconds=None):
+                 offline, device, attention, diagnostic_request_seconds=None, diagnostic_dtype=None):
+        if diagnostic_dtype is not None and (type(diagnostic_dtype) is not str or diagnostic_dtype != 'float16' or diagnostic_request_seconds != 120 or dtype_str != diagnostic_dtype):
+            raise ValueError('native_diagnostic_precision')
+        expected_dtype = 'float32' if diagnostic_dtype is None else diagnostic_dtype
         if (type(model_name) is not str or not Path(model_name).is_absolute()
                 or not Path(model_name).is_dir()
                 or type(num_threads) is not int or not 1 <= num_threads <= 64
                 or type(revision) is not str or not 0 < len(revision) <= 256
                 or offline is not True
-                or (device, dtype_str, attention) != ('mps', 'float32', 'sdpa')):
+                or (device, dtype_str, attention) != ('mps', expected_dtype, 'sdpa')):
             raise ValueError('native_execution_required')
         from worker.native_budgets import REQUEST_SECONDS, DIAGNOSTIC_REQUEST_SECONDS
         if diagnostic_request_seconds is not None and (type(diagnostic_request_seconds) is not int or diagnostic_request_seconds != DIAGNOSTIC_REQUEST_SECONDS):
@@ -46,6 +49,10 @@ class NativeQwenBackend:
         if getattr(getattr(self._model, 'device', None), 'type', None) != device:
             self.close()
             raise ValueError('native_device_mismatch')
+
+        if diagnostic_dtype is not None and str(getattr(getattr(self._model, 'model', None), 'dtype', None)) != 'torch.' + diagnostic_dtype:
+            self.close()
+            raise ValueError('native_dtype_mismatch')
 
     def close(self):
         # No process API, implicit retry, cache flush or asynchronous cleanup.

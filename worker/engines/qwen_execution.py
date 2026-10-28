@@ -129,14 +129,16 @@ def current_hardware(spec, inventory):
     except (StopIteration,ValueError,TypeError): raise Refused('stale_or_unavailable_device') from None
 
 
-def static_native_hardware(spec, inventory):
+def static_native_hardware(spec, inventory, *, diagnostic_dtype=None):
     """Validate immutable native identity, independently of observation age."""
     from worker.hardware import DeviceFamily, topology_allows
+    if diagnostic_dtype is not None and (type(diagnostic_dtype) is not str or diagnostic_dtype != 'float16'): raise Refused('native_diagnostic_precision')
+    dtype = 'float32' if diagnostic_dtype is None else diagnostic_dtype
     inventory_from_wire(inventory_wire(inventory))
     from worker.engines.qwen_prepare import QwenPreparation
     if type(spec) is QwenPreparation: spec = spec.generation()
     if (type(spec) is not QwenExecution
-            or (spec.device, spec.dtype, spec.attention) != ('mps', 'float32', 'sdpa')
+            or (spec.device, spec.dtype, spec.attention) != ('mps', dtype, 'sdpa')
             or spec.task not in ('custom_voice', 'clone')
             or not topology_allows(inventory.host, DeviceFamily.MPS)):
         raise Refused('native_execution_required')

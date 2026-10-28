@@ -6,6 +6,8 @@ on:
       - 'scripts/ci-apple-silicon.py'
       - 'scripts/ci-apple-speech.py'
       - 'scripts/ci-native-import.py'
+      - 'scripts/ci-native-numerics.py'
+      - 'tests/test_ci_native_numerics.py'
       - 'scripts/ci_process_rss.py'
       - 'scripts/ci_qwen_observe.py'
       - 'tests/test_ci_qwen_observe.py'
@@ -46,6 +48,11 @@ on:
         description: EN-only Qwen completeness measurement, 120s generation/270s total (not installed qualification)
         type: boolean
         default: false
+      diagnostic_precision:
+        description: Explicit diagnostic precision (does not change installed admission)
+        type: choice
+        options: [float32, float16]
+        default: float32
 permissions:
   contents: read
 concurrency:
@@ -65,6 +72,7 @@ jobs:
       HF_HUB_DISABLE_TELEMETRY: '1'
       PIP_DISABLE_PIP_VERSION_CHECK: '1'
       PYTORCH_ENABLE_MPS_FALLBACK: '0'
+      DIAGNOSTIC_PRECISION: ${{ github.event_name == 'workflow_dispatch' && inputs.diagnostic_precision || 'float32' }}
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
         with:
@@ -80,7 +88,7 @@ jobs:
       - name: Fresh guarded import in the actual speech environment before any download
         run: python scripts/ci-native-import.py --output apple-speech-import
       - name: One cold diagnostic EN completeness measurement (no retry)
-        run: python scripts/ci-apple-speech.py --diagnostic-en-completeness --output apple-speech
+        run: python scripts/ci-apple-speech.py --diagnostic-en-completeness --diagnostic-precision "$DIAGNOSTIC_PRECISION" --output apple-speech
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         if: always()
         with:
@@ -128,11 +136,13 @@ jobs:
         run: python scripts/ci-apple-silicon.py deps-check --report apple-ci/dependencies.json
       - name: Fresh real locked native bootstrap under permanent guard (no weights)
         run: python scripts/ci-native-import.py --output apple-ci/native-import
+      - name: Pinned 12Hz tiny random-parameter FP32 and FP16 MPS numerical gate (no downloads)
+        run: python scripts/ci-native-numerics.py --output apple-ci/numerics
       - name: Real bounded MPS operation with CPU fallback disabled
         run: python scripts/ci-apple-silicon.py mps-probe --report apple-ci/mps-probe.json
       - name: Explicit Darwin-safe source contracts (inert protocol and CI harness)
         run: >-
-          python -m unittest tests.test_ci_apple_silicon tests.test_ci_apple_speech tests.test_ci_process_rss tests.test_ci_qwen_observe
+          python -m unittest tests.test_ci_apple_silicon tests.test_ci_apple_speech tests.test_ci_process_rss tests.test_ci_qwen_observe tests.test_ci_native_numerics
           tests.worker.test_native_protocol tests.worker.test_native_qwen
           tests.service.test_qwen_provisioning tests.test_native_qwen_artifact -v
       - name: Native archive and selected artifact closure (no runtime)

@@ -53,7 +53,7 @@ def install_spawn_guard():
 
 
 def infer(execution, text, bundles, references, inventory, *,
-          reference_temp_dir=None, managed_owner_uid=None, on_loaded=None, diagnostic_request_seconds=None):
+          reference_temp_dir=None, managed_owner_uid=None, on_loaded=None, diagnostic_request_seconds=None, diagnostic_dtype=None):
     """Real input verifier/complete loader/encoder with a closed native backend.
 
     The owned entry installs spawn_guard before calling this function. No
@@ -65,7 +65,9 @@ def infer(execution, text, bundles, references, inventory, *,
     from worker.engines.qwen import verify_service_inputs, execute
     if not _guard_installed:
         raise Refused('native_spawn_guard_required')
-    static_native_hardware(execution, inventory)
+    if diagnostic_dtype is not None and (type(diagnostic_dtype) is not str or diagnostic_dtype != 'float16' or diagnostic_request_seconds != 120 or execution.dtype != diagnostic_dtype):
+        raise Refused('native_diagnostic_precision')
+    static_native_hardware(execution, inventory, **({'diagnostic_dtype': diagnostic_dtype} if diagnostic_dtype is not None else {}))
     from worker.native_budgets import REQUEST_SECONDS, DIAGNOSTIC_REQUEST_SECONDS
     limit = REQUEST_SECONDS
     if diagnostic_request_seconds is not None:
@@ -84,7 +86,8 @@ def infer(execution, text, bundles, references, inventory, *,
     factory = NativeQwenBackend
     if diagnostic_request_seconds is not None:
         from functools import partial
-        factory = partial(factory, diagnostic_request_seconds=diagnostic_request_seconds)
+        factory = partial(factory, diagnostic_request_seconds=diagnostic_request_seconds,
+            **({'diagnostic_dtype': diagnostic_dtype} if diagnostic_dtype is not None else {}))
     result = execute(execution, text, bundles, references, inventory,
         reference_temp_dir=reference_temp_dir, managed_owner_uid=managed_owner_uid,
         backend_factory=factory, on_loaded=on_loaded)

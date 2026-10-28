@@ -282,8 +282,9 @@ def acquire(root, expected):
     root.chmod(0o500)
 
 
-def infer(bundle, output, language, *, diagnostic_en=False):
+def infer(bundle, output, language, *, diagnostic_en=False, precision='float32'):
     limits = budgets(diagnostic_en)
+    validate_precision(diagnostic_en, precision)
     if diagnostic_en and language != 'English': raise ValueError('diagnostic_English_only')
     from worker import native_child
     from worker.engines.qwen_execution import QwenExecution
@@ -318,6 +319,7 @@ def infer(bundle, output, language, *, diagnostic_en=False):
             import torch
             stage('cold_load', cold_load_seconds=time.monotonic()-load_started,
                 selected_device=str(self._model.device),
+                selected_model_dtype=str(self._model.model.dtype),
                 mps_allocated_after_load=torch.mps.current_allocated_memory(),
                 mps_driver_after_load=torch.mps.driver_allocated_memory(),
                 mps_recommended_max_bytes=torch.mps.recommended_max_memory())
@@ -346,17 +348,18 @@ def infer(bundle, output, language, *, diagnostic_en=False):
         language=language, voice_id='native-ci', voice_revision='v1', threads=2,
         max_text_bytes=256, max_frames=24000*20, max_output_bytes=960044,
         memory_bytes=MAX_RSS, sample_rate=24000, max_new_tokens=256, timeout_s=limits['generation_seconds'],
-        device='mps', dtype='float32', attention='sdpa', preset='Ryan')
+        device='mps', dtype=precision, attention='sdpa', preset='Ryan')
     inventory = HardwareInventory(Host('darwin', 'arm64', 'native'),
         (Device(DeviceFamily.MPS, 0, True, True, datetime.now(timezone.utc).isoformat()),))
     native_child.install_spawn_guard()
     started = time.monotonic()
-    stage('input_verification', effective_budgets=limits, execution_request_seconds=spec.timeout_s, diagnostic_only=diagnostic_en, options=dict(text=text, max_new_tokens=256, dtype='float32', attention='sdpa', threads=2, speaker='Ryan', temperature=spec.temperature, top_p=spec.top_p, top_k=spec.top_k, repetition_penalty=spec.repetition_penalty))
+    stage('input_verification', effective_budgets=limits, execution_request_seconds=spec.timeout_s, diagnostic_only=diagnostic_en, options=dict(text=text, max_new_tokens=256, dtype=precision, attention='sdpa', threads=2, speaker='Ryan', temperature=spec.temperature, top_p=spec.top_p, top_k=spec.top_k, repetition_penalty=spec.repetition_penalty))
     qwen_native.NativeQwenBackend = MeasuredBackend
     try:
         result = native_child.infer(spec, text, {'native-ci': bundle}, {}, inventory,
                                     managed_owner_uid=os.getuid(),
-                                    **({'diagnostic_request_seconds': limits['generation_seconds']} if diagnostic_en else {}))
+                                    **({'diagnostic_request_seconds': limits['generation_seconds']} if diagnostic_en else {}),
+                                    **({'diagnostic_dtype': precision} if precision == 'float16' else {}))
     finally:
         qwen_native.NativeQwenBackend = original_backend
     data = result['data']
@@ -382,8 +385,22 @@ def infer(bundle, output, language, *, diagnostic_en=False):
         ending_verified=False, installed_qualified=False, diagnostic_only=diagnostic_en, effective_budgets=limits))
 
 
-def run(output, *, diagnostic_en=False):
+def validate_precision(diagnostic_en, precision):
+    if type(precision) is not str or precision not in ('float32', 'float16') or precision == 'float16' and diagnostic_en is not True:
+        raise ValueError('closed_diagnostic_precision_required')
+
+
+def diagnostic_manifest(expected, language, precision):
+    value = json.loads(json.dumps(expected))
+    value['language'] = language
+    if precision == 'float16':
+        value['execution']['devices'] = [dict(device='mps', dtype='float16', attention='sdpa')]
+    return value
+
+
+def run(output, *, diagnostic_en=False, precision='float32'):
     limits = budgets(diagnostic_en)
+    validate_precision(diagnostic_en, precision)
     import platform
     if (platform.system(), platform.machine()) != ('Darwin', 'arm64'):
         raise ValueError('native_Darwin_arm64_required')
@@ -395,7 +412,7 @@ def run(output, *, diagnostic_en=False):
         descriptor_sha256=hashlib.sha256(DESCRIPTOR.read_bytes()).hexdigest(),
         python=sys.version, physical_memory_bytes=int(subprocess.check_output(
             ['/usr/sbin/sysctl', '-n', 'hw.memsize'], timeout=5)),
-        effective_budgets=limits, diagnostic_only=diagnostic_en,
+        effective_budgets=limits, diagnostic_only=diagnostic_en, requested_dtype=precision,
         purpose='completeness_measurement_not_optimization' if diagnostic_en else 'native_prerequisite',
         requested_languages=['English'] if diagnostic_en else ['English','French'],
         runtime='not_run', download='not_run', English='not_run', French='not_requested' if diagnostic_en else 'not_run', children={},
@@ -418,7 +435,7 @@ def run(output, *, diagnostic_en=False):
                     bundle.chmod(0o700)
                     manifest = bundle / 'manifest.json'
                     manifest.chmod(0o600)
-                    manifest.write_bytes(manifest_bytes(dict(expected, language=language)))
+                    manifest.write_bytes(manifest_bytes(diagnostic_manifest(expected, language, precision)))
                     manifest.chmod(0o400)
                     bundle.chmod(0o500)
                     env = {k: v for k, v in os.environ.items() if k in (
@@ -430,6 +447,7 @@ def run(output, *, diagnostic_en=False):
                     argv = [sys.executable, '-u', str(Path(__file__).resolve()),
                         '--child', str(bundle), '--language', language, '--output', str(output)]
                     if diagnostic_en: argv.append('--diagnostic-en-completeness')
+                    argv.extend(['--diagnostic-precision', precision])
                     owned_child(argv,
                         env, output / (language + '.log'), observation,
                         seconds=limits['total_seconds'], progress_path=output / (language + '-progress.json'), diagnostic_en=diagnostic_en)
@@ -454,8 +472,9 @@ if __name__ == '__main__':
     parser.add_argument('--child', type=Path)
     parser.add_argument('--language', choices=('English', 'French'))
     parser.add_argument('--diagnostic-en-completeness', action='store_true', help='EN only: 120s generation/270s child completeness measurement, not installed qualification')
+    parser.add_argument('--diagnostic-precision', choices=('float32', 'float16'), default='float32')
     args = parser.parse_args()
     if args.child:
-        infer(args.child, args.output, args.language, diagnostic_en=args.diagnostic_en_completeness)
+        infer(args.child, args.output, args.language, diagnostic_en=args.diagnostic_en_completeness, precision=args.diagnostic_precision)
     else:
-        run(args.output, diagnostic_en=args.diagnostic_en_completeness)
+        run(args.output, diagnostic_en=args.diagnostic_en_completeness, precision=args.diagnostic_precision)

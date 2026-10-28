@@ -237,6 +237,9 @@ class NativeSupervisorTests(unittest.TestCase):
             channel=BytesChannel(struct.pack('!I',len(config_raw))+config_raw+struct.pack('!I',len(bad))+bad)
             with inert_guard(), patch('lib.tts_backends.qwen_native.NativeQwenBackend',return_value=self.fixture.backend),self.assertRaises(Refused):
                 native_child.run_socket(channel)
+        forbidden=canonical(dict(config,diagnostic_dtype='float16'))
+        with self.assertRaisesRegex(Refused,'native_shape'):
+            native_child.run_socket(BytesChannel(struct.pack('!I',len(forbidden))+forbidden))
         parent=BytesChannel(child.sent)
         proposal,data=native_child.parent_exchange(parent,config,cutoff)
         native_child.validate_proposal(self.snapshot,proposal,data,self.e)

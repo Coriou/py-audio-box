@@ -3,6 +3,7 @@ from contextlib import ExitStack, contextmanager
 from dataclasses import replace
 from datetime import datetime, timezone, timedelta
 import os
+import json
 import subprocess
 import sys
 import types
@@ -136,6 +137,26 @@ class NativeQwenTests(unittest.TestCase):
                 params=dict(text='hello',language='English',temperature=.9,top_p=1.,top_k=50,repetition_penalty=1.05,max_new_tokens=256)
                 with self.assertRaisesRegex(ValueError,'native_budget_required'):default_backend._parameters(params,120)
                 default_backend.close()
+                # FP16 is a private explicit diagnostic selection, never fallback.
+                import hashlib
+                manifest=self.fixture.bundle/'manifest.json';original_manifest=manifest.read_bytes()
+                changed=json.loads(original_manifest);changed['execution']['devices'].append(dict(device='mps',dtype='float16',attention='sdpa'))
+                raw=json.dumps(changed).encode();manifest.chmod(0o600);manifest.write_bytes(raw);manifest.chmod(0o400)
+                fp16=replace(long_spec,dtype='float16',manifest_sha256=hashlib.sha256(raw).hexdigest())
+                model.model=types.SimpleNamespace(dtype='torch.float16')
+                try:
+                    with self.assertRaises(Refused):native_child.infer(fp16,'hello',{'bundle':self.fixture.bundle},{},self.inventory,diagnostic_request_seconds=120)
+                    result=native_child.infer(fp16,'hello',{'bundle':self.fixture.bundle},{},self.inventory,diagnostic_request_seconds=120,diagnostic_dtype='float16')
+                    self.assertEqual(result['data'][:4],b'RIFF')
+                    self.assertEqual(factory.call_args.kwargs['dtype'],'float16')
+                    for value in ('auto','bfloat16',True):
+                        with self.assertRaisesRegex(Refused,'native_diagnostic_precision'):
+                            native_child.infer(fp16,'hello',{'bundle':self.fixture.bundle},{},self.inventory,diagnostic_request_seconds=120,diagnostic_dtype=value)
+                    model.model.dtype='torch.float32'
+                    with self.assertRaisesRegex(ValueError,'native_dtype_mismatch'):
+                        native_child.infer(fp16,'hello',{'bundle':self.fixture.bundle},{},self.inventory,diagnostic_request_seconds=120,diagnostic_dtype='float16')
+                finally:
+                    manifest.chmod(0o600);manifest.write_bytes(original_manifest);manifest.chmod(0o400)
                 # Upstream ordinary Python spawn is refused before execution.
                 model.generate_custom_voice=lambda **kw:subprocess.Popen(['never'])
                 with self.assertRaises(native_child.SpawnRefused):

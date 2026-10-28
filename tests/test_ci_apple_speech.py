@@ -25,6 +25,16 @@ class AppleSpeechTests(unittest.TestCase):
             with self.subTest(progress=progress),self.assertRaises(TimeoutError):
                 ci.phase_remaining(progress,now)
 
+    def test_precision_selector_is_closed_and_manifest_is_owned_copy(self):
+        expected=json.loads(ci.DESCRIPTOR.read_text());original=json.dumps(expected,sort_keys=True)
+        for mode,precision in ((False,'float16'),(True,'bfloat16'),(True,True),(True,'auto')):
+            with self.subTest(mode=mode,precision=precision),self.assertRaises(ValueError):ci.validate_precision(mode,precision)
+        ci.validate_precision(True,'float16');ci.validate_precision(False,'float32')
+        selected=ci.diagnostic_manifest(expected,'English','float16')
+        self.assertEqual(selected['execution']['devices'],[dict(device='mps',dtype='float16',attention='sdpa')])
+        self.assertEqual(json.dumps(expected,sort_keys=True),original)
+        self.assertEqual(selected['files'],expected['files'])
+
     def test_explicit_diagnostic_phase_caps_and_English_only_descriptor(self):
         selected=ci.budgets(True)
         self.assertEqual((selected['generation_seconds'],selected['total_seconds']),(120,270))

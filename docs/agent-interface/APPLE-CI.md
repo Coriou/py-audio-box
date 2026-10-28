@@ -229,3 +229,33 @@ It downloads only the existing pinned permitted public checkpoint. No cache or
 retry is introduced. A valid WAV is distinct from verified ending/quality; the
 report keeps `ending_verified: false` until separately checked. Running this
 opt-in mode requires a separate deliberate runtime authorization.
+
+
+## FP16 candidate: numerical gate, not full-model qualification
+
+`--diagnostic-precision float16` requires the explicit EN completeness mode.
+Only the private diagnostic child/backend receive this selector; installed
+registration/socket admission remains MPS/float32/SDPA. The committed checkpoint
+manifest is unchanged; the owned diagnostic tree gets a copied execution tuple
+for FP16. Weight paths, sizes, revisions and hashes are unchanged. There is no
+automatic dtype fallback, BF16 admission or watermark override. The actual
+selected model dtype is checked and recorded before generation.
+
+Before any model download, cheap Apple CI runs the pinned 12Hz talker and code
+predictor on MPS in FP32 and FP16 using tiny, random parameters (one layer,
+64-wide hidden state, original codec vocabulary and 16 code groups). It checks
+finite raw activations/logits, actual dtype/device, processed probabilities and
+sampled-token validity, with a 90-second owned deadline and the existing sampled
+RSS/log/kill/reap bounds. No pretrained weights or tokenizer decoder are loaded.
+Passing does **not** prove trained-model numerical safety, audio quality,
+performance, expected ending, or installed FP16 support.
+
+[PyTorch 2.10 supports Half on MPS](https://github.com/pytorch/pytorch/blob/v2.10.0/aten/src/ATen/native/mps/OperationUtils.h#L564).
+[Qwen PR355](https://github.com/QwenLM/Qwen3-TTS/pull/355) is an unmerged proposal
+reporting FP16 overflow on CUDA, not an endorsed MPS fix.
+[Our pinned Transformers 4.57.3 sampler](https://github.com/huggingface/transformers/blob/v4.57.3/src/transformers/generation/utils.py#L2579)
+already promotes returned logits to FP32 before sampling. This inherited cast is
+reported; no new upstream/model cast is added. It cannot repair earlier
+projection overflow. The gate separately records a representational overflow
+sentinel and verifies rejection of injected nonfinite data before sampling.
+No new Qwen wheel, lock upgrade or logits patch is introduced.
