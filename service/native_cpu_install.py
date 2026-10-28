@@ -161,6 +161,9 @@ class Prepared:
         _PREPARED_OWNERS[id(self)]=self
         try:
             if _selftest:
+                from service.native_cpu_measurement import recover_pending,history,CAPACITY_ACTION
+                self.pending_recovered=recover_pending(self.root)
+                if history(self.root)['history_jobs_remaining']==0:raise Refused('native_cpu_history_capacity: '+CAPACITY_ACTION)
                 from worker.native_cpu_qualification import Session,descriptor
                 session=descriptor()
                 self.qualification=Session(session,configuration_sha256=self.identity,runtime_manifest_sha256=self.runtime_manifest,

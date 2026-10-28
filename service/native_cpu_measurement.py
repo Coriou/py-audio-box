@@ -12,6 +12,7 @@ import math
 import os
 import platform
 import sqlite3
+import stat
 import wave
 
 from contracts import validate as oracle
@@ -23,6 +24,61 @@ from worker.transport import Refused,canonical
 
 VERSION='native-cpu-local-measurement-v1'
 ACTION='Run doctor --selftest explicitly on this installation; retain existing state.'
+
+
+
+CAPACITY=63
+CAPACITY_ACTION='Retain this installation and its history; run setup into a new directory. The model will be acquired again; no rollover is available.'
+
+
+def history(root):
+    root=files.directory(str(root))
+    control=root/'state'/'control'
+    if control.exists() or control.is_symlink():files.directory(str(control))
+    path=control/'core.sqlite'
+    if not path.exists() and not path.is_symlink():used=0
+    else:
+        _read(path,64*1024**2)
+        with sqlite3.connect(path.as_uri()+'?mode=ro',uri=True) as db:
+            used=db.execute('SELECT count(*) FROM jobs').fetchone()[0]
+    require(type(used) is int and 0<=used<=CAPACITY)
+    return dict(history_jobs_capacity=CAPACITY,history_jobs_used=used,history_jobs_remaining=CAPACITY-used,
+        next_action=CAPACITY_ACTION if used==CAPACITY else ACTION)
+
+
+def recover_pending(root):
+    """Explicit selftest only, owner.lock held; no other name can be removed.
+
+    Preflight both leaves before unlinking. A crash receipt is not an authority
+    and is never adopted. No symlink, owner/mode/link drift or replacement is safe.
+    """
+    from service.install_policy import parent_fd,identity
+    opened=[]
+    with parent_fd(root) as (parent,name):
+        directory=os.open(name,os.O_RDONLY|os.O_DIRECTORY|os.O_NOFOLLOW,dir_fd=parent)
+        try:
+            info=os.fstat(directory)
+            require(info.st_uid==os.getuid() and stat.S_IMODE(info.st_mode)==0o700)
+            for leaf in ('measurement-intent.pending','measurement.pending'):
+                try:before=os.stat(leaf,dir_fd=directory,follow_symlinks=False)
+                except FileNotFoundError:continue
+                def refuse():raise Refused('native_cpu_pending_unsafe:'+leaf+': retain state and inspect this named file before explicit selftest')
+                if not stat.S_ISREG(before.st_mode) or before.st_uid!=os.getuid() or before.st_nlink!=1 or stat.S_IMODE(before.st_mode)!=0o600 or before.st_size>1048576:refuse()
+                fd=os.open(leaf,os.O_RDONLY|os.O_NOFOLLOW|os.O_NONBLOCK,dir_fd=directory)
+                opened.append((leaf,fd,identity(before)))
+                if identity(os.fstat(fd))!=identity(before):refuse()
+            for leaf,fd,expected in opened:
+                if identity(os.fstat(fd))!=expected or identity(os.stat(leaf,dir_fd=directory,follow_symlinks=False))!=expected:
+                    raise Refused('native_cpu_pending_replaced:'+leaf+': retain state and inspect before explicit selftest')
+            for leaf,fd,expected in opened:
+                if identity(os.fstat(fd))!=expected or identity(os.stat(leaf,dir_fd=directory,follow_symlinks=False))!=expected:
+                    raise Refused('native_cpu_pending_replaced:'+leaf)
+                os.unlink(leaf,dir_fd=directory)
+            if opened:os.fsync(directory)
+            return [leaf for leaf,_,_ in opened]
+        finally:
+            for _,fd,_ in opened:os.close(fd)
+            os.close(directory)
 
 
 def require(value):

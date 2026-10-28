@@ -75,6 +75,15 @@ class MeasurementTests(unittest.TestCase):
         self.reopen_transport();self.contexts.qualification=None
         with patch.object(self.s,'exchange',side_effect=self.exchange):
             d=self.open();self.assertEqual(d.call('configured_profiles')[0]['readiness'],'ready')
+            import asyncio,httpx
+            from service.api import create_voice_app
+            from service.auth import Credential,StaticCredentials
+            app=create_voice_app(d,credentials=StaticCredentials([Credential('fixture-only','local',frozenset({'read','production-write'}))]),native_installed=True)
+            async def public_status():
+                async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app),base_url='http://fixture') as client:
+                    return (await client.get('/v1/status',headers={'Authorization':'Bearer fixture-only'})).json()
+            status=asyncio.run(public_status());self.assertTrue(status['ready_for_speech'])
+            self.assertEqual(status['qualification'],'local_selftest');self.assertIsNone(status['configured_capabilities']['qualification_session'])
             from service.native_cpu_configuration import ALIAS
             voice=d.call('voice_resolve','local',ALIAS);version=d.call('voice_version','local',voice['version_ids'][-1])
             result=d.call('production_generate','local',self.request(version),key='ordinary-no-scope')
@@ -82,7 +91,7 @@ class MeasurementTests(unittest.TestCase):
             self.wait(lambda:d.call('status')['phase']=='idle')
         self.close();self.assertTrue(all(r['acked'] for r in self.s.journal.value['records']))
 
-    def selftest_app(self):
+    def selftest_app(self,*,remove_alias=False):
         # Source fixture: real HTTP routes/Core/mTLS adapter/encoder, inert model
         # and process handles. This cannot qualify an actual installed host.
         import asyncio
@@ -101,8 +110,15 @@ class MeasurementTests(unittest.TestCase):
             self.assertFalse(self.d.thread.is_alive())
             self.d=None;self.activation.release();prepared.closed=True
         prepared.close=owned_close
+        def acquire():
+            owner=self.open()
+            if remove_alias:
+                from service.native_cpu_configuration import VOICE
+                voice=owner.call('voice_get','local',VOICE)
+                owner.call('production_aliases','local',dict(voice_id=VOICE,aliases=[],expected_revision=voice['revision']),key='fixture-remove-alias')
+            return owner
         def dependencies():
-            return prepared,None,self.open
+            return prepared,None,acquire
         def mount(owner):
             return create_voice_app(owner,credentials=StaticCredentials([Credential('fixture-only','local',frozenset({'read','production-write'}))]),native_installed=True)
         return _owned_app(dependencies,mount)
@@ -115,6 +131,16 @@ class MeasurementTests(unittest.TestCase):
             result=asyncio.run(run(self.root))
         self.assertTrue(result['ready_for_speech']);self.assertTrue(prepared.closed)
         self.assertEqual(m.load(prepared)['verification'],'measured')
+        self.assertEqual(len(self.s.journal.value['records']),1)
+
+    def test_selftest_uses_owned_voice_when_default_alias_removed(self):
+        import asyncio
+        from service.native_cpu_selftest import run
+        app=self.selftest_app(remove_alias=True)
+        with patch('service.native_cpu_setup.create_app',return_value=app),patch.object(self.s,'exchange',side_effect=self.exchange):
+            result=asyncio.run(run(self.root))
+        self.assertTrue(result['ready_for_speech']);self.assertEqual(result['history_jobs_used'],1)
+        self.assertEqual(result['history_jobs_remaining'],62)
         self.assertEqual(len(self.s.journal.value['records']),1)
 
     def test_cancelled_selftest_reaps_and_never_publishes_measurement(self):
@@ -135,6 +161,64 @@ class MeasurementTests(unittest.TestCase):
         self.assertFalse((self.root/'measurement.json').exists())
         record=self.s.journal.value['records'][0]
         self.assertTrue(record['receipt']['reaped']);self.assertTrue(record['acked']);self.assertFalse(record['receipt']['timely'])
+
+    def test_crash_pending_each_recovers_private_regular_leaves_before_job(self):
+        from service.native_cpu_install import write
+        original=(self.root/'measurement-intent.json').read_bytes()
+        for leaf in ('measurement-intent.pending','measurement.pending'):
+            write(self.root/leaf,b'incomplete crash bytes')
+            self.assertEqual(m.recover_pending(self.root),[leaf])
+            self.assertFalse((self.root/leaf).exists())
+            self.assertEqual(m.history(self.root)['history_jobs_used'],0)
+        self.assertEqual((self.root/'measurement-intent.json').read_bytes(),original)
+
+    def test_pending_symlink_owner_mode_and_replacement_refuse_without_job(self):
+        import os
+        from types import SimpleNamespace
+        from service.native_cpu_install import Prepared
+        from service.native_cpu_configuration import expected
+        outside=self.root.parent/'untouched-outside';outside.write_bytes(b'outside');outside.chmod(0o444)
+        path=self.root/'measurement.pending';path.symlink_to(outside)
+        (self.root/'state'/'spool').mkdir(mode=0o700)
+        (self.root/'state'/'staging').mkdir(mode=0o770);(self.root/'state'/'staging').chmod(0o770)
+        config=dict(source_files={},python_sha256='e'*64,python_version='fixture',dependencies={},
+            deployment_id='a'*32,installed_at=datetime.now(timezone.utc).isoformat(),principal='local')
+        with patch('service.native_cpu_install.read_installation',return_value=(self.root,config,expected(),self.root/'unused')),                patch.object(Prepared,'_prepare') as start:
+            with self.assertRaisesRegex(Refused,'pending_unsafe:measurement.pending'):Prepared(self.root,_selftest=True)
+            start.assert_not_called()
+        self.assertTrue(path.is_symlink());self.assertEqual(outside.read_bytes(),b'outside');self.assertEqual(outside.stat().st_mode&0o777,0o444)
+        path.unlink();path.write_bytes(b'crash');path.chmod(0o644)
+        with self.assertRaisesRegex(Refused,'pending_unsafe:measurement.pending'):m.recover_pending(self.root)
+        path.chmod(0o600);original=os.stat
+        def changed(name,*args,**kwargs):
+            value=original(name,*args,**kwargs)
+            if name=='measurement.pending':return SimpleNamespace(st_mode=value.st_mode,st_uid=os.getuid()+1,st_nlink=1,st_size=value.st_size)
+            return value
+        with patch.object(m.os,'stat',side_effect=changed),self.assertRaisesRegex(Refused,'pending_unsafe:measurement.pending'):m.recover_pending(self.root)
+        self.assertTrue(path.exists());self.assertEqual(m.history(self.root)['history_jobs_used'],0)
+
+    def test_history_counter_reports_actual_used_remaining_and_full_recovery(self):
+        import sqlite3
+        path=self.control/'core.sqlite'
+        with sqlite3.connect(path) as db:
+            db.execute('CREATE TABLE jobs(id INTEGER)');db.executemany('INSERT INTO jobs VALUES (?)',[(i,) for i in range(63)])
+        counts=m.history(self.root)
+        self.assertEqual((counts['history_jobs_used'],counts['history_jobs_remaining'],counts['history_jobs_capacity']),(63,0,63))
+        self.assertIn('new directory',counts['next_action']);self.assertIn('acquired again',counts['next_action'])
+        self.assertEqual(m.history(self.root),counts)
+
+    def test_doctor_drift_is_structured_and_retains_causal_diagnostic(self):
+        import contextlib,io
+        from service.native_cpu_setup import main
+        cause=ValueError('private-value-must-not-appear')
+        error=Refused('native_cpu_measurement_revalidation_required');error.__cause__=cause
+        output=io.StringIO()
+        with patch('service.native_cpu_install.Prepared',side_effect=error),contextlib.redirect_stdout(output):
+            self.assertEqual(main(['doctor','--root',str(self.root)]),1)
+        result=json.loads(output.getvalue());self.assertFalse(result['ready_for_speech'])
+        self.assertEqual(result['status'],'revalidation_required');self.assertEqual(result['history_jobs_used'],0)
+        self.assertIn('doctor --selftest',result['next_action']);self.assertIn('ValueError',json.dumps(result['error']))
+        self.assertNotIn('private-value',output.getvalue())
 
     def test_forged_stale_binding_and_invalid_measurements_refused(self):
         job=self.completion();value=self.value(job)

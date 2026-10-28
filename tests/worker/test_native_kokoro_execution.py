@@ -64,6 +64,16 @@ class NativeCPUExecutionTests(unittest.TestCase):
         value['version']='native-receipt-v1'
         with self.assertRaises(Refused):cpu.receipt(value,expected=expected)
 
+    def test_character_profile_and_encoded_backend_limits_are_distinct(self):
+        from service.native_cpu_configuration import expected,profile
+        from worker.engines.kokoro import execute
+        context,spec=fixture()
+        configured=profile(expected(),revision='source-limits',installed_at='2026-10-28T00:00:00+00:00')
+        self.assertEqual(configured['limits']['text_chars'],256)
+        self.assertEqual(spec.max_text_bytes,256)
+        with self.assertRaisesRegex(Refused,'unauthorized_bundle'):execute(spec.model,'a'*256,{})
+        with self.assertRaisesRegex(Refused,'text_limit'):execute(spec.model,'é'*256,{})
+
     def test_cpu_inventory_excludes_mps_and_linux(self):
         from worker import native_cpu_protocol as cpu
         from worker.hardware import HardwareInventory, Host, Device, DeviceFamily

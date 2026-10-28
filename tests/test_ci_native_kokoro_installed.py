@@ -186,6 +186,66 @@ class InstalledControllerTests(unittest.TestCase):
             with self.assertRaisesRegex(c.Failure,'first cause'):c.product_flow(Fake())
         self.assertEqual(events,['doctor','model','qualification-session','start'])
 
+    def test_ordinary_role_order_three_jobs_no_qualification_and_stop_first_failure(self):
+        events=[]
+        class Fake:
+            state={'ordinary_journey':True}
+            def model_identity(self):events.append('model');return {}
+            def selftest(self):events.append('selftest')
+            def start_service(self):events.append('ordinary-start')
+            def first_public(self):events.append('shared-public')
+            def stop_mcp(self):events.append('mcp-close')
+            def stop_service(self):events.append('stop')
+            def restarted(self):events.append('restart-public')
+            def tamper_refusal(self):events.append('tamper')
+        c.ordinary_flow(Fake())
+        self.assertEqual(events,['model','selftest','ordinary-start','shared-public','mcp-close','stop','ordinary-start','restart-public','stop','tamper'])
+        events.clear()
+        with patch.object(Fake,'selftest',side_effect=c.Failure('first cause')):
+            with self.assertRaisesRegex(c.Failure,'first cause'):c.ordinary_flow(Fake())
+        self.assertEqual(events,['model'])
+        journey=c.Journey.__new__(c.Journey);journey.state={};journey.root=self.root
+        journey.cli=Mock(side_effect=c.Failure('selftest unknown'))
+        with self.assertRaisesRegex(c.Failure,'selftest unknown'):journey.selftest()
+        self.assertEqual(journey.state['submitted_jobs'],1)
+        journey.cli.assert_called_once_with('doctor','--root',str(self.root),'--selftest',seconds=120)
+
+    def test_ordinary_service_has_no_qualification_flag_and_reuses_receipt(self):
+        path=self.root/'measurement.json';path.write_bytes(b'owned measurement')
+        journey=c.Journey.__new__(c.Journey);journey.root=self.root;journey.command=['python','installed-entry']
+        journey.private=self.root;journey.deadline=time.monotonic()+40;journey.records=[]
+        journey.state=dict(ordinary_journey=True,measurement_sha256=hashlib.sha256(path.read_bytes()).hexdigest())
+        journey.evidence=Mock(return_value=[]);journey.ready=Mock()
+        with patch.object(c,'Child') as child:journey.start_service()
+        self.assertEqual(child.call_args.args[1],['python','installed-entry','serve','--root',str(self.root)])
+        self.assertNotIn('--qualification-session',child.call_args.args[1])
+        self.assertEqual(journey.evidence.call_count,2)
+
+    def test_tamper_refusal_restores_exact_owned_bytes_without_model_job(self):
+        path=self.root/'measurement.json';original=b'original-valid-bytes-fixture';path.write_bytes(original);path.chmod(0o600)
+        journey=c.Journey.__new__(c.Journey);journey.root=self.root;journey.private=self.root
+        journey.command=['python','installed-entry'];journey.deadline=time.monotonic()+40;journey.records=[]
+        journey.state=dict(measurement_sha256=hashlib.sha256(original).hexdigest(),submitted_jobs=3)
+        journey.evidence=Mock(return_value=[{'terminal':'fixture'}]);journey.family_stopped=Mock(return_value=True)
+        roles=[]
+        class Child:
+            def __init__(inner,role,argv,*args):
+                self.assertEqual(path.read_bytes(),b'!'+original[1:]);roles.append((role,argv))
+                inner.path=self.root/(role+'.json');inner.path.write_text(json.dumps(dict(status='revalidation_required',ready_for_speech=False,error={'chain':['fixture']})))
+                inner.record={'exit':1}
+            def wait(inner,seconds):self.assertEqual(seconds,20);return 1
+        with patch.object(c,'Child',Child):journey.tamper_refusal()
+        self.assertEqual(path.read_bytes(),original);self.assertEqual(journey.state['submitted_jobs'],3)
+        self.assertTrue(journey.state['tamper_refusal']['no_model_launch'])
+        self.assertEqual([r for r,_ in roles],['cli','service'])
+        self.assertTrue(all('--qualification-session' not in argv for _,argv in roles))
+
+    def test_tamper_invalid_original_never_rewrites_or_launches(self):
+        path=self.root/'measurement.json';original=b'changed-original';path.write_bytes(original);path.chmod(0o600)
+        journey=c.Journey.__new__(c.Journey);journey.root=self.root;journey.state=dict(measurement_sha256='0'*64)
+        with patch.object(c,'Child') as child,self.assertRaisesRegex(c.Failure,'tamper_original_changed'):journey.tamper_refusal()
+        child.assert_not_called();self.assertEqual(path.read_bytes(),original)
+
     def test_terminal_failure_before_cancel_is_not_reported_as_completion_win(self):
         for state,reason in (('succeeded','cancel_completion_won'),('failed','job_failed_before_cancel'),('cancelled','job_cancelled_before_request')):
             with self.subTest(state=state):

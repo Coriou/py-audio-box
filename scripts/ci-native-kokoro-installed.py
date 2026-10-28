@@ -417,18 +417,30 @@ class Journey:
                 status=self.http('status',phase_cutoff=cutoff)
                 if time.monotonic()>=cutoff:raise Failure('service_readiness_deadline')
                 if status['activation_ready']:
-                    if status['ready_for_speech'] is not False:raise Failure('unexpected_readiness_promotion')
+                    ordinary=self.state.get('ordinary_journey',False)
+                    if status['ready_for_speech'] is not ordinary:raise Failure('unexpected_readiness_promotion')
+                    if ordinary:
+                        caps=status.get('configured_capabilities') or {}
+                        profiles=status.get('profiles',[])
+                        if caps.get('qualification_session') is not None or not profiles or any(p['verification']!='measured' or p['readiness']!='ready' or not p['qualification_receipt'].startswith('local-selftest:') for p in profiles):raise Failure('ordinary_profile_not_measured')
+                        self.state['ordinary_status']=dict(ready_for_speech=True,qualification_session=None,profiles=profiles)
                     return
             except ConnectionError:pass  # bounded startup reads, never a write retry
             time.sleep(.2)
         raise Failure('service_readiness_deadline')
 
     def start_service(self):
-        session=hashlib.sha256((self.root/'qualification.json').read_bytes()).hexdigest()
-        if self.state.get('qualification_session_sha256',session)!=session:raise Failure('qualification_session_changed')
-        self.state['qualification_session_sha256']=session
-        self.service=Child('service',[*self.command,'serve','--root',str(self.root),'--qualification-session'],self.private,self.deadline,self.records)
+        if self.state.get('ordinary_journey',False):
+            if (self.root/'qualification.json').exists() or hashlib.sha256((self.root/'measurement.json').read_bytes()).hexdigest()!=self.state['measurement_sha256']:raise Failure('ordinary_measurement_changed')
+            flags=[]
+        else:
+            session=hashlib.sha256((self.root/'qualification.json').read_bytes()).hexdigest()
+            if self.state.get('qualification_session_sha256',session)!=session:raise Failure('qualification_session_changed')
+            self.state['qualification_session_sha256']=session;flags=['--qualification-session']
+        before=len(self.evidence())
+        self.service=Child('service',[*self.command,'serve','--root',str(self.root),*flags],self.private,self.deadline,self.records)
         self.ready()
+        if len(self.evidence())!=before:raise Failure('service_start_launched_model')
 
     def start_mcp(self):
         self.mcp_child=Child('mcp',[*self.command,'mcp','--root',str(self.root)],self.private,self.deadline,self.records,pipes=True)
@@ -568,14 +580,85 @@ class Journey:
         voice=self.http('voice_resolve',dict(name='default.narration'))
         if voice!=self.state['first_voice']:raise Failure('retained_alias_changed')
         if self.http('job_get',dict(job_id=self.state['first_job']['id']))!=self.state['first_job']:raise Failure('retained_job_changed')
-        for job in self.state['cancel_jobs']:
+        for job in self.state.get('cancel_jobs',[]):
             if self.http('job_get',dict(job_id=job['id']))!=job:raise Failure('retained_cancel_changed')
         raw=download(lambda p,*,cutoff:self.http('asset_content',p,phase_cutoff=cutoff),self.state['first_asset'],self.deadline)
         if hashlib.sha256(raw).hexdigest()!=self.state['first_wav']['sha256']:raise Failure('retained_wav_changed')
         self.take_job()
-        submitted=self.cli('client','--root',str(self.root),'speech','generate','--request',canonical(self.request).decode(),'--idempotency-key','installed-en-4')
+        submitted=self.cli('client','--root',str(self.root),'speech','generate','--request',canonical(self.request).decode(),'--idempotency-key','installed-ordinary-3' if self.state.get('ordinary_journey',False) else 'installed-en-4')
         raw,_,_=self.clip(self.wait_job(submitted['job_id']),'English-restart.wav')
         self.state['restart_wav']=wav_info(raw)
+
+
+
+    def selftest(self):
+        if (self.root/'qualification.json').exists():raise Failure('unexpected_qualification_file')
+        self.take_job()  # Unknown selftest outcomes spend this slot, never retry.
+        value=self.cli('doctor','--root',str(self.root),'--selftest',seconds=120)
+        if (value['qualification']!='local_selftest' or value['ready_for_speech'] is not True or
+                value['history_jobs_used']!=1 or value['history_jobs_remaining']!=62 or
+                not 0<value['cold_end_to_end_seconds']<=90):raise Failure('selftest_public_proof_missing')
+        self.state['selftest']=value
+        raw=(self.root/'measurement.json').read_bytes()
+        if len(raw)>LOG_LIMIT:raise Failure('measurement_size')
+        receipt=json.loads(raw)
+        self.state['measurement_sha256']=hashlib.sha256(raw).hexdigest()
+        self.state['measurement_binding_sha256']=hashlib.sha256(canonical(receipt['binding'])).hexdigest()
+        self.state['measurement_host']=dict(os=receipt['binding']['host']['os'],machine=receipt['binding']['host']['machine'],
+            boot_sha256=hashlib.sha256(receipt['binding']['host']['boot'].encode()).hexdigest())
+        if (self.root/'qualification.json').exists():raise Failure('selftest_created_qualification_file')
+        doctor=self.cli('doctor','--root',str(self.root))
+        if doctor['qualification']!='local_selftest' or doctor['ready_for_speech'] is not True or doctor['history_jobs_used']!=1:raise Failure('ordinary_doctor_not_ready')
+        self.state['ordinary_doctor']=doctor
+
+    def tamper_refusal(self):
+        # This controller owns the fresh file. Mutate/restore the same inode;
+        # never construct or adopt a purported valid replacement receipt.
+        path=self.root/'measurement.json'
+        fd=os.open(path,os.O_RDWR|os.O_NOFOLLOW|os.O_NONBLOCK)
+        def identity(info):return info.st_dev,info.st_ino,info.st_uid,info.st_mode,info.st_nlink
+        initial=os.fstat(fd);saved=None
+        try:
+            if not stat.S_ISREG(initial.st_mode) or initial.st_uid!=os.getuid() or initial.st_nlink!=1 or stat.S_IMODE(initial.st_mode)!=0o600 or initial.st_size>LOG_LIMIT:raise Failure('tamper_file_policy')
+            if identity(initial)!=identity(path.lstat()):raise Failure('tamper_file_replaced')
+            raw=os.read(fd,LOG_LIMIT+1)
+            if len(raw)!=initial.st_size or hashlib.sha256(raw).hexdigest()!=self.state['measurement_sha256']:raise Failure('tamper_original_changed')
+            saved=raw
+            before=self.evidence()
+            os.lseek(fd,0,os.SEEK_SET);os.write(fd,b'!'+saved[1:]);os.fsync(fd)
+            doctor=Child('cli',[*self.command,'doctor','--root',str(self.root)],self.private,self.deadline,self.records)
+            if doctor.wait(20)==0:raise Failure('tamper_doctor_accepted')
+            status=json.loads(doctor.path.read_bytes())
+            if status.get('ready_for_speech') is not False or status.get('status')!='revalidation_required' or not status.get('error'):raise Failure('tamper_doctor_cause_missing')
+            child=Child('service',[*self.command,'serve','--root',str(self.root)],self.private,self.deadline,self.records)
+            if child.wait(20)==0:raise Failure('tamper_serve_accepted')
+            if self.evidence()!=before or not self.family_stopped():raise Failure('tamper_model_or_custody_changed')
+            self.state['tamper_refusal']=dict(doctor_status=status,serve_exit=child.record['exit'],no_model_launch=True)
+        finally:
+            try:
+                if saved is not None:
+                    if _LIVE or not self.family_stopped() or identity(os.fstat(fd))!=identity(initial) or identity(path.lstat())!=identity(initial):
+                        self.state['tamper_restore']='retained_invalid_due_to_unknown_custody_or_identity'
+                    else:
+                        os.lseek(fd,0,os.SEEK_SET);os.write(fd,saved);os.ftruncate(fd,len(saved));os.fsync(fd)
+                        self.state['tamper_restore']='original_exact_bytes'
+            finally:os.close(fd)
+        if self.state.get('tamper_restore')!='original_exact_bytes':raise Failure('tamper_restore_unknown')
+        if hashlib.sha256(path.read_bytes()).hexdigest()!=self.state['measurement_sha256']:raise Failure('tamper_restore_hash')
+
+
+def ordinary_flow(journey):
+    """Three model jobs total: selftest, public replay, same-boot restart."""
+    def phase(name):journey.state['phase']=name;print('phase '+name,flush=True)
+    journey.state['model_before']=journey.model_identity()
+    phase('doctor_selftest');journey.selftest()
+    phase('ordinary_service');journey.start_service()
+    phase('ordinary_public_en');journey.first_public()
+    phase('ordinary_shutdown');journey.stop_mcp();journey.stop_service()
+    phase('ordinary_restart');journey.start_service()
+    phase('ordinary_restart_en');journey.restarted()
+    phase('ordinary_final_shutdown');journey.stop_service()
+    phase('invalid_measurement_refusal');journey.tamper_refusal()
 
 
 def product_flow(journey):
@@ -639,11 +722,12 @@ def _run(args):
             runner_image=os.environ.get('ImageOS'),runner_version=os.environ.get('ImageVersion'),started=time.monotonic(),deadline=time.monotonic()+TOTAL,
             python=sys.version,system=platform.system(),architecture=platform.machine(),macos=platform.mac_ver()[0],
             total_seconds=TOTAL,cleanup_reserve_seconds=RESERVE,root=str(root),private_identity=directory_identity(private),
-            owners=[],submitted_jobs=0,status='running',ending_verified=False)
+            owners=[],submitted_jobs=0,status='running',ending_verified=False,ordinary_journey=getattr(args,'ordinary_selftest',False))
     else:
         state=json.loads(state_path.read_bytes())
         if (state['phase']!='setup_complete' or state['deadline']!=args.deadline or state['root']!=str(root) or
-                state['source_commit']!=os.environ['GITHUB_SHA'] or state['controller_sha256']!=hashlib.sha256(Path(__file__).read_bytes()).hexdigest()):raise Failure('installed_exec_binding')
+                state['source_commit']!=os.environ['GITHUB_SHA'] or state['controller_sha256']!=hashlib.sha256(Path(__file__).read_bytes()).hexdigest() or
+                state.get('ordinary_journey',False)!=getattr(args,'ordinary_selftest',False)):raise Failure('installed_exec_binding')
     try:
         if not args.installed_phase:
             print('phase setup',flush=True)
@@ -656,10 +740,10 @@ def _run(args):
             state['phase']='setup_complete';save(state_path,state);publish(output,state)
             python=str(root/'venv/bin/python')
             os.execve(python,[python,'-I','-B','-u',str(Path(__file__).resolve()),'--run-installed-journey','--installed-phase',
-                '--output',str(output),'--deadline',str(state['deadline'])],environment(private))
+                '--output',str(output),'--deadline',str(state['deadline']),*(['--ordinary-selftest'] if state['ordinary_journey'] else [])],environment(private))
         journey=Journey(output,state);state['phase']='public_journey'
         state['install_preflight_before_download']=json.loads((root/'preflight/report.json').read_bytes())
-        product_flow(journey)
+        (ordinary_flow if state.get('ordinary_journey',False) else product_flow)(journey)
         if not journey.family_stopped() or _LIVE:raise Failure('final_family_custody_unknown')
         from service.native_cpu_install import read_installation
         _,config,_,_=read_installation(root)
@@ -729,6 +813,7 @@ def run(args):
 def main(argv=None):
     parser=argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--run-installed-journey',action='store_true');parser.add_argument('--output',type=Path,required=True)
+    parser.add_argument('--ordinary-selftest',action='store_true',help='Explicit ordinary selftest/serve journey, three model jobs, no qualification flag')
     parser.add_argument('--installed-phase',action='store_true');parser.add_argument('--deadline',type=float)
     args=parser.parse_args(argv)
     if not args.run_installed_journey:parser.error('Explicit --run-installed-journey required; no model acquisition by default.')

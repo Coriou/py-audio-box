@@ -46,6 +46,10 @@ on:
         description: One fresh installed EN journey (353.75 MB, four jobs maximum, no ordinary readiness promotion)
         type: boolean
         default: false
+      ordinary_journey:
+        description: One ordinary selftest/serve/restart journey (353.75 MB, three jobs, no retry)
+        type: boolean
+        default: false
 permissions:
   contents: read
 concurrency:
@@ -109,7 +113,7 @@ jobs:
   en-backend:
     if: >-
       github.event_name == 'workflow_dispatch' && inputs.en_backend &&
-      !inputs.installed_journey &&
+      !inputs.installed_journey && !inputs.ordinary_journey &&
       (github.ref == 'refs/heads/feat/apple-silicon-native' || github.ref == 'refs/heads/main')
     needs: prerequisites
     runs-on: macos-15
@@ -151,8 +155,8 @@ jobs:
 
   installed-journey:
     if: >-
-      github.event_name == 'workflow_dispatch' && inputs.installed_journey &&
-      !inputs.en_backend &&
+      github.event_name == 'workflow_dispatch' && (inputs.installed_journey || inputs.ordinary_journey) &&
+      !(inputs.installed_journey && inputs.ordinary_journey) && !inputs.en_backend &&
       (github.ref == 'refs/heads/feat/apple-silicon-native' || github.ref == 'refs/heads/main')
     needs: prerequisites
     runs-on: macos-15
@@ -168,7 +172,9 @@ jobs:
           python-version: '3.11'
           architecture: arm64
       - name: One explicit fresh installed product journey (no retry)
-        run: python scripts/ci-native-kokoro-installed.py --run-installed-journey --output kokoro-installed
+        run: >-
+          python scripts/ci-native-kokoro-installed.py --run-installed-journey
+          ${{ inputs.ordinary_journey && '--ordinary-selftest' || '' }} --output kokoro-installed
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         if: always()
         with:

@@ -269,7 +269,10 @@ def production_call(dispatcher, principal, operation, payload, key=None):
         elif str(exc)=='native_cpu_qualification_expired':
             detail='The finite native CPU qualification session has expired or cannot fit another bounded job.'
             action='Retained job/artifact reads remain available. Keep the evidence; sessions are not automatically renewed.'
-        elif str(exc) in ('native_cpu_qualification_job_limit','native_cpu_qualification_queue_budget','native_cpu_history_capacity'):
+        elif str(exc)=='native_cpu_history_capacity':
+            detail='The bounded native CPU retained-history capacity has been reached.'
+            action='Retain this installation and its history; run setup into a new directory. The model will be acquired again; no rollover is available.'
+        elif str(exc) in ('native_cpu_qualification_job_limit','native_cpu_qualification_queue_budget'):
             detail='The finite native CPU qualification resource or job limit has been reached.'
             action='Keep retained state and review qualification evidence; do not automatically retry or renew the session.'
         raise Failure(code, detail, action=action) from None

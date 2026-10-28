@@ -8,6 +8,7 @@ import json
 import os
 from pathlib import Path
 import secrets
+import sqlite3
 import sys
 import tempfile
 import time
@@ -265,13 +266,23 @@ def main(argv=None):
             from service.native_cpu_selftest import command
             print(canonical(command(args.root)).decode());return
         from service.native_cpu_install import Prepared
-        prepared=Prepared(args.root)
+        from service.native_cpu_measurement import history,ACTION
+        try:prepared=Prepared(args.root)
+        except Refused as exc:
+            from service.entrypoint import _startup_diagnostic
+            try:counts=history(args.root.absolute())
+            except (OSError,ValueError,KeyError,sqlite3.Error):counts=dict(history_jobs_used=None,history_jobs_remaining=None)
+            print(canonical(dict(status='revalidation_required',ready_for_speech=False,
+                error=_startup_diagnostic(exc),next_action=counts.pop('next_action',ACTION),**counts)).decode())
+            return 1
         try:
             prepared.revalidate()
             from service.native_cpu_install import certificate_validity
+            counts=history(prepared.root)
+            if counts['history_jobs_remaining']>0 and prepared.profile['readiness']=='ready':counts['next_action']='Run serve for this installation; revalidate after reboot or macOS update.'
             print(canonical(dict(status='prepared',device='cpu',preset='af_heart',model_store='verified',tls='verified',
                 certificates_valid_until=certificate_validity(prepared.root),source_provenance=prepared.config['source_provenance'],
-                ready_for_speech=prepared.profile['readiness']=='ready',qualification='local_selftest' if prepared.profile['verification']=='measured' else 'unqualified')).decode())
+                ready_for_speech=prepared.profile['readiness']=='ready' and counts['history_jobs_remaining']>0,qualification='local_selftest' if prepared.profile['verification']=='measured' else 'unqualified',**counts)).decode())
         finally:prepared.close()
         return
     if args.command=='qualification-session':print(canonical(qualification_session(args.root)).decode());return

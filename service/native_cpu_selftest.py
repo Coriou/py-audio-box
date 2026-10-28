@@ -20,9 +20,9 @@ async def run(root):
     import httpx
     from service import native_package as files
     from service.catalogue import OPERATIONS
-    from service.native_cpu_configuration import ALIAS,TEXT
+    from service.native_cpu_configuration import VOICE,TEXT
     from service.native_cpu_setup import create_app
-    from service.native_cpu_measurement import binding,retained,wav,publish,VERSION,require
+    from service.native_cpu_measurement import binding,retained,wav,publish,VERSION,require,history
     started=time.monotonic();deadline=started+90
     app=create_app(root,_selftest=True)
     prepared=None
@@ -44,7 +44,7 @@ async def run(root):
                 response=await asyncio.wait_for(request,remaining)
                 if response.status_code!=200:raise Refused('native_cpu_selftest_public_'+str(response.status_code)+'_'+name)
                 return oracle.validate(spec['response'],response.json())
-            selected=await call('voice_resolve',dict(name=ALIAS))
+            selected=await call('voice_get',dict(voice_id=VOICE))
             version=await call('voice_version_get',dict(voice_version_id=selected['version_ids'][-1]))
             submitted=await call('speech_generate',dict(voice_version_id=version['id'],text=TEXT,identity=version['identity'],fallback='forbid',variants=1,reuse='never'),key='native-selftest-'+secrets.token_hex(12))
             cursor=''
@@ -87,8 +87,10 @@ async def run(root):
         checked_at=datetime.now(timezone.utc).isoformat(),cleanup='owned_lifecycle_closed',
         session_sha256=oracle.canonical_hash(files.document(prepared.root/'measurement-intent.json')))
     publish(prepared,value)
+    counts=history(prepared.root)
+    if counts['history_jobs_remaining']>0:counts['next_action']='Run serve for this installation; revalidate after reboot or macOS update.'
     return dict(qualification='local_selftest',ready_for_speech=True,job_id=job['id'],wav=media,
-        cold_end_to_end_seconds=elapsed,semantic_quality_verified=False,retained_history_jobs=63)
+        cold_end_to_end_seconds=elapsed,semantic_quality_verified=False,**counts)
 
 
 def command(root):

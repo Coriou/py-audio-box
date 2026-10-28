@@ -104,7 +104,10 @@ clean shutdown before restart; unknown custody refuses activation.
 
 Retained history is capped at **63 jobs (including selftests), 2048 metadata rows
 and 16 MiB**. There is no checked CPU rollover. Capacity refuses explicitly;
-no catalogue, artifacts or receipts are silently discarded. This is not an
+no catalogue, artifacts or receipts are silently discarded. Doctor reports actual
+used/remaining slots. Each reboot or macOS update requires a new selftest and
+consumes one retained job. At capacity, retain this installation and use fresh
+setup in a new directory (including model acquisition); rollover is future work. This is not an
 unlimited long-lived service. A later explicit archive/rollover design must
 preserve the existing canonical history and immutable model identity.
 
@@ -133,11 +136,13 @@ installation store across service restarts; this is distinct from a model cache
 or a persistent loaded model. Each synthesis job loads once.
 
 Only English `af_heart`, explicit CPU/float32, two threads and short text up to
-256 UTF-8 bytes are supported by this preview. No automatic Qwen CPU fallback,
+256 characters are supported by this preview; the encoder/backend also enforces
+a 256-byte UTF-8 text limit (non-ASCII text can reach that limit sooner). No automatic Qwen CPU fallback,
 Metal selection, clone/reference inputs, instructions, seed or alternate preset
-is accepted. A future installed run must still establish actual free-memory
-admission, HTTP/CLI/MCP WAV delivery, cancellation/reap and restart/provision
-reuse. Source and no-weight checks cannot establish those runtime claims.
+is accepted. The finite-session installed run established free-memory admission, HTTP/CLI/MCP
+WAV delivery, cancellation/reap and restart/provision reuse. The new ordinary
+selftest/admission path still needs its separate installed journey; source and
+no-weight checks do not establish that runtime claim.
 
 From the source checkout, on macOS 14 or later in a native Apple arm64
 CPython 3.11 shell (the selected NumPy/ONNX wheels require macOS 14; CI tests 15):
@@ -292,3 +297,18 @@ and [VM statistics ABI](https://github.com/apple-oss-distributions/xnu/blob/main
 this estimate is not guaranteed allocatable RAM. Observation errors supply zero
 admission capacity. No Linux cgroup/PID1 or Qwen MPS receipt is accepted as CPU
 native evidence.
+
+
+### Ordinary journey candidate (explicit opt-in, no runtime evidence yet)
+
+`ordinary_journey=true` is mutually exclusive with `installed_journey` and
+`en_backend`, on the same trusted refs/free standard runner and12-minute job.
+The existing controller adds only `--ordinary-selftest`: fresh guarded setup,
+one doctor selftest, ordinary serve with no qualification selector, one HTTP job
+with exact-key CLI/MCP replay and matching WAV bytes, same-boot receipt/model
+reuse on restart and a third job via CLI. It then mutates one owned measurement
+byte, requires structured doctor and serve refusal without a model launch, and
+restores the exact original bytes only after all custody is confirmed. The
+original600s total/20s cleanup reserve and all resource/log/reap limits remain.
+There are three model jobs, no cancellation/retry/extra language or cloning run.
+This selector is source-only until a separately authorized exact-source run.

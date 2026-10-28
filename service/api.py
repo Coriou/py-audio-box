@@ -197,11 +197,13 @@ def create_voice_app(dispatcher, *, credentials, upload_deadline=15.0, installed
         if native_installed:
             status = dispatcher.call('status')
             cpu=type(dispatcher.installed_activation) is NativeCPUActivation
-            return dict(synthetic=False, ready_for_speech=False, installed=True,
+            ready=cpu and status['resource_activation']
+            return dict(synthetic=False, ready_for_speech=ready, installed=True,
                         activation_ready=status['persistent_activation'], status=status,
                         configured_capabilities=configured, store='installed-native-owner',
+                        profiles=dispatcher.call('configured_profiles') if cpu else [],
                         configured_presets=dispatcher.call('configured_presets', request.state.principal),
-                        qualification=('UNQUALIFIED native CPU preset preview; only an explicit finite qualification session admits test jobs.' if cpu else 'UNAVAILABLE / UNQUALIFIED; source activation does not qualify speech'))
+                        qualification=('local_selftest' if ready else 'UNQUALIFIED native CPU preset preview; run doctor --selftest for local measured admission.' if cpu else 'UNAVAILABLE / UNQUALIFIED; source activation does not qualify speech'))
         if configured:
             return dict(synthetic=False, ready_for_speech=False, installed=False,
                         configured_capabilities=configured, store='borrowed-owner',
