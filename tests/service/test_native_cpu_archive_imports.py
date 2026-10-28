@@ -38,6 +38,7 @@ closed=[]
 def init(self,path,*,qualification=False):
     assert Path(path)==installation and qualification is True
     self.root=installation;self.qualification=None;self.config={'principal':'local'}
+    self.control=installation/'control';self.staging=installation/'staging'
     self.revalidate=lambda:'inert-source-only'
 class Owner:
     installed_checked=True
