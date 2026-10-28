@@ -19,6 +19,8 @@ from service.provisioning import identity,manifest_sha256
 from worker import native_cpu_protocol as p
 from worker.transport import Refused,canonical
 
+_PREPARED_OWNERS={}
+
 
 def write(path,value):
     from service.native_runtime import _sync
@@ -37,13 +39,15 @@ def locked_versions(source):
     return result
 
 
-def read_installation(root):
+def read_installation(root,*,_pending=False):
     from lib.tts_backends.kokoro_native import validate_host,validate_versions
     validate_host();validate_versions()
     root=files.directory(str(Path(root).absolute()))
-    config=files.document(root/'install.json')
+    if type(_pending) is not bool:raise Refused('native_cpu_pending_flag')
+    if _pending and (root/'install.json').exists():raise Refused('native_cpu_installation_already_complete')
+    config=files.document(root/('setup-record.json' if _pending else 'install.json'))
     p._closed(config,('version','variant','root','source','source_files','python','python_sha256','python_version','dependencies',
-        'deployment_id','principal','installed_at','port','tls_sha256','credential_sha256','qualification_session_id'))
+        'deployment_id','principal','installed_at','port','tls_sha256','credential_sha256','qualification_session_id','source_provenance'))
     if type(config['version']) is not int or config['version']!=1 or config['variant']!=VARIANT or config['root']!=str(root):raise Refused('native_cpu_installation')
     source=root/'source'/'native-worker'
     if config['source']!=str(source) or config['python']!=str(root/'venv'/'bin'/'python'):raise Refused('native_cpu_installation_paths')
@@ -52,7 +56,12 @@ def read_installation(root):
     for name,digest in config['source_files'].items():
         p._hex(digest,64)
         if files.file_hash(str(source/name))!=digest:raise Refused('native_cpu_source_changed')
-    if files.file_hash(config['python'],executable=True)!=config['python_sha256'] or sys.version!=config['python_version']:raise Refused('native_cpu_interpreter_changed')
+    if files.file_hash(config['python'],executable=True)!=config['python_sha256'] or sys.version!=config['python_version']:
+        raise Refused('native_cpu_interpreter_changed: retain this installation/state; rebootstrap with current native Python into a new directory, or use the original exact Python. Download resume cannot repair interpreter changes.')
+    provenance=config['source_provenance']
+    p._closed(provenance,('commit','dirty'))
+    if provenance['commit'] is not None:p._hex(provenance['commit'],40)
+    if provenance['dirty'] is not None and type(provenance['dirty']) is not bool:raise Refused('native_cpu_source_provenance')
     pins=locked_versions(source)
     if config['dependencies']!=pins or any(metadata.version(name)!=version for name,version in pins.items()):raise Refused('native_cpu_dependencies_changed')
     p._hex(config['deployment_id'],32);p._hex(config['qualification_session_id'],32);p._int(config['port'],1,65535)
@@ -63,12 +72,26 @@ def read_installation(root):
     files.directory(str(root/'tls'))
     for name,digest in config['tls_sha256'].items():
         if hashlib.sha256(files.read(root/'tls'/name,65536)).hexdigest()!=digest:raise Refused('native_cpu_tls_changed')
+    certificate_validity(root)
     credential=files.read(root/'credential.json',48000)
     if hashlib.sha256(credential).hexdigest()!=config['credential_sha256']:raise Refused('native_cpu_credential_changed')
     from service.auth import decode_credentials
     decode_credentials(credential,{'local'})
     descriptor=expected();bundle=root/'models'/'bundles'/identity(descriptor)
     return root,config,descriptor,bundle
+
+
+def certificate_validity(root,*,now=None):
+    from cryptography import x509
+    from datetime import datetime,timezone
+    if now is None:now=datetime.now(timezone.utc)
+    expires=[]
+    for role in ('ca','server','client'):
+        certificate=x509.load_pem_x509_certificate(files.read(root/'tls'/(role+'.pem'),65536))
+        if not certificate.not_valid_before_utc<=now<certificate.not_valid_after_utc:
+            raise Refused('native_cpu_certificate_expired_or_not_yet_valid: retain state and rebootstrap; automatic certificate renewal is unavailable')
+        expires.append(certificate.not_valid_after_utc)
+    return min(expires).isoformat()
 
 
 def create_tls(root):
@@ -131,6 +154,9 @@ class Prepared:
         try:fcntl.flock(self.lock,fcntl.LOCK_EX|fcntl.LOCK_NB)
         except BaseException:os.close(self.lock);raise
         self.supervisor=None;self.listener=None;self.thread=None;self.errors=[];self.closed=False
+        # A startup/close exception must not discard custody before the app's
+        # ordinary lifecycle registry has acquired this factory result.
+        _PREPARED_OWNERS[id(self)]=self
         try:self._prepare()
         except BaseException:
             self.close()
@@ -193,5 +219,6 @@ class Prepared:
         if self.errors:raise Refused('native_cpu_custodian_failed') from self.errors[0]
         if self.supervisor is not None:self.supervisor.journal.lock.close()
         os.close(self.lock);self.closed=True
+        _PREPARED_OWNERS.pop(id(self),None)
         activation=getattr(self,'activation',None)
         if activation is not None:activation.release()

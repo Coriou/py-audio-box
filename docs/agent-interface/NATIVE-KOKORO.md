@@ -13,7 +13,7 @@ installed 30 s request readiness claim.
 The commands below describe the implemented preview path. The full fresh-install
 journey still needs its separately authorized Apple run; these are not a claim
 that installation or speech has passed on this source. Requires macOS 14+,
-native arm64 CPython 3.11 and a new private installation directory. No Docker,
+native arm64 CPython 3.11.4+ (with bundled pip 23.1+) and a new private installation directory. No Docker,
 Homebrew, model token or manually authored identity/receipt JSON is required.
 
 ```sh
@@ -28,11 +28,43 @@ public 353,746,785-byte model. It creates its own copied venv, sealed source
 archive, immutable verified model store, private local CA/client/server keys and
 bearer credential. No existing environment credential is copied. Logs and partial
 state remain on failure; setup does not retry or overwrite an existing directory.
-Package installation is bounded to 180 s and model acquisition to 120 s. The
+Package installation is bounded to 180 s and model acquisition to 600 s by
+default, independently of the unchanged 30 s synthesis request/60 s job. Set
+`--setup-download-seconds 120` for the bounded hosted qualification journey.
+The public GitHub downloader uses the existing hash-pinned certifi CA bundle
+with certificate and hostname verification, including on python.org installations
+without a configured system CA store, using [certifi's documented CA path](https://github.com/certifi/python-certifi)
+and [Python's verified client context](https://docs.python.org/3.11/library/ssl.html#ssl.create_default_context).
+TLS verification is never disabled. The
 [pip secure-install guidance](https://pip.pypa.io/en/stable/topics/secure-installs/)
 and [cryptography X.509 tutorial](https://cryptography.io/en/stable/x509/tutorial/)
 describe the underlying hash checking and certificate APIs. Retained keys expire
-after 90 days; this preview has no automatic certificate renewal.
+after 90 days; doctor reports the earliest expiry and refuses expired certificates
+before opening the worker connection. This preview has no automatic certificate
+renewal. Setup records source commit and tracked dirty state when Git metadata
+is available; otherwise those fields are explicitly unknown. Installed member
+hashes always bind the exact archived bytes, independently of Git provenance.
+
+After a network/acquisition failure **with `setup-record.json` retained**, retry
+deliberately in the same directory:
+
+```sh
+python3.11 scripts/native-kokoro.py setup --root "$ROOT" --download-model --resume
+```
+
+Resume acquires the exclusive setup lock, validates the retained source,
+interpreter, dependencies, private credentials and TLS identities, reruns the
+no-weight preflight and reuses only complete hash-verified immutable staging
+files. Partial file transfers restart; failed attempts never automatically retry.
+It does not rebuild the venv, renew qualification or silently adopt an arbitrary
+existing directory. Earlier failures before the acquisition-ready checkpoint
+are retained for diagnosis and cannot be adopted by `--resume`.
+
+The installed interpreter is bound by exact bytes and Python version. A Python
+patch/framework upgrade can invalidate it. Retain the old installation/state;
+use the original exact interpreter if available, or run fresh setup with the
+current native Python into a new directory. Download resume is not an interpreter
+upgrade or state migration mechanism. Setup never upgrades pip automatically.
 
 Ordinary `serve --root "$ROOT"` keeps the profile **unqualified/not_ready** and
 refuses synthesis. A deliberate qualification run can instead create one finite
@@ -44,12 +76,24 @@ python3.11 scripts/native-kokoro.py serve --root "$ROOT" --qualification-session
 ```
 
 This private installation-bound authority permits at most six jobs within the
-original 600 s host-boot/monotonic window. Restart cannot renew it. It creates no
+original 600 s host-boot/monotonic **awake-time** window. Darwin's clock pauses
+during sleep, so this is not a 600 s wall-clock guarantee across laptop sleep.
+[Apple's clock declarations](https://github.com/apple-oss-distributions/xnu/blob/main/osfmk/mach/mach_time.h)
+distinguish the absolute clock from the separate continuous clock that advances during sleep.
+Restart alone cannot renew it. The file is user-writable: the local operator
+can edit/delete it or change source. This protects the service from ordinary
+client requests and accidental restart renewal, not from its owning operator.
+It creates no
 qualification receipt or production readiness. The checked owner holds the lock,
 validates source/interpreter/dependencies/model identity, and uses mutual TLS for
 the internal worker. The authenticated public API binds only `127.0.0.1:8788`.
 Stop with Ctrl-C and confirm clean shutdown before restarting the same command;
 unknown ownership or journal/history discrepancies refuse activation.
+The underlying CPU retained-history format is also bounded to 63 jobs,
+2048 metadata rows and 16 MiB; no checked CPU history rollover is implemented.
+It fails explicitly at capacity and does not discard catalogue entries, artifacts
+or receipts. A future measured ordinary preview must retain that visible limit
+until a separately validated archive/rollover path exists.
 
 In a second shell, while that explicit session is active:
 
@@ -124,7 +168,8 @@ before dependency imports. The existing owner enforces 60 s elapsed, sampled
 it installs no weights, uses no model cache or secrets, and uploads compact
 preflight/owner/install receipts. The native source archive includes the new
 preflight module and this document; its existing `native-qwen-v1` admission is
-unchanged. Dependency locks remain external installation inputs, as before.
+unchanged and keeps its dependency locks external. The separate CPU source
+archive includes its three existing hash-locked installation inputs.
 AGPL-3.0-only project source remains separate from Kokoro adapter MIT,
 Kokoro model Apache-2.0, phonemizer GPL-3.0 and eSpeak NG GPL-3.0-or-later;
 see [upstream eSpeak licensing](https://github.com/espeak-ng/espeak-ng/blob/master/COPYING).

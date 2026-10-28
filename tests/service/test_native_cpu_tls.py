@@ -7,11 +7,20 @@ import tempfile
 import threading
 import unittest
 
-from service.native_cpu_install import create_tls,certificate_pin
+from service.native_cpu_install import create_tls,certificate_pin,certificate_validity
 from worker.native_cpu_protocol import tls_context
 
 
 class CPUTLSTests(unittest.TestCase):
+    def test_expired_certificate_fails_before_worker_handshake(self):
+        from datetime import datetime,timezone,timedelta
+        from worker.transport import Refused
+        with tempfile.TemporaryDirectory() as temporary:
+            root=Path(temporary).resolve();create_tls(root)
+            self.assertGreater(datetime.fromisoformat(certificate_validity(root)),datetime.now(timezone.utc))
+            with self.assertRaisesRegex(Refused,'certificate_expired_or_not_yet_valid'):
+                certificate_validity(root,now=datetime.now(timezone.utc)+timedelta(days=91))
+
     def test_generated_private_credentials_mutually_authenticate_tls13(self):
         with tempfile.TemporaryDirectory() as temporary:
             root=Path(temporary).resolve();create_tls(root)

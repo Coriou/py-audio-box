@@ -66,6 +66,7 @@
     "lib/tts_backends/contract.py",
     "lib/tts_backends/espeak_memfd.py",
     "lib/tts_backends/kokoro.py",
+    "lib/tts_backends/kokoro_native.py",
     "lib/tts_backends/pocket_snapshot.py",
     "lib/tts_backends/pocket_tts.py",
     "lib/tts_backends/qwen.py",

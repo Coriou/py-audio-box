@@ -3,12 +3,31 @@ from pathlib import Path
 import unittest
 from unittest.mock import patch
 import urllib.request
+import io
+import tempfile
+import ssl
 from service.provisioning import _AllowedRedirects,download
 
 ORIGINS=['https://github.com','https://release-assets.githubusercontent.com']
 
 
 class CPUPublicDownloadTests(unittest.TestCase):
+    def test_public_assets_use_pinned_certifi_ca_and_hostname_verification(self):
+        import certifi
+        from service.provisioning import _download_stream
+        with tempfile.TemporaryDirectory() as temporary,patch('ssl.create_default_context',wraps=ssl.create_default_context) as context,patch('urllib.request.build_opener') as opener:
+            opener.return_value.open.return_value=io.BytesIO(b'abc')
+            target=Path(temporary)/'asset.part'
+            _download_stream('https://github.com/example/release',target,3,ORIGINS,True)
+            context.assert_called_once_with(cafile=certifi.where())
+            handlers=opener.call_args.args
+            https=next(h for h in handlers if type(h) is urllib.request.HTTPSHandler)
+            self.assertTrue(https._context.check_hostname)
+            self.assertEqual(https._context.verify_mode,ssl.CERT_REQUIRED)
+            self.assertGreater(https._context.cert_store_stats()['x509_ca'],0)
+            self.assertEqual(next(h for h in handlers if type(h) is urllib.request.ProxyHandler).proxies,{})
+            self.assertEqual(target.read_bytes(),b'abc')
+
     def test_signed_query_only_on_explicit_release_asset_host(self):
         request=urllib.request.Request('https://github.com/example/release')
         url='https://release-assets.githubusercontent.com/example?sig=inert-fixture'

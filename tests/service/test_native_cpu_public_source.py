@@ -157,6 +157,15 @@ class CPUPublicSourceTests(unittest.TestCase):
             self.assertEqual(status['reservations'][0]['demand']['pids'],1)
             self.assertEqual(d.call('configured_profiles')[0]['support'],'unqualified')
 
+    def test_ordinary_installation_metadata_does_not_admit_speech(self):
+        from service.native_cpu_configuration import ALIAS
+        self.prepared.qualification=None;self.s.qualification=None;self.contexts.qualification=None
+        d=self.open();voice=d.call('voice_resolve','local',ALIAS)
+        version=d.call('voice_version','local',voice['version_ids'][-1])
+        with self.assertRaisesRegex(ValueError,'not_ready'):d.call('production_generate','local',self.request(version),key='must-refuse')
+        self.assertFalse(d.call('status')['resource_activation'])
+        self.assertEqual(self.fixture.calls,[]);self.assertEqual(self.s.journal.value['records'],[])
+
     def test_completed_public_state_reopens_without_reprovisioning(self):
         from service.native_cpu_configuration import ALIAS
         with patch.object(self.s,'exchange',side_effect=self.exchange):

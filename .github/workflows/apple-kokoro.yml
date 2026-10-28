@@ -81,6 +81,8 @@ jobs:
           tests.worker.test_native_cpu_qualification tests.service.test_native_cpu_configuration
           tests.service.test_native_cpu_bootstrap tests.service.test_native_cpu_download
           tests.service.test_native_cpu_public_source tests.service.test_native_cpu_tls
+          tests.service.test_native_cpu_install
+          tests.service.test_native_cpu_recovery
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         if: always()
         with:

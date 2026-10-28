@@ -52,6 +52,42 @@ class CPUBootstrapTests(unittest.TestCase):
         with patch.object(setup,'preflight',return_value={'status':'passed'}):
             self.assertEqual(setup.main(['preflight','--output',str(self.root/'not-created')]),0)
 
+    def test_preflight_separates_control_imports_from_permanent_backend_guard(self):
+        from service import native_cpu_setup as setup
+        from worker.native_child import SpawnRefused
+        order=[]
+        def backend():
+            self.assertEqual(order,['control','guard']);order.append('backend');return {}
+        with patch.object(setup,'_control_imports',side_effect=lambda:order.append('control')),patch('worker.native_child.install_spawn_guard',side_effect=lambda:order.append('guard')),patch('lib.tts_backends.kokoro_native.preflight',side_effect=backend),patch('worker.native_cpu_qualification.boot_identity'),patch.object(setup,'create_tls'),patch('worker.native_cpu_protocol.tls_context'),patch('subprocess.Popen',side_effect=SpawnRefused('fixture refusal')):
+            setup._preflight_child(self.root/'guard-report.json')
+        report=json.loads((self.root/'guard-report.json').read_bytes())
+        self.assertEqual(order,['control','guard','backend'])
+        self.assertTrue(report['backend_imports_guarded']);self.assertFalse(report['control_imports_guarded'])
+        self.assertTrue(report['explicit_spawn_refused']);self.assertFalse(report['weights_loaded'])
+
+    def test_real_control_import_then_unchanged_guard_in_fresh_interpreter(self):
+        code='''
+from service.native_cpu_setup import _control_imports
+_control_imports()
+import subprocess
+cached_popen=subprocess.Popen
+from worker.native_child import install_spawn_guard,SpawnRefused
+install_spawn_guard()
+for spawn in (subprocess.Popen,cached_popen):
+    try:spawn(['never-execute-source-regression'])
+    except SpawnRefused:pass
+    else:raise AssertionError('permanent guard lost')
+print('real-control-import-guard-refusal')
+'''
+        result=subprocess.run([sys.executable,'-B','-c',code],cwd=package.common.ROOT,capture_output=True,timeout=15)
+        self.assertEqual(result.returncode,0,result.stderr.decode())
+        self.assertEqual(result.stdout.strip(),b'real-control-import-guard-refusal')
+
+    def test_model_entry_imports_exclude_control_clients(self):
+        code="import sys; import worker.native_cpu_child; assert not {'mcp','clients.mcp','service.api'}.intersection(sys.modules)"
+        result=subprocess.run([sys.executable,'-B','-c',code],cwd=package.common.ROOT,capture_output=True,timeout=10)
+        self.assertEqual(result.returncode,0,result.stderr.decode())
+
     def test_finish_setup_cannot_acquire_before_actual_guarded_preflight(self):
         import hashlib
         from service import native_cpu_setup as setup
@@ -78,6 +114,20 @@ class CPUBootstrapTests(unittest.TestCase):
         result=subprocess.run([sys.executable,'-I',str(self.root/'extracted/native-worker/native-worker.py'),'--help'],capture_output=True,timeout=5)
         self.assertEqual(result.returncode,0,result.stderr.decode())
         self.assertIn(b'qualification-session',result.stdout)
+
+    def test_qwen_archive_excludes_cpu_installer_and_keeps_actual_shared_imports(self):
+        archive=self.root/'qwen.zip';package.common.archive(archive)
+        with zipfile.ZipFile(archive) as source:
+            names=set(source.namelist())
+            self.assertFalse(any(n.endswith('.lock') for n in names))
+            for name in ('native-cpu-dist-manifest.json','scripts/native-kokoro.py','service/native_cpu_bootstrap.py',
+                    'service/native_cpu_setup.py','service/native_cpu_install.py','service/native_cpu_package.py','docs/agent-interface/NATIVE-KOKORO.md'):
+                self.assertNotIn('native-worker/'+name,names)
+            source.extractall(self.root/'qwen-extracted')
+        extracted=self.root/'qwen-extracted/native-worker'
+        code='import sys; sys.path.insert(0,sys.argv[1]); import service.dispatcher; import worker.native_child; assert service.dispatcher.__file__.startswith(sys.argv[1]); assert "service.native_cpu_setup" not in sys.modules'
+        result=subprocess.run([sys.executable,'-I','-B','-c',code,str(extracted)],capture_output=True,timeout=10)
+        self.assertEqual(result.returncode,0,result.stderr.decode())
 
 
 if __name__=='__main__':unittest.main()

@@ -22,17 +22,23 @@ from worker.transport import Refused,canonical
 ROOT=Path(__file__).resolve().parents[1]
 
 
+def _control_imports():
+    from service.api import create_voice_app
+    from clients import cli,mcp
+
+
 def _preflight_child(output):
-    from worker.native_child import install_spawn_guard
-    install_spawn_guard()
-    from lib.tts_backends.kokoro_native import preflight
     result=dict(status='failed',weights_loaded=False,synthesis_qualified=False,installed_qualified=False)
     try:
-        result.update(preflight())
-        # Real control imports and TLS generation are checked before acquisition,
-        # under the same permanent spawn guard as backend dependencies.
-        from service.api import create_voice_app
-        from clients import cli,mcp
+        # Control clients legitimately own subprocesses (MCP stdio) and evaluate
+        # Popen[bytes] annotations at import. They are not model-child imports.
+        # Check this closure first, then permanently guard all backend imports.
+        _control_imports()
+        result.update(control_imports=True,control_imports_guarded=False)
+        from worker.native_child import install_spawn_guard
+        install_spawn_guard()
+        from lib.tts_backends.kokoro_native import preflight
+        result.update(preflight(),backend_imports_guarded=True)
         from worker.native_cpu_qualification import boot_identity
         boot_identity()
         with tempfile.TemporaryDirectory(prefix='native-cpu-tls-check-') as temporary:
@@ -69,8 +75,10 @@ def preflight(output):
     return files.document(output/'report.json')
 
 
-def finish_setup(root):
+def finish_setup(root,*,resume=False,download_seconds=None):
     """Only the fresh copied venv may finish its create-only bootstrap."""
+    if resume:
+        return _complete_setup(root,download_seconds=600 if download_seconds is None else download_seconds,resume=True)
     root=files.directory(str(Path(root).absolute()));marker=files.document(root/'bootstrap.json')
     if (marker.get('version')!=1 or marker.get('root')!=str(root) or marker.get('source')!=str(ROOT) or
             marker.get('download_model') is not True or Path(sys.prefix)!=root/'venv'):
@@ -93,20 +101,7 @@ def finish_setup(root):
     # Preflight is guarded, bounded and weight-free. No acquisition precedes it.
     preflight(root/'preflight')
     create_tls(root)
-    from service.provisioning import provision,download,identity
-    descriptor=expected();started=time.monotonic()
-    def acquire(url,target):
-        entries=[e for e in descriptor['files'] if e['origin']==url]
-        if len(entries)!=1:raise Refused('native_cpu_asset_origin')
-        remaining=120-(time.monotonic()-started)
-        if remaining<=0:raise TimeoutError('native_cpu_acquisition_deadline')
-        download(url,target,entries[0]['bytes'],timeout=remaining,
-            allowed_origins=['https://github.com','https://release-assets.githubusercontent.com'],public_github_assets=True)
-    provision(root/'models',descriptor,runtime_versions=descriptor['versions'],downloader=acquire,lock_timeout=5,transfer_timeout=120)
-    state=root/'state';state.mkdir(mode=0o700)
-    for role in ('control','worker','spool','staging'):
-        path=state/role;path.mkdir(mode=0o770 if role=='staging' else 0o700)
-        path.chmod(0o770 if role=='staging' else 0o700)
+    descriptor=expected()
     credential=dict(version=1,credentials=[dict(token=secrets.token_hex(48),principal='local',scopes=['read','production-write'])])
     write(root/'credential.json',credential)
     from importlib import metadata
@@ -117,8 +112,50 @@ def finish_setup(root):
         python=str(root/'venv'/'bin'/'python'),python_sha256=files.file_hash(str(root/'venv'/'bin'/'python'),executable=True),python_version=sys.version,
         dependencies=pins,deployment_id=secrets.token_hex(16),principal='local',installed_at=datetime.now(timezone.utc).isoformat(),port=marker['port'],
         tls_sha256={path.name:hashlib.sha256(files.read(path,65536)).hexdigest() for path in (root/'tls').iterdir()},
-        credential_sha256=hashlib.sha256(files.read(root/'credential.json',48000)).hexdigest(),qualification_session_id=secrets.token_hex(16))
-    write(root/'install.json',record)
+        credential_sha256=hashlib.sha256(files.read(root/'credential.json',48000)).hexdigest(),qualification_session_id=secrets.token_hex(16),
+        source_provenance=marker['source_provenance'])
+    # Durable acquisition-ready checkpoint. Retried setup validates these exact
+    # artifacts rather than rebuilding/adopting an arbitrary existing directory.
+    write(root/'setup-record.json',record)
+    return _complete_setup(root,download_seconds=marker['download_seconds'],resume=False)
+
+
+def _complete_setup(root,*,download_seconds,resume):
+    if type(download_seconds) is not int or not 120<=download_seconds<=600:raise Refused('native_cpu_setup_download_budget')
+    root,record,descriptor,bundle=read_installation(root,_pending=True)
+    if Path(sys.prefix)!=root/'venv':raise Refused('native_cpu_bootstrap_interpreter')
+    # Serialize explicit retries; partial/verified provision files remain managed
+    # by the existing transactional provisioner, never hand-adopted or redownloaded
+    # merely because a later file failed. No automatic retry is scheduled.
+    import fcntl
+    lock=os.open(root/'setup-owner.lock',os.O_WRONLY|os.O_CREAT|os.O_NOFOLLOW,0o600)
+    try:
+        import stat
+        info=os.fstat(lock)
+        if info.st_uid!=os.getuid() or not stat.S_ISREG(info.st_mode) or info.st_nlink!=1 or stat.S_IMODE(info.st_mode)!=0o600:raise Refused('native_cpu_setup_lock')
+        fcntl.flock(lock,fcntl.LOCK_EX|fcntl.LOCK_NB)
+        if resume:preflight(root/('resume-preflight-'+secrets.token_hex(8)))
+        from service.provisioning import provision,download
+        started=time.monotonic()
+        def acquire(url,target):
+            entries=[e for e in descriptor['files'] if e['origin']==url]
+            if len(entries)!=1:raise Refused('native_cpu_asset_origin')
+            remaining=download_seconds-(time.monotonic()-started)
+            if remaining<=0:raise TimeoutError('native_cpu_acquisition_deadline')
+            download(url,target,entries[0]['bytes'],timeout=remaining,
+                allowed_origins=['https://github.com','https://release-assets.githubusercontent.com'],public_github_assets=True)
+        provision(root/'models',descriptor,runtime_versions=descriptor['versions'],downloader=acquire,lock_timeout=5,transfer_timeout=download_seconds)
+        state=root/'state'
+        if not state.exists():state.mkdir(mode=0o700)
+        files.directory(str(state))
+        from service.native_runtime import _directory
+        for role in ('control','worker','spool','staging'):
+            path=state/role;mode=0o770 if role=='staging' else 0o700
+            if not path.exists():path.mkdir(mode=mode);path.chmod(mode)
+            _directory(path,mode)
+            if any(path.iterdir()):raise Refused('native_cpu_pending_state_not_empty')
+        write(root/'install.json',record)
+    finally:os.close(lock)
 
 
 def qualification_session(root):
@@ -202,6 +239,9 @@ def main(argv=None):
     commands=parser.add_subparsers(dest='command',required=True)
     for name in ('finish-setup','doctor','qualification-session','serve','client','mcp','speak'):
         command=commands.add_parser(name);command.add_argument('--root',required=True,type=Path)
+        if name=='finish-setup':
+            command.add_argument('--resume',action='store_true')
+            command.add_argument('--setup-download-seconds',type=int)
         if name=='serve':command.add_argument('--qualification-session',action='store_true')
         if name=='client':command.add_argument('arguments',nargs=argparse.REMAINDER)
         if name=='speak':
@@ -213,13 +253,16 @@ def main(argv=None):
         if args.child_report:_preflight_child(args.child_report)
         else:preflight(args.output)
         return 0
-    if args.command=='finish-setup':return finish_setup(args.root)
+    if args.command=='finish-setup':return finish_setup(args.root,resume=args.resume,download_seconds=args.setup_download_seconds)
     if args.command=='doctor':
         from service.native_cpu_install import Prepared
         prepared=Prepared(args.root)
         try:
             prepared.revalidate()
-            print(canonical(dict(status='prepared',device='cpu',preset='af_heart',model_store='verified',tls='verified',ready_for_speech=False,qualification='unqualified')).decode())
+            from service.native_cpu_install import certificate_validity
+            print(canonical(dict(status='prepared',device='cpu',preset='af_heart',model_store='verified',tls='verified',
+                certificates_valid_until=certificate_validity(prepared.root),source_provenance=prepared.config['source_provenance'],
+                ready_for_speech=False,qualification='unqualified')).decode())
         finally:prepared.close()
         return
     if args.command=='qualification-session':print(canonical(qualification_session(args.root)).decode());return

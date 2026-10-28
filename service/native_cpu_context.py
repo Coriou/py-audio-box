@@ -51,6 +51,7 @@ class NativeCPUContexts(KokoroContexts):
         session=getattr(self,'qualification',None)
         return dict(engine='kokoro',device='cpu',clone_prepare=False,profile=context['plan']['resolved']['profile'],
             operations=['voice_preset_register','speech_generate','job_get','job_cancel','artifact_get'],
+            retained_history_limits=dict(jobs=63,rows=2048,bytes=16*1024**2,rollover_available=False),
             qualification_session=None if session is None else dict(max_jobs=session.value['max_jobs'],
                 remaining_seconds=max(0,session.value['started_monotonic']+session.value['seconds']-session.clock())),
             next_action='Resolve default.narration; speech requires the explicit finite qualification session. Installation is not speech qualification.')

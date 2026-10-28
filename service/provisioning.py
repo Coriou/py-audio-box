@@ -210,7 +210,13 @@ def _download_stream(url, target, expected_bytes, allowed_origins=None, public_g
     if allowed_origins is None:open_url=urllib.request.urlopen
     else:
         handlers=[_AllowedRedirects(allowed_origins,True) if public_github_assets else _AllowedRedirects(allowed_origins)]
-        if public_github_assets:handlers.insert(0,urllib.request.ProxyHandler({}))
+        if public_github_assets:
+            # python.org builds may lack a configured system CA store. certifi
+            # is already hash-pinned by this installer's dependency closure.
+            import ssl
+            import certifi
+            handlers.extend((urllib.request.ProxyHandler({}),urllib.request.HTTPSHandler(
+                context=ssl.create_default_context(cafile=certifi.where()))))
         open_url=urllib.request.build_opener(*handlers).open
     with open_url(url, timeout=10) as source, target.open('xb') as sink:
         remaining = expected_bytes

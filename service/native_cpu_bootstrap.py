@@ -10,6 +10,7 @@ import stat
 import subprocess
 import sys
 import time
+import uuid
 
 ROOT=Path(__file__).resolve().parents[1]
 _OWNED={}
@@ -19,6 +20,7 @@ def host():
     major=platform.mac_ver()[0].split('.')[0]
     if (platform.system(),platform.machine(),platform.python_implementation(),sys.version_info[:2])!=('Darwin','arm64','CPython',(3,11)) or not major.isdigit() or int(major)<14:
         raise ValueError('Use native Apple arm64 CPython 3.11 on macOS 14 or later; leave Rosetta before setup.')
+    if sys.version_info[:3]<(3,11,4):raise ValueError('Use CPython 3.11.4 or later in the 3.11 series; bundled pip must support --keyring-provider (pip23.1+).')
 
 
 def root_path(value):
@@ -68,22 +70,50 @@ def bounded(argv,root,name,seconds):
             else:_OWNED.pop(process.pid,None)
 
 
-def setup(root,*,download_model=False,port=8788):
+def provenance(root):
+    result=dict(commit=None,dirty=None)
+    if not (ROOT/'.git').exists():return result
+    env=environment(root);env.update(GIT_CONFIG_NOSYSTEM='1',GIT_CONFIG_GLOBAL=os.devnull)
+    try:
+        prefix=['git','-c','core.fsmonitor=false','-C',str(ROOT)]
+        commit=subprocess.run([*prefix,'rev-parse','--verify','HEAD'],env=env,capture_output=True,timeout=2,check=True).stdout.decode('ascii').strip()
+        if len(commit)!=40 or any(c not in '0123456789abcdef' for c in commit):return result
+        dirty=subprocess.run([*prefix,'status','--porcelain','--untracked-files=no'],env=env,capture_output=True,timeout=2,check=True).stdout
+        result.update(commit=commit,dirty=bool(dirty))
+    except (OSError,subprocess.SubprocessError,UnicodeError):pass
+    return result
+
+
+def setup(root,*,download_model=False,port=8788,resume=False,download_seconds=600):
     host();root=root_path(root)
-    if root.exists():raise ValueError('Installation directory exists; use doctor/serve. Partial setup is retained, never silently overwritten.')
+    if type(download_seconds) is not int or not 120<=download_seconds<=600:raise ValueError('Setup download budget must be120..600seconds, separate from synthesis deadlines.')
+    if resume:
+        if not root.is_dir() or not (root/'setup-record.json').is_file() or (root/'install.json').exists():raise ValueError('Resume requires a retained acquisition-ready setup; completed or earlier partial setup is not adopted.')
+        root_info=root.stat()
+        if root_info.st_uid!=os.getuid() or stat.S_IMODE(root_info.st_mode)!=0o700:raise ValueError('Retained setup must be private and owned by this user.')
+        # The sealed installed source/interpreter validates the entire pending
+        # record before using existing immutable provision staging. No new venv.
+        for relative in ('venv/bin/python','source/native-worker/native-worker.py'):
+            path=root_path(root/relative);info=path.lstat()
+            if not stat.S_ISREG(info.st_mode) or info.st_uid!=os.getuid() or info.st_nlink!=1 or info.st_mode&0o022:raise ValueError('Unsafe retained setup artifact')
+        bounded([str(root/'venv/bin/python'),'-I','-B',str(root/'source/native-worker/native-worker.py'),
+            'finish-setup','--root',str(root),'--resume','--setup-download-seconds',str(download_seconds)],root,'resume-'+uuid.uuid4().hex,download_seconds+130)
+        return
+    if root.exists():raise ValueError('Installation directory exists; use doctor/serve or explicit setup --resume after an acquisition failure. Partial setup is retained, never silently overwritten.')
     if type(port) is not int or not 1<=port<=65535:raise ValueError('Use a TCP port between 1 and 65535.')
     os.umask(0o077);root.mkdir(mode=0o700,parents=True)
     for name in ('bootstrap-home','tmp'):(root/name).mkdir(mode=0o700)
-    marker=dict(version=1,source=str(ROOT),root=str(root),download_model=download_model,port=port,
+    marker=dict(version=1,source=str(ROOT),root=str(root),download_model=download_model,port=port,download_seconds=download_seconds,source_provenance=provenance(root),
         locks={name:hashlib.sha256((ROOT/name).read_bytes()).hexdigest() for name in ('requirements/kokoro.lock','requirements/client.lock','service/requirements.lock')})
     with (root/'bootstrap.json').open('x') as stream:json.dump(marker,stream,sort_keys=True,separators=(',',':'),ensure_ascii=False,allow_nan=False)
     bounded([sys.executable,'-m','venv','--copies',str(root/'venv')],root,'venv',60)
     python=str(root/'venv'/'bin'/'python')
+    bounded([python,'-c','from importlib.metadata import version; v=version("pip"); assert tuple(map(int,v.split(".")[:2])) >= (23,1), "Use native CPython3.11.4+ with bundled pip23.1+; setup does not upgrade pip automatically."'],root,'pip-minimum',15)
     bounded([python,'-m','pip','install','--require-hashes','--only-binary=:all:','--retries','0','--timeout','15','--keyring-provider','disabled',
         '--index-url','https://pypi.org/simple','--report',str(root/'pip-install.json'),
         *sum((['-r',str(ROOT/name)] for name in marker['locks']),[])],root,'dependencies',180)
     bounded([python,'-m','pip','check'],root,'dependency-check',30)
-    bounded([python,str(ROOT/'scripts/native-kokoro.py'),'finish-setup','--root',str(root)],root,'finish-setup',250)
+    bounded([python,str(ROOT/'scripts/native-kokoro.py'),'finish-setup','--root',str(root)],root,'finish-setup',download_seconds+130)
     print(json.dumps(dict(installed=True,ready_for_speech=False,root=str(root),
         next_action='Use the installed native-worker.py doctor, then explicitly create a finite qualification session.'),sort_keys=True))
 
@@ -99,9 +129,11 @@ def main(argv=None):
         parser.add_argument('command',choices=['setup']);parser.add_argument('--root',required=True)
         parser.add_argument('--download-model',action='store_true',help='Explicitly download the pinned public 353.75 MB Kokoro model/voices, after guarded preflight.')
         parser.add_argument('--port',type=int,default=8788)
+        parser.add_argument('--resume',action='store_true',help='Explicit retry only from an acquisition-ready retained setup; reverify source, dependencies and immutable staging.')
+        parser.add_argument('--setup-download-seconds',type=int,default=600)
         args=parser.parse_args(arguments)
         if not args.download_model:parser.error('Setup needs explicit --download-model; it is not a gated model and accepts no tokens.')
-        try:setup(args.root,download_model=args.download_model,port=args.port)
+        try:setup(args.root,download_model=args.download_model,port=args.port,resume=args.resume,download_seconds=args.setup_download_seconds)
         except (Exception,KeyboardInterrupt) as exc:raise SystemExit(str(exc)+'; setup stopped, no automatic retry.') from exc
         return
     # Non-setup commands use the installed interpreter/source when invoked from
