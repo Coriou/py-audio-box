@@ -25,6 +25,11 @@ ROOT=Path(__file__).resolve().parents[1]
 def _control_imports():
     from service.api import create_voice_app
     from clients import cli,mcp
+    # Lifespan acquisition also reaches shared publication/export file helpers.
+    # Import their source closure before acquisition; no backend/model is loaded.
+    from service.dispatcher import Dispatcher
+    from service.native_cpu_activation import NativeCPUActivation
+    from service import installed_export
 
 
 def _preflight_child(output):
