@@ -333,9 +333,30 @@ class OwnedInstallationCleanupTests(unittest.TestCase):
         with patch.dict(c._LIVE,{123:object()}),self.assertRaisesRegex(c.CleanupFailure,'custody_unknown'):
             c.remove_fresh_installation(self.output,self.state)
 
+    def create_product_venv(self):
+        command=[sys.executable,'-m','venv','--copies',str(self.root/'venv')]
+        def output(raw):return c.sanitized((raw or b'')[:4096])
+        try:
+            result=subprocess.run(command,timeout=60,stdout=subprocess.PIPE,stderr=subprocess.PIPE)
+        except subprocess.TimeoutExpired as exc:
+            self.fail(json.dumps(dict(command=command,returncode=None,timeout_seconds=60,
+                stdout=output(exc.stdout),stderr=output(exc.stderr)),ensure_ascii=False))
+        self.assertEqual(result.returncode,0,json.dumps(dict(command=command,returncode=result.returncode,
+            stdout=output(result.stdout),stderr=output(result.stderr)),ensure_ascii=False))
+
+    def test_venv_failure_diagnostic_has_command_exit_and_bounded_sanitized_streams(self):
+        token='a'*96
+        result=SimpleNamespace(returncode=1,stdout=b'venv stdout',stderr=('Authorization: Bearer '+token+'\n'+'x'*10000).encode())
+        with patch.object(subprocess,'run',return_value=result),self.assertRaises(AssertionError) as caught:self.create_product_venv()
+        message=str(caught.exception);self.assertIn('venv stdout',message);self.assertIn('"returncode": 1',message)
+        self.assertIn('"--copies"',message);self.assertNotIn(token,message);self.assertLess(len(message),6000)
+        error=subprocess.TimeoutExpired(['inert'],60,output=b'partial stdout',stderr=b'partial stderr')
+        with patch.object(subprocess,'run',side_effect=error),self.assertRaises(AssertionError) as caught:self.create_product_venv()
+        self.assertIn('partial stderr',str(caught.exception));self.assertIn('"timeout_seconds": 60',str(caught.exception))
+
     def test_real_product_copies_venv_readonly_namespace_and_external_python(self):
         self.root.chmod(0o755)
-        subprocess.run([sys.executable,'-m','venv','--copies',str(self.root/'venv')],check=True,timeout=60,stdout=subprocess.PIPE,stderr=subprocess.PIPE)
+        self.create_product_venv()
         target=Path(sys.executable).resolve();before=(target.stat(),hashlib.sha256(target.read_bytes()).hexdigest())
         (self.root/'venv/bin/external-python').symlink_to(target)
         counts=dict(directories=0,regular=0,symlinks=0,hardlinked_regular=0)
