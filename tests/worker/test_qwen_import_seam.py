@@ -253,7 +253,8 @@ assert roots[0] != roots[1]
                 events.append(('clone', kw)); return [[0.2]], 24000
             model = types.SimpleNamespace(generate_custom_voice=preset,
                 create_voice_clone_prompt=create, generate_voice_clone=clone,
-                device=types.SimpleNamespace(type='mps'))
+                device=types.SimpleNamespace(type='mps'),
+                model=types.SimpleNamespace(dtype='torch.float32'))
             def load(*args, **kw):
                 self.assertEqual(events[0], ('threads', 2))
                 self.assertEqual(__import__('os').environ['TOKENIZERS_PARALLELISM'], 'false')

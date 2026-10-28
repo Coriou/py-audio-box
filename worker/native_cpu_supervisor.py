@@ -119,12 +119,17 @@ class NativeCPUSupervisor(NativeSupervisor):
 
     def child_environment(self,r):
         root=self.directory(r)/'tmp';root.mkdir(mode=0o700)
+        # Initialize before Popen's result can become visible to the watchdog.
+        # The actual sampler starts once the owner has the returned handle.
+        self.initialize_sampling(self.active)
         return dict(PYTHONNOUSERSITE='1',HF_HUB_OFFLINE='1',HOME=str(root),TMPDIR=str(root),
             OMP_NUM_THREADS='2',OPENBLAS_NUM_THREADS='2',VECLIB_MAXIMUM_THREADS='2')
 
-    def model_started(self,a,r):
+    def initialize_sampling(self,a):
         a['rss_started']=self.clock();a['rss_exit_observed']=None
         a['sampler']=None;a['sampler_started']=False;a['cpu_signals']=[];a['cpu_term_attempted']=False;a['cpu_kill_attempted']=False
+
+    def model_started(self,a,r):
         try:
             a['sampler']=self.sampler_factory(a['handle'].pid);a['sampler'].start();a['sampler_started']=True
         except Exception as exc:

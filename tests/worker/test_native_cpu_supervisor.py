@@ -12,6 +12,15 @@ from tests.worker.native_cpu_fixtures import Fixture,Handle,Channel,Sampler
 
 
 class CPUSupervisorTests(unittest.TestCase):
+    def test_base_factory_keeps_legacy_journal_injection_separate_from_cpu(self):
+        from worker.native_supervisor import NativeSupervisor
+        with patch('worker.native_supervisor.Journal',side_effect=Refused('inert_journal_factory')) as factory:
+            with self.assertRaisesRegex(Refused,'inert_journal_factory'):
+                NativeSupervisor('/unused-inert-host',deployment_id='a'*32,configuration_sha256='b'*64,
+                    peer_pin='c'*64,runtime_manifest_sha256='d'*64,registrations={},python='/managed/python',
+                    child_entry=str(Path('worker/native_child.py').resolve()))
+        factory.assert_called_once_with('/unused-inert-host','a'*32,'b'*64)
+
     def setUp(self):
         self.f=Fixture(self);self.h=Handle();self.signals=[];self.calls=[]
         binding=hashlib.sha256(canonical(self.f.snapshot)).hexdigest()
@@ -70,6 +79,15 @@ class CPUSupervisorTests(unittest.TestCase):
         self.assertEqual(receipt['resources']['failure'],'native_cpu_rss_lost')
         self.assertEqual(receipt['resources']['sampler_error']['message'],'sampler fixture failure')
         self.assertFalse(receipt['timely']);self.assertEqual(self.h.waited,1)
+
+    def test_identity_query_failure_retains_and_reaps_owned_handle_without_signal(self):
+        self.prepare();self.s.identity=lambda h:(_ for _ in ()).throw(ProcessLookupError('already gone'))
+        with self.assertRaisesRegex(Refused,'native_unknown'):self.s.dispatch(self.q('start'))
+        self.assertIs(self.s.active['handle'],self.h)
+        self.assertIn('rss_started',self.s.active)
+        self.h.code=0;self.s.tick()
+        self.assertEqual(self.h.waited,1);self.assertEqual(self.signals,[])
+        self.assertTrue(self.s.failed);self.assertIsNone(self.s.dispatch(self.q('collect'))['receipt'])
 
     def test_memory_limit_stops_without_an_oom_claim(self):
         self.start();self.s.active['sampler'].peak=2*1024**3+1;self.s.tick()

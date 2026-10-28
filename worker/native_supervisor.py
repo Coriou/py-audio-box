@@ -179,7 +179,7 @@ class NativeSupervisor:
     trusted templates; requests cannot change their enrolled metadata.
     """
     protocol = p
-    journal_type = Journal
+    journal_type = None
     child_filename = 'native_child.py'
     receipt_version = 'native-receipt-v1'
     startup_seconds = STARTUP_SECONDS
@@ -196,7 +196,7 @@ class NativeSupervisor:
         for v,n in ((deployment_id,32),(configuration_sha256,64),(peer_pin,64),(runtime_manifest_sha256,64)): p._hex(v,n)
         if not Path(python).is_absolute() or child_entry!=str(Path(__file__).with_name(self.child_filename).resolve()): raise Refused('native_command')
         if (Path(root)/'predecessor').exists() and (Path(root)/'native.json').exists(): raise Refused('native_renewal_new_boot_required')
-        self.journal=self.journal_type(root,deployment_id,configuration_sha256)
+        self.journal=(Journal if self.journal_type is None else self.journal_type)(root,deployment_id,configuration_sha256)
         if self.journal.retained is not None and self.journal.retained['native']['runtime_manifest_sha256']!=runtime_manifest_sha256: raise Refused('native_renewal_incompatible')
         self.boot=secrets.token_hex(16) if self.journal.retained is None else self.journal.retained['native']['boot']; self.pin=peer_pin; self.manifest=runtime_manifest_sha256
         if type(registrations) is not dict or not 1<=len(registrations)<=64: raise Refused('native_registration')
@@ -556,8 +556,10 @@ class NativeSupervisor:
                 try:
                     handle=self.popen([self.python,'-I','-B',self.entry,str(child.fileno())],stdin=subprocess.DEVNULL,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL,close_fds=True,pass_fds=(child.fileno(),),start_new_session=True,env=self.child_environment(r))
                     with self.handle_lock:
-                        a['handle']=handle; a['start_identity']=self.identity(handle); self.launches+=1
+                        a['handle']=handle; self.launches+=1
                     self.model_started(a,r)
+                    with self.handle_lock:
+                        a['start_identity']=self.identity(handle)
                 except Exception:
                     self.failed=True
                     try: parent.close()

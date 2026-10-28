@@ -62,7 +62,8 @@ jobs:
           -r requirements/kokoro.lock
       - run: python -m pip check
       - name: Locked client/schema closure for CPU lifecycle source contracts
-        run: python -m pip install --require-hashes --only-binary=:all: -r requirements/client.lock
+        run: >-
+          python -m pip install --require-hashes --only-binary=:all: -r requirements/client.lock
       - run: python -m pip check
       - name: Real CPU provider operation and bundled English phonemization under guard
         run: python scripts/ci-native-kokoro.py --output kokoro-preflight
