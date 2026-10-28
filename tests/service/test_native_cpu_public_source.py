@@ -50,7 +50,7 @@ class CPUPublicSourceTests(unittest.TestCase):
             spool=self.spool,staging=self.stage,local_import_uid=os.getuid(),connector=self.connect)
         self.contexts=NativeCPUContexts({'local':self.f.context},{self.f.spec.bundle_id:self.f.bundle})
         self.contexts.bind_availability(self.runtime);self.contexts.qualification=self.session
-        self.prepared=Prepared.__new__(Prepared)
+        self.prepared=Prepared.__new__(Prepared);self.prepared.selftest=False
         self.prepared.qualification=self.session;self.prepared.config=dict(principal='local')
         self.prepared.control=self.control;self.prepared.staging=self.stage;self.prepared.runtime=self.runtime
         self.prepared.contexts=self.contexts;self.prepared.profiles=self.f.profiles
@@ -145,6 +145,11 @@ class CPUPublicSourceTests(unittest.TestCase):
         self.contexts=NativeCPUContexts({'local':self.f.context},{self.f.spec.bundle_id:self.f.bundle})
         self.contexts.bind_availability(self.runtime);self.contexts.qualification=self.session
         self.prepared.contexts=self.contexts
+
+    def test_missing_real_factory_flag_cannot_silently_skip_selftest_path(self):
+        del self.prepared.selftest
+        with self.assertRaisesRegex(Refused,'factory_flags_required'):NativeCPUActivation(self.prepared)
+        self.assertFalse((self.control/'core.sqlite').exists())
 
     def test_checked_owner_catalogue_alias_and_generate_source(self):
         from service.native_cpu_configuration import ALIAS

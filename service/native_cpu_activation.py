@@ -8,6 +8,7 @@ class NativeCPUActivation(NativeActivation):
     def __init__(self,prepared):
         from service.native_cpu_install import Prepared
         if type(prepared) is not Prepared:raise Refused('native_cpu_factory_required')
+        if type(getattr(prepared,'selftest',None)) is not bool:raise Refused('native_cpu_factory_flags_required')
         self.prepared=prepared;self.started=False
         self.session=prepared.qualification
 
@@ -44,8 +45,11 @@ class NativeCPUActivation(NativeActivation):
             records=self.prepared.supervisor.journal.value['records']
             if runtimes!={r['id'] for r in records}:raise Refused('native_cpu_history_coverage')
             self.expected_launches=completed_history(core,self.runtime,_cpu=True)
-        if getattr(self.prepared,'selftest',False):
-            self.session.prior_jobs=frozenset(r[0] for r in core.db.execute('SELECT id FROM jobs'))
+        if self.prepared.selftest:
+            # The fresh fence precedes Core DDL. Only validated retained history
+            # can supply prior IDs; missing tables in retained Core still refuse.
+            self.session.prior_jobs=(frozenset() if core.fresh_initialized else
+                frozenset(r[0] for r in core.db.execute('SELECT id FROM jobs')))
 
     def postcheck(self,dispatcher):
         if dispatcher.runtime is not self.runtime or self.saved!=self.prepared.revalidate():raise Refused('native_cpu_installation_changed')

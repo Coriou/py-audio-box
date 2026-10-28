@@ -102,7 +102,7 @@ class MeasurementTests(unittest.TestCase):
         from service.entrypoint import _owned_app
         write(self.root/'credential.json',dict(credentials=[dict(token='fixture-only',principal='local',scopes=['read','production-write'])]))
         write(self.root/'owner.lock',b'')
-        prepared=self.prepared
+        prepared=self.prepared;prepared.selftest=True
         info=(self.root/'owner.lock').stat();prepared.owner_identity=(info.st_dev,info.st_ino,info.st_uid,info.st_mode,info.st_nlink)
         prepared.closed=False;prepared.errors=[];prepared.thread=threading.Thread(target=lambda:None)
         prepared.thread.start();prepared.thread.join()

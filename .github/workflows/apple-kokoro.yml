@@ -95,6 +95,7 @@ jobs:
           tests.service.test_native_cpu_bootstrap tests.service.test_native_cpu_download
           tests.service.test_native_cpu_public_source tests.service.test_native_cpu_tls
           tests.service.test_native_cpu_install tests.service.test_native_cpu_measurement
+          tests.service.test_native_cpu_fresh_selftest
           tests.service.test_native_cpu_recovery
           tests.service.test_native_cpu_archive_imports
           tests.test_ci_native_kokoro_installed
