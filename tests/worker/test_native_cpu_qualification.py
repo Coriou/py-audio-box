@@ -69,4 +69,18 @@ class CPUQualificationTests(unittest.TestCase):
         self.s.reserve(core,self.f.context,self.profile,self.job)
 
 
+    def test_explicit_selftest_exempts_only_already_validated_history_without_reset(self):
+        old=[('ignored old measured context',json.dumps(dict(id='old-'+str(i),state='succeeded'))) for i in range(12)]
+        rows=list(old)
+        class DB:
+            def execute(inner,sql,args):
+                self.assertEqual(args,(64,));return SimpleNamespace(fetchall=lambda:rows[:64])
+        self.s.prior_jobs=frozenset('old-'+str(i) for i in range(12))
+        core=SimpleNamespace(db=DB())
+        self.s.reserve(core,self.f.context,self.profile,self.job)
+        rows.extend((json.dumps(self.f.context),json.dumps(dict(id='new-'+str(i),state='succeeded'))) for i in range(7))
+        with self.assertRaisesRegex(Refused,'job_limit'):self.s.reserve(core,self.f.context,self.profile,self.job)
+        self.assertEqual(rows[:12],old)
+
+
 if __name__=='__main__':unittest.main()

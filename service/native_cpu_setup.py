@@ -29,7 +29,7 @@ def _control_imports():
     # Import their source closure before acquisition; no backend/model is loaded.
     from service.dispatcher import Dispatcher
     from service.native_cpu_activation import NativeCPUActivation
-    from service import installed_export
+    from service import installed_export,native_cpu_measurement,native_cpu_selftest
 
 
 def _preflight_child(output):
@@ -179,12 +179,12 @@ def qualification_session(root):
     return dict(qualification='unqualified',ready_for_speech=False,session_seconds=value['seconds'],max_jobs=value['max_jobs'])
 
 
-def create_app(root,*,qualification=False):
+def create_app(root,*,qualification=False,_selftest=False):
     from service.native_cpu_install import Prepared
     from service.entrypoint import _owned_app
     holder={}
     def dependencies():
-        prepared=Prepared(root,qualification=qualification);holder['prepared']=prepared
+        prepared=Prepared(root,qualification=qualification,**({'_selftest':True} if _selftest else {}));holder['prepared']=prepared
         def acquire():
             from service.native_cpu_activation import NativeCPUActivation
             from service.dispatcher import Dispatcher
@@ -247,6 +247,7 @@ def main(argv=None):
         if name=='finish-setup':
             command.add_argument('--resume',action='store_true')
             command.add_argument('--setup-download-seconds',type=int)
+        if name=='doctor':command.add_argument('--selftest',action='store_true')
         if name=='serve':command.add_argument('--qualification-session',action='store_true')
         if name=='client':command.add_argument('arguments',nargs=argparse.REMAINDER)
         if name=='speak':
@@ -260,6 +261,9 @@ def main(argv=None):
         return 0
     if args.command=='finish-setup':return finish_setup(args.root,resume=args.resume,download_seconds=args.setup_download_seconds)
     if args.command=='doctor':
+        if args.selftest:
+            from service.native_cpu_selftest import command
+            print(canonical(command(args.root)).decode());return
         from service.native_cpu_install import Prepared
         prepared=Prepared(args.root)
         try:
@@ -267,7 +271,7 @@ def main(argv=None):
             from service.native_cpu_install import certificate_validity
             print(canonical(dict(status='prepared',device='cpu',preset='af_heart',model_store='verified',tls='verified',
                 certificates_valid_until=certificate_validity(prepared.root),source_provenance=prepared.config['source_provenance'],
-                ready_for_speech=False,qualification='unqualified')).decode())
+                ready_for_speech=prepared.profile['readiness']=='ready',qualification='local_selftest' if prepared.profile['verification']=='measured' else 'unqualified')).decode())
         finally:prepared.close()
         return
     if args.command=='qualification-session':print(canonical(qualification_session(args.root)).decode());return

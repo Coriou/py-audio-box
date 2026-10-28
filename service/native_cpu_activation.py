@@ -44,6 +44,8 @@ class NativeCPUActivation(NativeActivation):
             records=self.prepared.supervisor.journal.value['records']
             if runtimes!={r['id'] for r in records}:raise Refused('native_cpu_history_coverage')
             self.expected_launches=completed_history(core,self.runtime,_cpu=True)
+        if getattr(self.prepared,'selftest',False):
+            self.session.prior_jobs=frozenset(r[0] for r in core.db.execute('SELECT id FROM jobs'))
 
     def postcheck(self,dispatcher):
         if dispatcher.runtime is not self.runtime or self.saved!=self.prepared.revalidate():raise Refused('native_cpu_installation_changed')

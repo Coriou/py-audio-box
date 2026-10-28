@@ -82,7 +82,7 @@ class NativeCPUSupervisor(NativeSupervisor):
 
     def prepare(self,q):
         from worker.native_cpu_qualification import MAX_JOBS
-        if self.qualification is not None and not any(r['binding']==q['binding'] for r in self.journal.value['records']) and len(self.journal.value['records'])>=MAX_JOBS:
+        if self.qualification is not None and not any(r['binding']==q['binding'] for r in self.journal.value['records']) and sum(r['id'] not in getattr(self,'qualification_prior',set()) for r in self.journal.value['records'])>=MAX_JOBS:
             raise Refused('native_cpu_qualification_job_limit')
         return super().prepare(q)
 

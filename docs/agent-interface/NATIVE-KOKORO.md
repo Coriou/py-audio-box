@@ -1,6 +1,8 @@
 # Native Apple CPU preview: Kokoro presets
 
-This is an **unqualified preview**, not an installed speech readiness claim.
+This is a **bounded native CPU preview**. The installed finite-session public
+journey passed on 2026-10-28. The new local selftest/ordinary-admission path is
+implemented source and still requires its separate runtime qualification.
 Kokoro provides preset voices, **not cloning**. Qwen CustomVoice presets do not
 qualify Qwen Base cloning either. Native Base has a source path with no cloning
 runtime qualification; no MLX adapter is implemented. See [cloning scope](NATIVE-CLONING.md).
@@ -10,16 +12,16 @@ installed 30 s request readiness claim.
 
 ## Source installer and explicit qualification mode
 
-The commands below describe the implemented preview path. The full fresh-install
-journey still needs its separately authorized Apple run; these are not a claim
-that installation or speech has passed on this source. Requires macOS 14+,
+The commands below describe the implemented preview path. The ordinary selftest path still needs its separately authorized Apple run;
+source tests do not establish ordinary installed readiness. Requires macOS 14+,
 native arm64 CPython 3.11.4+ (with bundled pip 23.1+) and a new private installation directory. No Docker,
 Homebrew, model token or manually authored identity/receipt JSON is required.
 
 ```sh
 ROOT="$HOME/Library/Application Support/py-audio-box/native-kokoro"
 python3.11 scripts/native-kokoro.py setup --root "$ROOT" --download-model
-python3.11 scripts/native-kokoro.py doctor --root "$ROOT"
+python3.11 scripts/native-kokoro.py doctor --root "$ROOT" --selftest
+python3.11 scripts/native-kokoro.py serve --root "$ROOT"
 ```
 
 Setup installs only hash-pinned binary wheels, checks actual guarded service,
@@ -66,36 +68,52 @@ use the original exact interpreter if available, or run fresh setup with the
 current native Python into a new directory. Download resume is not an interpreter
 upgrade or state migration mechanism. Setup never upgrades pip automatically.
 
-Ordinary `serve --root "$ROOT"` keeps the profile **unqualified/not_ready** and
-refuses synthesis. A deliberate qualification run can instead create one finite
-authority, then serve with it:
+`doctor --selftest` must run with the service stopped. It performs one fixed
+English af_heart job through the actual authenticated HTTP API routes (in-process
+ASGI transport), Dispatcher/Core, internal mTLS worker, publication, ACK and WAV
+byte transfer. It starts a separate explicit finite authority (600 awake seconds,
+at most six new jobs; this command submits one), without renewing
+`qualification.json`, deleting history or resetting the catalogue. Already
+validated completed history is retained and remains charged to the global cap.
+The public phase is bounded to 90 seconds, including acquisition/import checks;
+existing 30-second startup/request and 60-second job limits remain unchanged.
+Existing owner cleanup is independent and must finish before evidence is written.
+There is no automatic retry. A failed or interrupted selftest invalidates the old
+measurement and leaves ordinary speech unavailable.
 
-```sh
-python3.11 scripts/native-kokoro.py qualification-session --root "$ROOT"
-python3.11 scripts/native-kokoro.py serve --root "$ROOT" --qualification-session
-```
+Only after canonical successful publication, terminal receipt, ACK, matching
+playable nonzero PCM WAV and confirmed owner/custodian closure does the command
+write `measurement.json`. Normal `serve` checks it against retained Core/worker
+proof and exact installation/source/interpreter/dependencies/model/profile,
+macOS version, arm64 and current boot UUID, then derives a **local measured**
+profile. No request or configuration-ready flag can grant this. Reboot or drift
+requires an explicit new `doctor --selftest`; retain the installation and all
+history. Source/interpreter incompatibility may require a new installation as
+explained above. Restart in the same boot reuses valid evidence without loading
+or downloading the model during validation. Each synthesis job still loads the
+model once; there is no persistent model or warm-performance claim.
 
-This private installation-bound authority permits at most six jobs within the
-original 600 s host-boot/monotonic **awake-time** window. Darwin's clock pauses
-during sleep, so this is not a 600 s wall-clock guarantee across laptop sleep.
-[Apple's clock declarations](https://github.com/apple-oss-distributions/xnu/blob/main/osfmk/mach/mach_time.h)
-distinguish the absolute clock from the separate continuous clock that advances during sleep.
-Restart alone cannot renew it. The file is user-writable: the local operator
-can edit/delete it or change source. This protects the service from ordinary
-client requests and accidental restart renewal, not from its owning operator.
-It creates no
-qualification receipt or production readiness. The checked owner holds the lock,
-validates source/interpreter/dependencies/model identity, and uses mutual TLS for
-the internal worker. The authenticated public API binds only `127.0.0.1:8788`.
-Stop with Ctrl-C and confirm clean shutdown before restarting the same command;
-unknown ownership or journal/history discrepancies refuse activation.
-The underlying CPU retained-history format is also bounded to 63 jobs,
-2048 metadata rows and 16 MiB; no checked CPU history rollover is implemented.
-It fails explicitly at capacity and does not discard catalogue entries, artifacts
-or receipts. A future measured ordinary preview must retain that visible limit
-until a separately validated archive/rollover path exists.
+This owner-writable record protects ordinary clients and accidental drift,
+**not** an adversarial local operator who can replace code, credentials and
+retained data. It is local functional evidence, not global release certification,
+audio-quality/semantic-ending proof or a best-hardware/performance ranking.
+Darwin monotonic deadlines use awake time and pause during laptop sleep; see
+[Apple's clock declarations](https://github.com/apple-oss-distributions/xnu/blob/main/osfmk/mach/mach_time.h).
+Do not suspend during a job/selftest. Stop the service with Ctrl-C and require
+clean shutdown before restart; unknown custody refuses activation.
 
-In a second shell, while that explicit session is active:
+Retained history is capped at **63 jobs (including selftests), 2048 metadata rows
+and 16 MiB**. There is no checked CPU rollover. Capacity refuses explicitly;
+no catalogue, artifacts or receipts are silently discarded. This is not an
+unlimited long-lived service. A later explicit archive/rollover design must
+preserve the existing canonical history and immutable model identity.
+
+The old create-only `qualification-session` / `serve --qualification-session`
+commands remain finite diagnostic tools; they do not issue ordinary readiness.
+The API listens only on authenticated `127.0.0.1:8788`; generated credentials
+stay in the private installation. No user-authored receipt JSON is required.
+
+In a second shell, while ordinary `serve` is active:
 
 ```sh
 python3.11 scripts/native-kokoro.py client --root "$ROOT" status
@@ -228,8 +246,8 @@ one HTTP generation with exact-key CLI and real MCP stdio replay/download,
 running and queued cancellation, then restart and a fourth job using the same
 immutable provision. No session renewal, retry, FR or cloning run is included.
 It remains an opt-in qualification tool, not ordinary admission or a completed
-Mac product claim. The measured local doctor/selftest receipt path remains
-subsequent work.
+Mac product claim. The measured local doctor/selftest receipt path described
+above is a separate source slice and still needs ordinary runtime qualification.
 
 The controller keeps the original 600 s total across its installed-Python exec,
 including setup/network/download/MCP work and a 20 s cleanup reserve. It owns

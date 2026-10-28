@@ -65,6 +65,7 @@ class Session:
         self.value=copy.deepcopy(value);self.configuration=configuration_sha256;self.manifest=runtime_manifest_sha256
         self.deployment=deployment_id;self.profile=canonical(profile);self.bundle=manifest_sha256;self.principal=principal
         self.clock,self.boot=clock,boot
+        self.prior_jobs=frozenset()
 
     @contextmanager
     def scope(self):
@@ -93,7 +94,10 @@ class Session:
 
     def reserve(self,core,context,profile,job):
         self.authorize(context,profile,job)
-        rows=core.db.execute('SELECT context,job FROM jobs LIMIT ?', (MAX_JOBS+1,)).fetchall()
+        if self.prior_jobs:
+            rows=core.db.execute('SELECT context,job FROM jobs LIMIT ?', (64,)).fetchall()
+            rows=[(raw,stored) for raw,stored in rows if json_job_id(stored) not in self.prior_jobs]
+        else:rows=core.db.execute('SELECT context,job FROM jobs LIMIT ?', (MAX_JOBS+1,)).fetchall()
         if len(rows)>MAX_JOBS:raise Refused('native_cpu_qualification_job_limit')
         import json
         live=0
@@ -115,3 +119,8 @@ def permitted(context,profile,job=None):
     if session is None:return False
     session.authorize(context,profile,job)
     return True
+
+
+def json_job_id(raw):
+    import json
+    return json.loads(raw)['id']

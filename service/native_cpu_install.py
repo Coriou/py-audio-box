@@ -129,13 +129,14 @@ def certificate_pin(root,role):
 
 class Prepared:
     """Own the actual custodian/ports/locks; no Core or bearer data in model child."""
-    def __init__(self,root,*,qualification=False):
-        if type(qualification) is not bool:raise Refused('native_cpu_qualification_flag')
+    def __init__(self,root,*,qualification=False,_selftest=False):
+        if type(qualification) is not bool or type(_selftest) is not bool or qualification and _selftest:raise Refused('native_cpu_qualification_flag')
         self.root,self.config,self.descriptor,self.bundle=read_installation(root)
         self.identity=hashlib.sha256(canonical(self.config)).hexdigest()
         self.runtime_manifest=hashlib.sha256(canonical(dict(variant=VARIANT,source=self.config['source_files'],python=self.config['python_sha256'],python_version=self.config['python_version'],dependencies=self.config['dependencies'],bundle=manifest_sha256(self.descriptor)))).hexdigest()
         self.profile=profile(self.descriptor,revision='native-cpu-'+self.identity[:32],installed_at=self.config['installed_at'])
-        self.profiles=[self.profile];self.qualification=None
+        self.baseline_profile=self.profile
+        self.profiles=[self.profile];self.qualification=None;self.selftest=_selftest
         if qualification:
             from worker.native_cpu_qualification import Session
             session=files.document(self.root/'qualification.json')
@@ -151,13 +152,30 @@ class Prepared:
         info=os.fstat(self.lock)
         if info.st_uid!=os.getuid() or not stat.S_ISREG(info.st_mode) or info.st_nlink!=1 or stat.S_IMODE(info.st_mode)!=0o600:
             os.close(self.lock);raise Refused('native_cpu_owner_lock')
+        self.owner_identity=(info.st_dev,info.st_ino,info.st_uid,info.st_mode,info.st_nlink)
         try:fcntl.flock(self.lock,fcntl.LOCK_EX|fcntl.LOCK_NB)
         except BaseException:os.close(self.lock);raise
         self.supervisor=None;self.listener=None;self.thread=None;self.errors=[];self.closed=False
         # A startup/close exception must not discard custody before the app's
         # ordinary lifecycle registry has acquired this factory result.
         _PREPARED_OWNERS[id(self)]=self
-        try:self._prepare()
+        try:
+            if _selftest:
+                from worker.native_cpu_qualification import Session,descriptor
+                session=descriptor()
+                self.qualification=Session(session,configuration_sha256=self.identity,runtime_manifest_sha256=self.runtime_manifest,
+                    deployment_id=self.config['deployment_id'],profile=self.baseline_profile,manifest_sha256=manifest_sha256(self.descriptor),principal=self.config['principal'])
+                # Explicit selftest starts a new finite authority, never renews
+                # qualification.json and never discards retained product history.
+                from service.native_runtime import _sync
+                write(self.root/'measurement-intent.pending',session)
+                os.replace(self.root/'measurement-intent.pending',self.root/'measurement-intent.json');_sync(self.root)
+            elif not qualification:
+                from service.native_cpu_measurement import load
+                measured=load(self)
+                if measured is not None:self.profile=measured;self.profiles=[measured]
+            self._prepare()
+            if _selftest:self.supervisor.qualification_prior={r['id'] for r in self.supervisor.journal.value['records']}
         except BaseException:
             self.close()
             raise

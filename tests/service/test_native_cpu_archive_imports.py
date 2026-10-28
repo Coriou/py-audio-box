@@ -111,8 +111,12 @@ from tests.service.test_native_cpu_public_source import CPUPublicSourceTests
 sys.path[:]=[p for p in sys.path if p!=str(fixture_root)]
 assert not (root/'service/installed_pocket_daemon.py').exists()
 assert not (root/'service/installed_qwen_daemon.py').exists()
-case=CPUPublicSourceTests('test_real_tls_custodian_large_core_publication_and_shutdown')
-result=unittest.TestResult();case.run(result)
+from tests.service.test_native_cpu_measurement import MeasurementTests
+cases=[CPUPublicSourceTests('test_real_tls_custodian_large_core_publication_and_shutdown'),
+       MeasurementTests('test_doctor_selftest_actual_asgi_routes_publish_only_after_owned_close'),
+       MeasurementTests('test_actual_public_proof_derives_profile_without_private_scope')]
+result=unittest.TestResult()
+for case in cases:case.run(result)
 if not result.wasSuccessful():
     for _,failure in result.errors+result.failures:print(failure,file=sys.stderr)
     raise SystemExit(1)
@@ -124,7 +128,7 @@ if sys.platform=='darwin':
     from service.native_cpu_install import locked_versions
     from importlib.metadata import version
     pins=locked_versions(root);assert len(pins)==44 and all(version(k)==v for k,v in pins.items())
-print(json.dumps({'extracted_real_core_tls':'passed','foreign_family_imports':False,'weights_loaded':False}))
+print(json.dumps({'extracted_real_core_tls':'passed','extracted_selftest_ordinary':'passed','foreign_family_imports':False,'weights_loaded':False}))
 '''
 
 

@@ -7,8 +7,8 @@ def preallocate(core,context):
     spec=p.native_execution(context)
     from worker.native_cpu_qualification import current,MAX_JOBS
     session=current()
-    limit=MAX_JOBS if session is not None else 63
-    if core.db.execute('SELECT count(*) FROM jobs').fetchone()[0]>=limit:raise Refused('native_cpu_history_capacity')
+    count=core.db.execute('SELECT count(*) FROM jobs').fetchone()[0]
+    if count>=63 or session is not None and count-len(session.prior_jobs)>=MAX_JOBS:raise Refused('native_cpu_history_capacity')
     runtime=getattr(core,'_native_retention_runtime',None)
     if runtime is None:raise Refused('native_cpu_owner_required')
     runtime._account(3*spec.max_output_bytes+96000,new=True)

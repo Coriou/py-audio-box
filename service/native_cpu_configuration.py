@@ -28,7 +28,7 @@ def profile(expected,*,revision,installed_at):
     result=dict(id=PROFILE,device='cpu',topology='packaged_native',support='unqualified',installation='installed',
         configuration='valid',readiness='not_ready',verification='synthetic',checked_at=installed_at,
         qualification_receipt='',config_revision=revision,
-        next_action='Run an explicit bounded qualification session; installation does not establish readiness.',
+        next_action='Stop the service and run doctor --selftest; installation does not establish local readiness.',
         compatibility=[dict(operation='speech_generate',mode='kokoro_preset',identity=ident)],
         limits=dict(expensive_slots=1,resident_models=1,threads=2,queue=2,upload_bytes=1048576,decoded_ticks=960000,
             text_chars=256,variants=1,disk_bytes=16*1024**2,deadline_seconds=JOB_SECONDS,ram_bytes=MEMORY_BYTES,vram_bytes=0))

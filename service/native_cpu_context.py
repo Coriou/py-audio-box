@@ -54,4 +54,4 @@ class NativeCPUContexts(KokoroContexts):
             retained_history_limits=dict(jobs=63,rows=2048,bytes=16*1024**2,rollover_available=False),
             qualification_session=None if session is None else dict(max_jobs=session.value['max_jobs'],
                 remaining_seconds=max(0,session.value['started_monotonic']+session.value['seconds']-session.clock())),
-            next_action='Resolve default.narration; speech requires the explicit finite qualification session. Installation is not speech qualification.')
+            next_action='Resolve default.narration. Ordinary speech requires doctor --selftest local measured evidence; revalidate after reboot/drift. History: 63 jobs, no rollover.')
