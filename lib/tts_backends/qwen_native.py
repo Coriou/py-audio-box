@@ -14,7 +14,7 @@ class NativeQwenBackend:
     """Closed preset/clone routes; prompts never leave this model owner."""
 
     def __init__(self, *, model_name, num_threads, dtype_str, revision,
-                 offline, device, attention):
+                 offline, device, attention, diagnostic_request_seconds=None):
         if (type(model_name) is not str or not Path(model_name).is_absolute()
                 or not Path(model_name).is_dir()
                 or type(num_threads) is not int or not 1 <= num_threads <= 64
@@ -22,6 +22,10 @@ class NativeQwenBackend:
                 or offline is not True
                 or (device, dtype_str, attention) != ('mps', 'float32', 'sdpa')):
             raise ValueError('native_execution_required')
+        from worker.native_budgets import REQUEST_SECONDS, DIAGNOSTIC_REQUEST_SECONDS
+        if diagnostic_request_seconds is not None and (type(diagnostic_request_seconds) is not int or diagnostic_request_seconds != DIAGNOSTIC_REQUEST_SECONDS):
+            raise ValueError('native_diagnostic_budget')
+        self._request_seconds = REQUEST_SECONDS if diagnostic_request_seconds is None else diagnostic_request_seconds
         # These must precede the complete loader's Torch/upstream imports.
         for name in ('OMP_NUM_THREADS', 'MKL_NUM_THREADS', 'OPENBLAS_NUM_THREADS',
                      'NUMEXPR_NUM_THREADS'):
@@ -66,7 +70,7 @@ class NativeQwenBackend:
         for key, lo, hi in (('top_k', 0, 1000), ('max_new_tokens', 1, 32768)):
             if type(params[key]) is not int or not lo <= params[key] <= hi:
                 raise ValueError('generation_control')
-        if type(timeout_s) not in (int, float) or not math.isfinite(timeout_s) or not 0 < timeout_s <= 30:
+        if type(timeout_s) not in (int, float) or not math.isfinite(timeout_s) or not 0 < timeout_s <= self._request_seconds:
             raise ValueError('native_budget_required')
         # Timeout is enforced by the owning supervisor, never a helper thread.
         return dict(params)

@@ -53,27 +53,41 @@ def install_spawn_guard():
 
 
 def infer(execution, text, bundles, references, inventory, *,
-          reference_temp_dir=None, managed_owner_uid=None, on_loaded=None):
+          reference_temp_dir=None, managed_owner_uid=None, on_loaded=None, diagnostic_request_seconds=None):
     """Real input verifier/complete loader/encoder with a closed native backend.
 
     The owned entry installs spawn_guard before calling this function. No
     arbitrary backend factory or caller-selected method crosses this boundary.
+    The explicit EN diagnostic budget is never accepted by run_socket; it grants
+    no installed registration, deadline renewal or publication authority.
     """
     from worker.engines.qwen_execution import static_native_hardware
     from worker.engines.qwen import verify_service_inputs, execute
     if not _guard_installed:
         raise Refused('native_spawn_guard_required')
     static_native_hardware(execution, inventory)
-    if execution.timeout_s > 30 or execution.max_output_bytes > 1048576:
+    from worker.native_budgets import REQUEST_SECONDS, DIAGNOSTIC_REQUEST_SECONDS
+    limit = REQUEST_SECONDS
+    if diagnostic_request_seconds is not None:
+        if (type(diagnostic_request_seconds) is not int or diagnostic_request_seconds != DIAGNOSTIC_REQUEST_SECONDS
+                or execution.timeout_s != diagnostic_request_seconds
+                or execution.task != 'custom_voice' or execution.language != 'English'):
+            raise Refused('native_diagnostic_budget')
+        limit = diagnostic_request_seconds
+    if execution.timeout_s > limit or execution.max_output_bytes > 1048576:
         raise Refused('native_execution_limit')
     _, raw = verify_service_inputs(execution, bundles, references, inventory,
                           owner_uid=managed_owner_uid)
     from worker.engines.qwen_prepare import QwenPreparation, selected_reference
     if type(execution) is QwenPreparation: selected_reference(execution, raw)
     from lib.tts_backends.qwen_native import NativeQwenBackend
+    factory = NativeQwenBackend
+    if diagnostic_request_seconds is not None:
+        from functools import partial
+        factory = partial(factory, diagnostic_request_seconds=diagnostic_request_seconds)
     result = execute(execution, text, bundles, references, inventory,
         reference_temp_dir=reference_temp_dir, managed_owner_uid=managed_owner_uid,
-        backend_factory=NativeQwenBackend, on_loaded=on_loaded)
+        backend_factory=factory, on_loaded=on_loaded)
     # Native transport sends audition PCM; reference metadata is reconstructed
     # from the verified, immutable preparation descriptor.
     return result['audition'] if type(execution) is QwenPreparation else result
@@ -188,6 +202,7 @@ def run_socket(connection, *, inference=None, guard=True):
     from contracts import validate as oracle
     oracle.stored_context(config['snapshot'][0],config['snapshot'][1])
     if (spec.device,spec.dtype,spec.attention) != ('mps','float32','sdpa') or spec.task not in ('clone','custom_voice'): raise Refused('native_execution')
+    if spec.timeout_s > 30: raise Refused('native_execution_limit')
     if guard: install_spawn_guard()
     def loaded():
         nonlocal cutoff

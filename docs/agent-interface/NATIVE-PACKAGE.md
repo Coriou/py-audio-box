@@ -457,3 +457,15 @@ This repairs a source-level readiness defect: observed cold loading took
 62.63 seconds, exceeding the former shared 30-second cap. It does not qualify
 installed startup or synthesis. The diagnostic runner's phase budgets remain
 separate. CustomVoice preset support does not establish Base-model cloning.
+
+
+Full sealed-tree, manifest and file-hash verification now runs inside that
+cancellable owned startup, before model construction and the `loaded` handshake.
+The `prepare` and `start` control RPCs validate the enrolled binding, execution,
+model mapping, hardware observation, resource admission and cancellation without
+rehashing model weights. They acknowledge admission/launch, not model readiness.
+The child still performs the existing complete input verification; a corrupt
+bundle cannot reach backend construction or produce a loaded acknowledgement.
+This removes multi-gigabyte hashing from the two-second control RPC without
+raising its timeout or introducing a blocking 120-second server operation.
+Actual installed startup and public synthesis remain unqualified.

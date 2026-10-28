@@ -204,3 +204,28 @@ A completed host forward is not a first-token/audio measurement. Summaries updat
 at most once per second plus decode/cleanup boundaries and preserve the original
 phase start. Decode/forward errors retain their original exceptions. No new
 weights run or changed diagnostic deadline is implied by this instrumentation.
+
+
+## Explicit EN completeness measurement
+
+The opt-in speech workflow selects `--diagnostic-en-completeness`: English only,
+Ryan, the same short text/sampling/float32/SDPA/two-thread options and 256-token
+ceiling. French is reported as `not_requested`. This is a budget/completeness
+measurement, not an optimization or installed qualification.
+
+The harness selects verification/load/generation/encoding caps of
+30/120/120/15 seconds under a 270-second total child deadline. It passes a typed
+120-second execution and an explicit private diagnostic selector through
+`native_child.infer` to `NativeQwenBackend`. The backend validates that selected
+limit; the owner enforces it. Reports retain effective phase/total/execution
+budgets and the phase or total deadline exceeded. The normal installed socket
+and registration still reject execution timeouts over 30 seconds; their
+120-second startup/150-second original-job ceiling is unchanged. The selector
+is absent from the closed installed socket configuration.
+
+The completeness mode retains 6 GiB sampled RSS, 0.5-second observation staleness,
+default Metal watermark, fallback disabled, bounded logs and kill/reap cleanup.
+It downloads only the existing pinned permitted public checkpoint. No cache or
+retry is introduced. A valid WAV is distinct from verified ending/quality; the
+report keeps `ending_verified: false` until separately checked. Running this
+opt-in mode requires a separate deliberate runtime authorization.

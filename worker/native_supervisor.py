@@ -448,9 +448,9 @@ class NativeSupervisor:
         capacity('host_bytes',reserved,QUOTA,extra=2*(e.reference_bytes+e.max_output_bytes))
         if self.free_bytes()<6*1024**3+snapshot[1]['plan']['resolved']['profile']['limits']['disk_bytes']: raise Refused('native_disk_gate')
         if self.free_ram()<e.memory_bytes: raise Refused('native_ram_gate')
-        from worker.engines.qwen import verify_bundle
         if set(reg['bundles'])!={e.bundle_id}: raise Refused('native_registration')
-        verify_bundle(reg['bundles'][e.bundle_id],e.manifest_sha256,e.checkpoint,e.revision,e.language,owner_uid=os.getuid(),execution=e)
+        # Admission is not model readiness. Full immutable input verification
+        # is mandatory in the cancellable owned child before its loaded handshake.
         budget=(datetime.fromisoformat(snapshot[0]['deadline'])-self.utc()).total_seconds()
         if not 0<budget<=JOB_SECONDS: raise Refused('native_deadline')
         job_cutoff=self.clock()+budget
@@ -504,9 +504,10 @@ class NativeSupervisor:
         if r['phase']!='prepared': return {}
         if not self.transfer.acquire(False): raise Refused('native_busy')
         try:
-            reg=self.registration(r,True); e=reg['execution']
-            # Input/bundle verification may cross observation expiry. Recheck
-            # without changing the frozen request before any launch intent.
+            reg=self.registration(r); e=reg['execution']
+            # Full sealed-tree/hash verification runs under owned startup in
+            # native_child before backend construction, never in the 2s RPC.
+            # Recheck availability before recording launch intent.
             self.registration(r)
             if self.failed or r['phase']!='prepared': raise Refused('native_unknown')
             if r['input_size']!=e.reference_bytes or self.clock()>=self.cutoffs[r['id']]: raise Refused('native_deadline')

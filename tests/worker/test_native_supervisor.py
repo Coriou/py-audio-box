@@ -141,6 +141,21 @@ class NativeSupervisorTests(unittest.TestCase):
         self.reg={self.binding:dict(snapshot=self.snapshot,execution=self.e,bundles={'bundle':self.fixture.bundle},inventory=self.inventory)}
         self.make()
 
+    def test_diagnostic_120_is_not_installed_registration_authority(self):
+        self.e=replace(self.e,timeout_s=120)
+        self.snapshot=self.snapshot_for(self.e)
+        self.long_job()
+        with self.assertRaisesRegex(Refused,'native_registration'):self.prepare()
+        self.assertEqual(self.calls,[])
+
+    def test_control_rpcs_never_hash_full_model_bundle(self):
+        with patch('worker.engines.qwen.verify_bundle',side_effect=AssertionError('hash in RPC')),patch('worker.engines.qwen.verify_service_inputs',side_effect=AssertionError('hash in RPC')):
+            self.prepare()
+            with patch('worker.native_child.parent_exchange',return_value=None):
+                self.s.dispatch(self.q('start'));self.s.active['receiver'].join(1)
+        self.assertNotIn('receiver_error',self.s.active)
+        self.assertEqual(len(self.calls),1)
+
     def test_load_63_seconds_gets_independent_request_budget(self):
         self.long_job(); self.prepare()
         self.assertEqual(self.s.cutoffs[self.rid],220)

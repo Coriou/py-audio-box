@@ -75,6 +75,17 @@ class NativeQwenTests(unittest.TestCase):
         with self.assertRaisesRegex(Refused,'native_spawn_guard_required'):
             native_child.infer(self.spec,'hello',{}, {},self.inventory)
 
+    def test_corrupt_bundle_cannot_reach_backend_or_loaded(self):
+        model=self.fixture.bundle/'model.safetensors'
+        model.write_bytes(b'corrupt fixture')
+        for path in self.fixture.bundle.iterdir(): path.chmod(0o400)
+        self.fixture.bundle.chmod(0o500)
+        loaded=Mock()
+        with inert_guard(),patch('lib.tts_backends.qwen_native.NativeQwenBackend') as backend:
+            with self.assertRaises(Refused):
+                native_child.infer(self.spec,'hello',{'bundle':self.fixture.bundle},{},self.inventory,on_loaded=loaded)
+        backend.assert_not_called();loaded.assert_not_called()
+
     def test_actual_inference_function_complete_loader_and_encoder(self):
         # Seal only the tiny source fixtures; no real model or installed tree.
         for path in self.fixture.bundle.iterdir(): path.chmod(0o400)
@@ -106,6 +117,25 @@ class NativeQwenTests(unittest.TestCase):
                 self.assertEqual(events[0],('threads',2))
                 self.assertEqual([event[0] for event in events],['threads','loaded','generate'])
                 self.assertEqual(factory.call_args.kwargs,dict(device_map='mps',dtype='float32',attn_implementation='sdpa',local_files_only=True))
+                from lib.tts_backends.qwen_native import NativeQwenBackend
+                long_spec=replace(self.spec,timeout_s=120)
+                with self.assertRaisesRegex(Refused,'native_execution_limit'):
+                    native_child.infer(long_spec,'hello',{'bundle':self.fixture.bundle},{},self.inventory)
+                received=[]; original=NativeQwenBackend._parameters
+                def parameters(backend,params,timeout_s):
+                    received.append((backend._request_seconds,timeout_s))
+                    return original(backend,params,timeout_s)
+                with patch.object(NativeQwenBackend,'_parameters',parameters):
+                    diagnostic=native_child.infer(long_spec,'hello',{'bundle':self.fixture.bundle},{},self.inventory,diagnostic_request_seconds=120)
+                self.assertEqual(received,[(120,120)])
+                self.assertEqual(diagnostic['data'][:4],b'RIFF')
+                for value in (True,119,121):
+                    with self.assertRaisesRegex(Refused,'native_diagnostic_budget'):
+                        native_child.infer(long_spec,'hello',{'bundle':self.fixture.bundle},{},self.inventory,diagnostic_request_seconds=value)
+                default_backend=NativeQwenBackend(model_name=str(self.fixture.bundle),num_threads=2,dtype_str='float32',revision=self.spec.revision,offline=True,device='mps',attention='sdpa')
+                params=dict(text='hello',language='English',temperature=.9,top_p=1.,top_k=50,repetition_penalty=1.05,max_new_tokens=256)
+                with self.assertRaisesRegex(ValueError,'native_budget_required'):default_backend._parameters(params,120)
+                default_backend.close()
                 # Upstream ordinary Python spawn is refused before execution.
                 model.generate_custom_voice=lambda **kw:subprocess.Popen(['never'])
                 with self.assertRaises(native_child.SpawnRefused):

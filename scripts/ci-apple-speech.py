@@ -52,10 +52,16 @@ def public_open(url):
         PublicRedirects()).open(download_url(url), timeout=20)
 
 
-def phase_remaining(progress, now):
-    for key, cap in (('verification_seconds', 30), ('cold_load_seconds', 120),
-                     ('generation_seconds', 30), ('encoding_seconds', 15),
-                     ('total_seconds', 180)):
+def budgets(diagnostic_en=False):
+    if type(diagnostic_en) is not bool: raise ValueError('diagnostic_mode_required')
+    return dict(verification_seconds=30, cold_load_seconds=120,
+        generation_seconds=120 if diagnostic_en else 30, encoding_seconds=15,
+        total_seconds=270 if diagnostic_en else 180)
+
+
+def phase_remaining(progress, now, *, diagnostic_en=False):
+    limits = budgets(diagnostic_en)
+    for key, cap in limits.items():
         value = progress.get(key, 0)
         if type(value) not in (int, float) or not math.isfinite(value) or value < 0:
             raise ValueError('invalid_phase_duration_' + key)
@@ -65,8 +71,9 @@ def phase_remaining(progress, now):
     start = progress['stage_started']
     if type(start) not in (int, float) or not math.isfinite(start) or start > now:
         raise ValueError('invalid_phase_start')
-    limit = {'input_verification': 30, 'cold_load': 120,
-             'generation': 30, 'encoding': 15, 'complete': 15}[stage]
+    key = {'input_verification': 'verification_seconds', 'cold_load': 'cold_load_seconds',
+           'generation': 'generation_seconds', 'encoding': 'encoding_seconds', 'complete': 'encoding_seconds'}[stage]
+    limit = limits[key]
     remaining = limit - (now - start)
     if remaining <= 0:
         raise TimeoutError('native_phase_timeout_' + stage)
@@ -88,8 +95,10 @@ def read_progress(path):
     return value
 
 
-def owned_child(argv, env, log_path, observation, *, seconds=30, progress_path=None):
+def owned_child(argv, env, log_path, observation, *, seconds=30, progress_path=None, diagnostic_en=False):
     """Independent owner deadline, one asynchronous RSS reader, bounded output."""
+    effective_budgets = budgets(diagnostic_en)
+    observation.update(effective_budgets=effective_budgets, owner_total_seconds=seconds)
     started = time.monotonic()
     cutoff = started + seconds
     total = 0
@@ -118,7 +127,7 @@ def owned_child(argv, env, log_path, observation, *, seconds=30, progress_path=N
                     # Darwin CPython 3.11 uses a system-wide monotonic clock.
                     progress = read_progress(progress_path)
                     observation['progress'] = progress
-                    remaining = min(remaining, phase_remaining(progress, time.monotonic()))
+                    remaining = min(remaining, phase_remaining(progress, time.monotonic(), diagnostic_en=diagnostic_en))
                 state = sampler.snapshot()
                 # Do not reap/release the PID before the reader binds its first
                 # start identity (or reports exit/failure). A zombie cannot reuse
@@ -158,6 +167,17 @@ def owned_child(argv, env, log_path, observation, *, seconds=30, progress_path=N
     except BaseException as exc:
         failure = exc
         observation['owner_failure'] = dict(type=type(exc).__name__, message=str(exc)[:1000])
+        if isinstance(exc, TimeoutError):
+            message = str(exc)
+            if message.startswith('native_completed_phase_timeout_'):
+                observation['stage_exceeded'] = message.removeprefix('native_completed_phase_timeout_').removesuffix('_seconds')
+                observation['deadline_kind'] = 'completed_phase'
+            elif message.startswith('native_phase_timeout_'):
+                observation['stage_exceeded'] = message.removeprefix('native_phase_timeout_')
+                observation['deadline_kind'] = 'active_phase'
+            else:
+                observation['stage_exceeded'] = 'owner_total'
+                observation['deadline_kind'] = 'owner_total'
         raise
     finally:
         cleanup_error = None
@@ -262,7 +282,9 @@ def acquire(root, expected):
     root.chmod(0o500)
 
 
-def infer(bundle, output, language):
+def infer(bundle, output, language, *, diagnostic_en=False):
+    limits = budgets(diagnostic_en)
+    if diagnostic_en and language != 'English': raise ValueError('diagnostic_English_only')
     from worker import native_child
     from worker.engines.qwen_execution import QwenExecution
     from worker.hardware import Host, Device, DeviceFamily, HardwareInventory
@@ -323,17 +345,18 @@ def infer(bundle, output, language):
         checkpoint=expected['checkpoint'], revision=expected['revision'], task='custom_voice',
         language=language, voice_id='native-ci', voice_revision='v1', threads=2,
         max_text_bytes=256, max_frames=24000*20, max_output_bytes=960044,
-        memory_bytes=MAX_RSS, sample_rate=24000, max_new_tokens=256, timeout_s=30,
+        memory_bytes=MAX_RSS, sample_rate=24000, max_new_tokens=256, timeout_s=limits['generation_seconds'],
         device='mps', dtype='float32', attention='sdpa', preset='Ryan')
     inventory = HardwareInventory(Host('darwin', 'arm64', 'native'),
         (Device(DeviceFamily.MPS, 0, True, True, datetime.now(timezone.utc).isoformat()),))
     native_child.install_spawn_guard()
     started = time.monotonic()
-    stage('input_verification', options=dict(text=text, max_new_tokens=256, dtype='float32', attention='sdpa', threads=2, speaker='Ryan', temperature=spec.temperature, top_p=spec.top_p, top_k=spec.top_k, repetition_penalty=spec.repetition_penalty))
+    stage('input_verification', effective_budgets=limits, execution_request_seconds=spec.timeout_s, diagnostic_only=diagnostic_en, options=dict(text=text, max_new_tokens=256, dtype='float32', attention='sdpa', threads=2, speaker='Ryan', temperature=spec.temperature, top_p=spec.top_p, top_k=spec.top_k, repetition_penalty=spec.repetition_penalty))
     qwen_native.NativeQwenBackend = MeasuredBackend
     try:
         result = native_child.infer(spec, text, {'native-ci': bundle}, {}, inventory,
-                                    managed_owner_uid=os.getuid())
+                                    managed_owner_uid=os.getuid(),
+                                    **({'diagnostic_request_seconds': limits['generation_seconds']} if diagnostic_en else {}))
     finally:
         qwen_native.NativeQwenBackend = original_backend
     data = result['data']
@@ -356,10 +379,11 @@ def infer(bundle, output, language):
         cold_total_rtf=seconds/(frames/rate),
         peak_rss_bytes=resource.getrusage(resource.RUSAGE_SELF).ru_maxrss,
         sha256=hashlib.sha256(data).hexdigest(), bytes=len(data),
-        ending_verified=False, installed_qualified=False))
+        ending_verified=False, installed_qualified=False, diagnostic_only=diagnostic_en, effective_budgets=limits))
 
 
-def run(output):
+def run(output, *, diagnostic_en=False):
+    limits = budgets(diagnostic_en)
     import platform
     if (platform.system(), platform.machine()) != ('Darwin', 'arm64'):
         raise ValueError('native_Darwin_arm64_required')
@@ -371,7 +395,10 @@ def run(output):
         descriptor_sha256=hashlib.sha256(DESCRIPTOR.read_bytes()).hexdigest(),
         python=sys.version, physical_memory_bytes=int(subprocess.check_output(
             ['/usr/sbin/sysctl', '-n', 'hw.memsize'], timeout=5)),
-        runtime='not_run', download='not_run', English='not_run', French='not_run', children={},
+        effective_budgets=limits, diagnostic_only=diagnostic_en,
+        purpose='completeness_measurement_not_optimization' if diagnostic_en else 'native_prerequisite',
+        requested_languages=['English'] if diagnostic_en else ['English','French'],
+        runtime='not_run', download='not_run', English='not_run', French='not_requested' if diagnostic_en else 'not_run', children={},
         installed_qualified=False, cpu_comparison='not_run_native_owner_requires_mps',
         versions={n: importlib.metadata.version(n) for n in expected['versions']})
     stage = 'runtime'
@@ -385,7 +412,7 @@ def run(output):
             try:
                 acquire(bundle, expected)
                 report['download'] = 'passed'
-                for language in ('English', 'French'):
+                for language in report['requested_languages']:
                     stage = language
                     from service.provisioning import manifest_bytes
                     bundle.chmod(0o700)
@@ -400,10 +427,12 @@ def run(output):
                         HF_HUB_DISABLE_TELEMETRY='1', PYTORCH_ENABLE_MPS_FALLBACK='0',
                         TOKENIZERS_PARALLELISM='false', OMP_NUM_THREADS='2')
                     observation = report['children'][language] = {}
-                    owned_child([sys.executable, '-u', str(Path(__file__).resolve()),
-                        '--child', str(bundle), '--language', language, '--output', str(output)],
+                    argv = [sys.executable, '-u', str(Path(__file__).resolve()),
+                        '--child', str(bundle), '--language', language, '--output', str(output)]
+                    if diagnostic_en: argv.append('--diagnostic-en-completeness')
+                    owned_child(argv,
                         env, output / (language + '.log'), observation,
-                        seconds=180, progress_path=output / (language + '-progress.json'))
+                        seconds=limits['total_seconds'], progress_path=output / (language + '-progress.json'), diagnostic_en=diagnostic_en)
                     report[language] = 'passed'
             finally:
                 for p in bundle.rglob('*'):
@@ -424,8 +453,9 @@ if __name__ == '__main__':
     parser.add_argument('--output', required=True, type=Path)
     parser.add_argument('--child', type=Path)
     parser.add_argument('--language', choices=('English', 'French'))
+    parser.add_argument('--diagnostic-en-completeness', action='store_true', help='EN only: 120s generation/270s child completeness measurement, not installed qualification')
     args = parser.parse_args()
     if args.child:
-        infer(args.child, args.output, args.language)
+        infer(args.child, args.output, args.language, diagnostic_en=args.diagnostic_en_completeness)
     else:
-        run(args.output)
+        run(args.output, diagnostic_en=args.diagnostic_en_completeness)

@@ -25,6 +25,42 @@ class AppleSpeechTests(unittest.TestCase):
             with self.subTest(progress=progress),self.assertRaises(TimeoutError):
                 ci.phase_remaining(progress,now)
 
+    def test_explicit_diagnostic_phase_caps_and_English_only_descriptor(self):
+        selected=ci.budgets(True)
+        self.assertEqual((selected['generation_seconds'],selected['total_seconds']),(120,270))
+        self.assertEqual(ci.phase_remaining(dict(stage='generation',stage_started=0),119,diagnostic_en=True),1)
+        with self.assertRaisesRegex(TimeoutError,'native_phase_timeout_generation'):
+            ci.phase_remaining(dict(stage='generation',stage_started=0),120,diagnostic_en=True)
+        with self.assertRaisesRegex(TimeoutError,'total_seconds'):
+            ci.phase_remaining(dict(stage='complete',stage_started=271,total_seconds=271),271,diagnostic_en=True)
+        with tempfile.TemporaryDirectory() as tmp:
+            root=Path(tmp);(root/'manifest.json').write_text('{}')
+            buf=io.BytesIO()
+            with wave.open(buf,'wb') as wav:
+                wav.setnchannels(1);wav.setsampwidth(2);wav.setframerate(24000);wav.writeframes(b'\x01\x00'*240)
+            from worker import native_child
+            with patch.object(native_child,'install_spawn_guard'),patch.object(native_child,'infer',return_value=dict(data=buf.getvalue())) as run:
+                ci.infer(root,root,'English',diagnostic_en=True)
+                self.assertEqual(run.call_args.args[0].timeout_s,120)
+                self.assertEqual(run.call_args.kwargs['diagnostic_request_seconds'],120)
+                report=json.loads((root/'English.json').read_text())
+                self.assertEqual(report['effective_budgets'],selected)
+                with self.assertRaisesRegex(ValueError,'English_only'):ci.infer(root,root,'French',diagnostic_en=True)
+
+    def test_parent_threads_mode_total_and_not_requested_French_without_weights(self):
+        expected=json.loads(ci.DESCRIPTOR.read_text())
+        with tempfile.TemporaryDirectory() as tmp,patch('platform.system',return_value='Darwin'),patch('platform.machine',return_value='arm64'),patch.object(ci.subprocess,'check_output',return_value=b'7516192768'),patch.object(ci.importlib.metadata,'version',side_effect=expected['versions'].__getitem__),patch.object(ci,'acquire',side_effect=lambda root,expected:(root/'manifest.json').write_text('{}')),patch.object(ci,'owned_child') as child:
+            output=Path(tmp)/'out'
+            ci.run(output,diagnostic_en=True)
+            child.assert_called_once()
+            self.assertIn('--diagnostic-en-completeness',child.call_args.args[0])
+            self.assertEqual(child.call_args.kwargs['seconds'],270)
+            self.assertTrue(child.call_args.kwargs['diagnostic_en'])
+            report=json.loads((output/'report.json').read_text())
+            self.assertEqual(report['requested_languages'],['English'])
+            self.assertEqual(report['French'],'not_requested')
+            self.assertTrue(report['private_model_tree_removed'])
+
     def test_owned_temp_alias_is_canonical_before_product_no_follow_walk(self):
         from worker.engines.pocket import _open
         with tempfile.TemporaryDirectory() as tmp:
@@ -62,6 +98,20 @@ class AppleSpeechTests(unittest.TestCase):
                 ci.owned_child(['unused'],{},Path(tmp)/'child.log',result)
             self.assertTrue(result['child_reaped'])
             child.wait.assert_called_once_with(timeout=5)
+
+    def test_diagnostic_owner_total_270_rejects_late_zero_exit(self):
+        child=Mock();child.pid=999999;child.stdout=Mock();child.returncode=0;child.poll.return_value=0
+        selector=Mock();selector.__enter__=Mock(return_value=selector);selector.__exit__=Mock(return_value=False)
+        selector.select.return_value=[(type('Key',(),{'fd':1,'fileobj':child.stdout})(),1)]
+        sampler=Mock();sampler.stop.return_value=True
+        sampler.snapshot.return_value=dict(last=None,peak=None,count=0,error=None)
+        with tempfile.TemporaryDirectory() as tmp,patch.object(ci,'Sampler',return_value=sampler),patch.object(ci.subprocess,'Popen',return_value=child),patch.object(ci.selectors,'DefaultSelector',return_value=selector),patch.object(ci.os,'read',return_value=b''),patch.object(ci.time,'monotonic',side_effect=[0,269,269,271,271]):
+            report={}
+            with self.assertRaisesRegex(TimeoutError,'270_seconds'):
+                ci.owned_child(['unused'],{},Path(tmp)/'child.log',report,seconds=270,diagnostic_en=True)
+            self.assertEqual(report['owner_total_seconds'],270)
+            self.assertEqual(report['stage_exceeded'],'owner_total')
+            self.assertTrue(report['child_reaped'])
 
     def test_rapid_oversized_log_is_bounded_and_child_reaped(self):
         with tempfile.TemporaryDirectory() as tmp,patch.object(ci,'MAX_LOG',32):
