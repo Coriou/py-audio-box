@@ -2,8 +2,8 @@
 
 A headless, local, CPU-first speech box: preset voices, reference voice cloning and
 a voice catalogue behind one authenticated HTTP API, with a CLI and an MCP server
-for agents that call the same operations. Everything runs in Linux Docker
-containers on your machine. No GPU is needed, and there is no browser UI.
+for agents that call the same operations. Run locally in Linux Docker containers,
+or natively on Apple Silicon for English presets. No GPU is needed, and there is no browser UI.
 
 > **Status: pre-release.** The CPU Kokoro (preset) and Pocket (French cloning)
 > installs passed end-to-end runs on Linux/amd64 Docker at an earlier source
@@ -22,7 +22,8 @@ containers on your machine. No GPU is needed, and there is no browser UI.
 | Jobs: wait, events, cancel, retry, list | **Implemented** | Wait, cancel and download exercised in installed runs |
 | "Default voice for X" | **Convention, not a feature** | Set an alias such as `default.narration`, then resolve it; see the [agent guide](docs/AGENT-GUIDE.md#make-it-the-default-voice-for-x) |
 | Qwen 0.6B cloning, CPU (EN/FR) | **Not ready** | Implemented in source; installed startup and inference not yet passed ([status](docs/agent-interface/QWEN-CPU.md#current-status--2026-10-27)) |
-| Apple Silicon (Metal), NVIDIA CUDA | **Unqualified** | Native CPU/Metal unqualified; amd64 Docker on Apple Silicon uses untested emulation |
+| Apple Silicon native CPU (Kokoro EN) | **Bounded preview** | Ordinary selftest/serve journey passed once on a hosted M1; see [Mac quick start](#quick-start-apple-silicon-native-english-presets-preview) |
+| Apple Silicon (Metal), NVIDIA CUDA | **Unqualified** | Qwen MPS experimental; amd64 Docker on Apple Silicon uses untested emulation |
 | Apple reference cloning | **Implemented Qwen native source, runtime-unvalidated** | Base 12Hz EN/FR on MPS FP32; Pocket native adapter absent. Cloning runtime tests excluded; see [native cloning limits](docs/agent-interface/NATIVE-CLONING.md) |
 | Listening / perceptual quality | **Partial** | Owner listened to earlier comparison samples and accepted three spoken-text pairs; French liaison unresolved. No per-engine perceptual release acceptance; installed-run outputs not listened |
 | Projects, blocks, clips, render (contract) | **Not implemented** | Defined in `contracts/v1`; not advertised by `discover` |
@@ -30,20 +31,36 @@ containers on your machine. No GPU is needed, and there is no browser UI.
 | Web UI | **Not planned for this release** | A future UI would use the same HTTP API |
 
 Preview scope: cloning is French only through gated Pocket, with retained
-text-fidelity failures. Qwen English cloning is not ready; native CPU/Metal and
-CUDA remain unqualified. On Apple Silicon, existing linux/amd64 Docker images
+text-fidelity failures. Qwen English cloning is not ready; Metal/Qwen and CUDA
+remain unqualified. On Apple Silicon, existing linux/amd64 Docker images
 use emulation; this path is untested. Import-only CI is not runtime readiness.
 For executable native prerequisite checks and the remaining installation gates,
 see [Apple Silicon diagnostics](docs/agent-interface/APPLE-CI.md). Qwen native float32 is experimental; the FP16 candidate failed pretrained sampling.
-The [Kokoro Mac CPU preview](docs/agent-interface/NATIVE-KOKORO.md) has a source
-installer for English presets. A fresh installed HTTP/CLI/MCP journey passed on
-2026-10-28; the new `doctor --selftest` ordinary-admission path still needs its
-own runtime qualification. Kokoro does not clone voices. Local preview history
-is capped at 63 jobs; no rollover is implemented.
+The [Kokoro Mac CPU preview](docs/agent-interface/NATIVE-KOKORO.md) passed the
+ordinary `doctor --selftest` → `serve` journey once on 2026-10-28 on a hosted M1
+running macOS 15.7.9. Kokoro does not clone voices; human audio quality remains
+unchecked. History is at most 63 jobs, including one selftest per reboot/macOS
+update, and row/byte/spool limits may stop it earlier. Doctor's remaining count
+is not guaranteed generations. No rollover: keep the old installation and set
+up a new directory when capacity is exhausted.
 
 Each installation runs **one engine**, and `discover` reports what that
 installation can actually do. Treat `discover`, not this table, as the source of
 truth for a running service.
+
+## Quick start (Apple Silicon, native English presets, preview)
+
+From this source checkout: macOS 14+, native arm64 CPython 3.11.4+ with pip 23.1+.
+
+```sh
+ROOT="$HOME/Library/Application Support/py-audio-box/native-kokoro"
+python3.11 scripts/native-kokoro.py setup --root "$ROOT" --download-model
+python3.11 scripts/native-kokoro.py doctor --root "$ROOT" --selftest
+python3.11 scripts/native-kokoro.py serve --root "$ROOT"
+```
+
+Use a new private directory. See [native Mac usage](docs/agent-interface/NATIVE-KOKORO.md)
+for CLI/MCP commands, `default.narration`, limits and recovery.
 
 ## Quick start (CPU, Kokoro presets)
 

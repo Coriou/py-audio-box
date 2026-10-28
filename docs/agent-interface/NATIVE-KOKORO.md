@@ -1,8 +1,9 @@
 # Native Apple CPU preview: Kokoro presets
 
-This is a **bounded native CPU preview**. The installed finite-session public
-journey passed on 2026-10-28. The new local selftest/ordinary-admission path is
-implemented source and still requires its separate runtime qualification.
+This is a **bounded native CPU preview**. The ordinary local selftest →
+serve journey [passed once on 2026-10-28](https://github.com/Coriou/py-audio-box/actions/runs/40787783000)
+on one hosted M1 running macOS 15.7.9, at source
+`f0bfdc9517e44560b40084ad6a6ff64dcca508e2`.
 Kokoro provides preset voices, **not cloning**. Qwen CustomVoice presets do not
 qualify Qwen Base cloning either. Native Base has a source path with no cloning
 runtime qualification; no MLX adapter is implemented. See [cloning scope](NATIVE-CLONING.md).
@@ -10,10 +11,9 @@ Qwen float32 remains experimental (one diagnostic 4 s WAV took about 74 s to
 generate); the tested pretrained FP16 candidate failed sampling. Neither is an
 installed 30 s request readiness claim.
 
-## Source installer and explicit qualification mode
+## Native setup and local selftest
 
-The commands below describe the implemented preview path. The ordinary selftest path still needs its separately authorized Apple run;
-source tests do not establish ordinary installed readiness. Requires macOS 14+,
+The commands below use the recorded ordinary preview path. Requires macOS 14+,
 native arm64 CPython 3.11.4+ (with bundled pip 23.1+) and a new private installation directory. No Docker,
 Homebrew, model token or manually authored identity/receipt JSON is required.
 
@@ -102,11 +102,13 @@ Darwin monotonic deadlines use awake time and pause during laptop sleep; see
 Do not suspend during a job/selftest. Stop the service with Ctrl-C and require
 clean shutdown before restart; unknown custody refuses activation.
 
-Retained history is capped at **63 jobs (including selftests), 2048 metadata rows
-and 16 MiB**. There is no checked CPU rollover. Capacity refuses explicitly;
-no catalogue, artifacts or receipts are silently discarded. Doctor reports actual
-used/remaining slots. Each reboot or macOS update requires a new selftest and
-consumes one retained job. At capacity, retain this installation and use fresh
+Retained history has an **upper bound of 63 jobs (including selftests), 2048
+metadata rows and 16 MiB of evidence**. Row, byte and spool reservations can
+refuse earlier (including the 128 MiB ledger and 16 MiB per-job reservation).
+Doctor reports used/remaining job-slot headroom, not guaranteed generations.
+Each reboot or macOS update requires a new selftest and consumes one job slot.
+There is no checked CPU rollover. Capacity refuses explicitly; no catalogue,
+artifacts or receipts are silently discarded. At capacity, retain this installation and use fresh
 setup in a new directory (including model acquisition); rollover is future work. This is not an
 unlimited long-lived service. A later explicit archive/rollover design must
 preserve the existing canonical history and immutable model identity.
@@ -139,10 +141,11 @@ Only English `af_heart`, explicit CPU/float32, two threads and short text up to
 256 characters are supported by this preview; the encoder/backend also enforces
 a 256-byte UTF-8 text limit (non-ASCII text can reach that limit sooner). No automatic Qwen CPU fallback,
 Metal selection, clone/reference inputs, instructions, seed or alternate preset
-is accepted. The finite-session installed run established free-memory admission, HTTP/CLI/MCP
-WAV delivery, cancellation/reap and restart/provision reuse. The new ordinary
-selftest/admission path still needs its separate installed journey; source and
-no-weight checks do not establish that runtime claim.
+is accepted. The ordinary run established local measured admission, HTTP/CLI/MCP WAV delivery
+and same-boot restart/provision reuse. Cancellation/reap passed separately in the
+[earlier finite qualification run](https://github.com/Coriou/py-audio-box/actions/runs/40766768015).
+Reboot and OS-drift invalidation are source-tested only. These runs do not
+establish quality or performance across everyday Macs.
 
 From the source checkout, on macOS 14 or later in a native Apple arm64
 CPython 3.11 shell (the selected NumPy/ONNX wheels require macOS 14; CI tests 15):
@@ -246,13 +249,13 @@ The separate `installed_journey` workflow input defaults false and is mutually
 exclusive with `en_backend`. It is restricted to manual dispatch on main or the
 Apple development branch, with one standard runner/job capped at 12 minutes.
 `scripts/ci-native-kokoro-installed.py --run-installed-journey --output NEW`
-implements the proposed fresh setup/doctor/finite-session/actual service journey:
+implements the recorded finite-session setup/doctor/actual service journey:
 one HTTP generation with exact-key CLI and real MCP stdio replay/download,
 running and queued cancellation, then restart and a fourth job using the same
 immutable provision. No session renewal, retry, FR or cloning run is included.
 It remains an opt-in qualification tool, not ordinary admission or a completed
-Mac product claim. The measured local doctor/selftest receipt path described
-above is a separate source slice and still needs ordinary runtime qualification.
+Mac product claim. The separate measured local doctor/selftest receipt path described above passed
+the ordinary journey recorded below.
 
 The controller keeps the original 600 s total across its installed-Python exec,
 including setup/network/download/MCP work and a 20 s cleanup reserve. It owns
@@ -299,16 +302,24 @@ admission capacity. No Linux cgroup/PID1 or Qwen MPS receipt is accepted as CPU
 native evidence.
 
 
-### Ordinary journey candidate (explicit opt-in, no runtime evidence yet)
+### Recorded ordinary journey (explicit opt-in)
 
 `ordinary_journey=true` is mutually exclusive with `installed_journey` and
-`en_backend`, on the same trusted refs/free standard runner and12-minute job.
+`en_backend`, on the same trusted refs/free standard runner and 12-minute job.
 The existing controller adds only `--ordinary-selftest`: fresh guarded setup,
 one doctor selftest, ordinary serve with no qualification selector, one HTTP job
 with exact-key CLI/MCP replay and matching WAV bytes, same-boot receipt/model
 reuse on restart and a third job via CLI. It then mutates one owned measurement
 byte, requires structured doctor and serve refusal without a model launch, and
 restores the exact original bytes only after all custody is confirmed. The
-original600s total/20s cleanup reserve and all resource/log/reap limits remain.
+original 600 s total/20 s cleanup reserve and all resource/log/reap limits remain.
 There are three model jobs, no cancellation/retry/extra language or cloning run.
-This selector is source-only until a separately authorized exact-source run.
+Run [40787783000](https://github.com/Coriou/py-audio-box/actions/runs/40787783000)
+passed on the hosted M1/macOS 15.7.9 at the source named above: three successful
+Core publications, terminal native receipts and ACKs, ordinary readiness without
+a qualification session, matching WAVs, measurement tamper refusal without model
+launch, exact restoration and confirmed owned-process/root cleanup. The cold
+public selftest took 4.005 s; ordinary public completion took 3.004 s for 1.771 s
+of audio (end-to-end RTF 1.70, not an inference benchmark). Human semantic ending
+and quality remain unchecked. Cancellation belongs to the earlier finite run;
+reboot/OS-drift rebinding remains source-tested only.

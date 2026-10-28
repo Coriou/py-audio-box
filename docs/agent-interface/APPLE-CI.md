@@ -1,7 +1,9 @@
 # Apple Silicon: evidence gates and native diagnostics
 
-Native macOS speech is **unqualified**. The native installed owner currently
-supports Qwen MPS/float32/SDPA only. It does not select a CPU fallback. Docker
+Qwen native MPS speech remains **experimental and unqualified for installed use**.
+Its owner supports MPS/float32/SDPA only, without a CPU fallback. The separate
+[Kokoro native CPU preview](NATIVE-KOKORO.md) has a recorded ordinary installed
+EN preset journey on one hosted M1 running macOS 15.7.9. Docker
 on macOS is a separate Linux CPU topology; amd64 images also require emulation.
 Neither an import pass nor an MPS tensor pass qualifies installed speech.
 
