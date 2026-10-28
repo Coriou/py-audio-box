@@ -98,7 +98,9 @@ def read_progress(path):
 def owned_child(argv, env, log_path, observation, *, seconds=30, progress_path=None, diagnostic_en=False):
     """Independent owner deadline, one asynchronous RSS reader, bounded output."""
     effective_budgets = budgets(diagnostic_en)
-    observation.update(effective_budgets=effective_budgets, owner_total_seconds=seconds)
+    observation['owner_total_seconds'] = seconds
+    if progress_path is not None:
+        observation['effective_budgets'] = effective_budgets
     started = time.monotonic()
     cutoff = started + seconds
     total = 0

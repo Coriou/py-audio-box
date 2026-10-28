@@ -97,6 +97,8 @@ class OwnedRSSRegressionTests(unittest.TestCase):
         source="import time;b=bytearray(64*1024**2);b[::4096]=b'x'*(len(b)//4096);print('resident');time.sleep(5)"
         with patch.object(ci,'MAX_RSS',32*1024**2),patch.object(ci.subprocess,'check_output',side_effect=AssertionError('No ps subprocess')):
             with self.assertRaisesRegex(MemoryError,'RSS_limit'):self.run_child(source,observation)
+        self.assertNotIn('effective_budgets',observation)  # No phase monitor was supplied.
+        self.assertEqual(observation['owner_total_seconds'],3)
         self.assertGreater(observation['sampled_peak_rss_bytes'],32*1024**2)
         self.assertEqual(observation['last_valid_rss_sample']['pid'],observation['child_pid'])
         self.assertTrue(observation['child_reaped']);self.assertTrue(observation['sampler_thread_stopped'])
