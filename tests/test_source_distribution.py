@@ -169,7 +169,8 @@ class SourceDistributionTests(unittest.TestCase):
     def test_test_image_copies_static_check_inputs(self):
         copied = copied_inputs(ROOT, (ROOT / 'Dockerfile.tests').read_text())
         self.assertTrue(set(IMAGES + LEGAL + ('studio/package.json', 'studio/package-lock.json',
-                                             'service/Dockerfile.release.dockerignore', '.dockerignore')) <= copied)
+                                             'service/Dockerfile.release.dockerignore', '.dockerignore',
+                                             '.github/workflows/apple-silicon.yml')) <= copied)
         for manifest in ('headless-dist-manifest.json', 'native-dist-manifest.json'):
             files = set(json.loads((ROOT / manifest).read_text())['files'])
             with self.subTest(manifest=manifest):

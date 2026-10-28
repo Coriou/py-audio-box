@@ -31,6 +31,7 @@ COPY diagnostics/p-one-node/one_node_observer.py /app/tests/one_node_observer.py
 COPY benchmarks /app/benchmarks
 COPY scripts /app/scripts
 COPY .github/workflows/unit.yml /app/.github/workflows/unit.yml
+COPY .github/workflows/apple-silicon.yml /app/.github/workflows/apple-silicon.yml
 COPY run-cpu /app/run-cpu
 COPY run /app/run
 COPY run-direct /app/run-direct
