@@ -15,9 +15,9 @@ from pathlib import Path
 import platform
 import re
 import selectors
-import shutil
 import signal
 import sqlite3
+import stat
 import subprocess
 import sys
 import threading
@@ -40,6 +40,13 @@ _STOP=False
 class Failure(RuntimeError):pass
 
 
+class CleanupFailure(Failure):
+    def __init__(self,code,relative='',*,cause=None,progress=None):
+        super().__init__(code)
+        self.detail=dict(code=code,relative=str(relative)[:256],type=type(cause).__name__ if cause else type(self).__name__,
+            errno=getattr(cause,'errno',None),progress=dict(progress or {}))
+
+
 def canonical(value):return json.dumps(value,sort_keys=True,separators=(',',':'),allow_nan=False,ensure_ascii=False).encode()
 
 
@@ -51,6 +58,95 @@ def installed_modules(installed):
             if not Path(path).resolve().is_relative_to(installed.resolve()):raise Failure('installed_source_closure')
             counts[family]+=1
     return counts
+
+
+def directory_identity(path):
+    fd=os.open(path,os.O_RDONLY|os.O_DIRECTORY|os.O_NOFOLLOW)
+    try:
+        value=os.fstat(fd)
+        if value.st_uid!=os.getuid():raise CleanupFailure('root_owner_mismatch')
+        return dict(dev=value.st_dev,ino=value.st_ino,uid=value.st_uid)
+    finally:os.close(fd)
+
+
+def remove_fresh_installation(output,state):
+    """Only this journey's captured fresh root; fd-relative, no-follow removal.
+
+    Validate the whole owned namespace before changing any permissions. Only
+    directory fds get owner-write added; regular files/links are never chmodded.
+    The separate controller log/state directory is retained and never uploaded.
+    """
+    private=output/'.private';root=private/'installation';progress=dict(checked=0,writable_dirs=0,files_removed=0,dirs_removed=0)
+    def fail(code,relative='',cause=None):raise CleanupFailure(code,relative,cause=cause,progress=progress)
+    owners=state.get('owners',[])
+    if (_LIVE or state.get('live_owned_pids') or state.get('cleanup_errors') or state.get('fresh_installation') is not True or
+            state.get('setup_cleanup_confirmed') is not True or state.get('family_cleanup_confirmed') is not True or
+            state.get('workload_completed') is not True or not owners or any(r.get('reaped') is not True or
+            r.get('sampler_stopped') is not True or r.get('cleanup_unknown') is not False or type(r.get('exit')) is not int for r in owners)):
+        fail('cleanup_custody_unknown')
+    if state.get('root')!=str(root) or not output.is_absolute() or '..' in output.parts or any(p.is_symlink() for p in (private,output,*output.parents)):
+        fail('cleanup_path_escape')
+    for key in ('private_identity','installation_identity'):
+        value=state.get(key)
+        if not isinstance(value,dict) or set(value)!= {'dev','ino','uid'} or any(type(v) is not int for v in value.values()):
+            fail('cleanup_identity_missing')
+        if value['uid']!=os.getuid():fail('cleanup_owner_mismatch')
+    identities={};children={};parent=None;rootfd=None
+    def identity(info):return dict(dev=info.st_dev,ino=info.st_ino,uid=info.st_uid)
+    def check(info,relative):
+        if time.monotonic()>=state['deadline']:fail('cleanup_deadline',relative)
+        if info.st_uid!=os.getuid():fail('cleanup_owner_mismatch',relative)
+        if info.st_dev!=state['installation_identity']['dev']:fail('cleanup_cross_device',relative)
+        if not (stat.S_ISDIR(info.st_mode) or stat.S_ISREG(info.st_mode) or stat.S_ISLNK(info.st_mode)):fail('cleanup_node_type',relative)
+        if stat.S_ISREG(info.st_mode) and info.st_nlink!=1:fail('cleanup_shared_file',relative)
+    def inspect(fd,relative):
+        if relative.count('/')>128:fail('cleanup_depth_limit',relative)
+        info=os.fstat(fd);check(info,relative);identities[relative]=(identity(info),stat.S_IFMT(info.st_mode))
+        names=os.listdir(fd);children[relative]=names
+        for name in names:
+            rel=relative+'/'+name if relative else name;info=os.stat(name,dir_fd=fd,follow_symlinks=False);check(info,rel)
+            progress['checked']+=1
+            if progress['checked']>50000:fail('cleanup_entry_limit',rel)
+            identities[rel]=(identity(info),stat.S_IFMT(info.st_mode))
+            if stat.S_ISDIR(info.st_mode):
+                child=os.open(name,os.O_RDONLY|os.O_DIRECTORY|os.O_NOFOLLOW,dir_fd=fd)
+                try:
+                    if identity(os.fstat(child))!=identity(info):fail('cleanup_identity_changed',rel)
+                    inspect(child,rel)
+                finally:os.close(child)
+    def same(info,relative):
+        check(info,relative)
+        if (identity(info),stat.S_IFMT(info.st_mode))!=identities[relative]:fail('cleanup_identity_changed',relative)
+    def remove(fd,relative):
+        info=os.fstat(fd);same(info,relative)
+        if set(os.listdir(fd))!=set(children[relative]):fail('cleanup_namespace_changed',relative)
+        if not info.st_mode&stat.S_IWUSR:
+            os.fchmod(fd,stat.S_IMODE(info.st_mode)|stat.S_IWUSR);progress['writable_dirs']+=1
+        if set(os.listdir(fd))!=set(children[relative]):fail('cleanup_namespace_changed',relative)
+        for name in children[relative]:
+            rel=relative+'/'+name if relative else name;info=os.stat(name,dir_fd=fd,follow_symlinks=False);same(info,rel)
+            if stat.S_ISDIR(info.st_mode):
+                child=os.open(name,os.O_RDONLY|os.O_DIRECTORY|os.O_NOFOLLOW,dir_fd=fd)
+                try:remove(child,rel)
+                finally:os.close(child)
+                same(os.stat(name,dir_fd=fd,follow_symlinks=False),rel);os.rmdir(name,dir_fd=fd);progress['dirs_removed']+=1
+            else:os.unlink(name,dir_fd=fd);progress['files_removed']+=1
+    try:
+        parent=os.open(private,os.O_RDONLY|os.O_DIRECTORY|os.O_NOFOLLOW)
+        if identity(os.fstat(parent))!=state.get('private_identity'):fail('cleanup_parent_identity_changed')
+        rootfd=os.open('installation',os.O_RDONLY|os.O_DIRECTORY|os.O_NOFOLLOW,dir_fd=parent)
+        if identity(os.fstat(rootfd))!=state.get('installation_identity'):fail('cleanup_root_identity_changed')
+        check(os.fstat(rootfd),'');inspect(rootfd,'')
+        if identity(os.stat('installation',dir_fd=parent,follow_symlinks=False))!=state['installation_identity']:fail('cleanup_root_identity_changed')
+        remove(rootfd,'')
+        if identity(os.stat('installation',dir_fd=parent,follow_symlinks=False))!=state['installation_identity']:fail('cleanup_root_identity_changed')
+        os.rmdir('installation',dir_fd=parent);progress['dirs_removed']+=1
+        return dict(progress,complete=True)
+    except CleanupFailure:raise
+    except OSError as exc:fail('cleanup_filesystem_failure',cause=exc)
+    finally:
+        if rootfd is not None:os.close(rootfd)
+        if parent is not None:os.close(parent)
 
 
 def save(path,value):
@@ -517,7 +613,8 @@ def _run(args):
         state=dict(version=1,phase='setup',source_commit=os.environ['GITHUB_SHA'],controller_sha256=hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),
             runner_image=os.environ.get('ImageOS'),runner_version=os.environ.get('ImageVersion'),started=time.monotonic(),deadline=time.monotonic()+TOTAL,
             python=sys.version,system=platform.system(),architecture=platform.machine(),macos=platform.mac_ver()[0],
-            total_seconds=TOTAL,cleanup_reserve_seconds=RESERVE,root=str(root),owners=[],submitted_jobs=0,status='running',ending_verified=False)
+            total_seconds=TOTAL,cleanup_reserve_seconds=RESERVE,root=str(root),private_identity=directory_identity(private),
+            owners=[],submitted_jobs=0,status='running',ending_verified=False)
     else:
         state=json.loads(state_path.read_bytes())
         if (state['phase']!='setup_complete' or state['deadline']!=args.deadline or state['root']!=str(root) or
@@ -530,6 +627,7 @@ def _run(args):
             if child.wait(300):raise Failure('fresh_setup_failed')
             state['setup_cleanup_confirmed']=setup_clean(root,child.handle.pid)
             if not state['setup_cleanup_confirmed']:raise Failure('setup_nested_cleanup_unknown')
+            state.update(installation_identity=directory_identity(root),fresh_installation=True)
             state['phase']='setup_complete';save(state_path,state);publish(output,state)
             python=str(root/'venv/bin/python')
             os.execve(python,[python,'-I','-B','-u',str(Path(__file__).resolve()),'--run-installed-journey','--installed-phase',
@@ -540,7 +638,7 @@ def _run(args):
         if not journey.family_stopped() or _LIVE:raise Failure('final_family_custody_unknown')
         from service.native_cpu_install import read_installation
         _,config,_,_=read_installation(root)
-        state.update(status='succeeded',phase='complete',dependencies=config['dependencies'],
+        state.update(status='pending_cleanup',phase='cleanup',workload_completed=True,dependencies=config['dependencies'],
             source_provenance=config['source_provenance'],device='cpu',precision='float32',provider='CPUExecutionProvider (child asserted)',
             model_after=journey.model_identity(),family_cleanup_confirmed=True)
         # Only validated short clips; no credential/config/key/model links.
@@ -575,9 +673,19 @@ def _run(args):
         state.update(cleanup_errors=cleanup,live_owned_pids=list(_LIVE),elapsed_seconds=time.monotonic()-state['started'],private_tree_removed=False)
         if cleanup or _LIVE or time.monotonic()>state['deadline']:state['status']='failed'
         publish(output,state)
-        if state['status']=='succeeded' and not _LIVE and state.get('family_cleanup_confirmed'):
-            shutil.rmtree(private);state['private_tree_removed']=True;publish(output,state)
+        finish_installation_cleanup(output,state)
+        publish(output,state)
     return 0 if state['status']=='succeeded' else 1
+
+
+def finish_installation_cleanup(output,state):
+    state['journey_completed']=False
+    if state['status']!='pending_cleanup':return
+    try:
+        state['installation_cleanup']=remove_fresh_installation(output,state)
+        state.update(installation_tree_removed=True,journey_completed=True,status='succeeded',phase='complete')
+    except CleanupFailure as exc:
+        state.update(cleanup_failure=exc.detail,status='failed',phase='cleanup_failed',installation_tree_removed=False)
 
 
 def run(args):

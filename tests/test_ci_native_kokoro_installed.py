@@ -119,7 +119,7 @@ class InstalledControllerTests(unittest.TestCase):
         child=SimpleNamespace(role='service',close=Mock(side_effect=c.Failure('fixture custody unknown')))
         c._LIVE[123]=child
         try:
-            with patch.dict(os.environ,dict(GITHUB_REF='refs/heads/feat/apple-silicon-native',GITHUB_SHA='a'*40)),patch.object(c,'Journey') as journey,patch.object(c,'product_flow'),patch.object(c.shutil,'rmtree') as remove:
+            with patch.dict(os.environ,dict(GITHUB_REF='refs/heads/feat/apple-silicon-native',GITHUB_SHA='a'*40)),patch.object(c,'Journey') as journey,patch.object(c,'product_flow'),patch.object(c,'remove_fresh_installation') as remove:
                 journey.return_value.family_stopped.return_value=True;journey.return_value.evidence.return_value=[]
                 result=c.run(SimpleNamespace(output=self.root,installed_phase=True,deadline=deadline))
                 self.assertEqual(result,1);remove.assert_not_called()
@@ -269,6 +269,148 @@ class InstalledControllerTests(unittest.TestCase):
         from service.native_cpu_package import members
         self.assertNotIn('scripts/ci-native-kokoro-installed.py',members())  # CI controller is not product archive input
         image=(ROOT/'Dockerfile.tests').read_text();self.assertIn('COPY scripts /app/scripts',image)
+
+
+class OwnedInstallationCleanupTests(unittest.TestCase):
+    def setUp(self):
+        self.temp=tempfile.TemporaryDirectory();self.addCleanup(self.temp.cleanup)
+        self.output=Path(self.temp.name).resolve();self.private=self.output/'.private';self.private.mkdir()
+        self.root=self.private/'installation';self.root.mkdir();self.nested=self.root/'source';self.nested.mkdir()
+        (self.nested/'fixture').write_text('owned');self.nested.chmod(0o555);self.root.chmod(0o555)
+        self.addCleanup(self.restore)
+        self.state=dict(root=str(self.root),private_identity=c.directory_identity(self.private),
+            installation_identity=c.directory_identity(self.root),deadline=time.monotonic()+20,
+            fresh_installation=True,setup_cleanup_confirmed=True,family_cleanup_confirmed=True,workload_completed=True,
+            owners=[dict(reaped=True,sampler_stopped=True,cleanup_unknown=False,exit=0)],status='pending_cleanup')
+
+    def restore(self):
+        for path in (self.root,self.nested):
+            if path.exists() and not path.is_symlink():path.chmod(0o700)
+
+    def test_real_nonroot_readonly_tree_removed_only_after_custody(self):
+        if os.getuid()==0:
+            # Container Unit runs as root: exercise the same real filesystem as
+            # an unprivileged child rather than letting root bypass mode0555.
+            uid=65534
+            for directory,dirs,files in os.walk(self.output,followlinks=False):
+                os.chown(directory,uid,-1)
+                for name in dirs+files:os.chown(Path(directory)/name,uid,-1,follow_symlinks=False)
+            read,write=os.pipe();pid=os.fork()
+            if pid==0:
+                try:
+                    os.close(read);os.setgroups([]);os.setgid(uid);os.setuid(uid)
+                    self.state.update(private_identity=c.directory_identity(self.private),installation_identity=c.directory_identity(self.root))
+                    c.finish_installation_cleanup(self.output,self.state)
+                    os.write(write,c.canonical(self.state));os._exit(0)
+                except BaseException:os._exit(1)
+            os.close(write)
+            with os.fdopen(read,'rb') as stream:result=json.loads(stream.read(8192))
+            _,status=os.waitpid(pid,0);self.assertEqual(status,0)
+            self.assertEqual(result['status'],'succeeded');self.assertFalse(self.root.exists());return
+        (self.private/'controller-state.json').write_text('retain')
+        c.finish_installation_cleanup(self.output,self.state)
+        self.assertEqual(self.state['status'],'succeeded');self.assertTrue(self.state['journey_completed'])
+        self.assertFalse(self.root.exists());self.assertTrue((self.private/'controller-state.json').exists())
+        self.assertGreaterEqual(self.state['installation_cleanup']['writable_dirs'],2)
+
+    def test_symlink_escape_is_unlinked_as_leaf_target_untouched(self):
+        external=self.output/'external';external.mkdir();(external/'keep').write_text('untouched');external.chmod(0o555)
+        self.addCleanup(lambda:external.chmod(0o700))
+        self.nested.chmod(0o755);(self.nested/'escape').symlink_to(external);self.nested.chmod(0o555)
+        c.remove_fresh_installation(self.output,self.state)
+        self.assertEqual((external/'keep').read_text(),'untouched');self.assertEqual(external.stat().st_mode&0o777,0o555)
+        self.assertFalse(self.root.exists())
+
+    def test_identity_owner_path_and_unknown_custody_refuse_untouched(self):
+        cases=[('identity',{'installation_identity':dict(self.state['installation_identity'],ino=0)}),
+            ('owner',{'installation_identity':dict(self.state['installation_identity'],uid=os.getuid()+1)}),
+            ('path',{'root':str(self.output)}),('live',{'live_owned_pids':[123]}),
+            ('unknown',{'family_cleanup_confirmed':False}),
+            ('unreaped',{'owners':[dict(reaped=False,sampler_stopped=True,cleanup_unknown=False,exit=0)]})]
+        for label,change in cases:
+            with self.subTest(label=label),self.assertRaises(c.CleanupFailure):c.remove_fresh_installation(self.output,dict(self.state,**change))
+            self.assertTrue((self.nested/'fixture').exists());self.assertEqual(self.root.stat().st_mode&0o777,0o555)
+        with patch.dict(c._LIVE,{123:object()}),self.assertRaisesRegex(c.CleanupFailure,'custody_unknown'):
+            c.remove_fresh_installation(self.output,self.state)
+
+    def test_real_product_copies_venv_readonly_namespace_and_external_python(self):
+        self.root.chmod(0o755)
+        subprocess.run([sys.executable,'-m','venv','--copies',str(self.root/'venv')],check=True,timeout=60,stdout=subprocess.PIPE,stderr=subprocess.PIPE)
+        target=Path(sys.executable).resolve();before=(target.stat(),hashlib.sha256(target.read_bytes()).hexdigest())
+        (self.root/'venv/bin/external-python').symlink_to(target)
+        counts=dict(directories=0,regular=0,symlinks=0,hardlinked_regular=0)
+        for directory,dirs,files in os.walk(self.root,followlinks=False):
+            for name in dirs+files:
+                path=Path(directory)/name;info=path.lstat()
+                if path.is_symlink():counts['symlinks']+=1
+                elif path.is_dir():counts['directories']+=1
+                else:
+                    counts['regular']+=1;counts['hardlinked_regular']+=int(info.st_nlink!=1)
+            Path(directory).chmod(0o555)
+        self.assertEqual(counts['hardlinked_regular'],0);self.assertGreater(counts['regular'],10)
+        print('product copies venv namespace',json.dumps(counts),flush=True)
+        self.test_real_nonroot_readonly_tree_removed_only_after_custody()
+        after=target.stat();self.assertEqual((after.st_dev,after.st_ino,after.st_mode,after.st_size),
+            (before[0].st_dev,before[0].st_ino,before[0].st_mode,before[0].st_size))
+        self.assertEqual(hashlib.sha256(target.read_bytes()).hexdigest(),before[1])
+
+    def test_common_ancestor_symlink_and_intermediate_directory_link_refused(self):
+        alias=self.output/'alias';alias.symlink_to(self.private,target_is_directory=True)
+        state=dict(self.state,root=str(alias/'installation'))
+        with self.assertRaisesRegex(c.CleanupFailure,'path_escape'):c.remove_fresh_installation(self.output,state)
+        outside=self.output/'outside';outside.mkdir();(outside/'keep').write_text('retain')
+        # A symlink replacing the fixed installation directory is never opened.
+        moved=self.private/'saved';self.root.chmod(0o755);self.root.rename(moved);self.root.symlink_to(outside,target_is_directory=True)
+        try:
+            with self.assertRaises(c.CleanupFailure):c.remove_fresh_installation(self.output,self.state)
+            self.assertEqual((outside/'keep').read_text(),'retain')
+        finally:self.root.unlink();moved.rename(self.root)
+        ancestor=self.output.parent/(self.output.name+'-alias');ancestor.symlink_to(self.output,target_is_directory=True)
+        try:
+            linked=ancestor/'child'
+            with self.assertRaisesRegex(c.CleanupFailure,'path_escape'):
+                c.remove_fresh_installation(linked,dict(self.state,root=str(linked/'.private/installation')))
+        finally:ancestor.unlink()
+
+    def test_inserted_or_replaced_link_refused_after_preflight(self):
+        external=self.output/'outside';external.write_text('keep');before=external.stat()
+        real_fchmod=c.os.fchmod;changed=[]
+        def change(fd,mode):
+            real_fchmod(fd,mode)
+            if not changed:
+                changed.append(True)
+                (self.root/'inserted').symlink_to(external)
+        with patch.object(c.os,'fchmod',side_effect=change),self.assertRaisesRegex(c.CleanupFailure,'namespace_changed'):
+            c.remove_fresh_installation(self.output,self.state)
+        self.assertEqual(external.read_text(),'keep');self.assertEqual(external.stat().st_mode,before.st_mode)
+
+    def test_replaced_symlink_identity_refused_without_target_change(self):
+        external=self.output/'outside';external.write_text('keep');before=external.stat()
+        self.root.chmod(0o755);link=self.root/'link';link.symlink_to(external);self.root.chmod(0o555)
+        real_fchmod=c.os.fchmod;changed=[]
+        def replace(fd,mode):
+            real_fchmod(fd,mode)
+            if not changed:
+                changed.append(True);replacement=self.root/'replacement';replacement.symlink_to(external)
+                replacement.replace(link)
+        with patch.object(c.os,'fchmod',side_effect=replace),self.assertRaisesRegex(c.CleanupFailure,'identity_changed'):
+            c.remove_fresh_installation(self.output,self.state)
+        self.assertEqual(external.read_text(),'keep');self.assertEqual(external.stat().st_mode,before.st_mode)
+
+    def test_partial_removal_failure_is_typed_bounded_and_preserves_firstcause_and_wav(self):
+        self.root.chmod(0o755);(self.root/'other').write_text('owned');self.root.chmod(0o555)
+        original=c.os.unlink;calls=[]
+        def unlink(name,**kwargs):
+            calls.append(name)
+            if len(calls)==2:raise PermissionError(13,'sensitive arbitrary filesystem detail '+('x'*10000))
+            return original(name,**kwargs)
+        self.state.update(failure=dict(code='original_firstcause'),wav=dict(sha256='retained'))
+        with patch.object(c.os,'unlink',side_effect=unlink):c.finish_installation_cleanup(self.output,self.state)
+        self.assertEqual(self.state['status'],'failed');self.assertFalse(self.state['journey_completed'])
+        self.assertEqual(self.state['failure']['code'],'original_firstcause');self.assertEqual(self.state['wav']['sha256'],'retained')
+        detail=self.state['cleanup_failure'];self.assertEqual(detail['code'],'cleanup_filesystem_failure')
+        self.assertEqual(detail['errno'],13);self.assertEqual(detail['progress']['files_removed'],1)
+        self.assertLess(len(json.dumps(detail)),600);self.assertNotIn('sensitive',json.dumps(detail))
 
 
 if __name__=='__main__':unittest.main()
