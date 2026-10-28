@@ -432,3 +432,28 @@ separate from native model runtime qualification; see [APPLE-CI.md](APPLE-CI.md)
 Linux/arm64 Kokoro preview is a documented next slice, not implemented or
 qualified here. Native CPU, Metal synthesis and physical-Mac performance remain
 unqualified.
+
+
+## Bounded cold startup versus request execution
+
+The source owner loads once **per job**; it has no persistent loaded-model reuse.
+A cold job must carry an original absolute deadline allowing startup plus work:
+up to 150 seconds total (120 seconds startup, then at most the execution's
+30-second request budget). A shorter caller deadline remains authoritative and
+is never extended. Startup includes verification and loading; it is not a claim
+that this runner always loads within 120 seconds.
+
+The inherited child socket sends an exact token/binding `loaded` handshake only
+after backend construction. The parent validates it and acknowledges a request
+cutoff capped by both the original job deadline and execution timeout. The
+watchdog enforces startup before that acknowledgement and the independent
+request cutoff afterward. Cancellation and process identity checks apply during
+both phases; a cancelled, expired or already-signalled owner cannot gain time
+from a late handshake. RPC timeouts remain two seconds. Output, spawn guard,
+trust and schema checks remain in force. New archive bytes include both ends of
+the private handshake; do not mix child/supervisor source archives.
+
+This repairs a source-level readiness defect: observed cold loading took
+62.63 seconds, exceeding the former shared 30-second cap. It does not qualify
+installed startup or synthesis. The diagnostic runner's phase budgets remain
+separate. CustomVoice preset support does not establish Base-model cloning.

@@ -4,6 +4,7 @@ No Core/SQLite object crosses into lifecycle I/O. Enrollment/activation is Lot B
 The private spool retains evidence; uncertain files are never deleted or retried
 as a new allocation. Native receipts never supply a local filesystem UID.
 """
+from worker.native_budgets import JOB_SECONDS
 import base64
 from contextlib import contextmanager
 from datetime import datetime, timezone
@@ -280,7 +281,7 @@ class NativeRuntime:
             old=self.records.get(runtime_id)
             if old and old['authority']._snapshot!=authority._snapshot: raise Refused('native_binding')
             if old: return old
-            record=dict(authority=authority,config=config,event=threading.Event(),cutoff=authority.cutoff(30),uploaded=False)
+            record=dict(authority=authority,config=config,event=threading.Event(),cutoff=authority.cutoff(JOB_SECONDS),uploaded=False)
             self.records[runtime_id]=record
             return record
 
@@ -291,7 +292,7 @@ class NativeRuntime:
         cutoff=time.monotonic()+timeout
         if op in ('prepare','put_input','start','get_output'):
             if self.failed or authority.binding in self.import_closed: raise Refused('native_control_uncertain')
-            cutoff=min(cutoff,authority.cutoff(30))
+            cutoff=min(cutoff,authority.cutoff(JOB_SECONDS))
         if cutoff<=time.monotonic(): raise Refused('native_deadline')
         q=dict(version=p.VERSION,deployment_id=config['deployment_id'],configuration_sha256=config['configuration_sha256'],
             lane=None if op=='hello' else config['lane'],boot=None if op=='hello' else config['boot'],

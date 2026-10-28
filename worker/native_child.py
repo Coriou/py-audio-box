@@ -53,7 +53,7 @@ def install_spawn_guard():
 
 
 def infer(execution, text, bundles, references, inventory, *,
-          reference_temp_dir=None, managed_owner_uid=None):
+          reference_temp_dir=None, managed_owner_uid=None, on_loaded=None):
     """Real input verifier/complete loader/encoder with a closed native backend.
 
     The owned entry installs spawn_guard before calling this function. No
@@ -73,7 +73,7 @@ def infer(execution, text, bundles, references, inventory, *,
     from lib.tts_backends.qwen_native import NativeQwenBackend
     result = execute(execution, text, bundles, references, inventory,
         reference_temp_dir=reference_temp_dir, managed_owner_uid=managed_owner_uid,
-        backend_factory=NativeQwenBackend)
+        backend_factory=NativeQwenBackend, on_loaded=on_loaded)
     # Native transport sends audition PCM; reference metadata is reconstructed
     # from the verified, immutable preparation descriptor.
     return result['audition'] if type(execution) is QwenPreparation else result
@@ -177,7 +177,9 @@ def run_socket(connection, *, inference=None, guard=True):
     p._hex(config['token'],32); p._hex(config['binding'],64)
     if hashlib.sha256(p.canonical(config['snapshot'])).hexdigest()!=config['binding']: raise Refused('native_binding')
     cutoff=config['cutoff']
-    if type(cutoff) not in (int,float) or not 0<cutoff-time.monotonic()<=30: raise Refused('native_deadline')
+    from worker.native_budgets import validate_job_cutoff, startup_cutoff, request_cutoff
+    validate_job_cutoff(cutoff, time.monotonic())
+    startup = startup_cutoff(cutoff, time.monotonic())
     if config['execution'].get('phase') == 'prepare':
         from worker.engines.qwen_prepare import QwenPreparation
         spec = QwenPreparation.from_wire(config['execution'])
@@ -187,7 +189,17 @@ def run_socket(connection, *, inference=None, guard=True):
     oracle.stored_context(config['snapshot'][0],config['snapshot'][1])
     if (spec.device,spec.dtype,spec.attention) != ('mps','float32','sdpa') or spec.task not in ('clone','custom_voice'): raise Refused('native_execution')
     if guard: install_spawn_guard()
-    result=(infer if inference is None else inference)(spec,(config['snapshot'][1]['plan']['request']['audition_text'] if config['snapshot'][1]['plan']['operation']=='voice_prepare' else speech_text(config['snapshot'][1]['plan'])),config['bundles'],config['references'],inventory_from_wire(config['inventory']),reference_temp_dir=config['conditioning'],managed_owner_uid=os.getuid())
+    def loaded():
+        nonlocal cutoff
+        wire_send(connection,dict(kind='loaded',token=config['token'],binding=config['binding']),startup)
+        ack=wire_receive(connection,startup)
+        p._closed(ack,('kind','token','binding','cutoff'))
+        if (ack['kind'],ack['token'],ack['binding']) != ('run',config['token'],config['binding']): raise Refused('native_token')
+        candidate=ack['cutoff']
+        request_cutoff(candidate,time.monotonic(),spec.timeout_s)
+        if candidate>config['cutoff']: raise Refused('native_deadline')
+        cutoff=candidate
+    result=(infer if inference is None else inference)(spec,(config['snapshot'][1]['plan']['request']['audition_text'] if config['snapshot'][1]['plan']['operation']=='voice_prepare' else speech_text(config['snapshot'][1]['plan'])),config['bundles'],config['references'],inventory_from_wire(config['inventory']),reference_temp_dir=config['conditioning'],managed_owner_uid=os.getuid(),on_loaded=loaded)
     value=proposal(config['snapshot'],result,spec)
     validate_proposal(config['snapshot'],value,result['data'],spec)
     wire_send(connection,dict(token=config['token'],binding=config['binding'],proposal=value,bytes=len(result['data']),sha256=result['sha256']),cutoff)
@@ -195,10 +207,20 @@ def run_socket(connection, *, inference=None, guard=True):
         wire_send(connection,dict(offset=offset,data=base64.b64encode(result['data'][offset:offset+32768]).decode()),cutoff)
 
 
-def parent_exchange(connection,config,cutoff):
+def parent_exchange(connection,config,cutoff,*,on_loaded=None):
     import hashlib
     from worker import native_protocol as p
     wire_send(connection,config,cutoff)
+    loaded=wire_receive(connection,cutoff)
+    p._closed(loaded,('kind','token','binding'))
+    if (loaded['kind'],loaded['token'],loaded['binding']) != ('loaded',config['token'],config['binding']): raise Refused('native_token')
+    import time
+    from worker.native_budgets import request_cutoff
+    new_cutoff=min(config['cutoff'],time.monotonic()+config['execution']['timeout_s'])
+    request_cutoff(new_cutoff,time.monotonic(),config['execution']['timeout_s'])
+    if on_loaded is not None: on_loaded(new_cutoff)
+    wire_send(connection,dict(kind='run',token=config['token'],binding=config['binding'],cutoff=new_cutoff),cutoff)
+    cutoff=new_cutoff
     result=wire_receive(connection,cutoff)
     p._closed(result,('token','binding','proposal','bytes','sha256'))
     if (result['token'],result['binding'])!=(config['token'],config['binding']): raise Refused('native_token')

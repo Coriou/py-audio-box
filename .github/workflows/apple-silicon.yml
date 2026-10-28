@@ -7,6 +7,8 @@ on:
       - 'scripts/ci-apple-speech.py'
       - 'scripts/ci-native-import.py'
       - 'scripts/ci_process_rss.py'
+      - 'scripts/ci_qwen_observe.py'
+      - 'tests/test_ci_qwen_observe.py'
       - 'scripts/build-native-qwen-wheel.py'
       - 'requirements/wheels/**'
       - 'requirements/upstream/**'
@@ -129,7 +131,7 @@ jobs:
         run: python scripts/ci-apple-silicon.py mps-probe --report apple-ci/mps-probe.json
       - name: Explicit Darwin-safe source contracts (inert protocol and CI harness)
         run: >-
-          python -m unittest tests.test_ci_apple_silicon tests.test_ci_apple_speech tests.test_ci_process_rss
+          python -m unittest tests.test_ci_apple_silicon tests.test_ci_apple_speech tests.test_ci_process_rss tests.test_ci_qwen_observe
           tests.worker.test_native_protocol tests.worker.test_native_qwen
           tests.service.test_qwen_provisioning tests.test_native_qwen_artifact -v
       - name: Native archive and selected artifact closure (no runtime)
@@ -141,6 +143,11 @@ jobs:
           tests.release.test_native_package.NativePackageTests.test_archive_exact_members_secrets_excluded_extracted_help
           tests.release.test_native_package.NativePackageTests.test_archive_deterministic_bytes
           tests.release.test_native_package.NativePackageTests.test_selected_wheel_active_dependencies_refuse -v
+      - name: Install hash-locked schema/client closure for native lifecycle contracts
+        run: >-
+          python -m pip install --require-hashes --only-binary=:all: -r requirements/client.lock
+      - name: Native startup/request handshake and service cancellation contracts (no weights)
+        run: python -m unittest tests.worker.test_native_supervisor tests.service.test_native_runtime -v
       - name: Legacy loader and explicit device forwarding remain unchanged
         run: >-
           python -m unittest tests.contracts.test_legacy_controls

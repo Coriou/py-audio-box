@@ -102,7 +102,7 @@ class NativeSupervisorTests(unittest.TestCase):
 
     def test_launch_intent_before_factory_replay_wait_and_receiver(self):
         self.prepare()
-        def exchange(*args):
+        def exchange(*args, **kwargs):
             self.assertEqual(self.s.journal.value['records'][0]['phase'],'launch-intent')
             return None
         with patch('worker.native_child.parent_exchange',exchange):
@@ -131,6 +131,51 @@ class NativeSupervisorTests(unittest.TestCase):
         with self.assertRaises(Refused): self.s.dispatch(self.q('start'))
         self.assertTrue(self.s.quarantined); self.assertEqual(self.s.journal.value['records'][0]['phase'],'launch-intent')
         with self.assertRaises(Refused): self.s.dispatch(self.q('start'))
+
+
+    def long_job(self):
+        self.s.journal.lock.close()
+        self.root=self.fixture.root/'native-long'; self.root.mkdir(mode=0o700)
+        self.snapshot[0]['deadline']=(self.now+timedelta(seconds=150)).isoformat()
+        self.binding=hashlib.sha256(canonical(self.snapshot)).hexdigest()
+        self.reg={self.binding:dict(snapshot=self.snapshot,execution=self.e,bundles={'bundle':self.fixture.bundle},inventory=self.inventory)}
+        self.make()
+
+    def test_load_63_seconds_gets_independent_request_budget(self):
+        self.long_job(); self.prepare()
+        self.assertEqual(self.s.cutoffs[self.rid],220)
+        def exchange(channel,config,cutoff,*,on_loaded):
+            self.assertEqual(cutoff,220)
+            self.t+=63; self.now+=timedelta(seconds=63)
+            on_loaded(self.t+25)
+        with patch('worker.native_child.parent_exchange',exchange):
+            self.s.dispatch(self.q('start')); self.s.active['receiver'].join(1)
+        self.assertNotIn('receiver_error',self.s.active)
+        self.assertEqual(self.s.cutoffs[self.rid],188)
+        self.t=188; self.s.signal_tick()
+        self.assertEqual(self.signals[-1][1],signal.SIGTERM)
+
+    def test_expired_startup_cannot_be_renewed_by_ready(self):
+        self.long_job(); self.prepare()
+        def exchange(channel,config,cutoff,*,on_loaded):
+            self.assertEqual(config['cutoff'],250)
+            self.t=221
+            on_loaded(self.t+25)
+        with patch('worker.native_child.parent_exchange',exchange):
+            self.s.dispatch(self.q('start')); self.s.active['receiver'].join(1)
+        self.assertEqual(self.s.cutoffs[self.rid],220)
+        self.assertEqual(self.s.active['receiver_error']['message'],'native_deadline')
+
+    def test_cancel_during_load_cannot_be_renewed_by_ready(self):
+        self.long_job(); self.prepare()
+        def exchange(channel,config,cutoff,*,on_loaded):
+            self.s.active['cancel']=True
+            on_loaded(self.t+25)
+        with patch('worker.native_child.parent_exchange',exchange):
+            self.s.dispatch(self.q('start')); self.s.active['receiver'].join(1)
+        self.assertEqual(self.s.cutoffs[self.rid],220)
+        self.assertEqual(self.s.active['receiver_error']['message'],'native_deadline')
+        self.s.signal_tick(); self.assertEqual(self.signals[-1][1],signal.SIGTERM)
 
     def test_transfer_does_not_block_stop_and_body_refusals(self):
         self.prepare(); self.s.transfer.acquire()
@@ -166,10 +211,17 @@ class NativeSupervisorTests(unittest.TestCase):
             def settimeout(self,timeout): pass
         cutoff=time.monotonic()+20
         config=dict(token='f'*32,binding=self.binding,snapshot=self.snapshot,execution=self.e.identity(),bundles={'bundle':str(self.fixture.bundle)},references={},inventory=inventory_wire(self.inventory),conditioning=None,cutoff=cutoff)
-        raw=canonical(config); child=BytesChannel(struct.pack('!I',len(raw))+raw)
+        raw=canonical(config); ack=canonical(dict(kind='run',token=config['token'],binding=config['binding'],cutoff=config['cutoff'])); child=BytesChannel(struct.pack('!I',len(raw))+raw+struct.pack('!I',len(ack))+ack)
         self.fixture.backend.synthesise_preset.return_value.metadata=dict(checkpoint=str(self.fixture.bundle),revision=self.e.revision)
         with inert_guard(), patch('lib.tts_backends.qwen_native.NativeQwenBackend',return_value=self.fixture.backend):
             native_child.run_socket(child)
+        for changes in ({'token':'0'*32},{'cutoff':cutoff+5},{'extra':1}):
+            bad=canonical(dict(kind='run',token=config['token'],binding=config['binding'],cutoff=cutoff))
+            value=json.loads(bad);value.update(changes);bad=canonical(value)
+            config_raw=canonical(config)
+            channel=BytesChannel(struct.pack('!I',len(config_raw))+config_raw+struct.pack('!I',len(bad))+bad)
+            with inert_guard(), patch('lib.tts_backends.qwen_native.NativeQwenBackend',return_value=self.fixture.backend),self.assertRaises(Refused):
+                native_child.run_socket(channel)
         parent=BytesChannel(child.sent)
         proposal,data=native_child.parent_exchange(parent,config,cutoff)
         native_child.validate_proposal(self.snapshot,proposal,data,self.e)
@@ -218,8 +270,8 @@ class NativeSupervisorTests(unittest.TestCase):
             def settimeout(self,timeout): pass
         self.t=time.monotonic(); self.s.clock=lambda:time.monotonic()
         original=native_child.parent_exchange
-        def exchange(channel,config,cutoff):
-            raw=canonical(config); child=BytesChannel(struct.pack('!I',len(raw))+raw)
+        def exchange(channel,config,cutoff,**kwargs):
+            raw=canonical(config); ack=canonical(dict(kind='run',token=config['token'],binding=config['binding'],cutoff=config['cutoff'])); child=BytesChannel(struct.pack('!I',len(raw))+raw+struct.pack('!I',len(ack))+ack)
             self.fixture.backend.synthesise_preset.return_value.metadata=dict(checkpoint=str(self.fixture.bundle),revision=self.e.revision)
             with inert_guard(), patch('lib.tts_backends.qwen_native.NativeQwenBackend',return_value=self.fixture.backend): native_child.run_socket(child)
             return original(BytesChannel(child.sent),config,cutoff)

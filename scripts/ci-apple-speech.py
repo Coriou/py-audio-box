@@ -286,12 +286,24 @@ def infer(bundle, output, language):
                 stage('cold_load', cold_load_seconds=time.monotonic()-load_started,
                       cold_load_failed=True)
                 raise
+            from scripts.ci_qwen_observe import observe
+            def observed(**values):
+                progress.update(values)
+                temporary = progress_path.with_suffix('.tmp')
+                save(temporary, progress)
+                temporary.replace(progress_path)
+            self._stop_observation = observe(self._model, observed)
             import torch
             stage('cold_load', cold_load_seconds=time.monotonic()-load_started,
                 selected_device=str(self._model.device),
                 mps_allocated_after_load=torch.mps.current_allocated_memory(),
                 mps_driver_after_load=torch.mps.driver_allocated_memory(),
                 mps_recommended_max_bytes=torch.mps.recommended_max_memory())
+        def close(self):
+            try:
+                if hasattr(self, '_stop_observation'): self._stop_observation()
+            finally:
+                super().close()
         def synthesise_preset(self, *args, **kwargs):
             stage('generation')
             generation_started = time.monotonic()
@@ -317,7 +329,7 @@ def infer(bundle, output, language):
         (Device(DeviceFamily.MPS, 0, True, True, datetime.now(timezone.utc).isoformat()),))
     native_child.install_spawn_guard()
     started = time.monotonic()
-    stage('input_verification')
+    stage('input_verification', options=dict(text=text, max_new_tokens=256, dtype='float32', attention='sdpa', threads=2, speaker='Ryan', temperature=spec.temperature, top_p=spec.top_p, top_k=spec.top_k, repetition_penalty=spec.repetition_penalty))
     qwen_native.NativeQwenBackend = MeasuredBackend
     try:
         result = native_child.infer(spec, text, {'native-ci': bundle}, {}, inventory,

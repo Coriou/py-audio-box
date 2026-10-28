@@ -99,11 +99,12 @@ class NativeQwenTests(unittest.TestCase):
                     qwen_tts=types.SimpleNamespace(Qwen3TTSModel=types.SimpleNamespace(from_pretrained=factory)),
                     huggingface_hub=hub)), patch.dict(os.environ), \
                     patch('platform.system',return_value='Darwin'),patch('platform.machine',return_value='arm64'):
-                result=native_child.infer(self.spec,'hello',{'bundle':self.fixture.bundle},{},self.inventory)
+                result=native_child.infer(self.spec,'hello',{'bundle':self.fixture.bundle},{},self.inventory,on_loaded=lambda:events.append(('loaded',None)))
                 self.assertEqual(result['data'][:4],b'RIFF')
                 self.assertEqual(result['size_bytes'],48)
                 self.assertEqual(result['identity']['device'],'mps')
                 self.assertEqual(events[0],('threads',2))
+                self.assertEqual([event[0] for event in events],['threads','loaded','generate'])
                 self.assertEqual(factory.call_args.kwargs,dict(device_map='mps',dtype='float32',attn_implementation='sdpa',local_files_only=True))
                 # Upstream ordinary Python spawn is refused before execution.
                 model.generate_custom_voice=lambda **kw:subprocess.Popen(['never'])

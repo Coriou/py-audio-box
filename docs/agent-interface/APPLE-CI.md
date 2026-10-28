@@ -195,3 +195,12 @@ OS page-cache state remains uncontrolled. Respect cache quotas and model terms.
 Keep the final installer acceptance lane explicitly cache-disabled with a fresh
 root. Diagnostic cache reuse would prove neither cold installation nor installed
 product reuse. No cache or model acquisition is added by this sampler patch.
+
+
+The diagnostic wrapper now records bounded host talker-forward counts and
+first/last timestamps plus tokenizer-decode boundaries. These observe the pinned
+model without changing generation arguments, tensor values or synchronization.
+A completed host forward is not a first-token/audio measurement. Summaries update
+at most once per second plus decode/cleanup boundaries and preserve the original
+phase start. Decode/forward errors retain their original exceptions. No new
+weights run or changed diagnostic deadline is implied by this instrumentation.

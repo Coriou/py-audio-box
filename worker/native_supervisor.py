@@ -1,4 +1,5 @@
 """Single owned exec native worker. No Core, Linux containment or restart adoption."""
+from worker.native_budgets import JOB_SECONDS, STARTUP_SECONDS
 import base64
 import copy
 from datetime import datetime, timezone
@@ -212,7 +213,7 @@ class NativeSupervisor:
         self.handle_lock=threading.Lock(); self.uncertain=set()
         self.active=None; self.failed=False; self.launches=0
         self.availability_slots=threading.BoundedSemaphore(2)
-        self.cutoffs={}; self.cancelled=set(); self.slots=threading.BoundedSemaphore(3)
+        self.cutoffs={}; self.job_cutoffs={}; self.cancelled=set(); self.slots=threading.BoundedSemaphore(3)
         self.shutdown_event=threading.Event(); self.transfer_slot=threading.BoundedSemaphore(1)
 
     @property
@@ -451,8 +452,9 @@ class NativeSupervisor:
         if set(reg['bundles'])!={e.bundle_id}: raise Refused('native_registration')
         verify_bundle(reg['bundles'][e.bundle_id],e.manifest_sha256,e.checkpoint,e.revision,e.language,owner_uid=os.getuid(),execution=e)
         budget=(datetime.fromisoformat(snapshot[0]['deadline'])-self.utc()).total_seconds()
-        if not 0<budget<=30: raise Refused('native_deadline')
-        cutoff=self.clock()+budget
+        if not 0<budget<=JOB_SECONDS: raise Refused('native_deadline')
+        job_cutoff=self.clock()+budget
+        cutoff=min(job_cutoff,self.clock()+STARTUP_SECONDS)
         value=copy.deepcopy(self.journal.value); value['records'].append(r)
         try:
             self.journal.save(value)
@@ -463,6 +465,7 @@ class NativeSupervisor:
         except Exception:
             self.failed=True; self.uncertain.add(r['id']); raise Refused('native_unknown') from None
         self.cutoffs[r['id']]=cutoff
+        self.job_cutoffs[r['id']]=job_cutoff
         return dict(runtime_id=r['id'],state='alive')
 
     def put(self,r,b):
@@ -527,11 +530,17 @@ class NativeSupervisor:
                     raise Refused('native_unknown') from None
                 child.close()
                 from worker.engines.qwen_execution import inventory_wire
-                config=dict(token=token,binding=r['binding'],snapshot=r['snapshot'],execution=e.identity(),bundles={k:str(v) for k,v in reg['bundles'].items()},references=self.references(r,reg),inventory=inventory_wire(reg['inventory']),conditioning=str(conditioning) if e.task=='clone' else None,cutoff=self.cutoffs[r['id']])
+                config=dict(token=token,binding=r['binding'],snapshot=r['snapshot'],execution=e.identity(),bundles={k:str(v) for k,v in reg['bundles'].items()},references=self.references(r,reg),inventory=inventory_wire(reg['inventory']),conditioning=str(conditioning) if e.task=='clone' else None,cutoff=self.job_cutoffs[r['id']])
                 def receive():
                     from worker.native_child import parent_exchange
-                    try: a['result']=parent_exchange(parent,config,self.cutoffs[r['id']])
-                    except Exception: a['result']=None
+                    def loaded(cutoff):
+                        with self.handle_lock:
+                            if a['cancel'] or a['term'] is not None or self.clock()>=self.cutoffs[r['id']]: raise Refused('native_deadline')
+                            self.cutoffs[r['id']]=cutoff
+                    try: a['result']=parent_exchange(parent,config,self.cutoffs[r['id']],on_loaded=loaded)
+                    except Exception as exc:
+                        a['result']=None
+                        a['receiver_error']=dict(type=type(exc).__name__,message=str(exc)[:1000])
                     finally:
                         try: parent.close(); a['closed']=parent.fileno()==-1
                         except Exception: self.failed=True

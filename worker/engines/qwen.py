@@ -190,7 +190,7 @@ def verify_inputs(e, bundles, references, inventory, *, owner_uid=None, referenc
     return root, reference
 
 
-def execute(execution, text, bundles, references, inventory, *, reference_temp_dir=None, backend_factory=None, managed_owner_uid=None, reference_fd=None, managed_namespace=False, cutoff=None):
+def execute(execution, text, bundles, references, inventory, *, reference_temp_dir=None, backend_factory=None, managed_owner_uid=None, reference_fd=None, managed_namespace=False, cutoff=None, on_loaded=None):
     e = execution
     from .qwen_prepare import QwenPreparation
     if type(e) is QwenPreparation: e = e.generation()
@@ -225,6 +225,7 @@ def execute(execution, text, bundles, references, inventory, *, reference_temp_d
         remaining()
     backend = backend_factory(model_name=str(root),num_threads=e.threads,dtype_str=e.dtype,revision=e.revision,offline=True,device=e.device,attention=e.attention)
     try:
+        if on_loaded is not None: on_loaded()
         params = dict(text=text,language=e.language, **{k:getattr(e,k) for k in ('temperature','top_p','top_k','repetition_penalty','max_new_tokens')})
         if e.task == 'clone':
             if managed_namespace:

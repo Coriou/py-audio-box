@@ -167,6 +167,7 @@
     "worker/lifecycle.py",
     "worker/managed_reference.py",
     "worker/native_availability.py",
+    "worker/native_budgets.py",
     "worker/native_child.py",
     "worker/native_protocol.py",
     "worker/native_supervisor.py",
