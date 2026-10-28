@@ -36,7 +36,9 @@ class Dispatcher:
         self.commands=queue.Queue(64)
         self._cleanup_failed = False
         self.initialized=Future()
-        self.thread=threading.Thread(target=self._run,name='control-writer',daemon=True)
+        from service.native_cpu_activation import NativeCPUActivation
+        target=(lambda:installed_activation.run(self._run)) if type(installed_activation) is NativeCPUActivation else self._run
+        self.thread=threading.Thread(target=target,name='control-writer',daemon=True)
         self.thread.start()
         self.initialized.result(timeout=15 if installed_activation is not None else 5)
 
@@ -71,7 +73,8 @@ class Dispatcher:
             if self.installed_activation is not None:
                 from service.entrypoint import InstalledActivation
                 from service.native_activation import NativeActivation
-                if type(self.installed_activation) not in (InstalledActivation, NativeActivation):
+                from service.native_cpu_activation import NativeCPUActivation
+                if type(self.installed_activation) not in (InstalledActivation, NativeActivation, NativeCPUActivation):
                     raise ValueError('checked_installed_activation_required')
                 self.installed_activation.precheck(self)
                 if hasattr(self.runtime, 'attach_owner'): self.runtime.attach_owner()
@@ -92,9 +95,10 @@ class Dispatcher:
                             hello, self.current_profiles,
                             DEFAULT_BUDGET if self.budget is None else self.budget)
             from service.native_activation import NativeActivation
+            from service.native_cpu_activation import NativeCPUActivation
             installed_family = getattr(self.installed_activation, "expectation", None)
             core=self.core=Core(self.root, _native_activation=(self.installed_activation
-                if type(self.installed_activation) is NativeActivation else None),
+                if type(self.installed_activation) in (NativeActivation,NativeCPUActivation) else None),
                 _installed_family=installed_family,
                 _publication_creation=2 if installed_family is not None else 1 if self.installed_activation is not None or startup is not None else 2)
             if self.installed_activation is not None:
@@ -111,7 +115,8 @@ class Dispatcher:
                 raise ValueError('startup_deployment_changed')
             if self.installed_checked:
                 from service.native_activation import NativeActivation
-                self.enrolled = self.enrolled or type(self.installed_activation) is NativeActivation
+                from service.native_cpu_activation import NativeCPUActivation
+                self.enrolled = self.enrolled or type(self.installed_activation) in (NativeActivation,NativeCPUActivation)
             bind = getattr(self.production_contexts, 'bind_availability', None)
             if bind is not None: bind(self.runtime)
             self.admission=Admission(core,self.staging,self.budget,private_spool=getattr(self.runtime,'spool',None),
@@ -160,6 +165,7 @@ class Dispatcher:
                 except Exception as exc:
                     # Persistence/verification faults retain durable ownership and evidence.
                     self._sync_resource_fault()
+                    self._native_cpu_trace('tick_refused',error=exc)
                     self.error=type(exc).__name__;self.quarantined=True
                     self.next_poll=time.monotonic()+.2
             if self.pending:self.pending[0].result(timeout=3)
@@ -182,7 +188,8 @@ class Dispatcher:
                     if startup_error is not None: startup_error.add_note('startup Core cleanup failed: '+type(cleanup).__name__)
                 finally:
                     from service.native_activation import NativeActivation
-                    if type(self.installed_activation) is NativeActivation:
+                    from service.native_cpu_activation import NativeCPUActivation
+                    if type(self.installed_activation) in (NativeActivation,NativeCPUActivation):
                         self.installed_activation.finished(self, self._cleanup_failed, startup_error)
                     if startup_error is not None:self.initialized.set_exception(startup_error)
 
@@ -201,15 +208,21 @@ class Dispatcher:
                         and self.core.job(reservation['id'])['state']=='cancelled'):
                     self.admission.store.release_tx(reservation['id'],unstarted=True)
 
-    def _ready(self):
+    def _lifecycle_ready(self):
         return (self._activation_open() and self.reconciled and not self.closing and
                 getattr(self.runtime,'admission_open',True) and
                 not self.orphaned and not self.quarantined and not self.resource_fault and
-                not self.persistence_fault and not self.integrity_fault and
-                (not self.installed_checked or all(
+                not self.persistence_fault and not self.integrity_fault)
+
+    def _native_cpu_active(self):
+        from service.native_cpu_activation import NativeCPUActivation
+        return self.installed_checked and type(self.installed_activation) is NativeCPUActivation and self._lifecycle_ready()
+
+    def _ready(self):
+        return self._lifecycle_ready() and (not self.installed_checked or all(
                     p['support']=='qualified' and p['installation']=='installed' and
                     p['readiness']=='ready' and p['verification']=='measured'
-                    for p in self.profiles)))
+                    for p in self.profiles))
 
     def _production_command(self, op, principal, payload, *, key=None):
         from contracts import validate as oracle
@@ -240,7 +253,7 @@ class Dispatcher:
             old = owned(payload['job_id'])
             oracle.require(payload['input_sha256'] == old['input_sha256'], 'idempotency_conflict')
             _, context = self.core._load(old['id'])
-            from worker.native_protocol import frozen_native
+            from worker.native_family import frozen_native
             if hasattr(self.runtime, 'native') or frozen_native(context):
                 raise ValueError('unsupported_control')
             # Replays precede authority refresh, but remain bound to the source
@@ -312,7 +325,7 @@ class Dispatcher:
                 if not row: self.core.db.execute('INSERT INTO catalogue_requests VALUES(?,?,?,?,?)', (principal,'job_cancel',key,fingerprint,encode(payload)))
             return self._command('cancel', payload['job_id'])
         if op == 'production_preset_register':
-            if not self.installed_checked or not self._ready() or self.production_contexts is None:
+            if not self.installed_checked or not (self._ready() or self._native_cpu_active()) or self.production_contexts is None:
                 raise ValueError('not_ready')
             resolver = getattr(self.production_contexts, 'preset_version', None)
             if resolver is None: raise ValueError('not_ready')
@@ -349,7 +362,16 @@ class Dispatcher:
                          _profiles=self.profiles, _dispatch_settings=('silence',8))
         return dict(job_id=job['id'], input_sha256=job['input_sha256'], state='queued', status_url='/v1/jobs/'+job['id'])
 
+    def _native_cpu_relation(self):
+        from service.native_cpu_activation import NativeCPUActivation
+        from service.native_cpu_runtime import NativeCPURuntime
+        activation=type(getattr(self,'installed_activation',None)) is NativeCPUActivation
+        runtime=type(getattr(self,'runtime',None)) is NativeCPURuntime
+        if activation!=runtime:raise ValueError('native_cpu_runtime_binding')
+        return activation
+
     def _checked_export_family(self):
+        if self._native_cpu_relation():return False
         from service.installed_export import FAMILY
         return (self.installed_checked and getattr(self.installed_activation, "family", None) is FAMILY
                 and self.core.publication_format == 2 and self.core._installed_family is not None)
@@ -413,14 +435,14 @@ class Dispatcher:
             except ValueError:row=None;self.error='dispatch_identity_unreadable'
             return dict(retry_available=not hasattr(self.runtime,'native'),reconciled=self.reconciled,quarantined=self.quarantined,
                 phase=row['phase'] if row else 'idle',runtime_id=row['runtime'] if row else None,
-                resource_activation=self._ready(),persistent_activation=self.enrolled and self._ready(),error=self.error,
+                resource_activation=self._ready(),persistent_activation=self.enrolled and (self._ready() or self._native_cpu_active()),error=self.error,
                 resource_fault=self.resource_fault,persistence_fault=self.persistence_fault,
                 stop_obligation=self.stop_obligation,
                 reservations=self.admission.store.rows(), integrity=self.integrity,
                 integrity_fault=self.integrity_fault)
         if op=='cancel':
             if not self._activation_open(): raise ValueError('persistent_activation_closed_until_C1')
-            if self.installed_checked and self.core.job(args[0])['state']=='queued' and not self._ready(): raise ValueError('not_ready')
+            if self.installed_checked and self.core.job(args[0])['state']=='queued' and not (self._ready() or self._native_cpu_active()): raise ValueError('not_ready')
             if self.integrity_fault and self.core.job(args[0])['state']=='queued':raise ValueError('integrity_blocks_release')
             job=self.core.request_cancel(*args,**kwargs,_cancel_unstarted=True,_admission=self.admission)
             self._interrupt_transfer(job['id'])
@@ -470,14 +492,44 @@ class Dispatcher:
             self.runtime.interrupt(row['runtime'])
 
     def _qwen_state_poll(self):
+        if self._native_cpu_relation():return False
         from service.installed_qwen_daemon import FAMILY
         return (self.installed_checked and
                 getattr(self.installed_activation, 'family', None) is FAMILY and
                 getattr(self.runtime, 'family', None) is FAMILY)
 
+    def _observation_interval(self,op,value):
+        if self._native_cpu_relation():return .03
+        from service import installed_pocket_daemon as pd
+        return .2 if (getattr(self.runtime,'family',None) is pd.FAMILY and
+                       op=='observe' and value.state==State.ALIVE) else .03
+
+    def _native_cpu_trace(self,stage,row=None,op=None,error=None):
+        """At most32 distinct source-only events; no request/config/media values."""
+        from service.native_cpu_activation import NativeCPUActivation
+        if type(getattr(self,'installed_activation',None)) is not NativeCPUActivation:return
+        import re,sys
+        from service.entrypoint import _startup_diagnostic
+        event=dict(stage=stage,op=op,phase=None if row is None else row['phase'])
+        if row is not None:
+            for key,pattern in (('job_id',r'job-[0-9a-f]{32}'),('runtime',r'[0-9a-f]{32}/[0-9a-f]{32}/[0-9a-f]{32}')):
+                value=row.get(key);event[key]=value if isinstance(value,str) and re.fullmatch(pattern,value) else None
+        if error is not None:
+            self.error=type(error).__name__
+            event['error']=_startup_diagnostic(error)
+            allowed={'native_shape','native_output','native_control_storage','native_control_uncertain','native_deadline',
+                'native_cancelled','native_busy','native_unknown','native_refused','native_owner_required'}
+            if type(error).__name__=='Refused' and str(error) in allowed:event['code']=str(error)
+        seen=getattr(self,'_cpu_trace_seen',set());self._cpu_trace_seen=seen
+        key=json.dumps(event,sort_keys=True)
+        if key in seen or len(seen)>=32:return
+        seen.add(key)
+        print('native_cpu_dispatch:'+key,file=sys.stderr)
+
     def _launch(self,row,op,fn):
         command=None if op=='poll' else self.store.command(row,'observe' if op=='confirm' else op)
         self.fault('before_'+op)
+        self._native_cpu_trace('issued',row,op)
         self.pending=(self.pool.submit(fn),row,op,command)
 
     def _sync_resource_fault(self):
@@ -523,12 +575,14 @@ class Dispatcher:
                     raise ValueError('unbound_observation')
                 if op=='collect' and hasattr(self.runtime,'finalize_collect'):
                     value=self.runtime.finalize_collect(value)
-            except Exception:
+            except Exception as exc:
+                self._native_cpu_trace('refused',row,op,exc)
                 if op=='poll':command=self.store.command(row,'observe')
                 self.store.complete(command,False)
                 if op=='ack':self.next_poll=time.monotonic()+.2;return
                 self.store.update(row,phase='unknown');self.quarantined=True
                 self.reconciled=True;self.next_poll=time.monotonic()+.2;return
+            self._native_cpu_trace('completed',row,op)
             self.fault('after_'+op)
             if command is not None:self.store.complete(command,True)
             if op=='poll':
@@ -568,10 +622,7 @@ class Dispatcher:
             elif op=='ack':
                 if value!={'acked':True}:raise ValueError('ack_required')
                 self.store.update(row,acked=1,phase='acknowledged');self.quarantined=getattr(self,'resource_fault',False)
-            from service import installed_pocket_daemon as pd
-            interval = .2 if (getattr(self.runtime,'family',None) is pd.FAMILY and
-                              op=='observe' and value.state==State.ALIVE) else .03
-            self.next_poll=time.monotonic()+interval
+            self.next_poll=time.monotonic()+self._observation_interval(op,value)
         if self.pending:return
         if self._service_stop(self.store.current()):return
         if time.monotonic()<self.next_poll:return
@@ -622,7 +673,7 @@ class Dispatcher:
             self.store.update(row,phase='unknown');self.quarantined=True
             return
         authority=row['authority'];job=self.core.job(row['job_id'])
-        from worker.native_protocol import terminal_receipt, frozen_native
+        from worker.native_family import terminal_receipt, frozen_native
         native=frozen_native(authority.context)
         import_uid=terminal_receipt(receipt,authority=authority,runtime_id=row['runtime'],
             local_import_uid=getattr(self.runtime,'local_import_uid',None))
@@ -650,6 +701,7 @@ class Dispatcher:
                         if stored[key]!=expected:raise ValueError('stale_publication_intent')
                     self.core._commit_publication(job['id'])
                 elif receipt['timely'] is True and observation is not None:
+                    self._native_cpu_trace('publication',row,'publish')
                     if native:
                         from datetime import datetime, timezone
                         if datetime.now(timezone.utc)>=datetime.fromisoformat(authority.job['deadline']): raise ValueError('native_import_deadline')
@@ -667,6 +719,7 @@ class Dispatcher:
         # Crash after success before outcome journal is recoverable from Core terminal.
         job=self.core.job(job['id'])
         if job['state'] not in ('succeeded','failed','cancelled'):raise ValueError('terminal_required')
+        self._native_cpu_trace('terminal',row,job['state'])
         self.stop_obligation=False  # Only the exact validated receipt discharges stop.
         if self.persistence_fault:
             # Fault authority could not be journaled: retain the reservation even

@@ -707,7 +707,7 @@ def _load_tts_model_local(model_name: str, num_threads: int, dtype_str: str = "a
         device = get_device()
     dtype  = best_dtype(device, dtype_str)
     torch.set_num_threads(num_threads)
-    from qwen_tts import Qwen3TTSModel  # type: ignore
+    Qwen3TTSModel = _qwen_model_class()
 
     on_cuda = device.startswith("cuda")
     if explicit:
@@ -1160,3 +1160,9 @@ class Timer:
     def __exit__(self, *_) -> None:
         self.elapsed = time.perf_counter() - self._start
         print(f"    ↳ {self._label}: {self.elapsed:.2f}s")
+
+
+def _qwen_model_class():
+    """Real dependency bootstrap, shared by the loader and no-weight guard check."""
+    from qwen_tts import Qwen3TTSModel
+    return Qwen3TTSModel

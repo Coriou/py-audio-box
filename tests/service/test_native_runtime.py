@@ -73,16 +73,16 @@ class NativeFixture:
                 data=canonical(response);self.raw=bytearray(struct.pack('!I',len(data))+data)
         yield TLS()
 
-    def exchange(self,channel,config,cutoff):
+    def exchange(self,channel,config,cutoff,**kwargs):
         from worker import native_child
         from tests.worker.test_native_qwen import inert_guard
-        raw=canonical(config);child=BytesChannel(struct.pack('!I',len(raw))+raw)
+        raw=canonical(config);ack=canonical(dict(kind='run',token=config['token'],binding=config['binding'],cutoff=config['cutoff']));child=BytesChannel(struct.pack('!I',len(raw))+raw+struct.pack('!I',len(ack))+ack)
         backend=self.f.fixture.backend
         for method in ('synthesise_preset','synthesise_clone'):
             getattr(backend,method).return_value.metadata=dict(checkpoint=str(self.f.fixture.bundle),revision=self.f.e.revision)
         with inert_guard(),patch('lib.tts_backends.qwen_native.NativeQwenBackend',return_value=backend):
             native_child.run_socket(child)
-        return self.parent_exchange(BytesChannel(child.sent),config,cutoff)
+        return self.parent_exchange(BytesChannel(child.sent),config,cutoff,**kwargs)
 
     def finish(self):
         self.s.active['receiver'].join(2)

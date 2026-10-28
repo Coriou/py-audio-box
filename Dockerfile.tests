@@ -4,7 +4,8 @@ FROM python:3.11-slim-bookworm
 LABEL org.opencontainers.image.licenses="AGPL-3.0-only"
 COPY LICENSE THIRD_PARTY_NOTICES.md /app/
 ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1
-RUN apt-get update && apt-get install -y --no-install-recommends ffmpeg libsndfile1 && rm -rf /var/lib/apt/lists/*
+# procps supplies the real /bin/ps used by bounded child RSS/log/reap regressions.
+RUN apt-get update && apt-get install -y --no-install-recommends ffmpeg libsndfile1 procps && rm -rf /var/lib/apt/lists/*
 # Match the repository lock's CPU torch/torchaudio pair. No model packages or weights.
 RUN pip install --no-cache-dir torch==2.10.0+cpu torchaudio==2.10.0+cpu --index-url https://download.pytorch.org/whl/cpu
 # Reuse the hashed control/test closure: FastAPI, HTTPX, MCP, pytest,
@@ -30,13 +31,15 @@ COPY diagnostics/p-one-node/one_node_observer.py /app/tests/one_node_observer.py
 COPY benchmarks /app/benchmarks
 COPY scripts /app/scripts
 COPY .github/workflows/unit.yml /app/.github/workflows/unit.yml
+COPY .github/workflows/apple-silicon.yml /app/.github/workflows/apple-silicon.yml
+COPY .github/workflows/apple-kokoro.yml /app/.github/workflows/apple-kokoro.yml
 COPY run-cpu /app/run-cpu
 COPY run /app/run
 COPY run-direct /app/run-direct
 COPY run.ps1 /app/run.ps1
 COPY pyproject.toml /app/pyproject.toml
 COPY poetry.lock /app/poetry.lock
-COPY headless-dist-manifest.json native-dist-manifest.json Dockerfile.cpu /app/
+COPY headless-dist-manifest.json native-dist-manifest.json native-cpu-dist-manifest.json Dockerfile.cpu /app/
 # User-facing onboarding docs and their link targets (tests/test_docs_onboarding.py).
 COPY README.md /app/README.md
 COPY docs/AGENT-GUIDE.md docs/LEGACY-TOOLBOX.md docs/TTS_BENCHMARK.md docs/TTS_MEMORY.md docs/TTS_POCKET_CPU_PILOT.md /app/docs/
@@ -47,6 +50,7 @@ COPY docs/agent-interface/CPU-QUICKSTART.md /app/docs/agent-interface/CPU-QUICKS
 COPY docs/agent-interface/DOCKER-VOLUMES.md /app/docs/agent-interface/DOCKER-VOLUMES.md
 COPY docs/agent-interface/HEADLESS-INSTALL.md /app/docs/agent-interface/HEADLESS-INSTALL.md
 COPY docs/agent-interface/NATIVE-PACKAGE.md /app/docs/agent-interface/NATIVE-PACKAGE.md
+COPY docs/agent-interface/APPLE-CI.md docs/agent-interface/NATIVE-DEPENDENCY.md docs/agent-interface/NATIVE-KOKORO.md docs/agent-interface/NATIVE-CLONING.md /app/docs/agent-interface/
 COPY docs/TTS_SPOKEN_TEXT.md /app/docs/TTS_SPOKEN_TEXT.md
 COPY docs/agent-interface/POCKET-QUICKSTART.md /app/docs/agent-interface/POCKET-QUICKSTART.md
 COPY docs/agent-interface/QWEN-CPU.md /app/docs/agent-interface/QWEN-CPU.md

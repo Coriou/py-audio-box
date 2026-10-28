@@ -58,6 +58,19 @@ def verify_local(context, local_bundles, *, policy=None):
         raise Refused('bundle_identity')
 
 
+def kokoro_preset_version(context,principal,preset,voice_id):
+    """Pure catalogue identity shared by the container and native CPU factories."""
+    from contracts import validate as oracle
+    from service.voice_store import _id
+    _id(voice_id)
+    spec=execution(context)
+    if spec.engine!='kokoro' or spec.preset!=preset:raise Refused('unsupported_control')
+    version=copy.deepcopy(context['plan']['voice_versions'][0])
+    version['voice_id']=voice_id
+    version['id']='preset-'+oracle.canonical_hash([principal,voice_id,version,spec.identity()])
+    return version
+
+
 class KokoroContexts:
     """Explicit principal template + sealed provisioned bundle; no public paths.
 
@@ -91,17 +104,8 @@ class KokoroContexts:
                      supports=['voice_preset_register', 'speech_generate'], clone_prepare=False)]
 
     def preset_version(self, principal, preset, voice_id):
-        from contracts import validate as oracle
-        from service.voice_store import _id
-        _id(voice_id)
         if principal not in self._contexts: raise Refused('not_ready')
-        context = json.loads(self._contexts[principal])
-        spec = execution(context)
-        if spec.preset != preset: raise Refused('unsupported_control')
-        version = copy.deepcopy(context['plan']['voice_versions'][0])
-        version['voice_id'] = voice_id
-        version['id'] = 'preset-' + oracle.canonical_hash([principal, voice_id, version, spec.identity()])
-        return version
+        return kokoro_preset_version(json.loads(self._contexts[principal]),principal,preset,voice_id)
 
     def resolve_registered(self, principal, request, version):
         from contracts import validate as oracle

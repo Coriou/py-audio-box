@@ -24,6 +24,25 @@ GATE_LIMIT = 65536
 _INSTALLED_LIFECYCLES = {}
 
 
+def _startup_diagnostic(exc):
+    """Bounded source identifiers only; never exception messages or full paths."""
+    def identifier(value,pattern):
+        return value if isinstance(value,str) and re.fullmatch(pattern,value) else 'redacted'
+    chain=[];seen=set()
+    while exc is not None and id(exc) not in seen and len(chain)<4:
+        seen.add(id(exc));trace=exc.__traceback__
+        while trace is not None and trace.tb_next is not None:trace=trace.tb_next
+        item=dict(type=identifier(type(exc).__name__,r'[A-Za-z_][A-Za-z0-9_]{0,63}'))
+        if trace is not None:
+            item.update(file=identifier(Path(trace.tb_frame.f_code.co_filename).name,r'[A-Za-z_][A-Za-z0-9_]{0,63}\.py|<module>|<string>'),
+                function=identifier(trace.tb_frame.f_code.co_name,r'[A-Za-z_][A-Za-z0-9_]{0,63}|<module>'),line=trace.tb_lineno)
+        if isinstance(exc,ModuleNotFoundError):
+            item['module']=identifier(exc.name,r'[A-Za-z_][A-Za-z0-9_]{0,47}(?:\.[A-Za-z_][A-Za-z0-9_]{0,47}){0,5}')
+        chain.append(item)
+        exc=exc.__cause__ if exc.__cause__ is not None else None if exc.__suppress_context__ else exc.__context__
+    return dict(chain=chain,truncated=exc is not None)
+
+
 class _ThreadResult:
     """Thread-owned completion, independent of cancellable asyncio wrappers."""
     def __init__(self, loop, function, completed):
@@ -498,11 +517,13 @@ def _owned_app(dependencies, mount):
                     raise
                 except BaseException as exc:
                     responsibility['error'] = exc
+                    print('installed_cleanup_refused:'+json.dumps(_startup_diagnostic(exc),sort_keys=True,separators=(',',':')),file=sys.stderr)
                     raise
             try:
                 notification.close()
             except BaseException as exc:
                 responsibility['error'] = exc
+                print('installed_custodian_refused:'+json.dumps(_startup_diagnostic(exc),sort_keys=True,separators=(',',':')),file=sys.stderr)
                 raise
             responsibility['closed'] = True
             _INSTALLED_LIFECYCLES.pop(id(responsibility), None)
@@ -529,15 +550,9 @@ def _owned_app(dependencies, mount):
             app.state.dispatcher = owner
             yield
         except BaseException as exc:
-            # Uvicorn's quiet installed mode suppresses its lifespan traceback.
-            # Retain a source location without credential/configuration values.
-            trace = exc.__traceback__
-            while trace is not None and trace.tb_next is not None:
-                trace = trace.tb_next
-            if trace is not None:
-                import sys
-                print('installed_startup_refused:'+type(exc).__name__+':'+
-                    trace.tb_frame.f_code.co_name+':'+str(trace.tb_lineno),file=sys.stderr)
+            # Quiet Uvicorn suppresses lifespan tracebacks. Retain bounded
+            # source/module identifiers and causal links without private values.
+            print('installed_startup_refused:'+json.dumps(_startup_diagnostic(exc),sort_keys=True,separators=(',',':')),file=sys.stderr)
             raise
         finally:
             responsibility['cleanup_requested'] = True

@@ -781,7 +781,7 @@ def typed_references(self, data, b2, _before, document):
                 dispatch_reasons.add('reservation_outcome_mismatch')
             if r['receipt']:
                 receipt = json.loads(r['receipt'])
-                from worker.native_protocol import terminal_receipt
+                from worker.native_family import terminal_receipt
                 terminal_receipt(receipt, authority=a, runtime_id=r['runtime'])
             elif r['outcome'] or job['state'] in ('succeeded','failed','cancelled'):
                 dispatch_reasons.add('terminal_receipt_missing')

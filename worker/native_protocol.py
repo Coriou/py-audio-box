@@ -56,9 +56,13 @@ def chunk(value):
 
 
 def request(value):
+    return _request(value, VERSION, OPS)
+
+
+def _request(value, version, operations):
     _closed(value, ('version', 'deployment_id', 'configuration_sha256', 'lane',
                     'boot', 'request_id', 'runtime_id', 'binding', 'op', 'body'))
-    if value['version'] != VERSION or type(value['op']) is not str or value['op'] not in OPS:
+    if value['version'] != version or type(value['op']) is not str or value['op'] not in operations:
         raise Refused('native_protocol')
     for key in ('deployment_id', 'request_id'):
         _hex(value[key], 32)
@@ -109,6 +113,10 @@ def request(value):
 
 
 def receipt(value, *, expected):
+    return _receipt(value, expected=expected, version='native-receipt-v1')
+
+
+def _receipt(value, *, expected, version):
     """Expected tuple comes from frozen authority plus trusted native config.
 
     Callers must select this validator from the frozen lane, never the receipt.
@@ -122,7 +130,7 @@ def receipt(value, *, expected):
     _closed(expected, binding_keys)
     if any(value[k] != expected[k] for k in binding_keys):
         raise Refused('native_receipt_binding')
-    if value['version'] != 'native-receipt-v1' or value['reap_method'] != 'darwin-owned-exec-v1':
+    if value['version'] != version or value['reap_method'] != 'darwin-owned-exec-v1':
         raise Refused('native_receipt')
     for key in ('deployment_id', 'lane', 'boot'):
         _hex(value[key], 32)
@@ -229,6 +237,11 @@ ERRORS = frozenset(('native_refused', 'native_unknown', 'native_busy'))
 
 
 def response(value, *, request):
+    from worker.engines.qwen_execution import inventory_from_wire
+    return _response(value, request=request, inventory_validator=inventory_from_wire, receipt_validator=receipt)
+
+
+def _response(value, *, request, inventory_validator, receipt_validator):
     """Closed responses bind every reply to the originating session and nonce."""
     if type(value) is not dict: raise Refused('native_response')
     keys = ('version','deployment_id','configuration_sha256','lane','boot',
@@ -257,8 +270,7 @@ def response(value, *, request):
         _closed(v, ('enrollment_sha256','runtime_manifest_sha256','inventory'))
         if v['enrollment_sha256'] != request['binding'] or v['runtime_manifest_sha256'] != request['body']['runtime_manifest_sha256']:
             raise Refused('native_response_binding')
-        from worker.engines.qwen_execution import inventory_from_wire
-        inventory_from_wire(v['inventory'])
+        inventory_validator(v['inventory'])
     elif op=='hello':
         _closed(v, ('deployment_id','configuration_sha256','lane','boot','quarantined','launches','runtime_manifest_sha256','inventory')+ (('retention',) if 'retention' in v else ()))
         if (v['deployment_id'],v['configuration_sha256']) != (request['deployment_id'],request['configuration_sha256']): raise Refused('native_response')
@@ -266,8 +278,7 @@ def response(value, *, request):
         _hex(v['runtime_manifest_sha256'],64); _int(v['launches'],0,64)
         if 'retention' in v: _hex(v['retention'],64)
         if type(v['quarantined']) is not bool: raise Refused('native_response')
-        from worker.engines.qwen_execution import inventory_from_wire
-        inventory_from_wire(v['inventory'])
+        inventory_validator(v['inventory'])
     elif op=='get_output':
         _closed(v, ('sha256','offset','data'))
         if (v['sha256'],v['offset']) != (request['body']['sha256'],request['body']['offset']) or len(chunk(v['data'])) != request['body']['bytes']: raise Refused('native_response')
@@ -278,7 +289,7 @@ def response(value, *, request):
         else:
             expected={k:request[k] for k in ('runtime_id','binding','deployment_id','configuration_sha256','lane','boot')}
             expected['original_deadline']=v['receipt']['original_deadline']
-            receipt(v['receipt'],expected=expected)
+            receipt_validator(v['receipt'],expected=expected)
             if v['proposal'] is not None:
                 _closed(v['proposal'],('message','manifest'))
                 from contracts import validate as oracle

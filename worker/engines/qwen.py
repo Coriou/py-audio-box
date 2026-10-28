@@ -60,7 +60,7 @@ def _managed_snapshot(root, manifest, names, caps, owner_uid):
     def inspect(value, key='', directory='', location=(), filename=''):
         if key in ('auto_map', 'custom_pipelines') or key == 'trust_remote_code' and value is not False: raise Refused('remote_code')
         if (key == '_name_or_path' and filename == 'config.json'
-                and tokenizer_layout == 'base-bpe' and location[:-1] in metadata_nodes):
+                and tokenizer_layout in ('base-bpe', 'custom-bpe') and location[:-1] in metadata_nodes):
             if type(value) is not str or value != '': raise Refused('unlisted_config_path')
             return
         # Path declarations have one meaning: a nonempty listed local asset.
@@ -78,7 +78,7 @@ def _managed_snapshot(root, manifest, names, caps, owner_uid):
         if not name.endswith('.json'): continue
         value = json.loads(_read(root/name, 16*1024*1024, owner_uid=owner_uid))
         if type(value) is not dict: raise Refused('bundle_config')
-        if name == 'vocab.json' and tokenizer_layout == 'base-bpe':
+        if name == 'vocab.json' and tokenizer_layout in ('base-bpe', 'custom-bpe'):
             # BPE token strings are data, including tokens named _path/_file.
             # Containers, booleans and strings cannot turn this into config.
             if not value or any(type(v) is not int or v < 0 for v in value.values()):
@@ -89,8 +89,9 @@ def _managed_snapshot(root, manifest, names, caps, owner_uid):
             weights = value.get('weight_map')
             if type(weights) is not dict or not weights or any(type(v) is not str or str(Path(name).parent/v) not in names or not v.endswith('.safetensors') for v in weights.values()): raise Refused('bundle_config')
     config = json.loads(_read(root/'config.json', 16*1024*1024, owner_uid=owner_uid))
-    if tokenizer_layout == 'base-bpe':
-        expected = {'model_type': 'qwen3_tts', 'tts_model_type': 'base',
+    if tokenizer_layout in ('base-bpe', 'custom-bpe'):
+        expected = {'model_type': 'qwen3_tts',
+                    'tts_model_type': 'base' if tokenizer_layout == 'base-bpe' else 'custom_voice',
                     'tts_model_size': '0b6', 'tokenizer_type': 'qwen3_tts_tokenizer_12hz',
                     'architectures': ['Qwen3TTSForConditionalGeneration']}
         if any(config.get(key) != value for key, value in expected.items()):
@@ -189,7 +190,7 @@ def verify_inputs(e, bundles, references, inventory, *, owner_uid=None, referenc
     return root, reference
 
 
-def execute(execution, text, bundles, references, inventory, *, reference_temp_dir=None, backend_factory=None, managed_owner_uid=None, reference_fd=None, managed_namespace=False, cutoff=None):
+def execute(execution, text, bundles, references, inventory, *, reference_temp_dir=None, backend_factory=None, managed_owner_uid=None, reference_fd=None, managed_namespace=False, cutoff=None, on_loaded=None):
     e = execution
     from .qwen_prepare import QwenPreparation
     if type(e) is QwenPreparation: e = e.generation()
@@ -224,6 +225,7 @@ def execute(execution, text, bundles, references, inventory, *, reference_temp_d
         remaining()
     backend = backend_factory(model_name=str(root),num_threads=e.threads,dtype_str=e.dtype,revision=e.revision,offline=True,device=e.device,attention=e.attention)
     try:
+        if on_loaded is not None: on_loaded()
         params = dict(text=text,language=e.language, **{k:getattr(e,k) for k in ('temperature','top_p','top_k','repetition_penalty','max_new_tokens')})
         if e.task == 'clone':
             if managed_namespace:
@@ -279,8 +281,8 @@ def _encode(execution, text, result):
     return dict(data=output, frames=frames, size_bytes=len(output), sha256=hashlib.sha256(output).hexdigest(), identity=dict(execution.identity(), text_sha256=hashlib.sha256(text.encode()).hexdigest()))
 
 
-def verify_service_inputs(spec, bundles, references, inventory, *, owner_uid=None, reference_fd=None):
-    """Trusted managed service storage is sealed for the full attempt."""
+def verify_service_storage(spec, bundles, references, *, owner_uid=None):
+    """Managed ownership/mapping checks; byte verification remains in execute."""
     owner = os.getuid() if owner_uid is None else owner_uid
     if set(bundles) != {spec.bundle_id}: raise Refused('owned_mapping_required')
     root = Path(bundles[spec.bundle_id])
@@ -290,4 +292,10 @@ def verify_service_inputs(spec, bundles, references, inventory, *, owner_uid=Non
             if info.st_uid != owner or info.st_mode & 0o222 or path.is_symlink(): raise Refused('sealed_bundle_required')
     expected = {spec.reference_id} if spec.task == 'clone' else set()
     if set(references) != expected: raise Refused('owned_mapping_required')
+    return owner
+
+
+def verify_service_inputs(spec, bundles, references, inventory, *, owner_uid=None, reference_fd=None):
+    """Trusted managed service storage plus full input byte verification."""
+    owner=verify_service_storage(spec,bundles,references,owner_uid=owner_uid)
     return verify_inputs(spec,bundles,references,inventory,owner_uid=owner,reference_fd=reference_fd)

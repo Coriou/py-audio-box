@@ -1,5 +1,6 @@
 """Source/inert checks: never import the ML loader or start a backend."""
 import ast
+import hashlib
 import json
 from pathlib import Path
 import types
@@ -18,6 +19,15 @@ class LegacyControlsTests(unittest.TestCase):
         node = next(n for n in self.tree.body if isinstance(n, ast.FunctionDef) and n.name == name)
         exec(compile(ast.Module(body=[node], type_ignores=[]), 'inert-loader', 'exec'), env)
         return env[name]
+
+    def test_all_recorded_whole_source_hashes(self):
+        # Same complete source sets as the aggregate contract test, without
+        # unrelated schema/pytest dependencies. Keep that original test intact.
+        ledger = json.loads((ROOT / 'contracts/v1/legacy-controls.json').read_text())
+        for entry in ledger['commands'] + ledger['shared_sources'] + ledger['launchers']:
+            with self.subTest(source=entry['source']):
+                self.assertEqual(hashlib.sha256((ROOT / entry['source']).read_bytes()).hexdigest(),
+                                 entry['sha256'])
 
     def test_recorded_constants_and_environment_locations(self):
         ledger = json.loads((ROOT / 'contracts/v1/legacy-controls.json').read_text())
@@ -56,6 +66,7 @@ class LegacyControlsTests(unittest.TestCase):
                 snapshot = Mock(return_value='/inert/snapshots/resolved-revision')
                 env = dict(Path=Path, torch=torch, get_device=Mock(return_value=device),
                            best_dtype=Mock(return_value='fake-dtype'), _has_flash_attn=Mock(return_value=flash))
+                self.function('_qwen_model_class', env)
                 load = self.function('_load_tts_model_local', env)
                 with patch.dict(sys.modules, {
                         'qwen_tts': types.SimpleNamespace(Qwen3TTSModel=types.SimpleNamespace(from_pretrained=upstream)),

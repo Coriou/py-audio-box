@@ -193,19 +193,31 @@ def bundle_manifest(expected):
 
 
 class _AllowedRedirects(urllib.request.HTTPRedirectHandler):
-    def __init__(self, origins):
+    def __init__(self, origins, public_github_assets=False):
         self.origins = origins
+        self.public_github_assets=public_github_assets
 
     def redirect_request(self, req, fp, code, msg, headers, newurl):
         parsed = urlsplit(newurl)
-        if parsed.scheme != 'https' or parsed.username or parsed.password or parsed.query or parsed.fragment or 'https://' + parsed.netloc not in self.origins:
+        signed_asset=self.public_github_assets and parsed.hostname=='release-assets.githubusercontent.com'
+        if parsed.scheme != 'https' or parsed.username or parsed.password or (parsed.query and not signed_asset) or parsed.fragment or 'https://' + parsed.netloc not in self.origins:
             raise ValueError('Redirect outside allowed HTTPS origins')
         return super().redirect_request(req, fp, code, msg, headers, newurl)
 
 
-def _download_stream(url, target, expected_bytes, allowed_origins=None):
+def _download_stream(url, target, expected_bytes, allowed_origins=None, public_github_assets=False):
     # At most expected bytes reach disk; one extra byte detects overflow.
-    open_url = urllib.request.urlopen if allowed_origins is None else urllib.request.build_opener(_AllowedRedirects(allowed_origins)).open
+    if allowed_origins is None:open_url=urllib.request.urlopen
+    else:
+        handlers=[_AllowedRedirects(allowed_origins,True) if public_github_assets else _AllowedRedirects(allowed_origins)]
+        if public_github_assets:
+            # python.org builds may lack a configured system CA store. certifi
+            # is already hash-pinned by this installer's dependency closure.
+            import ssl
+            import certifi
+            handlers.extend((urllib.request.ProxyHandler({}),urllib.request.HTTPSHandler(
+                context=ssl.create_default_context(cafile=certifi.where()))))
+        open_url=urllib.request.build_opener(*handlers).open
     with open_url(url, timeout=10) as source, target.open('xb') as sink:
         remaining = expected_bytes
         while True:
@@ -222,9 +234,10 @@ def _download_stream(url, target, expected_bytes, allowed_origins=None):
         os.fsync(sink.fileno())
 
 
-def _transfer_child(url, target, size, allowed_origins=None):
+def _transfer_child(url, target, size, allowed_origins=None, public_github_assets=False):
     try:
-        _download_stream(url, target, size, allowed_origins)
+        if public_github_assets:_download_stream(url,target,size,allowed_origins,True)
+        else:_download_stream(url,target,size,allowed_origins)
     except BaseException:
         raise SystemExit(1)
 
@@ -234,7 +247,7 @@ def _budget(value):
         raise ValueError('Finite positive wait budget required')
 
 
-def download(url, target, expected_bytes=None, *, timeout=300, cancelled=lambda: False, allowed_origins=None):
+def download(url, target, expected_bytes=None, *, timeout=300, cancelled=lambda: False, allowed_origins=None, public_github_assets=False):
     """Managed transfer has a wall deadline including connect/read, and cancellation.
 
     A disposable POSIX child owns blocking network I/O. Deadline/cancel terminates
@@ -242,6 +255,12 @@ def download(url, target, expected_bytes=None, *, timeout=300, cancelled=lambda:
     Legacy callers have a finite 4 GiB cap, without an exact length requirement.
     """
     _budget(timeout)
+    if type(public_github_assets) is not bool:raise ValueError('Explicit public GitHub transfer policy required')
+    if public_github_assets:
+        initial=urlsplit(url)
+        if (set(allowed_origins or ())!={'https://github.com','https://release-assets.githubusercontent.com'} or
+                expected_bytes is None or initial.scheme!='https' or initial.netloc!='github.com' or initial.query or initial.fragment or initial.username or initial.password):
+            raise ValueError('Closed public GitHub asset origins required')
     if expected_bytes is not None and (type(expected_bytes) is not int or expected_bytes <= 0):
         raise ValueError('Positive expected byte count required')
     if expected_bytes is None:
@@ -251,6 +270,7 @@ def download(url, target, expected_bytes=None, *, timeout=300, cancelled=lambda:
     else:
         worker = _transfer_child
     args = (url, target, expected_bytes) if worker is _legacy_transfer_child else (url, target, expected_bytes, allowed_origins)
+    if public_github_assets:args=(*args,True)
     process = multiprocessing.get_context('fork').Process(target=worker, args=args)
     process.start()
     deadline = time.monotonic() + timeout

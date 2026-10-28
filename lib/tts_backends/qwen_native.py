@@ -14,14 +14,21 @@ class NativeQwenBackend:
     """Closed preset/clone routes; prompts never leave this model owner."""
 
     def __init__(self, *, model_name, num_threads, dtype_str, revision,
-                 offline, device, attention):
+                 offline, device, attention, diagnostic_request_seconds=None, diagnostic_dtype=None):
+        if diagnostic_dtype is not None and (type(diagnostic_dtype) is not str or diagnostic_dtype != 'float16' or diagnostic_request_seconds != 120 or dtype_str != diagnostic_dtype):
+            raise ValueError('native_diagnostic_precision')
+        expected_dtype = 'float32' if diagnostic_dtype is None else diagnostic_dtype
         if (type(model_name) is not str or not Path(model_name).is_absolute()
                 or not Path(model_name).is_dir()
                 or type(num_threads) is not int or not 1 <= num_threads <= 64
                 or type(revision) is not str or not 0 < len(revision) <= 256
                 or offline is not True
-                or (device, dtype_str, attention) != ('mps', 'float32', 'sdpa')):
+                or (device, dtype_str, attention) != ('mps', expected_dtype, 'sdpa')):
             raise ValueError('native_execution_required')
+        from worker.native_budgets import REQUEST_SECONDS, DIAGNOSTIC_REQUEST_SECONDS
+        if diagnostic_request_seconds is not None and (type(diagnostic_request_seconds) is not int or diagnostic_request_seconds != DIAGNOSTIC_REQUEST_SECONDS):
+            raise ValueError('native_diagnostic_budget')
+        self._request_seconds = REQUEST_SECONDS if diagnostic_request_seconds is None else diagnostic_request_seconds
         # These must precede the complete loader's Torch/upstream imports.
         for name in ('OMP_NUM_THREADS', 'MKL_NUM_THREADS', 'OPENBLAS_NUM_THREADS',
                      'NUMEXPR_NUM_THREADS'):
@@ -38,6 +45,14 @@ class NativeQwenBackend:
         if self._revision != revision:
             self.close()
             raise ValueError('result_model_identity')
+        # Verify the upstream owner's selected device, not just requested flags.
+        if getattr(getattr(self._model, 'device', None), 'type', None) != device:
+            self.close()
+            raise ValueError('native_device_mismatch')
+
+        if str(getattr(getattr(self._model, 'model', None), 'dtype', None)) != 'torch.' + expected_dtype:
+            self.close()
+            raise ValueError('native_dtype_mismatch')
 
     def close(self):
         # No process API, implicit retry, cache flush or asynchronous cleanup.
@@ -62,7 +77,7 @@ class NativeQwenBackend:
         for key, lo, hi in (('top_k', 0, 1000), ('max_new_tokens', 1, 32768)):
             if type(params[key]) is not int or not lo <= params[key] <= hi:
                 raise ValueError('generation_control')
-        if type(timeout_s) not in (int, float) or not math.isfinite(timeout_s) or not 0 < timeout_s <= 30:
+        if type(timeout_s) not in (int, float) or not math.isfinite(timeout_s) or not 0 < timeout_s <= self._request_seconds:
             raise ValueError('native_budget_required')
         # Timeout is enforced by the owning supervisor, never a helper thread.
         return dict(params)

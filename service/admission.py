@@ -20,8 +20,8 @@ def finite_budget(value):
 
 def native_demand(context):
     """Pure historical reservation rule; no hardware freshness or store writes."""
-    from worker.native_protocol import native_execution
-    spec = native_execution(context)
+    from worker.native_family import protocol
+    spec = protocol(context).native_execution(context)
     limits = context['plan']['resolved']['profile']['limits']
     if (4 if context['plan']['operation']=='voice_prepare' else 2)*spec.reference_bytes+3*min(spec.max_output_bytes,1048576)+96000 > limits['disk_bytes']:
         raise ValueError('native_control_disk_budget')
@@ -54,8 +54,17 @@ class Admission:
         if spec is not None:
             if profiles is None: raise ValueError('no_authority')
             selected = next(p for p in profiles if p['id']==plan['resolved']['profile']['id'])
-            if selected['verification'] != 'measured' or not selected['qualification_receipt'] or 'synthetic' in selected['qualification_receipt'].lower():
+            from worker.engines.native_kokoro import NativeKokoroExecution
+            from worker.native_cpu_qualification import permitted
+            qualifying=type(spec) is NativeKokoroExecution and permitted(context,selected)
+            if not qualifying and (selected['verification'] != 'measured' or not selected['qualification_receipt'] or 'synthetic' in selected['qualification_receipt'].lower()):
                 raise ValueError('real_qualification_required')
+            if type(spec) is NativeKokoroExecution:
+                if self.native_availability is None: raise ValueError('native_availability_required')
+                self.native_availability(context)
+                from worker.native_cpu_protocol import native_binding
+                native_binding(context)
+                return native_demand(context)
             if spec.engine == 'qwen':
                 from worker.engines.qwen_execution import current_hardware, inventory_from_wire
                 if spec.device == 'mps':
@@ -102,6 +111,12 @@ class Admission:
     def reserve_tx(self,job,context,profiles):
         if self.unaccounted:raise ValueError('resource_reconstruction_required')
         d=self.demand(context,profiles)
+        if context['plan']['resolved']['profile']['id']=='kokoro-native-cpu':
+            from worker.native_cpu_qualification import current
+            session=current()
+            if session is not None:
+                profile=next(p for p in profiles if p['id']=='kokoro-native-cpu')
+                session.reserve(self.core,context,profile,job)
         self.store.reserve_tx(job['id'],'inference',d)
 
     def _preflight(self):

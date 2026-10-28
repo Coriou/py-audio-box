@@ -1049,7 +1049,7 @@ def _validate_snapshot_journal(payload, data, registrations):
         journal_ids.add(journal_record['id'])
         if journal_record['phase']=='terminal':
             receipt=journal_record.get('receipt')
-            from worker.native_protocol import terminal_receipt, frozen_native
+            from worker.native_family import terminal_receipt, frozen_native
             if frozen_native(authority.context): raise ValueError('native_installed_policy_unavailable')
             terminal_receipt(receipt, authority=authority, runtime_id=journal_record['id'])
             if receipt['engine_uid'] != journal_record['uid']: raise ValueError('invalid_journal_receipt')
@@ -2011,7 +2011,7 @@ def _allocation_coherent(data,validated=None):
                     (bool(row[8])!=(reservation[3]=='retained') and row[0] not in recovered)): return False
                 if row[7]:
                     receipt=json.loads(row[7])
-                    from worker.native_protocol import terminal_receipt, frozen_native
+                    from worker.native_family import terminal_receipt, frozen_native
                     if frozen_native(authority.context): return False  # Lot B policy remains closed.
                     terminal_receipt(receipt, authority=authority, runtime_id=row[5])
                 elif (row[8] or job['state'] in ('succeeded','failed','cancelled')) and row[0] not in recovered: return False
@@ -3314,7 +3314,7 @@ def installed_clean_history(state, journal, *, family=None):
     for row in journal['records']:
         d=runtime[row['id']]; receipt=row.get('receipt',{})
         from service.worker_transport import Authority
-        from worker.native_protocol import terminal_receipt
+        from worker.native_family import terminal_receipt
         terminal_receipt(receipt,authority=Authority(*row['allocation']['snapshot']),runtime_id=row['id'])
         if (row['phase']!='terminal' or row['acked'] is not True or
                 digest(receipt)!=d['receipt_digest'] or row['allocation']['binding']!=d['binding'] or

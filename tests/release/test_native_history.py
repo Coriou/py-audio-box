@@ -55,7 +55,9 @@ class NativeHistoryTests(unittest.TestCase):
                     self.f.before=before
                 result=d.call('production_generate','alice',self.context['plan']['request'],key='retained')
                 if getattr(self,'terminal_mode',None):
-                    self.wait(lambda:self.f.s.active is not None and self.f.s.active['handle'] is not None)
+                    # observing is published only after the start RPC returns;
+                    # an assigned handle/receiver alone may precede Thread.start.
+                    self.wait(lambda:d.call('status')['phase']=='observing')
                     if self.terminal_mode == 'cancelled':
                         d.call('production_cancel','alice',dict(job_id=result['job_id']),key='cancel')
                         self.wait(lambda:self.f.s.active['cancel'])
@@ -419,3 +421,51 @@ class NativeCancelledHistoryTests(NativeTerminalHistoryTests):
 
     def test_changed_detached_reference_refuses(self):
         self.refusal(lambda c:next(self.f.spool.glob('*/input')).write_bytes(b'changed'))
+
+
+class NativeHistoryStartBarrierTests(unittest.TestCase):
+    """One deterministic failed-history start barrier; no added model family."""
+    terminal_mode='failed'
+    setUp=NativeHistoryTests.setUp
+    wait=NativeHistoryTests.wait
+    open=NativeHistoryTests.open
+    close=NativeHistoryTests.close
+    prepare=NativeHistoryTests.prepare
+
+    def test_terminal_history_waits_for_start_rpc_completion_before_receiver_join(self):
+        import threading
+        entered=threading.Event();release=threading.Event();checked=threading.Event();done=threading.Event()
+        errors=[];observed=[];original_start=threading.Thread.start;original_wait=self.wait;calls=0
+        def receiver_start(thread):
+            if getattr(getattr(thread,'_target',None),'__name__',None)=='receive':
+                entered.set()
+                if not release.wait(2):raise RuntimeError('receiver start barrier expired')
+            return original_start(thread)
+        def wait(predicate):
+            nonlocal calls
+            calls+=1
+            if calls==2:  # after initial reconciliation, this is the history start barrier
+                value=predicate();observed.append(value);checked.set()
+                if value:return value
+            return original_wait(predicate)
+        def prepare():
+            try:self.prepare()
+            except BaseException as exc:errors.append(exc)
+            finally:done.set()
+        with patch.object(threading.Thread,'start',receiver_start),patch.object(self,'wait',side_effect=wait):
+            owner=threading.Thread(target=prepare);owner.start()
+            try:
+                self.assertTrue(entered.wait(1));self.assertTrue(checked.wait(1))
+                self.assertEqual(observed,[False]);self.assertFalse(done.is_set())
+                self.assertIsNone(self.f.s.active['receiver'].ident)
+            finally:
+                release.set()
+                if not done.wait(2):
+                    # Test-owned inert handle only: retain the test failure but
+                    # allow the real owner loop to reap/close before temp removal.
+                    self.f.f.h.code=-15 if self.terminal_mode=='cancelled' else 7;self.f.s.tick()
+                owner.join(2)
+            self.assertFalse(owner.is_alive(),'history fixture owner custody unresolved')
+        self.assertEqual(errors,[]);self.assertEqual(self.job['state'],self.terminal_mode)
+        self.assertTrue(self.f.s.journal.value['records'][0]['receipt']['reaped'])
+        self.assertTrue(self.f.s.journal.value['records'][0]['acked'])

@@ -14,15 +14,16 @@ def sha256(path):
 
 
 def qwen_tokenizer_layout(names, checkpoint):
-    """Keep the legacy tokenizer contract; admit the reviewed Base BPE layout."""
+    """Keep legacy tokenizer files; admit only the two reviewed 0.6B BPE layouts."""
     if 'tokenizer_config.json' not in names:
         raise ValueError('Incomplete Qwen tokenizer')
     bpe = {'vocab.json', 'merges.txt'} & names
     if 'tokenizer.json' in names and not bpe:
         return 'tokenizer'
-    if (checkpoint == 'Qwen/Qwen3-TTS-12Hz-0.6B-Base'
+    if (checkpoint in ('Qwen/Qwen3-TTS-12Hz-0.6B-Base',
+                       'Qwen/Qwen3-TTS-12Hz-0.6B-CustomVoice')
             and 'tokenizer.json' not in names and bpe == {'vocab.json', 'merges.txt'}):
-        return 'base-bpe'
+        return 'base-bpe' if checkpoint.endswith('-Base') else 'custom-bpe'
     raise ValueError('Unsupported Qwen tokenizer layout')
 
 

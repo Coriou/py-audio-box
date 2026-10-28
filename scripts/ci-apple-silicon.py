@@ -16,10 +16,23 @@ import tempfile
 import time
 import subprocess
 import sys
+import resource
 
 EXPECTED = {'qwen-tts': '0.1.1', 'torch': '2.10.0', 'torchaudio': '2.10.0',
             'transformers': '4.57.3', 'tokenizers': '0.22.2'}
 MAX_REPORT_BYTES = 10 * 1024 * 1024
+
+
+def host_resources():
+    """Measured host capacity, not a model admission or free-RAM guarantee."""
+    memory = int(subprocess.check_output(
+        ['/usr/sbin/sysctl', '-n', 'hw.memsize'], timeout=5, text=True).strip())
+    return dict(physical_memory_bytes=memory,
+                disk_free_bytes=shutil.disk_usage(Path.cwd()).free,
+                logical_cpus=os.cpu_count(),
+                commit=os.environ.get('GITHUB_SHA', 'unknown'),
+                runner_image=os.environ.get('ImageOS', 'unknown'),
+                runner_version=os.environ.get('ImageVersion', 'unknown'))
 
 
 def validate_platform():
@@ -54,8 +67,8 @@ def sox_version(sox):
     banner = subprocess.check_output([sox, '--version'], timeout=10, text=True).strip()
     if re.search(r'\bSoX v?\d+(?:\.\d+)+', banner):
         return banner
-    # Some Homebrew builds print only "SoX v". Record the installed package,
-    # not a claimed pin: brew install sox deliberately follows Homebrew.
+    # Some existing Homebrew builds print only "SoX v". Observe their installed
+    # package version without provisioning anything or claiming a package pin.
     brew = shutil.which('brew')
     if brew:
         try:
@@ -71,9 +84,9 @@ def sox_version(sox):
 def deps_check():
     validate_platform()
     sox = shutil.which('sox')
-    if not sox:
-        raise RuntimeError('SoX executable missing; provision brew install sox')
-    installed_sox_version = sox_version(sox)
+    # The pinned native 12 Hz path has no SoX calls. Only the unsupported
+    # legacy 25 Hz family uses PySox; observe an existing executable optionally.
+    installed_sox_version = sox_version(sox) if sox else None
     versions = {name: metadata.version(name) for name in EXPECTED}
     validate_versions(versions)
     for name in ('torch', 'torchaudio', 'transformers', 'tokenizers', 'qwen_tts'):
@@ -91,6 +104,8 @@ def deps_check():
             'mps_built': torch.backends.mps.is_built(),
             'mps_available': torch.backends.mps.is_available(),
             'sox_executable': sox, 'sox_version': installed_sox_version,
+            'sox_required_for_native_12hz': False,
+            'resources': host_resources(),
             'cpu_tensor': 'passed', 'models_loaded': False}
 
 
@@ -101,6 +116,7 @@ def mps_tensor_probe():
     if os.environ.get('PYTORCH_MPS_HIGH_WATERMARK_RATIO') is not None:
         raise RuntimeError('use the conservative default MPS memory watermark')
     import torch
+    started = time.monotonic()
     if not torch.backends.mps.is_available():
         raise RuntimeError('MPS unavailable; no CPU fallback')
     value = torch.tensor([1., 2.], device='mps')
@@ -109,6 +125,12 @@ def mps_tensor_probe():
     if result.device.type != 'mps' or result.cpu().tolist() != [3., 5.]:
         raise RuntimeError('MPS device/value validation failed')
     return {'mps_tensor': 'passed', 'device': str(result.device),
+            'elapsed_seconds': time.monotonic() - started,
+            'peak_rss_bytes': resource.getrusage(resource.RUSAGE_SELF).ru_maxrss,
+            'mps_allocated_bytes': torch.mps.current_allocated_memory(),
+            'mps_driver_bytes': torch.mps.driver_allocated_memory(),
+            'mps_recommended_max_bytes': torch.mps.recommended_max_memory(),
+            'fallback_enabled': False, 'resources': host_resources(),
             'models_loaded': False, 'metal_synthesis_qualified': False}
 
 
@@ -325,6 +347,9 @@ def main():
         if args.mode == 'mps-probe':
             validate_platform()
             bounded_probe(args.report)
+            report = json.loads(args.report.read_text())
+            report['child_reaped'] = True
+            write_report(args.report, report)
             return
         report = deps_check() if args.mode == 'deps-check' else mps_tensor_probe()
         write_report(args.report, dict(status='passed', mode=args.mode, **report))

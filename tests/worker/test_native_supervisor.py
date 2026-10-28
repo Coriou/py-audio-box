@@ -102,7 +102,7 @@ class NativeSupervisorTests(unittest.TestCase):
 
     def test_launch_intent_before_factory_replay_wait_and_receiver(self):
         self.prepare()
-        def exchange(*args):
+        def exchange(*args, **kwargs):
             self.assertEqual(self.s.journal.value['records'][0]['phase'],'launch-intent')
             return None
         with patch('worker.native_child.parent_exchange',exchange):
@@ -131,6 +131,66 @@ class NativeSupervisorTests(unittest.TestCase):
         with self.assertRaises(Refused): self.s.dispatch(self.q('start'))
         self.assertTrue(self.s.quarantined); self.assertEqual(self.s.journal.value['records'][0]['phase'],'launch-intent')
         with self.assertRaises(Refused): self.s.dispatch(self.q('start'))
+
+
+    def long_job(self):
+        self.s.journal.lock.close()
+        self.root=self.fixture.root/'native-long'; self.root.mkdir(mode=0o700)
+        self.snapshot[0]['deadline']=(self.now+timedelta(seconds=150)).isoformat()
+        self.binding=hashlib.sha256(canonical(self.snapshot)).hexdigest()
+        self.reg={self.binding:dict(snapshot=self.snapshot,execution=self.e,bundles={'bundle':self.fixture.bundle},inventory=self.inventory)}
+        self.make()
+
+    def test_diagnostic_120_is_not_installed_registration_authority(self):
+        self.e=replace(self.e,timeout_s=120)
+        self.snapshot=self.snapshot_for(self.e)
+        self.long_job()
+        with self.assertRaisesRegex(Refused,'native_registration'):self.prepare()
+        self.assertEqual(self.calls,[])
+
+    def test_control_rpcs_never_hash_full_model_bundle(self):
+        with patch('worker.engines.qwen.verify_bundle',side_effect=AssertionError('hash in RPC')),patch('worker.engines.qwen.verify_service_inputs',side_effect=AssertionError('hash in RPC')):
+            self.prepare()
+            with patch('worker.native_child.parent_exchange',return_value=None):
+                self.s.dispatch(self.q('start'));self.s.active['receiver'].join(1)
+        self.assertNotIn('receiver_error',self.s.active)
+        self.assertEqual(len(self.calls),1)
+
+    def test_load_63_seconds_gets_independent_request_budget(self):
+        self.long_job(); self.prepare()
+        self.assertEqual(self.s.cutoffs[self.rid],220)
+        def exchange(channel,config,cutoff,*,on_loaded):
+            self.assertEqual(cutoff,220)
+            self.t+=63; self.now+=timedelta(seconds=63)
+            on_loaded(self.t+25)
+        with patch('worker.native_child.parent_exchange',exchange):
+            self.s.dispatch(self.q('start')); self.s.active['receiver'].join(1)
+        self.assertNotIn('receiver_error',self.s.active)
+        self.assertEqual(self.s.cutoffs[self.rid],188)
+        self.t=188; self.s.signal_tick()
+        self.assertEqual(self.signals[-1][1],signal.SIGTERM)
+
+    def test_expired_startup_cannot_be_renewed_by_ready(self):
+        self.long_job(); self.prepare()
+        def exchange(channel,config,cutoff,*,on_loaded):
+            self.assertEqual(config['cutoff'],250)
+            self.t=221
+            on_loaded(self.t+25)
+        with patch('worker.native_child.parent_exchange',exchange):
+            self.s.dispatch(self.q('start')); self.s.active['receiver'].join(1)
+        self.assertEqual(self.s.cutoffs[self.rid],220)
+        self.assertEqual(self.s.active['receiver_error']['message'],'native_deadline')
+
+    def test_cancel_during_load_cannot_be_renewed_by_ready(self):
+        self.long_job(); self.prepare()
+        def exchange(channel,config,cutoff,*,on_loaded):
+            self.s.active['cancel']=True
+            on_loaded(self.t+25)
+        with patch('worker.native_child.parent_exchange',exchange):
+            self.s.dispatch(self.q('start')); self.s.active['receiver'].join(1)
+        self.assertEqual(self.s.cutoffs[self.rid],220)
+        self.assertEqual(self.s.active['receiver_error']['message'],'native_deadline')
+        self.s.signal_tick(); self.assertEqual(self.signals[-1][1],signal.SIGTERM)
 
     def test_transfer_does_not_block_stop_and_body_refusals(self):
         self.prepare(); self.s.transfer.acquire()
@@ -166,10 +226,20 @@ class NativeSupervisorTests(unittest.TestCase):
             def settimeout(self,timeout): pass
         cutoff=time.monotonic()+20
         config=dict(token='f'*32,binding=self.binding,snapshot=self.snapshot,execution=self.e.identity(),bundles={'bundle':str(self.fixture.bundle)},references={},inventory=inventory_wire(self.inventory),conditioning=None,cutoff=cutoff)
-        raw=canonical(config); child=BytesChannel(struct.pack('!I',len(raw))+raw)
+        raw=canonical(config); ack=canonical(dict(kind='run',token=config['token'],binding=config['binding'],cutoff=config['cutoff'])); child=BytesChannel(struct.pack('!I',len(raw))+raw+struct.pack('!I',len(ack))+ack)
         self.fixture.backend.synthesise_preset.return_value.metadata=dict(checkpoint=str(self.fixture.bundle),revision=self.e.revision)
         with inert_guard(), patch('lib.tts_backends.qwen_native.NativeQwenBackend',return_value=self.fixture.backend):
             native_child.run_socket(child)
+        for changes in ({'token':'0'*32},{'cutoff':cutoff+5},{'extra':1}):
+            bad=canonical(dict(kind='run',token=config['token'],binding=config['binding'],cutoff=cutoff))
+            value=json.loads(bad);value.update(changes);bad=canonical(value)
+            config_raw=canonical(config)
+            channel=BytesChannel(struct.pack('!I',len(config_raw))+config_raw+struct.pack('!I',len(bad))+bad)
+            with inert_guard(), patch('lib.tts_backends.qwen_native.NativeQwenBackend',return_value=self.fixture.backend),self.assertRaises(Refused):
+                native_child.run_socket(channel)
+        forbidden=canonical(dict(config,diagnostic_dtype='float16'))
+        with self.assertRaisesRegex(Refused,'native_shape'):
+            native_child.run_socket(BytesChannel(struct.pack('!I',len(forbidden))+forbidden))
         parent=BytesChannel(child.sent)
         proposal,data=native_child.parent_exchange(parent,config,cutoff)
         native_child.validate_proposal(self.snapshot,proposal,data,self.e)
@@ -218,8 +288,8 @@ class NativeSupervisorTests(unittest.TestCase):
             def settimeout(self,timeout): pass
         self.t=time.monotonic(); self.s.clock=lambda:time.monotonic()
         original=native_child.parent_exchange
-        def exchange(channel,config,cutoff):
-            raw=canonical(config); child=BytesChannel(struct.pack('!I',len(raw))+raw)
+        def exchange(channel,config,cutoff,**kwargs):
+            raw=canonical(config); ack=canonical(dict(kind='run',token=config['token'],binding=config['binding'],cutoff=config['cutoff'])); child=BytesChannel(struct.pack('!I',len(raw))+raw+struct.pack('!I',len(ack))+ack)
             self.fixture.backend.synthesise_preset.return_value.metadata=dict(checkpoint=str(self.fixture.bundle),revision=self.e.revision)
             with inert_guard(), patch('lib.tts_backends.qwen_native.NativeQwenBackend',return_value=self.fixture.backend): native_child.run_socket(child)
             return original(BytesChannel(child.sent),config,cutoff)
@@ -485,6 +555,68 @@ class NativeSupervisorTests(unittest.TestCase):
         self.assertEqual(self.signals,[(123,signal.SIGTERM),(123,signal.SIGKILL)])
         self.assertEqual(self.h.waited,1); self.assertIsNotNone(self.s.active)
         self.assertIsNone(self.s.dispatch(self.q('collect'))['receipt'])
+
+    def test_receiver_start_failure_retains_owned_handle_stop_reap_and_no_receipt(self):
+        import struct,time
+        self.t=time.monotonic()  # Real frame I/O and the fixture clock share one domain.
+        self.prepare();cert=b'inert-server-peer';self.s.pin=hashlib.sha256(cert).hexdigest();q=self.q('start')
+        class Wire:
+            def __init__(self):self.raw=bytearray(struct.pack('!I',len(canonical(q)))+canonical(q));self.sent=b''
+            def version(self):return 'TLSv1.3'
+            def getpeercert(self,binary_form=False):return cert
+            def settimeout(self,value):pass
+            def recv(self,size):value=bytes(self.raw[:size]);del self.raw[:len(value)];return value
+            def sendall(self,data):self.sent+=data
+            def close(self):pass
+        original=threading.Thread.start
+        def fail_receiver(thread):
+            if getattr(getattr(thread,'_target',None),'__name__',None)=='receive':raise RuntimeError('inert receiver start failure')
+            return original(thread)
+        wire=Wire()
+        with patch.object(threading.Thread,'start',fail_receiver):self.s.serve_connection(wire)
+        reply=p.response(json.loads(wire.sent[4:]),request=q)
+        self.assertFalse(reply['ok']);self.assertTrue(self.s.failed)
+        self.assertIs(self.s.active['handle'],self.h);self.assertIsNone(self.s.active['receiver'].ident)
+        self.assertEqual(self.h.waited,0);self.assertIsNone(self.s.dispatch(self.q('collect'))['receipt'])
+        self.s.dispatch(self.q('stop'));self.s.tick();self.assertEqual(self.signals,[(123,signal.SIGTERM)])
+        self.h.code=-15;self.s.tick();self.s.tick()
+        self.assertEqual(self.h.waited,1);self.assertTrue(self.s.active['waited'])
+        self.assertIsNone(self.s.dispatch(self.q('collect'))['receipt']);self.assertFalse(self.s.journal.value['records'][0]['acked'])
+        self.s.active['parent'].close()  # Only the test-owned inert channel, after confirmed fake handle wait.
+
+    def test_receiver_publication_before_start_is_hidden_from_tick_until_start_rpc_completes(self):
+        self.prepare();entered=threading.Event();release=threading.Event();done=threading.Event();errors=[]
+        original=threading.Thread.start
+        def receiver_start(thread):
+            if getattr(getattr(thread,'_target',None),'__name__',None)=='receive':
+                entered.set()
+                if not release.wait(2):raise RuntimeError('receiver start barrier expired')
+            return original(thread)
+        def start():
+            try:self.s.dispatch(self.q('start'))
+            except BaseException as exc:errors.append(exc)
+            finally:done.set()
+        with patch('worker.native_child.parent_exchange',return_value=None),patch.object(threading.Thread,'start',receiver_start):
+            starter=threading.Thread(target=start);starter.start()
+            try:
+                self.assertTrue(entered.wait(1));receiver=self.s.active['receiver']
+                self.assertIsNone(receiver.ident);self.assertFalse(done.is_set())
+                # This reproduces the history fixture's invalid direct read.
+                with self.assertRaisesRegex(RuntimeError,'before it is started'):receiver.join(0)
+                self.assertFalse(self.s.lock.acquire(False))  # start owns the protocol/state lock.
+                with patch.object(self.s,'finish_tick',wraps=self.s.finish_tick) as finish:
+                    self.s.tick();finish.assert_not_called()
+                    self.s.dispatch(self.q('stop'));self.s.tick();finish.assert_not_called()
+                self.assertTrue(self.s.active['cancel']);self.assertEqual(self.h.waited,0)
+                self.assertIsNone(self.s.journal.value['records'][0]['receipt'])
+                self.assertEqual(self.signals,[(123,signal.SIGTERM)])
+            finally:release.set();starter.join(2)
+            self.assertFalse(starter.is_alive());self.assertTrue(done.is_set());self.assertEqual(errors,[])
+            receiver.join(1);self.assertFalse(receiver.is_alive())
+        self.h.code=-15;self.s.tick();self.s.tick()
+        receipt=self.s.dispatch(self.q('collect'))['receipt']
+        self.assertTrue(receipt['reaped']);self.assertFalse(receipt['timely']);self.assertEqual(self.h.waited,1)
+        self.assertIsNone(self.s.active)
 
     def test_blocked_popen_registration_stop_and_identity_serialization(self):
         self.prepare(); entered=threading.Event(); release=threading.Event(); errors=[]

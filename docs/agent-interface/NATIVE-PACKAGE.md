@@ -419,14 +419,53 @@ Capacity refusal means retain this owner and its evidence; further execution nee
 a separately implemented retention/archival policy. Renewal creates no capacity.
 Metal remains UNQUALIFIED and release NO-GO; legacy reconciliation remains CLOSED.
 
-## Native SoX prerequisite and evidence boundary
+## Native 12 Hz dependencies and evidence boundary
 
-Native Qwen requires the SoX executable on PATH. Provision it separately with
-`brew install sox` and verify `sox --version`. Apple dependency CI records its
-resolved executable/version beside Python, architecture, package versions, CPU
-operation and MPS availability. This is a native prerequisite, not a synthesis
-claim. Client hash-locked installation and fixture HTTP/MCP protocol tests are
+The pinned native 12 Hz Qwen route does not use the SoX executable. Its patched
+dependency defers the unsupported legacy 25 Hz family, the only Qwen code that
+uses PySox. No Homebrew SoX installation is needed for this route; an existing
+executable is optionally recorded by dependency CI. See the exact artifact,
+inspection and upgrade boundary in [NATIVE-DEPENDENCY.md](NATIVE-DEPENDENCY.md).
+This does not extend support to 25 Hz or qualify synthesis. Client hash-locked
+installation and fixture HTTP/MCP protocol tests are
 separate from native model runtime qualification; see [APPLE-CI.md](APPLE-CI.md).
 Linux/arm64 Kokoro preview is a documented next slice, not implemented or
 qualified here. Native CPU, Metal synthesis and physical-Mac performance remain
 unqualified.
+
+
+## Bounded cold startup versus request execution
+
+The source owner loads once **per job**; it has no persistent loaded-model reuse.
+A cold job must carry an original absolute deadline allowing startup plus work:
+up to 150 seconds total (120 seconds startup, then at most the execution's
+30-second request budget). A shorter caller deadline remains authoritative and
+is never extended. Startup includes verification and loading; it is not a claim
+that this runner always loads within 120 seconds.
+
+The inherited child socket sends an exact token/binding `loaded` handshake only
+after backend construction. The parent validates it and acknowledges a request
+cutoff capped by both the original job deadline and execution timeout. The
+watchdog enforces startup before that acknowledgement and the independent
+request cutoff afterward. Cancellation and process identity checks apply during
+both phases; a cancelled, expired or already-signalled owner cannot gain time
+from a late handshake. RPC timeouts remain two seconds. Output, spawn guard,
+trust and schema checks remain in force. New archive bytes include both ends of
+the private handshake; do not mix child/supervisor source archives.
+
+This repairs a source-level readiness defect: observed cold loading took
+62.63 seconds, exceeding the former shared 30-second cap. It does not qualify
+installed startup or synthesis. The diagnostic runner's phase budgets remain
+separate. CustomVoice preset support does not establish Base-model cloning.
+
+
+Full sealed-tree, manifest and file-hash verification now runs inside that
+cancellable owned startup, before model construction and the `loaded` handshake.
+The `prepare` and `start` control RPCs validate the enrolled binding, execution,
+model mapping, hardware observation, resource admission and cancellation without
+rehashing model weights. They acknowledge admission/launch, not model readiness.
+The child still performs the existing complete input verification; a corrupt
+bundle cannot reach backend construction or produce a loaded acknowledgement.
+This removes multi-gigabyte hashing from the two-second control RPC without
+raising its timeout or introducing a blocking 120-second server operation.
+Actual installed startup and public synthesis remain unqualified.

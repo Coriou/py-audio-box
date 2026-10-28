@@ -3602,7 +3602,7 @@
   "shared_sources": [
     {
       "source": "lib/tts.py",
-      "sha256": "fb8b65eab87e8286db56644af71b2ce547a29e9a73ee52235fe48aa6ca663528",
+      "sha256": "923281a1d73a41ef6ae97d196684d5c015a4f2ea50910ecc6cb5de2195b6abe3",
       "constants": {
         "PROMPT_SCHEMA_VERSION": "1",
         "DEFAULT_TTS_MODEL": "'Qwen/Qwen3-TTS-12Hz-0.6B-Base'",

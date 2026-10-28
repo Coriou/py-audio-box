@@ -1,4 +1,5 @@
 """Single owned exec native worker. No Core, Linux containment or restart adoption."""
+from worker.native_budgets import JOB_SECONDS, STARTUP_SECONDS
 import base64
 import copy
 from datetime import datetime, timezone
@@ -14,6 +15,7 @@ import shutil
 import socket
 import stat
 import subprocess
+import sys
 import threading
 import time
 import wave
@@ -25,6 +27,10 @@ QUOTA = 64 * 1024 * 1024
 
 
 def available_ram():
+    if sys.platform=='darwin':
+        from worker.native_memory import observe
+        try:return observe()['admission_bytes']
+        except (OSError,ValueError):return 0
     try:
         pages=os.sysconf('SC_AVPHYS_PAGES'); size=os.sysconf('SC_PAGE_SIZE')
         return pages*size if pages>0 and size>0 else 0
@@ -66,9 +72,12 @@ def pcm(data, spec, reference=False):
 
 
 class _JournalValidation:
+    protocol = p
+    version = 'native-journal-v1'
+
     def validate(self, value):
         p._closed(value, ('version','deployment_id','configuration_sha256','lane','records'))
-        if (value['version'],value['deployment_id'],value['configuration_sha256']) != ('native-journal-v1',self.deployment,self.configuration): raise Refused('native_journal')
+        if (value['version'],value['deployment_id'],value['configuration_sha256']) != (self.version,self.deployment,self.configuration): raise Refused('native_journal')
         p._hex(value['lane'],32)
         if type(value['records']) is not list or len(value['records']) > 64: raise Refused('native_journal')
         seen = set()
@@ -81,10 +90,10 @@ class _JournalValidation:
             p._int(r['input_size'],0,24000000)
             from contracts import validate as oracle
             oracle.stored_context(r['snapshot'][0],r['snapshot'][1])
-            spec=p.native_execution(r['snapshot'][1])
+            spec=self.protocol.native_execution(r['snapshot'][1])
             if r['input_size']>spec.reference_bytes: raise Refused('native_journal')
             if r['phase'] == 'terminal':
-                p.receipt(r['receipt'],expected=self.expected(r,value['lane']))
+                self.protocol.receipt(r['receipt'],expected=self.expected(r,value['lane']))
                 if r['receipt']['timely'] and (r['proposal'] is None or r['output'] is None): raise Refused('native_journal')
                 if (r['proposal'] is None)!=(r['output'] is None): raise Refused('native_journal')
                 if r['output'] is not None:
@@ -126,10 +135,10 @@ class Journal(_JournalValidation):
                 if r['output'] is not None:
                     data=read_private(private(self.root/r['token'],True)/'output',1048576)
                     if len(data)!=r['output']['bytes'] or hashlib.sha256(data).hexdigest()!=r['output']['sha256']: raise Refused('native_journal')
-                    validate_proposal(r['snapshot'],r['proposal'],data,p.native_execution(r['snapshot'][1]))
+                    validate_proposal(r['snapshot'],r['proposal'],data,self.protocol.native_execution(r['snapshot'][1]),**({} if self.protocol is p else dict(protocol=self.protocol)))
         else:
             if set(x.name for x in self.root.iterdir())!=({'native.lock'} | ({'predecessor'} if self.retained is not None else set())): raise Refused('native_storage')
-            self.save(dict(version='native-journal-v1', deployment_id=deployment,
+            self.save(dict(version=self.version, deployment_id=deployment,
                 configuration_sha256=configuration, lane=secrets.token_hex(16) if self.retained is None else self.retained['native']['lane'], records=[]))
         from service.native_renewal import host_registrations
         expected={'native.lock','native.json'} | {f'registration-{b}' for b in host_registrations(self.root)} | ({'predecessor'} if self.retained is not None else set()) | {r['token'] for r in self.value['records']}
@@ -169,6 +178,15 @@ class NativeSupervisor:
     enrolled inventory. Prepare derives fresh exact bindings only from these
     trusted templates; requests cannot change their enrolled metadata.
     """
+    protocol = p
+    journal_type = None
+    child_filename = 'native_child.py'
+    receipt_version = 'native-receipt-v1'
+    startup_seconds = STARTUP_SECONDS
+    job_seconds = JOB_SECONDS
+
+    disk_reserve_bytes = 6 * 1024**3
+
     def __init__(self, root, *, deployment_id, configuration_sha256, peer_pin,
                  runtime_manifest_sha256, registrations, python, child_entry,
                  popen=subprocess.Popen, pair=socket.socketpair,
@@ -176,32 +194,26 @@ class NativeSupervisor:
                  clock=time.monotonic, utc=lambda: datetime.now(timezone.utc),
                  free_bytes=None, free_ram=available_ram, availability_provider=None):
         for v,n in ((deployment_id,32),(configuration_sha256,64),(peer_pin,64),(runtime_manifest_sha256,64)): p._hex(v,n)
-        if not Path(python).is_absolute() or child_entry!=str(Path(__file__).with_name('native_child.py').resolve()): raise Refused('native_command')
+        if not Path(python).is_absolute() or child_entry!=str(Path(__file__).with_name(self.child_filename).resolve()): raise Refused('native_command')
         if (Path(root)/'predecessor').exists() and (Path(root)/'native.json').exists(): raise Refused('native_renewal_new_boot_required')
-        self.journal=Journal(root,deployment_id,configuration_sha256)
+        self.journal=(Journal if self.journal_type is None else self.journal_type)(root,deployment_id,configuration_sha256)
         if self.journal.retained is not None and self.journal.retained['native']['runtime_manifest_sha256']!=runtime_manifest_sha256: raise Refused('native_renewal_incompatible')
-        self.boot=secrets.token_hex(16) if self.journal.retained is None else self.journal.retained['native']['boot']; self.pin=peer_pin; self.manifest=runtime_manifest_sha256
+        self.boot=self.new_boot() if self.journal.retained is None else self.journal.retained['native']['boot']; self.pin=peer_pin; self.manifest=runtime_manifest_sha256
         if type(registrations) is not dict or not 1<=len(registrations)<=64: raise Refused('native_registration')
         self.registrations=copy.deepcopy(registrations)
         self._preset_templates=copy.deepcopy(registrations)
         self._origin_contexts = {}
         if self.journal.retained is not None:
             retained = self.journal.retained
-            pairs = p.origin_template_pairs(retained['origin_templates'], retained['current_templates'], retained['origins'])
+            pairs = self.protocol.origin_template_pairs(retained['origin_templates'], retained['current_templates'], retained['origins'])
             configured = [canonical(dict(principal=r['snapshot'][0]['principal_id'],
                 profile=r['snapshot'][1]['plan']['resolved']['profile']['id'],
-                voice_version=p.native_execution(r['snapshot'][1]).voice_revision,context=r['snapshot'][1]))
+                voice_version=self.protocol.native_execution(r['snapshot'][1]).voice_revision,context=r['snapshot'][1]))
                 for r in self._preset_templates.values()]
             if sorted(configured) != sorted(canonical(b) for _, b in pairs):
                 raise Refused('native_origin')
             self._origin_contexts = {canonical(b['context']): a['context'] for a, b in pairs}
-        from worker.native_availability import Availability, host_observation
-        from worker.engines.qwen_execution import inventory_wire
-        inventories = [r['inventory'] for r in registrations.values()]
-        if any(canonical(inventory_wire(i)) != canonical(inventory_wire(inventories[0])) for i in inventories):
-            raise Refused('native_registration')
-        self.availability = Availability(inventories[0], runtime_manifest_sha256,
-            provider=host_observation if availability_provider is None else availability_provider, utc=utc, clock=clock)
+        self.availability = self.make_availability(registrations, runtime_manifest_sha256, availability_provider, utc, clock)
         self.python,self.entry=python,child_entry
         self.popen,self.pair,self.signal_group,self.identity=popen,pair,signal_group,identity
         self.clock,self.utc=clock,utc
@@ -212,8 +224,35 @@ class NativeSupervisor:
         self.handle_lock=threading.Lock(); self.uncertain=set()
         self.active=None; self.failed=False; self.launches=0
         self.availability_slots=threading.BoundedSemaphore(2)
-        self.cutoffs={}; self.cancelled=set(); self.slots=threading.BoundedSemaphore(3)
+        self.cutoffs={}; self.job_cutoffs={}; self.cancelled=set(); self.slots=threading.BoundedSemaphore(3)
         self.shutdown_event=threading.Event(); self.transfer_slot=threading.BoundedSemaphore(1)
+
+    def new_boot(self):return secrets.token_hex(16)
+
+    def make_availability(self, registrations, manifest, provider, utc, clock):
+        from worker.native_availability import Availability, host_observation
+        from worker.engines.qwen_execution import inventory_wire
+        inventories=[r['inventory'] for r in registrations.values()]
+        if any(canonical(inventory_wire(i))!=canonical(inventory_wire(inventories[0])) for i in inventories):
+            raise Refused('native_registration')
+        return Availability(inventories[0],manifest,provider=host_observation if provider is None else provider,utc=utc,clock=clock)
+
+    def validate_output(self, snapshot, proposal, data, execution):
+        from worker.native_child import validate_proposal
+        return validate_proposal(snapshot,proposal,data,execution)
+
+    def model_started(self, active, record):
+        pass
+
+    def owner_failure(self,exc):
+        self.failed=True
+
+    def exchange(self, connection, config, cutoff, on_loaded):
+        from worker.native_child import parent_exchange
+        return parent_exchange(connection,config,cutoff,on_loaded=on_loaded)
+
+    def child_environment(self, record):
+        return {'PYTHONNOUSERSITE':'1','TOKENIZERS_PARALLELISM':'false','HF_HUB_OFFLINE':'1','TRANSFORMERS_OFFLINE':'1'}
 
     @property
     def quarantined(self):
@@ -239,7 +278,7 @@ class NativeSupervisor:
         attempt=oracle.active_attempt(job)
         if job['state'] not in ('running','cancel_requested') or attempt['reaped']: raise Refused('native_attempt')
         if type(assets) is not list or len(assets)>256 or any(type(a) is not str for a in assets) or len(set(assets))!=len(assets) or not set(oracle.required_asset_ids(context['plan']))<=set(assets): raise Refused('native_assets')
-        if p.native_execution(r['snapshot'][1]) != e: raise Refused('native_registration')
+        if self.protocol.native_execution(r['snapshot'][1]) != e: raise Refused('native_registration')
         from worker.engines.qwen_execution import inventory_wire
         if r['snapshot'][1]['execution']['hardware'] != inventory_wire(reg['inventory']): raise Refused('native_registration')
         if (e.device,e.dtype,e.attention,e.task) not in (('mps','float32','sdpa','custom_voice'),('mps','float32','sdpa','clone')) or e.timeout_s>30 or e.max_output_bytes>1048576: raise Refused('native_registration')
@@ -283,11 +322,11 @@ class NativeSupervisor:
                         original = self._origin_contexts.get(canonical(source[1]), source[1])
                         derived = owned_preset_context(original, source[0]['principal_id'],
                             registered['execution'].preset, version['voice_id'])
-                        derived = p.origin_execution_context(derived, source[1])
+                        derived = self.protocol.origin_execution_context(derived, source[1])
                         candidate = copy.deepcopy(source); candidate[1] = derived
                         if canonical(template(candidate)) != expected: continue
                         reg = copy.deepcopy(registered)
-                        reg['execution'] = p.native_execution(derived)
+                        reg['execution'] = self.protocol.native_execution(derived)
                         matches.append(reg)
                     except (Refused, KeyError, ValueError, IndexError):
                         continue
@@ -304,7 +343,7 @@ class NativeSupervisor:
                         original = self._origin_contexts.get(canonical(source[1]), source[1])
                         derived = owned_clone_context(original, source[0]['principal_id'], target['request'],
                             target['assets'][0], version=(target['voice_versions'][0] if target['operation']=='speech_generate' else None))
-                        derived = p.origin_execution_context(derived, source[1])
+                        derived = self.protocol.origin_execution_context(derived, source[1])
                         if target['operation'] == 'voice_prepare':
                             # Production assigns deterministic output role IDs after resolution.
                             token = oracle.canonical_hash([snapshot[0]['principal_id'], snapshot[0]['idempotency_key'], target['request']])
@@ -313,7 +352,7 @@ class NativeSupervisor:
                             derived['plan']['reference_roles'].update(reference_asset_id=reference,audition_asset_id='audition-'+token)
                         candidate = copy.deepcopy(source); candidate[1] = derived
                         if canonical(template(candidate)) != expected: continue
-                        reg = copy.deepcopy(registered); reg['execution'] = p.native_execution(derived)
+                        reg = copy.deepcopy(registered); reg['execution'] = self.protocol.native_execution(derived)
                         matches.append(reg)
                     except (Refused, KeyError, ValueError, IndexError):
                         continue
@@ -342,7 +381,7 @@ class NativeSupervisor:
 
     def dispatch(self,request):
         self.journal.execution_guard()
-        q=p.request(request)
+        q=self.protocol.request(request)
         if q['deployment_id']!=self.journal.deployment or q['configuration_sha256']!=self.journal.configuration: raise Refused('native_session')
         op=q['op']
         if op=='availability':
@@ -443,16 +482,17 @@ class NativeSupervisor:
         if binding not in self.registrations:
             self.register_snapshot(snapshot)
         reg=self.registration(r); e=reg['execution']
-        reserved=(0 if self.journal.retained is None else self.journal.retained['charges']['host_bytes'])+sum(2*(p.native_execution(x['snapshot'][1]).reference_bytes+p.native_execution(x['snapshot'][1]).max_output_bytes) for x in self.journal.value['records'])
+        reserved=(0 if self.journal.retained is None else self.journal.retained['charges']['host_bytes'])+sum(2*(self.protocol.native_execution(x['snapshot'][1]).reference_bytes+self.protocol.native_execution(x['snapshot'][1]).max_output_bytes) for x in self.journal.value['records'])
         capacity('host_bytes',reserved,QUOTA,extra=2*(e.reference_bytes+e.max_output_bytes))
-        if self.free_bytes()<6*1024**3+snapshot[1]['plan']['resolved']['profile']['limits']['disk_bytes']: raise Refused('native_disk_gate')
+        if self.free_bytes()<self.disk_reserve_bytes+snapshot[1]['plan']['resolved']['profile']['limits']['disk_bytes']: raise Refused('native_disk_gate')
         if self.free_ram()<e.memory_bytes: raise Refused('native_ram_gate')
-        from worker.engines.qwen import verify_bundle
         if set(reg['bundles'])!={e.bundle_id}: raise Refused('native_registration')
-        verify_bundle(reg['bundles'][e.bundle_id],e.manifest_sha256,e.checkpoint,e.revision,e.language,owner_uid=os.getuid(),execution=e)
+        # Admission is not model readiness. Full immutable input verification
+        # is mandatory in the cancellable owned child before its loaded handshake.
         budget=(datetime.fromisoformat(snapshot[0]['deadline'])-self.utc()).total_seconds()
-        if not 0<budget<=30: raise Refused('native_deadline')
-        cutoff=self.clock()+budget
+        if not 0<budget<=self.job_seconds: raise Refused('native_deadline')
+        job_cutoff=self.clock()+budget
+        cutoff=min(job_cutoff,self.clock()+self.startup_seconds)
         value=copy.deepcopy(self.journal.value); value['records'].append(r)
         try:
             self.journal.save(value)
@@ -463,6 +503,7 @@ class NativeSupervisor:
         except Exception:
             self.failed=True; self.uncertain.add(r['id']); raise Refused('native_unknown') from None
         self.cutoffs[r['id']]=cutoff
+        self.job_cutoffs[r['id']]=job_cutoff
         return dict(runtime_id=r['id'],state='alive')
 
     def put(self,r,b):
@@ -501,9 +542,10 @@ class NativeSupervisor:
         if r['phase']!='prepared': return {}
         if not self.transfer.acquire(False): raise Refused('native_busy')
         try:
-            reg=self.registration(r,True); e=reg['execution']
-            # Input/bundle verification may cross observation expiry. Recheck
-            # without changing the frozen request before any launch intent.
+            reg=self.registration(r); e=reg['execution']
+            # Full sealed-tree/hash verification runs under owned startup in
+            # native_child before backend construction, never in the 2s RPC.
+            # Recheck availability before recording launch intent.
             self.registration(r)
             if self.failed or r['phase']!='prepared': raise Refused('native_unknown')
             if r['input_size']!=e.reference_bytes or self.clock()>=self.cutoffs[r['id']]: raise Refused('native_deadline')
@@ -517,9 +559,12 @@ class NativeSupervisor:
                 a=dict(id=r['id'],handle=None,parent=parent,receiver=None,closed=False,result=None,token=token,cancel=False,term=None,killed=None,exit=None,start_identity=None)
                 with self.handle_lock: self.active=a
                 try:
-                    handle=self.popen([self.python,'-I','-B',self.entry,str(child.fileno())],stdin=subprocess.DEVNULL,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL,close_fds=True,pass_fds=(child.fileno(),),start_new_session=True,env={'PYTHONNOUSERSITE':'1','TOKENIZERS_PARALLELISM':'false','HF_HUB_OFFLINE':'1','TRANSFORMERS_OFFLINE':'1'})
+                    handle=self.popen([self.python,'-I','-B',self.entry,str(child.fileno())],stdin=subprocess.DEVNULL,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL,close_fds=True,pass_fds=(child.fileno(),),start_new_session=True,env=self.child_environment(r))
                     with self.handle_lock:
-                        a['handle']=handle; a['start_identity']=self.identity(handle); self.launches+=1
+                        a['handle']=handle; self.launches+=1
+                    self.model_started(a,r)
+                    with self.handle_lock:
+                        a['start_identity']=self.identity(handle)
                 except Exception:
                     self.failed=True
                     try: parent.close()
@@ -527,11 +572,17 @@ class NativeSupervisor:
                     raise Refused('native_unknown') from None
                 child.close()
                 from worker.engines.qwen_execution import inventory_wire
-                config=dict(token=token,binding=r['binding'],snapshot=r['snapshot'],execution=e.identity(),bundles={k:str(v) for k,v in reg['bundles'].items()},references=self.references(r,reg),inventory=inventory_wire(reg['inventory']),conditioning=str(conditioning) if e.task=='clone' else None,cutoff=self.cutoffs[r['id']])
+                config=dict(token=token,binding=r['binding'],snapshot=r['snapshot'],execution=e.identity(),bundles={k:str(v) for k,v in reg['bundles'].items()},references=self.references(r,reg),inventory=inventory_wire(reg['inventory']),conditioning=str(conditioning) if e.task=='clone' else None,cutoff=self.job_cutoffs[r['id']])
                 def receive():
                     from worker.native_child import parent_exchange
-                    try: a['result']=parent_exchange(parent,config,self.cutoffs[r['id']])
-                    except Exception: a['result']=None
+                    def loaded(cutoff):
+                        with self.handle_lock:
+                            if a['cancel'] or a['term'] is not None or self.clock()>=self.cutoffs[r['id']]: raise Refused('native_deadline')
+                            self.cutoffs[r['id']]=cutoff
+                    try: a['result']=self.exchange(parent,config,self.cutoffs[r['id']],loaded)
+                    except Exception as exc:
+                        a['result']=None
+                        a['receiver_error']=dict(type=type(exc).__name__,message=str(exc)[:1000])
                     finally:
                         try: parent.close(); a['closed']=parent.fileno()==-1
                         except Exception: self.failed=True
@@ -541,7 +592,7 @@ class NativeSupervisor:
 
     def terminal(self,r,processes,timely,proposal=None,output=None):
         if self.failed or r['id'] in self.uncertain: raise Refused('native_unknown')
-        receipt=dict(self.journal.expected(r),version='native-receipt-v1',reaped=True,timely=timely,reap_method='darwin-owned-exec-v1',processes=processes,receiver_closed=True)
+        receipt=dict(self.journal.expected(r),version=self.receipt_version,reaped=True,timely=timely,reap_method='darwin-owned-exec-v1',processes=processes,receiver_closed=True)
         self.persist(r,phase='terminal',receipt=receipt,proposal=proposal,output=output)
 
     def signal_tick(self):
@@ -614,7 +665,7 @@ class NativeSupervisor:
             if result is not None and a['exit']==0 and not a['cancel']:
                 proposal,data=result
                 from worker.native_child import validate_proposal
-                validate_proposal(r['snapshot'],proposal,data,e)
+                self.validate_output(r['snapshot'],proposal,data,e)
                 fd=os.open(self.directory(r)/'output',os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW,0o600)
                 with os.fdopen(fd,'wb') as stream: stream.write(data); stream.flush(); os.fsync(stream.fileno())
                 directory=os.open(self.directory(r),os.O_RDONLY|os.O_DIRECTORY|os.O_NOFOLLOW)
@@ -635,7 +686,7 @@ class NativeSupervisor:
             self.terminal(r,[process],timely,proposal,output)
             with self.handle_lock:
                 self.active=None
-        except Exception: self.failed=True
+        except Exception as exc:self.owner_failure(exc)
 
     def watchdog(self):
         while not self.shutdown_event.wait(.02): self.tick()
@@ -644,19 +695,23 @@ class NativeSupervisor:
         slot=None
         try:
             cutoff=self.clock()+2
-            q=p.request(p.receive(connection,cutoff,peer_sha256=self.pin))
+            q=self.protocol.request(p.receive(connection,cutoff,peer_sha256=self.pin))
             slot=(self.availability_slots if q['op']=='availability' else
                   self.transfer_slot if q['op'] in ('put_input','get_output') else self.slots)
             if not slot.acquire(False): slot=None; raise Refused('native_busy')
             envelope={k:v for k,v in q.items() if k!='body'}
             try:
                 value=self.dispatch(q)
-                response=p.response(dict(envelope,ok=True,value=value),request=q)
-            except Refused:
-                response=p.response(dict(envelope,ok=False,error='native_unknown' if self.quarantined else 'native_refused'),request=q)
-            except Exception:
+                response=self.protocol.response(dict(envelope,ok=True,value=value),request=q)
+            except Refused as exc:
+                diagnostic=getattr(self,'response_refusal_evidence',None)
+                if diagnostic is not None:diagnostic(q['op'],exc)
+                response=self.protocol.response(dict(envelope,ok=False,error='native_unknown' if self.quarantined else 'native_refused'),request=q)
+            except Exception as exc:
+                diagnostic=getattr(self,'response_refusal_evidence',None)
+                if diagnostic is not None:diagnostic(q['op'],exc)
                 self.failed=True
-                response=p.response(dict(envelope,ok=False,error='native_unknown'),request=q)
+                response=self.protocol.response(dict(envelope,ok=False,error='native_unknown'),request=q)
             p.send(connection,response,cutoff,peer_sha256=self.pin)
         finally:
             connection.close()
@@ -664,15 +719,18 @@ class NativeSupervisor:
 
 
 def serve(supervisor, context, host, port, *, proven_host_network=False,
-          socket_factory=socket.socket):
+          socket_factory=socket.socket, _listener=None):
     """Production listener; never invoked by inert tests or imported for side effects."""
     import ssl
     host,port=p.numeric_bind(host,port,proven_host_network=proven_host_network)
     if context.minimum_version!=ssl.TLSVersion.TLSv1_3 or context.maximum_version!=ssl.TLSVersion.TLSv1_3 or context.verify_mode!=ssl.CERT_REQUIRED: raise Refused('native_tls')
-    watchdog=threading.Thread(target=supervisor.watchdog,daemon=True); watchdog.start()
     connections=threading.BoundedSemaphore(4)
-    with socket_factory(socket.AF_INET6 if ':' in host else socket.AF_INET,socket.SOCK_STREAM) as listener:
-        listener.bind((host,port)); listener.listen(8); listener.settimeout(.2)
+    live=set();live_lock=threading.Lock()
+    with (socket_factory(socket.AF_INET6 if ':' in host else socket.AF_INET,socket.SOCK_STREAM) if _listener is None else _listener) as listener:
+        if _listener is None:listener.bind((host,port))
+        elif type(listener) is not socket.socket or listener.getsockname()!=(host,port):raise Refused('native_listener_binding')
+        listener.listen(8); listener.settimeout(.2)
+        watchdog=threading.Thread(target=supervisor.watchdog,daemon=True); watchdog.start()
         try:
             while not supervisor.shutdown_event.is_set():
                 try: raw,_=listener.accept()
@@ -683,8 +741,16 @@ def serve(supervisor, context, host, port, *, proven_host_network=False,
                 except Exception: raw.close(); connections.release(); continue
                 def handle(connection=connection):
                     try: supervisor.serve_connection(connection)
-                    finally: connections.release()
-                threading.Thread(target=handle,daemon=True).start()
+                    finally:
+                        connections.release()
+                        with live_lock:live.discard(threading.current_thread())
+                thread=threading.Thread(target=handle,daemon=True)
+                with live_lock:live.add(thread)
+                try:thread.start()
+                except BaseException:
+                    with live_lock:live.discard(thread)
+                    connection.close();connections.release()
+                    raise
         finally:
             with supervisor.handle_lock:
                 if supervisor.active and supervisor.active.get('decision') is None: supervisor.active['cancel']=True
@@ -692,6 +758,10 @@ def serve(supervisor, context, host, port, *, proven_host_network=False,
             while supervisor.active and time.monotonic()<end: supervisor.tick(); time.sleep(.02)
             supervisor.shutdown_event.set(); watchdog.join(timeout=1)
             if supervisor.active: raise Refused('native_unknown')
+            end=time.monotonic()+1
+            with live_lock:pending=tuple(live)
+            for thread in pending:thread.join(timeout=max(0,end-time.monotonic()))
+            if any(thread.is_alive() for thread in pending):raise Refused('native_connections_unknown')
 
 
 def main():

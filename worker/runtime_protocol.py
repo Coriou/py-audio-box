@@ -53,6 +53,9 @@ def execution(context):
         index = int(device.split(':')[1]) if family == 'cuda' else 0
         if override != dict(family=family, index=index):
             raise Refused('device_override_unavailable')
+    if profile['id'] == 'kokoro-native-cpu':
+        from worker.engines.native_kokoro import relation
+        return relation(context)
     if value is None:
         if profile['id'] in ('kokoro-cpu', 'pocket-cpu', 'qwen-cpu', 'qwen-cuda', 'qwen-mps'): raise Refused('execution_required')
         return None
@@ -96,6 +99,10 @@ def execution(context):
 def generated_source(context):
     spec = execution(context)
     if spec is None: raise Refused('execution_required')
+    from worker.engines.native_kokoro import NativeKokoroExecution
+    if type(spec) is NativeKokoroExecution:
+        from worker.native_cpu_protocol import generated_source as native_cpu_source
+        return native_cpu_source(context)
     from worker.transport import canonical
     return spec.engine+'-execution-sha256:'+hashlib.sha256(canonical(spec.identity())).hexdigest()
 

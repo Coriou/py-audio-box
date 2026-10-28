@@ -126,6 +126,21 @@ class QwenProvisioningTests(unittest.TestCase):
         path.chmod(0o600); path.write_bytes(b'wrong codec!')
         with self.assertRaises(Refused): verify_bundle(bundle,digest,self.expected['checkpoint'],'a'*40,'English')
 
+    def test_customvoice_bpe_is_checkpoint_and_config_specific(self):
+        self.base_fixture()
+        self.expected['checkpoint']='Qwen/Qwen3-TTS-12Hz-0.6B-CustomVoice'
+        self.expected['execution']['presets']=['Ryan']
+        config=json.loads(self.data['config.json'])
+        config.update(tts_model_type='custom_voice',talker_config={'spk_id':{'ryan':0}})
+        self.data['config.json']=manifest_bytes(config);self.repin()
+        bundle=self.run_provision()
+        verify_bundle(bundle,manifest_sha256(self.expected),self.expected['checkpoint'],'a'*40,'English')
+        for changes in ({'tts_model_type':'base'},{'tts_model_size':'1b7'},
+                        {'unknown':{'_name_or_path':''}},{'auto_map':{}}):
+            self.data['config.json']=manifest_bytes({**config,**changes});self.repin()
+            with self.subTest(changes=changes),self.assertRaises((ValueError,Refused)):
+                self.run_provision()
+
     def test_base_hashed_config_refusals(self):
         self.base_fixture()
         original=json.loads(self.data['config.json'])
