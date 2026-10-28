@@ -19,7 +19,7 @@ def tiny_config():
         hidden_size=64, intermediate_size=128, num_hidden_layers=1,
         num_attention_heads=2, num_key_value_heads=1, head_dim=128,
         max_position_embeddings=64, num_code_groups=16, codec_eos_token_id=2150,
-        rope_scaling=dict(rope_type='default', mrope_section=[24,20,20]),
+        rope_scaling=dict(rope_type='default', interleaved=True, mrope_section=[24,20,20]),
         code_predictor_config=dict(vocab_size=2048, hidden_size=64,
             intermediate_size=128, num_hidden_layers=1, num_attention_heads=2,
             num_key_value_heads=1, head_dim=128, num_code_groups=16,
