@@ -285,8 +285,10 @@ def discovery(dispatcher):
     inventory = (composition.inventory if isinstance(composition, ContextComposition) else
                  getattr(composition, '_inventory', None))
     age = composition.max_age_seconds if isinstance(composition, ContextComposition) else 300
-    from service import installed_qwen_daemon as qd
-    installed_cpu = getattr(composition, 'installed_family', None) is qd.FAMILY
+    installed_cpu=False
+    if getattr(composition,'installed_family',None) is not None:
+        from service import installed_qwen_daemon as qd
+        installed_cpu=composition.installed_family is qd.FAMILY
     if installed_cpu:
         try:
             for raw in composition._contexts.values():

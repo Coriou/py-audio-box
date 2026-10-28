@@ -362,7 +362,16 @@ class Dispatcher:
                          _profiles=self.profiles, _dispatch_settings=('silence',8))
         return dict(job_id=job['id'], input_sha256=job['input_sha256'], state='queued', status_url='/v1/jobs/'+job['id'])
 
+    def _native_cpu_relation(self):
+        from service.native_cpu_activation import NativeCPUActivation
+        from service.native_cpu_runtime import NativeCPURuntime
+        activation=type(getattr(self,'installed_activation',None)) is NativeCPUActivation
+        runtime=type(getattr(self,'runtime',None)) is NativeCPURuntime
+        if activation!=runtime:raise ValueError('native_cpu_runtime_binding')
+        return activation
+
     def _checked_export_family(self):
+        if self._native_cpu_relation():return False
         from service.installed_export import FAMILY
         return (self.installed_checked and getattr(self.installed_activation, "family", None) is FAMILY
                 and self.core.publication_format == 2 and self.core._installed_family is not None)
@@ -483,10 +492,17 @@ class Dispatcher:
             self.runtime.interrupt(row['runtime'])
 
     def _qwen_state_poll(self):
+        if self._native_cpu_relation():return False
         from service.installed_qwen_daemon import FAMILY
         return (self.installed_checked and
                 getattr(self.installed_activation, 'family', None) is FAMILY and
                 getattr(self.runtime, 'family', None) is FAMILY)
+
+    def _observation_interval(self,op,value):
+        if self._native_cpu_relation():return .03
+        from service import installed_pocket_daemon as pd
+        return .2 if (getattr(self.runtime,'family',None) is pd.FAMILY and
+                       op=='observe' and value.state==State.ALIVE) else .03
 
     def _native_cpu_trace(self,stage,row=None,op=None,error=None):
         """At most32 distinct source-only events; no request/config/media values."""
@@ -606,10 +622,7 @@ class Dispatcher:
             elif op=='ack':
                 if value!={'acked':True}:raise ValueError('ack_required')
                 self.store.update(row,acked=1,phase='acknowledged');self.quarantined=getattr(self,'resource_fault',False)
-            from service import installed_pocket_daemon as pd
-            interval = .2 if (getattr(self.runtime,'family',None) is pd.FAMILY and
-                              op=='observe' and value.state==State.ALIVE) else .03
-            self.next_poll=time.monotonic()+interval
+            self.next_poll=time.monotonic()+self._observation_interval(op,value)
         if self.pending:return
         if self._service_stop(self.store.current()):return
         if time.monotonic()<self.next_poll:return

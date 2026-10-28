@@ -82,6 +82,52 @@ print(json.dumps({'extracted_lifespan':'passed','modules':counts,'spawn_refused'
 '''
 
 
+EXTRACTED_CORE_PROBE=r'''
+import importlib.abc,importlib.machinery,os,sys,types,unittest,json
+from pathlib import Path
+root=Path(sys.argv[1]).resolve();fixture_root=Path(sys.argv[2]).resolve()
+os.chdir(root);sys.path.insert(0,str(root))
+products={'service','worker','clients','contracts','lib'}
+class ClosedSource(importlib.abc.MetaPathFinder):
+    def find_spec(self,fullname,path=None,target=None):
+        family=fullname.split('.')[0]
+        if family=='tests':return None
+        search=([str(root.joinpath(*fullname.split('.')[:-1]))] if path is not None else [str(root)]) if family in products else path
+        spec=importlib.machinery.PathFinder.find_spec(fullname,search)
+        if spec is None:
+            if family in products:raise ModuleNotFoundError('module absent from selected extraction',name=fullname)
+            return None
+        paths=[] if spec.origin in (None,'built-in','frozen') else [Path(spec.origin).resolve()]
+        paths.extend(Path(p).resolve() for p in (spec.submodule_search_locations or ()))
+        allowed=[root] if family in products else [Path(sys.prefix).resolve(),Path(sys.base_prefix).resolve()]
+        if any(not any(p.is_relative_to(a) for a in allowed) for p in paths):
+            raise ModuleNotFoundError('source outside selected extraction/interpreter',name=fullname)
+        return spec
+sys.meta_path.insert(0,ClosedSource())
+fixtures=types.ModuleType('tests');fixtures.__path__=[str(fixture_root/'tests')];sys.modules['tests']=fixtures
+# Fixtures may import only their test helpers. Product imports are forcibly
+# resolved against the extracted archive even if a helper prepends checkout.
+from tests.service.test_native_cpu_public_source import CPUPublicSourceTests
+sys.path[:]=[p for p in sys.path if p!=str(fixture_root)]
+assert not (root/'service/installed_pocket_daemon.py').exists()
+assert not (root/'service/installed_qwen_daemon.py').exists()
+case=CPUPublicSourceTests('test_real_tls_custodian_large_core_publication_and_shutdown')
+result=unittest.TestResult();case.run(result)
+if not result.wasSuccessful():
+    for _,failure in result.errors+result.failures:print(failure,file=sys.stderr)
+    raise SystemExit(1)
+assert not {'service.installed_pocket_daemon','service.installed_qwen_daemon'}.intersection(sys.modules)
+for name,module in tuple(sys.modules.items()):
+    path=getattr(module,'__file__',None)
+    if name.split('.')[0] in products and path:assert Path(path).resolve().is_relative_to(root)
+if sys.platform=='darwin':
+    from service.native_cpu_install import locked_versions
+    from importlib.metadata import version
+    pins=locked_versions(root);assert len(pins)==44 and all(version(k)==v for k,v in pins.items())
+print(json.dumps({'extracted_real_core_tls':'passed','foreign_family_imports':False,'weights_loaded':False}))
+'''
+
+
 class CPUArchiveImportTests(unittest.TestCase):
     def test_extracted_isolated_control_lifespan_and_permanent_guard(self):
         with tempfile.TemporaryDirectory() as temporary:
@@ -95,6 +141,42 @@ class CPUArchiveImportTests(unittest.TestCase):
             self.assertEqual(result.returncode,0,result.stderr.decode('utf-8','replace')[:6000])
             report=json.loads(result.stdout);self.assertEqual(report['extracted_lifespan'],'passed')
             self.assertFalse(report['weights_loaded']);self.assertTrue(report['spawn_refused'])
+
+    def test_dispatcher_lazy_foreign_family_imports_have_typed_cpu_guard(self):
+        import ast
+        tree=ast.parse((package.common.ROOT/'service/dispatcher.py').read_text())
+        expected={'_checked_export_family','_qwen_state_poll','_observation_interval'};found=set()
+        for function in (node for node in ast.walk(tree) if isinstance(node,ast.FunctionDef)):
+            imports=[node for node in ast.walk(function) if isinstance(node,ast.ImportFrom) and
+                (node.module in ('service.installed_export','service.installed_qwen_daemon') or
+                 node.module=='service' and any(alias.name=='installed_pocket_daemon' for alias in node.names))]
+            if not imports:continue
+            found.add(function.name);guard=function.body[0]
+            self.assertIsInstance(guard,ast.If);self.assertIsInstance(guard.test,ast.Call)
+            self.assertEqual(guard.test.func.attr,'_native_cpu_relation')
+            self.assertIsInstance(guard.body[0],ast.Return)
+            self.assertTrue(all(guard.lineno<node.lineno for node in imports))
+        self.assertEqual(found,expected)
+        manifest=package.members()
+        self.assertNotIn('service/installed_pocket_daemon.py',manifest)
+        self.assertNotIn('service/installed_qwen_daemon.py',manifest)
+        tree=ast.parse((package.common.ROOT/'service/production_selection.py').read_text())
+        discovery=next(node for node in tree.body if isinstance(node,ast.FunctionDef) and node.name=='discovery')
+        guarded=[node for node in discovery.body if isinstance(node,ast.If) and
+            any(isinstance(child,ast.ImportFrom) and any(alias.name=='installed_qwen_daemon' for alias in child.names) for child in ast.walk(node))]
+        self.assertEqual(len(guarded),1);self.assertIn('installed_family',ast.unparse(guarded[0].test))
+
+    def test_extracted_real_dispatcher_core_tls_publication_ack_and_custodian_close(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            directory=Path(temporary).resolve();archive=directory/'cpu.zip';package.archive(archive);package.verify_archive(archive)
+            with zipfile.ZipFile(archive) as source:source.extractall(directory/'extracted')
+            root=directory/'extracted/native-worker'
+            env={key:value for key,value in os.environ.items() if key in ('PATH','SYSTEMROOT','TMPDIR')}
+            env.update(HOME=str(directory),HF_HUB_OFFLINE='1',PYTHONNOUSERSITE='1')
+            result=subprocess.run([sys.executable,'-I','-B','-c',EXTRACTED_CORE_PROBE,str(root),str(package.common.ROOT)],
+                cwd=directory,env=env,capture_output=True,timeout=30)
+            self.assertEqual(result.returncode,0,result.stderr.decode('utf-8','replace')[:8000])
+            self.assertEqual(json.loads(result.stdout)['extracted_real_core_tls'],'passed')
 
     def test_extracted_archive_missing_shared_helper_retains_exact_name(self):
         with tempfile.TemporaryDirectory() as temporary:

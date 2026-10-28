@@ -219,6 +219,48 @@ class CPUPublicSourceTests(unittest.TestCase):
                 self.assertFalse(thread.is_alive(),'test custodian custody unresolved')
                 listener.close()
 
+    def test_cpu_handoff_discovery_and_export_never_import_foreign_families_even_cached(self):
+        import builtins,importlib
+        foreign={'service.installed_pocket_daemon','service.installed_qwen_daemon'}
+        for name in foreign:importlib.import_module(name)  # Available/cache cannot mask an import.
+        original=builtins.__import__
+        def guarded(name,globals=None,locals=None,fromlist=(),level=0):
+            if name in foreign or name=='service' and any('service.'+item in foreign for item in (fromlist or ())):
+                raise AssertionError('native CPU imported foreign daemon family')
+            return original(name,globals,locals,fromlist,level)
+        with patch('builtins.__import__',side_effect=guarded):
+            self.test_real_core_large_native_cpu_proposal_publishes_and_acknowledges()
+            self.assertEqual(self.d.call('audio_export_availability','local'),'unavailable_converter')
+            self.assertEqual(self.d.call('configured_profiles')[0]['id'],'kokoro-native-cpu')
+
+    def test_legacy_pocket_qwen_family_helpers_keep_strict_identity_and_intervals(self):
+        import builtins
+        from types import SimpleNamespace
+        from worker.lifecycle import State
+        from service import installed_pocket_daemon as pd,installed_qwen_daemon as qd
+        original=builtins.__import__;imports=[]
+        def observed(name,globals=None,locals=None,fromlist=(),level=0):
+            imports.append((name,fromlist));return original(name,globals,locals,fromlist,level)
+        d=Dispatcher.__new__(Dispatcher);d.installed_checked=True
+        with patch('builtins.__import__',side_effect=observed):
+            d.installed_activation=SimpleNamespace(family=qd.FAMILY);d.runtime=SimpleNamespace(family=qd.FAMILY)
+            self.assertTrue(d._qwen_state_poll());self.assertEqual(d._observation_interval('observe',SimpleNamespace(state=State.ALIVE)),.03)
+            d.installed_activation=SimpleNamespace(family=pd.FAMILY);d.runtime=SimpleNamespace(family=pd.FAMILY)
+            self.assertFalse(d._qwen_state_poll());self.assertEqual(d._observation_interval('observe',SimpleNamespace(state=State.ALIVE)),.2)
+            self.assertEqual(d._observation_interval('observe',SimpleNamespace(state=State.STOPPED)),.03)
+            d.runtime=SimpleNamespace(family=qd.FAMILY);self.assertFalse(d._qwen_state_poll())
+        self.assertTrue(any(name=='service.installed_qwen_daemon' for name,_ in imports))
+        self.assertTrue(any(name=='service' and 'installed_pocket_daemon' in (names or ()) for name,names in imports))
+
+    def test_cpu_family_helper_rejects_mixed_runtime_activation(self):
+        from types import SimpleNamespace
+        d=Dispatcher.__new__(Dispatcher);d.installed_checked=True
+        d.installed_activation=NativeCPUActivation(self.prepared);d.runtime=SimpleNamespace()
+        for call in (d._qwen_state_poll,d._checked_export_family,lambda:d._observation_interval('observe',None)):
+            with self.assertRaisesRegex(ValueError,'native_cpu_runtime_binding'):call()
+        d.installed_activation=SimpleNamespace();d.runtime=self.runtime
+        with self.assertRaisesRegex(ValueError,'native_cpu_runtime_binding'):d._qwen_state_poll()
+
     def test_dispatch_transition_diagnostics_are_bounded_and_do_not_publish_messages(self):
         import contextlib,io
         d=self.open();output=io.StringIO()
