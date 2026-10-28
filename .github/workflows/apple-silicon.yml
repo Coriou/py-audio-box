@@ -141,6 +141,8 @@ jobs:
       - name: Real bounded MPS operation with CPU fallback disabled
         run: python scripts/ci-apple-silicon.py mps-probe --report apple-ci/mps-probe.json
       - name: Explicit Darwin-safe source contracts (inert protocol and CI harness)
+        env:
+          APPLE_EXIT_STRESS_REPORT: apple-ci/exit-stress.json
         run: >-
           python -m unittest tests.test_ci_apple_silicon tests.test_ci_apple_speech tests.test_ci_process_rss tests.test_ci_qwen_observe tests.test_ci_native_numerics
           tests.worker.test_native_protocol tests.worker.test_native_qwen
@@ -173,6 +175,7 @@ jobs:
           path: |
             apple-ci/dependencies.json
             apple-ci/mps-probe.json
+            apple-ci/exit-stress.json
             apple-ci/native-import/report.json
             apple-ci/native-import/owner.json
             apple-ci/native-import/child.log

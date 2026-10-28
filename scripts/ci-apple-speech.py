@@ -3,6 +3,7 @@
 import argparse
 from datetime import datetime, timezone
 import hashlib
+import errno
 import importlib.metadata
 import io
 import json
@@ -108,6 +109,8 @@ def owned_child(argv, env, log_path, observation, *, seconds=30, progress_path=N
     sampler = None
     sampler_started = False
     rss_lost = False
+    exit_observed_at = None
+    identity_changed = False
     termination = dict(requested_reason=None, signals=[])
     child = subprocess.Popen(argv, env=dict(env, PYTHONUNBUFFERED='1'),
         stdout=subprocess.PIPE, stderr=subprocess.STDOUT, start_new_session=True, bufsize=0)
@@ -135,12 +138,34 @@ def owned_child(argv, env, log_path, observation, *, seconds=30, progress_path=N
                 # start identity (or reports exit/failure). A zombie cannot reuse
                 # its PID; late samples are discarded after request_stop below.
                 code = child.poll() if state['count'] or state['error'] else child.returncode
+                new_exit = code is not None and exit_observed_at is None
+                if new_exit: exit_observed_at = now
                 if state['error']:
-                    observation['sampler_error'] = state['error']
-                    if state['error']['type'] != 'ProcessGone' or child.poll() is None:
+                    error = observation['sampler_error'] = state['error']
+                    identity_changed = error['type'] == 'ProcessReused'
+                    if error['type'] != 'ProcessGone' or error.get('errno') not in (errno.ESRCH, errno.ENOENT):
                         rss_lost = True
-                        raise SamplerLost('RSS reader failed: ' + state['error']['type'] + ': ' + state['error']['message'])
-                    observation['sampler_target_exit_confirmed'] = True
+                        raise SamplerLost('RSS reader failed: ' + error['type'] + ': ' + error['message'])
+                    # libproc may lose the process before waitpid publishes exit.
+                    # This never renews freshness, the owner deadline or a reader.
+                    now = time.monotonic()
+                    if new_exit: exit_observed_at = now
+                    last = state['last']
+                    fresh_until = (last['observed_at'] if last else started) + RSS_STALE_SECONDS
+                    observation.setdefault('sampler_exit_provisional_at', error['observed_at'])
+                    observation['sampler_exit_fresh_until'] = fresh_until
+                    if now >= cutoff:
+                        raise TimeoutError(f'native_child_{seconds}_seconds')
+                    coverage_at = now if code is None else exit_observed_at
+                    if last is None or coverage_at >= fresh_until:
+                        rss_lost = True
+                        observation['sampler_exit_resolution'] = 'unconfirmed_past_freshness' if code is None else 'confirmed_after_observation_lost'
+                        raise SamplerLost('RSS target exit not confirmed within existing freshness window')
+                    if code is None:
+                        observation['sampler_exit_resolution'] = 'provisional'
+                    else:
+                        observation['sampler_target_exit_confirmed'] = True
+                        observation['sampler_exit_resolution'] = 'confirmed_within_freshness'
                 if code is None:
                     last = state['last']
                     age = now - (last['observed_at'] if last else started)
@@ -185,7 +210,26 @@ def owned_child(argv, env, log_path, observation, *, seconds=30, progress_path=N
         cleanup_error = None
         if sampler_started:
             sampler.request_stop()  # Stop accepting samples before any final reap.
-        if child.poll() is None:
+        cleanup_state = sampler.snapshot() if sampler_started else dict(error=None)
+        cleanup_rss_error = cleanup_state['error']
+        identity_changed = identity_changed or (cleanup_rss_error is not None and cleanup_rss_error['type'] == 'ProcessReused')
+        signal_allowed = child.poll() is None
+        if signal_allowed and identity_changed:
+            # Never signal a replacement PID. Reap the original owned handle;
+            # failure to do so remains an explicit cleanup error below.
+            signal_allowed = False
+            termination['signal_skipped_reason'] = 'process_identity_changed'
+            observation['ownership_uncertain'] = True
+        if signal_allowed and cleanup_rss_error is not None and cleanup_rss_error['type'] == 'ProcessGone':
+            try:
+                os.kill(child.pid, 0)  # Existence check only; never reaps/releases PID.
+            except OSError as exc:
+                signal_allowed = False
+                termination['signal_skipped_reason'] = 'target_unavailable'
+                termination['existence_probe_error'] = dict(type=type(exc).__name__, errno=exc.errno, message=str(exc)[:1000])
+        # poll() never reports None after reaping. Do not signal after it releases
+        # the PID; while unreaped, our owned child's PID cannot be reused.
+        if signal_allowed and child.poll() is None:
             termination['requested_reason'] = type(failure).__name__ + ': ' + str(failure)[:1000] if failure else 'owner_cleanup'
             request = dict(signal='SIGKILL', number=int(signal.SIGKILL), process_group=child.pid,
                            requested_at=time.monotonic(), accepted=False)
@@ -204,15 +248,30 @@ def owned_child(argv, env, log_path, observation, *, seconds=30, progress_path=N
             observation['cleanup_error'] = dict(type=type(exc).__name__, message=str(exc)[:1000])
         finally:
             child.stdout.close()
+            finished_at = time.monotonic()
             observation.update(child_exit=child.returncode,
-                child_seconds=time.monotonic()-started, log_bytes=total)
+                child_seconds=finished_at-started, log_bytes=total)
             stopped = sampler.stop() if sampler_started else None
             state = sampler.snapshot() if sampler_started else dict(last=None, peak=None, count=0, error=None)
             late_sampler_error = None
             if state['error']:
                 observation.setdefault('sampler_error', state['error'])
-                if state['error']['type'] == 'ProcessGone' and child.returncode is not None:
+                if state['error']['type'] == 'ProcessGone' and state['error'].get('errno') in (errno.ESRCH, errno.ENOENT) and child.returncode is not None:
                     observation['sampler_target_exit_confirmed'] = True
+                    confirmed_at = exit_observed_at if exit_observed_at is not None else finished_at
+                    observation['sampler_exit_confirmed_at'] = confirmed_at
+                    last = state['last']
+                    if last is None or confirmed_at >= last['observed_at'] + RSS_STALE_SECONDS:
+                        rss_lost = True
+                    if rss_lost:
+                        observation['sampler_exit_resolution'] = 'confirmed_after_observation_lost'
+                        late_sampler_error = SamplerLost('RSS exit confirmed only after observation loss')
+                    elif confirmed_at >= cutoff:
+                        observation['sampler_exit_resolution'] = 'confirmed_after_owner_deadline'
+                    elif termination['signals']:
+                        observation['sampler_exit_resolution'] = 'confirmed_during_cleanup'
+                    else:
+                        observation['sampler_exit_resolution'] = 'confirmed_within_freshness'
                 else:
                     rss_lost = True
                     late_sampler_error = SamplerLost('RSS reader failed during cleanup')
