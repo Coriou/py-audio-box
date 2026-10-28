@@ -98,6 +98,8 @@ class Production:
             oracle.require(len(raw) == spec.reference_bytes, 'reference_size')
             _reference_pcm16(raw, spec.reference_rate, spec.reference_frames)
         if spec is not None:
-            _dispatch_settings = (dispatch_mode(spec), min(180 if spec.engine=='pocket-tts' else (QWEN_CPU_SECONDS if spec.engine=='qwen' and spec.device=='cpu' else 25), plan['resolved']['profile']['limits']['deadline_seconds']))
+            from worker.engines.native_kokoro import NativeKokoroExecution, JOB_SECONDS
+            seconds = JOB_SECONDS if type(spec) is NativeKokoroExecution else (180 if spec.engine=='pocket-tts' else (QWEN_CPU_SECONDS if spec.engine=='qwen' and spec.device=='cpu' else 25))
+            _dispatch_settings = (dispatch_mode(spec), min(seconds, plan['resolved']['profile']['limits']['deadline_seconds']))
         return self.core.submit_execution(principal, key, context, _admission=_admission,
                                           _profiles=_profiles, _dispatch_settings=_dispatch_settings)

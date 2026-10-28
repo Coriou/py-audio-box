@@ -62,7 +62,7 @@ def infer(execution, text, bundles, references, inventory, *,
     no installed registration, deadline renewal or publication authority.
     """
     from worker.engines.qwen_execution import static_native_hardware
-    from worker.engines.qwen import verify_service_inputs, execute
+    from worker.engines.qwen import verify_service_storage, execute
     if not _guard_installed:
         raise Refused('native_spawn_guard_required')
     if diagnostic_dtype is not None and (type(diagnostic_dtype) is not str or diagnostic_dtype != 'float16' or diagnostic_request_seconds != 120 or execution.dtype != diagnostic_dtype):
@@ -78,10 +78,10 @@ def infer(execution, text, bundles, references, inventory, *,
         limit = diagnostic_request_seconds
     if execution.timeout_s > limit or execution.max_output_bytes > 1048576:
         raise Refused('native_execution_limit')
-    _, raw = verify_service_inputs(execution, bundles, references, inventory,
-                          owner_uid=managed_owner_uid)
-    from worker.engines.qwen_prepare import QwenPreparation, selected_reference
-    if type(execution) is QwenPreparation: selected_reference(execution, raw)
+    # execute performs full model/reference hashing and preparation validation
+    # before backend construction. Do not repeat those multi-GB reads here.
+    managed_owner_uid=verify_service_storage(execution,bundles,references,owner_uid=managed_owner_uid)
+    from worker.engines.qwen_prepare import QwenPreparation
     from lib.tts_backends.qwen_native import NativeQwenBackend
     factory = NativeQwenBackend
     if diagnostic_request_seconds is not None:
@@ -129,10 +129,11 @@ def wire_receive(connection,cutoff):
 
 
 
-def proposal(snapshot,result,spec):
+def proposal(snapshot,result,spec, *, protocol=None):
     import hashlib
     import secrets
-    from worker.native_protocol import generated_source
+    from worker import native_protocol as default_protocol
+    generated_source = (default_protocol if protocol is None else protocol).generated_source
     job,context,assets,profiles=snapshot; attempt=job['attempts'][-1]
     asset=dict(id='asset-'+secrets.token_hex(16),sha256=result['sha256'],frames=result['frames'],sample_rate=spec.sample_rate,channels=1,media_format='wav',media_subtype='PCM_16',provenance=dict(kind='generated',source_sha256=result['sha256'],source_id=generated_source(context),missing_fields=[]))
     message=dict(protocol_version='1.3.0',kind='result',job_id=job['id'],attempt_id=attempt['id'],generation=job['generation'],input_sha256=job['input_sha256'],input_asset_ids=assets,staging_id=attempt['staging_id'],owner_id=attempt['owner_id'],identity=context['plan']['resolved']['identity'],deadline=job['deadline'],stage='completed',result_asset_ids=[asset['id']],plan=context['plan'])
@@ -148,12 +149,13 @@ def proposal(snapshot,result,spec):
     return dict(message=message,manifest=manifest)
 
 
-def validate_proposal(snapshot,value,data,spec):
+def validate_proposal(snapshot,value,data,spec, *, protocol=None):
     import hashlib
     from contracts import validate as oracle
     from worker.native_protocol import _closed
     from worker.native_supervisor import pcm
-    from worker.native_protocol import generated_source
+    from worker import native_protocol as default_protocol
+    generated_source = (default_protocol if protocol is None else protocol).generated_source
     _closed(value,('message','manifest'))
     job,context,assets,profiles=snapshot
     oracle.worker_message(value['message'],job,assets,transport_owner=job['attempts'][-1]['owner_id'],context=context,current_profiles=profiles)

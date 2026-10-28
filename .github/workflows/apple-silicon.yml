@@ -15,6 +15,8 @@ on:
       - 'requirements/wheels/**'
       - 'requirements/upstream/**'
       - 'tests/test_native_qwen_artifact.py'
+      - 'tests/test_native_clone_source.py'
+      - 'requirements/tts/qwen-0.6b-base-macos-*.expected.json'
       - 'docs/agent-interface/NATIVE-DEPENDENCY.md'
       - 'requirements/tts/qwen-0.6b-customvoice-macos.expected.json'
       - 'requirements/qwen-macos-arm64.*'
@@ -146,7 +148,7 @@ jobs:
         run: >-
           python -m unittest tests.test_ci_apple_silicon tests.test_ci_apple_speech tests.test_ci_process_rss tests.test_ci_qwen_observe tests.test_ci_native_numerics
           tests.worker.test_native_protocol tests.worker.test_native_qwen
-          tests.service.test_qwen_provisioning tests.test_native_qwen_artifact -v
+          tests.service.test_qwen_provisioning tests.test_native_qwen_artifact tests.test_native_clone_source -v
       - name: Native archive and selected artifact closure (no runtime)
         run: >-
           python -m unittest

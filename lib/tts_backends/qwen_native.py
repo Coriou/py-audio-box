@@ -50,7 +50,7 @@ class NativeQwenBackend:
             self.close()
             raise ValueError('native_device_mismatch')
 
-        if diagnostic_dtype is not None and str(getattr(getattr(self._model, 'model', None), 'dtype', None)) != 'torch.' + diagnostic_dtype:
+        if str(getattr(getattr(self._model, 'model', None), 'dtype', None)) != 'torch.' + expected_dtype:
             self.close()
             raise ValueError('native_dtype_mismatch')
 

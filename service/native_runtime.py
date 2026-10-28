@@ -86,6 +86,10 @@ def _write(path, data):
 
 
 class NativeRuntime:
+    protocol = p
+    fixture = 'qwen'
+    job_seconds = JOB_SECONDS
+
     def __init__(self, *, host, port, tls, peer_sha256, native, spool, staging,
                  local_import_uid, connector=None, utc=lambda: datetime.now(timezone.utc)):
         p._hex(peer_sha256,64)
@@ -159,7 +163,7 @@ class NativeRuntime:
             from service.worker_transport import Authority
             authority=Authority(*snapshot)
             if authority.binding!=directory.name: raise Refused('native_control_storage')
-            spec=p.native_execution(snapshot[1])
+            spec=self.protocol.native_execution(snapshot[1])
             from worker.native_supervisor import pcm
             if spec.reference_bytes:
                 if not (directory/'input').exists(): self.failed=True
@@ -183,7 +187,7 @@ class NativeRuntime:
                 p._closed(marker,('version','binding','runtime_id','output'))
                 if marker['version']!='native-import-v1' or marker['binding']!=authority.binding:
                     raise Refused('native_control_storage')
-                p.runtime_id(marker['runtime_id'],p.native_binding(authority.context)['lane'],p.native_binding(authority.context)['boot'])
+                p.runtime_id(marker['runtime_id'],self.protocol.native_binding(authority.context)['lane'],self.protocol.native_binding(authority.context)['boot'])
                 if not (directory/'complete').exists() or canonical(marker['output'])!=_read(directory/'complete',256):
                     raise Refused('native_control_storage')
                 if completed.exists() and _read(completed,512)!=canonical(marker):
@@ -232,7 +236,7 @@ class NativeRuntime:
             if not row or row[0].encode()!=a._snapshot or not row[1] or not row[2]: continue
             if marker is not None and row[1]!=marker['runtime_id']: continue
             receipt=json.loads(row[2])
-            p.terminal_receipt(receipt,authority=a,runtime_id=row[1],local_import_uid=self.local_import_uid)
+            self.protocol.terminal_receipt(receipt,authority=a,runtime_id=row[1],local_import_uid=self.local_import_uid)
             if not receipt['timely']: continue
             publication=core.db.execute('SELECT artifact FROM publications WHERE job_id=?',(a.job['id'],)).fetchone()
             if not publication: continue
@@ -244,7 +248,7 @@ class NativeRuntime:
     def detach(self, authority, core):
         """Owner-loop only: authenticate managed input, then freeze immutable bytes."""
         if threading.get_ident()!=self.owner: raise Refused('native_owner_required')
-        spec=p.native_execution(authority.context)
+        spec=self.protocol.native_execution(authority.context)
         data=b''
         if spec.task=='clone':
             from worker.engines.pocket import _read as managed_read, _reference_pcm16
@@ -273,7 +277,7 @@ class NativeRuntime:
         finally: os.close(fd)
 
     def bind(self, authority, runtime_id):
-        config=p.native_binding(authority.context)
+        config=self.protocol.native_binding(authority.context)
         if config!=self.native and any(config[k]!=self.native[k] for k in config if k!='boot'):
             raise Refused('native_configuration')
         p.runtime_id(runtime_id,config['lane'],config['boot'])
@@ -281,30 +285,30 @@ class NativeRuntime:
             old=self.records.get(runtime_id)
             if old and old['authority']._snapshot!=authority._snapshot: raise Refused('native_binding')
             if old: return old
-            record=dict(authority=authority,config=config,event=threading.Event(),cutoff=authority.cutoff(JOB_SECONDS),uploaded=False)
+            record=dict(authority=authority,config=config,event=threading.Event(),cutoff=authority.cutoff(self.job_seconds),uploaded=False)
             self.records[runtime_id]=record
             return record
 
     def _rpc(self, op, body, *, authority=None, runtime_id=None, timeout=2, availability_binding=None):
         if type(timeout) not in (int,float) or not 0<timeout<=2: raise Refused('native_timeout')
-        config=p.native_binding(authority.context) if authority else self.native
+        config=self.protocol.native_binding(authority.context) if authority else self.native
         if authority and any(config[k]!=self.native[k] for k in config if k!='boot'): raise Refused('native_configuration')
         cutoff=time.monotonic()+timeout
         if op in ('prepare','put_input','start','get_output'):
             if self.failed or authority.binding in self.import_closed: raise Refused('native_control_uncertain')
-            cutoff=min(cutoff,authority.cutoff(JOB_SECONDS))
+            cutoff=min(cutoff,authority.cutoff(self.job_seconds))
         if cutoff<=time.monotonic(): raise Refused('native_deadline')
-        q=dict(version=p.VERSION,deployment_id=config['deployment_id'],configuration_sha256=config['configuration_sha256'],
+        q=dict(version=self.protocol.VERSION,deployment_id=config['deployment_id'],configuration_sha256=config['configuration_sha256'],
             lane=None if op=='hello' else config['lane'],boot=None if op=='hello' else config['boot'],
             request_id=secrets.token_hex(16),runtime_id=runtime_id,binding=authority.binding if authority else availability_binding,op=op,body=body)
-        p.request(q)
+        self.protocol.request(q)
         semaphore=(self.availability_slots if op=='availability' else
                    self.transfer if op in ('put_input','get_output') else self.lifecycle)
         if not semaphore.acquire(False): raise Refused('native_busy')
         try:
             with self.connector(cutoff) as connection:
                 p.send(connection,q,cutoff,peer_sha256=self.pin)
-                reply=p.response(p.receive(connection,cutoff,peer_sha256=self.pin),request=q)
+                reply=self.protocol.response(p.receive(connection,cutoff,peer_sha256=self.pin),request=q)
             if not reply['ok']: raise Refused(reply['error'])
             return reply['value']
         finally: semaphore.release()
@@ -336,10 +340,10 @@ class NativeRuntime:
     def check_availability(self, context):
         from worker.engines.qwen_execution import static_native_hardware, inventory_from_wire
         from worker.native_availability import digest, validate
-        if canonical(p.native_binding(context)) != canonical(self.native):
+        if canonical(self.protocol.native_binding(context)) != canonical(self.native):
             raise Refused('native_configuration')
         enrolled = inventory_from_wire(context['execution']['hardware'])
-        static_native_hardware(p.native_execution(context), enrolled)
+        static_native_hardware(self.protocol.native_execution(context), enrolled)
         if self._availability_inventory is not None and canonical(context['execution']['hardware']) != canonical(self._availability_inventory):
             raise Refused('hardware_identity')
         value = self._rpc('availability', dict(runtime_manifest_sha256=self.native['runtime_manifest_sha256']),
@@ -351,9 +355,9 @@ class NativeRuntime:
         return observed
 
     def prepare(self, authority, fixture='qwen', detached=b''):
-        if fixture!='qwen': raise Refused('native_fixture')
-        spec=p.native_execution(authority.context)
-        config=p.native_binding(authority.context)
+        if fixture!=self.fixture: raise Refused('native_fixture')
+        spec=self.protocol.native_execution(authority.context)
+        config=self.protocol.native_binding(authority.context)
         if config!=self.native: raise Refused('native_configuration')
         self.check_availability(authority.context)
         if type(detached) is not bytes or len(detached)!=spec.reference_bytes: raise Refused('native_input')
@@ -387,7 +391,7 @@ class NativeRuntime:
         if time.monotonic()>=r['cutoff']: raise Refused('native_deadline')
 
     def start(self, runtime_id):
-        r=self.records[runtime_id];a=r['authority'];spec=p.native_execution(a.context)
+        r=self.records[runtime_id];a=r['authority'];spec=self.protocol.native_execution(a.context)
         self.check_availability(a.context)
         if spec.reference_bytes and not r['uploaded']:
             raw=_read(self.spool/a.binding/'input',24000000)
@@ -429,7 +433,7 @@ class NativeRuntime:
             if r and (r["event"].is_set() or time.monotonic()>=r["cutoff"]):
                 value=self._rpc("collect",{},authority=authority,runtime_id=runtime_id)
                 if value["receipt"] is not None:
-                    p.terminal_receipt(value["receipt"],authority=authority,runtime_id=runtime_id)
+                    self.protocol.terminal_receipt(value["receipt"],authority=authority,runtime_id=runtime_id)
                     return value["receipt"],None
             raise
 
@@ -438,7 +442,7 @@ class NativeRuntime:
         value=self._rpc('collect',{},authority=authority,runtime_id=runtime_id)
         receipt=value['receipt']
         if receipt is None: return None
-        p.terminal_receipt(receipt,authority=authority,runtime_id=runtime_id,local_import_uid=self.local_import_uid)
+        self.protocol.terminal_receipt(receipt,authority=authority,runtime_id=runtime_id,local_import_uid=self.local_import_uid)
         if r['event'].is_set(): return receipt,None
         proposal=value['proposal'];output=value['output']
         if proposal is None:
@@ -446,7 +450,7 @@ class NativeRuntime:
             return receipt,None
         if output is None or not receipt['timely']: raise Refused('native_output')
         authority.check(proposal['message'],'result')
-        spec=p.native_execution(authority.context)
+        spec=self.protocol.native_execution(authority.context)
         directory=self.spool/authority.binding
         _directory(directory,0o700)
         destination=self.staging/authority.job['attempts'][-1]['staging_id']/('audition.wav' if authority.context['plan']['operation']=='voice_prepare' else 'output.wav')

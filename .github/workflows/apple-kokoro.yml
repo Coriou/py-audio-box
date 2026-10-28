@@ -13,6 +13,19 @@ on:
       - 'scripts/ci-apple-speech.py'
       - 'scripts/ci_process_rss.py'
       - 'tests/test_native_kokoro.py'
+      - 'worker/native_cpu*.py'
+      - 'worker/native_family.py'
+      - 'worker/native_memory.py'
+      - 'worker/native_supervisor.py'
+      - 'worker/native_protocol.py'
+      - 'worker/runtime_protocol.py'
+      - 'worker/engines/native_kokoro.py'
+      - 'service/**'
+      - 'contracts/**'
+      - 'tests/worker/test_native_cpu*.py'
+      - 'tests/worker/test_native_memory.py'
+      - 'tests/worker/test_native_kokoro_execution.py'
+      - 'tests/service/test_native_cpu*.py'
       - 'native-dist-manifest.json'
       - 'docs/agent-interface/NATIVE-KOKORO.md'
   pull_request:
@@ -48,6 +61,9 @@ jobs:
           --index-url https://pypi.org/simple --report kokoro-install.json
           -r requirements/kokoro.lock
       - run: python -m pip check
+      - name: Locked client/schema closure for CPU lifecycle source contracts
+        run: python -m pip install --require-hashes --only-binary=:all: -r requirements/client.lock
+      - run: python -m pip check
       - name: Real CPU provider operation and bundled English phonemization under guard
         run: python scripts/ci-native-kokoro.py --output kokoro-preflight
       - name: Focused errors and native source archive closure
@@ -55,6 +71,12 @@ jobs:
           python -B -m unittest tests.test_native_kokoro
           tests.release.test_native_package.NativePackageTests.test_archive_exact_members_secrets_excluded_extracted_help
           tests.test_native_qwen_artifact tests.test_ci_native_kokoro_speech
+      - name: Separate CPU protocol, ownership, deadlines and catalogue source contracts (no weights)
+        run: >-
+          python -B -m unittest tests.worker.test_native_kokoro_execution
+          tests.worker.test_native_cpu_availability tests.worker.test_native_cpu_resources
+          tests.worker.test_native_cpu_child tests.worker.test_native_cpu_supervisor
+          tests.worker.test_native_memory tests.service.test_native_cpu_context
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         if: always()
         with:

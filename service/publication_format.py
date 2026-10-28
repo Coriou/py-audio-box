@@ -118,7 +118,7 @@ def _validate(db, root):
     from contracts import validate as oracle
     for row in data['jobs']:
         job=json.loads(row['job']);context=json.loads(row['context'])
-        from worker.native_protocol import frozen_native
+        from worker.native_family import frozen_native
         if frozen_native(context):raise Refusal('scope-unsupported:native-history')
         oracle.plan_hash(context['plan']);oracle.frozen_plan(context['plan'],context['bundles'])
         if (job['state'] not in ('succeeded','failed','cancelled') or

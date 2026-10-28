@@ -281,8 +281,8 @@ def _encode(execution, text, result):
     return dict(data=output, frames=frames, size_bytes=len(output), sha256=hashlib.sha256(output).hexdigest(), identity=dict(execution.identity(), text_sha256=hashlib.sha256(text.encode()).hexdigest()))
 
 
-def verify_service_inputs(spec, bundles, references, inventory, *, owner_uid=None, reference_fd=None):
-    """Trusted managed service storage is sealed for the full attempt."""
+def verify_service_storage(spec, bundles, references, *, owner_uid=None):
+    """Managed ownership/mapping checks; byte verification remains in execute."""
     owner = os.getuid() if owner_uid is None else owner_uid
     if set(bundles) != {spec.bundle_id}: raise Refused('owned_mapping_required')
     root = Path(bundles[spec.bundle_id])
@@ -292,4 +292,10 @@ def verify_service_inputs(spec, bundles, references, inventory, *, owner_uid=Non
             if info.st_uid != owner or info.st_mode & 0o222 or path.is_symlink(): raise Refused('sealed_bundle_required')
     expected = {spec.reference_id} if spec.task == 'clone' else set()
     if set(references) != expected: raise Refused('owned_mapping_required')
+    return owner
+
+
+def verify_service_inputs(spec, bundles, references, inventory, *, owner_uid=None, reference_fd=None):
+    """Trusted managed service storage plus full input byte verification."""
+    owner=verify_service_storage(spec,bundles,references,owner_uid=owner_uid)
     return verify_inputs(spec,bundles,references,inventory,owner_uid=owner,reference_fd=reference_fd)

@@ -85,10 +85,13 @@ class Availability:
         self.value = None
         self.pending = None
 
+    def validate(self, value, enrolled, manifest, *, now):
+        return validate(value,enrolled,manifest,now=now)
+
     def cached(self):
         with self.lock:
             if self.value is None: return None
-            try: validate(self.value, self.enrolled, self.manifest, now=self.utc())
+            try: self.validate(self.value, self.enrolled, self.manifest, now=self.utc())
             except Refused: return None
             return copy.deepcopy(self.value)
 
@@ -98,7 +101,7 @@ class Availability:
         with self.lock:
             if self.value is not None:
                 try:
-                    validate(self.value, self.enrolled, self.manifest, now=self.utc())
+                    self.validate(self.value, self.enrolled, self.manifest, now=self.utc())
                     return copy.deepcopy(self.value)
                 except Refused: pass
             if self.pending is None:
@@ -109,7 +112,7 @@ class Availability:
                         observed = self.provider(copy.deepcopy(self.enrolled))
                         result = dict(enrollment_sha256=digest(self.enrolled),
                             runtime_manifest_sha256=self.manifest, inventory=inventory_wire(observed))
-                        validate(result, self.enrolled, self.manifest, now=self.utc())
+                        self.validate(result, self.enrolled, self.manifest, now=self.utc())
                     except Exception:
                         result = None
                     with self.lock:
@@ -126,5 +129,5 @@ class Availability:
             if self.pending is pending: self.pending = None
             value = copy.deepcopy(pending['result'])
         if value is None: raise Refused('native_availability_failed')
-        validate(value, self.enrolled, self.manifest, now=self.utc())
+        self.validate(value, self.enrolled, self.manifest, now=self.utc())
         return value

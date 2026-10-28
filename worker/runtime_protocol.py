@@ -53,6 +53,9 @@ def execution(context):
         index = int(device.split(':')[1]) if family == 'cuda' else 0
         if override != dict(family=family, index=index):
             raise Refused('device_override_unavailable')
+    if profile['id'] == 'kokoro-native-cpu':
+        from worker.engines.native_kokoro import relation
+        return relation(context)
     if value is None:
         if profile['id'] in ('kokoro-cpu', 'pocket-cpu', 'qwen-cpu', 'qwen-cuda', 'qwen-mps'): raise Refused('execution_required')
         return None

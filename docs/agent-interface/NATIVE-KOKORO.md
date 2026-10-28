@@ -111,5 +111,25 @@ advertise preset-only CPU capability, preserve separate load/request deadlines,
 and test API/CLI/MCP download/cancel/restart. Do not widen `native-qwen-v1` or
 reuse Linux PID1/cgroup containment receipts as Mac evidence. No CPU adapter,
 installer activation, default hardware/fallback policy or clone promise is
-implemented here. Combined independent product review remains required before
-integration.
+qualified here. Source now has a separate `native-kokoro-cpu-v1` protocol,
+`native-kokoro-execution-v1` descriptor, receipt/journal family, guarded child,
+CPU-only metadata provider and typed catalogue/control transport. It reuses the
+existing Kokoro engine and native owner lifecycle. Source tests cover bounded
+startup/request handshakes, CPU proposals, cancellation/reaping, completed journal
+reopen and saved preset identity. The CPU source seam is not yet connected to an
+installer/activation factory; no installed public journey or CPU default is
+advertised from those tests. Combined independent product review remains required
+before integration.
+
+CPU product budgets are separate: 30 s startup, 30 s generation and one fixed
+60 s job, compared with the diagnostic's observed 1.71 s load/1.66 s generation.
+This is explicit headroom for the short EN preset candidate, not a latency
+guarantee or benchmark for arbitrary text. Each job loads once; no persistent
+model reuse is claimed. The owner observes a 2 GiB sampled RSS ceiling, 0.5 s
+freshness and fixed cancellation/reaping bounds. Sampling never proves a
+continuous memory cap. Darwin admission observes Mach free+inactive pages through
+[Apple's host info ABI](https://github.com/apple-oss-distributions/xnu/blob/main/osfmk/mach/host_info.h)
+and [VM statistics ABI](https://github.com/apple-oss-distributions/xnu/blob/main/osfmk/mach/vm_statistics.h);
+this estimate is not guaranteed allocatable RAM. Observation errors supply zero
+admission capacity. No Linux cgroup/PID1 or Qwen MPS receipt is accepted as CPU
+native evidence.

@@ -343,7 +343,9 @@ def frozen_plan(plan, bundles=None):
     require(identity['profile_id']==profile['id'] and effective['device']==profile['device'], 'profile_mismatch')
     if effective['engine'] in ('kokoro','pocket-tts','pcm-render'):
         require(effective['device']=='cpu' and effective['precision']=='float32', 'unsupported_execution')
-    require(profile['topology']==('packaged_native' if profile['device']=='metal' else 'networkless_container'), 'profile_mismatch')
+    native_cpu = profile['id']=='kokoro-native-cpu'
+    if native_cpu: require(effective['engine']=='kokoro' and profile['device']=='cpu', 'profile_mismatch')
+    require(profile['topology']==('packaged_native' if profile['device']=='metal' or native_cpu else 'networkless_container'), 'profile_mismatch')
     require(dict(operation=op,mode=mode,identity=effective) in profile['compatibility'], 'profile_incompatible')
     require(identity['fallback']!='allow_cpu' or (request.get('fallback','forbid')=='allow_cpu' and r['operator_fallback']=='allow_cpu'), 'fallback_policy_mismatch')
     if op in ('voice_prepare','voice_design'):

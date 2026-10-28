@@ -240,7 +240,7 @@ class Dispatcher:
             old = owned(payload['job_id'])
             oracle.require(payload['input_sha256'] == old['input_sha256'], 'idempotency_conflict')
             _, context = self.core._load(old['id'])
-            from worker.native_protocol import frozen_native
+            from worker.native_family import frozen_native
             if hasattr(self.runtime, 'native') or frozen_native(context):
                 raise ValueError('unsupported_control')
             # Replays precede authority refresh, but remain bound to the source
@@ -622,7 +622,7 @@ class Dispatcher:
             self.store.update(row,phase='unknown');self.quarantined=True
             return
         authority=row['authority'];job=self.core.job(row['job_id'])
-        from worker.native_protocol import terminal_receipt, frozen_native
+        from worker.native_family import terminal_receipt, frozen_native
         native=frozen_native(authority.context)
         import_uid=terminal_receipt(receipt,authority=authority,runtime_id=row['runtime'],
             local_import_uid=getattr(self.runtime,'local_import_uid',None))

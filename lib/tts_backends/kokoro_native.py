@@ -30,6 +30,9 @@ def cpu_fixture():
 def validate_host():
     if (platform.system(), platform.machine(), platform.python_implementation(), sys.version_info[:2]) != ('Darwin', 'arm64', 'CPython', (3, 11)):
         raise BackendError('native_kokoro_platform', 'Kokoro CPU preflight requires native Apple arm64 CPython 3.11; leave Rosetta. ' + INSTALL)
+    version=platform.mac_ver()[0].split('.')[0]
+    if not version.isdigit() or int(version)<14:
+        raise BackendError('native_kokoro_macos', 'The pinned native Kokoro wheels require macOS 14 or later. ' + INSTALL)
 
 
 def validate_versions():
@@ -88,7 +91,9 @@ def preflight():
             raise BackendError('native_kokoro_phonemization', 'Bundled eSpeak NG did not produce usable English phonemes.')
         if not callable(Kokoro.from_session) or not callable(KokoroBackend.synthesise):
             raise BackendError('native_kokoro_backend', 'Pinned Kokoro backend entry points are unavailable.')
-        return dict(platform='Darwin', machine='arm64', versions={n: metadata.version(n) for n in EXPECTED},
+        from worker.native_memory import observe
+        memory=observe()
+        return dict(memory=memory,platform='Darwin', machine='arm64', versions={n: metadata.version(n) for n in EXPECTED},
             providers=providers, cpu_operation=output.tolist(), threads=2, inter_threads=1, cpu_mem_arena=False,
             espeak_library=str(library), espeak_data=str(data), phonemes=phonemes, token_count=len(tokens),
             capabilities=['preset'], cloning=False, weights_loaded=False, synthesis_qualified=False,

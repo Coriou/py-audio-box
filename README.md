@@ -23,6 +23,7 @@ containers on your machine. No GPU is needed, and there is no browser UI.
 | "Default voice for X" | **Convention, not a feature** | Set an alias such as `default.narration`, then resolve it; see the [agent guide](docs/AGENT-GUIDE.md#make-it-the-default-voice-for-x) |
 | Qwen 0.6B cloning, CPU (EN/FR) | **Not ready** | Implemented in source; installed startup and inference not yet passed ([status](docs/agent-interface/QWEN-CPU.md#current-status--2026-10-27)) |
 | Apple Silicon (Metal), NVIDIA CUDA | **Unqualified** | Native CPU/Metal unqualified; amd64 Docker on Apple Silicon uses untested emulation |
+| Apple reference cloning | **Implemented Qwen native source, runtime-unvalidated** | Base 12Hz EN/FR on MPS FP32; Pocket native adapter absent. Cloning runtime tests excluded; see [native cloning limits](docs/agent-interface/NATIVE-CLONING.md) |
 | Listening / perceptual quality | **Partial** | Owner listened to earlier comparison samples and accepted three spoken-text pairs; French liaison unresolved. No per-engine perceptual release acceptance; installed-run outputs not listened |
 | Projects, blocks, clips, render (contract) | **Not implemented** | Defined in `contracts/v1`; not advertised by `discover` |
 | Published images / packages | **None** | Build from source |

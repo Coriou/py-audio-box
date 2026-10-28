@@ -50,7 +50,7 @@ COPY docs/agent-interface/CPU-QUICKSTART.md /app/docs/agent-interface/CPU-QUICKS
 COPY docs/agent-interface/DOCKER-VOLUMES.md /app/docs/agent-interface/DOCKER-VOLUMES.md
 COPY docs/agent-interface/HEADLESS-INSTALL.md /app/docs/agent-interface/HEADLESS-INSTALL.md
 COPY docs/agent-interface/NATIVE-PACKAGE.md /app/docs/agent-interface/NATIVE-PACKAGE.md
-COPY docs/agent-interface/APPLE-CI.md docs/agent-interface/NATIVE-DEPENDENCY.md docs/agent-interface/NATIVE-KOKORO.md /app/docs/agent-interface/
+COPY docs/agent-interface/APPLE-CI.md docs/agent-interface/NATIVE-DEPENDENCY.md docs/agent-interface/NATIVE-KOKORO.md docs/agent-interface/NATIVE-CLONING.md /app/docs/agent-interface/
 COPY docs/TTS_SPOKEN_TEXT.md /app/docs/TTS_SPOKEN_TEXT.md
 COPY docs/agent-interface/POCKET-QUICKSTART.md /app/docs/agent-interface/POCKET-QUICKSTART.md
 COPY docs/agent-interface/QWEN-CPU.md /app/docs/agent-interface/QWEN-CPU.md
