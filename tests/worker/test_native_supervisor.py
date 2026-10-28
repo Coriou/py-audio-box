@@ -556,6 +556,68 @@ class NativeSupervisorTests(unittest.TestCase):
         self.assertEqual(self.h.waited,1); self.assertIsNotNone(self.s.active)
         self.assertIsNone(self.s.dispatch(self.q('collect'))['receipt'])
 
+    def test_receiver_start_failure_retains_owned_handle_stop_reap_and_no_receipt(self):
+        import struct,time
+        self.t=time.monotonic()  # Real frame I/O and the fixture clock share one domain.
+        self.prepare();cert=b'inert-server-peer';self.s.pin=hashlib.sha256(cert).hexdigest();q=self.q('start')
+        class Wire:
+            def __init__(self):self.raw=bytearray(struct.pack('!I',len(canonical(q)))+canonical(q));self.sent=b''
+            def version(self):return 'TLSv1.3'
+            def getpeercert(self,binary_form=False):return cert
+            def settimeout(self,value):pass
+            def recv(self,size):value=bytes(self.raw[:size]);del self.raw[:len(value)];return value
+            def sendall(self,data):self.sent+=data
+            def close(self):pass
+        original=threading.Thread.start
+        def fail_receiver(thread):
+            if getattr(getattr(thread,'_target',None),'__name__',None)=='receive':raise RuntimeError('inert receiver start failure')
+            return original(thread)
+        wire=Wire()
+        with patch.object(threading.Thread,'start',fail_receiver):self.s.serve_connection(wire)
+        reply=p.response(json.loads(wire.sent[4:]),request=q)
+        self.assertFalse(reply['ok']);self.assertTrue(self.s.failed)
+        self.assertIs(self.s.active['handle'],self.h);self.assertIsNone(self.s.active['receiver'].ident)
+        self.assertEqual(self.h.waited,0);self.assertIsNone(self.s.dispatch(self.q('collect'))['receipt'])
+        self.s.dispatch(self.q('stop'));self.s.tick();self.assertEqual(self.signals,[(123,signal.SIGTERM)])
+        self.h.code=-15;self.s.tick();self.s.tick()
+        self.assertEqual(self.h.waited,1);self.assertTrue(self.s.active['waited'])
+        self.assertIsNone(self.s.dispatch(self.q('collect'))['receipt']);self.assertFalse(self.s.journal.value['records'][0]['acked'])
+        self.s.active['parent'].close()  # Only the test-owned inert channel, after confirmed fake handle wait.
+
+    def test_receiver_publication_before_start_is_hidden_from_tick_until_start_rpc_completes(self):
+        self.prepare();entered=threading.Event();release=threading.Event();done=threading.Event();errors=[]
+        original=threading.Thread.start
+        def receiver_start(thread):
+            if getattr(getattr(thread,'_target',None),'__name__',None)=='receive':
+                entered.set()
+                if not release.wait(2):raise RuntimeError('receiver start barrier expired')
+            return original(thread)
+        def start():
+            try:self.s.dispatch(self.q('start'))
+            except BaseException as exc:errors.append(exc)
+            finally:done.set()
+        with patch('worker.native_child.parent_exchange',return_value=None),patch.object(threading.Thread,'start',receiver_start):
+            starter=threading.Thread(target=start);starter.start()
+            try:
+                self.assertTrue(entered.wait(1));receiver=self.s.active['receiver']
+                self.assertIsNone(receiver.ident);self.assertFalse(done.is_set())
+                # This reproduces the history fixture's invalid direct read.
+                with self.assertRaisesRegex(RuntimeError,'before it is started'):receiver.join(0)
+                self.assertFalse(self.s.lock.acquire(False))  # start owns the protocol/state lock.
+                with patch.object(self.s,'finish_tick',wraps=self.s.finish_tick) as finish:
+                    self.s.tick();finish.assert_not_called()
+                    self.s.dispatch(self.q('stop'));self.s.tick();finish.assert_not_called()
+                self.assertTrue(self.s.active['cancel']);self.assertEqual(self.h.waited,0)
+                self.assertIsNone(self.s.journal.value['records'][0]['receipt'])
+                self.assertEqual(self.signals,[(123,signal.SIGTERM)])
+            finally:release.set();starter.join(2)
+            self.assertFalse(starter.is_alive());self.assertTrue(done.is_set());self.assertEqual(errors,[])
+            receiver.join(1);self.assertFalse(receiver.is_alive())
+        self.h.code=-15;self.s.tick();self.s.tick()
+        receipt=self.s.dispatch(self.q('collect'))['receipt']
+        self.assertTrue(receipt['reaped']);self.assertFalse(receipt['timely']);self.assertEqual(self.h.waited,1)
+        self.assertIsNone(self.s.active)
+
     def test_blocked_popen_registration_stop_and_identity_serialization(self):
         self.prepare(); entered=threading.Event(); release=threading.Event(); errors=[]
         def popen(*args,**kwargs):
