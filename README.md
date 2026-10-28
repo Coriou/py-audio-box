@@ -33,7 +33,9 @@ text-fidelity failures. Qwen English cloning is not ready; native CPU/Metal and
 CUDA remain unqualified. On Apple Silicon, existing linux/amd64 Docker images
 use emulation; this path is untested. Import-only CI is not runtime readiness.
 For executable native prerequisite checks and the remaining installation gates,
-see [Apple Silicon diagnostics](docs/agent-interface/APPLE-CI.md).
+see [Apple Silicon diagnostics](docs/agent-interface/APPLE-CI.md). Qwen native float32 is experimental; the FP16 candidate failed pretrained sampling.
+The [Kokoro Mac CPU candidate](docs/agent-interface/NATIVE-KOKORO.md) has a no-weight
+preflight only, provides presets rather than cloning, and is not installed Mac support.
 
 Each installation runs **one engine**, and `discover` reports what that
 installation can actually do. Treat `discover`, not this table, as the source of

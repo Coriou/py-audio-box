@@ -32,6 +32,7 @@ COPY benchmarks /app/benchmarks
 COPY scripts /app/scripts
 COPY .github/workflows/unit.yml /app/.github/workflows/unit.yml
 COPY .github/workflows/apple-silicon.yml /app/.github/workflows/apple-silicon.yml
+COPY .github/workflows/apple-kokoro.yml /app/.github/workflows/apple-kokoro.yml
 COPY run-cpu /app/run-cpu
 COPY run /app/run
 COPY run-direct /app/run-direct
@@ -49,7 +50,7 @@ COPY docs/agent-interface/CPU-QUICKSTART.md /app/docs/agent-interface/CPU-QUICKS
 COPY docs/agent-interface/DOCKER-VOLUMES.md /app/docs/agent-interface/DOCKER-VOLUMES.md
 COPY docs/agent-interface/HEADLESS-INSTALL.md /app/docs/agent-interface/HEADLESS-INSTALL.md
 COPY docs/agent-interface/NATIVE-PACKAGE.md /app/docs/agent-interface/NATIVE-PACKAGE.md
-COPY docs/agent-interface/APPLE-CI.md docs/agent-interface/NATIVE-DEPENDENCY.md /app/docs/agent-interface/
+COPY docs/agent-interface/APPLE-CI.md docs/agent-interface/NATIVE-DEPENDENCY.md docs/agent-interface/NATIVE-KOKORO.md /app/docs/agent-interface/
 COPY docs/TTS_SPOKEN_TEXT.md /app/docs/TTS_SPOKEN_TEXT.md
 COPY docs/agent-interface/POCKET-QUICKSTART.md /app/docs/agent-interface/POCKET-QUICKSTART.md
 COPY docs/agent-interface/QWEN-CPU.md /app/docs/agent-interface/QWEN-CPU.md
