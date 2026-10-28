@@ -176,6 +176,9 @@ jobs:
             apple-ci/native-import/report.json
             apple-ci/native-import/owner.json
             apple-ci/native-import/child.log
+            apple-ci/numerics/report.json
+            apple-ci/numerics/owner.json
+            apple-ci/numerics/child.log
           retention-days: 7
           if-no-files-found: error
           include-hidden-files: false

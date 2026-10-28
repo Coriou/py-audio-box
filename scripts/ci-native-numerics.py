@@ -166,6 +166,12 @@ def main():
     try:
         owner.owned_child([sys.executable,'-I','-B','-u',str(Path(__file__).resolve()),'--child','--output',str(args.output/'report.json')],env,args.output/'child.log',observation,seconds=90)
         validate_report(json.loads((args.output/'report.json').read_text()))
+    except BaseException:
+        for name in ('report.json','child.log'):
+            file=args.output/name
+            if file.exists():
+                print(name+': '+file.read_bytes()[:16384].decode('utf-8','replace'),file=sys.stderr)
+        raise
     finally: save(args.output/'owner.json',observation)
 
 

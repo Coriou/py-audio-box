@@ -9,6 +9,11 @@ ci=importlib.util.module_from_spec(SPEC);SPEC.loader.exec_module(ci)
 
 
 class NumericGateTests(unittest.TestCase):
+    def test_failure_receipts_and_log_are_in_artifact_allowlist(self):
+        workflow=(Path(__file__).resolve().parents[1]/'.github/workflows/apple-silicon.yml').read_text()
+        for name in ('report.json','owner.json','child.log'):
+            self.assertIn('            apple-ci/numerics/'+name+'\n',workflow)
+
     def test_tiny_configuration_keeps_codec_structure_but_bounds_parameters(self):
         config=ci.tiny_config()
         self.assertEqual((config['vocab_size'],config['num_code_groups']),(3072,16))
