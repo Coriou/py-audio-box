@@ -39,6 +39,32 @@ class InstalledControllerTests(unittest.TestCase):
         self.assertEqual([x['signal'] for x in records[0]['signals']],['SIGTERM'])
         self.assertNotIn(child.handle.pid,c._LIVE)
 
+    def test_cli_stdout_json_is_separate_from_bounded_stderr_warning(self):
+        records=[]
+        code='import json,sys; sys.stderr.write("inert warning\\n"); print(json.dumps({"value":"café"},ensure_ascii=False))'
+        child=c.Child('cli',[sys.executable,'-u','-c',code],self.root,time.monotonic()+40,records)
+        try:self.assertEqual(child.wait(10),0)
+        finally:child.close(force_allowed=True)
+        self.assertEqual(json.loads(child.path.read_bytes()),dict(value='café'))
+        self.assertEqual(child.stderr_path.read_text(),'inert warning\n')
+
+    def test_separate_streams_keep_original_combined_log_bound_after_exit(self):
+        records=[];code='import sys; print("{}"); sys.stderr.write("x"*(1024**2))'
+        child=c.Child('cli',[sys.executable,'-u','-c',code],self.root,time.monotonic()+40,records)
+        try:
+            with self.assertRaisesRegex(c.Failure,'log_limit'):child.wait(10)
+        finally:
+            if not records[0]['reaped']:child.close(force_allowed=True)
+        self.assertTrue(records[0]['reaped']);self.assertNotIn(child.handle.pid,c._LIVE)
+
+    def test_canonical_non_ascii_matches_product_and_checks_loaded_source_closure(self):
+        from worker.transport import canonical
+        value=dict(path='/private/café/voix',text='été 🔈')
+        self.assertEqual(c.canonical(value),canonical(value));self.assertIn('café'.encode(),c.canonical(value))
+        counts=c.installed_modules(ROOT);self.assertGreater(sum(counts.values()),1)
+        with patch.dict(sys.modules,{'worker.inert_foreign':SimpleNamespace(__file__='/foreign/worker.py')}),self.assertRaisesRegex(c.Failure,'installed_source_closure'):
+            c.installed_modules(ROOT)
+
     def test_unknown_nested_custody_never_forces_kill_or_drops_live_handle(self):
         child=c.Child.__new__(c.Child);child.role='service';child.handle=SimpleNamespace(pid=123,poll=lambda:None)
         child.record=dict(cleanup_unknown=False);child.send=Mock();child.wait=Mock(side_effect=c.Failure('fixture deadline'))
@@ -147,11 +173,44 @@ class InstalledControllerTests(unittest.TestCase):
             with self.assertRaisesRegex(c.Failure,'first cause'):c.product_flow(Fake())
         self.assertEqual(events,['doctor','model','qualification-session','start'])
 
+    def test_terminal_failure_before_cancel_is_not_reported_as_completion_win(self):
+        for state,reason in (('succeeded','cancel_completion_won'),('failed','job_failed_before_cancel'),('cancelled','job_cancelled_before_request')):
+            with self.subTest(state=state):
+                journey=c.Journey.__new__(c.Journey);journey.state={};journey.request={};journey.deadline=time.monotonic()+60
+                journey.submit=Mock(return_value=dict(job_id='inert'))
+                journey.http=Mock(side_effect=[dict(status=dict(phase='idle')),dict(state=state)])
+                journey.cli=Mock();journey.mcp=Mock()
+                with self.assertRaisesRegex(c.Failure,reason):journey.cancellations()
+                self.assertEqual(journey.state['pre_cancel_terminal_job']['state'],state)
+                self.assertEqual(journey.submit.call_count,1);journey.cli.assert_not_called();journey.mcp.tool.assert_not_called()
+
+    def test_post_cancel_labels_and_warm_http_mcp_transport_order(self):
+        cancelled=dict(id='running',state='cancelled',attempts=[dict(reaped=True)],artifact_ids=[])
+        queued=dict(id='queued',state='cancelled',stage='never_started',attempts=[],artifact_ids=[])
+        cases=[(dict(cancelled,state='succeeded'),queued,'cancel_completion_won'),
+            (cancelled,dict(queued,state='succeeded',attempts=[dict(reaped=True)]),'queued_cancel_lost_job_started'),
+            (cancelled,dict(queued,attempts=[dict(reaped=True)]),'queued_cancel_lost_job_started'),
+            (dict(cancelled,state='failed'),queued,'running_job_failed_not_cancelled'),(cancelled,queued,None)]
+        for a,b,reason in cases:
+            with self.subTest(reason=reason):
+                journey=c.Journey.__new__(c.Journey);journey.state={};journey.request={};journey.deadline=time.monotonic()+60
+                journey.submit=Mock(side_effect=[dict(job_id='running'),dict(job_id='queued')])
+                journey.http=Mock(side_effect=[dict(status=dict(phase='observing')),dict(state='running'),{}])
+                journey.mcp=Mock();journey.cli=Mock();journey.wait_job=Mock(side_effect=[a,b])
+                journey.evidence=Mock(return_value=[dict(job_id='running',receipt=dict(reaped=True,timely=False,processes=[{}],termination=dict(reason='cancelled')))])
+                if reason:
+                    with self.assertRaisesRegex(c.Failure,reason):journey.cancellations()
+                else:journey.cancellations()
+                self.assertEqual(journey.state['cancel_jobs'],[a,b]);self.assertEqual(journey.submit.call_count,2)
+                self.assertEqual(journey.http.call_args_list[-1],unittest.mock.call('job_cancel',dict(job_id='queued'),key='installed-cancel-queued'))
+                journey.mcp.tool.assert_called_once_with('speech_job_cancel',dict(job_id='running',idempotency_key='installed-cancel-running'))
+                journey.cli.assert_not_called()
+
     def test_bounded_ranges_whole_hash_and_nonempty_playable_wav(self):
         output=io.BytesIO()
         with wave.open(output,'wb') as wav:wav.setparams((1,2,24000,0,'NONE','none'));wav.writeframes(b'\x01\0'*4800)
         raw=output.getvalue();asset=dict(id='inert',sha256=hashlib.sha256(raw).hexdigest());calls=[]
-        def transfer(p):
+        def transfer(p,*,cutoff):
             calls.append(p);start,end=p['start'],p['end_exclusive']
             return dict(start=start,end_exclusive=end,total_bytes=len(raw),content_sha256=asset['sha256'],content_base64=base64.b64encode(raw[start:end]).decode())
         self.assertEqual(c.download(transfer,asset,time.monotonic()+60,mcp=True,known_size=len(raw)),raw)
@@ -161,12 +220,31 @@ class InstalledControllerTests(unittest.TestCase):
 
     def test_range_rounds_share_one_cumulative_budget(self):
         now=[100.];calls=[];raw=b'x'*12000;asset=dict(id='inert',sha256=hashlib.sha256(raw).hexdigest())
-        def transfer(p):
+        def transfer(p,*,cutoff):
             calls.append(p);now[0]+=6
+            self.assertEqual(cutoff,120.)
             return dict(start=p['start'],end_exclusive=p['end_exclusive'],total_bytes=len(raw),content_sha256=asset['sha256'],content_base64=base64.b64encode(raw[p['start']:p['end_exclusive']]).decode())
         with patch.object(c.time,'monotonic',side_effect=lambda:now[0]),self.assertRaisesRegex(c.Failure,'download_total_deadline'):
             c.download(transfer,asset,1000,mcp=True,known_size=len(raw))
-        self.assertEqual(len(calls),2)
+        self.assertEqual(len(calls),4)
+
+    def test_mcp_ranges_can_use_more_than_ten_seconds_without_renewing_twenty(self):
+        now=[100.];raw=b'x'*(12*3072);asset=dict(id='inert',sha256=hashlib.sha256(raw).hexdigest());cutoffs=[]
+        def transfer(p,*,cutoff):
+            cutoffs.append(cutoff);now[0]+=1
+            return dict(start=p['start'],end_exclusive=p['end_exclusive'],total_bytes=len(raw),content_sha256=asset['sha256'],content_base64=base64.b64encode(raw[p['start']:p['end_exclusive']]).decode())
+        with patch.object(c.time,'monotonic',side_effect=lambda:now[0]):
+            self.assertEqual(c.download(transfer,asset,1000,mcp=True,known_size=len(raw)),raw)
+        self.assertEqual(now[0],112.);self.assertEqual(cutoffs,[120.]*12)
+
+    def test_mcp_roundtrip_honors_shared_cutoff_even_with_buffered_late_reply(self):
+        client=c.MCP.__new__(c.MCP);client.deadline=1000;client.seq=0;client.child=SimpleNamespace(observe=Mock())
+        client.write=Mock();client.buffer=c.canonical(dict(jsonrpc='2.0',id=1,result={}))+b'\n'
+        with patch.object(c.time,'monotonic',return_value=119.):self.assertEqual(client.call('ping',{},cutoff=120.),{})
+        self.assertEqual(client.write.call_args.kwargs,dict(cutoff=120.))
+        client.seq=0;client.buffer=c.canonical(dict(jsonrpc='2.0',id=1,result={}))+b'\n'
+        with patch.object(c.time,'monotonic',return_value=120.),self.assertRaisesRegex(c.Failure,'mcp_roundtrip_deadline'):
+            client.call('ping',{},cutoff=120.)
 
     def test_real_mcp_stdio_protocol_without_http_or_weights(self):
         records=[];child=c.Child('mcp',[sys.executable,'-B','-m','clients.mcp'],self.root,time.monotonic()+60,records,pipes=True)

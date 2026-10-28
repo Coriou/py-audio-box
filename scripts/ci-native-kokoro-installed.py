@@ -40,7 +40,17 @@ _STOP=False
 class Failure(RuntimeError):pass
 
 
-def canonical(value):return json.dumps(value,sort_keys=True,separators=(',',':'),allow_nan=False).encode()
+def canonical(value):return json.dumps(value,sort_keys=True,separators=(',',':'),allow_nan=False,ensure_ascii=False).encode()
+
+
+def installed_modules(installed):
+    counts={name:0 for name in ('service','clients','worker','contracts','lib')}
+    for name,module in tuple(sys.modules.items()):
+        family=name.split('.')[0];path=getattr(module,'__file__',None)
+        if family in counts and path is not None:
+            if not Path(path).resolve().is_relative_to(installed.resolve()):raise Failure('installed_source_closure')
+            counts[family]+=1
+    return counts
 
 
 def save(path,value):
@@ -76,8 +86,9 @@ class Child:
         if role not in ('setup','service','cli','mcp'):raise Failure('controller_role')
         budget(deadline);self.role=role;self.deadline=deadline;self.start=time.monotonic()
         self.path=private/(role+'-'+str(len(records))+'.log');self.log=self.path.open('xb')
+        self.stderr_path=self.path.with_suffix('.stderr.log');self.stderr=self.stderr_path.open('xb')
         self.handle=subprocess.Popen(argv,stdin=subprocess.PIPE if pipes else subprocess.DEVNULL,
-            stdout=subprocess.PIPE if pipes else self.log,stderr=self.log,env=environment(private),
+            stdout=subprocess.PIPE if pipes else self.log,stderr=self.stderr,env=environment(private),
             start_new_session=True,close_fds=True,bufsize=0)
         self.record=dict(role=role,pid=self.handle.pid,identity=None,signals=[],exit=None,reaped=False,
             sampler_stopped=False,sampled_peak_rss_bytes=None,samples=0,rss_limit_bytes=RSS_LIMIT,cleanup_unknown=False)
@@ -95,7 +106,7 @@ class Child:
         if state['error'] and state['error']['type']!='ProcessGone':raise Failure('controller_sampler_lost')
         if code is not None:
             self.record['exit']=code;return code
-        if (self.path.stat().st_size>LOG_LIMIT or (state['peak'] or 0)>RSS_LIMIT):raise Failure('controller_log_or_rss_limit')
+        if (self.path.stat().st_size+self.stderr_path.stat().st_size>LOG_LIMIT or (state['peak'] or 0)>RSS_LIMIT):raise Failure('controller_log_or_rss_limit')
         if state['error'] or last is None or now-last['observed_at']>.5:
             # ProcessGone before poll exposes exit is provisional, never death
             # proof or a renewed deadline. Original Popen wait remains authority.
@@ -130,12 +141,12 @@ class Child:
     def reap(self):
         code=self.handle.wait(timeout=max(.001,min(1,self.deadline-time.monotonic())))
         self.record.update(exit=code,reaped=True,sampler_stopped=self.sampler.stop())
-        self.log.close()
+        self.log.close();self.stderr.close()
         for stream in (self.handle.stdin,self.handle.stdout):
             if stream is not None and not stream.closed:stream.close()
         if not self.record['sampler_stopped']:raise Failure('controller_sampler_cleanup_unknown')
         _LIVE.pop(self.handle.pid,None)
-        if self.path.stat().st_size>LOG_LIMIT:raise Failure('controller_log_limit')
+        if self.path.stat().st_size+self.stderr_path.stat().st_size>LOG_LIMIT:raise Failure('controller_log_limit')
         return code
 
     def close(self,*,force_allowed=False):
@@ -166,10 +177,10 @@ class MCP:
         if initialized.get('protocolVersion')!='2025-11-25':raise Failure('mcp_protocol_version')
         self.write(dict(jsonrpc='2.0',method='notifications/initialized'))
 
-    def write(self,value):
+    def write(self,value,*,cutoff=None):
         budget(self.deadline);raw=canonical(value)+b'\n'
         if len(raw)>32768:raise Failure('mcp_request_limit')
-        cutoff=min(self.deadline-RESERVE,time.monotonic()+10)
+        cutoff=min(self.deadline-RESERVE,time.monotonic()+10,cutoff if cutoff is not None else self.deadline)
         with selectors.DefaultSelector() as writer:
             writer.register(self.child.handle.stdin,selectors.EVENT_WRITE)
             while raw:
@@ -179,9 +190,9 @@ class MCP:
                     try:raw=raw[os.write(self.child.handle.stdin.fileno(),raw):]
                     except BlockingIOError:pass
 
-    def call(self,method,params):
-        self.seq+=1;self.write(dict(jsonrpc='2.0',id=self.seq,method=method,params=params))
-        cutoff=min(self.deadline-RESERVE,time.monotonic()+10)
+    def call(self,method,params,*,cutoff=None):
+        cutoff=min(self.deadline-RESERVE,time.monotonic()+10,cutoff if cutoff is not None else self.deadline)
+        self.seq+=1;self.write(dict(jsonrpc='2.0',id=self.seq,method=method,params=params),cutoff=cutoff)
         while True:
             self.child.observe();budget(self.deadline)
             if time.monotonic()>=cutoff:raise Failure('mcp_roundtrip_deadline')
@@ -198,8 +209,8 @@ class MCP:
                 self.buffer+=block
                 if len(self.buffer)>256*1024:raise Failure('mcp_response_limit')
 
-    def tool(self,name,arguments):
-        result=self.call('tools/call',dict(name=name,arguments=arguments))
+    def tool(self,name,arguments,*,cutoff=None):
+        result=self.call('tools/call',dict(name=name,arguments=arguments),cutoff=cutoff)
         if result.get('isError'):raise Failure('mcp_tool_error')
         return result['structuredContent']
 
@@ -215,13 +226,13 @@ def wav_info(raw):
 
 def download(call,asset,deadline,*,mcp=False,known_size=None):
     end=min(deadline-RESERVE,time.monotonic()+20)
-    size=known_size if known_size is not None else call(dict(asset_id=asset['id'],start=0,end_exclusive=1))['total_bytes']
+    size=known_size if known_size is not None else call(dict(asset_id=asset['id'],start=0,end_exclusive=1),cutoff=end)['total_bytes']
     if not 44<size<=MAX_WAV:raise Failure('download_size_limit')
     parts=[];count=0
     for start in range(0,size,3072 if mcp else 65536):
-        budget(deadline,10)
-        if end-time.monotonic()<10:raise Failure('download_total_deadline')
-        stop=min(size,start+(3072 if mcp else 65536));result=call(dict(asset_id=asset['id'],start=start,end_exclusive=stop));count+=1
+        budget(deadline)
+        if time.monotonic()>=end:raise Failure('download_total_deadline')
+        stop=min(size,start+(3072 if mcp else 65536));result=call(dict(asset_id=asset['id'],start=start,end_exclusive=stop),cutoff=end);count+=1
         raw=base64.b64decode(result['content_base64'],validate=True)
         if time.monotonic()>end:raise Failure('download_total_deadline')
         if (result['start'],result['end_exclusive'],result['total_bytes'],result['content_sha256'])!=(start,stop,size,asset['sha256']) or len(raw)!=stop-start:raise Failure('download_metadata')
@@ -240,6 +251,8 @@ class Journey:
         from service.native_cpu_setup import client_environment
         from clients.http import HTTP
         if not Path(sys.modules['service.native_cpu_setup'].__file__).is_relative_to(installed):raise Failure('installed_role_source')
+        state['installed_source_modules_checked']=installed_modules(installed)
+        sys.path[:]=[p for p in sys.path if Path(p or '.').resolve()!=ROOT.resolve()]
         self.client_environment=client_environment;self.HTTP=HTTP
         self.http_thread=None
         self.command=[str(self.root/'venv/bin/python'),'-I','-B',str(installed/'native-worker.py')]
@@ -360,7 +373,7 @@ class Journey:
     def clip(self,job,name):
         if job['state']!='succeeded':raise Failure('public_job_not_succeeded')
         artifact=self.http('artifact_get',dict(artifact_id=job['artifact_ids'][0]));asset=self.http('asset_get',dict(asset_id=artifact['asset_ids'][0]))
-        raw=download(lambda p:self.http('asset_content',p),asset,self.deadline)
+        raw=download(lambda p,*,cutoff:self.http('asset_content',p,phase_cutoff=cutoff),asset,self.deadline)
         result=self.cli('client','--root',str(self.root),'asset','content',asset['id'],'--output',str(self.output/name))
         if result['sha256']!=asset['sha256'] or (self.output/name).read_bytes()!=raw:raise Failure('cli_http_download_disagreement')
         return raw,asset,artifact
@@ -394,7 +407,7 @@ class Journey:
         job=self.wait_job(submitted['job_id']);completed=time.monotonic()-started
         raw,asset,artifact=self.clip(job,'English.wav')
         if self.mcp.tool('speech_artifact_get',dict(artifact_id=artifact['id']))!=artifact:raise Failure('mcp_artifact_disagreement')
-        mcp_raw=download(lambda p:self.mcp.tool('speech_asset_content',p),asset,self.deadline,mcp=True,known_size=len(raw))
+        mcp_raw=download(lambda p,*,cutoff:self.mcp.tool('speech_asset_content',p,cutoff=cutoff),asset,self.deadline,mcp=True,known_size=len(raw))
         if mcp_raw!=raw:raise Failure('mcp_download_disagreement')
         info=wav_info(raw);info.update(public_completion_seconds=completed,end_to_end_rtf=completed/info['duration_seconds'])
         self.state.update(first_job=job,first_asset=asset,first_voice=voice,first_wav=info)
@@ -407,15 +420,23 @@ class Journey:
             current=self.http('job_get',dict(job_id=jid),phase_cutoff=cutoff)
             if time.monotonic()>=cutoff:raise Failure('cancel_observing_deadline')
             if current['state']=='running' and status['phase']=='observing':break
-            if current['state'] in ('succeeded','failed','cancelled'):raise Failure('cancel_completion_won')
+            if current['state'] in ('succeeded','failed','cancelled'):
+                self.state['pre_cancel_terminal_job']=current
+                reason={'succeeded':'cancel_completion_won','failed':'job_failed_before_cancel','cancelled':'job_cancelled_before_request'}[current['state']]
+                raise Failure(reason)
             time.sleep(.1)
         else:raise Failure('cancel_observing_deadline')
+        observing=time.monotonic()
         queued=self.submit('installed-en-3',self.request)
-        self.mcp.tool('speech_job_cancel',dict(job_id=queued['job_id'],idempotency_key='installed-cancel-queued'))
-        self.cli('client','--root',str(self.root),'job','cancel',jid,'--idempotency-key','installed-cancel-running')
+        self.http('job_cancel',dict(job_id=queued['job_id']),key='installed-cancel-queued')
+        self.state['running_cancel_request_after_observing_seconds']=time.monotonic()-observing
+        self.mcp.tool('speech_job_cancel',dict(job_id=jid,idempotency_key='installed-cancel-running'))
+        self.state['running_cancel_response_after_observing_seconds']=time.monotonic()-observing
         a=self.wait_job(jid);b=self.wait_job(queued['job_id'])
         self.state['cancel_jobs']=[a,b]
-        if a['state']=='succeeded' or b['state']=='succeeded':raise Failure('cancel_completion_won')
+        if a['state']=='succeeded':raise Failure('cancel_completion_won')
+        if b['state']=='succeeded' or b['attempts']:raise Failure('queued_cancel_lost_job_started')
+        if a['state']=='failed':raise Failure('running_job_failed_not_cancelled')
         if a['state']!='cancelled' or not a['attempts'] or not all(v['reaped'] for v in a['attempts']) or a['artifact_ids']:raise Failure('running_cancel_unqualified')
         if (b['state'],b['stage'],b['attempts'],b['artifact_ids'])!=('cancelled','never_started',[],[]):raise Failure('queued_cancel_unqualified')
         receipt=next(r['receipt'] for r in self.evidence() if r['job_id']==jid)
@@ -428,7 +449,7 @@ class Journey:
         if self.http('job_get',dict(job_id=self.state['first_job']['id']))!=self.state['first_job']:raise Failure('retained_job_changed')
         for job in self.state['cancel_jobs']:
             if self.http('job_get',dict(job_id=job['id']))!=job:raise Failure('retained_cancel_changed')
-        raw=download(lambda p:self.http('asset_content',p),self.state['first_asset'],self.deadline)
+        raw=download(lambda p,*,cutoff:self.http('asset_content',p,phase_cutoff=cutoff),self.state['first_asset'],self.deadline)
         if hashlib.sha256(raw).hexdigest()!=self.state['first_wav']['sha256']:raise Failure('retained_wav_changed')
         self.take_job()
         submitted=self.cli('client','--root',str(self.root),'speech','generate','--request',canonical(self.request).decode(),'--idempotency-key','installed-en-4')
