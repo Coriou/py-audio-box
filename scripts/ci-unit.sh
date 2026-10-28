@@ -195,7 +195,9 @@ name="pab-unit-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}-${mode}-${shard}-${RANDOM}
 budget=$(remaining "$setup_limit"); (( budget <= 10 )) || budget=10
 container_id=$(timeout "${budget}s" docker create --name "$name" --network none --cpus 2 --memory 1g --memory-swap 1g \
   --log-driver local --log-opt max-size=1m --log-opt max-file=2 \
-  --pids-limit 128 --read-only --tmpfs /tmp:rw,nosuid,nodev,size=1g \
+  --pids-limit 128 --read-only --tmpfs /tmp:rw,noexec,nosuid,nodev,size=1g \
+  --tmpfs /pab-copied-venv-test:rw,exec,nosuid,nodev,size=64m,mode=1777,uid=0,gid=0 \
+  --env PAB_COPIED_VENV_TEST_SCRATCH=/pab-copied-venv-test \
   "$iid" python -u -m scripts.ci_unit_shards "${args[@]}" 2>"$diagnostics/create.stderr")
 budget=$(remaining "$setup_limit"); (( budget <= 10 )) || budget=10
 timeout "${budget}s" docker start "$container_id" >"$diagnostics/start.stdout" 2>"$diagnostics/start.stderr"

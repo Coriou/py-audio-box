@@ -5,6 +5,7 @@ import importlib.util
 import io
 import json
 import os
+import re
 from pathlib import Path
 import signal
 import subprocess
@@ -271,9 +272,22 @@ class InstalledControllerTests(unittest.TestCase):
         image=(ROOT/'Dockerfile.tests').read_text();self.assertIn('COPY scripts /app/scripts',image)
 
 
+def copied_venv_scratch():
+    selected=os.environ.get('PAB_COPIED_VENV_TEST_SCRATCH')
+    if selected is None:return None  # Native Apple/local run has its normal executable temp directory.
+    path=Path('/pab-copied-venv-test')
+    if selected!=str(path):raise AssertionError('copied venv fixture scratch selector invalid')
+    if path.is_symlink() or not path.is_dir():raise AssertionError('required copied venv executable scratch absent')
+    info=path.stat()
+    if info.st_uid!=0 or info.st_mode&0o7777!=0o1777:raise AssertionError('copied venv scratch owner/mode invalid')
+    if os.statvfs(path).f_flag&getattr(os,'ST_NOEXEC',8):raise AssertionError('copied venv scratch is noexec')
+    return str(path)
+
+
 class OwnedInstallationCleanupTests(unittest.TestCase):
     def setUp(self):
-        self.temp=tempfile.TemporaryDirectory();self.addCleanup(self.temp.cleanup)
+        scratch=copied_venv_scratch() if self._testMethodName=='test_real_product_copies_venv_readonly_namespace_and_external_python' else None
+        self.temp=tempfile.TemporaryDirectory(dir=scratch);self.addCleanup(self.temp.cleanup)
         self.output=Path(self.temp.name).resolve();self.private=self.output/'.private';self.private.mkdir()
         self.root=self.private/'installation';self.root.mkdir();self.nested=self.root/'source';self.nested.mkdir()
         (self.nested/'fixture').write_text('owned');self.nested.chmod(0o555);self.root.chmod(0o555)
@@ -332,6 +346,16 @@ class OwnedInstallationCleanupTests(unittest.TestCase):
             self.assertTrue((self.nested/'fixture').exists());self.assertEqual(self.root.stat().st_mode&0o777,0o555)
         with patch.dict(c._LIVE,{123:object()}),self.assertRaisesRegex(c.CleanupFailure,'custody_unknown'):
             c.remove_fresh_installation(self.output,self.state)
+
+    def test_copied_venv_scratch_is_explicit_and_required_not_host_fallback(self):
+        with patch.dict(os.environ,{'PAB_COPIED_VENV_TEST_SCRATCH':'/wrong'}),self.assertRaisesRegex(AssertionError,'selector invalid'):copied_venv_scratch()
+        with patch.dict(os.environ,{'PAB_COPIED_VENV_TEST_SCRATCH':'/pab-copied-venv-test'}),patch.object(Path,'is_dir',return_value=False),self.assertRaisesRegex(AssertionError,'scratch absent'):copied_venv_scratch()
+        runner=(ROOT/'scripts/ci-unit.sh').read_text()
+        self.assertIn('--tmpfs /tmp:rw,noexec,nosuid,nodev,size=1g',runner)
+        self.assertIn('--tmpfs /pab-copied-venv-test:rw,exec,nosuid,nodev,size=64m,mode=1777,uid=0,gid=0',runner)
+        self.assertEqual(re.findall(r'--tmpfs ([^ ]*?,exec[^ ]*)',runner),['/pab-copied-venv-test:rw,exec,nosuid,nodev,size=64m,mode=1777,uid=0,gid=0'])
+        self.assertIn('--env PAB_COPIED_VENV_TEST_SCRATCH=/pab-copied-venv-test',runner)
+        self.assertNotIn('--env TMPDIR',runner);self.assertNotIn('--mount',runner);self.assertNotIn('--volume',runner)
 
     def create_product_venv(self):
         command=[sys.executable,'-m','venv','--copies',str(self.root/'venv')]
