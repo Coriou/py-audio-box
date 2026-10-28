@@ -594,7 +594,12 @@ class Journey:
     def selftest(self):
         if (self.root/'qualification.json').exists():raise Failure('unexpected_qualification_file')
         self.take_job()  # Unknown selftest outcomes spend this slot, never retry.
-        value=self.cli('doctor','--root',str(self.root),'--selftest',seconds=120)
+        # Doctor selftest owns a custodian/model, unlike ordinary CLI clients.
+        # Existing service-role cleanup waits14s and requires family_stopped
+        # before forced kill; it does not depend on a listening HTTP endpoint.
+        child=Child('service',[*self.command,'doctor','--root',str(self.root),'--selftest'],self.private,self.deadline,self.records)
+        if child.wait(120):raise Failure('product_selftest_failed')
+        value=json.loads(child.path.read_bytes())
         if (value['qualification']!='local_selftest' or value['ready_for_speech'] is not True or
                 value['history_jobs_used']!=1 or value['history_jobs_remaining']!=62 or
                 not 0<value['cold_end_to_end_seconds']<=90):raise Failure('selftest_public_proof_missing')

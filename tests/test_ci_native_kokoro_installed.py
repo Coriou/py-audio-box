@@ -205,10 +205,90 @@ class InstalledControllerTests(unittest.TestCase):
             with self.assertRaisesRegex(c.Failure,'first cause'):c.ordinary_flow(Fake())
         self.assertEqual(events,['model'])
         journey=c.Journey.__new__(c.Journey);journey.state={};journey.root=self.root
-        journey.cli=Mock(side_effect=c.Failure('selftest unknown'))
-        with self.assertRaisesRegex(c.Failure,'selftest unknown'):journey.selftest()
+        journey.command=['python','installed-entry'];journey.private=self.root;journey.deadline=time.monotonic()+140;journey.records=[]
+        with patch.object(c,'Child') as child:
+            child.return_value.wait.side_effect=c.Failure('selftest unknown')
+            with self.assertRaisesRegex(c.Failure,'selftest unknown'):journey.selftest()
         self.assertEqual(journey.state['submitted_jobs'],1)
-        journey.cli.assert_called_once_with('doctor','--root',str(self.root),'--selftest',seconds=120)
+        self.assertEqual(child.call_args.args[:2],('service',['python','installed-entry','doctor','--root',str(self.root),'--selftest']))
+        child.return_value.wait.assert_called_once_with(120)
+
+    def test_selftest_custodian_timeout_retains_unknown_handle_without_kill(self):
+        owner=c.Child.__new__(c.Child);owner.role='service'
+        owner.handle=SimpleNamespace(pid=123,poll=lambda:None);owner.record=dict(cleanup_unknown=False)
+        owner.send=Mock();owner.wait=Mock(side_effect=c.Failure('interrupted or timed out'))
+        c._LIVE[123]=owner
+        try:
+            with self.assertRaisesRegex(c.Failure,'nested_custody_unknown'):
+                owner.close(force_allowed=lambda:False)
+            owner.wait.assert_called_once_with(14,work=False)
+            self.assertEqual(owner.send.call_args_list,[unittest.mock.call(signal.SIGTERM)])
+            self.assertIs(c._LIVE[123],owner);self.assertTrue(owner.record['cleanup_unknown'])
+            # A later independently confirmed terminal family permits only this
+            # same owned handle's existing identity-checked send path.
+            owner.wait.reset_mock();owner.wait.side_effect=[c.Failure('grace expired'),0]
+            owner.send.reset_mock();owner.close(force_allowed=lambda:True)
+            self.assertEqual(owner.send.call_args_list,[unittest.mock.call(signal.SIGTERM),unittest.mock.call(signal.SIGKILL)])
+            self.assertEqual(owner.wait.call_args_list,[unittest.mock.call(14,work=False),unittest.mock.call(1,work=False)])
+        finally:c._LIVE.pop(123,None)
+
+    def test_selftest_interrupt_and_forced_cleanup_preserve_owned_identity(self):
+        for error in (KeyboardInterrupt('fixture interrupt'),c.Failure('fixture deadline')):
+            owner=c.Child.__new__(c.Child);owner.role='service';owner.handle=SimpleNamespace(pid=123,poll=lambda:None)
+            owner.record=dict(cleanup_unknown=False);owner.send=Mock();owner.wait=Mock(side_effect=error)
+            c._LIVE[123]=owner
+            try:
+                with self.assertRaises(KeyboardInterrupt if isinstance(error,KeyboardInterrupt) else c.Failure):owner.close(force_allowed=lambda:False)
+                self.assertEqual(owner.send.call_args_list,[unittest.mock.call(signal.SIGTERM)])
+                self.assertIs(c._LIVE[123],owner);self.assertTrue(owner.record['cleanup_unknown'])
+            finally:c._LIVE.pop(123,None)
+        owner=c.Child.__new__(c.Child);owner.role='service';owner.handle=SimpleNamespace(pid=123,poll=lambda:None)
+        owner.record=dict(cleanup_unknown=False,identity=4,signals=[])
+        sample=dict(last=dict(pid=123,identity=4,observed_at=time.monotonic()),error=None)
+        owner.sampler=SimpleNamespace(snapshot=lambda:sample)
+        def grace(seconds,*,work):
+            sample['last']['identity']=5
+            raise c.Failure('fixture grace expired')
+        owner.wait=Mock(side_effect=grace);c._LIVE[123]=owner
+        try:
+            with patch.object(c.os,'getpgid',return_value=123),patch.object(c.os,'killpg') as kill:
+                with self.assertRaisesRegex(c.Failure,'signal_identity_unknown'):owner.close(force_allowed=lambda:True)
+            self.assertEqual(kill.call_args_list,[unittest.mock.call(123,signal.SIGTERM)])
+            self.assertIs(c._LIVE[123],owner);self.assertTrue(owner.record['cleanup_unknown'])
+        finally:c._LIVE.pop(123,None)
+
+    def test_selftest_service_role_parses_only_stdout_and_keeps_120_phase(self):
+        value=dict(qualification='local_selftest',ready_for_speech=True,history_jobs_used=1,history_jobs_remaining=62,cold_end_to_end_seconds=3.)
+        receipt=dict(binding=dict(host=dict(os='fixture',machine='arm64',boot='fixture-boot')))
+        (self.root/'measurement.json').write_bytes(c.canonical(receipt))
+        child=SimpleNamespace(path=self.root/'selftest.stdout',wait=Mock(return_value=0))
+        child.path.write_text(json.dumps(value));(self.root/'selftest.stderr').write_text('inert warning, not JSON')
+        journey=c.Journey.__new__(c.Journey);journey.state={};journey.root=self.root;journey.private=self.root
+        journey.command=['python','installed-entry'];journey.deadline=time.monotonic()+140;journey.records=[]
+        journey.cli=Mock(return_value=dict(value))
+        with patch.object(c,'Child',return_value=child) as constructor:journey.selftest()
+        self.assertEqual(constructor.call_args.args[0],'service');child.wait.assert_called_once_with(120)
+        self.assertEqual(journey.state['selftest'],value);self.assertEqual(journey.state['submitted_jobs'],1)
+        journey.cli.assert_called_once_with('doctor','--root',str(self.root))
+
+    def test_family_stopped_uses_owned_journal_and_core_without_http_endpoint(self):
+        from worker.native_cpu_supervisor import CPUJournal
+        from worker import native_cpu_protocol as protocol
+        import sqlite3
+        config=dict(deployment_id='a'*32)
+        directory=self.root/'state'/'worker';directory.mkdir(mode=0o700,parents=True)
+        payload=dict(version=protocol.JOURNAL_VERSION,deployment_id='a'*32,configuration_sha256=hashlib.sha256(c.canonical(config)).hexdigest(),lane='b'*32,records=[])
+        (directory/'native.json').write_bytes(c.canonical(dict(payload=payload,sha256=hashlib.sha256(c.canonical(payload)).hexdigest())))
+        journey=c.Journey.__new__(c.Journey);journey.root=self.root;journey.http_thread=None;journey.state={'submitted_jobs':1}
+        journey.http=Mock(side_effect=AssertionError('no endpoint exists during doctor selftest'))
+        with patch('service.native_cpu_install.read_installation',return_value=(self.root,config,None,None)):
+            self.assertFalse(journey.family_stopped())  # Missing Core cannot prove this attempted job absent.
+            control=self.root/'state'/'control';control.mkdir(mode=0o700)
+            with sqlite3.connect(control/'core.sqlite') as db:
+                db.execute('CREATE TABLE jobs(job TEXT)')
+                db.execute('CREATE TABLE dispatches(runtime TEXT,job_id TEXT,phase TEXT,acked INTEGER,receipt TEXT,outcome TEXT,seq INTEGER)')
+            self.assertTrue(journey.family_stopped())  # Typed empty journal + empty Core prove no model launch.
+        journey.http.assert_not_called()
 
     def test_ordinary_service_has_no_qualification_flag_and_reuses_receipt(self):
         path=self.root/'measurement.json';path.write_bytes(b'owned measurement')
