@@ -209,16 +209,34 @@ class Prepared:
         self.runtime.check_availability(owned)
         if self.errors:raise self.errors[0]
 
+    def _close_evidence(self,stage):
+        seen=getattr(self,'_close_evidence_seen',set());self._close_evidence_seen=seen
+        if stage in seen:return
+        seen.add(stage)
+        import sys
+        from service.entrypoint import _startup_diagnostic
+        supervisor=self.supervisor
+        records=[] if supervisor is None else supervisor.journal.value['records']
+        value=dict(stage=stage,thread_alive=self.thread is not None and self.thread.is_alive(),
+            active=supervisor is not None and supervisor.active is not None,records=len(records),
+            terminal=sum(r['phase']=='terminal' for r in records),acked=sum(r['acked'] for r in records),
+            reaped=sum(bool(r['receipt'] and r['receipt']['reaped']) for r in records),
+            errors=[_startup_diagnostic(error) for error in self.errors[:2]])
+        print('native_cpu_custodian:'+canonical(value).decode(),file=sys.stderr)
+
     def close(self):
         if self.closed:return
+        self._close_evidence('stop_requested')
         if self.supervisor is not None:self.supervisor.shutdown_event.set()
         if self.thread is not None:
             self.thread.join(5)  # existing 2s model reap + 1s watchdog + 1s RPC join
+            self._close_evidence('join_observed')
             if self.thread.is_alive() or self.supervisor.active is not None:raise Refused('native_cpu_shutdown_unknown')
         if self.listener is not None:self.listener.close()
         if self.errors:raise Refused('native_cpu_custodian_failed') from self.errors[0]
         if self.supervisor is not None:self.supervisor.journal.lock.close()
         os.close(self.lock);self.closed=True
+        self._close_evidence('closed')
         _PREPARED_OWNERS.pop(id(self),None)
         activation=getattr(self,'activation',None)
         if activation is not None:activation.release()

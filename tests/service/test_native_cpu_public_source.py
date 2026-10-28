@@ -74,6 +74,12 @@ class CPUPublicSourceTests(unittest.TestCase):
                         active['receiver'].join(1);owner.fixture.h.code=0
                     elif active['cancel'] and active['term'] is not None:owner.fixture.h.code=-15
                     owner.s.tick()
+                if getattr(owner,'real_handler',False):
+                    class Server(BytesChannel):
+                        def version(self):return 'TLSv1.3'
+                        def getpeercert(self,binary_form=False):return owner.cert
+                        def close(self):pass
+                    server=Server(data);owner.s.serve_connection(server);self.raw=bytearray(server.sent);return
                 envelope={k:v for k,v in q.items() if k!='body'}
                 try:envelope.update(ok=True,value=owner.s.dispatch(q))
                 except Refused as exc:owner.worker_errors.append((q['op'],str(exc)));envelope.update(ok=False,error='native_refused')
@@ -90,7 +96,7 @@ class CPUPublicSourceTests(unittest.TestCase):
         from worker.native_child import proposal
         from lib.spoken_text import speech_text
         import numpy as np
-        backend=Mock();backend.synthesise.return_value=AudioResult(np.asarray([.1,-.1],dtype='float32'),24000)
+        backend=Mock();backend.synthesise.return_value=AudioResult(np.asarray(getattr(self,'audio_samples',[.1,-.1]),dtype='float32'),24000)
         on_loaded(min(config['cutoff'],time.monotonic()+30))
         spec=p.native_execution(config['snapshot'][1])
         result=execute(spec.model,speech_text(config['snapshot'][1]['plan']),config['bundles'],backend_factory=lambda *a,**kw:backend)
@@ -156,6 +162,76 @@ class CPUPublicSourceTests(unittest.TestCase):
             status=d.call('status');self.assertTrue(status['persistent_activation'])
             self.assertEqual(status['reservations'][0]['demand']['pids'],1)
             self.assertEqual(d.call('configured_profiles')[0]['support'],'unqualified')
+
+    def test_real_core_large_native_cpu_proposal_publishes_and_acknowledges(self):
+        import numpy as np
+        from service.native_cpu_configuration import ALIAS
+        self.audio_samples=np.tile(np.asarray([.1,-.1],dtype='float32'),21248);self.real_handler=True
+        with patch.object(self.s,'exchange',side_effect=self.exchange):
+            d=self.open();voice=d.call('voice_resolve','local',ALIAS)
+            version=d.call('voice_version','local',voice['version_ids'][-1])
+            submitted=d.call('production_generate','local',self.request(version),key='actual-size-handoff')
+            job=self.wait(lambda:(j if (j:=d.call('job',submitted['job_id']))['state']=='succeeded' else None))
+            self.wait(lambda:d.call('status')['phase']=='idle')
+            artifact=d.call('production_artifact','local',dict(artifact_id=job['artifact_ids'][0]))
+            asset=d.call('asset',artifact['asset_ids'][0]);self.assertEqual(asset['frames'],42496)
+            record=self.s.journal.value['records'][0]
+            self.assertTrue(record['acked']);self.assertTrue(record['receipt']['timely']);self.assertTrue(record['receipt']['reaped'])
+            self.assertEqual(record['output']['bytes'],85036)
+            output=[q for q in self.requests if q['op']=='get_output']
+            self.assertEqual([q['body']['bytes'] for q in output],[32768,32768,19500])
+            self.assertEqual(d.call('status')['error'],None)
+
+    def test_real_tls_custodian_large_core_publication_and_shutdown(self):
+        import socket,threading
+        from service.native_cpu_install import create_tls,certificate_pin
+        from worker.native_supervisor import serve
+        create_tls(self.root)
+        def tls(role):return p.tls_context(server=role=='server',cafile=str(self.root/'tls/ca.pem'),
+            certfile=str(self.root/'tls'/(role+'.pem')),keyfile=str(self.root/'tls'/(role+'.key')))
+        listener=socket.socket();listener.bind(('127.0.0.1',0));listener.listen(8)
+        host,port=listener.getsockname();errors=[]
+        self.s.pin=certificate_pin(self.root,'client')
+        original_tick=self.s.tick;original_dispatch=self.s.dispatch
+        def tick():
+            active=self.s.active
+            if active and active.get('sampler') is not None:active['sampler'].stamp=time.monotonic()
+            if active and active.get('closed'):self.fixture.h.code=0
+            return original_tick()
+        def dispatch(q):self.requests.append(q);return original_dispatch(q)
+        def run():
+            try:serve(self.s,tls('server'),host,port,proven_host_network=True,_listener=listener)
+            except BaseException as exc:errors.append(exc)
+        with patch.object(self.s,'tick',side_effect=tick),patch.object(self.s,'dispatch',side_effect=dispatch):
+            thread=threading.Thread(target=run);thread.start()
+            try:
+                self.runtime=NativeCPURuntime(host=host,port=port,tls=tls('client'),peer_sha256=certificate_pin(self.root,'server'),
+                    native=self.native,spool=self.spool,staging=self.stage,local_import_uid=os.getuid())
+                self.prepared.runtime=self.runtime;self.contexts.bind_availability(self.runtime)
+                self.test_real_core_large_native_cpu_proposal_publishes_and_acknowledges()
+                self.close()
+                self.prepared.thread=thread;self.prepared.listener=listener;self.prepared.errors=errors;self.prepared.closed=False
+                self.prepared.lock=os.open(self.root/'inert-owner.lock',os.O_WRONLY|os.O_CREAT|os.O_EXCL,0o600)
+                self.prepared.close()
+                self.assertFalse(thread.is_alive());self.assertTrue(self.prepared.closed);self.assertEqual(errors,[])
+            finally:
+                self.s.shutdown_event.set();thread.join(4)
+                self.assertFalse(thread.is_alive(),'test custodian custody unresolved')
+                listener.close()
+
+    def test_dispatch_transition_diagnostics_are_bounded_and_do_not_publish_messages(self):
+        import contextlib,io
+        d=self.open();output=io.StringIO()
+        row=dict(job_id='job-'+'a'*32,runtime='a'*32+'/'+ 'b'*32+'/'+ 'c'*32,phase='unknown',context={'secret':'never publish'})
+        with contextlib.redirect_stderr(output):
+            d._native_cpu_trace('refused',row,'collect',Refused('/private/secret-value '+('a'*96)))
+            d._native_cpu_trace('refused',row,'collect',Refused('native_control_storage'))
+            for index in range(50):
+                row['job_id']='job-'+format(index,'032x');d._native_cpu_trace('issued',row,'collect')
+        lines=output.getvalue().splitlines();self.assertLessEqual(len(lines),32)
+        self.assertNotIn('secret-value',output.getvalue());self.assertNotIn('never publish',output.getvalue());self.assertNotIn('a'*96,output.getvalue())
+        self.assertIn('native_control_storage',output.getvalue())
+        self.assertEqual(d.call('status')['error'],'Refused');self.assertFalse(d.call('status')['quarantined'])
 
     def test_ordinary_installation_metadata_does_not_admit_speech(self):
         from service.native_cpu_configuration import ALIAS

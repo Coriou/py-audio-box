@@ -517,11 +517,13 @@ def _owned_app(dependencies, mount):
                     raise
                 except BaseException as exc:
                     responsibility['error'] = exc
+                    print('installed_cleanup_refused:'+json.dumps(_startup_diagnostic(exc),sort_keys=True,separators=(',',':')),file=sys.stderr)
                     raise
             try:
                 notification.close()
             except BaseException as exc:
                 responsibility['error'] = exc
+                print('installed_custodian_refused:'+json.dumps(_startup_diagnostic(exc),sort_keys=True,separators=(',',':')),file=sys.stderr)
                 raise
             responsibility['closed'] = True
             _INSTALLED_LIFECYCLES.pop(id(responsibility), None)

@@ -129,6 +129,18 @@ class InstalledControllerTests(unittest.TestCase):
             self.assertTrue(installation.exists())
         finally:c._LIVE.pop(123,None)
 
+    def test_last_public_evidence_is_allowlisted_and_wait_cutoff_not_renewed(self):
+        jid='job-'+'a'*32
+        job=dict(id=jid,state='succeeded',generation=1,attempts=[dict(reaped=True,token='secret')],artifact_ids=['artifact'],text='secret',context={'credential':'secret'})
+        status=dict(status=dict(phase='ack_pending',error='secret'*30,quarantined=True,config='secret'))
+        self.assertNotIn('secret',json.dumps(c.public_job_evidence(job)))
+        self.assertNotIn('secret',json.dumps(c.public_status_evidence(status)))
+        journey=c.Journey.__new__(c.Journey);journey.deadline=500;journey.state={}
+        journey.http=Mock(side_effect=[dict(job=job,next_cursor='next'),status])
+        with patch.object(c.time,'monotonic',return_value=100):self.assertIs(journey.wait_job(jid),job)
+        self.assertEqual([call.kwargs['phase_cutoff'] for call in journey.http.call_args_list],[165,165])
+        self.assertTrue(journey.state['last_public_job']['reaped'][0]);self.assertEqual(journey.state['last_public_status']['error'],'redacted')
+
     def test_original_four_job_limit_precedes_any_extra_write(self):
         journey=c.Journey.__new__(c.Journey);journey.state=dict(submitted_jobs=4);journey.http=Mock()
         with self.assertRaisesRegex(c.Failure,'four_job_limit'):journey.submit('no-extra',{})

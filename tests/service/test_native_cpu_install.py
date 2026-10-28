@@ -48,6 +48,22 @@ class CPUInstallTests(unittest.TestCase):
                 (root/'setup-record.json').write_bytes(canonical(record))
                 with self.assertRaisesRegex(Refused,'interpreter_changed'):install.read_installation(root,_pending=True)
 
+    def test_custodian_unknown_close_reports_reap_separately_and_keeps_lock(self):
+        import contextlib,io,json
+        from types import SimpleNamespace
+        from unittest.mock import Mock
+        owner=install.Prepared.__new__(install.Prepared);owner.closed=False;owner.errors=[RuntimeError('/private/secret-config')]
+        lock=Mock();owner.supervisor=SimpleNamespace(shutdown_event=Mock(),active=None,journal=SimpleNamespace(lock=lock,
+            value={'records':[dict(phase='terminal',acked=False,receipt={'reaped':True})]}))
+        owner.thread=Mock();owner.thread.is_alive.return_value=True
+        output=io.StringIO()
+        with contextlib.redirect_stderr(output),self.assertRaisesRegex(Refused,'shutdown_unknown'):owner.close()
+        self.assertFalse(owner.closed);owner.thread.join.assert_called_once_with(5);lock.close.assert_not_called()
+        self.assertNotIn('secret-config',output.getvalue())
+        events=[json.loads(line.split(':',1)[1]) for line in output.getvalue().splitlines()]
+        self.assertEqual([e['stage'] for e in events],['stop_requested','join_observed'])
+        self.assertTrue(events[-1]['thread_alive']);self.assertEqual(events[-1]['reaped'],1);self.assertEqual(events[-1]['acked'],0)
+
     def test_unknown_startup_close_retains_strong_owner_and_actual_lock(self):
         with tempfile.TemporaryDirectory() as temporary:
             root=Path(temporary).resolve();root.chmod(0o700)

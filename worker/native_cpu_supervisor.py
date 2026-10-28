@@ -27,6 +27,16 @@ class CPUJournal(Journal):
 
 
 class NativeCPUSupervisor(NativeSupervisor):
+    def response_refusal_evidence(self,op,error):
+        from service.entrypoint import _startup_diagnostic
+        import json,sys
+        value=dict(op=op,error=_startup_diagnostic(error))
+        allowed={'native_shape','native_output','native_control_storage','native_busy','native_unknown','native_state','native_session','native_protocol','native_limit','native_chunk'}
+        if type(error).__name__=='Refused' and str(error) in allowed:value['code']=str(error)
+        key=json.dumps(value,sort_keys=True);seen=getattr(self,'_refusal_evidence_seen',set());self._refusal_evidence_seen=seen
+        if key in seen or len(seen)>=16:return
+        seen.add(key);print('native_cpu_response_refused:'+key,file=sys.stderr)
+
     protocol=p
     journal_type=CPUJournal
     child_filename='native_cpu_child.py'

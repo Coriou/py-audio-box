@@ -165,6 +165,7 @@ class Dispatcher:
                 except Exception as exc:
                     # Persistence/verification faults retain durable ownership and evidence.
                     self._sync_resource_fault()
+                    self._native_cpu_trace('tick_refused',error=exc)
                     self.error=type(exc).__name__;self.quarantined=True
                     self.next_poll=time.monotonic()+.2
             if self.pending:self.pending[0].result(timeout=3)
@@ -487,9 +488,32 @@ class Dispatcher:
                 getattr(self.installed_activation, 'family', None) is FAMILY and
                 getattr(self.runtime, 'family', None) is FAMILY)
 
+    def _native_cpu_trace(self,stage,row=None,op=None,error=None):
+        """At most32 distinct source-only events; no request/config/media values."""
+        from service.native_cpu_activation import NativeCPUActivation
+        if type(getattr(self,'installed_activation',None)) is not NativeCPUActivation:return
+        import re,sys
+        from service.entrypoint import _startup_diagnostic
+        event=dict(stage=stage,op=op,phase=None if row is None else row['phase'])
+        if row is not None:
+            for key,pattern in (('job_id',r'job-[0-9a-f]{32}'),('runtime',r'[0-9a-f]{32}/[0-9a-f]{32}/[0-9a-f]{32}')):
+                value=row.get(key);event[key]=value if isinstance(value,str) and re.fullmatch(pattern,value) else None
+        if error is not None:
+            self.error=type(error).__name__
+            event['error']=_startup_diagnostic(error)
+            allowed={'native_shape','native_output','native_control_storage','native_control_uncertain','native_deadline',
+                'native_cancelled','native_busy','native_unknown','native_refused','native_owner_required'}
+            if type(error).__name__=='Refused' and str(error) in allowed:event['code']=str(error)
+        seen=getattr(self,'_cpu_trace_seen',set());self._cpu_trace_seen=seen
+        key=json.dumps(event,sort_keys=True)
+        if key in seen or len(seen)>=32:return
+        seen.add(key)
+        print('native_cpu_dispatch:'+key,file=sys.stderr)
+
     def _launch(self,row,op,fn):
         command=None if op=='poll' else self.store.command(row,'observe' if op=='confirm' else op)
         self.fault('before_'+op)
+        self._native_cpu_trace('issued',row,op)
         self.pending=(self.pool.submit(fn),row,op,command)
 
     def _sync_resource_fault(self):
@@ -535,12 +559,14 @@ class Dispatcher:
                     raise ValueError('unbound_observation')
                 if op=='collect' and hasattr(self.runtime,'finalize_collect'):
                     value=self.runtime.finalize_collect(value)
-            except Exception:
+            except Exception as exc:
+                self._native_cpu_trace('refused',row,op,exc)
                 if op=='poll':command=self.store.command(row,'observe')
                 self.store.complete(command,False)
                 if op=='ack':self.next_poll=time.monotonic()+.2;return
                 self.store.update(row,phase='unknown');self.quarantined=True
                 self.reconciled=True;self.next_poll=time.monotonic()+.2;return
+            self._native_cpu_trace('completed',row,op)
             self.fault('after_'+op)
             if command is not None:self.store.complete(command,True)
             if op=='poll':
@@ -662,6 +688,7 @@ class Dispatcher:
                         if stored[key]!=expected:raise ValueError('stale_publication_intent')
                     self.core._commit_publication(job['id'])
                 elif receipt['timely'] is True and observation is not None:
+                    self._native_cpu_trace('publication',row,'publish')
                     if native:
                         from datetime import datetime, timezone
                         if datetime.now(timezone.utc)>=datetime.fromisoformat(authority.job['deadline']): raise ValueError('native_import_deadline')
@@ -679,6 +706,7 @@ class Dispatcher:
         # Crash after success before outcome journal is recoverable from Core terminal.
         job=self.core.job(job['id'])
         if job['state'] not in ('succeeded','failed','cancelled'):raise ValueError('terminal_required')
+        self._native_cpu_trace('terminal',row,job['state'])
         self.stop_obligation=False  # Only the exact validated receipt discharges stop.
         if self.persistence_fault:
             # Fault authority could not be journaled: retain the reservation even

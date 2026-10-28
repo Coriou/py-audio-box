@@ -149,6 +149,26 @@ def remove_fresh_installation(output,state):
         if parent is not None:os.close(parent)
 
 
+def public_job_evidence(job):
+    states={'queued','running','cancel_requested','succeeded','failed','cancelled'}
+    value=dict(job_id=job.get('id'),state=job.get('state') if type(job.get('state')) is str and job.get('state') in states else 'unknown',
+        generation=job.get('generation'),attempts=len(job.get('attempts',[])),
+        reaped=[a.get('reaped') is True for a in job.get('attempts',[])[:4]],artifact_count=len(job.get('artifact_ids',[])))
+    if not isinstance(value['job_id'],str) or not re.fullmatch(r'job-[0-9a-f]{32}',value['job_id']):value['job_id']=None
+    if type(value['generation']) is not int:value['generation']=None
+    return value
+
+
+def public_status_evidence(response):
+    status=response.get('status',{})
+    value={key:status.get(key) is True for key in ('reconciled','quarantined','resource_fault','persistence_fault','integrity_fault','stop_obligation')}
+    phases={'idle','intent','bound','observing','unknown','receipt','ack_pending','acknowledged'}
+    value['phase']=status.get('phase') if type(status.get('phase')) is str and status.get('phase') in phases else 'unknown'
+    errors={None,'Refused','OSError','ValueError','PermissionError','PublicationQuarantine','FileNotFoundError','dispatch_identity_unreadable'}
+    value['error']=status.get('error') if (status.get('error') is None or type(status.get('error')) is str and status.get('error') in errors) else 'redacted'
+    return value
+
+
 def save(path,value):
     temporary=path.with_name(path.name+'.new')
     fd=os.open(temporary,os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW,0o600)
@@ -435,8 +455,11 @@ class Journey:
             path=self.root/'state/control/core.sqlite'
             if not path.exists():return not value['records'] and not self.state.get('submitted_jobs')
             with sqlite3.connect('file:'+str(path)+'?mode=ro',uri=True) as db:
-                jobs=[json.loads(row[0]) for row in db.execute('SELECT job FROM jobs')]
+                jobs=[json.loads(row[0]) for row in db.execute('SELECT job FROM jobs LIMIT 5')]
                 runtimes={row[0] for row in db.execute('SELECT runtime FROM dispatches')}
+                self.state['control_handoff']=[dict(job_id=public_job_evidence(dict(id=row[0]))['job_id'],phase=public_status_evidence(dict(status=dict(phase=row[1])))['phase'],acked=bool(row[2]),receipt=bool(row[3]),outcome=bool(row[4]))
+                    for row in db.execute('SELECT job_id,phase,acked,receipt IS NOT NULL,outcome IS NOT NULL FROM dispatches ORDER BY seq LIMIT 4')]
+            self.state['retained_public_jobs']=[public_job_evidence(job) for job in jobs[:4]]
             return (len(jobs)<=4 and all(j['state'] in ('succeeded','failed','cancelled') and all(a['reaped'] for a in j['attempts']) for j in jobs)
                 and runtimes=={r['id'] for r in value['records']})
         except Exception as exc:
@@ -462,7 +485,9 @@ class Journey:
     def wait_job(self,jid):
         cursor='';cutoff=min(self.deadline-RESERVE,time.monotonic()+65)
         while time.monotonic()<cutoff:
-            result=self.http('job_wait',dict(job_id=jid,cursor=cursor,wait_seconds=5));cursor=result['next_cursor'];job=result['job']
+            result=self.http('job_wait',dict(job_id=jid,cursor=cursor,wait_seconds=5),phase_cutoff=cutoff);cursor=result['next_cursor'];job=result['job']
+            self.state['last_public_job']=public_job_evidence(job)
+            self.state['last_public_status']=public_status_evidence(self.http('status',phase_cutoff=cutoff))
             if job['state'] in ('succeeded','failed','cancelled'):return job
         raise Failure('public_job_wait_deadline')
 

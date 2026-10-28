@@ -12,6 +12,18 @@ from tests.worker.native_cpu_fixtures import Fixture,Handle,Channel,Sampler
 
 
 class CPUSupervisorTests(unittest.TestCase):
+    def test_response_refusal_source_identifiers_are_bounded_without_private_messages(self):
+        import contextlib,io,json
+        output=io.StringIO()
+        with contextlib.redirect_stderr(output):
+            self.s.response_refusal_evidence('collect',Refused('/private/secret-configuration '+('a'*96)))
+            self.s.response_refusal_evidence('get_output',Refused('native_output'))
+            for _ in range(50):self.s.response_refusal_evidence('get_output',Refused('native_output'))
+        self.assertNotIn('secret-configuration',output.getvalue());self.assertNotIn('a'*96,output.getvalue())
+        lines=output.getvalue().splitlines();self.assertEqual(len(lines),2)
+        self.assertEqual(json.loads(lines[-1].split(':',1)[1])['code'],'native_output')
+        self.assertFalse(self.s.failed);self.assertEqual(self.s.journal.value['records'],[])
+
     def test_owner_failure_is_retained_only_after_confirmed_wait_and_blocks_reopen(self):
         import json
         from worker.native_cpu_supervisor import CPUJournal

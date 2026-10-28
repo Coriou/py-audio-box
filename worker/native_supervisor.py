@@ -703,9 +703,13 @@ class NativeSupervisor:
             try:
                 value=self.dispatch(q)
                 response=self.protocol.response(dict(envelope,ok=True,value=value),request=q)
-            except Refused:
+            except Refused as exc:
+                diagnostic=getattr(self,'response_refusal_evidence',None)
+                if diagnostic is not None:diagnostic(q['op'],exc)
                 response=self.protocol.response(dict(envelope,ok=False,error='native_unknown' if self.quarantined else 'native_refused'),request=q)
-            except Exception:
+            except Exception as exc:
+                diagnostic=getattr(self,'response_refusal_evidence',None)
+                if diagnostic is not None:diagnostic(q['op'],exc)
                 self.failed=True
                 response=self.protocol.response(dict(envelope,ok=False,error='native_unknown'),request=q)
             p.send(connection,response,cutoff,peer_sha256=self.pin)
