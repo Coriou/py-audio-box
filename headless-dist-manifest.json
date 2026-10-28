@@ -179,6 +179,7 @@
     "worker/runtime_supervisor.py",
     "worker/supervised_synthetic.py",
     "worker/synthetic.py",
-    "worker/transport.py"
+    "worker/transport.py",
+    "requirements/tts/kokoro-en-macos.expected.json"
   ]
 }

@@ -53,15 +53,19 @@ def public_open(url):
         PublicRedirects()).open(download_url(url), timeout=20)
 
 
-def budgets(diagnostic_en=False):
+def budgets(diagnostic_en=False, phase_profile='qwen'):
     if type(diagnostic_en) is not bool: raise ValueError('diagnostic_mode_required')
+    if phase_profile == 'kokoro':
+        return dict(verification_seconds=30, cold_load_seconds=60, generation_seconds=60,
+            encoding_seconds=15, total_seconds=180)
+    if phase_profile != 'qwen': raise ValueError('unknown_phase_profile')
     return dict(verification_seconds=30, cold_load_seconds=120,
         generation_seconds=120 if diagnostic_en else 30, encoding_seconds=15,
         total_seconds=270 if diagnostic_en else 180)
 
 
-def phase_remaining(progress, now, *, diagnostic_en=False):
-    limits = budgets(diagnostic_en)
+def phase_remaining(progress, now, *, diagnostic_en=False, phase_profile='qwen'):
+    limits = budgets(diagnostic_en, phase_profile)
     for key, cap in limits.items():
         value = progress.get(key, 0)
         if type(value) not in (int, float) or not math.isfinite(value) or value < 0:
@@ -96,9 +100,9 @@ def read_progress(path):
     return value
 
 
-def owned_child(argv, env, log_path, observation, *, seconds=30, progress_path=None, diagnostic_en=False):
+def owned_child(argv, env, log_path, observation, *, seconds=30, progress_path=None, diagnostic_en=False, phase_profile='qwen'):
     """Independent owner deadline, one asynchronous RSS reader, bounded output."""
-    effective_budgets = budgets(diagnostic_en)
+    effective_budgets = budgets(diagnostic_en, phase_profile)
     observation['owner_total_seconds'] = seconds
     if progress_path is not None:
         observation['effective_budgets'] = effective_budgets
@@ -132,7 +136,7 @@ def owned_child(argv, env, log_path, observation, *, seconds=30, progress_path=N
                     # Darwin CPython 3.11 uses a system-wide monotonic clock.
                     progress = read_progress(progress_path)
                     observation['progress'] = progress
-                    remaining = min(remaining, phase_remaining(progress, time.monotonic(), diagnostic_en=diagnostic_en))
+                    remaining = min(remaining, phase_remaining(progress, time.monotonic(), diagnostic_en=diagnostic_en, phase_profile=phase_profile))
                 state = sampler.snapshot()
                 # Do not reap/release the PID before the reader binds its first
                 # start identity (or reports exit/failure). A zombie cannot reuse

@@ -60,16 +60,49 @@ Kokoro model Apache-2.0, phonemizer GPL-3.0 and eSpeak NG GPL-3.0-or-later;
 see [upstream eSpeak licensing](https://github.com/espeak-ng/espeak-ng/blob/master/COPYING).
 No dependency binary or model is added to the source archive.
 
-## Next bounded experiment (requires separate approval)
+## Explicit opt-in backend experiment
 
-One public pinned model/voices closure from `requirements/tts/kokoro-fr.expected.json`
-(353,746,785 bytes), explicit English preset checked against actual available
-voices, `Hello. The test is complete.`, existing KokoroBackend/CPU provider,
-2 threads. Proposed acquire120/load60/generate60/total180 s, 6 GiB sampled RSS,
-existing logs/reap guards and <=12 minute free standard runner. No retries,
-French, cloning or persistent architecture. Validate a playable nonempty WAV,
-hash/duration/latency/RTF/resources and retain it for human ending assessment.
-No model acquisition or synthesis is authorized by this prerequisite slice.
+`scripts/ci-native-kokoro-speech.py --run-en-backend --output kokoro-speech`
+is a separate diagnostic backend harness, never installed admission. The
+`en_backend` manual workflow input defaults false and permits only the development
+branch or main. The actual speech environment reruns the no-weight guarded
+preflight before acquisition. Ordinary push/PR jobs acquire no models.
+
+The English descriptor `requirements/tts/kokoro-en-macos.expected.json` is exactly
+the existing French descriptor with language `en`; its own SHA256 binds every
+origin, size, revision and file hash. Both source archives carry that descriptor.
+The two public files total **353,746,785 bytes**. Only GitHub and its
+`release-assets.githubusercontent.com` redirect host are allowed; there is no
+authentication, hub/model cache, retry or asset substitution. Partial files remain
+inside the owned temporary tree and are removed after the first failure.
+
+The existing Kokoro engine verifies the immutable English manifest and files,
+then invokes the existing backend and PCM16 encoder. The only preset is
+`af_heart`: absence fails, with no substitute. Text is `Hello. The test is complete.`;
+CPUExecutionProvider only, 2 threads, FP32 floating inputs and audio, and the
+pinned upstream default speed is asserted to be 1.0. No reference, instructions,
+seed or clone mode is accepted. A diagnostic subclass observes phases and closes
+through the existing engine; it does not alter synthesis options.
+
+Acquisition has an independent owner cap of 120 s; load (including engine and
+backend verification) 60 s; generation 60 s; encoding 15 s. A single 180 s cutoff
+from acquisition start covers acquisition plus the backend child, so phase caps
+cannot be added to extend total time. The existing independent owner gains only
+a closed Kokoro phase profile; Qwen default30/completeness120 generation and
+other limits remain unchanged. The same 6 GiB sampled RSS/0.5 s freshness/log
+bounds/reaping apply; cleanup evidence is reported separately. The hosted job
+is capped at 12 minutes. The child and parent use the same system-wide monotonic
+clock on Darwin CPython 3.11, as the existing owner does.
+
+Reports retain descriptor identity, options, device/provider/dtype, load and
+generation host elapsed times, backend-only total, acquisition+backend total,
+WAV hash/duration/RTF and owner RSS/exit/reap receipts. The engine rejects
+nonfinite/out-of-range audio before encoding; the harness also checks PCM format,
+size, nonempty/nonzero content and agreement with engine hash/frame receipts.
+Human ending and quality remain unverified. No Mac speech capability is claimed
+from a preflight pass or a future raw backend WAV alone. A model dispatch requires
+separate explicit authorization and final exact-source gates; none follows from
+running the prerequisite job.
 
 After backend proof, the smallest public-control-plane seam is a distinct typed
 native CPU execution/context and child dispatch, reusing the existing immutable
