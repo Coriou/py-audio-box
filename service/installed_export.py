@@ -444,7 +444,8 @@ def stopped_receipt(receipt, pair, history, *, public, family):
     recovery.installed_history_current(registrations,public['host'],public['deployment_id'],matched,
                                       family=family,public=public)
     if (_encoded(receipt['history'])!=_encoded(history) or
-            any(dv.comparison_inspection(receipt['containers'][role])!=dv.comparison_inspection(pair[role])
+            any(_encoded(dv.comparison_inspection(receipt['containers'][role]))!=
+                _encoded(dv.comparison_inspection(pair[role]))
                 for role in ('control','worker'))):
         raise ValueError('daemon_clean_stop_receipt_required')
     return receipt

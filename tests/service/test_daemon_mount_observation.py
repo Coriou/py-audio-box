@@ -1,6 +1,9 @@
 """Source-only observation bracket tests; no Docker or installed runtime."""
 import copy
 import unittest
+from contextlib import nullcontext
+from pathlib import Path
+from unittest.mock import patch
 
 from service import daemon_helper as dh, daemon_volumes as dv
 from service import installed_qwen_daemon as qd
@@ -23,27 +26,33 @@ class MountObservationTests(unittest.TestCase):
         self.ids={role:c['Id'] for role,c in self.first.items()}
         self.startup=dict(hello=dict(boot='b'*32),local=dict(roots={}))
 
-    def observe(self, second, later=None):
+    def observe(self, second, later=None, *, assets=None, asset_view=None):
         # Real Helper.observe -> pair -> inspect -> daemon_volumes.inspect_container.
         helper=object.__new__(dh.Helper)
         helper.config=self.config
         helper.b=self.binding
         helper.family=self.family
         helper.evidence=dv.EVIDENCE
-        helper.export=helper.pocket=False
+        helper.export=False
+        helper.pocket=assets is not None
+        if assets is not None:
+            helper.root={'control':Path('/inert-control')}
         helper.read=lambda _:dict(identities={})
         counts=dict(control=0,worker=0)
         def rpc(action, request):
-            if action=='facts':return dict(roots={})
+            if action=='facts':return dict(roots={'assets':assets} if assets is not None else {})
             self.assertEqual(action,'inspect')
             role=request['role']
             count=counts[role]
             counts[role]+=1
             return copy.deepcopy((self.first if count==0 else second)[role])
         helper.rpc=rpc
-        startups=iter((self.startup,self.startup if later is None else later))
+        startup=copy.deepcopy(self.startup)
+        if assets is not None: startup['local']['roots']['assets']=assets
+        startups=iter((startup,startup if later is None else later))
         helper.startup=lambda:copy.deepcopy(next(startups))
-        result=helper.observe(self.ids,{})
+        with patch.object(dh.ip,'directory_identity',return_value=tuple(assets if asset_view is None else asset_view)) if assets is not None else nullcontext():
+            result=helper.observe(self.ids,{})
         self.assertEqual(counts,dict(control=2,worker=2))
         return result
 
@@ -81,6 +90,49 @@ class MountObservationTests(unittest.TestCase):
             c['Mounts'].reverse()
             c['HostConfig']['Mounts'].reverse()
         self.assertEqual(self.observe(second)['inspections'],self.first)
+
+    def test_resident_qwen_seven_mount_worker_permutations_and_custody_refusals(self):
+        from tests.service.test_qwen_service_path import ServicePathTests
+        fixture=ServicePathTests();fixture.setUp();self.addCleanup(fixture.doCleanups)
+        self.config=fixture.config
+        self.family=qd.FAMILY
+        self.binding=binding(self.config)
+        self.binding.update(policy=qd.LAUNCH,custody='/sys/fs/cgroup/speech-box-qwen/'+'b'*32)
+        self.first={role:container(role,self.config,self.binding,family=self.family)
+                    for role in ('control','worker')}
+        for c in self.first.values():
+            c['State'].update(Running=True,Status='running',StartedAt='2026-10-25T00:00:01Z')
+        self.ids={role:c['Id'] for role,c in self.first.items()}
+        self.assertEqual(len(self.first['worker']['Mounts']),7)
+        self.assertEqual(len(self.first['worker']['HostConfig']['Mounts']),7)
+        assets=[101,202]
+        for rotation in range(10):
+            with self.subTest(rotation=rotation):
+                second=copy.deepcopy(self.first)
+                for role in ('control','worker'):
+                    mounts=second[role]['Mounts']
+                    offset=rotation%len(mounts)
+                    mounts[:]=mounts[offset:]+mounts[:offset]
+                    mounts=second[role]['HostConfig']['Mounts']
+                    offset=(rotation+1)%len(mounts)
+                    mounts[:]=mounts[offset:]+mounts[:offset]
+                original=copy.deepcopy(second)
+                result=self.observe(second,assets=assets)
+                self.assertEqual(result['inspections'],self.first)
+                self.assertEqual(second,original)
+                self.assertEqual(result['local']['control']['roots']['assets'],assets)
+        for change in ('source','target','readonly','propagation','missing'):
+            with self.subTest(custody=change):
+                second=copy.deepcopy(self.first)
+                requested=next(m for m in second['worker']['HostConfig']['Mounts'] if m['Type']=='bind')
+                if change=='source': requested['Source']='/wrong'
+                elif change=='target': requested['Target']='/wrong'
+                elif change=='readonly': requested['ReadOnly']=True
+                elif change=='propagation': requested['BindOptions']['Propagation']='private'
+                else: second['worker']['Mounts'].pop()
+                with self.assertRaises(ValueError): self.observe(second,assets=assets)
+        with self.assertRaisesRegex(ValueError,'daemon_assets_view_identity'):
+            self.observe(copy.deepcopy(self.first),assets=assets,asset_view=[101,203])
 
     def test_real_mount_changes_and_duplicates_are_rejected(self):
         for role in ('control','worker'):

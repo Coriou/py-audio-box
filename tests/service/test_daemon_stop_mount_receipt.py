@@ -101,6 +101,18 @@ class StopMountReceiptTests(unittest.TestCase):
                     else:bad['history']['state']['source_digest']='f'*64
                     with self.assertRaises(ValueError):
                         ex.stopped_receipt(bad,current,history,public=public,family=ex.FAMILY)
+            for field in ('RestartCount','Pid','MaximumRetryCount'):
+                with self.subTest(field=field):
+                    bad=copy.deepcopy(receipt)
+                    c=bad['containers']['worker']
+                    if field=='RestartCount': c['RestartCount']=False
+                    elif field=='Pid': c['State']['Pid']=False
+                    else: c['HostConfig']['RestartPolicy']['MaximumRetryCount']=False
+                    # The existing container validator accepts these Python-equal values.
+                    from service import daemon_volumes as dv
+                    dv.inspect_container(c,'worker',config,launch,family=ex.FAMILY)
+                    with self.assertRaisesRegex(ValueError,'daemon_clean_stop_receipt_required'):
+                        ex.stopped_receipt(bad,current,history,public=public,family=ex.FAMILY)
 
 
 if __name__=='__main__':unittest.main()
