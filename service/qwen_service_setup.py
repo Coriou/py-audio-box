@@ -13,12 +13,15 @@ import os
 from pathlib import Path
 import re
 import stat
+import platform
+import pwd
 
 from contracts import validate as oracle
 from service import installed_qwen_daemon as qd
 from service import qwen_local_config as local
 from service.daemon_client import exclusive, manifest, read
 from service.qwen_service_config import build
+from service import qwen_local_lane as lane
 from worker.engines.qwen_execution import QwenExecution
 
 
@@ -67,7 +70,11 @@ def flag_request(args, *, docker=None):
     """Translate genuine operator inputs into the existing closed request."""
     images = _image_ids(args.context, dict(control=args.control_image, worker=args.worker_image,
                                            helper=args.helper_image), docker=docker)
-    evidence = _measurement(args.measurement)
+    evidence = _measurement(args.measurement) if args.measurement else None
+    if evidence is None and not getattr(args,'local_unqualified',False):
+        raise ValueError('setup_measured_profile_file_required')
+    if evidence is not None and getattr(args,'local_unqualified',False):
+        raise ValueError('setup_local_lane_receipt_forbidden')
     threads = args.threads
     if type(threads) is not int or not 1 <= threads <= 64:
         raise ValueError('setup_threads_required')
@@ -104,11 +111,29 @@ def _source(name, path, verifier):
 
 
 def _profile(evidence, identities, ram, threads):
+    if evidence is None:
+        profile = copy.deepcopy(json.loads((ROOT/'contracts/fixtures/v1/capabilities.json').read_text())['profiles'][0])
+        profile.update(id='qwen-cpu',device='cpu',support='unqualified',installation='installed',
+                       configuration='valid',readiness='not_ready',verification='synthetic',
+                       checked_at=datetime.now().astimezone().isoformat(),qualification_receipt='',
+                       config_revision=lane.REVISION,
+                       next_action='Local execution is unqualified; enroll a reference or register Ryan.')
+        profile['limits'].update(threads=threads,ram_bytes=lane.MEMORY_BYTES,
+                                 disk_bytes=lane.DISK_BYTES,deadline_seconds=lane.DEADLINE_SECONDS,
+                                 vram_bytes=0,expensive_slots=1,resident_models=1)
+        profile['compatibility'] = [dict(operation=op,mode=mode,identity=identities[name])
+            for op,mode,name in (('voice_prepare','prepare','clone'),
+                                 ('speech_generate','qwen_clone','clone'),
+                                 ('speech_generate','qwen_preset','Ryan'))]
+        oracle.validate('profile',profile)
+        return profile
     required = {'receipt','checked_at','memory_bytes','disk_bytes','deadline_seconds'}
     if type(evidence) is not dict or set(evidence) != required:
         raise ValueError('setup_explicit_profile_measurement_required')
     if (type(evidence['receipt']) is not str or not evidence['receipt'].strip() or
             'synthetic' in evidence['receipt'].lower() or
+            'not-a-qualification' in evidence['receipt'].lower() or
+            'estimate' in evidence['receipt'].lower() or
             any(type(evidence[k]) is not int or evidence[k] < 1 for k in required-{'receipt','checked_at'})):
         raise ValueError('setup_real_profile_measurement_required')
     try:
@@ -143,7 +168,7 @@ def _context(name, descriptor, digest, profile, evidence, reference, threads, pr
         'clone' if name == 'clone' else 'custom_voice',descriptor['language'],
         'template-clone' if name == 'clone' else 'template-Ryan','vv0',threads,
         1024,24000*60,
-        11520044,evidence['memory_bytes'],24000,
+        11520044,evidence['memory_bytes'] if evidence else lane.MEMORY_BYTES,24000,
         preset='Ryan' if name == 'Ryan' else None,
         reference_id=reference['id'] if name == 'clone' else None,
         reference_sha256=reference['sha256'] if name == 'clone' else None,
@@ -151,7 +176,7 @@ def _context(name, descriptor, digest, profile, evidence, reference, threads, pr
         reference_frames=reference['frames'] if name == 'clone' else 0,
         reference_rate=reference['rate'] if name == 'clone' else 0,
         reference_text=reference['text'] if name == 'clone' else None,
-        timeout_s=evidence['deadline_seconds'])
+        timeout_s=evidence['deadline_seconds'] if evidence else lane.DEADLINE_SECONDS)
     plan = template['plan']; version = plan['voice_versions'][0]
     plan['request'].update(voice_version_id=version['id'],identity=identity,
                            text='Template admission text.',fallback='forbid',variants=1,reuse='never')
@@ -185,7 +210,7 @@ def _context(name, descriptor, digest, profile, evidence, reference, threads, pr
                     if name == 'clone' else {}),
         hardware=dict(host=dict(system='linux',architecture='x86_64',deployment='docker'),
                       devices=[dict(family='cpu',index=0,supported=True,available=True,
-                                    probed_at=evidence['checked_at'])]))
+                                    probed_at=evidence['checked_at'] if evidence else profile['checked_at'])]))
     oracle.frozen_plan(plan,template['bundles'])
     return template
 
@@ -238,13 +263,15 @@ def generate(request, *, verifier=None):
     identities={name:dict(engine='qwen',model=qd.PUBLIC_MODEL if name=='clone' else qd.PUBLIC_CUSTOM_MODEL,
                           bundle_sha256=sources[name][1],device='cpu',precision='float32')
                 for name in sources}
-    if request['ram_bytes'] < request['measurement']['memory_bytes']:
+    if request['ram_bytes'] < (request['measurement']['memory_bytes'] if request['measurement'] else lane.MEMORY_BYTES):
         raise ValueError('setup_ram_below_measured_model_requirement')
-    profile=_profile(request['measurement'],identities,request['measurement']['memory_bytes'],request['threads'])
+    if request['measurement'] is None and request['ram_bytes'] > 12*1024**3:
+        raise ValueError('setup_local_ram_budget_exceeded')
+    profile=_profile(request['measurement'],identities,request['measurement']['memory_bytes'] if request['measurement'] else lane.MEMORY_BYTES,request['threads'])
     contexts={name:_context(name,*sources[name][:2],profile,request['measurement'],reference,request['threads'],request['principal'])
               for name in sources}
     budget=dict(slots=1,resident_models=1,ram_bytes=request['ram_bytes'],vram_bytes=0,
-                pids=request['pids'],queue=32,disk_bytes=request['measurement']['disk_bytes'],free_bytes=0)
+                pids=request['pids'],queue=32,disk_bytes=request['measurement']['disk_bytes'] if request['measurement'] else lane.DISK_BYTES,free_bytes=0)
     config=build(request['principal'],contexts['clone'],contexts['Ryan'],profile,budget,
                  {k:request['images'][k] for k in ('control','worker')})
     entries=[item for name in ('clone','Ryan') for item in sources[name][2]]
@@ -261,11 +288,44 @@ def generate(request, *, verifier=None):
     return result
 
 
+def preflight_host_cgroup(request):
+    """Require the actual authorized Linux host's pre-provisioned subtree."""
+    if platform.system() != 'Linux' or platform.machine() != 'x86_64' or os.geteuid() != 0:
+        raise ValueError('setup_authorized_linux_host_root_required')
+    try:
+        custody=Path(request['custody'])
+        if not custody.is_dir() or custody.is_symlink():
+            raise ValueError('setup_dedicated_cgroup_host_preflight_required')
+        info=custody.stat()
+        if (info.st_uid,info.st_gid,stat.S_IMODE(info.st_mode)) != (0,0,0o700):
+            raise ValueError('setup_dedicated_cgroup_host_preflight_required')
+        expected={'memory.max':request['ram_bytes'],'memory.swap.max':0,
+                  'pids.max':request['pids']}
+        for name,maximum in expected.items():
+            raw=(custody/name).read_text().strip()
+            if not raw.isdecimal() or int(raw)>maximum:
+                raise ValueError('setup_dedicated_cgroup_host_preflight_required')
+        cpu=(custody/'cpu.max').read_text().split()
+        if len(cpu)!=2 or not all(part.isdecimal() for part in cpu) or int(cpu[0])>request['cpu']['worker']*int(cpu[1])//10**9:
+            raise ValueError('setup_dedicated_cgroup_host_preflight_required')
+        if not {'cpu','memory','pids'} <= set((custody/'cgroup.subtree_control').read_text().split()):
+            raise ValueError('setup_dedicated_cgroup_host_preflight_required')
+        if not (custody/'cgroup.kill').exists() or not (custody/'cgroup.procs').exists():
+            raise ValueError('setup_dedicated_cgroup_host_preflight_required')
+    except OSError as exc:
+        raise ValueError('setup_dedicated_cgroup_host_preflight_required') from exc
+
+
 def preflight_docker(request, *, docker=None):
     """Read-only host checks before minting credentials or creating a handle."""
     from service.daemon_client import Docker
+    preflight_host_cgroup(request)
     try:
         docker = docker or Docker(request['docker_context'],family=qd.FAMILY)
+        if not str(getattr(docker,'endpoint','')).startswith('unix://'):
+            raise ValueError('setup_local_host_docker_socket_required')
+        if docker.call(['info','--format','{{.Name}}']) != platform.node():
+            raise ValueError('setup_docker_daemon_host_mismatch')
         if docker.call(['info','--format','{{.CgroupDriver}}']) != 'cgroupfs':
             raise ValueError('setup_cgroupfs_driver_required')
         for role in ('control','worker','helper'):
@@ -282,6 +342,7 @@ def main(argv=None):
     p.add_argument('--request',help='Advanced closed operator request JSON')
     p.add_argument('--handle',required=True,help='New retained Docker installation handle')
     p.add_argument('--prepare-only',action='store_true',help='Write validated local inputs without Docker mutation')
+    p.add_argument('--local-unqualified',action='store_true',help='Explicit bounded local execution; no qualification receipt')
     for flag in ('clone-bundle','ryan-bundle','context','control-image','worker-image',
                  'helper-image','custody','reference-wav','reference-text','measurement'):
         p.add_argument('--'+flag)
@@ -291,8 +352,15 @@ def main(argv=None):
     p.add_argument('--root',help='New private root; defaults to the local Qwen service root')
     p.add_argument('--port',type=int,default=DEFAULT_PORT)
     a=p.parse_args(argv)
+    if not a.request and a.root is None and os.geteuid() == 0 and os.environ.get('SUDO_UID'):
+        a.root=str(Path(pwd.getpwuid(int(os.environ['SUDO_UID'])).pw_dir)/'.local/state/speech-box/qwen-service')
+    if a.local_unqualified and not a.request:
+        if a.ram_bytes is None: a.ram_bytes=6*1024**3
+        if a.threads is None: a.threads=2
+        if a.custody is None:
+            a.custody='/sys/fs/cgroup/speech-box-qwen/'+hashlib.sha256(os.fsencode(a.handle)).hexdigest()[:32]
     flags=('clone_bundle','ryan_bundle','context','control_image','worker_image',
-           'helper_image','custody','reference_wav','reference_text','measurement',
+           'helper_image','custody','reference_wav','reference_text',
            'ram_bytes','threads')
     if a.request:
         if any(getattr(a,key) is not None for key in flags) or a.root is not None or a.principal != 'local' or a.port != DEFAULT_PORT:
@@ -300,8 +368,13 @@ def main(argv=None):
         request=json.loads(read(a.request,65536))
     else:
         missing=[key.replace('_','-') for key in flags if getattr(a,key) is None]
+        if a.measurement is None and not a.local_unqualified: missing.append('measurement')
         if missing: p.error('required setup flags: '+', '.join('--'+key for key in missing))
         request=flag_request(a)
+    if a.request and a.local_unqualified and request.get('measurement') is not None:
+        p.error('local unqualified lane requires null measurement')
+    if request.get('measurement') is None and not a.local_unqualified:
+        p.error('null measurement requires --local-unqualified')
     result=generate(request)
     if not a.prepare_only:
         preflight_docker(request)
@@ -314,17 +387,23 @@ def main(argv=None):
                               bytes=(root/'control.key').stat().st_size)]
     manifest(result['inputs'],family=qd.FAMILY,service=True)
     installer=root/'install-request.json'; exclusive(installer,result)
+    if os.geteuid() == 0 and os.environ.get('SUDO_UID'):
+        uid=int(os.environ['SUDO_UID']); gid=int(os.environ['SUDO_GID'])
+        if uid <= 0 or uid != pwd.getpwuid(uid).pw_uid:
+            raise ValueError('setup_sudo_client_identity_required')
+        for path in (root/'control.key',root/'client.json',root):
+            os.chown(path,uid,gid,follow_symlinks=False)
     client_command=['python3','-m','clients.cli']
     if root != local.DEFAULT_ROOT:
         client_command += ['--installation',str(root)]
     if a.prepare_only:
-        print(json.dumps(dict(phase='prepared',request=str(installer),client=str(root/'client.json'),
+        print(json.dumps(dict(phase='prepared',qualification='unqualified' if request['measurement'] is None else 'operator-declared',request=str(installer),client=str(root/'client.json'),
                               client_command=client_command)))
         return
     from service.daemon_client import qwen_main
     qwen_main(['install','--context',request['docker_context'],'--request',str(installer),'--handle',a.handle])
     qwen_main(['up','--handle',a.handle])
-    print(json.dumps(dict(phase='up',handle=a.handle,request=str(installer),client=str(root/'client.json'),
+    print(json.dumps(dict(phase='up',qualification='unqualified' if request['measurement'] is None else 'operator-declared',handle=a.handle,request=str(installer),client=str(root/'client.json'),
                           client_command=client_command)))
 
 

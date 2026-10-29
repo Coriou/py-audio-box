@@ -185,14 +185,18 @@ def create_voice_app(dispatcher, *, credentials, upload_deadline=15.0, installed
             qualified = bool(profile and profile['support']=='qualified' and profile['readiness']=='ready' and
                              profile['verification']=='measured' and profile['qualification_receipt'] and
                              'synthetic' not in profile['qualification_receipt'].lower()) if clone else True
-            return dict(synthetic=False, ready_for_speech=status['persistent_activation'] and qualified,
+            from service.qwen_local_lane import profile_allowed
+            local_unqualified=bool(profile and installed['ownership_policy']=='docker-qwen-cpu-split-v1' and
+                                   profile_allowed(profile))
+            return dict(synthetic=False, ready_for_speech=status['persistent_activation'] and (qualified or local_unqualified),
                         configuration_digest=digest(installed),
                         profiles=installed['profiles'], store='installed-owner', status=status,
                         configured_presets=dispatcher.call('configured_presets', request.state.principal),
                         next_action=configured['next_action'] if clone else 'voice_preset_register → voices_list/voice_version_get → speech_generate',
                         clone_prepare=clone, installed=True, configured_capabilities=configured,
                         activation_ready=status['persistent_activation'],
-                        qualification='operator-declared configured profile; installation and registration do not qualify execution')
+                        qualification=('UNQUALIFIED local execution; installation and registration do not qualify execution'
+                                       if local_unqualified else 'operator-declared configured profile; installation and registration do not qualify execution'))
         configured = dispatcher.call('configured_capabilities', request.state.principal)
         if native_installed:
             status = dispatcher.call('status')

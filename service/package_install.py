@@ -244,6 +244,9 @@ def main(argv=None):
     if arguments[:1] == ['qwen-service-setup']:
         from service.qwen_service_setup import main as setup_main
         return setup_main(arguments[1:])
+    if arguments[:1] == ['qwen-up']:
+        from service.qwen_service_setup import main as setup_main
+        return setup_main(['--local-unqualified', *arguments[1:]])
     if arguments[:1] in (['docker'], ['docker-export'], ['docker-pocket'], ['docker-qwen']):
         from service.daemon_client import main, export_main, pocket_main, qwen_main
         if arguments[0] == 'docker-qwen': return qwen_main(arguments[1:])
@@ -252,7 +255,7 @@ def main(argv=None):
         else: docker_main = main
         return docker_main(arguments[1:])
     parser=argparse.ArgumentParser(description='Finite Linux Docker speech-box installer; retained failures require operator review.',
-        epilog='Docker model store: docker-models (init/import/verify/recover-import; use COMMAND --help). Docker volume commands: docker, docker-export, docker-pocket, docker-qwen (install/up/status/stop; use COMMAND --help). Two-model Qwen setup: qwen-service-setup --help.')
+        epilog='Docker model store: docker-models (init/import/verify/recover-import; use COMMAND --help). Docker volume commands: docker, docker-export, docker-pocket, docker-qwen (install/up/status/stop; use COMMAND --help). Two-model local Qwen startup: qwen-up --help; measured setup: qwen-service-setup --help.')
     parser.add_argument('command',choices=('init','complete','up','stop','status','archive','setup'))
     parser.add_argument('--configuration'); parser.add_argument('--scope'); parser.add_argument('--host-policy')
     parser.add_argument('--request'); parser.add_argument('--setup-bundle')

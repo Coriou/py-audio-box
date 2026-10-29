@@ -837,8 +837,11 @@ class RuntimeSupervisor:
             raise Refused('unregistered_qwen_context')
         oracle.admission(dict(operation=context['plan']['operation'],input_sha256=oracle.plan_hash(context['plan'])),context,self.qwen_profiles)
         selected=next(p for p in self.qwen_profiles if p['id'] == profile['id'])
-        if selected['verification'] != 'measured' or not selected['qualification_receipt'] or 'synthetic' in selected['qualification_receipt'].lower(): raise Refused('real_qualification_required')
+        from service.qwen_local_lane import context_allowed
         from service import install_policy as ip
+        local_qwen=(getattr(self, 'installed_policy', None) is ip.QWEN_SPLIT and
+                    context_allowed(context,selected))
+        if not local_qwen and (selected['verification'] != 'measured' or not selected['qualification_receipt'] or 'synthetic' in selected['qualification_receipt'].lower()): raise Refused('real_qualification_required')
         if getattr(self, 'installed_policy', None) is ip.QWEN_SPLIT:
             from service.installed_qwen_daemon import FAMILY
             from worker.engines.qwen_execution import installed_cpu_hardware

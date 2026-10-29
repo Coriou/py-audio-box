@@ -453,6 +453,9 @@ def admission(job, context, profiles):
     if not admitted and p['id']=='kokoro-native-cpu':
         from worker.native_cpu_qualification import permitted
         admitted=permitted(context,p,job)
+    if not admitted and p['id']=='qwen-cpu':
+        from service.qwen_local_lane import context_allowed
+        admitted=context_allowed(context,p)
     require(admitted, 'not_ready')
 
 

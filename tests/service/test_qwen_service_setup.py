@@ -16,6 +16,8 @@ from service import qwen_service_setup as setup
 from service import qwen_local_config as local
 from service.daemon_client import manifest
 from service.provisioning import bundle_manifest, manifest_bytes
+from service.qwen_local_lane import context_allowed
+from contracts import validate as oracle
 
 
 class SetupTests(unittest.TestCase):
@@ -63,25 +65,110 @@ class SetupTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError,'setup_real_profile_measurement_required'):
             setup.generate(self.request,verifier=lambda *args: None)
         self.assertFalse((self.root/'local').exists())
+        self.request['measurement']['receipt']='ben-box-smoke-estimate-not-a-qualification'
+        with self.assertRaisesRegex(ValueError,'setup_real_profile_measurement_required'):
+            setup.generate(self.request,verifier=lambda *args: None)
 
     def test_read_only_docker_prerequisites(self):
         class Docker:
             frozen={'id':'fixture'}
+            endpoint='unix:///var/run/docker.sock'
             def __init__(self): self.calls=[]
             def call(self,args):
                 self.calls.append(args)
+                if args[:2]==['info','--format'] and args[2]=='{{.Name}}':
+                    return 'test-host'
                 if args[:2]==['info','--format']: return 'cgroupfs'
                 if args[:2]==['image','inspect']: return args[2]
                 raise AssertionError(args)
             def check(self): self.calls.append(['check'])
         docker=Docker()
-        setup.preflight_docker(self.request,docker=docker)
-        self.assertEqual(len(docker.calls),5)
+        with patch.object(setup,'preflight_host_cgroup'), patch.object(setup.platform,'node',return_value='test-host'):
+            setup.preflight_docker(self.request,docker=docker)
+        self.assertEqual(len(docker.calls),6)
         self.assertTrue(all(call[0] in ('info','image','check') for call in docker.calls))
         class Wrong(Docker):
             def call(self,args): return 'systemd'
-        with self.assertRaisesRegex(ValueError,'setup_cgroupfs_driver_required'):
-            setup.preflight_docker(self.request,docker=Wrong())
+        with patch.object(setup,'preflight_host_cgroup'), patch.object(setup.platform,'node',return_value='test-host'):
+            with self.assertRaisesRegex(ValueError,'setup_docker_daemon_host_mismatch'):
+                setup.preflight_docker(self.request,docker=Wrong())
+
+    def test_local_unqualified_templates_admit_both_models_without_receipt(self):
+        self.request['measurement']=None
+        result=setup.generate(self.request,verifier=lambda *args: None)
+        config=result['configuration'];profile=config['profiles'][0]
+        self.assertEqual((profile['support'],profile['verification'],profile['qualification_receipt']),
+                         ('unqualified','synthetic',''))
+        self.assertLessEqual(profile['limits']['ram_bytes'],4*1024**3)
+        for context in config['contexts']['alice'].values():
+            self.assertTrue(context_allowed(context,profile))
+            plan=context['plan']
+            oracle.admission(dict(operation=plan['operation'],input_sha256=oracle.plan_hash(plan)),context,[profile])
+            from service.admission import Admission
+            class InstalledAvailability:
+                family=qd.FAMILY
+                def check_availability(self, context): pass
+            demand=Admission.demand(SimpleNamespace(native_availability=InstalledAvailability().check_availability),context,[profile])
+            self.assertEqual((demand['slots'],demand['ram_bytes'],demand['pids']),
+                             (1,4*1024**3,48))
+        other=dict(profile,config_revision='production-v1')
+        self.assertFalse(context_allowed(config['contexts']['alice']['Ryan'],other))
+        with self.assertRaises(Exception):
+            plan=config['contexts']['alice']['Ryan']['plan']
+            oracle.admission(dict(operation=plan['operation'],input_sha256=oracle.plan_hash(plan)),
+                             config['contexts']['alice']['Ryan'],[other])
+
+    def test_generated_ryan_request_reaches_worker_only_in_installed_local_lane(self):
+        from service import install_policy as ip
+        from service.execution_context import installed_preset_context
+        from worker.runtime_supervisor import RuntimeSupervisor
+        from worker.engines.qwen_execution import inventory_from_wire
+        from worker.transport import Refused
+        self.request['measurement']=None
+        config=setup.generate(self.request,verifier=lambda *args: None)['configuration']
+        profile=config['profiles'][0];template=config['contexts']['alice']['Ryan']
+        context=installed_preset_context(template,'alice','Ryan')
+        worker=object.__new__(RuntimeSupervisor)
+        worker.resident_qwen=True;worker.installed_policy=ip.QWEN_SPLIT
+        worker.qwen_contexts={('alice','qwen-cpu','Ryan'):template}
+        worker.inventory=inventory_from_wire(context['execution']['hardware'])
+        worker.qwen_profiles=[profile];worker.bundles={};worker.references={}
+        with patch('worker.runtime_protocol.resident_qwen_cpu_hardware'), \
+             patch('worker.engines.qwen.verify_service_inputs') as inert_engine:
+            worker.verify_qwen(context,[profile],'alice')
+            inert_engine.assert_called_once()
+        worker.installed_policy=None
+        with self.assertRaisesRegex(Refused,'real_qualification_required'):
+            worker.verify_qwen(context,[profile],'alice')
+
+    def test_qwen_up_entrypoint_prepares_local_lane_without_receipt(self):
+        from service.package_install import main as command
+        args=['qwen-up','--clone-bundle',self.request['bundles']['clone'],
+              '--ryan-bundle',self.request['bundles']['Ryan'],'--context','local-test',
+              '--control-image','control:local','--worker-image','worker:local',
+              '--helper-image','helper:local','--custody',self.request['custody'],
+              '--reference-wav',self.request['reference']['wav'],
+              '--reference-text',self.request['reference']['text'],
+              '--root',self.request['root'],'--handle',str(self.root/'handle'),
+              '--prepare-only']
+        with patch.object(setup,'_image_ids',return_value=self.request['images']), \
+             patch('worker.engines.qwen.verify_bundle'), \
+             contextlib.redirect_stdout(io.StringIO()) as output:
+            command(args)
+        self.assertEqual(json.loads(output.getvalue())['qualification'],'unqualified')
+        installed=json.loads((self.root/'local'/'install-request.json').read_text())
+        self.assertEqual(installed['configuration']['profiles'][0]['qualification_receipt'],'')
+        sudo_root=self.root/'sudo-client'
+        sudo_args=args.copy();sudo_args[sudo_args.index(self.request['root'])]=str(sudo_root)
+        with patch.object(setup,'_image_ids',return_value=self.request['images']), \
+             patch('worker.engines.qwen.verify_bundle'), \
+             patch.object(setup.os,'geteuid',return_value=0), \
+             patch.object(setup.os,'chown') as chown, \
+             patch.dict(os.environ,{'SUDO_UID':str(os.getuid()),'SUDO_GID':str(os.getgid())}), \
+             contextlib.redirect_stdout(io.StringIO()):
+            command(sudo_args)
+        self.assertEqual([call.args[0] for call in chown.call_args_list],
+                         [sudo_root/'control.key',sudo_root/'client.json',sudo_root])
 
     def test_flags_build_validated_request_from_measured_file_and_named_images(self):
         measurement=self.root/'measurement.json'
