@@ -250,6 +250,73 @@ class VoiceUsability(unittest.TestCase):
         self.assertIsNone(self.reg.matching_prompt('bruce', checkpoint='Qwen/Qwen3-TTS-12Hz-1.7B-Base',
                           revision='a'*40, schema_version=1))
 
+    def test_actual_repair_cli_rejects_unreadable_metadata_and_colliding_labels(self):
+        backup, _ = self.orphan()
+        original = json.loads(backup.read_text())
+        self.reg.create('john', 'John', {})
+        self.reg.add_alias('john', 'hero')
+        self.reg.voice_dir('waiting').mkdir()
+        cases = [
+            ('null display', 'display_name', None, 'display_name'),
+            ('object display', 'display_name', {'bad': 'label'}, 'display_name'),
+            ('numeric display', 'display_name', 7, 'display_name'),
+            ('bad alias element', 'aliases', [None], 'aliases'),
+            ('bad alias container', 'aliases', 'batman', 'aliases'),
+            ('bad created date', 'created_at', None, 'Backup does not identify'),
+            ('unresolvable alias', 'aliases', ['bad/path'], 'alias'),
+            ('existing slug label', 'display_name', 'JOHN', 'conflicts'),
+            ('existing display label', 'display_name', 'John', 'conflicts'),
+            ('existing alias', 'aliases', ['hero'], 'conflicts'),
+            ('orphan directory alias', 'aliases', ['waiting'], 'conflicts'),
+        ]
+        with app_module('apps/voice-clone/voice-clone.py') as clone, \
+             patch('pickle.load', side_effect=AssertionError('unpickle forbidden')), \
+             patch('pickle.loads', side_effect=AssertionError('unpickle forbidden')):
+            for label, field, value, error in cases:
+                with self.subTest(case=label):
+                    backup.write_text(json.dumps({**original, field: value}))
+                    before = self.snapshot()
+                    for flags in ([], ['--apply']):
+                        args = ['voice-clone', 'repair-registry', '--voice', 'bruce',
+                                '--metadata', str(backup), '--cache', str(self.cache), *flags]
+                        with patch.object(sys, 'argv', args), \
+                             contextlib.redirect_stdout(io.StringIO()) as out, \
+                             contextlib.redirect_stderr(io.StringIO()) as err, \
+                             self.assertRaises(SystemExit) as raised:
+                            clone.main()
+                        self.assertEqual(raised.exception.code, 2)
+                        self.assertEqual(out.getvalue(), '')
+                        self.assertIn(error, err.getvalue())
+                        self.assertEqual(self.snapshot(), before)
+                        self.assertFalse(self.reg.exists('bruce'))
+                        self.assertEqual(self.reg.resolve_name('JOHN'), 'john')
+
+    def test_actual_repair_cli_publishes_readable_resolvable_backup(self):
+        backup, _ = self.orphan()
+        self.reg.create('john', 'John', {})
+        command = ['voice-clone', 'repair-registry', '--voice', 'bruce',
+                   '--metadata', str(backup), '--cache', str(self.cache)]
+        before = self.snapshot()
+        with app_module('apps/voice-clone/voice-clone.py') as clone, \
+             patch('pickle.load', side_effect=AssertionError('unpickle forbidden')), \
+             patch('pickle.loads', side_effect=AssertionError('unpickle forbidden')):
+            for flags, restored in (([], False), (['--apply'], True)):
+                with patch.object(sys, 'argv', command + flags), \
+                     contextlib.redirect_stdout(io.StringIO()) as out, \
+                     contextlib.redirect_stderr(io.StringIO()) as err:
+                    clone.main()
+                self.assertEqual(err.getvalue(), '')
+                self.assertEqual(json.loads(out.getvalue())['restored'], restored)
+                if not restored:
+                    self.assertEqual(self.snapshot(), before)
+        after = self.snapshot()
+        self.assertEqual(after.pop('voices/bruce/voice.json'), backup.read_bytes())
+        self.assertEqual(after, before)
+        self.assertEqual(self.reg.load('bruce')['slug'], 'bruce')
+        self.assertEqual({v['slug'] for v in self.reg.list_voices(strict=True)}, {'bruce', 'john'})
+        self.assertEqual(self.reg.resolve_name('BATMAN'), 'bruce')
+        self.assertEqual(self.reg.resolve_name('JOHN'), 'john')
+
     def test_actual_repair_cli_refuses_non_clone_checkpoints_without_publication(self):
         backup, pkl = self.orphan()
         sidecar = pkl.with_suffix('.meta.json')

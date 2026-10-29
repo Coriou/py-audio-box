@@ -262,17 +262,21 @@ class VoiceRegistry:
         """Read registry identity; corruption must never masquerade as a name miss."""
         try:
             with open(path) as fh:
-                data = self._normalise_record(json.load(fh))
-            slug = data.get("slug")
-            if validate_slug(slug) != slug or slug != path.parent.name:
-                raise ValueError("Voice slug must match its directory exactly")
-            if not isinstance(data.get("created_at"), str):
-                raise ValueError("Voice created_at must be a string")
-            if "display_name" in data and not isinstance(data["display_name"], str):
-                raise ValueError("Voice display_name must be a string")
-            return data
+                return self._validate_record(json.load(fh), path.parent.name)
         except (OSError, ValueError, TypeError) as exc:
             raise ValueError(f"Invalid voice registry metadata at {path}: {exc}") from exc
+
+    def _validate_record(self, data: dict[str, Any], slug: str) -> dict[str, Any]:
+        """Apply the same read contract to live records and repair candidates."""
+        data = self._normalise_record(data)
+        identity = data.get("slug")
+        if validate_slug(identity) != identity or identity != slug:
+            raise ValueError("Voice slug must match its directory exactly")
+        if not isinstance(data.get("created_at"), str):
+            raise ValueError("Voice created_at must be a string")
+        if "display_name" in data and not isinstance(data["display_name"], str):
+            raise ValueError("Voice display_name must be a string")
+        return data
 
     def resolve_name(self, name: str, *, prefix: bool = True) -> str:
         """Resolve human names, explicit aliases and slug prefixes; refuse collisions.
@@ -355,7 +359,22 @@ class VoiceRegistry:
                 or not isinstance(data.get("source"), dict)
                 or infer_engine(data) not in ("clone_prompt", "designed_clone")):
             raise ValueError("Backup does not identify this clone voice." + guidance)
-        self._normalise_record(dict(data))
+        self._validate_record(dict(data), slug)
+        for alias in data.get("aliases", []):
+            if validate_slug(alias) != alias:
+                raise ValueError("Backup voice alias must be a canonical slug.")
+        # A restored label must not take over an existing identity, including
+        # an orphan directory whose metadata may be repaired later.
+        labels = [slug, data.get("display_name", slug), *data.get("aliases", [])]
+        labels = {label.strip().casefold() for label in labels if label.strip()}
+        for record in self.list_voices(strict=True):
+            other = [record["slug"], record.get("display_name", record["slug"]),
+                     *record.get("aliases", [])]
+            if labels.intersection(label.strip().casefold() for label in other if label.strip()):
+                raise ValueError("Backup voice identity or alias conflicts with a registered voice.")
+        for directory in self.root.iterdir():
+            if directory.is_dir() and directory.name != slug and directory.name.casefold() in labels:
+                raise ValueError("Backup voice identity or alias conflicts with a voice directory.")
         prompts = data.get("prompts")
         tones = data.get("tones", {})
         if not isinstance(prompts, dict) or not prompts or not isinstance(tones, dict):
