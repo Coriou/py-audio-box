@@ -173,9 +173,11 @@ def _resolve_ref_audio(args, cache: Path) -> Path:
     """
     if getattr(args, "voice", None):
         reg = VoiceRegistry(cache)
-        if not reg.exists(args.voice):
+        try:
+            args.voice = reg.resolve_name(args.voice)
+        except KeyError as exc:
             print(
-                f"ERROR: voice '{args.voice}' not found in registry.\n"
+                f"ERROR: {exc}\n"
                 f"  Run: ./run voice-synth list-voices",
                 file=sys.stderr,
             )
@@ -1620,6 +1622,18 @@ def build_parser() -> argparse.ArgumentParser:
     )
     sub = ap.add_subparsers(dest="command", required=True)
 
+    repair = sub.add_parser("repair-registry", help="Preview restoring missing voice.json from a trusted backup; never unpickles")
+    repair.add_argument("--voice", required=True, metavar="SLUG")
+    repair.add_argument("--metadata", required=True, type=Path,
+                        help="Trusted original voice.json backup; hashes do not establish provenance")
+    repair.add_argument("--cache", default="/cache")
+    repair.add_argument("--apply", action="store_true", help="Restore validated metadata; default is read-only preview")
+
+    alias = sub.add_parser("add-alias", help="Add a case-insensitive voice alias without renaming files")
+    alias.add_argument("--voice", required=True)
+    alias.add_argument("--alias", required=True, help="Letters, digits and hyphens; stored lowercase")
+    alias.add_argument("--cache", default="/cache")
+
     migration = sub.add_parser("migrate-registry", help="Preview additive registry schema migration")
     migration.add_argument("--voice", required=True, metavar="SLUG")
     migration.add_argument("--cache", default="/cache")
@@ -1770,6 +1784,16 @@ from tts_backends.qwen import QwenWorkerError
 def main() -> None:
     ap   = build_parser()
     args = ap.parse_args()
+
+    if args.command in ("repair-registry", "add-alias"):
+        reg = VoiceRegistry(Path(args.cache))
+        try:
+            result = (reg.repair_orphan(args.voice, args.metadata, dry_run=not args.apply)
+                      if args.command == "repair-registry" else reg.add_alias(args.voice, args.alias))
+        except (ValueError, KeyError, OSError) as exc:
+            ap.error(str(exc))
+        print(json.dumps(result, indent=2))
+        return
 
     if args.command == "migrate-registry":
         print(json.dumps(VoiceRegistry(Path(args.cache)).migrate(args.voice, dry_run=not args.apply), indent=2))
