@@ -232,6 +232,12 @@ def main(argv=None):
     if arguments[:1] == ['docker-models']:
         from service.shared_model_client import main as models_main
         return models_main(arguments[1:])
+    if arguments[:1] == ['qwen-snapshot']:
+        from service.qwen_snapshot import main as snapshot_main
+        return snapshot_main(arguments[1:])
+    if arguments[:1] == ['qwen-local-init']:
+        from service.qwen_local_config import main as local_main
+        return local_main(arguments[1:])
     if arguments[:1] in (['docker'], ['docker-export'], ['docker-pocket'], ['docker-qwen']):
         from service.daemon_client import main, export_main, pocket_main, qwen_main
         if arguments[0] == 'docker-qwen': return qwen_main(arguments[1:])
