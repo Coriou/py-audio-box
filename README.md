@@ -113,6 +113,12 @@ The **[agent guide](docs/AGENT-GUIDE.md)** walks the whole flow: discover, uploa
 a reference, clone, save, set a default, generate, wait and download, with the
 same steps in CLI and MCP form.
 
+Named voice `enroll` and `speak` workflows use one `--wait-seconds` budget for
+HTTP connect, response transfer, upload, polling, and output verification.
+Their JSON responses are limited to 32 MiB. A timed-out mutation may still have
+reached the service; resume only with confirmed handles as described in the
+[service voice client guide](docs/SERVICE-VOICE-CLIENT.md).
+
 ## Model choice and repository declarations
 
 | Engine | Use | Model and declared license | Notes |

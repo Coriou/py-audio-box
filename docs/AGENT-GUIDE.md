@@ -181,13 +181,13 @@ verifies an exclusive output file. MCP `speech_enroll` uses an already uploaded
 output paths. The local installation accepts the existing `client.json` and
 `control.key` format; the credential is not copied into a workflow receipt.
 
-`--wait-seconds` sets one deadline across status, HTTP calls, polling, and
-output transfer; zero expires before a network call. The HTTP client caps
-each request by the remaining budget and checks the clock before publishing
-an output. HTTPX timeouts apply to individual network waits, so a slowly
-streamed response may return after the deadline; it will not be used or
-published after the post-response clock check. A response can still arrive after a network
-transport failure, so an unknown mutation outcome is never assumed absent.
+`--wait-seconds` sets one deadline across status, HTTP connect, headers, body
+reads, upload writes, polling, and output transfer; zero expires before a
+network call. Socket operations use the remaining budget on every wait, and
+JSON responses have a 32 MiB decoded-body limit. The client closes a response
+when the deadline expires and checks the clock before publishing an output.
+A response can still arrive after a network transport failure, so an unknown
+mutation outcome is never assumed absent.
 The JSON result contains `state`, `code`, `message`, `action`, and confirmed
 `asset_id`, `job_id`, version and idempotency keys as available. Non-success
 workflow results exit nonzero in the CLI and are MCP errors. Failed or

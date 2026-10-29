@@ -25,20 +25,25 @@ priority over an explicit `--installation` for their respective values.
 Without that flag, `SPEECH_URL` and `SPEECH_CREDENTIAL` take priority over
 the root selected by `SPEECH_INSTALLATION`. No credential is printed.
 
-Each workflow has `--wait-seconds` (0–600). A timeout leaves the job running
-and returns its ID. Repeat the command with `--job-id ID` to resume; the
-service `job cancel ID --idempotency-key KEY` command explicitly cancels. If
-submission's HTTP outcome is unknown, repeat with the same arguments: the
-workflow uses a deterministic idempotency key and returns that key. For speech,
-also pass the returned `--voice-version-id` so a later voice update cannot
-change the replay request. If upload
-outcome is unknown, retain the error and recover a confirmed asset ID from
-service/operator evidence before resuming with `--asset-id ID`; uploads are
-never retried automatically. Existing voices can
-be generated directly. A configured preset such as Ryan is registered once
-under its lower-case name on first use; its registration is also idempotent.
-If a save response is lost, the workflow returns the preparation job ID and
-save key; repeating the command first checks the stable saved version ID.
+Each workflow has `--wait-seconds` (0–600), one deadline for HTTP connect,
+headers, body reads, upload writes, polling, and output transfer. The client
+closes a timed-out response, limits decoded JSON bodies to 32 MiB, and never
+publishes output after expiry. A timeout can leave a submitted job running;
+the result returns its ID only when confirmed. The service
+`job cancel ID --idempotency-key KEY` command explicitly cancels.
+
+Resume enrollment with the confirmed `--asset-id`, the same name, exact
+reference text and audition text, and `--job-id` only when confirmed. A bare
+`enroll --wav` repeat uploads another asset and can prepare a different job.
+If an upload response is lost before an asset ID is confirmed, inspect service
+assets before attempting another upload. If a submission or save response is
+lost, retain the returned idempotency key and confirmed handles; the workflow
+checks a stable saved version before saving again. Resume speech with the
+returned `--voice-version-id`, the same text, and `--job-id` only when
+confirmed, so a later voice update cannot change the request. Every resumed
+job is checked against its operation and idempotency key before results are
+used. Existing voices can be generated directly. A configured preset such as
+Ryan is registered once under its lower-case name on first use.
 
 MCP exposes `speech_enroll` for an already uploaded asset and `speech_speak`
 for a named voice. The existing `speech_asset_upload_file` tool is available

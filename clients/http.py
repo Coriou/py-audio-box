@@ -1,8 +1,11 @@
 """Shared bounded HTTP transport. No client-owned business state."""
 import os
+import json
 import time
+from contextlib import nullcontext
 from urllib.parse import quote
 import httpx
+from httpcore._backends.sync import SyncBackend
 from contracts.validate import validate
 from service.catalogue import Failure, IMPLEMENTED, OPERATIONS, VOICE_READS, PRODUCTION_OPERATIONS
 
@@ -10,7 +13,78 @@ def _timeout(deadline, cap):
     if deadline is None: return cap
     remaining = deadline - time.monotonic()
     if remaining <= 0: raise TimeoutError('workflow_deadline')
-    return min(cap, remaining)
+    return min(cap, remaining) if cap is not None else remaining
+
+
+_MAX_RESPONSE_BYTES = 32 * 1024 * 1024
+
+
+class _DeadlineStream:
+    """Clamp every socket operation, including TLS and successive body reads."""
+    def __init__(self, stream, deadline):
+        self.stream, self.deadline = stream, deadline
+
+    def read(self, max_bytes, timeout=None):
+        return self.stream.read(max_bytes, _timeout(self.deadline, timeout))
+
+    def write(self, buffer, timeout=None):
+        return self.stream.write(buffer, _timeout(self.deadline, timeout))
+
+    def start_tls(self, ssl_context, server_hostname=None, timeout=None):
+        return _DeadlineStream(self.stream.start_tls(
+            ssl_context, server_hostname, _timeout(self.deadline, timeout)), self.deadline)
+
+    def get_extra_info(self, info):
+        return self.stream.get_extra_info(info)
+
+    def close(self):
+        return self.stream.close()
+
+
+class _DeadlineBackend(SyncBackend):
+    def __init__(self, deadline):
+        self.deadline = deadline
+
+    def connect_tcp(self, host, port, timeout=None, local_address=None, socket_options=None):
+        stream = super().connect_tcp(host, port, _timeout(self.deadline, timeout),
+                                     local_address, socket_options)
+        return _DeadlineStream(stream, self.deadline)
+
+    def connect_unix_socket(self, path, timeout=None, socket_options=None):
+        stream = super().connect_unix_socket(path, _timeout(self.deadline, timeout), socket_options)
+        return _DeadlineStream(stream, self.deadline)
+
+
+def _client(base_url, deadline, cap):
+    client = httpx.Client(base_url=base_url, timeout=_timeout(deadline, cap),
+                          trust_env=False, follow_redirects=False)
+    if deadline is not None and isinstance(getattr(client, '_transport', None), httpx.HTTPTransport):
+        # HTTPX's per-read timeout resets on each chunk. The connection pool's
+        # network backend enforces the same absolute deadline on every socket call.
+        client._transport._pool._network_backend = _DeadlineBackend(deadline)
+    return client
+
+
+def _body(client, method, path, *, deadline, cap, **kwargs):
+    if hasattr(client, 'stream'):
+        context = client.stream(method, path, **kwargs)
+    else:
+        context = nullcontext(getattr(client, method.lower())(path, **kwargs))
+    with context as response:
+        data = bytearray()
+        chunks = (response.content,) if response.is_stream_consumed else response.iter_bytes(chunk_size=65536)
+        for chunk in chunks:
+            _timeout(deadline, cap)
+            if len(data) + len(chunk) > _MAX_RESPONSE_BYTES:
+                raise httpx.DecodingError('HTTP response exceeds client limit.')
+            data.extend(chunk)
+        _timeout(deadline, cap)
+        try:
+            body = json.loads(data)
+        except ValueError:
+            raise httpx.DecodingError('Invalid HTTP JSON response.') from None
+        _timeout(deadline, cap)
+        return response.status_code, body
 
 
 class _Bounded:
@@ -37,13 +111,13 @@ class HTTP:
 
     def get(self, path, params=None, *, deadline=None):
         try:
-            with httpx.Client(base_url=self.base_url, timeout=_timeout(deadline, 10), trust_env=False, follow_redirects=False) as client:
-                response = client.get(path, params=params, headers={'Authorization': 'Bearer ' + self.credential} if self.credential else {})
-                body = response.json()
-                _timeout(deadline, 10)
+            with _client(self.base_url, deadline, 10) as client:
+                status, body = _body(client, 'GET', path, deadline=deadline, cap=10,
+                    params=params, headers={'Authorization': 'Bearer ' + self.credential} if self.credential else {})
         except (httpx.HTTPError, ValueError):
+            _timeout(deadline, 10)
             raise ConnectionError('Speech HTTP transport unavailable.') from None
-        if response.status_code != 200:
+        if status != 200:
             validate('error', body)
             error = Failure(body['code'], body['message'], body['field'], body['action'])
             error.body = body
@@ -90,13 +164,12 @@ class HTTP:
                     after = os.fstat(stream.fileno())
                     if stream.read(1) or (info.st_size,info.st_mtime_ns,info.st_ctime_ns) != (after.st_size,after.st_mtime_ns,after.st_ctime_ns):
                         raise ValueError('changed_file')
-                with httpx.Client(base_url=self.base_url, timeout=_timeout(deadline, 20), trust_env=False, follow_redirects=False) as client:
-                    response = client.post('/v1/assets', content=chunks(), headers={
+                with _client(self.base_url, deadline, 20) as client:
+                    status, body = _body(client, 'POST', '/v1/assets', deadline=deadline, cap=20,
+                        content=chunks(), headers={
                         'Authorization':'Bearer '+self.credential if self.credential else '',
                         'Content-Type':'audio/wav', 'Content-Length':str(info.st_size)})
-                    body = response.json()
-                    _timeout(deadline, 20)
-            if response.status_code != 200:
+            if status != 200:
                 validate('error', body)
                 error = Failure(body['code'],body['message'],body['field'],body['action'])
                 error.body = body
@@ -105,21 +178,22 @@ class HTTP:
         except (OSError, ValueError, IndexError):
             raise Failure('invalid_request', 'Client-local upload file unavailable or changed.') from None
         except httpx.HTTPError:
+            _timeout(deadline, 20)
             raise Failure('not_ready', 'Upload transport failed; outcome may be unknown.', action='Do not automatically retry uploads.') from None
         finally:
             if fd is not None: os.close(fd)
 
     def post(self, path, payload, key, *, deadline=None):
         try:
-            with httpx.Client(base_url=self.base_url, timeout=_timeout(deadline, 10), trust_env=False, follow_redirects=False) as client:
-                response = client.post(path, json=payload, headers={
+            with _client(self.base_url, deadline, 10) as client:
+                status, body = _body(client, 'POST', path, deadline=deadline, cap=10,
+                    json=payload, headers={
                     'Authorization':'Bearer '+self.credential if self.credential else '',
                     'Idempotency-Key':key})
-                body = response.json()
-                _timeout(deadline, 10)
         except (httpx.HTTPError, ValueError):
+            _timeout(deadline, 10)
             raise ConnectionError('Production HTTP outcome unknown; do not automatically retry.') from None
-        if response.status_code != 200:
+        if status != 200:
             validate('error',body)
             error = Failure(body['code'],body['message'],body['field'],body['action'])
             error.body = body
