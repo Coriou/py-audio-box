@@ -4,6 +4,7 @@ Checks: relative links/anchors resolve; every documented ``clients.cli`` command
 parses and maps to a contract operation; every documented ``speech_*`` MCP tool
 exists. No network, Docker or service is used.
 """
+import ast
 import contextlib
 import io
 import json
@@ -20,7 +21,19 @@ ROOT = Path(__file__).resolve().parents[1]
 DOCS = ['README.md', 'docs/AGENT-GUIDE.md', 'docs/LEGACY-TOOLBOX.md', 'docs/agent-interface/CPU-QUICKSTART.md',
         'docs/agent-interface/POCKET-QUICKSTART.md', 'docs/agent-interface/HEADLESS-INSTALL.md']
 CLI_DOCS = DOCS
-EXTRA_MCP_TOOLS = {'speech_asset_upload_file', 'speech_status', 'speech_skeleton_status', 'speech_operation_detail'}
+
+def literal_mcp_tools():
+    """Read the extra tool names declared by the MCP server without importing it."""
+    source = ast.parse((ROOT / 'clients/mcp.py').read_text())
+    return {
+        node.keywords[0].value.value
+        for node in ast.walk(source)
+        if isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
+        and node.func.id == 'Tool' and node.keywords
+        and node.keywords[0].arg == 'name'
+        and isinstance(node.keywords[0].value, ast.Constant)
+        and isinstance(node.keywords[0].value.value, str)
+    }
 
 
 def slug(heading):
@@ -160,7 +173,10 @@ class DocsOnboarding(unittest.TestCase):
 
     def test_documented_mcp_tools_and_operation_ids_exist(self):
         ops = json.loads((ROOT / 'contracts/v1/operations.json').read_text())['operations']
-        tools = {o['mcp'] for o in ops} | {o['id'] for o in ops} | EXTRA_MCP_TOOLS
+        tools = {o['mcp'] for o in ops} | {o['id'] for o in ops} | literal_mcp_tools()
+        # Documented deprecated dispatch alias, deliberately absent from list_tools.
+        self.assertIn("'speech_skeleton_status'", (ROOT / 'clients/mcp.py').read_text())
+        tools.add('speech_skeleton_status')
         for name in DOCS:
             for tool in set(re.findall(r'`(speech_[a-z_]+)', (ROOT / name).read_text())):
                 with self.subTest(doc=name, tool=tool):
