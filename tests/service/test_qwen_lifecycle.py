@@ -178,6 +178,7 @@ class QwenLifecycleTests(unittest.TestCase):
         self.submit();a=self.store.allocate(self.profiles,'qwen',8)['authority']
         from worker.runtime_supervisor import RuntimeSupervisor
         s=RuntimeSupervisor.__new__(RuntimeSupervisor)
+        s.resident_qwen=False
         s.bundles=a.context['execution']['bundles'];s.references=a.context['execution']['references'];s.inventory=self.inventory
         s.qwen_profiles=self.profiles;s.qwen_contexts={}
         body=dict(snapshot=json.loads(a._snapshot),binding=a.binding,fixture='qwen')

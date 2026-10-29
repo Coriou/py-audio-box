@@ -174,6 +174,7 @@ class ConditioningFilesystemTests(unittest.TestCase):
 class ConditioningSupervisorTests(unittest.TestCase):
     def setUp(self):
         self.s=RuntimeSupervisor.__new__(RuntimeSupervisor)
+        self.s.resident_qwen=False;self.s.resident=None
         self.row=dict(id='lane/boot/allocation',uid=20000,phase='started',allocation=dict(fixture='pocket',binding='frozen',snapshot=[dict(deadline='original',attempts=[dict(staging_id='attempt')]),{}]))
         self.enterContext(patch('worker.runtime_protocol.execution',return_value=SimpleNamespace(engine='pocket-tts')))
         self.s.journal=SimpleNamespace(value=dict(records=[self.row]))

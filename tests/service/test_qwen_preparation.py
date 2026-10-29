@@ -240,6 +240,7 @@ class CPUPreparationTests(CPUPreparationFixture):
         from worker.runtime_supervisor import RuntimeSupervisor
         b=self.b;context=self.resolve()
         supervisor=object.__new__(RuntimeSupervisor)
+        supervisor.resident_qwen=False
         supervisor.qwen_contexts={('alice','qwen-cpu','managed-clone'):self.template}
         supervisor.qwen_profiles=self.profiles;supervisor.inventory=b.inventory;supervisor.bundles=b.mapping
         supervisor.failed=False
