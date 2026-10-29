@@ -129,7 +129,7 @@ class Helper:
         self.config=ip.family_configuration(request['configuration'],family); self.b=dv.binding(request['binding'],family=family)
         if self.config['ownership_policy']!=(ex.POLICY if self.export else qd.POLICY if family is qd.FAMILY else pd.POLICY if self.pocket else ip.POLICY) or digest(self.config)!=self.b['configuration_digest']:
             raise ValueError('daemon_kokoro_configuration_required')
-        if (self.b['cpu']['worker']<max(c['execution']['descriptor']['threads'] for c in self.config['contexts'].values())*10**9 or
+        if (self.b['cpu']['worker']<max(c['execution']['descriptor']['threads'] for c in ip.context_values(self.config))*10**9 or
                 any(t['bytes']>self.config['budget']['ram_bytes'] for t in self.b['tmpfs'].values())):
             raise ValueError('daemon_resource_budget')
         self.own=dv.inspect_container(request['helper'],'helper',self.config,self.b,phase=phase,nonce=nonce,family=family)
@@ -323,7 +323,8 @@ class Helper:
 
     def input_import(self):
         # Manifest validation is shared with client; source paths never enter helper.
-        entries=manifest([dict(e,source='unused') for e in self.manifest],family=self.family)
+        entries=manifest([dict(e,source='unused') for e in self.manifest],family=self.family,
+                         service=ip.qwen_service(self.config))
         if self.shared and any(e['role']=='models' for e in entries): raise ValueError('shared_config_credential_only')
         input_roles=('config','credential') if self.shared else ('models','config','credential')
         self.write('import-intent.json',dict(files=[{k:v for k,v in e.items() if k!='source'} for e in entries]))
@@ -372,10 +373,11 @@ class Helper:
         # Existing credential parser validates closed principals/scopes; bytes and
         # credential digest never leave this phase or enter an authority record.
         credentials=installed_credentials(self.root['credential']/'control.key',self.config['contexts'])
-        if self.export:
+        if self.export or ip.qwen_service(self.config):
             admitted={c.principal for c in credentials._credentials if {'read','production-write'} <= c.scopes}
-            if not set(self.config['audio_export']['principals']) <= admitted:
-                raise ValueError('daemon_export_credential_principals')
+            required=set(self.config['audio_export']['principals']) if self.export else set(self.config['contexts'])
+            if not required <= admitted:
+                raise ValueError('daemon_export_credential_principals' if self.export else 'daemon_service_credential_principals')
         result=dict(identities={r:list(self.original[r]) for r in ('models','config','credential')},model_digest=model_digest)
         if time.monotonic()>=self.end: raise ValueError('daemon_helper_deadline')
         self.write('import-done.json',result)

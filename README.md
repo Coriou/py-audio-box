@@ -143,7 +143,8 @@ conditions and consent for any voice you clone.
   [Installation reference](docs/agent-interface/HEADLESS-INSTALL.md)
 - [Audio export](docs/agent-interface/AUDIO-EXPORT.md) ·
   [Docker volumes and data](docs/agent-interface/DOCKER-VOLUMES.md) ·
-  [Qwen CPU status](docs/agent-interface/QWEN-CPU.md)
+  [Qwen CPU status](docs/agent-interface/QWEN-CPU.md) ·
+  [Two-model resident service source path](docs/agent-interface/QWEN-RESIDENT-SERVICE.md)
 - Design history, reviews and evidence: `docs/agent-interface/README.md` (source checkout).
   You don't need these to use the service.
 - The original `./run voice-*` Docker toolbox, job runner and Vast.ai workflow:

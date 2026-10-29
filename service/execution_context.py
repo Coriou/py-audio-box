@@ -32,7 +32,7 @@ def verify_local(context, local_bundles, *, policy=None):
         if policy is not None:
             from service import installed_qwen_daemon as qd
             if policy is not ip.QWEN_SPLIT: raise Refused('explicit_installed_family_required')
-            qd.manifest(manifest)
+            qd.manifest(manifest,service=spec.checkpoint==qd.CUSTOM_CHECKPOINT)
         return
     # Trusted operator storage only; no hostile concurrent mutation claim.
     if not root.is_absolute() or any(p.is_symlink() for p in (root, *root.parents)):
@@ -138,10 +138,10 @@ def installed_mapping(configuration, *, policy):
     if policy is not ip.configuration_policy(config):
         raise ValueError('installed_configuration_policy_binding')
     mapping = {key: value['path'] for key, value in config['bundles'].items()}
-    if any(context['execution']['bundles'] != mapping for context in config['contexts'].values()):
+    if any(context['execution']['bundles'] != {execution(context).bundle_id:mapping[execution(context).bundle_id]} for context in ip.context_values(config)):
         raise Refused('unregistered_mount_mapping')
     # Verify every hash and immutable tree; no discovery or provisioning.
-    for context in config['contexts'].values(): verify_local(context, mapping, policy=policy)
+    for context in ip.context_values(config): verify_local(context, {execution(context).bundle_id:mapping[execution(context).bundle_id]}, policy=policy)
     return mapping
 
 
@@ -261,8 +261,10 @@ class QwenContexts:
         from service import installed_qwen_daemon as qd
         if installed_family is not None and installed_family is not qd.FAMILY: raise Refused('explicit_installed_family_required')
         self.installed_family = installed_family
+        self.service = any(type(value) is dict and set(value) == {'clone','Ryan'} for value in contexts.values())
         self._contexts = {}
-        for principal, context in contexts.items():
+        for principal, name, context in ((principal, name, context) for principal, group in contexts.items()
+                for name, context in (group.items() if self.service else ((None, group),))):
             snapshot = copy.deepcopy(context)
             spec = execution(snapshot)
             if spec is None or spec.engine != 'qwen': raise Refused('qwen_execution_required')
@@ -274,7 +276,7 @@ class QwenContexts:
             else:
                 from worker.engines.qwen import verify_bundle
                 verify_bundle(local_bundles[spec.bundle_id],spec.manifest_sha256,spec.checkpoint,spec.revision,spec.language,owner_uid=10001,execution=spec)
-            self._contexts[principal] = json.dumps(snapshot, allow_nan=False)
+            self._contexts[(principal,name) if self.service else principal] = json.dumps(snapshot, allow_nan=False)
         self._inventory = copy.deepcopy(inventory)
         self._bundles = copy.deepcopy(local_bundles)
         self._references = copy.deepcopy(local_references)
@@ -282,6 +284,9 @@ class QwenContexts:
     def _hardware(self, spec, inventory):
         from worker.engines.qwen_execution import current_hardware, installed_cpu_hardware
         if self.installed_family is None: return current_hardware(spec, inventory)
+        if self.service:
+            from worker.runtime_protocol import resident_qwen_cpu_hardware
+            return resident_qwen_cpu_hardware(spec, inventory)
         return installed_cpu_hardware(spec, inventory, family=self.installed_family)
 
     def selection_metadata(self):
@@ -317,11 +322,19 @@ class QwenContexts:
         return context
 
     def resolve_owned(self, core, principal, operation, request):
-        from worker.runtime_protocol import managed_qwen_cpu
+        from worker.runtime_protocol import managed_qwen_cpu, resident_managed_qwen_cpu
         from worker.engines.qwen_execution import current_hardware
-        if principal not in self._contexts: raise Refused('not_ready')
-        template=json.loads(self._contexts[principal])
-        if not managed_qwen_cpu(execution(template)):
+        if self.service:
+            if operation == 'speech_generate':
+                version = core.voices.version(principal,request['voice_version_id'])
+                if version['origin'] == 'preset':
+                    return self.resolve_registered(principal,request,version)
+            key=(principal,'clone')
+        else:
+            key=principal
+        if key not in self._contexts: raise Refused('not_ready')
+        template=json.loads(self._contexts[key])
+        if not (resident_managed_qwen_cpu(execution(template)) if self.service else managed_qwen_cpu(execution(template))):
             return self.resolve(principal, operation, request)
         if operation not in ('voice_prepare','speech_generate'): raise Refused('not_ready')
         version=None
@@ -338,30 +351,83 @@ class QwenContexts:
         self._hardware(spec,self._inventory)
         references=copy.deepcopy(context['execution']['references'])
         references[reference]['path']=core.root/'assets'/reference
-        verify_qwen_local(context,self._bundles,references,self._inventory,owner_uid=10001 if self.installed_family is not None else None)
+        selected={spec.bundle_id:self._bundles[spec.bundle_id]} if self.service else self._bundles
+        verify_qwen_local(context,selected,references,self._inventory,owner_uid=10001 if self.installed_family is not None else None)
         return context
 
     def capabilities(self, principal):
-        from worker.runtime_protocol import managed_qwen_cpu
-        if principal not in self._contexts: return None
-        context=json.loads(self._contexts[principal])
-        clone=managed_qwen_cpu(execution(context))
+        from worker.runtime_protocol import managed_qwen_cpu, resident_managed_qwen_cpu
+        key=(principal,'clone') if self.service else principal
+        if key not in self._contexts: return None
+        context=json.loads(self._contexts[key])
+        clone=resident_managed_qwen_cpu(execution(context)) if self.service else managed_qwen_cpu(execution(context))
         return dict(engine='qwen',profile=context['plan']['resolved']['profile'],installed=self.installed_family is not None,
-            operations=(['voice_prepare','voice_results','voice_save'] if clone else [])+
+            operations=(['voice_preset_register'] if self.service else [])+(['voice_prepare','voice_results','voice_save'] if clone else [])+
                 ['speech_generate','job_get','job_cancel','artifact_get'],
-            next_action='asset_upload → voice_prepare → voice_results → voice_save → speech_generate')
+            next_action=('voice_preset_register Ryan → speech_generate; or asset_upload → voice_prepare → voice_results → voice_save → speech_generate'
+                         if self.service else 'asset_upload → voice_prepare → voice_results → voice_save → speech_generate'))
+
+    def presets(self, principal):
+        if not self.service or (principal,'Ryan') not in self._contexts: return []
+        from service.installed_qwen_daemon import public_model
+        spec=execution(json.loads(self._contexts[(principal,'Ryan')]))
+        return [dict(preset='Ryan',engine='qwen',model=public_model(spec),language=spec.language,
+            bundle_sha256=spec.manifest_sha256,supports=['voice_preset_register','speech_generate'],clone_prepare=False)]
+
+    def _preset_context(self, principal, preset, voice_id):
+        if preset != 'Ryan' or (principal,'Ryan') not in self._contexts: raise Refused('unsupported_control')
+        template=json.loads(self._contexts[(principal,'Ryan')])
+        return installed_preset_context(template,principal,voice_id)
+
+    def preset_version(self, principal, preset, voice_id):
+        return self._preset_context(principal,preset,voice_id)['plan']['voice_versions'][0]
+
+    def resolve_registered(self, principal, request, version):
+        from worker.transport import canonical
+        from contracts import validate as oracle
+        oracle.validate('speech_generate_request',request)
+        context=self._preset_context(principal,version['configuration'].get('speaker'),version['voice_id'])
+        if canonical(context['plan']['voice_versions']) != canonical([version]): raise Refused('saved_version_required')
+        context['plan']['request']=copy.deepcopy(request)
+        freeze(context['plan'])
+        self._hardware(execution(context),self._inventory)
+        verify_qwen_local(context,{execution(context).bundle_id:self._bundles[execution(context).bundle_id]},
+                          context['execution']['references'],self._inventory,owner_uid=10001)
+        return context
+
+
+def installed_preset_context(template, principal, voice_id, request=None):
+    """Rebuild the sole Ryan identity from the installed template."""
+    import re
+    from contracts import validate as oracle
+    spec=execution(template)
+    if (type(voice_id) is not str or not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9._:-]{0,127}',voice_id) or
+            spec.device != 'cpu' or spec.task != 'custom_voice' or spec.preset != 'Ryan'):
+        raise Refused('unsupported_control')
+    context=copy.deepcopy(template)
+    version=context['plan']['voice_versions'][0]
+    version['voice_id']=voice_id
+    version['id']='preset-'+oracle.canonical_hash([principal,voice_id,template])
+    version['reference_asset_sha256']={}
+    context['plan']['request']['voice_version_id']=version['id']
+    context['execution']['descriptor'].update(voice_id=voice_id,voice_revision=version['id'])
+    if request is not None:
+        context['plan']['request']=copy.deepcopy(request)
+        freeze(context['plan'])
+    execution(context)
+    return context
 
 
 def cpu_clone_context(template, principal, request, asset, *, version=None):
     """Owner/supervisor shared reconstruction; the template alone owns execution."""
     from contracts import validate as oracle
-    from worker.runtime_protocol import managed_qwen_cpu, QWEN_CPU_SECONDS
+    from worker.runtime_protocol import resident_managed_qwen_cpu, QWEN_CPU_SECONDS
     from worker.engines.qwen_prepare import QwenPreparation
     from worker.engines.qwen_execution import QwenExecution
     from worker.transport import canonical
     spec = execution(template)
-    if not managed_qwen_cpu(spec) or spec.reference_text is not None:
-        raise Refused('cpu_xvector_required')
+    if not resident_managed_qwen_cpu(spec):
+        raise Refused('cpu_clone_required')
     operation = 'voice_prepare' if version is None else 'speech_generate'
     oracle.validate(operation+'_request', request)
     context = copy.deepcopy(template); plan = context['plan']; resolved = plan['resolved']
@@ -377,9 +443,14 @@ def cpu_clone_context(template, principal, request, asset, *, version=None):
     if descriptor['reference_bytes'] > 1048576 or asset['frames'] > asset['sample_rate']*60:
         raise Refused('preparation_reference_limit')
     settings = copy.deepcopy(resolved['settings'])
-    cfg = dict(mode='qwen_clone',reference_asset_id=asset['id'],reference_text='',conditioning='x_vector')
+    transcript = '' if spec.x_vector_only else request['reference_text'] if version is None else version['reference_text']
+    if not spec.x_vector_only and (type(transcript) is not str or not transcript.strip()):
+        raise Refused('explicit_transcript_required')
+    descriptor.update(reference_text=None if spec.x_vector_only else transcript)
+    cfg = dict(mode='qwen_clone',reference_asset_id=asset['id'],reference_text=transcript,
+               conditioning='x_vector' if spec.x_vector_only else 'icl')
     if version is None:
-        if request['reference_text'] != '': raise Refused('unsupported_parameter')
+        if spec.x_vector_only and request['reference_text'] != '': raise Refused('unsupported_parameter')
         if not request.get('audition_text','').strip(): raise Refused('explicit_audition_required')
         if request['in_tick'] != 0 or request['out_tick']*asset['sample_rate'] != asset['frames']*48000:
             raise Refused('unsupported_segment')
@@ -388,14 +459,14 @@ def cpu_clone_context(template, principal, request, asset, *, version=None):
         plan['reference_roles'] = dict(version='reference-roles-v1',reference_kind='prepared_reference',
             reference_asset_id='pending',audition_asset_id='pending-audition',audition_text=request['audition_text'])
         cfg['reference_asset_id']='pending'
-        selected=dict(kind='prepare',conditioning='x_vector',output_format='wav_pcm16')
+        selected=dict(kind='prepare',conditioning=cfg['conditioning'],output_format='wav_pcm16')
         resolved.update(kind='prepare',settings=selected,settings_sha256=oracle.canonical_hash(selected),
             reuse_settings=settings,reuse_configuration=cfg)
         derived=QwenPreparation(**descriptor)
     else:
         expected=dict(identity=identity,settings=settings,settings_sha256=oracle.canonical_hash(settings),
             origin='clone',provenance=asset['provenance'],reference_asset_ids=[asset['id']],
-            reference_asset_sha256={asset['id']:asset['sha256']},reference_text='',configuration=cfg,design_lineage=None)
+            reference_asset_sha256={asset['id']:asset['sha256']},reference_text=transcript,configuration=cfg,design_lineage=None)
         if any(canonical(version.get(k)) != canonical(v) for k,v in expected.items()): raise Refused('saved_version_required')
         descriptor.update(voice_id=version['voice_id'],voice_revision=version['id'])
         derived=QwenExecution(**descriptor)
@@ -404,7 +475,7 @@ def cpu_clone_context(template, principal, request, asset, *, version=None):
         resolved.update(kind='speech',reuse_settings=None,reuse_configuration=None)
     context['execution'].update(descriptor=derived.identity(),references={asset['id']:dict(
         path='/references/assets/'+asset['id'],voice_id=derived.voice_id,voice_revision=derived.voice_revision,
-        checkpoint=derived.checkpoint,revision=derived.revision,text=None)})
+        checkpoint=derived.checkpoint,revision=derived.revision,text=derived.reference_text)})
     freeze(plan)
     execution(context)
     return context
@@ -425,10 +496,10 @@ def installed_contexts(config, mapping):
     if ip.qwen(config):
         from service import installed_qwen_daemon as qd
         from worker.engines.qwen_execution import inventory_from_wire
-        inventories=[c['execution']['hardware'] for c in config['contexts'].values()]
+        inventories=[c['execution']['hardware'] for c in ip.context_values(config)]
         if any(i != inventories[0] for i in inventories): raise Refused('hardware_identity')
         references={}
-        for c in config['contexts'].values(): references.update(c['execution']['references'])
+        for c in ip.context_values(config): references.update(c['execution']['references'])
         return QwenContexts(config['contexts'], mapping, references, inventory_from_wire(inventories[0]), config['profiles'], installed_family=qd.FAMILY)
     if ip.pocket(config):
         return PocketContexts(config['contexts'], mapping, installed=True)

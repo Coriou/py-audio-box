@@ -266,14 +266,14 @@ class WaitingControl:
         os.close(self.fd)  # Retain notification; never erase failed evidence.
 
 
-def local_incarnation():
+def local_incarnation(*, allow_host_cgroup=False):
     """Current PID1 in the private PID/cgroup namespaces; no host /proc access."""
     if sys.platform != 'linux' or os.getpid() != 1:
         raise ValueError('installed_control_pid1_required')
-    return _read_pid1_incarnation()
+    return _read_pid1_incarnation(allow_host_cgroup=allow_host_cgroup)
 
 
-def _read_pid1_incarnation():
+def _read_pid1_incarnation(*, allow_host_cgroup=False):
     if sys.platform != 'linux': raise ValueError('installed_linux_required')
     def read(name):
         with open('/proc/1/'+name,'rb') as stream: raw = stream.read(65537)
@@ -284,7 +284,9 @@ def _read_pid1_incarnation():
         return dict(start_ticks=int(fields[19]),pid_namespace=os.stat('/proc/1/ns/pid').st_ino,
                     cgroup=read('cgroup').strip())
     result = capture()
-    if result != capture() or result['cgroup'] != '0::/':
+    if (result != capture() or
+            not (result['cgroup']=='0::/' or allow_host_cgroup and
+                 re.fullmatch(r'0::/speech-box-qwen/[0-9a-f]{32}/[0-9a-f]{64}',result['cgroup']))):
         raise ValueError('installed_control_incarnation')
     return result
 

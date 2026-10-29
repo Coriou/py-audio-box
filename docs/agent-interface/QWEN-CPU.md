@@ -1,5 +1,10 @@
 # Qwen CPU — current status and historical checkpoints
 
+The status below records the named 2026-10-27 checkpoint. A later opt-in
+[two-model resident service source path](QWEN-RESIDENT-SERVICE.md) adds Ryan
+and Base transcript/ICL wiring. That source work has no installed Linux or
+audio acceptance evidence yet.
+
 ## Current status — 2026-10-27
 
 Audited source: `9fff9c1faf9c6ca0f66f95d3d6065e82aea732cd`.

@@ -204,6 +204,12 @@ def main():
             os.close(gate)
     connection = socket.socket(fileno=int(sys.argv[1]))
     config = receive(connection, time.monotonic() + 2)
+    if config.get('resident_qwen_cpu') is True:
+        status = Path('/proc/self/status').read_text()
+        if ('NoNewPrivs:\t1' not in status or os.getgroups() or
+                any(int(next(line.split(':',1)[1].strip() for line in status.splitlines()
+                             if line.startswith(key+':')),16) for key in ('CapEff','CapPrm','CapInh','CapAmb'))):
+            raise RuntimeError('resident_unprivileged_attempt_required')
     mode = config.pop('fixture')
     protected_stages = config.pop('protected_stages', [])
     if mode in ('busy', 'descendants'):

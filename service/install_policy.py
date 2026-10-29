@@ -24,6 +24,22 @@ def qwen(config):
     return config['ownership_policy'] == QWEN_POLICY
 
 
+def qwen_service(config):
+    """The two-model opt-in is explicit in the closed configuration shape."""
+    return qwen(config) and bool(config.get('contexts')) and all(
+        type(value) is dict and set(value) == {'clone', 'Ryan'}
+        for value in config['contexts'].values())
+
+
+def context_values(config):
+    service = qwen_service(config)
+    for value in config['contexts'].values():
+        if service:
+            yield from value.values()
+        else:
+            yield value
+
+
 def pocket(config):
     return config['ownership_policy'] in (POCKET_POLICY, POCKET_V2_POLICY)
 
@@ -261,7 +277,8 @@ def configuration(value):
         raise ValueError('installed_profile_topology')
     if pocket(value) and {(c['operation'], c['mode'], c['identity']['engine']) for c in profiles[0]['compatibility']} != {('voice_prepare','prepare','pocket-tts'),('speech_generate','pocket_clone','pocket-tts')}:
         raise ValueError('installed_pocket_capabilities')
-    if qwen(value) and {(c['operation'],c['mode'],c['identity']['engine']) for c in profiles[0]['compatibility']} != {('voice_prepare','prepare','qwen'),('speech_generate','qwen_clone','qwen')}:
+    qwen_modes={(c['operation'],c['mode'],c['identity']['engine']) for c in profiles[0]['compatibility']}
+    if qwen(value) and qwen_modes != ({('voice_prepare','prepare','qwen'),('speech_generate','qwen_clone','qwen'),('speech_generate','qwen_preset','qwen')} if qwen_service(value) else {('voice_prepare','prepare','qwen'),('speech_generate','qwen_clone','qwen')}):
         raise ValueError('installed_qwen_capabilities')
     _closed(value['images'], 'control worker')
     if any(not isinstance(v, str) or not re.fullmatch('sha256:[0-9a-f]{64}', v) for v in value['images'].values()):
@@ -269,33 +286,54 @@ def configuration(value):
     if value['mounts'] != dict(control='/control', staging='/staging', receipts='/receipts', ipc='/ipc', models='/models'):
         raise ValueError('installed_mount_mapping')
     contexts = value['contexts']; bundles = value['bundles']
-    if type(contexts) is not dict or not 1 <= len(contexts) <= 32 or type(bundles) is not dict or len(bundles) != 1:
+    service=qwen_service(value)
+    if type(contexts) is not dict or not 1 <= len(contexts) <= 32 or type(bundles) is not dict or len(bundles) != (2 if service else 1):
         raise ValueError('installed_contexts')
-    for principal, context in contexts.items():
+    used=set()
+    for principal, group in contexts.items():
         if not isinstance(principal, str) or not re.fullmatch('[a-zA-Z0-9_-]{1,128}', principal):
             raise ValueError('installed_principal')
-        spec = execution(context)
-        if spec is None or context['plan']['resolved']['profile'] != oracle.profile_snapshot(profiles[0]):
-            raise ValueError('installed_context_profile')
-        if qwen(value):
-            from service.installed_qwen_daemon import validate_spec
-            validate_spec(spec)
-            if any(r['path'] != '/references/assets/'+key for key,r in context['execution']['references'].items()):
-                raise ValueError('installed_qwen_reference_mapping')
-        elif pocket(value):
-            if spec.engine != 'pocket-tts' or context['execution']['references'] != {spec.reference_id:'/references/assets/'+spec.reference_id}:
-                raise ValueError('installed_pocket_context')
-        elif spec.engine != 'kokoro':
-            raise ValueError('installed_kokoro_context')
-        oracle.frozen_plan(context['plan'], context['bundles'])
-        expected = dict(manifest_sha256=spec.manifest_sha256, checkpoint=spec.checkpoint,
-                        revision=spec.revision, path='/models/bundles/'+spec.bundle_id)
-        if bundles != {spec.bundle_id: expected}:
-            raise ValueError('installed_bundle_binding')
-        if (spec.memory_bytes > value['budget']['ram_bytes'] or
-                spec.max_output_bytes*2 > value['budget']['disk_bytes'] or value['budget']['pids'] < 48):
-            raise ValueError('installed_context_budget')
+        if service and (type(group) is not dict or set(group) != {'clone','Ryan'}):
+            raise ValueError('installed_qwen_service_contexts')
+        for name, context in (group.items() if service else ((None,group),)):
+            spec = execution(context)
+            if spec is None:
+                raise ValueError('installed_context_profile')
+            if service:
+                from worker.runtime_protocol import resident_qwen_model
+                if resident_qwen_model(spec) != name:
+                    raise ValueError('installed_qwen_service_model')
+                if spec.bundle_id != spec.manifest_sha256:
+                    raise ValueError('installed_qwen_service_bundle_id')
+            used.add(spec.bundle_id)
+            _validate_context(value, profiles, bundles, context, spec, service)
+    if used != set(bundles):
+        raise ValueError('installed_bundle_binding')
     return value
+
+
+def _validate_context(value, profiles, bundles, context, spec, service):
+    from contracts import validate as oracle
+    if context['plan']['resolved']['profile'] != oracle.profile_snapshot(profiles[0]):
+        raise ValueError('installed_context_profile')
+    if qwen(value):
+        from service.installed_qwen_daemon import validate_spec
+        validate_spec(spec, service=service)
+        if any(r['path'] != '/references/assets/'+key for key,r in context['execution']['references'].items()):
+            raise ValueError('installed_qwen_reference_mapping')
+    elif pocket(value):
+        if spec.engine != 'pocket-tts' or context['execution']['references'] != {spec.reference_id:'/references/assets/'+spec.reference_id}:
+            raise ValueError('installed_pocket_context')
+    elif spec.engine != 'kokoro':
+        raise ValueError('installed_kokoro_context')
+    oracle.frozen_plan(context['plan'], context['bundles'])
+    expected = dict(manifest_sha256=spec.manifest_sha256, checkpoint=spec.checkpoint,
+                    revision=spec.revision, path='/models/bundles/'+spec.bundle_id)
+    if bundles.get(spec.bundle_id) != expected or (not service and bundles != {spec.bundle_id: expected}):
+        raise ValueError('installed_bundle_binding')
+    if (spec.memory_bytes > value['budget']['ram_bytes'] or
+            spec.max_output_bytes*2 > value['budget']['disk_bytes'] or value['budget']['pids'] < 48):
+        raise ValueError('installed_context_budget')
 
 
 def installation(value):
@@ -437,7 +475,7 @@ def host_policy(value, config, scope):
                 not 1 <= tmpfs['bytes'] <= config['budget']['ram_bytes'] or
                 not 1 <= tmpfs['inodes'] <= 65536):
             raise ValueError('installed_tmpfs_budget')
-    threads = max(c['execution']['descriptor']['threads'] for c in config['contexts'].values())
+    threads = max(c['execution']['descriptor']['threads'] for c in context_values(config))
     if value['cpu']['worker'] < threads * 10**9:
         raise ValueError('installed_worker_cpu_threads')
     return value

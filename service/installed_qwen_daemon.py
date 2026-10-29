@@ -11,6 +11,7 @@ EVIDENCE = 'daemon-volumes-inspection-v1'
 POLICY = 'docker-qwen-cpu-split-v1'
 SCOPE = 'owned-qwen-cpu-v1'
 PUBLIC_MODEL = 'Qwen3-TTS-12Hz-0.6B-Base'
+PUBLIC_CUSTOM_MODEL = 'Qwen3-TTS-12Hz-0.6B-CustomVoice'
 CHECKPOINT = 'Qwen/Qwen3-TTS-12Hz-0.6B-Base'
 REVISION = '5d83992436eae1d760afd27aff78a71d676296fc'
 SERVICE_POLICY = 'qwen-resident-cpu-v1'
@@ -20,10 +21,13 @@ CUSTOM_MANIFEST_SHA256 = 'dc1b15de72cbc49aeb4d2fa558e0f08e2e784a257a7b48243f6f5b
 
 
 def public_model(spec):
-    """One exact CPU binding; never normalize arbitrary checkpoints."""
-    from worker.runtime_protocol import managed_qwen_cpu
-    if managed_qwen_cpu(spec) and (spec.checkpoint, spec.revision) == (CHECKPOINT, REVISION):
+    """Only the exact reviewed CPU checkpoints receive public model names."""
+    if (getattr(spec,'task',None) == 'clone' and getattr(spec,'device',None) == 'cpu' and
+            (spec.checkpoint,spec.revision) == (CHECKPOINT,REVISION)):
         return PUBLIC_MODEL
+    if (getattr(spec,'task',None) == 'custom_voice' and getattr(spec,'preset',None) == 'Ryan' and
+            (spec.checkpoint,spec.revision) == (CUSTOM_CHECKPOINT,CUSTOM_REVISION)):
+        return PUBLIC_CUSTOM_MODEL
     return spec.checkpoint
 
 
@@ -40,7 +44,7 @@ def binding(value):
         raise ValueError('qwen_daemon_launch_required')
     projected = copy.deepcopy(value)
     projected['policy'] = dv.POLICY
-    dv._binding(projected, shared='model_storage' in projected)
+    dv._binding(projected, shared='model_storage' in projected, custody='custody' in projected)
     return copy.deepcopy(value)
 
 
@@ -49,7 +53,11 @@ def binding_configuration(value, config):
     binding(value); configuration(config)
     if dv.digest(config) != value['configuration_digest']:
         raise ValueError('daemon_configuration_binding')
+    if ('custody' in value) != ip.qwen_service(config):
+        raise ValueError('qwen_service_delegated_cgroup_required')
     if 'model_storage' in value:
+        if ip.qwen_service(config):
+            raise ValueError('qwen_service_two_bundle_publication_required')
         key = value['model_storage']['manifest_sha256']
         if set(config['bundles']) != {key} or config['bundles'][key]['manifest_sha256'] != key:
             raise ValueError('shared_configuration_binding')
@@ -70,11 +78,17 @@ def installation(value):
 
 
 
-def validate_spec(spec):
+def validate_spec(spec, *, service=False):
     from worker.runtime_protocol import managed_qwen_cpu
-    if (not managed_qwen_cpu(spec) or spec.reference_text is not None or spec.manifest_sha256 != MANIFEST_SHA256 or
-            (spec.checkpoint, spec.revision, spec.dtype, spec.attention) !=
-            (CHECKPOINT, REVISION, 'float32', 'sdpa')):
+    if service:
+        from worker.runtime_protocol import resident_qwen_model
+        resident_qwen_model(spec)
+        if ((spec.dtype, spec.attention) != ('float32', 'sdpa') or
+                (spec.task == 'clone' and (spec.x_vector_only or spec.reference_text is None))):
+            raise ValueError('installed_qwen_cpu_execution_required')
+    elif (not managed_qwen_cpu(spec) or spec.reference_text is not None or spec.manifest_sha256 != MANIFEST_SHA256 or
+          (spec.checkpoint, spec.revision, spec.dtype, spec.attention) !=
+          (CHECKPOINT, REVISION, 'float32', 'sdpa')):
         raise ValueError('installed_qwen_cpu_execution_required')
 
 
@@ -149,10 +163,11 @@ def verified_service_models(descriptors, bundles):
                 runtime_qualified=False)
 
 
-def manifest(value):
+def manifest(value, *, service=False):
     import hashlib
     from service.provisioning import manifest_bytes
-    if hashlib.sha256(manifest_bytes(value)).hexdigest() != MANIFEST_SHA256:
+    allowed=(MANIFEST_SHA256,CUSTOM_MANIFEST_SHA256) if service else (MANIFEST_SHA256,)
+    if hashlib.sha256(manifest_bytes(value)).hexdigest() not in allowed:
         raise ValueError('installed_qwen_exact_manifest_required')
     return value
 

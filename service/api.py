@@ -157,7 +157,7 @@ def create_voice_app(dispatcher, *, credentials, upload_deadline=15.0, installed
             body['engines'] = sorted({c['identity']['engine'] for p in installed['profiles'] for c in p['compatibility']})
             body['checked_at'] = datetime.now(timezone.utc).isoformat()
             for profile in body['profiles']:
-                profile['next_action'] = configured['next_action'] if configured and configured['engine']=='pocket-tts' else 'Read /v1/status configured_presets; explicitly call voice_preset_register, then speech_generate. Clone preparation is unavailable.'
+                profile['next_action'] = configured['next_action'] if configured and 'voice_prepare' in configured['operations'] else 'Read /v1/status configured_presets; explicitly call voice_preset_register, then speech_generate. Clone preparation is unavailable.'
             if not dispatcher.call('status')['persistent_activation']:
                 for profile in body['profiles']: profile['readiness'] = 'not_ready'
         selected_profiles = dispatcher.call('configured_profiles', request.state.principal)
@@ -180,7 +180,7 @@ def create_voice_app(dispatcher, *, credentials, upload_deadline=15.0, installed
             from service.persistent_init import digest
             status = dispatcher.call('status')
             configured = dispatcher.call('configured_capabilities', request.state.principal)
-            clone = bool(configured and configured['engine']=='pocket-tts')
+            clone = bool(configured and 'voice_prepare' in configured['operations'])
             profile = configured['profile'] if clone else None
             qualified = bool(profile and profile['support']=='qualified' and profile['readiness']=='ready' and
                              profile['verification']=='measured' and profile['qualification_receipt'] and

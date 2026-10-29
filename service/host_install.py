@@ -620,6 +620,7 @@ def _sealed_model_digest(path, limit, deadline):
 def _model_tree(path, config, deadline):
     """Bounded sealed tree inventory; hash every file, verify enrolled manifest."""
     records=[]; total=0; pending=[Path(path)]; files={}; directories=[]; file_identities=[]
+    maximum=(8 if ip.qwen_service(config) else 4 if ip.pocket(config) or ip.qwen(config) else 2)*1024**3
     entry_count=1  # Root plus every discovered child, including queued directories.
     while pending:
         if time.monotonic()>deadline: raise ValueError('installed_source_budget')
@@ -647,11 +648,11 @@ def _model_tree(path, config, deadline):
             file_before=ip.identity(_source_stat(child,directory=False))
             relative=str(child.relative_to(path))
             if (ip.pocket(config) or ip.qwen(config)) and child.name != 'manifest.json':
-                hashed,size=_sealed_model_digest(child, min(2*1024**3,4*1024**3-total),deadline)
+                hashed,size=_sealed_model_digest(child, min(2*1024**3,maximum-total),deadline)
                 raw=None
             else:
                 raw=_public_file(child,uid=10001,gid=10001,mode=0o444,
-                                 limit=min(512*1024**2,(4 if ip.pocket(config) or ip.qwen(config) else 2)*1024**3-total),deadline=deadline)
+                                 limit=min(512*1024**2,maximum-total),deadline=deadline)
                 hashed,size=hashlib.sha256(raw).hexdigest(),len(raw)
             total+=size
             files[relative]=(hashed,size)
@@ -672,7 +673,7 @@ def _model_tree(path, config, deadline):
             raise ValueError('installed_model_manifest')
         if ip.qwen(config):
             from service.installed_qwen_daemon import manifest as installed_manifest
-            installed_manifest(manifest)
+            installed_manifest(manifest,service=ip.qwen_service(config))
         if ip.pocket(config):
             from service.pocket_install import manifest as installed_manifest
             installed_manifest(manifest)

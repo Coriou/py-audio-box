@@ -11,7 +11,8 @@ LOCAL_FILE='/tmp/speech-box-local.json'
 
 def facts(role, *, family=None):
     from service.entrypoint import local_incarnation
-    incarnation=local_incarnation()  # actually running PID1, never the exec reader
+    from service import installed_qwen_daemon as qd
+    incarnation=local_incarnation(allow_host_cgroup=family is qd.FAMILY and role=='worker')
     with open('/proc/self/status','rb') as stream: raw=stream.read(65537)
     if len(raw)>65536: raise ValueError('daemon_proc_budget')
     status=raw.decode('ascii')

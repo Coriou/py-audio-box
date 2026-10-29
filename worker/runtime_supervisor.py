@@ -49,6 +49,21 @@ class RuntimeSupervisor:
             if resident_qwen_policy != SERVICE_POLICY or installed_policy is not ip.QWEN_SPLIT:
                 raise ValueError('resident_qwen_requires_explicit_installed_policy')
         self.resident_qwen = resident_qwen_policy is not None
+        if self.resident_qwen:
+            # UID custody depends on the private PID namespace's complete
+            # process view and race-free signalling. Fail before opening work.
+            if not hasattr(os,'pidfd_open') or not hasattr(signal,'pidfd_send_signal'):
+                raise ValueError('resident_pidfd_proc_required')
+            try:
+                with os.scandir('/proc') as entries:
+                    next(entries,None)
+                Path('/proc/self/status').read_text()
+            except OSError as exc:
+                raise ValueError('resident_pidfd_proc_required') from exc
+            # Host cgroup namespace is needed for migration into the narrow
+            # delegated bind. The default global mount must remain read-only.
+            if not os.statvfs('/sys/fs/cgroup').f_flag & os.ST_RDONLY:
+                raise ValueError('resident_global_cgroup_readonly_required')
         self.resident = None
         self.installed_pocket = installed_pocket
         self.bundles = MappingProxyType(dict(bundles or {}))
@@ -150,38 +165,40 @@ class RuntimeSupervisor:
                 continue
 
     def create_attempt_cgroup(self):
-        """A dedicated cgroup v2 makes detached descendants observable atomically."""
-        root = Path('/sys/fs/cgroup')
-        if not (root / 'cgroup.controllers').is_file():
-            raise Refused('resident_cgroup_v2_required')
-        group = root / ('py-audio-box-' + self.boot + '-' + secrets.token_hex(8))
+        """The worker's dedicated, writable delegated cgroup parent only."""
+        import stat
+        root=Path('/run/attempt-cgroups')
+        try:info=root.lstat()
+        except OSError as exc:raise Refused('resident_delegated_cgroup_v2_required') from exc
+        if (not stat.S_ISDIR(info.st_mode) or (info.st_uid,info.st_gid,stat.S_IMODE(info.st_mode))!=(0,0,0o700) or
+                not (root/'cgroup.controllers').is_file() or not (root/'cgroup.procs').is_file()):
+            raise Refused('resident_delegated_cgroup_v2_required')
+        group=root/('attempt-'+self.boot+'-'+secrets.token_hex(8))
         try:
             group.mkdir(mode=0o700)
-            if not (group / 'cgroup.kill').is_file():
-                raise Refused('resident_cgroup_kill_required')
+            if not (group/'cgroup.kill').is_file():
+                raise Refused('resident_delegated_cgroup_kill_required')
             return group
-        except BaseException:
-            self.failed = True
-            try: group.rmdir()
-            except OSError: pass
-            raise
+        except BaseException as exc:
+            self.failed=True
+            try:group.rmdir()
+            except OSError:pass
+            raise Refused('resident_delegated_cgroup_write_required') from exc
 
     @staticmethod
     def cgroup_empty(group):
         try:
-            values = dict(line.split() for line in (group / 'cgroup.events').read_text().splitlines())
+            values=dict(line.split() for line in (group/'cgroup.events').read_text().splitlines())
             if values.get('populated') not in ('0','1'):
-                raise Refused('resident_cgroup_unknown')
-            return values['populated'] == '0'
-        except (OSError, ValueError) as exc:
+                raise ValueError('populated')
+            return values['populated']=='0'
+        except (OSError,ValueError) as exc:
             raise Refused('resident_cgroup_unknown') from exc
 
     @staticmethod
     def kill_cgroup(group):
-        try:
-            (group / 'cgroup.kill').write_text('1')
-        except OSError as exc:
-            raise Refused('resident_cgroup_kill_unknown') from exc
+        try:(group/'cgroup.kill').write_text('1')
+        except OSError as exc:raise Refused('resident_cgroup_kill_unknown') from exc
 
     def ensure_resident(self, cutoff):
         """Start one networkless model owner with a private supervisor control FD."""
@@ -203,14 +220,20 @@ class RuntimeSupervisor:
                  for name,digest in expected.items()}
         config = dict(address='\0py-audio-box-qwen-'+token, roots=roots)
         proc = None
+        group = self.create_attempt_cgroup()
+        gate_read, gate_write = os.pipe()
         try:
-            proc = subprocess.Popen(['python','-m','worker.qwen_resident',str(child.fileno())],
+            if self.owned_processes(19999):raise Refused('resident_uid_not_empty')
+            proc = subprocess.Popen(['python','-m','worker.qwen_resident',str(child.fileno()),str(gate_read)],
                 user=19999, group=19999, extra_groups=[], start_new_session=True,
-                close_fds=True, pass_fds=(child.fileno(),), stdin=subprocess.DEVNULL,
+                close_fds=True, pass_fds=(child.fileno(),gate_read), stdin=subprocess.DEVNULL,
                 stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            try:(group/'cgroup.procs').write_text(str(proc.pid))
+            except OSError as exc:raise Refused('resident_cgroup_assignment_required') from exc
+            os.write(gate_write,b'1')
             child.close()
             self.resident = dict(process=proc, address=config['address'], control=parent,
-                                 roots=roots, invalidating=False)
+                                 roots=roots, invalidating=False, cgroup=group)
             send(parent, config, min(cutoff,time.monotonic()+2))
             if receive(parent,min(cutoff,time.monotonic()+2)) != {'ready':True}:
                 raise Refused('resident_startup')
@@ -219,10 +242,13 @@ class RuntimeSupervisor:
             self.failed = True
             self.stop_tree()
             if proc is not None:
+                self.kill_cgroup(group)
                 self.signal_owned(19999, signal.SIGKILL)
+            if self.cgroup_empty(group):group.rmdir()
             parent.close()
             raise
         finally:
+            os.close(gate_read);os.close(gate_write)
             child.close()
 
     def resident_control(self, op, authority=None):
@@ -378,7 +404,7 @@ class RuntimeSupervisor:
                     config['installed_qwen_cpu']=True
                 if self.resident_qwen:
                     config['resident_qwen_cpu']=True
-            group = None
+            group=None
             try:
                 if self.managed_qwen(spec):
                     reference_fd=self.verify_qwen(context,profiles,job['principal_id'],retain_fd=True)
@@ -398,7 +424,11 @@ class RuntimeSupervisor:
                     self.resident_control('grant', authority)
                     config['qwen_resident'] = dict(address=resident['address'], nonce=nonce)
                 if time.monotonic() >= self.active['cutoff']: raise Refused('expired_before_launch')
-                group = self.create_attempt_cgroup() if self.resident_qwen else None
+                # The child blocks on its inherited pipe until PID 1 moves it
+                # into the dedicated cgroup. Descendants inherit membership.
+                if self.resident_qwen and self.owned_processes(uid):
+                    raise Refused('resident_attempt_uid_not_empty')
+                group=self.create_attempt_cgroup() if self.resident_qwen else None
                 gate_read, gate_write = os.pipe() if self.resident_qwen else (None, None)
                 try:
                     proc = subprocess.Popen(['python', '-m', 'worker.runtime_child', str(child.fileno())] +
@@ -408,8 +438,9 @@ class RuntimeSupervisor:
                         (() if gate_read is None else (gate_read,)), stdin=subprocess.DEVNULL,
                         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
                     self.active.update(started=True, leader=proc.pid, process=proc, cgroup=group)
-                    if group is not None:
-                        (group / 'cgroup.procs').write_text(str(proc.pid))
+                    if gate_write is not None:
+                        try:(group/'cgroup.procs').write_text(str(proc.pid))
+                        except OSError as exc:raise Refused('resident_cgroup_assignment_required') from exc
                         os.write(gate_write, b'1')
                     self.launches += 1
                 finally:
@@ -418,8 +449,8 @@ class RuntimeSupervisor:
             except BaseException:
                 parent.close()
                 if group is not None and self.active.get('cgroup') is None:
-                    try: group.rmdir()
-                    except OSError: self.failed = True
+                    try:group.rmdir()
+                    except OSError:self.failed=True
                 self.stop_tree()
                 raise
             finally:
@@ -498,7 +529,10 @@ class RuntimeSupervisor:
             if active['stopping'] is not None and now-active['stopping'] >= .2:
                 if self.resident_qwen:
                     try:
-                        self.kill_cgroup(active['cgroup']) if active.get('cgroup') is not None else self.signal_owned(self.lookup(active['id'])['uid'], signal.SIGKILL)
+                        if active.get('cgroup') is not None:self.kill_cgroup(active['cgroup'])
+                        if self.resident is not None and self.resident.get('cgroup') is not None:
+                            self.kill_cgroup(self.resident['cgroup'])
+                        self.signal_owned(self.lookup(active['id'])['uid'],signal.SIGKILL)
                         if self.resident is not None:
                             self.signal_owned(19999, signal.SIGKILL)
                     except BaseException:
@@ -557,15 +591,19 @@ class RuntimeSupervisor:
             try:
                 uid = self.lookup(active['id'])['uid']
                 owned = self.owned_processes(uid)
-                group_empty = self.cgroup_empty(active['cgroup']) if active.get('cgroup') is not None else not owned
-                if group_empty and owned: raise Refused('resident_cgroup_uid_mismatch')
+                attempt_empty = self.cgroup_empty(active['cgroup']) if active.get('cgroup') is not None else not owned
+                if attempt_empty and owned:raise Refused('resident_cgroup_uid_mismatch')
                 resident_owned = self.owned_processes(19999) if self.resident is not None else {}
+                resident_empty = (self.cgroup_empty(self.resident['cgroup']) if self.resident is not None and
+                    self.resident.get('cgroup') is not None else not resident_owned)
+                if resident_empty and resident_owned:raise Refused('resident_cgroup_uid_mismatch')
             except BaseException:
                 self.failed = True
                 self.stop_tree()
                 return
             if self.resident is not None and self.resident['invalidating']:
-                if not resident_owned and self.resident['process'].returncode is not None:
+                if resident_empty and self.resident['process'].returncode is not None:
+                    if self.resident.get('cgroup') is not None:self.resident['cgroup'].rmdir()
                     self.resident['control'].close()
                     self.resident = None
             elif self.resident is not None and self.resident['process'].returncode is not None:
@@ -579,7 +617,7 @@ class RuntimeSupervisor:
                         active.update(proposal=proposal, proposed_at=when)
                 except queue.Empty:
                     pass
-                if not group_empty or owned or active['proposal'] is None or active['process'].returncode != 0:
+                if not attempt_empty or active['proposal'] is None or active['process'].returncode != 0:
                     self.stop_tree()
                 else:
                     # The one nonce is spent on the successful call. Revoke the
@@ -589,7 +627,7 @@ class RuntimeSupervisor:
                             self.resident_control('revoke')
                         except BaseException:
                             return
-            empty = (group_empty and not owned and (not active['started'] or active.get('leader_reaped')) and
+            empty = (attempt_empty and (not active['started'] or active.get('leader_reaped')) and
                      (active['stopping'] is None or self.resident is None))
         if empty and active['started'] and not active['receiver_done'].is_set():
             return
@@ -741,6 +779,11 @@ class RuntimeSupervisor:
                     expected['plan']['reference_roles'][field]=plan['reference_roles'][field]
                 expected['plan']['resolved']['reuse_configuration']['reference_asset_id']=plan['reference_roles']['reference_asset_id']
             if expected != context: raise Refused('unregistered_qwen_context')
+        elif self.resident_qwen and spec.task == 'custom_voice':
+            from service.execution_context import installed_preset_context
+            template=self.qwen_contexts.get((principal,'qwen-cpu','Ryan'))
+            if template is None or installed_preset_context(template,principal,context['plan']['voice_versions'][0]['voice_id'],context['plan']['request']) != context:
+                raise Refused('unregistered_qwen_context')
         elif self.qwen_contexts.get((principal, profile['id'], context['plan']['request']['voice_version_id'])) != context['execution']:
             raise Refused('unregistered_qwen_context')
         if context['execution']['hardware'] != inventory_wire(self.inventory) or profiles != self.qwen_profiles:
@@ -996,11 +1039,15 @@ def main(*, _pocket_daemon=False, _qwen_daemon=False):
         if _pocket_daemon and not installed_pocket: raise ValueError('pocket_daemon_v2_configuration_required')
         if _qwen_daemon:
             from service import installed_qwen_daemon as qd
+            from service import install_policy as ip
             from worker.engines.qwen_execution import inventory_from_wire, installed_cpu_hardware
             qd.configuration(config)
+            if ip.qwen_service(config) != (args.resident_qwen_policy is not None):
+                raise ValueError('resident_qwen_configuration_binding')
             inventory=None
             supervisor.qwen_profiles=copy.deepcopy(config['profiles'])
-            for principal,context in config['contexts'].items():
+            for principal,group in config['contexts'].items():
+              for name,context in (group.items() if ip.qwen_service(config) else ((None,group),)):
                 observed=inventory_from_wire(context['execution']['hardware'])
                 selected=execution(context)
                 if args.resident_qwen_policy is not None:
@@ -1013,7 +1060,10 @@ def main(*, _pocket_daemon=False, _qwen_daemon=False):
                 if supervisor.managed_qwen(selected):
                     supervisor.qwen_contexts[(principal,'qwen-cpu','managed-clone')]=copy.deepcopy(context)
                 elif selected.task == 'custom_voice':
-                    supervisor.qwen_contexts[(principal,'qwen-cpu',selected.voice_revision)]=copy.deepcopy(context['execution'])
+                    if args.resident_qwen_policy is not None:
+                        supervisor.qwen_contexts[(principal,'qwen-cpu','Ryan')]=copy.deepcopy(context)
+                    else:
+                        supervisor.qwen_contexts[(principal,'qwen-cpu',selected.voice_revision)]=copy.deepcopy(context['execution'])
                 else:
                     raise ValueError('installed_qwen_context_task')
             supervisor.inventory=inventory

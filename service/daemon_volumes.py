@@ -79,9 +79,9 @@ def canonical_mountpoint(path):
             not any(c in path for c in ('\x00', '\n', ',')))
 
 
-def _binding(value, *, shared=False):
+def _binding(value, *, shared=False, custody=False):
     # Private entry used only after explicit Qwen family selection.
-    closed(value, 'policy installation daemon volumes helper_image configuration_digest cpu tmpfs control_port'+(' model_storage' if shared else ''))
+    closed(value, 'policy installation daemon volumes helper_image configuration_digest cpu tmpfs control_port'+(' model_storage' if shared else '')+(' custody' if custody else ''))
     if value['policy']!=POLICY or not re.fullmatch('[0-9a-f]{32}',value['installation']):
         raise ValueError('daemon_new_installation_policy')
     daemon(value['daemon']); closed(value['volumes'],' '.join(ROLES))
@@ -101,6 +101,11 @@ def _binding(value, *, shared=False):
             raise ValueError('daemon_volume_alias')
     if len(set(paths))!=(9 if shared else 8) or any(a.startswith(b+'/') for a in paths for b in paths if a!=b):
         raise ValueError('daemon_volume_alias')
+    if custody:
+        source=value['custody']
+        if (type(source) is not str or not re.fullmatch(r'/sys/fs/cgroup/speech-box-qwen/[0-9a-f]{32}',source) or
+                any(source==p or source.startswith(p+'/') or p.startswith(source+'/') for p in paths)):
+            raise ValueError('qwen_service_exact_cgroup_parent_required')
     if not IMAGE.fullmatch(value['helper_image']) or not HEX.fullmatch(value['configuration_digest']):
         raise ValueError('daemon_image_configuration_binding')
     closed(value['cpu'],'control worker'); closed(value['tmpfs'],'control worker')
@@ -150,6 +155,11 @@ def mounts(role, b, phase=None, *, family=None):
             # live local-root identities corroborate the mounted asset inode.
             Source=b['volumes']['control']['Mountpoint'],
             Destination='/references/assets',RW=False,Propagation=''))
+    if family is not None and role=='worker' and 'custody' in b:
+        from service import installed_qwen_daemon as qd
+        if family is not qd.FAMILY:raise ValueError('qwen_service_exact_cgroup_parent_required')
+        result.append(dict(Type='bind',Name='',Source=b['custody'],
+            Destination='/run/attempt-cgroups',RW=True,Propagation='rprivate'))
     return result
 
 
@@ -170,7 +180,8 @@ def command(role, config, b, *, phase=None, nonce=None, family=None):
     helper=role=='helper'; budget=config['budget']; t=b['tmpfs']['control' if helper else role]
     args=['container','create','--pull=never','--restart=no','--read-only','--user',
         '0:0' if helper else ('10001:10001' if role=='control' else '0:10001'),
-        '--cap-drop=ALL','--security-opt=no-new-privileges:true','--ipc=private','--cgroupns=private',
+        '--cap-drop=ALL','--security-opt=no-new-privileges:true','--ipc=private',
+        '--cgroupns=host' if role=='worker' and 'custody' in b else '--cgroupns=private',
         '--network','bridge' if role=='control' else 'none','--memory',str(budget['ram_bytes']),
         '--memory-swap',str(budget['ram_bytes']),'--pids-limit',str(budget['pids']),
         '--cpus',format(b['cpu']['control' if helper else role]/10**9,'.9f'),
@@ -179,8 +190,13 @@ def command(role, config, b, *, phase=None, nonce=None, family=None):
     for cap in caps: args+=['--cap-add='+cap]
     if helper: args+=['--interactive','--attach=stdin','--attach=stdout']
     if role=='control': args+=['--publish','127.0.0.1:'+str(b['control_port'])+':8000']
+    if role=='worker' and 'custody' in b:
+        args+=['--cgroup-parent',b['custody'].removeprefix('/sys/fs/cgroup')]
     for m in mounts(role,b,phase,family=family):
-        args+=['--mount','type=volume,source='+m['Name']+',destination='+m['Destination']+',volume-nocopy'+('' if m['RW'] else ',readonly')+(',volume-subpath=core/assets' if m['Destination']=='/references/assets' else '')]
+        if m['Type']=='bind':
+            args+=['--mount','type=bind,source='+m['Source']+',destination='+m['Destination']+',bind-propagation=rprivate']
+        else:
+            args+=['--mount','type=volume,source='+m['Name']+',destination='+m['Destination']+',volume-nocopy'+('' if m['RW'] else ',readonly')+(',volume-subpath=core/assets' if m['Destination']=='/references/assets' else '')]
     if helper:
         code=('from service.daemon_helper import qwen_main;qwen_main()' if family is qd.FAMILY else 'from service.daemon_helper import pocket_main;pocket_main()' if family is pd.FAMILY else 'from service.daemon_helper import export_main;export_main()' if export else 'from service.daemon_helper import main;main()'); extra=[phase,nonce]
     elif role=='control':
@@ -189,6 +205,9 @@ def command(role, config, b, *, phase=None, nonce=None, family=None):
         code=('from worker.runtime_supervisor import qwen_daemon_main;qwen_daemon_main()' if family is qd.FAMILY else 'from worker.runtime_supervisor import pocket_daemon_main;pocket_daemon_main()' if family is pd.FAMILY else 'from worker.runtime_supervisor import main;main()')
         extra=['--installed-policy',qd.POLICY if family is qd.FAMILY else pd.POLICY if family is pd.FAMILY else ex.POLICY if export else 'docker-kokoro-split-v1','--configuration-file',CONFIG]
         if export: extra+=['--expected-worker-image',config['images']['worker']]
+        if family is qd.FAMILY:
+            from service import install_policy as ip
+            if ip.qwen_service(config): extra+=['--resident-qwen-policy',qd.SERVICE_POLICY]
     args += ['--entrypoint','python',b['helper_image'] if helper else config['images'][role],'-I','-B','-c',
         "import sys;sys.path.insert(0,'/opt/speech');"+code]+extra
     return args
@@ -213,12 +232,12 @@ def inspect_container(c, role, config, b, *, phase=None, nonce=None, family=None
         cc['User']!=('0:0' if helper else '10001:10001' if role=='control' else '0:10001') or
         cc['Entrypoint']!=['python'] or cc['Cmd']!=expected[expected.index('--entrypoint')+3:] or
         hc['Privileged'] is not False or hc['ReadonlyRootfs'] is not True or (hc.get('Init') is not None and hc.get('Init') is not False) or
-        hc['PidMode'] not in ('',None) or hc['IpcMode']!='private' or hc['CgroupnsMode']!='private' or
+        hc['PidMode'] not in ('',None) or hc['IpcMode']!='private' or hc['CgroupnsMode']!=('host' if role=='worker' and 'custody' in b else 'private') or
         hc['UsernsMode'] not in ('',None) or hc['NetworkMode']!=('bridge' if role=='control' else 'none') or
         hc['CapDrop']!=['ALL'] or sorted(actual_caps)!=sorted(caps) or
         hc['SecurityOpt']!=['no-new-privileges:true'] or hc['RestartPolicy']!={'Name':'no','MaximumRetryCount':0} or
         hc['Devices'] or hc['DeviceRequests'] or hc['Binds'] or hc.get('VolumesFrom') or hc.get('GroupAdd') or
-        hc.get('DeviceCgroupRules') or hc.get('Sysctls') or hc.get('CgroupParent') or hc.get('UTSMode') or
+        hc.get('DeviceCgroupRules') or hc.get('Sysctls') or hc.get('CgroupParent') not in ((b['custody'].removeprefix('/sys/fs/cgroup'),) if role=='worker' and 'custody' in b else ('',None)) or hc.get('UTSMode') or
         hc.get('CpuPeriod',0) or hc.get('CpuQuota',0) or hc.get('CpusetCpus','') or hc.get('PublishAllPorts',False) or
         hc['Memory']!=config['budget']['ram_bytes'] or hc['MemorySwap']!=config['budget']['ram_bytes'] or
         hc['PidsLimit']!=config['budget']['pids'] or hc['NanoCpus']!=b['cpu']['control' if helper else role] or
@@ -241,6 +260,15 @@ def inspect_container(c, role, config, b, *, phase=None, nonce=None, family=None
         raise ValueError('daemon_explicit_volume_mounts_required')
     projected=[]
     for m in requested:
+        if m.get('Target')=='/run/attempt-cgroups' and role=='worker' and 'custody' in b:
+            if (set(m)-{'Type','Source','Target','ReadOnly','Consistency','BindOptions'} or
+                    m.get('Type')!='bind' or m.get('Source')!=b['custody'] or
+                    m.get('ReadOnly',False) is not False or
+                    m.get('BindOptions')!={'Propagation':'rprivate'} or
+                    m.get('Consistency','') not in ('','default')):
+                raise ValueError('daemon_requested_mount_binding')
+            projected.append(dict(Type='bind',Source=b['custody'],Target=m['Target'],ReadOnly=False))
+            continue
         if family is not None:
             options=dict(NoCopy=True,**({'Subpath':'core/assets'} if role=='worker' and m.get('Target')=='/references/assets' else {}))
             if digest(m.get('VolumeOptions'))!=digest(options) or type(m.get('ReadOnly',False)) is not bool:
@@ -249,7 +277,7 @@ def inspect_container(c, role, config, b, *, phase=None, nonce=None, family=None
             m.get('VolumeOptions')!=dict(NoCopy=True,**({'Subpath':'core/assets'} if family is not None and role=='worker' and m.get('Target')=='/references/assets' else {})) or m.get('Consistency','') not in ('','default')):
             raise ValueError('daemon_no_copyup_mount_required')
         projected.append(dict(Type=m['Type'],Source=m['Source'],Target=m['Target'],ReadOnly=m.get('ReadOnly',False)))
-    expected_mounts=[dict(Type='volume',Source=m['Name'],Target=m['Destination'],ReadOnly=not m['RW']) for m in mounts(role,b,phase,family=family)]
+    expected_mounts=[dict(Type=m['Type'],Source=m['Source'] if m['Type']=='bind' else m['Name'],Target=m['Destination'],ReadOnly=not m['RW']) for m in mounts(role,b,phase,family=family)]
     if sorted(projected,key=lambda m:m['Target'])!=sorted(expected_mounts,key=lambda m:m['Target']):
         raise ValueError('daemon_requested_mount_binding')
     # Reject source/path aliases as well as extra or changed role mounts.
@@ -267,10 +295,13 @@ def local(value, role, *, family=None):
         pd.require(family)
     closed(value,'role pid start_ticks pid_namespace cgroup uid gid groups capabilities roots')
     expected={'control':(10001,10001,0),'worker':(0,10001,(1<<5)|(1<<6)|(1<<7))}[role]
+    from service import installed_qwen_daemon as qd
+    host_cgroup=(family is qd.FAMILY and role=='worker' and type(value.get('cgroup')) is str and
+        re.fullmatch(r'0::/speech-box-qwen/[0-9a-f]{32}/[0-9a-f]{64}',value['cgroup']))
     if (any(type(value[k]) is not int for k in ('uid','gid','capabilities')) or
         type(value['groups']) is not list or any(type(g) is not int for g in value['groups']) or value['role']!=role or value['pid']!=1 or type(value['pid']) is not int or
         any(type(value[k]) is not int or not 1<=value[k]<2**64 for k in ('start_ticks','pid_namespace')) or
-        value['cgroup']!='0::/' or (value['uid'],value['gid'],value['capabilities'])!=expected or
+        not (value['cgroup']=='0::/' or host_cgroup) or (value['uid'],value['gid'],value['capabilities'])!=expected or
         value['groups'] not in ([],[expected[1]])):
         raise ValueError('daemon_container_local_identity')
     names=('control','ipc','staging','models','config','credential') if role=='control' else ('receipts','ipc','staging','models','config')
@@ -295,6 +326,8 @@ def observation(value, registration, config, b, public, *, family=None):
     _registration_hello(value['hello'],registration,family=family,configuration=config if family is not None else None)
     for role in ('control','worker'):
         c=inspect_container(value['inspections'][role],role,config,b,family=family); facts=local(value['local'][role],role,family=family)
+        if role=='worker' and 'custody' in b and facts['cgroup']!='0::'+b['custody'].removeprefix('/sys/fs/cgroup')+'/'+c['Id']:
+            raise ValueError('qwen_service_cgroup_incarnation')
         owner=next(c for c in registration['containers'] if c['role']==role)
         if (owner['id']!=c['Id'] or owner['image']!=c['Image'] or owner['started']!=c['State']['StartedAt'] or c['State']['Running'] is not True):
             raise ValueError('daemon_evidence_incarnation')

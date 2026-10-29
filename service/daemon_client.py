@@ -231,6 +231,7 @@ class Docker:
         ids=self.call(['container','ls','--all','--no-trunc','--format','{{.ID}}']).splitlines()
         if len(ids)>512: raise ValueError('daemon_consumer_budget')
         paths=[v['Mountpoint'].rstrip('/') for v in volumes.values()]; names={v['Name'] for v in volumes.values()}
+        if 'custody' in b:paths.append(b['custody'])
         consumers=[]
         if 'model_storage' in b:
             from service import shared_models as sm
@@ -238,7 +239,8 @@ class Docker:
             c=self.container(identity)
             if any(m.get('Name') in names or ('model_storage' in b and sm.source_overlap(m.get('Source'),paths)) or (bool(m.get('Source')) and any(m.get('Source','').rstrip('/')==p or
                 m.get('Source','').startswith(p+'/') or p.startswith(m.get('Source','').rstrip('/')+'/')
-                for p in paths)) for m in c['Mounts']): consumers.append(c)
+                for p in paths)) for m in c['Mounts']) or ('custody' in b and c['HostConfig'].get('CgroupParent')==b['custody'].removeprefix('/sys/fs/cgroup')):
+                consumers.append(c)
         self.check()
         return dict(daemon=self.frozen,volumes=volumes,consumers=consumers)
 
@@ -397,7 +399,7 @@ class Wire:
         return value['action'],value['payload']
 
 
-def manifest(entries, *, family=None):
+def manifest(entries, *, family=None, service=False):
     from service import installed_pocket_daemon as pd, installed_qwen_daemon as qd
     pd.require(family)
     qwen = family is qd.FAMILY
@@ -412,7 +414,7 @@ def manifest(entries, *, family=None):
             (role,path) in seen or type(size) is not int or not 1<=size<=(2*1024**3 if qwen and role=='models' else 512*1024**2) or
             (role!='credential' and not dv.HEX.fullmatch(e['sha256']))): raise ValueError('daemon_input_manifest')
         total+=size; seen.add((role,path)); out.append(e)
-    if total>(4*1024**3 if qwen else TOTAL) or sum(e['role']=='config' for e in out)!=1 or sum(e['role']=='credential' for e in out)!=1:
+    if total>(8*1024**3 if qwen and service else 4*1024**3 if qwen else TOTAL) or sum(e['role']=='config' for e in out)!=1 or sum(e['role']=='credential' for e in out)!=1:
         raise ValueError('daemon_input_budget')
     return out
 
@@ -435,19 +437,23 @@ def main(argv=None, *, family=None):
             sm.volume(shared['models'],key,shared['models'].get('Labels',{}).get('speech-box.attempt'))
         if a.command=='install':
             if not a.context or not a.request: raise ValueError('daemon_install_inputs_required')
-            request=parse(read(a.request)); dv.closed(request,'configuration helper_image inputs cpu tmpfs control_port')
-            inputs=manifest(request['inputs'],family=family); config=request['configuration']
+            request=parse(read(a.request))
+            service=family is qd.FAMILY and ip.qwen_service(request['configuration'])
+            dv.closed(request,'configuration helper_image inputs cpu tmpfs control_port'+(' custody' if service else ''))
+            config=request['configuration']
+            inputs=manifest(request['inputs'],family=family,service=service)
             if shared and any(e['role']=='models' for e in inputs): raise ValueError('shared_config_credential_only')
             if family is not None:
                 config=ip.family_configuration(config,family)
-            if export:
+            if export or service:
                 # Corroborate the actual supplied closed credential document
                 # before the first Docker call; helper repeats after import.
                 from service.auth import decode_credentials
                 credentials=decode_credentials(read(next(e['source'] for e in inputs if e['role']=='credential'),48000),config['contexts'])
                 admitted={c.principal for c in credentials._credentials if {'read','production-write'} <= c.scopes}
-                if not set(config['audio_export']['principals']) <= admitted:
-                    raise ValueError('daemon_export_credential_principals')
+                required=set(config['audio_export']['principals']) if export else set(config['contexts'])
+                if not required <= admitted:
+                    raise ValueError('daemon_export_credential_principals' if export else 'daemon_service_credential_principals')
             # Stdlib admission before any daemon mutation. Full existing service
             # configuration/model validation runs again in the pinned helper.
             if type(config) is not dict or len(encoded(config))>48000: raise ValueError('daemon_configuration_budget')
@@ -464,6 +470,7 @@ def main(argv=None, *, family=None):
             # and exact IDs remain in append-only sibling receipts, never rollback.
             b=dict(policy=pd.launch(family) if family is not None else dv.POLICY,installation=installation,daemon=d.frozen,volumes={},helper_image=request['helper_image'],
                 configuration_digest=dv.digest(config),cpu=request['cpu'],tmpfs=request['tmpfs'],control_port=request['control_port'])
+            if service:b['custody']=request['custody']
             candidate=dict(b,volumes={r:dict(Name='pab-'+installation+'-'+r,Driver='local',Options=None,Scope='local',
                 Mountpoint='/pending/'+r,CreatedAt='pending',Labels={'speech-box.installation':installation,'speech-box.role':r}) for r in dv.ROLES})
             if shared:

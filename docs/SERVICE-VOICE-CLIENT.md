@@ -1,5 +1,8 @@
 # Named voice service client
 
+For the opt-in Base 0.6B and Ryan CustomVoice 0.6B installed path, see
+[two-model Qwen CPU service source path](agent-interface/QWEN-RESIDENT-SERVICE.md).
+
 These commands compose the existing HTTP service operations. They require a
 configured, running service and an authorized local installation. For the
 Qwen local path, `qwen-local-init` creates `client.json` and `control.key` in

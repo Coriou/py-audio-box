@@ -30,10 +30,15 @@ class SupervisorRuntime:
         if self.family is not qd.FAMILY: raise ValueError('installed_qwen_family_required')
         qd.configuration(self.configuration)
         hardware=context['execution']['hardware']
-        if not any(c['execution']['hardware']==hardware for c in self.configuration['contexts'].values()):
+        from service import install_policy as ip
+        if not any(c['execution']['hardware']==hardware for c in ip.context_values(self.configuration)):
             raise ValueError('hardware_identity')
         inventory=inventory_from_wire(hardware)
-        installed_cpu_hardware(execution(context),inventory,family=qd.FAMILY)
+        if ip.qwen_service(self.configuration):
+            from worker.runtime_protocol import resident_qwen_cpu_hardware
+            resident_qwen_cpu_hardware(execution(context),inventory)
+        else:
+            installed_cpu_hardware(execution(context),inventory,family=qd.FAMILY)
         self.call('hello', {})
         return inventory
 

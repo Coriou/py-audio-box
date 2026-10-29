@@ -197,6 +197,12 @@ def serve(address, roots, control, *, backend_factory=None, transition=None, rea
 
 def main():
     from worker.transport import receive, send
+    import os
+    gate = int(sys.argv[2])
+    try:
+        if os.read(gate, 1) != b'1': raise ValueError('resident_cgroup_assignment_required')
+    finally:
+        os.close(gate)
     control = socket.socket(fileno=int(sys.argv[1]))
     config = receive(control,time.monotonic()+2)
     if type(config) is not dict or set(config) != {'address','roots'} or type(config['roots']) is not dict:

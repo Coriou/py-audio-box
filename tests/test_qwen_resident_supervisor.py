@@ -91,7 +91,7 @@ def test_detached_attempt_blocks_terminal_and_stops_only_owned_uids(monkeypatch)
     supervisor,row,active=_lane()
     supervisor.received.put((row['id'],{'message':'fake-result'},time.monotonic()))
     monkeypatch.setattr(module.os,'waitpid',lambda pid,flags:(4242,0) if not active.get('leader_reaped') else (0,0))
-    # Simulate a /proc enumeration gap; the cgroup remains populated.
+    # A /proc enumeration gap still cannot hide a populated attempt cgroup.
     group=SimpleNamespace(rmdir=lambda:None)
     active['cgroup']=group
     populated=[True]
@@ -113,6 +113,23 @@ def test_detached_attempt_blocks_terminal_and_stops_only_owned_uids(monkeypatch)
     assert supervisor.failed is False
     assert row['phase']=='terminal' and row['proposal'] is None
     assert row['receipt']['timely'] is False
+
+
+def test_model_descendant_blocks_terminal_even_after_owner_reap(monkeypatch):
+    supervisor,row,active=_lane()
+    active.update(stopping=time.monotonic(),leader_reaped=True)
+    supervisor.resident['invalidating']=True
+    supervisor.resident['process'].returncode=0
+    populated=[True]
+    supervisor.resident['cgroup']=SimpleNamespace(rmdir=lambda:None)
+    supervisor.cgroup_empty=lambda group: not populated[0] if group is supervisor.resident['cgroup'] else True
+    supervisor.owned_processes=lambda uid:{}
+    monkeypatch.setattr(module.os,'waitpid',lambda pid,flags:(0,0))
+    supervisor.tick()
+    assert supervisor.active is active and supervisor.resident is not None
+    populated[0]=False
+    supervisor.tick()
+    assert supervisor.active is None and supervisor.resident is None
 
 
 def test_prepared_cancellation_reaps_expected_owner_then_allows_new_attempt(monkeypatch):
