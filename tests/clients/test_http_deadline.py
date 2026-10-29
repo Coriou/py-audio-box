@@ -7,12 +7,53 @@ from pathlib import Path
 import unittest
 from unittest.mock import patch
 
-from clients.http import HTTP
+from httpcore import WriteError, WriteTimeout
+from httpcore._backends.sync import SyncStream
+
+from clients.http import HTTP, _DeadlineStream
 from clients.workflow import speak
 from service.catalogue import Failure
 
 
 class HTTPDeadlineTests(unittest.TestCase):
+    def test_partial_sends_recheck_absolute_deadline(self):
+        class PartialSocket:
+            def __init__(self):
+                self.timeouts = []
+                self.sent = 0
+
+            def settimeout(self, timeout):
+                self.timeouts.append(timeout)
+
+            def send(self, buffer):
+                time.sleep(.02)  # Intentionally ignores the socket timeout.
+                self.sent += 1
+                return 1
+
+        sock = PartialSocket()
+        start = time.monotonic()
+        with self.assertRaisesRegex(TimeoutError, 'workflow_deadline'):
+            _DeadlineStream(SyncStream(sock), start + .05).write(b'abcd', timeout=1)
+        self.assertLessEqual(sock.sent, 3)
+        self.assertGreaterEqual(sock.sent, 2)
+        self.assertLess(sock.timeouts[-1], sock.timeouts[0])
+
+    def test_socket_write_errors_keep_httpcore_mapping(self):
+        class BrokenSocket:
+            def __init__(self, error):
+                self.error = error
+
+            def settimeout(self, timeout):
+                pass
+
+            def send(self, buffer):
+                raise self.error
+
+        for error, expected in ((socket.timeout('slow'), WriteTimeout),
+                                (OSError('broken'), WriteError)):
+            with self.subTest(error=error), self.assertRaises(expected):
+                _DeadlineStream(SyncStream(BrokenSocket(error)), time.monotonic() + 1).write(b'x')
+
     def _assert_trickling_response(self, operation):
         listener = socket.socket()
         listener.bind(('127.0.0.1', 0))

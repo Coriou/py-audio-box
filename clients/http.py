@@ -7,8 +7,9 @@ import socket
 from contextlib import nullcontext
 from urllib.parse import quote
 import httpx
-from httpcore import ConnectError, ConnectTimeout
+from httpcore import ConnectError, ConnectTimeout, WriteError, WriteTimeout
 from httpcore._backends.sync import SyncBackend, SyncStream
+from httpcore._exceptions import map_exceptions
 from contracts.validate import validate
 from service.catalogue import Failure, IMPLEMENTED, OPERATIONS, VOICE_READS, PRODUCTION_OPERATIONS
 
@@ -31,6 +32,18 @@ class _DeadlineStream:
         return self.stream.read(max_bytes, _timeout(self.deadline, timeout))
 
     def write(self, buffer, timeout=None):
+        if isinstance(self.stream, SyncStream):
+            # SyncStream.write reuses its timeout across partial sends. Its
+            # socket may also be an SSLSocket after start_tls.
+            if not buffer:
+                return
+            while buffer:
+                remaining = _timeout(self.deadline, timeout)
+                with map_exceptions({socket.timeout: WriteTimeout, OSError: WriteError}):
+                    self.stream._sock.settimeout(remaining)
+                    buffer = buffer[self.stream._sock.send(buffer):]
+            _timeout(self.deadline, timeout)
+            return
         return self.stream.write(buffer, _timeout(self.deadline, timeout))
 
     def start_tls(self, ssl_context, server_hostname=None, timeout=None):
