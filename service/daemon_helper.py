@@ -58,8 +58,8 @@ def gate_projection(value, *, family=None, configuration=None, binding=None, pub
 
 
 # Fixed vocabulary: no messages, notes, paths, locals or dynamic class names.
-_DIAGNOSTIC_CLASSES=frozenset(('ValueError','OSError','RuntimeError','TimeoutError',
-    'FileNotFoundError','PermissionError','BlockingIOError','KeyboardInterrupt'))
+_DIAGNOSTIC_CLASSES=frozenset((ValueError,OSError,RuntimeError,TimeoutError,
+    FileNotFoundError,PermissionError,BlockingIOError,KeyboardInterrupt))
 _DIAGNOSTIC_FUNCTIONS=frozenset(('run','runtime','rpc','wait','startup','child','collect',
     'snapshot','stable','held','register','observe','ready','inspect','main','begin',
     'locked_file','revalidate','read','write','clean','public','initialize','input_import'))
@@ -80,7 +80,7 @@ def diagnostic(exc, phase, code):
     """Bounded provenance only; callable before cleanup can replace a failure."""
     phase=phase if phase in dv.PHASES else 'unknown'
     code=code if code in ('operation_failed','prior_failure','final_refusal') else 'final_refusal'
-    name=type(exc).__name__ if type(exc).__name__ in _DIAGNOSTIC_CLASSES else 'Exception'
+    name=type(exc).__name__ if type(exc) in _DIAGNOSTIC_CLASSES else 'OSError' if isinstance(exc,OSError) else 'Exception'
     function,line,source_file='unknown',0,'unknown'
     trace=exc.__traceback__
     while trace is not None:

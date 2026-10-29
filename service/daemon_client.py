@@ -59,7 +59,7 @@ class HelperDiagnostics:
         detail=_HELPER_DIAGNOSTIC.fullmatch(line)
         cause=_HELPER_CAUSE.fullmatch(line)
         if (detail and detail[1]==self.phase and
-                (detail[6] is None or (detail[3] in ('OSError','FileNotFoundError','PermissionError','BlockingIOError')
+                (detail[6] is None or (detail[3] in ('OSError','TimeoutError','FileNotFoundError','PermissionError','BlockingIOError')
                     and (detail[7]=='unknown' or int(detail[7]) in _HELPER_ERRNOS)))):
             self.details.setdefault(detail[2],detail)
         if cause and cause[1]==self.phase and cause[3] in dv.HELPER_REFUSAL_CODES:

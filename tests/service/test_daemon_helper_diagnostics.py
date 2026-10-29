@@ -1,5 +1,6 @@
 import pytest
 import os
+import errno
 import sys
 import time
 
@@ -133,6 +134,49 @@ def test_oserror_errno_and_internal_frame_cross_actual_parser_without_path(tmp_p
     assert str(failure.value).endswith(
         ':file=install_policy.py:errno=2:host=daemon_phase_eof_retained')
     assert 'PRIVATE-CREDENTIAL-AND-PATH' not in str(failure.value)
+
+
+@pytest.mark.parametrize('primary,cleanup,expected_class', (
+    (TimeoutError('PRIVATE timeout'), None, 'TimeoutError'),
+    (TimeoutError('PRIVATE timeout'), OSError(errno.EIO,'PRIVATE cleanup'), 'TimeoutError'),
+    (BrokenPipeError(errno.EPIPE,'PRIVATE pipe'), None, 'OSError'),
+    (type('PrivateOSError',(OSError,),{})(errno.EIO,'PRIVATE subclass'), None, 'OSError'),
+    (type('TimeoutError',(OSError,),{})(errno.EIO,'PRIVATE disguised subclass'), None, 'OSError'),
+))
+def test_oserror_diagnostic_survives_helper_run_and_host_exchange(
+        primary, cleanup, expected_class, capsys, monkeypatch):
+    from contextlib import contextmanager
+    helper=object.__new__(daemon_helper.Helper)
+    helper.phase='up'
+    @contextmanager
+    def held():
+        try:
+            yield
+        finally:
+            if cleanup is not None: raise cleanup
+    helper.held=held
+    def runtime(): raise primary
+    helper.runtime=runtime
+    with pytest.raises(OSError) as caught:
+        helper.run()
+    assert caught.value is (cleanup or primary)
+    if cleanup is not None: assert cleanup.__context__ is primary
+    daemon_helper.refusal(caught.value,'up')
+    records=capsys.readouterr().err.encode()
+    assert b'PRIVATE' not in records
+    assert b':operation_failed:'+expected_class.encode()+b':' in records
+    def attached(self, identity, phase, nonce, config, binding, source, diagnostics):
+        diagnostics.feed(records)
+        raise ValueError('daemon_phase_eof_retained')
+    monkeypatch.setattr(daemon_client.Docker,'_exchange_attached',attached)
+    client=object.__new__(daemon_client.Docker)
+    with pytest.raises(ValueError) as host:
+        client.exchange('id','up','nonce',{}, {}, [])
+    assert str(host.value).startswith('daemon_helper_refusal:up:operation_failed:unclassified:'+
+                                      expected_class+':run:')
+    assert str(host.value).endswith(':host=daemon_phase_eof_retained')
+    assert host.value.__cause__.args==('daemon_phase_eof_retained',)
+    assert 'PRIVATE' not in str(host.value)
 
 
 @pytest.mark.parametrize('location', (
