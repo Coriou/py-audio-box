@@ -25,10 +25,13 @@ def network_os_error(exc):
     """Recognize socket failures without turning local file errors into transport errors."""
     return isinstance(exc, OSError) and exc.errno in _NETWORK_ERRNOS
 
+class _WorkflowDeadline(TimeoutError):
+    """An expired absolute clock check, distinct from a timed out file read."""
+
 def _timeout(deadline, cap):
     if deadline is None: return cap
     remaining = deadline - time.monotonic()
-    if remaining <= 0: raise TimeoutError('workflow_deadline')
+    if remaining <= 0: raise _WorkflowDeadline('workflow_deadline')
     return min(cap, remaining) if cap is not None else remaining
 
 
@@ -235,26 +238,31 @@ class HTTP:
                     raise Failure('resource_limit', 'Upload file exceeds media budget or is not regular.')
                 def chunks():
                     submitted = False
-                    try:
-                        remaining = info.st_size
-                        while remaining:
-                            _timeout(deadline, 20)
-                            data = stream.read(min(65536, remaining))
-                            if not data: raise ValueError('changed_file')
-                            remaining -= len(data)
-                            submitted = True
-                            yield data
-                        after = os.fstat(stream.fileno())
-                        if stream.read(1) or (info.st_size,info.st_mtime_ns,info.st_ctime_ns) != (after.st_size,after.st_mtime_ns,after.st_ctime_ns):
-                            raise ValueError('changed_file')
-                    except (OSError, ValueError):
-                        # A read may carry a socket-like errno. Its origin is
-                        # still the client-host WAV. Earlier chunks may already
-                        # have entered the transport, so preserve that ambiguity.
+                    def file_failure():
+                        # A local read may carry a socket-like errno, including
+                        # ETIMEDOUT. Classify it by the operation that failed.
                         if submitted:
                             raise Failure('not_ready', 'Upload outcome may be unknown after a local file read failed.',
                                           action='Inspect service assets before any new upload.') from None
                         raise Failure('invalid_request', 'Client-local upload file unavailable or changed.', 'file') from None
+
+                    remaining = info.st_size
+                    while remaining:
+                        _timeout(deadline, 20)
+                        try:
+                            data = stream.read(min(65536, remaining))
+                        except (OSError, ValueError):
+                            file_failure()
+                        if not data: file_failure()
+                        remaining -= len(data)
+                        submitted = True
+                        yield data
+                    try:
+                        after = os.fstat(stream.fileno())
+                        if stream.read(1) or (info.st_size,info.st_mtime_ns,info.st_ctime_ns) != (after.st_size,after.st_mtime_ns,after.st_ctime_ns):
+                            raise ValueError('changed_file')
+                    except (OSError, ValueError):
+                        file_failure()
                 try:
                     with _client(self.base_url, deadline, 20) as client:
                         status, body = _body(client, 'POST', '/v1/assets', deadline=deadline, cap=20,
@@ -272,6 +280,8 @@ class HTTP:
                 error.body = body
                 raise error
             return validate('asset',body)
+        except _WorkflowDeadline:
+            raise
         except (OSError, ValueError, IndexError):
             raise Failure('invalid_request', 'Client-local upload file unavailable or changed.') from None
         except httpx.HTTPError:

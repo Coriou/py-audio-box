@@ -6,7 +6,7 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
-from clients.http import HTTP
+from clients.http import HTTP, _WorkflowDeadline
 from clients.workflow import _outcome
 from service.catalogue import Failure
 
@@ -32,7 +32,7 @@ class LocalReadErrorTests(unittest.TestCase):
                     return self.file.fileno()
 
                 def read(self, size):
-                    raise OSError(errno.ETIMEDOUT, 'local read timeout')
+                    raise TimeoutError(errno.ETIMEDOUT, 'local read timeout')
 
             class Client:
                 def __enter__(self):
@@ -80,7 +80,7 @@ class LocalReadErrorTests(unittest.TestCase):
                 def read(self, size):
                     self.reads += 1
                     if self.reads > 1:
-                        raise OSError(errno.ETIMEDOUT, 'local read timeout')
+                        raise TimeoutError(errno.ETIMEDOUT, 'local read timeout')
                     return self.file.read(size)
 
             class Client:
@@ -101,3 +101,47 @@ class LocalReadErrorTests(unittest.TestCase):
                     HTTP().upload_file(source)
             self.assertEqual(caught.exception.body['code'], 'not_ready')
             self.assertIn('unknown', caught.exception.body['message'])
+
+    def test_absolute_deadline_before_and_after_first_chunk_reaches_workflow(self):
+        with tempfile.TemporaryDirectory() as directory:
+            source = Path(directory).resolve() / 'reference.wav'
+            source.write_bytes(b'RIFF' + b'\0' * 65536)
+            real_fdopen = os.fdopen
+
+            class Client:
+                def __enter__(self):
+                    return self
+
+                def __exit__(self, *args):
+                    pass
+
+            for expire_after in (0, 1):
+                with self.subTest(expire_after=expire_after):
+                    opened = []
+                    received = []
+
+                    def tracked_fdopen(fd, mode):
+                        stream = real_fdopen(fd, mode)
+                        opened.append(stream)
+                        return stream
+
+                    def consume(client, method, path, *, content, **kwargs):
+                        iterator = iter(content)
+                        if expire_after:
+                            received.append(next(iterator))
+                        next(iterator)
+                        self.fail('deadline should have expired')
+
+                    with patch('clients.http.os.fdopen', side_effect=tracked_fdopen), \
+                            patch('clients.http._client', return_value=Client()), \
+                            patch('clients.http._body', side_effect=consume), \
+                            patch('clients.http.time.monotonic', side_effect=([122.0] * expire_after + [124.0])) as clock:
+                        with self.assertRaisesRegex(_WorkflowDeadline, 'workflow_deadline') as caught:
+                            HTTP().with_deadline(123.0).upload_file(source)
+                    self.assertEqual(clock.call_count, expire_after + 1)
+                    self.assertEqual(len(received), expire_after)
+                    self.assertEqual(len(opened), 1)
+                    self.assertTrue(opened[0].closed)
+                    outcome = _outcome('upload', caught.exception, {}, mutation=True)
+                    self.assertEqual((outcome['state'], outcome['code']),
+                                     ('timed_out', 'deadline_exceeded'))
