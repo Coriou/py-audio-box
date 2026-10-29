@@ -18,6 +18,10 @@ on:
         description: Absolute private pinned snapshot cache root on the dedicated runner
         required: true
         type: string
+      python_311:
+        description: Absolute path to Python 3.11 executable on the dedicated runner
+        required: true
+        type: string
 permissions:
   contents: read
 concurrency:
@@ -39,15 +43,19 @@ jobs:
           REFERENCE_WAV: ${{ inputs.reference_wav }}
           REFERENCE_TEXT_FILE: ${{ inputs.reference_text_file }}
           CACHE_ROOT: ${{ inputs.cache_root }}
+          PYTHON_311: ${{ inputs.python_311 }}
           REVIEWED_SHA: ${{ inputs.reviewed_sha }}
         run: |
           set -euo pipefail
           [[ "$REVIEWED_SHA" =~ ^[0-9a-f]{40}$ ]]
           test "$(git rev-parse HEAD)" = "$REVIEWED_SHA"
           test -z "$(git status --porcelain=v1 --untracked-files=all)"
+          [[ "$PYTHON_311" = /* && -f "$PYTHON_311" && -x "$PYTHON_311" ]]
+          python_real="$("$PYTHON_311" -c 'import os, sys; assert sys.version_info[:2] == (3, 11); print(os.path.realpath(sys.executable))')"
+          test "$(sudo -n "$PYTHON_311" -c 'import os, sys; assert sys.version_info[:2] == (3, 11); print(os.path.realpath(sys.executable))')" = "$python_real"
           work="$RUNNER_TEMP/pab-qwen-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
           mkdir -m 700 "$work"
-          sudo -n -E python3 scripts/ci-qwen-real-audio.py \
+          sudo -n -E "$PYTHON_311" scripts/ci-qwen-real-audio.py \
             --work "$work" --reference-wav "$REFERENCE_WAV" \
             --reference-text-file "$REFERENCE_TEXT_FILE" \
             --cache-root "$CACHE_ROOT" --reviewed-sha "$REVIEWED_SHA" \

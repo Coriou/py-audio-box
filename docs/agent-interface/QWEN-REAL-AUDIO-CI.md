@@ -26,12 +26,16 @@ REPORT='<private-report-path>'
 REFERENCE_WAV='<absolute-authorized-reference-wav>'
 REFERENCE_TEXT_FILE='<absolute-exact-transcript-file>'
 CACHE_ROOT='<absolute-private-cache-root>'
+PYTHON_311='<absolute-python-3.11-executable-on-runner>'
 [[ "$REVIEWED_SHA" =~ ^[0-9a-f]{40}$ ]] || exit 1
 git -C "$REPO" worktree add --detach "$CHECKOUT" "$REVIEWED_SHA"
 test "$(git -C "$CHECKOUT" rev-parse HEAD)" = "$REVIEWED_SHA" || exit 1
 test -z "$(git -C "$CHECKOUT" status --porcelain=v1 --untracked-files=all)" || exit 1
+[[ "$PYTHON_311" = /* && -f "$PYTHON_311" && -x "$PYTHON_311" ]] || exit 1
+python_real="$("$PYTHON_311" -c 'import os, sys; assert sys.version_info[:2] == (3, 11); print(os.path.realpath(sys.executable))')" || exit 1
+test "$(sudo -n "$PYTHON_311" -c 'import os, sys; assert sys.version_info[:2] == (3, 11); print(os.path.realpath(sys.executable))')" = "$python_real" || exit 1
 mkdir -m 700 "$WORK"
-sudo -n -E python3 "$CHECKOUT/scripts/ci-qwen-real-audio.py" \
+sudo -n -E "$PYTHON_311" "$CHECKOUT/scripts/ci-qwen-real-audio.py" \
   --reviewed-sha "$REVIEWED_SHA" --work "$WORK" \
   --reference-wav "$REFERENCE_WAV" \
   --reference-text-file "$REFERENCE_TEXT_FILE" \
@@ -43,9 +47,10 @@ private work, report and Docker state for review after any failure. There is no
 automatic retry or cleanup. This route runs the actual archive and installed
 client sequence; it does not create a GitHub Actions status or establish runner
 enrollment. After this workflow is merged to the default branch, a trusted owner
-may dispatch it manually with the exact reviewed SHA and three private path
-inputs. GitHub fetchability of that SHA, runner availability and the source
-check still determine whether that attempt starts.
+may dispatch it manually with the exact reviewed SHA, three private path
+inputs and the absolute Python 3.11 executable path. GitHub fetchability of
+that SHA, runner availability and the source check still determine whether that
+attempt starts.
 
 ## Runner and inputs
 
@@ -53,15 +58,21 @@ No runner with the dedicated `pab-qwen-docker27-cgroupfs-v2` label is enrolled
 in the current inventory. A queued job is **not evidence**. The owner must
 provide a dedicated ephemeral Linux amd64 runner with Docker 27, a local rootful
 Unix-socket daemon, cgroup v2 with cgroupfs driver, Python 3.11, passwordless
-`sudo`, 12 GiB available RAM and 22 GiB free disk. The private
+`sudo`, 12 GiB available RAM and 22 GiB free disk. Select an absolute Python
+3.11 executable path before invoking `sudo`; both procedures verify its version
+and that root resolves the same executable before passing it to the harness.
+Do not rely on `python3` from either account's `PATH`. The private
 `/sys/fs/cgroup/speech-box-qwen` parent must be root-owned mode 0700 with cpu,
 memory and pids subtree controllers enabled. The public `up` command creates
 and limits its own dedicated child cgroup. This source change registers no
 runner, dispatches no workflow and runs no Docker or model download.
 
 Provide an authorized real mono PCM16 reference WAV and a separate UTF-8 file
-containing its exact transcript on the runner. Use their absolute private paths
-and a private cache root. Do not supply private Bruce/John recordings or
+containing its exact transcript on the runner. These are required for real-voice
+acceptance. A synthetic Ryan-generated reference can serve only as a limited
+technical smoke input; it cannot establish real-voice or fidelity acceptance.
+Use their absolute private paths and a private cache root. Do not supply
+private Bruce/John recordings or
 credentials. The cache is read-only input: an absent snapshot stays absent in
 the cache, while `qwen-snapshot` acquires pinned missing bytes into its private
 staging root. The extracted archive verifies all bytes against committed Base
@@ -102,3 +113,10 @@ speech failure cannot be promoted by later steps. The workflow's 180-minute
 wall limit and command budgets bound one attempt. Review the report and retained
 runner state before any new attempt. Do not use global Docker prune to clean
 the runner.
+
+The first official attempt at `28821e1473a9944e5952f46ad3b9e4b7cc8971c9`
+failed admission in 0.04 seconds with `requires_12_gib_available_ram`; its
+`steps` and `command_log` were empty. The box exposed about 2.5 GiB available
+RAM through virtio ballooning. The policy checks available RAM, not declared
+total RAM. This is a retained preflight rejection, with no audio or service
+regression result. Code cannot make that host satisfy the 12 GiB precondition.
