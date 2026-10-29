@@ -7,7 +7,7 @@ from mcp.server import Server
 from mcp.server.stdio import stdio_server
 from mcp.types import Tool, TextContent, CallToolResult
 from contracts.validate import ContractError, validate
-from clients.http import HTTP
+from clients.http import HTTP, network_os_error
 from clients.config import ConfigurationFailure
 from service.catalogue import (DIRECT_BYTES, Failure, IMPLEMENTED, VOICE_READS, PRODUCTION_OPERATIONS, OPERATIONS, compact, problem, schema)
 
@@ -110,7 +110,9 @@ async def call_tool(name, arguments):
         return result(problem('invalid_request', 'Request does not match named canonical schema.', 'request'), True)
     except ConnectionError:
         return result(problem('not_ready', 'HTTP transport unavailable.', action='Start the configured HTTP service.'), True)
-    except OSError:
+    except OSError as exc:
+        if network_os_error(exc):
+            return result(problem('not_ready', 'HTTP transport unavailable.', action='Start the configured HTTP service.'), True)
         return result(problem('invalid_request', 'Local installation or media unavailable.', 'request'), True)
 
 async def main():

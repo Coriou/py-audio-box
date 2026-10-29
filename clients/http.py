@@ -4,6 +4,7 @@ import json
 import time
 import ipaddress
 import socket
+import errno
 from contextlib import nullcontext
 from urllib.parse import quote
 import httpx
@@ -12,6 +13,17 @@ from httpcore._backends.sync import SyncBackend, SyncStream
 from httpcore._exceptions import map_exceptions
 from contracts.validate import validate
 from service.catalogue import Failure, IMPLEMENTED, OPERATIONS, VOICE_READS, PRODUCTION_OPERATIONS
+
+
+_NETWORK_ERRNOS = frozenset(getattr(errno, name) for name in (
+    'ECONNREFUSED', 'ECONNRESET', 'ECONNABORTED', 'ENETUNREACH',
+    'EHOSTUNREACH', 'ENETDOWN', 'EHOSTDOWN', 'EPIPE', 'ETIMEDOUT')
+    if hasattr(errno, name))
+
+
+def network_os_error(exc):
+    """Recognize socket failures without turning local file errors into transport errors."""
+    return isinstance(exc, OSError) and exc.errno in _NETWORK_ERRNOS
 
 def _timeout(deadline, cap):
     if deadline is None: return cap
@@ -181,6 +193,10 @@ class HTTP:
         except (httpx.HTTPError, ValueError):
             _timeout(deadline, 10)
             raise ConnectionError('Speech HTTP transport unavailable.') from None
+        except OSError as exc:
+            if not network_os_error(exc): raise
+            _timeout(deadline, 10)
+            raise ConnectionError('Speech HTTP transport unavailable.') from None
         if status != 200:
             validate('error', body)
             error = Failure(body['code'], body['message'], body['field'], body['action'])
@@ -228,11 +244,17 @@ class HTTP:
                     after = os.fstat(stream.fileno())
                     if stream.read(1) or (info.st_size,info.st_mtime_ns,info.st_ctime_ns) != (after.st_size,after.st_mtime_ns,after.st_ctime_ns):
                         raise ValueError('changed_file')
-                with _client(self.base_url, deadline, 20) as client:
-                    status, body = _body(client, 'POST', '/v1/assets', deadline=deadline, cap=20,
-                        content=chunks(), headers={
-                        'Authorization':'Bearer '+self.credential if self.credential else '',
-                        'Content-Type':'audio/wav', 'Content-Length':str(info.st_size)})
+                try:
+                    with _client(self.base_url, deadline, 20) as client:
+                        status, body = _body(client, 'POST', '/v1/assets', deadline=deadline, cap=20,
+                            content=chunks(), headers={
+                            'Authorization':'Bearer '+self.credential if self.credential else '',
+                            'Content-Type':'audio/wav', 'Content-Length':str(info.st_size)})
+                except OSError as exc:
+                    if not network_os_error(exc): raise
+                    _timeout(deadline, 20)
+                    raise Failure('not_ready', 'Upload transport failed; outcome may be unknown.',
+                                  action='Do not automatically retry uploads.') from None
             if status != 200:
                 validate('error', body)
                 error = Failure(body['code'],body['message'],body['field'],body['action'])
@@ -255,6 +277,10 @@ class HTTP:
                     'Authorization':'Bearer '+self.credential if self.credential else '',
                     'Idempotency-Key':key})
         except (httpx.HTTPError, ValueError):
+            _timeout(deadline, 10)
+            raise ConnectionError('Production HTTP outcome unknown; do not automatically retry.') from None
+        except OSError as exc:
+            if not network_os_error(exc): raise
             _timeout(deadline, 10)
             raise ConnectionError('Production HTTP outcome unknown; do not automatically retry.') from None
         if status != 200:

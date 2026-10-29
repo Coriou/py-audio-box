@@ -6,7 +6,7 @@ import sys
 from pathlib import Path
 from jsonschema.exceptions import ValidationError
 from service.catalogue import Failure, compact
-from clients.http import HTTP
+from clients.http import HTTP, network_os_error
 from clients.config import ConfigurationFailure
 
 
@@ -170,7 +170,12 @@ def main(argv=None):
         print(compact(problem('invalid_request', 'Request does not match canonical schema.', 'request'))); return 2
     except ConnectionError:
         print(compact({'transport_error':'Speech HTTP transport unavailable.'})); return 3
-    except (OSError, ValueError) as exc:
+    except OSError as exc:
+        if network_os_error(exc):
+            print(compact({'transport_error':'Speech HTTP transport unavailable.'})); return 3
+        from service.catalogue import problem
+        print(compact(problem('invalid_request', 'Invalid request or local media transfer; check arguments and paths.', 'output'))); return 2
+    except ValueError:
         # No local paths, payloads, URLs or tracebacks in model-facing errors.
         from service.catalogue import problem
         print(compact(problem('invalid_request', 'Invalid request or local media transfer; check arguments and paths.', 'output'))); return 2
