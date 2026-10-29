@@ -160,6 +160,18 @@ def observation_refusal(reason, before, after, kind):
     return exc
 
 
+def comparison_inspection(c):
+    """Compare validated Docker mount lists as multisets, retaining every field."""
+    # inspect_container has already checked both lists. Keep the original
+    # inspection for evidence; copy only the paths whose order Docker varies.
+    value=dict(c)
+    value['Mounts']=sorted(c['Mounts'],key=lambda m:json.dumps(m,sort_keys=True))
+    value['HostConfig']=dict(c['HostConfig'])
+    value['HostConfig']['Mounts']=sorted(c['HostConfig']['Mounts'],
+        key=lambda m:json.dumps(m,sort_keys=True))
+    return value
+
+
 def child(kind, request, descriptors, *, family=None):
     """Retain all enclosing exclusions through actual exit/reap, even on failure."""
     from service import installed_export as ex
@@ -557,8 +569,10 @@ class Helper:
             if any(local['roots']['assets']!=list(info[:2]) for local in value['local'].values()):
                 raise ValueError('daemon_assets_view_identity')
         second=self.pair(ids)
-        if second!=first:
-            raise observation_refusal('daemon_observation_pair_changed',first,second,'pair')
+        compared_first={role:comparison_inspection(first[role]) for role in ('control','worker')}
+        compared_second={role:comparison_inspection(second[role]) for role in ('control','worker')}
+        if compared_second!=compared_first:
+            raise observation_refusal('daemon_observation_pair_changed',compared_first,compared_second,'pair')
         later=self.startup()
         if later!=startup:
             raise observation_refusal('daemon_observation_startup_changed',startup,later,'startup')
