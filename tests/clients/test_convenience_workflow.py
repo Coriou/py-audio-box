@@ -476,3 +476,23 @@ class WorkflowHTTPTests(unittest.TestCase):
         (root/'control.key').unlink()
         (root/'control.key').symlink_to(root/'client.json')
         with self.assertRaises(ValueError): installation(root)
+
+    def test_default_qwen_root_only_when_configured_without_overrides(self):
+        root=(Path(self.tmp.name)/'default-qwen').resolve()
+        with patch('service.qwen_local_config.DEFAULT_ROOT',root), patch.dict(os.environ,{},clear=True):
+            self.assertEqual(resolve(),(None,None))
+            root.mkdir(mode=0o700)
+            (root/'client.json').write_text(json.dumps({'version':1,'endpoint':'http://127.0.0.1:8000',
+                'credential_file':str(root/'control.key'),'principal':'operator'}))
+            (root/'control.key').write_text(json.dumps({'version':1,'credentials':[
+                {'token':'a'*32,'principal':'operator','scopes':['read','production-write']}]}))
+            (root/'client.json').chmod(0o600);(root/'control.key').chmod(0o600)
+            self.assertEqual(resolve(),('http://127.0.0.1:8000','a'*32))
+            with patch.dict(os.environ,{'SPEECH_URL':'http://192.0.2.10:8000'}):
+                self.assertEqual(resolve(),('http://192.0.2.10:8000',None))
+            with patch.dict(os.environ,{'SPEECH_CREDENTIAL':'b'*32}):
+                self.assertEqual(resolve(),(None,'b'*32))
+            self.assertEqual(resolve('http://192.0.2.10:8000'),('http://192.0.2.10:8000',None))
+            self.assertEqual(resolve(credential='b'*32),(None,'b'*32))
+            with patch.dict(os.environ,{'SPEECH_INSTALLATION':str(root),'SPEECH_URL':'http://192.0.2.10:8000'}):
+                with self.assertRaises(ConfigurationFailure): resolve()

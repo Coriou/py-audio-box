@@ -19,54 +19,76 @@ the installed volume, and temporary import bytes. The shared single-model
 `--shared-models` selection cannot carry this two-model configuration.
 
 The direct setup command accepts paths to the two previously verified sealed
-bundles, an explicit local Docker context, three locally loaded image digests,
-an absolute private root, a principal and port, a dedicated custody path, a
-local mono PCM16 reference WAV with its exact transcript, and measured resource
-inputs. It verifies both complete bundle trees and derives the frozen contexts,
-profile, credentials, complete file manifest, and installer request. The seed
+bundles, an explicit local Docker context, three explicitly named loaded local
+images (tags or pinned IDs), a dedicated custody path, a local mono PCM16
+reference WAV with its exact transcript, and an actual qualification receipt
+with resource measurements. It resolves each named image through read-only
+Docker inspection to a pinned ID. It verifies both complete bundle trees and
+derives the frozen contexts, profile, credentials, complete file manifest,
+and installer request. The seed
 WAV is template metadata; enroll a reference through the authenticated API
 before generating a clone. The measurement receipt and resource values must
 come from real operator qualification. Setup does not measure model memory or
 claim that installation proves inference.
 
-Example request shape (replace every placeholder with actual local evidence):
+Put your actual qualification evidence in a private regular file, for example
+`/protected/qwen-measurement.json`:
 
 ```json
 {
-  "principal": "alice",
-  "bundles": {"clone": "/absolute/sealed/base", "Ryan": "/absolute/sealed/customvoice"},
-  "docker_context": "EXPLICIT_LOCAL_DOCKER_CONTEXT_NAME",
-  "images": {"control": "sha256:<64 lowercase hex>", "worker": "sha256:<64 lowercase hex>", "helper": "sha256:<64 lowercase hex>"},
-  "root": "/absolute/private/qwen-service",
-  "port": 8765,
-  "custody": "/sys/fs/cgroup/speech-box-qwen/<32 lowercase hex>",
-  "reference": {"wav": "/absolute/local/reference.wav", "text": "The exact words in the reference recording."},
-  "measurement": {"receipt": "actual-qualification-receipt", "checked_at": "actual ISO-8601 measurement time", "memory_bytes": 0, "disk_bytes": 0, "deadline_seconds": 0},
-  "ram_bytes": 0, "pids": 0, "threads": 0,
-  "cpu": {"control": 0, "worker": 0},
-  "tmpfs": {"control": {"bytes": 0, "inodes": 0}, "worker": {"bytes": 0, "inodes": 0}}
+  "receipt": "actual-qualification-receipt",
+  "checked_at": "2026-10-29T10:00:00+00:00",
+  "memory_bytes": 2147483648,
+  "disk_bytes": 10737418240,
+  "deadline_seconds": 600
 }
 ```
 
-All zero values above are placeholders and are rejected. CPU values are
-nanocores. The measured model memory belongs in `measurement.memory_bytes`;
-`ram_bytes` is the container budget and must cover it. The setup root and
+The numbers above illustrate the file format; use measurements from your own
+qualification, not these values. `--ram-bytes` is the chosen container budget
+and must cover measured model memory. `--threads` drives the worker CPU and PID
+budgets; the control CPU and both tmpfs budgets use the existing conservative
+setup values. The setup root and
 handle must be new. It invokes the existing `docker-qwen install` then `up`
 and retains their receipts. A failed install or launch requires review of the
 retained handle; running setup again with a new handle is not recovery.
 
 ```sh
-python3 speech-box qwen-service-setup --request operator-input.json --handle fresh-qwen.json
-python3 speech-box docker-qwen status --handle fresh-qwen.json
-python3 speech-box docker-qwen stop --handle fresh-qwen.json
-python3 speech-box docker-qwen up --handle fresh-qwen.json
+python3 speech-box qwen-service-setup \
+  --clone-bundle /absolute/sealed/base --ryan-bundle /absolute/sealed/customvoice \
+  --context LOCAL_CONTEXT --control-image LOCAL_CONTROL_IMAGE \
+  --worker-image LOCAL_WORKER_IMAGE --helper-image LOCAL_HELPER_IMAGE \
+  --custody /sys/fs/cgroup/speech-box-qwen/0123456789abcdef0123456789abcdef \
+  --reference-wav /absolute/local/reference.wav \
+  --reference-text 'The exact words in the reference recording.' \
+  --measurement /protected/qwen-measurement.json --ram-bytes 12884901888 \
+  --threads 2 --handle /protected/fresh-qwen.json
+python3 speech-box docker-qwen status --handle /protected/fresh-qwen.json
+python3 -m clients.cli enroll --name bruce --wav /absolute/local/bruce.wav \
+  --reference-text 'Exact words Bruce recorded.' --audition-text 'A short audition.'
+python3 -m clients.cli speak --voice bruce --text 'Hello from Bruce.' --output /absolute/new-bruce.wav
+python3 -m clients.cli speak --voice Ryan --text 'Hello from Ryan.' --output /absolute/new-ryan.wav
+python3 -m clients.cli enroll --name john --wav /absolute/local/john.wav \
+  --reference-text 'Exact words John recorded.' --audition-text 'A short audition.'
+python3 -m clients.cli speak --voice john --text 'Hello from John.' --output /absolute/new-john.wav
 ```
+
+The default setup root is `~/.local/state/speech-box/qwen-service` and the
+default loopback port is 8000. With its `client.json` present, CLI and MCP
+discover that root automatically when no endpoint, credential or installation
+override is set; no token copy or environment setup is needed. For a custom
+root pass `--root /absolute/private/root` to setup, then use the returned
+`client_command` (which includes `--installation /absolute/private/root`) for
+CLI calls, or set `SPEECH_INSTALLATION` to that root for MCP. The setup result
+also gives the private generated `install-request.json` path for inspection.
+`--prepare-only` writes that validated plan without installing or starting.
+`--request operator-input.json` remains available for advanced closed input.
 
 The generated private `install-request.json` is the existing `docker-qwen`
 request. The generated `client.json` supplies local endpoint and credential
 discovery; the Docker importer checks the mounted credential against the
-configuration. The second `up` above is a restart after a confirmed `stop`,
-using the retained handle. Raw `qwen-service-config`, `qwen-local-init`, and
+configuration. A later `up` is a restart after a confirmed `stop`, using the
+retained handle. Raw `qwen-service-config`, `qwen-local-init`, and
 `docker-qwen` entrypoints remain available for explicit lower-level workflows.
 The two-model install request requires `custody`, an exact
 `/sys/fs/cgroup/speech-box-qwen/<32 lowercase hex>` path. The Linux host

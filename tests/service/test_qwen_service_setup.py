@@ -1,10 +1,14 @@
 """Inert setup contract: exact generated installer input and credential connection."""
 import json
 import asyncio
+import contextlib
+import io
+import os
 from pathlib import Path
 import tempfile
 import unittest
 from unittest.mock import patch
+from types import SimpleNamespace
 import wave
 
 from service import installed_qwen_daemon as qd
@@ -78,6 +82,50 @@ class SetupTests(unittest.TestCase):
             def call(self,args): return 'systemd'
         with self.assertRaisesRegex(ValueError,'setup_cgroupfs_driver_required'):
             setup.preflight_docker(self.request,docker=Wrong())
+
+    def test_flags_build_validated_request_from_measured_file_and_named_images(self):
+        measurement=self.root/'measurement.json'
+        measurement.write_text(json.dumps(self.request['measurement']))
+        names={role:'local/'+role+':reviewed' for role in ('control','worker','helper')}
+        class Docker:
+            def __init__(self): self.calls=[]
+            def call(self,args):
+                self.calls.append(args)
+                return self_ids[args[2].split('/')[1].split(':')[0]]
+            def check(self): self.calls.append(['check'])
+        self_ids=self.request['images']
+        docker=Docker()
+        a=SimpleNamespace(context=self.request['docker_context'],control_image=names['control'],
+            worker_image=names['worker'],helper_image=names['helper'],measurement=str(measurement),
+            threads=2,principal='alice',clone_bundle=self.request['bundles']['clone'],
+            ryan_bundle=self.request['bundles']['Ryan'],root=self.request['root'],port=8765,
+            custody=self.request['custody'],reference_wav=self.request['reference']['wav'],
+            reference_text=self.request['reference']['text'],ram_bytes=self.request['ram_bytes'])
+        request=setup.flag_request(a,docker=docker)
+        self.assertEqual(request,self.request)
+        with patch('service.qwen_local_config.DEFAULT_ROOT',self.root/'default'), \
+             patch.dict(os.environ,{},clear=True),patch.object(setup,'_image_ids',return_value=self_ids):
+            a.root=None;a.port=8000
+            defaults=setup.flag_request(a)
+        self.assertEqual((defaults['root'],defaults['port']),
+                         (str(self.root/'default'),8000))
+        a.root=self.request['root'];a.port=8765
+        self.assertEqual([call[0] for call in docker.calls],['image','image','image','check'])
+        self.assertEqual(setup.generate(request,verifier=lambda *args:None)['control_port'],8765)
+        output=io.StringIO()
+        with patch.object(setup,'_image_ids',return_value=self_ids), \
+             patch.object(setup,'generate',return_value=setup.generate(request,verifier=lambda *args:None)), \
+             contextlib.redirect_stdout(output):
+            setup.main(['--clone-bundle',a.clone_bundle,'--ryan-bundle',a.ryan_bundle,
+                '--context',a.context,'--control-image',a.control_image,'--worker-image',a.worker_image,
+                '--helper-image',a.helper_image,'--custody',a.custody,'--reference-wav',a.reference_wav,
+                '--reference-text',a.reference_text,'--measurement',a.measurement,
+                '--ram-bytes',str(a.ram_bytes),'--threads','2','--principal','alice','--root',a.root,
+                '--port','8765','--handle',str(self.root/'handle'),'--prepare-only'])
+        self.assertEqual(json.loads(output.getvalue())['client_command'],
+                         ['python3','-m','clients.cli','--installation',str(self.root/'local')])
+        self.assertEqual(json.loads((self.root/'local'/'install-request.json').read_text())['configuration'],
+                         setup.generate(request,verifier=lambda *args:None)['configuration'])
 
     def test_default_command_writes_exact_request_and_invokes_install_up(self):
         generated=setup.generate(self.request,verifier=lambda *args: None)

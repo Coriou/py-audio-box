@@ -9,8 +9,10 @@ from datetime import datetime
 import hashlib
 import io
 import json
+import os
 from pathlib import Path
 import re
+import stat
 
 from contracts import validate as oracle
 from service import installed_qwen_daemon as qd
@@ -21,6 +23,62 @@ from worker.engines.qwen_execution import QwenExecution
 
 
 ROOT = Path(__file__).resolve().parents[1]
+DEFAULT_PORT = 8000
+
+
+def _measurement(path):
+    """Read operator evidence as a bounded, unchanged regular file."""
+    from service.daemon_client import file_identity, parse
+    fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+    with os.fdopen(fd, 'rb') as stream:
+        before = os.fstat(stream.fileno())
+        if not stat.S_ISREG(before.st_mode) or before.st_nlink != 1 or not 0 < before.st_size <= 65536:
+            raise ValueError('setup_measured_profile_file_required')
+        raw = stream.read(65537)
+        if (len(raw) != before.st_size or file_identity(os.fstat(stream.fileno())) != file_identity(before)
+                or file_identity(os.stat(path, follow_symlinks=False)) != file_identity(before)):
+            raise ValueError('setup_measured_profile_changed')
+    evidence = parse(raw)
+    if type(evidence) is not dict:
+        raise ValueError('setup_measured_profile_file_required')
+    return evidence
+
+
+def _image_ids(context, names, *, docker=None):
+    """Resolve each explicitly named local image, never select from a listing."""
+    from service.daemon_client import Docker
+    docker = docker or Docker(context, family=qd.FAMILY)
+    images = {}
+    for role in ('control', 'worker', 'helper'):
+        name = names[role]
+        if not name or name.startswith('-') or any(c.isspace() for c in name):
+            raise ValueError('setup_explicit_local_image_reference_required')
+        identity = docker.call(['image', 'inspect', name, '--format', '{{.Id}}'])
+        if not re.fullmatch(r'sha256:[0-9a-f]{64}', identity):
+            raise ValueError('setup_local_image_id_required')
+        if name.startswith('sha256:') and name != identity:
+            raise ValueError('setup_image_id_changed')
+        images[role] = identity
+    docker.check()
+    return images
+
+
+def flag_request(args, *, docker=None):
+    """Translate genuine operator inputs into the existing closed request."""
+    images = _image_ids(args.context, dict(control=args.control_image, worker=args.worker_image,
+                                           helper=args.helper_image), docker=docker)
+    evidence = _measurement(args.measurement)
+    threads = args.threads
+    if type(threads) is not int or not 1 <= threads <= 64:
+        raise ValueError('setup_threads_required')
+    return dict(principal=args.principal,
+                bundles=dict(clone=args.clone_bundle, Ryan=args.ryan_bundle),
+                docker_context=args.context, images=images,
+                root=str(local.root_path(args.root)), port=args.port, custody=args.custody,
+                reference=dict(wav=args.reference_wav, text=args.reference_text),
+                measurement=evidence, ram_bytes=args.ram_bytes, threads=threads,
+                pids=max(64, threads+48), cpu=dict(control=10**9, worker=threads*10**9),
+                tmpfs={role:dict(bytes=65536, inodes=64) for role in ('control','worker')})
 
 
 def _source(name, path, verifier):
@@ -221,11 +279,29 @@ def preflight_docker(request, *, docker=None):
 
 def main(argv=None):
     p=argparse.ArgumentParser(description='Verify two local Qwen bundles and install/start the authenticated resident service.')
-    p.add_argument('--request',required=True,help='Small operator input JSON; see QWEN-RESIDENT-SERVICE.md')
+    p.add_argument('--request',help='Advanced closed operator request JSON')
     p.add_argument('--handle',required=True,help='New retained Docker installation handle')
     p.add_argument('--prepare-only',action='store_true',help='Write validated local inputs without Docker mutation')
+    for flag in ('clone-bundle','ryan-bundle','context','control-image','worker-image',
+                 'helper-image','custody','reference-wav','reference-text','measurement'):
+        p.add_argument('--'+flag)
+    p.add_argument('--ram-bytes',type=int)
+    p.add_argument('--threads',type=int)
+    p.add_argument('--principal',default='local')
+    p.add_argument('--root',help='New private root; defaults to the local Qwen service root')
+    p.add_argument('--port',type=int,default=DEFAULT_PORT)
     a=p.parse_args(argv)
-    request=json.loads(read(a.request,65536))
+    flags=('clone_bundle','ryan_bundle','context','control_image','worker_image',
+           'helper_image','custody','reference_wav','reference_text','measurement',
+           'ram_bytes','threads')
+    if a.request:
+        if any(getattr(a,key) is not None for key in flags) or a.root is not None or a.principal != 'local' or a.port != DEFAULT_PORT:
+            p.error('--request cannot be combined with setup flags')
+        request=json.loads(read(a.request,65536))
+    else:
+        missing=[key.replace('_','-') for key in flags if getattr(a,key) is None]
+        if missing: p.error('required setup flags: '+', '.join('--'+key for key in missing))
+        request=flag_request(a)
     result=generate(request)
     if not a.prepare_only:
         preflight_docker(request)
@@ -238,13 +314,18 @@ def main(argv=None):
                               bytes=(root/'control.key').stat().st_size)]
     manifest(result['inputs'],family=qd.FAMILY,service=True)
     installer=root/'install-request.json'; exclusive(installer,result)
+    client_command=['python3','-m','clients.cli']
+    if root != local.DEFAULT_ROOT:
+        client_command += ['--installation',str(root)]
     if a.prepare_only:
-        print(json.dumps(dict(phase='prepared',request=str(installer),client=str(root/'client.json'))))
+        print(json.dumps(dict(phase='prepared',request=str(installer),client=str(root/'client.json'),
+                              client_command=client_command)))
         return
     from service.daemon_client import qwen_main
     qwen_main(['install','--context',request['docker_context'],'--request',str(installer),'--handle',a.handle])
     qwen_main(['up','--handle',a.handle])
-    print(json.dumps(dict(phase='up',handle=a.handle,client=str(root/'client.json'))))
+    print(json.dumps(dict(phase='up',handle=a.handle,request=str(installer),client=str(root/'client.json'),
+                          client_command=client_command)))
 
 
 if __name__=='__main__': main()

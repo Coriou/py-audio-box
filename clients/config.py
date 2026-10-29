@@ -96,6 +96,10 @@ def resolve(url=None, credential=None, root=None):
     preferred_url = url or os.environ.get('SPEECH_URL')
     preferred_token = credential or os.environ.get('SPEECH_CREDENTIAL')
     selected = os.environ.get('SPEECH_INSTALLATION')
+    if not selected and not preferred_url and not preferred_token:
+        from service.qwen_local_config import DEFAULT_ROOT
+        if (DEFAULT_ROOT / 'client.json').exists():
+            selected = str(DEFAULT_ROOT)
     local_url, local_token = installation(selected) if selected and (not preferred_url or not preferred_token) else (None, None)
     if local_token and preferred_url and preferred_url != local_url and not preferred_token:
         raise ConfigurationFailure()
