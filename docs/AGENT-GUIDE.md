@@ -185,7 +185,11 @@ output paths. The local installation accepts the existing `client.json` and
 reads, upload writes, polling, and output transfer; zero expires before a
 network call. Socket operations use the remaining budget on every wait, and
 JSON responses have a 32 MiB decoded-body limit. The client closes a response
-when the deadline expires and checks the clock before publishing an output.
+when the deadline expires and checks the clock before and after publishing an
+output. Filesystem calls in progress cannot be preempted. If a successful
+publication returns after expiry, the result reports `deadline_exceeded` and
+the verified output path with `saved: true`; keep the file and do not retry the
+download to that path. The budget is not a hard real-time filesystem limit.
 A response can still arrive after a network transport failure, so an unknown
 mutation outcome is never assumed absent.
 The JSON result contains `state`, `code`, `message`, `action`, and confirmed

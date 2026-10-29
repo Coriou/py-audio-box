@@ -54,6 +54,50 @@ class HTTPDeadlineTests(unittest.TestCase):
             with self.subTest(error=error), self.assertRaises(expected):
                 _DeadlineStream(SyncStream(BrokenSocket(error)), time.monotonic() + 1).write(b'x')
 
+    def test_tls_prehandshake_expiry_closes_tcp_socket(self):
+        class Socket:
+            def __init__(self):
+                self.closed = False
+
+            def close(self):
+                self.closed = True
+
+        sock = Socket()
+        stream = _DeadlineStream(SyncStream(sock), time.monotonic() - 1)
+        with patch.object(stream.stream, 'start_tls') as upgrade:
+            with self.assertRaisesRegex(TimeoutError, 'workflow_deadline'):
+                stream.start_tls(object(), '127.0.0.1', timeout=1)
+        upgrade.assert_not_called()
+        self.assertTrue(sock.closed)
+
+    def test_tls_failure_and_late_handshake_close_current_owner(self):
+        class Stream:
+            def __init__(self, result=None, error=None):
+                self.result, self.error, self.closed = result, error, False
+
+            def start_tls(self, *args):
+                if self.error:
+                    raise self.error
+                return self.result
+
+            def close(self):
+                self.closed = True
+
+        for error in (RuntimeError('handshake'), KeyboardInterrupt()):
+            failed = Stream(error=error)
+            with self.subTest(error=type(error)), self.assertRaises(type(error)):
+                _DeadlineStream(failed, time.monotonic() + 1).start_tls(object())
+            self.assertTrue(failed.closed)
+
+        upgraded = Stream()
+        original = Stream(result=upgraded)
+        deadline = time.monotonic() + 1
+        with patch('clients.http._timeout', side_effect=[1, TimeoutError('workflow_deadline')]):
+            with self.assertRaisesRegex(TimeoutError, 'workflow_deadline'):
+                _DeadlineStream(original, deadline).start_tls(object())
+        self.assertTrue(upgraded.closed)
+        self.assertFalse(original.closed)
+
     def _assert_trickling_response(self, operation):
         listener = socket.socket()
         listener.bind(('127.0.0.1', 0))

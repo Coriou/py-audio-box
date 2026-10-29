@@ -47,8 +47,21 @@ class _DeadlineStream:
         return self.stream.write(buffer, _timeout(self.deadline, timeout))
 
     def start_tls(self, ssl_context, server_hostname=None, timeout=None):
-        return _DeadlineStream(self.stream.start_tls(
-            ssl_context, server_hostname, _timeout(self.deadline, timeout)), self.deadline)
+        upgraded = None
+        try:
+            remaining = _timeout(self.deadline, timeout)
+            upgraded = self.stream.start_tls(ssl_context, server_hostname, remaining)
+            _timeout(self.deadline, timeout)
+            return _DeadlineStream(upgraded, self.deadline)
+        except BaseException:
+            # Before a successful upgrade this stream still owns the TCP socket.
+            # Afterwards the upgraded stream owns it. httpcore also closes on
+            # handshake Exception; a second close is harmless for SyncStream.
+            try:
+                (upgraded if upgraded is not None else self.stream).close()
+            except BaseException:
+                pass  # Keep the deadline or handshake failure as the cause.
+            raise
 
     def get_extra_info(self, info):
         return self.stream.get_extra_info(info)

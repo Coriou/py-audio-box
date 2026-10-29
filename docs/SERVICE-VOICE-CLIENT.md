@@ -27,9 +27,15 @@ the root selected by `SPEECH_INSTALLATION`. No credential is printed.
 
 Each workflow has `--wait-seconds` (0–600), one deadline for HTTP connect,
 headers, body reads, upload writes, polling, and output transfer. The client
-closes a timed-out response, limits decoded JSON bodies to 32 MiB, and never
-publishes output after expiry. A timeout can leave a submitted job running;
-the result returns its ID only when confirmed. The service
+closes a timed-out response and limits decoded JSON bodies to 32 MiB. It checks
+the deadline between bounded network operations and before and after filesystem
+publication. A filesystem call already in progress cannot be preempted: if a
+successful link returns after expiry, the result is `deadline_exceeded` with
+`saved: true`, `output`, byte count, SHA-256, and the confirmed artifact and
+asset handles. Keep that verified file; retrying to the same path refuses to
+overwrite it. The deadline is not a hard real-time bound on filesystem calls.
+A timeout can leave a submitted job running; the result returns its ID only
+when confirmed. The service
 `job cancel ID --idempotency-key KEY` command explicitly cancels.
 
 Deadline-bearing calls require a numeric IP address in `--url` or

@@ -4,8 +4,11 @@ import contextlib
 import hashlib
 import io
 import json
+import os
 from pathlib import Path
 import tempfile
+import time
+from types import SimpleNamespace
 import unittest
 from unittest.mock import patch
 
@@ -257,6 +260,34 @@ class WorkflowHTTPTests(unittest.TestCase):
         self.assertEqual(result['artifact_id'],'artifact-speech')
         self.assertEqual(result['asset_id'],'output-speech')
         self.assertFalse((Path(self.tmp.name)/'missing.wav').exists())
+
+    def test_late_successful_link_reports_deadline_and_saved_output(self):
+        output = Path(self.tmp.name)/'late.wav'
+        clock = [time.monotonic()]
+        actual_link = os.link
+
+        def late_link(source, destination):
+            actual_link(source, destination)
+            clock[0] += 6  # The filesystem call completed after the budget.
+
+        with patch('clients.workflow.time', SimpleNamespace(monotonic=lambda: clock[0])), \
+                patch('clients.workflow.os.link', side_effect=late_link):
+            result = speak(self.http, voice='bruce', text='Hello.',
+                           voice_version_id='vv0', output=output, seconds=5)
+        self.assertEqual((result['state'], result['code'], result['phase']),
+                         ('timed_out', 'deadline_exceeded', 'download'))
+        self.assertEqual(result['output'], str(output))
+        self.assertEqual(result['artifact_id'], 'artifact-speech')
+        self.assertEqual(result['asset_id'], 'output-speech')
+        self.assertTrue(result['saved'])
+        self.assertEqual(result['sha256'], hashlib.sha256(b'\x00'*64).hexdigest())
+        self.assertEqual(output.read_bytes(), b'\x00'*64)
+        self.assertIn('do not repeat the download', result['action'])
+        self.assertEqual(list(output.parent.glob('.py-audio-box-*')), [])
+        with self.assertRaises(FileExistsError):
+            speak(self.http, voice='bruce', text='Hello.',
+                  voice_version_id='vv0', output=output, seconds=5)
+        self.assertEqual(output.read_bytes(), b'\x00'*64)
 
     def test_changed_file_rejects_confirmed_asset_before_submit(self):
         import wave

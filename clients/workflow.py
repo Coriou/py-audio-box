@@ -39,6 +39,12 @@ def _remaining(deadline):
     return remaining
 
 
+class _PublishedAfterDeadline(TimeoutError):
+    def __init__(self, published):
+        super().__init__('workflow_deadline')
+        self.published = published
+
+
 def _budget(http, seconds):
     if type(seconds) not in (int, float) or not 0 <= seconds <= 600:
         raise ValueError('wait_seconds must be between 0 and 600')
@@ -65,6 +71,9 @@ def _outcome(phase, exc, handles, *, mutation=False):
         action += ' Speech resume: pass --voice-version-id with the same text; include --job-id only when confirmed.'
     if phase == 'upload' and not handles.get('asset_id'):
         action = 'Upload outcome is unknown and no asset ID was confirmed. Inspect service assets before any new upload; do not automatically repeat the WAV command.'
+    if handles.get('saved'):
+        action = ('The verified output was saved at the reported path after the deadline. '
+                  'Use that file; do not repeat the download to this path. ' + action)
     return dict(handles, state=state, code=code, message=message, action=action, phase=phase)
 
 
@@ -207,7 +216,13 @@ def download(http, asset_id, output, deadline):
             raise ValueError('Downloaded hash mismatch.')
         _remaining(deadline)
         os.link(temporary, output)
-        return dict(asset_id=asset_id, bytes=size, sha256=digest.hexdigest(), saved=True)
+        published = dict(asset_id=asset_id, bytes=size, sha256=digest.hexdigest(),
+                         output=str(output), saved=True)
+        try:
+            _remaining(deadline)
+        except TimeoutError as exc:
+            raise _PublishedAfterDeadline(published) from exc
+        return published
     finally:
         if temporary is not None: temporary.unlink(missing_ok=True)
 
@@ -269,4 +284,6 @@ def speak(http, *, voice, text, output=None, seconds=120, job_id=None, voice_ver
             handles.update(download(http, artifact['asset_ids'][0], output, deadline))
         return dict(handles, state='succeeded')
     except (ConnectionError, TimeoutError, Failure) as exc:
+        if isinstance(exc, _PublishedAfterDeadline):
+            handles.update(exc.published)
         return _outcome(phase, exc, handles, mutation=phase in ('preset_register','generation_submit'))
