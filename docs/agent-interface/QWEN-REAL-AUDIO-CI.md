@@ -15,7 +15,10 @@ The trusted owner can run the same harness directly on the dedicated runner
 while this workflow is absent from `main`. First review and authorize the exact
 commit and media, make that commit available to the runner's local repository,
 and create a fresh detached checkout. For example, substitute the full SHA and
-private paths below; use a unique empty work directory for this one attempt:
+private paths below; use a unique empty work directory for this one attempt.
+The example requires a human-recorded reference you are authorized to clone;
+the two reference flags explicitly attest those facts. Do not use them for a
+generated Ryan recording or an unknown source:
 
 ```bash
 REVIEWED_SHA='<full-40-character-reviewed-commit-sha>'
@@ -39,6 +42,7 @@ sudo -n -E "$PYTHON_311" "$CHECKOUT/scripts/ci-qwen-real-audio.py" \
   --reviewed-sha "$REVIEWED_SHA" --work "$WORK" \
   --reference-wav "$REFERENCE_WAV" \
   --reference-text-file "$REFERENCE_TEXT_FILE" \
+  --reference-kind human-recorded --reference-authorized \
   --cache-root "$CACHE_ROOT" --report "$REPORT"
 ```
 
@@ -48,7 +52,7 @@ automatic retry or cleanup. This route runs the actual archive and installed
 client sequence; it does not create a GitHub Actions status or establish runner
 enrollment. After this workflow is merged to the default branch, a trusted owner
 may dispatch it manually with the exact reviewed SHA, three private path
-inputs and the absolute Python 3.11 executable path. GitHub fetchability of
+inputs, reference provenance and authorization, and the absolute Python 3.11 executable path. GitHub fetchability of
 that SHA, runner availability and the source check still determine whether that
 attempt starts.
 
@@ -69,8 +73,10 @@ runner, dispatches no workflow and runs no Docker or model download.
 
 Provide an authorized real mono PCM16 reference WAV and a separate UTF-8 file
 containing its exact transcript on the runner. These are required for real-voice
-acceptance. A synthetic Ryan-generated reference can serve only as a limited
-technical smoke input; it cannot establish real-voice or fidelity acceptance.
+acceptance. This gate refuses synthetic and unknown references before installed work.
+A synthetic Ryan-generated reference cannot establish real-voice or fidelity
+acceptance. The workflow defaults to unknown provenance and no authorization;
+select the actual provenance and affirm authorization only when established.
 Use their absolute private paths and a private cache root. Do not supply
 private Bruce/John recordings or
 credentials. The cache is read-only input: an absent snapshot stays absent in
@@ -105,7 +111,7 @@ or private paths: keep them on the trusted runner, review them privately, and do
 not add them to the uploaded report artifact. Only the redacted JSON report is
 uploaded by the workflow. Private work, images and failed handles remain on the
 runner for operator review.
-The gate reports `unqualified` throughout; an audio pass cannot create a
+The gate reports `not_tested` before successful startup and `unqualified` after it; an audio pass cannot create a
 production qualification receipt or listening/fidelity proof.
 
 Admission failure stops before model acquisition. A setup, missing-audio or

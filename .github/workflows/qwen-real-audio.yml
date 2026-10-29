@@ -14,6 +14,17 @@ on:
         description: Absolute path to its exact UTF-8 transcript on the dedicated runner
         required: true
         type: string
+      reference_kind:
+        description: Provenance of the reference (this gate requires human-recorded)
+        required: true
+        type: choice
+        default: unknown
+        options: [unknown, human-recorded, synthetic]
+      reference_authorized:
+        description: I have authorization to use this reference for voice cloning
+        required: true
+        type: boolean
+        default: false
       cache_root:
         description: Absolute private pinned snapshot cache root on the dedicated runner
         required: true
@@ -42,6 +53,8 @@ jobs:
         env:
           REFERENCE_WAV: ${{ inputs.reference_wav }}
           REFERENCE_TEXT_FILE: ${{ inputs.reference_text_file }}
+          REFERENCE_KIND: ${{ inputs.reference_kind }}
+          REFERENCE_AUTHORIZED: ${{ inputs.reference_authorized }}
           CACHE_ROOT: ${{ inputs.cache_root }}
           PYTHON_311: ${{ inputs.python_311 }}
           REVIEWED_SHA: ${{ inputs.reviewed_sha }}
@@ -55,9 +68,13 @@ jobs:
           test "$(sudo -n "$PYTHON_311" -c 'import os, sys; assert sys.version_info[:2] == (3, 11); print(os.path.realpath(sys.executable))')" = "$python_real"
           work="$RUNNER_TEMP/pab-qwen-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
           mkdir -m 700 "$work"
+          reference_args=(--reference-kind "$REFERENCE_KIND")
+          if [[ "$REFERENCE_AUTHORIZED" = true ]]; then
+            reference_args+=(--reference-authorized)
+          fi
           sudo -n -E "$PYTHON_311" scripts/ci-qwen-real-audio.py \
             --work "$work" --reference-wav "$REFERENCE_WAV" \
-            --reference-text-file "$REFERENCE_TEXT_FILE" \
+            --reference-text-file "$REFERENCE_TEXT_FILE" "${reference_args[@]}" \
             --cache-root "$CACHE_ROOT" --reviewed-sha "$REVIEWED_SHA" \
             --report "$RUNNER_TEMP/qwen-real-audio-report.json"
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
