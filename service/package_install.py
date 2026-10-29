@@ -227,6 +227,26 @@ def archive(source, destination):
     return hashlib.sha256(Path(destination).read_bytes()).hexdigest()
 
 
+_LEGACY_UP_OPTIONS = ('--configuration', '--scope', '--setup-bundle',
+                      '--host-policy', '--initialization-digest')
+_LEGACY_PARSER_OPTIONS = (*_LEGACY_UP_OPTIONS, '--request', '--output', '--help')
+
+
+def _legacy_up_requested(arguments):
+    for argument in arguments:
+        if argument == '--':
+            break
+        option = argument.partition('=')[0]
+        if option in _LEGACY_UP_OPTIONS:
+            return True
+        # argparse also accepts unique long-option prefixes, with or without =VALUE.
+        matches = ([name for name in _LEGACY_PARSER_OPTIONS if name.startswith(option)]
+                   if option.startswith('--') else [])
+        if len(matches) == 1 and matches[0] in _LEGACY_UP_OPTIONS:
+            return True
+    return False
+
+
 def main(argv=None):
     arguments = argv if argv is not None else sys.argv[1:]
     if arguments[:1] == ['docker-models']:
@@ -247,8 +267,7 @@ def main(argv=None):
     if arguments[:1] == ['qwen-up']:
         from service.qwen_service_setup import main as setup_main
         return setup_main(['--local-unqualified', *arguments[1:]])
-    if arguments[:1] == ['up'] and not any(arg in arguments[1:] for arg in
-            ('--configuration','--scope','--setup-bundle','--host-policy','--initialization-digest')):
+    if arguments[:1] == ['up'] and not _legacy_up_requested(arguments[1:]):
         from service.qwen_service_setup import main as setup_main
         return setup_main(['--local-unqualified', *arguments[1:]])
     if arguments[:1] in (['docker'], ['docker-export'], ['docker-pocket'], ['docker-qwen']):

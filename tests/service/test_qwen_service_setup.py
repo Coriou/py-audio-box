@@ -328,4 +328,37 @@ class SetupTests(unittest.TestCase):
         self.assertTrue(status['clone_prepare'])
 
 
+class UpDispatchTests(unittest.TestCase):
+    def test_legacy_discriminators_route_separate_equal_and_abbreviated_forms(self):
+        from service.package_install import main
+        options = {'--configuration': '--conf', '--scope': '--sc',
+                   '--setup-bundle': '--setup', '--host-policy': '--host-p',
+                   '--initialization-digest': '--init'}
+        for full, abbreviated in options.items():
+            for name in (full, abbreviated):
+                for tail in ([name, '/missing'], [name + '=/missing']):
+                    with self.subTest(tail=tail), patch.object(setup, 'main') as local_main:
+                        with self.assertRaises(SystemExit):
+                            main(['up', *tail])
+                        local_main.assert_not_called()
+
+    def test_mixed_legacy_forms_route_without_starting_local_setup(self):
+        from service.package_install import main
+        for tail in (['--configuration=/missing', '--scope', '/missing'],
+                     ['--configuration', '/missing', '--scope=/missing']):
+            with self.subTest(tail=tail), patch.object(setup, 'main') as local_main:
+                with self.assertRaises(SystemExit):
+                    main(['up', *tail])
+                local_main.assert_not_called()
+
+    def test_local_values_containing_legacy_option_names_stay_local(self):
+        from service.package_install import main
+        tail = ['--reference-text=--configuration=config.json',
+                '--root', '/tmp/--scope=scope.json',
+                '--clone-bundle=contains--setup-bundle=x']
+        with patch.object(setup, 'main', return_value='local') as local_main:
+            self.assertEqual(main(['up', *tail]), 'local')
+            local_main.assert_called_once_with(['--local-unqualified', *tail])
+
+
 if __name__=='__main__': unittest.main()
