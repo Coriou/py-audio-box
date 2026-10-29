@@ -167,7 +167,7 @@ def create_voice_app(dispatcher, *, credentials, upload_deadline=15.0, installed
         body['operations'] = list(dict.fromkeys(('discover', *VOICE_READS, *ASSET_OPERATIONS, *PRODUCTION_OPERATIONS)))
         if configured:
             body['operations'] = [op for op in body['operations'] if op not in ('voice_preset_register','voice_prepare','voice_results','voice_save','speech_generate') or op in configured['operations']]
-        if installed is not None and not (configured and configured['engine']=='pocket-tts'):
+        if installed is not None and not (configured and configured['engine'] in ('pocket-tts', 'qwen')):
             body['operations'] = [op for op in body['operations'] if op not in ('voice_prepare', 'voice_results', 'voice_save')]
         if not dispatcher.call('audio_export_available',request.state.principal): body['operations'] = [op for op in body['operations'] if op != 'audio_export']
         if not dispatcher.call('status')['retry_available']: body['operations'] = [op for op in body['operations'] if op != 'job_retry']

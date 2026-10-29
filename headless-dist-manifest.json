@@ -135,6 +135,7 @@
     "service/installed_qwen_daemon.py",
     "service/qwen_local_config.py",
     "service/qwen_service_config.py",
+    "service/qwen_service_setup.py",
     "service/qwen_snapshot.py",
     "service/job_control.py",
     "service/lifecycle_cli.py",
