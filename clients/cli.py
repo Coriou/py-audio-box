@@ -26,9 +26,25 @@ def main(argv=None):
     parser = argparse.ArgumentParser(description='Named HTTP reads; capabilities describe configured service availability')
     parser.add_argument('--url', default=None)
     parser.add_argument('--credential', default=None, help='Explicit bearer credential; prefer SPEECH_CREDENTIAL environment for process privacy.')
+    parser.add_argument('--installation', help='Explicit local installation root containing install.json and credential.json.')
     commands = parser.add_subparsers(dest='command', required=True)
     commands.add_parser('discover')
     commands.add_parser('status')
+    enroll = commands.add_parser('enroll', help='Upload, prepare, audition and save one trusted reference voice.')
+    enroll.add_argument('--name', required=True)
+    enroll.add_argument('--wav', type=Path)
+    enroll.add_argument('--asset-id')
+    enroll.add_argument('--reference-text', required=True)
+    enroll.add_argument('--audition-text', required=True)
+    enroll.add_argument('--job-id', help='Resume an already submitted preparation job.')
+    enroll.add_argument('--wait-seconds', type=int, default=120)
+    speak = commands.add_parser('speak', help='Generate one output from a saved named voice.')
+    speak.add_argument('--voice', required=True)
+    speak.add_argument('--text', required=True)
+    speak.add_argument('--output', type=Path, required=True)
+    speak.add_argument('--job-id', help='Resume an already submitted generation job.')
+    speak.add_argument('--voice-version-id', help='Pin the saved version when replaying an uncertain submission.')
+    speak.add_argument('--wait-seconds', type=int, default=120)
     detail = commands.add_parser('operation-detail')
     detail.add_argument('operation_id')
     voices = commands.add_parser('voices')
@@ -73,10 +89,21 @@ def main(argv=None):
     download.add_argument('asset_id')
     download.add_argument('--output', type=Path, required=True)
     args = parser.parse_args(argv)
-    import os
-    http = HTTP(args.url, credential=args.credential or os.environ.get('SPEECH_CREDENTIAL'))
     try:
-        if args.command == 'discover': result = http.call('discover', {})
+        from clients.config import resolve
+        url, credential = resolve(args.url, args.credential, args.installation)
+        http = HTTP(url, credential=credential)
+        if args.command == 'enroll':
+            from clients.workflow import enroll
+            result = enroll(http, name=args.name, file=args.wav, asset_id=args.asset_id,
+                            reference_text=args.reference_text, audition_text=args.audition_text,
+                            job_id=args.job_id, seconds=args.wait_seconds)
+        elif args.command == 'speak':
+            from clients.workflow import speak
+            result = speak(http, voice=args.voice, text=args.text, output=args.output,
+                           job_id=args.job_id, voice_version_id=args.voice_version_id,
+                           seconds=args.wait_seconds)
+        elif args.command == 'discover': result = http.call('discover', {})
         elif args.command == 'status': result = http.get('/v1/status')
         elif args.command == 'operation-detail':
             from urllib.parse import quote

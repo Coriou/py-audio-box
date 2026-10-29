@@ -27,6 +27,16 @@ def tools():
         inputSchema=input_schema(op)) for op in dict.fromkeys((*IMPLEMENTED, *VOICE_READS, *PRODUCTION_OPERATIONS))]
     if os.environ.get('SPEECH_UPLOAD_ROOT'):
         items.append(Tool(name='speech_asset_upload_file', description='Upload a client-host WAV from an operator-authorized filesystem root (SPEECH_UPLOAD_ROOT). Grants host filesystem read permission within that root; relative no-follow paths only. Creates an asset, not a cloned voice. No inline audio.', inputSchema={'type':'object','properties':{'path':{'type':'string','minLength':1,'maxLength':4096}},'required':['path'],'additionalProperties':False}))
+    items.append(Tool(name='speech_enroll', description='Prepare and save a trusted already uploaded WAV as a named voice. Bounded wait; returns job and asset handles on timeout. Reuse identical arguments to replay.', inputSchema={
+        'type':'object','properties':{'name':{'type':'string','minLength':1,'maxLength':128},'asset_id':{'type':'string','minLength':1,'maxLength':128},
+            'reference_text':{'type':'string','minLength':1,'maxLength':10000},'audition_text':{'type':'string','minLength':1,'maxLength':10000},
+            'job_id':{'type':'string','minLength':1,'maxLength':128},'wait_seconds':{'type':'integer','minimum':0,'maximum':120}},
+        'required':['name','asset_id','reference_text','audition_text'],'additionalProperties':False}))
+    items.append(Tool(name='speech_speak', description='Generate from one saved named voice; returns an artifact and asset handle. Bounded wait and replayable key; no inline audio.', inputSchema={
+        'type':'object','properties':{'voice':{'type':'string','minLength':1,'maxLength':128},'text':{'type':'string','minLength':1,'maxLength':10000},
+            'job_id':{'type':'string','minLength':1,'maxLength':128},'voice_version_id':{'type':'string','minLength':1,'maxLength':128},
+            'wait_seconds':{'type':'integer','minimum':0,'maximum':120}},
+        'required':['voice','text'],'additionalProperties':False}))
     items += [Tool(name='speech_status', description='Configured service status, preset selectors and next action; no discovery-time model loading.',
                    inputSchema={'type':'object','properties':{},'additionalProperties':False}),
               Tool(name='speech_operation_detail', description='Read one canonical operation schema and fixture availability; never executes it.',
@@ -49,8 +59,25 @@ async def call_tool(name, arguments):
     try:
         if not isinstance(arguments, dict):
             raise Failure('invalid_request', 'Expected named request fields.', 'request')
-        transport = HTTP(credential=os.environ.get('SPEECH_CREDENTIAL'))
-        if name == 'speech_asset_upload_file':
+        from clients.config import resolve
+        url, credential = resolve()
+        transport = HTTP(url, credential=credential)
+        if name in ('speech_enroll','speech_speak'):
+            from jsonschema import Draft202012Validator
+            tool = next(t for t in tools() if t.name == name)
+            Draft202012Validator(tool.inputSchema).validate(arguments)
+            from clients.workflow import enroll, speak
+            if name == 'speech_enroll':
+                body = await asyncio.to_thread(enroll, transport, name=arguments['name'],
+                    asset_id=arguments['asset_id'], reference_text=arguments['reference_text'],
+                    audition_text=arguments['audition_text'], job_id=arguments.get('job_id'),
+                    seconds=arguments.get('wait_seconds',120))
+            else:
+                body = await asyncio.to_thread(speak, transport, voice=arguments['voice'],
+                    text=arguments['text'], job_id=arguments.get('job_id'),
+                    voice_version_id=arguments.get('voice_version_id'),
+                    seconds=arguments.get('wait_seconds',120))
+        elif name == 'speech_asset_upload_file':
             root = os.environ.get('SPEECH_UPLOAD_ROOT')
             if not root: raise Failure('forbidden','Client-host filesystem upload is not configured.')
             if set(arguments) != {'path'} or not isinstance(arguments['path'], str) or not 0 < len(arguments['path']) <= 4096:
@@ -80,6 +107,8 @@ async def call_tool(name, arguments):
         return result(problem('invalid_request', 'Request does not match named canonical schema.', 'request'), True)
     except ConnectionError:
         return result(problem('not_ready', 'HTTP transport unavailable.', action='Start the configured HTTP service.'), True)
+    except OSError:
+        return result(problem('invalid_request', 'Local installation or media unavailable.', 'request'), True)
 
 async def main():
     async with stdio_server() as (reader, writer):
