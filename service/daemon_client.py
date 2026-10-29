@@ -206,11 +206,18 @@ class Docker:
 
     def identity(self):
         info=self.json(['info','--format','{{json .}}'])
+        self.cgroup_driver=info.get('CgroupDriver')
         return dv.daemon(dict(endpoint=self.endpoint,id=info['ID'],os=info['OSType'],architecture=info['Architecture'],
             security=info['SecurityOptions'],cgroup=info['CgroupVersion']))
 
+    def require_resident_cgroupfs(self):
+        if self.cgroup_driver!='cgroupfs':
+            raise ValueError('qwen_service_cgroupfs_required: Docker info CgroupDriver must be cgroupfs')
+        self.resident_cgroupfs=True
+
     def check(self):
         if self.identity()!=self.frozen: raise ValueError('daemon_endpoint_identity_changed')
+        if getattr(self,'resident_cgroupfs',False): self.require_resident_cgroupfs()
 
     def container(self,identity):
         if not isinstance(identity,str) or not dv.HEX.fullmatch(identity): raise ValueError('daemon_exact_container_id')
@@ -465,6 +472,7 @@ def main(argv=None, *, family=None):
             if any(e['bytes']>48000 for e in inputs if e['role'] in ('config','credential')):
                 raise ValueError('daemon_private_input_budget')
             d=Docker(a.context,family=family)
+            if service: d.require_resident_cgroupfs()
             installation=secrets.token_hex(16)
             # Exclusive client intent before ANY daemon mutation. Partial volumes
             # and exact IDs remain in append-only sibling receipts, never rollback.
@@ -517,6 +525,7 @@ def main(argv=None, *, family=None):
             b=dv.binding(retained['binding'],family=family); config=retained['configuration']; inputs=[]
             d=Docker(endpoint=b['daemon']['endpoint'],family=family)
             if d.frozen!=b['daemon']: raise ValueError('daemon_handle_context_changed')
+            if 'custody' in b: d.require_resident_cgroupfs()
             if 'model_storage' in b:
                 from service import shared_models as sm
                 from service.shared_model_client import Client
@@ -544,7 +553,9 @@ def main(argv=None, *, family=None):
             result=d.exchange(identity,phase,nonce,config,b,inputs if phase=='install' else [])
             exclusive(intent+'.terminal',dict(id=identity,result=result))
         print(encoded(result).decode())
-    except (Exception,KeyboardInterrupt):
+    except (Exception,KeyboardInterrupt) as exc:
+        if isinstance(exc,ValueError) and str(exc).startswith('qwen_service_cgroupfs_required:'):
+            raise SystemExit(str(exc)) from None
         raise SystemExit('speech-box docker refused; retain handle, volumes and containers for review') from None
 
 

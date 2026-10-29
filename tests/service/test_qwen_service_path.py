@@ -2,12 +2,14 @@
 import copy
 import json
 import unittest
+from types import SimpleNamespace
 from unittest.mock import patch
 
 from contracts import validate as oracle
 from service import installed_qwen_daemon as qd, install_policy as ip
 from service import execution_context as ec, daemon_volumes as dv
 from service.qwen_service_config import build
+from service import daemon_client as dc
 from worker.runtime_protocol import execution
 
 
@@ -42,6 +44,68 @@ class ServicePathTests(unittest.TestCase):
         self.enterContext(patch.dict(qd.SERVICE_MODELS,{'clone':(qd.CHECKPOINT,qd.REVISION,self.clone_digest)}))
         self.enterContext(patch.object(qd,'MANIFEST_SHA256',self.clone_digest))
         self.config=build('alice',self.clone,self.ryan,self.profile,base['budget'],base['images'])
+
+    def test_resident_driver_gate_precedes_docker_mutation(self):
+        image=self.config['images']['control']
+        request=dict(configuration=self.config,helper_image=image,
+            inputs=[dict(role='config',source='config',bytes=100),dict(role='credential',source='credential',bytes=100)],
+            cpu=dict(control=10**9,worker=2*10**9),
+            tmpfs={r:dict(bytes=65536,inodes=64) for r in ('control','worker')},
+            control_port=8765,custody='/sys/fs/cgroup/speech-box-qwen/'+'b'*32)
+        info=dict(ID='daemon',OSType='linux',Architecture='amd64',SecurityOptions=[],CgroupVersion='2')
+        context=[dict(Endpoints=dict(docker=dict(Host='unix:///run/docker.sock')))]
+        credentials=SimpleNamespace(_credentials=[SimpleNamespace(principal='alice',scopes={'read','production-write'})])
+        for driver in (None,'systemd','unknown','cgroupfs'):
+            with self.subTest(driver=driver), \
+                 patch.object(dc,'read',side_effect=lambda path,*_:dc.encoded(request) if path=='request' else b'credential'), \
+                 patch.object(dc,'manifest',return_value=request['inputs']), \
+                 patch('service.auth.decode_credentials',return_value=credentials), \
+                 patch.object(dc.Docker,'json',side_effect=[context,dict(info,**({'CgroupDriver':driver} if driver is not None else {}))]), \
+                 patch.object(dc.Docker,'call',side_effect=RuntimeError('first Docker call after info')) as call:
+                with self.assertRaises(SystemExit) as failure:
+                    dc.main(['install','--context','local','--request','request','--handle','handle'],family=qd.FAMILY)
+                if driver=='cgroupfs':
+                    self.assertEqual(call.call_args.args[0][:2],['image','inspect'])
+                else:
+                    self.assertIn('CgroupDriver must be cgroupfs',str(failure.exception))
+                    call.assert_not_called()
+
+    def test_retained_resident_handle_rechecks_driver_before_mutation(self):
+        installation='a'*32
+        b=dict(policy=qd.LAUNCH,installation=installation,
+            daemon=dict(endpoint='unix:///run/docker.sock',id='daemon',os='linux',architecture='amd64',security=[],cgroup='2'),
+            volumes={r:dict(Name='pab-'+installation+'-'+r,Driver='local',Options=None,Scope='local',
+                Mountpoint='/var/lib/docker/volumes/'+r,CreatedAt='2026-10-25T00:00:00Z',
+                Labels={'speech-box.installation':installation,'speech-box.role':r}) for r in dv.ROLES},
+            helper_image=self.config['images']['control'],configuration_digest=dv.digest(self.config),
+            cpu=dict(control=10**9,worker=2*10**9),
+            tmpfs={r:dict(bytes=65536,inodes=64) for r in ('control','worker')},
+            control_port=8765,custody='/sys/fs/cgroup/speech-box-qwen/'+'b'*32)
+        retained=dict(binding=b,configuration=self.config)
+        info=dict(ID='daemon',OSType='linux',Architecture='amd64',SecurityOptions=[],CgroupVersion='2',CgroupDriver='systemd')
+        with patch.object(dc,'read',return_value=dc.encoded(retained)), \
+             patch.object(dc.Docker,'json',return_value=info), \
+             patch.object(dc.Docker,'call') as call:
+            with self.assertRaises(SystemExit) as failure:
+                dc.main(['status','--handle','handle'],family=qd.FAMILY)
+            self.assertIn('CgroupDriver must be cgroupfs',str(failure.exception))
+            call.assert_not_called()
+
+    def test_driver_is_not_added_to_legacy_daemon_record(self):
+        info=dict(ID='daemon',OSType='linux',Architecture='amd64',SecurityOptions=[],CgroupVersion='2',CgroupDriver='systemd')
+        with patch.object(dc.Docker,'json',return_value=info):
+            d=dc.Docker(endpoint='unix:///run/docker.sock',family=qd.FAMILY)
+            self.assertEqual(set(d.frozen),{'endpoint','id','os','architecture','security','cgroup'})
+            self.assertEqual(d.cgroup_driver,'systemd')
+            d.check()
+            with self.assertRaisesRegex(ValueError,'CgroupDriver must be cgroupfs'):
+                d.require_resident_cgroupfs()
+
+        with patch.object(dc.Docker,'json',side_effect=[dict(info,CgroupDriver='cgroupfs'),info]):
+            d=dc.Docker(endpoint='unix:///run/docker.sock',family=qd.FAMILY)
+            d.require_resident_cgroupfs()
+            with self.assertRaisesRegex(ValueError,'CgroupDriver must be cgroupfs'):
+                d.check()
 
     def test_builder_configuration_launch_and_one_principal(self):
         self.assertTrue(ip.qwen_service(self.config))
