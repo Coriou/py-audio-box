@@ -2,6 +2,7 @@
 import importlib.util
 import json
 from pathlib import Path
+import re
 from unittest import mock
 import sys
 import tempfile
@@ -80,6 +81,7 @@ class RealAudioControlTests(unittest.TestCase):
                  mock.patch.object(gate.shutil, 'disk_usage', return_value=mock.Mock(free=30*gate.GIB)), \
                  mock.patch.object(Path, 'is_file', return_value=True), \
                  mock.patch.object(Path, 'read_text', return_value='MemAvailable: 2621440 kB\n'), \
+                 mock.patch.object(gate.sys, 'executable', '/home/private-operator/private-env/bin/python3.11'), \
                  mock.patch.object(gate, 'json_command') as docker, \
                  mock.patch.object(gate, 'command') as acquisition:
                 with mock.patch.object(gate.sys, 'version_info', (3, 11, 0)):
@@ -93,6 +95,10 @@ class RealAudioControlTests(unittest.TestCase):
             self.assertEqual(receipt['steps'], [])
             self.assertEqual(receipt['command_log'], [])
             self.assertEqual(receipt['evidence'], 'preflight_only')
+            self.assertEqual(receipt['host']['python_implementation'], 'CPython')
+            self.assertNotIn('python_executable', receipt['host'])
+            self.assertNotIn('private-operator', report_path.read_text())
+            self.assertNotIn('private-env', report_path.read_text())
             self.assertEqual(receipt['real_voice_acceptance'], 'not_tested')
             docker.assert_not_called(); acquisition.assert_not_called()
 
@@ -156,6 +162,31 @@ class RealAudioControlTests(unittest.TestCase):
                 self.assertEqual(receipt['command_log'], [])
                 acquisition.assert_not_called()
 
+    def test_archive_failure_records_installed_attempt_without_audio(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            work = root/'work'; work.mkdir()
+            reference = root/'reference.wav'; reference.write_bytes(b'reference')
+            transcript = root/'reference.txt'; transcript.write_text('Exact words')
+            report_path = root/'report.json'
+            argv = ['gate', '--reviewed-sha', self.SHA, '--work', str(work),
+                    '--reference-wav', str(reference), '--reference-text-file', str(transcript),
+                    '--cache-root', str(root), '--report', str(report_path),
+                    '--reference-kind', 'human-recorded', '--reference-authorized']
+            with mock.patch.object(sys, 'argv', argv), \
+                 mock.patch.object(gate, 'verify_source'), \
+                 mock.patch.object(gate, 'check_host', return_value={}), \
+                 mock.patch.object(gate, 'wav', return_value={'sha256': 'reference'}), \
+                 mock.patch.object(gate, 'command', side_effect=RuntimeError('command_failed:python:7')) as archive:
+                self.assertEqual(gate.main(), 1)
+            receipt = json.loads(report_path.read_text())
+            self.assertEqual(receipt['failure'], 'command_failed:python:7')
+            self.assertEqual(receipt['stage'], 'installed_setup')
+            self.assertEqual(receipt['evidence'], 'installed_attempt_no_audio_yet')
+            self.assertEqual(receipt['steps'], [])
+            self.assertEqual(receipt['real_voice_acceptance'], 'not_tested')
+            archive.assert_called_once()
+
     def test_source_admission_requires_exact_clean_checkout(self):
         def result(stdout):
             return mock.Mock(stdout=stdout)
@@ -197,7 +228,7 @@ class RealAudioControlTests(unittest.TestCase):
             secret = 'credential-secret reference-transcript /private/user/audio.wav'
             script = 'import sys;sys.stdout.write(sys.argv[1]*20000);sys.stderr.write("first cause\\n"+sys.argv[1]+"\\nlast cause\\n");sys.exit(7)'
             try:
-                with self.assertRaisesRegex(RuntimeError, 'command_failed:python:7'):
+                with self.assertRaisesRegex(RuntimeError, 'command_failed:' + re.escape(Path(sys.executable).name) + ':7'):
                     gate.command([sys.executable, '-c', script, secret], phase='build_control', capture=False)
                 receipt = gate.COMMAND_LOG[-1]
                 public = json.dumps(receipt)
@@ -290,6 +321,7 @@ class RealAudioControlTests(unittest.TestCase):
             self.assertEqual(len({s['job_id'] for s in report['steps']}), 4)
             self.assertEqual(len({s['text_sha256'] for s in report['steps']}), 4)
             self.assertTrue(all(s['audio']['rms'] > 0 for s in report['steps']))
+            self.assertEqual(report['evidence'], 'real_installed_audio_only')
 
     def test_primary_failure_survives_stop_failure(self):
         with tempfile.TemporaryDirectory() as tmp:

@@ -237,7 +237,8 @@ def check_host(work, report=None):
                 memory = int(line.split()[1]) * 1024
                 break
     host = dict(platform_system=platform.system(), platform_machine=platform.machine(),
-                python_version=platform.python_version(), python_executable=sys.executable,
+                python_version=platform.python_version(),
+                python_implementation='CPython' if sys.implementation.name == 'cpython' else 'other',
                 docker_cli_available=shutil.which('docker') is not None,
                 docker_socket_present=Path('/var/run/docker.sock').exists(),
                 available_ram_bytes=memory, required_available_ram_bytes=12*GIB,
@@ -382,6 +383,7 @@ def main():
         if args.reference_wav.stat().st_size > 1048576: fail('reference_exceeds_service_budget')
         report['reference'] = wav(args.reference_wav)
         report['stage'] = 'installed_setup'
+        report['evidence'] = 'installed_attempt_no_audio_yet'
         archive = work/'speech-box.zip'
         _, sec = command([sys.executable, str(BASE/'scripts/headless-install.py'),'archive','--output',str(archive)], timeout=60, capture=False)
         report['steps'].append(dict(name='archive',seconds=sec,sha256=sha(archive)))
