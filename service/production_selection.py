@@ -178,6 +178,17 @@ def choose(dispatcher, contexts, request, *, inventory=None, measurements=None,
             if permitted(context,p):
                 if len(contexts)!=1:raise SelectionUnavailable(['qualification_single_candidate_required'])
                 return context  # Explicit bounded test authority; never measured/ready.
+        if spec and spec.engine == 'qwen' and dispatcher._local_qwen_active():
+            from service.qwen_local_lane import context_allowed
+            if context_allowed(context, p):
+                if len(contexts)!=1:raise SelectionUnavailable(['qualification_single_candidate_required'])
+                override = request.get('device_override')
+                if override is not None and override != {'family':'cpu','index':0}:
+                    raise SelectionUnavailable(['device_override_unavailable'])
+                if (spec.memory_bytes > dispatcher.admission.budget['ram_bytes'] or
+                        p['limits']['expensive_slots'] < 1):
+                    raise SelectionUnavailable(['memory_insufficient'])
+                return context  # Installed local execution; profile and receipt remain unqualified.
         conditioning = oracle.canonical_hash(plan['voice_versions'] if plan['voice_versions'] else
                                              resolved.get('reuse_configuration'))
         measurement = (measurements or {}).get(name)

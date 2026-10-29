@@ -177,6 +177,8 @@ class SetupTests(unittest.TestCase):
             demand=Admission.demand(SimpleNamespace(native_availability=InstalledAvailability().check_availability),context,[profile])
             self.assertEqual((demand['slots'],demand['ram_bytes'],demand['pids']),
                              (1,4*1024**3,48))
+            self.assertLess(demand['disk_bytes'], profile['limits']['disk_bytes'])
+            self.assertEqual(demand['disk_bytes'], demand['attempt_disk_bytes'])
         other=dict(profile,config_revision='production-v1')
         self.assertFalse(context_allowed(config['contexts']['alice']['Ryan'],other))
         with self.assertRaises(Exception):

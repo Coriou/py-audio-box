@@ -87,9 +87,13 @@ class Admission:
                 if spec.device.startswith('cuda:') and limits['vram_bytes'] <= 0: raise ValueError('cuda_memory_required')
             if spec.engine == 'qwen' and spec.device == 'mps':
                 return native_demand(context)
+            disk_bytes = limits['disk_bytes']
+            if local_qwen:
+                from service.qwen_local_lane import attempt_disk_bytes
+                disk_bytes = attempt_disk_bytes(context,selected)
             return dict(configuration=oracle.canonical_hash(context['execution']),
                         slots=1,ram_bytes=spec.memory_bytes,vram_bytes=limits['vram_bytes'] if spec.engine == 'qwen' and spec.device.startswith('cuda:') else 0,pids=1 if spec.engine == 'qwen' and spec.device == 'mps' else 48,
-                        disk_bytes=limits['disk_bytes'],attempt_disk_bytes=limits['disk_bytes'])
+                        disk_bytes=disk_bytes,attempt_disk_bytes=disk_bytes)
         # Closed installed runtime capability, not a general engine/profile adapter.
         if plan['resolved']['profile']['id']!='cpu-synthetic':
             raise ValueError('resource_runtime_unsupported')

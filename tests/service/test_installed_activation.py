@@ -108,6 +108,120 @@ class ActivationTests(unittest.TestCase):
             time.sleep(.02)
         self.fail('bounded source wait expired')
 
+    def test_generated_local_qwen_activation_and_inert_preset_admission(self):
+        """Real setup, owner, reconciliation and admission; injected host custody/ML only."""
+        from types import MethodType
+        from service import installed_pocket_daemon as pd, installed_qwen_daemon as qd
+        from service import qwen_service_setup as setup
+        from service.execution_context import QwenContexts
+        from service.domain import production_call
+        from tests.service.test_qwen_service_setup import SetupTests
+
+        source = SetupTests(); source.setUp(); self.addCleanup(source.doCleanups)
+        source.request['measurement'] = None
+        config = setup.generate(source.request, verifier=lambda *args: None)['configuration']
+        profile = config['profiles'][0]
+        self.assertEqual((profile['support'], profile['readiness'], profile['verification'],
+                          profile['qualification_receipt']), ('unqualified', 'not_ready', 'synthetic', ''))
+        from worker.engines.qwen_execution import inventory_from_wire
+        contexts = config['contexts']['alice']
+        inventory = inventory_from_wire(contexts['clone']['execution']['hardware'])
+        bundles = {key: source.request['bundles'][name] for name, context in contexts.items()
+                   for key in context['execution']['bundles']}
+        references = {key: value for context in contexts.values()
+                      for key, value in context['execution']['references'].items()}
+        with patch.object(QwenContexts, '_hardware'), patch('worker.engines.qwen.verify_bundle'):
+            provider = QwenContexts(config['contexts'], bundles, references, inventory,
+                                    config['profiles'], installed_family=qd.FAMILY)
+        self.runtime.family = qd.FAMILY
+        self.runtime.admission_open = True
+        self.runtime.check_availability = MethodType(lambda runtime, context: None, self.runtime)
+        def inert_prepare(runtime, authority, fixture):
+            runtime.authority = authority
+            return self.fixture.lane + '/' + self.fixture.hello['boot'] + '/allocation'
+        self.runtime.prepare = MethodType(inert_prepare, self.runtime)
+        self.runtime.finish.set()
+        self.runtime.cancel = True
+
+        # The existing installed fixture owns real SQLite and reconciliation.
+        # Its host/notification evidence belongs to Kokoro, so substitute only
+        # that custody bracket; the InstalledActivation type and dispatcher loop
+        # remain real. No Docker, listener, worker inference or audio is used.
+        def prepared(activation, runtime, root):
+            activation.checked = {'source_fixture': True}
+            activation.prepared = runtime, Path(root).absolute()
+            activation.expectation = None
+        with patch.object(e.InstalledActivation, 'prepare', prepared), \
+             patch.object(e.InstalledActivation, 'postcheck'), \
+             patch.object(QwenContexts, '_hardware'), \
+             patch('service.execution_context.verify_qwen_local'):
+            activation = e.InstalledActivation(self.waiting, config,
+                launch_policy=pd.launch(qd.FAMILY), family=qd.FAMILY)
+            class InertASGI:
+                def __init__(self, **kwargs):
+                    self.router = SimpleNamespace(routes=[], lifespan_context=None)
+                    self.state = SimpleNamespace()
+                def mount(self, path, app):
+                    self.router.routes.append(app)
+            with patch.dict(sys.modules, {'fastapi': SimpleNamespace(FastAPI=InertASGI)}):
+                app = e._owned_app(lambda: (SimpleNamespace(close=lambda: None),
+                    lambda: activation.prepare(self.runtime, self.root),
+                    lambda: Dispatcher(self.root, staging=self.stage, runtime=self.runtime,
+                        profiles=config['profiles'], budget=config['budget'],
+                        production_contexts=provider, installed_activation=activation)),
+                    lambda owner: InertASGI())
+            async def journey():
+              async with app.router.lifespan_context(app):
+                owner = app.state.dispatcher
+                status = self.wait(lambda: (s if (s := owner.call('status'))['reconciled'] else None))
+                self.assertTrue(status['persistent_activation'], status)
+                self.assertTrue(status['resource_activation'], status)
+                self.assertFalse(owner.call('configured_profiles')[0]['support'] == 'qualified')
+                for target, field, changed in ((owner, 'quarantined', True),
+                        (owner, 'resource_fault', True), (owner, 'integrity_fault', True),
+                        (owner, 'persistence_fault', True), (owner, 'reconciled', False),
+                        (activation, 'checked', None),
+                        (activation, 'prepared', (self.runtime, Path('/wrong-root'))),
+                        (self.runtime, 'family', object()),
+                        (provider, 'installed_family', object())):
+                    original = getattr(target, field)
+                    setattr(target, field, changed)
+                    try:
+                        self.assertFalse(owner._local_qwen_active(), field)
+                    finally:
+                        setattr(target, field, original)
+                forged = copy.deepcopy(owner.profiles)
+                forged[0]['config_revision'] = 'qwen-local-unqualified-forged'
+                owner.profiles, original = forged, owner.profiles
+                try:
+                    self.assertFalse(owner._local_qwen_active())
+                finally:
+                    owner.profiles = original
+                uploaded = owner.call('asset_ingest', 'alice',
+                    Path(source.request['reference']['wav']).read_bytes())
+                prepare = dict(asset_id=uploaded['id'], in_tick=0, out_tick=8,
+                    reference_text=source.request['reference']['text'],
+                    audition_text='Inert local audition.',
+                    identity=contexts['clone']['plan']['resolved']['identity']['effective'])
+                prepared_job = owner.call('production_prepare', 'alice', prepare, key='local-prepare')
+                self.assertEqual(prepared_job['state'], 'queued')
+                template = contexts['Ryan']
+                saved = production_call(owner, 'alice', 'voice_preset_register',
+                    dict(preset='Ryan', voice_id='local-ryan', expected_revision=0), 'local-register')
+                request = copy.deepcopy(template['plan']['request'])
+                request['voice_version_id'] = saved['version']['id']
+                receipt = production_call(owner, 'alice', 'speech_generate', request, 'local-generate')
+                self.assertEqual(receipt['state'], 'queued')
+                self.assertEqual(owner.call('production_job', 'alice', dict(job_id=receipt['job_id']))['id'],
+                                 receipt['job_id'])
+                # History remains readable after the lane closes; fresh commands do not.
+                owner.quarantined = True
+                self.assertFalse(owner.call('status')['persistent_activation'])
+                with self.assertRaises(ValueError):
+                    owner.call('production_preset_register', 'alice',
+                        dict(preset='Ryan', voice_id='closed', expected_revision=0), key='closed-register')
+            asyncio.run(journey())
+
     def test_post_core_private_reader_under_lifetime_lock(self):
         from service import recovery
         reader=recovery.installed_startup_read; phases=[]

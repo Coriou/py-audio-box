@@ -4,6 +4,7 @@ REVISION = 'qwen-local-unqualified-v1'
 MEMORY_BYTES = 4 * 1024**3
 DISK_BYTES = 10 * 1024**3
 DEADLINE_SECONDS = 600
+ATTEMPT_OVERHEAD_BYTES = 16 * 1024**2
 
 
 def profile_allowed(profile):
@@ -27,3 +28,15 @@ def context_allowed(context, profile):
             resident_qwen_model(spec) in ('clone','Ryan') and
             spec.memory_bytes <= profile['limits']['ram_bytes'] and
             spec.timeout_s <= profile['limits']['deadline_seconds'])
+
+
+def attempt_disk_bytes(context, profile):
+    """Reserve bounded writable attempt data, not the read-only model ceiling."""
+    if not context_allowed(context, profile):
+        raise ValueError('local_qwen_context_required')
+    from worker.runtime_protocol import execution
+    spec = execution(context)
+    amount = spec.max_output_bytes + spec.reference_bytes + ATTEMPT_OVERHEAD_BYTES
+    if amount > profile['limits']['disk_bytes']:
+        raise ValueError('local_qwen_disk_limit')
+    return amount

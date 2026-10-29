@@ -439,7 +439,8 @@ def cpu_clone_context(template, principal, request, asset, *, version=None):
     descriptor.pop('phase', None)
     descriptor.update(reference_id=asset['id'], reference_sha256=asset['sha256'],
         reference_frames=asset['frames'], reference_rate=asset['sample_rate'],
-        reference_bytes=44+2*asset['frames'], timeout_s=QWEN_CPU_SECONDS)
+        reference_bytes=44+2*asset['frames'],
+        timeout_s=min(QWEN_CPU_SECONDS, template['plan']['resolved']['profile']['limits']['deadline_seconds']))
     if descriptor['reference_bytes'] > 1048576 or asset['frames'] > asset['sample_rate']*60:
         raise Refused('preparation_reference_limit')
     settings = copy.deepcopy(resolved['settings'])

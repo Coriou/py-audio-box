@@ -218,6 +218,38 @@ class Dispatcher:
         from service.native_cpu_activation import NativeCPUActivation
         return self.installed_checked and type(self.installed_activation) is NativeCPUActivation and self._lifecycle_ready()
 
+    def _local_qwen_active(self):
+        """Execution authority for the exact installed, unqualified Qwen lane."""
+        from service.entrypoint import InstalledActivation
+        from service.execution_context import QwenContexts
+        from service.installed_qwen_daemon import FAMILY
+        from service.qwen_local_lane import context_allowed, profile_allowed
+        from contracts import validate as oracle
+        activation = self.installed_activation
+        contexts = self.production_contexts
+        if (not self.installed_checked or type(activation) is not InstalledActivation or
+                activation.family is not FAMILY or getattr(self.runtime, 'family', None) is not FAMILY or
+                type(contexts) is not QwenContexts or contexts.installed_family is not FAMILY or
+                not contexts.service or len(self.profiles) != 1 or
+                activation.checked is None or activation.prepared != (self.runtime, self.root.absolute()) or
+                self.profiles != activation.configuration['profiles'] or
+                not self._lifecycle_ready()):
+            return False
+        profile = self.profiles[0]
+        try:
+            configured = {(principal, name): context for principal, group in activation.configuration['contexts'].items()
+                          for name, context in group.items()}
+            return (profile_allowed(profile) and bool(configured) and
+                    set(contexts._contexts) == set(configured) and
+                    all(oracle.profile_snapshot(profile) == context['plan']['resolved']['profile'] and
+                        context == configured[key] and context_allowed(context, profile)
+                        for key, context in ((key, json.loads(raw)) for key, raw in contexts._contexts.items())))
+        except (KeyError, TypeError, ValueError):
+            return False
+
+    def _execution_active(self):
+        return self._ready() or self._native_cpu_active() or self._local_qwen_active()
+
     def _ready(self):
         return self._lifecycle_ready() and (not self.installed_checked or all(
                     p['support']=='qualified' and p['installation']=='installed' and
@@ -262,7 +294,7 @@ class Dispatcher:
                 context['plan']['request'], context=context, retry_of=old['id'])
             if job is None:
                 oracle.require(old['state'] in ('failed','cancelled') and all(a['reaped'] for a in old['attempts']), 'unsupported_control')
-                if not self._ready(): raise ValueError('not_ready')
+                if not (self._ready() or self._local_qwen_active()): raise ValueError('not_ready')
                 if self.core.db.execute("SELECT 1 FROM dispatches WHERE job_id=? AND (acked=0 OR phase='unknown')", (old['id'],)).fetchone():
                     raise ValueError('not_ready')
                 if self.core.db.execute('SELECT 1 FROM publications WHERE job_id=?',(old['id'],)).fetchone(): raise ValueError('unsupported_control')
@@ -325,14 +357,14 @@ class Dispatcher:
                 if not row: self.core.db.execute('INSERT INTO catalogue_requests VALUES(?,?,?,?,?)', (principal,'job_cancel',key,fingerprint,encode(payload)))
             return self._command('cancel', payload['job_id'])
         if op == 'production_preset_register':
-            if not self.installed_checked or not (self._ready() or self._native_cpu_active()) or self.production_contexts is None:
+            if not self.installed_checked or not self._execution_active() or self.production_contexts is None:
                 raise ValueError('not_ready')
             resolver = getattr(self.production_contexts, 'preset_version', None)
             if resolver is None: raise ValueError('not_ready')
             version = resolver(principal, payload['preset'], payload['voice_id'])
             return domain.register_preset(principal, key, version, expected_revision=payload['expected_revision'])
         if op == 'production_save':
-            if self.installed_checked and not self._ready(): raise ValueError('not_ready')
+            if self.installed_checked and not (self._ready() or self._local_qwen_active()): raise ValueError('not_ready')
             if not self._activation_open() or self.closing or self.integrity_fault or self.persistence_fault: raise ValueError('not_ready')
             owned(payload['job_id'])
             return domain.save(principal, key, payload['job_id'], payload['candidate_id'], payload['voice_id'], expected_revision=payload['expected_revision'])
@@ -383,7 +415,7 @@ class Dispatcher:
         if op=='audio_export_available': return self._command('audio_export_availability',*args)=='implemented'
         if op.startswith('production_'): return self._production_command(op,*args,**kwargs)
         if op=='asset_ingest':
-            if self.installed_checked and not self._ready(): raise ValueError('not_ready')
+            if self.installed_checked and not (self._ready() or self._local_qwen_active()): raise ValueError('not_ready')
             from service.ingest import ingest_local
             if len(args)!=2 or type(args[1]) is not bytes or kwargs: raise ValueError('invalid_request')
             return ingest_local(self.core,*args)
@@ -435,14 +467,15 @@ class Dispatcher:
             except ValueError:row=None;self.error='dispatch_identity_unreadable'
             return dict(retry_available=not hasattr(self.runtime,'native'),reconciled=self.reconciled,quarantined=self.quarantined,
                 phase=row['phase'] if row else 'idle',runtime_id=row['runtime'] if row else None,
-                resource_activation=self._ready(),persistent_activation=self.enrolled and (self._ready() or self._native_cpu_active()),error=self.error,
+                resource_activation=self._ready() or self._local_qwen_active(),
+                persistent_activation=self.enrolled and self._execution_active(),error=self.error,
                 resource_fault=self.resource_fault,persistence_fault=self.persistence_fault,
                 stop_obligation=self.stop_obligation,
                 reservations=self.admission.store.rows(), integrity=self.integrity,
                 integrity_fault=self.integrity_fault)
         if op=='cancel':
             if not self._activation_open(): raise ValueError('persistent_activation_closed_until_C1')
-            if self.installed_checked and self.core.job(args[0])['state']=='queued' and not (self._ready() or self._native_cpu_active()): raise ValueError('not_ready')
+            if self.installed_checked and self.core.job(args[0])['state']=='queued' and not self._execution_active(): raise ValueError('not_ready')
             if self.integrity_fault and self.core.job(args[0])['state']=='queued':raise ValueError('integrity_blocks_release')
             job=self.core.request_cancel(*args,**kwargs,_cancel_unstarted=True,_admission=self.admission)
             self._interrupt_transfer(job['id'])
