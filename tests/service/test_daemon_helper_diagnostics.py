@@ -151,7 +151,15 @@ def test_observation_change_labels_reject_private_and_unknown_fields():
 def test_observe_keeps_callee_failure_and_prior_bracket_cause(capsys):
     from types import SimpleNamespace
     from copy import deepcopy
-    first={'control':{'State':{'Pid':1}},'worker':{'State':{'Pid':1}}}
+    first={role:{'State':{'Pid':1},
+                 'Mounts':[dict(Type='volume',Name=f'pab-{role}',
+                                Source=f'/var/lib/docker/volumes/pab-{role}/_data',
+                                Destination=f'/{role}',Driver='local',Mode='',RW=True,
+                                Propagation='')],
+                 'HostConfig':{'Mounts':[dict(Type='volume',Source=f'pab-{role}',
+                                               Target=f'/{role}',ReadOnly=False,
+                                               VolumeOptions={'NoCopy':True})]}}
+           for role in ('control','worker')}
     second=deepcopy(first);second['worker']['State']['Pid']=2
     startup={'hello':{'boot':'b'*32},'local':{'roots':{}}}
     h=SimpleNamespace(evidence='fixture',b={},export=False,pocket=False,
