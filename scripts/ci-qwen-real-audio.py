@@ -12,6 +12,7 @@ import math
 import os
 from pathlib import Path
 import platform
+import re
 import shutil
 import subprocess
 import sys
@@ -71,7 +72,8 @@ def command(args, *, timeout=600, cwd=None, capture=True):
     try:
         cp = subprocess.run(args, cwd=cwd, text=True, stdout=subprocess.PIPE if capture else subprocess.DEVNULL,
                             stderr=subprocess.PIPE if capture else subprocess.DEVNULL, timeout=timeout,
-                            env={**os.environ, 'HF_HUB_DISABLE_TELEMETRY': '1'})
+                            env={**os.environ, 'HF_HUB_DISABLE_TELEMETRY': '1',
+                                 'DOCKER_HOST': 'unix:///var/run/docker.sock', 'DOCKER_CONTEXT': 'default'})
     except subprocess.TimeoutExpired:
         COMMAND_LOG.append(dict(argv=safe, seconds=round(time.monotonic()-start,3), outcome='timeout'))
         fail('command_timeout:' + Path(args[0]).name)
@@ -86,6 +88,23 @@ def json_command(args, **kw):
     return json.loads(raw.splitlines()[-1]), duration
 
 
+def verify_source(reviewed_sha):
+    """Bind the archive and this harness to one clean, reviewed commit."""
+    if not re.fullmatch(r'[0-9a-f]{40}', reviewed_sha):
+        fail('exact_reviewed_sha_required')
+    # The harness runs through sudo; trust only its own exact checkout path.
+    git = ['git', '-c', 'safe.directory=' + str(BASE), '-C', str(BASE)]
+    head = subprocess.run([*git, 'rev-parse', 'HEAD'],
+                          text=True, capture_output=True, timeout=15, check=True).stdout.strip()
+    if head != reviewed_sha:
+        fail('reviewed_sha_mismatch')
+    dirty = subprocess.run([*git, 'status', '--porcelain=v1',
+                            '--untracked-files=all'], text=True, capture_output=True,
+                           timeout=15, check=True).stdout
+    if dirty:
+        fail('source_checkout_not_clean')
+
+
 def check_host(work):
     if platform.system() != 'Linux' or platform.machine() != 'x86_64' or os.geteuid() != 0:
         fail('requires_linux_amd64_root')
@@ -98,6 +117,9 @@ def check_host(work):
     memory = int(next(line.split()[1] for line in Path('/proc/meminfo').read_text().splitlines() if line.startswith('MemAvailable:'))) * 1024
     if memory < 12*GIB:
         fail('requires_12_gib_available_ram')
+    if (os.environ.get('DOCKER_HOST', 'unix:///var/run/docker.sock') != 'unix:///var/run/docker.sock'
+            or os.environ.get('DOCKER_CONTEXT', 'default') != 'default'):
+        fail('requires_local_docker_socket')
     version, _ = json_command(['docker','version','--format','{{json .Server}}'], timeout=15)
     if int(version['Version'].split('.')[0]) != 27:
         fail('requires_docker_27')
@@ -106,8 +128,6 @@ def check_host(work):
         fail('requires_local_rootful_cgroupfs_v2_amd64')
     if info.get('SecurityOptions') and any('rootless' in str(s) for s in info['SecurityOptions']):
         fail('requires_rootful_docker')
-    if os.environ.get('DOCKER_HOST','unix:///var/run/docker.sock') != 'unix:///var/run/docker.sock':
-        fail('requires_local_docker_socket')
     return dict(docker_version=version['Version'], docker_id=info.get('ID'), cgroup_driver='cgroupfs',
                 available_ram_bytes=memory, free_disk_bytes=shutil.disk_usage(work).free)
 
@@ -119,6 +139,27 @@ def extract_archive(archive, dest):
             fail('archive_members_invalid')
         z.extractall(dest)
     return dest/'speech-box'
+
+
+def snapshot_input(cache_root, descriptor):
+    """A missing snapshot means private staging acquisition, never a cache write."""
+    return cache_root/descriptor['checkpoint'].split('/')[-1]/'snapshots'/descriptor['revision']
+
+
+def stop_owned(report, handle, extracted, py):
+    if not (handle and handle.is_file() and extracted):
+        return
+    try:
+        stopped, sec = json_command([py or sys.executable, str(extracted/'speech-box'),
+                                     'docker-qwen', 'stop', '--handle', str(handle)],
+                                    cwd=extracted, timeout=180)
+        if stopped.get('phase') != 'stopped':
+            fail('owned_stop_receipt_missing')
+        report['stop'] = dict(seconds=sec, completed=True)
+    except Exception as exc:
+        report['stop'] = dict(failure=str(exc) if isinstance(exc, RuntimeError) else type(exc).__name__)
+        report['status'] = 'FAILED'
+        report.setdefault('failure', 'owned_stop_failed')
 
 
 def call_client(python, extracted, root, *args, timeout=610):
@@ -133,17 +174,18 @@ def main():
     p.add_argument('--reference-wav', type=Path, required=True)
     p.add_argument('--reference-text-file', type=Path, required=True)
     p.add_argument('--cache-root', type=Path, required=True, help='Private pinned HF snapshots, cache may initially be empty')
+    p.add_argument('--reviewed-sha', required=True, help='Exact reviewed source commit, not a moving branch')
     p.add_argument('--report', type=Path, required=True)
     args = p.parse_args()
-    report = dict(status='FAILED', evidence='real_installed_audio_only', source_sha=os.environ.get('GITHUB_SHA',''),
+    report = dict(status='FAILED', evidence='real_installed_audio_only',
+                  source_sha=args.reviewed_sha if re.fullmatch(r'[0-9a-f]{40}', args.reviewed_sha) else '',
                   steps=[], qualification='unqualified', command_log=COMMAND_LOG)
     handle = None
     extracted = None
     py = None
     start = time.monotonic()
     try:
-        if len(report['source_sha']) != 40 or any(c not in '0123456789abcdef' for c in report['source_sha']):
-            fail('exact_github_sha_required')
+        verify_source(args.reviewed_sha)
         work = args.work.resolve(strict=True)
         if any(work.iterdir()): fail('work_must_be_empty')
         host = check_host(work)
@@ -172,8 +214,7 @@ def main():
         for name, model in (('clone','clone'),('Ryan','Ryan')):
             descriptor = json.loads((extracted/'requirements/tts'/('qwen-0.6b-base.expected.json' if name=='clone' else 'qwen-0.6b-customvoice-cpu.expected.json')).read_text())
             # The cache snapshot is read-only input; repair downloads absent pinned bytes into private staging.
-            snapshot = args.cache_root/descriptor['checkpoint'].split('/')[-1]/'snapshots'/descriptor['revision']
-            snapshot.mkdir(parents=True, exist_ok=True)
+            snapshot = snapshot_input(args.cache_root, descriptor)
             out, sec = command([py,str(extracted/'speech-box'),'qwen-snapshot','--model',model,'--root',str(work/('stage-'+name)),
                                 '--snapshot',str(snapshot),'--cache-root',str(args.cache_root)], cwd=extracted, timeout=1300)
             bundles[name] = Path(out.splitlines()[-1])
@@ -229,7 +270,9 @@ def main():
         offline, sec=call_client(py,extracted,root,'speak','--voice','Ryan','--text','Offline service remains available.',
                                  '--output',work/'Ryan-offline.wav','--wait-seconds','600')
         if offline.get('state')!='succeeded': fail('offline_speech_failed')
-        report['steps'].append(dict(name='offline_service',seconds=sec,audio=wav(work/'Ryan-offline.wav')))
+        offline_output = work/'Ryan-offline.wav'
+        if not offline_output.is_file(): fail('offline_audio_missing')
+        report['steps'].append(dict(name='offline_service',seconds=sec,audio=wav(offline_output)))
         # Submit a fresh, deliberately long generation and cancel the confirmed job.
         selected, _=call_client(py,extracted,root,'voice','resolve','ci-reference',timeout=30)
         version_id=selected['version_ids'][-1]
@@ -265,14 +308,7 @@ def main():
         report['status']='FAILED'
         report['failure'] = str(exc) if isinstance(exc, RuntimeError) else type(exc).__name__
     finally:
-        if handle and handle.is_file() and extracted:
-            try:
-                stopped, sec=json_command([py or sys.executable,str(extracted/'speech-box'),'docker-qwen','stop','--handle',str(handle)],cwd=extracted,timeout=180)
-                report['stop']=dict(seconds=sec,completed=True)
-            except Exception as exc:
-                report['stop']=dict(failure=type(exc).__name__)
-                report['status']='FAILED'
-                report['failure']='owned_stop_failed'
+        stop_owned(report, handle, extracted, py)
         report['elapsed_seconds']=round(time.monotonic()-start,3)
         args.report.parent.mkdir(parents=True,exist_ok=True)
         args.report.write_text(json.dumps(report,indent=2,sort_keys=True)+'\n')
