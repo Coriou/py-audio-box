@@ -1,4 +1,7 @@
 import pytest
+import os
+import sys
+import time
 
 from service import daemon_helper, daemon_client
 
@@ -90,8 +93,7 @@ def test_known_helper_cause_crosses_host_boundary_without_secret(monkeypatch, ca
     records=capsys.readouterr().err.encode()
     assert b'daemon_helper_cause:up:final_refusal:daemon_helper_mountinfo' in records
     def attached(self, identity, phase, nonce, config, binding, source, stream):
-        stream.write(b'Docker daemon says SECRET\n'+records)
-        stream.flush()
+        stream.feed(b'Docker daemon says SECRET\n'+records)
         raise ValueError('daemon_phase_eof_retained')
     monkeypatch.setattr(daemon_client.Docker,'_exchange_attached',attached)
     client=object.__new__(daemon_client.Docker)
@@ -105,7 +107,81 @@ def test_unknown_helper_error_never_projects_payload(capsys):
     daemon_helper.diagnostic(ValueError('SECRET credential'),'up','final_refusal')
     records=capsys.readouterr().err.encode()
     assert b'daemon_helper_cause' not in records
-    import tempfile
-    with tempfile.TemporaryFile() as stream:
-        stream.write(records)
-        assert daemon_client.helper_refusal(stream,'up')=='up:final_refusal:unclassified:ValueError:unknown:0'
+    diagnostics=daemon_client.HelperDiagnostics('up')
+    diagnostics.feed(records)
+    assert diagnostics.refusal()=='up:final_refusal:unclassified:ValueError:unknown:0'
+
+
+def test_early_cause_survives_large_noisy_stderr_and_bounded_tail(monkeypatch):
+    record=(b'daemon_helper_diagnostic:up:operation_failed:ValueError:run:12\n'
+            b'daemon_helper_cause:up:operation_failed:daemon_helper_mountinfo\n')
+    script=("import sys; e=sys.stderr.buffer; e.write("+repr(record)+"); e.flush(); "
+            "e.write(b'PRIVATE_NOISE\\n'*200000); e.flush(); sys.stdin.buffer.readline()")
+    client=object.__new__(daemon_client.Docker)
+    client.argv=lambda _: [sys.executable,'-c',script]
+    client.container=lambda _: {'State':{'Running':True}}
+    client.env=os.environ.copy(); client.end=time.monotonic()+5
+    client.retained=[]
+    monkeypatch.setattr(daemon_client.dv,'inspect_container',lambda *a,**k: None)
+    spawned=[]; popen=daemon_client.subprocess.Popen
+    def capture_process(*args,**kwargs):
+        process=popen(*args,**kwargs); spawned.append(process); return process
+    monkeypatch.setattr(daemon_client.subprocess,'Popen',capture_process)
+    diagnostics=daemon_client.HelperDiagnostics('up')
+    monkeypatch.setattr(daemon_client,'HelperDiagnostics',lambda phase: diagnostics)
+    with pytest.raises(ValueError,match=r'^daemon_helper_refusal:up:operation_failed:daemon_helper_mountinfo:ValueError:run:12:host=daemon_phase_eof_retained$'):
+        client.exchange('id','up','nonce',{}, {}, [])
+    assert len(diagnostics.tail)<=4096
+    assert len(diagnostics.line)<=512
+    assert diagnostics.thread is not None and not diagnostics.thread.is_alive()
+    assert diagnostics.stream.closed and client.retained==[]
+    assert len(spawned)==1 and spawned[0].poll() is not None
+    assert spawned[0].stdin.closed and spawned[0].stdout.closed
+
+
+def test_partial_overlong_and_invalid_records_are_ignored():
+    diagnostics=daemon_client.HelperDiagnostics('up')
+    diagnostics.feed(b'daemon_helper_diagnostic:up:operation_failed:ValueError:run:1')
+    assert diagnostics.refusal() is None
+    diagnostics.feed(b'PRIVATE'*100+b'\n')
+    diagnostics.feed(b'X'*1024+b'daemon_helper_diagnostic:up:operation_failed:ValueError:run:2\n')
+    diagnostics.feed(b'daemon_helper_diagnostic:up:operation_failed:ValueError:run:3\xff\n')
+    diagnostics.feed(b'daemon_helper_diagnostic:up:operation_failed:ValueError:run:4\n')
+    diagnostics.feed(b'daemon_helper_diagnostic:up:operation_failed:ValueError:run:5\n')
+    assert diagnostics.refusal()=='up:operation_failed:unclassified:ValueError:run:4'
+
+
+def test_unrelated_host_exception_remains_primary_with_safe_diagnostic(monkeypatch):
+    primary=OSError('PRIVATE host path')
+    def attached(self, identity, phase, nonce, config, binding, source, diagnostics):
+        diagnostics.feed(b'daemon_helper_diagnostic:up:final_refusal:ValueError:run:4\n')
+        raise primary
+    monkeypatch.setattr(daemon_client.Docker,'_exchange_attached',attached)
+    client=object.__new__(daemon_client.Docker)
+    with pytest.raises(OSError) as caught:
+        client.exchange('id','up','nonce',{}, {}, [])
+    assert caught.value is primary
+    assert caught.value.__notes__==['daemon_helper_diagnostic:up:final_refusal:unclassified:ValueError:run:4']
+
+
+def test_deadline_retains_process_until_reaped_and_closes_reader(monkeypatch):
+    script='import sys,time; sys.stderr.write("noise\\n"); time.sleep(.2)'
+    client=object.__new__(daemon_client.Docker)
+    client.argv=lambda _: [sys.executable,'-c',script]
+    client.container=lambda _: {'State':{'Running':True}}
+    client.env=os.environ.copy(); client.end=time.monotonic()+.05
+    client.retained=[]
+    monkeypatch.setattr(daemon_client.dv,'inspect_container',lambda *a,**k: None)
+    spawned=[]; popen=daemon_client.subprocess.Popen
+    def capture_process(*args,**kwargs):
+        process=popen(*args,**kwargs); spawned.append(process); return process
+    monkeypatch.setattr(daemon_client.subprocess,'Popen',capture_process)
+    diagnostics=daemon_client.HelperDiagnostics('up')
+    monkeypatch.setattr(daemon_client,'HelperDiagnostics',lambda phase: diagnostics)
+    with pytest.raises(ValueError,match='daemon_phase_timeout'):
+        client.exchange('id','up','nonce',{}, {}, [])
+    assert client.retained==[]
+    assert diagnostics.thread is not None and not diagnostics.thread.is_alive()
+    assert diagnostics.stream.closed
+    assert len(spawned)==1 and spawned[0].poll() is not None
+    assert spawned[0].stdin.closed and spawned[0].stdout.closed

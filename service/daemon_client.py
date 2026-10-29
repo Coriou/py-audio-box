@@ -15,7 +15,7 @@ import selectors
 import stat
 import subprocess
 import sys
-import tempfile
+import threading
 import time
 
 from service import daemon_volumes as dv
@@ -29,27 +29,80 @@ _HOST_REFUSAL_CODES=frozenset(('daemon_helper_failed_retained','daemon_helper_st
     'daemon_helper_exit_unknown','daemon_helper_timeout_retained',
     'daemon_phase_eof_retained','daemon_phase_timeout','daemon_phase_write_timeout',
     'daemon_terminal_eof_timeout','daemon_trailing_protocol'))
+_HELPER_TAIL_LIMIT=4096
+_HELPER_LINE_LIMIT=512
 
 
-def helper_refusal(stream, phase):
-    """Project only helper-owned bounded diagnostic records from Docker stderr."""
-    stream.seek(0,os.SEEK_END)
-    size=stream.tell()
-    stream.seek(max(0,size-4096))
-    raw=stream.read(4096)
-    lines=raw.decode('ascii','ignore').splitlines()
-    details=[]; causes=[]
-    for line in lines:
+class HelperDiagnostics:
+    """Drain Docker stderr without retaining untrusted output or blocking its pipe."""
+    def __init__(self,phase):
+        self.phase=phase; self.tail=bytearray(); self.line=bytearray()
+        self.overlong=False; self.details={}; self.causes={}
+        self.stop_event=threading.Event(); self.thread=None; self.stream=None
+
+    def feed(self,data):
+        self.tail.extend(data)
+        if len(self.tail)>_HELPER_TAIL_LIMIT: del self.tail[:-_HELPER_TAIL_LIMIT]
+        for byte in data:
+            if byte==10:
+                if not self.overlong: self.record(bytes(self.line))
+                self.line.clear(); self.overlong=False
+            elif not self.overlong:
+                if len(self.line)<_HELPER_LINE_LIMIT: self.line.append(byte)
+                else: self.line.clear(); self.overlong=True
+
+    def record(self,raw):
+        try: line=raw.decode('ascii')
+        except UnicodeDecodeError: return
         detail=_HELPER_DIAGNOSTIC.fullmatch(line)
         cause=_HELPER_CAUSE.fullmatch(line)
-        if detail and detail[1]==phase: details.append(detail)
-        if cause and cause[1]==phase and cause[3] in dv.HELPER_REFUSAL_CODES: causes.append(cause)
-    for stage in ('operation_failed','prior_failure','final_refusal'):
-        matched=next((d for d in details if d[2]==stage),None)
-        if matched:
-            reason=next((c[3] for c in causes if c[2]==stage),'unclassified')
-            return ':'.join((phase,stage,reason,matched[3],matched[4],matched[5]))
-    return None
+        if detail and detail[1]==self.phase: self.details.setdefault(detail[2],detail)
+        if cause and cause[1]==self.phase and cause[3] in dv.HELPER_REFUSAL_CODES:
+            self.causes.setdefault(cause[2],cause)
+
+    def refusal(self):
+        for stage in ('operation_failed','prior_failure','final_refusal'):
+            matched=self.details.get(stage)
+            if matched:
+                reason=self.causes[stage][3] if stage in self.causes else 'unclassified'
+                return ':'.join((self.phase,stage,reason,matched[3],matched[4],matched[5]))
+        return None
+
+    def drain(self):
+        fd=self.stream.fileno()
+        try:
+            os.set_blocking(fd,False)
+            with selectors.DefaultSelector() as selector:
+                selector.register(fd,selectors.EVENT_READ)
+                stop_by=None
+                while True:
+                    if self.stop_event.is_set():
+                        if stop_by is None: stop_by=time.monotonic()+.5
+                        if time.monotonic()>=stop_by: break
+                    if not selector.select(.1):
+                        if self.stop_event.is_set(): break
+                        continue
+                    try: data=os.read(fd,65536)
+                    except BlockingIOError: continue
+                    if not data: break
+                    self.feed(data)
+        except (OSError,ValueError):
+            # A broken diagnostic pipe cannot replace the owned host failure.
+            pass
+
+    def start(self,stream):
+        self.stream=stream
+        self.thread=threading.Thread(target=self.drain,name='daemon-helper-stderr')
+        try: self.thread.start()
+        except BaseException:
+            stream.close()
+            self.thread=None
+            raise
+
+    def stop(self):
+        if self.thread is not None:
+            self.stop_event.set(); self.thread.join()
+        if self.stream is not None: self.stream.close()
 
 
 def encoded(value):
@@ -343,17 +396,16 @@ class Docker:
         return result
 
     def exchange(self,identity,phase,nonce,config,b,source):
-        with tempfile.TemporaryFile() as diagnostics:
-            try:
-                return self._exchange_attached(identity,phase,nonce,config,b,source,diagnostics)
-            except (Exception,KeyboardInterrupt) as exc:
-                detail=helper_refusal(diagnostics,phase)
-                if detail is not None:
-                    # The original transport failure remains chained for local
-                    # inspection; no untrusted Docker stderr reaches the CLI.
-                    host=str(exc) if type(exc) is ValueError and str(exc) in _HOST_REFUSAL_CODES else 'unclassified'
-                    raise ValueError('daemon_helper_refusal:'+detail+':host='+host) from exc
-                raise
+        diagnostics=HelperDiagnostics(phase)
+        try:
+            return self._exchange_attached(identity,phase,nonce,config,b,source,diagnostics)
+        except (Exception,KeyboardInterrupt) as exc:
+            detail=diagnostics.refusal()
+            if detail is not None:
+                if type(exc) is ValueError and str(exc) in _HOST_REFUSAL_CODES:
+                    raise ValueError('daemon_helper_refusal:'+detail+':host='+str(exc)) from exc
+                exc.add_note('daemon_helper_diagnostic:'+detail)
+            raise
 
     def _exchange_attached(self,identity,phase,nonce,config,b,source,diagnostics):
         from service import installed_qwen_daemon as qd
@@ -362,27 +414,31 @@ class Docker:
         own=self.container(identity); dv.inspect_container(own,'helper',config,b,phase=phase,nonce=nonce,family=getattr(self,'family',None))
         if getattr(self,'resident_cgroupfs',False): self.check()
         p=subprocess.Popen(self.argv(['container','start','--attach','--interactive',identity]),stdin=subprocess.PIPE,
-            stdout=subprocess.PIPE,stderr=diagnostics,env=self.env,bufsize=0,close_fds=True)
-        with Owner(p,'daemon_helper',self.end,self.retained) as owner:
-            wire=Wire(p.stdout,p.stdin,nonce,phase,deadline=self.end,owner=owner)
-            while True:
-                own=self.container(identity)
-                dv.inspect_container(own,'helper',config,b,phase=phase,nonce=nonce,family=getattr(self,'family',None))
-                if own['State']['Running']: break
-                if p.poll() is not None or time.monotonic()>=self.end: raise ValueError('daemon_helper_start_unknown')
-                time.sleep(.02)
-            manifest=[{k:v for k,v in e.items() if k!='source'} for e in source]
-            if qwen_import: wire.send('import-deadline',dict(expires=expires))
-            wire.send('begin',dict(configuration=config,binding=b,helper=own,manifest=manifest))
-            while True:
-                action,payload=wire.receive()
-                if action=='complete':
-                    dv.closed(payload,'result'); result=payload['result']; break
-                response=self.action(action,payload,config,b,source)
-                wire.send(action,response)
-            p.stdin.close()
-            wire.finish()
-            owner.deadline=min(self.end,time.monotonic()+10)
+            stdout=subprocess.PIPE,stderr=subprocess.PIPE,env=self.env,bufsize=0,close_fds=True)
+        try:
+            with Owner(p,'daemon_helper',self.end,self.retained) as owner:
+                diagnostics.start(p.stderr)
+                wire=Wire(p.stdout,p.stdin,nonce,phase,deadline=self.end,owner=owner)
+                while True:
+                    own=self.container(identity)
+                    dv.inspect_container(own,'helper',config,b,phase=phase,nonce=nonce,family=getattr(self,'family',None))
+                    if own['State']['Running']: break
+                    if p.poll() is not None or time.monotonic()>=self.end: raise ValueError('daemon_helper_start_unknown')
+                    time.sleep(.02)
+                manifest=[{k:v for k,v in e.items() if k!='source'} for e in source]
+                if qwen_import: wire.send('import-deadline',dict(expires=expires))
+                wire.send('begin',dict(configuration=config,binding=b,helper=own,manifest=manifest))
+                while True:
+                    action,payload=wire.receive()
+                    if action=='complete':
+                        dv.closed(payload,'result'); result=payload['result']; break
+                    response=self.action(action,payload,config,b,source)
+                    wire.send(action,response)
+                p.stdin.close()
+                wire.finish()
+                owner.deadline=min(self.end,time.monotonic()+10)
+        finally:
+            diagnostics.stop()
         final=self.container(identity)
         dv.inspect_container(final,'helper',config,b,phase=phase,nonce=nonce,family=getattr(self,'family',None))
         if final['State']['Running'] or final['State']['ExitCode']!=0: raise ValueError('daemon_helper_exit_unknown')
