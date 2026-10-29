@@ -1,6 +1,6 @@
 import pytest
 
-from service import daemon_helper
+from service import daemon_helper, daemon_client
 
 
 def test_refusal_location_does_not_disclose_exception_payload(monkeypatch, capsys):
@@ -83,3 +83,29 @@ def test_nested_cleanup_chain_retains_both_failures_and_runs_all_callbacks(capsy
     assert ':prior_failure:ValueError:' in output.err
     assert ':final_refusal:OSError:' in output.err
     assert len(output.err.splitlines())==3
+
+
+def test_known_helper_cause_crosses_host_boundary_without_secret(monkeypatch, capsys):
+    daemon_helper.diagnostic(ValueError('daemon_helper_mountinfo'),'up','final_refusal')
+    records=capsys.readouterr().err.encode()
+    assert b'daemon_helper_cause:up:final_refusal:daemon_helper_mountinfo' in records
+    def attached(self, identity, phase, nonce, config, binding, source, stream):
+        stream.write(b'Docker daemon says SECRET\n'+records)
+        stream.flush()
+        raise ValueError('daemon_phase_eof_retained')
+    monkeypatch.setattr(daemon_client.Docker,'_exchange_attached',attached)
+    client=object.__new__(daemon_client.Docker)
+    with pytest.raises(ValueError,match=r'^daemon_helper_refusal:up:final_refusal:daemon_helper_mountinfo:ValueError:unknown:0:host=daemon_phase_eof_retained$') as caught:
+        client.exchange('id','up','nonce',{}, {}, [])
+    assert str(caught.value.__cause__)=='daemon_phase_eof_retained'
+    assert 'SECRET' not in str(caught.value)
+
+
+def test_unknown_helper_error_never_projects_payload(capsys):
+    daemon_helper.diagnostic(ValueError('SECRET credential'),'up','final_refusal')
+    records=capsys.readouterr().err.encode()
+    assert b'daemon_helper_cause' not in records
+    import tempfile
+    with tempfile.TemporaryFile() as stream:
+        stream.write(records)
+        assert daemon_client.helper_refusal(stream,'up')=='up:final_refusal:unclassified:ValueError:unknown:0'

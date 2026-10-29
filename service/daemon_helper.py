@@ -80,6 +80,9 @@ def diagnostic(exc, phase, code):
             function,line=frame.co_name,trace.tb_lineno
         trace=trace.tb_next
     print('daemon_helper_diagnostic:'+phase+':'+code+':'+name+':'+function+':'+str(line),file=sys.stderr)
+    reason=str(exc) if type(exc) is ValueError else ''
+    if reason in dv.HELPER_REFUSAL_CODES:
+        print('daemon_helper_cause:'+phase+':'+code+':'+reason,file=sys.stderr)
     if code=='final_refusal':
         print('daemon_helper_refused:'+name+':'+function+':'+str(line),file=sys.stderr)
 

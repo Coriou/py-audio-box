@@ -9,11 +9,13 @@ import base64
 import json
 import os
 from pathlib import Path
+import re
 import secrets
 import selectors
 import stat
 import subprocess
 import sys
+import tempfile
 import time
 
 from service import daemon_volumes as dv
@@ -21,6 +23,33 @@ from service import daemon_volumes as dv
 LIMIT=1024*1024
 TOTAL=2*1024**3
 INPUT_CHUNK=256*1024  # Base64 plus framing remains below the 1 MiB wire limit.
+_HELPER_DIAGNOSTIC=re.compile(r'daemon_helper_diagnostic:(install|init|up|status|stop):(operation_failed|prior_failure|final_refusal):(ValueError|OSError|RuntimeError|TimeoutError|FileNotFoundError|PermissionError|BlockingIOError|KeyboardInterrupt|Exception):([a-z_]+|unknown):([0-9]{1,5})')
+_HELPER_CAUSE=re.compile(r'daemon_helper_cause:(install|init|up|status|stop):(operation_failed|prior_failure|final_refusal):([a-z][a-z0-9_]{1,79})')
+_HOST_REFUSAL_CODES=frozenset(('daemon_helper_failed_retained','daemon_helper_start_unknown',
+    'daemon_helper_exit_unknown','daemon_helper_timeout_retained',
+    'daemon_phase_eof_retained','daemon_phase_timeout','daemon_phase_write_timeout',
+    'daemon_terminal_eof_timeout','daemon_trailing_protocol'))
+
+
+def helper_refusal(stream, phase):
+    """Project only helper-owned bounded diagnostic records from Docker stderr."""
+    stream.seek(0,os.SEEK_END)
+    size=stream.tell()
+    stream.seek(max(0,size-4096))
+    raw=stream.read(4096)
+    lines=raw.decode('ascii','ignore').splitlines()
+    details=[]; causes=[]
+    for line in lines:
+        detail=_HELPER_DIAGNOSTIC.fullmatch(line)
+        cause=_HELPER_CAUSE.fullmatch(line)
+        if detail and detail[1]==phase: details.append(detail)
+        if cause and cause[1]==phase and cause[3] in dv.HELPER_REFUSAL_CODES: causes.append(cause)
+    for stage in ('operation_failed','prior_failure','final_refusal'):
+        matched=next((d for d in details if d[2]==stage),None)
+        if matched:
+            reason=next((c[3] for c in causes if c[2]==stage),'unclassified')
+            return ':'.join((phase,stage,reason,matched[3],matched[4],matched[5]))
+    return None
 
 
 def encoded(value):
@@ -314,13 +343,26 @@ class Docker:
         return result
 
     def exchange(self,identity,phase,nonce,config,b,source):
+        with tempfile.TemporaryFile() as diagnostics:
+            try:
+                return self._exchange_attached(identity,phase,nonce,config,b,source,diagnostics)
+            except (Exception,KeyboardInterrupt) as exc:
+                detail=helper_refusal(diagnostics,phase)
+                if detail is not None:
+                    # The original transport failure remains chained for local
+                    # inspection; no untrusted Docker stderr reaches the CLI.
+                    host=str(exc) if type(exc) is ValueError and str(exc) in _HOST_REFUSAL_CODES else 'unclassified'
+                    raise ValueError('daemon_helper_refusal:'+detail+':host='+host) from exc
+                raise
+
+    def _exchange_attached(self,identity,phase,nonce,config,b,source,diagnostics):
         from service import installed_qwen_daemon as qd
         qwen_import=getattr(self,'family',None) is qd.FAMILY and phase=='install'
         expires=time.time()+max(0,self.end-time.monotonic()) if qwen_import else None
         own=self.container(identity); dv.inspect_container(own,'helper',config,b,phase=phase,nonce=nonce,family=getattr(self,'family',None))
         if getattr(self,'resident_cgroupfs',False): self.check()
         p=subprocess.Popen(self.argv(['container','start','--attach','--interactive',identity]),stdin=subprocess.PIPE,
-            stdout=subprocess.PIPE,stderr=subprocess.DEVNULL,env=self.env,bufsize=0,close_fds=True)
+            stdout=subprocess.PIPE,stderr=diagnostics,env=self.env,bufsize=0,close_fds=True)
         with Owner(p,'daemon_helper',self.end,self.retained) as owner:
             wire=Wire(p.stdout,p.stdin,nonce,phase,deadline=self.end,owner=owner)
             while True:
@@ -563,6 +605,8 @@ def main(argv=None, *, family=None):
     except (Exception,KeyboardInterrupt) as exc:
         if isinstance(exc,ValueError) and str(exc).startswith('qwen_service_cgroupfs_required:'):
             raise SystemExit(str(exc)) from None
+        if isinstance(exc,ValueError) and str(exc).startswith('daemon_helper_refusal:'):
+            raise SystemExit('speech-box docker refused; retain handle, volumes and containers for review; '+str(exc)) from None
         raise SystemExit('speech-box docker refused; retain handle, volumes and containers for review') from None
 
 

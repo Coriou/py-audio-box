@@ -22,6 +22,17 @@ LATER_CAPS = ('DAC_OVERRIDE', *WORKER_CAPS)
 HEX = re.compile('[0-9a-f]{64}')
 IMAGE = re.compile('sha256:[0-9a-f]{64}')
 PHASES = ('install', 'init', 'up', 'status', 'stop')
+HELPER_REFUSAL_CODES=frozenset(('daemon_closed_record','daemon_container_mount_binding',
+    'daemon_container_security_binding','daemon_export_exact_mount_options',
+    'daemon_helper_begin','daemon_helper_capability_identity','daemon_helper_deadline',
+    'daemon_helper_distinct_roots','daemon_helper_incarnation_changed',
+    'daemon_helper_linux_root','daemon_helper_mount_alias','daemon_helper_mountinfo',
+    'daemon_helper_phase','daemon_helper_root_changed','daemon_no_copyup_mount_required',
+    'daemon_phase_eof_retained','daemon_phase_replay','daemon_phase_timeout',
+    'daemon_phase_write_timeout','daemon_requested_mount_binding',
+    'daemon_runtime_wait_timeout_retained','daemon_snapshot_binding',
+    'daemon_terminal_eof_timeout','daemon_trailing_protocol',
+    'qwen_service_cgroupfs_required'))
 HELPER_ROLES = dict(install=('authority','models','config','credential'),
     init=('authority','control','receipts','staging','ipc'),
     up=('authority','control','receipts','staging','ipc'),
@@ -77,6 +88,24 @@ def canonical_mountpoint(path):
     return (type(path) is str and path.startswith('/') and
             all(part not in ('', '.', '..') for part in path.split('/')[1:]) and
             not any(c in path for c in ('\x00', '\n', ',')))
+
+
+def empty_driver_config(value):
+    return (value is None or value=={} or
+            (type(value) is dict and set(value)<= {'Name','Options'} and
+             value.get('Name','')=='' and value.get('Options') in (None,{})))
+
+
+def volume_options(value):
+    if type(value) is not dict: return value
+    result=dict(value)
+    if 'DriverConfig' in result and empty_driver_config(result['DriverConfig']):
+        del result['DriverConfig']
+    if 'Labels' in result and result['Labels'] in (None,{}):
+        del result['Labels']
+    if result.get('Subpath',None)=='':
+        del result['Subpath']
+    return result
 
 
 def _binding(value, *, shared=False, custody=False):
@@ -269,12 +298,16 @@ def inspect_container(c, role, config, b, *, phase=None, nonce=None, family=None
                 raise ValueError('daemon_requested_mount_binding')
             projected.append(dict(Type='bind',Source=b['custody'],Target=m['Target'],ReadOnly=False))
             continue
+        options=volume_options(m.get('VolumeOptions'))
+        # Docker 27 inspect may materialize an unused driver configuration.
+        # Only an empty optional field is equivalent to its omission; all
+        # requested mount authority still comes from the exact fields below.
         if family is not None:
-            options=dict(NoCopy=True,**({'Subpath':'core/assets'} if role=='worker' and m.get('Target')=='/references/assets' else {}))
-            if digest(m.get('VolumeOptions'))!=digest(options) or type(m.get('ReadOnly',False)) is not bool:
+            required=dict(NoCopy=True,**({'Subpath':'core/assets'} if role=='worker' and m.get('Target')=='/references/assets' else {}))
+            if digest(options)!=digest(required) or type(m.get('ReadOnly',False)) is not bool:
                 raise ValueError('daemon_export_exact_mount_options')
         if (set(m)-{'Type','Source','Target','ReadOnly','Consistency','VolumeOptions'} or
-            m.get('VolumeOptions')!=dict(NoCopy=True,**({'Subpath':'core/assets'} if family is not None and role=='worker' and m.get('Target')=='/references/assets' else {})) or m.get('Consistency','') not in ('','default')):
+            options!=dict(NoCopy=True,**({'Subpath':'core/assets'} if family is not None and role=='worker' and m.get('Target')=='/references/assets' else {})) or m.get('Consistency','') not in ('','default')):
             raise ValueError('daemon_no_copyup_mount_required')
         projected.append(dict(Type=m['Type'],Source=m['Source'],Target=m['Target'],ReadOnly=m.get('ReadOnly',False)))
     expected_mounts=[dict(Type=m['Type'],Source=m['Source'] if m['Type']=='bind' else m['Name'],Target=m['Destination'],ReadOnly=not m['RW']) for m in mounts(role,b,phase,family=family)]

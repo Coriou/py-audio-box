@@ -269,6 +269,32 @@ class DaemonTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 dv.inspect_container(bad,'control',s.config,s.b)
 
+    def test_docker_27_empty_driver_config_keeps_exact_mount_authority(self):
+        s=self.s
+        b=s.b
+        good=container('worker',s.config,b)
+        for mount in good['HostConfig']['Mounts']:
+            mount['VolumeOptions'].update(DriverConfig={'Name':'','Options':None},Labels=None,Subpath='')
+        dv.inspect_container(good,'worker',s.config,b)
+        for empty in ({},None,{'Name':'','Options':{}}, {'Options':None}):
+            variant=copy.deepcopy(good)
+            variant['HostConfig']['Mounts'][0]['VolumeOptions']['DriverConfig']=empty
+            dv.inspect_container(variant,'worker',s.config,b)
+        for altered in ({'Name':'local'}, {'Options':{'device':'/private'}},
+                        {'Name':'','Options':{},'Unknown':None}, [], 'local'):
+            bad=copy.deepcopy(good)
+            bad['HostConfig']['Mounts'][0]['VolumeOptions']['DriverConfig']=altered
+            with self.subTest(altered=altered),self.assertRaises(ValueError):
+                dv.inspect_container(bad,'worker',s.config,b)
+        for key,value in (('Labels',{'private':'value'}),('Subpath','other'),('Unknown',None)):
+            bad=copy.deepcopy(good);bad['HostConfig']['Mounts'][0]['VolumeOptions'][key]=value
+            with self.subTest(option=key),self.assertRaises(ValueError):
+                dv.inspect_container(bad,'worker',s.config,b)
+        for key,value in (('Source','other'),('Target','/extra'),('ReadOnly',True)):
+            bad=copy.deepcopy(good);bad['HostConfig']['Mounts'][0][key]=value
+            with self.subTest(key=key),self.assertRaises(ValueError):
+                dv.inspect_container(bad,'worker',s.config,b)
+
     def test_model_transfer_chunks_fit_wire_and_reconstruct_exact_bytes(self):
         raw = bytes(range(256))*2305
         path = self.s.root/'large-model-input';path.write_bytes(raw)
