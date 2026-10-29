@@ -32,6 +32,14 @@ publishes output after expiry. A timeout can leave a submitted job running;
 the result returns its ID only when confirmed. The service
 `job cancel ID --idempotency-key KEY` command explicitly cancels.
 
+Deadline-bearing calls require a numeric IP address in `--url` or
+`SPEECH_URL`: use `http://127.0.0.1:PORT` for the local service, or
+`http://[::1]:PORT` for IPv6. `localhost` and other hostnames are rejected
+before connection because system name resolution has no reliable deadline.
+Low-level calls without a workflow deadline retain hostname support. For
+HTTPS, use a certificate valid for the numeric IP address; the URL host remains
+the TLS verification name. Credentials are never sent to a redirect or proxy.
+
 Resume enrollment with the confirmed `--asset-id`, the same name, exact
 reference text and audition text, and `--job-id` only when confirmed. A bare
 `enroll --wav` repeat uploads another asset and can prepare a different job.

@@ -2,10 +2,13 @@
 import os
 import json
 import time
+import ipaddress
+import socket
 from contextlib import nullcontext
 from urllib.parse import quote
 import httpx
-from httpcore._backends.sync import SyncBackend
+from httpcore import ConnectError, ConnectTimeout
+from httpcore._backends.sync import SyncBackend, SyncStream
 from contracts.validate import validate
 from service.catalogue import Failure, IMPLEMENTED, OPERATIONS, VOICE_READS, PRODUCTION_OPERATIONS
 
@@ -46,19 +49,54 @@ class _DeadlineBackend(SyncBackend):
         self.deadline = deadline
 
     def connect_tcp(self, host, port, timeout=None, local_address=None, socket_options=None):
-        stream = super().connect_tcp(host, port, _timeout(self.deadline, timeout),
-                                     local_address, socket_options)
-        return _DeadlineStream(stream, self.deadline)
+        address = _numeric_address(host)
+        family = socket.AF_INET6 if address.version == 6 else socket.AF_INET
+        sock = socket.socket(family, socket.SOCK_STREAM)
+        try:
+            sock.settimeout(_timeout(self.deadline, timeout))
+            if local_address is not None:
+                source = _numeric_address(local_address)
+                if source.version != address.version:
+                    raise ConnectError('Local address family differs from endpoint.')
+                sock.bind((str(source), 0))
+            for option in socket_options or ():
+                sock.setsockopt(*option)
+            sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+            sock.settimeout(_timeout(self.deadline, timeout))
+            sock.connect((str(address), port))
+            _timeout(self.deadline, timeout)
+            return _DeadlineStream(SyncStream(sock), self.deadline)
+        except (OSError, TimeoutError) as exc:
+            sock.close()
+            if isinstance(exc, TimeoutError) and str(exc) == 'workflow_deadline':
+                raise
+            raise (ConnectTimeout if isinstance(exc, socket.timeout) else ConnectError)(str(exc)) from exc
+        except BaseException:
+            sock.close()
+            raise
 
     def connect_unix_socket(self, path, timeout=None, socket_options=None):
         stream = super().connect_unix_socket(path, _timeout(self.deadline, timeout), socket_options)
         return _DeadlineStream(stream, self.deadline)
 
 
+def _numeric_address(host):
+    try:
+        return ipaddress.ip_address(host)
+    except ValueError:
+        raise Failure('invalid_request', 'A workflow deadline requires a numeric IP endpoint.',
+                      'url', 'Use 127.0.0.1 (or [::1]) for a local service; hostname URLs are available for unbounded low-level calls.') from None
+
+
 def _client(base_url, deadline, cap):
     client = httpx.Client(base_url=base_url, timeout=_timeout(deadline, cap),
                           trust_env=False, follow_redirects=False)
     if deadline is not None and isinstance(getattr(client, '_transport', None), httpx.HTTPTransport):
+        try:
+            _numeric_address(client.base_url.host)
+        except BaseException:
+            client.close()
+            raise
         # HTTPX's per-read timeout resets on each chunk. The connection pool's
         # network backend enforces the same absolute deadline on every socket call.
         client._transport._pool._network_backend = _DeadlineBackend(deadline)
