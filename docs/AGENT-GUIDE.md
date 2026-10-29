@@ -171,10 +171,11 @@ files. To export stereo 48 kHz PCM24, use
 ## One-call named voice workflow (client composition)
 
 With a configured local service and a private installation credential, run
-`python -m clients.cli --installation /absolute/installation enroll --name bruce
+`.venv-client/bin/python -m clients.cli --installation /absolute/installation enroll --name bruce
 --wav /absolute/reference.wav --reference-text 'Exact transcript.'
 --audition-text 'Audition sentence.' --wait-seconds 120`. The first run uploads
-one asset, prepares one candidate, and saves one version. `speak --voice bruce
+one asset, prepares one candidate, and saves one version. Run
+`.venv-client/bin/python -m clients.cli --installation /absolute/installation speak --voice bruce
 --text 'Hello.' --output /absolute/new.wav --wait-seconds 120` generates and
 verifies an exclusive output file. MCP `speech_enroll` uses an already uploaded
 `asset_id`; MCP `speech_speak` returns an asset handle and never reads local

@@ -20,11 +20,15 @@ class MainEntrypointTests(unittest.TestCase):
         inputs=[dict(role='config',path='install.json',source='config',bytes=1,sha256='b'*64),
                 dict(role='credential',path='control.key',source='key',bytes=1)]
         request=dict(configuration=config,helper_image=image,inputs=inputs,
-                     cpu=2,tmpfs=128,control_port=8000)
+                     cpu={'control':10**9,'worker':10**9},
+                     tmpfs={role:{'bytes':65536,'inodes':16} for role in ('control','worker')},
+                     control_port=8000)
         for label,entrypoint,family in (('Qwen',dc.qwen_main,qd.FAMILY),
                                        ('Pocket',dc.pocket_main,pd.FAMILY),
                                        ('Kokoro',dc.main,None)):
             with self.subTest(family=label):
+                config['ownership_policy']=(ip.QWEN_POLICY if family is qd.FAMILY else
+                    ip.POCKET_V2_POLICY if family is pd.FAMILY else ip.POLICY)
                 docker=Mock(frozen={'endpoint':'injected'},end=220)
                 volumes={}
                 observed=[]
@@ -34,7 +38,7 @@ class MainEntrypointTests(unittest.TestCase):
                     if args[:2]==['volume','create']:
                         name=args[-1]
                         volumes[name]=dict(Name=name,Driver='local',Options=None,Scope='local',
-                            Mountpoint='/injected',CreatedAt='injected',Labels={})
+                            Mountpoint='/injected/'+name,CreatedAt='injected',Labels={})
                         return name
                     self.assertEqual(args,['injected-helper'])
                     return 'c'*64
