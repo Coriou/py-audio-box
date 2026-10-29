@@ -14,12 +14,12 @@ import threading
 import time
 
 from worker.runtime_journal import Journal, MAX_RECORDS, MAX_UNACKED
-from worker.runtime_protocol import authenticate, receive, send, session, request, execution, execution_session, managed_qwen_cpu, QWEN_CPU_SECONDS
+from worker.runtime_protocol import authenticate, receive, send, session, request, execution, execution_session, managed_qwen_cpu, resident_managed_qwen_cpu, QWEN_CPU_SECONDS
 from worker.transport import canonical, Refused, Session
 
 
 class RuntimeSupervisor:
-    def __init__(self, root='/receipts', ipc='/ipc', *, bundles=None, references=None, qwen_contexts=None, inventory=None, qwen_profiles=None, pocket_reference_roots=None, installed_pocket=False, installed_policy=None, audio_converters=None, converter_image_digest=None, export_reference_roots=None, export_configuration=None, expected_worker_image=None):
+    def __init__(self, root='/receipts', ipc='/ipc', *, bundles=None, references=None, qwen_contexts=None, inventory=None, qwen_profiles=None, pocket_reference_roots=None, installed_pocket=False, installed_policy=None, audio_converters=None, converter_image_digest=None, export_reference_roots=None, export_configuration=None, expected_worker_image=None, resident_qwen_policy=None):
         if os.getpid() != 1:
             raise RuntimeError('pid1_required')
         from types import MappingProxyType
@@ -44,6 +44,12 @@ class RuntimeSupervisor:
         if installed_policy is ip.QWEN_SPLIT and (installed_pocket or export_configuration is not None):
             raise ValueError('installed_qwen_policy_binding')
         self.installed_policy = installed_policy
+        if resident_qwen_policy is not None:
+            from service.installed_qwen_daemon import SERVICE_POLICY
+            if resident_qwen_policy != SERVICE_POLICY or installed_policy is not ip.QWEN_SPLIT:
+                raise ValueError('resident_qwen_requires_explicit_installed_policy')
+        self.resident_qwen = resident_qwen_policy is not None
+        self.resident = None
         self.installed_pocket = installed_pocket
         self.bundles = MappingProxyType(dict(bundles or {}))
         self.references = MappingProxyType(copy.deepcopy(references or {}))
@@ -99,6 +105,49 @@ class RuntimeSupervisor:
             return 'alive'
         return 'unknown'
 
+    def managed_qwen(self, spec):
+        return resident_managed_qwen_cpu(spec) if self.resident_qwen else managed_qwen_cpu(spec)
+
+    def ensure_resident(self, cutoff):
+        """Start one networkless model owner; a failed/uncertain owner is quarantined."""
+        if self.resident is not None:
+            if self.resident['process'].poll() is not None:
+                self.failed = True
+                self.stop_tree()
+                raise Refused('resident_lost')
+            return self.resident
+        from service.installed_qwen_daemon import service_model
+        expected = {name:service_model(name)[2] for name in ('clone','Ryan')}
+        if set(self.bundles) != set(expected.values()):
+            self.failed = True
+            self.stop_tree()
+            raise Refused('resident_exact_bundles_required')
+        parent, child = socket.socketpair()
+        token = secrets.token_hex(24)
+        config = dict(address='\0py-audio-box-qwen-'+token, secret=secrets.token_hex(32),
+                      roots={name:dict(path=str(self.bundles[digest]),revision=service_model(name)[1])
+                             for name,digest in expected.items()})
+        proc = None
+        try:
+            proc = subprocess.Popen(['python','-m','worker.qwen_resident',str(child.fileno())],
+                user=19999, group=19999, extra_groups=[], start_new_session=True,
+                close_fds=True, pass_fds=(child.fileno(),), stdin=subprocess.DEVNULL,
+                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            child.close()
+            self.resident = dict(process=proc, address=config['address'], secret=config['secret'])
+            send(parent, config, min(cutoff,time.monotonic()+2))
+            if receive(parent,min(cutoff,time.monotonic()+2)) != {'ready':True}:
+                raise Refused('resident_startup')
+            return self.resident
+        except BaseException:
+            self.failed = True
+            self.stop_tree()
+            if proc is not None:
+                self.signal_namespace(signal.SIGKILL)
+            raise
+        finally:
+            child.close(); parent.close()
+
     def operation(self, op, body):
         if op == 'startup':
             if body: raise Refused('closed_body')
@@ -138,8 +187,10 @@ class RuntimeSupervisor:
             if (body['fixture'] in ('kokoro','pocket','qwen','audio_export')) != (spec is not None) or (spec is not None and body['fixture'] != dispatch_mode(spec)): raise Refused('execution_dispatch_mismatch')
             anchored = time.monotonic()
             budget = (datetime.fromisoformat(job['deadline']) - datetime.now(timezone.utc)).total_seconds()
-            if spec is not None and spec.engine!='audio-export' and context['execution']['bundles'] != self.bundles:
-                raise Refused('unregistered_mount_mapping')
+            if spec is not None and spec.engine!='audio-export':
+                selected = {spec.bundle_id:self.bundles[spec.bundle_id]} if self.resident_qwen and spec.engine == 'qwen' and spec.bundle_id in self.bundles else self.bundles
+                if context['execution']['bundles'] != selected:
+                    raise Refused('unregistered_mount_mapping')
             if spec is not None and spec.engine == 'audio-export':
                 fd=self.verify_export(context,job['principal_id']); os.close(fd)
             if spec is not None and spec.engine == 'pocket-tts':
@@ -214,7 +265,7 @@ class RuntimeSupervisor:
             uid = row['uid']
             # Nonresident setup helper, reaped before engine launch. No extra caps.
             setup='import os,sys; os.umask(0); os.mkdir(sys.argv[1],0o770)'
-            if spec is not None and (spec.engine=='pocket-tts' or managed_qwen_cpu(spec)):
+            if spec is not None and (spec.engine=='pocket-tts' or self.managed_qwen(spec)):
                 setup+='; os.mkdir(sys.argv[1]+"/conditioning",0o770)'
             subprocess.run(['python', '-c', setup,
                             '/staging/'+stage], user=10001, group=uid, extra_groups=[],
@@ -233,8 +284,10 @@ class RuntimeSupervisor:
                 from service import install_policy as ip
                 if getattr(self, 'installed_policy', None) is ip.QWEN_SPLIT:
                     config['installed_qwen_cpu']=True
+                if self.resident_qwen:
+                    config['resident_qwen_cpu']=True
             try:
-                if managed_qwen_cpu(spec):
+                if self.managed_qwen(spec):
                     reference_fd=self.verify_qwen(context,profiles,job['principal_id'],retain_fd=True)
                     config['reference_fd']=reference_fd
                 if spec is not None and spec.engine=='audio-export':
@@ -244,6 +297,9 @@ class RuntimeSupervisor:
                 if spec is not None and spec.engine == 'pocket-tts' and getattr(self, 'installed_pocket', False):
                     reference_fd = self.verify_pocket(context, job['principal_id'], retain_fd=True)
                     config['reference_fd'] = reference_fd
+                if self.resident_qwen:
+                    resident = self.ensure_resident(self.active['cutoff'])
+                    config['qwen_resident'] = {k:resident[k] for k in ('address','secret')}
                 if time.monotonic() >= self.active['cutoff']: raise Refused('expired_before_launch')
                 proc = subprocess.Popen(['python', '-m', 'worker.runtime_child', str(child.fileno())],
                     user=uid, group=uid, extra_groups=[], start_new_session=True,
@@ -253,6 +309,7 @@ class RuntimeSupervisor:
                 self.launches += 1
             except BaseException:
                 parent.close()
+                self.stop_tree()
                 raise
             finally:
                 child.close()
@@ -318,7 +375,16 @@ class RuntimeSupervisor:
 
     def tick(self):
         active = self.active
-        if active is None or active.get('finalizing'):
+        if active is None:
+            if self.resident is not None and self.resident['process'].poll() is not None:
+                self.failed = True
+                self.signal_namespace(signal.SIGKILL)
+                try:
+                    while True: os.waitpid(-1, 0)
+                except ChildProcessError:
+                    self.resident = None
+            return
+        if active.get('finalizing'):
             return
         try:
             identity, proposal, when = self.received.get_nowait()
@@ -335,13 +401,35 @@ class RuntimeSupervisor:
                 pid, status = os.waitpid(-1, os.WNOHANG)
                 if pid == 0:
                     break
+                if self.resident is not None and pid == self.resident['process'].pid:
+                    self.resident['process'].returncode = os.waitstatus_to_exitcode(status)
+                    self.failed = True
+                    self.stop_tree()
+                    continue
                 active['reaped_children'] += 1
                 if pid == active['leader']:
                     active['process'].returncode = os.waitstatus_to_exitcode(status)
-                    self.stop_tree()  # Drain even detached orphan descendants.
+                    active['leader_reaped'] = True
+                    if not self.resident_qwen:
+                        self.stop_tree()  # Drain even detached orphan descendants.
             except ChildProcessError:
                 empty = True
                 break
+        if self.resident_qwen and active['started'] and active.get('leader_reaped') and active['receiver_done'].is_set() and active['stopping'] is None:
+            try:
+                identity, proposal, when = self.received.get_nowait()
+                if identity == active['id']:
+                    active.update(proposal=proposal, proposed_at=when)
+            except queue.Empty:
+                pass
+            # ECHILD for this attempt's process group, even while the separately
+            # supervised model owner remains alive in its own process group.
+            try:
+                os.waitpid(-active['leader'], os.WNOHANG)
+            except ChildProcessError:
+                empty = active['proposal'] is not None and active['process'].returncode == 0
+            if not empty:
+                self.stop_tree()
         if empty and active['started'] and not active['receiver_done'].is_set():
             return
         if empty and (active['started'] or active['stopping'] is not None):
@@ -478,8 +566,9 @@ class RuntimeSupervisor:
         from worker.runtime_protocol import execution
         from contracts import validate as oracle
         spec=execution(context)
+        selected_bundles = {spec.bundle_id:self.bundles[spec.bundle_id]} if self.resident_qwen and spec.bundle_id in self.bundles else self.bundles
         profile=context['plan']['resolved']['profile']
-        managed=managed_qwen_cpu(spec)
+        managed=self.managed_qwen(spec)
         if managed:
             # Explicit operator registration of the WHOLE trusted template. Existing
             # exact-version registrations never implicitly authorize this lane.
@@ -507,7 +596,11 @@ class RuntimeSupervisor:
         if getattr(self, 'installed_policy', None) is ip.QWEN_SPLIT:
             from service.installed_qwen_daemon import FAMILY
             from worker.engines.qwen_execution import installed_cpu_hardware
-            installed_cpu_hardware(spec,self.inventory,family=FAMILY)
+            if self.resident_qwen:
+                from worker.runtime_protocol import resident_qwen_cpu_hardware
+                resident_qwen_cpu_hardware(spec,self.inventory)
+            else:
+                installed_cpu_hardware(spec,self.inventory,family=FAMILY)
         else: current_hardware(spec,self.inventory)
         if managed:
             from worker.managed_reference import acquire
@@ -516,7 +609,7 @@ class RuntimeSupervisor:
                 self.failed=True
                 raise
             try:
-                verify_service_inputs(spec,self.bundles,context['execution']['references'],self.inventory,owner_uid=10001,reference_fd=fd)
+                verify_service_inputs(spec,selected_bundles,context['execution']['references'],self.inventory,owner_uid=10001,reference_fd=fd)
                 if retain_fd:
                     result,fd=fd,None
                     return result
@@ -524,14 +617,14 @@ class RuntimeSupervisor:
                 if fd is not None: os.close(fd)
         else:
             if context['execution']['references'] != self.references: raise Refused('unregistered_reference_mapping')
-            verify_service_inputs(spec,self.bundles,self.references,self.inventory,owner_uid=10001)
+            verify_service_inputs(spec,selected_bundles,self.references,self.inventory,owner_uid=10001)
 
     def conditioning(self, row):
         stage = row['allocation']['snapshot'][0]['attempts'][-1]['staging_id']
         from service import install_policy as ip
         from worker.runtime_protocol import execution
         spec=execution(row['allocation']['snapshot'][1])
-        if spec is not None and (spec.engine=='pocket-tts' or managed_qwen_cpu(spec)):
+        if spec is not None and (spec.engine=='pocket-tts' or self.managed_qwen(spec)):
             command=['python','-c','from worker.runtime_conditioning import pocket_main; pocket_main()',stage,str(row['uid'])]
         else:
             command = ['python', '-m', 'worker.runtime_conditioning', stage, str(row['uid'])]
@@ -630,6 +723,22 @@ class RuntimeSupervisor:
             while True:
                 self.tick()
                 if self.halt and self.active is None:
+                    if self.resident is not None:
+                        self.signal_namespace(signal.SIGTERM)
+                        limit = time.monotonic()+.2
+                        while time.monotonic() < limit:
+                            try:
+                                pid, _ = os.waitpid(-1, os.WNOHANG)
+                            except ChildProcessError:
+                                self.resident = None
+                                break
+                            if pid == 0: time.sleep(.01)
+                        if self.resident is not None:
+                            self.signal_namespace(signal.SIGKILL)
+                            while True:
+                                try: os.waitpid(-1, 0)
+                                except ChildProcessError: break
+                            self.resident = None
                     return
                 try:
                     op, body, answer = self.commands.get_nowait()
@@ -678,11 +787,14 @@ def main(*, _pocket_daemon=False, _qwen_daemon=False):
     parser.add_argument('--installed-policy', choices=('docker-kokoro-split-v1','docker-pocket-split-v1','docker-pocket-split-v2','docker-kokoro-export-split-v2','docker-qwen-cpu-split-v1'))
     parser.add_argument('--configuration-file')
     parser.add_argument('--expected-worker-image')
+    parser.add_argument('--resident-qwen-policy', choices=('qwen-resident-cpu-v1',))
     args = parser.parse_args()
     if _pocket_daemon and args.installed_policy != 'docker-pocket-split-v2':
         raise ValueError('pocket_daemon_v2_configuration_required')
     if _qwen_daemon != (args.installed_policy == 'docker-qwen-cpu-split-v1'):
         raise ValueError('explicit_qwen_daemon_required')
+    if args.resident_qwen_policy is not None and not _qwen_daemon:
+        raise ValueError('resident_qwen_requires_explicit_qwen_daemon')
     os.umask(0o077)
     try:
         bundles = None
@@ -724,7 +836,7 @@ def main(*, _pocket_daemon=False, _qwen_daemon=False):
             raise ValueError('explicit_fixed_install_policy_required')
         supervisor = RuntimeSupervisor(bundles=bundles, pocket_reference_roots=pocket_roots,
             installed_pocket=installed_pocket, installed_policy=installed_policy, export_configuration=export_config,
-            expected_worker_image=args.expected_worker_image)
+            expected_worker_image=args.expected_worker_image, resident_qwen_policy=args.resident_qwen_policy)
         if _pocket_daemon and not installed_pocket: raise ValueError('pocket_daemon_v2_configuration_required')
         if _qwen_daemon:
             from service import installed_qwen_daemon as qd
@@ -734,10 +846,20 @@ def main(*, _pocket_daemon=False, _qwen_daemon=False):
             supervisor.qwen_profiles=copy.deepcopy(config['profiles'])
             for principal,context in config['contexts'].items():
                 observed=inventory_from_wire(context['execution']['hardware'])
-                installed_cpu_hardware(execution(context),observed,family=qd.FAMILY)
+                selected=execution(context)
+                if args.resident_qwen_policy is not None:
+                    from worker.runtime_protocol import resident_qwen_cpu_hardware
+                    resident_qwen_cpu_hardware(selected,observed)
+                else:
+                    installed_cpu_hardware(selected,observed,family=qd.FAMILY)
                 if inventory is not None and inventory != observed: raise ValueError('hardware_identity')
                 inventory=observed
-                supervisor.qwen_contexts[(principal,'qwen-cpu','managed-clone')]=copy.deepcopy(context)
+                if supervisor.managed_qwen(selected):
+                    supervisor.qwen_contexts[(principal,'qwen-cpu','managed-clone')]=copy.deepcopy(context)
+                elif selected.task == 'custom_voice':
+                    supervisor.qwen_contexts[(principal,'qwen-cpu',selected.voice_revision)]=copy.deepcopy(context['execution'])
+                else:
+                    raise ValueError('installed_qwen_context_task')
             supervisor.inventory=inventory
         supervisor._qwen_daemon = _qwen_daemon
         supervisor._pocket_daemon = _pocket_daemon

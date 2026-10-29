@@ -11,7 +11,51 @@ QWEN_CPU_SECONDS = 1800
 
 def managed_qwen_cpu(spec):
     return (spec is not None and spec.engine == 'qwen' and spec.device == 'cpu'
-            and spec.task == 'clone' and spec.x_vector_only)
+            and spec.task == 'clone' and spec.x_vector_only and spec.reference_text is None)
+
+
+def resident_managed_qwen_cpu(spec):
+    return (managed_qwen_cpu(spec) or
+            (spec is not None and spec.engine == 'qwen' and spec.device == 'cpu' and
+             spec.task == 'clone' and not spec.x_vector_only and spec.reference_text is not None))
+
+
+def resident_qwen_model(spec):
+    """Resolve only the provision team's pinned Base clone or Ryan preset."""
+    from service.installed_qwen_daemon import service_model
+    from worker.transport import Refused
+    if resident_managed_qwen_cpu(spec):
+        name='clone'
+    elif (spec is not None and spec.engine == 'qwen' and spec.device == 'cpu' and
+          spec.task == 'custom_voice' and spec.preset == 'Ryan'):
+        name='Ryan'
+    else:
+        raise Refused('resident_model_unavailable')
+    if (spec.checkpoint,spec.revision,spec.manifest_sha256) != service_model(name):
+        raise Refused('resident_model_identity')
+    return name
+
+
+def resident_qwen_cpu_hardware(spec, inventory):
+    """Fresh local CPU observation for the explicitly opted-in resident lane."""
+    import os
+    import sys
+    from worker.engines.qwen_execution import inventory_from_wire, inventory_wire
+    from worker.hardware import DeviceFamily
+    from worker.transport import Refused
+    inventory_from_wire(inventory_wire(inventory))
+    resident_qwen_model(spec)
+    if (spec is None or spec.engine != 'qwen' or spec.device != 'cpu' or
+            spec.task not in ('clone','custom_voice') or
+            (spec.task == 'clone' and not resident_managed_qwen_cpu(spec)) or
+            (spec.dtype,spec.attention) != ('float32','sdpa') or
+            sys.platform != 'linux' or inventory.host.system != 'linux' or
+            inventory.host.deployment != 'docker'):
+        raise Refused('resident_cpu_execution_required')
+    devices=[d for d in inventory.devices if d.family == DeviceFamily.CPU and d.index == 0]
+    if (len(devices) != 1 or devices[0].supported is not True or
+            devices[0].available is not True or len(os.sched_getaffinity(0)) < spec.threads):
+        raise Refused('stale_or_unavailable_device')
 
 VERSION = 'lifecycle-v1'
 OPS = frozenset(('hello', 'startup', 'prepare', 'start', 'observe', 'stop', 'collect', 'ack'))
@@ -253,7 +297,7 @@ def qwen_preparation(context, *, lane):
     from contracts import validate as oracle
     from worker.engines.qwen_prepare import QwenPreparation
     spec = QwenPreparation.from_wire(context['execution']['descriptor'])
-    if lane != 'native' and not managed_qwen_cpu(spec): raise Refused('cpu_xvector_required')
+    if lane != 'native' and not resident_managed_qwen_cpu(spec): raise Refused('managed_cpu_clone_required')
     transcript = '' if spec.x_vector_only else spec.reference_text
     conditioning = 'x_vector' if spec.x_vector_only else 'icl'
     plan = context['plan']; request = plan['request']; resolved = plan['resolved']; roles = plan.get('reference_roles', {})

@@ -35,14 +35,17 @@ def run_generation(connection, config, staging, cutoff, *, backend_factory=None)
         from worker.engines.qwen import execute
         from worker.engines.qwen_execution import inventory_from_wire, current_hardware
         inventory = inventory_from_wire(context['execution']['hardware'])
-        if config.get('installed_qwen_cpu') is True:
+        if config.get('resident_qwen_cpu') is True:
+            from worker.runtime_protocol import resident_qwen_cpu_hardware
+            resident_qwen_cpu_hardware(spec,inventory)
+        elif config.get('installed_qwen_cpu') is True:
             from worker.engines.qwen_execution import observed_cpu_hardware
             observed_cpu_hardware(spec,inventory)
         else: current_hardware(spec,inventory)
         stage = attempt['staging_id']
         if Path(stage).name != stage or stage in ('.', '..'): raise Refused('invalid_stage')
-        from worker.runtime_protocol import managed_qwen_cpu
-        managed = managed_qwen_cpu(spec)
+        from worker.runtime_protocol import managed_qwen_cpu, resident_managed_qwen_cpu
+        managed = resident_managed_qwen_cpu(spec) if config.get('qwen_resident') is not None else managed_qwen_cpu(spec)
         if managed and type(config.get('reference_fd')) is not int:
             raise Refused('managed_reference_descriptor')
         if spec.task == 'clone' and not managed:
@@ -51,6 +54,12 @@ def run_generation(connection, config, staging, cutoff, *, backend_factory=None)
             finally: os.close(directory)
         preparing = context['plan']['operation'] == 'voice_prepare'
         text = context['plan']['reference_roles']['audition_text'] if preparing else speech_text(context['plan'])
+        if config.get('qwen_resident') is not None:
+            from worker.qwen_resident import Client
+            resident = config['qwen_resident']
+            if type(resident) is not dict or set(resident) != {'address','secret'}:
+                raise Refused('resident_configuration')
+            backend_factory = lambda **settings: Client(**resident, cutoff=cutoff, **settings)
         result = execute(spec,text,context['execution']['bundles'],
                          context['execution']['references'],inventory,
                          reference_temp_dir=Path(staging)/stage/'conditioning' if spec.task == 'clone' else None,
