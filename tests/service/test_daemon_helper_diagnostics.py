@@ -104,6 +104,77 @@ def test_known_helper_cause_crosses_host_boundary_without_secret(monkeypatch, ca
     assert 'SECRET' not in str(caught.value)
 
 
+@pytest.mark.parametrize('reason,field,label', (
+    ('daemon_observation_pair_changed','pid','control.state.pid'),
+    ('daemon_observation_pair_changed','started','worker.state.started_at'),
+    ('daemon_observation_startup_changed','boot','startup.hello.boot'),
+))
+def test_observation_change_crosses_actual_helper_client_parser_without_payload(
+        reason, field, label, monkeypatch, capsys):
+    from copy import deepcopy
+    before={'control':{'State':{'Pid':1}},'worker':{'State':{'StartedAt':'old'}}}
+    after=deepcopy(before)
+    if field=='pid': after['control']['State']['Pid']=2
+    elif field=='started': after['worker']['State']['StartedAt']='PRIVATE started'
+    else:
+        before={'hello':{'boot':'old'},'local':{}}
+        after={'hello':{'boot':'PRIVATE boot'},'local':{}}
+    kind='startup' if field=='boot' else 'pair'
+    error=daemon_helper.observation_refusal(reason,before,after,kind)
+    daemon_helper.diagnostic(error,'up','operation_failed')
+    records=capsys.readouterr().err.encode()
+    assert b'PRIVATE' not in records
+    def attached(self, identity, phase, nonce, config, binding, source, diagnostics):
+        diagnostics.feed(b'Docker PRIVATE payload\n'+records)
+        raise ValueError('daemon_phase_eof_retained')
+    monkeypatch.setattr(daemon_client.Docker,'_exchange_attached',attached)
+    client=object.__new__(daemon_client.Docker)
+    with pytest.raises(ValueError) as caught:
+        client.exchange('id','up','nonce',{}, {}, [])
+    assert ':'.join((reason,'ValueError','unknown','0','changed='+label,
+                     'host=daemon_phase_eof_retained')) in str(caught.value)
+    assert str(caught.value.__cause__)=='daemon_phase_eof_retained'
+    assert 'PRIVATE' not in str(caught.value)
+
+
+def test_observation_change_labels_reject_private_and_unknown_fields():
+    before={'control':{'State':{}},'worker':{}}
+    after={'control':{'State':{},'PRIVATE-KEY':'PRIVATE-VALUE'},'worker':{}}
+    assert daemon_helper.observation_changes(before,after,'pair')==('control.other',)
+    diagnostics=daemon_client.HelperDiagnostics('up')
+    diagnostics.feed(b'daemon_helper_diagnostic:up:operation_failed:ValueError:observe:511\n'
+                     b'daemon_helper_cause:up:operation_failed:daemon_observation_pair_changed\n'
+                     b'daemon_helper_change:up:operation_failed:control.PRIVATE-KEY\n')
+    assert diagnostics.refusal()=='up:operation_failed:daemon_observation_pair_changed:ValueError:observe:511'
+
+
+def test_observe_keeps_callee_failure_and_prior_bracket_cause(capsys):
+    from types import SimpleNamespace
+    from copy import deepcopy
+    first={'control':{'State':{'Pid':1}},'worker':{'State':{'Pid':1}}}
+    second=deepcopy(first);second['worker']['State']['Pid']=2
+    startup={'hello':{'boot':'b'*32},'local':{'roots':{}}}
+    h=SimpleNamespace(evidence='fixture',b={},export=False,pocket=False,
+        rpc=lambda *_:{'roots':{}},read=lambda *_:{'identities':{}},
+        startup=lambda:deepcopy(startup))
+    pairs=iter((first,second));h.pair=lambda _:next(pairs)
+    with pytest.raises(ValueError,match='daemon_observation_pair_changed') as caught:
+        daemon_helper.Helper.observe(h,{'control':'id','worker':'id'}, {})
+    cleanup=OSError('PRIVATE cleanup')
+    cleanup.__context__=caught.value
+    daemon_helper.refusal(cleanup,'up')
+    records=capsys.readouterr().err.encode()
+    assert b'daemon_helper_cause:up:prior_failure:daemon_observation_pair_changed' in records
+    assert b'daemon_helper_change:up:prior_failure:worker.state.pid' in records
+    assert b'PRIVATE' not in records
+    diagnostics=daemon_client.HelperDiagnostics('up');diagnostics.feed(records)
+    assert diagnostics.refusal().startswith('up:prior_failure:daemon_observation_pair_changed:')
+    h.pair=lambda _:deepcopy(first)
+    h.startup=lambda: (_ for _ in ()).throw(ValueError('PRIVATE child failure'))
+    with pytest.raises(ValueError,match='PRIVATE child failure'):
+        daemon_helper.Helper.observe(h,{'control':'id','worker':'id'}, {})
+
+
 def test_unknown_helper_error_never_projects_payload(capsys):
     daemon_helper.diagnostic(ValueError('SECRET credential'),'up','final_refusal')
     records=capsys.readouterr().err.encode()

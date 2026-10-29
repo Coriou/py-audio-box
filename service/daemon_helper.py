@@ -97,6 +97,11 @@ def diagnostic(exc, phase, code):
     reason=str(exc) if type(exc) is ValueError else ''
     if reason in dv.HELPER_REFUSAL_CODES:
         print('daemon_helper_cause:'+phase+':'+code+':'+reason,file=sys.stderr)
+        changed=getattr(exc,'observation_changes',())
+        if (reason in ('daemon_observation_pair_changed','daemon_observation_startup_changed') and
+                type(changed) is tuple and 0<len(changed)<=8 and
+                all(label in dv.OBSERVATION_CHANGE_LABELS for label in changed)):
+            print('daemon_helper_change:'+phase+':'+code+':'+','.join(changed),file=sys.stderr)
     if code=='final_refusal':
         print('daemon_helper_refused:'+name+':'+function+':'+str(line),file=sys.stderr)
 
@@ -110,6 +115,49 @@ def refusal(exc, phase):
         prior=prior.__cause__ or prior.__context__
     for prior in reversed(chain):diagnostic(prior,phase,'prior_failure')
     diagnostic(exc,phase,'final_refusal')
+
+
+def observation_changes(before, after, kind):
+    """Fixed field labels only; never forward inspect or child payload keys/values."""
+    changes=[]
+    def fields(old,new,prefix,names):
+        if type(old) is not dict or type(new) is not dict:
+            changes.append(prefix+'.other'); return
+        for key,label in names:
+            if old.get(key)!=new.get(key) or (key in old)!=(key in new):
+                changes.append(prefix+'.'+label)
+        known={key for key,_ in names}
+        if {key:value for key,value in old.items() if key not in known}!={key:value for key,value in new.items() if key not in known}:
+            changes.append(prefix+'.other')
+    if kind=='pair':
+        for role in ('control','worker'):
+            old,new=before[role],after[role]
+            fields(old,new,role,(('Id','id'),('Image','image'),('RestartCount','restart_count'),
+                ('HostConfig','host_config'),('Config','config'),('Mounts','mounts'),('State','state')))
+            if type(old) is dict and type(new) is dict and old.get('State')!=new.get('State'):
+                fields(old.get('State'),new.get('State'),role+'.state',
+                    (('Status','status'),('Running','running'),('ExitCode','exit_code'),
+                     ('StartedAt','started_at'),('Restarting','restarting'),
+                     ('OOMKilled','oom_killed'),('Dead','dead'),('Error','error'),('Pid','pid')))
+    else:
+        fields(before,after,'startup',(('hello','hello'),('local','local')))
+        for key,names in (('hello',(('lane','lane'),('boot','boot'),('quarantined','quarantined'),
+                                  ('launches','launches'),('export_seal','export_seal'))),
+                          ('local',(('role','role'),('pid','pid'),('start_ticks','start_ticks'),
+                                    ('pid_namespace','pid_namespace'),('cgroup','cgroup'),
+                                    ('uid','uid'),('gid','gid'),('groups','groups'),
+                                    ('capabilities','capabilities'),('roots','roots')))):
+            if type(before) is dict and type(after) is dict and before.get(key)!=after.get(key):
+                fields(before.get(key),after.get(key),'startup.'+key,names)
+    # Parent categories are redundant when specific children are present.
+    changes=[label for label in changes if not any(other.startswith(label+'.') for other in changes)]
+    return tuple(changes[:8] or (('control.other' if kind=='pair' else 'startup.other'),))
+
+
+def observation_refusal(reason, before, after, kind):
+    exc=ValueError(reason)
+    exc.observation_changes=observation_changes(before,after,kind)
+    return exc
 
 
 def child(kind, request, descriptors, *, family=None):
@@ -508,7 +556,12 @@ class Helper:
             info=ip.directory_identity(assets,policy=ip.SPLIT,role='control')
             if any(local['roots']['assets']!=list(info[:2]) for local in value['local'].values()):
                 raise ValueError('daemon_assets_view_identity')
-        if self.pair(ids)!=first or self.startup()!=startup: raise ValueError('daemon_observation_bracket')
+        second=self.pair(ids)
+        if second!=first:
+            raise observation_refusal('daemon_observation_pair_changed',first,second,'pair')
+        later=self.startup()
+        if later!=startup:
+            raise observation_refusal('daemon_observation_startup_changed',startup,later,'startup')
         return value
 
     def validate_registration(self, record):

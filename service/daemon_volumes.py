@@ -23,6 +23,7 @@ HEX = re.compile('[0-9a-f]{64}')
 IMAGE = re.compile('sha256:[0-9a-f]{64}')
 PHASES = ('install', 'init', 'up', 'status', 'stop')
 HELPER_REFUSAL_CODES=frozenset(('daemon_closed_record','daemon_container_mount_binding',
+    'daemon_observation_pair_changed','daemon_observation_startup_changed',
     'daemon_container_security_binding','daemon_export_exact_mount_options',
     'daemon_helper_begin','daemon_helper_capability_identity','daemon_helper_deadline',
     'daemon_helper_distinct_roots','daemon_helper_incarnation_changed',
@@ -33,6 +34,17 @@ HELPER_REFUSAL_CODES=frozenset(('daemon_closed_record','daemon_container_mount_b
     'daemon_runtime_wait_timeout_retained','daemon_snapshot_binding',
     'daemon_terminal_eof_timeout','daemon_trailing_protocol',
     'qwen_service_cgroupfs_required'))
+# Only these fixed labels may cross the helper stderr boundary. Docker keys and
+# values, including unknown future fields, must never become diagnostic text.
+OBSERVATION_CHANGE_LABELS=frozenset(
+    role+'.'+field for role in ('control','worker') for field in
+    ('id','image','restart_count','state','state.other','host_config','config','mounts','other',
+     'state.status','state.running','state.exit_code','state.started_at',
+     'state.restarting','state.oom_killed','state.dead','state.error','state.pid')) | frozenset(
+    'startup.'+field for field in ('hello','hello.other','local','local.other','other',
+     'hello.lane','hello.boot','hello.quarantined','hello.launches','hello.export_seal',
+     'local.role','local.pid','local.start_ticks','local.pid_namespace','local.cgroup',
+     'local.uid','local.gid','local.groups','local.capabilities','local.roots'))
 HELPER_ROLES = dict(install=('authority','models','config','credential'),
     init=('authority','control','receipts','staging','ipc'),
     up=('authority','control','receipts','staging','ipc'),

@@ -218,6 +218,50 @@ def assert_quarantined_stop(test,s):
 class DaemonTests(unittest.TestCase):
     def setUp(self): self.s=Session(self)
 
+    def test_observe_bracket_retains_validated_inspect_and_startup_changes(self):
+        s=self.s
+        first={role:container(role,s.config,s.b) for role in ('control','worker')}
+        for c in first.values():
+            c['State'].update(Running=True,Status='running',StartedAt='2026-10-25T00:00:01Z')
+        ids={role:c['Id'] for role,c in first.items()}
+        startup=dict(hello=dict(boot='b'*32),local=s.facts('worker'))
+        h=SimpleNamespace(evidence=dv.EVIDENCE,b=s.b,export=False,pocket=False,
+            rpc=lambda *_:s.facts('control'),read=lambda *_:dict(identities={}))
+        def run(second,later=startup):
+            pairs=iter((first,second)); startups=iter((startup,later))
+            def pair(_):
+                value=copy.deepcopy(next(pairs))
+                for role,c in value.items(): dv.inspect_container(c,role,s.config,s.b)
+                return value
+            h.pair=pair;h.startup=lambda:copy.deepcopy(next(startups))
+            return dh.Helper.observe(h,ids,{})
+        altered=copy.deepcopy(first)
+        altered['control']['NetworkSettings']={'PRIVATE-key':'PRIVATE-value'}
+        with self.assertRaisesRegex(ValueError,'daemon_observation_pair_changed') as failure:
+            run(altered)
+        self.assertEqual(failure.exception.observation_changes,('control.other',))
+        altered=copy.deepcopy(first)
+        altered['worker']['State']['StartedAt']='2026-10-25T00:00:02Z'
+        with self.assertRaisesRegex(ValueError,'daemon_observation_pair_changed') as failure:
+            run(altered)
+        self.assertEqual(failure.exception.observation_changes,('worker.state.started_at',))
+        altered=copy.deepcopy(first)
+        altered['worker']['HostConfig']['Privileged']=True
+        with self.assertRaisesRegex(ValueError,'daemon_container_security_binding'):
+            run(altered)
+        altered=copy.deepcopy(first)
+        altered['control']['Image']='sha256:'+'f'*64
+        with self.assertRaisesRegex(ValueError,'daemon_container_security_binding'):
+            run(altered)
+        altered=copy.deepcopy(first)
+        altered['worker']['Mounts'][0]['Source']='/PRIVATE-volume'
+        with self.assertRaisesRegex(ValueError,'daemon_container_mount_binding'):
+            run(altered)
+        altered_startup=copy.deepcopy(startup);altered_startup['hello']['boot']='c'*32
+        with self.assertRaisesRegex(ValueError,'daemon_observation_startup_changed') as failure:
+            run(first,altered_startup)
+        self.assertEqual(failure.exception.observation_changes,('startup.hello.boot',))
+
     def test_quarantined_stop_exact_order_preserves_fault_and_no_clean_receipt(self):
         assert_quarantined_stop(self,self.s)
 
