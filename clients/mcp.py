@@ -27,15 +27,15 @@ def tools():
         inputSchema=input_schema(op)) for op in dict.fromkeys((*IMPLEMENTED, *VOICE_READS, *PRODUCTION_OPERATIONS))]
     if os.environ.get('SPEECH_UPLOAD_ROOT'):
         items.append(Tool(name='speech_asset_upload_file', description='Upload a client-host WAV from an operator-authorized filesystem root (SPEECH_UPLOAD_ROOT). Grants host filesystem read permission within that root; relative no-follow paths only. Creates an asset, not a cloned voice. No inline audio.', inputSchema={'type':'object','properties':{'path':{'type':'string','minLength':1,'maxLength':4096}},'required':['path'],'additionalProperties':False}))
-    items.append(Tool(name='speech_enroll', description='Prepare and save a trusted already uploaded WAV as a named voice. Bounded wait; returns job and asset handles on timeout. Reuse identical arguments to replay.', inputSchema={
+    items.append(Tool(name='speech_enroll', description='Prepare and save a trusted already uploaded WAV as a named voice. Bounded wait; returns job and asset handles on timeout. Resume using the confirmed asset_id; bare WAV uploads create a new asset.', inputSchema={
         'type':'object','properties':{'name':{'type':'string','minLength':1,'maxLength':128},'asset_id':{'type':'string','minLength':1,'maxLength':128},
             'reference_text':{'type':'string','minLength':1,'maxLength':10000},'audition_text':{'type':'string','minLength':1,'maxLength':10000},
-            'job_id':{'type':'string','minLength':1,'maxLength':128},'wait_seconds':{'type':'integer','minimum':0,'maximum':120}},
+            'job_id':{'type':'string','minLength':1,'maxLength':128},'wait_seconds':{'type':'integer','minimum':0,'maximum':600}},
         'required':['name','asset_id','reference_text','audition_text'],'additionalProperties':False}))
     items.append(Tool(name='speech_speak', description='Generate from one saved named voice; returns an artifact and asset handle. Bounded wait and replayable key; no inline audio.', inputSchema={
         'type':'object','properties':{'voice':{'type':'string','minLength':1,'maxLength':128},'text':{'type':'string','minLength':1,'maxLength':10000},
             'job_id':{'type':'string','minLength':1,'maxLength':128},'voice_version_id':{'type':'string','minLength':1,'maxLength':128},
-            'wait_seconds':{'type':'integer','minimum':0,'maximum':120}},
+            'wait_seconds':{'type':'integer','minimum':0,'maximum':600}},
         'required':['voice','text'],'additionalProperties':False}))
     items += [Tool(name='speech_status', description='Configured service status, preset selectors and next action; no discovery-time model loading.',
                    inputSchema={'type':'object','properties':{},'additionalProperties':False}),
@@ -100,7 +100,7 @@ async def call_tool(name, arguments):
                 raise Failure('resource_limit', 'Direct text MCP range exceeds 3072 decoded bytes.', 'range',
                               'Use python -m clients.cli asset content ID --output FILE outside model context.')
             body = await asyncio.to_thread(transport.call, operation, arguments, **({'key':key} if OPERATIONS[operation]['idempotency'] else {}))
-        return result(body)
+        return result(body, name in ('speech_enroll','speech_speak') and body.get('state') != 'succeeded')
     except Failure as exc:
         return result(exc.body, True)
     except (ValidationError, ContractError, TypeError, ValueError):

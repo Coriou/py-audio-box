@@ -159,7 +159,7 @@ def main(argv=None):
                 result = {'asset_id':args.asset_id, 'bytes':total, 'sha256':digest.hexdigest(), 'saved':True}
             finally:
                 if temporary is not None: temporary.unlink(missing_ok=True)
-        print(compact(result)); return 0
+        print(compact(result)); return 2 if args.command in ('enroll','speak') and result.get('state') != 'succeeded' else 0
     except Failure as exc:
         print(compact(exc.body)); return 2
     except ValidationError:

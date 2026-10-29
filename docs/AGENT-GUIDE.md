@@ -167,3 +167,50 @@ files. To export stereo 48 kHz PCM24, use
   can't do it. Don't work around it.
 - **Quality.** Nothing verifies voice similarity or pronunciation automatically.
   Ask the user to listen to the audition (`voice results`) before saving.
+
+## One-call named voice workflow (client composition)
+
+With a configured local service and a private installation credential, run
+`python -m clients.cli --installation /absolute/installation enroll --name bruce
+--wav /absolute/reference.wav --reference-text 'Exact transcript.'
+--audition-text 'Audition sentence.' --wait-seconds 120`. The first run uploads
+one asset, prepares one candidate, and saves one version. `speak --voice bruce
+--text 'Hello.' --output /absolute/new.wav --wait-seconds 120` generates and
+verifies an exclusive output file. MCP `speech_enroll` uses an already uploaded
+`asset_id`; MCP `speech_speak` returns an asset handle and never reads local
+output paths. The local installation accepts the existing `client.json` and
+`control.key` format; the credential is not copied into a workflow receipt.
+
+`--wait-seconds` sets one deadline across status, HTTP calls, polling, and
+output transfer; zero expires before a network call. The HTTP client caps
+each request by the remaining budget and checks the clock before publishing
+an output. HTTPX timeouts apply to individual network waits, so a slowly
+streamed response may return after the deadline; it will not be used or
+published after the post-response clock check. A response can still arrive after a network
+transport failure, so an unknown mutation outcome is never assumed absent.
+The JSON result contains `state`, `code`, `message`, `action`, and confirmed
+`asset_id`, `job_id`, version and idempotency keys as available. Non-success
+workflow results exit nonzero in the CLI and are MCP errors. Failed or
+cancelled jobs are terminal; inspect job events before taking another action.
+
+A bare `enroll --wav` retry uploads a **new asset**, so it can start a different
+preparation. After a confirmed upload, resume with `--asset-id` and the same
+name, exact transcript, and audition text; include `--job-id` only if the
+returned job ID is confirmed. If an upload response was lost before an asset
+ID was confirmed, inspect service assets before making another upload. If a
+local WAV is also supplied with `--asset-id`, its SHA-256 must match the
+confirmed asset. Speech resume requires the returned `--voice-version-id`,
+the same text, and a confirmed `--job-id` when present. Each resumed job is
+checked against the expected operation and idempotency key before its results
+or artifacts are used. If the saved voice has changed since the original
+attempt, use the pinned version handle for speech replay.
+
+Current service integration is conditional on owner-configured, admitted
+contexts. `ConfiguredContextProvider` in `service/domain.py` accepts only
+`cpu-synthetic` Qwen Base (`Qwen3-TTS-12Hz-0.6B-Base`, CPU float32) for
+`voice_prepare` and `speech_generate`; it does not establish installed model
+readiness. A dual Base/CustomVoice resident backend must publish distinct
+trusted contexts/identities and readiness for prepare, clone generation, and
+preset registration. These client workflows only consume the configured
+status, saved version identity, and service operations; they do not select or
+load a model.
