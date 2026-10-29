@@ -113,7 +113,7 @@ class EngineLifecycleTests(unittest.TestCase):
     def test_supervisor_requires_independently_registered_mount(self):
         from worker.runtime_supervisor import RuntimeSupervisor
         self.submit();authority=self.store.allocate(self.profiles,'kokoro',8)['authority']
-        supervisor=RuntimeSupervisor.__new__(RuntimeSupervisor);supervisor.bundles={}
+        supervisor=RuntimeSupervisor.__new__(RuntimeSupervisor);supervisor.bundles={};supervisor.resident_qwen=False
         import json
         with self.assertRaisesRegex(Refused,'mount'):
             supervisor.operation('prepare',dict(snapshot=json.loads(authority._snapshot),binding=authority.binding,fixture='kokoro'))
@@ -207,7 +207,8 @@ class InstalledWorkerEntrypointTests(unittest.TestCase):
             config.assert_called_once_with('/explicit/install.json',policy=ip.SPLIT)
             checked.assert_called_once_with({'ownership_policy':ip.POLICY,'contexts':{'alice':{}}},policy=ip.SPLIT)
             runtime.assert_called_once_with(bundles=mapping,pocket_reference_roots=None,installed_pocket=False,
-                                            installed_policy=ip.SPLIT,export_configuration=None,expected_worker_image=None)
+                                            installed_policy=ip.SPLIT,export_configuration=None,expected_worker_image=None,
+                                            resident_qwen_policy=None,resident_budget=None)
             runtime.return_value.serve.assert_called_once_with()
             self.assertEqual(files.call_count,4)
 
@@ -230,7 +231,8 @@ class InstalledWorkerEntrypointTests(unittest.TestCase):
                 if selected==ip.POCKET_POLICY:
                     supervisor.main()
                     runtime.assert_called_once_with(bundles={'bundle':'/models/bundles/bundle'},pocket_reference_roots={'alice':'/references/assets','bob':'/references/assets'},installed_pocket=True,
-                                                    installed_policy=ip.SPLIT,export_configuration=None,expected_worker_image=None)
+                                                    installed_policy=ip.SPLIT,export_configuration=None,expected_worker_image=None,
+                                                    resident_qwen_policy=None,resident_budget=None)
                 else:
                     with self.assertRaises(SystemExit):supervisor.main()
                     checked.assert_not_called();runtime.assert_not_called()
