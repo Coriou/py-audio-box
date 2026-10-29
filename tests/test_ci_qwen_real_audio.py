@@ -43,6 +43,119 @@ class RealAudioMediaTests(unittest.TestCase):
 class RealAudioControlTests(unittest.TestCase):
     SHA = 'a' * 40
 
+    def test_25_gib_admission_retains_observations_without_actions(self):
+        report = {'steps': []}
+        meminfo = 'MemTotal: 16384000 kB\nMemAvailable: 2621440 kB\n'
+        with tempfile.TemporaryDirectory() as tmp, \
+             mock.patch.object(gate.platform, 'system', return_value='Linux'), \
+             mock.patch.object(gate.platform, 'machine', return_value='x86_64'), \
+             mock.patch.object(gate.os, 'geteuid', return_value=0), \
+             mock.patch.object(gate.shutil, 'disk_usage', return_value=mock.Mock(free=30*gate.GIB)), \
+             mock.patch.object(Path, 'is_file', return_value=True), \
+             mock.patch.object(Path, 'read_text', return_value=meminfo), \
+             mock.patch.object(gate, 'json_command') as docker:
+            with mock.patch.object(gate.sys, 'version_info', (3, 11, 0)):
+                with self.assertRaisesRegex(RuntimeError, 'requires_12_gib_available_ram'):
+                    gate.check_host(Path(tmp), report)
+        self.assertEqual(report['host']['available_ram_bytes'], int(2.5*gate.GIB))
+        self.assertEqual(report['host']['required_available_ram_bytes'], 12*gate.GIB)
+        self.assertEqual(report['host']['free_disk_bytes'], 30*gate.GIB)
+        self.assertEqual(report['steps'], [])
+        docker.assert_not_called()
+
+    def test_25_gib_main_receipt_is_preflight_only(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp); work = root/'work'; work.mkdir()
+            report_path = root/'report.json'
+            argv = ['gate', '--reviewed-sha', self.SHA, '--work', str(work),
+                    '--reference-wav', str(root/'reference.wav'),
+                    '--reference-text-file', str(root/'reference.txt'),
+                    '--cache-root', str(root), '--report', str(report_path),
+                    '--reference-kind', 'human-recorded', '--reference-authorized']
+            with mock.patch.object(sys, 'argv', argv), \
+                 mock.patch.object(gate, 'verify_source'), \
+                 mock.patch.object(gate.platform, 'system', return_value='Linux'), \
+                 mock.patch.object(gate.platform, 'machine', return_value='x86_64'), \
+                 mock.patch.object(gate.os, 'geteuid', return_value=0), \
+                 mock.patch.object(gate.shutil, 'disk_usage', return_value=mock.Mock(free=30*gate.GIB)), \
+                 mock.patch.object(Path, 'is_file', return_value=True), \
+                 mock.patch.object(Path, 'read_text', return_value='MemAvailable: 2621440 kB\n'), \
+                 mock.patch.object(gate, 'json_command') as docker, \
+                 mock.patch.object(gate, 'command') as acquisition:
+                with mock.patch.object(gate.sys, 'version_info', (3, 11, 0)):
+                    self.assertEqual(gate.main(), 1)
+            receipt = json.loads(report_path.read_text())
+            self.assertEqual(receipt['failure'], 'requires_12_gib_available_ram')
+            self.assertEqual(receipt['host']['available_ram_bytes'], int(2.5*gate.GIB))
+            self.assertEqual(receipt['host']['required_available_ram_bytes'], 12*gate.GIB)
+            self.assertEqual(receipt['host']['free_disk_bytes'], 30*gate.GIB)
+            self.assertEqual(receipt['stage'], 'preflight')
+            self.assertEqual(receipt['steps'], [])
+            self.assertEqual(receipt['command_log'], [])
+            self.assertEqual(receipt['evidence'], 'preflight_only')
+            self.assertEqual(receipt['real_voice_acceptance'], 'not_tested')
+            docker.assert_not_called(); acquisition.assert_not_called()
+
+    def test_python_313_is_reported_and_refused_before_docker(self):
+        report = {}
+        with tempfile.TemporaryDirectory() as tmp, \
+             mock.patch.object(gate.platform, 'system', return_value='Linux'), \
+             mock.patch.object(gate.platform, 'machine', return_value='x86_64'), \
+             mock.patch.object(gate.os, 'geteuid', return_value=0), \
+             mock.patch.object(gate.platform, 'python_version', return_value='3.13.0'), \
+             mock.patch.object(gate.shutil, 'disk_usage', return_value=mock.Mock(free=30*gate.GIB)), \
+             mock.patch.object(Path, 'read_text', return_value='MemAvailable: 16777216 kB\n'), \
+             mock.patch.object(gate, 'json_command') as docker:
+            with mock.patch.object(gate.sys, 'version_info', (3, 13, 0)):
+                with self.assertRaisesRegex(RuntimeError, 'requires_python_311'):
+                    gate.check_host(Path(tmp), report)
+        self.assertEqual(report['host']['python_version'], '3.13.0')
+        docker.assert_not_called()
+
+    def test_sufficient_budget_reaches_read_only_docker_checks(self):
+        report = {}
+        with tempfile.TemporaryDirectory() as tmp, \
+             mock.patch.object(gate.platform, 'system', return_value='Linux'), \
+             mock.patch.object(gate.platform, 'machine', return_value='x86_64'), \
+             mock.patch.object(gate.os, 'geteuid', return_value=0), \
+             mock.patch.object(gate.shutil, 'disk_usage', return_value=mock.Mock(free=30*gate.GIB)), \
+             mock.patch.object(Path, 'is_file', return_value=True), \
+             mock.patch.object(Path, 'read_text', return_value='MemAvailable: 12582912 kB\n'), \
+             mock.patch.dict(gate.os.environ, {'DOCKER_HOST': 'unix:///var/run/docker.sock', 'DOCKER_CONTEXT': 'default'}), \
+             mock.patch.object(gate, 'json_command', side_effect=[({'Version':'27.5.1'}, 0),
+                 ({'CgroupDriver':'cgroupfs','CgroupVersion':'2','Architecture':'amd64','ID':'local'}, 0)]) as docker:
+            with mock.patch.object(gate.sys, 'version_info', (3, 11, 0)):
+                result = gate.check_host(Path(tmp), report)
+        self.assertEqual(result['available_ram_bytes'], 12*gate.GIB)
+        self.assertEqual(result['docker_version'], '27.5.1')
+        self.assertEqual(docker.call_count, 2)
+
+    def test_unknown_and_synthetic_reference_cannot_claim_audio(self):
+        for kind in ('unknown', 'synthetic', 'human-recorded'):
+            with self.subTest(kind=kind), tempfile.TemporaryDirectory() as tmp:
+                root = Path(tmp)
+                work = root/'work'; work.mkdir()
+                report_path = root/'report.json'
+                argv = ['gate', '--reviewed-sha', self.SHA, '--work', str(work),
+                        '--reference-wav', str(root/'reference.wav'),
+                        '--reference-text-file', str(root/'reference.txt'),
+                        '--cache-root', str(root), '--report', str(report_path),
+                        '--reference-kind', kind]
+                with mock.patch.object(sys, 'argv', argv), \
+                     mock.patch.object(gate, 'verify_source'), \
+                     mock.patch.object(gate, 'check_host', return_value={}), \
+                     mock.patch.object(gate, 'command') as acquisition:
+                    self.assertEqual(gate.main(), 1)
+                receipt = json.loads(report_path.read_text())
+                self.assertEqual(receipt['failure'], 'requires_authorized_human_recorded_reference')
+                self.assertEqual(receipt['stage'], 'preflight')
+                self.assertEqual(receipt['evidence'], 'preflight_only')
+                self.assertEqual(receipt['qualification'], 'not_tested')
+                self.assertEqual(receipt['real_voice_acceptance'], 'not_tested')
+                self.assertEqual(receipt['steps'], [])
+                self.assertEqual(receipt['command_log'], [])
+                acquisition.assert_not_called()
+
     def test_source_admission_requires_exact_clean_checkout(self):
         def result(stdout):
             return mock.Mock(stdout=stdout)

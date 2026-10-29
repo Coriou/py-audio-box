@@ -226,17 +226,34 @@ def verify_source(reviewed_sha):
         fail('source_checkout_not_clean')
 
 
-def check_host(work):
+def check_host(work, report=None):
+    # These are observations only. Keep them even when admission refuses before
+    # Docker inspection, model acquisition, or any installed command.
+    disk = shutil.disk_usage(work).free
+    memory = None
+    if Path('/proc/meminfo').is_file():
+        for line in Path('/proc/meminfo').read_text().splitlines():
+            if line.startswith('MemAvailable:'):
+                memory = int(line.split()[1]) * 1024
+                break
+    host = dict(platform_system=platform.system(), platform_machine=platform.machine(),
+                python_version=platform.python_version(), python_executable=sys.executable,
+                docker_cli_available=shutil.which('docker') is not None,
+                docker_socket_present=Path('/var/run/docker.sock').exists(),
+                available_ram_bytes=memory, required_available_ram_bytes=12*GIB,
+                free_disk_bytes=disk, required_free_disk_bytes=22*GIB,
+                memory_policy='6_gib_control_plus_6_gib_worker_budget_conservative_admission')
+    if report is not None:
+        report['host'] = host
     if platform.system() != 'Linux' or platform.machine() != 'x86_64' or os.geteuid() != 0:
         fail('requires_linux_amd64_root')
     if sys.version_info[:2] != (3, 11):
         fail('requires_python_311')
     if not Path('/sys/fs/cgroup/cgroup.controllers').is_file():
         fail('requires_cgroup_v2')
-    if shutil.disk_usage(work).free < 22*GIB:
+    if disk < 22*GIB:
         fail('requires_22_gib_free_disk')
-    memory = int(next(line.split()[1] for line in Path('/proc/meminfo').read_text().splitlines() if line.startswith('MemAvailable:'))) * 1024
-    if memory < 12*GIB:
+    if memory is None or memory < 12*GIB:
         fail('requires_12_gib_available_ram')
     if (os.environ.get('DOCKER_HOST', 'unix:///var/run/docker.sock') != 'unix:///var/run/docker.sock'
             or os.environ.get('DOCKER_CONTEXT', 'default') != 'default'):
@@ -249,8 +266,8 @@ def check_host(work):
         fail('requires_local_rootful_cgroupfs_v2_amd64')
     if info.get('SecurityOptions') and any('rootless' in str(s) for s in info['SecurityOptions']):
         fail('requires_rootful_docker')
-    return dict(docker_version=version['Version'], docker_id=info.get('ID'), cgroup_driver='cgroupfs',
-                available_ram_bytes=memory, free_disk_bytes=shutil.disk_usage(work).free)
+    host.update(docker_version=version['Version'], docker_id=info.get('ID'), cgroup_driver='cgroupfs')
+    return host
 
 
 def extract_archive(archive, dest):
@@ -317,6 +334,7 @@ def run_speech_repeats(report, py, extracted, root, work):
             report['steps'].append(dict(name='speak', voice=voice, repeat=repeat, seconds=sec,
                                         job_id=job_id, voice_version_id=version_id,
                                         text_sha256=hashlib.sha256(spoken_text.encode()).hexdigest(), audio=audio))
+            report['evidence'] = 'real_installed_audio_only'
 
 
 def main():
@@ -324,13 +342,20 @@ def main():
     p.add_argument('--work', type=Path, required=True)
     p.add_argument('--reference-wav', type=Path, required=True)
     p.add_argument('--reference-text-file', type=Path, required=True)
+    p.add_argument('--reference-kind', choices=('unknown','human-recorded','synthetic'),
+                   default='unknown', help='Operator-declared provenance; unknown is refused')
+    p.add_argument('--reference-authorized', action='store_true',
+                   help='Operator attests authorization to use this reference for voice cloning')
     p.add_argument('--cache-root', type=Path, required=True, help='Private pinned HF snapshots, cache may initially be empty')
     p.add_argument('--reviewed-sha', required=True, help='Exact reviewed source commit, not a moving branch')
     p.add_argument('--report', type=Path, required=True)
     args = p.parse_args()
-    report = dict(status='FAILED', evidence='real_installed_audio_only',
+    report = dict(status='FAILED', stage='preflight', evidence='preflight_only',
                   source_sha=args.reviewed_sha if re.fullmatch(r'[0-9a-f]{40}', args.reviewed_sha) else '',
-                  steps=[], qualification='unqualified', command_log=COMMAND_LOG)
+                  steps=[], qualification='not_tested', real_voice_acceptance='not_tested',
+                  reference_provenance=dict(kind=args.reference_kind,
+                                            operator_authorized=args.reference_authorized),
+                  command_log=COMMAND_LOG)
     handle = None
     extracted = None
     py = None
@@ -343,8 +368,10 @@ def main():
         work = args.work.resolve(strict=True)
         if any(work.iterdir()): fail('work_must_be_empty')
         COMMAND_LOG_DIR = work/'command-logs'
-        host = check_host(work)
+        host = check_host(work, report)
         report['host'] = host
+        if args.reference_kind != 'human-recorded' or not args.reference_authorized:
+            fail('requires_authorized_human_recorded_reference')
         if (not args.reference_wav.is_absolute() or not args.reference_wav.is_file() or
                 not args.reference_text_file.is_absolute() or not args.reference_text_file.is_file()):
             fail('authorized_reference_and_exact_transcript_required')
@@ -354,6 +381,7 @@ def main():
             fail('private_cache_root_required')
         if args.reference_wav.stat().st_size > 1048576: fail('reference_exceeds_service_budget')
         report['reference'] = wav(args.reference_wav)
+        report['stage'] = 'installed_setup'
         archive = work/'speech-box.zip'
         _, sec = command([sys.executable, str(BASE/'scripts/headless-install.py'),'archive','--output',str(archive)], timeout=60, capture=False)
         report['steps'].append(dict(name='archive',seconds=sec,sha256=sha(archive)))
@@ -397,6 +425,7 @@ def main():
         up, sec = json_command(cmd,cwd=extracted,timeout=900,phase='public_up')
         if up.get('phase') != 'up' or up.get('qualification') != 'unqualified': fail('unqualified_up_receipt_missing')
         if not handle.is_file(): fail('retained_handle_missing_after_up')
+        report['qualification'] = 'unqualified'
         report['steps'].append(dict(name='public_up',seconds=sec,handle_created=True,custody=str(custody)))
         status, sec=call_client(py,extracted,root,'status',timeout=30)
         report['steps'].append(dict(name='authenticated_status',seconds=sec,available=bool(status.get('configured_capabilities'))))
@@ -452,9 +481,15 @@ def main():
         report['steps'].append(dict(name='cancel_reap',submit_seconds=sec,cancel_seconds=sec2,
                                     job_id=job_id,state='cancelled',reap_observed=True))
         report['status']='PASSED'
+        report['real_voice_acceptance']='technical_checks_only_listening_not_assessed'
+        report['stage']='complete'
     except Exception as exc:
         report['status']='FAILED'
         report['failure'] = str(exc) if isinstance(exc, RuntimeError) else type(exc).__name__
+        if report['failure'] == 'requires_12_gib_available_ram':
+            report['next_step'] = 'Use a dedicated Linux runner with at least 12 GiB MemAvailable; no VM or balloon change is performed by this gate.'
+        elif report['failure'] == 'requires_python_311':
+            report['next_step'] = 'Invoke this gate with an absolute Python 3.11 executable.'
     finally:
         stop_owned(report, handle, extracted, py)
         report['elapsed_seconds']=round(time.monotonic()-start,3)
