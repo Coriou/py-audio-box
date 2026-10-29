@@ -72,6 +72,7 @@ Import from an app::
 """
 
 import json
+import math
 import os
 import tempfile
 import threading
@@ -276,6 +277,22 @@ class VoiceRegistry:
             raise ValueError("Voice created_at must be a string")
         if "display_name" in data and not isinstance(data["display_name"], str):
             raise ValueError("Voice display_name must be a string")
+        # The public inventory reads these fields after normalization. Keep
+        # optional legacy fields optional, but never publish values it cannot read.
+        ref = data.get("ref")
+        if ref is not None:
+            if not isinstance(ref, dict):
+                raise ValueError("Voice ref must be an object or null")
+            try:
+                duration = float(ref.get("duration_sec", 0.0))
+            except (TypeError, ValueError, OverflowError) as exc:
+                raise ValueError("Voice ref duration_sec must be numeric") from exc
+            if not math.isfinite(duration):
+                raise ValueError("Voice ref duration_sec must be finite")
+        if any(not isinstance(tone, str) for tone in data["tones"]):
+            raise ValueError("Voice tone names must be strings")
+        if any(not isinstance(tone, str) for tone in data["custom_voice"]["tones"]):
+            raise ValueError("Voice custom tone names must be strings")
         return data
 
     def resolve_name(self, name: str, *, prefix: bool = True) -> str:

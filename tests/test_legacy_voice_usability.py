@@ -263,6 +263,15 @@ class VoiceUsability(unittest.TestCase):
             ('bad alias element', 'aliases', [None], 'aliases'),
             ('bad alias container', 'aliases', 'batman', 'aliases'),
             ('bad created date', 'created_at', None, 'Backup does not identify'),
+            ('bad source', 'source', [], 'Backup does not identify'),
+            ('bad prompt index', 'prompts', [], 'prompt and tone indexes'),
+            ('bad tone index', 'tones', [], 'prompt and tone indexes'),
+            ('list ref', 'ref', ['invalid'], 'ref'),
+            ('string ref', 'ref', 'invalid', 'ref'),
+            ('numeric ref', 'ref', 1, 'ref'),
+            ('bad ref duration', 'ref', {'duration_sec': ['invalid']}, 'duration_sec'),
+            ('null ref duration', 'ref', {'duration_sec': None}, 'duration_sec'),
+            ('nonfinite ref duration', 'ref', {'duration_sec': 'nan'}, 'duration_sec'),
             ('unresolvable alias', 'aliases', ['bad/path'], 'alias'),
             ('existing slug label', 'display_name', 'JOHN', 'conflicts'),
             ('existing display label', 'display_name', 'John', 'conflicts'),
@@ -270,6 +279,7 @@ class VoiceUsability(unittest.TestCase):
             ('orphan directory alias', 'aliases', ['waiting'], 'conflicts'),
         ]
         with app_module('apps/voice-clone/voice-clone.py') as clone, \
+             app_module('apps/voice-synth/voice-synth.py') as synth, \
              patch('pickle.load', side_effect=AssertionError('unpickle forbidden')), \
              patch('pickle.loads', side_effect=AssertionError('unpickle forbidden')):
             for label, field, value, error in cases:
@@ -290,9 +300,15 @@ class VoiceUsability(unittest.TestCase):
                         self.assertEqual(self.snapshot(), before)
                         self.assertFalse(self.reg.exists('bruce'))
                         self.assertEqual(self.reg.resolve_name('JOHN'), 'john')
+                        self.assertEqual([v['slug'] for v in synth.list_all_voices(self.cache)
+                                          if v['kind'] == 'named'], ['john'])
 
     def test_actual_repair_cli_publishes_readable_resolvable_backup(self):
         backup, _ = self.orphan()
+        metadata = json.loads(backup.read_text())
+        metadata['ref'] = {'language': 'English', 'duration_sec': 1.25,
+                           'transcript': 'I am Bruce'}
+        backup.write_text(json.dumps(metadata))
         self.reg.create('john', 'John', {})
         command = ['voice-clone', 'repair-registry', '--voice', 'bruce',
                    '--metadata', str(backup), '--cache', str(self.cache)]
@@ -316,6 +332,40 @@ class VoiceUsability(unittest.TestCase):
         self.assertEqual({v['slug'] for v in self.reg.list_voices(strict=True)}, {'bruce', 'john'})
         self.assertEqual(self.reg.resolve_name('BATMAN'), 'bruce')
         self.assertEqual(self.reg.resolve_name('JOHN'), 'john')
+        with app_module('apps/voice-synth/voice-synth.py') as synth, \
+             patch.object(sys, 'argv', ['voice-synth', 'list-voices', '--json',
+                                         '--cache', str(self.cache)]), \
+             contextlib.redirect_stdout(io.StringIO()) as out:
+            synth.main()
+        inventory = json.loads(out.getvalue())
+        self.assertEqual(inventory['named_count'], 2)
+        restored = next(v for v in inventory['named'] if v['slug'] == 'bruce')
+        self.assertEqual(restored['duration_sec'], 1.25)
+        self.assertEqual(restored['aliases'], ['batman'])
+        self.assertEqual(restored['transcript'], 'I am Bruce')
+
+    def test_repair_accepts_old_schema_without_optional_inventory_fields(self):
+        backup, _ = self.orphan()
+        metadata = json.loads(backup.read_text())
+        metadata['schema_version'] = 1
+        for field in ('display_name', 'aliases', 'tones', 'ref', 'custom_voice',
+                      'generation_defaults'):
+            metadata.pop(field, None)
+        backup.write_text(json.dumps(metadata))
+        with app_module('apps/voice-clone/voice-clone.py') as clone, \
+             patch.object(sys, 'argv', ['voice-clone', 'repair-registry', '--voice',
+                                         'bruce', '--metadata', str(backup), '--cache',
+                                         str(self.cache), '--apply']), \
+             contextlib.redirect_stdout(io.StringIO()) as out:
+            clone.main()
+        self.assertTrue(json.loads(out.getvalue())['restored'])
+        self.assertEqual(self.reg.voice_json('bruce').read_bytes(), backup.read_bytes())
+        with app_module('apps/voice-synth/voice-synth.py') as synth, \
+             patch.object(sys, 'argv', ['voice-synth', 'list-voices', '--json',
+                                         '--cache', str(self.cache)]), \
+             contextlib.redirect_stdout(io.StringIO()) as out:
+            synth.main()
+        self.assertEqual(json.loads(out.getvalue())['named'][0]['slug'], 'bruce')
 
     def test_actual_repair_cli_refuses_non_clone_checkpoints_without_publication(self):
         backup, pkl = self.orphan()
