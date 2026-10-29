@@ -119,10 +119,13 @@ same steps in CLI and MCP form.
 | --- | --- | --- | --- |
 | Kokoro | Preset voices | [Kokoro-82M v1.0 ONNX](requirements/tts/kokoro-fr.expected.json); Apache-2.0 weights, MIT runtime; public download | No cloning, instructions or seed |
 | Pocket | French voice cloning | [pocket-tts-fr 3.3.0](requirements/tts/pocket-fr.expected.json); CC-BY-4.0; **gated** HF access you obtain yourself | Short (≤ 8 s) reference; [pilot notes](docs/TTS_POCKET_CPU_PILOT.md) |
-| Qwen | English/French cloning | [Qwen3-TTS Base 0.6B](requirements/tts/qwen-0.6b-base.expected.json); Apache-2.0; public | Not installable yet (see above) |
+| Qwen | English/French cloning | [Qwen3-TTS Base 0.6B](requirements/tts/qwen-0.6b-base.expected.json); Apache-2.0; public | Service installer implemented; installed startup/inference unqualified. Existing toolbox usage: [Qwen retest guide](docs/QWEN-LOCAL-RETEST.md) |
 
-Models are pinned by revision and SHA-256 and are downloaded only when you
-explicitly run a recipe. These are the repository's declarations, not a live
+The managed service recipes pin models by revision and SHA-256; provisioning is
+an explicit action. Legacy `./run` Qwen commands can download models on first use
+and resolve an upstream revision. Qwen's declared public snapshots need no HF
+access token; the service's HTTP credential is separate from model access.
+These are the repository's declarations, not a live
 check of upstream terms. You remain responsible for model licenses, gated-access
 conditions and consent for any voice you clone.
 
@@ -138,7 +141,8 @@ conditions and consent for any voice you clone.
 - Design history, reviews and evidence: `docs/agent-interface/README.md` (source checkout).
   You don't need these to use the service.
 - The original `./run voice-*` Docker toolbox, job runner and Vast.ai workflow:
-  `docs/LEGACY-TOOLBOX.md` (source checkout)
+  [Legacy toolbox](docs/LEGACY-TOOLBOX.md) ·
+  [Qwen local troubleshooting and retest](docs/QWEN-LOCAL-RETEST.md)
 
 ## License
 

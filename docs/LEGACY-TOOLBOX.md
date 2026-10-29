@@ -4,9 +4,15 @@ This is the original Qwen3-TTS/audio toolbox (`./run voice-*`, job runner/watche
 It is separate from the headless API/CLI/MCP service described in the
 [main README](../README.md) and keeps its own registry, images and Makefile targets.
 
+For existing Ryan presets and Bruce/John clones, use the
+[Qwen local retest guide](QWEN-LOCAL-RETEST.md): model compatibility, cache reuse,
+metadata recovery prerequisites and Linux acceptance. No new service install is
+needed to retest this toolbox workflow.
+
 
 A portable, cacheable Python runtime for ML/audio scripts.
-Everything runs in Docker — zero host installs, fast re-runs, shared cache across all apps.
+Everything runs in Docker, with no host Python install. Apps share the `/cache`
+mount; actual Qwen model-download reuse must be checked separately.
 
 Optional isolated CPU engines: [Kokoro presets and Pocket clone setup](../apps/voice-cpu/README.md).
 Qwen remains the default. [Benchmark and listening protocol](TTS_BENCHMARK.md)
@@ -358,8 +364,10 @@ make clean-cache      # wipe ./cache/ (models + downloads re-run)
 ```
 
 Outputs land in `./work/` on your host.
-Everything expensive (model weights, downloads, Demucs runs) is cached in `./cache/` —
-re-runs with different flags are nearly instant.
+The persistent `./cache/` holds voice data and app caches. A cached prompt avoids
+rebuilding that prompt; it does not avoid model loading or inference. Qwen's
+isolated worker cache needs separate reuse verification; repeated downloads are
+a defect to investigate, not evidence that a new installation is required.
 
 ---
 
