@@ -21,15 +21,52 @@ class ConfigurationFailure(ValueError):
         return problem(self.code, self.message, 'url', self.action)
 
 
+class InstallationFailure(ValueError):
+    """A safe local discovery failure with the failing configuration boundary."""
+    code = 'invalid_request'
+    action = ('Place the installation under a directory owned by root or the client caller, '
+              'with a private root and credential files owned by that caller; then retry discovery.')
+
+    def __init__(self, message, field='installation'):
+        self.message, self.field = message, field
+        super().__init__(message)
+
+    @property
+    def body(self):
+        from service.catalogue import problem
+        action = ('Check the local installation document and its endpoint and credential references.'
+                  if self.field == 'config' else self.action)
+        return problem(self.code, self.message, self.field, action)
+
+
 def installation(root):
+    try:
+        return _installation(root)
+    except InstallationFailure:
+        raise
+    except OSError as exc:
+        raise InstallationFailure('Local installation path or file cannot be read.') from exc
+    except ValueError as exc:
+        # Messages below are fixed client strings; no paths, credentials or
+        # document contents are copied into the structured response.
+        message = str(exc)
+        field = 'config' if message.startswith(('Invalid ', 'Expected one local')) else 'installation'
+        raise InstallationFailure(message, field) from exc
+
+
+def _installation(root):
     root = Path(root)
     if not root.is_absolute(): raise ValueError('Installation path must be absolute.')
     current = Path('/')
     for part in root.parts[1:]:
         current = current / part
         info = current.lstat()
-        if not stat.S_ISDIR(info.st_mode) or info.st_uid not in (0, os.getuid()) or (info.st_mode & 0o022 and not info.st_mode & stat.S_ISVTX):
-            raise ValueError('Installation directory owner or mode is unsafe.')
+        if not stat.S_ISDIR(info.st_mode):
+            raise InstallationFailure('Installation ancestor is not a directory.')
+        if info.st_uid not in (0, os.getuid()):
+            raise InstallationFailure('Installation ancestor owner is neither root nor the client caller.')
+        if info.st_mode & 0o022 and not info.st_mode & stat.S_ISVTX:
+            raise InstallationFailure('Installation ancestor mode permits unsafe writes.')
     def read(name):
         path = root / name
         info = path.lstat()
@@ -48,7 +85,10 @@ def installation(root):
             final = path.lstat()
             if (after.st_dev, after.st_ino) != (final.st_dev, final.st_ino):
                 raise ValueError('Installation file changed after reading.')
-            return json.loads(raw)
+            try:
+                return json.loads(raw)
+            except (UnicodeDecodeError, ValueError):
+                raise InstallationFailure('Invalid local installation document.', 'config') from None
         finally:
             os.close(fd)
     if (root/'client.json').exists():
@@ -68,6 +108,8 @@ def installation(root):
         principal = config['principal']
     else:
         config, credentials = read('install.json'), read('credential.json')
+        if type(config) is not dict:
+            raise InstallationFailure('Invalid local installation configuration.', 'config')
         port = config.get('port')
         if config.get('root') != str(root) or type(port) is not int or not 1 <= port <= 65535:
             raise ValueError('Invalid local installation configuration.')

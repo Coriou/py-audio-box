@@ -70,7 +70,7 @@ def _outcome(phase, exc, handles, *, mutation=False):
         action += ' Enrollment resume: pass --asset-id with the same name, reference text and audition text; include --job-id only when confirmed.'
     if 'generation_key' in handles:
         action += ' Speech resume: pass --voice-version-id with the same text; include --job-id only when confirmed.'
-    if phase == 'upload' and not handles.get('asset_id'):
+    if phase == 'upload' and state == 'upload_unknown' and not handles.get('asset_id'):
         action = 'Upload outcome is unknown and no asset ID was confirmed. Inspect service assets before any new upload; do not automatically repeat the WAV command.'
     if handles.get('saved'):
         action = ('The verified output was saved at the reported path after the deadline. '

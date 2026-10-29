@@ -15,6 +15,7 @@ from unittest.mock import patch
 
 from clients.cli import main
 from clients.http import HTTP, network_os_error
+from clients.config import InstallationFailure
 from service.catalogue import Failure, problem
 
 
@@ -85,6 +86,7 @@ class TransportClassificationTests(unittest.TestCase):
         module = ast.fix_missing_locations(ast.Module(body=[handler], type_ignores=[]))
         namespace = {
             'Failure': Failure, 'ConfigurationFailure': ValueError,
+            'InstallationFailure': InstallationFailure,
             'ValidationError': TypeError, 'ContractError': TypeError,
             'HTTP': HTTP, 'network_os_error': network_os_error,
             'problem': problem, 'asyncio': asyncio,

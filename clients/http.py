@@ -234,16 +234,27 @@ class HTTP:
                 if not stat.S_ISREG(info.st_mode) or not 0 < info.st_size <= maximum:
                     raise Failure('resource_limit', 'Upload file exceeds media budget or is not regular.')
                 def chunks():
-                    remaining = info.st_size
-                    while remaining:
-                        _timeout(deadline, 20)
-                        data = stream.read(min(65536, remaining))
-                        if not data: raise ValueError('changed_file')
-                        remaining -= len(data)
-                        yield data
-                    after = os.fstat(stream.fileno())
-                    if stream.read(1) or (info.st_size,info.st_mtime_ns,info.st_ctime_ns) != (after.st_size,after.st_mtime_ns,after.st_ctime_ns):
-                        raise ValueError('changed_file')
+                    submitted = False
+                    try:
+                        remaining = info.st_size
+                        while remaining:
+                            _timeout(deadline, 20)
+                            data = stream.read(min(65536, remaining))
+                            if not data: raise ValueError('changed_file')
+                            remaining -= len(data)
+                            submitted = True
+                            yield data
+                        after = os.fstat(stream.fileno())
+                        if stream.read(1) or (info.st_size,info.st_mtime_ns,info.st_ctime_ns) != (after.st_size,after.st_mtime_ns,after.st_ctime_ns):
+                            raise ValueError('changed_file')
+                    except (OSError, ValueError):
+                        # A read may carry a socket-like errno. Its origin is
+                        # still the client-host WAV. Earlier chunks may already
+                        # have entered the transport, so preserve that ambiguity.
+                        if submitted:
+                            raise Failure('not_ready', 'Upload outcome may be unknown after a local file read failed.',
+                                          action='Inspect service assets before any new upload.') from None
+                        raise Failure('invalid_request', 'Client-local upload file unavailable or changed.', 'file') from None
                 try:
                     with _client(self.base_url, deadline, 20) as client:
                         status, body = _body(client, 'POST', '/v1/assets', deadline=deadline, cap=20,

@@ -18,7 +18,7 @@ import httpx
 from clients.http import HTTP
 from clients.workflow import enroll, speak
 from clients.cli import main
-from clients.config import ConfigurationFailure, installation, resolve
+from clients.config import ConfigurationFailure, InstallationFailure, installation, resolve
 from contracts.validate import canonical_hash
 from service.catalogue import Failure
 
@@ -443,6 +443,7 @@ class WorkflowHTTPTests(unittest.TestCase):
                 handler.decorator_list = []
                 module = ast.fix_missing_locations(ast.Module(body=[handler], type_ignores=[]))
                 namespace = {'Failure':Failure, 'ConfigurationFailure':ConfigurationFailure,
+                             'InstallationFailure':InstallationFailure,
                              'ValidationError':ValueError, 'ContractError':TypeError,
                              'result':lambda body,error=False:(body,error)}
                 exec(compile(module, str(ROOT/'clients'/'mcp.py'), 'exec'), namespace)
