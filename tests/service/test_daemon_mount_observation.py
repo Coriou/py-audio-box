@@ -56,6 +56,12 @@ class MountObservationTests(unittest.TestCase):
         result=self.observe(second)
         self.assertEqual(result['inspections'],self.first)
         self.assertEqual(second,original)
+        # Registration and notification inspect again after the first bracket.
+        later=copy.deepcopy(result)
+        later['inspections']=second
+        self.assertEqual(dh.comparison_observation(result),dh.comparison_observation(later))
+        later['hello']['boot']='c'*32
+        self.assertNotEqual(dh.comparison_observation(result),dh.comparison_observation(later))
 
     def test_qwen_mount_lists_permute_through_real_family_validator(self):
         fixture=qwen_fixtures.InstalledQwenTests()

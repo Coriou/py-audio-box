@@ -422,9 +422,14 @@ def stopped_receipt(receipt, pair, history, *, public, family):
     installation(public)
     ip._closed(receipt,'containers history')
     ip._closed(pair,'control worker')
+    ip._closed(receipt['containers'],'control worker')
     for role,container in pair.items():
         dv.inspect_container(container,role,public['configuration'],public['launch'],family=family)
         if container['State']['Running'] is not False or container['State']['ExitCode']!=0:
+            raise ValueError('daemon_stopped_unknown')
+        recorded=receipt['containers'][role]
+        dv.inspect_container(recorded,role,public['configuration'],public['launch'],family=family)
+        if recorded['State']['Running'] is not False or recorded['State']['ExitCode']!=0:
             raise ValueError('daemon_stopped_unknown')
     ip._closed(history,'state journal')
     recovery.installed_clean_history(history['state'],history['journal'],family=family)
@@ -438,6 +443,8 @@ def stopped_receipt(receipt, pair, history, *, public, family):
     if not matched: raise ValueError('daemon_clean_stop_receipt_required')
     recovery.installed_history_current(registrations,public['host'],public['deployment_id'],matched,
                                       family=family,public=public)
-    if _encoded(receipt)!=_encoded(dict(containers=pair,history=history)):
+    if (_encoded(receipt['history'])!=_encoded(history) or
+            any(dv.comparison_inspection(receipt['containers'][role])!=dv.comparison_inspection(pair[role])
+                for role in ('control','worker'))):
         raise ValueError('daemon_clean_stop_receipt_required')
     return receipt

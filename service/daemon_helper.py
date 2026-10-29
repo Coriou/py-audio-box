@@ -160,15 +160,27 @@ def observation_refusal(reason, before, after, kind):
     return exc
 
 
-def comparison_inspection(c):
-    """Compare validated Docker mount lists as multisets, retaining every field."""
-    # inspect_container has already checked both lists. Keep the original
-    # inspection for evidence; copy only the paths whose order Docker varies.
-    value=dict(c)
-    value['Mounts']=sorted(c['Mounts'],key=lambda m:json.dumps(m,sort_keys=True))
-    value['HostConfig']=dict(c['HostConfig'])
-    value['HostConfig']['Mounts']=sorted(c['HostConfig']['Mounts'],
-        key=lambda m:json.dumps(m,sort_keys=True))
+def matching_stopped_receipt(receipt, pair, history, config, binding, family):
+    """Match a retained stop after validating both Docker inspection boundaries."""
+    try:
+        dv.closed(receipt,'containers history')
+        dv.closed(receipt['containers'],'control worker')
+        dv.closed(pair,'control worker')
+        for role in ('control','worker'):
+            dv.inspect_container(pair[role],role,config,binding,family=family)
+            dv.inspect_container(receipt['containers'][role],role,config,binding,family=family)
+    except (ValueError,KeyError,TypeError):
+        return False
+    return (receipt['history']==history and
+        all(dv.comparison_inspection(receipt['containers'][role])==dv.comparison_inspection(pair[role])
+            for role in ('control','worker')))
+
+
+def comparison_observation(observation):
+    """Compare already validated observations without changing retained evidence."""
+    value=dict(observation)
+    value['inspections']={role:dv.comparison_inspection(observation['inspections'][role])
+                          for role in ('control','worker')}
     return value
 
 
@@ -569,8 +581,8 @@ class Helper:
             if any(local['roots']['assets']!=list(info[:2]) for local in value['local'].values()):
                 raise ValueError('daemon_assets_view_identity')
         second=self.pair(ids)
-        compared_first={role:comparison_inspection(first[role]) for role in ('control','worker')}
-        compared_second={role:comparison_inspection(second[role]) for role in ('control','worker')}
+        compared_first={role:dv.comparison_inspection(first[role]) for role in ('control','worker')}
+        compared_second={role:dv.comparison_inspection(second[role]) for role in ('control','worker')}
         if compared_second!=compared_first:
             raise observation_refusal('daemon_observation_pair_changed',compared_first,compared_second,'pair')
         later=self.startup()
@@ -654,7 +666,9 @@ class Helper:
                 raise ValueError('daemon_registration_poststate')
             def stable(state):
                 projection=json.loads(encode(state['evidence_projection'])); projection['data'].pop('p1_registrations'); return projection
-            if stable(before)!=stable(after) or self.observe(ids,public)!=obs: raise ValueError('daemon_registration_bracket')
+            if (stable(before)!=stable(after) or
+                    comparison_observation(self.observe(ids,public))!=comparison_observation(obs)):
+                raise ValueError('daemon_registration_bracket')
             gate=gate_projection(dict(version=2 if self.export else 1,launch_policy=self.policy,registration_id=rid,registration=record,
                 configuration_digest=digest(self.config),enrollment_digest=digest(public),provenance_digest=digest(provenance),observation=obs),family=self.family,
                 configuration=self.config if self.family is not None else None,binding=self.b,public=public)
@@ -663,7 +677,8 @@ class Helper:
         # control immediately acquires that same lock for its private precheck.
         # The outer authority lock still excludes another installer/registrar.
         self.rpc('notify',dict(id=ids['control'],gate=gate))
-        if self.observe(ids,public)!=obs: raise ValueError('daemon_notification_bracket')
+        if comparison_observation(self.observe(ids,public))!=comparison_observation(obs):
+            raise ValueError('daemon_notification_bracket')
         return rid,record
 
     def wait(self,function,predicate):
@@ -743,7 +758,9 @@ class Helper:
                     except ValueError: continue
                     matches.append(receipt)
                 if not matches: raise ValueError('daemon_clean_stop_receipt_required')
-            elif not any(r['containers']==pair and r['history']==history for r in receipts): raise ValueError('daemon_clean_stop_receipt_required')
+            else:
+                if not any(matching_stopped_receipt(r,pair,history,self.config,self.b,self.family)
+                           for r in receipts): raise ValueError('daemon_clean_stop_receipt_required')
         self.inspect('control',ids,'start')
         self.wait(lambda:self.rpc('marker',dict(id=ids['control'],role='control')),lambda v:v==dict(phase='waiting'))
         self.inspect('worker',ids,'start')

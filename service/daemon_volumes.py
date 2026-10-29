@@ -334,6 +334,16 @@ def inspect_container(c, role, config, b, *, phase=None, nonce=None, family=None
     return c
 
 
+def comparison_inspection(c):
+    """Order-independent view of an already validated inspection, without changing evidence."""
+    value=dict(c)
+    value['Mounts']=sorted(c['Mounts'],key=lambda m:json.dumps(m,sort_keys=True))
+    value['HostConfig']=dict(c['HostConfig'])
+    value['HostConfig']['Mounts']=sorted(c['HostConfig']['Mounts'],
+        key=lambda m:json.dumps(m,sort_keys=True))
+    return value
+
+
 def local(value, role, *, family=None):
     if family is not None:
         from service import installed_pocket_daemon as pd
