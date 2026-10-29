@@ -13,7 +13,9 @@ import os
 from pathlib import Path
 import platform
 import re
+import selectors
 import shutil
+import signal
 import subprocess
 import sys
 import time
@@ -23,6 +25,27 @@ import zipfile
 
 GIB = 1024 ** 3
 COMMAND_LOG = []
+COMMAND_LOG_DIR = None
+LOG_EDGE_BYTES = 65536
+PUBLIC_ERROR_CODES = frozenset(('revision_conflict','idempotency_conflict','unsupported_control',
+    'not_ready','resource_limit','invalid_media','invalid_request','not_found','forbidden',
+    'stale_attempt','cancel_pending','missing_media','stale_take','clipping',
+    'migration_collision','alias_conflict','version_conflict','voice_archived',
+    'publication_format_migration_required','transport_error'))
+PUBLIC_ERROR_PHASES = frozenset(('voice_resolve','preset_status','preset_register',
+    'voice_version_get','generation_submit','job_get','artifact_get','download',
+    'upload','enroll','speak'))
+PUBLIC_HELPER_CODES = frozenset(('daemon_closed_record','daemon_container_mount_binding',
+    'daemon_container_security_binding','daemon_export_exact_mount_options',
+    'daemon_helper_begin','daemon_helper_capability_identity','daemon_helper_deadline',
+    'daemon_helper_distinct_roots','daemon_helper_incarnation_changed',
+    'daemon_helper_linux_root','daemon_helper_mount_alias','daemon_helper_mountinfo',
+    'daemon_helper_phase','daemon_helper_root_changed','daemon_no_copyup_mount_required',
+    'daemon_phase_eof_retained','daemon_phase_replay','daemon_phase_timeout',
+    'daemon_phase_write_timeout','daemon_requested_mount_binding',
+    'daemon_runtime_wait_timeout_retained','daemon_snapshot_binding',
+    'daemon_terminal_eof_timeout','daemon_trailing_protocol',
+    'qwen_service_cgroupfs_required'))
 SAFE_FLAGS = {'--format','--output','--require-hashes','--only-binary=:all:', '-r', '-m',
               '--model','--root','--snapshot','--cache-root','--pull=true','--target','-f','-t',
               '--clone-bundle','--ryan-bundle','--context','--control-image','--worker-image',
@@ -65,23 +88,121 @@ def wav(path):
                 frames=frames, duration_seconds=frames/rate, peak=peak, rms=rms)
 
 
-def command(args, *, timeout=600, cwd=None, capture=True):
+class BoundedOutput:
+    """Drain a pipe continuously while retaining exact first and last bytes."""
+    def __init__(self):
+        self.first = bytearray()
+        self.last = bytearray()
+        self.total = 0
+
+    def add(self, data):
+        self.total += len(data)
+        take = max(0, LOG_EDGE_BYTES-len(self.first))
+        self.first.extend(data[:take])
+        self.last.extend(data)
+        if len(self.last) > LOG_EDGE_BYTES:
+            del self.last[:-LOG_EDGE_BYTES]
+
+    def retained(self):
+        if self.total <= LOG_EDGE_BYTES:
+            return bytes(self.first)
+        if self.total <= 2*LOG_EDGE_BYTES:
+            return bytes(self.first) + bytes(self.last)[-(self.total-LOG_EDGE_BYTES):]
+        return bytes(self.first) + (b'\n[omitted %d bytes]\n' % (self.total-2*LOG_EDGE_BYTES)) + bytes(self.last)
+
+
+def structured_cause(stdout, stderr):
+    """Expose only code-shaped fields, never arbitrary helper messages."""
+    for line in reversed(stdout.last.decode('utf-8', 'replace').splitlines()):
+        try:
+            value = json.loads(line)
+        except (ValueError, TypeError):
+            continue
+        if isinstance(value, dict):
+            cause = {}
+            if isinstance(value.get('code'), str) and value['code'] in PUBLIC_ERROR_CODES:
+                cause['code'] = value['code']
+            if isinstance(value.get('phase'), str) and value['phase'] in PUBLIC_ERROR_PHASES:
+                cause['phase'] = value['phase']
+            if cause:
+                return cause
+    diagnostic = stderr.last.decode('utf-8', 'replace')
+    match = re.search(r'\bdaemon_helper_refusal:(install|init|up|status|stop):'
+                      r'(operation_failed|prior_failure|final_refusal):([a-z][a-z0-9_]{1,79}):', diagnostic)
+    if match and match.group(3) in PUBLIC_HELPER_CODES:
+        return dict(code='daemon_helper_refusal', helper_phase=match.group(1),
+                    helper_stage=match.group(2), detail_code=match.group(3))
+    if 'qwen_service_cgroupfs_required:' in diagnostic:
+        return dict(code='qwen_service_cgroupfs_required')
+    return None
+
+
+def command(args, *, timeout=600, cwd=None, capture=True, phase=None):
     start = time.monotonic()
     safe = [Path(args[0]).name] + [x if x in SAFE_FLAGS or x in PUBLIC_TOKENS else '<private-or-pin>'
                                   for x in args[1:]]
-    try:
-        cp = subprocess.run(args, cwd=cwd, text=True, stdout=subprocess.PIPE if capture else subprocess.DEVNULL,
-                            stderr=subprocess.PIPE if capture else subprocess.DEVNULL, timeout=timeout,
+    streams = {'stdout': BoundedOutput(), 'stderr': BoundedOutput()}
+    proc = subprocess.Popen(args, cwd=cwd, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                            start_new_session=True,
                             env={**os.environ, 'HF_HUB_DISABLE_TELEMETRY': '1',
                                  'DOCKER_HOST': 'unix:///var/run/docker.sock', 'DOCKER_CONTEXT': 'default'})
-    except subprocess.TimeoutExpired:
-        COMMAND_LOG.append(dict(argv=safe, seconds=round(time.monotonic()-start,3), outcome='timeout'))
+    selector = selectors.DefaultSelector()
+    for name, pipe in (('stdout', proc.stdout), ('stderr', proc.stderr)):
+        selector.register(pipe, selectors.EVENT_READ, name)
+    deadline = start + timeout
+    expired = False
+    try:
+        while selector.get_map() or proc.poll() is None:
+            remaining = deadline-time.monotonic()
+            if remaining <= 0:
+                expired = True
+                try:
+                    os.killpg(proc.pid, signal.SIGKILL)
+                except ProcessLookupError:
+                    pass
+                break
+            for key, _ in selector.select(min(remaining, 0.25)):
+                data = os.read(key.fd, 65536)
+                if data:
+                    streams[key.data].add(data)
+                else:
+                    selector.unregister(key.fileobj)
+    finally:
+        selector.close()
+        for pipe in (proc.stdout, proc.stderr):
+            pipe.close()
+        if expired:
+            proc.wait(timeout=5)
+        else:
+            proc.wait()
+    seconds = round(time.monotonic()-start, 3)
+    receipt = dict(argv=safe, phase=phase or Path(args[0]).name, seconds=seconds,
+                   outcome='timeout' if expired else 'completed',
+                   exit_code=None if expired else proc.returncode)
+    if COMMAND_LOG_DIR is not None:
+        COMMAND_LOG_DIR.mkdir(mode=0o700, parents=True, exist_ok=True)
+        identifier = 'command-%04d' % (len(COMMAND_LOG)+1)
+        receipt['private_log_id'] = identifier
+        for name, output in streams.items():
+            path = COMMAND_LOG_DIR/(identifier+'.'+name+'.log')
+            fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+            with os.fdopen(fd, 'wb') as log:
+                log.write(output.retained())
+            receipt[name+'_bytes'] = output.total
+            receipt[name+'_omitted_bytes'] = max(0, output.total-2*LOG_EDGE_BYTES)
+    cause = structured_cause(streams['stdout'], streams['stderr'])
+    if cause and (expired or proc.returncode):
+        receipt['cause'] = cause
+    COMMAND_LOG.append(receipt)
+    if expired:
         fail('command_timeout:' + Path(args[0]).name)
-    COMMAND_LOG.append(dict(argv=safe, seconds=round(time.monotonic()-start,3), exit_code=cp.returncode))
-    # Raw stdout/stderr can contain paths, media or keys; only redacted command receipts are retained.
-    if cp.returncode:
-        fail('command_failed:' + Path(args[0]).name + ':' + str(cp.returncode))
-    return cp.stdout.strip() if capture else '', round(time.monotonic()-start, 3)
+    if proc.returncode:
+        fail('command_failed:' + Path(args[0]).name + ':' + str(proc.returncode))
+    if capture:
+        if streams['stdout'].total > 2*LOG_EDGE_BYTES:
+            fail('command_output_exceeds_capture_budget:' + Path(args[0]).name)
+        return streams['stdout'].retained().decode('utf-8').strip(), seconds
+    return '', seconds
 
 def json_command(args, **kw):
     raw, duration = command(args, **kw)
@@ -168,6 +289,36 @@ def call_client(python, extracted, root, *args, timeout=610):
     return json_command([*prefix,python,'-m','clients.cli','--installation',str(root),*map(str,args)], cwd=extracted, timeout=timeout)
 
 
+def run_speech_repeats(report, py, extracted, root, work):
+    seen_jobs = set()
+    for voice in ('ci-reference', 'Ryan'):
+        expected_version = None
+        for repeat in (1, 2):
+            output = work/(voice+'-'+str(repeat)+'.wav')
+            spoken_text = 'The real audio gate is speaking now. Pass %d for %s.' % (repeat, voice)
+            result, sec = call_client(py, extracted, root, 'speak', '--voice', voice,
+                                      '--text', spoken_text, '--output', output, '--wait-seconds', '600')
+            if result.get('state') != 'succeeded' or not output.is_file():
+                fail('real_speech_failed_'+voice)
+            job_id = result.get('job_id')
+            version_id = result.get('voice_version_id')
+            if not isinstance(job_id, str) or not job_id or job_id in seen_jobs:
+                fail('speech_job_not_fresh_'+voice)
+            seen_jobs.add(job_id)
+            if expected_version is None:
+                selected, _ = call_client(py, extracted, root, 'voice', 'resolve', voice, timeout=30)
+                versions = selected.get('version_ids')
+                if not isinstance(versions, list) or not versions:
+                    fail('speech_voice_identity_missing_'+voice)
+                expected_version = versions[-1]
+            if version_id != expected_version:
+                fail('speech_voice_identity_mismatch_'+voice)
+            audio = wav(output)
+            report['steps'].append(dict(name='speak', voice=voice, repeat=repeat, seconds=sec,
+                                        job_id=job_id, voice_version_id=version_id,
+                                        text_sha256=hashlib.sha256(spoken_text.encode()).hexdigest(), audio=audio))
+
+
 def main():
     p = argparse.ArgumentParser()
     p.add_argument('--work', type=Path, required=True)
@@ -184,10 +335,14 @@ def main():
     extracted = None
     py = None
     start = time.monotonic()
+    global COMMAND_LOG_DIR
+    COMMAND_LOG.clear()
+    COMMAND_LOG_DIR = None
     try:
         verify_source(args.reviewed_sha)
         work = args.work.resolve(strict=True)
         if any(work.iterdir()): fail('work_must_be_empty')
+        COMMAND_LOG_DIR = work/'command-logs'
         host = check_host(work)
         report['host'] = host
         if (not args.reference_wav.is_absolute() or not args.reference_wav.is_file() or
@@ -200,15 +355,15 @@ def main():
         if args.reference_wav.stat().st_size > 1048576: fail('reference_exceeds_service_budget')
         report['reference'] = wav(args.reference_wav)
         archive = work/'speech-box.zip'
-        _, sec = command([sys.executable, str(BASE/'scripts/headless-install.py'),'archive','--output',str(archive)], timeout=60)
+        _, sec = command([sys.executable, str(BASE/'scripts/headless-install.py'),'archive','--output',str(archive)], timeout=60, capture=False)
         report['steps'].append(dict(name='archive',seconds=sec,sha256=sha(archive)))
         extracted = extract_archive(archive, work/'extract')
         # The runner environment is provisioned from exact package locks, never from the checkout.
-        _, sec = command([sys.executable,'-m','venv',str(work/'venv')],timeout=60)
+        _, sec = command([sys.executable,'-m','venv',str(work/'venv')],timeout=60,capture=False)
         py = str(work/'venv/bin/python')
         report['steps'].append(dict(name='isolated_python',seconds=sec))
         _, sec = command([py,'-m','pip','install','--require-hashes','--only-binary=:all:',
-                          '-r',str(extracted/'service/requirements.lock'),'-r',str(extracted/'requirements/client.lock')], timeout=900)
+                          '-r',str(extracted/'service/requirements.lock'),'-r',str(extracted/'requirements/client.lock')], timeout=900,capture=False)
         report['steps'].append(dict(name='locked_client_install',seconds=sec))
         bundles = {}
         for name, model in (('clone','clone'),('Ryan','Ryan')):
@@ -225,7 +380,7 @@ def main():
         for role, target in (('control','control'),('worker','worker-qwen')):
             tag='pab-qwen-'+uuid.uuid4().hex
             _, sec = command(['docker','build','--pull=true','--target',target,'-f',str(extracted/'service/Dockerfile.release'),
-                              '-t',tag,str(extracted)],timeout=1800,capture=False)
+                              '-t',tag,str(extracted)],timeout=1800,capture=False,phase='build_'+target)
             image,_ = command(['docker','image','inspect',tag,'--format','{{.Id}}'],timeout=15)
             if not image.startswith('sha256:'): fail('image_identity_missing')
             images[role]=image
@@ -239,7 +394,7 @@ def main():
              '--worker-image',images['worker'],'--helper-image',images['control'],'--custody',str(custody),
              '--reference-wav',str(args.reference_wav),'--reference-text',reference_text,
              '--root',str(root),'--port','18800','--handle',str(handle)]
-        up, sec = json_command(cmd,cwd=extracted,timeout=900)
+        up, sec = json_command(cmd,cwd=extracted,timeout=900,phase='public_up')
         if up.get('phase') != 'up' or up.get('qualification') != 'unqualified': fail('unqualified_up_receipt_missing')
         if not handle.is_file(): fail('retained_handle_missing_after_up')
         report['steps'].append(dict(name='public_up',seconds=sec,handle_created=True,custody=str(custody)))
@@ -254,14 +409,7 @@ def main():
                                     '--wait-seconds','600')
         if enrollment.get('state')!='succeeded': fail('real_enrollment_failed')
         report['steps'].append(dict(name='enroll',seconds=sec,state='succeeded',job_id=enrollment.get('job_id')))
-        for voice in ('ci-reference','Ryan'):
-            for repeat in (1,2):
-                output=work/(voice+'-'+str(repeat)+'.wav')
-                result, sec=call_client(py,extracted,root,'speak','--voice',voice,'--text','The real audio gate is speaking now.',
-                                        '--output',output,'--wait-seconds','600')
-                if result.get('state')!='succeeded' or not output.is_file(): fail('real_speech_failed_'+voice)
-                audio=wav(output)
-                report['steps'].append(dict(name='speak',voice=voice,repeat=repeat,seconds=sec,job_id=result.get('job_id'),audio=audio))
+        run_speech_repeats(report, py, extracted, root, work)
         # After acquisition the worker's installed policy denies network access.
         # Recheck the exact source bundle manifests and invoke no acquisition command.
         for name in ('clone','Ryan'):

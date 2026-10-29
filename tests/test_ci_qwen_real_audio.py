@@ -73,11 +73,110 @@ class RealAudioControlTests(unittest.TestCase):
     def test_command_pins_local_docker_transport(self):
         with mock.patch.dict(gate.os.environ, {'DOCKER_HOST': 'tcp://remote:2375',
                                                'DOCKER_CONTEXT': 'remote'}):
-            with mock.patch.object(gate.subprocess, 'run', return_value=mock.Mock(returncode=0, stdout='ok')) as run:
-                self.assertEqual(gate.command(['docker', 'version'])[0], 'ok')
-            env = run.call_args.kwargs['env']
-            self.assertEqual(env['DOCKER_HOST'], 'unix:///var/run/docker.sock')
-            self.assertEqual(env['DOCKER_CONTEXT'], 'default')
+            script = 'import os;print(os.environ["DOCKER_HOST"]);print(os.environ["DOCKER_CONTEXT"])'
+            output, _ = gate.command([sys.executable, '-c', script])
+            self.assertEqual(output.splitlines(), ['unix:///var/run/docker.sock', 'default'])
+
+    def test_failed_command_retains_bounded_private_cause_without_public_payload(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            gate.COMMAND_LOG.clear()
+            gate.COMMAND_LOG_DIR = Path(tmp)/'logs'
+            secret = 'credential-secret reference-transcript /private/user/audio.wav'
+            script = 'import sys;sys.stdout.write(sys.argv[1]*20000);sys.stderr.write("first cause\\n"+sys.argv[1]+"\\nlast cause\\n");sys.exit(7)'
+            try:
+                with self.assertRaisesRegex(RuntimeError, 'command_failed:python:7'):
+                    gate.command([sys.executable, '-c', script, secret], phase='build_control', capture=False)
+                receipt = gate.COMMAND_LOG[-1]
+                public = json.dumps(receipt)
+                self.assertNotIn(secret, public)
+                self.assertNotIn('reference-transcript', public)
+                self.assertEqual(receipt['exit_code'], 7)
+                self.assertEqual(receipt['phase'], 'build_control')
+                self.assertGreater(receipt['stdout_omitted_bytes'], 0)
+                private = gate.COMMAND_LOG_DIR/(receipt['private_log_id']+'.stderr.log')
+                self.assertIn(secret, private.read_text())
+                self.assertIn('last cause', private.read_text())
+                self.assertLessEqual(private.stat().st_size, 2*gate.LOG_EDGE_BYTES+64)
+                self.assertEqual(private.stat().st_mode & 0o777, 0o600)
+            finally:
+                gate.COMMAND_LOG_DIR = None
+
+    def test_timeout_retains_first_cause_and_absolute_budget(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            gate.COMMAND_LOG.clear()
+            gate.COMMAND_LOG_DIR = Path(tmp)/'logs'
+            try:
+                script = 'import sys,time;sys.stderr.write("early failure cause\\n"+"x"*1000000);sys.stderr.flush();time.sleep(30)'
+                with self.assertRaisesRegex(RuntimeError, 'command_timeout:python'):
+                    gate.command([sys.executable, '-c', script], timeout=0.5, phase='public_up')
+                receipt = gate.COMMAND_LOG[-1]
+                self.assertEqual(receipt['outcome'], 'timeout')
+                self.assertLess(receipt['seconds'], 3)
+                private = gate.COMMAND_LOG_DIR/(receipt['private_log_id']+'.stderr.log')
+                self.assertIn('early failure cause', private.read_text())
+                self.assertGreater(receipt['stderr_omitted_bytes'], 0)
+                self.assertLessEqual(private.stat().st_size, 2*gate.LOG_EDGE_BYTES+64)
+            finally:
+                gate.COMMAND_LOG_DIR = None
+
+    def test_structured_cause_keeps_code_not_message(self):
+        stdout, stderr = gate.BoundedOutput(), gate.BoundedOutput()
+        stdout.add(b'{"phase":"generation_submit","code":"invalid_request","message":"credential-secret"}\n')
+        self.assertEqual(gate.structured_cause(stdout, stderr),
+                         {'phase':'generation_submit','code':'invalid_request'})
+        stdout = gate.BoundedOutput()
+        stdout.add(b'{"phase":"credential-secret","code":"reference-transcript","message":"/private/user/audio.wav"}\n')
+        self.assertIsNone(gate.structured_cause(stdout, stderr))
+        stderr.add(b'speech-box docker refused; daemon_helper_refusal:up:operation_failed:daemon_phase_timeout:ValueError:run:1:host=private\n')
+        self.assertEqual(gate.structured_cause(stdout, stderr),
+                         {'code':'daemon_helper_refusal','helper_phase':'up',
+                          'helper_stage':'operation_failed','detail_code':'daemon_phase_timeout'})
+
+    def test_repeats_require_new_jobs_and_expected_voice(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            calls = []
+            def fake_client(_py, _extracted, _client_root, *args, **_kwargs):
+                calls.append(args)
+                if args[:2] == ('voice','resolve'):
+                    return {'version_ids':['version-1']}, 0.1
+                output = Path(args[args.index('--output')+1])
+                with wave.open(str(output), 'wb') as out:
+                    out.setnchannels(1); out.setsampwidth(2); out.setframerate(24000)
+                    out.writeframes((500).to_bytes(2, 'little', signed=True)*24000)
+                return {'state':'succeeded','job_id':'same-job','voice_version_id':'version-1'}, 0.1
+            report = {'steps':[]}
+            with mock.patch.object(gate, 'call_client', side_effect=fake_client):
+                with self.assertRaisesRegex(RuntimeError, 'speech_job_not_fresh_ci-reference'):
+                    gate.run_speech_repeats(report, 'python', root, root, root)
+            speak = [a for a in calls if a[0] == 'speak']
+            self.assertEqual(len(speak), 2)
+            self.assertNotEqual(speak[0][speak[0].index('--text')+1],
+                                speak[1][speak[1].index('--text')+1])
+
+    def test_four_fresh_speech_submissions_are_recorded(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            submissions = []
+            def fake_client(_py, _extracted, _client_root, *args, **_kwargs):
+                if args[:2] == ('voice', 'resolve'):
+                    return {'version_ids':['version-'+args[2]]}, 0.1
+                voice = args[args.index('--voice')+1]
+                spoken = args[args.index('--text')+1]
+                submissions.append((voice, spoken))
+                output = Path(args[args.index('--output')+1])
+                with wave.open(str(output), 'wb') as out:
+                    out.setnchannels(1); out.setsampwidth(2); out.setframerate(24000)
+                    out.writeframes((500).to_bytes(2, 'little', signed=True)*24000)
+                return {'state':'succeeded','job_id':'job-'+str(len(submissions)),
+                        'voice_version_id':'version-'+voice}, 0.1
+            report = {'steps':[]}
+            with mock.patch.object(gate, 'call_client', side_effect=fake_client):
+                gate.run_speech_repeats(report, 'python', root, root, root)
+            self.assertEqual(len(report['steps']), 4)
+            self.assertEqual(len({s['job_id'] for s in report['steps']}), 4)
+            self.assertEqual(len({s['text_sha256'] for s in report['steps']}), 4)
+            self.assertTrue(all(s['audio']['rms'] > 0 for s in report['steps']))
 
     def test_primary_failure_survives_stop_failure(self):
         with tempfile.TemporaryDirectory() as tmp:

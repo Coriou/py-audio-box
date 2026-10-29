@@ -77,10 +77,23 @@ submits and cancels a fresh generation, checks the terminal reaped attempt,
 and attempts to stop only its own handle. Every expected WAV must exist and
 decode as nonzero PCM16. SHA-256, duration, run timing, pinned bundle manifests,
 source SHA, image IDs and bounded command outcomes go into a redacted report.
+Each speech repetition submits distinct text and must return a new job ID for
+the expected voice version; the report records the job ID, voice version and
+text hash for each submission. A successful WAV with a replayed job is a failure.
 If both audio and stop fail, the primary audio failure and separate stop failure
 remain visible and the gate exits unsuccessfully. The report never contains the
 WAV, transcript, credential, client configuration or raw service/Docker output.
-Private work, images and failed handles remain on the runner for operator review.
+The command receipt names a private log ID, phase, elapsed time, exit or timeout,
+stream byte counts and omitted byte counts. Private logs live under
+`WORK/command-logs` (directory mode 0700, files mode 0600). Each stream retains
+its exact first and last 64 KiB, with an omission count for any middle bytes;
+the harness drains the full stream without keeping it in memory or writing an
+unbounded file. The public receipt may include a code-shaped structured cause
+from a helper, never its free-form message. Logs may contain secrets, transcript
+or private paths: keep them on the trusted runner, review them privately, and do
+not add them to the uploaded report artifact. Only the redacted JSON report is
+uploaded by the workflow. Private work, images and failed handles remain on the
+runner for operator review.
 The gate reports `unqualified` throughout; an audio pass cannot create a
 production qualification receipt or listening/fidelity proof.
 
