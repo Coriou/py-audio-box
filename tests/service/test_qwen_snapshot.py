@@ -8,6 +8,7 @@ import unittest
 import urllib.request
 import fcntl
 import multiprocessing
+import os
 import time
 from unittest.mock import patch
 
@@ -120,6 +121,88 @@ class QwenSnapshotTests(unittest.TestCase):
             bundle=repair(self.root/'managed',self.expected,snapshot,cache_root=cache,downloader=fetch)
         self.assertNotIn('config.json',calls)
         self.assertEqual((bundle/'config.json').read_bytes(),self.data['config.json'])
+
+    def test_chained_hf_blob_link_within_cache_is_reused(self):
+        cache=self.root/'cache'; blobs=cache/'blobs'; snapshot=cache/'snapshots'/'revision'
+        blobs.mkdir(parents=True); snapshot.mkdir(parents=True)
+        (blobs/'config').write_bytes(self.data['config.json'])
+        (cache/'config-alias').symlink_to('blobs/config')
+        (snapshot/'config.json').symlink_to('../../config-alias')
+        calls=[]
+        def fetch(url,target):
+            name=url.removeprefix('https://fixture.invalid/')
+            calls.append(name); target.write_bytes(self.data[name])
+        with patch.object(qd,'service_descriptor',return_value=self.expected):
+            bundle=repair(self.root/'managed',self.expected,snapshot,cache_root=cache,downloader=fetch)
+        self.assertNotIn('config.json',calls)
+        self.assertEqual((bundle/'config.json').read_bytes(),self.data['config.json'])
+
+    def test_confined_missing_blob_repairs_without_changing_source_cache(self):
+        cache=self.root/'cache'; blobs=cache/'blobs'; snapshot=cache/'snapshots'/'revision'
+        blobs.mkdir(parents=True); snapshot.mkdir(parents=True)
+        link=snapshot/'config.json'
+        link.symlink_to('../../blobs/missing-config')
+        calls=[]
+        def fetch(url,target):
+            name=url.removeprefix('https://fixture.invalid/')
+            calls.append(name); target.write_bytes(self.data[name])
+        with patch.object(qd,'service_descriptor',return_value=self.expected):
+            bundle=repair(self.root/'managed',self.expected,snapshot,cache_root=cache,downloader=fetch)
+        self.assertIn('config.json',calls)
+        self.assertEqual((bundle/'config.json').read_bytes(),self.data['config.json'])
+        self.assertTrue((self.root/'managed'/'active.json').exists())
+        self.assertEqual(os.readlink(link),'../../blobs/missing-config')
+        self.assertFalse((blobs/'missing-config').exists())
+
+    def test_unsafe_source_links_fail_before_download_or_activation(self):
+        outside=self.root/'outside'
+        cases=('escaped_dangling','escaped_existing','chained_escape',
+               'cycle','parent_escape','special_file','missing_link_parent')
+        for case in cases:
+            with self.subTest(case=case):
+                cache=self.root/case/'cache'; snapshot=cache/'snapshots'/'revision'
+                snapshot.mkdir(parents=True)
+                link=snapshot/'model.safetensors'
+                if case=='escaped_dangling':
+                    link.symlink_to(outside/'absent')
+                elif case=='escaped_existing':
+                    outside.mkdir(exist_ok=True)
+                    (outside/'present').write_bytes(self.data['model.safetensors'])
+                    link.symlink_to(outside/'present')
+                elif case=='chained_escape':
+                    (cache/'chain').symlink_to(outside/'absent')
+                    link.symlink_to('../../chain')
+                elif case=='cycle':
+                    link.symlink_to('model.safetensors')
+                elif case=='parent_escape':
+                    (snapshot/'escape').symlink_to(outside)
+                    # A later pinned file goes through an escaped parent.
+                    (snapshot/'speech_tokenizer').symlink_to('escape')
+                elif case=='special_file':
+                    os.mkfifo(link)
+                elif case=='missing_link_parent':
+                    link.symlink_to('../../missing-directory/blob')
+                calls=[]
+                def fetch(url,target):
+                    calls.append(url)
+                    target.write_bytes(self.data[url.removeprefix('https://fixture.invalid/')])
+                with patch.object(qd,'service_descriptor',return_value=self.expected):
+                    with self.assertRaises(ValueError):
+                        repair(self.root/case/'managed',self.expected,snapshot,
+                               cache_root=cache,downloader=fetch)
+                self.assertEqual(calls,[])
+                self.assertFalse((self.root/case/'managed'/'active.json').exists())
+
+    def test_absent_regular_path_with_missing_parent_is_repaired(self):
+        calls=[]
+        def fetch(url,target):
+            name=url.removeprefix('https://fixture.invalid/')
+            calls.append(name); target.write_bytes(self.data[name])
+        with patch.object(qd,'service_descriptor',return_value=self.expected):
+            bundle=repair(self.root/'managed',self.expected,self.snapshot,downloader=fetch)
+        self.assertIn('speech_tokenizer/config.json',calls)
+        self.assertFalse((self.snapshot/'speech_tokenizer').exists())
+        self.assertTrue((bundle/'speech_tokenizer'/'config.json').is_file())
 
     def test_signed_hf_redirect_chain_is_closed_to_reviewed_destination(self):
         origins=sorted(QWEN_HF_ORIGINS)

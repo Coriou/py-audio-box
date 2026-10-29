@@ -28,11 +28,28 @@ def _remaining(end):
 def _source(snapshot, cache_root, name):
     """Accept normal files and HF blob symlinks only inside an explicit cache."""
     candidate = snapshot / name
-    if not candidate.exists():
-        return None
-    real = candidate.resolve(strict=True)
-    if not real.is_relative_to(cache_root) or not real.is_file():
+    try:
+        # Resolve before testing existence: exists() is false for a dangling link,
+        # including one whose target escapes the selected cache.
+        real = candidate.resolve(strict=False)
+    except (OSError, RuntimeError) as exc:
+        raise ValueError('qwen_snapshot_source_invalid_link') from exc
+    if not real.is_relative_to(cache_root):
         raise ValueError('qwen_snapshot_source_outside_cache')
+    try:
+        source_stat = real.lstat()
+    except FileNotFoundError:
+        # An absent pinned file or a link to an absent blob inside the cache is
+        # repairable. No directory or blob is created in the source cache.
+        source_links = (path for path in (candidate, *candidate.parents)
+                        if path == snapshot or path.is_relative_to(snapshot))
+        if any(path.is_symlink() for path in source_links) and not real.parent.is_dir():
+            raise ValueError('qwen_snapshot_source_invalid_path')
+        return None
+    except OSError as exc:
+        raise ValueError('qwen_snapshot_source_invalid_path') from exc
+    if not stat.S_ISREG(source_stat.st_mode):
+        raise ValueError('qwen_snapshot_regular_source_required')
     fd = os.open(real, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
     before = os.fstat(fd)
     if not stat.S_ISREG(before.st_mode) or before.st_nlink != 1:
@@ -95,6 +112,11 @@ def repair(root, descriptor, snapshot, *, cache_root=None, offline=False,
     if any(path.is_symlink() for path in (cache_root, *cache_root.parents)):
         raise ValueError('qwen_snapshot_cache_symlink')
     end = time.monotonic() + seconds
+    # Validate every pinned source path before any private acquisition can run.
+    for entry in expected['files']:
+        opened = _source(snapshot, cache_root, entry['path'])
+        if opened is not None:
+            os.close(opened[0])
     by_url = {entry['origin']: entry for entry in expected['files']}
     def acquire(url, target):
         entry = by_url[url]
