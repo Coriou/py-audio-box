@@ -29,6 +29,33 @@ class LegacyControlsTests(unittest.TestCase):
                 self.assertEqual(hashlib.sha256((ROOT / entry['source']).read_bytes()).hexdigest(),
                                  entry['sha256'])
 
+    def test_added_voice_clone_controls_are_recorded_exactly(self):
+        ledger = json.loads((ROOT / 'contracts/v1/legacy-controls.json').read_text())
+        entry = next(e for e in ledger['commands'] if e['source'] == 'apps/voice-clone/voice-clone.py')
+        tree = ast.parse((ROOT / entry['source']).read_text())
+        parser = next(n for n in tree.body if isinstance(n, ast.FunctionDef)
+                      and n.name == 'build_parser')
+        calls = []
+        for statement in parser.body:
+            if isinstance(statement, ast.Assign) and len(statement.targets) == 1 \
+                    and isinstance(statement.targets[0], ast.Name) \
+                    and statement.targets[0].id in ('repair', 'alias'):
+                calls.append(statement.value)
+            elif isinstance(statement, ast.Expr) and isinstance(statement.value, ast.Call) \
+                    and isinstance(statement.value.func, ast.Attribute) \
+                    and isinstance(statement.value.func.value, ast.Name) \
+                    and statement.value.func.value.id in ('repair', 'alias'):
+                calls.append(statement.value)
+        actual = [dict(line=n.lineno, kind=n.func.attr,
+                       arguments=[ast.unparse(arg) for arg in n.args],
+                       keywords={kw.arg: ast.unparse(kw.value) for kw in n.keywords}) for n in calls]
+        start = next(i for i, control in enumerate(entry['controls'])
+                     if control['kind'] == 'add_parser'
+                     and control['arguments'] == ["'repair-registry'"])
+        recorded = entry['controls'][start:start + 9]
+        self.assertEqual(len(actual), 9)
+        self.assertEqual(actual, recorded)
+
     def test_recorded_constants_and_environment_locations(self):
         ledger = json.loads((ROOT / 'contracts/v1/legacy-controls.json').read_text())
         entry = next(e for e in ledger['shared_sources'] if e['source'] == 'lib/tts.py')
@@ -51,11 +78,16 @@ class LegacyControlsTests(unittest.TestCase):
                 load = self.function('load_tts_model', env)
                 load('Qwen/legacy', 2)
                 backend.assert_called_once_with(model_name='Qwen/legacy', num_threads=2,
-                    dtype_str='auto', revision=revision, offline=offline)
+                    dtype_str='auto', revision=revision, offline=offline, legacy_hf_cache=True)
                 backend.reset_mock()
                 load('Qwen/legacy', 3, 'float32', revision='explicit', offline=False)
                 backend.assert_called_once_with(model_name='Qwen/legacy', num_threads=3,
-                    dtype_str='float32', revision='explicit', offline=False)
+                    dtype_str='float32', revision='explicit', offline=False, legacy_hf_cache=True)
+                backend.reset_mock()
+                load('Qwen/legacy', 4, device='cpu', attention='sdpa')
+                backend.assert_called_once_with(model_name='Qwen/legacy', num_threads=4,
+                    dtype_str='auto', revision=revision, offline=offline,
+                    legacy_hf_cache=False, device='cpu', attention='sdpa')
 
     def test_legacy_automatic_device_attention_and_snapshot_forwarding(self):
         for device, flash, expected in [('cpu', False, 'sdpa'), ('mps', False, 'sdpa'),

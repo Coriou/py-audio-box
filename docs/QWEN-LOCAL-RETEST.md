@@ -194,20 +194,107 @@ Do not add `--force-bad-ref` or `--force` to a normal reuse test.
 No heavyweight acceptance was performed for this document. Source or focused
 fixture tests cannot qualify Linux runtime, audio quality or service readiness.
 
-## Headless service remains a separate, unqualified route
+## Headless two-model service: local preview and acceptance
 
-The service implements Base 0.6B EN/FR cloning and a `docker-qwen`
-`install`/`up`/`status`/`stop` family. It is not Ryan's CustomVoice toolbox route.
-Its managed model is pinned, inference is offline, and provisioning/building are
-separate explicit actions. Service voice assets and identity differ from the
-legacy registry: no supported command magically imports a legacy `.pkl` prompt.
-A service journey must upload the reference, prepare/audition, save and generate
-through its existing API/CLI/MCP contract. Its CPU path uses transcript-free
-x-vector cloning, so legacy full/ICL prompt behavior is not implied.
+The current service setup accepts sealed Base 0.6B and CustomVoice 0.6B
+bundles for the same authenticated principal. Base cloning uses the exact
+reference WAV and transcript with ICL conditioning; Ryan uses the installed
+CustomVoice preset. Its `docker-qwen` family provides `install`, `up`,
+`status` and `stop`. The managed bundles are pinned and inference is offline.
+Service voice assets and identity differ from the legacy registry: no
+supported command imports a legacy `.pkl` prompt. The named-voice client
+uploads a reference, prepares and auditions it, saves a version and generates
+speech. Ryan can be spoken through the same client after preset registration.
 
-The [Qwen CPU status](agent-interface/QWEN-CPU.md#current-status--2026-10-27)
-retains unresolved installed activation timeout and fresh capacity/admission
-requirements. Real inference, cancellation/reap, restart/history, public-client
-journey and listening acceptance still require authorized execution on the exact
-integrated source and image. Legacy success would not close those blockers or
-promote release readiness.
+The earlier [Qwen CPU status](agent-interface/QWEN-CPU.md#current-status--2026-10-27)
+records an installed activation timeout on an older candidate. The
+`967ef93a67f31d5cf629b318e63e8644a0340d36` source activation fix has
+not been qualified by a fresh installed run. Capacity/admission, actual
+inference, cancellation/reap, restart/history, public-client journey and
+listening acceptance require authorized execution on the exact integrated
+source and image. Legacy success would not promote release readiness.
+
+### Fresh headless-service journey for an authorized Linux host
+
+Use this sequence only after the operator has identified a qualifying host,
+existing sealed Base and CustomVoice bundles, loaded images, a trusted mono
+PCM16 reference WAV, and its exact transcript. The local `up` lane is an
+**unqualified preview**, with no production qualification receipt. It does not
+establish the quality or license of a particular reference recording. Record
+the recording's source and permission separately. Do not use a legacy prompt
+pickle as the service reference.
+
+1. Record `git rev-parse HEAD`, `git status --short`, host architecture, Docker
+   version/context, cgroup mode and limits, image IDs, dependency identity,
+   bundle manifests/revisions, disk headroom and reference WAV digest. Use the
+   final integrated commit, not `967ef93a67f31d5cf629b318e63e8644a0340d36`
+   as a proxy for later edits. Keep the actual commands and terminal output.
+2. Select an absolute Python 3.11 executable on the host. Verify that ordinary
+   and `sudo` execution resolve to the same executable, then run the local
+   setup with absolute existing inputs and a **new** handle. Replace the
+   illustrative paths and image references below. This launcher is the actual
+   `speech-box` entrypoint; local setup needs `sudo` for its dedicated cgroup.
+
+   ```sh
+   PYTHON_311='<absolute-python-3.11-executable-on-host>'
+   test "${PYTHON_311#/}" != "$PYTHON_311" && test -f "$PYTHON_311" && test -x "$PYTHON_311" || exit 1
+   python_real="$("$PYTHON_311" -c 'import os,sys; assert sys.version_info[:2] == (3,11); print(os.path.realpath(sys.executable))')" || exit 1
+   test "$(sudo "$PYTHON_311" -c 'import os,sys; assert sys.version_info[:2] == (3,11); print(os.path.realpath(sys.executable))')" = "$python_real" || exit 1
+   sudo "$PYTHON_311" scripts/headless-install.py up \
+     --clone-bundle /absolute/sealed/base --ryan-bundle /absolute/sealed/customvoice \
+     --control-image LOCAL_CONTROL_IMAGE --worker-image LOCAL_WORKER_IMAGE \
+     --helper-image LOCAL_HELPER_IMAGE --reference-wav /absolute/trusted/reference.wav \
+     --reference-text 'The exact words in the reference recording.' \
+     --handle /absolute/private/new-handle.json
+   ```
+
+   The [local startup instructions](agent-interface/QWEN-RESIDENT-SERVICE.md#local-startup-before-qualification)
+   describe the required cgroup and bundle preflight. Stop on the first
+   failure or timeout; preserve its handle and receipts for diagnosis. Do not
+   automatically retry setup or replace a retained failure with a new handle.
+3. As the ordinary client account, use the returned `client_command` arguments,
+   including `--installation` when the root is custom, but run them with the
+   verified `"$PYTHON_311"` in place of the printed `python3` executable.
+   The following are the actual `clients.cli` verbs; replace paths and text
+   with the authorized recording and client root.
+
+   ```sh
+   "$PYTHON_311" -m clients.cli --installation /absolute/private/client-root status
+   "$PYTHON_311" -m clients.cli --installation /absolute/private/client-root enroll --name bruce --wav /absolute/trusted/bruce.wav --reference-text 'Exact words in Bruce recording.' --audition-text 'A short audition.'
+   "$PYTHON_311" -m clients.cli --installation /absolute/private/client-root speak --voice bruce --text 'Hello from Bruce.' --output /absolute/new-bruce.wav
+   "$PYTHON_311" -m clients.cli --installation /absolute/private/client-root speak --voice Ryan --text 'Hello from Ryan.' --output /absolute/new-ryan.wav
+   "$PYTHON_311" -m clients.cli --installation /absolute/private/client-root voices list
+   "$PYTHON_311" -m clients.cli --installation /absolute/private/client-root jobs list
+   ```
+
+   Do not print or copy `control.key`. The client verifies downloaded bytes
+   against the service SHA-256 and refuses an existing output path. Retain the
+   returned voice version, job, artifact and asset IDs, result JSON, and output
+   digest. A timed-out or uncertain submission needs inspection using those
+   confirmed handles and the [resume rules](SERVICE-VOICE-CLIENT.md), not a
+   blind repeat. Record whether the service actually generated audio; status
+   alone does not prove it.
+4. Validate the resulting file as a nonempty PCM WAV and listen to it for
+   intelligible, complete speech and the intended voice. For example, run this
+   against the new output (replace the path):
+
+   ```sh
+   "$PYTHON_311" -c 'import sys,wave; w=wave.open(sys.argv[1],"rb"); print({"channels":w.getnchannels(),"sample_width":w.getsampwidth(),"rate":w.getframerate(),"frames":w.getnframes()}); assert w.getnchannels()==1 and w.getsampwidth()==2 and w.getnframes()>0; w.close()' /absolute/new-bruce.wav
+   ```
+
+5. Use `sudo "$PYTHON_311" scripts/headless-install.py docker-qwen stop --handle /absolute/private/new-handle.json`
+   and preserve terminal cleanup/reap evidence. After confirmed stop, use
+   `sudo "$PYTHON_311" scripts/headless-install.py docker-qwen up --handle /absolute/private/new-handle.json`
+   once, then client `status`, `voices list`, and `jobs list` with the same
+   client root and `"$PYTHON_311"`.
+   Verify the saved voice, bundle identity and prior job remain, then speak to
+   a **new** output path and validate/listen again. Finally run
+   `sudo "$PYTHON_311" scripts/headless-install.py docker-qwen stop --handle /absolute/private/new-handle.json`
+   and retain the second terminal cleanup/reap evidence. Stop on the first
+   failure; do not infer persistence from a source fixture or a still-running
+   process.
+
+Report each stage as PASS, FAIL or NOT RUN with the exact SHA, image IDs,
+installed dependency identity, timestamps and evidence location. A local
+preview success remains unqualified. Production qualification requires its
+separate measured setup and receipt, as well as authorized real-audio review.

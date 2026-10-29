@@ -282,7 +282,7 @@ class PocketLifecycleTests(unittest.TestCase):
     def test_supervisor_independent_mapping_and_fixture(self):
         self.submit();a=self.store.allocate(self.profiles,'pocket',8)['authority']
         from worker.runtime_supervisor import RuntimeSupervisor
-        s=RuntimeSupervisor.__new__(RuntimeSupervisor);s.bundles=a.context['execution']['bundles'];s.references={}
+        s=RuntimeSupervisor.__new__(RuntimeSupervisor);s.bundles=a.context['execution']['bundles'];s.references={};s.resident_qwen=False
         body=dict(snapshot=json.loads(a._snapshot),binding=a.binding,fixture='pocket')
         with self.assertRaisesRegex(Refused,'reference_mapping'):
             s.operation('prepare',body)

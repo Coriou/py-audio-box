@@ -8,6 +8,7 @@
     "THIRD_PARTY_NOTICES.md",
     "clients/__init__.py",
     "clients/cli.py",
+    "clients/config.py",
     "clients/http.py",
     "clients/mcp.py",
     "contracts/__init__.py",

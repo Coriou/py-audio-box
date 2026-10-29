@@ -52,7 +52,7 @@ def test_http_cli_mcp_parity_and_errors(configured_url, tmp_path):
                 assert init.protocolVersion
                 assert init.serverInfo.name == 'py-audio-box'
                 tools = (await session.list_tools()).tools
-                assert {t.name for t in tools} == {OPERATIONS[o]['mcp'] for o in (*IMPLEMENTED,*VOICE_READS,*PRODUCTION_OPERATIONS)} | {'speech_status','speech_operation_detail'}
+                assert {t.name for t in tools} == {OPERATIONS[o]['mcp'] for o in (*IMPLEMENTED,*VOICE_READS,*PRODUCTION_OPERATIONS)} | {'speech_enroll','speech_speak','speech_status','speech_operation_detail'}
                 assert 'speech_skeleton_status' not in {t.name for t in tools}
                 status = HTTP(url).get('/v1/status')
                 assert status == HTTP(url).get('/skeleton')

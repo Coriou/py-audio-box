@@ -375,7 +375,7 @@ class ModelEnumerationBounds(unittest.TestCase):
              patch.object(h.os,'scandir',side_effect=scan), \
              patch.object(h.time,'monotonic',side_effect=clock):
             with self.assertRaisesRegex(ValueError,'^installed_source_budget$'):
-                h._model_tree(Path('/models'),{},deadline)
+                h._model_tree(Path('/models'),{'ownership_policy':ip.POLICY},deadline)
         return consumed,opened
 
     def test_lazy_oversized_stops_at_global_entry_bound(self):

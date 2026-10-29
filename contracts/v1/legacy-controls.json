@@ -1147,7 +1147,7 @@
     },
     {
       "source": "apps/voice-clone/voice-clone.py",
-      "sha256": "bf82f8a89aa97143625b1954410908fb4229bbca410210ee65d988283cd5af5c",
+      "sha256": "a95160e940ee5b550e1c1326b06a7ac1da198c1082c2b15e4555778b96b8fa25",
       "coverage": "unchanged_legacy",
       "rationale": "Existing command remains callable through run/run-cpu; service promotion requires typed adapter and preservation tests, never arbitrary argv. Internal ASR/QA/alignment and all controls/default expressions below are retained.",
       "controls": [
@@ -1276,6 +1276,101 @@
           "keywords": {
             "action": "'store_true'",
             "help": "'After scoring VAD candidates, show a numbered menu so you can listen to each candidate WAV and pick the best reference segment manually. Bypasses the cached segment selection.'"
+          }
+        },
+        {
+          "line": 1672,
+          "kind": "add_parser",
+          "arguments": [
+            "'repair-registry'"
+          ],
+          "keywords": {
+            "help": "'Preview restoring missing voice.json from a trusted backup; never unpickles'"
+          }
+        },
+        {
+          "line": 1673,
+          "kind": "add_argument",
+          "arguments": [
+            "'--voice'"
+          ],
+          "keywords": {
+            "required": "True",
+            "metavar": "'SLUG'"
+          }
+        },
+        {
+          "line": 1674,
+          "kind": "add_argument",
+          "arguments": [
+            "'--metadata'"
+          ],
+          "keywords": {
+            "required": "True",
+            "type": "Path",
+            "help": "'Trusted original voice.json backup; hashes do not establish provenance'"
+          }
+        },
+        {
+          "line": 1676,
+          "kind": "add_argument",
+          "arguments": [
+            "'--cache'"
+          ],
+          "keywords": {
+            "default": "'/cache'"
+          }
+        },
+        {
+          "line": 1677,
+          "kind": "add_argument",
+          "arguments": [
+            "'--apply'"
+          ],
+          "keywords": {
+            "action": "'store_true'",
+            "help": "'Restore validated metadata; default is read-only preview'"
+          }
+        },
+        {
+          "line": 1679,
+          "kind": "add_parser",
+          "arguments": [
+            "'add-alias'"
+          ],
+          "keywords": {
+            "help": "'Add a case-insensitive voice alias without renaming files'"
+          }
+        },
+        {
+          "line": 1680,
+          "kind": "add_argument",
+          "arguments": [
+            "'--voice'"
+          ],
+          "keywords": {
+            "required": "True"
+          }
+        },
+        {
+          "line": 1681,
+          "kind": "add_argument",
+          "arguments": [
+            "'--alias'"
+          ],
+          "keywords": {
+            "required": "True",
+            "help": "'Letters, digits and hyphens; stored lowercase'"
+          }
+        },
+        {
+          "line": 1682,
+          "kind": "add_argument",
+          "arguments": [
+            "'--cache'"
+          ],
+          "keywords": {
+            "default": "'/cache'"
           }
         },
         {
@@ -2507,7 +2602,7 @@
     },
     {
       "source": "apps/voice-synth/voice-synth.py",
-      "sha256": "0a6de494056f771aaa342f8fb2f492fcbc6c50a4030dda1f07a91d7faa4d8abd",
+      "sha256": "8b0864f9c9e49b3f20381281da11b36686621c2c843ae5ec353c237e03467ea5",
       "coverage": "unchanged_legacy",
       "rationale": "Existing command remains callable through run/run-cpu; service promotion requires typed adapter and preservation tests, never arbitrary argv. Internal ASR/QA/alignment and all controls/default expressions below are retained.",
       "controls": [
@@ -3602,7 +3697,7 @@
   "shared_sources": [
     {
       "source": "lib/tts.py",
-      "sha256": "923281a1d73a41ef6ae97d196684d5c015a4f2ea50910ecc6cb5de2195b6abe3",
+      "sha256": "10f2b7b6f790bcfedb2aca7a24056645e60b4d29b23eb037400093312f36b573",
       "constants": {
         "PROMPT_SCHEMA_VERSION": "1",
         "DEFAULT_TTS_MODEL": "'Qwen/Qwen3-TTS-12Hz-0.6B-Base'",
@@ -3647,7 +3742,7 @@
     },
     {
       "source": "lib/voices.py",
-      "sha256": "1b705208e448fe5c0d6663a0550b598be3e4110fa24b2bbaf477ab50436094c2",
+      "sha256": "c09b336ce6087fee96632dd7682992b5e73a1341ae67d897ae5d2409dc959d3c",
       "constants": {
         "SLUG_RE": "re.compile('^[a-z0-9]([a-z0-9-]{0,62}[a-z0-9])?$')",
         "VALID_ENGINES": "{'clone_prompt', 'custom_voice', 'designed_clone'}"

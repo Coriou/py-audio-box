@@ -2,9 +2,13 @@ from tests.release.measure import measure
 from service.catalogue import FIXTURES, compact
 import json
 from contracts.validate import validate
+from clients.mcp import tools
 
 
 def test_measured_catalogue_and_fixture_guardrails():
+    advertised = [tool.model_dump(mode='json', exclude_none=True) for tool in tools()]
+    assert all(tool.get('description') for tool in advertised if 'description' in tool)
+    assert {'speech_enroll', 'speech_speak'} <= {tool['name'] for tool in advertised}
     data = measure()
     # Full headless control now advertises 25 named, typed tools (jobs, voices,
     # profiles and export included), rather than the earlier read-only skeleton.

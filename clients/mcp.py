@@ -1,6 +1,8 @@
 """MCP v1 maintenance SDK, stdio; named reads call HTTP, never a command bus."""
 import asyncio
+import copy
 import os
+from collections import Counter
 from urllib.parse import quote
 from jsonschema.exceptions import ValidationError
 from mcp.server import Server
@@ -14,8 +16,72 @@ from service.catalogue import (DIRECT_BYTES, Failure, IMPLEMENTED, VOICE_READS, 
 server = Server('py-audio-box')
 
 
+def inline_single_use_definitions(value):
+    """Compact only self-contained, singly referenced local MCP definitions."""
+    # URI and anchor scope can change what a local reference means after moving it.
+    scope_keywords = {'$id', '$anchor', '$dynamicRef', '$dynamicAnchor',
+                      '$recursiveRef', '$recursiveAnchor', '$schema', '$vocabulary'}
+    def scoped(node):
+        if isinstance(node, dict):
+            return bool(scope_keywords.intersection(node)) or any(scoped(child) for child in node.values())
+        return isinstance(node, list) and any(scoped(child) for child in node)
+    if scoped(value):
+        return copy.deepcopy(value)
+    definitions = value.get('$defs', {})
+    references = Counter()
+    plain_references = Counter()
+
+    def walk(node):
+        if isinstance(node, dict):
+            if '$ref' in node:
+                references[node['$ref']] += 1
+                if len(node) == 1:
+                    plain_references[node['$ref']] += 1
+            for child in node.values():
+                walk(child)
+        elif isinstance(node, list):
+            for child in node:
+                walk(child)
+
+    walk(value)
+    replacements = {}
+    for name, definition in definitions.items():
+        ref = '#/$defs/' + name
+        if references[ref] != 1 or plain_references[ref] != 1:
+            continue
+        nested = Counter()
+        def refs(node):
+            if isinstance(node, dict):
+                if '$ref' in node:
+                    nested[node['$ref']] += 1
+                for child in node.values(): refs(child)
+            elif isinstance(node, list):
+                for child in node: refs(child)
+        refs(definition)
+        if not nested:
+            replacements[ref] = definition
+
+    def replace(node):
+        if isinstance(node, dict):
+            # A sibling of $ref can alter Draft 2020-12 semantics; leave it intact.
+            if len(node) == 1 and node.get('$ref') in replacements:
+                return copy.deepcopy(replacements[node['$ref']])
+            return {key: replace(child) for key, child in node.items()}
+        if isinstance(node, list):
+            return [replace(child) for child in node]
+        return node
+
+    compacted = replace(value)
+    if replacements:
+        compacted['$defs'] = {name: definition for name, definition in compacted['$defs'].items()
+                              if '#/$defs/' + name not in replacements}
+        if not compacted['$defs']:
+            del compacted['$defs']
+    return compacted
+
+
 def input_schema(operation):
-    value = schema(OPERATIONS[operation]['request'])
+    value = inline_single_use_definitions(schema(OPERATIONS[operation]['request']))
     if OPERATIONS[operation]['idempotency']:
         value['properties']['idempotency_key'] = {'type':'string','pattern':'^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$'}
         value['required'].append('idempotency_key')
@@ -24,16 +90,16 @@ def input_schema(operation):
 
 def tools():
     items = [Tool(name=OPERATIONS[op]['mcp'],
-        description=('Explicit opt-in bytes only; at most 3072 decoded bytes. Larger downloads: python -m clients.cli asset content ID --output FILE.' if op == 'asset_content' else 'Register configured speech_status preset; generation only, no cloning or qualification.' if op == 'voice_preset_register' else ''),
+        description=('Opt-in bytes, max 3072 decoded. Larger downloads: python -m clients.cli asset content ID --output FILE.' if op == 'asset_content' else 'Register a speech_status preset for generation only; no cloning or qualification.' if op == 'voice_preset_register' else None),
         inputSchema=input_schema(op)) for op in dict.fromkeys((*IMPLEMENTED, *VOICE_READS, *PRODUCTION_OPERATIONS))]
     if os.environ.get('SPEECH_UPLOAD_ROOT'):
-        items.append(Tool(name='speech_asset_upload_file', description='Upload a client-host WAV from an operator-authorized filesystem root (SPEECH_UPLOAD_ROOT). Grants host filesystem read permission within that root; relative no-follow paths only. Creates an asset, not a cloned voice. No inline audio.', inputSchema={'type':'object','properties':{'path':{'type':'string','minLength':1,'maxLength':4096}},'required':['path'],'additionalProperties':False}))
-    items.append(Tool(name='speech_enroll', description='Prepare and save a trusted already uploaded WAV as a named voice. Bounded wait; returns job and asset handles on timeout. Resume using the confirmed asset_id; bare WAV uploads create a new asset.', inputSchema={
+        items.append(Tool(name='speech_asset_upload_file', description='Upload a client-host WAV from SPEECH_UPLOAD_ROOT. Operator-authorized root; relative no-follow paths only. Creates an asset, not a cloned voice. No inline audio.', inputSchema={'type':'object','properties':{'path':{'type':'string','minLength':1,'maxLength':4096}},'required':['path'],'additionalProperties':False}))
+    items.append(Tool(name='speech_enroll', description='Save an uploaded trusted WAV as a named voice. Bounded wait returns job and asset handles on timeout. Resume with confirmed asset_id; bare WAV uploads create a new asset.', inputSchema={
         'type':'object','properties':{'name':{'type':'string','minLength':1,'maxLength':128},'asset_id':{'type':'string','minLength':1,'maxLength':128},
             'reference_text':{'type':'string','minLength':1,'maxLength':10000},'audition_text':{'type':'string','minLength':1,'maxLength':10000},
             'job_id':{'type':'string','minLength':1,'maxLength':128},'wait_seconds':{'type':'integer','minimum':0,'maximum':600}},
         'required':['name','asset_id','reference_text','audition_text'],'additionalProperties':False}))
-    items.append(Tool(name='speech_speak', description='Generate from one saved named voice; returns an artifact and asset handle. Bounded wait and replayable key; no inline audio.', inputSchema={
+    items.append(Tool(name='speech_speak', description='Generate from a saved named voice. Returns artifact and asset handles; bounded wait, replayable key, no inline audio.', inputSchema={
         'type':'object','properties':{'voice':{'type':'string','minLength':1,'maxLength':128},'text':{'type':'string','minLength':1,'maxLength':10000},
             'job_id':{'type':'string','minLength':1,'maxLength':128},'voice_version_id':{'type':'string','minLength':1,'maxLength':128},
             'wait_seconds':{'type':'integer','minimum':0,'maximum':600}},

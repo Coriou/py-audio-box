@@ -220,6 +220,7 @@ class Dispatcher:
 
     def _local_qwen_active(self):
         """Execution authority for the exact installed, unqualified Qwen lane."""
+        if self._native_cpu_relation():return False
         from service.entrypoint import InstalledActivation
         from service.execution_context import QwenContexts
         from service.installed_qwen_daemon import FAMILY

@@ -149,13 +149,14 @@ class CPUArchiveImportTests(unittest.TestCase):
     def test_dispatcher_lazy_foreign_family_imports_have_typed_cpu_guard(self):
         import ast
         tree=ast.parse((package.common.ROOT/'service/dispatcher.py').read_text())
-        expected={'_checked_export_family','_qwen_state_poll','_observation_interval'};found=set()
+        expected={'_checked_export_family','_local_qwen_active','_qwen_state_poll','_observation_interval'};found=set()
         for function in (node for node in ast.walk(tree) if isinstance(node,ast.FunctionDef)):
             imports=[node for node in ast.walk(function) if isinstance(node,ast.ImportFrom) and
                 (node.module in ('service.installed_export','service.installed_qwen_daemon') or
                  node.module=='service' and any(alias.name=='installed_pocket_daemon' for alias in node.names))]
             if not imports:continue
-            found.add(function.name);guard=function.body[0]
+            found.add(function.name)
+            guard=next(node for node in function.body if not isinstance(node,ast.Expr) or not isinstance(node.value,ast.Constant))
             self.assertIsInstance(guard,ast.If);self.assertIsInstance(guard.test,ast.Call)
             self.assertEqual(guard.test.func.attr,'_native_cpu_relation')
             self.assertIsInstance(guard.body[0],ast.Return)
