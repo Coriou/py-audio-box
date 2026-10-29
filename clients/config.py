@@ -75,9 +75,13 @@ def resolve(url=None, credential=None, root=None):
     # Explicit endpoint/credential > explicit installation > environment > default.
     if root:
         local_url, local_token = installation(root) if not url or not credential else (None, None)
+        if local_token and url and url != local_url and not credential:
+            raise ValueError('Discovered installation credential requires its configured endpoint.')
         return url or local_url, credential or local_token
     preferred_url = url or os.environ.get('SPEECH_URL')
     preferred_token = credential or os.environ.get('SPEECH_CREDENTIAL')
     selected = os.environ.get('SPEECH_INSTALLATION')
     local_url, local_token = installation(selected) if selected and (not preferred_url or not preferred_token) else (None, None)
+    if local_token and preferred_url and preferred_url != local_url and not preferred_token:
+        raise ValueError('Discovered installation credential requires its configured endpoint.')
     return preferred_url or local_url, preferred_token or local_token

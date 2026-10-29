@@ -393,6 +393,45 @@ class WorkflowHTTPTests(unittest.TestCase):
         (root/'credential.json').chmod(0o644)
         with self.assertRaises(ValueError): installation(root)
 
+    def test_discovered_credential_is_bound_to_installation_endpoint(self):
+        root = Path(self.tmp.name).resolve()
+        endpoint = 'http://127.0.0.1:8780'
+        token = 'a'*32
+        (root/'install.json').write_text(json.dumps({'root':str(root),'port':8780}))
+        (root/'credential.json').write_text(json.dumps({'version':1,'credentials':[
+            {'token':token,'principal':'local','scopes':['read','production-write']}]}))
+        for name in ('install.json','credential.json'):
+            (root/name).chmod(0o600)
+        with patch.dict(os.environ, {}, clear=True):
+            self.assertEqual(resolve(root=root), (endpoint,token))
+            self.assertEqual(resolve(endpoint,None,root), (endpoint,token))
+            for different in ('http://192.0.2.10:8780', 'http://127.0.0.1:8781',
+                              'https://127.0.0.1:8780', endpoint+'/', endpoint+'/other',
+                              endpoint+'?other=1', endpoint+'#other'):
+                with self.subTest(different=different):
+                    with self.assertRaises(ValueError) as caught:
+                        resolve(different,None,root)
+                    self.assertNotIn(token,str(caught.exception))
+            self.assertEqual(resolve('http://192.0.2.10:8780','b'*32,root),
+                             ('http://192.0.2.10:8780','b'*32))
+            self.assertEqual(resolve(None,'b'*32,root), (endpoint,'b'*32))
+            with patch.dict(os.environ, {'SPEECH_INSTALLATION':str(root)}):
+                self.assertEqual(resolve(), (endpoint,token))
+                with patch.dict(os.environ, {'SPEECH_CREDENTIAL':'c'*32}):
+                    self.assertEqual(resolve(), (endpoint,'c'*32))
+                with self.assertRaises(ValueError):
+                    resolve('http://192.0.2.10:8780')
+                with patch.dict(os.environ, {'SPEECH_URL':endpoint}):
+                    self.assertEqual(resolve(), (endpoint,token))
+                with patch.dict(os.environ, {'SPEECH_URL':'http://192.0.2.10:8780'}):
+                    with self.assertRaises(ValueError) as caught:
+                        resolve()
+                    self.assertNotIn(token,str(caught.exception))
+                    self.assertEqual(resolve(credential='b'*32),
+                                     ('http://192.0.2.10:8780','b'*32))
+                    with patch.dict(os.environ, {'SPEECH_CREDENTIAL':'c'*32}):
+                        self.assertEqual(resolve(), ('http://192.0.2.10:8780','c'*32))
+
     def test_qwen_local_init_discovery_format(self):
         root = (Path(self.tmp.name)/'qwen').resolve()
         root.mkdir(mode=0o700)
@@ -402,6 +441,9 @@ class WorkflowHTTPTests(unittest.TestCase):
             {'token':'a'*32,'principal':'operator','scopes':['read','production-write']}]}))
         (root/'client.json').chmod(0o600); (root/'control.key').chmod(0o600)
         self.assertEqual(installation(root),('http://127.0.0.1:8000','a'*32))
+        self.assertEqual(resolve(root=root),('http://127.0.0.1:8000','a'*32))
+        with self.assertRaises(ValueError):
+            resolve('http://192.0.2.10:8000',None,root)
         (root/'control.key').unlink()
         (root/'control.key').symlink_to(root/'client.json')
         with self.assertRaises(ValueError): installation(root)

@@ -23,7 +23,11 @@ after all downloaded bytes match the service SHA-256. An existing output file
 is refused. The CLI also accepts `--url` and `--credential`; those flags take
 priority over an explicit `--installation` for their respective values.
 Without that flag, `SPEECH_URL` and `SPEECH_CREDENTIAL` take priority over
-the root selected by `SPEECH_INSTALLATION`. No credential is printed.
+the root selected by `SPEECH_INSTALLATION`. A credential discovered from an
+installation is used only with that installation's exact configured endpoint.
+For a different URL, supply an explicit credential with `--credential` or
+`SPEECH_CREDENTIAL`; an unmatched URL without one is refused. No credential is
+printed.
 
 Each workflow has `--wait-seconds` (0–600), one deadline for HTTP connect,
 headers, body reads, upload writes, polling, and output transfer. The client
