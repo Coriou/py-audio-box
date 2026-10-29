@@ -5,6 +5,7 @@ receive a fresh file, never an active bundle path; partial files are discarded o
 resume, while complete verified files are reused.
 """
 import copy
+import errno
 import fcntl
 import hashlib
 import json
@@ -12,6 +13,7 @@ import os
 from pathlib import Path
 import re
 import urllib.request
+import urllib.error
 from urllib.parse import urlsplit
 import multiprocessing
 import stat
@@ -105,10 +107,10 @@ def _qwen_descriptor(value):
     if any(any(n.startswith(other + '/') for other in names) for n in names): raise ValueError('File/directory conflict')
 
 
-def _verified_managed(root, expected):
+def _verified_managed(root, expected, deadline=None):
     if expected['backend'] == 'qwen':
         from worker.engines.qwen import verify_bundle
-        return verify_bundle(root, manifest_sha256(expected), expected['checkpoint'], expected['revision'], expected['language'])
+        return verify_bundle(root, manifest_sha256(expected), expected['checkpoint'], expected['revision'], expected['language'], deadline=deadline)
     return verified_bundle(root, expected['backend'])
 
 
@@ -192,25 +194,44 @@ def bundle_manifest(expected):
     return {k: v for k, v in expected.items() if k not in ('config', 'allowed_origins')}
 
 
+QWEN_HF_ORIGINS = {'https://huggingface.co', 'https://us.aws.cdn.hf.co'}
+
+
+class TransientDownloadError(ConnectionError):
+    """A transport interruption eligible for one explicit snapshot repair retry."""
+
+
+def _transport_interruption(exc):
+    if isinstance(exc, urllib.error.URLError):
+        exc = exc.reason
+    return isinstance(exc, (ConnectionError, TimeoutError)) or (isinstance(exc, OSError) and
+            exc.errno in (errno.ECONNRESET, errno.ECONNABORTED, errno.ENETRESET, errno.EPIPE, errno.ETIMEDOUT))
+
+
 class _AllowedRedirects(urllib.request.HTTPRedirectHandler):
-    def __init__(self, origins, public_github_assets=False):
+    def __init__(self, origins, public_github_assets=False, qwen_hf_assets=False):
         self.origins = origins
         self.public_github_assets=public_github_assets
+        self.qwen_hf_assets=qwen_hf_assets
 
     def redirect_request(self, req, fp, code, msg, headers, newurl):
         parsed = urlsplit(newurl)
-        signed_asset=self.public_github_assets and parsed.hostname=='release-assets.githubusercontent.com'
+        if self.qwen_hf_assets and any(req.has_header(name) for name in ('Authorization', 'Proxy-Authorization', 'Cookie')):
+            raise ValueError('Credential-bearing Qwen redirect refused')
+        signed_asset=(self.public_github_assets and parsed.hostname=='release-assets.githubusercontent.com' or
+                      self.qwen_hf_assets and parsed.netloc=='us.aws.cdn.hf.co' and
+                      urlsplit(req.full_url).netloc in ('huggingface.co', 'us.aws.cdn.hf.co'))
         if parsed.scheme != 'https' or parsed.username or parsed.password or (parsed.query and not signed_asset) or parsed.fragment or 'https://' + parsed.netloc not in self.origins:
             raise ValueError('Redirect outside allowed HTTPS origins')
         return super().redirect_request(req, fp, code, msg, headers, newurl)
 
 
-def _download_stream(url, target, expected_bytes, allowed_origins=None, public_github_assets=False):
+def _download_stream(url, target, expected_bytes, allowed_origins=None, public_github_assets=False, qwen_hf_assets=False):
     # At most expected bytes reach disk; one extra byte detects overflow.
     if allowed_origins is None:open_url=urllib.request.urlopen
     else:
-        handlers=[_AllowedRedirects(allowed_origins,True) if public_github_assets else _AllowedRedirects(allowed_origins)]
-        if public_github_assets:
+        handlers=[_AllowedRedirects(allowed_origins, public_github_assets, qwen_hf_assets)]
+        if public_github_assets or qwen_hf_assets:
             # python.org builds may lack a configured system CA store. certifi
             # is already hash-pinned by this installer's dependency closure.
             import ssl
@@ -234,12 +255,11 @@ def _download_stream(url, target, expected_bytes, allowed_origins=None, public_g
         os.fsync(sink.fileno())
 
 
-def _transfer_child(url, target, size, allowed_origins=None, public_github_assets=False):
+def _transfer_child(url, target, size, allowed_origins=None, public_github_assets=False, qwen_hf_assets=False):
     try:
-        if public_github_assets:_download_stream(url,target,size,allowed_origins,True)
-        else:_download_stream(url,target,size,allowed_origins)
-    except BaseException:
-        raise SystemExit(1)
+        _download_stream(url,target,size,allowed_origins,public_github_assets,qwen_hf_assets)
+    except BaseException as exc:
+        raise SystemExit(75 if _transport_interruption(exc) else 1)
 
 
 def _budget(value):
@@ -247,7 +267,7 @@ def _budget(value):
         raise ValueError('Finite positive wait budget required')
 
 
-def download(url, target, expected_bytes=None, *, timeout=300, cancelled=lambda: False, allowed_origins=None, public_github_assets=False):
+def download(url, target, expected_bytes=None, *, timeout=300, cancelled=lambda: False, allowed_origins=None, public_github_assets=False, qwen_hf_assets=False):
     """Managed transfer has a wall deadline including connect/read, and cancellation.
 
     A disposable POSIX child owns blocking network I/O. Deadline/cancel terminates
@@ -256,6 +276,14 @@ def download(url, target, expected_bytes=None, *, timeout=300, cancelled=lambda:
     """
     _budget(timeout)
     if type(public_github_assets) is not bool:raise ValueError('Explicit public GitHub transfer policy required')
+    if type(qwen_hf_assets) is not bool or (qwen_hf_assets and public_github_assets):
+        raise ValueError('Exclusive Qwen HF transfer policy required')
+    if qwen_hf_assets:
+        initial=urlsplit(url)
+        if (set(allowed_origins or ()) != QWEN_HF_ORIGINS or expected_bytes is None or
+                initial.scheme!='https' or initial.netloc!='huggingface.co' or initial.query or
+                initial.fragment or initial.username or initial.password):
+            raise ValueError('Closed Qwen HF asset origins required')
     if public_github_assets:
         initial=urlsplit(url)
         if (set(allowed_origins or ())!={'https://github.com','https://release-assets.githubusercontent.com'} or
@@ -270,7 +298,7 @@ def download(url, target, expected_bytes=None, *, timeout=300, cancelled=lambda:
     else:
         worker = _transfer_child
     args = (url, target, expected_bytes) if worker is _legacy_transfer_child else (url, target, expected_bytes, allowed_origins)
-    if public_github_assets:args=(*args,True)
+    if public_github_assets or qwen_hf_assets:args=(*args,public_github_assets,qwen_hf_assets)
     process = multiprocessing.get_context('fork').Process(target=worker, args=args)
     process.start()
     deadline = time.monotonic() + timeout
@@ -282,6 +310,8 @@ def download(url, target, expected_bytes=None, *, timeout=300, cancelled=lambda:
                 raise TimeoutError('Whole transfer deadline exceeded')
             process.join(min(.05, max(0, deadline - time.monotonic())))
         if process.exitcode != 0:
+            if process.exitcode == 75:
+                raise TransientDownloadError('Bounded download transport interrupted')
             raise ValueError('Bounded download failed')
     finally:
         if process.is_alive():
@@ -321,21 +351,35 @@ def _file(path):
         raise ValueError('Owned single-link regular file required')
 
 
-def _seal(bundle):
+def _seal(bundle, check_deadline=lambda: None):
     for path in bundle.rglob('*'):
+        check_deadline()
         if path.is_dir(): continue
         _file(path)
         with path.open('rb') as stream:
             os.fsync(stream.fileno())
         path.chmod(0o444)
     for path in sorted(bundle.rglob('*'), reverse=True):
+        check_deadline()
         if path.is_dir(): path.chmod(0o555)
     bundle.chmod(0o555)
     if bundle.stat().st_mode & 0o222 or any(p.stat().st_mode & 0o222 for p in bundle.rglob('*')):
         raise ValueError('Incomplete bundle sealing')
 
 
-def provision(root, expected, *, runtime_versions, downloader=download, lock_timeout=30, transfer_timeout=300, cancelled=lambda: False):
+def _sha256_until(path, check_deadline):
+    digest = hashlib.sha256()
+    with path.open('rb') as stream:
+        while True:
+            check_deadline()
+            block = stream.read(1024 * 1024)
+            if not block:
+                break
+            digest.update(block)
+    return digest.hexdigest()
+
+
+def provision(root, expected, *, runtime_versions, downloader=download, lock_timeout=30, transfer_timeout=300, cancelled=lambda: False, deadline=None):
     """Stage, verify, seal, activate; exceptions preserve the old active pointer.
 
     No qualification is created. Runtime versions are supplied by the trusted
@@ -343,6 +387,16 @@ def provision(root, expected, *, runtime_versions, downloader=download, lock_tim
     """
     _budget(lock_timeout)
     _budget(transfer_timeout)
+    if deadline is not None and (type(deadline) not in (int, float) or not math.isfinite(deadline)):
+        raise ValueError('Finite absolute deadline required')
+    def remaining():
+        if deadline is None:
+            return None
+        left = deadline - time.monotonic()
+        if left <= 0:
+            raise TimeoutError('Provision deadline exceeded')
+        return left
+    remaining()
     expected = validate_expected(expected)
     if runtime_versions != expected['versions']:
         raise ValueError('Runtime identity mismatch')
@@ -369,24 +423,27 @@ def provision(root, expected, *, runtime_versions, downloader=download, lock_tim
         info = os.fstat(fd)
         if not stat.S_ISREG(info.st_mode) or info.st_nlink != 1 or info.st_uid != os.getuid() or info.st_mode & 0o077:
             raise ValueError('Unsafe lock file')
-        deadline = time.monotonic() + lock_timeout
+        lock_end = time.monotonic() + lock_timeout
         while True:
+            remaining()
             if cancelled():
                 raise InterruptedError('Lock wait cancelled')
             try:
                 fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
                 break
             except BlockingIOError:
-                if time.monotonic() >= deadline:
+                if time.monotonic() >= lock_end:
                     raise TimeoutError('Lock wait deadline exceeded')
-                time.sleep(min(.05, max(0, deadline - time.monotonic())))
+                time.sleep(min(.05, max(0, lock_end - time.monotonic()), remaining() or .05))
+        remaining()
         if bundle.exists() or bundle.is_symlink():
             if bundle.is_symlink() or not bundle.is_dir() or bundle.stat().st_uid != os.getuid():
                 raise ValueError('Unsafe bundle directory')
             for path in bundle.rglob('*'):
                 if path.is_symlink(): raise ValueError('Symlink bundle entry')
                 if not path.is_dir(): _file(path)
-            _, manifest = _verified_managed(bundle, expected)
+            _, manifest = _verified_managed(bundle, expected, deadline)
+            remaining()
             if {str(p.relative_to(bundle)) for p in bundle.rglob('*') if p.is_file()} != names | {'manifest.json'}:
                 raise ValueError('Unexpected immutable bundle entry')
             if manifest != manifest_expected or (bundle / 'manifest.json').read_bytes() != manifest_bytes(manifest_expected):
@@ -400,37 +457,48 @@ def provision(root, expected, *, runtime_versions, downloader=download, lock_tim
             for path in stage.rglob('*'):
                 if not path.is_dir(): _file(path)
             for entry in expected['files']:
+                remaining()
                 target = stage / entry['path']
                 target.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
                 partial = stage / (entry['path'] + '.part')
                 if partial.exists():
                     partial.unlink()
                 if target.exists():
-                    if target.stat().st_size == entry['bytes'] and sha256(target) == entry['sha256']:
+                    if target.stat().st_size == entry['bytes'] and _sha256_until(target, remaining) == entry['sha256']:
+                        remaining()
                         continue
+                    remaining()
                     target.unlink()
                 # Injected callables are trusted and responsible for their own bounds.
                 if entry['path'] == 'config.yaml' and config_bytes is not None:
                     partial.write_bytes(config_bytes)
                 elif downloader is download:
-                    downloader(entry['origin'], partial, entry['bytes'], timeout=transfer_timeout, cancelled=cancelled, **({'allowed_origins': expected['allowed_origins']} if 'allowed_origins' in expected else {}))
+                    policy = {'allowed_origins': expected['allowed_origins']} if 'allowed_origins' in expected else {}
+                    if backend == 'qwen' and set(expected['allowed_origins']) == QWEN_HF_ORIGINS:
+                        policy['qwen_hf_assets'] = True
+                    downloader(entry['origin'], partial, entry['bytes'], timeout=min(transfer_timeout, remaining() or transfer_timeout), cancelled=cancelled, **policy)
                 else:
                     downloader(entry['origin'], partial)
+                remaining()
                 _file(partial)
-                if partial.is_symlink() or not partial.is_file() or partial.stat().st_size != entry['bytes'] or sha256(partial) != entry['sha256']:
+                if partial.is_symlink() or not partial.is_file() or partial.stat().st_size != entry['bytes'] or _sha256_until(partial, remaining) != entry['sha256']:
                     raise ValueError('Downloaded asset differs from expected pins')
+                remaining()
                 os.replace(partial, target)
             manifest_path = stage / 'manifest.json'
             if manifest_path.exists():
                 manifest_path.unlink()
             manifest_path.write_bytes(manifest_bytes(manifest_expected))
-            _verified_managed(stage, expected)
+            _verified_managed(stage, expected, deadline)
+            remaining()
             for path in stage.rglob('*'):
                 if path.is_dir(): continue
                 _file(path)
                 path.chmod(0o444)
             os.rename(stage, bundle)
-        _seal(bundle)
+        remaining()
+        _seal(bundle, remaining)
+        remaining()
         pointer = root / 'active.json'
         if pointer.is_symlink():
             raise ValueError('Symlink active pointer refused')
@@ -446,6 +514,7 @@ def provision(root, expected, *, runtime_versions, downloader=download, lock_tim
             json.dump({'bundle': key, 'manifest_sha256': manifest_sha256(expected)}, stream)
             stream.flush()
             os.fsync(stream.fileno())
+        remaining()
         os.replace(temporary, pointer)
         return bundle
     finally:

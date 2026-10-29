@@ -110,8 +110,12 @@ def _managed_snapshot(root, manifest, names, caps, owner_uid):
         if 'sample_rate' in value and value['sample_rate'] != manifest['execution']['sample_rate']: raise Refused('bundle_capabilities')
 
 
-def verify_bundle(root, manifest_digest, checkpoint, revision, language, *, owner_uid=None, execution=None):
+def verify_bundle(root, manifest_digest, checkpoint, revision, language, *, owner_uid=None, execution=None, deadline=None):
     """Local byte/config validation shared by provisioning and execution. No ML."""
+    def check_deadline():
+        if deadline is not None and time.monotonic() >= deadline:
+            raise TimeoutError('Qwen bundle verification deadline exceeded')
+    check_deadline()
     root = Path(root).absolute()
     os.close(_open(root, True, owner_uid=owner_uid))
     raw = _read(root/'manifest.json', 65536, manifest_digest, owner_uid=owner_uid)
@@ -122,6 +126,7 @@ def verify_bundle(root, manifest_digest, checkpoint, revision, language, *, owne
         if type(entries) is not list or not 1 <= len(entries) <= 256: raise Refused('bundle_files')
         names = set(); total = 0
         for entry in entries:
+            check_deadline()
             if type(entry) is not dict or not {'path','sha256','bytes'} <= set(entry) <= {'path','sha256','bytes','origin','revision'}: raise Refused('bundle_files')
             name = entry['path']
             if type(name) is not str or len(name)>512 or any(p in ('','.','..') for p in name.split('/')) or Path(name).is_absolute() or name in names or Path(name).suffix not in ('.json','.safetensors','.txt','.model'): raise Refused('bundle_files')
@@ -134,6 +139,7 @@ def verify_bundle(root, manifest_digest, checkpoint, revision, language, *, owne
                 before = os.fstat(stream.fileno()); digest = hashlib.sha256(); count = 0
                 if before.st_size != entry['bytes']: raise Refused('bundle_size')
                 for block in iter(lambda: stream.read(1024*1024), b''):
+                    check_deadline()
                     count += len(block)
                     if count > before.st_size: raise Refused('bundle_changed')
                     digest.update(block)
@@ -143,6 +149,7 @@ def verify_bundle(root, manifest_digest, checkpoint, revision, language, *, owne
         # Reject unlisted assets that upstream might otherwise select implicitly.
         actual = set()
         for directory, dirs, files in os.walk(root, followlinks=False):
+            check_deadline()
             for name in dirs + files:
                 p = Path(directory)/name
                 if p.is_symlink(): raise Refused('bundle_files')
@@ -160,6 +167,7 @@ def verify_bundle(root, manifest_digest, checkpoint, revision, language, *, owne
             if c['sample_rate'] != e.sample_rate: raise Refused('bundle_capabilities')
             if e.preset is not None and e.preset not in c['presets']: raise Refused('unsupported_preset')
             if {'device':e.device,'dtype':e.dtype,'attention':e.attention} not in c['devices']: raise Refused('unsupported_execution')
+        check_deadline()
     except (KeyError, TypeError, ValueError) as exc:
         raise Refused('bundle_contract') from exc
     return root, m

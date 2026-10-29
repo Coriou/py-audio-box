@@ -109,19 +109,28 @@ def repair(root, descriptor, snapshot, *, cache_root=None, offline=False,
             try:
                 if downloader is p.download:
                     downloader(url, target, entry['bytes'], timeout=min(TRANSFER_SECONDS, _remaining(end)),
-                               allowed_origins=expected['allowed_origins'])
+                               allowed_origins=expected['allowed_origins'],
+                               qwen_hf_assets=set(expected['allowed_origins']) == p.QWEN_HF_ORIGINS)
                 else:
                     downloader(url, target)
-                if target.stat().st_size != entry['bytes'] or p.sha256(target) != entry['sha256']:
+                _remaining(end)
+                if target.stat().st_size != entry['bytes'] or p._sha256_until(target, lambda: _remaining(end)) != entry['sha256']:
                     raise ValueError('qwen_snapshot_download_pin_mismatch:' + entry['path'])
+                _remaining(end)
                 return
-            except Exception:
+            except (p.TransientDownloadError, ConnectionError) as exc:
                 if target.exists():
                     target.unlink()
                 if attempt:
                     raise
+                _remaining(end)
+            except BaseException:
+                if target.exists():
+                    target.unlink()
+                raise
     return p.provision(root, expected, runtime_versions=expected['versions'],
-                       downloader=acquire, transfer_timeout=min(TRANSFER_SECONDS, _remaining(end)))
+                       downloader=acquire, lock_timeout=min(30, _remaining(end)),
+                       transfer_timeout=min(TRANSFER_SECONDS, _remaining(end)), deadline=end)
 
 
 def main(argv=None):

@@ -14,7 +14,8 @@
     "safetensors": "0.7.0"
   },
   "allowed_origins": [
-    "https://huggingface.co"
+    "https://huggingface.co",
+    "https://us.aws.cdn.hf.co"
   ],
   "execution": {
     "sample_rate": 24000,

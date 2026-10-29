@@ -5,10 +5,14 @@ from pathlib import Path
 import tempfile
 import sys
 import unittest
+import urllib.request
+import fcntl
+import multiprocessing
+import time
 from unittest.mock import patch
 
 from service import installed_qwen_daemon as qd
-from service.provisioning import manifest_bytes, manifest_sha256
+from service.provisioning import manifest_bytes, manifest_sha256, _AllowedRedirects, QWEN_HF_ORIGINS, download
 from service.qwen_snapshot import repair
 from worker.engines.qwen import verify_bundle
 
@@ -96,7 +100,8 @@ class QwenSnapshotTests(unittest.TestCase):
             name=url.removeprefix('https://fixture.invalid/')
             attempts.append(name)
             if name=='config.json' and attempts.count(name)==1:
-                target.write_bytes(b'bad')
+                target.write_bytes(b'partial')
+                raise ConnectionError('transport reset')
             else: target.write_bytes(self.data[name])
         with patch.object(qd,'service_descriptor',return_value=self.expected):
             repair(self.root/'managed',self.expected,self.snapshot,downloader=fetch)
@@ -115,6 +120,103 @@ class QwenSnapshotTests(unittest.TestCase):
             bundle=repair(self.root/'managed',self.expected,snapshot,cache_root=cache,downloader=fetch)
         self.assertNotIn('config.json',calls)
         self.assertEqual((bundle/'config.json').read_bytes(),self.data['config.json'])
+
+    def test_signed_hf_redirect_chain_is_closed_to_reviewed_destination(self):
+        origins=sorted(QWEN_HF_ORIGINS)
+        handler=_AllowedRedirects(origins,qwen_hf_assets=True)
+        request=urllib.request.Request('https://huggingface.co/Qwen/model/resolve/revision/model.safetensors')
+        signed='https://us.aws.cdn.hf.co/opaque/path?Expires=123&Signature=inert&Key-Pair-Id=key'
+        redirected=handler.redirect_request(request,None,302,'Found',{},signed)
+        self.assertEqual(redirected.full_url,signed)
+        self.assertEqual(handler.redirect_request(redirected,None,302,'Found',{},signed).full_url,signed)
+        for bad in ('http://us.aws.cdn.hf.co/path?Signature=x',
+                    'https://other.invalid/path?Signature=x',
+                    'https://user:secret@us.aws.cdn.hf.co/path?Signature=x',
+                    'https://huggingface.co/path?Signature=x',
+                    'https://us.aws.cdn.hf.co.evil.invalid/path?Signature=x',
+                    'https://us.aws.cdn.hf.co/path?Signature=x#fragment'):
+            with self.subTest(bad=bad),self.assertRaises(ValueError):
+                handler.redirect_request(request,None,302,'Found',{},bad)
+        with self.assertRaises(ValueError):
+            _AllowedRedirects(origins).redirect_request(request,None,302,'Found',{},signed)
+        credentialed=urllib.request.Request(request.full_url,headers={'Authorization':'Bearer private'})
+        with self.assertRaises(ValueError):
+            handler.redirect_request(credentialed,None,302,'Found',{},signed)
+        with patch('service.provisioning.multiprocessing.get_context') as process:
+            with self.assertRaises(ValueError):
+                download(request.full_url,self.root/'never',10,allowed_origins=origins+['https://evil.invalid'],qwen_hf_assets=True)
+            process.assert_not_called()
+
+    def test_corrupt_download_is_not_retried(self):
+        attempts=[]
+        def corrupt(url,target):
+            attempts.append(url)
+            target.write_bytes(b'corrupt')
+        with patch.object(qd,'service_descriptor',return_value=self.expected):
+            with self.assertRaisesRegex(ValueError,'qwen_snapshot_download_pin_mismatch:config.json'):
+                repair(self.root/'managed',self.expected,self.snapshot,downloader=corrupt)
+        self.assertEqual(len(attempts),1)
+        self.assertFalse((self.root/'managed'/'active.json').exists())
+
+    def test_repair_deadline_bounds_real_lock_wait(self):
+        managed=self.root/'managed'
+        managed.mkdir(mode=0o700)
+        lock=managed/'.provision.lock'
+        lock.touch(mode=0o600)
+        ready=multiprocessing.get_context('fork').Pipe(duplex=False)
+        def hold(path,send):
+            with open(path,'w') as stream:
+                fcntl.flock(stream,fcntl.LOCK_EX)
+                send.send(True)
+                time.sleep(.3)
+        process=multiprocessing.get_context('fork').Process(target=hold,args=(lock,ready[1]))
+        process.start()
+        try:
+            self.assertTrue(ready[0].recv())
+            start=time.monotonic()
+            with patch.object(qd,'service_descriptor',return_value=self.expected):
+                with self.assertRaises(TimeoutError):
+                    repair(managed,self.expected,self.snapshot,seconds=.02,offline=True)
+            self.assertLess(time.monotonic()-start,.2)
+            self.assertFalse((managed/'active.json').exists())
+        finally:
+            process.join(1)
+            if process.is_alive(): process.terminate(); process.join()
+
+    def test_deadline_after_full_verify_never_activates(self):
+        from service import provisioning as p
+        managed=self.root/'managed'
+        tick=[100.0]
+        real_verify=p._verified_managed
+        def late_verify(*args):
+            result=real_verify(*args)
+            tick[0]=102.0
+            return result
+        def fetch(url,target):
+            target.write_bytes(self.data[url.removeprefix('https://fixture.invalid/')])
+        with patch.object(qd,'service_descriptor',return_value=self.expected), \
+                patch('service.qwen_snapshot.time.monotonic',side_effect=lambda:tick[0]), \
+                patch.object(p,'_verified_managed',side_effect=late_verify):
+            with self.assertRaises(TimeoutError):
+                repair(managed,self.expected,self.snapshot,downloader=fetch,seconds=1)
+        self.assertFalse((managed/'active.json').exists())
+
+    def test_deadline_after_sealing_never_activates(self):
+        from service import provisioning as p
+        managed=self.root/'managed'
+        tick=[100.0]
+        real_seal=p._seal
+        def late_seal(*args):
+            real_seal(*args)
+            tick[0]=102.0
+        def fetch(url,target):
+            target.write_bytes(self.data[url.removeprefix('https://fixture.invalid/')])
+        with patch.object(qd,'service_descriptor',return_value=self.expected), \
+                patch('service.qwen_snapshot.time.monotonic',side_effect=lambda:tick[0]), \
+                patch.object(p,'_seal',side_effect=late_seal):
+            with self.assertRaises(TimeoutError):
+                repair(managed,self.expected,self.snapshot,downloader=fetch,seconds=1)
+        self.assertFalse((managed/'active.json').exists())
 
 
 if __name__=='__main__': unittest.main()
