@@ -94,6 +94,10 @@ def _worker_impl(connection, settings, runtime_dir=None):
         'HF_HUB_CACHE': 'huggingface/hub', 'HUGGINGFACE_HUB_CACHE': 'huggingface/hub',
         'TRANSFORMERS_CACHE': 'huggingface/transformers', 'TORCH_HOME': 'torch',
     }.items()}
+    # Eagerly create only private runtime paths. Persistent legacy cache
+    # directories belong to acquisition; an unused fallback may be unwritable.
+    for value in set(values.values()):
+        Path(value).mkdir(parents=True, exist_ok=True, mode=0o700)
     values.update(USER='qwen-worker', LOGNAME='qwen-worker')
     settings = dict(settings)
     if settings.pop('legacy_hf_cache', False):
@@ -106,8 +110,6 @@ def _worker_impl(connection, settings, runtime_dir=None):
             'HUGGINGFACE_HUB_CACHE': hub,
             'TRANSFORMERS_CACHE': os.environ.get('TRANSFORMERS_CACHE') or hub,
         }.items()})
-    for value in set(values.values()) - {'qwen-worker'}:
-        Path(value).mkdir(parents=True, exist_ok=True, mode=0o700)
     previous = {name: os.environ.get(name) for name in values}
     previous_temp = tempfile.tempdir
     try:

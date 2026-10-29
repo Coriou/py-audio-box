@@ -136,6 +136,35 @@ class LegacyCacheTests(unittest.TestCase):
                     self.assertTrue(Path(calls[1]['source']).is_dir())
                 self.assertEqual((base / 'downloads').read_text(), 'download\n')
 
+    def test_warm_explicit_hub_with_read_only_home(self):
+        with tempfile.TemporaryDirectory() as directory:
+            base = Path(directory)
+            home = base / 'home'
+            home.mkdir(mode=0o500)
+            hub = base / 'hub'
+            snapshot = hub / 'models--Qwen--Qwen3-TTS-12Hz-0.6B-Base' / 'snapshots' / 'pinned'
+            snapshot.mkdir(parents=True)
+            marker = snapshot / 'config.json'
+            marker.write_text('{}')
+            env = dict(os.environ)
+            for key in (*HF_KEYS, 'XDG_CACHE_HOME', 'HF_HUB_OFFLINE', 'TRANSFORMERS_OFFLINE'):
+                env.pop(key, None)
+            env.update(HOME=str(home), HF_HUB_CACHE=str(hub))
+            try:
+                if os.access(home, os.W_OK):
+                    self.skipTest('requires enforced read-only directory permissions')
+                with self.assertRaises(PermissionError):
+                    (home / '.cache').mkdir()
+                for mode in ('warm', 'offline'):
+                    calls = self.probe(base, mode, env)
+                    self.assertEqual(calls[0], dict(cache=str(hub), offline=mode == 'offline'))
+                    self.assertEqual(calls[1]['source'], str(snapshot))
+                self.assertEqual(marker.read_text(), '{}')
+                self.assertEqual(list(home.iterdir()), [])
+                self.assertFalse((base / 'downloads').exists())
+            finally:
+                home.chmod(0o700)
+
     def test_service_local_offline_cache_isolation(self):
         with tempfile.TemporaryDirectory() as directory:
             base = Path(directory)
