@@ -116,8 +116,16 @@ with `sudo` from the intended client account: it gives the private client root,
 `client.json`, and `control.key` back to `SUDO_UID`/`SUDO_GID` after writing the
 sealed installer input, so subsequent CLI/MCP discovery uses that account.
 
-```sh
-sudo python3 scripts/headless-install.py up \
+Select the trusted absolute Python 3.11 executable on the Linux host. Verify
+that `sudo` runs that same interpreter before starting setup; `sudo python3`
+may select a different version from root's `PATH`.
+
+```bash
+PYTHON_311='<absolute-python-3.11-executable-on-host>'
+[[ "$PYTHON_311" = /* && -f "$PYTHON_311" && -x "$PYTHON_311" ]] || exit 1
+python_real="$("$PYTHON_311" -c 'import os, sys; assert sys.version_info[:2] == (3, 11); print(os.path.realpath(sys.executable))')" || exit 1
+test "$(sudo "$PYTHON_311" -c 'import os, sys; assert sys.version_info[:2] == (3, 11); print(os.path.realpath(sys.executable))')" = "$python_real" || exit 1
+sudo "$PYTHON_311" scripts/headless-install.py up \
   --clone-bundle /absolute/sealed/base --ryan-bundle /absolute/sealed/customvoice \
   --control-image LOCAL_CONTROL_IMAGE \
   --worker-image LOCAL_WORKER_IMAGE --helper-image LOCAL_HELPER_IMAGE \

@@ -3,7 +3,7 @@ import os
 import sys
 import time
 
-from service import daemon_helper, daemon_client
+from service import daemon_helper, daemon_client, install_policy
 
 
 def test_refusal_location_does_not_disclose_exception_payload(monkeypatch, capsys):
@@ -110,6 +110,40 @@ def test_unknown_helper_error_never_projects_payload(capsys):
     diagnostics=daemon_client.HelperDiagnostics('up')
     diagnostics.feed(records)
     assert diagnostics.refusal()=='up:final_refusal:unclassified:ValueError:unknown:0'
+
+
+def test_oserror_errno_and_internal_frame_cross_actual_parser_without_path(tmp_path, capsys, monkeypatch):
+    secret=tmp_path/'PRIVATE-CREDENTIAL-AND-PATH'/'leaf'
+    with pytest.raises(FileNotFoundError) as caught:
+        with install_policy.parent_fd(secret):
+            pass
+    daemon_helper.diagnostic(caught.value,'init','operation_failed')
+    records=capsys.readouterr().err.encode()
+    assert b'PRIVATE-CREDENTIAL-AND-PATH' not in records
+    assert b':install_policy.py:2\n' in records
+    def attached(self, identity, phase, nonce, config, binding, source, diagnostics):
+        diagnostics.feed(b'Docker PRIVATE-CREDENTIAL-AND-PATH\n'+records)
+        raise ValueError('daemon_phase_eof_retained')
+    monkeypatch.setattr(daemon_client.Docker,'_exchange_attached',attached)
+    client=object.__new__(daemon_client.Docker)
+    with pytest.raises(ValueError) as failure:
+        client.exchange('id','init','nonce',{}, {}, [])
+    assert str(failure.value).startswith(
+        'daemon_helper_refusal:init:operation_failed:unclassified:FileNotFoundError:parent_fd:')
+    assert str(failure.value).endswith(
+        ':file=install_policy.py:errno=2:host=daemon_phase_eof_retained')
+    assert 'PRIVATE-CREDENTIAL-AND-PATH' not in str(failure.value)
+
+
+@pytest.mark.parametrize('location', (
+    'private.py:2', 'persistent_init.py:999',
+    'persistent_init.py:2:/private/SECRET',
+))
+def test_parser_rejects_untrusted_oserror_provenance(location):
+    diagnostics=daemon_client.HelperDiagnostics('init')
+    diagnostics.feed(('daemon_helper_diagnostic:init:operation_failed:OSError:'
+                      'initialize_split:403:'+location+'\n').encode())
+    assert diagnostics.refusal() is None
 
 
 def test_early_cause_survives_large_noisy_stderr_and_bounded_tail(monkeypatch):

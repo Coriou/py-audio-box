@@ -23,7 +23,9 @@ from service import daemon_volumes as dv
 LIMIT=1024*1024
 TOTAL=2*1024**3
 INPUT_CHUNK=256*1024  # Base64 plus framing remains below the 1 MiB wire limit.
-_HELPER_DIAGNOSTIC=re.compile(r'daemon_helper_diagnostic:(install|init|up|status|stop):(operation_failed|prior_failure|final_refusal):(ValueError|OSError|RuntimeError|TimeoutError|FileNotFoundError|PermissionError|BlockingIOError|KeyboardInterrupt|Exception):([a-z_]+|unknown):([0-9]{1,5})')
+_HELPER_DIAGNOSTIC=re.compile(r'daemon_helper_diagnostic:(install|init|up|status|stop):(operation_failed|prior_failure|final_refusal):(ValueError|OSError|RuntimeError|TimeoutError|FileNotFoundError|PermissionError|BlockingIOError|KeyboardInterrupt|Exception):([a-z_]+|unknown):([0-9]{1,5})(?::(daemon_helper\.py|daemon_client\.py|install_policy\.py|supervisor_runtime\.py|persistent_init\.py|install_child\.py|unknown):([0-9]{1,3}|unknown))?')
+# Linux errno values emitted by the root-only container helper.
+_HELPER_ERRNOS=frozenset((1,2,5,6,9,11,12,13,16,17,19,20,22,23,24,28,30,32,38,40,110,122))
 _HELPER_CAUSE=re.compile(r'daemon_helper_cause:(install|init|up|status|stop):(operation_failed|prior_failure|final_refusal):([a-z][a-z0-9_]{1,79})')
 _HOST_REFUSAL_CODES=frozenset(('daemon_helper_failed_retained','daemon_helper_start_unknown',
     'daemon_helper_exit_unknown','daemon_helper_timeout_retained',
@@ -56,7 +58,10 @@ class HelperDiagnostics:
         except UnicodeDecodeError: return
         detail=_HELPER_DIAGNOSTIC.fullmatch(line)
         cause=_HELPER_CAUSE.fullmatch(line)
-        if detail and detail[1]==self.phase: self.details.setdefault(detail[2],detail)
+        if (detail and detail[1]==self.phase and
+                (detail[6] is None or (detail[3] in ('OSError','FileNotFoundError','PermissionError','BlockingIOError')
+                    and (detail[7]=='unknown' or int(detail[7]) in _HELPER_ERRNOS)))):
+            self.details.setdefault(detail[2],detail)
         if cause and cause[1]==self.phase and cause[3] in dv.HELPER_REFUSAL_CODES:
             self.causes.setdefault(cause[2],cause)
 
@@ -65,7 +70,9 @@ class HelperDiagnostics:
             matched=self.details.get(stage)
             if matched:
                 reason=self.causes[stage][3] if stage in self.causes else 'unclassified'
-                return ':'.join((self.phase,stage,reason,matched[3],matched[4],matched[5]))
+                parts=(self.phase,stage,reason,matched[3],matched[4],matched[5])
+                if matched[6] is not None: parts+=('file='+matched[6],'errno='+matched[7])
+                return ':'.join(parts)
         return None
 
     def drain(self):

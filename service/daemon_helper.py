@@ -6,6 +6,7 @@ intent is a durable refusal, never a request to repair or retry a mutation.
 """
 import base64
 from contextlib import ExitStack, contextmanager
+import errno
 import fcntl
 import hashlib
 import json
@@ -63,7 +64,16 @@ _DIAGNOSTIC_FUNCTIONS=frozenset(('run','runtime','rpc','wait','startup','child',
     'snapshot','stable','held','register','observe','ready','inspect','main','begin',
     'locked_file','revalidate','read','write','clean','public','initialize','input_import'))
 _DIAGNOSTIC_FILES=frozenset(('service/daemon_helper.py','service/daemon_client.py',
-    'service/install_policy.py','service/supervisor_runtime.py'))
+    'service/install_policy.py','service/supervisor_runtime.py',
+    'service/persistent_init.py','service/install_child.py'))
+_DIAGNOSTIC_ERRNOS=frozenset(getattr(errno, name) for name in (
+    'EACCES','EPERM','ENOENT','EEXIST','ENOTDIR','ELOOP','EROFS','ENOSPC',
+    'EDQUOT','EIO','EBADF','EBUSY','EAGAIN','ENOMEM','EMFILE','ENFILE','EINVAL',
+    'ENOSYS','ETIMEDOUT','ENODEV','ENXIO','EPIPE'))
+_DIAGNOSTIC_FUNCTIONS=_DIAGNOSTIC_FUNCTIONS | frozenset((
+    'initialize_split','_split_create','_split_core','parent_fd','read_private',
+    'roots_checked','directory_entries','check','prepare_container',
+    'container_entry','close_other_descriptors','_check','mount','mkdir','stat'))
 
 
 def diagnostic(exc, phase, code):
@@ -71,15 +81,19 @@ def diagnostic(exc, phase, code):
     phase=phase if phase in dv.PHASES else 'unknown'
     code=code if code in ('operation_failed','prior_failure','final_refusal') else 'final_refusal'
     name=type(exc).__name__ if type(exc).__name__ in _DIAGNOSTIC_CLASSES else 'Exception'
-    function,line='unknown',0
+    function,line,source_file='unknown',0,'unknown'
     trace=exc.__traceback__
     while trace is not None:
         frame=trace.tb_frame.f_code
         if (any(frame.co_filename.endswith('/'+path) for path in _DIAGNOSTIC_FILES) and
                 frame.co_name in _DIAGNOSTIC_FUNCTIONS):
-            function,line=frame.co_name,trace.tb_lineno
+            function,line,source_file=frame.co_name,trace.tb_lineno,frame.co_filename.rsplit('/',1)[-1]
         trace=trace.tb_next
-    print('daemon_helper_diagnostic:'+phase+':'+code+':'+name+':'+function+':'+str(line),file=sys.stderr)
+    detail='daemon_helper_diagnostic:'+phase+':'+code+':'+name+':'+function+':'+str(line)
+    if isinstance(exc,OSError):
+        number=exc.errno
+        detail+=':'+source_file+':'+(str(number) if type(number) is int and number in _DIAGNOSTIC_ERRNOS else 'unknown')
+    print(detail,file=sys.stderr)
     reason=str(exc) if type(exc) is ValueError else ''
     if reason in dv.HELPER_REFUSAL_CODES:
         print('daemon_helper_cause:'+phase+':'+code+':'+reason,file=sys.stderr)
