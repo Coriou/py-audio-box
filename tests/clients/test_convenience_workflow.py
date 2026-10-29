@@ -1,5 +1,7 @@
 """Public HTTP composition without a runtime or model weights."""
 import base64
+import ast
+import asyncio
 import contextlib
 import hashlib
 import io
@@ -16,8 +18,9 @@ import httpx
 from clients.http import HTTP
 from clients.workflow import enroll, speak
 from clients.cli import main
-from clients.config import installation, resolve
+from clients.config import ConfigurationFailure, installation, resolve
 from contracts.validate import canonical_hash
+from service.catalogue import Failure
 
 ROOT = Path(__file__).resolve().parents[2]
 
@@ -409,9 +412,13 @@ class WorkflowHTTPTests(unittest.TestCase):
                               'https://127.0.0.1:8780', endpoint+'/', endpoint+'/other',
                               endpoint+'?other=1', endpoint+'#other'):
                 with self.subTest(different=different):
-                    with self.assertRaises(ValueError) as caught:
+                    with self.assertRaises(ConfigurationFailure) as caught:
                         resolve(different,None,root)
                     self.assertNotIn(token,str(caught.exception))
+                    self.assertEqual(caught.exception.body['code'], 'invalid_request')
+                    self.assertEqual(caught.exception.body['field'], 'url')
+                    self.assertEqual(caught.exception.body['action'],
+                                     'Use the configured installation URL or supply an explicit credential for a different URL.')
             self.assertEqual(resolve('http://192.0.2.10:8780','b'*32,root),
                              ('http://192.0.2.10:8780','b'*32))
             self.assertEqual(resolve(None,'b'*32,root), (endpoint,'b'*32))
@@ -421,6 +428,28 @@ class WorkflowHTTPTests(unittest.TestCase):
                     self.assertEqual(resolve(), (endpoint,'c'*32))
                 with self.assertRaises(ValueError):
                     resolve('http://192.0.2.10:8780')
+                with contextlib.redirect_stdout(io.StringIO()) as output:
+                    self.assertEqual(main(['--installation',str(root),'--url',
+                                           'http://192.0.2.10:8780','status']), 2)
+                cli_error = json.loads(output.getvalue())
+                self.assertEqual(cli_error['code'], 'invalid_request')
+                self.assertEqual(cli_error['message'], ConfigurationFailure.message)
+                self.assertEqual(cli_error['action'], ConfigurationFailure.action)
+                self.assertNotIn(token, output.getvalue())
+                # Execute the MCP handler from source without importing the unavailable MCP SDK.
+                source = ast.parse((ROOT/'clients'/'mcp.py').read_text())
+                handler = next(node for node in source.body if isinstance(node, ast.AsyncFunctionDef)
+                               and node.name == 'call_tool')
+                handler.decorator_list = []
+                module = ast.fix_missing_locations(ast.Module(body=[handler], type_ignores=[]))
+                namespace = {'Failure':Failure, 'ConfigurationFailure':ConfigurationFailure,
+                             'ValidationError':ValueError, 'ContractError':TypeError,
+                             'result':lambda body,error=False:(body,error)}
+                exec(compile(module, str(ROOT/'clients'/'mcp.py'), 'exec'), namespace)
+                with patch.dict(os.environ, {'SPEECH_URL':'http://192.0.2.10:8780'}):
+                    mcp_error, is_error = asyncio.run(namespace['call_tool']('speech_status', {}))
+                self.assertTrue(is_error)
+                self.assertEqual(mcp_error, cli_error)
                 with patch.dict(os.environ, {'SPEECH_URL':endpoint}):
                     self.assertEqual(resolve(), (endpoint,token))
                 with patch.dict(os.environ, {'SPEECH_URL':'http://192.0.2.10:8780'}):

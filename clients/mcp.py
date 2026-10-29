@@ -8,6 +8,7 @@ from mcp.server.stdio import stdio_server
 from mcp.types import Tool, TextContent, CallToolResult
 from contracts.validate import ContractError, validate
 from clients.http import HTTP
+from clients.config import ConfigurationFailure
 from service.catalogue import (DIRECT_BYTES, Failure, IMPLEMENTED, VOICE_READS, PRODUCTION_OPERATIONS, OPERATIONS, compact, problem, schema)
 
 server = Server('py-audio-box')
@@ -102,6 +103,8 @@ async def call_tool(name, arguments):
             body = await asyncio.to_thread(transport.call, operation, arguments, **({'key':key} if OPERATIONS[operation]['idempotency'] else {}))
         return result(body, name in ('speech_enroll','speech_speak') and body.get('state') != 'succeeded')
     except Failure as exc:
+        return result(exc.body, True)
+    except ConfigurationFailure as exc:
         return result(exc.body, True)
     except (ValidationError, ContractError, TypeError, ValueError):
         return result(problem('invalid_request', 'Request does not match named canonical schema.', 'request'), True)

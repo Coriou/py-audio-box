@@ -6,6 +6,21 @@ import stat
 import re
 
 
+class ConfigurationFailure(ValueError):
+    """Safe, actionable error for an endpoint/credential pairing refusal."""
+    code = 'invalid_request'
+    message = 'Discovered installation credential requires its configured endpoint.'
+    action = 'Use the configured installation URL or supply an explicit credential for a different URL.'
+
+    def __init__(self):
+        super().__init__(self.message)
+
+    @property
+    def body(self):
+        from service.catalogue import problem
+        return problem(self.code, self.message, 'url', self.action)
+
+
 def installation(root):
     root = Path(root)
     if not root.is_absolute(): raise ValueError('Installation path must be absolute.')
@@ -76,12 +91,12 @@ def resolve(url=None, credential=None, root=None):
     if root:
         local_url, local_token = installation(root) if not url or not credential else (None, None)
         if local_token and url and url != local_url and not credential:
-            raise ValueError('Discovered installation credential requires its configured endpoint.')
+            raise ConfigurationFailure()
         return url or local_url, credential or local_token
     preferred_url = url or os.environ.get('SPEECH_URL')
     preferred_token = credential or os.environ.get('SPEECH_CREDENTIAL')
     selected = os.environ.get('SPEECH_INSTALLATION')
     local_url, local_token = installation(selected) if selected and (not preferred_url or not preferred_token) else (None, None)
     if local_token and preferred_url and preferred_url != local_url and not preferred_token:
-        raise ValueError('Discovered installation credential requires its configured endpoint.')
+        raise ConfigurationFailure()
     return preferred_url or local_url, preferred_token or local_token

@@ -7,6 +7,7 @@ from pathlib import Path
 from jsonschema.exceptions import ValidationError
 from service.catalogue import Failure, compact
 from clients.http import HTTP
+from clients.config import ConfigurationFailure
 
 
 def strict_json(raw):
@@ -161,6 +162,8 @@ def main(argv=None):
                 if temporary is not None: temporary.unlink(missing_ok=True)
         print(compact(result)); return 2 if args.command in ('enroll','speak') and result.get('state') != 'succeeded' else 0
     except Failure as exc:
+        print(compact(exc.body)); return 2
+    except ConfigurationFailure as exc:
         print(compact(exc.body)); return 2
     except ValidationError:
         from service.catalogue import problem
