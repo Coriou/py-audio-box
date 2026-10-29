@@ -289,6 +289,73 @@ class WorkflowHTTPTests(unittest.TestCase):
                   voice_version_id='vv0', output=output, seconds=5)
         self.assertEqual(output.read_bytes(), b'\x00'*64)
 
+    def test_successful_link_retains_result_when_temporary_cleanup_fails(self):
+        output = Path(self.tmp.name)/'saved.wav'
+        with patch('clients.workflow.Path.unlink', side_effect=OSError('cleanup denied')):
+            result = speak(self.http, voice='bruce', text='Hello.',
+                           voice_version_id='vv0', output=output, seconds=5)
+        self.assertEqual(result['state'], 'succeeded')
+        self.assertTrue(result['saved'])
+        self.assertEqual(result['output'], str(output))
+        self.assertEqual(result['sha256'], hashlib.sha256(b'\x00'*64).hexdigest())
+        self.assertEqual(result['artifact_id'], 'artifact-speech')
+        self.assertEqual(result['asset_id'], 'output-speech')
+        self.assertEqual(output.read_bytes(), b'\x00'*64)
+        self.assertEqual(Path(result['temporary_path']).read_bytes(), b'\x00'*64)
+        self.assertIn(result['temporary_path'], result['cleanup_warning'])
+        self.assertIn('cleanup denied', result['cleanup_warning'])
+
+    def test_late_link_retains_deadline_and_saved_output_when_cleanup_fails(self):
+        output = Path(self.tmp.name)/'late-cleanup.wav'
+        clock = [time.monotonic()]
+        actual_link = os.link
+
+        def late_link(source, destination):
+            actual_link(source, destination)
+            clock[0] += 6
+
+        with patch('clients.workflow.time', SimpleNamespace(monotonic=lambda: clock[0])), \
+                patch('clients.workflow.os.link', side_effect=late_link), \
+                patch('clients.workflow.Path.unlink', side_effect=OSError('cleanup denied')):
+            result = speak(self.http, voice='bruce', text='Hello.',
+                           voice_version_id='vv0', output=output, seconds=5)
+        self.assertEqual((result['state'], result['code'], result['phase']),
+                         ('timed_out', 'deadline_exceeded', 'download'))
+        self.assertTrue(result['saved'])
+        self.assertEqual(result['output'], str(output))
+        self.assertEqual(result['sha256'], hashlib.sha256(b'\x00'*64).hexdigest())
+        self.assertEqual(result['artifact_id'], 'artifact-speech')
+        self.assertEqual(result['asset_id'], 'output-speech')
+        self.assertEqual(output.read_bytes(), b'\x00'*64)
+        self.assertEqual(Path(result['temporary_path']).read_bytes(), b'\x00'*64)
+        self.assertIn(result['temporary_path'], result['cleanup_warning'])
+
+    def test_prepublication_error_remains_primary_when_cleanup_fails(self):
+        output = Path(self.tmp.name)/'bad-cleanup.wav'
+        self.bad_bytes = True
+        with patch('clients.workflow.Path.unlink', side_effect=OSError('cleanup denied')):
+            with self.assertRaisesRegex(ValueError, 'Downloaded hash mismatch') as caught:
+                speak(self.http, voice='bruce', text='Hello.',
+                      voice_version_id='vv0', output=output, seconds=5)
+        self.assertFalse(output.exists())
+        retained = list(output.parent.glob('.py-audio-box-*'))
+        self.assertEqual(len(retained), 1)
+        self.assertIn(str(retained[0]), caught.exception.__notes__[0])
+        self.assertIn('cleanup denied', caught.exception.__notes__[0])
+
+    def test_prepublication_read_loss_keeps_outcome_and_cleanup_warning(self):
+        output = Path(self.tmp.name)/'read-loss.wav'
+        with patch('clients.workflow.base64.b64decode', side_effect=ConnectionError('read lost')), \
+                patch('clients.workflow.Path.unlink', side_effect=OSError('cleanup denied')):
+            result = speak(self.http, voice='bruce', text='Hello.',
+                           voice_version_id='vv0', output=output, seconds=5)
+        self.assertEqual((result['state'], result['phase']), ('read_unavailable', 'download'))
+        self.assertEqual(result['artifact_id'], 'artifact-speech')
+        self.assertEqual(result['asset_id'], 'output-speech')
+        self.assertFalse(output.exists())
+        self.assertTrue(Path(result['temporary_path']).exists())
+        self.assertIn(result['temporary_path'], result['cleanup_warning'])
+
     def test_changed_file_rejects_confirmed_asset_before_submit(self):
         import wave
         wav = Path(self.tmp.name)/'changed.wav'

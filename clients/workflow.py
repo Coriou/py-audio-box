@@ -4,6 +4,7 @@ import hashlib
 import json
 import os
 from pathlib import Path
+import sys
 import tempfile
 import time
 import wave
@@ -200,6 +201,7 @@ def download(http, asset_id, output, deadline):
         raise ValueError('Output exceeds client transfer limit.')
     output = Path(output)
     temporary = None
+    published = None
     try:
         digest = hashlib.sha256()
         with tempfile.NamedTemporaryFile(dir=output.parent, prefix='.py-audio-box-', delete=False) as stream:
@@ -224,7 +226,22 @@ def download(http, asset_id, output, deadline):
             raise _PublishedAfterDeadline(published) from exc
         return published
     finally:
-        if temporary is not None: temporary.unlink(missing_ok=True)
+        if temporary is not None:
+            primary = sys.exception()
+            try:
+                temporary.unlink(missing_ok=True)
+            except OSError as exc:
+                warning = f'Could not confirm removal of temporary download file {temporary}: {exc}'
+                if published is not None:
+                    published['cleanup_warning'] = warning
+                    published['temporary_path'] = str(temporary)
+                elif primary is not None:
+                    primary.add_note(warning)
+                    if isinstance(primary, (ConnectionError, TimeoutError, Failure)):
+                        primary.cleanup_warning = warning
+                        primary.temporary_path = str(temporary)
+                else:
+                    raise
 
 
 def speak(http, *, voice, text, output=None, seconds=120, job_id=None, voice_version_id=None):
@@ -286,4 +303,7 @@ def speak(http, *, voice, text, output=None, seconds=120, job_id=None, voice_ver
     except (ConnectionError, TimeoutError, Failure) as exc:
         if isinstance(exc, _PublishedAfterDeadline):
             handles.update(exc.published)
+        if hasattr(exc, 'cleanup_warning'):
+            handles.update(cleanup_warning=exc.cleanup_warning,
+                           temporary_path=exc.temporary_path)
         return _outcome(phase, exc, handles, mutation=phase in ('preset_register','generation_submit'))
