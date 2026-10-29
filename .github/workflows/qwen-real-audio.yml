@@ -1,0 +1,53 @@
+name: Qwen installed real audio (manual)
+on:
+  workflow_dispatch:
+    inputs:
+      reference_wav:
+        description: Absolute path to authorized private mono PCM16 reference WAV on the dedicated runner
+        required: true
+        type: string
+      reference_text_file:
+        description: Absolute path to its exact UTF-8 transcript on the dedicated runner
+        required: true
+        type: string
+      cache_root:
+        description: Absolute private pinned snapshot cache root on the dedicated runner
+        required: true
+        type: string
+permissions:
+  contents: read
+concurrency:
+  group: qwen-real-audio-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  real-audio:
+    if: github.ref == 'refs/heads/main'
+    # This label is an explicit prerequisite. A queued job is no runtime proof.
+    runs-on: [self-hosted, Linux, X64, pab-qwen-docker27-cgroupfs-v2]
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          persist-credentials: false
+      - name: Run one installed gate against the extracted archive
+        shell: bash
+        env:
+          REFERENCE_WAV: ${{ inputs.reference_wav }}
+          REFERENCE_TEXT_FILE: ${{ inputs.reference_text_file }}
+          CACHE_ROOT: ${{ inputs.cache_root }}
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          work="$RUNNER_TEMP/pab-qwen-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          mkdir -m 700 "$work"
+          sudo -n -E python3 scripts/ci-qwen-real-audio.py \
+            --work "$work" --reference-wav "$REFERENCE_WAV" \
+            --reference-text-file "$REFERENCE_TEXT_FILE" \
+            --cache-root "$CACHE_ROOT" --report "$RUNNER_TEMP/qwen-real-audio-report.json"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        if: always()
+        with:
+          name: qwen-real-audio-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/qwen-real-audio-report.json
+          if-no-files-found: warn
+          retention-days: 7
