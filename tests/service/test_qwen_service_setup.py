@@ -10,6 +10,9 @@ import unittest
 from unittest.mock import patch
 from types import SimpleNamespace
 import wave
+import subprocess
+import sys
+import zipfile
 
 from service import installed_qwen_daemon as qd
 from service import qwen_service_setup as setup
@@ -169,6 +172,64 @@ class SetupTests(unittest.TestCase):
             command(sudo_args)
         self.assertEqual([call.args[0] for call in chown.call_args_list],
                          [sudo_root/'control.key',sudo_root/'client.json',sudo_root])
+
+    def test_public_up_routes_local_and_legacy_up_keeps_explicit_scope(self):
+        from service.package_install import main as command
+        args=['up','--clone-bundle',self.request['bundles']['clone'],
+              '--ryan-bundle',self.request['bundles']['Ryan'],
+              '--control-image','control:local','--worker-image','worker:local',
+              '--helper-image','helper:local','--reference-wav',self.request['reference']['wav'],
+              '--reference-text',self.request['reference']['text'],
+              '--root',self.request['root'],'--handle',str(self.root/'handle'),'--prepare-only']
+        with patch.object(setup,'_image_ids',return_value=self.request['images']), \
+             patch('worker.engines.qwen.verify_bundle'), contextlib.redirect_stdout(io.StringIO()) as output:
+            command(args)
+        self.assertEqual(json.loads(output.getvalue())['qualification'],'unqualified')
+        with patch.object(setup,'main') as local_main:
+            with self.assertRaises(SystemExit):
+                command(['up','--configuration','/abs/config','--scope','/abs/scope'])
+            local_main.assert_not_called()
+
+    def test_invalid_sudo_identity_precedes_private_file_creation(self):
+        with patch.object(setup.os,'geteuid',return_value=0), \
+             patch.dict(os.environ,{'SUDO_UID':'123456789','SUDO_GID':'123456789'}), \
+             patch.object(setup,'_image_ids') as images:
+            with self.assertRaisesRegex(ValueError,'setup_sudo_client_identity_required'):
+                setup.main(['--local-unqualified','--handle',str(self.root/'handle'),
+                            '--root',str(self.root/'never-created'),'--prepare-only'])
+        images.assert_not_called()
+        self.assertFalse((self.root/'never-created').exists())
+        with patch.object(setup.os,'geteuid',return_value=0), \
+             patch.dict(os.environ,{'SUDO_UID':str(os.getuid()),'SUDO_GID':str(os.getgid()+1)}), \
+             patch.object(setup,'_image_ids') as images:
+            with self.assertRaisesRegex(ValueError,'setup_sudo_client_identity_required'):
+                setup.main(['--local-unqualified','--handle',str(self.root/'handle'),
+                            '--root',str(self.root/'never-created'),'--prepare-only'])
+        images.assert_not_called()
+        self.assertFalse((self.root/'never-created').exists())
+
+    def test_extracted_archive_public_up_help_imports_complete_local_lane(self):
+        from service.package_install import archive
+        package=self.root/'speech.zip'
+        archive(setup.ROOT,package)
+        with zipfile.ZipFile(package) as source:
+            source.extractall(self.root/'extracted')
+        command=self.root/'extracted'/'speech-box'/'speech-box'
+        result=subprocess.run([sys.executable,str(command),'up','--help'],
+                              capture_output=True,text=True,timeout=15)
+        self.assertEqual(result.returncode,0,result.stderr)
+        self.assertIn('--clone-bundle',result.stdout)
+        request=self.root/'extracted-request.json'
+        data=dict(self.request,measurement=None,ram_bytes=6*1024**3)
+        request.write_text(json.dumps(data))
+        script=("import json,sys;sys.path.insert(0,sys.argv[1]);"
+                "from service import qwen_service_setup as s;"
+                "r=s.generate(json.load(open(sys.argv[2])),verifier=lambda *args:None);"
+                "print(r['configuration']['profiles'][0]['support'])")
+        generated=subprocess.run([sys.executable,'-c',script,str(command.parent),str(request)],
+                                 capture_output=True,text=True,timeout=15)
+        self.assertEqual(generated.returncode,0,generated.stderr)
+        self.assertEqual(generated.stdout.strip(),'unqualified')
 
     def test_flags_build_validated_request_from_measured_file_and_named_images(self):
         measurement=self.root/'measurement.json'

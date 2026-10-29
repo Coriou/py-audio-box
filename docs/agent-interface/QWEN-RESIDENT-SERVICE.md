@@ -86,7 +86,7 @@ also gives the private generated `install-request.json` path for inspection.
 
 ## Local startup before qualification
 
-Use `speech-box qwen-up` for the explicit local, unqualified lane. It calls the
+Use `speech-box up` for the local, unqualified lane. `qwen-up` remains an alias. It calls the
 same two-model setup, installer, authenticated loopback API, and `docker-qwen up`.
 It does not accept a measurement file and never writes a qualification receipt.
 Its profile reports `support=unqualified`, `readiness=not_ready`, and
@@ -97,29 +97,32 @@ after activation while identifying the lane as **UNQUALIFIED**. The production
 The local defaults are 6 GiB aggregate RAM, 4 GiB per model execution, two
 threads, 64 PIDs, 10 GiB disk, one slot and resident model, and a 600 second
 deadline. Supply the two sealed bundle paths, three loaded local images, a
-real mono PCM16 reference WAV and its exact transcript, a fresh private root,
-and a fresh handle. The custody path defaults to a deterministic path derived
-from the handle. An authorized root operator must create that exact dedicated
-cgroup on the **same Linux host** as the local Unix socket Docker daemon before
-running `qwen-up`. The read-only preflight checks root ownership and mode 0700,
+real mono PCM16 reference WAV and its exact transcript, and a fresh handle.
+The Docker context defaults to `default`, the client root defaults to the
+calling user's private state directory, and the custody path is derived from
+the handle. Bundle and image inputs stay explicit because selecting among
+local copies would be ambiguous. After a read-only Docker preflight, privileged
+local Linux startup creates only its dedicated cgroup beneath
+`/sys/fs/cgroup/speech-box-qwen`, provided the host has already enabled the
+cpu, memory, and pids controllers. It sets the aggregate limits and delegates
+those controllers within that private subtree. The preflight checks root ownership and mode 0700,
 finite `memory.max` at most 6 GiB, `memory.swap.max=0`, `pids.max` at most 64,
 finite `cpu.max` at most the chosen worker CPU quota, enabled cpu/memory/pids
 subtree controllers, and `cgroup.kill` and `cgroup.procs`. If the host cannot
-provide narrow worker delegation, startup stops before installation. Docker
+provide narrow worker delegation, startup stops before installation with an
+actionable cgroup error. Docker
 context access alone does not grant host cgroup filesystem access. Run setup
 with `sudo` from the intended client account: it gives the private client root,
 `client.json`, and `control.key` back to `SUDO_UID`/`SUDO_GID` after writing the
 sealed installer input, so subsequent CLI/MCP discovery uses that account.
 
 ```sh
-sudo python3 scripts/headless-install.py qwen-up \
+sudo python3 scripts/headless-install.py up \
   --clone-bundle /absolute/sealed/base --ryan-bundle /absolute/sealed/customvoice \
-  --context default --control-image LOCAL_CONTROL_IMAGE \
+  --control-image LOCAL_CONTROL_IMAGE \
   --worker-image LOCAL_WORKER_IMAGE --helper-image LOCAL_HELPER_IMAGE \
-  --custody /sys/fs/cgroup/speech-box-qwen/0123456789abcdef0123456789abcdef \
   --reference-wav /absolute/local/reference.wav \
   --reference-text 'The exact words in the reference recording.' \
-  --root /absolute/private/user-owned/root --port 18800 \
   --handle /absolute/private/new-handle.json
 ```
 
@@ -131,13 +134,13 @@ install or launch failure needs review of its handle before any new attempt.
 The generated private `install-request.json` is the existing `docker-qwen`
 request. The generated `client.json` supplies local endpoint and credential
 discovery; the Docker importer checks the mounted credential against the
-configuration. A later `up` is a restart after a confirmed `stop`, using the
+configuration. A later `docker-qwen up` is a restart after a confirmed stop, using the
 retained handle. Raw `qwen-service-config`, `qwen-local-init`, and
 `docker-qwen` entrypoints remain available for explicit lower-level workflows.
 The two-model install request requires `custody`, an exact
-`/sys/fs/cgroup/speech-box-qwen/<32 lowercase hex>` path. The Linux host
-operator must precreate that dedicated cgroup v2 subtree as root:root mode
-`0700` and configure `memory.max` no greater than the installation RAM budget,
+`/sys/fs/cgroup/speech-box-qwen/<32 lowercase hex>` path. Privileged local
+startup creates that dedicated cgroup v2 subtree as root:root mode
+`0700` and configures `memory.max` no greater than the installation RAM budget,
 `memory.swap.max` as `0`, `pids.max` no greater than the installation PID budget,
 and a finite `cpu.max` no greater than the worker container's CPU quota.
 These limits belong on the dedicated parent: the worker container, resident

@@ -316,10 +316,77 @@ def preflight_host_cgroup(request):
         raise ValueError('setup_dedicated_cgroup_host_preflight_required') from exc
 
 
-def preflight_docker(request, *, docker=None):
+def prepare_host_cgroup(request):
+    """Create only the requested child of an already delegated private parent."""
+    custody=Path(request['custody'])
+    if custody.exists():
+        return preflight_host_cgroup(request)
+    if platform.system() != 'Linux' or platform.machine() != 'x86_64' or os.geteuid() != 0:
+        raise ValueError('setup_authorized_linux_host_root_required')
+    parent=custody.parent
+    try:
+        if not parent.exists():
+            base=parent.parent
+            if base != Path('/sys/fs/cgroup') or not {'cpu','memory','pids'} <= set(
+                    (base/'cgroup.subtree_control').read_text().split()):
+                raise ValueError('setup_host_cgroup_controllers_required: enable cpu, memory, pids on /sys/fs/cgroup')
+            parent.mkdir(mode=0o700)
+            (parent/'cgroup.subtree_control').write_text('+cpu +memory +pids')
+        info=parent.stat()
+        if (parent.is_symlink() or (info.st_uid,info.st_gid,stat.S_IMODE(info.st_mode)) != (0,0,0o700)
+                or not {'cpu','memory','pids'} <= set((parent/'cgroup.subtree_control').read_text().split())):
+            raise ValueError('setup_private_cgroup_parent_required: root-owned 0700 parent with cpu, memory, pids delegation')
+        custody.mkdir(mode=0o700)
+        (custody/'memory.max').write_text(str(request['ram_bytes']))
+        (custody/'memory.swap.max').write_text('0')
+        (custody/'pids.max').write_text(str(request['pids']))
+        (custody/'cpu.max').write_text(f"{request['cpu']['worker'] // 1000} 1000000")
+        (custody/'cgroup.subtree_control').write_text('+cpu +memory +pids')
+    except OSError as exc:
+        raise ValueError('setup_private_cgroup_parent_required: host must permit dedicated cgroup creation') from exc
+    preflight_host_cgroup(request)
+
+
+def sudo_client_identity():
+    """Resolve the intended client before creating any private local file."""
+    if os.geteuid() != 0 or 'SUDO_UID' not in os.environ:
+        return None
+    try:
+        uid=int(os.environ['SUDO_UID']); gid=int(os.environ['SUDO_GID'])
+        user=pwd.getpwuid(uid)
+        if uid <= 0 or gid < 0 or uid != user.pw_uid or gid != user.pw_gid:
+            raise ValueError()
+    except (KeyError, TypeError, ValueError):
+        raise ValueError('setup_sudo_client_identity_required') from None
+    return uid,gid,user.pw_dir
+
+
+def prepare_client_parent(root, identity):
+    """Make newly needed state parents traversable by the sudo caller."""
+    if identity is None: return
+    uid,gid,home=identity
+    parent=root.parent
+    home=Path(home)
+    if any(path.is_symlink() for path in root.parents):
+        raise ValueError('setup_client_parent_symlink')
+    if parent.is_relative_to(home):
+        missing=[]
+        cursor=parent
+        while not cursor.exists() and cursor != home:
+            missing.append(cursor); cursor=cursor.parent
+        if cursor.is_symlink() or cursor.stat().st_uid != uid:
+            raise ValueError('setup_client_parent_owner_required')
+        for path in reversed(missing):
+            path.mkdir(mode=0o700)
+            os.chown(path,uid,gid,follow_symlinks=False)
+    if parent.is_symlink() or parent.stat().st_uid != uid:
+        raise ValueError('setup_client_parent_owner_required')
+
+
+def preflight_docker(request, *, docker=None, host_cgroup=True):
     """Read-only host checks before minting credentials or creating a handle."""
     from service.daemon_client import Docker
-    preflight_host_cgroup(request)
+    if host_cgroup: preflight_host_cgroup(request)
     try:
         docker = docker or Docker(request['docker_context'],family=qd.FAMILY)
         if not str(getattr(docker,'endpoint','')).startswith('unix://'):
@@ -342,7 +409,7 @@ def main(argv=None):
     p.add_argument('--request',help='Advanced closed operator request JSON')
     p.add_argument('--handle',required=True,help='New retained Docker installation handle')
     p.add_argument('--prepare-only',action='store_true',help='Write validated local inputs without Docker mutation')
-    p.add_argument('--local-unqualified',action='store_true',help='Explicit bounded local execution; no qualification receipt')
+    p.add_argument('--local-unqualified',action='store_true',help='Bounded local execution; no qualification receipt')
     for flag in ('clone-bundle','ryan-bundle','context','control-image','worker-image',
                  'helper-image','custody','reference-wav','reference-text','measurement'):
         p.add_argument('--'+flag)
@@ -352,11 +419,13 @@ def main(argv=None):
     p.add_argument('--root',help='New private root; defaults to the local Qwen service root')
     p.add_argument('--port',type=int,default=DEFAULT_PORT)
     a=p.parse_args(argv)
-    if not a.request and a.root is None and os.geteuid() == 0 and os.environ.get('SUDO_UID'):
-        a.root=str(Path(pwd.getpwuid(int(os.environ['SUDO_UID'])).pw_dir)/'.local/state/speech-box/qwen-service')
+    client_identity=sudo_client_identity()
+    if not a.request and a.root is None and client_identity:
+        a.root=str(Path(client_identity[2])/'.local/state/speech-box/qwen-service')
     if a.local_unqualified and not a.request:
         if a.ram_bytes is None: a.ram_bytes=6*1024**3
         if a.threads is None: a.threads=2
+        if a.context is None: a.context='default'
         if a.custody is None:
             a.custody='/sys/fs/cgroup/speech-box-qwen/'+hashlib.sha256(os.fsencode(a.handle)).hexdigest()[:32]
     flags=('clone_bundle','ryan_bundle','context','control_image','worker_image',
@@ -377,8 +446,13 @@ def main(argv=None):
         p.error('null measurement requires --local-unqualified')
     result=generate(request)
     if not a.prepare_only:
-        preflight_docker(request)
+        if a.local_unqualified:
+            preflight_docker(request,host_cgroup=False)
+            prepare_host_cgroup(request)
+        else:
+            preflight_docker(request)
     root=local.root_path(request['root'])
+    prepare_client_parent(root,client_identity)
     root=local.create(root,port=request['port'],principal=request['principal'])
     config_path=root/'install.json'; exclusive(config_path,result['configuration'])
     result['inputs'] += [dict(role='config',path='install.json',source=str(config_path),
@@ -387,10 +461,8 @@ def main(argv=None):
                               bytes=(root/'control.key').stat().st_size)]
     manifest(result['inputs'],family=qd.FAMILY,service=True)
     installer=root/'install-request.json'; exclusive(installer,result)
-    if os.geteuid() == 0 and os.environ.get('SUDO_UID'):
-        uid=int(os.environ['SUDO_UID']); gid=int(os.environ['SUDO_GID'])
-        if uid <= 0 or uid != pwd.getpwuid(uid).pw_uid:
-            raise ValueError('setup_sudo_client_identity_required')
+    if client_identity:
+        uid,gid,_=client_identity
         for path in (root/'control.key',root/'client.json',root):
             os.chown(path,uid,gid,follow_symlinks=False)
     client_command=['python3','-m','clients.cli']
