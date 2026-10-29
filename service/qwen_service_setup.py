@@ -27,6 +27,10 @@ from worker.engines.qwen_execution import QwenExecution
 
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_PORT = 8000
+# recovery.private_database accepts at most 16 MiB across SQLite, WAL and SHM.
+# The helper and control each use this /tmp budget; leave another 16 MiB for
+# SQLite's bounded validation work and temporary directory metadata.
+CONTROL_TMPFS_BYTES = 32 * 1024**2
 
 
 def _measurement(path):
@@ -85,7 +89,8 @@ def flag_request(args, *, docker=None):
                 reference=dict(wav=args.reference_wav, text=args.reference_text),
                 measurement=evidence, ram_bytes=args.ram_bytes, threads=threads,
                 pids=max(64, threads+48), cpu=dict(control=10**9, worker=threads*10**9),
-                tmpfs={role:dict(bytes=65536, inodes=64) for role in ('control','worker')})
+                tmpfs=dict(control=dict(bytes=CONTROL_TMPFS_BYTES,inodes=64),
+                           worker=dict(bytes=65536,inodes=64)))
 
 
 def _source(name, path, verifier):
@@ -245,6 +250,8 @@ def generate(request, *, verifier=None):
                 type(v['inodes']) is not int or not 16<=v['inodes']<=65536
                 for v in request['tmpfs'].values())):
         raise ValueError('setup_explicit_cpu_tmpfs_budgets_required')
+    if request['tmpfs']['control']['bytes'] < CONTROL_TMPFS_BYTES:
+        raise ValueError('setup_control_tmpfs_below_private_database_budget')
     selected=request['reference']
     if (type(selected) is not dict or set(selected)!={'wav','text'} or
             type(selected['wav']) is not str or not Path(selected['wav']).is_absolute() or

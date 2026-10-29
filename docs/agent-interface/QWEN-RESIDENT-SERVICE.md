@@ -47,8 +47,12 @@ Put your actual qualification evidence in a private regular file, for example
 The numbers above illustrate the file format; use measurements from your own
 qualification, not these values. `--ram-bytes` is the chosen container budget
 and must cover measured model memory. `--threads` drives the worker CPU and PID
-budgets; the control CPU and both tmpfs budgets use the existing conservative
-setup values. The setup root and
+budgets. The control and initialization helper use a 32 MiB `/tmp` tmpfs:
+private SQLite validation may copy up to 16 MiB of database, WAL and SHM, with
+the remaining space reserved for validation overhead. Explicit setup requests
+with less than 32 MiB for control are refused. The worker keeps its 64 KiB
+`/tmp` tmpfs. These tmpfs pages count against the existing finite container
+memory budget; this does not increase that budget. The setup root and
 handle must be new. It invokes the existing `docker-qwen install` then `up`
 and retains their receipts. A failed install or launch requires review of the
 retained handle; running setup again with a new handle is not recovery.

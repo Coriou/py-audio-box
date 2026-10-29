@@ -16,6 +16,7 @@ import zipfile
 
 from service import installed_qwen_daemon as qd
 from service import qwen_service_setup as setup
+from service import daemon_volumes as volumes, recovery
 from service import qwen_local_config as local
 from service.daemon_client import manifest
 from service.provisioning import bundle_manifest, manifest_bytes
@@ -45,7 +46,69 @@ class SetupTests(unittest.TestCase):
                              disk_bytes=1024**3,deadline_seconds=600),
             ram_bytes=12*1024**3,pids=64,threads=2,
             cpu=dict(control=10**9,worker=2*10**9),
-            tmpfs={key:dict(bytes=65536,inodes=64) for key in ('control','worker')})
+            tmpfs=dict(control=dict(bytes=setup.CONTROL_TMPFS_BYTES,inodes=64),
+                       worker=dict(bytes=65536,inodes=64)))
+
+    def test_private_sqlite_copy_fits_generated_helper_budget(self):
+        from tests.service.test_split_init import SplitInit
+        fixture=SplitInit();fixture.setUp();self.addCleanup(fixture.doCleanups)
+        fixture.run_init()  # Creates and validates a real persisted SQLite core.
+        database=fixture.roots['control']/'core'/'core.sqlite'
+        source_bytes=sum((database.parent/name).stat().st_size for name in
+                         ('core.sqlite','core.sqlite-wal','core.sqlite-shm')
+                         if (database.parent/name).exists())
+        self.assertGreater(source_bytes,65536)
+        self.assertLessEqual(source_bytes,recovery.MAX_BYTES)
+        generated=setup.generate(self.request,verifier=lambda *args:None)
+        budget=generated['tmpfs']['control']['bytes']
+        self.assertGreaterEqual(budget,2*recovery.MAX_BYTES)
+        self.assertEqual(generated['tmpfs']['worker'],dict(bytes=65536,inodes=64))
+        from service import install_policy
+        with recovery.private_database(database,policy=install_policy.SPLIT) as copied:
+            self.assertEqual(copied.read_bytes(),database.read_bytes())
+        config=generated['configuration']
+        installation='a'*32
+        b=dict(policy=volumes.POLICY,installation=installation,
+               daemon=dict(endpoint='unix:///fixture/docker.sock',id='fixture-linux',
+                           os='linux',architecture='amd64',security=['name=seccomp,profile=builtin'],cgroup='2'),
+               volumes={r:dict(Name='pab-'+installation+'-'+r,Driver='local',Options=None,
+                               Scope='local',Mountpoint='/opaque/'+r,CreatedAt='2026-10-29T00:00:00Z',
+                               Labels={'speech-box.installation':installation,'speech-box.role':r})
+                        for r in volumes.ROLES},
+               helper_image=generated['helper_image'],configuration_digest=volumes.digest(config),
+               tmpfs=generated['tmpfs'],cpu=generated['cpu'],control_port=generated['control_port'])
+        for role,phase in (('helper','init'),('control',None)):
+            with self.subTest(role=role):
+                args=volumes.command(role,config,b,phase=phase,
+                                     nonce='a'*32 if phase else None)
+                expected='/tmp:rw,noexec,nosuid,nodev,size='+str(budget)+',nr_inodes=64,mode=1777'
+                self.assertEqual(args[args.index('--tmpfs')+1],expected)
+                self.assertEqual(args[args.index('--memory')+1],str(config['budget']['ram_bytes']))
+                self.assertEqual(args[args.index('--memory-swap')+1],str(config['budget']['ram_bytes']))
+                helper=role=='helper';mounts=volumes.mounts(role,b,phase)
+                inspection=dict(Id='1'*64,Image=b['helper_image'] if helper else config['images'][role],
+                    Config=dict(User='0:0' if helper else '10001:10001',Entrypoint=['python'],
+                                Cmd=args[args.index('--entrypoint')+3:]),
+                    HostConfig=dict(Privileged=False,ReadonlyRootfs=True,PidMode='',IpcMode='private',
+                        CgroupnsMode='private',UsernsMode='',NetworkMode='none' if helper else 'bridge',
+                        CapDrop=['ALL'],CapAdd=list(volumes.INIT_CAPS) if helper else [],
+                        SecurityOpt=['no-new-privileges:true'],RestartPolicy=dict(Name='no',MaximumRetryCount=0),
+                        Devices=[],DeviceRequests=None,Binds=None,Memory=config['budget']['ram_bytes'],
+                        MemorySwap=config['budget']['ram_bytes'],PidsLimit=config['budget']['pids'],
+                        Mounts=[dict(Type='volume',Source=m['Name'],Target=m['Destination'],
+                                     ReadOnly=not m['RW'],VolumeOptions=dict(NoCopy=True)) for m in mounts],
+                        NanoCpus=b['cpu']['control'],Tmpfs={'/tmp':expected.removeprefix('/tmp:')},
+                        PortBindings={} if helper else {'8000/tcp':[dict(HostIp='127.0.0.1',HostPort='8765')]}),
+                    State=dict(Running=False,Restarting=False,ExitCode=0,Status='created',
+                               StartedAt='0001-01-01T00:00:00Z',Pid=0),RestartCount=0,Mounts=mounts)
+                self.assertEqual(inspection['HostConfig']['Tmpfs']['/tmp'],expected.removeprefix('/tmp:'))
+                volumes.inspect_container(inspection,role,config,b,
+                                          phase=phase,nonce='a'*32 if phase else None)
+
+    def test_control_tmpfs_below_private_copy_budget_refused(self):
+        self.request['tmpfs']['control']['bytes']=65536
+        with self.assertRaisesRegex(ValueError,'setup_control_tmpfs_below_private_database_budget'):
+            setup.generate(self.request,verifier=lambda *args:None)
 
     def test_generated_request_passes_existing_validators(self):
         result=setup.generate(self.request,verifier=lambda *args: None)
