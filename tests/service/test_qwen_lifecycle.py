@@ -638,4 +638,4 @@ class QwenDescendantGateTests(conditioning_tests.ConditioningSupervisorTests):
         super().setUp()
         self.row['allocation']['fixture']='qwen'
         self.enterContext(patch('worker.runtime_protocol.execution',return_value=SimpleNamespace(
-            engine='qwen',device='cpu',task='clone',x_vector_only=True)))
+            engine='qwen',device='cpu',task='clone',x_vector_only=True,reference_text=None)))
