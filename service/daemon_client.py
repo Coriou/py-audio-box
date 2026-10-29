@@ -263,6 +263,7 @@ class Docker:
         elif action=='create':
             dv.closed(payload,'role')
             if payload['role'] not in ('control','worker'): raise ValueError('daemon_action_role')
+            if getattr(self,'resident_cgroupfs',False): self.check()
             identity=self.call(dv.command(payload['role'],config,b,family=getattr(self,'family',None)))
             result=self.container(identity)
         elif action in ('start','term','inspect','marker','facts'):
@@ -270,6 +271,7 @@ class Docker:
             role=payload['role']; identity=payload['id']
             if role not in ('control','worker'): raise ValueError('daemon_action_role')
             dv.inspect_container(self.container(identity),role,config,b,family=getattr(self,'family',None))
+            if action in ('start','term') and getattr(self,'resident_cgroupfs',False): self.check()
             if action=='start': self.call(['container','start',identity])
             elif action=='term': self.call(['container','kill','--signal=TERM',identity])
             if action in ('start','term','inspect'): result=self.container(identity)
@@ -286,6 +288,7 @@ class Docker:
             raw=encoded(payload['gate'])
             if len(raw)>65536: raise ValueError('daemon_gate_budget')
             deadline=min(self.end,time.monotonic()+10)
+            if getattr(self,'resident_cgroupfs',False): self.check()
             p=subprocess.Popen(self.argv(['exec','--interactive','--user','10001:10001',identity,'python','-I','-B','-c',
                 "import sys;sys.path.insert(0,'/opt/speech');from service.entrypoint import "+("publish_qwen" if getattr(self,"family",None) is qd.FAMILY else "publish_pocket" if getattr(self,"family",None) is pd.FAMILY else "publish_export" if export else "publish")+" as publish;publish(sys.stdin.buffer.read(65537))"]),
                 stdin=subprocess.PIPE,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL,env=self.env)
@@ -315,6 +318,7 @@ class Docker:
         qwen_import=getattr(self,'family',None) is qd.FAMILY and phase=='install'
         expires=time.time()+max(0,self.end-time.monotonic()) if qwen_import else None
         own=self.container(identity); dv.inspect_container(own,'helper',config,b,phase=phase,nonce=nonce,family=getattr(self,'family',None))
+        if getattr(self,'resident_cgroupfs',False): self.check()
         p=subprocess.Popen(self.argv(['container','start','--attach','--interactive',identity]),stdin=subprocess.PIPE,
             stdout=subprocess.PIPE,stderr=subprocess.DEVNULL,env=self.env,bufsize=0,close_fds=True)
         with Owner(p,'daemon_helper',self.end,self.retained) as owner:
@@ -508,6 +512,8 @@ def main(argv=None, *, family=None):
                 existing=d.call(['volume','ls','--format','{{.Name}}']).splitlines()
                 if name in existing: raise ValueError('daemon_existing_volume_refused')
                 exclusive(a.handle+'.intent-'+role,dict(name=name))
+                # Read/list and receipt writes can intervene after admission.
+                if service: d.check()
                 result=d.call(['volume','create','--driver','local','--label','speech-box.installation='+installation,
                     '--label','speech-box.role='+role,name])
                 if result!=name: raise ValueError('daemon_volume_create_changed')
@@ -546,6 +552,7 @@ def main(argv=None, *, family=None):
             if store_client:
                 store_client.end=d.end; store_client.expires=time.time()+max(0,d.end-time.monotonic())
                 store_client.coordinate('attachment-intent',dict(binding=b,configuration=config,role='helper',phase=phase,nonce=nonce))
+            if 'custody' in b: d.check()
             identity=d.call(dv.command('helper',config,b,phase=phase,nonce=nonce,family=family))
             if not dv.HEX.fullmatch(identity): raise ValueError('daemon_helper_id')
             exclusive(intent+'.id',dict(id=identity))

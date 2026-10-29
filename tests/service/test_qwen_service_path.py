@@ -1,7 +1,9 @@
 """Inert installed two-model wiring; no Docker or model qualification."""
 import copy
 import json
+import tempfile
 import unittest
+from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
 
@@ -106,6 +108,85 @@ class ServicePathTests(unittest.TestCase):
             d.require_resident_cgroupfs()
             with self.assertRaisesRegex(ValueError,'CgroupDriver must be cgroupfs'):
                 d.check()
+
+    def test_resident_volume_create_checks_drift_at_dispatch(self):
+        image=self.config['images']['control']
+        request=dict(configuration=self.config,helper_image=image,
+            inputs=[dict(role='config',source='config',bytes=100),dict(role='credential',source='credential',bytes=100)],
+            cpu=dict(control=10**9,worker=2*10**9),
+            tmpfs={r:dict(bytes=65536,inodes=64) for r in ('control','worker')},
+            control_port=8765,custody='/sys/fs/cgroup/speech-box-qwen/'+'b'*32)
+        info=dict(ID='daemon',OSType='linux',Architecture='amd64',SecurityOptions=[],CgroupVersion='2')
+        context=[dict(Endpoints=dict(docker=dict(Host='unix:///run/docker.sock')))]
+        credentials=SimpleNamespace(_credentials=[SimpleNamespace(principal='alice',scopes={'read','production-write'})])
+        calls=[]
+        def docker_call(_,args):
+            calls.append(args)
+            if args[:2]==['image','inspect']: return args[2]
+            if args[:2]==['volume','ls']: return ''
+            raise AssertionError(args)
+        with tempfile.TemporaryDirectory() as root, \
+             patch.object(dc,'read',side_effect=lambda path,*_:dc.encoded(request) if path=='request' else b'credential'), \
+             patch.object(dc,'manifest',return_value=request['inputs']), \
+             patch('service.auth.decode_credentials',return_value=credentials), \
+             patch.object(dc.Docker,'json',side_effect=[context,dict(info,CgroupDriver='cgroupfs'),dict(info,CgroupDriver='systemd')]), \
+             patch.object(dc.Docker,'call',docker_call):
+            handle=str(Path(root)/'handle')
+            with self.assertRaisesRegex(SystemExit,'CgroupDriver must be cgroupfs'):
+                dc.main(['install','--context','local','--request','request','--handle',handle],family=qd.FAMILY)
+            self.assertTrue(Path(handle).exists())
+            self.assertTrue(Path(handle+'.intent-control').exists())
+            self.assertFalse(Path(handle+'.created-control').exists())
+        self.assertFalse(any(args[:2]==['volume','create'] for args in calls))
+
+    def test_resident_helper_create_checks_drift_at_dispatch(self):
+        installation='a'*32
+        b=dict(policy=qd.LAUNCH,installation=installation,
+            daemon=dict(endpoint='unix:///run/docker.sock',id='daemon',os='linux',architecture='amd64',security=[],cgroup='2'),
+            volumes={r:dict(Name='pab-'+installation+'-'+r,Driver='local',Options=None,Scope='local',
+                Mountpoint='/var/lib/docker/volumes/'+r,CreatedAt='2026-10-25T00:00:00Z',
+                Labels={'speech-box.installation':installation,'speech-box.role':r}) for r in dv.ROLES},
+            helper_image=self.config['images']['control'],configuration_digest=dv.digest(self.config),
+            cpu=dict(control=10**9,worker=2*10**9),
+            tmpfs={r:dict(bytes=65536,inodes=64) for r in ('control','worker')},
+            control_port=8765,custody='/sys/fs/cgroup/speech-box-qwen/'+'b'*32)
+        retained=dict(binding=b,configuration=self.config)
+        info=dict(ID='daemon',OSType='linux',Architecture='amd64',SecurityOptions=[],CgroupVersion='2')
+        calls=[]
+        with tempfile.TemporaryDirectory() as root, \
+             patch.object(dc,'read',return_value=dc.encoded(retained)), \
+             patch.object(dc.Docker,'json',side_effect=[dict(info,CgroupDriver='cgroupfs'),dict(info,CgroupDriver='systemd')]), \
+             patch.object(dc.Docker,'call',side_effect=lambda _,args:calls.append(args)):
+            handle=str(Path(root)/'handle')
+            with self.assertRaisesRegex(SystemExit,'CgroupDriver must be cgroupfs'):
+                dc.main(['status','--handle',handle],family=qd.FAMILY)
+            self.assertEqual(len(list(Path(root).glob('handle.helper-*'))),1)
+        self.assertEqual(calls,[])
+
+    def test_resident_helper_and_control_start_check_drift_at_dispatch(self):
+        from unittest.mock import Mock
+        info=dict(ID='daemon',OSType='linux',Architecture='amd64',SecurityOptions=[],CgroupVersion='2')
+        for action in ('helper','control'):
+            with self.subTest(action=action):
+                states=iter(('cgroupfs','systemd') if action=='helper' else ('cgroupfs','cgroupfs','systemd'))
+                def docker_json(_,args):
+                    if args[0]=='info': return dict(info,CgroupDriver=next(states))
+                    if args[:2]==['container','inspect']: return [dict(Id='a'*64)]
+                    raise AssertionError(args)
+                with patch.object(dc.Docker,'json',docker_json), \
+                     patch.object(dv,'inspect_container'), \
+                     patch.object(dc.subprocess,'Popen') as popen, \
+                     patch.object(dc.Docker,'call',Mock()) as call:
+                    d=dc.Docker(endpoint='unix:///run/docker.sock',family=qd.FAMILY)
+                    d.require_resident_cgroupfs()
+                    if action=='helper':
+                        with self.assertRaisesRegex(ValueError,'CgroupDriver must be cgroupfs'):
+                            d.exchange('a'*64,'status','b'*32,self.config,{},[])
+                        popen.assert_not_called()
+                    else:
+                        with self.assertRaisesRegex(ValueError,'CgroupDriver must be cgroupfs'):
+                            d.action('start',dict(id='a'*64,role='control'),self.config,{},[])
+                        call.assert_not_called()
 
     def test_builder_configuration_launch_and_one_principal(self):
         self.assertTrue(ip.qwen_service(self.config))
