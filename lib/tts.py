@@ -746,6 +746,9 @@ def load_tts_model(model_name: str, num_threads: int, dtype_str: str = "auto", *
     if offline is None:
         offline = env_flag_enabled("TTS_OFFLINE", False) or env_flag_enabled("HF_HUB_OFFLINE", False)
     settings = dict(model_name=model_name, num_threads=num_threads, dtype_str=dtype_str, revision=revision, offline=offline)
+    # Legacy CLI retrieval uses the configured persistent HF cache. Explicit
+    # local execution and direct managed QwenBackend callers stay private.
+    settings['legacy_hf_cache'] = device is None and attention is None
     if device is not None or attention is not None:
         settings.update(device=device, attention=attention)
     return QwenBackend(**settings)

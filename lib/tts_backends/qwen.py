@@ -81,8 +81,8 @@ def _worker(connection, settings, runtime_dir):
 
 
 def _worker_impl(connection, settings, runtime_dir=None):
-    # The parent owns this directory until the child has been reaped. Never use
-    # inherited HOME/cache/temp paths, or tempfile's cached host preference.
+    # The parent owns private runtime state until the child has been reaped.
+    # Only trusted legacy callers opt into persistent HF model retrieval.
     if runtime_dir is None:  # Inert direct seam callers also get private state.
         with tempfile.TemporaryDirectory(prefix='qwen-child-', dir='/tmp') as root:
             return _worker_impl(connection, settings, root)
@@ -95,6 +95,17 @@ def _worker_impl(connection, settings, runtime_dir=None):
         'TRANSFORMERS_CACHE': 'huggingface/transformers', 'TORCH_HOME': 'torch',
     }.items()}
     values.update(USER='qwen-worker', LOGNAME='qwen-worker')
+    settings = dict(settings)
+    if settings.pop('legacy_hf_cache', False):
+        # Resolve before replacing HOME/XDG_CACHE_HOME. Do not inherit runtime,
+        # compiler or temp paths, and never enable this for managed backends.
+        hf_home = os.environ.get('HF_HOME') or str(Path(os.environ.get('XDG_CACHE_HOME') or Path.home() / '.cache') / 'huggingface')
+        hub = os.environ.get('HF_HUB_CACHE') or os.environ.get('HUGGINGFACE_HUB_CACHE') or str(Path(hf_home) / 'hub')
+        values.update({name: str(Path(value).expanduser().absolute()) for name, value in {
+            'HF_HOME': hf_home, 'HF_HUB_CACHE': hub,
+            'HUGGINGFACE_HUB_CACHE': hub,
+            'TRANSFORMERS_CACHE': os.environ.get('TRANSFORMERS_CACHE') or hub,
+        }.items()})
     for value in set(values.values()) - {'qwen-worker'}:
         Path(value).mkdir(parents=True, exist_ok=True, mode=0o700)
     previous = {name: os.environ.get(name) for name in values}
