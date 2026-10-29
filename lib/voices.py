@@ -256,9 +256,23 @@ class VoiceRegistry:
                 f"Voice '{slug}' not found in registry. "
                 f"Looked in: {vj}"
             )
-        with open(vj) as fh:
-            data = json.load(fh)
-        return self._normalise_record(data)
+        return self._read_record(vj)
+
+    def _read_record(self, path: Path) -> dict[str, Any]:
+        """Read registry identity; corruption must never masquerade as a name miss."""
+        try:
+            with open(path) as fh:
+                data = self._normalise_record(json.load(fh))
+            slug = data.get("slug")
+            if validate_slug(slug) != slug or slug != path.parent.name:
+                raise ValueError("Voice slug must match its directory exactly")
+            if not isinstance(data.get("created_at"), str):
+                raise ValueError("Voice created_at must be a string")
+            if "display_name" in data and not isinstance(data["display_name"], str):
+                raise ValueError("Voice display_name must be a string")
+            return data
+        except (OSError, ValueError, TypeError) as exc:
+            raise ValueError(f"Invalid voice registry metadata at {path}: {exc}") from exc
 
     def resolve_name(self, name: str, *, prefix: bool = True) -> str:
         """Resolve human names, explicit aliases and slug prefixes; refuse collisions.
@@ -268,7 +282,7 @@ class VoiceRegistry:
         key = name.strip().casefold()
         if not key or "/" in key or "\\" in key:
             raise KeyError(f"Unknown voice {name!r}; use list-voices")
-        records = self.list_voices()
+        records = self.list_voices(strict=True)
         exact = set()
         for record in records:
             slug = validate_slug(record["slug"])
@@ -317,6 +331,7 @@ class VoiceRegistry:
 
     def _repair_orphan(self, slug: str, metadata: Path, *, dry_run: bool) -> dict[str, Any]:
         import hashlib
+        from tts_backends.qwen import validate_checkpoint_request
         slug = validate_slug(slug)
         vd = self.voice_dir(slug)
         guidance = " Restore a trusted complete backup, or rebuild from a trusted WAV with voice-clone synth --ref-audio and a new --voice-name."
@@ -363,6 +378,9 @@ class VoiceRegistry:
                     or not re.fullmatch(r"[0-9a-fA-F]{40}", meta["revision"])
                     or type(meta.get("schema_version")) is not int or meta["schema_version"] != 1):
                 raise ValueError(f"Missing pinned model identity for {stem}." + guidance)
+            # Hashes bind retained bytes to the sidecar; capabilities independently
+            # establish that its checkpoint can produce clone prompts (no runtime).
+            validate_checkpoint_request(meta["checkpoint"], "clone")
             reference = self.prompt_reference(path)
             if reference is None or not self.compatible_prompt(path,
                     checkpoint=meta["checkpoint"], revision=meta["revision"], schema_version=1,
@@ -484,21 +502,24 @@ class VoiceRegistry:
                 continue
         return None
 
-    def list_voices(self) -> list[dict[str, Any]]:
+    def list_voices(self, *, strict: bool = False) -> list[dict[str, Any]]:
         """
         Return all named voices, sorted by creation date (newest first).
         Each entry is the voice.json dict with two extra keys:
           ``_prompt_count``  — number of .pkl files in prompts/
           ``_ready``         — True if a prompt exists (can synthesise immediately)
+        With strict=True, invalid records raise rather than being omitted, so name
+        resolution cannot silently fall through to a different legacy voice.
         """
         if not self.root.exists():
             return []
         voices: list[dict[str, Any]] = []
         for vj in sorted(self.root.glob("*/voice.json")):
             try:
-                with open(vj) as fh:
-                    d = self._normalise_record(json.load(fh))
-            except Exception:
+                d = self._read_record(vj)
+            except ValueError:
+                if strict:
+                    raise
                 continue
             pd = vj.parent / "prompts"
             count = len(list(pd.glob("*.pkl"))) if pd.exists() else 0
@@ -882,9 +903,9 @@ class VoiceRegistry:
             raise ValueError(f"Voice '{new_slug}' already exists.")
         old_dir = self.voice_dir(old_slug)
         new_dir = self.voice_dir(new_slug)
+        data = self.load(old_slug)
         old_dir.rename(new_dir)
         # Update slug (and display_name when it mirrored the slug)
-        data = self.load(new_slug)
         data["slug"] = new_slug
         if data.get("display_name") == old_slug:
             data["display_name"] = new_slug

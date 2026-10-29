@@ -1,8 +1,8 @@
 """Standard-library focused tests; all voice assets are disposable temporary files.
 
-Caller selection functions are compiled from their source AST so these pure-path
-checks also run in the existing Python 3.11 client env without ML dependencies.
-This does not exercise app imports, inference, Docker or Linux acceptance.
+Most caller checks compile selection functions from source AST. Regression checks
+also execute complete app imports and repair parser/dispatch, stubbing only external
+numerical/ML modules. This does not exercise inference, Docker or Linux acceptance.
 """
 import argparse
 import ast
@@ -10,13 +10,14 @@ import contextlib
 import io
 import os
 import hashlib
+import importlib.util
 import json
 from pathlib import Path
 import sys
 import tempfile
 from types import SimpleNamespace
 import unittest
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / 'lib'))
@@ -32,6 +33,18 @@ def caller(relative, name, **extra):
     namespace.update(extra)
     exec(compile(ast.Module(body=[function], type_ignores=[]), str(path), 'exec'), namespace)
     return namespace[name]
+
+
+@contextlib.contextmanager
+def app_module(relative):
+    """Execute the whole app; stub only unavailable external numerical/ML imports."""
+    name = '_voice_usability_app'
+    spec = importlib.util.spec_from_file_location(name, ROOT / relative)
+    module = importlib.util.module_from_spec(spec)
+    external = {key: MagicMock(name=key) for key in ('numpy', 'soundfile', 'torch', 'torchaudio')}
+    with patch.dict(sys.modules, {**external, name: module}):
+        spec.loader.exec_module(module)
+        yield module
 
 
 class VoiceUsability(unittest.TestCase):
@@ -94,6 +107,39 @@ class VoiceUsability(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, 'Ambiguous'):
                 self.clone_ref(SimpleNamespace(voice=name), self.cache)
         self.assertEqual(self.reg.resolve_name('BRUCE'), 'bruce')
+
+    def test_corrupt_registry_never_falls_back_to_legacy_in_actual_consumer(self):
+        pd = self.reg.prompts_dir('bruce'); pd.mkdir()
+        (pd / 'named.pkl').write_bytes(b'named voice')
+        legacy = self.cache / 'voice-clone/prompts'; legacy.mkdir(parents=True)
+        (legacy / 'bruce.pkl').write_bytes(b'different legacy voice')
+        bad = self.reg.voice_dir('broken'); bad.mkdir()
+        record = bad / 'voice.json'
+        valid = dict(slug='broken', created_at='2000', source={})
+        corruptions = [None, [], {k: v for k, v in valid.items() if k != 'slug'}]
+        corruptions += [dict(valid, slug=value) for value in
+                        (None, 123, [], {}, '../bruce', 'BROKEN', ' broken ', 'bruce')]
+        corruptions += [dict(valid, **{field: value}) for field, value in
+                        (('created_at', []), ('display_name', {}), ('aliases', [123]),
+                         ('schema_version', 999))]
+        with app_module('apps/voice-synth/voice-synth.py') as synth:
+            self.assertEqual(synth.resolve_voice('BRUCE', self.cache)['prompt_path'], str(pd / 'named.pkl'))
+            for raw in [json.dumps(data) for data in corruptions] + ['{invalid json']:
+                with self.subTest(raw=raw):
+                    record.write_text(raw)
+                    before = self.snapshot()
+                    with self.assertRaisesRegex(ValueError, 'Invalid voice registry metadata.*broken'):
+                        synth.resolve_voice('BRUCE', self.cache)
+                    with self.assertRaisesRegex(ValueError, 'Invalid voice registry metadata'):
+                        self.reg.load('broken')
+                    self.assertEqual(self.snapshot(), before)
+            record.unlink()
+            self.assertEqual(synth.resolve_voice('BRUCE', self.cache)['prompt_path'], str(pd / 'named.pkl'))
+
+    def test_ordinary_lookup_miss_still_selects_legacy(self):
+        legacy = self.cache / 'voice-clone/prompts'; legacy.mkdir(parents=True)
+        pkl = legacy / 'legacy.pkl'; pkl.write_bytes(b'legacy prompt')
+        self.assertEqual(self.resolve('LEGACY', self.cache)['prompt_path'], str(pkl))
 
     def test_alias_collision_and_path_rejected(self):
         self.reg.create('john', 'John', {})
@@ -203,6 +249,59 @@ class VoiceUsability(unittest.TestCase):
                          revision='a'*40, schema_version=1), pkl)
         self.assertIsNone(self.reg.matching_prompt('bruce', checkpoint='Qwen/Qwen3-TTS-12Hz-1.7B-Base',
                           revision='a'*40, schema_version=1))
+
+    def test_actual_repair_cli_refuses_non_clone_checkpoints_without_publication(self):
+        backup, pkl = self.orphan()
+        sidecar = pkl.with_suffix('.meta.json')
+        meta = json.loads(sidecar.read_text())
+        local = self.cache / 'local-Base'; local.mkdir()
+        config = local / 'config.json'
+        cases = [(f'Qwen/Qwen3-TTS-12Hz-{size}-{mode}', None)
+                 for size, mode in (('0.6B', 'CustomVoice'), ('1.7B', 'CustomVoice'),
+                                    ('1.7B', 'VoiceDesign'), ('0.6B', 'Unknown'))]
+        cases += [(str(local), dict(model_type='qwen3_tts', tts_model_size='0b6',
+                                   tts_model_type=mode))
+                  for mode in ('custom_voice', 'voice_design', 'unknown')]
+        with app_module('apps/voice-clone/voice-clone.py') as clone, \
+             patch('pickle.load', side_effect=AssertionError('unpickle forbidden')), \
+             patch('pickle.loads', side_effect=AssertionError('unpickle forbidden')):
+            for checkpoint, local_config in cases:
+                if local_config is not None:
+                    config.write_text(json.dumps(local_config))
+                meta['checkpoint'] = checkpoint
+                sidecar.write_text(json.dumps(meta))
+                before = self.snapshot()
+                for apply in ([], ['--apply']):
+                    with self.subTest(checkpoint=checkpoint, config=local_config, apply=apply):
+                        args = ['voice-clone', 'repair-registry', '--voice', 'bruce',
+                                '--metadata', str(backup), '--cache', str(self.cache), *apply]
+                        with patch.object(sys, 'argv', args), \
+                             contextlib.redirect_stdout(io.StringIO()) as out, \
+                             contextlib.redirect_stderr(io.StringIO()) as err, \
+                             self.assertRaises(SystemExit) as raised:
+                            clone.main()
+                        self.assertEqual(raised.exception.code, 2)
+                        self.assertEqual(out.getvalue(), '')
+                        self.assertRegex(err.getvalue(), 'does not support clone|capabilities are unknown')
+                        self.assertNotIn('Traceback', err.getvalue())
+                        self.assertFalse(self.reg.exists('bruce'))
+                        self.assertEqual(self.snapshot(), before)
+
+    def test_repair_accepts_locally_identified_base_checkpoint(self):
+        backup, pkl = self.orphan()
+        local = self.cache / 'local-checkpoint'; local.mkdir()
+        (local / 'config.json').write_text(json.dumps(dict(model_type='qwen3_tts',
+                    tts_model_size='0b6', tts_model_type='base')))
+        sidecar = pkl.with_suffix('.meta.json')
+        meta = json.loads(sidecar.read_text()); meta['checkpoint'] = str(local)
+        sidecar.write_text(json.dumps(meta))
+        before = self.snapshot()
+        self.assertTrue(self.reg.repair_orphan('bruce', backup)['dry_run'])
+        self.assertEqual(before, self.snapshot())
+        self.assertTrue(self.reg.repair_orphan('bruce', backup, dry_run=False)['restored'])
+        after = self.snapshot()
+        self.assertEqual(after.pop('voices/bruce/voice.json'), backup.read_bytes())
+        self.assertEqual(after, before)
 
     def test_repair_refuses_missing_backup_evidence_and_never_mutates(self):
         for damage in ('pickle', 'reference', 'meta', 'model', 'revision', 'schema', 'extra',
