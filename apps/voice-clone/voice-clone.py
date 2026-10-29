@@ -556,8 +556,36 @@ def prepare_ref(
 ) -> RefResult:
     """
     Run stages 1–3 of the pipeline (normalise → VAD trim → transcribe).
-    All outputs are cached under /cache/voice-clone/refs/<hash>/.
+    Normalization is shared by source hash. Selection and transcript artifacts
+    have a versioned preparation identity and selected-bounds directory; legacy
+    source-only artifacts are preserved but cannot establish selection identity.
     """
+
+    import hashlib
+
+    manual = ref_start is not None or ref_end is not None
+    if manual and (ref_start is None or ref_end is None
+                   or not math.isfinite(ref_start) or not math.isfinite(ref_end)
+                   or ref_start < 0 or ref_end <= ref_start):
+        raise ValueError("Reference bounds require finite 0 <= --ref-start < --ref-end")
+    provided_ref_text = ref_text.strip() if ref_text is not None else None
+    if provided_ref_text == "":
+        raise ValueError("--ref-text cannot be empty")
+    preparation = {
+        "schema_version": 1,
+        "selection": "manual" if manual else "automatic",
+        "ref_start": float(ref_start) if manual else None,
+        "ref_end": float(ref_end) if manual else None,
+        "whisper_model": whisper_model,
+        "ref_language": ref_language,
+        "x_vector_only": x_vector_only,
+        "ref_text": provided_ref_text,
+        "interactive": interactive,
+        "candidate_scoring_version": CANDIDATE_SCORING_VERSION,
+    }
+    preparation_id = hashlib.sha256(
+        json.dumps(preparation, sort_keys=True, allow_nan=False).encode()
+    ).hexdigest()
 
     # ── 1. Normalise ───────────────────────────────────────────────────────────
     print("\n==> [1/3] normalise reference audio")
@@ -573,6 +601,15 @@ def prepare_ref(
         with Timer("ffmpeg normalize"):
             normalize_audio(ref_audio, normalized)
 
+    duration = get_duration(normalized)
+    if not math.isfinite(duration) or duration <= 0:
+        raise ValueError("Normalized reference duration must be finite and positive")
+    if manual and ref_end > duration:
+        raise ValueError(f"--ref-end exceeds normalized reference duration ({duration:.3f}s)")
+
+    ref_dir = ref_dir / "preparations" / preparation_id
+    ref_dir.mkdir(parents=True, exist_ok=True)
+
     # ── 2. Select best segment ─────────────────────────────────────────────────
     print("\n==> [2/3] select reference segment")
 
@@ -584,7 +621,7 @@ def prepare_ref(
     segment_lang_prob    = 1.0
 
     if ref_start is not None and ref_end is not None:
-        seg_start, seg_end = ref_start, ref_end
+        seg_start, seg_end = float(ref_start), float(ref_end)
         print(f"  using manual bounds: {seg_start:.2f}s – {seg_end:.2f}s")
 
     else:
@@ -646,6 +683,14 @@ def prepare_ref(
                 f"({seg_end - seg_start:.1f}s)"
             )
 
+    if (not math.isfinite(seg_start) or not math.isfinite(seg_end)
+            or seg_start < 0 or seg_end <= seg_start or seg_end > duration):
+        raise ValueError("Selected reference bounds are invalid for normalized audio")
+    # Interactive selection may choose different bounds for the same options.
+    # Keep each selected clip/transcript together without replacing earlier picks.
+    bounds_id = hashlib.sha256(json.dumps([seg_start, seg_end]).encode()).hexdigest()
+    ref_dir = ref_dir / bounds_id
+    ref_dir.mkdir(parents=True, exist_ok=True)
     segment_wav = ref_dir / "ref_segment.wav"
     if segment_wav.exists() and not force and not interactive:
         print(f"  [cache hit] segment wav → {segment_wav}")
@@ -658,8 +703,6 @@ def prepare_ref(
     print("\n==> [3/3] transcribe reference segment")
 
     transcript_json = ref_dir / "ref_transcript.json"
-    provided_ref_text = ref_text.strip() if ref_text is not None else None
-
     cached_transcript = None
     if (not x_vector_only and provided_ref_text is None
             and transcript_json.exists() and not force and not interactive):
@@ -700,6 +743,9 @@ def prepare_ref(
     quality = reference_quality_report(transcript, conf, lang_prob,
                                        source=transcript_source, override=force_bad_ref)
     transcript_record = {
+        "preparation": preparation,
+        "seg_start": seg_start,
+        "seg_end": seg_end,
         "transcript": transcript,
         "avg_logprob": _finite_metric(conf),
         "whisper_model": (cached_transcript.get("whisper_model", whisper_model)
@@ -718,6 +764,7 @@ def prepare_ref(
     with open(state_path, "w") as fh:
         json.dump(
             {
+                "preparation":             preparation,
                 "ref_hash":                ref_hash,
                 "ref_audio":               str(ref_audio),
                 "seg_start":               seg_start,

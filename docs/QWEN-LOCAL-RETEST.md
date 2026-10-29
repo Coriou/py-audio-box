@@ -3,10 +3,10 @@
 Use the existing `./run` toolbox to repair and retest Ryan, Bruce and John. A new
 “Qwen local” service installation is not required for that workflow. Docker and
 the existing CPU or CUDA toolbox image provide Python and the Qwen runtime.
-This guide describes commands present at PR #1 baseline
-`cfc3654d2ac9f38f30ccf3ae5a072d10155ba376`; acceptance must record the exact
-commit containing the final integrated repairs. It is an operator checklist,
-not a record of a successful runtime test.
+This guide covers the integrated PR #1 cache repair and registry lookup/repair
+commands, plus selection-specific reference preparation caches. Acceptance must
+record the exact tested commit containing the final integrated repairs. It is an
+operator checklist, not a record of a successful runtime test.
 
 ## Choose the voice and matching model
 
@@ -56,12 +56,13 @@ French model is gated and has its own HF access prerequisites. Neither Pocket
 installation nor a service credential fixes legacy Qwen cache lookup.
 
 The toolbox binds `./cache` to `/cache` and `./work` to `/work`; the image sets
-`HF_HOME=/cache/huggingface`. However, at the baseline the supervised Qwen child
-overrides HF/cache paths into a temporary private directory. Persistent app
-prompt data therefore does not prove persistent model-weight reuse. The cache
-repair must be verified on its final commit without weakening worker isolation,
-ownership or reap/cleanup. Do not work around it by bypassing the supervised
-worker or by copying arbitrary pickles into a new runtime.
+`HF_HOME=/cache/huggingface`. The repaired legacy Qwen child
+retains configured persistent HF retrieval paths (`HF_HOME`, hub cache overrides
+and `TRANSFORMERS_CACHE`); its home, temporary and compiler state remain private.
+Managed service backends retain private/offline model handling. Persistent app
+prompt data alone does not prove persistent model-weight reuse. Verify the repair
+on its final commit without weakening worker isolation, ownership or reap/cleanup.
+Do not work around it by bypassing the supervised worker or by copying arbitrary pickles into a new runtime.
 
 Distinguish three observations: cached reference preparation, cached clone
 prompt construction, and cached model weights. Every `./run` invocation starts
@@ -99,10 +100,41 @@ reference/transcript and voice/tone association from trusted evidence. Recovery
 also needs the authorized original WAV or another verified reference; a pickle
 alone does not establish missing provenance. If evidence is incomplete, rebuild
 from the trusted reference rather than claiming metadata-only recovery succeeded.
-Dedicated lookup/repair command additions are outside this baseline guide;
-their final syntax must be documented after integration.
+Registry lookup accepts case-insensitive slugs, aliases, unique display names
+and unambiguous slug prefixes; `voice-synth speak` also accepts unique legacy
+prompt IDs. Ambiguous matches fail. Prefer the canonical slug from the
+inventory. An alias adds another lookup name without renaming files; it writes
+`voice.json` immediately (there is no alias dry-run):
 
-The existing rebuild route, when a named voice still has its trusted reference:
+```sh
+./run voice-clone add-alias --voice bruce --alias bruce-local
+./run voice-synth list-voices --json
+```
+
+For an existing orphan directory whose `voice.json` is missing, use an explicitly
+trusted original metadata backup placed in `./work/`. Preserve a separate complete
+copy of the original directory, prompts, sidecars, references and backup before
+any write. Preview first; only after checking the result, apply explicitly:
+
+```sh
+./run voice-clone repair-registry --voice bruce --metadata /work/bruce-voice.backup.json
+./run voice-clone repair-registry --voice bruce --metadata /work/bruce-voice.backup.json --apply
+./run voice-synth list-voices --json
+```
+
+The default repair is a read-only dry-run. Apply atomically restores only missing
+`voice.json`; it refuses an existing registry file and does not rewrite prompts
+or deserialize pickles. The backup must identify the slug and all prompt/tone
+indexes. Retained prompt sidecars need pinned checkpoint/revision/schema,
+compatible mode, pickle digest and trusted per-prompt reference bytes/digest.
+Hash checks detect mismatches; they do not establish provenance or make an
+untrusted pickle safe. Repair cannot invent absent evidence or repair incompatible
+prompt payloads. If this evidence or a trusted complete backup is absent, use the
+trusted-WAV rebuild route below with a new voice name instead. Repeat for John's
+actual slug only when applicable.
+
+When a registered voice still resolves and retains a trusted reference, the
+existing rebuild route is:
 
 ```sh
 ./run voice-clone synth --voice bruce --model Qwen/Qwen3-TTS-12Hz-0.6B-Base --text "Hello, this is the local voice test."
@@ -117,9 +149,14 @@ recording in `./work/`, the existing flags use seconds:
 ```
 
 Replace file, name and bounds with verified inputs. This creates/updates a
-separate named voice; it does not recover old metadata. Reference selection,
-transcription and quality gates still apply. Do not add `--force-bad-ref` or
-`--force` to a normal reuse test.
+separate named voice; it does not recover old metadata. Preparation caches now
+separate manual bounds from automatic selection and include Whisper model, language and transcript/embedding options. Changing bounds
+selects separate segment/transcript artifacts even for the same recording; old
+source-only preparation artifacts remain preserved but are not reused as proof
+of the new selection. Identical preparation options and bounds reuse their cache.
+Bounds must be paired, finite, ordered, nonnegative and within the normalized
+recording. Reference selection, transcription and quality gates still apply.
+Do not add `--force-bad-ref` or `--force` to a normal reuse test.
 
 ## Linux acceptance record
 
@@ -140,7 +177,9 @@ transcription and quality gates still apply. Do not add `--force-bad-ref` or
    downloads/network bytes, cache bytes before/after, output WAV and
    `takes.meta.json`. Record first versus second invocation separately for each
    checkpoint. Explain metadata-only traffic versus repeated weight transfers;
-   zero cache growth alone does not prove zero downloads.
+   zero cache growth alone does not prove zero downloads. For warm-cache acceptance,
+   require no model-weight downloads in either invocation when that exact checkpoint
+   is already present; any required new download falls outside that acceptance pair.
 4. Check both clone voices select their compatible 0.6B prompt, without silent
    cross-model fallback. If metadata repair is needed, record its prerequisites,
    preserved originals, exact applied command and before/after inventory. Run the

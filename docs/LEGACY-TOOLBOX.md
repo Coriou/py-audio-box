@@ -216,17 +216,22 @@ Timestamp formats: `90` (seconds), `1:30` (MM:SS), `1:30.5`, `1:02:30` (HH:MM:SS
 
 # Qwen3 built-in CustomVoice speakers
 ./run voice-synth list-speakers
-./run voice-synth speak --speaker Ryan --text "Welcome." --instruct "Warm, confident newsreader delivery"
-./run voice-synth speak --speaker Ryan --text "Welcome." --instruct-style warm
+./run voice-synth speak --speaker Ryan --model Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice --text "Welcome." --instruct "Warm, confident newsreader delivery"
+./run voice-synth speak --speaker Ryan --model Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice --text "Welcome." --instruct-style warm
 
+# Text direction requires 1.7B-CustomVoice; the 0.6B default rejects instructions.
 # Register built-in speaker profiles as named voices (Phase 2)
 ./run voice-synth register-builtin --voice-name newsroom --speaker Ryan \
+  --model Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice \
   --instruct-default "Calm, clear and warm delivery"
 ./run voice-synth register-builtin --voice-name newsroom --speaker Ryan \
+  --model Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice \
   --instruct-default-style serious_doc
 ./run voice-synth register-builtin --voice-name newsroom --speaker Ryan \
+  --model Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice \
   --tone promo --tone-instruct "Energetic, upbeat promo read"
 ./run voice-synth register-builtin --voice-name newsroom --speaker Ryan \
+  --model Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice \
   --tone promo --tone-instruct-style energetic
 ./run voice-synth speak --voice newsroom --text "Top story tonight."
 ./run voice-synth speak --voice newsroom --tone promo --text "Breaking update."
@@ -431,9 +436,10 @@ Each stage is optional — a voice progresses from `source_clip.wav` → `ref.wa
 
 # Alternate Step 3 — register/use a built-in profile under the same named-voice UX
 ./run voice-synth register-builtin --voice-name newsroom --speaker Ryan \
+  --model Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice \
   --instruct-default "Calm, clear and warm delivery"
 ./run voice-synth speak --voice newsroom --text "Top story tonight."
-./run voice-synth speak --voice newsroom --instruct-style serious_doc --text "Top story tonight."
+./run voice-synth speak --voice newsroom --model Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice --instruct-style serious_doc --text "Top story tonight."
 
 # ── Or do all three steps with one command ────────────────────────────────────
 ./run voice-register \
