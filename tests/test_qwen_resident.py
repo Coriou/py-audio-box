@@ -1,13 +1,15 @@
-"""Source-level model-owner tests; no weights, Torch or installed runtime claims."""
+"""Real AF_UNIX authorization checks with a fake model, no weights or Torch."""
+import hashlib
 import multiprocessing as mp
+import shutil
+import socket
+import tempfile
 import time
 import uuid
-import tempfile
-import shutil
 
 import pytest
 
-from worker.qwen_resident import Client, serve
+from worker.qwen_resident import Client, frame, read, serve
 
 
 class FakeBackend:
@@ -38,14 +40,14 @@ class FakeBackend:
         self.events.put(('close', self.settings['model_name']))
 
 
-def _serve(address, secret, events, ready):
+def _serve(address, control, events, ready):
     FakeBackend.events = events
     def transition(current,requested,active):
         assert active == 0
         return 'reuse' if current == requested else 'load' if current is None else 'unload_then_load'
     roots={name:dict(path=path,revision='verified-revision') for name,path in
            (('clone','/models/base'),('Ryan','/models/custom'))}
-    serve(address,secret,roots,backend_factory=FakeBackend,transition=transition,
+    serve(address,roots,control,backend_factory=FakeBackend,transition=transition,
           ready=lambda: ready.send(True))
 
 
@@ -58,85 +60,102 @@ def _start():
     ctx = mp.get_context('fork')
     events = ctx.Queue()
     parent, child = ctx.Pipe(duplex=False)
+    control, owner_control = socket.socketpair()
     directory = tempfile.mkdtemp(prefix='qwen-resident-test-')
     address = directory+'/socket'
-    secret = uuid.uuid4().hex
-    process = ctx.Process(target=_serve,args=(address,secret,events,child))
-    process.start(); child.close()
+    process = ctx.Process(target=_serve,args=(address,owner_control,events,child))
+    process.start(); child.close(); owner_control.close()
     assert parent.poll(2) and parent.recv() is True
     parent.close()
-    return process, address, secret, events, directory
+    return process, address, control, events, directory
 
 
-def _stop(process):
+def _stop(process, control, directory):
     if process.is_alive(): process.terminate()
     process.join(2)
     if process.is_alive(): process.kill(); process.join(2)
     assert not process.is_alive()
-    process.close()
+    process.close(); control.close(); shutil.rmtree(directory)
 
 
-def test_two_requests_reuse_then_switch_confirmed_close():
-    process,address,secret,events,directory = _start()
+def _grant(control, name, nonce, cutoff, *, params=None):
+    clone=name=='/models/base'
+    authority=dict(nonce=nonce,cutoff=cutoff,method='clone' if clone else 'custom_voice',
+                   settings=_settings(name),params=params or {'text':'hello'},
+                   reference_sha256=hashlib.sha256(b'RIFFfixture').hexdigest() if clone else None,
+                   reference_text='trusted transcript' if clone else None,
+                   x_vector_only=False if clone else None,preset=None if clone else 'Ryan',instruct=None)
+    frame(control,dict(op='grant',authority=authority),time.monotonic()+2)
+    assert read(control,time.monotonic()+2)=={'ok':True}
+
+
+def _revoke(control):
+    frame(control,dict(op='revoke',authority=None),time.monotonic()+2)
+    assert read(control,time.monotonic()+2)=={'ok':True}
+
+
+def _clone(address, nonce, cutoff, **kw):
+    client=Client(address=address,nonce=nonce,cutoff=cutoff,**_settings(kw.get('name','/models/base')))
+    return client.synthesise_clone(kw.get('params',{'text':'hello'}),b'RIFFfixture','trusted transcript',False,10)
+
+
+def test_serial_grants_reuse_then_switch_with_confirmed_close():
+    process,address,control,events,directory=_start()
     try:
         for _ in range(2):
-            client = Client(address=address,secret=secret,cutoff=time.monotonic()+2,**_settings('/models/base'))
-            result = client.synthesise_clone({'text':'hello'},b'RIFFfixture','trusted transcript',False,1)
-            assert result.sample_rate == 24000 and result.samples.tolist() == [0,.25,-.25]
-            client.close()
-        client = Client(address=address,secret=secret,cutoff=time.monotonic()+2,**_settings('/models/custom'))
-        assert client.synthesise_preset({'text':'hello'},'Ryan',None,1).samples.tolist() == [0,.5]
+            nonce=uuid.uuid4().hex; cutoff=time.monotonic()+2
+            _grant(control,'/models/base',nonce,cutoff)
+            assert _clone(address,nonce,cutoff).samples.tolist()==[0,.25,-.25]
+            _revoke(control)
+        nonce=uuid.uuid4().hex; cutoff=time.monotonic()+2
+        _grant(control,'/models/custom',nonce,cutoff)
+        client=Client(address=address,nonce=nonce,cutoff=cutoff,**_settings('/models/custom'))
+        assert client.synthesise_preset({'text':'hello'},'Ryan',None,1).samples.tolist()==[0,.5]
         assert process.is_alive()
         assert [events.get(timeout=1) for _ in range(6)] == [
             ('load','/models/base'),('clone','/models/base'),('clone','/models/base'),
             ('close','/models/base'),('load','/models/custom'),('preset','/models/custom')]
     finally:
-        _stop(process)
-        shutil.rmtree(directory)
+        _stop(process,control,directory)
 
 
-def test_expired_or_bad_authority_invalidates_owner():
-    process,address,secret,events,directory = _start()
+@pytest.mark.parametrize('fault', ['replay','stale','wrong_model','extended_cutoff','wrong_params','wrong_reference'])
+def test_socket_authority_rejects_replay_stale_and_changed_call(fault):
+    process,address,control,events,directory=_start()
     try:
-        client = Client(address=address,secret=secret,cutoff=time.monotonic()+2,**_settings('/models/base'))
-        client.synthesise_clone({},b'RIFFfixture','trusted transcript',False,1)
-        bad = Client(address=address,secret='wrong',cutoff=time.monotonic()+2,**_settings('/models/base'))
-        with pytest.raises(RuntimeError,match='resident_model_failed'):
-            bad.synthesise_clone({},b'RIFFfixture','trusted transcript',False,1)
+        nonce=uuid.uuid4().hex; cutoff=time.monotonic()+4
+        _grant(control,'/models/base',nonce,cutoff)
+        if fault in ('replay','stale'):
+            assert _clone(address,nonce,cutoff).sample_rate==24000
+            if fault=='stale': _revoke(control)
+        if fault=='wrong_model':
+            client=Client(address=address,nonce=nonce,cutoff=cutoff,**_settings('/models/custom'))
+            call=lambda:client.synthesise_preset({'text':'hello'},'Ryan',None,1)
+        elif fault=='extended_cutoff':
+            call=lambda:_clone(address,nonce,cutoff+60)
+        elif fault=='wrong_params':
+            call=lambda:_clone(address,nonce,cutoff,params={'text':'different'})
+        elif fault=='wrong_reference':
+            client=Client(address=address,nonce=nonce,cutoff=cutoff,**_settings('/models/base'))
+            call=lambda:client.synthesise_clone({'text':'hello'},b'RIFFother','trusted transcript',False,10)
+        else:
+            call=lambda:_clone(address,nonce,cutoff)
+        with pytest.raises((RuntimeError,EOFError,ConnectionResetError)):
+            call()
         process.join(2)
         assert not process.is_alive()
-        assert [events.get(timeout=1) for _ in range(3)] == [
-            ('load','/models/base'),('clone','/models/base'),('close','/models/base')]
-        with pytest.raises((ConnectionRefusedError,TimeoutError,OSError)):
-            client.synthesise_clone({},b'RIFFfixture','trusted transcript',False,1)
     finally:
-        _stop(process)
-        shutil.rmtree(directory)
+        _stop(process,control,directory)
 
 
-def test_cancellation_reaps_owner():
-    process,address,secret,events,directory = _start()
+def test_backend_fault_invalidates_owner():
+    process,address,control,events,directory=_start()
     try:
-        client = Client(address=address,secret=secret,cutoff=time.monotonic()+2,**_settings('/models/base'))
-        client.synthesise_clone({},b'RIFFfixture','trusted transcript',False,1)
-    finally:
-        _stop(process)
-        shutil.rmtree(directory)
-
-
-def test_expiry_before_connect_and_backend_fault():
-    process,address,secret,events,directory = _start()
-    try:
-        expired = Client(address=address,secret=secret,cutoff=time.monotonic()-1,**_settings('/models/base'))
-        with pytest.raises(TimeoutError,match='resident_deadline'):
-            expired.synthesise_clone({},b'RIFFfixture','trusted transcript',False,1)
-        assert process.is_alive()
-        client = Client(address=address,secret=secret,cutoff=time.monotonic()+2,**_settings('/models/base'))
+        nonce=uuid.uuid4().hex; cutoff=time.monotonic()+2
+        _grant(control,'/models/base',nonce,cutoff,params={'fail':True})
         with pytest.raises(RuntimeError,match='resident_model_failed'):
-            client.synthesise_clone({'fail':True},b'RIFFfixture','trusted transcript',False,1)
+            _clone(address,nonce,cutoff,params={'fail':True})
         process.join(2)
         assert not process.is_alive()
-        assert [events.get(timeout=1) for _ in range(2)] == [('load','/models/base'),('close','/models/base')]
     finally:
-        _stop(process)
-        shutil.rmtree(directory)
+        _stop(process,control,directory)

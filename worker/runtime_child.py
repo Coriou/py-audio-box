@@ -57,7 +57,7 @@ def run_generation(connection, config, staging, cutoff, *, backend_factory=None)
         if config.get('qwen_resident') is not None:
             from worker.qwen_resident import Client
             resident = config['qwen_resident']
-            if type(resident) is not dict or set(resident) != {'address','secret'}:
+            if type(resident) is not dict or set(resident) != {'address','nonce'}:
                 raise Refused('resident_configuration')
             backend_factory = lambda **settings: Client(**resident, cutoff=cutoff, **settings)
         result = execute(spec,text,context['execution']['bundles'],
@@ -195,6 +195,13 @@ def qwen_cpu_cutoff(config):
 
 
 def main():
+    if len(sys.argv) == 3:
+        gate = int(sys.argv[2])
+        try:
+            if os.read(gate, 1) != b'1':
+                raise RuntimeError('resident_cgroup_assignment_required')
+        finally:
+            os.close(gate)
     connection = socket.socket(fileno=int(sys.argv[1]))
     config = receive(connection, time.monotonic() + 2)
     mode = config.pop('fixture')

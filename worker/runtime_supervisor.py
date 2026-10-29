@@ -108,8 +108,83 @@ class RuntimeSupervisor:
     def managed_qwen(self, spec):
         return resident_managed_qwen_cpu(spec) if self.resident_qwen else managed_qwen_cpu(spec)
 
+    @staticmethod
+    def owned_processes(uid):
+        """Snapshot one unique, unprivileged attempt UID; /proc ambiguity quarantines."""
+        found = {}
+        for entry in os.scandir('/proc'):
+            if not entry.name.isdecimal():
+                continue
+            pid = int(entry.name)
+            try:
+                status = Path(entry.path, 'status').read_text()
+                line = next(line for line in status.splitlines() if line.startswith('Uid:'))
+                ids = tuple(map(int, line.split()[1:]))
+                if uid not in ids:
+                    continue
+                stat = Path(entry.path, 'stat').read_text()
+                start = int(stat[stat.rfind(')')+2:].split()[19])
+                found[pid] = start
+            except FileNotFoundError:
+                continue
+            except (PermissionError, ValueError, StopIteration, IndexError) as exc:
+                raise Refused('process_custody_unknown') from exc
+        return found
+
+    @staticmethod
+    def signal_owned(uid, sig):
+        for pid, start in RuntimeSupervisor.owned_processes(uid).items():
+            try:
+                fd = os.pidfd_open(pid)
+                try:
+                    stat = Path('/proc', str(pid), 'stat').read_text()
+                    actual = int(stat[stat.rfind(')')+2:].split()[19])
+                    status = Path('/proc', str(pid), 'status').read_text()
+                    ids = tuple(map(int, next(line for line in status.splitlines() if line.startswith('Uid:')).split()[1:]))
+                    if actual != start or uid not in ids:
+                        raise Refused('process_identity_changed')
+                    signal.pidfd_send_signal(fd, sig)
+                finally:
+                    os.close(fd)
+            except (FileNotFoundError, ProcessLookupError):
+                continue
+
+    def create_attempt_cgroup(self):
+        """A dedicated cgroup v2 makes detached descendants observable atomically."""
+        root = Path('/sys/fs/cgroup')
+        if not (root / 'cgroup.controllers').is_file():
+            raise Refused('resident_cgroup_v2_required')
+        group = root / ('py-audio-box-' + self.boot + '-' + secrets.token_hex(8))
+        try:
+            group.mkdir(mode=0o700)
+            if not (group / 'cgroup.kill').is_file():
+                raise Refused('resident_cgroup_kill_required')
+            return group
+        except BaseException:
+            self.failed = True
+            try: group.rmdir()
+            except OSError: pass
+            raise
+
+    @staticmethod
+    def cgroup_empty(group):
+        try:
+            values = dict(line.split() for line in (group / 'cgroup.events').read_text().splitlines())
+            if values.get('populated') not in ('0','1'):
+                raise Refused('resident_cgroup_unknown')
+            return values['populated'] == '0'
+        except (OSError, ValueError) as exc:
+            raise Refused('resident_cgroup_unknown') from exc
+
+    @staticmethod
+    def kill_cgroup(group):
+        try:
+            (group / 'cgroup.kill').write_text('1')
+        except OSError as exc:
+            raise Refused('resident_cgroup_kill_unknown') from exc
+
     def ensure_resident(self, cutoff):
-        """Start one networkless model owner; a failed/uncertain owner is quarantined."""
+        """Start one networkless model owner with a private supervisor control FD."""
         if self.resident is not None:
             if self.resident['process'].poll() is not None:
                 self.failed = True
@@ -124,9 +199,9 @@ class RuntimeSupervisor:
             raise Refused('resident_exact_bundles_required')
         parent, child = socket.socketpair()
         token = secrets.token_hex(24)
-        config = dict(address='\0py-audio-box-qwen-'+token, secret=secrets.token_hex(32),
-                      roots={name:dict(path=str(self.bundles[digest]),revision=service_model(name)[1])
-                             for name,digest in expected.items()})
+        roots = {name:dict(path=str(self.bundles[digest]),revision=service_model(name)[1])
+                 for name,digest in expected.items()}
+        config = dict(address='\0py-audio-box-qwen-'+token, roots=roots)
         proc = None
         try:
             proc = subprocess.Popen(['python','-m','worker.qwen_resident',str(child.fileno())],
@@ -134,7 +209,8 @@ class RuntimeSupervisor:
                 close_fds=True, pass_fds=(child.fileno(),), stdin=subprocess.DEVNULL,
                 stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
             child.close()
-            self.resident = dict(process=proc, address=config['address'], secret=config['secret'])
+            self.resident = dict(process=proc, address=config['address'], control=parent,
+                                 roots=roots, invalidating=False)
             send(parent, config, min(cutoff,time.monotonic()+2))
             if receive(parent,min(cutoff,time.monotonic()+2)) != {'ready':True}:
                 raise Refused('resident_startup')
@@ -143,10 +219,26 @@ class RuntimeSupervisor:
             self.failed = True
             self.stop_tree()
             if proc is not None:
-                self.signal_namespace(signal.SIGKILL)
+                self.signal_owned(19999, signal.SIGKILL)
+            parent.close()
             raise
         finally:
-            child.close(); parent.close()
+            child.close()
+
+    def resident_control(self, op, authority=None):
+        from worker.qwen_resident import frame, read
+        resident = self.resident
+        if resident is None or resident['invalidating']:
+            raise Refused('resident_lost')
+        cutoff = time.monotonic()+2
+        try:
+            frame(resident['control'], dict(op=op, authority=authority), cutoff)
+            if read(resident['control'], cutoff) != {'ok':True}:
+                raise Refused('resident_control')
+        except BaseException:
+            self.failed = True
+            self.stop_tree()
+            raise
 
     def operation(self, op, body):
         if op == 'startup':
@@ -286,6 +378,7 @@ class RuntimeSupervisor:
                     config['installed_qwen_cpu']=True
                 if self.resident_qwen:
                     config['resident_qwen_cpu']=True
+            group = None
             try:
                 if self.managed_qwen(spec):
                     reference_fd=self.verify_qwen(context,profiles,job['principal_id'],retain_fd=True)
@@ -297,18 +390,36 @@ class RuntimeSupervisor:
                 if spec is not None and spec.engine == 'pocket-tts' and getattr(self, 'installed_pocket', False):
                     reference_fd = self.verify_pocket(context, job['principal_id'], retain_fd=True)
                     config['reference_fd'] = reference_fd
-                if self.resident_qwen:
+                if self.resident_qwen and spec is not None and spec.engine == 'qwen':
                     resident = self.ensure_resident(self.active['cutoff'])
-                    config['qwen_resident'] = {k:resident[k] for k in ('address','secret')}
+                    from worker.runtime_protocol import resident_attempt_authority
+                    nonce = secrets.token_hex(32)
+                    authority = resident_attempt_authority(spec, context['plan'], resident['roots'], self.active['cutoff'], nonce)
+                    self.resident_control('grant', authority)
+                    config['qwen_resident'] = dict(address=resident['address'], nonce=nonce)
                 if time.monotonic() >= self.active['cutoff']: raise Refused('expired_before_launch')
-                proc = subprocess.Popen(['python', '-m', 'worker.runtime_child', str(child.fileno())],
-                    user=uid, group=uid, extra_groups=[], start_new_session=True,
-                    close_fds=True, pass_fds=(child.fileno(),) + (() if reference_fd is None else (reference_fd,)), stdin=subprocess.DEVNULL,
-                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-                self.active.update(started=True, leader=proc.pid, process=proc)
-                self.launches += 1
+                group = self.create_attempt_cgroup() if self.resident_qwen else None
+                gate_read, gate_write = os.pipe() if self.resident_qwen else (None, None)
+                try:
+                    proc = subprocess.Popen(['python', '-m', 'worker.runtime_child', str(child.fileno())] +
+                        ([str(gate_read)] if gate_read is not None else []),
+                        user=uid, group=uid, extra_groups=[], start_new_session=True,
+                        close_fds=True, pass_fds=(child.fileno(),) + (() if reference_fd is None else (reference_fd,)) +
+                        (() if gate_read is None else (gate_read,)), stdin=subprocess.DEVNULL,
+                        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                    self.active.update(started=True, leader=proc.pid, process=proc, cgroup=group)
+                    if group is not None:
+                        (group / 'cgroup.procs').write_text(str(proc.pid))
+                        os.write(gate_write, b'1')
+                    self.launches += 1
+                finally:
+                    if gate_read is not None:
+                        os.close(gate_read); os.close(gate_write)
             except BaseException:
                 parent.close()
+                if group is not None and self.active.get('cgroup') is None:
+                    try: group.rmdir()
+                    except OSError: self.failed = True
                 self.stop_tree()
                 raise
             finally:
@@ -351,12 +462,20 @@ class RuntimeSupervisor:
             active = self.active
             if active is not None and not active.get('finalizing') and active['stopping'] is None:
                 active['stopping'] = time.monotonic()
-                self.signal_namespace(signal.SIGTERM)
+                if self.resident_qwen:
+                    if self.resident is not None:
+                        self.resident['invalidating'] = True
+                    try:
+                        self.signal_owned(self.lookup(active['id'])['uid'], signal.SIGTERM)
+                        if self.resident is not None:
+                            self.signal_owned(19999, signal.SIGTERM)
+                    except BaseException:
+                        self.failed = True
+                        self.signal_namespace(signal.SIGKILL)
+                else:
+                    self.signal_namespace(signal.SIGTERM)
 
     def watchdog_tick(self):
-        # No UDS, journal, generator, subprocess wait or receipt I/O in this loop.
-        # Lock covers only identity selection and signal; old allocations cannot
-        # signal a newly admitted lane after the main reaper retires their handle.
         with self.tree_lock:
             active = self.active
             if active is None or active.get('finalizing'):
@@ -364,9 +483,29 @@ class RuntimeSupervisor:
             now = time.monotonic()
             if (now >= active['cutoff'] or self.halt) and active['stopping'] is None:
                 active['stopping'] = now
-                self.signal_namespace(signal.SIGTERM)
+                if self.resident_qwen:
+                    if self.resident is not None:
+                        self.resident['invalidating'] = True
+                    try:
+                        self.signal_owned(self.lookup(active['id'])['uid'], signal.SIGTERM)
+                        if self.resident is not None:
+                            self.signal_owned(19999, signal.SIGTERM)
+                    except BaseException:
+                        self.failed = True
+                        self.signal_namespace(signal.SIGKILL)
+                else:
+                    self.signal_namespace(signal.SIGTERM)
             if active['stopping'] is not None and now-active['stopping'] >= .2:
-                self.signal_namespace(signal.SIGKILL)
+                if self.resident_qwen:
+                    try:
+                        self.kill_cgroup(active['cgroup']) if active.get('cgroup') is not None else self.signal_owned(self.lookup(active['id'])['uid'], signal.SIGKILL)
+                        if self.resident is not None:
+                            self.signal_owned(19999, signal.SIGKILL)
+                    except BaseException:
+                        self.failed = True
+                        self.signal_namespace(signal.SIGKILL)
+                else:
+                    self.signal_namespace(signal.SIGKILL)
 
     def watchdog(self):
         while True:
@@ -378,11 +517,8 @@ class RuntimeSupervisor:
         if active is None:
             if self.resident is not None and self.resident['process'].poll() is not None:
                 self.failed = True
-                self.signal_namespace(signal.SIGKILL)
-                try:
-                    while True: os.waitpid(-1, 0)
-                except ChildProcessError:
-                    self.resident = None
+                self.signal_owned(19999, signal.SIGKILL)
+                return
             return
         if active.get('finalizing'):
             return
@@ -402,38 +538,62 @@ class RuntimeSupervisor:
                 if pid == 0:
                     break
                 if self.resident is not None and pid == self.resident['process'].pid:
-                    self.resident['process'].returncode = os.waitstatus_to_exitcode(status)
-                    self.failed = True
-                    self.stop_tree()
+                    resident = self.resident
+                    resident['process'].returncode = os.waitstatus_to_exitcode(status)
+                    if not resident['invalidating']:
+                        self.failed = True
+                        self.stop_tree()
                     continue
                 active['reaped_children'] += 1
                 if pid == active['leader']:
                     active['process'].returncode = os.waitstatus_to_exitcode(status)
                     active['leader_reaped'] = True
                     if not self.resident_qwen:
-                        self.stop_tree()  # Drain even detached orphan descendants.
+                        self.stop_tree()
             except ChildProcessError:
                 empty = True
                 break
-        if self.resident_qwen and active['started'] and active.get('leader_reaped') and active['receiver_done'].is_set() and active['stopping'] is None:
+        if self.resident_qwen:
             try:
-                identity, proposal, when = self.received.get_nowait()
-                if identity == active['id']:
-                    active.update(proposal=proposal, proposed_at=when)
-            except queue.Empty:
-                pass
-            # ECHILD for this attempt's process group, even while the separately
-            # supervised model owner remains alive in its own process group.
-            try:
-                os.waitpid(-active['leader'], os.WNOHANG)
-            except ChildProcessError:
-                empty = active['proposal'] is not None and active['process'].returncode == 0
-            if not empty:
+                uid = self.lookup(active['id'])['uid']
+                owned = self.owned_processes(uid)
+                group_empty = self.cgroup_empty(active['cgroup']) if active.get('cgroup') is not None else not owned
+                if group_empty and owned: raise Refused('resident_cgroup_uid_mismatch')
+                resident_owned = self.owned_processes(19999) if self.resident is not None else {}
+            except BaseException:
+                self.failed = True
                 self.stop_tree()
+                return
+            if self.resident is not None and self.resident['invalidating']:
+                if not resident_owned and self.resident['process'].returncode is not None:
+                    self.resident['control'].close()
+                    self.resident = None
+            elif self.resident is not None and self.resident['process'].returncode is not None:
+                self.failed = True
+                self.stop_tree()
+                return
+            if active['started'] and active.get('leader_reaped') and active['receiver_done'].is_set() and active['stopping'] is None:
+                try:
+                    identity, proposal, when = self.received.get_nowait()
+                    if identity == active['id']:
+                        active.update(proposal=proposal, proposed_at=when)
+                except queue.Empty:
+                    pass
+                if not group_empty or owned or active['proposal'] is None or active['process'].returncode != 0:
+                    self.stop_tree()
+                else:
+                    # The one nonce is spent on the successful call. Revoke the
+                    # authorization before persisting this attempt's receipt.
+                    if self.resident is not None:
+                        try:
+                            self.resident_control('revoke')
+                        except BaseException:
+                            return
+            empty = (group_empty and not owned and (not active['started'] or active.get('leader_reaped')) and
+                     (active['stopping'] is None or self.resident is None))
         if empty and active['started'] and not active['receiver_done'].is_set():
             return
         if empty and (active['started'] or active['stopping'] is not None):
-            # Ensure internal receiver completed before terminal persistence.
             try:
                 identity, proposal, when = self.received.get_nowait()
                 if identity == active['id']:
@@ -445,23 +605,19 @@ class RuntimeSupervisor:
             receipt = dict(runtime_id=row['id'], binding=row['allocation']['binding'],
                 reaped=True, engine_uid=row['uid'], reap_method='pid1-waitpid-echild',
                 reaped_children=active['reaped_children'], timely=bool(active['proposal'] is not None and
-                active['proposed_at'] < active['cutoff'] and reaped_at < active['cutoff']),
+                active['proposed_at'] < active['cutoff'] and reaped_at < active['cutoff'] and (not self.resident_qwen or active['stopping'] is None)),
                 original_deadline=row['allocation']['snapshot'][0]['deadline'])
-            # Retire engine signalling before housekeeping can fork; keep this
-            # allocation occupying the lane. Never wait while holding tree_lock.
             with self.tree_lock:
                 active['finalizing'] = True
             try:
+                if self.resident_qwen and active.get('cgroup') is not None:
+                    active['cgroup'].rmdir()
                 if row['allocation']['fixture'] in ('pocket','qwen') and row['phase'] != 'prepared':
                     self.conditioning(row)
-                # A stopped prepared allocation has never run stage setup.
-                self.change(row, phase='terminal', receipt=receipt, proposal=active['proposal'])
+                self.change(row, phase='terminal', receipt=receipt, proposal=active['proposal'] if not self.resident_qwen or receipt['timely'] else None)
             except Exception:
-                # Actual reap without durable receipt is NOT STOPPED authority.
                 self.failed = True
             with self.tree_lock:
-                # An unconfirmed helper remains quarantined and occupied forever;
-                # tick must not reinterpret its wait status as an engine receipt.
                 if not active.get('helper_unknown'):
                     self.active = None
 

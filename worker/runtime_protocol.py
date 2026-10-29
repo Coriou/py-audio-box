@@ -57,6 +57,29 @@ def resident_qwen_cpu_hardware(spec, inventory):
             devices[0].available is not True or len(os.sched_getaffinity(0)) < spec.threads):
         raise Refused('stale_or_unavailable_device')
 
+def resident_attempt_authority(spec, plan, roots, cutoff, nonce):
+    """The supervisor derives the sole permitted model call from the frozen plan."""
+    import math
+    if type(cutoff) not in (int, float) or not math.isfinite(cutoff) or type(nonce) is not str:
+        raise Refused('resident_authority')
+    from worker.engines.qwen_prepare import QwenPreparation
+    name = resident_qwen_model(spec)
+    if type(spec) is QwenPreparation:
+        spec = spec.generation()
+    text = plan['reference_roles']['audition_text'] if plan['operation'] == 'voice_prepare' else speech_text(plan)
+    root = roots[name]
+    return dict(nonce=nonce, cutoff=cutoff, method='clone' if spec.task == 'clone' else 'custom_voice',
+                settings=dict(model_name=root['path'], num_threads=spec.threads, dtype_str=spec.dtype,
+                              revision=root['revision'], offline=True, device=spec.device, attention=spec.attention),
+                params=dict(text=text, language=spec.language, **{k:getattr(spec,k) for k in
+                            ('temperature','top_p','top_k','repetition_penalty','max_new_tokens')}),
+                reference_sha256=spec.reference_sha256 if spec.task == 'clone' else None,
+                reference_text=spec.reference_text if spec.task == 'clone' else None,
+                x_vector_only=spec.x_vector_only if spec.task == 'clone' else None,
+                preset=spec.preset if spec.task == 'custom_voice' else None,
+                instruct=spec.instruct if spec.task == 'custom_voice' else None)
+
+
 VERSION = 'lifecycle-v1'
 OPS = frozenset(('hello', 'startup', 'prepare', 'start', 'observe', 'stop', 'collect', 'ack'))
 

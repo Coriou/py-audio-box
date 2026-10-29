@@ -5,6 +5,9 @@ No staging, journal, lifecycle key or publication path is opened here.
 """
 import base64
 import json
+import math
+import hashlib
+import select
 import socket
 import sys
 import time
@@ -61,13 +64,13 @@ def _result_from_wire(value):
 
 class Client:
     """Per-attempt backend factory. close() closes no model; supervisor controls lifetime."""
-    def __init__(self, *, address, secret, cutoff, **settings):
-        self.address, self.secret, self.cutoff, self.settings = address, secret, cutoff, settings
+    def __init__(self, *, address, nonce, cutoff, **settings):
+        self.address, self.nonce, self.cutoff, self.settings = address, nonce, cutoff, settings
 
     def _call(self, method, params, *, reference=None, reference_text=None, x_vector_only=None, preset=None, instruct=None, timeout_s=None):
         cutoff = min(self.cutoff, time.monotonic() + timeout_s) if timeout_s is not None else self.cutoff
         if time.monotonic() >= cutoff: raise TimeoutError('resident_deadline')
-        body = dict(secret=self.secret, method=method, settings=self.settings, params=params,
+        body = dict(nonce=self.nonce, method=method, settings=self.settings, params=params,
                     reference=base64.b64encode(reference).decode() if reference is not None else None,
                     reference_text=reference_text, x_vector_only=x_vector_only, preset=preset,
                     instruct=instruct, cutoff=cutoff)
@@ -92,7 +95,7 @@ class Client:
         pass
 
 
-def serve(address, secret, roots, *, backend_factory=None, transition=None, ready=None):
+def serve(address, roots, control, *, backend_factory=None, transition=None, ready=None):
     """One model only. Any failed request ends service so custody is never reused."""
     from lib.tts_backends.qwen import QwenBackend
     if transition is None:
@@ -106,20 +109,49 @@ def serve(address, secret, roots, *, backend_factory=None, transition=None, read
     backend = None
     identity = None
     current_model = None
+    grant = None
     with socket.socket(socket.AF_UNIX) as listener:
         listener.bind(address)
         listener.listen(1)
         if ready is not None: ready()
         try:
             while True:
+                readable, _, _ = select.select([listener, control], [], [])
+                if control in readable:
+                    command = read(control, time.monotonic()+2)
+                    if type(command) is not dict or set(command) != {'op','authority'} or command['op'] not in ('grant','revoke'):
+                        raise ValueError('resident_control')
+                    if command['op'] == 'grant':
+                        if grant is not None or type(command['authority']) is not dict:
+                            raise ValueError('resident_control')
+                        grant = command['authority']
+                    else:
+                        grant = None
+                    frame(control, {'ok':True}, time.monotonic()+2)
+                    continue
                 connection, _ = listener.accept()
                 with connection:
                     cutoff = time.monotonic()+1800
                     try:
                         request = read(connection, cutoff)
-                        if type(request) is not dict or set(request) != {'secret','method','settings','params','reference','reference_text','x_vector_only','preset','instruct','cutoff'} or request['secret'] != secret:
+                        if type(request) is not dict or set(request) != {'nonce','method','settings','params','reference','reference_text','x_vector_only','preset','instruct','cutoff'} or grant is None or request['nonce'] != grant.get('nonce'):
                             raise ValueError('resident_authority')
-                        cutoff = min(cutoff, request['cutoff'])
+                        # Consume before validation: a captured nonce cannot be replayed.
+                        authorized = grant
+                        grant = None
+                        if (type(request['cutoff']) not in (int,float) or not math.isfinite(request['cutoff']) or
+                                request['cutoff'] > authorized['cutoff'] or
+                                any(json.dumps(request[k],sort_keys=True,allow_nan=False) !=
+                                    json.dumps(authorized[k],sort_keys=True,allow_nan=False) for k in
+                                    ('method','settings','params','reference_text','x_vector_only','preset','instruct'))):
+                            raise ValueError('resident_authority')
+                        if authorized['reference_sha256'] is None:
+                            if request['reference'] is not None: raise ValueError('resident_reference_authority')
+                        else:
+                            raw = base64.b64decode(request['reference'], validate=True)
+                            if hashlib.sha256(raw).hexdigest() != authorized['reference_sha256']:
+                                raise ValueError('resident_reference_authority')
+                        cutoff = min(cutoff, authorized['cutoff'], request['cutoff'])
                         if time.monotonic() >= cutoff: raise TimeoutError('resident_deadline')
                         method = request['method']; settings = request['settings']
                         requested_model = 'clone' if method == 'clone' else 'Ryan' if method == 'custom_voice' else None
@@ -167,10 +199,10 @@ def main():
     from worker.transport import receive, send
     control = socket.socket(fileno=int(sys.argv[1]))
     config = receive(control,time.monotonic()+2)
-    if type(config) is not dict or set(config) != {'address','secret','roots'} or type(config['roots']) is not dict:
+    if type(config) is not dict or set(config) != {'address','roots'} or type(config['roots']) is not dict:
         raise ValueError('resident_configuration')
     def ready(): send(control,dict(ready=True),time.monotonic()+2)
-    try: serve(config['address'],config['secret'],config['roots'],ready=ready)
+    try: serve(config['address'],config['roots'],control,ready=ready)
     finally: control.close()
 
 
