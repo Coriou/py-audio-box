@@ -777,9 +777,13 @@ class AdapterBoundsTests(ProtocolTests):
     """Actual adapters with inert pipes and controlled fake reap transitions."""
     def process(self, data=b'', wait=None):
         reader,writer,input_reader,input_writer=self.pipes()
+        stderr_reader,stderr_writer=os.pipe()
+        stderr=os.fdopen(stderr_reader,'rb',buffering=0)
+        self.addCleanup(stderr.close)
+        os.close(stderr_writer)
         if data: writer.write(data)
         writer.close()
-        p=SimpleNamespace(stdout=reader,stdin=input_writer,returncode=None)
+        p=SimpleNamespace(stdout=reader,stdin=input_writer,stderr=stderr,returncode=None)
         def done(timeout):
             if wait: wait(p,timeout)
             else: p.returncode=0

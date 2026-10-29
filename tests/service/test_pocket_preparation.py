@@ -208,7 +208,7 @@ class PocketPreparationTests(PreparationFixture):
         from worker.runtime_supervisor import RuntimeSupervisor
         from worker.transport import Refused
         supervisor=RuntimeSupervisor.__new__(RuntimeSupervisor)
-        supervisor.bundles=a.context['execution']['bundles'];supervisor.references={}
+        supervisor.bundles=a.context['execution']['bundles'];supervisor.references={};supervisor.resident_qwen=False
         body=dict(snapshot=json.loads(a._snapshot),binding=a.binding,fixture='pocket')
         with self.assertRaisesRegex(ValueError,'reference_mapping'):supervisor.operation('prepare',body)
         supervisor.references=a.context['execution']['references']

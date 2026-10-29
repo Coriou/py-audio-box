@@ -574,7 +574,9 @@ def _listener_ready(configuration_digest, *, launch_policy=None):
     from service.recovery import host_json
     from service import daemon_volumes as dv, installed_export as ex, installed_pocket_daemon as pd
     if launch_policy not in (None, dv.POLICY, ex.LAUNCH, pd.LAUNCH):
-        raise ValueError('installed_explicit_launch_policy')
+        from service.installed_qwen_daemon import LAUNCH as qwen_launch
+        if launch_policy != qwen_launch:
+            raise ValueError('installed_explicit_launch_policy')
     credential = ip.CREDENTIAL_DESTINATION if launch_policy is None else dv.CREDENTIAL
     value=host_json(private_input(credential,mode=0o640,limit=48000))
     token=value['credentials'][0]['token']

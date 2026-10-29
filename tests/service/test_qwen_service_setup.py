@@ -228,15 +228,24 @@ class SetupTests(unittest.TestCase):
         self.assertEqual(installed['configuration']['profiles'][0]['qualification_receipt'],'')
         sudo_root=self.root/'sudo-client'
         sudo_args=args.copy();sudo_args[sudo_args.index(self.request['root'])]=str(sudo_root)
+        sudo_uid=12345;sudo_gid=12346
+        sudo_user=SimpleNamespace(pw_uid=sudo_uid,pw_gid=sudo_gid,pw_dir=str(self.root))
         with patch.object(setup,'_image_ids',return_value=self.request['images']), \
              patch('worker.engines.qwen.verify_bundle'), \
              patch.object(setup.os,'geteuid',return_value=0), \
+             patch.object(setup.pwd,'getpwuid',return_value=sudo_user) as passwd, \
+             patch.object(setup,'prepare_client_parent') as prepare_parent, \
              patch.object(setup.os,'chown') as chown, \
-             patch.dict(os.environ,{'SUDO_UID':str(os.getuid()),'SUDO_GID':str(os.getgid())}), \
+             patch.dict(os.environ,{'SUDO_UID':str(sudo_uid),'SUDO_GID':str(sudo_gid)}), \
              contextlib.redirect_stdout(io.StringIO()):
             command(sudo_args)
+        passwd.assert_called_once_with(sudo_uid)
+        prepare_parent.assert_called_once_with(sudo_root,(sudo_uid,sudo_gid,str(self.root)))
         self.assertEqual([call.args[0] for call in chown.call_args_list],
                          [sudo_root/'control.key',sudo_root/'client.json',sudo_root])
+        self.assertTrue(all(call.args[1:] == (sudo_uid,sudo_gid) and
+                            call.kwargs == {'follow_symlinks':False}
+                            for call in chown.call_args_list))
 
     def test_public_up_routes_local_and_legacy_up_keeps_explicit_scope(self):
         from service.package_install import main as command

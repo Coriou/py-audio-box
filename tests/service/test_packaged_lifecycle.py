@@ -160,7 +160,7 @@ def test_watchdog_has_original_cutoff_and_no_request_io(monkeypatch):
     import signal
     from worker.runtime_supervisor import RuntimeSupervisor
     runtime=RuntimeSupervisor.__new__(RuntimeSupervisor)
-    runtime.tree_lock=threading.Lock();runtime.halt=False
+    runtime.tree_lock=threading.Lock();runtime.halt=False;runtime.resident_qwen=False
     runtime.active=dict(id='exact',cutoff=10,stopping=None)
     signals=[];runtime.signal_namespace=signals.append
     clock=[10.0];monkeypatch.setattr('worker.runtime_supervisor.time.monotonic',lambda:clock[0])

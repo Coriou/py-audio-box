@@ -40,7 +40,7 @@ class PocketDeadlineTests(unittest.TestCase):
     def supervisor(self,snapshot):
         s=RuntimeSupervisor.__new__(RuntimeSupervisor)
         s.bundles=snapshot[1]['execution']['bundles'];s.verify_pocket=Mock()
-        s.failed=False;s.active=None;s.cutoffs={};s.boot='b'*32
+        s.failed=False;s.active=None;s.cutoffs={};s.boot='b'*32;s.resident_qwen=False
         s.journal=SimpleNamespace(value=dict(lane='a'*32,records=[]))
         s.tree_lock=threading.Lock()
         s.persist=lambda value:setattr(s.journal,'value',value)

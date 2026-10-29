@@ -17,6 +17,63 @@ def canonical_input_schema(operation):
     return value
 
 
+def test_empty_discover_schema_compaction_preserves_validation(monkeypatch):
+    from clients import mcp
+    canonical = canonical_input_schema('discover')
+    advertised = input_schema('discover')
+    assert advertised == {'type': 'object', 'maxProperties': 0}
+    for value in ({}, {'unexpected': 1}, [], None, 0, ''):
+        assert Draft202012Validator(advertised).is_valid(value) == Draft202012Validator(canonical).is_valid(value)
+    # Future canonical constraints must survive instead of being dropped by compaction.
+    constrained = {**canonical, 'description': 'keep', 'minProperties': 0}
+    monkeypatch.setattr(mcp, 'schema', lambda kind: copy.deepcopy(constrained))
+    assert input_schema('discover') == constrained
+
+
+def test_repeated_identifier_refs_preserve_validation():
+    for operation in ('voice_prepare', 'voice_save', 'speech_generate'):
+        canonical = canonical_input_schema(operation)
+        advertised = input_schema(operation)
+        assert advertised.get('$defs', {}).get('i') == {
+            'type': 'string', 'pattern': '^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$'}
+        Draft202012Validator.check_schema(advertised)
+        for value in ({}, {'idempotency_key': 'ok'}, {'idempotency_key': 'bad key'}, []):
+            assert Draft202012Validator(advertised).is_valid(value) == Draft202012Validator(canonical).is_valid(value)
+
+
+def test_input_schema_never_rewrites_literal_data(monkeypatch):
+    from clients import mcp
+    identifier = {'type': 'string', 'pattern': '^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$'}
+    literal_ref = {'$ref': '#/$defs/payload'}
+    canonical = {'type': 'object', 'properties': {
+        'a': copy.deepcopy(identifier), 'b': copy.deepcopy(identifier),
+        'marker': {'const': copy.deepcopy(identifier)},
+        'choice': {'enum': [copy.deepcopy(identifier)]},
+        'fallback': {'type': 'object', 'default': copy.deepcopy(identifier)},
+        'literal_ref': {'const': copy.deepcopy(literal_ref)},
+        'payload': {'$ref': '#/$defs/payload'}},
+        'required': ['a', 'b', 'marker', 'choice', 'literal_ref', 'payload'],
+        'additionalProperties': False,
+        '$defs': {'payload': {'type': 'string'}}}
+    monkeypatch.setattr(mcp, 'schema', lambda kind: copy.deepcopy(canonical))
+    advertised = input_schema('voice_prepare')
+    assert advertised['properties']['marker']['const'] == identifier
+    assert advertised['properties']['choice']['enum'] == [identifier]
+    assert advertised['properties']['fallback']['default'] == identifier
+    assert advertised['properties']['literal_ref']['const'] == literal_ref
+    assert advertised['properties']['payload'] == {'type': 'string'}
+    assert advertised['properties']['a'] == {'$ref': '#/$defs/i'}
+    expected = copy.deepcopy(canonical)
+    expected['properties']['idempotency_key'] = copy.deepcopy(identifier)
+    expected['required'].append('idempotency_key')
+    valid = {'a': 'one', 'b': 'two', 'idempotency_key': 'key',
+             'marker': identifier, 'choice': identifier,
+             'literal_ref': literal_ref, 'payload': 'ok'}
+    for value in (valid, {**valid, 'marker': 'wrong'},
+                  {**valid, 'choice': 'wrong'}, {**valid, 'a': 1}):
+        assert Draft202012Validator(advertised).is_valid(value) == Draft202012Validator(expected).is_valid(value)
+
+
 def test_advertised_request_schemas_preserve_canonical_validation():
     transcript = json.loads((FIXTURES / 'transcript-speech_generate.json').read_text())
     identity = transcript['context']['plan']['request']['identity']
@@ -33,7 +90,7 @@ def test_advertised_request_schemas_preserve_canonical_validation():
         advertised = input_schema(operation)
         Draft202012Validator.check_schema(canonical)
         Draft202012Validator.check_schema(advertised)
-        assert '$defs' not in advertised
+        assert advertised.get('$defs', {}).keys() == {'i'}
         assert len(json.dumps(advertised, separators=(',', ':'))) < len(json.dumps(canonical, separators=(',', ':')))
         assert Draft202012Validator(canonical).is_valid(valid)
         cases = [valid]

@@ -15,7 +15,9 @@ class QwenDaemonTests(InstalledQwenTests):
         from worker.engines import qwen_execution as qe
         from worker.runtime_protocol import execution
 
-        supervisor = SimpleNamespace(qwen_contexts={})
+        managed_qwen = rs.RuntimeSupervisor.managed_qwen
+        supervisor = SimpleNamespace(qwen_contexts={},resident_qwen=False)
+        supervisor.managed_qwen=lambda spec:managed_qwen(supervisor,spec)
         mapping = {'inert-bundle': '/sealed/inert-bundle'}
         with patch('sys.argv', ['worker', '--installed-policy', qd.POLICY,
                                 '--configuration-file', '/config/install.json']), \
@@ -38,6 +40,7 @@ class QwenDaemonTests(InstalledQwenTests):
                 self.assertFalse(supervisor._pocket_daemon)
                 self.assertEqual(supervisor.qwen_profiles, self.config['profiles'])
                 for principal, context in self.config['contexts'].items():
+                    self.assertIs(supervisor.managed_qwen(execution(context)), True)
                     self.assertEqual(supervisor.qwen_contexts[(principal, 'qwen-cpu', 'managed-clone')], context)
                 self.assertIsNotNone(supervisor.inventory)
                 self.assertEqual(hardware.call_count, len(self.config['contexts']))

@@ -57,11 +57,13 @@ class Admission:
             from worker.engines.native_kokoro import NativeKokoroExecution
             from worker.native_cpu_qualification import permitted
             qualifying=type(spec) is NativeKokoroExecution and permitted(context,selected)
-            from service.qwen_local_lane import context_allowed
-            from service import installed_qwen_daemon as qd
-            provider=getattr(self.native_availability, '__self__', None)
-            local_qwen=(spec.engine == 'qwen' and getattr(provider,'family',None) is qd.FAMILY
-                        and context_allowed(context,selected))
+            local_qwen=False
+            if spec.engine == 'qwen':
+                from service.qwen_local_lane import context_allowed
+                from service import installed_qwen_daemon as qd
+                provider=getattr(self.native_availability, '__self__', None)
+                local_qwen=(getattr(provider,'family',None) is qd.FAMILY
+                            and context_allowed(context,selected))
             if not qualifying and not local_qwen and (selected['verification'] != 'measured' or not selected['qualification_receipt'] or 'synthetic' in selected['qualification_receipt'].lower()):
                 raise ValueError('real_qualification_required')
             if type(spec) is NativeKokoroExecution:

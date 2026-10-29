@@ -227,10 +227,11 @@ class InstalledPocketJourney(PocketPublicJourneyTests):
         with self.assertRaisesRegex(ValueError,'reference_mount_coverage'):f.validate()
 
     def supervisor_fixture(self):
+        import threading
         from worker.runtime_supervisor import RuntimeSupervisor
         s=RuntimeSupervisor.__new__(RuntimeSupervisor)
         s.bundles=self.base.mapping;s.references={};s.pocket_reference_roots={'alice':'/references/assets'};s.installed_pocket=True
-        s.failed=False
+        s.failed=False;s.resident_qwen=False;s.tree_lock=threading.Lock()
         path=self.gate_fixture.root/'assets'/self.spec.reference_id
         path.write_bytes(self.raw);path.chmod(0o600)
         return s,path

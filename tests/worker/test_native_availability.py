@@ -181,7 +181,8 @@ class AvailabilityTests(unittest.TestCase):
         from service.production_selection import choose, Measurement, SelectionUnavailable
         from service.profiles import Performance, SelectionPolicy
         dispatcher=SimpleNamespace(runtime=self.f.runtime,profiles=list(self.f.a.profiles),
-            admission=SimpleNamespace(budget=dict(ram_bytes=1024**3,vram_bytes=0)))
+            admission=SimpleNamespace(budget=dict(ram_bytes=1024**3,vram_bytes=0)),
+            _local_qwen_active=lambda:False)
         measurement=Measurement(oracle.canonical_hash(self.context['execution']),Performance('inert',2,1,'INERT'))
         policy=SelectionPolicy(workload='inert')
         def select(m):

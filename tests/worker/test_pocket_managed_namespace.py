@@ -128,7 +128,7 @@ class ManagedPocketNamespaceTests(unittest.TestCase):
             supervisor=RuntimeSupervisor.__new__(RuntimeSupervisor)
             row=dict(id='runtime',phase='prepared',uid=20000,allocation=dict(snapshot=[dict(principal_id='alice',attempts=[dict(staging_id=stage_id)]),{},[],[]]))
             supervisor.lookup=lambda identity:row
-            supervisor.failed=False;supervisor.active=dict(id='runtime',cutoff=100)
+            supervisor.failed=False;supervisor.resident_qwen=False;supervisor.active=dict(id='runtime',cutoff=100)
             supervisor.change=Mock(side_effect=lambda record,**changes:dict(record,**changes))
             supervisor.verify_pocket=Mock();supervisor.verify_qwen=Mock()
             def setup(arguments,**kwargs):

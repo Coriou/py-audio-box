@@ -881,14 +881,15 @@ class GeneratedTopologyTests(unittest.TestCase):
 
 class ListenerProbeTests(unittest.TestCase):
     def test_probe_uses_only_fixed_credential_for_validated_launch_policy(self):
-        from service import daemon_volumes as dv, installed_export as ex
-        for policy,path in ((None,e.ip.CREDENTIAL_DESTINATION),(dv.POLICY,dv.CREDENTIAL),(ex.LAUNCH,dv.CREDENTIAL)):
+        from service import daemon_volumes as dv, installed_export as ex, installed_qwen_daemon as qd
+        for policy,path in ((None,e.ip.CREDENTIAL_DESTINATION),(dv.POLICY,dv.CREDENTIAL),(ex.LAUNCH,dv.CREDENTIAL),(qd.LAUNCH,dv.CREDENTIAL)):
             with self.subTest(policy=policy), patch('service.auth.private_input',side_effect=FileNotFoundError) as read:
                 with self.assertRaises(FileNotFoundError):e._listener_ready('a'*64,launch_policy=policy)
                 read.assert_called_once_with(path,mode=0o640,limit=48000)
-        with patch('service.auth.private_input') as read:
+        with patch('service.auth.private_input') as read, patch('http.client.HTTPConnection') as connect:
             with self.assertRaises(ValueError):e._listener_ready('a'*64,launch_policy='caller/path')
             read.assert_not_called()
+            connect.assert_not_called()
 
     def test_probe_binds_live_activation_and_never_returns_token_or_body(self):
         from types import SimpleNamespace
@@ -910,6 +911,28 @@ class ListenerProbeTests(unittest.TestCase):
             self.assertIs(e._listener_ready('a'*64),False)
         self.assertEqual([args for args, _ in requests], [('GET','/v1/status')] * 3)
         self.assertEqual(requests[0][1]['headers']['Authorization'],'Bearer '+token)
+
+    def test_qwen_probe_accepts_bound_status_with_authenticated_fixed_endpoint(self):
+        from service import installed_qwen_daemon as qd, daemon_volumes as dv
+        from types import SimpleNamespace
+        token='private-test-token'
+        body=dict(synthetic=False,activation_ready=True,configuration_digest='a'*64,
+                  status=dict(persistent_activation=True))
+        requests=[]
+        class Connection:
+            def __init__(self,*args,**kwargs):
+                self.address=args;self.options=kwargs
+            def request(self,*args,**kwargs):requests.append((self.address,self.options,args,kwargs))
+            def getresponse(self):return SimpleNamespace(status=200,read=lambda limit:json.dumps(body).encode())
+            def close(self):pass
+        with patch('service.auth.private_input',return_value=json.dumps({'credentials':[{'token':token}]}).encode()) as read, \
+             patch('http.client.HTTPConnection',Connection):
+            self.assertTrue(e._listener_ready('a'*64,launch_policy=qd.LAUNCH))
+            read.assert_called_once_with(dv.CREDENTIAL,mode=0o640,limit=48000)
+            body['status']['persistent_activation']=False
+            self.assertFalse(e._listener_ready('a'*64,launch_policy=qd.LAUNCH))
+        self.assertEqual(requests,[(('127.0.0.1',8000),{'timeout':2},('GET','/v1/status'),
+                                    {'headers':{'Authorization':'Bearer '+token}})]*2)
 
 
 class ReadinessReaderTests(unittest.TestCase):

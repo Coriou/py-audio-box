@@ -226,7 +226,7 @@ class CPUPublicSourceTests(unittest.TestCase):
 
     def test_cpu_handoff_discovery_and_export_never_import_foreign_families_even_cached(self):
         import builtins,importlib
-        foreign={'service.installed_pocket_daemon','service.installed_qwen_daemon'}
+        foreign={'service.installed_pocket_daemon','service.installed_qwen_daemon','service.qwen_local_lane'}
         for name in foreign:importlib.import_module(name)  # Available/cache cannot mask an import.
         original=builtins.__import__
         def guarded(name,globals=None,locals=None,fromlist=(),level=0):

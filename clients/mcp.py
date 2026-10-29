@@ -2,6 +2,7 @@
 import asyncio
 import copy
 import os
+import json
 from collections import Counter
 from urllib.parse import quote
 from jsonschema.exceptions import ValidationError
@@ -37,8 +38,9 @@ def inline_single_use_definitions(value):
                 references[node['$ref']] += 1
                 if len(node) == 1:
                     plain_references[node['$ref']] += 1
-            for child in node.values():
-                walk(child)
+            for key, child in node.items():
+                if key not in ('const', 'enum', 'default', 'examples'):
+                    walk(child)
         elif isinstance(node, list):
             for child in node:
                 walk(child)
@@ -54,7 +56,9 @@ def inline_single_use_definitions(value):
             if isinstance(node, dict):
                 if '$ref' in node:
                     nested[node['$ref']] += 1
-                for child in node.values(): refs(child)
+                for key, child in node.items():
+                    if key not in ('const', 'enum', 'default', 'examples'):
+                        refs(child)
             elif isinstance(node, list):
                 for child in node: refs(child)
         refs(definition)
@@ -66,7 +70,8 @@ def inline_single_use_definitions(value):
             # A sibling of $ref can alter Draft 2020-12 semantics; leave it intact.
             if len(node) == 1 and node.get('$ref') in replacements:
                 return copy.deepcopy(replacements[node['$ref']])
-            return {key: replace(child) for key, child in node.items()}
+            return {key: (child if key in ('const', 'enum', 'default', 'examples') else replace(child))
+                    for key, child in node.items()}
         if isinstance(node, list):
             return [replace(child) for child in node]
         return node
@@ -82,31 +87,50 @@ def inline_single_use_definitions(value):
 
 def input_schema(operation):
     value = inline_single_use_definitions(schema(OPERATIONS[operation]['request']))
+    # This exact canonical shape accepts only an empty object.
+    if not OPERATIONS[operation]['idempotency'] and value == {'type':'object','properties':{},'required':[],'additionalProperties':False}:
+        value = {'type':'object','maxProperties':0}
     if OPERATIONS[operation]['idempotency']:
         value['properties']['idempotency_key'] = {'type':'string','pattern':'^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$'}
         value['required'].append('idempotency_key')
+    # Only direct property schemas are candidates; literals in const/enum/default are data.
+    identifier = {'type':'string','pattern':'^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$'}
+    def unsafe_scope(node):
+        if isinstance(node, dict):
+            return bool({'$id','$anchor','$dynamicRef','$dynamicAnchor','$recursiveRef','$recursiveAnchor','$schema','$vocabulary'} & node.keys()) or node.get('$ref') == '#/$defs/i' or any(unsafe_scope(child) for child in node.values())
+        return any(unsafe_scope(child) for child in node) if isinstance(node, list) else False
+    properties = value.get('properties')
+    if isinstance(properties, dict) and 'i' not in value.get('$defs', {}) and not unsafe_scope(value):
+        names = [name for name, field in properties.items() if field == identifier]
+        if len(names) >= 3:
+            candidate = copy.deepcopy(value)
+            for name in names:
+                candidate['properties'][name] = {'$ref':'#/$defs/i'}
+            candidate.setdefault('$defs', {})['i'] = identifier
+            if len(json.dumps(candidate,separators=(',',':'))) < len(json.dumps(value,separators=(',',':'))):
+                value = candidate
     return value
 
 
 def tools():
     items = [Tool(name=OPERATIONS[op]['mcp'],
-        description=('Opt-in bytes, max 3072 decoded. Larger downloads: python -m clients.cli asset content ID --output FILE.' if op == 'asset_content' else 'Register a speech_status preset for generation only; no cloning or qualification.' if op == 'voice_preset_register' else None),
+        description=('Opt-in ≤3072 bytes; larger: python -m clients.cli asset content ID --output FILE.' if op == 'asset_content' else 'Preset only; no clone or qualification.' if op == 'voice_preset_register' else None),
         inputSchema=input_schema(op)) for op in dict.fromkeys((*IMPLEMENTED, *VOICE_READS, *PRODUCTION_OPERATIONS))]
     if os.environ.get('SPEECH_UPLOAD_ROOT'):
-        items.append(Tool(name='speech_asset_upload_file', description='Upload a client-host WAV from SPEECH_UPLOAD_ROOT. Operator-authorized root; relative no-follow paths only. Creates an asset, not a cloned voice. No inline audio.', inputSchema={'type':'object','properties':{'path':{'type':'string','minLength':1,'maxLength':4096}},'required':['path'],'additionalProperties':False}))
-    items.append(Tool(name='speech_enroll', description='Save an uploaded trusted WAV as a named voice. Bounded wait returns job and asset handles on timeout. Resume with confirmed asset_id; bare WAV uploads create a new asset.', inputSchema={
+        items.append(Tool(name='speech_asset_upload_file', description='Authorized SPEECH_UPLOAD_ROOT: relative no-follow WAV, asset only, no inline audio.', inputSchema={'type':'object','properties':{'path':{'type':'string','minLength':1,'maxLength':4096}},'required':['path'],'additionalProperties':False}))
+    items.append(Tool(name='speech_enroll', description='Trusted WAV to voice; timeout handles; resume confirmed asset_id. Bare WAV makes asset.', inputSchema={
         'type':'object','properties':{'name':{'type':'string','minLength':1,'maxLength':128},'asset_id':{'type':'string','minLength':1,'maxLength':128},
             'reference_text':{'type':'string','minLength':1,'maxLength':10000},'audition_text':{'type':'string','minLength':1,'maxLength':10000},
             'job_id':{'type':'string','minLength':1,'maxLength':128},'wait_seconds':{'type':'integer','minimum':0,'maximum':600}},
         'required':['name','asset_id','reference_text','audition_text'],'additionalProperties':False}))
-    items.append(Tool(name='speech_speak', description='Generate from a saved named voice. Returns artifact and asset handles; bounded wait, replayable key, no inline audio.', inputSchema={
+    items.append(Tool(name='speech_speak', description='Saved voice to artifact/asset; bounded wait, replay key, no inline audio.', inputSchema={
         'type':'object','properties':{'voice':{'type':'string','minLength':1,'maxLength':128},'text':{'type':'string','minLength':1,'maxLength':10000},
             'job_id':{'type':'string','minLength':1,'maxLength':128},'voice_version_id':{'type':'string','minLength':1,'maxLength':128},
             'wait_seconds':{'type':'integer','minimum':0,'maximum':600}},
         'required':['voice','text'],'additionalProperties':False}))
-    items += [Tool(name='speech_status', description='Configured service status, preset selectors and next action; no discovery-time model loading.',
-                   inputSchema={'type':'object','properties':{},'additionalProperties':False}),
-              Tool(name='speech_operation_detail', description='Read one canonical operation schema and fixture availability; never executes it.',
+    items += [Tool(name='speech_status', description='Status/presets/next action; no model load.',
+                   inputSchema={'type':'object','maxProperties':0}),
+              Tool(name='speech_operation_detail', description='Canonical schema/fixture; read only.',
                    inputSchema={'type':'object','properties':{'operation_id':{'type':'string','maxLength':128}},
                                 'required':['operation_id'],'additionalProperties':False})]
     return items
