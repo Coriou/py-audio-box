@@ -180,3 +180,50 @@ def test_cgroup_populated_is_required_for_terminal(tmp_path):
     events.write_text('frozen 0\n')
     with pytest.raises(Refused,match='resident_cgroup_unknown'):
         RuntimeSupervisor.cgroup_empty(tmp_path)
+
+
+def test_aggregate_parent_limits_cover_worker_resident_and_attempt(tmp_path):
+    from worker.transport import Refused
+    system=tmp_path/'sys';system.mkdir()
+    (system/'cgroup.controllers').write_text('cpu memory pids\n')
+    parent=system/'speech-box-qwen'/('a'*32);parent.mkdir(parents=True)
+    worker=parent/('b'*64);worker.mkdir()
+    (worker/'cpu.max').write_text('200000 100000\n')
+    for name,value in (('memory.max',str(12*1024**3)),('memory.swap.max','0'),
+                       ('pids.max','64'),('cpu.max','200000 100000')):
+        (parent/name).write_text(value)
+    member=tmp_path/'membership';member.write_text('0::/speech-box-qwen/'+('a'*32)+'/'+('b'*64)+'\n')
+    supervisor=RuntimeSupervisor.__new__(RuntimeSupervisor)
+    supervisor.resident_budget={'ram_bytes':12*1024**3,'pids':64}
+    def verify(root=parent):
+        supervisor.verify_aggregate_custody(root=root,system=system,membership_file=member)
+    verify()
+    # Attempt and resident are siblings of the worker, but descendants of
+    # this finite parent. Docker's worker-only limit cannot stand in for it.
+    for name,value in (('memory.max','max'),('memory.swap.max','max'),('pids.max','max'),
+                       ('cpu.max','max 100000'),('memory.max',str(13*1024**3)),
+                       ('pids.max','65'),('cpu.max','300000 100000')):
+        original=(parent/name).read_text()
+        (parent/name).write_text(value)
+        with pytest.raises(Refused,match='resident_aggregate_cgroup_limits_required'):verify()
+        (parent/name).write_text(original)
+    # A lookalike bind from another installation must not pass.
+    impostor=tmp_path/'impostor';impostor.mkdir()
+    with pytest.raises(Refused,match='resident_aggregate_cgroup_limits_required'):verify(impostor)
+    member.write_text('0::/speech-box-qwen/'+('c'*32)+'/'+('b'*64))
+    with pytest.raises(Refused,match='resident_aggregate_cgroup_limits_required'):verify()
+
+
+def test_pipe_gate_requires_migrated_child_membership(tmp_path):
+    from worker.transport import Refused
+    proc=tmp_path/'proc';(proc/'self').mkdir(parents=True);(proc/'123').mkdir()
+    parent='0::/speech-box-qwen/'+('a'*32)
+    (proc/'self'/'cgroup').write_text(parent+'/'+('b'*64))
+    child=proc/'123'/'cgroup'
+    group=tmp_path/'attempt-123'
+    child.write_text(parent+'/'+group.name)
+    RuntimeSupervisor.verify_child_cgroup(123,group,proc=proc)
+    for escaped in (parent+'/'+('b'*64), '0::/other/'+group.name, parent+'/other'):
+        child.write_text(escaped)
+        with pytest.raises(Refused,match='resident_cgroup_assignment_required'):
+            RuntimeSupervisor.verify_child_cgroup(123,group,proc=proc)

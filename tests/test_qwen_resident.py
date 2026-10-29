@@ -159,3 +159,26 @@ def test_backend_fault_invalidates_owner():
         assert not process.is_alive()
     finally:
         _stop(process,control,directory)
+def test_resident_applies_own_limits_before_model_load(monkeypatch):
+    import os
+    import resource
+    import socket
+    import sys
+    import worker.qwen_resident as resident
+    import worker.transport as transport
+    gate_read, gate_write = os.pipe()
+    parent, child = socket.socketpair()
+    calls=[]
+    try:
+        os.write(gate_write,b'1')
+        monkeypatch.setattr(sys,'argv',['resident',str(child.fileno()),str(gate_read)])
+        monkeypatch.setattr(transport,'receive',lambda *_:dict(address='inert',roots={},pids=64))
+        monkeypatch.setattr(resident.resource,'setrlimit',lambda kind,limit:calls.append((kind,limit)))
+        monkeypatch.setattr(resident,'serve',lambda *args,**kwargs:calls.append(('serve',None)))
+        resident.main()
+        assert calls==[(resource.RLIMIT_CORE,(0,0)),(resource.RLIMIT_NPROC,(64,64)),('serve',None)]
+    finally:
+        os.close(gate_write)
+        parent.close()
+        try:child.close()
+        except OSError:pass

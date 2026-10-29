@@ -6,6 +6,7 @@ import json
 import os
 from pathlib import Path
 import queue
+import re
 import secrets
 import signal
 import socket
@@ -19,7 +20,7 @@ from worker.transport import canonical, Refused, Session
 
 
 class RuntimeSupervisor:
-    def __init__(self, root='/receipts', ipc='/ipc', *, bundles=None, references=None, qwen_contexts=None, inventory=None, qwen_profiles=None, pocket_reference_roots=None, installed_pocket=False, installed_policy=None, audio_converters=None, converter_image_digest=None, export_reference_roots=None, export_configuration=None, expected_worker_image=None, resident_qwen_policy=None):
+    def __init__(self, root='/receipts', ipc='/ipc', *, bundles=None, references=None, qwen_contexts=None, inventory=None, qwen_profiles=None, pocket_reference_roots=None, installed_pocket=False, installed_policy=None, audio_converters=None, converter_image_digest=None, export_reference_roots=None, export_configuration=None, expected_worker_image=None, resident_qwen_policy=None, resident_budget=None):
         if os.getpid() != 1:
             raise RuntimeError('pid1_required')
         from types import MappingProxyType
@@ -49,7 +50,10 @@ class RuntimeSupervisor:
             if resident_qwen_policy != SERVICE_POLICY or installed_policy is not ip.QWEN_SPLIT:
                 raise ValueError('resident_qwen_requires_explicit_installed_policy')
         self.resident_qwen = resident_qwen_policy is not None
+        self.resident_budget = resident_budget
         if self.resident_qwen:
+            if type(resident_budget) is not dict or any(type(resident_budget.get(k)) is not int or resident_budget[k] < 1 for k in ('ram_bytes','pids')):
+                raise ValueError('resident_aggregate_budget_required')
             # UID custody depends on the private PID namespace's complete
             # process view and race-free signalling. Fail before opening work.
             if not hasattr(os,'pidfd_open') or not hasattr(signal,'pidfd_send_signal'):
@@ -64,6 +68,7 @@ class RuntimeSupervisor:
             # delegated bind. The default global mount must remain read-only.
             if not os.statvfs('/sys/fs/cgroup').f_flag & os.ST_RDONLY:
                 raise ValueError('resident_global_cgroup_readonly_required')
+            self.verify_aggregate_custody()
         self.resident = None
         self.installed_pocket = installed_pocket
         self.bundles = MappingProxyType(dict(bundles or {}))
@@ -164,9 +169,38 @@ class RuntimeSupervisor:
             except (FileNotFoundError, ProcessLookupError):
                 continue
 
+    def verify_aggregate_custody(self, *, root=Path('/run/attempt-cgroups'), system=Path('/sys/fs/cgroup'), membership_file=Path('/proc/self/cgroup')):
+        """The delegated parent must bound the container and both migrated children."""
+        try:
+            membership = membership_file.read_text().strip()
+            match = re.fullmatch(r'0::(/speech-box-qwen/[0-9a-f]{32})/([0-9a-f]{64})', membership)
+            if match is None or not (system / 'cgroup.controllers').is_file():
+                raise ValueError('membership')
+            host_parent = system / match[1].lstrip('/')
+            if (root.stat().st_dev, root.stat().st_ino) != (host_parent.stat().st_dev, host_parent.stat().st_ino):
+                raise ValueError('parent_identity')
+            def number(name):
+                raw = (root / name).read_text().strip()
+                if not re.fullmatch(r'[0-9]+', raw): raise ValueError(name)
+                return int(raw)
+            memory, swap, pids = (number('memory.max'), number('memory.swap.max'), number('pids.max'))
+            if memory > self.resident_budget['ram_bytes'] or swap != 0 or pids > self.resident_budget['pids']:
+                raise ValueError('aggregate_limits')
+            def cpu(path):
+                raw = (path / 'cpu.max').read_text().strip()
+                if not re.fullmatch(r'[1-9][0-9]* [1-9][0-9]*', raw): raise ValueError('cpu.max')
+                return tuple(map(int, raw.split()))
+            parent_quota, parent_period = cpu(root)
+            worker_quota, worker_period = cpu(system / membership[3:].lstrip('/'))
+            if parent_quota * worker_period > worker_quota * parent_period:
+                raise ValueError('aggregate_cpu')
+        except (OSError, ValueError) as exc:
+            raise Refused('resident_aggregate_cgroup_limits_required') from exc
+
     def create_attempt_cgroup(self):
         """The worker's dedicated, writable delegated cgroup parent only."""
         import stat
+        self.verify_aggregate_custody()
         root=Path('/run/attempt-cgroups')
         try:info=root.lstat()
         except OSError as exc:raise Refused('resident_delegated_cgroup_v2_required') from exc
@@ -184,6 +218,16 @@ class RuntimeSupervisor:
             try:group.rmdir()
             except OSError:pass
             raise Refused('resident_delegated_cgroup_write_required') from exc
+
+    @staticmethod
+    def verify_child_cgroup(pid, group, *, proc=Path('/proc')):
+        try:
+            actual = (proc / str(pid) / 'cgroup').read_text().strip()
+            owner = (proc / 'self' / 'cgroup').read_text().strip()
+            if not owner.startswith('0::') or actual != owner.rsplit('/', 1)[0] + '/' + group.name:
+                raise ValueError('membership')
+        except (OSError, ValueError) as exc:
+            raise Refused('resident_cgroup_assignment_required') from exc
 
     @staticmethod
     def cgroup_empty(group):
@@ -218,7 +262,8 @@ class RuntimeSupervisor:
         token = secrets.token_hex(24)
         roots = {name:dict(path=str(self.bundles[digest]),revision=service_model(name)[1])
                  for name,digest in expected.items()}
-        config = dict(address='\0py-audio-box-qwen-'+token, roots=roots)
+        config = dict(address='\0py-audio-box-qwen-'+token, roots=roots,
+                      pids=self.resident_budget['pids'])
         proc = None
         group = self.create_attempt_cgroup()
         gate_read, gate_write = os.pipe()
@@ -230,6 +275,7 @@ class RuntimeSupervisor:
                 stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
             try:(group/'cgroup.procs').write_text(str(proc.pid))
             except OSError as exc:raise Refused('resident_cgroup_assignment_required') from exc
+            self.verify_child_cgroup(proc.pid, group)
             os.write(gate_write,b'1')
             child.close()
             self.resident = dict(process=proc, address=config['address'], control=parent,
@@ -441,6 +487,7 @@ class RuntimeSupervisor:
                     if gate_write is not None:
                         try:(group/'cgroup.procs').write_text(str(proc.pid))
                         except OSError as exc:raise Refused('resident_cgroup_assignment_required') from exc
+                        self.verify_child_cgroup(proc.pid, group)
                         os.write(gate_write, b'1')
                     self.launches += 1
                 finally:
@@ -1035,7 +1082,8 @@ def main(*, _pocket_daemon=False, _qwen_daemon=False):
             raise ValueError('explicit_fixed_install_policy_required')
         supervisor = RuntimeSupervisor(bundles=bundles, pocket_reference_roots=pocket_roots,
             installed_pocket=installed_pocket, installed_policy=installed_policy, export_configuration=export_config,
-            expected_worker_image=args.expected_worker_image, resident_qwen_policy=args.resident_qwen_policy)
+            expected_worker_image=args.expected_worker_image, resident_qwen_policy=args.resident_qwen_policy,
+            resident_budget=config['budget'] if args.resident_qwen_policy is not None else None)
         if _pocket_daemon and not installed_pocket: raise ValueError('pocket_daemon_v2_configuration_required')
         if _qwen_daemon:
             from service import installed_qwen_daemon as qd

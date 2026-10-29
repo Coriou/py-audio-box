@@ -93,12 +93,19 @@ retained handle. Raw `qwen-service-config`, `qwen-local-init`, and
 The two-model install request requires `custody`, an exact
 `/sys/fs/cgroup/speech-box-qwen/<32 lowercase hex>` path. The Linux host
 operator must precreate that dedicated cgroup v2 subtree as root:root mode
-`0700` and delegate membership moves and `cgroup.kill` to the worker's fixed
-root UID. Docker
+`0700` and configure `memory.max` no greater than the installation RAM budget,
+`memory.swap.max` as `0`, `pids.max` no greater than the installation PID budget,
+and a finite `cpu.max` no greater than the worker container's CPU quota.
+These limits belong on the dedicated parent: the worker container, resident
+model owner, and each attempt are its children. The host must delegate
+membership moves and `cgroup.kill` to the worker's fixed root UID. Docker
 bind-mounts only that subtree into the networkless worker at
 `/run/attempt-cgroups` and uses it as the worker's cgroup parent. The exact
 bind and parent are checked in container inspection. A host that cannot
-provide this narrow delegation refuses the resident lane. All Docker commands
+provide this narrow delegation and aggregate limits cannot start the resident lane
+before workload launch. The supervisor verifies the live parent identity and
+limits at startup and before each child group creation, then verifies each
+child's cgroup membership before releasing its execution pipe gate. All Docker commands
 require a local rootful Linux amd64 daemon with cgroup v2 and the cgroupfs
 driver, pinned loaded
 images, exact fresh volumes, and sufficient RAM/disk. They do not download

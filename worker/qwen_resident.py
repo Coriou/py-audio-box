@@ -7,6 +7,7 @@ import base64
 import json
 import math
 import hashlib
+import resource
 import select
 import socket
 import sys
@@ -205,8 +206,13 @@ def main():
         os.close(gate)
     control = socket.socket(fileno=int(sys.argv[1]))
     config = receive(control,time.monotonic()+2)
-    if type(config) is not dict or set(config) != {'address','roots'} or type(config['roots']) is not dict:
+    if (type(config) is not dict or set(config) != {'address','roots','pids'} or
+            type(config['roots']) is not dict or type(config['pids']) is not int or config['pids'] < 1):
         raise ValueError('resident_configuration')
+    # Apply under the model owner's own UID before loading a model. The parent
+    # cgroup, not these per-process limits, bounds aggregate memory and CPU.
+    resource.setrlimit(resource.RLIMIT_CORE, (0, 0))
+    resource.setrlimit(resource.RLIMIT_NPROC, (config['pids'], config['pids']))
     def ready(): send(control,dict(ready=True),time.monotonic()+2)
     try: serve(config['address'],config['roots'],control,ready=ready)
     finally: control.close()
