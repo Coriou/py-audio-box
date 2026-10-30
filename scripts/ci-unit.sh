@@ -151,17 +151,22 @@ else
   cp "$canonical_dir/identity.json" "$diagnostics/identity.json"
   budget=$(remaining 300)
   # Verify compressed identity before loading; never pull or rebuild.
-  python3 - "$transfer/image.tar.gz" "$diagnostics/identity.json" <<'VERIFY'
+  python3 - "$transfer/image.tar.gz" "$diagnostics/identity.json" "$diagnostics/archive-verification.json" <<'VERIFY'
 import hashlib, json, os, sys, time
 from pathlib import Path
 p=Path(sys.argv[1]); identity=json.load(open(sys.argv[2])); h=hashlib.sha256()
 assert identity['sha']==os.environ['GITHUB_SHA'] and identity['run']==os.environ['GITHUB_RUN_ID'] and identity['attempt']==os.environ['GITHUB_RUN_ATTEMPT']
-assert p.stat().st_size==identity['archive_bytes']<=1073741824
+actual=p.stat().st_size if p.exists() else None
+expected=identity['archive_bytes']
+Path(sys.argv[3]).write_text(json.dumps(dict(expected_bytes=expected,actual_bytes=actual,stage='pre-load-size-check'))+'\n')
+assert actual==expected<=1073741824, f'archive size mismatch: expected={expected} actual={actual}'
 with p.open('rb') as f:
     for b in iter(lambda:f.read(65536),b''):
         assert time.monotonic() < float(os.environ['WORK_STARTED'])+300
         h.update(b)
-assert h.hexdigest()==identity['archive_sha']
+actual_sha=h.hexdigest()
+assert actual_sha==identity['archive_sha'], f'archive digest mismatch: expected={identity["archive_sha"]} actual={actual_sha}'
+Path(sys.argv[3]).write_text(json.dumps(dict(expected_bytes=expected,actual_bytes=actual,stage='pre-load-digest-verified'))+'\n')
 VERIFY
   budget=$(remaining 300)
   python3 "$helper" retain "$diagnostics" load timeout --signal=TERM --kill-after=5s "${budget}s" bash -c '
