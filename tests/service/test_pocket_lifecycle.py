@@ -334,7 +334,12 @@ class PocketLifecycleTests(unittest.TestCase):
             core=Core(target, _publication_creation=1)
             try:
                 scan=Reconciliation(core,history.roots['staging'])
-                self.assertFalse(scan.reconcile_startup()['blocked'])
+                summary=scan.reconcile_startup()
+                self.assertFalse(summary['blocked'], dict(summary=summary,
+                    suspect_rows=[(row['namespace'],row['name'],row['classification'],row['reason'])
+                        for row in scan.rows.values() if row['classification'] in
+                        ('unknown_foreign','adopted_orphan','missing_hash_mismatched_terminal',
+                         'unresolved_owner_receipt_reservation')][:20]))
                 for identity,row in scan.rows.items():
                     persisted=json.loads(core.db.execute('SELECT record FROM p1_inventory_objects WHERE id=?',(identity,)).fetchone()[0])
                     latest=json.loads(core.db.execute('SELECT record FROM p1_inventory_history WHERE object_id=? ORDER BY seq DESC LIMIT 1',(identity,)).fetchone()[0])

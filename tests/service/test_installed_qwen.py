@@ -2,10 +2,12 @@
 import copy
 from datetime import datetime, timezone, timedelta
 import json
+import os
 import unittest
 from unittest.mock import patch
 from service import install_policy as ip, installed_qwen_daemon as qd
 from service import execution_context as ec
+from worker.engines import pocket
 from worker.engines.qwen_execution import inventory_from_wire, installed_cpu_hardware
 from worker.runtime_protocol import execution
 from tests.service.test_qwen_preparation import CPUPreparationFixture
@@ -98,6 +100,16 @@ class InstalledQwenManagedJourneyTests(CPUPreparationTests):
     def setUp(self):
         super().setUp()
         self.contexts.installed_family=qd.FAMILY
+        # Installed assets belong to UID 10001; this injected Core writes them
+        # as the local test UID. Keep the real bounded, digest-checked read.
+        real_read=pocket._read
+        def injected_asset_read(path,limit,digest=None,*,owner_uid=None):
+            if owner_uid == 10001:
+                self.assertEqual(path.parent,self.b.core.root/'assets')
+                self.assertTrue(digest)
+                owner_uid=os.getuid()
+            return real_read(path,limit,digest,owner_uid=owner_uid)
+        self.enterContext(patch.object(pocket,'_read',side_effect=injected_asset_read))
         self.enterContext(patch.object(qd,'validate_spec',return_value=None))
         self.enterContext(patch('sys.platform','linux'))
         self.enterContext(patch('os.sched_getaffinity',return_value={0,1},create=True))
