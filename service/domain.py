@@ -5,10 +5,33 @@ Fixture reads remain separate from the authenticated borrowed-owner adapter.
 import base64
 import hashlib
 import logging
+from pathlib import Path
 from jsonschema.exceptions import ValidationError
 from contracts.validate import validate, ContractError
 from service.catalogue import (ASSETS, ASSET_FILES, Failure, HTTP_BYTES, IMPLEMENTED,
                                OPERATIONS, capabilities)
+
+_DIAGNOSTIC_SOURCES = frozenset((
+    'service/domain.py', 'service/qwen_local_lane.py',
+    'worker/runtime_protocol.py', 'worker/engines/execution.py',
+))
+
+
+def _refusal_source(exc):
+    """Return only a bounded, repository-owned source label and line."""
+    source, line = 'unknown', 0
+    trace = exc.__traceback__
+    while trace is not None:
+        path = Path(trace.tb_frame.f_code.co_filename)
+        source, line = 'unknown', 0
+        for label in _DIAGNOSTIC_SOURCES:
+            if (path == Path(__file__).parent.parent / label and
+                    type(trace.tb_lineno) is int and 0 < trace.tb_lineno <= 999999):
+                source, line = label, trace.tb_lineno
+                break
+        trace = trace.tb_next
+    # A caller is not the origin when the innermost frame is outside the list.
+    return source, line
 
 
 def read(operation, payload):
@@ -274,9 +297,15 @@ def production_call(dispatcher, principal, operation, payload, key=None):
             'preparation_reference_limit', 'explicit_transcript_required',
             'resident_cpu_execution_required', 'resident_model_identity',
             'reference_identity'))
+        diagnostic_code = (exc.args[0] if type(exc) is KeyError and len(exc.args) == 1 and
+                           type(exc.args[0]) is str else raw_code)
+        reason = diagnostic_code if diagnostic_code in known_refusals else 'unclassified'
+        source, line = _refusal_source(exc)
+        exception_type = ('KeyError' if isinstance(exc, KeyError) else
+                          'NotImplementedError' if isinstance(exc, NotImplementedError) else 'ValueError')
         logging.getLogger(__name__).warning(
-            'production refusal operation=%s reason=%s', operation,
-            raw_code if raw_code in known_refusals else 'unclassified')
+            'production refusal operation=%s reason=%s type=%s source=%s line=%d',
+            operation, reason, exception_type, source, line)
         code = raw_code
         code = {'candidate_missing':'not_found','voice_version_missing':'not_found',
                 'unpublished_candidate':'not_ready','stale_candidate':'missing_media',
