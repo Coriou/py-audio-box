@@ -4,8 +4,10 @@ import copy
 from contextlib import nullcontext, redirect_stdout
 from dataclasses import replace
 import io
+import hashlib
 import json
 import os
+import struct
 from pathlib import Path
 import time
 import unittest
@@ -138,6 +140,37 @@ class CPUPreparationFixture(unittest.TestCase):
 
 
 class CPUPreparationTests(CPUPreparationFixture):
+    def test_owned_riff_chunks_keep_exact_uploaded_size_and_digest(self):
+        from worker.transport import Refused
+        from worker.engines.pocket import _read
+        # A valid mono PCM16 upload may carry an ancillary RIFF chunk.
+        raw=self.b.raw
+        extra=raw[:36]+b'LIST'+struct.pack('<I',5)+b'hello\0'+raw[36:]
+        extra=extra[:4]+struct.pack('<I',len(extra)-8)+extra[8:]
+        asset=ingest_local(self.b.core,'alice',extra)
+        request=dict(self.request,asset_id=asset['id'],out_tick=8)
+        context=self.contexts.resolve_owned(self.b.core,'alice','voice_prepare',request)
+        spec=execution(context)
+        self.assertEqual(spec.reference_bytes,len(extra))
+        self.assertEqual(spec.reference_sha256,asset['sha256'])
+        self.assertEqual(selected_reference(spec,extra),(extra,4))
+        path=self.b.core.root/'assets'/asset['id']
+        self.assertEqual(_read(path,spec.reference_bytes,spec.reference_sha256),extra)
+        with self.assertRaisesRegex(Refused,'file_limit'):
+            _read(path,len(extra)-1,spec.reference_sha256)
+        with self.assertRaisesRegex(Refused,'file_digest'):
+            _read(path,len(extra),'0'*64)
+        malformed=b'BAD!'+extra[4:]
+        with self.assertRaisesRegex(Refused,'reference_format'):
+            selected_reference(replace(spec,reference_sha256=hashlib.sha256(malformed).hexdigest()),malformed)
+        with self.assertRaises(ValueError):
+            ingest_local(self.b.core,'alice',malformed)
+        oversized=raw[:36]+b'JUNK'+struct.pack('<I',1048576)+b'\0'*1048576+raw[36:]
+        oversized=oversized[:4]+struct.pack('<I',len(oversized)-8)+oversized[8:]
+        large_asset=ingest_local(self.b.core,'alice',oversized)
+        with self.assertRaisesRegex(Refused,'file_limit'):
+            self.contexts.resolve_owned(self.b.core,'alice','voice_prepare',dict(request,asset_id=large_asset['id']))
+
     def test_detached_pair_requires_exact_typed_owner_namespace_and_links(self):
         from service.reconciliation import Reconciliation, typed_references
         from service import recovery

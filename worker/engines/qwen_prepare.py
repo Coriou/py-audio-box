@@ -1,4 +1,4 @@
-"""Typed complete-reference clone preparation: whole canonical mono PCM16 only."""
+"""Typed complete-reference clone preparation: whole mono PCM16 RIFF only."""
 from dataclasses import dataclass, fields
 from .qwen_execution import QwenExecution
 from worker.transport import Refused
@@ -14,7 +14,7 @@ class QwenPreparation(QwenExecution):
             raise Refused('typed_preparation_required')
         if self.x_vector_only and (self.device != 'cpu' or self.reference_text is not None):
             raise Refused('cpu_xvector_required')
-        if self.reference_bytes != 44 + 2*self.reference_frames or self.reference_bytes > 1048576:
+        if not 44 + 2*self.reference_frames <= self.reference_bytes <= 1048576:
             raise Refused('preparation_reference_limit')
 
     def generation(self):
@@ -28,14 +28,7 @@ def selected_reference(spec, raw):
     if len(raw) != spec.reference_bytes or hashlib.sha256(raw).hexdigest() != spec.reference_sha256:
         raise Refused('reference_digest')
     _reference_pcm16(raw, spec.reference_rate, spec.reference_frames)
-    # This finite mode preserves the complete canonical WAV, including exact PCM.
-    import io, wave
-    with wave.open(io.BytesIO(raw), 'rb') as source:
-        pcm = source.readframes(spec.reference_frames)
-    out = io.BytesIO()
-    with wave.open(out, 'wb') as target:
-        target.setnchannels(1); target.setsampwidth(2); target.setframerate(spec.reference_rate); target.writeframes(pcm)
-    if out.getvalue() != raw: raise Refused('canonical_reference_required')
+    # Preserve the exact authenticated upload as the prepared reference asset.
     return raw, spec.reference_frames
 
 

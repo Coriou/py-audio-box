@@ -818,7 +818,8 @@ class RuntimeSupervisor:
             from service.execution_context import cpu_clone_context
             plan=context['plan']
             version=plan['voice_versions'][0] if plan['operation']=='speech_generate' else None
-            expected=cpu_clone_context(template,principal,plan['request'],plan['assets'][0],version=version)
+            expected=cpu_clone_context(template,principal,plan['request'],plan['assets'][0],version=version,
+                                       reference_bytes=spec.reference_bytes)
             # Production assigns pair IDs after owner resolution. Corroborate
             # every other plan field, including frozen spoken text and budgets.
             if plan['operation']=='voice_prepare':

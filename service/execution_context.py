@@ -346,7 +346,10 @@ class QwenContexts:
             reference=request['asset_id']
         core.voices._asset(principal,reference)
         asset=core.asset(reference)
-        context=cpu_clone_context(template,principal,request,asset,version=version)
+        from worker.engines.pocket import _read
+        raw=_read(core.root/'assets'/reference,1048576,asset['sha256'],
+                  owner_uid=10001 if self.installed_family is not None else None)
+        context=cpu_clone_context(template,principal,request,asset,version=version,reference_bytes=len(raw))
         spec=execution(context)
         self._hardware(spec,self._inventory)
         references=copy.deepcopy(context['execution']['references'])
@@ -418,7 +421,7 @@ def installed_preset_context(template, principal, voice_id, request=None):
     return context
 
 
-def cpu_clone_context(template, principal, request, asset, *, version=None):
+def cpu_clone_context(template, principal, request, asset, *, version=None, reference_bytes=None):
     """Owner/supervisor shared reconstruction; the template alone owns execution."""
     from contracts import validate as oracle
     from worker.runtime_protocol import resident_managed_qwen_cpu, QWEN_CPU_SECONDS
@@ -439,7 +442,7 @@ def cpu_clone_context(template, principal, request, asset, *, version=None):
     descriptor.pop('phase', None)
     descriptor.update(reference_id=asset['id'], reference_sha256=asset['sha256'],
         reference_frames=asset['frames'], reference_rate=asset['sample_rate'],
-        reference_bytes=44+2*asset['frames'],
+        reference_bytes=44+2*asset['frames'] if reference_bytes is None else reference_bytes,
         timeout_s=min(QWEN_CPU_SECONDS, template['plan']['resolved']['profile']['limits']['deadline_seconds']))
     if descriptor['reference_bytes'] > 1048576 or asset['frames'] > asset['sample_rate']*60:
         raise Refused('preparation_reference_limit')
@@ -603,7 +606,7 @@ class NativeQwenContexts:
         if not contexts: return None
         return dict(engine='qwen', profile=contexts[0]['plan']['resolved']['profile'],
                     operations=(['voice_preset_register'] if self.presets(principal) else []) + (['voice_prepare', 'voice_results', 'voice_save'] if len(self._clone_templates(principal)) == 1 else []) + ['speech_generate', 'job_get', 'job_cancel', 'artifact_get'],
-                    installed=True, next_action=('asset_upload (complete canonical mono PCM16 WAV, at most 1 MiB/60 seconds) → voice_prepare (in_tick=0, out_tick=frames*48000/sample_rate, exact reference_text, separate audition_text) → voice_results → voice_save → speech_generate' if len(self._clone_templates(principal)) == 1 else 'Read configured_presets → voice_preset_register → speech_generate'))
+                    installed=True, next_action=('asset_upload (complete mono PCM16 WAV, at most 1 MiB/60 seconds) → voice_prepare (in_tick=0, out_tick=frames*48000/sample_rate, exact reference_text, separate audition_text) → voice_results → voice_save → speech_generate' if len(self._clone_templates(principal)) == 1 else 'Read configured_presets → voice_preset_register → speech_generate'))
 
     def presets(self, principal):
         result = []
