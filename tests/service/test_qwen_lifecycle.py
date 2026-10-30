@@ -175,21 +175,36 @@ class QwenLifecycleTests(unittest.TestCase):
         self.assertEqual(self.core.jobs('alice')[0]['job']['generation'],0)
 
     def test_supervisor_independent_registration_and_prejournal_verification(self):
+        import threading
+        from worker import runtime_supervisor as module
         self.submit();a=self.store.allocate(self.profiles,'qwen',8)['authority']
-        from worker.runtime_supervisor import RuntimeSupervisor
-        s=RuntimeSupervisor.__new__(RuntimeSupervisor)
+        s=module.RuntimeSupervisor.__new__(module.RuntimeSupervisor)
         s.resident_qwen=False
         s.bundles=a.context['execution']['bundles'];s.references=a.context['execution']['references'];s.inventory=self.inventory
         s.qwen_profiles=self.profiles;s.qwen_contexts={}
         body=dict(snapshot=json.loads(a._snapshot),binding=a.binding,fixture='qwen')
-        with self.assertRaisesRegex(ValueError,'unregistered'):s.operation('prepare',body)
-        s.qwen_contexts={('alice','qwen-cpu','vv0'):a.context['execution']}
-        with patch('worker.engines.qwen.verify_service_inputs',side_effect=Refused('before-journal')) as check:
-            with self.assertRaisesRegex(ValueError,'before-journal'):s.operation('prepare',body)
-            check.assert_called_once()
-        with self.assertRaisesRegex(ValueError,'unregistered'):s.verify_qwen(a.context,self.profiles,'bob')
-        s.inventory=replace(self.inventory,devices=())
-        with self.assertRaisesRegex(ValueError,'unregistered'):s.operation('prepare',body)
+        owned_queue=module.queue.Queue(32)
+        with patch.object(module, '_diagnostic_queue', owned_queue), \
+             patch.object(module, '_diagnostic_started', False), \
+             patch.object(module, '_diagnostic_thread', None), \
+             patch.object(module, '_diagnostic_events', 0):
+            try:
+                with self.assertRaisesRegex(ValueError,'unregistered'):s.operation('prepare',body)
+                s.qwen_contexts={('alice','qwen-cpu','vv0'):a.context['execution']}
+                with patch('worker.engines.qwen.verify_service_inputs',side_effect=Refused('before-journal')) as check:
+                    with self.assertRaisesRegex(ValueError,'before-journal'):s.operation('prepare',body)
+                    check.assert_called_once()
+                with self.assertRaisesRegex(ValueError,'unregistered'):s.verify_qwen(a.context,self.profiles,'bob')
+                s.inventory=replace(self.inventory,devices=())
+                with self.assertRaisesRegex(ValueError,'unregistered'):s.operation('prepare',body)
+            finally:
+                owned_thread=module._diagnostic_thread
+                if owned_thread is not None:
+                    owned_queue.put_nowait(None)
+                    owned_thread.join(1)
+                    self.assertFalse(owned_thread.is_alive())
+        self.assertIsNotNone(owned_thread, 'prepare did not exercise diagnostic emission')
+        self.assertEqual(threading.active_count(), 1, 'prepare test leaked a diagnostic consumer')
 
     def test_blocked_diagnostic_sink_preserves_reservation(self):
         import threading
