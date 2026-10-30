@@ -25,6 +25,51 @@ def test_diagnostic_quota_and_queue_drop_without_sink_access():
         assert pending.lines[1].startswith(b'lifecycle_prepare_phase:1:handling:')
 
 
+def test_consumer_keeps_its_queue_when_global_queue_is_replaced():
+    first_read = threading.Event()
+    second_read = threading.Event()
+    release_write = threading.Event()
+
+    class OwnedQueue(queue.Queue):
+        def __init__(self):
+            super().__init__(32)
+            self.reads = 0
+
+        def get(self, *args, **kwargs):
+            self.reads += 1
+            if self.reads == 2:
+                second_read.set()
+            return super().get(*args, **kwargs)
+
+    old_queue = OwnedQueue()
+    replacement = queue.Queue(32)
+    old_queue.put_nowait(b'first line')
+
+    def blocked_write(fd, line):
+        first_read.set()
+        assert release_write.wait(1)
+        return len(line)
+
+    with patch.object(module.os, 'write', side_effect=blocked_write), \
+         patch.object(module, '_diagnostic_queue', old_queue):
+        consumer = threading.Thread(target=module._diagnostic_consumer,
+                                    args=(old_queue,), daemon=True)
+        consumer.start()
+        try:
+            assert first_read.wait(1)
+            module._diagnostic_queue = replacement
+            release_write.set()
+            assert second_read.wait(1)
+            replacement.put_nowait(None)
+            assert replacement.get_nowait() is None
+            assert consumer.is_alive()
+        finally:
+            release_write.set()
+            old_queue.put_nowait(None)
+            consumer.join(1)
+        assert not consumer.is_alive()
+
+
 def test_prepare_client_queue_wait_and_response_markers():
     class Connection:
         def close(self): pass

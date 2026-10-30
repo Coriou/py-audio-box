@@ -24,14 +24,17 @@ _early_diagnostic_next = 0.0
 _diagnostic_queue = queue.Queue(32)
 _diagnostic_lock = threading.Lock()
 _diagnostic_started = False
+_diagnostic_thread = None
 _diagnostic_events = 0
 _diagnostic_limit = 256  # Per process lifetime; at most 32 pending fixed-size lines.
 _request_sequences = itertools.count(1)
 
 
-def _diagnostic_consumer():
+def _diagnostic_consumer(owned_queue):
     while True:
-        line = _diagnostic_queue.get()
+        line = owned_queue.get()
+        if line is None:
+            return
         try:
             os.write(2, line)
         except OSError:
@@ -54,7 +57,7 @@ def _early_failure(phase, started):
 
 def _prepare_phase(phase, started, sequence=0):
     # Fixed vocabulary, no request data. Full queue/quota/contended lock drops.
-    global _diagnostic_started, _diagnostic_events
+    global _diagnostic_started, _diagnostic_thread, _diagnostic_events
     try:
         elapsed = min(999999, max(0, int((time.monotonic() - started) * 1000)))
         line = f'lifecycle_prepare_phase:{sequence}:{phase}:{elapsed}ms\n'.encode()
@@ -64,7 +67,9 @@ def _prepare_phase(phase, started, sequence=0):
             if _diagnostic_events >= _diagnostic_limit or _diagnostic_queue.full():
                 return
             if not _diagnostic_started:
-                threading.Thread(target=_diagnostic_consumer, daemon=True).start()
+                _diagnostic_thread = threading.Thread(target=_diagnostic_consumer,
+                                                      args=(_diagnostic_queue,), daemon=True)
+                _diagnostic_thread.start()
                 _diagnostic_started = True
             _diagnostic_queue.put_nowait(line)
             _diagnostic_events += 1

@@ -221,7 +221,14 @@ class QwenLifecycleTests(unittest.TestCase):
                 worker_result.append((sequence,value))
                 answer.put(dict(ok=True,value=value))
             finally:completed.set()
-        with patch.object(module.os, 'write', side_effect=blocked_write), \
+        # Keep this consumer and its queue owned by the test, even if another
+        # consumer from an earlier test is still finishing a write.
+        owned_queue=module.queue.Queue(32)
+        with patch.object(module, '_diagnostic_queue', owned_queue), \
+             patch.object(module, '_diagnostic_started', False), \
+             patch.object(module, '_diagnostic_thread', None), \
+             patch.object(module, '_diagnostic_events', 0), \
+             patch.object(module.os, 'write', side_effect=blocked_write), \
              patch.object(module, 'authenticate'),patch.object(module,'receive',return_value=request), \
              patch.object(module,'send',side_effect=lambda connection,value,cutoff:sent.append(value)), \
              patch.object(s, 'verify_qwen'):
@@ -248,6 +255,11 @@ class QwenLifecycleTests(unittest.TestCase):
                 if 'initial' in locals():initial.join(1)
                 if 'worker' in locals():worker.join(1)
                 if 'client' in locals():client.join(1)
+                owned_thread=module._diagnostic_thread
+                if owned_thread is not None:
+                    owned_queue.put_nowait(None)
+                    owned_thread.join(1)
+                    self.assertFalse(owned_thread.is_alive())
 
     def test_cancel_pending_retains_capacity_and_nonempty_namespace(self):
         a,p,stage=self.proposal();namespace=stage/'conditioning';(namespace/'opaque').write_bytes(b'retained')
