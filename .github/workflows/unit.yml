@@ -77,11 +77,37 @@ jobs:
         with:
           name: pab-unit-${{ github.run_id }}-${{ github.run_attempt }}-${{ steps.clock.outputs.sha12 }}-prepare
           path: ${{ runner.temp }}/input/prepare/
+      - name: Record image transfer start before tests
+        shell: bash
+        run: |
+          mkdir -p "$RUNNER_TEMP/shard"
+          python3 - <<'PYTHON'
+          import json, os
+          from pathlib import Path
+          Path(os.environ['RUNNER_TEMP'], 'shard', 'transport-stage.json').write_text(json.dumps({
+              'sha': os.environ['GITHUB_SHA'], 'run': os.environ['GITHUB_RUN_ID'],
+              'attempt': os.environ['GITHUB_RUN_ATTEMPT'], 'shard': '${{ matrix.shard }}',
+              'stage': 'image-download-started',
+          }) + '\n')
+          PYTHON
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        id: image
         timeout-minutes: 2
         with:
           name: pab-unit-${{ github.run_id }}-${{ github.run_attempt }}-${{ steps.clock.outputs.sha12 }}-image
           path: ${{ runner.temp }}/image/
+      - name: Record image transfer failure before tests
+        if: failure() && steps.image.outcome == 'failure'
+        shell: bash
+        run: |
+          python3 - <<'PYTHON'
+          import json, os
+          from pathlib import Path
+          p = Path(os.environ['RUNNER_TEMP'], 'shard', 'transport-stage.json')
+          data = json.loads(p.read_text())
+          data['stage'] = 'image-download-failed-before-tests'
+          p.write_text(json.dumps(data) + '\n')
+          PYTHON
       - name: Verify and load exact image, fully collect, then execute assigned nodes
         shell: bash
         run: bash scripts/ci-unit.sh shard "$RUNNER_TEMP/shard" "$RUNNER_TEMP/image" '${{ matrix.shard }}' "$RUNNER_TEMP/input/prepare"

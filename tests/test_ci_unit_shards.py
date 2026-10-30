@@ -415,6 +415,26 @@ def synthetic_aggregate(root):
     return identity
 
 
+def test_pretest_transport_marker_does_not_certify_shard(tmp_path):
+    workflow = (Path(ci.__file__).resolve().parents[1] / '.github/workflows/unit.yml').read_text()
+    shard_job = workflow.split('  unit-shard:', 1)[1].split('  unit:', 1)[0]
+    assert shard_job.index('Record image transfer start before tests') < shard_job.index('id: image')
+    assert shard_job.index("steps.image.outcome == 'failure'") < shard_job.index('Verify and load exact image')
+    assert 'if: always()' in shard_job and 'path: ${{ runner.temp }}/shard/' in shard_job
+
+    identity = synthetic_aggregate(tmp_path)
+    shard = tmp_path / 'shard-11'
+    marker = shard / 'transport-stage.json'
+    marker.write_text('{"stage":"image-download-started"}\n')
+    assert ci.aggregate(tmp_path, identity, dict(prepare='success', shards='success'))['ok']
+    for path in shard.iterdir():
+        if path != marker:
+            path.unlink()
+    with pytest.raises(ci.AggregationError) as error:
+        ci.aggregate(tmp_path, identity, dict(prepare='success', shards='failure'))
+    assert any('11:' in issue for issue in error.value.summary['errors'])
+
+
 @pytest.mark.parametrize('fault', ['none','count','identity','missing11','extra','assignment','hash','dependency','duplicate'])
 def test_eleven_aggregate_complete_and_fail_closed(tmp_path, fault):
     identity=synthetic_aggregate(tmp_path)
