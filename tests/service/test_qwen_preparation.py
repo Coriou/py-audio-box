@@ -170,6 +170,30 @@ class CPUPreparationTests(CPUPreparationFixture):
         large_asset=ingest_local(self.b.core,'alice',oversized)
         with self.assertRaisesRegex(Refused,'file_limit'):
             self.contexts.resolve_owned(self.b.core,'alice','voice_prepare',dict(request,asset_id=large_asset['id']))
+        self.request=request
+        self.submit()
+        authority=self.b.store.allocate(self.profiles,'qwen',1800)['authority']
+        stage=self.b.stage/authority.job['attempts'][-1]['staging_id']
+        stage.mkdir(mode=0o770)
+        (stage/'reference.wav').write_bytes(selected_reference(spec,extra)[0])
+        (stage/'audition.wav').write_bytes(raw)
+        self.assertEqual((stage/'reference.wav').read_bytes(),extra)
+        self.b.admission.check()
+        self.b.admission.check(publication=True)
+        (stage/'reference.wav').write_bytes(extra+b'\0')
+        with self.assertRaisesRegex(ValueError,'resource_output_bytes'):
+            self.b.admission.check()
+
+    def test_prepare_audition_byte_cap_remains_enforced(self):
+        self.submit()
+        authority=self.b.store.allocate(self.profiles,'qwen',1800)['authority']
+        spec=execution(authority.context)
+        stage=self.b.stage/authority.job['attempts'][-1]['staging_id']
+        stage.mkdir(mode=0o770)
+        (stage/'reference.wav').write_bytes(self.b.raw)
+        (stage/'audition.wav').write_bytes(b'\0'*(spec.max_output_bytes+1))
+        with self.assertRaisesRegex(ValueError,'resource_output_bytes'):
+            self.b.admission.check()
 
     def test_detached_pair_requires_exact_typed_owner_namespace_and_links(self):
         from service.reconciliation import Reconciliation, typed_references

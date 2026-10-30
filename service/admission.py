@@ -158,7 +158,8 @@ class Admission:
                 files=[('output.wav',max_bytes,max_frames,rate)]
                 if spec is not None and context['plan'].get('reference_roles'):
                     frames=spec.reference_frames if spec.engine=='qwen' else (spec.out_tick-spec.in_tick)*spec.reference_rate//48000
-                    files=[('reference.wav',44+2*frames,frames,spec.reference_rate),('audition.wav',max_bytes,max_frames,rate)]
+                    reference_limit=spec.reference_bytes if spec.engine=='qwen' else 44+2*frames
+                    files=[('reference.wav',reference_limit,frames,spec.reference_rate),('audition.wav',max_bytes,max_frames,rate)]
                 for name,byte_limit,frame_limit,expected_rate in files:
                     output=stage/name
                     if output.exists() and output.stat().st_size>byte_limit:raise ValueError('resource_output_bytes')
