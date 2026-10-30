@@ -77,6 +77,74 @@ def running(d,r,key='a'):
     return job
 
 
+@pytest.mark.parametrize('stop_obligation',[False,True])
+def test_unknown_prepare_retains_custody_without_busy_poll(tmp_path, monkeypatch, capsys, stop_obligation):
+    stage=tmp_path/'stage';stage.mkdir()
+    class FailedPrepare(Runtime):
+        def prepare(self, authority, fixture):
+            self.prepares+=1
+            raise RuntimeError('private-media-token')
+    runtime=FailedPrepare(stage)
+    d=Dispatcher(tmp_path/'core',staging=stage,runtime=runtime)
+    try:
+        ready(d)
+        monkeypatch.setattr(d,'_qwen_state_poll',lambda:True)
+        job=d.call('submit','p','failed-prepare')
+        wait(d,lambda:d.call('status')['phase']=='unknown')
+        deadline=d.call('job',job['id'])['deadline']
+        d.stop_obligation=stop_obligation
+        count=0
+        original=d.store.current
+        def counted():
+            nonlocal count
+            count+=1
+            return original()
+        monkeypatch.setattr(d.store,'current',counted)
+        start=time.monotonic()
+        for _ in range(5):
+            current=d.call('job',job['id'])
+            assert current['state']=='running' and current['deadline']==deadline
+            assert d.call('status')['quarantined']
+        assert time.monotonic()-start<.5
+        time.sleep(.08)
+        assert count<8
+        status=d.call('status')
+        assert status['phase']=='unknown' and status['runtime_id'] is None
+        assert status['reservations'][0]['state']=='executing'
+        assert status['stop_obligation'] is stop_obligation
+        assert runtime.prepares==1 and runtime.starts==0
+        trace=capsys.readouterr().err
+        assert 'qwen_dispatch_refused:' in trace
+        assert 'private-media-token' not in trace
+    finally:
+        d.close()
+
+
+def test_qwen_diagnostic_write_failure_cannot_skip_unknown_quarantine(tmp_path, monkeypatch):
+    from service import dispatcher as module
+    stage=tmp_path/'stage';stage.mkdir()
+    class FailedPrepare(Runtime):
+        def prepare(self, authority, fixture):
+            raise RuntimeError('prepare_failed')
+    runtime=FailedPrepare(stage)
+    d=Dispatcher(tmp_path/'core',staging=stage,runtime=runtime)
+    try:
+        ready(d)
+        monkeypatch.setattr(d,'_qwen_state_poll',lambda:True)
+        def failed_print(*args,**kwargs):
+            raise OSError('diagnostic_sink_failed')
+        monkeypatch.setattr(module,'print',failed_print,raising=False)
+        job=d.call('submit','p','diagnostic-failure')
+        wait(d,lambda:d.call('status')['phase']=='unknown')
+        status=d.call('status')
+        assert status['quarantined'] and status['runtime_id'] is None
+        assert status['reservations'][0]['state']=='executing'
+        assert d.call('job',job['id'])['state']=='running'
+        assert runtime.starts==0
+    finally:
+        d.close()
+
+
 def test_serialized_responsive_cancel_unknown_and_retry(pair):
     d,r=pair;job=running(d,r)
     t=time.monotonic();assert d.call('job',job['id'])['state']=='running'

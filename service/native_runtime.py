@@ -355,6 +355,21 @@ class NativeRuntime:
         return observed
 
     def prepare(self, authority, fixture='qwen', detached=b''):
+        try:
+            return self._prepare(authority, fixture, detached)
+        except Exception as exc:
+            # Preparation can fail before a runtime ID exists. Keep the original
+            # exception and custody state; emit only bounded source identifiers.
+            try:
+                import sys
+                from service.entrypoint import _startup_diagnostic
+                diagnostic = _startup_diagnostic(exc)
+                print('native_prepare_failure:' + json.dumps(diagnostic, sort_keys=True), file=sys.stderr)
+            except Exception:
+                pass  # Diagnostic I/O cannot replace the primary failure.
+            raise
+
+    def _prepare(self, authority, fixture, detached):
         if fixture!=self.fixture: raise Refused('native_fixture')
         spec=self.protocol.native_execution(authority.context)
         config=self.protocol.native_binding(authority.context)

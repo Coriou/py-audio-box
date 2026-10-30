@@ -1,7 +1,9 @@
 """Tiny SOURCE fixtures: actual codecs/handlers, fake TLS and owned handles."""
 from contextlib import contextmanager
 import copy
+import contextlib
 import hashlib
+import io
 import json
 import os
 from pathlib import Path
@@ -95,6 +97,23 @@ class NativeFixture:
         with patch('worker.native_child.parent_exchange',side_effect=self.exchange):
             self.runtime.start(rid);self.finish()
         return rid
+
+
+class NativePrepareDiagnosticTests(unittest.TestCase):
+    def test_prepare_failure_reports_bounded_source_and_preserves_exception(self):
+        runtime=object.__new__(NativeRuntime)
+        output=io.StringIO()
+        with contextlib.redirect_stderr(output):
+            with self.assertRaises(Refused) as raised:
+                runtime.prepare(None,fixture='private payload and path /secret/media.wav')
+        self.assertEqual(str(raised.exception),'native_fixture')
+        line=output.getvalue().strip()
+        self.assertTrue(line.startswith('native_prepare_failure:'))
+        report=json.loads(line.partition(':')[2])
+        self.assertEqual(report['chain'][0]['type'],'Refused')
+        self.assertEqual(report['chain'][0]['file'],'native_runtime.py')
+        self.assertNotIn('private payload',line)
+        self.assertNotIn('/secret/',line)
 
 
 class NativeRuntimeTests(unittest.TestCase):

@@ -560,6 +560,21 @@ class Dispatcher:
         seen.add(key)
         print('native_cpu_dispatch:'+key,file=sys.stderr)
 
+    def _qwen_refusal_trace(self,row,op,error):
+        """Best effort source-only trace; never replace an owned refusal."""
+        try:
+            if not self._qwen_state_poll():return
+            import sys
+            from service.entrypoint import _startup_diagnostic
+            event=dict(op=op,phase=row['phase'],error=_startup_diagnostic(error))
+            seen=getattr(self,'_qwen_refusals',set())
+            key=json.dumps(event,sort_keys=True,separators=(',',':'))
+            if key in seen or len(seen)>=8:return
+            print('qwen_dispatch_refused:'+key,file=sys.stderr)
+            seen.add(key);self._qwen_refusals=seen
+        except BaseException:
+            pass
+
     def _launch(self,row,op,fn):
         command=None if op=='poll' else self.store.command(row,'observe' if op=='confirm' else op)
         self.fault('before_'+op)
@@ -598,6 +613,11 @@ class Dispatcher:
         if getattr(self.core,'_publication_storage_failed',False):
             self.persistence_fault=self.quarantined=True
             return  # Exact reap preceded publication; storage needs reopen, no live retry.
+        # An unbound unknown allocation has no runtime to observe or stop. Keep
+        # the control queue responsive without rechecking its durable row at 50 Hz.
+        if (getattr(self,'_unbound_unknown',False) and self.quarantined and
+                not self.pending and
+                time.monotonic()<self.next_poll):return
         self._resource_check()
         if self.pending:
             future,row,op,command=self.pending
@@ -611,10 +631,12 @@ class Dispatcher:
                     value=self.runtime.finalize_collect(value)
             except Exception as exc:
                 self._native_cpu_trace('refused',row,op,exc)
+                self._qwen_refusal_trace(row,op,exc)
                 if op=='poll':command=self.store.command(row,'observe')
                 self.store.complete(command,False)
                 if op=='ack':self.next_poll=time.monotonic()+.2;return
                 self.store.update(row,phase='unknown');self.quarantined=True
+                if row['runtime'] is None:self._unbound_unknown=True
                 self.reconciled=True;self.next_poll=time.monotonic()+.2;return
             self._native_cpu_trace('completed',row,op)
             self.fault('after_'+op)
@@ -671,7 +693,9 @@ class Dispatcher:
                 # Only a new live allocation reaches prepare. Startup never replays intent.
                 self.store.update(row,phase='unknown');self.quarantined=True;self.reconciled=True
             if row['runtime'] is None:
-                self.quarantined=True;self.reconciled=True;return
+                self.quarantined=True;self.reconciled=True
+                self._unbound_unknown=True;self.next_poll=time.monotonic()+.2
+                return
             op='poll' if self._qwen_state_poll() and row['phase']=='observing' and not self.quarantined else 'observe'
             self._launch(row,op,lambda:self.runtime.observe(row['runtime'],1.5));return
         if self.closing:
