@@ -11,27 +11,142 @@ from contracts.validate import validate, ContractError
 from service.catalogue import (ASSETS, ASSET_FILES, Failure, HTTP_BYTES, IMPLEMENTED,
                                OPERATIONS, capabilities)
 
-_DIAGNOSTIC_SOURCES = frozenset((
-    'service/domain.py', 'service/qwen_local_lane.py',
-    'worker/runtime_protocol.py', 'worker/engines/execution.py',
-))
+_DIAGNOSTIC_SOURCES = (
+    'lib/spoken_text.py',
+    'contracts/__init__.py',
+    'contracts/generate.py',
+    'contracts/media.py',
+    'contracts/scenarios.py',
+    'contracts/validate.py',
+    'service/__init__.py',
+    'service/admission.py',
+    'service/api.py',
+    'service/audio_export.py',
+    'service/auth.py',
+    'service/catalogue.py',
+    'service/core.py',
+    'service/cpu_setup.py',
+    'service/daemon_client.py',
+    'service/daemon_helper.py',
+    'service/daemon_runtime.py',
+    'service/daemon_volumes.py',
+    'service/dispatch_store.py',
+    'service/dispatcher.py',
+    'service/domain.py',
+    'service/entrypoint.py',
+    'service/execution_context.py',
+    'service/host_install.py',
+    'service/ingest.py',
+    'service/install_child.py',
+    'service/install_policy.py',
+    'service/installed_export.py',
+    'service/installed_pocket_daemon.py',
+    'service/installed_qwen_daemon.py',
+    'service/job_control.py',
+    'service/lifecycle_cli.py',
+    'service/native_activation.py',
+    'service/native_cpu_activation.py',
+    'service/native_cpu_bootstrap.py',
+    'service/native_cpu_capacity.py',
+    'service/native_cpu_configuration.py',
+    'service/native_cpu_context.py',
+    'service/native_cpu_install.py',
+    'service/native_cpu_measurement.py',
+    'service/native_cpu_package.py',
+    'service/native_cpu_runtime.py',
+    'service/native_cpu_selftest.py',
+    'service/native_cpu_setup.py',
+    'service/native_launch.py',
+    'service/native_package.py',
+    'service/native_renewal.py',
+    'service/native_runtime.py',
+    'service/owner_store.py',
+    'service/package_install.py',
+    'service/persistence.py',
+    'service/persistent_init.py',
+    'service/pocket_install.py',
+    'service/production.py',
+    'service/production_selection.py',
+    'service/profiles.py',
+    'service/provisioning.py',
+    'service/publication_format.py',
+    'service/qwen_local_config.py',
+    'service/qwen_local_lane.py',
+    'service/qwen_service_config.py',
+    'service/qwen_service_setup.py',
+    'service/qwen_snapshot.py',
+    'service/reconciliation.py',
+    'service/recovery.py',
+    'service/resource_store.py',
+    'service/runtime_adapter.py',
+    'service/shared_model_client.py',
+    'service/shared_model_helper.py',
+    'service/shared_models.py',
+    'service/supervisor_runtime.py',
+    'service/voice_store.py',
+    'service/worker_supervisor.py',
+    'service/worker_transport.py',
+    'worker/__init__.py',
+    'worker/audio_export.py',
+    'worker/boundary.py',
+    'worker/engines/__init__.py',
+    'worker/engines/execution.py',
+    'worker/engines/kokoro.py',
+    'worker/engines/native_kokoro.py',
+    'worker/engines/pocket.py',
+    'worker/engines/pocket_execution.py',
+    'worker/engines/pocket_prepare.py',
+    'worker/engines/qwen.py',
+    'worker/engines/qwen_execution.py',
+    'worker/engines/qwen_prepare.py',
+    'worker/hardware.py',
+    'worker/isolated_synthetic.py',
+    'worker/lifecycle.py',
+    'worker/managed_reference.py',
+    'worker/native_availability.py',
+    'worker/native_budgets.py',
+    'worker/native_child.py',
+    'worker/native_cpu_availability.py',
+    'worker/native_cpu_child.py',
+    'worker/native_cpu_protocol.py',
+    'worker/native_cpu_qualification.py',
+    'worker/native_cpu_resources.py',
+    'worker/native_cpu_supervisor.py',
+    'worker/native_family.py',
+    'worker/native_memory.py',
+    'worker/native_protocol.py',
+    'worker/native_supervisor.py',
+    'worker/qwen_resident.py',
+    'worker/runtime_child.py',
+    'worker/runtime_conditioning.py',
+    'worker/runtime_journal.py',
+    'worker/runtime_protocol.py',
+    'worker/runtime_supervisor.py',
+    'worker/supervised_synthetic.py',
+    'worker/synthetic.py',
+    'worker/transport.py',
+)
+_DIAGNOSTIC_PATHS = {str(Path(__file__).parent.parent / label): label
+                     for label in _DIAGNOSTIC_SOURCES}
 
 
 def _refusal_source(exc):
-    """Return only a bounded, repository-owned source label and line."""
-    source, line = 'unknown', 0
+    """Return bounded origin, distinct repository caller, and trusted call chain."""
+    frames = []
     trace = exc.__traceback__
     while trace is not None:
-        path = Path(trace.tb_frame.f_code.co_filename)
-        source, line = 'unknown', 0
-        for label in _DIAGNOSTIC_SOURCES:
-            if (path == Path(__file__).parent.parent / label and
-                    type(trace.tb_lineno) is int and 0 < trace.tb_lineno <= 999999):
-                source, line = label, trace.tb_lineno
-                break
+        label = _DIAGNOSTIC_PATHS.get(trace.tb_frame.f_code.co_filename)
+        line = trace.tb_lineno
+        frames.append((label, line if type(line) is int and 0 < line <= 999999 else 0))
         trace = trace.tb_next
-    # A caller is not the origin when the innermost frame is outside the list.
-    return source, line
+    origin = frames[-1] if frames else (None, 0)
+    caller = next(((label, line) for label, line in reversed(frames[:-1]) if label),
+                  (None, 0))
+    # Keep the final repository path, including domain and dispatcher when present.
+    trusted = [f'{label}:{line}' for label, line in frames if label]
+    chain = trusted if len(trusted) <= 16 else trusted[:2] + trusted[-14:]
+    return ((origin[0] or 'unknown'), origin[1] if origin[0] else 0,
+            (caller[0] or 'unknown'), caller[1], ','.join(chain) or 'unknown')
 
 
 def read(operation, payload):
@@ -300,12 +415,13 @@ def production_call(dispatcher, principal, operation, payload, key=None):
         diagnostic_code = (exc.args[0] if type(exc) is KeyError and len(exc.args) == 1 and
                            type(exc.args[0]) is str else raw_code)
         reason = diagnostic_code if diagnostic_code in known_refusals else 'unclassified'
-        source, line = _refusal_source(exc)
-        exception_type = ('KeyError' if isinstance(exc, KeyError) else
+        source, line, caller, caller_line, chain = _refusal_source(exc)
+        exception_type = ('ContractError' if type(exc) is ContractError else
+                          'KeyError' if isinstance(exc, KeyError) else
                           'NotImplementedError' if isinstance(exc, NotImplementedError) else 'ValueError')
         logging.getLogger(__name__).warning(
-            'production refusal operation=%s reason=%s type=%s source=%s line=%d',
-            operation, reason, exception_type, source, line)
+            'production refusal operation=%s reason=%s type=%s source=%s line=%d caller=%s caller_line=%d chain=%s',
+            operation, reason, exception_type, source, line, caller, caller_line, chain)
         code = raw_code
         code = {'candidate_missing':'not_found','voice_version_missing':'not_found',
                 'unpublished_candidate':'not_ready','stale_candidate':'missing_media',
