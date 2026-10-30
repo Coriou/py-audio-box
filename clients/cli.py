@@ -168,15 +168,19 @@ def main(argv=None):
     except ValidationError:
         from service.catalogue import problem
         print(compact(problem('invalid_request', 'Request does not match canonical schema.', 'request'))); return 2
+    except ValueError as exc:
+        from clients.workflow import WaitBudgetError
+        if isinstance(exc, WaitBudgetError):
+            from service.catalogue import problem
+            print(compact(problem('invalid_request', 'Wait time budget must be between 0 and 600 seconds.',
+                                  'wait_seconds', 'Choose --wait-seconds from 0 through 600 before starting the workflow.'))); return 2
+        from service.catalogue import problem
+        print(compact(problem('invalid_request', 'Invalid request or local media transfer; check arguments and paths.', 'output'))); return 2
     except ConnectionError:
         print(compact({'transport_error':'Speech HTTP transport unavailable.'})); return 3
     except OSError as exc:
         if network_os_error(exc):
             print(compact({'transport_error':'Speech HTTP transport unavailable.'})); return 3
-        from service.catalogue import problem
-        print(compact(problem('invalid_request', 'Invalid request or local media transfer; check arguments and paths.', 'output'))); return 2
-    except ValueError:
-        # No local paths, payloads, URLs or tracebacks in model-facing errors.
         from service.catalogue import problem
         print(compact(problem('invalid_request', 'Invalid request or local media transfer; check arguments and paths.', 'output'))); return 2
 

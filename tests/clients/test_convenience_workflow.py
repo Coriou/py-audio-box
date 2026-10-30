@@ -206,6 +206,19 @@ class WorkflowHTTPTests(unittest.TestCase):
         self.assertIn('speech_speak',names)
         self.assertFalse(names['speech_speak'].inputSchema['additionalProperties'])
 
+    def test_cli_oversized_wait_budget_is_identified_before_http(self):
+        with patch.dict('os.environ', {'SPEECH_URL':'http://test', 'SPEECH_CREDENTIAL':'writer'}):
+            output = io.StringIO()
+            with contextlib.redirect_stdout(output):
+                code = main(['enroll', '--name','bruce', '--asset-id','impulse',
+                             '--reference-text','Exact reference.', '--audition-text','Audition!',
+                             '--wait-seconds','601'])
+        body = json.loads(output.getvalue())
+        self.assertEqual(code, 2)
+        self.assertEqual((body['code'], body['field']), ('invalid_request', 'wait_seconds'))
+        self.assertIn('--wait-seconds', body['action'])
+        self.assertEqual(self.calls, [])
+
     def test_wrong_resumed_job_is_rejected_before_results_or_output(self):
         enrolled = enroll(self.http,name='bruce',asset_id='impulse',
             reference_text='Exact reference.',audition_text='Audition!',seconds=5)

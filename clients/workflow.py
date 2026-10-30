@@ -12,6 +12,10 @@ import wave
 from service.catalogue import Failure
 
 
+class WaitBudgetError(ValueError):
+    """Invalid local workflow deadline, before any service mutation."""
+
+
 def key(phase, value):
     raw = json.dumps(value, sort_keys=True, separators=(',', ':'), ensure_ascii=False).encode()
     return 'workflow-' + phase + '-' + hashlib.sha256(raw).hexdigest()
@@ -48,7 +52,7 @@ class _PublishedAfterDeadline(TimeoutError):
 
 def _budget(http, seconds):
     if type(seconds) not in (int, float) or not 0 <= seconds <= 600:
-        raise ValueError('wait_seconds must be between 0 and 600')
+        raise WaitBudgetError('wait_seconds must be between 0 and 600')
     deadline = time.monotonic() + seconds
     return http.with_deadline(deadline), deadline
 

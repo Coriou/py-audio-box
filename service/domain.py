@@ -4,6 +4,7 @@ Fixture reads remain separate from the authenticated borrowed-owner adapter.
 """
 import base64
 import hashlib
+import logging
 from jsonschema.exceptions import ValidationError
 from contracts.validate import validate, ContractError
 from service.catalogue import (ASSETS, ASSET_FILES, Failure, HTTP_BYTES, IMPLEMENTED,
@@ -244,7 +245,39 @@ def production_call(dispatcher, principal, operation, payload, key=None):
     except ValidationError:
         raise Failure('invalid_request', 'Production contract unavailable.', 'request') from None
     except (ValueError, KeyError, NotImplementedError) as exc:
-        code = str(exc)
+        raw_code = str(exc)
+        # Log only exact, declared refusal tokens. Exception text can contain
+        # media, paths or credentials and must never reach diagnostics.
+        known_refusals = frozenset(op['errors']) | frozenset((
+            'candidate_missing', 'voice_version_missing', 'unpublished_candidate',
+            'stale_candidate', 'foreign_media', 'asset_metadata_mismatch',
+            'invalid_trim', 'invalid_range', 'invalid_text_rendering',
+            'speech_text_mismatch', 'speech_text_language_mismatch', 'profile_limit',
+            'settings_mismatch', 'unsupported_parameter', 'resource_input_limit',
+            'resource_plan_limit', 'plan_limit', 'queue_full', 'disk_quota',
+            'disk_free_reserve', 'resource_runtime_unsupported',
+            # Exact refusals from Qwen resolve_owned, local input verification,
+            # and admission. These remain internal diagnostic tokens only.
+            'hardware_identity', 'execution_reference_mismatch',
+            'owned_mapping_required', 'saved_version_required',
+            'qwen_execution_required', 'explicit_installed_family_required',
+            'owned_bundle_required', 'sealed_bundle_required',
+            'bundle_identity', 'bundle_digest', 'bundle_changed',
+            'unauthorized_bundle', 'unauthorized_reference',
+            'reference_digest', 'reference_size', 'reference_format',
+            'canonical_reference_required', 'cpu_clone_required',
+            'cpu_xvector_required', 'typed_preparation_required',
+            'execution_identity', 'execution_device', 'device_topology',
+            'device_unavailable', 'stale_or_unavailable_device',
+            'closed_hardware_required', 'hardware_required',
+            'installed_cpu_topology', 'installed_cpu_execution_required',
+            'preparation_reference_limit', 'explicit_transcript_required',
+            'resident_cpu_execution_required', 'resident_model_identity',
+            'reference_identity'))
+        logging.getLogger(__name__).warning(
+            'production refusal operation=%s reason=%s', operation,
+            raw_code if raw_code in known_refusals else 'unclassified')
+        code = raw_code
         code = {'candidate_missing':'not_found','voice_version_missing':'not_found',
                 'unpublished_candidate':'not_ready','stale_candidate':'missing_media',
                 'foreign_media':'missing_media','asset_metadata_mismatch':'missing_media',
