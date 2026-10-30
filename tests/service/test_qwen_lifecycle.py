@@ -191,6 +191,64 @@ class QwenLifecycleTests(unittest.TestCase):
         s.inventory=replace(self.inventory,devices=())
         with self.assertRaisesRegex(ValueError,'unregistered'):s.operation('prepare',body)
 
+    def test_blocked_diagnostic_sink_preserves_reservation(self):
+        import threading
+        from worker import runtime_supervisor as module
+        self.submit();a=self.store.allocate(self.profiles,'qwen',8)['authority']
+        s=module.RuntimeSupervisor.__new__(module.RuntimeSupervisor)
+        s.resident_qwen=False
+        s.bundles=a.context['execution']['bundles'];s.references=a.context['execution']['references'];s.inventory=self.inventory
+        s.qwen_profiles=self.profiles;s.qwen_contexts={('alice','qwen-cpu','vv0'):a.context['execution']}
+        s.failed=False;s.active=None;s.boot='synthetic';s.cutoffs={};s.tree_lock=threading.Lock()
+        s.journal=SimpleNamespace(value={'lane':'synthetic','records':[]})
+        s.persist=lambda value:setattr(s.journal,'value',value)
+        body=dict(snapshot=json.loads(a._snapshot),binding=a.binding,fixture='qwen')
+        entered=threading.Event();release=threading.Event()
+        completed=threading.Event();sent=[];worker_result=[]
+        s.secret='00'*32;s.commands=module.queue.Queue(1)
+        s.slots=SimpleNamespace(release=lambda:None)
+        class Connection:
+            def close(self):pass
+        request=dict(version=module.request.__globals__['VERSION'],op='prepare',body=body)
+        def blocked_write(fd, line):
+            entered.set()
+            release.wait(5)
+            return len(line)
+        def run_worker():
+            op, payload, answer, origin, sequence=s.commands.get(timeout=1)
+            try:
+                value=s.operation(op,payload,_request_entered=origin,_request_sequence=sequence)
+                worker_result.append((sequence,value))
+                answer.put(dict(ok=True,value=value))
+            finally:completed.set()
+        with patch.object(module.os, 'write', side_effect=blocked_write), \
+             patch.object(module, 'authenticate'),patch.object(module,'receive',return_value=request), \
+             patch.object(module,'send',side_effect=lambda connection,value,cutoff:sent.append(value)), \
+             patch.object(s, 'verify_qwen'):
+            try:
+                initial=threading.Thread(target=module._prepare_phase,args=('enqueue_intent',time.monotonic(),1),daemon=True)
+                initial.start()
+                self.assertTrue(entered.wait(1))
+                initial.join(.2)
+                self.assertFalse(initial.is_alive(), 'emitter waited for diagnostic sink')
+                worker=threading.Thread(target=run_worker,daemon=True)
+                client=threading.Thread(target=s.client,args=(Connection(),),daemon=True)
+                worker.start();client.start()
+                self.assertTrue(completed.wait(1), 'prepare stalled behind diagnostic sink')
+                client.join(1)
+                self.assertFalse(client.is_alive(), 'response stalled behind diagnostic sink')
+                self.assertFalse(release.is_set())
+                sequence,result=worker_result[0]
+                assert sequence > 0 and sent==[dict(ok=True,value=result)]
+                assert result['runtime_id'] in s.cutoffs
+                assert s.active['id']==result['runtime_id']
+                assert len(s.journal.value['records'])==1
+            finally:
+                release.set()
+                if 'initial' in locals():initial.join(1)
+                if 'worker' in locals():worker.join(1)
+                if 'client' in locals():client.join(1)
+
     def test_cancel_pending_retains_capacity_and_nonempty_namespace(self):
         a,p,stage=self.proposal();namespace=stage/'conditioning';(namespace/'opaque').write_bytes(b'retained')
         self.core.request_cancel(a.job['id'])

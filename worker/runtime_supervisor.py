@@ -2,6 +2,7 @@
 import copy
 from datetime import datetime, timezone
 import hashlib
+import itertools
 import json
 import os
 from pathlib import Path
@@ -17,6 +18,60 @@ import time
 from worker.runtime_journal import Journal, MAX_RECORDS, MAX_UNACKED
 from worker.runtime_protocol import authenticate, receive, send, session, request, execution, execution_session, managed_qwen_cpu, resident_managed_qwen_cpu, QWEN_CPU_SECONDS
 from worker.transport import canonical, Refused, Session
+
+_early_diagnostic_lock = threading.Lock()
+_early_diagnostic_next = 0.0
+_diagnostic_queue = queue.Queue(32)
+_diagnostic_lock = threading.Lock()
+_diagnostic_started = False
+_diagnostic_events = 0
+_diagnostic_limit = 256  # Per process lifetime; at most 32 pending fixed-size lines.
+_request_sequences = itertools.count(1)
+
+
+def _diagnostic_consumer():
+    while True:
+        line = _diagnostic_queue.get()
+        try:
+            os.write(2, line)
+        except OSError:
+            pass
+
+
+def _early_failure(phase, started):
+    # Unknown-operation failures can be driven by peers; emit at most one/sec.
+    global _early_diagnostic_next
+    if not _early_diagnostic_lock.acquire(blocking=False):
+        return
+    try:
+        now = time.monotonic()
+        if now >= _early_diagnostic_next:
+            _early_diagnostic_next = now + 1
+            _prepare_phase(phase, started)
+    finally:
+        _early_diagnostic_lock.release()
+
+
+def _prepare_phase(phase, started, sequence=0):
+    # Fixed vocabulary, no request data. Full queue/quota/contended lock drops.
+    global _diagnostic_started, _diagnostic_events
+    try:
+        elapsed = min(999999, max(0, int((time.monotonic() - started) * 1000)))
+        line = f'lifecycle_prepare_phase:{sequence}:{phase}:{elapsed}ms\n'.encode()
+        if not _diagnostic_lock.acquire(blocking=False):
+            return
+        try:
+            if _diagnostic_events >= _diagnostic_limit or _diagnostic_queue.full():
+                return
+            if not _diagnostic_started:
+                threading.Thread(target=_diagnostic_consumer, daemon=True).start()
+                _diagnostic_started = True
+            _diagnostic_queue.put_nowait(line)
+            _diagnostic_events += 1
+        finally:
+            _diagnostic_lock.release()
+    except (OSError, RuntimeError, ValueError, TypeError, queue.Full):
+        pass
 
 
 class RuntimeSupervisor:
@@ -312,7 +367,7 @@ class RuntimeSupervisor:
             self.stop_tree()
             raise
 
-    def operation(self, op, body):
+    def operation(self, op, body, *, _request_entered=None, _request_sequence=0):
         if op == 'startup':
             if body: raise Refused('closed_body')
             from service.daemon_runtime import facts
@@ -338,6 +393,9 @@ class RuntimeSupervisor:
             if self.journal.maintenance is not None: value['maintenance']=self.journal.maintenance
             return value
         if op == 'prepare':
+            phase_started = _request_entered if _request_entered is not None else time.monotonic()
+            if body.get('fixture') == 'qwen':
+                _prepare_phase('handling', phase_started, _request_sequence)
             if set(body) != {'snapshot', 'binding', 'fixture'} or body['fixture'] not in ('silence', 'busy', 'descendants', 'permissions', 'kokoro', 'pocket', 'qwen', 'audio_export'):
                 raise Refused('closed_prepare')
             snapshot = body['snapshot']
@@ -360,7 +418,9 @@ class RuntimeSupervisor:
             if spec is not None and spec.engine == 'pocket-tts':
                 self.verify_pocket(context, job['principal_id'])
             if spec is not None and spec.engine == 'qwen':
+                _prepare_phase('qwen_verification', phase_started, _request_sequence)
                 self.verify_qwen(context,profiles,job['principal_id'])
+                _prepare_phase('qwen_verified', phase_started, _request_sequence)
             attempt = job['attempts'][-1]
             allocation = dict(snapshot=snapshot, binding=body['binding'], fixture=body['fixture'])
             for row in self.journal.value['records']:
@@ -388,6 +448,8 @@ class RuntimeSupervisor:
             with self.tree_lock:
                 self.active = dict(id=identity, cutoff=cutoff, started=False,
                                    stopping=None, proposal=None, proposed_at=None, leader=None, reaped_children=0, receiver_done=threading.Event())
+            if spec is not None and spec.engine == 'qwen':
+                _prepare_phase('reserved', phase_started, _request_sequence)
             return dict(runtime_id=identity, state='alive')
         if set(body) != {'runtime_id'} or not isinstance(body['runtime_id'], str):
             raise Refused('closed_identity_body')
@@ -905,10 +967,14 @@ class RuntimeSupervisor:
 
     def client(self, connection):
         entered = time.monotonic()
+        sequence = next(_request_sequences)
         cutoff = entered+2
+        stage = 'authentication'
         try:
             authenticate(connection, session(self.secret, 10001, 10001), cutoff, control=False)
+            stage = 'decode'
             op, body = request(receive(connection, cutoff))
+            stage = 'queue'
             if (op == 'start' and ((getattr(self, '_pocket_daemon', False) and
                     getattr(self, 'installed_pocket', False)) or getattr(self, '_qwen_daemon', False))):
                 if set(body) != {'runtime_id'} or not isinstance(body['runtime_id'], str):
@@ -916,10 +982,29 @@ class RuntimeSupervisor:
                 from worker.runtime_protocol import POCKET_START_RPC_SECONDS
                 cutoff = entered+POCKET_START_RPC_SECONDS
             answer = queue.Queue(1)
-            self.commands.put_nowait((op, body, answer))
-            result = answer.get(timeout=max(.001, cutoff-time.monotonic()))
-            send(connection, result, cutoff)
+            if op == 'prepare' and body.get('fixture') == 'qwen':
+                _prepare_phase('enqueue_intent', entered, sequence)
+            self.commands.put_nowait((op, body, answer, entered, sequence))
+            stage = 'response'
+            try:
+                result = answer.get(timeout=max(.001, cutoff-time.monotonic()))
+            except queue.Empty:
+                if op == 'prepare' and body.get('fixture') == 'qwen':
+                    _prepare_phase('server_2s_response_wait_expired', entered, sequence)
+                raise
+            try:
+                send(connection, result, cutoff)
+            except Exception:
+                if op == 'prepare' and body.get('fixture') == 'qwen':
+                    _prepare_phase('response_send_failed', entered, sequence)
+                raise
+            if op == 'prepare' and body.get('fixture') == 'qwen':
+                _prepare_phase('response_sent_ok' if result.get('ok') is True else 'response_sent_refused', entered, sequence)
         except Exception:
+            if stage in ('authentication', 'decode'):
+                _early_failure(stage + '_failed_unknown_op', entered)
+            elif stage == 'queue' and op == 'prepare' and body.get('fixture') == 'qwen':
+                _prepare_phase('queue_failed', entered, sequence)
             pass
         finally:
             connection.close()
@@ -991,10 +1076,12 @@ class RuntimeSupervisor:
                             self.resident = None
                     return
                 try:
-                    op, body, answer = self.commands.get_nowait()
+                    op, body, answer, entered, sequence = self.commands.get_nowait()
                     try:
-                        result = dict(ok=True, value=self.operation(op, body))
+                        result = dict(ok=True, value=self.operation(op, body, _request_entered=entered, _request_sequence=sequence))
                     except Exception:
+                        if op == 'prepare' and body.get('fixture') == 'qwen':
+                            _prepare_phase('handling_refused', entered, sequence)
                         result = dict(ok=False, error='lifecycle_refused_or_quarantined')
                     answer.put_nowait(result)
                 except queue.Empty:
