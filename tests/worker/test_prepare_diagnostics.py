@@ -4,6 +4,7 @@ import threading
 from unittest.mock import patch
 
 from worker import runtime_supervisor as module
+from worker.runtime_protocol import QWEN_PREPARE_RPC_SECONDS
 
 
 def test_diagnostic_quota_and_queue_drop_without_sink_access():
@@ -84,7 +85,7 @@ def test_prepare_client_queue_wait_and_response_markers():
          patch.object(module, '_prepare_phase', side_effect=lambda name, _, seq=0: markers.append((seq,name))), \
          patch.object(module, 'send') as send:
         lane.client(Connection())
-        assert [name for _,name in markers] == ['enqueue_intent','server_2s_response_wait_expired']
+        assert [name for _,name in markers] == ['enqueue_intent','server_prepare_response_wait_expired']
         first_sequence=markers[0][0]
         assert all(seq == first_sequence for seq,_ in markers)
         assert not send.called
@@ -137,9 +138,9 @@ def test_concurrent_clients_keep_distinct_request_sequences():
          patch.object(module,'_prepare_phase',side_effect=record):
         clients=[threading.Thread(target=lane.client,args=(Connection(),)) for _ in range(2)]
         for client in clients:client.start()
-        for client in clients:client.join(3)
+        for client in clients:client.join(QWEN_PREPARE_RPC_SECONDS+1)
     assert all(not client.is_alive() for client in clients)
     sequences={seq for seq,_ in markers}
     assert len(sequences)==2
     assert all([name for observed,name in markers if observed==seq] ==
-               ['enqueue_intent','server_2s_response_wait_expired'] for seq in sequences)
+               ['enqueue_intent','server_prepare_response_wait_expired'] for seq in sequences)

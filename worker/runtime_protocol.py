@@ -6,6 +6,9 @@ from worker.transport import Session, Refused, authenticate, receive, send
 
 # Trusted public Pocket v2 start response only; never an execution deadline.
 POCKET_START_RPC_SECONDS = 10
+# Full Qwen prepare verifies the registered context, bundles and reference before
+# reserving a lane. This is an RPC response budget, never an execution deadline.
+QWEN_PREPARE_RPC_SECONDS = 10
 QWEN_CPU_SECONDS = 1800
 
 

@@ -44,9 +44,10 @@ class SupervisorRuntime:
 
     def call(self, op, body, timeout=1.5):
         from service import installed_pocket_daemon as pd, installed_qwen_daemon as qd
-        from worker.runtime_protocol import POCKET_START_RPC_SECONDS
+        from worker.runtime_protocol import POCKET_START_RPC_SECONDS, QWEN_PREPARE_RPC_SECONDS
         pocket_start = op == 'start' and self.family in (pd.FAMILY, qd.FAMILY)
-        maximum = POCKET_START_RPC_SECONDS if pocket_start else 2
+        qwen_prepare = op == 'prepare' and self.family is qd.FAMILY and body.get('fixture') == 'qwen'
+        maximum = QWEN_PREPARE_RPC_SECONDS if qwen_prepare else POCKET_START_RPC_SECONDS if pocket_start else 2
         if not 0 < timeout <= maximum:
             raise ValueError('bounded_communication_required')
         entered = time.monotonic()
@@ -72,8 +73,11 @@ class SupervisorRuntime:
         return value
 
     def prepare(self, authority, fixture='silence'):
+        from service import installed_qwen_daemon as qd
+        from worker.runtime_protocol import QWEN_PREPARE_RPC_SECONDS
         return self.call('prepare', dict(snapshot=json.loads(authority._snapshot),
-            binding=authority.binding, fixture=fixture))['runtime_id']
+            binding=authority.binding, fixture=fixture),
+            QWEN_PREPARE_RPC_SECONDS if self.family is qd.FAMILY and fixture == 'qwen' else 1.5)['runtime_id']
 
     def start(self, identity):
         from service import installed_pocket_daemon as pd, installed_qwen_daemon as qd

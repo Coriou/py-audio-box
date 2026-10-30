@@ -4,9 +4,9 @@ from unittest.mock import Mock, patch
 
 import pytest
 
-from service import installed_export as ex, installed_pocket_daemon as pd
+from service import installed_export as ex, installed_pocket_daemon as pd, installed_qwen_daemon as qd
 from service.supervisor_runtime import SupervisorRuntime
-from worker.runtime_protocol import VERSION, POCKET_START_RPC_SECONDS
+from worker.runtime_protocol import VERSION, POCKET_START_RPC_SECONDS, QWEN_PREPARE_RPC_SECONDS
 from worker.runtime_supervisor import RuntimeSupervisor
 
 
@@ -31,6 +31,15 @@ def test_start_selects_only_trusted_pocket_response_budget(family,seconds):
 def test_long_budget_refused_for_other_families_and_operations(family,op):
     with pytest.raises(ValueError,match='bounded_communication_required'):
         runtime(family).call(op,{},POCKET_START_RPC_SECONDS)
+
+
+def test_qwen_prepare_budget_is_exactly_scoped():
+    value=runtime(qd.FAMILY);value.call=Mock(return_value={'runtime_id':'id'})
+    authority=SimpleNamespace(_snapshot='[]',binding='binding')
+    assert value.prepare(authority,'qwen')=='id'
+    assert value.call.call_args.args[2]==QWEN_PREPARE_RPC_SECONDS
+    with pytest.raises(ValueError,match='bounded_communication_required'):
+        runtime(qd.FAMILY).call('prepare',{'fixture':'pocket'},QWEN_PREPARE_RPC_SECONDS)
 
 
 def test_client_auth_and_send_keep_short_original_cutoff():

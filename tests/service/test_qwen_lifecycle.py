@@ -1,11 +1,15 @@
 """Qwen Linux lifecycle: inert assets, injected backend/transport, no ML/processes."""
 import copy
+from contextlib import nullcontext
 from dataclasses import replace
 from datetime import datetime, timezone, timedelta
 import hashlib
 import io
 import json
 import os
+import queue
+import socket
+import threading
 from pathlib import Path
 import tempfile
 import time
@@ -31,6 +35,128 @@ from tests.service.test_pocket_lifecycle import assert_configuration_mutations
 
 
 class QwenLifecycleTests(unittest.TestCase):
+    def _socket_prepare_case(self, *, verification_delay=0, queued_delay=0,
+                             rpc_seconds=10, lose_response=False):
+        from service.supervisor_runtime import SupervisorRuntime
+        from service.installed_qwen_daemon import FAMILY
+        from worker import runtime_supervisor as module
+        from worker import runtime_protocol
+        from worker.runtime_journal import Journal, journal_bytes
+        from worker.transport import receive as transport_receive
+
+        self.submit();authority=self.store.allocate(self.profiles,'qwen',8)['authority']
+        ipc=self.root/'ipc';ipc.mkdir();(ipc/'lifecycle.key').write_text('00'*32)
+        lane=module.RuntimeSupervisor.__new__(module.RuntimeSupervisor)
+        lane.secret='00'*32;lane.commands=queue.Queue(1)
+        lane.slots=threading.BoundedSemaphore(1)
+        lane.resident_qwen=False;lane.bundles=authority.context['execution']['bundles']
+        lane.references=authority.context['execution']['references']
+        lane.inventory=self.inventory;lane.qwen_profiles=self.profiles
+        lane.qwen_contexts={('alice','qwen-cpu','vv0'):authority.context['execution']}
+        lane.failed=False;lane.active=None;lane.boot='test-boot';lane.cutoffs={}
+        lane.tree_lock=threading.Lock()
+        receipts=self.root/'receipts';receipts.mkdir()
+        (receipts/'journal.json').write_bytes(journal_bytes(
+            {'version':1,'lane':'test-lane','records':[]}))
+        lane.journal=Journal(receipts)
+        self.addCleanup(lane.journal.lock.close)
+        persisted=[]
+        def persist(value):
+            lane.journal.save(value)
+            persisted.append(copy.deepcopy(value))
+        lane.persist=persist
+        adapter=SupervisorRuntime.__new__(SupervisorRuntime)
+        adapter.ipc=ipc;adapter.family=FAMILY;adapter.interrupt='none'
+        outcome=[];done=threading.Event();verification_entered=threading.Event()
+        def slow_verify(*args,**kwargs):
+            verification_entered.set()
+            if verification_delay: time.sleep(verification_delay)
+        def call():
+            try: outcome.append(('ok',adapter.prepare(authority,'qwen')))
+            except Exception as error: outcome.append(('error',error))
+            finally:done.set()
+        def disconnect_before_response(connection, cutoff):
+            connection.close()
+            return transport_receive(connection, cutoff)
+        owned_queue=module.queue.Queue(32)
+        with socket.socket(socket.AF_UNIX,socket.SOCK_STREAM) as listener, \
+             (patch.object(runtime_protocol,'QWEN_PREPARE_RPC_SECONDS',rpc_seconds)
+              if rpc_seconds != 10 else nullcontext()), \
+             patch.object(module,'_diagnostic_queue',owned_queue), \
+             patch.object(module,'_diagnostic_started',False), \
+             patch.object(module,'_diagnostic_thread',None), \
+             patch.object(module,'_diagnostic_events',0), \
+             patch.object(module,'authenticate'), \
+             patch('service.supervisor_runtime.authenticate'), \
+             patch('worker.engines.qwen.verify_service_inputs',side_effect=slow_verify), \
+             (patch('service.supervisor_runtime.receive',side_effect=disconnect_before_response)
+              if lose_response else patch('service.supervisor_runtime.receive',wraps=transport_receive)):
+            listener.bind(str(ipc/'lifecycle.sock'));listener.listen(1);listener.settimeout(2)
+            caller=threading.Thread(target=call)
+            handler=None
+            try:
+                caller.start()
+                connection,_=listener.accept()
+                self.assertTrue(lane.slots.acquire(blocking=False))
+                handler=threading.Thread(target=lane.client,args=(connection,))
+                handler.start()
+                # The caller has sent a framed request before client enqueues it.
+                limit=time.monotonic()+2
+                while lane.commands.empty() and time.monotonic()<limit:time.sleep(.001)
+                self.assertFalse(lane.commands.empty())
+                if queued_delay:time.sleep(queued_delay)
+                lane.process_command()
+                self.assertTrue(done.wait(4))
+            finally:
+                caller.join(5)
+                if handler is not None:handler.join(5)
+                owned_thread=module._diagnostic_thread
+                if owned_thread is not None:
+                    owned_queue.put_nowait(None);owned_thread.join(2)
+                    self.assertFalse(owned_thread.is_alive())
+            self.assertFalse(caller.is_alive())
+            self.assertFalse(handler.is_alive())
+            self.assertEqual(json.loads((receipts/'journal.json').read_bytes())['payload'],
+                             lane.journal.value)
+        return lane,persisted,outcome,verification_entered.is_set()
+
+    def test_slow_socket_prepare_reserves_real_journal_and_retains_original_cutoff(self):
+        lane,persisted,outcome,verified=self._socket_prepare_case(verification_delay=2.2)
+        self.assertTrue(verified)
+        self.assertEqual(outcome[0][0],'ok')
+        identity=outcome[0][1]
+        self.assertEqual(persisted[0]['records'][0]['id'],identity)
+        self.assertEqual(lane.active['id'],identity)
+        self.assertEqual(lane.cutoffs[identity],lane.active['cutoff'])
+
+    def test_lost_socket_response_preserves_real_reservation_custody(self):
+        lane,persisted,outcome,verified=self._socket_prepare_case(lose_response=True)
+        self.assertTrue(verified)
+        self.assertEqual(outcome[0][0],'error')
+        self.assertIsInstance(outcome[0][1],OSError)
+        self.assertEqual(len(persisted),1)
+        identity=persisted[0]['records'][0]['id']
+        self.assertEqual(lane.active['id'],identity)
+        self.assertIn(identity,lane.cutoffs)
+
+    def test_expired_queued_prepare_never_enters_verification_or_reserves(self):
+        lane,persisted,outcome,verified=self._socket_prepare_case(queued_delay=.2,rpc_seconds=.1)
+        self.assertFalse(verified)
+        self.assertEqual(outcome[0][0],'error')
+        self.assertEqual(persisted,[])
+        self.assertEqual(lane.journal.value['records'],[])
+        self.assertIsNone(lane.active)
+        self.assertEqual(lane.cutoffs,{})
+
+    def test_expiry_during_verification_refuses_before_journal_persist(self):
+        lane,persisted,outcome,verified=self._socket_prepare_case(verification_delay=.2,rpc_seconds=.1)
+        self.assertTrue(verified)
+        self.assertEqual(outcome[0][0],'error')
+        self.assertEqual(persisted,[])
+        self.assertEqual(lane.journal.value['records'],[])
+        self.assertIsNone(lane.active)
+        self.assertEqual(lane.cutoffs,{})
+
     def setUp(self):
         self.tmp=tempfile.TemporaryDirectory();self.addCleanup(self.tmp.cleanup)
         self.root=Path(self.tmp.name).resolve()

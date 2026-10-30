@@ -399,6 +399,9 @@ class RuntimeSupervisor:
             return value
         if op == 'prepare':
             phase_started = _request_entered if _request_entered is not None else time.monotonic()
+            from worker.runtime_protocol import QWEN_PREPARE_RPC_SECONDS
+            request_cutoff = (phase_started + QWEN_PREPARE_RPC_SECONDS
+                              if body.get('fixture') == 'qwen' else None)
             if body.get('fixture') == 'qwen':
                 _prepare_phase('handling', phase_started, _request_sequence)
             if set(body) != {'snapshot', 'binding', 'fixture'} or body['fixture'] not in ('silence', 'busy', 'descendants', 'permissions', 'kokoro', 'pocket', 'qwen', 'audio_export'):
@@ -435,6 +438,11 @@ class RuntimeSupervisor:
             if (self.failed or self.active or any(r['phase'] != 'terminal' for r in rows) or
                     len(rows) >= MAX_RECORDS or sum(not r['acked'] for r in rows) >= MAX_UNACKED):
                 raise Refused('lane_quarantined_busy_or_full')
+            # Verification may finish after the requesting socket has expired.
+            # Refuse before durable reservation; after reservation custody remains
+            # with the worker even if delivery of the response is lost.
+            if request_cutoff is not None and time.monotonic() >= request_cutoff:
+                raise Refused('prepare_request_expired')
             stage = attempt['staging_id']
             if not isinstance(stage, str) or Path(stage).name != stage or stage in ('.', '..'):
                 raise Refused('stage_id')
@@ -980,6 +988,9 @@ class RuntimeSupervisor:
             stage = 'decode'
             op, body = request(receive(connection, cutoff))
             stage = 'queue'
+            if op == 'prepare' and body.get('fixture') == 'qwen':
+                from worker.runtime_protocol import QWEN_PREPARE_RPC_SECONDS
+                cutoff = entered+QWEN_PREPARE_RPC_SECONDS
             if (op == 'start' and ((getattr(self, '_pocket_daemon', False) and
                     getattr(self, 'installed_pocket', False)) or getattr(self, '_qwen_daemon', False))):
                 if set(body) != {'runtime_id'} or not isinstance(body['runtime_id'], str):
@@ -995,7 +1006,7 @@ class RuntimeSupervisor:
                 result = answer.get(timeout=max(.001, cutoff-time.monotonic()))
             except queue.Empty:
                 if op == 'prepare' and body.get('fixture') == 'qwen':
-                    _prepare_phase('server_2s_response_wait_expired', entered, sequence)
+                    _prepare_phase('server_prepare_response_wait_expired', entered, sequence)
                 raise
             try:
                 send(connection, result, cutoff)
@@ -1050,6 +1061,23 @@ class RuntimeSupervisor:
             connection.close()
             self.slots.release()
 
+    def process_command(self):
+        try:
+            op, body, answer, entered, sequence = self.commands.get_nowait()
+            try:
+                if (op == 'prepare' and body.get('fixture') == 'qwen'):
+                    from worker.runtime_protocol import QWEN_PREPARE_RPC_SECONDS
+                    if time.monotonic() >= entered+QWEN_PREPARE_RPC_SECONDS:
+                        raise Refused('prepare_request_expired')
+                result = dict(ok=True, value=self.operation(op, body, _request_entered=entered, _request_sequence=sequence))
+            except Exception:
+                if op == 'prepare' and body.get('fixture') == 'qwen':
+                    _prepare_phase('handling_refused', entered, sequence)
+                result = dict(ok=False, error='lifecycle_refused_or_quarantined')
+            answer.put_nowait(result)
+        except queue.Empty:
+            pass
+
     def serve(self):
         path = self.ipc / 'lifecycle.sock'
         path.unlink(missing_ok=True)
@@ -1080,17 +1108,7 @@ class RuntimeSupervisor:
                                 except ChildProcessError: break
                             self.resident = None
                     return
-                try:
-                    op, body, answer, entered, sequence = self.commands.get_nowait()
-                    try:
-                        result = dict(ok=True, value=self.operation(op, body, _request_entered=entered, _request_sequence=sequence))
-                    except Exception:
-                        if op == 'prepare' and body.get('fixture') == 'qwen':
-                            _prepare_phase('handling_refused', entered, sequence)
-                        result = dict(ok=False, error='lifecycle_refused_or_quarantined')
-                    answer.put_nowait(result)
-                except queue.Empty:
-                    pass
+                self.process_command()
                 try:
                     connection, _ = listener.accept()
                     if self.slots.acquire(blocking=False):
