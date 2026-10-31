@@ -766,9 +766,13 @@ class Dispatcher:
                     self.core._publish(job['id'],dict(message=observation.message,manifest=observation.manifest),
                         fault=self.fault,stage_root=self.staging,engine_uid=import_uid)
                 else:self._fail(job,'deadline_or_reaped')
-            except (OSError,sqlite3.Error,PublicationQuarantine):
+            except (OSError,sqlite3.Error,PublicationQuarantine) as exc:
                 # Storage failure is not invalid media. Retain intent, ownership,
                 # reservation and receipt; a reopened session reconciles DB state.
+                if isinstance(exc,PublicationQuarantine):
+                    self.error=('publication_intent_binding_mismatch'
+                                if str(exc)=='publication_work_mismatch' else
+                                'publication_integrity_fault')
                 self.persistence_fault=True
                 self.quarantined=True
                 raise

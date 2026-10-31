@@ -640,7 +640,8 @@ class Core:
             oracle.require(not stage.is_symlink() and stage.stat().st_uid==os.getuid() and stat.S_IMODE(stage.stat().st_mode)==(0o770 if stage_root is not None else 0o700), 'foreign_stage')
             from worker.runtime_protocol import execution, generated_source
             spec=execution(context)
-            byte_limit=(spec.reference_bytes+44 if filename=='reference.wav' else spec.max_output_bytes) if spec else 1024*1024
+            byte_limit=(spec.reference_bytes if filename=='reference.wav' and spec.engine=='qwen' else
+                        44+2*spec.reference_frames if filename=='reference.wav' else spec.max_output_bytes) if spec else 1024*1024
             fd=os.open(path, os.O_RDONLY|os.O_NOFOLLOW)
             with os.fdopen(fd,'rb') as stream:
                 info=os.fstat(stream.fileno())

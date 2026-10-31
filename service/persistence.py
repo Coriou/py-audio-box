@@ -358,8 +358,25 @@ def publication_intent(row, *, publication=None, job=None, context=None, publica
             if artifact['id']!=manifest['artifact_id'] or artifact['asset_ids']!=[a['id'] for a in manifest['outputs']]: raise ValueError()
             for entry,output in zip(entries,manifest['outputs']):
                 if (entry['destination']!=output['id'] or entry['sha256']!=output['sha256'] or
-                        output['media_format']!='wav' or output['media_subtype']!='PCM_16' or
-                        entry['byte_length']!=44+output['frames']*output['channels']*2): raise ValueError()
+                        output['media_format']!='wav' or output['media_subtype']!='PCM_16'): raise ValueError()
+                canonical_length=44+output['frames']*output['channels']*2
+                if entry['byte_length']!=canonical_length:
+                    # Only Qwen's exact authenticated, whole-upload reference may
+                    # carry ancillary RIFF chunks. A detached intent without its
+                    # frozen producer context cannot claim this exception.
+                    if context is None or job is None or entry is not entries[0]: raise ValueError()
+                    from worker.runtime_protocol import execution as producer_execution
+                    spec=producer_execution(context)
+                    if (spec is None or spec.engine!='qwen' or
+                            context['plan']['operation']!='voice_prepare' or
+                            job['operation']!='voice_prepare' or
+                            job['input_sha256']!=oracle.plan_hash(context['plan']) or
+                            output['sha256']!=spec.reference_sha256 or
+                            entry['byte_length']!=spec.reference_bytes or
+                            output['frames']!=spec.reference_frames or
+                            output['sample_rate']!=spec.reference_rate or
+                            output['channels']!=1 or
+                            not canonical_length<=entry['byte_length']<=1048576): raise ValueError()
             if entries[0]!=dict(destination=destination,temporary=temporary,sha256=digest,byte_length=length): raise ValueError()
         if publication is not None:
             if canonical(artifact)!=canonical(json.loads(publication['artifact'])): raise ValueError()

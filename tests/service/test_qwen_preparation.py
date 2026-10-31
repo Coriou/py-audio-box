@@ -7,6 +7,8 @@ import io
 import hashlib
 import json
 import os
+import fcntl
+import stat
 import struct
 from pathlib import Path
 import time
@@ -102,10 +104,19 @@ class CPUPreparationFixture(unittest.TestCase):
         bridge=b.root/'managed-reference.wav'
         source=b.core.root/'assets'/execution(authority.context).reference_id
         fd=os.open(bridge,os.O_WRONLY|os.O_CREAT|os.O_EXCL,0o600)
-        with os.fdopen(fd,'wb') as stream:stream.write(source.read_bytes())
+        with os.fdopen(fd,'wb') as stream:
+            os.fchmod(stream.fileno(),0o600)
+            stream.write(source.read_bytes())
         self.addCleanup(lambda:bridge.unlink(missing_ok=True))
+        def local_descriptor(fd, *, owner_uid):
+            info=os.fstat(fd)
+            self.assertEqual((info.st_uid,info.st_gid,stat.S_IMODE(info.st_mode),info.st_nlink),
+                             (owner_uid,os.getgid(),0o600,1))
+            self.assertEqual(fcntl.fcntl(fd,fcntl.F_GETFL)&os.O_ACCMODE,os.O_RDONLY)
+            return info
         with bridge.open('rb') as reference, \
                 patch('lib.tts_backends.pocket_snapshot.managed_directory',side_effect=lambda p:nullcontext()), \
+                patch('worker.managed_reference.check_fd',side_effect=local_descriptor), \
                 patch('worker.transport.authenticate'),patch('worker.transport.receive',return_value=authority.message()), \
                 patch('worker.transport.send',side_effect=lambda c,v,t:sent.append(v)), \
                 patch('worker.engines.qwen.execute',side_effect=engine):
@@ -140,6 +151,55 @@ class CPUPreparationFixture(unittest.TestCase):
 
 
 class CPUPreparationTests(CPUPreparationFixture):
+    def test_chunked_reference_writer_publication_replay_and_saved_reuse(self):
+        from service import persistence, recovery
+        raw=self.b.raw
+        extra=raw[:36]+b'LIST'+struct.pack('<I',5)+b'hello\0'+raw[36:]
+        extra=extra[:4]+struct.pack('<I',len(extra)-8)+extra[8:]
+        asset=ingest_local(self.b.core,'alice',extra)
+        self.request=dict(self.request,asset_id=asset['id'])
+        authority,proposal,stage=self.proposal()
+        self.assertEqual((stage/'reference.wav').read_bytes(),extra)
+        reference,audition=proposal['manifest']['outputs']
+        self.assertEqual(reference['sha256'],hashlib.sha256(extra).hexdigest())
+        self.assertNotEqual(reference['sha256'],audition['sha256'])
+        self.assertEqual(self.calls[1],(self.request['audition_text'],extra))
+        self.finish(authority,proposal,stage)
+        row=self.b.core.db.execute('SELECT binding,destination,temporary,sha256,byte_length FROM publication_work WHERE job_id=?',(authority.job['id'],)).fetchone()
+        artifact,entries=persistence.publication_intent(row,job=self.b.core.job(authority.job['id']),context=authority.context,publication_format=self.b.core.publication_format)
+        self.assertEqual(entries[0]['byte_length'],len(extra))
+        self.assertEqual((self.b.core.root/'assets'/reference['id']).read_bytes(),extra)
+        with self.assertRaises(persistence.PublicationQuarantine):
+            persistence.publication_intent(row)
+        for field,value in (('reference_bytes',len(extra)+1),('reference_sha256','0'*64),
+                            ('reference_frames',reference['frames']+1),('reference_rate',22050)):
+            changed=copy.deepcopy(authority.context)
+            changed['execution']['descriptor'][field]=value
+            with self.subTest(field=field),self.assertRaises(persistence.PublicationQuarantine):
+                persistence.publication_intent(row,job=self.b.core.job(authority.job['id']),context=changed,
+                                               publication_format=self.b.core.publication_format)
+        binding=json.loads(row[0]);binding['files'][1]['byte_length']+=2
+        with self.assertRaises(persistence.PublicationQuarantine):
+            persistence.publication_intent((json.dumps(binding),*row[1:]),job=self.b.core.job(authority.job['id']),
+                                           context=authority.context,publication_format=self.b.core.publication_format)
+        data={table:[dict(zip([column[0] for column in cursor.description],r)) for r in cursor.fetchall()]
+              for table in ('jobs','assets','artifacts','publications','publication_work')
+              for cursor in [self.b.core.db.execute('SELECT * FROM '+table)]}
+        recovery._installed_detached_documents(data)
+        candidate=Production(self.b.core).results('alice',authority.job['id'])[0]
+        saved=Production(self.b.core).save('alice','chunk-save',authority.job['id'],candidate['id'],'chunk-voice',expected_revision=0)
+        root=self.b.core.root;self.b.core.close();self.b.core=Core(root)
+        self.b.admission=Admission(self.b.core,self.b.stage);self.b.store=DispatchStore(self.b.core,self.b.admission)
+        self.assertEqual(self.b.core.job(authority.job['id'])['state'],'succeeded')
+        request=dict(self.b.context['plan']['request'],voice_version_id=saved['version']['id'],text='Saved voice replay.')
+        context=self.contexts.resolve_owned(self.b.core,'alice','speech_generate',request)
+        job=Production(self.b.core).generate('alice','chunk-reuse',context,_admission=self.b.admission,_profiles=self.profiles)
+        again,result,stage=self.proposal(self.b.store.allocate(self.profiles,'qwen',1800)['authority'])
+        self.assertEqual(self.calls[-2],(request['text'],extra))
+        self.assertEqual(again.allowed_assets,(reference['id'],))
+        self.finish(again,result,stage)
+        self.assertEqual(self.b.core.job(job['id'])['state'],'succeeded')
+
     def test_owned_riff_chunks_keep_exact_uploaded_size_and_digest(self):
         from worker.transport import Refused
         from worker.engines.pocket import _read
