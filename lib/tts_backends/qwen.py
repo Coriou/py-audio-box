@@ -127,6 +127,13 @@ def _worker_impl(connection, settings, runtime_dir=None):
 
 def _run_worker(connection, settings):
     try:
+        if settings.get('device') == 'cpu':
+            threads = settings.get('num_threads')
+            if type(threads) is not int or not 1 <= threads <= 64:
+                raise ValueError('bounded_cpu_threads_required')
+            # The speech tokenizer uses Rayon during model load. Torch's
+            # set_num_threads does not constrain that separate pool.
+            os.environ['RAYON_NUM_THREADS'] = str(threads)
         if settings.get("offline"):
             os.environ["HF_HUB_OFFLINE"] = "1"
             os.environ["TRANSFORMERS_OFFLINE"] = "1"

@@ -3,6 +3,7 @@ import contextlib
 import importlib
 import importlib.abc
 import json
+import os
 from pathlib import Path
 import sys
 import subprocess
@@ -354,7 +355,12 @@ assert roots[0] != roots[1]
                 generate_voice_design=lambda **kw: events.append(('design', kw)) or 'design-result',
                 create_voice_clone_prompt=lambda **kw: events.append(('prompt', kw)) or 'private-prompt',
                 generate_voice_clone=lambda **kw: events.append(('clone', kw)) or 'clone-result')
-            factory = Mock(side_effect=lambda *a, **kw: events.append(('load', a, kw)) or model)
+            def load(*a, **kw):
+                if kw['device_map'] == 'cpu':
+                    self.assertEqual(os.environ['RAYON_NUM_THREADS'], '2')
+                events.append(('load', a, kw))
+                return model
+            factory = Mock(side_effect=load)
             upstream = types.SimpleNamespace(Qwen3TTSModel=types.SimpleNamespace(from_pretrained=factory))
             hub = types.SimpleNamespace(snapshot_download=Mock(side_effect=AssertionError('download')))
             numpy = types.SimpleNamespace(ndarray=type('ndarray', (), {}))
@@ -414,6 +420,11 @@ assert roots[0] != roots[1]
                     dtype_str='float32', revision='r', offline=True, device='cpu', attention='eager'))
                 self.assertEqual(connection.messages, [('error', ('ImportError', 'upstream dependency sentinel'))])
                 hub.snapshot_download.assert_not_called()
+                for invalid in (0, 65, True, '2'):
+                    connection = Connection()
+                    backend._worker_impl(connection, dict(model_name=tmp, num_threads=invalid,
+                        dtype_str='float32', revision='r', offline=True, device='cpu', attention='sdpa'))
+                    self.assertEqual(connection.messages, [('error', ('ValueError', 'bounded_cpu_threads_required'))])
             self.assertEqual(sys.path, before_path)
 
     def test_root_only_real_worker_and_loader(self):
