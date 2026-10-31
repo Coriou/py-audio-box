@@ -13,12 +13,13 @@ import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
 SCRIPT = ROOT / 'scripts/qwen_private_trace_overlay.py'
-HEAD = '35899c25d3d8e4866f869ade1ec151be6f0a7090'
+SOURCE = ROOT / 'worker/runtime_supervisor.py'
 
 
 def helper(tmp_path):
     source = tmp_path / 'head.py'
-    source.write_bytes(subprocess.check_output(['git', 'show', HEAD + ':worker/runtime_supervisor.py'], cwd=ROOT))
+    # CI runs from an exported archive without .git or ancestor objects.
+    source.write_bytes(SOURCE.read_bytes())
     context = tmp_path / 'ctx'
     subprocess.run([sys.executable, str(SCRIPT), '--source', str(source), '--image', 'verified-local:base',
                     '--output', str(context)], check=True, capture_output=True)
