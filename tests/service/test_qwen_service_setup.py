@@ -368,6 +368,13 @@ class SetupTests(unittest.TestCase):
         self.assertEqual(local.discover(self.root/'local')['principal'],'alice')
 
     def test_installed_discovery_agrees_with_qwen_status(self):
+        self._check_installed_status("operator-declared configured profile")
+
+    def test_local_unqualified_status_retains_qualification_when_faulted(self):
+        self.request["measurement"] = None
+        self._check_installed_status("UNQUALIFIED local execution")
+
+    def _check_installed_status(self, qualification):
         try:
             import httpx
             from service.api import create_voice_app
@@ -403,7 +410,7 @@ class SetupTests(unittest.TestCase):
         self.assertTrue(status['clone_prepare'])
         self.assertIn('register Ryan',status['next_action'])
         self.assertTrue(status['ready_for_speech'])
-        self.assertIn('UNQUALIFIED',status['qualification'])
+        self.assertIn(qualification,status['qualification'])
         for fault in ({'quarantined':True}, {'persistence_fault':True}, {'persistent_activation':False}):
             with self.subTest(fault=fault):
                 retained_status.update(dict(persistent_activation=True,quarantined=False,persistence_fault=False))
@@ -412,7 +419,7 @@ class SetupTests(unittest.TestCase):
                 self.assertFalse(blocked['ready_for_speech'])
                 self.assertIn('Operator review of retained state',blocked['next_action'])
                 self.assertNotIn('register Ryan',blocked['next_action'])
-                self.assertIn('UNQUALIFIED',blocked['qualification'])
+                self.assertEqual(status['qualification'],blocked['qualification'])
 
 
 class UpDispatchTests(unittest.TestCase):
