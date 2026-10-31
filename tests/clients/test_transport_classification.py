@@ -23,6 +23,24 @@ ROOT = Path(__file__).resolve().parents[2]
 
 
 class TransportClassificationTests(unittest.TestCase):
+    def test_job_wait_local_bound_and_distinct_workflow_help(self):
+        with patch('clients.cli.HTTP.call', return_value={'state':'running'}) as call:
+            for seconds in ('-1', '300'):
+                with self.subTest(seconds=seconds), contextlib.redirect_stdout(io.StringIO()) as output:
+                    code = main(['--url','http://test','job','wait','job-1','--wait-seconds',seconds])
+                self.assertEqual(code, 2)
+                self.assertEqual((json.loads(output.getvalue())['code'], json.loads(output.getvalue())['field']),
+                                 ('invalid_request', 'wait_seconds'))
+                call.assert_not_called()
+            with contextlib.redirect_stdout(io.StringIO()):
+                self.assertEqual(main(['--url','http://test','job','wait','job-1','--wait-seconds','5']), 0)
+            call.assert_called_once_with('job_wait',dict(job_id='job-1',cursor='',wait_seconds=5))
+        for command, expected in (('job', '0 through 5'), ('enroll', '0 through 600'), ('speak', '0 through 600')):
+            args=[command,'wait','--help'] if command=='job' else [command,'--help']
+            with self.subTest(command=command), contextlib.redirect_stdout(io.StringIO()) as output, self.assertRaises(SystemExit):
+                main(args)
+            self.assertIn(expected,output.getvalue())
+
     def test_unused_loopback_socket_cli_enroll_and_speak(self):
         with socket.socket() as listener:
             listener.bind(('127.0.0.1', 0))

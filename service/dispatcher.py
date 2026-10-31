@@ -42,7 +42,7 @@ class Dispatcher:
         self.thread.start()
         self.initialized.result(timeout=15 if installed_activation is not None else 5)
 
-    def call(self, op, *args, timeout=3, **kwargs):
+    def call(self, op, *args, timeout=None, **kwargs):
         if op not in ('submit','job','jobs','events','artifact','asset','cancel','status','replace','inventory_page','reconcile_startup','close','voice_list','voice_get','voice_version','voice_resolve','voice_summaries','voice_version_summaries','asset_ingest','asset_metadata','asset_content','configured_presets','configured_capabilities','configured_profiles','production_preset_register','production_prepare','production_generate','production_audio_export','audio_export_available','audio_export_availability','production_save','production_results','production_job','production_cancel','production_artifact','production_jobs','production_events','production_retry','production_aliases','production_archive','production_profile'):
             raise ValueError('unknown_control_command')
         if op == 'asset_ingest':
@@ -50,6 +50,11 @@ class Dispatcher:
             if len(args) != 2 or type(args[1]) is not bytes or kwargs:
                 raise ValueError('invalid_request')
             if len(args[1]) > MAX_BYTES: raise ValueError('resource_limit')
+        if timeout is None:
+            # These submissions verify owned Qwen inputs before committing a
+            # receipt. Leave margin below the client's ten-second per-I/O cap;
+            # this is not a guarantee of total HTTP latency.
+            timeout = 8 if op in ('production_prepare', 'production_generate') else 3
         future=Future()
         self.commands.put_nowait((op,copy.deepcopy(args),copy.deepcopy(kwargs),future))
         return future.result(timeout=timeout)

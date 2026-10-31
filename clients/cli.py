@@ -38,14 +38,14 @@ def main(argv=None):
     enroll.add_argument('--reference-text', required=True)
     enroll.add_argument('--audition-text', required=True)
     enroll.add_argument('--job-id', help='Resume an already submitted preparation job.')
-    enroll.add_argument('--wait-seconds', type=int, default=120)
+    enroll.add_argument('--wait-seconds', type=int, default=120, help='Workflow wait budget, 0 through 600 seconds.')
     speak = commands.add_parser('speak', help='Generate one output from a saved named voice.')
     speak.add_argument('--voice', required=True)
     speak.add_argument('--text', required=True)
     speak.add_argument('--output', type=Path, required=True)
     speak.add_argument('--job-id', help='Resume an already submitted generation job.')
     speak.add_argument('--voice-version-id', help='Pin the saved version when replaying an uncertain submission.')
-    speak.add_argument('--wait-seconds', type=int, default=120)
+    speak.add_argument('--wait-seconds', type=int, default=120, help='Workflow wait budget, 0 through 600 seconds.')
     detail = commands.add_parser('operation-detail')
     detail.add_argument('operation_id')
     voices = commands.add_parser('voices')
@@ -74,7 +74,9 @@ def main(argv=None):
     jobs.add_parser('get').add_argument('job_id')
     for name in ('events','wait'):
         action = jobs.add_parser(name); action.add_argument('job_id'); action.add_argument('--cursor',default='')
-        action.add_argument('--limit' if name == 'events' else '--wait-seconds',type=int,default=20 if name == 'events' else 5)
+        action.add_argument('--limit' if name == 'events' else '--wait-seconds',type=int,
+                            default=20 if name == 'events' else 5,
+                            help='Single job wait request, 0 through 5 seconds.' if name == 'wait' else None)
     retry = jobs.add_parser('retry'); retry.add_argument('job_id'); retry.add_argument('--input-sha256',required=True); retry.add_argument('--idempotency-key',required=True)
     listing = commands.add_parser('jobs').add_subparsers(dest='verb',required=True).add_parser('list')
     listing.add_argument('--cursor',default=''); listing.add_argument('--limit',type=int,default=20)
@@ -122,6 +124,10 @@ def main(argv=None):
         elif args.command == 'jobs': result = http.call('jobs_list',dict(cursor=args.cursor,limit=args.limit))
         elif args.command == 'profile': result = http.call('profile_get',dict(profile_id=args.profile_id))
         elif args.command == 'job':
+            if args.verb == 'wait' and not 0 <= args.wait_seconds <= 5:
+                from service.catalogue import problem
+                print(compact(problem('invalid_request', 'Job wait must be between 0 and 5 seconds.',
+                                      'wait_seconds', 'Choose --wait-seconds from 0 through 5.'))); return 2
             payload = dict(job_id=args.job_id)
             if args.verb == 'retry': payload['input_sha256'] = args.input_sha256
             if args.verb in ('events','wait'):

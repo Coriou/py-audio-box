@@ -188,11 +188,14 @@ def create_voice_app(dispatcher, *, credentials, upload_deadline=15.0, installed
             from service.qwen_local_lane import profile_allowed
             local_unqualified=bool(profile and installed['ownership_policy']=='docker-qwen-cpu-split-v1' and
                                    profile_allowed(profile))
-            return dict(synthetic=False, ready_for_speech=status['persistent_activation'] and (qualified or local_unqualified),
+            operational_ready=(status['persistent_activation'] and not any(status.get(name) for name in
+                               ('quarantined', 'persistence_fault', 'resource_fault', 'integrity_fault', 'error')))
+            return dict(synthetic=False, ready_for_speech=operational_ready and (qualified or local_unqualified),
                         configuration_digest=digest(installed),
                         profiles=installed['profiles'], store='installed-owner', status=status,
                         configured_presets=dispatcher.call('configured_presets', request.state.principal),
-                        next_action=configured['next_action'] if clone else 'voice_preset_register → voices_list/voice_version_get → speech_generate',
+                        next_action=(configured['next_action'] if clone else 'voice_preset_register → voices_list/voice_version_get → speech_generate')
+                                    if operational_ready else 'Operator review of retained state and faults is required before further speech actions.',
                         clone_prepare=clone, installed=True, configured_capabilities=configured,
                         activation_ready=status['persistent_activation'],
                         qualification=('UNQUALIFIED local execution; installation and registration do not qualify execution'

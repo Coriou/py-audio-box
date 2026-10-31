@@ -379,6 +379,7 @@ class SetupTests(unittest.TestCase):
         profile=config['profiles'][0]
         operations=['voice_prepare','voice_results','voice_save','voice_preset_register','speech_generate']
         configured=dict(engine='qwen',profile=profile,operations=operations,next_action='Enroll or register Ryan')
+        retained_status=dict(persistent_activation=True,retry_available=False)
         class Dispatcher:
             installed_checked=True
             installed_activation=SimpleNamespace(configuration=config)
@@ -387,7 +388,7 @@ class SetupTests(unittest.TestCase):
                 if operation=='configured_profiles': return [profile]
                 if operation=='configured_presets': return [dict(preset='Ryan')]
                 if operation=='audio_export_available': return False
-                if operation=='status': return dict(persistent_activation=True,retry_available=False)
+                if operation=='status': return retained_status
                 raise AssertionError(operation)
         app=create_voice_app(Dispatcher(),credentials=StaticCredentials([
             Credential('a'*64,'alice',frozenset(('read','production-write')))]),installed=config)
@@ -400,6 +401,18 @@ class SetupTests(unittest.TestCase):
         self.assertEqual(caps['profiles'],status['profiles'])
         self.assertEqual(caps['engines'],['qwen'])
         self.assertTrue(status['clone_prepare'])
+        self.assertIn('register Ryan',status['next_action'])
+        self.assertTrue(status['ready_for_speech'])
+        self.assertIn('UNQUALIFIED',status['qualification'])
+        for fault in ({'quarantined':True}, {'persistence_fault':True}, {'persistent_activation':False}):
+            with self.subTest(fault=fault):
+                retained_status.update(dict(persistent_activation=True,quarantined=False,persistence_fault=False))
+                retained_status.update(fault)
+                blocked=asyncio.run(get('/v1/status')).json()
+                self.assertFalse(blocked['ready_for_speech'])
+                self.assertIn('Operator review of retained state',blocked['next_action'])
+                self.assertNotIn('register Ryan',blocked['next_action'])
+                self.assertIn('UNQUALIFIED',blocked['qualification'])
 
 
 class UpDispatchTests(unittest.TestCase):
