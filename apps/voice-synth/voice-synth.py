@@ -411,6 +411,7 @@ def list_all_voices(cache: Path) -> list[dict[str, Any]]:
             "id":          slug,
             "slug":        slug,
             "display_name": v.get("display_name", slug),
+            "aliases":      v.get("aliases", []),
             "description": v.get("description", ""),
             "pkl":         pkl_path,
             "pkl_exists":  best is not None and best.exists(),
@@ -528,9 +529,12 @@ def resolve_voice(voice_arg: str, cache: Path, tone: str | None = None) -> dict[
 
     Resolution order:
       1. Absolute path ending in ``.pkl`` (clone prompt path; tone ignored)
-      2. Exact named-voice slug in ``/cache/voices/<slug>/``
-      3. Unambiguous prefix match against named voices
-      4. Exact stem or unambiguous prefix in legacy ``/cache/voice-clone/prompts/``
+      2. Case-insensitive named slug, display name or explicit alias
+      3. Unambiguous case-insensitive slug prefix
+      4. Case-insensitive stem or prefix in legacy ``/cache/voice-clone/prompts/``
+
+    Named voices take precedence over legacy IDs; ambiguous matches fail.
+    Direct paths retain their original spelling and filesystem semantics.
     """
     # 1. Direct path
     if voice_arg.endswith(".pkl"):
@@ -552,14 +556,13 @@ def resolve_voice(voice_arg: str, cache: Path, tone: str | None = None) -> dict[
 
     reg = VoiceRegistry(cache)
 
-    # 2. Exact named-voice slug. Legacy IDs contain checkpoint dots/underscores;
-    # they are cache identifiers, not registry directory names.
+    # Resolve human selection separately from case-sensitive filesystem paths.
     try:
-        validate_slug(voice_arg)
-    except ValueError:
+        voice_arg = reg.resolve_name(voice_arg)
+    except KeyError:
         named_voice_exists = False
     else:
-        named_voice_exists = reg.exists(voice_arg)
+        named_voice_exists = True
     if named_voice_exists:
         data = reg.load(voice_arg)
         engine = str(data.get("engine") or "clone_prompt")
@@ -678,26 +681,15 @@ def resolve_voice(voice_arg: str, cache: Path, tone: str | None = None) -> dict[
             "generation_defaults": reg.generation_defaults(voice_arg),
         }
 
-    # 3. Prefix match against named voices
-    named = [v["slug"] for v in reg.list_voices()]
-    name_matches = [s for s in named if s.startswith(voice_arg)]
-    if len(name_matches) == 1:
-        return resolve_voice(name_matches[0], cache, tone=tone)  # tail-recurse with full slug
-    if len(name_matches) > 1:
-        print(
-            f"ERROR: ambiguous voice prefix '{voice_arg}' — matches named voices:\n"
-            + "\n".join(f"  {m}" for m in sorted(name_matches)),
-            file=sys.stderr,
-        )
-        sys.exit(1)
-
     # 4. Legacy: full or prefix match against prompt stems (*.meta.json OR *.pkl)
     prompts_dir = cache / "voice-clone" / "prompts"
     if prompts_dir.exists():
         all_ids = sorted({p.stem for p in prompts_dir.glob("*.pkl")})
     else:
         all_ids = []
-    matches = [voice_arg] if voice_arg in all_ids else [i for i in all_ids if i.startswith(voice_arg)]
+    key = voice_arg.strip().casefold()
+    exact = [i for i in all_ids if i.casefold() == key]
+    matches = exact or [i for i in all_ids if key and i.casefold().startswith(key)]
     if len(matches) == 1:
         pkl = prompts_dir / f"{matches[0]}.pkl"
         if not pkl.exists():
@@ -717,7 +709,9 @@ def resolve_voice(voice_arg: str, cache: Path, tone: str | None = None) -> dict[
     if len(matches) == 0:
         print(
             f"ERROR: no voice found matching '{voice_arg}'.\n"
-            f"  Run `./run voice-synth list-voices` to see available voices.",
+            f"  Run `./run voice-synth list-voices` to see available voices.\n"
+            f"  If voice.json is missing, preview voice-clone repair-registry --voice SLUG "
+            f"--metadata /path/to/trusted/voice.json --cache {cache}.",
             file=sys.stderr,
         )
         sys.exit(1)
@@ -1957,6 +1951,7 @@ def _voice_reg(args):
 def cmd_rename_voice(args) -> None:
     reg = _voice_reg(args)
     try:
+        args.old_name = reg.resolve_name(args.old_name, prefix=False)
         reg.rename(args.old_name, args.new_name)
         print(f"  renamed '{args.old_name}'  →  '{args.new_name}'")
     except (KeyError, ValueError) as e:
@@ -1966,8 +1961,10 @@ def cmd_rename_voice(args) -> None:
 
 def cmd_delete_voice(args) -> None:
     reg = _voice_reg(args)
-    if not reg.exists(args.voice):
-        print(f"ERROR: voice '{args.voice}' not found.", file=sys.stderr)
+    try:
+        args.voice = reg.resolve_name(args.voice, prefix=False)
+    except (KeyError, ValueError) as exc:
+        print(f"ERROR: {exc}", file=sys.stderr)
         sys.exit(1)
     if not args.yes:
         ans = input(f"Delete voice '{args.voice}' and ALL its files? [y/N] ").strip().lower()
@@ -1980,13 +1977,14 @@ def cmd_delete_voice(args) -> None:
 
 def cmd_export_voice(args) -> None:
     reg = _voice_reg(args)
-    dest = Path(args.out) / f"{args.voice}.zip" if args.dest is None else Path(args.dest)
     try:
+        args.voice = reg.resolve_name(args.voice, prefix=False)
+        dest = Path(args.out) / f"{args.voice}.zip" if args.dest is None else Path(args.dest)
         reg.export_zip(args.voice, dest)
         print(f"  exported '{args.voice}'  →  {dest}")
         print("  Share: copy the zip to another machine, then run:")
         print(f"    ./run voice-synth import-voice --zip /work/{args.voice}.zip")
-    except KeyError as e:
+    except (KeyError, ValueError) as e:
         print(f"ERROR: {e}", file=sys.stderr)
         sys.exit(1)
 

@@ -1,0 +1,613 @@
+"""Installed journey controller contracts only; no model downloads or synthesis."""
+import base64
+import hashlib
+import importlib.util
+import io
+import json
+import os
+import re
+from pathlib import Path
+import signal
+import subprocess
+import sys
+import tempfile
+import threading
+from contextlib import contextmanager
+import time
+from types import SimpleNamespace
+import unittest
+from unittest.mock import Mock,patch
+import wave
+
+ROOT=Path(__file__).resolve().parents[1]
+spec=importlib.util.spec_from_file_location('kokoro_installed_controller',ROOT/'scripts/ci-native-kokoro-installed.py')
+c=importlib.util.module_from_spec(spec);spec.loader.exec_module(c)
+
+
+class InstalledControllerTests(unittest.TestCase):
+    def setUp(self):
+        self.temp=tempfile.TemporaryDirectory();self.addCleanup(self.temp.cleanup)
+        self.root=Path(self.temp.name).resolve();self.root.chmod(0o700)
+
+    def test_real_slow_owned_child_deadline_then_term_and_confirmed_reap(self):
+        records=[];child=c.Child('cli',[sys.executable,'-u','-c','import time; time.sleep(30)'],self.root,time.monotonic()+40,records)
+        try:
+            end=time.monotonic()+1
+            while child.record['identity'] is None and time.monotonic()<end:child.observe();time.sleep(.02)
+            with self.assertRaisesRegex(c.Failure,'child_deadline'):child.wait(.15)
+        finally:child.close(force_allowed=True)
+        self.assertTrue(records[0]['reaped']);self.assertTrue(records[0]['sampler_stopped'])
+        self.assertEqual([x['signal'] for x in records[0]['signals']],['SIGTERM'])
+        self.assertNotIn(child.handle.pid,c._LIVE)
+
+    def test_cli_stdout_json_is_separate_from_bounded_stderr_warning(self):
+        records=[]
+        code='import json,sys; sys.stderr.write("inert warning\\n"); print(json.dumps({"value":"café"},ensure_ascii=False))'
+        child=c.Child('cli',[sys.executable,'-u','-c',code],self.root,time.monotonic()+40,records)
+        try:self.assertEqual(child.wait(10),0)
+        finally:child.close(force_allowed=True)
+        self.assertEqual(json.loads(child.path.read_bytes()),dict(value='café'))
+        self.assertEqual(child.stderr_path.read_text(),'inert warning\n')
+
+    def test_separate_streams_keep_original_combined_log_bound_after_exit(self):
+        records=[];code='import sys; print("{}"); sys.stderr.write("x"*(1024**2))'
+        child=c.Child('cli',[sys.executable,'-u','-c',code],self.root,time.monotonic()+40,records)
+        try:
+            with self.assertRaisesRegex(c.Failure,'log_limit'):child.wait(10)
+        finally:
+            if not records[0]['reaped']:child.close(force_allowed=True)
+        self.assertTrue(records[0]['reaped']);self.assertNotIn(child.handle.pid,c._LIVE)
+
+    def test_canonical_non_ascii_matches_product_and_checks_loaded_source_closure(self):
+        from worker.transport import canonical
+        value=dict(path='/private/café/voix',text='été 🔈')
+        self.assertEqual(c.canonical(value),canonical(value));self.assertIn('café'.encode(),c.canonical(value))
+        counts=c.installed_modules(ROOT);self.assertGreater(sum(counts.values()),1)
+        with patch.dict(sys.modules,{'worker.inert_foreign':SimpleNamespace(__file__='/foreign/worker.py')}),self.assertRaisesRegex(c.Failure,'installed_source_closure'):
+            c.installed_modules(ROOT)
+
+    def test_unknown_nested_custody_never_forces_kill_or_drops_live_handle(self):
+        child=c.Child.__new__(c.Child);child.role='service';child.handle=SimpleNamespace(pid=123,poll=lambda:None)
+        child.record=dict(cleanup_unknown=False);child.send=Mock();child.wait=Mock(side_effect=c.Failure('fixture deadline'))
+        c._LIVE[123]=child
+        try:
+            with self.assertRaisesRegex(c.Failure,'nested_custody_unknown'):child.close(force_allowed=False)
+            self.assertEqual(child.send.call_args_list,[unittest.mock.call(signal.SIGTERM)])
+            self.assertTrue(child.record['cleanup_unknown']);self.assertIs(c._LIVE[123],child)
+        finally:c._LIVE.pop(123)
+
+    def test_deadline_is_original_total_and_artifacts_redact_private_material(self):
+        with patch.object(c.time,'monotonic',return_value=580),self.assertRaises(c.Failure):c.budget(600)
+        token='a'*96
+        value=c.public(dict(pid=123,doctor=dict(token=token,credential='never publish',private_key='never publish'),
+            error='Authorization: Bearer '+token,log='-----BEGIN PRIVATE KEY-----\nsecret\n-----END PRIVATE KEY-----'))
+        raw=json.dumps(value)
+        self.assertNotIn(token,raw);self.assertNotIn('never publish',raw);self.assertNotIn('secret',raw)
+        self.assertEqual(value['pid'],123)
+
+    def test_published_files_exclude_private_tree_and_scrub_nested_setup_logs(self):
+        private=self.root/'.private';installation=private/'installation';installation.mkdir(parents=True,mode=0o700)
+        (installation/'tls').mkdir();token='b'*96
+        (installation/'credential.json').write_text(json.dumps(dict(token=token)))
+        (installation/'tls/client.key').write_text('PRIVATE_KEY_FILE_SENTINEL')
+        (installation/'operator-config.txt').write_text('PRIVATE_CONFIG_SENTINEL')
+        (private/'setup-0.log').write_text('Authorization: Bearer '+token+'\nnormal progress\n')
+        (installation/'finish-setup.log').write_text('failure '+token+'\n-----BEGIN PRIVATE KEY-----\nINERT_KEY_BODY\n-----END PRIVATE KEY-----')
+        c.publish(self.root,dict(status='failed',credential=token))
+        exported=[self.root/'report.json',*(self.root/'safe-logs').iterdir()]
+        raw=''.join(p.read_text() for p in exported)
+        for secret in (token,'PRIVATE_KEY_FILE_SENTINEL','PRIVATE_CONFIG_SENTINEL','INERT_KEY_BODY'):self.assertNotIn(secret,raw)
+        self.assertIn('normal progress',raw)
+        self.assertEqual({p.name for p in (self.root/'safe-logs').iterdir()},{'setup-0.log','setup-finish-setup.log'})
+
+    def test_late_zero_exit_does_not_turn_expired_work_into_success(self):
+        child=c.Child.__new__(c.Child);child.deadline=600;child.observe=Mock(return_value=0);child.reap=Mock()
+        with patch.object(c.time,'monotonic',return_value=580),self.assertRaises(c.Failure):child.wait(10)
+        child.reap.assert_not_called()  # cleanup still separately observes/waits it
+
+    def test_identity_change_fails_before_any_signal(self):
+        child=c.Child.__new__(c.Child);child.handle=SimpleNamespace(pid=123,poll=lambda:None)
+        child.record=dict(identity=1);child.sampler=SimpleNamespace(snapshot=lambda:dict(last=dict(pid=123,identity=2,observed_at=time.monotonic()),peak=1,count=1,error=None))
+        with patch.object(c.os,'killpg') as signal_group,self.assertRaisesRegex(c.Failure,'identity_changed'):child.observe()
+        signal_group.assert_not_called()
+
+    def test_live_unknown_custody_retains_private_tree(self):
+        private=self.root/'.private';private.mkdir(mode=0o700);installation=private/'installation';installation.mkdir(mode=0o700)
+        deadline=time.monotonic()+60
+        state=dict(phase='setup_complete',deadline=deadline,started=time.monotonic(),root=str(installation),source_commit='a'*40,
+            controller_sha256=hashlib.sha256(Path(c.__file__).read_bytes()).hexdigest(),owners=[],setup_cleanup_confirmed=True)
+        c.save(private/'controller-state.json',state)
+        child=SimpleNamespace(role='service',close=Mock(side_effect=c.Failure('fixture custody unknown')))
+        c._LIVE[123]=child
+        try:
+            with patch.dict(os.environ,dict(GITHUB_REF='refs/heads/feat/apple-silicon-native',GITHUB_SHA='a'*40)),patch.object(c,'Journey') as journey,patch.object(c,'product_flow'),patch.object(c,'remove_fresh_installation') as remove:
+                journey.return_value.family_stopped.return_value=True;journey.return_value.evidence.return_value=[]
+                result=c.run(SimpleNamespace(output=self.root,installed_phase=True,deadline=deadline))
+                self.assertEqual(result,1);remove.assert_not_called()
+            report=json.loads((self.root/'report.json').read_bytes())
+            self.assertFalse(report['private_tree_removed']);self.assertEqual(report['live_owned_pids'],[123])
+            self.assertTrue(installation.exists())
+        finally:c._LIVE.pop(123,None)
+
+    def test_last_public_evidence_is_allowlisted_and_wait_cutoff_not_renewed(self):
+        jid='job-'+'a'*32
+        job=dict(id=jid,state='succeeded',generation=1,attempts=[dict(reaped=True,token='secret')],artifact_ids=['artifact'],text='secret',context={'credential':'secret'})
+        status=dict(status=dict(phase='ack_pending',error='secret'*30,quarantined=True,config='secret'))
+        self.assertNotIn('secret',json.dumps(c.public_job_evidence(job)))
+        self.assertNotIn('secret',json.dumps(c.public_status_evidence(status)))
+        journey=c.Journey.__new__(c.Journey);journey.deadline=500;journey.state={}
+        journey.http=Mock(side_effect=[dict(job=job,next_cursor='next'),status])
+        with patch.object(c.time,'monotonic',return_value=100):self.assertIs(journey.wait_job(jid),job)
+        self.assertEqual([call.kwargs['phase_cutoff'] for call in journey.http.call_args_list],[165,165])
+        self.assertTrue(journey.state['last_public_job']['reaped'][0]);self.assertEqual(journey.state['last_public_status']['error'],'redacted')
+
+    def test_original_four_job_limit_precedes_any_extra_write(self):
+        journey=c.Journey.__new__(c.Journey);journey.state=dict(submitted_jobs=4);journey.http=Mock()
+        with self.assertRaisesRegex(c.Failure,'four_job_limit'):journey.submit('no-extra',{})
+        journey.http.assert_not_called()
+
+    def test_blocking_http_does_not_block_custody_checks_or_spawn_replacement(self):
+        journey=c.Journey.__new__(c.Journey);journey.deadline=time.monotonic()+40;journey.http_thread=None;journey.root=self.root
+        entered=threading.Event();release=threading.Event()
+        @contextmanager
+        def credentials(root):
+            with patch.dict(os.environ,dict(SPEECH_CREDENTIAL='inert-source-fixture')):yield
+        class HTTP:
+            def __init__(self,**kw):pass
+            def call(self,*a,**kw):entered.set();release.wait(2);return {}
+        journey.client_environment=credentials;journey.HTTP=HTTP
+        observe=Mock(side_effect=[None,c.Failure('fixture sampler lost')]);c._LIVE[123]=SimpleNamespace(observe=observe)
+        try:
+            with self.assertRaisesRegex(c.Failure,'sampler lost'):journey.http('inert')
+            self.assertTrue(entered.is_set());self.assertTrue(journey.http_thread.is_alive())
+            c._LIVE.pop(123)
+            original=journey.http_thread
+            with self.assertRaisesRegex(c.Failure,'prior_http_custody_unknown'):journey.http('inert')
+            self.assertIs(journey.http_thread,original)
+        finally:
+            c._LIVE.pop(123,None);release.set();journey.close_http()
+
+    def test_fixed_role_order_has_one_session_and_stops_first_failure(self):
+        events=[]
+        class Fake:
+            root='/inert';state={}
+            def cli(self,*args):events.append(args[0])
+            def model_identity(self):events.append('model');return {}
+            def start_service(self):events.append('start')
+            def first_public(self):events.append('first')
+            def cancellations(self):events.append('cancel')
+            def stop_mcp(self):events.append('mcp-close')
+            def stop_service(self):events.append('stop')
+            def restarted(self):events.append('restart-public')
+        c.product_flow(Fake())
+        self.assertEqual(events,['doctor','model','qualification-session','start','first','cancel','mcp-close','stop','start','restart-public','stop'])
+        events.clear()
+        with patch.object(Fake,'first_public',side_effect=c.Failure('first cause')):
+            with self.assertRaisesRegex(c.Failure,'first cause'):c.product_flow(Fake())
+        self.assertEqual(events,['doctor','model','qualification-session','start'])
+
+    def test_ordinary_role_order_three_jobs_no_qualification_and_stop_first_failure(self):
+        events=[]
+        class Fake:
+            state={'ordinary_journey':True}
+            def model_identity(self):events.append('model');return {}
+            def selftest(self):events.append('selftest')
+            def start_service(self):events.append('ordinary-start')
+            def first_public(self):events.append('shared-public')
+            def stop_mcp(self):events.append('mcp-close')
+            def stop_service(self):events.append('stop')
+            def restarted(self):events.append('restart-public')
+            def tamper_refusal(self):events.append('tamper')
+        c.ordinary_flow(Fake())
+        self.assertEqual(events,['model','selftest','ordinary-start','shared-public','mcp-close','stop','ordinary-start','restart-public','stop','tamper'])
+        events.clear()
+        with patch.object(Fake,'selftest',side_effect=c.Failure('first cause')):
+            with self.assertRaisesRegex(c.Failure,'first cause'):c.ordinary_flow(Fake())
+        self.assertEqual(events,['model'])
+        journey=c.Journey.__new__(c.Journey);journey.state={};journey.root=self.root
+        journey.command=['python','installed-entry'];journey.private=self.root;journey.deadline=time.monotonic()+140;journey.records=[]
+        with patch.object(c,'Child') as child:
+            child.return_value.wait.side_effect=c.Failure('selftest unknown')
+            with self.assertRaisesRegex(c.Failure,'selftest unknown'):journey.selftest()
+        self.assertEqual(journey.state['submitted_jobs'],1)
+        self.assertEqual(child.call_args.args[:2],('service',['python','installed-entry','doctor','--root',str(self.root),'--selftest']))
+        child.return_value.wait.assert_called_once_with(120)
+
+    def test_selftest_custodian_timeout_retains_unknown_handle_without_kill(self):
+        owner=c.Child.__new__(c.Child);owner.role='service'
+        owner.handle=SimpleNamespace(pid=123,poll=lambda:None);owner.record=dict(cleanup_unknown=False)
+        owner.send=Mock();owner.wait=Mock(side_effect=c.Failure('interrupted or timed out'))
+        c._LIVE[123]=owner
+        try:
+            with self.assertRaisesRegex(c.Failure,'nested_custody_unknown'):
+                owner.close(force_allowed=lambda:False)
+            owner.wait.assert_called_once_with(14,work=False)
+            self.assertEqual(owner.send.call_args_list,[unittest.mock.call(signal.SIGTERM)])
+            self.assertIs(c._LIVE[123],owner);self.assertTrue(owner.record['cleanup_unknown'])
+            # A later independently confirmed terminal family permits only this
+            # same owned handle's existing identity-checked send path.
+            owner.wait.reset_mock();owner.wait.side_effect=[c.Failure('grace expired'),0]
+            owner.send.reset_mock();owner.close(force_allowed=lambda:True)
+            self.assertEqual(owner.send.call_args_list,[unittest.mock.call(signal.SIGTERM),unittest.mock.call(signal.SIGKILL)])
+            self.assertEqual(owner.wait.call_args_list,[unittest.mock.call(14,work=False),unittest.mock.call(1,work=False)])
+        finally:c._LIVE.pop(123,None)
+
+    def test_selftest_interrupt_and_forced_cleanup_preserve_owned_identity(self):
+        for error in (KeyboardInterrupt('fixture interrupt'),c.Failure('fixture deadline')):
+            owner=c.Child.__new__(c.Child);owner.role='service';owner.handle=SimpleNamespace(pid=123,poll=lambda:None)
+            owner.record=dict(cleanup_unknown=False);owner.send=Mock();owner.wait=Mock(side_effect=error)
+            c._LIVE[123]=owner
+            try:
+                with self.assertRaises(KeyboardInterrupt if isinstance(error,KeyboardInterrupt) else c.Failure):owner.close(force_allowed=lambda:False)
+                self.assertEqual(owner.send.call_args_list,[unittest.mock.call(signal.SIGTERM)])
+                self.assertIs(c._LIVE[123],owner);self.assertTrue(owner.record['cleanup_unknown'])
+            finally:c._LIVE.pop(123,None)
+        owner=c.Child.__new__(c.Child);owner.role='service';owner.handle=SimpleNamespace(pid=123,poll=lambda:None)
+        owner.record=dict(cleanup_unknown=False,identity=4,signals=[])
+        sample=dict(last=dict(pid=123,identity=4,observed_at=time.monotonic()),error=None)
+        owner.sampler=SimpleNamespace(snapshot=lambda:sample)
+        def grace(seconds,*,work):
+            sample['last']['identity']=5
+            raise c.Failure('fixture grace expired')
+        owner.wait=Mock(side_effect=grace);c._LIVE[123]=owner
+        try:
+            with patch.object(c.os,'getpgid',return_value=123),patch.object(c.os,'killpg') as kill:
+                with self.assertRaisesRegex(c.Failure,'signal_identity_unknown'):owner.close(force_allowed=lambda:True)
+            self.assertEqual(kill.call_args_list,[unittest.mock.call(123,signal.SIGTERM)])
+            self.assertIs(c._LIVE[123],owner);self.assertTrue(owner.record['cleanup_unknown'])
+        finally:c._LIVE.pop(123,None)
+
+    def test_selftest_service_role_parses_only_stdout_and_keeps_120_phase(self):
+        value=dict(qualification='local_selftest',ready_for_speech=True,history_jobs_used=1,history_jobs_remaining=62,cold_end_to_end_seconds=3.)
+        receipt=dict(binding=dict(host=dict(os='fixture',machine='arm64',boot='fixture-boot')))
+        (self.root/'measurement.json').write_bytes(c.canonical(receipt))
+        child=SimpleNamespace(path=self.root/'selftest.stdout',wait=Mock(return_value=0))
+        child.path.write_text(json.dumps(value));(self.root/'selftest.stderr').write_text('inert warning, not JSON')
+        journey=c.Journey.__new__(c.Journey);journey.state={};journey.root=self.root;journey.private=self.root
+        journey.command=['python','installed-entry'];journey.deadline=time.monotonic()+140;journey.records=[]
+        journey.cli=Mock(return_value=dict(value))
+        with patch.object(c,'Child',return_value=child) as constructor:journey.selftest()
+        self.assertEqual(constructor.call_args.args[0],'service');child.wait.assert_called_once_with(120)
+        self.assertEqual(journey.state['selftest'],value);self.assertEqual(journey.state['submitted_jobs'],1)
+        journey.cli.assert_called_once_with('doctor','--root',str(self.root))
+
+    def test_family_stopped_uses_owned_journal_and_core_without_http_endpoint(self):
+        from worker.native_cpu_supervisor import CPUJournal
+        from worker import native_cpu_protocol as protocol
+        import sqlite3
+        config=dict(deployment_id='a'*32)
+        directory=self.root/'state'/'worker';directory.mkdir(mode=0o700,parents=True)
+        payload=dict(version=protocol.JOURNAL_VERSION,deployment_id='a'*32,configuration_sha256=hashlib.sha256(c.canonical(config)).hexdigest(),lane='b'*32,records=[])
+        (directory/'native.json').write_bytes(c.canonical(dict(payload=payload,sha256=hashlib.sha256(c.canonical(payload)).hexdigest())))
+        journey=c.Journey.__new__(c.Journey);journey.root=self.root;journey.http_thread=None;journey.state={'submitted_jobs':1}
+        journey.http=Mock(side_effect=AssertionError('no endpoint exists during doctor selftest'))
+        with patch('service.native_cpu_install.read_installation',return_value=(self.root,config,None,None)):
+            self.assertFalse(journey.family_stopped())  # Missing Core cannot prove this attempted job absent.
+            control=self.root/'state'/'control';control.mkdir(mode=0o700)
+            with sqlite3.connect(control/'core.sqlite') as db:
+                db.execute('CREATE TABLE jobs(job TEXT)')
+                db.execute('CREATE TABLE dispatches(runtime TEXT,job_id TEXT,phase TEXT,acked INTEGER,receipt TEXT,outcome TEXT,seq INTEGER)')
+            self.assertTrue(journey.family_stopped())  # Typed empty journal + empty Core prove no model launch.
+        journey.http.assert_not_called()
+
+    def test_ordinary_service_has_no_qualification_flag_and_reuses_receipt(self):
+        path=self.root/'measurement.json';path.write_bytes(b'owned measurement')
+        journey=c.Journey.__new__(c.Journey);journey.root=self.root;journey.command=['python','installed-entry']
+        journey.private=self.root;journey.deadline=time.monotonic()+40;journey.records=[]
+        journey.state=dict(ordinary_journey=True,measurement_sha256=hashlib.sha256(path.read_bytes()).hexdigest())
+        journey.evidence=Mock(return_value=[]);journey.ready=Mock()
+        with patch.object(c,'Child') as child:journey.start_service()
+        self.assertEqual(child.call_args.args[1],['python','installed-entry','serve','--root',str(self.root)])
+        self.assertNotIn('--qualification-session',child.call_args.args[1])
+        self.assertEqual(journey.evidence.call_count,2)
+
+    def test_tamper_refusal_restores_exact_owned_bytes_without_model_job(self):
+        path=self.root/'measurement.json';original=b'original-valid-bytes-fixture';path.write_bytes(original);path.chmod(0o600)
+        journey=c.Journey.__new__(c.Journey);journey.root=self.root;journey.private=self.root
+        journey.command=['python','installed-entry'];journey.deadline=time.monotonic()+40;journey.records=[]
+        journey.state=dict(measurement_sha256=hashlib.sha256(original).hexdigest(),submitted_jobs=3)
+        journey.evidence=Mock(return_value=[{'terminal':'fixture'}]);journey.family_stopped=Mock(return_value=True)
+        roles=[]
+        class Child:
+            def __init__(inner,role,argv,*args):
+                self.assertEqual(path.read_bytes(),b'!'+original[1:]);roles.append((role,argv))
+                inner.path=self.root/(role+'.json');inner.path.write_text(json.dumps(dict(status='revalidation_required',ready_for_speech=False,error={'chain':['fixture']})))
+                inner.record={'exit':1}
+            def wait(inner,seconds):self.assertEqual(seconds,20);return 1
+        with patch.object(c,'Child',Child):journey.tamper_refusal()
+        self.assertEqual(path.read_bytes(),original);self.assertEqual(journey.state['submitted_jobs'],3)
+        self.assertTrue(journey.state['tamper_refusal']['no_model_launch'])
+        self.assertEqual([r for r,_ in roles],['cli','service'])
+        self.assertTrue(all('--qualification-session' not in argv for _,argv in roles))
+
+    def test_tamper_invalid_original_never_rewrites_or_launches(self):
+        path=self.root/'measurement.json';original=b'changed-original';path.write_bytes(original);path.chmod(0o600)
+        journey=c.Journey.__new__(c.Journey);journey.root=self.root;journey.state=dict(measurement_sha256='0'*64)
+        with patch.object(c,'Child') as child,self.assertRaisesRegex(c.Failure,'tamper_original_changed'):journey.tamper_refusal()
+        child.assert_not_called();self.assertEqual(path.read_bytes(),original)
+
+    def test_terminal_failure_before_cancel_is_not_reported_as_completion_win(self):
+        for state,reason in (('succeeded','cancel_completion_won'),('failed','job_failed_before_cancel'),('cancelled','job_cancelled_before_request')):
+            with self.subTest(state=state):
+                journey=c.Journey.__new__(c.Journey);journey.state={};journey.request={};journey.deadline=time.monotonic()+60
+                journey.submit=Mock(return_value=dict(job_id='inert'))
+                journey.http=Mock(side_effect=[dict(status=dict(phase='idle')),dict(state=state)])
+                journey.cli=Mock();journey.mcp=Mock()
+                with self.assertRaisesRegex(c.Failure,reason):journey.cancellations()
+                self.assertEqual(journey.state['pre_cancel_terminal_job']['state'],state)
+                self.assertEqual(journey.submit.call_count,1);journey.cli.assert_not_called();journey.mcp.tool.assert_not_called()
+
+    def test_post_cancel_labels_and_warm_http_mcp_transport_order(self):
+        cancelled=dict(id='running',state='cancelled',attempts=[dict(reaped=True)],artifact_ids=[])
+        queued=dict(id='queued',state='cancelled',stage='never_started',attempts=[],artifact_ids=[])
+        cases=[(dict(cancelled,state='succeeded'),queued,'cancel_completion_won'),
+            (cancelled,dict(queued,state='succeeded',attempts=[dict(reaped=True)]),'queued_cancel_lost_job_started'),
+            (cancelled,dict(queued,attempts=[dict(reaped=True)]),'queued_cancel_lost_job_started'),
+            (dict(cancelled,state='failed'),queued,'running_job_failed_not_cancelled'),(cancelled,queued,None)]
+        for a,b,reason in cases:
+            with self.subTest(reason=reason):
+                journey=c.Journey.__new__(c.Journey);journey.state={};journey.request={};journey.deadline=time.monotonic()+60
+                journey.submit=Mock(side_effect=[dict(job_id='running'),dict(job_id='queued')])
+                journey.http=Mock(side_effect=[dict(status=dict(phase='observing')),dict(state='running'),{}])
+                journey.mcp=Mock();journey.cli=Mock();journey.wait_job=Mock(side_effect=[a,b])
+                journey.evidence=Mock(return_value=[dict(job_id='running',receipt=dict(reaped=True,timely=False,processes=[{}],termination=dict(reason='cancelled')))])
+                if reason:
+                    with self.assertRaisesRegex(c.Failure,reason):journey.cancellations()
+                else:journey.cancellations()
+                self.assertEqual(journey.state['cancel_jobs'],[a,b]);self.assertEqual(journey.submit.call_count,2)
+                self.assertEqual(journey.http.call_args_list[-1],unittest.mock.call('job_cancel',dict(job_id='queued'),key='installed-cancel-queued'))
+                journey.mcp.tool.assert_called_once_with('speech_job_cancel',dict(job_id='running',idempotency_key='installed-cancel-running'))
+                journey.cli.assert_not_called()
+
+    def test_bounded_ranges_whole_hash_and_nonempty_playable_wav(self):
+        output=io.BytesIO()
+        with wave.open(output,'wb') as wav:wav.setparams((1,2,24000,0,'NONE','none'));wav.writeframes(b'\x01\0'*4800)
+        raw=output.getvalue();asset=dict(id='inert',sha256=hashlib.sha256(raw).hexdigest());calls=[]
+        def transfer(p,*,cutoff):
+            calls.append(p);start,end=p['start'],p['end_exclusive']
+            return dict(start=start,end_exclusive=end,total_bytes=len(raw),content_sha256=asset['sha256'],content_base64=base64.b64encode(raw[start:end]).decode())
+        self.assertEqual(c.download(transfer,asset,time.monotonic()+60,mcp=True,known_size=len(raw)),raw)
+        self.assertLessEqual(len(calls),43);self.assertTrue(all(p['end_exclusive']-p['start']<=3072 for p in calls))
+        self.assertEqual(c.wav_info(raw)['sha256'],asset['sha256'])
+        with self.assertRaisesRegex(c.Failure,'size_limit'):c.download(transfer,asset,time.monotonic()+60,mcp=True,known_size=128*1024+1)
+
+    def test_range_rounds_share_one_cumulative_budget(self):
+        now=[100.];calls=[];raw=b'x'*12000;asset=dict(id='inert',sha256=hashlib.sha256(raw).hexdigest())
+        def transfer(p,*,cutoff):
+            calls.append(p);now[0]+=6
+            self.assertEqual(cutoff,120.)
+            return dict(start=p['start'],end_exclusive=p['end_exclusive'],total_bytes=len(raw),content_sha256=asset['sha256'],content_base64=base64.b64encode(raw[p['start']:p['end_exclusive']]).decode())
+        with patch.object(c.time,'monotonic',side_effect=lambda:now[0]),self.assertRaisesRegex(c.Failure,'download_total_deadline'):
+            c.download(transfer,asset,1000,mcp=True,known_size=len(raw))
+        self.assertEqual(len(calls),4)
+
+    def test_mcp_ranges_can_use_more_than_ten_seconds_without_renewing_twenty(self):
+        now=[100.];raw=b'x'*(12*3072);asset=dict(id='inert',sha256=hashlib.sha256(raw).hexdigest());cutoffs=[]
+        def transfer(p,*,cutoff):
+            cutoffs.append(cutoff);now[0]+=1
+            return dict(start=p['start'],end_exclusive=p['end_exclusive'],total_bytes=len(raw),content_sha256=asset['sha256'],content_base64=base64.b64encode(raw[p['start']:p['end_exclusive']]).decode())
+        with patch.object(c.time,'monotonic',side_effect=lambda:now[0]):
+            self.assertEqual(c.download(transfer,asset,1000,mcp=True,known_size=len(raw)),raw)
+        self.assertEqual(now[0],112.);self.assertEqual(cutoffs,[120.]*12)
+
+    def test_mcp_roundtrip_honors_shared_cutoff_even_with_buffered_late_reply(self):
+        client=c.MCP.__new__(c.MCP);client.deadline=1000;client.seq=0;client.child=SimpleNamespace(observe=Mock())
+        client.write=Mock();client.buffer=c.canonical(dict(jsonrpc='2.0',id=1,result={}))+b'\n'
+        with patch.object(c.time,'monotonic',return_value=119.):self.assertEqual(client.call('ping',{},cutoff=120.),{})
+        self.assertEqual(client.write.call_args.kwargs,dict(cutoff=120.))
+        client.seq=0;client.buffer=c.canonical(dict(jsonrpc='2.0',id=1,result={}))+b'\n'
+        with patch.object(c.time,'monotonic',return_value=120.),self.assertRaisesRegex(c.Failure,'mcp_roundtrip_deadline'):
+            client.call('ping',{},cutoff=120.)
+
+    def test_real_mcp_stdio_protocol_without_http_or_weights(self):
+        records=[];child=c.Child('mcp',[sys.executable,'-B','-m','clients.mcp'],self.root,time.monotonic()+60,records,pipes=True)
+        client=None
+        try:
+            client=c.MCP(child,child.deadline)
+            self.assertEqual(client.call('ping',{}),{})
+        finally:
+            if client:client.selector.close()
+            child.close(force_allowed=True)
+        self.assertEqual(records[0]['exit'],0);self.assertTrue(records[0]['reaped'])
+
+    def test_trusted_manual_workflow_and_archive_roles_are_closed(self):
+        workflow=(ROOT/'.github/workflows/apple-kokoro.yml').read_text()
+        job=workflow.split('  installed-journey:',1)[1]
+        for value in ("github.event_name == 'workflow_dispatch'",'inputs.installed_journey','!inputs.en_backend',
+                "refs/heads/feat/apple-silicon-native","refs/heads/main",'timeout-minutes: 12','--run-installed-journey'):
+            self.assertIn(value,job)
+        artifacts=job.split('path: |',1)[1].split('retention-days:',1)[0]
+        self.assertNotIn('.private',artifacts);self.assertNotIn('installation',artifacts)
+        self.assertIn('safe-logs/*.log',artifacts)
+        from service.native_cpu_package import members
+        self.assertNotIn('scripts/ci-native-kokoro-installed.py',members())  # CI controller is not product archive input
+        image=(ROOT/'Dockerfile.tests').read_text();self.assertIn('COPY scripts /app/scripts',image)
+
+
+def copied_venv_scratch():
+    selected=os.environ.get('PAB_COPIED_VENV_TEST_SCRATCH')
+    if selected is None:return None  # Native Apple/local run has its normal executable temp directory.
+    path=Path('/pab-copied-venv-test')
+    if selected!=str(path):raise AssertionError('copied venv fixture scratch selector invalid')
+    if path.is_symlink() or not path.is_dir():raise AssertionError('required copied venv executable scratch absent')
+    info=path.stat()
+    if info.st_uid!=0 or info.st_mode&0o7777!=0o1777:raise AssertionError('copied venv scratch owner/mode invalid')
+    if os.statvfs(path).f_flag&getattr(os,'ST_NOEXEC',8):raise AssertionError('copied venv scratch is noexec')
+    return str(path)
+
+
+class OwnedInstallationCleanupTests(unittest.TestCase):
+    def setUp(self):
+        scratch=copied_venv_scratch() if self._testMethodName=='test_real_product_copies_venv_readonly_namespace_and_external_python' else None
+        self.temp=tempfile.TemporaryDirectory(dir=scratch);self.addCleanup(self.temp.cleanup)
+        self.output=Path(self.temp.name).resolve();self.private=self.output/'.private';self.private.mkdir()
+        self.root=self.private/'installation';self.root.mkdir();self.nested=self.root/'source';self.nested.mkdir()
+        (self.nested/'fixture').write_text('owned');self.nested.chmod(0o555);self.root.chmod(0o555)
+        self.addCleanup(self.restore)
+        self.state=dict(root=str(self.root),private_identity=c.directory_identity(self.private),
+            installation_identity=c.directory_identity(self.root),deadline=time.monotonic()+20,
+            fresh_installation=True,setup_cleanup_confirmed=True,family_cleanup_confirmed=True,workload_completed=True,
+            owners=[dict(reaped=True,sampler_stopped=True,cleanup_unknown=False,exit=0)],status='pending_cleanup')
+
+    def restore(self):
+        for path in (self.root,self.nested):
+            if path.exists() and not path.is_symlink():path.chmod(0o700)
+
+    def test_real_nonroot_readonly_tree_removed_only_after_custody(self):
+        if os.getuid()==0:
+            # Container Unit runs as root: exercise the same real filesystem as
+            # an unprivileged child rather than letting root bypass mode0555.
+            uid=65534
+            for directory,dirs,files in os.walk(self.output,followlinks=False):
+                os.chown(directory,uid,-1)
+                for name in dirs+files:os.chown(Path(directory)/name,uid,-1,follow_symlinks=False)
+            read,write=os.pipe();pid=os.fork()
+            if pid==0:
+                try:
+                    os.close(read);os.setgroups([]);os.setgid(uid);os.setuid(uid)
+                    self.state.update(private_identity=c.directory_identity(self.private),installation_identity=c.directory_identity(self.root))
+                    c.finish_installation_cleanup(self.output,self.state)
+                    os.write(write,c.canonical(self.state));os._exit(0)
+                except BaseException:os._exit(1)
+            os.close(write)
+            with os.fdopen(read,'rb') as stream:result=json.loads(stream.read(8192))
+            _,status=os.waitpid(pid,0);self.assertEqual(status,0)
+            self.assertEqual(result['status'],'succeeded');self.assertFalse(self.root.exists());return
+        (self.private/'controller-state.json').write_text('retain')
+        c.finish_installation_cleanup(self.output,self.state)
+        self.assertEqual(self.state['status'],'succeeded');self.assertTrue(self.state['journey_completed'])
+        self.assertFalse(self.root.exists());self.assertTrue((self.private/'controller-state.json').exists())
+        self.assertGreaterEqual(self.state['installation_cleanup']['writable_dirs'],2)
+
+    def test_symlink_escape_is_unlinked_as_leaf_target_untouched(self):
+        external=self.output/'external';external.mkdir();(external/'keep').write_text('untouched');external.chmod(0o555)
+        self.addCleanup(lambda:external.chmod(0o700))
+        self.nested.chmod(0o755);(self.nested/'escape').symlink_to(external);self.nested.chmod(0o555)
+        c.remove_fresh_installation(self.output,self.state)
+        self.assertEqual((external/'keep').read_text(),'untouched');self.assertEqual(external.stat().st_mode&0o777,0o555)
+        self.assertFalse(self.root.exists())
+
+    def test_identity_owner_path_and_unknown_custody_refuse_untouched(self):
+        cases=[('identity',{'installation_identity':dict(self.state['installation_identity'],ino=0)}),
+            ('owner',{'installation_identity':dict(self.state['installation_identity'],uid=os.getuid()+1)}),
+            ('path',{'root':str(self.output)}),('live',{'live_owned_pids':[123]}),
+            ('unknown',{'family_cleanup_confirmed':False}),
+            ('unreaped',{'owners':[dict(reaped=False,sampler_stopped=True,cleanup_unknown=False,exit=0)]})]
+        for label,change in cases:
+            with self.subTest(label=label),self.assertRaises(c.CleanupFailure):c.remove_fresh_installation(self.output,dict(self.state,**change))
+            self.assertTrue((self.nested/'fixture').exists());self.assertEqual(self.root.stat().st_mode&0o777,0o555)
+        with patch.dict(c._LIVE,{123:object()}),self.assertRaisesRegex(c.CleanupFailure,'custody_unknown'):
+            c.remove_fresh_installation(self.output,self.state)
+
+    def test_copied_venv_scratch_is_explicit_and_required_not_host_fallback(self):
+        with patch.dict(os.environ,{'PAB_COPIED_VENV_TEST_SCRATCH':'/wrong'}),self.assertRaisesRegex(AssertionError,'selector invalid'):copied_venv_scratch()
+        with patch.dict(os.environ,{'PAB_COPIED_VENV_TEST_SCRATCH':'/pab-copied-venv-test'}),patch.object(Path,'is_dir',return_value=False),self.assertRaisesRegex(AssertionError,'scratch absent'):copied_venv_scratch()
+        runner=(ROOT/'scripts/ci-unit.sh').read_text()
+        self.assertIn('--tmpfs /tmp:rw,noexec,nosuid,nodev,size=1g',runner)
+        self.assertIn('--tmpfs /pab-copied-venv-test:rw,exec,nosuid,nodev,size=64m,mode=1777,uid=0,gid=0',runner)
+        self.assertEqual(re.findall(r'--tmpfs ([^ ]*?,exec[^ ]*)',runner),['/pab-copied-venv-test:rw,exec,nosuid,nodev,size=64m,mode=1777,uid=0,gid=0'])
+        self.assertIn('--env PAB_COPIED_VENV_TEST_SCRATCH=/pab-copied-venv-test',runner)
+        self.assertNotIn('--env TMPDIR',runner);self.assertNotIn('--mount',runner);self.assertNotIn('--volume',runner)
+
+    def create_product_venv(self):
+        command=[sys.executable,'-m','venv','--copies',str(self.root/'venv')]
+        def output(raw):return c.sanitized((raw or b'')[:4096])
+        try:
+            result=subprocess.run(command,timeout=60,stdout=subprocess.PIPE,stderr=subprocess.PIPE)
+        except subprocess.TimeoutExpired as exc:
+            self.fail(json.dumps(dict(command=command,returncode=None,timeout_seconds=60,
+                stdout=output(exc.stdout),stderr=output(exc.stderr)),ensure_ascii=False))
+        self.assertEqual(result.returncode,0,json.dumps(dict(command=command,returncode=result.returncode,
+            stdout=output(result.stdout),stderr=output(result.stderr)),ensure_ascii=False))
+
+    def test_venv_failure_diagnostic_has_command_exit_and_bounded_sanitized_streams(self):
+        token='a'*96
+        result=SimpleNamespace(returncode=1,stdout=b'venv stdout',stderr=('Authorization: Bearer '+token+'\n'+'x'*10000).encode())
+        with patch.object(subprocess,'run',return_value=result),self.assertRaises(AssertionError) as caught:self.create_product_venv()
+        message=str(caught.exception);self.assertIn('venv stdout',message);self.assertIn('"returncode": 1',message)
+        self.assertIn('"--copies"',message);self.assertNotIn(token,message);self.assertLess(len(message),6000)
+        error=subprocess.TimeoutExpired(['inert'],60,output=b'partial stdout',stderr=b'partial stderr')
+        with patch.object(subprocess,'run',side_effect=error),self.assertRaises(AssertionError) as caught:self.create_product_venv()
+        self.assertIn('partial stderr',str(caught.exception));self.assertIn('"timeout_seconds": 60',str(caught.exception))
+
+    def test_real_product_copies_venv_readonly_namespace_and_external_python(self):
+        self.root.chmod(0o755)
+        self.create_product_venv()
+        target=Path(sys.executable).resolve();before=(target.stat(),hashlib.sha256(target.read_bytes()).hexdigest())
+        (self.root/'venv/bin/external-python').symlink_to(target)
+        counts=dict(directories=0,regular=0,symlinks=0,hardlinked_regular=0)
+        for directory,dirs,files in os.walk(self.root,followlinks=False):
+            for name in dirs+files:
+                path=Path(directory)/name;info=path.lstat()
+                if path.is_symlink():counts['symlinks']+=1
+                elif path.is_dir():counts['directories']+=1
+                else:
+                    counts['regular']+=1;counts['hardlinked_regular']+=int(info.st_nlink!=1)
+            Path(directory).chmod(0o555)
+        self.assertEqual(counts['hardlinked_regular'],0);self.assertGreater(counts['regular'],10)
+        print('product copies venv namespace',json.dumps(counts),flush=True)
+        self.test_real_nonroot_readonly_tree_removed_only_after_custody()
+        after=target.stat();self.assertEqual((after.st_dev,after.st_ino,after.st_mode,after.st_size),
+            (before[0].st_dev,before[0].st_ino,before[0].st_mode,before[0].st_size))
+        self.assertEqual(hashlib.sha256(target.read_bytes()).hexdigest(),before[1])
+
+    def test_common_ancestor_symlink_and_intermediate_directory_link_refused(self):
+        alias=self.output/'alias';alias.symlink_to(self.private,target_is_directory=True)
+        state=dict(self.state,root=str(alias/'installation'))
+        with self.assertRaisesRegex(c.CleanupFailure,'path_escape'):c.remove_fresh_installation(self.output,state)
+        outside=self.output/'outside';outside.mkdir();(outside/'keep').write_text('retain')
+        # A symlink replacing the fixed installation directory is never opened.
+        moved=self.private/'saved';self.root.chmod(0o755);self.root.rename(moved);self.root.symlink_to(outside,target_is_directory=True)
+        try:
+            with self.assertRaises(c.CleanupFailure):c.remove_fresh_installation(self.output,self.state)
+            self.assertEqual((outside/'keep').read_text(),'retain')
+        finally:self.root.unlink();moved.rename(self.root)
+        ancestor=self.output.parent/(self.output.name+'-alias');ancestor.symlink_to(self.output,target_is_directory=True)
+        try:
+            linked=ancestor/'child'
+            with self.assertRaisesRegex(c.CleanupFailure,'path_escape'):
+                c.remove_fresh_installation(linked,dict(self.state,root=str(linked/'.private/installation')))
+        finally:ancestor.unlink()
+
+    def test_inserted_or_replaced_link_refused_after_preflight(self):
+        external=self.output/'outside';external.write_text('keep');before=external.stat()
+        real_fchmod=c.os.fchmod;changed=[]
+        def change(fd,mode):
+            real_fchmod(fd,mode)
+            if not changed:
+                changed.append(True)
+                (self.root/'inserted').symlink_to(external)
+        with patch.object(c.os,'fchmod',side_effect=change),self.assertRaisesRegex(c.CleanupFailure,'namespace_changed'):
+            c.remove_fresh_installation(self.output,self.state)
+        self.assertEqual(external.read_text(),'keep');self.assertEqual(external.stat().st_mode,before.st_mode)
+
+    def test_replaced_symlink_identity_refused_without_target_change(self):
+        external=self.output/'outside';external.write_text('keep');before=external.stat()
+        self.root.chmod(0o755);link=self.root/'link';link.symlink_to(external);self.root.chmod(0o555)
+        real_fchmod=c.os.fchmod;changed=[]
+        def replace(fd,mode):
+            real_fchmod(fd,mode)
+            if not changed:
+                changed.append(True);replacement=self.root/'replacement';replacement.symlink_to(external)
+                replacement.replace(link)
+        with patch.object(c.os,'fchmod',side_effect=replace),self.assertRaisesRegex(c.CleanupFailure,'identity_changed'):
+            c.remove_fresh_installation(self.output,self.state)
+        self.assertEqual(external.read_text(),'keep');self.assertEqual(external.stat().st_mode,before.st_mode)
+
+    def test_partial_removal_failure_is_typed_bounded_and_preserves_firstcause_and_wav(self):
+        self.root.chmod(0o755);(self.root/'other').write_text('owned');self.root.chmod(0o555)
+        original=c.os.unlink;calls=[]
+        def unlink(name,**kwargs):
+            calls.append(name)
+            if len(calls)==2:raise PermissionError(13,'sensitive arbitrary filesystem detail '+('x'*10000))
+            return original(name,**kwargs)
+        self.state.update(failure=dict(code='original_firstcause'),wav=dict(sha256='retained'))
+        with patch.object(c.os,'unlink',side_effect=unlink):c.finish_installation_cleanup(self.output,self.state)
+        self.assertEqual(self.state['status'],'failed');self.assertFalse(self.state['journey_completed'])
+        self.assertEqual(self.state['failure']['code'],'original_firstcause');self.assertEqual(self.state['wav']['sha256'],'retained')
+        detail=self.state['cleanup_failure'];self.assertEqual(detail['code'],'cleanup_filesystem_failure')
+        self.assertEqual(detail['errno'],13);self.assertEqual(detail['progress']['files_removed'],1)
+        self.assertLess(len(json.dumps(detail)),600);self.assertNotIn('sensitive',json.dumps(detail))
+
+
+if __name__=='__main__':unittest.main()

@@ -318,11 +318,12 @@ def _configure_actual_pocket_fake_encoder(args):
         sample_rate = 24000
         def get_state_for_audio_prompt(self, path):
             snapshot = Path(path)
-            assert snapshot.parent == Path(args._reference_temp_dir)
+            assert snapshot.parent in (Path('/proc/self/fd'), Path('/dev/fd'))
+            assert list(Path(args._reference_temp_dir).iterdir()) == []
             assert stat.S_IMODE(snapshot.stat().st_mode) == 0o600
             assert snapshot.read_bytes() == args.reference.read_bytes()
             prior = json.loads(events.read_text()) if events.exists() else []
-            prior.append(str(snapshot))
+            prior.append({'snapshot': str(snapshot), 'namespace': str(args._reference_temp_dir)})
             events.write_text(json.dumps(prior))
             if mode == 'encoder_error':
                 raise RuntimeError('synthetic encoder error')
@@ -340,7 +341,7 @@ def _configure_actual_pocket_fake_encoder(args):
             # removed the previous worker namespace, not just its final WAV.
             if events.exists():
                 for old in json.loads(events.read_text()):
-                    assert not Path(old).parent.exists()
+                    assert not Path(old['namespace']).exists()
             self.manifest = {'checkpoint': 'actual-adapter-fake-model'}
             self.model = Encoder()
             self.load_seconds = 0.0
@@ -386,8 +387,7 @@ def test_supervisor_removes_actual_pocket_snapshots_after_reap(tmp_path, monkeyp
     snapshots = json.loads((tmp_path / 'snapshot-events.json').read_text())
     assert snapshots
     for snapshot in snapshots:
-        assert not Path(snapshot).exists()
-        assert not Path(snapshot).parent.exists()
+        assert not Path(snapshot['namespace']).exists()
     for pid in {record['worker_pid'] for record in records}:
         with pytest.raises(ProcessLookupError):
             os.kill(pid, 0)
@@ -405,8 +405,7 @@ def test_speak_supervisor_removes_actual_pocket_snapshot_namespace(tmp_path, mon
         '--text', 'Bonjour.', '--output', str(tmp_path / 'take.wav'), '--timeout', '2', '--json'])
     assert app.main() == (0 if mode == 'success' else 1)
     for snapshot in json.loads((tmp_path / 'snapshot-events.json').read_text()):
-        assert not Path(snapshot).exists()
-        assert not Path(snapshot).parent.exists()
+        assert not Path(snapshot['namespace']).exists()
     assert (tmp_path / 'take.wav').exists() == (mode == 'success')
 
 

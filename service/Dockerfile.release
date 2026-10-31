@@ -1,0 +1,179 @@
+# syntax=docker/dockerfile:1
+FROM python:3.11-slim-bookworm@sha256:0a310eeecf4e1f5a0743f9a6520c90c88d089c903ca5fd283f501e3a805f5f89 AS control
+
+# License label describes project source; base images and dependencies retain their terms.
+LABEL org.opencontainers.image.licenses="AGPL-3.0-only"
+COPY LICENSE THIRD_PARTY_NOTICES.md /opt/speech/
+ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1
+WORKDIR /opt/speech
+COPY service/requirements.lock /opt/speech/requirements.lock
+RUN pip install --no-cache-dir --require-hashes -r requirements.lock
+COPY service /opt/speech/service
+COPY worker /opt/speech/worker
+COPY contracts /opt/speech/contracts
+COPY lib /opt/speech/lib
+USER 10001:10001
+EXPOSE 8000
+CMD ["python", "-I", "-B", "-c", "import sys;sys.path.insert(0,'/opt/speech');from service.entrypoint import installed_main;installed_main()"]
+
+FROM python:3.11-slim-bookworm@sha256:0a310eeecf4e1f5a0743f9a6520c90c88d089c903ca5fd283f501e3a805f5f89 AS worker
+
+# License label describes project source; base images and dependencies retain their terms.
+LABEL org.opencontainers.image.licenses="AGPL-3.0-only"
+COPY LICENSE THIRD_PARTY_NOTICES.md /opt/speech/
+ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 TORCH_DEVICE=cpu HF_HOME=/tmp/huggingface MALLOC_MMAP_THRESHOLD_=131072
+WORKDIR /opt/speech
+RUN apt-get update && apt-get install -y --no-install-recommends libsndfile1 espeak-ng ffmpeg && rm -rf /var/lib/apt/lists/*
+COPY requirements/kokoro.lock /opt/speech/kokoro.lock
+COPY requirements/tts-assets.json /opt/speech/requirements/tts-assets.json
+COPY service/requirements.lock /opt/speech/requirements.lock
+RUN pip install --no-cache-dir --require-hashes -r kokoro.lock -r requirements.lock --extra-index-url https://download.pytorch.org/whl/cpu
+COPY service /opt/speech/service
+COPY worker /opt/speech/worker
+COPY contracts /opt/speech/contracts
+COPY lib /opt/speech/lib
+USER 0:10001
+CMD ["python", "-I", "-B", "-c", "import sys;sys.path.insert(0,'/opt/speech');from worker.runtime_supervisor import main;main()", "--installed-policy", "docker-kokoro-split-v1", "--configuration-file", "/etc/speech-box/install.json"]
+
+# New-family recipe only: every package/executable pin is mandatory operator
+# input. Never inherit worker's unversioned apt layer. Actual acquisition/build,
+# resolved complete closure review and finished image qualification are separate.
+FROM python:3.11-slim-bookworm@sha256:0a310eeecf4e1f5a0743f9a6520c90c88d089c903ca5fd283f501e3a805f5f89 AS worker-export
+
+# License label describes project source; base images and dependencies retain their terms.
+LABEL org.opencontainers.image.licenses="AGPL-3.0-only"
+COPY LICENSE THIRD_PARTY_NOTICES.md /opt/speech/
+ARG EXPORT_FFMPEG_PACKAGE_VERSION
+ARG EXPORT_SNDFILE_PACKAGE_VERSION
+ARG EXPORT_ESPEAK_PACKAGE_VERSION
+ARG EXPORT_FFMPEG_SHA256
+ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 TORCH_DEVICE=cpu HF_HOME=/tmp/huggingface MALLOC_MMAP_THRESHOLD_=131072
+WORKDIR /opt/speech
+RUN test -n "$EXPORT_FFMPEG_PACKAGE_VERSION" && test -n "$EXPORT_SNDFILE_PACKAGE_VERSION" && test -n "$EXPORT_ESPEAK_PACKAGE_VERSION" && \
+    test ${#EXPORT_FFMPEG_SHA256} -eq 64 && \
+    apt-get update && apt-get install -y --no-install-recommends \
+    "ffmpeg=$EXPORT_FFMPEG_PACKAGE_VERSION" "libsndfile1=$EXPORT_SNDFILE_PACKAGE_VERSION" "espeak-ng=$EXPORT_ESPEAK_PACKAGE_VERSION" && \
+    echo "$EXPORT_FFMPEG_SHA256  /usr/bin/ffmpeg" | sha256sum --strict --check - && \
+    test ! -L /usr/bin/ffmpeg && chmod a-w /usr/bin/ffmpeg && \
+    python -c 'import os,pathlib,re,stat,subprocess; output=subprocess.check_output(["/usr/bin/ldd","/usr/bin/ffmpeg"],text=True); paths=sorted({pathlib.Path(p).resolve(strict=True) for p in re.findall(r"(/[^\s()]+)",output)}); assert 0 < len(paths) <= 256; assert all(p.is_file() and not p.is_symlink() for p in paths); [os.chmod(p,stat.S_IMODE(p.stat().st_mode) & ~0o222) for p in paths]' && \
+    rm -rf /var/lib/apt/lists/*
+COPY requirements/kokoro.lock /opt/speech/kokoro.lock
+COPY requirements/tts-assets.json /opt/speech/requirements/tts-assets.json
+COPY service/requirements.lock /opt/speech/requirements.lock
+RUN pip install --no-cache-dir --require-hashes -r kokoro.lock -r requirements.lock --extra-index-url https://download.pytorch.org/whl/cpu
+COPY service /opt/speech/service
+COPY worker /opt/speech/worker
+COPY contracts /opt/speech/contracts
+COPY lib /opt/speech/lib
+USER 0:10001
+# The private daemon supplies exact configuration and expected finished image.
+# Direct image execution refuses; no default image identity or fake seal.
+CMD ["python", "-I", "-B", "-c", "raise SystemExit('explicit private export daemon launch required')"]
+
+
+# Explicit alternative image; never installs Kokoro into the Pocket worker.
+FROM python:3.11-slim-bookworm@sha256:0a310eeecf4e1f5a0743f9a6520c90c88d089c903ca5fd283f501e3a805f5f89 AS worker-pocket
+
+# License label describes project source; base images and dependencies retain their terms.
+LABEL org.opencontainers.image.licenses="AGPL-3.0-only"
+COPY LICENSE THIRD_PARTY_NOTICES.md /opt/speech/
+ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 TORCH_DEVICE=cpu HF_HOME=/tmp/huggingface HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 MALLOC_MMAP_THRESHOLD_=131072
+WORKDIR /opt/speech
+RUN apt-get update && apt-get install -y --no-install-recommends libsndfile1 && rm -rf /var/lib/apt/lists/*
+COPY requirements/pocket-installed.lock /opt/speech/pocket-installed.lock
+RUN pip install --no-cache-dir --require-hashes -r pocket-installed.lock --extra-index-url https://download.pytorch.org/whl/cpu
+COPY service /opt/speech/service
+COPY worker /opt/speech/worker
+COPY contracts /opt/speech/contracts
+COPY lib /opt/speech/lib
+USER 0:10001
+CMD ["python", "-I", "-B", "-c", "import sys;sys.path.insert(0,'/opt/speech');from worker.runtime_supervisor import main;main()", "--installed-policy", "docker-pocket-split-v1", "--configuration-file", "/etc/speech-box/install.json"]
+
+
+# LOT1 source recipe, Linux amd64 only. No production install policy yet.
+FROM python:3.11-slim-bookworm@sha256:0a310eeecf4e1f5a0743f9a6520c90c88d089c903ca5fd283f501e3a805f5f89 AS worker-qwen
+
+# License label describes project source; base images and dependencies retain their terms.
+LABEL org.opencontainers.image.licenses="AGPL-3.0-only"
+COPY LICENSE THIRD_PARTY_NOTICES.md /opt/speech/
+ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 TORCH_DEVICE=cpu HF_HOME=/tmp/huggingface HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 GRADIO_ANALYTICS_ENABLED=False MALLOC_MMAP_THRESHOLD_=131072
+WORKDIR /opt/speech
+# r409 retained Bookworm metadata, completed for this digest-pinned slim base.
+# 24 artifacts: includes libsndfile1's MP3/Opus transitive dependencies.
+# The security archive is separate; every downloaded byte is checked before dpkg.
+RUN test "$(dpkg --print-architecture)" = amd64
+RUN python - <<'PYQWEN'
+import hashlib, pathlib, urllib.request
+root = pathlib.Path('/opt/qwen-debs')
+root.mkdir()
+artifacts = [
+('https://deb.debian.org/debian/pool/main/a/alsa-lib/libasound2-data_1.2.8-1_all.deb', 'fe0780d2d3674b2977e0acb0d48b448ad72ba1642564b7dc537f55e839984c2d', 20488),
+('https://deb.debian.org/debian/pool/main/a/alsa-lib/libasound2_1.2.8-1+b1_amd64.deb', '44c77b076a7b11ae99712439022d822245b1994c435da564ebd320bb676faf4c', 361788),
+('https://deb.debian.org/debian/pool/main/g/gcc-12/libgomp1_12.2.0-14+deb12u1_amd64.deb', '48fec46bda7f5b1638b9e959889bfbc20491247d402d120bb152687eb48143d7', 115772),
+('https://deb.debian.org/debian/pool/main/libg/libgsm/libgsm1_1.0.22-1_amd64.deb', '1116dc3dbd0f5e7f6becebd5d5a9a9cbd40fc268f7a3e3f6863dd4a26627627a', 30940),
+('https://deb.debian.org/debian/pool/main/libt/libtool/libltdl7_2.4.7-7~deb12u1_amd64.deb', '8070b550321d4bd1c298f52f75374898d39112b709026d2ea5362ef1277b775a', 393000),
+('https://deb.debian.org/debian/pool/main/f/file/libmagic-mgc_5.44-3_amd64.deb', 'bad01673ba5dfb9b5db4f3ae6a71f18d492cb6801eab45ad3c7d483c0a1f6ad2', 304888),
+('https://deb.debian.org/debian/pool/main/f/file/libmagic1_5.44-3_amd64.deb', 'a241c2adc7438a7e217f32544028489981768a349d3e48673392703255c7b88e', 103752),
+('https://deb.debian.org/debian/pool/main/o/opencore-amr/libopencore-amrnb0_0.1.6-1_amd64.deb', 'adc9ff8f56b8a8e0b8a5bf90e8d07ce7d4acc306e3f60e37989e281f649df53f', 96456),
+('https://deb.debian.org/debian/pool/main/o/opencore-amr/libopencore-amrwb0_0.1.6-1_amd64.deb', 'a8a98630f0f2976a90b2421adaa7659340db116595f39ef9b54975d85c876ef7', 51964),
+('https://security.debian.org/debian-security/pool/updates/main/libp/libpng1.6/libpng16-16_1.6.39-2+deb12u6_amd64.deb', '940b91d40d51c825de7f7aa133aecff1ffa25a91f12cb6aa6926c9ad55cd640c', 277048),
+('https://deb.debian.org/debian/pool/main/s/sox/libsox-fmt-alsa_14.4.2+git20190427-3.5_amd64.deb', '0b7ff80396e299796c00afce57779fdb0272e33eb94d2526145babf8f9ca45a6', 41516),
+('https://deb.debian.org/debian/pool/main/s/sox/libsox-fmt-base_14.4.2+git20190427-3.5_amd64.deb', '099fa9188b9516b2a93314d9d3e3bd02b165f59469bb6d67d91743e4c13d9e74', 62964),
+('https://deb.debian.org/debian/pool/main/s/sox/libsox3_14.4.2+git20190427-3.5_amd64.deb', '0e2d255fce05d3caca5abd00a2c44f2c0e3708bd0f7b3a9954ed371ad6e71204', 255728),
+('https://deb.debian.org/debian/pool/main/libv/libvorbis/libvorbisfile3_1.3.7-1_amd64.deb', '68f84034ae1c9fa0ab6a45f5b6c406a50faae4421f0d78874260aefa2df68efc', 26084),
+('https://deb.debian.org/debian/pool/main/w/wavpack/libwavpack1_5.6.0-1_amd64.deb', 'be9730c554786476b6a1a0f0c888c25f15d6cf8dd88954885494111b0e44482c', 85720),
+('https://deb.debian.org/debian/pool/main/s/sox/sox_14.4.2+git20190427-3.5_amd64.deb', '6793a4824f96f0008be4d5defba8b07a0f3f9054708b0ed2332a4ede4c43b5b5', 132652),
+('https://deb.debian.org/debian/pool/main/f/flac/libflac12_1.4.2+ds-2_amd64.deb', '4d8431c274eef13ec9ee2c0bf988c34b4342367dec053b7f69a432525be5b1fe', 198124),
+('https://deb.debian.org/debian/pool/main/libo/libogg/libogg0_1.3.5-3_amd64.deb', 'f67acb0477aed0354f411172e37af338f3ac6bd4f3766134a2cf5539884b5a28', 23412),
+('https://deb.debian.org/debian/pool/main/libs/libsndfile/libsndfile1_1.2.0-1+deb12u1_amd64.deb', '02dc3f08fe8476e82e005f412e3b7289ff641180f33a9be8073f4bde61c85e8e', 196540),
+('https://deb.debian.org/debian/pool/main/libv/libvorbis/libvorbis0a_1.3.7-1_amd64.deb', '01c14f9d1109650077a4c5c337c285476a6932d4d448f5a190c2b845724dbf21', 93028),
+('https://deb.debian.org/debian/pool/main/libv/libvorbis/libvorbisenc2_1.3.7-1_amd64.deb', '75dd4d6f904c7db82f5112e60d8efea9e81dfedf94e970c5da7af2b3d81643c0', 80568),
+('https://deb.debian.org/debian/pool/main/l/lame/libmp3lame0_3.100-6_amd64.deb', 'b1292c749172e7623547ecf684da57d3ec6ca22109f08b11bbb9e6be6e6beb95', 364932),
+('https://deb.debian.org/debian/pool/main/m/mpg123/libmpg123-0_1.31.2-1+deb12u1_amd64.deb', 'a10ad0d59995b859797a5f20d2833672051d0b2c7dab4c71f2e79258b2e3f631', 146980),
+('https://deb.debian.org/debian/pool/main/o/opus/libopus0_1.3.1-3_amd64.deb', 'c172e212f9039e741916aa8e12f3670d1e049dc0c16685325641288c2d83faa7', 195192),
+ ]
+for i, (url, digest, size) in enumerate(artifacts):
+    target = root / (str(i) + '.deb')
+    h = hashlib.sha256()
+    count = 0
+    with urllib.request.urlopen(url, timeout=60) as source, target.open('xb') as out:
+        while chunk := source.read(1024 * 1024):
+            count += len(chunk)
+            if count > size:
+                raise ValueError('Debian artifact size exceeded')
+            h.update(chunk)
+            out.write(chunk)
+    if count != size or h.hexdigest() != digest:
+        raise ValueError('Debian artifact differs from reviewed pin')
+PYQWEN
+RUN dpkg-query -W libbz2-1.0 && \
+    dpkg --compare-versions "$(dpkg-query -W -f='${Version}' libc6)" ge 2.34 && \
+    dpkg --compare-versions "$(dpkg-query -W -f='${Version}' gcc-12-base)" eq 12.2.0-14+deb12u1 && \
+    dpkg --compare-versions "$(dpkg-query -W -f='${Version}' liblzma5)" ge 5.1.1alpha+20120614 && \
+    dpkg --compare-versions "$(dpkg-query -W -f='${Version}' zlib1g)" ge 1:1.2.11.dfsg && \
+    dpkg -i /opt/qwen-debs/*.deb && rm -rf /opt/qwen-debs
+COPY requirements/qwen-installed.lock /opt/speech/qwen-installed.lock
+# Exact r409 prerequisites; setuptools 82 supplies bdist_wheel.
+COPY requirements/qwen-sox-build.lock /opt/speech/qwen-sox-build.lock
+RUN pip install --no-cache-dir --only-binary=:all: --no-deps --require-hashes -r qwen-sox-build.lock
+# Keep the reviewed source hash canonical; only SoX may build, without
+# dependency resolution or an isolated environment acquiring more code.
+RUN python - <<'PYSOX'
+from pathlib import Path
+lines = Path('qwen-installed.lock').read_text().splitlines(keepends=True)
+sox = [line for line in lines if line.startswith('sox==')]
+assert len(sox) == 1
+Path('qwen-sox-source.lock').write_text(''.join(sox))
+Path('qwen-wheels.lock').write_text(''.join(line for line in lines if not line.startswith('sox==')))
+PYSOX
+RUN pip install --no-cache-dir --only-binary=:all: --no-deps --require-hashes -r qwen-wheels.lock && \
+    pip install --no-cache-dir --no-deps --no-build-isolation --no-binary=sox --require-hashes -r qwen-sox-source.lock && \
+    pip check
+COPY service /opt/speech/service
+COPY worker /opt/speech/worker
+COPY contracts /opt/speech/contracts
+COPY lib /opt/speech/lib
+USER 0:10001
+# LOT2 must supply the certified daemon-role launch and exact image/config seals.
+# Refuse direct launch rather than introducing an unregistered install policy.
+CMD ["python", "-I", "-B", "-c", "raise SystemExit('explicit private Qwen daemon launch required')"]

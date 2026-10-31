@@ -96,6 +96,7 @@ def test_prepare_ref_uses_provided_ref_text_without_whisper(
     def _should_not_transcribe(*_args, **_kwargs):
         raise AssertionError("transcribe_ref should not run when ref_text is provided")
 
+    monkeypatch.setattr(vc, "get_duration", lambda path: 10.0)
     monkeypatch.setattr(vc, "normalize_audio", _fake_normalize)
     monkeypatch.setattr(vc, "trim_audio_encode", _fake_trim)
     monkeypatch.setattr(vc, "transcribe_ref", _should_not_transcribe)
@@ -129,7 +130,13 @@ def prepared_reference(tmp_path, monkeypatch):
     monkeypatch.setattr(vc, 'trim_audio_encode', lambda src, start, duration, dest: dest.write_bytes(b'segment'))
     kwargs = dict(ref_audio=raw, cache=tmp_path / 'cache', whisper_model='small', num_threads=1,
                   ref_start=0.0, ref_end=4.0, ref_language='Auto', x_vector_only=False, force=False)
-    directory = kwargs['cache'] / 'voice-clone/refs' / vc.sha256_file(raw)
+    monkeypatch.setattr(vc, 'get_duration', lambda path: 10.0)
+    monkeypatch.setattr(vc, 'transcribe_ref', lambda *a: ('Fixture speech', -0.4, 'English', 0.99))
+    # Obtain the selected preparation directory through the public result rather
+    # than duplicating its identity algorithm in these quality-gate fixtures.
+    directory = vc.prepare_ref(**kwargs).ref_dir
+    for path in directory.iterdir():
+        path.unlink()
     return vc, kwargs, directory
 
 
@@ -159,7 +166,7 @@ def test_reported_low_language_confidence_rejected_fresh_and_cached(prepared_ref
         return 'nonsense transcript', -0.78, 'English', 0.63
     monkeypatch.setattr(vc, 'transcribe_ref', transcribe)
     if cached:
-        directory.mkdir(parents=True)
+        directory.mkdir(parents=True, exist_ok=True)
         (directory / 'ref_transcript.json').write_text(json.dumps(dict(transcript='nonsense transcript',
             avg_logprob=-0.78, ref_language_probability=0.63, whisper_model='small')))
     with pytest.raises(SystemExit):
@@ -191,9 +198,9 @@ def test_explicit_bypass_is_unvalidated_and_not_later_asr_evidence(prepared_refe
     vc, kwargs, directory = prepared_reference
     monkeypatch.setattr(vc, 'transcribe_ref', lambda *a: pytest.fail('explicit bypass must not transcribe'))
     bypass = {'ref_text': 'Éléonore'} if mode == 'provided_ref_text' else {'x_vector_only': True}
-    vc.prepare_ref(**{**kwargs, **bypass})
+    bypass_result = vc.prepare_ref(**{**kwargs, **bypass})
     for filename in ('ref_transcript.json', 'pipeline_state.json'):
-        report = json.loads((directory / filename).read_text())['quality_report']
+        report = json.loads((bypass_result.ref_dir / filename).read_text())['quality_report']
         assert report['source'] == mode and report['status'] == 'unvalidated'
         assert report['checks'] == {} and not report['override']
     monkeypatch.setattr(vc, 'transcribe_ref', lambda *a: ('fresh ASR', -0.4, 'French', 0.98))
@@ -206,7 +213,7 @@ def test_explicit_bypass_is_unvalidated_and_not_later_asr_evidence(prepared_refe
     ('ref_language_probability', None), ('ref_language_probability', float('nan'))])
 def test_cached_invalid_metrics_fail_and_persist_strict_json(prepared_reference, monkeypatch, metric, value):
     vc, kwargs, directory = prepared_reference
-    directory.mkdir(parents=True)
+    directory.mkdir(parents=True, exist_ok=True)
     record = dict(transcript='Hello', avg_logprob=-0.4, ref_language_probability=0.99, whisper_model='small')
     record[metric] = value
     (directory / 'ref_transcript.json').write_text(json.dumps(record))

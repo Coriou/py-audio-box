@@ -1,0 +1,7 @@
+# Installed control and finite host runtime (CPython 3.11). MCP maintenance line deliberately pinned (official v1 docs).
+fastapi==0.143.2
+pydantic==2.14.1
+uvicorn==0.54.0
+httpx==0.28.1
+mcp==1.30.0
+jsonschema==4.26.0

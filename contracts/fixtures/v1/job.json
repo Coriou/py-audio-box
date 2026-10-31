@@ -1,0 +1,21 @@
+{
+  "id": "job1",
+  "operation": "speech_generate",
+  "input_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+  "principal_id": "principal1",
+  "idempotency_key": "request1",
+  "state": "running",
+  "generation": 1,
+  "attempts": [
+    {
+      "id": "attempt1",
+      "generation": 1,
+      "owner_id": "worker1",
+      "reaped": false,
+      "staging_id": "staging1"
+    }
+  ],
+  "artifact_ids": [],
+  "stage": "loading",
+  "deadline": "2026-10-16T00:10:00Z"
+}

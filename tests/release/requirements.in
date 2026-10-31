@@ -1,0 +1,5 @@
+-r ../../service/requirements.in
+pytest==9.1.1
+tiktoken==0.14.0
+# AudioResult validates inert backend samples with NumPy.
+numpy==2.4.6
