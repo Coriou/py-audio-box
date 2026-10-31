@@ -49,7 +49,7 @@ def test_polled_resident_exit_survives_terminal_cleanup(monkeypatch):
     observed=[]
     monkeypatch.setattr(module,'_resident_diagnostic',lambda *args:observed.append(args))
     supervisor.tick()
-    assert observed==[('resident_exit',-9)]
+    assert observed==[('resident_exit',-9),('attempt_status',None)]
     assert supervisor.resident is None
 
 
@@ -168,7 +168,7 @@ def test_resident_terminal_diagnostic_preserves_first_cause_and_exit(monkeypatch
     monkeypatch.setattr(module.os,'waitpid',lambda *args:(0,0))
     supervisor.tick()
     assert row['receipt']['timely'] is False
-    assert lines==[('no_proposal',-9)]
+    assert lines==[('no_proposal',-9),('attempt_status',None)]
 
 
 def test_resident_diagnostic_fixed_vocabulary_and_sink_failure(monkeypatch):
@@ -182,11 +182,38 @@ def test_resident_diagnostic_fixed_vocabulary_and_sink_failure(monkeypatch):
     module._resident_diagnostic('deadline',0)
 
 
+def test_real_child_entrypoint_waits_for_assignment_gate():
+    """The actual resident argv cannot reach receive before assignment."""
+    import socket
+    control, child = socket.socketpair()
+    gate_read, gate_write = os.pipe()
+    process = None
+    try:
+        process = subprocess.Popen([sys.executable, '-m', 'worker.runtime_child',
+            str(child.fileno()), str(gate_read)], pass_fds=(child.fileno(), gate_read),
+            stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        child.close(); os.close(gate_read); gate_read = None
+        # The child has no configuration; without the gate it exits after its
+        # two-second receive deadline. A closed gate must still prevent entry.
+        with pytest.raises(subprocess.TimeoutExpired):
+            process.wait(timeout=2.5)
+        os.write(gate_write, b'1')
+        os.close(gate_write); gate_write = None
+        assert process.wait(timeout=3) != 0
+    finally:
+        if process is not None and process.poll() is None:
+            process.kill()
+            process.wait(timeout=3)
+        control.close(); child.close()
+        for fd in (gate_read, gate_write):
+            if fd is not None: os.close(fd)
+
+
 @pytest.mark.parametrize('exit_code,expected',[(0,'no_proposal'),(2,'attempt_exit')])
 def test_missing_proposal_identifies_observed_attempt_exit(monkeypatch,exit_code,expected):
     supervisor,row,active=_lane()
     lines=[]
-    monkeypatch.setattr(module,'_resident_diagnostic',lambda reason,status:lines.append(reason))
+    monkeypatch.setattr(module,'_resident_diagnostic',lambda reason,status:lines.append((reason,status)))
     monkeypatch.setattr(module.os,'waitpid',lambda *args:(4242,exit_code << 8) if not active.get('leader_reaped') else (0,0))
     supervisor.owned_processes=lambda uid:{} if uid==20000 else {9000:1}
     supervisor.signal_owned=lambda *args:None
@@ -196,7 +223,7 @@ def test_missing_proposal_identifies_observed_attempt_exit(monkeypatch,exit_code
     supervisor.resident=None
     supervisor.tick()
     assert row['receipt']['timely'] is False
-    assert lines==[expected]
+    assert lines==[(expected,None),('attempt_status',exit_code)]
 
 
 def test_model_descendant_blocks_terminal_even_after_owner_reap(monkeypatch):
@@ -264,6 +291,37 @@ def test_cgroup_populated_is_required_for_terminal(tmp_path):
     events.write_text('frozen 0\n')
     with pytest.raises(Refused,match='resident_cgroup_unknown'):
         RuntimeSupervisor.cgroup_empty(tmp_path)
+
+
+@pytest.mark.parametrize('failure,stage,kind,errno',[
+    ('uid_escape','attempt_match','refused','unknown'),
+    ('unknown_cgroup','attempt_cgroup','refused','unknown'),
+    ('proc_error','attempt_proc','oserror','13'),
+])
+def test_custody_fault_remains_fail_closed_with_bounded_cause(monkeypatch,failure,stage,kind,errno):
+    from worker.transport import Refused
+    supervisor,row,active=_lane()
+    active['cgroup']=object()
+    monkeypatch.setattr(module.os,'waitpid',lambda *args:(0,0))
+    supervisor.signal_owned=lambda *args:None
+    supervisor.owned_processes=lambda uid: ({4242:1} if uid==20000 else {})
+    supervisor.cgroup_empty=lambda group: True
+    if failure=='unknown_cgroup':
+        supervisor.cgroup_empty=lambda group: (_ for _ in ()).throw(Refused('private path'))
+    if failure=='proc_error':
+        supervisor.owned_processes=lambda uid: (_ for _ in ()).throw(PermissionError(13,'private path'))
+    observed=[]
+    diagnostic=module._custody_diagnostic
+    monkeypatch.setattr(module,'_custody_diagnostic',lambda stage,exc:observed.append((stage,exc)))
+    supervisor.tick()
+    assert supervisor.failed and active['stop_reason']=='custody_fault'
+    assert row['phase']=='started' and supervisor.active is active
+    assert len(observed)==1 and observed[0][0]==stage
+    pending=module._diagnostic_queue
+    # Formatting assertion owns the queue; no consumer may race this read.
+    monkeypatch.setattr(module,'_diagnostic_started',True)
+    diagnostic(*observed[0])
+    assert pending.get_nowait()==f'lifecycle_custody_fault:{stage}:{kind}:{errno}\n'.encode()
 
 
 def test_aggregate_parent_limits_cover_worker_resident_and_attempt(tmp_path):

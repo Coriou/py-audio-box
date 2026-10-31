@@ -81,7 +81,38 @@ def _prepare_phase(phase, started, sequence=0):
 
 _RESIDENT_REASONS = frozenset(('deadline','halt','receiver','no_proposal',
     'attempt_exit','descendants','resident_exit','custody_fault','stop',
-    'resident_configuration','resident_startup','resident_control','attempt_launch'))
+    'resident_configuration','resident_startup','resident_control','attempt_launch','attempt_status'))
+
+_CUSTODY_STAGES = frozenset(('lookup','attempt_proc','attempt_cgroup','attempt_match',
+    'resident_proc','resident_cgroup','resident_match'))
+
+
+def _custody_diagnostic(stage, exc):
+    """Bounded supervisor observation; never serialize exception text or identities."""
+    global _diagnostic_started, _diagnostic_thread, _diagnostic_events
+    try:
+        stage = stage if stage in _CUSTODY_STAGES else 'lookup'
+        kind = ('refused' if isinstance(exc, Refused) else
+                'oserror' if isinstance(exc, OSError) else
+                'valueerror' if isinstance(exc, ValueError) else
+                'exception' if isinstance(exc, Exception) else 'baseexception')
+        errno = exc.errno if isinstance(exc, OSError) and type(exc.errno) is int and 0 <= exc.errno <= 255 else None
+        code = str(errno) if errno is not None else 'unknown'
+        line = f'lifecycle_custody_fault:{stage}:{kind}:{code}\n'.encode()
+        if not _diagnostic_lock.acquire(blocking=False): return
+        try:
+            if _diagnostic_events >= _diagnostic_limit or _diagnostic_queue.full(): return
+            if not _diagnostic_started:
+                _diagnostic_thread = threading.Thread(target=_diagnostic_consumer,
+                                                      args=(_diagnostic_queue,), daemon=True)
+                _diagnostic_thread.start()
+                _diagnostic_started = True
+            _diagnostic_queue.put_nowait(line)
+            _diagnostic_events += 1
+        finally:
+            _diagnostic_lock.release()
+    except (OSError, RuntimeError, ValueError, TypeError, queue.Full):
+        pass
 
 
 def _resident_diagnostic(reason, resident_status):
@@ -748,16 +779,24 @@ class RuntimeSupervisor:
                 empty = True
                 break
         if self.resident_qwen:
+            custody_stage = 'lookup'
             try:
                 uid = self.lookup(active['id'])['uid']
+                custody_stage = 'attempt_proc'
                 owned = self.owned_processes(uid)
+                custody_stage = 'attempt_cgroup'
                 attempt_empty = self.cgroup_empty(active['cgroup']) if active.get('cgroup') is not None else not owned
+                custody_stage = 'attempt_match'
                 if attempt_empty and owned:raise Refused('resident_cgroup_uid_mismatch')
+                custody_stage = 'resident_proc'
                 resident_owned = self.owned_processes(19999) if self.resident is not None else {}
+                custody_stage = 'resident_cgroup'
                 resident_empty = (self.cgroup_empty(self.resident['cgroup']) if self.resident is not None and
                     self.resident.get('cgroup') is not None else not resident_owned)
+                custody_stage = 'resident_match'
                 if resident_empty and resident_owned:raise Refused('resident_cgroup_uid_mismatch')
-            except BaseException:
+            except BaseException as exc:
+                _custody_diagnostic(custody_stage, exc)
                 self.failed = True
                 self.stop_tree('custody_fault')
                 return
@@ -813,6 +852,8 @@ class RuntimeSupervisor:
                 if status is None and self.resident is not None:
                     status = self.resident['process'].returncode
                 _resident_diagnostic(reason, status)
+                attempt_status = active['process'].returncode if active['started'] else None
+                _resident_diagnostic('attempt_status', attempt_status)
             with self.tree_lock:
                 active['finalizing'] = True
             try:
