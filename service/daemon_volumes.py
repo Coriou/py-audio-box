@@ -23,6 +23,7 @@ HEX = re.compile('[0-9a-f]{64}')
 IMAGE = re.compile('sha256:[0-9a-f]{64}')
 PHASES = ('install', 'init', 'up', 'status', 'stop')
 HELPER_REFUSAL_CODES=frozenset(('daemon_closed_record','daemon_container_mount_binding',
+    'daemon_control_terminal_nonzero_retained',
     'daemon_observation_pair_changed','daemon_observation_startup_changed',
     'daemon_container_security_binding','daemon_export_exact_mount_options',
     'daemon_helper_begin','daemon_helper_capability_identity','daemon_helper_deadline',

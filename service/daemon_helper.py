@@ -97,6 +97,10 @@ def diagnostic(exc, phase, code):
     reason=str(exc) if type(exc) is ValueError else ''
     if reason in dv.HELPER_REFUSAL_CODES:
         print('daemon_helper_cause:'+phase+':'+code+':'+reason,file=sys.stderr)
+        if reason=='daemon_control_terminal_nonzero_retained':
+            exit_code=getattr(exc,'control_exit_code',None)
+            if type(exit_code) is int and -255<=exit_code<=255:
+                print('daemon_helper_control_exit:'+phase+':'+code+':'+str(exit_code),file=sys.stderr)
         changed=getattr(exc,'observation_changes',())
         if (reason in ('daemon_observation_pair_changed','daemon_observation_startup_changed') and
                 type(changed) is tuple and 0<len(changed)<=8 and
@@ -688,6 +692,17 @@ class Helper:
             time.sleep(.05)
         raise ValueError('daemon_runtime_wait_timeout_retained')
 
+    def wait_control_stop(self,ids):
+        def stopped(c):
+            state=c['State']
+            if state['Running']: return False
+            if state['ExitCode']!=0:
+                error=ValueError('daemon_control_terminal_nonzero_retained')
+                error.control_exit_code=state['ExitCode']
+                raise error
+            return True
+        return self.wait(lambda:self.inspect('control',ids),stopped)
+
     def ready(self,ids,public,rid,record):
         self.wait(lambda:self.rpc('marker',dict(id=ids['control'],role='control')),lambda v:v==dict(phase='ready',registration_id=rid))
         current=self.observe(ids,public); dv.observation(current,record,self.config,self.b,public,family=self.family)
@@ -731,7 +746,7 @@ class Helper:
             current=self.observe(ids,public); dv.observation(current,record,self.config,self.b,public,family=self.family)
             if self.rpc('marker',dict(id=ids['control'],role='control'))!=marker: raise ValueError('daemon_stop_marker_changed')
             self.rpc('term',dict(id=ids['control'],role='control'))
-            self.wait(lambda:self.inspect('control',ids),lambda c:not c['State']['Running'] and c['State']['ExitCode']==0)
+            self.wait_control_stop(ids)
             self.rpc('term',dict(id=ids['worker'],role='worker'))
             self.wait(lambda:self.inspect('worker',ids),lambda c:not c['State']['Running'] and c['State']['ExitCode']==0)
             stopped=self.pair(ids)

@@ -28,6 +28,7 @@ _HELPER_DIAGNOSTIC=re.compile(r'daemon_helper_diagnostic:(install|init|up|status
 _HELPER_ERRNOS=frozenset((1,2,5,6,9,11,12,13,16,17,19,20,22,23,24,28,30,32,38,40,110,122))
 _HELPER_CAUSE=re.compile(r'daemon_helper_cause:(install|init|up|status|stop):(operation_failed|prior_failure|final_refusal):([a-z][a-z0-9_]{1,79})')
 _HELPER_CHANGE=re.compile(r'daemon_helper_change:(install|init|up|status|stop):(operation_failed|prior_failure|final_refusal):([a-z0-9_.,]{1,255})')
+_HELPER_CONTROL_EXIT=re.compile(r'daemon_helper_control_exit:stop:(operation_failed|prior_failure|final_refusal):(-?[1-9][0-9]{0,2})')
 _HOST_REFUSAL_CODES=frozenset(('daemon_helper_failed_retained','daemon_helper_start_unknown',
     'daemon_helper_exit_unknown','daemon_helper_timeout_retained',
     'daemon_phase_eof_retained','daemon_phase_timeout','daemon_phase_write_timeout',
@@ -40,7 +41,7 @@ class HelperDiagnostics:
     """Drain Docker stderr without retaining untrusted output or blocking its pipe."""
     def __init__(self,phase):
         self.phase=phase; self.tail=bytearray(); self.line=bytearray()
-        self.overlong=False; self.details={}; self.causes={}; self.changes={}
+        self.overlong=False; self.details={}; self.causes={}; self.changes={}; self.control_exits={}; self.conflicting_control_exits=set()
         self.stop_event=threading.Event(); self.thread=None; self.stream=None
 
     def feed(self,data):
@@ -60,6 +61,7 @@ class HelperDiagnostics:
         detail=_HELPER_DIAGNOSTIC.fullmatch(line)
         cause=_HELPER_CAUSE.fullmatch(line)
         change=_HELPER_CHANGE.fullmatch(line)
+        control_exit=_HELPER_CONTROL_EXIT.fullmatch(line)
         if (detail and detail[1]==self.phase and
                 (detail[6] is None or (detail[3] in ('OSError','TimeoutError','FileNotFoundError','PermissionError','BlockingIOError')
                     and (detail[7]=='unknown' or int(detail[7]) in _HELPER_ERRNOS)))):
@@ -70,6 +72,11 @@ class HelperDiagnostics:
             labels=change[3].split(',')
             if 0<len(labels)<=8 and len(labels)==len(set(labels)) and all(label in dv.OBSERVATION_CHANGE_LABELS for label in labels):
                 self.changes.setdefault(change[2],tuple(labels))
+        if control_exit and self.phase=='stop' and -255<=int(control_exit[2])<=255:
+            stage,code=control_exit[1],int(control_exit[2])
+            if stage in self.control_exits and self.control_exits[stage]!=code:
+                self.conflicting_control_exits.add(stage)
+            self.control_exits.setdefault(stage,code)
 
     def refusal(self):
         for stage in ('operation_failed','prior_failure','final_refusal'):
@@ -80,6 +87,8 @@ class HelperDiagnostics:
                 if matched[6] is not None: parts+=('file='+matched[6],'errno='+matched[7])
                 if reason in ('daemon_observation_pair_changed','daemon_observation_startup_changed') and stage in self.changes:
                     parts+=('changed='+','.join(self.changes[stage]),)
+                if reason=='daemon_control_terminal_nonzero_retained' and stage in self.control_exits and stage not in self.conflicting_control_exits:
+                    parts+=('control_exit='+str(self.control_exits[stage]),)
                 return ':'.join(parts)
         return None
 
