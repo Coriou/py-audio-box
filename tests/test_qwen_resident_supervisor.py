@@ -15,6 +15,44 @@ from worker.runtime_protocol import managed_qwen_cpu, resident_managed_qwen_cpu,
 import worker.runtime_supervisor as module
 
 
+@pytest.fixture(autouse=True)
+def owned_diagnostic_consumer(monkeypatch):
+    pending=queue.Queue(32)
+    monkeypatch.setattr(module,'_diagnostic_queue',pending)
+    monkeypatch.setattr(module,'_diagnostic_started',False)
+    monkeypatch.setattr(module,'_diagnostic_thread',None)
+    monkeypatch.setattr(module,'_diagnostic_events',0)
+    yield
+    consumer=module._diagnostic_thread
+    if consumer is not None:
+        pending.put(None,timeout=1)
+        consumer.join(1)
+        assert not consumer.is_alive()
+
+
+def test_polled_resident_exit_survives_terminal_cleanup(monkeypatch):
+    from worker.transport import Refused
+    supervisor,row,active=_lane()
+    process=supervisor.resident['process']
+    def poll():
+        process.returncode=-9
+        return -9
+    process.poll=poll
+    supervisor.signal_owned=lambda *args:None
+    with pytest.raises(Refused,match='resident_lost'):
+        supervisor.ensure_resident(active['cutoff'])
+    assert active['stop_reason']=='resident_exit'
+    assert active['resident_exit_status']==-9
+    active['leader_reaped']=True
+    supervisor.owned_processes=lambda uid:{}
+    monkeypatch.setattr(module.os,'waitpid',lambda *args:(0,0))
+    observed=[]
+    monkeypatch.setattr(module,'_resident_diagnostic',lambda *args:observed.append(args))
+    supervisor.tick()
+    assert observed==[('resident_exit',-9)]
+    assert supervisor.resident is None
+
+
 def test_managed_cpu_icl_requires_transcript_and_exact_clone_task():
     spec=SimpleNamespace(engine='qwen',device='cpu',task='clone',x_vector_only=False,
                          reference_text='trusted transcript')
@@ -113,6 +151,52 @@ def test_detached_attempt_blocks_terminal_and_stops_only_owned_uids(monkeypatch)
     assert supervisor.failed is False
     assert row['phase']=='terminal' and row['proposal'] is None
     assert row['receipt']['timely'] is False
+
+
+def test_resident_terminal_diagnostic_preserves_first_cause_and_exit(monkeypatch):
+    supervisor,row,active=_lane()
+    lines=[]
+    monkeypatch.setattr(module,'_resident_diagnostic',lambda reason,status:lines.append((reason,status)))
+    supervisor.signal_owned=lambda *args:None
+    supervisor.stop_tree('no_proposal')
+    supervisor.stop_tree('deadline')
+    assert active['stop_reason']=='no_proposal'
+    active['leader_reaped']=True
+    active['resident_exit_status']=-9
+    supervisor.resident=None
+    supervisor.owned_processes=lambda uid:{}
+    monkeypatch.setattr(module.os,'waitpid',lambda *args:(0,0))
+    supervisor.tick()
+    assert row['receipt']['timely'] is False
+    assert lines==[('no_proposal',-9)]
+
+
+def test_resident_diagnostic_fixed_vocabulary_and_sink_failure(monkeypatch):
+    pending=queue.Queue(2)
+    monkeypatch.setattr(module,'_diagnostic_queue',pending)
+    monkeypatch.setattr(module,'_diagnostic_started',True)
+    monkeypatch.setattr(module,'_diagnostic_events',0)
+    module._resident_diagnostic('private request text',-9)
+    assert pending.get_nowait()==b'lifecycle_resident_terminal:stop:signal_9\n'
+    monkeypatch.setattr(pending,'put_nowait',lambda line:(_ for _ in ()).throw(OSError('sink failed')))
+    module._resident_diagnostic('deadline',0)
+
+
+@pytest.mark.parametrize('exit_code,expected',[(0,'no_proposal'),(2,'attempt_exit')])
+def test_missing_proposal_identifies_observed_attempt_exit(monkeypatch,exit_code,expected):
+    supervisor,row,active=_lane()
+    lines=[]
+    monkeypatch.setattr(module,'_resident_diagnostic',lambda reason,status:lines.append(reason))
+    monkeypatch.setattr(module.os,'waitpid',lambda *args:(4242,exit_code << 8) if not active.get('leader_reaped') else (0,0))
+    supervisor.owned_processes=lambda uid:{} if uid==20000 else {9000:1}
+    supervisor.signal_owned=lambda *args:None
+    supervisor.tick()
+    assert active['stop_reason']==expected
+    assert row['phase']=='started'
+    supervisor.resident=None
+    supervisor.tick()
+    assert row['receipt']['timely'] is False
+    assert lines==[expected]
 
 
 def test_model_descendant_blocks_terminal_even_after_owner_reap(monkeypatch):

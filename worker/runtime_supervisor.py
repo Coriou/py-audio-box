@@ -79,6 +79,37 @@ def _prepare_phase(phase, started, sequence=0):
         pass
 
 
+_RESIDENT_REASONS = frozenset(('deadline','halt','receiver','no_proposal',
+    'attempt_exit','descendants','resident_exit','custody_fault','stop',
+    'resident_configuration','resident_startup','resident_control','attempt_launch'))
+
+
+def _resident_diagnostic(reason, resident_status):
+    """Best-effort, fixed-vocabulary terminal observation; no request data."""
+    global _diagnostic_started, _diagnostic_thread, _diagnostic_events
+    try:
+        if reason not in _RESIDENT_REASONS: reason = 'stop'
+        status = 'unknown'
+        if type(resident_status) is int:
+            status = ('exit_' + str(resident_status) if 0 <= resident_status <= 255 else
+                      'signal_' + str(-resident_status) if -255 <= resident_status < 0 else 'unknown')
+        line = f'lifecycle_resident_terminal:{reason}:{status}\n'.encode()
+        if not _diagnostic_lock.acquire(blocking=False): return
+        try:
+            if _diagnostic_events >= _diagnostic_limit or _diagnostic_queue.full(): return
+            if not _diagnostic_started:
+                _diagnostic_thread = threading.Thread(target=_diagnostic_consumer,
+                                                      args=(_diagnostic_queue,), daemon=True)
+                _diagnostic_thread.start()
+                _diagnostic_started = True
+            _diagnostic_queue.put_nowait(line)
+            _diagnostic_events += 1
+        finally:
+            _diagnostic_lock.release()
+    except (OSError, RuntimeError, ValueError, TypeError, queue.Full):
+        pass
+
+
 class RuntimeSupervisor:
     def __init__(self, root='/receipts', ipc='/ipc', *, bundles=None, references=None, qwen_contexts=None, inventory=None, qwen_profiles=None, pocket_reference_roots=None, installed_pocket=False, installed_policy=None, audio_converters=None, converter_image_digest=None, export_reference_roots=None, export_configuration=None, expected_worker_image=None, resident_qwen_policy=None, resident_budget=None):
         if os.getpid() != 1:
@@ -309,14 +340,16 @@ class RuntimeSupervisor:
         if self.resident is not None:
             if self.resident['process'].poll() is not None:
                 self.failed = True
-                self.stop_tree()
+                if self.active is not None:
+                    self.active['resident_exit_status'] = self.resident['process'].returncode
+                self.stop_tree('resident_exit')
                 raise Refused('resident_lost')
             return self.resident
         from service.installed_qwen_daemon import service_model
         expected = {name:service_model(name)[2] for name in ('clone','Ryan')}
         if set(self.bundles) != set(expected.values()):
             self.failed = True
-            self.stop_tree()
+            self.stop_tree('resident_configuration')
             raise Refused('resident_exact_bundles_required')
         parent, child = socket.socketpair()
         token = secrets.token_hex(24)
@@ -346,7 +379,7 @@ class RuntimeSupervisor:
             return self.resident
         except BaseException:
             self.failed = True
-            self.stop_tree()
+            self.stop_tree('resident_startup')
             if proc is not None:
                 self.kill_cgroup(group)
                 self.signal_owned(19999, signal.SIGKILL)
@@ -369,7 +402,7 @@ class RuntimeSupervisor:
                 raise Refused('resident_control')
         except BaseException:
             self.failed = True
-            self.stop_tree()
+            self.stop_tree('resident_control')
             raise
 
     def operation(self, op, body, *, _request_entered=None, _request_sequence=0):
@@ -573,7 +606,7 @@ class RuntimeSupervisor:
                 if group is not None and self.active.get('cgroup') is None:
                     try:group.rmdir()
                     except OSError:self.failed=True
-                self.stop_tree()
+                self.stop_tree('attempt_launch')
                 raise
             finally:
                 child.close()
@@ -610,10 +643,12 @@ class RuntimeSupervisor:
         except ProcessLookupError:
             pass
 
-    def stop_tree(self):
+    def stop_tree(self, reason='stop'):
         with self.tree_lock:
             active = self.active
             if active is not None and not active.get('finalizing') and active['stopping'] is None:
+                if self.resident_qwen:
+                    active.setdefault('stop_reason', reason if reason in _RESIDENT_REASONS else 'stop')
                 active['stopping'] = time.monotonic()
                 if self.resident_qwen:
                     if self.resident is not None:
@@ -635,6 +670,8 @@ class RuntimeSupervisor:
                 return
             now = time.monotonic()
             if (now >= active['cutoff'] or self.halt) and active['stopping'] is None:
+                if self.resident_qwen:
+                    active.setdefault('stop_reason', 'deadline' if now >= active['cutoff'] else 'halt')
                 active['stopping'] = now
                 if self.resident_qwen:
                     if self.resident is not None:
@@ -686,7 +723,7 @@ class RuntimeSupervisor:
             pass
         now = time.monotonic()
         if now >= active['cutoff'] or self.halt:
-            self.stop_tree()
+            self.stop_tree('deadline' if now >= active['cutoff'] else 'halt')
         empty = False
         while True:
             try:
@@ -696,9 +733,10 @@ class RuntimeSupervisor:
                 if self.resident is not None and pid == self.resident['process'].pid:
                     resident = self.resident
                     resident['process'].returncode = os.waitstatus_to_exitcode(status)
+                    active['resident_exit_status'] = resident['process'].returncode
                     if not resident['invalidating']:
                         self.failed = True
-                        self.stop_tree()
+                        self.stop_tree('resident_exit')
                     continue
                 active['reaped_children'] += 1
                 if pid == active['leader']:
@@ -721,7 +759,7 @@ class RuntimeSupervisor:
                 if resident_empty and resident_owned:raise Refused('resident_cgroup_uid_mismatch')
             except BaseException:
                 self.failed = True
-                self.stop_tree()
+                self.stop_tree('custody_fault')
                 return
             if self.resident is not None and self.resident['invalidating']:
                 if resident_empty and self.resident['process'].returncode is not None:
@@ -730,7 +768,7 @@ class RuntimeSupervisor:
                     self.resident = None
             elif self.resident is not None and self.resident['process'].returncode is not None:
                 self.failed = True
-                self.stop_tree()
+                self.stop_tree('resident_exit')
                 return
             if active['started'] and active.get('leader_reaped') and active['receiver_done'].is_set() and active['stopping'] is None:
                 try:
@@ -740,7 +778,9 @@ class RuntimeSupervisor:
                 except queue.Empty:
                     pass
                 if not attempt_empty or active['proposal'] is None or active['process'].returncode != 0:
-                    self.stop_tree()
+                    reason = ('descendants' if not attempt_empty else
+                              'attempt_exit' if active['process'].returncode != 0 else 'no_proposal')
+                    self.stop_tree(reason)
                 else:
                     # The one nonce is spent on the successful call. Revoke the
                     # authorization before persisting this attempt's receipt.
@@ -767,6 +807,12 @@ class RuntimeSupervisor:
                 reaped_children=active['reaped_children'], timely=bool(active['proposal'] is not None and
                 active['proposed_at'] < active['cutoff'] and reaped_at < active['cutoff'] and (not self.resident_qwen or active['stopping'] is None)),
                 original_deadline=row['allocation']['snapshot'][0]['deadline'])
+            if self.resident_qwen and not receipt['timely']:
+                reason = active.get('stop_reason') or ('receiver' if active['proposal'] is None else 'deadline')
+                status = active.get('resident_exit_status')
+                if status is None and self.resident is not None:
+                    status = self.resident['process'].returncode
+                _resident_diagnostic(reason, status)
             with self.tree_lock:
                 active['finalizing'] = True
             try:
