@@ -13,20 +13,55 @@ def sha256(path):
     return digest.hexdigest()
 
 
+def qwen_tokenizer_layout(names, checkpoint):
+    """Keep legacy tokenizer files; admit only the two reviewed 0.6B BPE layouts."""
+    if 'tokenizer_config.json' not in names:
+        raise ValueError('Incomplete Qwen tokenizer')
+    bpe = {'vocab.json', 'merges.txt'} & names
+    if 'tokenizer.json' in names and not bpe:
+        return 'tokenizer'
+    if (checkpoint in ('Qwen/Qwen3-TTS-12Hz-0.6B-Base',
+                       'Qwen/Qwen3-TTS-12Hz-0.6B-CustomVoice')
+            and 'tokenizer.json' not in names and bpe == {'vocab.json', 'merges.txt'}):
+        return 'base-bpe' if checkpoint.endswith('-Base') else 'custom-bpe'
+    raise ValueError('Unsupported Qwen tokenizer layout')
+
+
 def verified_bundle(directory, backend):
-    root = Path(directory).resolve()
+    if backend == 'qwen':
+        # Deliberate backend contract: upstream names, no global fr/en widening.
+        from worker.engines.qwen import verify_bundle
+        directory = Path(directory).absolute()
+        from worker.engines.pocket import _read
+        raw = _read(directory / 'manifest.json', 65536)
+        manifest = json.loads(raw)
+        return verify_bundle(directory, hashlib.sha256(raw).hexdigest(), manifest['checkpoint'], manifest['revision'], manifest['language'])
+    directory = Path(directory).absolute()
+    root = directory.resolve()
     try:
+        if directory.is_symlink() or (root / 'manifest.json').is_symlink():
+            raise ValueError('Symlink bundle refused')
         manifest = json.loads((root / 'manifest.json').read_text())
-        if manifest['backend'] != backend or manifest['schema_version'] != 1:
+        if manifest['backend'] != backend or (type(manifest['schema_version']) is not int or manifest['schema_version'] != 1):
             raise ValueError('Wrong backend or bundle schema')
         if not manifest['files']:
             raise ValueError('Empty asset bundle')
         if not isinstance(manifest.get('checkpoint'), str) or manifest.get('language') not in ('fr', 'en'):
             raise ValueError('Missing checkpoint or supported language')
+        names = set()
         for entry in manifest['files']:
+            name = entry['path']
+            if not isinstance(name, str) or not name or Path(name).is_absolute() or any(part in ('.', '..') for part in name.split('/')) or name in names:
+                raise ValueError('Unsafe or duplicate asset path')
+            names.add(name)
+            candidate = root / name
+            if any(p.is_symlink() for p in (candidate, *list(candidate.parents)[:len(Path(name).parts)-1])):
+                raise ValueError('Symlink asset refused')
             path = (root / entry['path']).resolve()
             if not path.is_relative_to(root) or not path.is_file():
                 raise ValueError('Missing or unsafe asset path')
+            if 'bytes' in entry and (type(entry['bytes']) is not int or path.stat().st_size != entry['bytes']):
+                raise ValueError('Asset size mismatch')
             if sha256(path) != entry['sha256']:
                 raise ValueError('Asset checksum mismatch')
     except (OSError, ValueError, KeyError, TypeError) as exc:

@@ -1,0 +1,50 @@
+# Disposable W1 harness only. Each invocation MUST supply a fresh project name.
+services:
+  init:
+    image: ${W1_CONTROL_IMAGE:?required}
+    user: '0:0'
+    network_mode: none
+    read_only: true
+    cap_drop: [ALL]
+    cap_add: [CHOWN, FOWNER, DAC_OVERRIDE]
+    command: [python, -c, "import os; [(os.chown(p,10001,10001),os.chmod(p,0o770)) for p in ('/ipc','/staging')]"]
+    volumes:
+      - ipc:/ipc
+      - staging:/staging
+  control:
+    environment:
+      W1_FAULT: ${W1_FAULT:-none}
+    image: ${W1_CONTROL_IMAGE:?required}
+    user: '10001:10001'
+    network_mode: none
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    pids_limit: 64
+    mem_limit: 384m
+    cpus: 1
+    volumes:
+      - ipc:/ipc
+      - staging:/staging
+    depends_on:
+      init:
+        condition: service_completed_successfully
+  worker:
+    image: ${W1_WORKER_IMAGE:?required}
+    user: '10002:10001'
+    network_mode: none
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    pids_limit: 32
+    mem_limit: 128m
+    cpus: 1
+    volumes:
+      - ipc:/ipc:ro
+      - staging:/staging
+    depends_on:
+      init:
+        condition: service_completed_successfully
+volumes:
+  ipc:
+  staging:

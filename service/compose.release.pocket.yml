@@ -1,0 +1,58 @@
+# Installed policy reference only. speech-box coordinates final IDs directly;
+# do not use compose up/down (would bypass registration/retained-ID ownership).
+name: speech-box-installed-pocket
+x-common: &common
+  pull_policy: never
+  restart: "no"
+  read_only: true
+  cap_drop: [ALL]
+  security_opt: ["no-new-privileges:true"]
+  ipc: private
+  cgroup: private
+  mem_limit: ${SPEECH_RAM_BYTES:?explicit enrolled RAM bytes}
+  memswap_limit: ${SPEECH_RAM_BYTES:?explicit enrolled RAM bytes}
+  pids_limit: ${SPEECH_PIDS:?explicit enrolled PID budget}
+services:
+  control:
+    <<: *common
+    image: ${SPEECH_CONTROL_IMAGE:?local immutable sha256 image ID}
+    user: "10001:10001"
+    network_mode: bridge
+    ports: ["127.0.0.1:${SPEECH_PORT:?explicit port}:8000"]
+    cpus: ${SPEECH_CONTROL_CPUS:?explicit CPU budget}
+    tmpfs: ["/tmp:rw,noexec,nosuid,nodev,size=${SPEECH_CONTROL_TMP_BYTES:?},nr_inodes=${SPEECH_CONTROL_TMP_INODES:?},mode=1777"]
+    volumes:
+      - control:/control
+      - ipc:/ipc:ro
+      - staging:/staging:ro
+      - ${SPEECH_MODELS:?sealed models}:/models:ro
+      - ${SPEECH_CONFIG:?protected configuration}:/etc/speech-box/install.json:ro
+      - ${SPEECH_CREDENTIAL:?protected credential}:/etc/speech-box/control.key:ro
+  worker:
+    <<: *common
+    image: ${SPEECH_WORKER_IMAGE:?local immutable sha256 image ID}
+    user: "0:10001"
+    cap_add: [SETUID, SETGID, KILL]
+    network_mode: none
+    cpus: ${SPEECH_WORKER_CPUS:?explicit CPU budget}
+    tmpfs: ["/tmp:rw,noexec,nosuid,nodev,size=${SPEECH_WORKER_TMP_BYTES:?},nr_inodes=${SPEECH_WORKER_TMP_INODES:?},mode=1777"]
+    volumes:
+      - ${SPEECH_CONTROL_ASSETS:?exact control volume mountpoint/core/assets}:/references/assets:ro
+      - receipts:/receipts
+      - ipc:/ipc
+      - staging:/staging
+      - ${SPEECH_MODELS:?sealed models}:/models:ro
+      - ${SPEECH_CONFIG:?protected configuration}:/etc/speech-box/install.json:ro
+volumes:
+  control:
+    external: true
+    name: ${SPEECH_CONTROL_VOLUME:?exact volume}
+  receipts:
+    external: true
+    name: ${SPEECH_RECEIPTS_VOLUME:?exact volume}
+  ipc:
+    external: true
+    name: ${SPEECH_IPC_VOLUME:?exact volume}
+  staging:
+    external: true
+    name: ${SPEECH_STAGING_VOLUME:?exact volume}

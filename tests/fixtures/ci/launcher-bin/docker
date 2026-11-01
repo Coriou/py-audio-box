@@ -1,0 +1,9 @@
+#!/usr/bin/env python3
+"""Record the synthetic Docker argv without invoking Docker."""
+import json
+import os
+import sys
+
+with open(os.environ["LAUNCH_COMMANDS"], "a") as stream:
+    stream.write(json.dumps(["docker", *sys.argv[1:]]) + "\n")
+sys.exit(int(os.environ["LAUNCH_EXITCODE"]))

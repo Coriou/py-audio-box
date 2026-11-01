@@ -43,6 +43,7 @@ def test_bundle_tamper_and_escape_rejected(tmp_path):
 
 
 def test_kokoro_mock_contract(tmp_path, monkeypatch):
+    monkeypatch.setattr("tts_backends.espeak_memfd.install", lambda: None)
     from tts_backends.kokoro import KokoroBackend
     bundle(tmp_path, 'kokoro', {'model.onnx': b'model', 'voices.bin': b'voices'})
     class Session:
@@ -175,25 +176,37 @@ def test_pocket_mock_reference_contract(tmp_path, monkeypatch):
 
 
 def test_pocket_relative_bundle_relocation(tmp_path, monkeypatch):
-    import shutil
     import yaml
     from tts_backends.pocket_tts import PocketBackend
     original = tmp_path / 'original'
     original.mkdir()
     bundle(original, 'pocket-tts', {'config.yaml': b'weights_path: model.safetensors\n', 'model.safetensors': b'approved weights'})
     relocated = tmp_path / 'relocated'
-    shutil.copytree(original, relocated)
+    approved = {name: (original / name).read_bytes() for name in ('config.yaml', 'manifest.json')}
+    original.rename(relocated)
+    assert not original.exists()
+    caller_cwd = Path.cwd().resolve()
     class Model:
         @classmethod
         def load_model(cls, config):
+            assert Path.cwd().resolve() == relocated.resolve()
+            assert Path(config) == relocated / 'config.yaml'
+            assert Path(config).read_bytes() == approved['config.yaml']
             value = yaml.safe_load(Path(config).read_text())
             weights = Path(value['weights_path'])
-            assert weights == relocated / 'model.safetensors'
-            assert weights.read_bytes() == b'approved weights'
+            assert weights == Path('model.safetensors')
+            assert not weights.is_absolute()
+            resolved = (Path.cwd() / weights).resolve()
+            assert resolved == relocated / 'model.safetensors'
+            assert resolved.read_bytes() == b'approved weights'
             return cls()
     monkeypatch.setitem(sys.modules, 'pocket_tts', types.SimpleNamespace(TTSModel=Model))
     model = PocketBackend(relocated)
+    assert Path.cwd().resolve() == caller_cwd
+    assert {name: (relocated / name).read_bytes() for name in approved} == approved
     model.close()
+    assert Path.cwd().resolve() == caller_cwd
+    assert {name: (relocated / name).read_bytes() for name in approved} == approved
 
 
 def test_cpu_cli_help_does_not_import_inference():
@@ -238,6 +251,7 @@ def test_kokoro_rejects_non_cpu_effective_provider(tmp_path, monkeypatch):
 
 
 def test_kokoro_failed_inference_is_accounted_in_model_reuse(tmp_path, monkeypatch):
+    monkeypatch.setattr("tts_backends.espeak_memfd.install", lambda: None)
     bundle(tmp_path, 'kokoro', {'model.onnx': b'model', 'voices.bin': b'voices'})
     class Session:
         def __init__(self, *args, **kwargs):
@@ -288,14 +302,15 @@ def test_pocket_conditions_exact_private_snapshot_and_cleans_it(tmp_path, monkey
             snapshot = Path(path)
             snapshot_paths.append(snapshot)
             assert snapshot != reference
-            assert snapshot.suffix == '.wav'
+            assert snapshot.parent in (Path('/proc/self/fd'), Path('/dev/fd'))
             assert stat.S_IMODE(snapshot.stat().st_mode) == 0o600
             # Mutate the source at the exact hash/encoder race boundary.
             reference.write_bytes(b'changed synthetic test reference B')
-            assert snapshot.read_bytes() == approved_bytes
+            captured = snapshot.read_bytes()
+            assert captured == approved_bytes
             if encoder_fails:
                 raise RuntimeError('synthetic encoder failure')
-            return {'approved_bytes': snapshot.read_bytes()}
+            return {'approved_bytes': captured}
         def generate_audio(self, state, text, copy_state):
             assert state['approved_bytes'] == approved_bytes
             return torch.ones(24)
@@ -329,11 +344,14 @@ def test_pocket_uses_owned_snapshot_namespace_without_deleting_directory(tmp_pat
         sample_rate = 24000
         @classmethod
         def load_model(cls, config):
-            assert Path(config).parent == namespace
+            assert Path(config).suffix in ('.yaml', '.yml')
+            assert Path(config) == tmp_path / 'config.yaml'
+            assert Path.cwd() == tmp_path
+            assert list(namespace.iterdir()) == []
             return cls()
         def get_state_for_audio_prompt(self, path):
             snapshot = Path(path)
-            assert snapshot.parent == namespace
+            assert list(namespace.iterdir()) == []
             snapshots.append(snapshot)
             return {'reference_bytes': snapshot.read_bytes()}
         def generate_audio(self, *args, **kwargs):

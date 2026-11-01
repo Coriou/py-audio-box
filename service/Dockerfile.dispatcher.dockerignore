@@ -1,0 +1,16 @@
+**
+!service/
+!service/**
+!worker/
+!worker/**
+!contracts/
+!contracts/**
+!clients/
+!clients/**
+!tests/
+!tests/service/
+!tests/service/**
+!tests/release/
+!tests/release/**
+**/__pycache__
+**/*.pyc

@@ -1,0 +1,50 @@
+{
+  "evidence": "H0 trusted domain fixture; no public HTTP or model readiness claim",
+  "register": {
+    "version": {
+      "id": "vv0",
+      "voice_id": "voice.0",
+      "origin": "preset",
+      "reference_asset_ids": [],
+      "reference_text": "",
+      "identity": {
+        "engine": "qwen",
+        "model": "Qwen3-TTS-12Hz-1.7B-CustomVoice",
+        "bundle_sha256": "cbe72b0955b3fceef5c4e22fa3f8ad318cfd7a4b75d96156bc42c7cf2139d070",
+        "device": "cpu",
+        "precision": "float32"
+      },
+      "settings": {
+        "kind": "qwen_preset",
+        "language": "French",
+        "seed": 1,
+        "temperature": 0.9,
+        "top_p": 1,
+        "top_k": 50,
+        "repetition_penalty": 1.05,
+        "max_new_tokens": 2048,
+        "instruction": null
+      },
+      "settings_sha256": "fc175f2a5312a4ced9c72e1a02bd4c725439f7d9e47fdd720c3954bd07271694",
+      "provenance": {
+        "kind": "synthetic",
+        "source_sha256": "6de1d8cc4c678241ac609b81e8728a89850ce72a9cf736c4214a7ea9dc0943df",
+        "source_id": "impulse",
+        "missing_fields": []
+      },
+      "configuration": {
+        "mode": "qwen_preset",
+        "speaker": "Vivian"
+      },
+      "design_lineage": null
+    },
+    "expected_revision": 0
+  },
+  "aliases": {
+    "voice_id": "voice.0",
+    "aliases": [
+      "my-voice"
+    ],
+    "expected_revision": 1
+  }
+}

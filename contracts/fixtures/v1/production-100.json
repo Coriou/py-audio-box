@@ -1,0 +1,6310 @@
+{
+  "schema_version": "1.3.0",
+  "id": "production-100",
+  "revision": 1,
+  "speakers": [
+    {
+      "id": "s0",
+      "voice_version_id": "vv0"
+    },
+    {
+      "id": "s1",
+      "voice_version_id": "vv1"
+    },
+    {
+      "id": "s2",
+      "voice_version_id": "vv2"
+    }
+  ],
+  "blocks": [
+    {
+      "id": "b0",
+      "speaker_id": "s0",
+      "text": "  Ligne 000 — café!\nExact text.  ",
+      "selected_take_id": "t0",
+      "settings_sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+    },
+    {
+      "id": "b1",
+      "speaker_id": "s1",
+      "text": "  Ligne 001 — café!\nExact text.  ",
+      "selected_take_id": "t1",
+      "settings_sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+    },
+    {
+      "id": "b2",
+      "speaker_id": "s2",
+      "text": "  Ligne 002 — café!\nExact text.  ",
+      "selected_take_id": "t2",
+      "settings_sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+    },
+    {
+      "id": "b3",
+      "speaker_id": "s0",
+      "text": "  Ligne 003 — café!\nExact text.  ",
+      "selected_take_id": "t3",
+      "settings_sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+    },
+    {
+      "id": "b4",
+      "speaker_id": "s1",
+      "text": "  Ligne 004 — café!\nExact text.  ",
+      "selected_take_id": "t4",
+      "settings_sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+    },
+    {
+      "id": "b5",
+      "speaker_id": "s2",
+      "text": "  Ligne 005 — café!\nExact text.  ",
+      "selected_take_id": "t5",
+      "settings_sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+    },
+    {
+      "id": "b6",
+      "speaker_id": "s0",
+      "text": "  Ligne 006 — café!\nExact text.  ",
+      "selected_take_id": "t6",
+      "settings_sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+    },
+    {
+      "id": "b7",
+      "speaker_id": "s1",
+      "text": "  Ligne 007 — café!\nExact text.  ",
+      "selected_take_id": "t7",
+      "settings_sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+    },
+    {
+      "id": "b8",
+      "speaker_id": "s2",
+      "text": "  Ligne 008 — café!\nExact text.  ",
+      "selected_take_id": "t8",
+      "settings_sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+    },
+    {
+      "id": "b9",
+      "speaker_id": "s0",
+      "text": "  Ligne 009 — café!\nExact text.  ",
+      "selected_take_id": "t9",
+      "settings_sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+    },
+    {
+      "id": "b10",
+      "speaker_id": "s1",
+      "text": "  Ligne 010 — café!\nExact text.  ",
+      "selected_take_id": "t10",
+      "settings_sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+    },
+    {
+      "id": "b11",
+      "speaker_id": "s2",
+      "text": "  Ligne 011 — café!\nExact text.  ",
+      "selected_take_id": "t11",
+      "settings_sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+    },
+    {
+      "id": "b12",
+      "speaker_id": "s0",
+      "text": "  Ligne 012 — café!\nExact text.  ",
+      "selected_take_id": "t12",
+      "settings_sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+    },
+    {
+      "id": "b13",
+      "speaker_id": "s1",
+      "text": "  Ligne 013 — café!\nExact text.  ",
+      "selected_take_id": "t13",
+      "settings_sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+    },
+    {
+      "id": "b14",
+      "speaker_id": "s2",
+      "text": "  Ligne 014 — café!\nExact text.  ",
+      "selected_take_id": "t14",
+      "settings_sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+    },
+    {
+      "id": "b15",
+      "speaker_id": "s0",
+      "text": "  Ligne 015 — café!\nExact text.  ",
+      "selected_take_id": "t15",
+      "settings_sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+    },
+    {
+      "id": "b16",
+      "speaker_id": "s1",
+      "text": "  Ligne 016 — café!\nExact text.  ",
+      "selected_take_id": "t16",
+      "settings_sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+    },
+    {
+      "id": "b17",
+      "speaker_id": "s2",
+      "text": "  Ligne 017 — café!\nExact text.  ",
+      "selected_take_id": "t17",
+      "settings_sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+    },
+    {
+      "id": "b18",
+      "speaker_id": "s0",
+      "text": "  Ligne 018 — café!\nExact text.  ",
+      "selected_take_id": "t18",
+      "settings_sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+    },
+    {
+      "id": "b19",
+      "speaker_id": "s1",
+      "text": "  Ligne 019 — café!\nExact text.  ",
+      "selected_take_id": "t19",
+      "settings_sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+    },
+    {
+      "id": "b20",
+      "speaker_id": "s2",
+      "text": "  Ligne 020 — café!\nExact text.  ",
+      "selected_take_id": "t20",
+      "settings_sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+    },
+    {
+      "id": "b21",
+      "speaker_id": "s0",
+      "text": "  Ligne 021 — café!\nExact text.  ",
+      "selected_take_id": "t21",
+      "settings_sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+    },
+    {
+      "id": "b22",
+      "speaker_id": "s1",
+      "text": "  Ligne 022 — café!\nExact text.  ",
+      "selected_take_id": "t22",
+      "settings_sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+    },
+    {
+      "id": "b23",
+      "speaker_id": "s2",
+      "text": "  Ligne 023 — café!\nExact text.  ",
+      "selected_take_id": "t23",
+      "settings_sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+    },
+    {
+      "id": "b24",
+      "speaker_id": "s0",
+      "text": "  Ligne 024 — café!\nExact text.  ",
+      "selected_take_id": "t24",
+      "settings_sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+    },
+    {
+      "id": "b25",
+      "speaker_id": "s1",
+      "text": "  Ligne 025 — café!\nExact text.  ",
+      "selected_take_id": "t25",
+      "settings_sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+    },
+    {
+      "id": "b26",
+      "speaker_id": "s2",
+      "text": "  Ligne 026 — café!\nExact text.  ",
+      "selected_take_id": "t26",
+      "settings_sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+    },
+    {
+      "id": "b27",
+      "speaker_id": "s0",
+      "text": "  Ligne 027 — café!\nExact text.  ",
+      "selected_take_id": "t27",
+      "settings_sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+    },
+    {
+      "id": "b28",
+      "speaker_id": "s1",
+      "text": "  Ligne 028 — café!\nExact text.  ",
+      "selected_take_id": "t28",
+      "settings_sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+    },
+    {
+      "id": "b29",
+      "speaker_id": "s2",
+      "text": "  Ligne 029 — café!\nExact text.  ",
+      "selected_take_id": "t29",
+      "settings_sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+    },
+    {
+      "id": "b30",
+      "speaker_id": "s0",
+      "text": "  Ligne 030 — café!\nExact text.  ",
+      "selected_take_id": "t30",
+      "settings_sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+    },
+    {
+      "id": "b31",
+      "speaker_id": "s1",
+      "text": "  Ligne 031 — café!\nExact text.  ",
+      "selected_take_id": "t31",
+      "settings_sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+    },
+    {
+      "id": "b32",
+      "speaker_id": "s2",
+      "text": "  Ligne 032 — café!\nExact text.  ",
+      "selected_take_id": "t32",
+      "settings_sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+    },
+    {
+      "id": "b33",
+      "speaker_id": "s0",
+      "text": "  Ligne 033 — café!\nExact text.  ",
+      "selected_take_id": "t33",
+      "settings_sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+    },
+    {
+      "id": "b34",
+      "speaker_id": "s1",
+      "text": "  Ligne 034 — café!\nExact text.  ",
+      "selected_take_id": "t34",
+      "settings_sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+    },
+    {
+      "id": "b35",
+      "speaker_id": "s2",
+      "text": "  Ligne 035 — café!\nExact text.  ",
+      "selected_take_id": "t35",
+      "settings_sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+    },
+    {
+      "id": "b36",
+      "speaker_id": "s0",
+      "text": "  Ligne 036 — café!\nExact text.  ",
+      "selected_take_id": "t36",
+      "settings_sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+    },
+    {
+      "id": "b37",
+      "speaker_id": "s1",
+      "text": "  Ligne 037 — café!\nExact text.  ",
+      "selected_take_id": "t37",
+      "settings_sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+    },
+    {
+      "id": "b38",
+      "speaker_id": "s2",
+      "text": "  Ligne 038 — café!\nExact text.  ",
+      "selected_take_id": "t38",
+      "settings_sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+    },
+    {
+      "id": "b39",
+      "speaker_id": "s0",
+      "text": "  Ligne 039 — café!\nExact text.  ",
+      "selected_take_id": "t39",
+      "settings_sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+    },
+    {
+      "id": "b40",
+      "speaker_id": "s1",
+      "text": "  Ligne 040 — café!\nExact text.  ",
+      "selected_take_id": "t40",
+      "settings_sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+    },
+    {
+      "id": "b41",
+      "speaker_id": "s2",
+      "text": "  Ligne 041 — café!\nExact text.  ",
+      "selected_take_id": "t41",
+      "settings_sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+    },
+    {
+      "id": "b42",
+      "speaker_id": "s0",
+      "text": "  Ligne 042 — café!\nExact text.  ",
+      "selected_take_id": "t42",
+      "settings_sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+    },
+    {
+      "id": "b43",
+      "speaker_id": "s1",
+      "text": "  Ligne 043 — café!\nExact text.  ",
+      "selected_take_id": "t43",
+      "settings_sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+    },
+    {
+      "id": "b44",
+      "speaker_id": "s2",
+      "text": "  Ligne 044 — café!\nExact text.  ",
+      "selected_take_id": "t44",
+      "settings_sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+    },
+    {
+      "id": "b45",
+      "speaker_id": "s0",
+      "text": "  Ligne 045 — café!\nExact text.  ",
+      "selected_take_id": "t45",
+      "settings_sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+    },
+    {
+      "id": "b46",
+      "speaker_id": "s1",
+      "text": "  Ligne 046 — café!\nExact text.  ",
+      "selected_take_id": "t46",
+      "settings_sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+    },
+    {
+      "id": "b47",
+      "speaker_id": "s2",
+      "text": "  Ligne 047 — café!\nExact text.  ",
+      "selected_take_id": "t47",
+      "settings_sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+    },
+    {
+      "id": "b48",
+      "speaker_id": "s0",
+      "text": "  Ligne 048 — café!\nExact text.  ",
+      "selected_take_id": "t48",
+      "settings_sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+    },
+    {
+      "id": "b49",
+      "speaker_id": "s1",
+      "text": "  Ligne 049 — café!\nExact text.  ",
+      "selected_take_id": "t49",
+      "settings_sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+    },
+    {
+      "id": "b50",
+      "speaker_id": "s2",
+      "text": "  Ligne 050 — café!\nExact text.  ",
+      "selected_take_id": "t50",
+      "settings_sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+    },
+    {
+      "id": "b51",
+      "speaker_id": "s0",
+      "text": "  Ligne 051 — café!\nExact text.  ",
+      "selected_take_id": "t51",
+      "settings_sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+    },
+    {
+      "id": "b52",
+      "speaker_id": "s1",
+      "text": "  Ligne 052 — café!\nExact text.  ",
+      "selected_take_id": "t52",
+      "settings_sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+    },
+    {
+      "id": "b53",
+      "speaker_id": "s2",
+      "text": "  Ligne 053 — café!\nExact text.  ",
+      "selected_take_id": "t53",
+      "settings_sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+    },
+    {
+      "id": "b54",
+      "speaker_id": "s0",
+      "text": "  Ligne 054 — café!\nExact text.  ",
+      "selected_take_id": "t54",
+      "settings_sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+    },
+    {
+      "id": "b55",
+      "speaker_id": "s1",
+      "text": "  Ligne 055 — café!\nExact text.  ",
+      "selected_take_id": "t55",
+      "settings_sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+    },
+    {
+      "id": "b56",
+      "speaker_id": "s2",
+      "text": "  Ligne 056 — café!\nExact text.  ",
+      "selected_take_id": "t56",
+      "settings_sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+    },
+    {
+      "id": "b57",
+      "speaker_id": "s0",
+      "text": "  Ligne 057 — café!\nExact text.  ",
+      "selected_take_id": "t57",
+      "settings_sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+    },
+    {
+      "id": "b58",
+      "speaker_id": "s1",
+      "text": "  Ligne 058 — café!\nExact text.  ",
+      "selected_take_id": "t58",
+      "settings_sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+    },
+    {
+      "id": "b59",
+      "speaker_id": "s2",
+      "text": "  Ligne 059 — café!\nExact text.  ",
+      "selected_take_id": "t59",
+      "settings_sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+    },
+    {
+      "id": "b60",
+      "speaker_id": "s0",
+      "text": "  Ligne 060 — café!\nExact text.  ",
+      "selected_take_id": "t60",
+      "settings_sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+    },
+    {
+      "id": "b61",
+      "speaker_id": "s1",
+      "text": "  Ligne 061 — café!\nExact text.  ",
+      "selected_take_id": "t61",
+      "settings_sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+    },
+    {
+      "id": "b62",
+      "speaker_id": "s2",
+      "text": "  Ligne 062 — café!\nExact text.  ",
+      "selected_take_id": "t62",
+      "settings_sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+    },
+    {
+      "id": "b63",
+      "speaker_id": "s0",
+      "text": "  Ligne 063 — café!\nExact text.  ",
+      "selected_take_id": "t63",
+      "settings_sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+    },
+    {
+      "id": "b64",
+      "speaker_id": "s1",
+      "text": "  Ligne 064 — café!\nExact text.  ",
+      "selected_take_id": "t64",
+      "settings_sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+    },
+    {
+      "id": "b65",
+      "speaker_id": "s2",
+      "text": "  Ligne 065 — café!\nExact text.  ",
+      "selected_take_id": "t65",
+      "settings_sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+    },
+    {
+      "id": "b66",
+      "speaker_id": "s0",
+      "text": "  Ligne 066 — café!\nExact text.  ",
+      "selected_take_id": "t66",
+      "settings_sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+    },
+    {
+      "id": "b67",
+      "speaker_id": "s1",
+      "text": "  Ligne 067 — café!\nExact text.  ",
+      "selected_take_id": "t67",
+      "settings_sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+    },
+    {
+      "id": "b68",
+      "speaker_id": "s2",
+      "text": "  Ligne 068 — café!\nExact text.  ",
+      "selected_take_id": "t68",
+      "settings_sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+    },
+    {
+      "id": "b69",
+      "speaker_id": "s0",
+      "text": "  Ligne 069 — café!\nExact text.  ",
+      "selected_take_id": "t69",
+      "settings_sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+    },
+    {
+      "id": "b70",
+      "speaker_id": "s1",
+      "text": "  Ligne 070 — café!\nExact text.  ",
+      "selected_take_id": "t70",
+      "settings_sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+    },
+    {
+      "id": "b71",
+      "speaker_id": "s2",
+      "text": "  Ligne 071 — café!\nExact text.  ",
+      "selected_take_id": "t71",
+      "settings_sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+    },
+    {
+      "id": "b72",
+      "speaker_id": "s0",
+      "text": "  Ligne 072 — café!\nExact text.  ",
+      "selected_take_id": "t72",
+      "settings_sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+    },
+    {
+      "id": "b73",
+      "speaker_id": "s1",
+      "text": "  Ligne 073 — café!\nExact text.  ",
+      "selected_take_id": "t73",
+      "settings_sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+    },
+    {
+      "id": "b74",
+      "speaker_id": "s2",
+      "text": "  Ligne 074 — café!\nExact text.  ",
+      "selected_take_id": "t74",
+      "settings_sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+    },
+    {
+      "id": "b75",
+      "speaker_id": "s0",
+      "text": "  Ligne 075 — café!\nExact text.  ",
+      "selected_take_id": "t75",
+      "settings_sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+    },
+    {
+      "id": "b76",
+      "speaker_id": "s1",
+      "text": "  Ligne 076 — café!\nExact text.  ",
+      "selected_take_id": "t76",
+      "settings_sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+    },
+    {
+      "id": "b77",
+      "speaker_id": "s2",
+      "text": "  Ligne 077 — café!\nExact text.  ",
+      "selected_take_id": "t77",
+      "settings_sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+    },
+    {
+      "id": "b78",
+      "speaker_id": "s0",
+      "text": "  Ligne 078 — café!\nExact text.  ",
+      "selected_take_id": "t78",
+      "settings_sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+    },
+    {
+      "id": "b79",
+      "speaker_id": "s1",
+      "text": "  Ligne 079 — café!\nExact text.  ",
+      "selected_take_id": "t79",
+      "settings_sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+    },
+    {
+      "id": "b80",
+      "speaker_id": "s2",
+      "text": "  Ligne 080 — café!\nExact text.  ",
+      "selected_take_id": "t80",
+      "settings_sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+    },
+    {
+      "id": "b81",
+      "speaker_id": "s0",
+      "text": "  Ligne 081 — café!\nExact text.  ",
+      "selected_take_id": "t81",
+      "settings_sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+    },
+    {
+      "id": "b82",
+      "speaker_id": "s1",
+      "text": "  Ligne 082 — café!\nExact text.  ",
+      "selected_take_id": "t82",
+      "settings_sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+    },
+    {
+      "id": "b83",
+      "speaker_id": "s2",
+      "text": "  Ligne 083 — café!\nExact text.  ",
+      "selected_take_id": "t83",
+      "settings_sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+    },
+    {
+      "id": "b84",
+      "speaker_id": "s0",
+      "text": "  Ligne 084 — café!\nExact text.  ",
+      "selected_take_id": "t84",
+      "settings_sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+    },
+    {
+      "id": "b85",
+      "speaker_id": "s1",
+      "text": "  Ligne 085 — café!\nExact text.  ",
+      "selected_take_id": "t85",
+      "settings_sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+    },
+    {
+      "id": "b86",
+      "speaker_id": "s2",
+      "text": "  Ligne 086 — café!\nExact text.  ",
+      "selected_take_id": "t86",
+      "settings_sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+    },
+    {
+      "id": "b87",
+      "speaker_id": "s0",
+      "text": "  Ligne 087 — café!\nExact text.  ",
+      "selected_take_id": "t87",
+      "settings_sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+    },
+    {
+      "id": "b88",
+      "speaker_id": "s1",
+      "text": "  Ligne 088 — café!\nExact text.  ",
+      "selected_take_id": "t88",
+      "settings_sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+    },
+    {
+      "id": "b89",
+      "speaker_id": "s2",
+      "text": "  Ligne 089 — café!\nExact text.  ",
+      "selected_take_id": "t89",
+      "settings_sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+    },
+    {
+      "id": "b90",
+      "speaker_id": "s0",
+      "text": "  Ligne 090 — café!\nExact text.  ",
+      "selected_take_id": "t90",
+      "settings_sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+    },
+    {
+      "id": "b91",
+      "speaker_id": "s1",
+      "text": "  Ligne 091 — café!\nExact text.  ",
+      "selected_take_id": "t91",
+      "settings_sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+    },
+    {
+      "id": "b92",
+      "speaker_id": "s2",
+      "text": "  Ligne 092 — café!\nExact text.  ",
+      "selected_take_id": "t92",
+      "settings_sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+    },
+    {
+      "id": "b93",
+      "speaker_id": "s0",
+      "text": "  Ligne 093 — café!\nExact text.  ",
+      "selected_take_id": "t93",
+      "settings_sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+    },
+    {
+      "id": "b94",
+      "speaker_id": "s1",
+      "text": "  Ligne 094 — café!\nExact text.  ",
+      "selected_take_id": "t94",
+      "settings_sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+    },
+    {
+      "id": "b95",
+      "speaker_id": "s2",
+      "text": "  Ligne 095 — café!\nExact text.  ",
+      "selected_take_id": "t95",
+      "settings_sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+    },
+    {
+      "id": "b96",
+      "speaker_id": "s0",
+      "text": "  Ligne 096 — café!\nExact text.  ",
+      "selected_take_id": "t96",
+      "settings_sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+    },
+    {
+      "id": "b97",
+      "speaker_id": "s1",
+      "text": "  Ligne 097 — café!\nExact text.  ",
+      "selected_take_id": "t97",
+      "settings_sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+    },
+    {
+      "id": "b98",
+      "speaker_id": "s2",
+      "text": "  Ligne 098 — café!\nExact text.  ",
+      "selected_take_id": "t98",
+      "settings_sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+    },
+    {
+      "id": "b99",
+      "speaker_id": "s0",
+      "text": "  Ligne 099 — café!\nExact text.  ",
+      "selected_take_id": "t99",
+      "settings_sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+    }
+  ],
+  "takes": [
+    {
+      "id": "t0",
+      "block_id": "b0",
+      "text": "  Ligne 000 — café!\nExact text.  ",
+      "voice_version_id": "vv0",
+      "settings_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+      "asset_id": "impulse",
+      "identity": {
+        "requested": {
+          "engine": "qwen",
+          "model": "Qwen3-TTS-12Hz-1.7B-CustomVoice",
+          "bundle_sha256": "cbe72b0955b3fceef5c4e22fa3f8ad318cfd7a4b75d96156bc42c7cf2139d070",
+          "device": "cpu",
+          "precision": "float32"
+        },
+        "effective": {
+          "engine": "qwen",
+          "model": "Qwen3-TTS-12Hz-1.7B-CustomVoice",
+          "bundle_sha256": "cbe72b0955b3fceef5c4e22fa3f8ad318cfd7a4b75d96156bc42c7cf2139d070",
+          "device": "cpu",
+          "precision": "float32"
+        },
+        "fallback": "forbid",
+        "reason": "",
+        "profile_id": "cpu-synthetic"
+      }
+    },
+    {
+      "id": "t1",
+      "block_id": "b1",
+      "text": "  Ligne 001 — café!\nExact text.  ",
+      "voice_version_id": "vv1",
+      "settings_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+      "asset_id": "impulse",
+      "identity": {
+        "requested": {
+          "engine": "qwen",
+          "model": "Qwen3-TTS-12Hz-1.7B-CustomVoice",
+          "bundle_sha256": "cbe72b0955b3fceef5c4e22fa3f8ad318cfd7a4b75d96156bc42c7cf2139d070",
+          "device": "cpu",
+          "precision": "float32"
+        },
+        "effective": {
+          "engine": "qwen",
+          "model": "Qwen3-TTS-12Hz-1.7B-CustomVoice",
+          "bundle_sha256": "cbe72b0955b3fceef5c4e22fa3f8ad318cfd7a4b75d96156bc42c7cf2139d070",
+          "device": "cpu",
+          "precision": "float32"
+        },
+        "fallback": "forbid",
+        "reason": "",
+        "profile_id": "cpu-synthetic"
+      }
+    },
+    {
+      "id": "t2",
+      "block_id": "b2",
+      "text": "  Ligne 002 — café!\nExact text.  ",
+      "voice_version_id": "vv2",
+      "settings_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+      "asset_id": "impulse",
+      "identity": {
+        "requested": {
+          "engine": "qwen",
+          "model": "Qwen3-TTS-12Hz-1.7B-CustomVoice",
+          "bundle_sha256": "cbe72b0955b3fceef5c4e22fa3f8ad318cfd7a4b75d96156bc42c7cf2139d070",
+          "device": "cpu",
+          "precision": "float32"
+        },
+        "effective": {
+          "engine": "qwen",
+          "model": "Qwen3-TTS-12Hz-1.7B-CustomVoice",
+          "bundle_sha256": "cbe72b0955b3fceef5c4e22fa3f8ad318cfd7a4b75d96156bc42c7cf2139d070",
+          "device": "cpu",
+          "precision": "float32"
+        },
+        "fallback": "forbid",
+        "reason": "",
+        "profile_id": "cpu-synthetic"
+      }
+    },
+    {
+      "id": "t3",
+      "block_id": "b3",
+      "text": "  Ligne 003 — café!\nExact text.  ",
+      "voice_version_id": "vv0",
+      "settings_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+      "asset_id": "impulse",
+      "identity": {
+        "requested": {
+          "engine": "qwen",
+          "model": "Qwen3-TTS-12Hz-1.7B-CustomVoice",
+          "bundle_sha256": "cbe72b0955b3fceef5c4e22fa3f8ad318cfd7a4b75d96156bc42c7cf2139d070",
+          "device": "cpu",
+          "precision": "float32"
+        },
+        "effective": {
+          "engine": "qwen",
+          "model": "Qwen3-TTS-12Hz-1.7B-CustomVoice",
+          "bundle_sha256": "cbe72b0955b3fceef5c4e22fa3f8ad318cfd7a4b75d96156bc42c7cf2139d070",
+          "device": "cpu",
+          "precision": "float32"
+        },
+        "fallback": "forbid",
+        "reason": "",
+        "profile_id": "cpu-synthetic"
+      }
+    },
+    {
+      "id": "t4",
+      "block_id": "b4",
+      "text": "  Ligne 004 — café!\nExact text.  ",
+      "voice_version_id": "vv1",
+      "settings_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+      "asset_id": "impulse",
+      "identity": {
+        "requested": {
+          "engine": "qwen",
+          "model": "Qwen3-TTS-12Hz-1.7B-CustomVoice",
+          "bundle_sha256": "cbe72b0955b3fceef5c4e22fa3f8ad318cfd7a4b75d96156bc42c7cf2139d070",
+          "device": "cpu",
+          "precision": "float32"
+        },
+        "effective": {
+          "engine": "qwen",
+          "model": "Qwen3-TTS-12Hz-1.7B-CustomVoice",
+          "bundle_sha256": "cbe72b0955b3fceef5c4e22fa3f8ad318cfd7a4b75d96156bc42c7cf2139d070",
+          "device": "cpu",
+          "precision": "float32"
+        },
+        "fallback": "forbid",
+        "reason": "",
+        "profile_id": "cpu-synthetic"
+      }
+    },
+    {
+      "id": "t5",
+      "block_id": "b5",
+      "text": "  Ligne 005 — café!\nExact text.  ",
+      "voice_version_id": "vv2",
+      "settings_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+      "asset_id": "impulse",
+      "identity": {
+        "requested": {
+          "engine": "qwen",
+          "model": "Qwen3-TTS-12Hz-1.7B-CustomVoice",
+          "bundle_sha256": "cbe72b0955b3fceef5c4e22fa3f8ad318cfd7a4b75d96156bc42c7cf2139d070",
+          "device": "cpu",
+          "precision": "float32"
+        },
+        "effective": {
+          "engine": "qwen",
+          "model": "Qwen3-TTS-12Hz-1.7B-CustomVoice",
+          "bundle_sha256": "cbe72b0955b3fceef5c4e22fa3f8ad318cfd7a4b75d96156bc42c7cf2139d070",
+          "device": "cpu",
+          "precision": "float32"
+        },
+        "fallback": "forbid",
+        "reason": "",
+        "profile_id": "cpu-synthetic"
+      }
+    },
+    {
+      "id": "t6",
+      "block_id": "b6",
+      "text": "  Ligne 006 — café!\nExact text.  ",
+      "voice_version_id": "vv0",
+      "settings_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+      "asset_id": "impulse",
+      "identity": {
+        "requested": {
+          "engine": "qwen",
+          "model": "Qwen3-TTS-12Hz-1.7B-CustomVoice",
+          "bundle_sha256": "cbe72b0955b3fceef5c4e22fa3f8ad318cfd7a4b75d96156bc42c7cf2139d070",
+          "device": "cpu",
+          "precision": "float32"
+        },
+        "effective": {
+          "engine": "qwen",
+          "model": "Qwen3-TTS-12Hz-1.7B-CustomVoice",
+          "bundle_sha256": "cbe72b0955b3fceef5c4e22fa3f8ad318cfd7a4b75d96156bc42c7cf2139d070",
+          "device": "cpu",
+          "precision": "float32"
+        },
+        "fallback": "forbid",
+        "reason": "",
+        "profile_id": "cpu-synthetic"
+      }
+    },
+    {
+      "id": "t7",
+      "block_id": "b7",
+      "text": "  Ligne 007 — café!\nExact text.  ",
+      "voice_version_id": "vv1",
+      "settings_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+      "asset_id": "impulse",
+      "identity": {
+        "requested": {
+          "engine": "qwen",
+          "model": "Qwen3-TTS-12Hz-1.7B-CustomVoice",
+          "bundle_sha256": "cbe72b0955b3fceef5c4e22fa3f8ad318cfd7a4b75d96156bc42c7cf2139d070",
+          "device": "cpu",
+          "precision": "float32"
+        },
+        "effective": {
+          "engine": "qwen",
+          "model": "Qwen3-TTS-12Hz-1.7B-CustomVoice",
+          "bundle_sha256": "cbe72b0955b3fceef5c4e22fa3f8ad318cfd7a4b75d96156bc42c7cf2139d070",
+          "device": "cpu",
+          "precision": "float32"
+        },
+        "fallback": "forbid",
+        "reason": "",
+        "profile_id": "cpu-synthetic"
+      }
+    },
+    {
+      "id": "t8",
+      "block_id": "b8",
+      "text": "  Ligne 008 — café!\nExact text.  ",
+      "voice_version_id": "vv2",
+      "settings_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+      "asset_id": "impulse",
+      "identity": {
+        "requested": {
+          "engine": "qwen",
+          "model": "Qwen3-TTS-12Hz-1.7B-CustomVoice",
+          "bundle_sha256": "cbe72b0955b3fceef5c4e22fa3f8ad318cfd7a4b75d96156bc42c7cf2139d070",
+          "device": "cpu",
+          "precision": "float32"
+        },
+        "effective": {
+          "engine": "qwen",
+          "model": "Qwen3-TTS-12Hz-1.7B-CustomVoice",
+          "bundle_sha256": "cbe72b0955b3fceef5c4e22fa3f8ad318cfd7a4b75d96156bc42c7cf2139d070",
+          "device": "cpu",
+          "precision": "float32"
+        },
+        "fallback": "forbid",
+        "reason": "",
+        "profile_id": "cpu-synthetic"
+      }
+    },
+    {
+      "id": "t9",
+      "block_id": "b9",
+      "text": "  Ligne 009 — café!\nExact text.  ",
+      "voice_version_id": "vv0",
+      "settings_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+      "asset_id": "impulse",
+      "identity": {
+        "requested": {
+          "engine": "qwen",
+          "model": "Qwen3-TTS-12Hz-1.7B-CustomVoice",
+          "bundle_sha256": "cbe72b0955b3fceef5c4e22fa3f8ad318cfd7a4b75d96156bc42c7cf2139d070",
+          "device": "cpu",
+          "precision": "float32"
+        },
+        "effective": {
+          "engine": "qwen",
+          "model": "Qwen3-TTS-12Hz-1.7B-CustomVoice",
+          "bundle_sha256": "cbe72b0955b3fceef5c4e22fa3f8ad318cfd7a4b75d96156bc42c7cf2139d070",
+          "device": "cpu",
+          "precision": "float32"
+        },
+        "fallback": "forbid",
+        "reason": "",
+        "profile_id": "cpu-synthetic"
+      }
+    },
+    {
+      "id": "t10",
+      "block_id": "b10",
+      "text": "  Ligne 010 — café!\nExact text.  ",
+      "voice_version_id": "vv1",
+      "settings_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+      "asset_id": "impulse",
+      "identity": {
+        "requested": {
+          "engine": "qwen",
+          "model": "Qwen3-TTS-12Hz-1.7B-CustomVoice",
+          "bundle_sha256": "cbe72b0955b3fceef5c4e22fa3f8ad318cfd7a4b75d96156bc42c7cf2139d070",
+          "device": "cpu",
+          "precision": "float32"
+        },
+        "effective": {
+          "engine": "qwen",
+          "model": "Qwen3-TTS-12Hz-1.7B-CustomVoice",
+          "bundle_sha256": "cbe72b0955b3fceef5c4e22fa3f8ad318cfd7a4b75d96156bc42c7cf2139d070",
+          "device": "cpu",
+          "precision": "float32"
+        },
+        "fallback": "forbid",
+        "reason": "",
+        "profile_id": "cpu-synthetic"
+      }
+    },
+    {
+      "id": "t11",
+      "block_id": "b11",
+      "text": "  Ligne 011 — café!\nExact text.  ",
+      "voice_version_id": "vv2",
+      "settings_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+      "asset_id": "impulse",
+      "identity": {
+        "requested": {
+          "engine": "qwen",
+          "model": "Qwen3-TTS-12Hz-1.7B-CustomVoice",
+          "bundle_sha256": "cbe72b0955b3fceef5c4e22fa3f8ad318cfd7a4b75d96156bc42c7cf2139d070",
+          "device": "cpu",
+          "precision": "float32"
+        },
+        "effective": {
+          "engine": "qwen",
+          "model": "Qwen3-TTS-12Hz-1.7B-CustomVoice",
+          "bundle_sha256": "cbe72b0955b3fceef5c4e22fa3f8ad318cfd7a4b75d96156bc42c7cf2139d070",
+          "device": "cpu",
+          "precision": "float32"
+        },
+        "fallback": "forbid",
+        "reason": "",
+        "profile_id": "cpu-synthetic"
+      }
+    },
+    {
+      "id": "t12",
+      "block_id": "b12",
+      "text": "  Ligne 012 — café!\nExact text.  ",
+      "voice_version_id": "vv0",
+      "settings_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+      "asset_id": "impulse",
+      "identity": {
+        "requested": {
+          "engine": "qwen",
+          "model": "Qwen3-TTS-12Hz-1.7B-CustomVoice",
+          "bundle_sha256": "cbe72b0955b3fceef5c4e22fa3f8ad318cfd7a4b75d96156bc42c7cf2139d070",
+          "device": "cpu",
+          "precision": "float32"
+        },
+        "effective": {
+          "engine": "qwen",
+          "model": "Qwen3-TTS-12Hz-1.7B-CustomVoice",
+          "bundle_sha256": "cbe72b0955b3fceef5c4e22fa3f8ad318cfd7a4b75d96156bc42c7cf2139d070",
+          "device": "cpu",
+          "precision": "float32"
+        },
+        "fallback": "forbid",
+        "reason": "",
+        "profile_id": "cpu-synthetic"
+      }
+    },
+    {
+      "id": "t13",
+      "block_id": "b13",
+      "text": "  Ligne 013 — café!\nExact text.  ",
+      "voice_version_id": "vv1",
+      "settings_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+      "asset_id": "impulse",
+      "identity": {
+        "requested": {
+          "engine": "qwen",
+          "model": "Qwen3-TTS-12Hz-1.7B-CustomVoice",
+          "bundle_sha256": "cbe72b0955b3fceef5c4e22fa3f8ad318cfd7a4b75d96156bc42c7cf2139d070",
+          "device": "cpu",
+          "precision": "float32"
+        },
+        "effective": {
+          "engine": "qwen",
+          "model": "Qwen3-TTS-12Hz-1.7B-CustomVoice",
+          "bundle_sha256": "cbe72b0955b3fceef5c4e22fa3f8ad318cfd7a4b75d96156bc42c7cf2139d070",
+          "device": "cpu",
+          "precision": "float32"
+        },
+        "fallback": "forbid",
+        "reason": "",
+        "profile_id": "cpu-synthetic"
+      }
+    },
+    {
+      "id": "t14",
+      "block_id": "b14",
+      "text": "  Ligne 014 — café!\nExact text.  ",
+      "voice_version_id": "vv2",
+      "settings_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+      "asset_id": "impulse",
+      "identity": {
+        "requested": {
+          "engine": "qwen",
+          "model": "Qwen3-TTS-12Hz-1.7B-CustomVoice",
+          "bundle_sha256": "cbe72b0955b3fceef5c4e22fa3f8ad318cfd7a4b75d96156bc42c7cf2139d070",
+          "device": "cpu",
+          "precision": "float32"
+        },
+        "effective": {
+          "engine": "qwen",
+          "model": "Qwen3-TTS-12Hz-1.7B-CustomVoice",
+          "bundle_sha256": "cbe72b0955b3fceef5c4e22fa3f8ad318cfd7a4b75d96156bc42c7cf2139d070",
+          "device": "cpu",
+          "precision": "float32"
+        },
+        "fallback": "forbid",
+        "reason": "",
+        "profile_id": "cpu-synthetic"
+      }
+    },
+    {
+      "id": "t15",
+      "block_id": "b15",
+      "text": "  Ligne 015 — café!\nExact text.  ",
+      "voice_version_id": "vv0",
+      "settings_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+      "asset_id": "impulse",
+      "identity": {
+        "requested": {
+          "engine": "qwen",
+          "model": "Qwen3-TTS-12Hz-1.7B-CustomVoice",
+          "bundle_sha256": "cbe72b0955b3fceef5c4e22fa3f8ad318cfd7a4b75d96156bc42c7cf2139d070",
+          "device": "cpu",
+          "precision": "float32"
+        },
+        "effective": {
+          "engine": "qwen",
+          "model": "Qwen3-TTS-12Hz-1.7B-CustomVoice",
+          "bundle_sha256": "cbe72b0955b3fceef5c4e22fa3f8ad318cfd7a4b75d96156bc42c7cf2139d070",
+          "device": "cpu",
+          "precision": "float32"
+        },
+        "fallback": "forbid",
+        "reason": "",
+        "profile_id": "cpu-synthetic"
+      }
+    },
+    {
+      "id": "t16",
+      "block_id": "b16",
+      "text": "  Ligne 016 — café!\nExact text.  ",
+      "voice_version_id": "vv1",
+      "settings_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+      "asset_id": "impulse",
+      "identity": {
+        "requested": {
+          "engine": "qwen",
+          "model": "Qwen3-TTS-12Hz-1.7B-CustomVoice",
+          "bundle_sha256": "cbe72b0955b3fceef5c4e22fa3f8ad318cfd7a4b75d96156bc42c7cf2139d070",
+          "device": "cpu",
+          "precision": "float32"
+        },
+        "effective": {
+          "engine": "qwen",
+          "model": "Qwen3-TTS-12Hz-1.7B-CustomVoice",
+          "bundle_sha256": "cbe72b0955b3fceef5c4e22fa3f8ad318cfd7a4b75d96156bc42c7cf2139d070",
+          "device": "cpu",
+          "precision": "float32"
+        },
+        "fallback": "forbid",
+        "reason": "",
+        "profile_id": "cpu-synthetic"
+      }
+    },
+    {
+      "id": "t17",
+      "block_id": "b17",
+      "text": "  Ligne 017 — café!\nExact text.  ",
+      "voice_version_id": "vv2",
+      "settings_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+      "asset_id": "impulse",
+      "identity": {
+        "requested": {
+          "engine": "qwen",
+          "model": "Qwen3-TTS-12Hz-1.7B-CustomVoice",
+          "bundle_sha256": "cbe72b0955b3fceef5c4e22fa3f8ad318cfd7a4b75d96156bc42c7cf2139d070",
+          "device": "cpu",
+          "precision": "float32"
+        },
+        "effective": {
+          "engine": "qwen",
+          "model": "Qwen3-TTS-12Hz-1.7B-CustomVoice",
+          "bundle_sha256": "cbe72b0955b3fceef5c4e22fa3f8ad318cfd7a4b75d96156bc42c7cf2139d070",
+          "device": "cpu",
+          "precision": "float32"
+        },
+        "fallback": "forbid",
+        "reason": "",
+        "profile_id": "cpu-synthetic"
+      }
+    },
+    {
+      "id": "t18",
+      "block_id": "b18",
+      "text": "  Ligne 018 — café!\nExact text.  ",
+      "voice_version_id": "vv0",
+      "settings_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+      "asset_id": "impulse",
+      "identity": {
+        "requested": {
+          "engine": "qwen",
+          "model": "Qwen3-TTS-12Hz-1.7B-CustomVoice",
+          "bundle_sha256": "cbe72b0955b3fceef5c4e22fa3f8ad318cfd7a4b75d96156bc42c7cf2139d070",
+          "device": "cpu",
+          "precision": "float32"
+        },
+        "effective": {
+          "engine": "qwen",
+          "model": "Qwen3-TTS-12Hz-1.7B-CustomVoice",
+          "bundle_sha256": "cbe72b0955b3fceef5c4e22fa3f8ad318cfd7a4b75d96156bc42c7cf2139d070",
+          "device": "cpu",
+          "precision": "float32"
+        },
+        "fallback": "forbid",
+        "reason": "",
+        "profile_id": "cpu-synthetic"
+      }
+    },
+    {
+      "id": "t19",
+      "block_id": "b19",
+      "text": "  Ligne 019 — café!\nExact text.  ",
+      "voice_version_id": "vv1",
+      "settings_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+      "asset_id": "impulse",
+      "identity": {
+        "requested": {
+          "engine": "qwen",
+          "model": "Qwen3-TTS-12Hz-1.7B-CustomVoice",
+          "bundle_sha256": "cbe72b0955b3fceef5c4e22fa3f8ad318cfd7a4b75d96156bc42c7cf2139d070",
+          "device": "cpu",
+          "precision": "float32"
+        },
+        "effective": {
+          "engine": "qwen",
+          "model": "Qwen3-TTS-12Hz-1.7B-CustomVoice",
+          "bundle_sha256": "cbe72b0955b3fceef5c4e22fa3f8ad318cfd7a4b75d96156bc42c7cf2139d070",
+          "device": "cpu",
+          "precision": "float32"
+        },
+        "fallback": "forbid",
+        "reason": "",
+        "profile_id": "cpu-synthetic"
+      }
+    },
+    {
+      "id": "t20",
+      "block_id": "b20",
+      "text": "  Ligne 020 — café!\nExact text.  ",
+      "voice_version_id": "vv2",
+      "settings_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+      "asset_id": "impulse",
+      "identity": {
+        "requested": {
+          "engine": "qwen",
+          "model": "Qwen3-TTS-12Hz-1.7B-CustomVoice",
+          "bundle_sha256": "cbe72b0955b3fceef5c4e22fa3f8ad318cfd7a4b75d96156bc42c7cf2139d070",
+          "device": "cpu",
+          "precision": "float32"
+        },
+        "effective": {
+          "engine": "qwen",
+          "model": "Qwen3-TTS-12Hz-1.7B-CustomVoice",
+          "bundle_sha256": "cbe72b0955b3fceef5c4e22fa3f8ad318cfd7a4b75d96156bc42c7cf2139d070",
+          "device": "cpu",
+          "precision": "float32"
+        },
+        "fallback": "forbid",
+        "reason": "",
+        "profile_id": "cpu-synthetic"
+      }
+    },
+    {
+      "id": "t21",
+      "block_id": "b21",
+      "text": "  Ligne 021 — café!\nExact text.  ",
+      "voice_version_id": "vv0",
+      "settings_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+      "asset_id": "impulse",
+      "identity": {
+        "requested": {
+          "engine": "qwen",
+          "model": "Qwen3-TTS-12Hz-1.7B-CustomVoice",
+          "bundle_sha256": "cbe72b0955b3fceef5c4e22fa3f8ad318cfd7a4b75d96156bc42c7cf2139d070",
+          "device": "cpu",
+          "precision": "float32"
+        },
+        "effective": {
+          "engine": "qwen",
+          "model": "Qwen3-TTS-12Hz-1.7B-CustomVoice",
+          "bundle_sha256": "cbe72b0955b3fceef5c4e22fa3f8ad318cfd7a4b75d96156bc42c7cf2139d070",
+          "device": "cpu",
+          "precision": "float32"
+        },
+        "fallback": "forbid",
+        "reason": "",
+        "profile_id": "cpu-synthetic"
+      }
+    },
+    {
+      "id": "t22",
+      "block_id": "b22",
+      "text": "  Ligne 022 — café!\nExact text.  ",
+      "voice_version_id": "vv1",
+      "settings_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+      "asset_id": "impulse",
+      "identity": {
+        "requested": {
+          "engine": "qwen",
+          "model": "Qwen3-TTS-12Hz-1.7B-CustomVoice",
+          "bundle_sha256": "cbe72b0955b3fceef5c4e22fa3f8ad318cfd7a4b75d96156bc42c7cf2139d070",
+          "device": "cpu",
+          "precision": "float32"
+        },
+        "effective": {
+          "engine": "qwen",
+          "model": "Qwen3-TTS-12Hz-1.7B-CustomVoice",
+          "bundle_sha256": "cbe72b0955b3fceef5c4e22fa3f8ad318cfd7a4b75d96156bc42c7cf2139d070",
+          "device": "cpu",
+          "precision": "float32"
+        },
+        "fallback": "forbid",
+        "reason": "",
+        "profile_id": "cpu-synthetic"
+      }
+    },
+    {
+      "id": "t23",
+      "block_id": "b23",
+      "text": "  Ligne 023 — café!\nExact text.  ",
+      "voice_version_id": "vv2",
+      "settings_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+      "asset_id": "impulse",
+      "identity": {
+        "requested": {
+          "engine": "qwen",
+          "model": "Qwen3-TTS-12Hz-1.7B-CustomVoice",
+          "bundle_sha256": "cbe72b0955b3fceef5c4e22fa3f8ad318cfd7a4b75d96156bc42c7cf2139d070",
+          "device": "cpu",
+          "precision": "float32"
+        },
+        "effective": {
+          "engine": "qwen",
+          "model": "Qwen3-TTS-12Hz-1.7B-CustomVoice",
+          "bundle_sha256": "cbe72b0955b3fceef5c4e22fa3f8ad318cfd7a4b75d96156bc42c7cf2139d070",
+          "device": "cpu",
+          "precision": "float32"
+        },
+        "fallback": "forbid",
+        "reason": "",
+        "profile_id": "cpu-synthetic"
+      }
+    },
+    {
+      "id": "t24",
+      "block_id": "b24",
+      "text": "  Ligne 024 — café!\nExact text.  ",
+      "voice_version_id": "vv0",
+      "settings_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+      "asset_id": "impulse",
+      "identity": {
+        "requested": {
+          "engine": "qwen",
+          "model": "Qwen3-TTS-12Hz-1.7B-CustomVoice",
+          "bundle_sha256": "cbe72b0955b3fceef5c4e22fa3f8ad318cfd7a4b75d96156bc42c7cf2139d070",
+          "device": "cpu",
+          "precision": "float32"
+        },
+        "effective": {
+          "engine": "qwen",
+          "model": "Qwen3-TTS-12Hz-1.7B-CustomVoice",
+          "bundle_sha256": "cbe72b0955b3fceef5c4e22fa3f8ad318cfd7a4b75d96156bc42c7cf2139d070",
+          "device": "cpu",
+          "precision": "float32"
+        },
+        "fallback": "forbid",
+        "reason": "",
+        "profile_id": "cpu-synthetic"
+      }
+    },
+    {
+      "id": "t25",
+      "block_id": "b25",
+      "text": "  Ligne 025 — café!\nExact text.  ",
+      "voice_version_id": "vv1",
+      "settings_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+      "asset_id": "impulse",
+      "identity": {
+        "requested": {
+          "engine": "qwen",
+          "model": "Qwen3-TTS-12Hz-1.7B-CustomVoice",
+          "bundle_sha256": "cbe72b0955b3fceef5c4e22fa3f8ad318cfd7a4b75d96156bc42c7cf2139d070",
+          "device": "cpu",
+          "precision": "float32"
+        },
+        "effective": {
+          "engine": "qwen",
+          "model": "Qwen3-TTS-12Hz-1.7B-CustomVoice",
+          "bundle_sha256": "cbe72b0955b3fceef5c4e22fa3f8ad318cfd7a4b75d96156bc42c7cf2139d070",
+          "device": "cpu",
+          "precision": "float32"
+        },
+        "fallback": "forbid",
+        "reason": "",
+        "profile_id": "cpu-synthetic"
+      }
+    },
+    {
+      "id": "t26",
+      "block_id": "b26",
+      "text": "  Ligne 026 — café!\nExact text.  ",
+      "voice_version_id": "vv2",
+      "settings_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+      "asset_id": "impulse",
+      "identity": {
+        "requested": {
+          "engine": "qwen",
+          "model": "Qwen3-TTS-12Hz-1.7B-CustomVoice",
+          "bundle_sha256": "cbe72b0955b3fceef5c4e22fa3f8ad318cfd7a4b75d96156bc42c7cf2139d070",
+          "device": "cpu",
+          "precision": "float32"
+        },
+        "effective": {
+          "engine": "qwen",
+          "model": "Qwen3-TTS-12Hz-1.7B-CustomVoice",
+          "bundle_sha256": "cbe72b0955b3fceef5c4e22fa3f8ad318cfd7a4b75d96156bc42c7cf2139d070",
+          "device": "cpu",
+          "precision": "float32"
+        },
+        "fallback": "forbid",
+        "reason": "",
+        "profile_id": "cpu-synthetic"
+      }
+    },
+    {
+      "id": "t27",
+      "block_id": "b27",
+      "text": "  Ligne 027 — café!\nExact text.  ",
+      "voice_version_id": "vv0",
+      "settings_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+      "asset_id": "impulse",
+      "identity": {
+        "requested": {
+          "engine": "qwen",
+          "model": "Qwen3-TTS-12Hz-1.7B-CustomVoice",
+          "bundle_sha256": "cbe72b0955b3fceef5c4e22fa3f8ad318cfd7a4b75d96156bc42c7cf2139d070",
+          "device": "cpu",
+          "precision": "float32"
+        },
+        "effective": {
+          "engine": "qwen",
+          "model": "Qwen3-TTS-12Hz-1.7B-CustomVoice",
+          "bundle_sha256": "cbe72b0955b3fceef5c4e22fa3f8ad318cfd7a4b75d96156bc42c7cf2139d070",
+          "device": "cpu",
+          "precision": "float32"
+        },
+        "fallback": "forbid",
+        "reason": "",
+        "profile_id": "cpu-synthetic"
+      }
+    },
+    {
+      "id": "t28",
+      "block_id": "b28",
+      "text": "  Ligne 028 — café!\nExact text.  ",
+      "voice_version_id": "vv1",
+      "settings_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+      "asset_id": "impulse",
+      "identity": {
+        "requested": {
+          "engine": "qwen",
+          "model": "Qwen3-TTS-12Hz-1.7B-CustomVoice",
+          "bundle_sha256": "cbe72b0955b3fceef5c4e22fa3f8ad318cfd7a4b75d96156bc42c7cf2139d070",
+          "device": "cpu",
+          "precision": "float32"
+        },
+        "effective": {
+          "engine": "qwen",
+          "model": "Qwen3-TTS-12Hz-1.7B-CustomVoice",
+          "bundle_sha256": "cbe72b0955b3fceef5c4e22fa3f8ad318cfd7a4b75d96156bc42c7cf2139d070",
+          "device": "cpu",
+          "precision": "float32"
+        },
+        "fallback": "forbid",
+        "reason": "",
+        "profile_id": "cpu-synthetic"
+      }
+    },
+    {
+      "id": "t29",
+      "block_id": "b29",
+      "text": "  Ligne 029 — café!\nExact text.  ",
+      "voice_version_id": "vv2",
+      "settings_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+      "asset_id": "impulse",
+      "identity": {
+        "requested": {
+          "engine": "qwen",
+          "model": "Qwen3-TTS-12Hz-1.7B-CustomVoice",
+          "bundle_sha256": "cbe72b0955b3fceef5c4e22fa3f8ad318cfd7a4b75d96156bc42c7cf2139d070",
+          "device": "cpu",
+          "precision": "float32"
+        },
+        "effective": {
+          "engine": "qwen",
+          "model": "Qwen3-TTS-12Hz-1.7B-CustomVoice",
+          "bundle_sha256": "cbe72b0955b3fceef5c4e22fa3f8ad318cfd7a4b75d96156bc42c7cf2139d070",
+          "device": "cpu",
+          "precision": "float32"
+        },
+        "fallback": "forbid",
+        "reason": "",
+        "profile_id": "cpu-synthetic"
+      }
+    },
+    {
+      "id": "t30",
+      "block_id": "b30",
+      "text": "  Ligne 030 — café!\nExact text.  ",
+      "voice_version_id": "vv0",
+      "settings_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+      "asset_id": "impulse",
+      "identity": {
+        "requested": {
+          "engine": "qwen",
+          "model": "Qwen3-TTS-12Hz-1.7B-CustomVoice",
+          "bundle_sha256": "cbe72b0955b3fceef5c4e22fa3f8ad318cfd7a4b75d96156bc42c7cf2139d070",
+          "device": "cpu",
+          "precision": "float32"
+        },
+        "effective": {
+          "engine": "qwen",
+          "model": "Qwen3-TTS-12Hz-1.7B-CustomVoice",
+          "bundle_sha256": "cbe72b0955b3fceef5c4e22fa3f8ad318cfd7a4b75d96156bc42c7cf2139d070",
+          "device": "cpu",
+          "precision": "float32"
+        },
+        "fallback": "forbid",
+        "reason": "",
+        "profile_id": "cpu-synthetic"
+      }
+    },
+    {
+      "id": "t31",
+      "block_id": "b31",
+      "text": "  Ligne 031 — café!\nExact text.  ",
+      "voice_version_id": "vv1",
+      "settings_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+      "asset_id": "impulse",
+      "identity": {
+        "requested": {
+          "engine": "qwen",
+          "model": "Qwen3-TTS-12Hz-1.7B-CustomVoice",
+          "bundle_sha256": "cbe72b0955b3fceef5c4e22fa3f8ad318cfd7a4b75d96156bc42c7cf2139d070",
+          "device": "cpu",
+          "precision": "float32"
+        },
+        "effective": {
+          "engine": "qwen",
+          "model": "Qwen3-TTS-12Hz-1.7B-CustomVoice",
+          "bundle_sha256": "cbe72b0955b3fceef5c4e22fa3f8ad318cfd7a4b75d96156bc42c7cf2139d070",
+          "device": "cpu",
+          "precision": "float32"
+        },
+        "fallback": "forbid",
+        "reason": "",
+        "profile_id": "cpu-synthetic"
+      }
+    },
+    {
+      "id": "t32",
+      "block_id": "b32",
+      "text": "  Ligne 032 — café!\nExact text.  ",
+      "voice_version_id": "vv2",
+      "settings_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+      "asset_id": "impulse",
+      "identity": {
+        "requested": {
+          "engine": "qwen",
+          "model": "Qwen3-TTS-12Hz-1.7B-CustomVoice",
+          "bundle_sha256": "cbe72b0955b3fceef5c4e22fa3f8ad318cfd7a4b75d96156bc42c7cf2139d070",
+          "device": "cpu",
+          "precision": "float32"
+        },
+        "effective": {
+          "engine": "qwen",
+          "model": "Qwen3-TTS-12Hz-1.7B-CustomVoice",
+          "bundle_sha256": "cbe72b0955b3fceef5c4e22fa3f8ad318cfd7a4b75d96156bc42c7cf2139d070",
+          "device": "cpu",
+          "precision": "float32"
+        },
+        "fallback": "forbid",
+        "reason": "",
+        "profile_id": "cpu-synthetic"
+      }
+    },
+    {
+      "id": "t33",
+      "block_id": "b33",
+      "text": "  Ligne 033 — café!\nExact text.  ",
+      "voice_version_id": "vv0",
+      "settings_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+      "asset_id": "impulse",
+      "identity": {
+        "requested": {
+          "engine": "qwen",
+          "model": "Qwen3-TTS-12Hz-1.7B-CustomVoice",
+          "bundle_sha256": "cbe72b0955b3fceef5c4e22fa3f8ad318cfd7a4b75d96156bc42c7cf2139d070",
+          "device": "cpu",
+          "precision": "float32"
+        },
+        "effective": {
+          "engine": "qwen",
+          "model": "Qwen3-TTS-12Hz-1.7B-CustomVoice",
+          "bundle_sha256": "cbe72b0955b3fceef5c4e22fa3f8ad318cfd7a4b75d96156bc42c7cf2139d070",
+          "device": "cpu",
+          "precision": "float32"
+        },
+        "fallback": "forbid",
+        "reason": "",
+        "profile_id": "cpu-synthetic"
+      }
+    },
+    {
+      "id": "t34",
+      "block_id": "b34",
+      "text": "  Ligne 034 — café!\nExact text.  ",
+      "voice_version_id": "vv1",
+      "settings_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+      "asset_id": "impulse",
+      "identity": {
+        "requested": {
+          "engine": "qwen",
+          "model": "Qwen3-TTS-12Hz-1.7B-CustomVoice",
+          "bundle_sha256": "cbe72b0955b3fceef5c4e22fa3f8ad318cfd7a4b75d96156bc42c7cf2139d070",
+          "device": "cpu",
+          "precision": "float32"
+        },
+        "effective": {
+          "engine": "qwen",
+          "model": "Qwen3-TTS-12Hz-1.7B-CustomVoice",
+          "bundle_sha256": "cbe72b0955b3fceef5c4e22fa3f8ad318cfd7a4b75d96156bc42c7cf2139d070",
+          "device": "cpu",
+          "precision": "float32"
+        },
+        "fallback": "forbid",
+        "reason": "",
+        "profile_id": "cpu-synthetic"
+      }
+    },
+    {
+      "id": "t35",
+      "block_id": "b35",
+      "text": "  Ligne 035 — café!\nExact text.  ",
+      "voice_version_id": "vv2",
+      "settings_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+      "asset_id": "impulse",
+      "identity": {
+        "requested": {
+          "engine": "qwen",
+          "model": "Qwen3-TTS-12Hz-1.7B-CustomVoice",
+          "bundle_sha256": "cbe72b0955b3fceef5c4e22fa3f8ad318cfd7a4b75d96156bc42c7cf2139d070",
+          "device": "cpu",
+          "precision": "float32"
+        },
+        "effective": {
+          "engine": "qwen",
+          "model": "Qwen3-TTS-12Hz-1.7B-CustomVoice",
+          "bundle_sha256": "cbe72b0955b3fceef5c4e22fa3f8ad318cfd7a4b75d96156bc42c7cf2139d070",
+          "device": "cpu",
+          "precision": "float32"
+        },
+        "fallback": "forbid",
+        "reason": "",
+        "profile_id": "cpu-synthetic"
+      }
+    },
+    {
+      "id": "t36",
+      "block_id": "b36",
+      "text": "  Ligne 036 — café!\nExact text.  ",
+      "voice_version_id": "vv0",
+      "settings_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+      "asset_id": "impulse",
+      "identity": {
+        "requested": {
+          "engine": "qwen",
+          "model": "Qwen3-TTS-12Hz-1.7B-CustomVoice",
+          "bundle_sha256": "cbe72b0955b3fceef5c4e22fa3f8ad318cfd7a4b75d96156bc42c7cf2139d070",
+          "device": "cpu",
+          "precision": "float32"
+        },
+        "effective": {
+          "engine": "qwen",
+          "model": "Qwen3-TTS-12Hz-1.7B-CustomVoice",
+          "bundle_sha256": "cbe72b0955b3fceef5c4e22fa3f8ad318cfd7a4b75d96156bc42c7cf2139d070",
+          "device": "cpu",
+          "precision": "float32"
+        },
+        "fallback": "forbid",
+        "reason": "",
+        "profile_id": "cpu-synthetic"
+      }
+    },
+    {
+      "id": "t37",
+      "block_id": "b37",
+      "text": "  Ligne 037 — café!\nExact text.  ",
+      "voice_version_id": "vv1",
+      "settings_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+      "asset_id": "impulse",
+      "identity": {
+        "requested": {
+          "engine": "qwen",
+          "model": "Qwen3-TTS-12Hz-1.7B-CustomVoice",
+          "bundle_sha256": "cbe72b0955b3fceef5c4e22fa3f8ad318cfd7a4b75d96156bc42c7cf2139d070",
+          "device": "cpu",
+          "precision": "float32"
+        },
+        "effective": {
+          "engine": "qwen",
+          "model": "Qwen3-TTS-12Hz-1.7B-CustomVoice",
+          "bundle_sha256": "cbe72b0955b3fceef5c4e22fa3f8ad318cfd7a4b75d96156bc42c7cf2139d070",
+          "device": "cpu",
+          "precision": "float32"
+        },
+        "fallback": "forbid",
+        "reason": "",
+        "profile_id": "cpu-synthetic"
+      }
+    },
+    {
+      "id": "t38",
+      "block_id": "b38",
+      "text": "  Ligne 038 — café!\nExact text.  ",
+      "voice_version_id": "vv2",
+      "settings_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+      "asset_id": "impulse",
+      "identity": {
+        "requested": {
+          "engine": "qwen",
+          "model": "Qwen3-TTS-12Hz-1.7B-CustomVoice",
+          "bundle_sha256": "cbe72b0955b3fceef5c4e22fa3f8ad318cfd7a4b75d96156bc42c7cf2139d070",
+          "device": "cpu",
+          "precision": "float32"
+        },
+        "effective": {
+          "engine": "qwen",
+          "model": "Qwen3-TTS-12Hz-1.7B-CustomVoice",
+          "bundle_sha256": "cbe72b0955b3fceef5c4e22fa3f8ad318cfd7a4b75d96156bc42c7cf2139d070",
+          "device": "cpu",
+          "precision": "float32"
+        },
+        "fallback": "forbid",
+        "reason": "",
+        "profile_id": "cpu-synthetic"
+      }
+    },
+    {
+      "id": "t39",
+      "block_id": "b39",
+      "text": "  Ligne 039 — café!\nExact text.  ",
+      "voice_version_id": "vv0",
+      "settings_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+      "asset_id": "impulse",
+      "identity": {
+        "requested": {
+          "engine": "qwen",
+          "model": "Qwen3-TTS-12Hz-1.7B-CustomVoice",
+          "bundle_sha256": "cbe72b0955b3fceef5c4e22fa3f8ad318cfd7a4b75d96156bc42c7cf2139d070",
+          "device": "cpu",
+          "precision": "float32"
+        },
+        "effective": {
+          "engine": "qwen",
+          "model": "Qwen3-TTS-12Hz-1.7B-CustomVoice",
+          "bundle_sha256": "cbe72b0955b3fceef5c4e22fa3f8ad318cfd7a4b75d96156bc42c7cf2139d070",
+          "device": "cpu",
+          "precision": "float32"
+        },
+        "fallback": "forbid",
+        "reason": "",
+        "profile_id": "cpu-synthetic"
+      }
+    },
+    {
+      "id": "t40",
+      "block_id": "b40",
+      "text": "  Ligne 040 — café!\nExact text.  ",
+      "voice_version_id": "vv1",
+      "settings_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+      "asset_id": "impulse",
+      "identity": {
+        "requested": {
+          "engine": "qwen",
+          "model": "Qwen3-TTS-12Hz-1.7B-CustomVoice",
+          "bundle_sha256": "cbe72b0955b3fceef5c4e22fa3f8ad318cfd7a4b75d96156bc42c7cf2139d070",
+          "device": "cpu",
+          "precision": "float32"
+        },
+        "effective": {
+          "engine": "qwen",
+          "model": "Qwen3-TTS-12Hz-1.7B-CustomVoice",
+          "bundle_sha256": "cbe72b0955b3fceef5c4e22fa3f8ad318cfd7a4b75d96156bc42c7cf2139d070",
+          "device": "cpu",
+          "precision": "float32"
+        },
+        "fallback": "forbid",
+        "reason": "",
+        "profile_id": "cpu-synthetic"
+      }
+    },
+    {
+      "id": "t41",
+      "block_id": "b41",
+      "text": "  Ligne 041 — café!\nExact text.  ",
+      "voice_version_id": "vv2",
+      "settings_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+      "asset_id": "impulse",
+      "identity": {
+        "requested": {
+          "engine": "qwen",
+          "model": "Qwen3-TTS-12Hz-1.7B-CustomVoice",
+          "bundle_sha256": "cbe72b0955b3fceef5c4e22fa3f8ad318cfd7a4b75d96156bc42c7cf2139d070",
+          "device": "cpu",
+          "precision": "float32"
+        },
+        "effective": {
+          "engine": "qwen",
+          "model": "Qwen3-TTS-12Hz-1.7B-CustomVoice",
+          "bundle_sha256": "cbe72b0955b3fceef5c4e22fa3f8ad318cfd7a4b75d96156bc42c7cf2139d070",
+          "device": "cpu",
+          "precision": "float32"
+        },
+        "fallback": "forbid",
+        "reason": "",
+        "profile_id": "cpu-synthetic"
+      }
+    },
+    {
+      "id": "t42",
+      "block_id": "b42",
+      "text": "  Ligne 042 — café!\nExact text.  ",
+      "voice_version_id": "vv0",
+      "settings_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+      "asset_id": "impulse",
+      "identity": {
+        "requested": {
+          "engine": "qwen",
+          "model": "Qwen3-TTS-12Hz-1.7B-CustomVoice",
+          "bundle_sha256": "cbe72b0955b3fceef5c4e22fa3f8ad318cfd7a4b75d96156bc42c7cf2139d070",
+          "device": "cpu",
+          "precision": "float32"
+        },
+        "effective": {
+          "engine": "qwen",
+          "model": "Qwen3-TTS-12Hz-1.7B-CustomVoice",
+          "bundle_sha256": "cbe72b0955b3fceef5c4e22fa3f8ad318cfd7a4b75d96156bc42c7cf2139d070",
+          "device": "cpu",
+          "precision": "float32"
+        },
+        "fallback": "forbid",
+        "reason": "",
+        "profile_id": "cpu-synthetic"
+      }
+    },
+    {
+      "id": "t43",
+      "block_id": "b43",
+      "text": "  Ligne 043 — café!\nExact text.  ",
+      "voice_version_id": "vv1",
+      "settings_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+      "asset_id": "impulse",
+      "identity": {
+        "requested": {
+          "engine": "qwen",
+          "model": "Qwen3-TTS-12Hz-1.7B-CustomVoice",
+          "bundle_sha256": "cbe72b0955b3fceef5c4e22fa3f8ad318cfd7a4b75d96156bc42c7cf2139d070",
+          "device": "cpu",
+          "precision": "float32"
+        },
+        "effective": {
+          "engine": "qwen",
+          "model": "Qwen3-TTS-12Hz-1.7B-CustomVoice",
+          "bundle_sha256": "cbe72b0955b3fceef5c4e22fa3f8ad318cfd7a4b75d96156bc42c7cf2139d070",
+          "device": "cpu",
+          "precision": "float32"
+        },
+        "fallback": "forbid",
+        "reason": "",
+        "profile_id": "cpu-synthetic"
+      }
+    },
+    {
+      "id": "t44",
+      "block_id": "b44",
+      "text": "  Ligne 044 — café!\nExact text.  ",
+      "voice_version_id": "vv2",
+      "settings_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+      "asset_id": "impulse",
+      "identity": {
+        "requested": {
+          "engine": "qwen",
+          "model": "Qwen3-TTS-12Hz-1.7B-CustomVoice",
+          "bundle_sha256": "cbe72b0955b3fceef5c4e22fa3f8ad318cfd7a4b75d96156bc42c7cf2139d070",
+          "device": "cpu",
+          "precision": "float32"
+        },
+        "effective": {
+          "engine": "qwen",
+          "model": "Qwen3-TTS-12Hz-1.7B-CustomVoice",
+          "bundle_sha256": "cbe72b0955b3fceef5c4e22fa3f8ad318cfd7a4b75d96156bc42c7cf2139d070",
+          "device": "cpu",
+          "precision": "float32"
+        },
+        "fallback": "forbid",
+        "reason": "",
+        "profile_id": "cpu-synthetic"
+      }
+    },
+    {
+      "id": "t45",
+      "block_id": "b45",
+      "text": "  Ligne 045 — café!\nExact text.  ",
+      "voice_version_id": "vv0",
+      "settings_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+      "asset_id": "impulse",
+      "identity": {
+        "requested": {
+          "engine": "qwen",
+          "model": "Qwen3-TTS-12Hz-1.7B-CustomVoice",
+          "bundle_sha256": "cbe72b0955b3fceef5c4e22fa3f8ad318cfd7a4b75d96156bc42c7cf2139d070",
+          "device": "cpu",
+          "precision": "float32"
+        },
+        "effective": {
+          "engine": "qwen",
+          "model": "Qwen3-TTS-12Hz-1.7B-CustomVoice",
+          "bundle_sha256": "cbe72b0955b3fceef5c4e22fa3f8ad318cfd7a4b75d96156bc42c7cf2139d070",
+          "device": "cpu",
+          "precision": "float32"
+        },
+        "fallback": "forbid",
+        "reason": "",
+        "profile_id": "cpu-synthetic"
+      }
+    },
+    {
+      "id": "t46",
+      "block_id": "b46",
+      "text": "  Ligne 046 — café!\nExact text.  ",
+      "voice_version_id": "vv1",
+      "settings_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+      "asset_id": "impulse",
+      "identity": {
+        "requested": {
+          "engine": "qwen",
+          "model": "Qwen3-TTS-12Hz-1.7B-CustomVoice",
+          "bundle_sha256": "cbe72b0955b3fceef5c4e22fa3f8ad318cfd7a4b75d96156bc42c7cf2139d070",
+          "device": "cpu",
+          "precision": "float32"
+        },
+        "effective": {
+          "engine": "qwen",
+          "model": "Qwen3-TTS-12Hz-1.7B-CustomVoice",
+          "bundle_sha256": "cbe72b0955b3fceef5c4e22fa3f8ad318cfd7a4b75d96156bc42c7cf2139d070",
+          "device": "cpu",
+          "precision": "float32"
+        },
+        "fallback": "forbid",
+        "reason": "",
+        "profile_id": "cpu-synthetic"
+      }
+    },
+    {
+      "id": "t47",
+      "block_id": "b47",
+      "text": "  Ligne 047 — café!\nExact text.  ",
+      "voice_version_id": "vv2",
+      "settings_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+      "asset_id": "impulse",
+      "identity": {
+        "requested": {
+          "engine": "qwen",
+          "model": "Qwen3-TTS-12Hz-1.7B-CustomVoice",
+          "bundle_sha256": "cbe72b0955b3fceef5c4e22fa3f8ad318cfd7a4b75d96156bc42c7cf2139d070",
+          "device": "cpu",
+          "precision": "float32"
+        },
+        "effective": {
+          "engine": "qwen",
+          "model": "Qwen3-TTS-12Hz-1.7B-CustomVoice",
+          "bundle_sha256": "cbe72b0955b3fceef5c4e22fa3f8ad318cfd7a4b75d96156bc42c7cf2139d070",
+          "device": "cpu",
+          "precision": "float32"
+        },
+        "fallback": "forbid",
+        "reason": "",
+        "profile_id": "cpu-synthetic"
+      }
+    },
+    {
+      "id": "t48",
+      "block_id": "b48",
+      "text": "  Ligne 048 — café!\nExact text.  ",
+      "voice_version_id": "vv0",
+      "settings_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+      "asset_id": "impulse",
+      "identity": {
+        "requested": {
+          "engine": "qwen",
+          "model": "Qwen3-TTS-12Hz-1.7B-CustomVoice",
+          "bundle_sha256": "cbe72b0955b3fceef5c4e22fa3f8ad318cfd7a4b75d96156bc42c7cf2139d070",
+          "device": "cpu",
+          "precision": "float32"
+        },
+        "effective": {
+          "engine": "qwen",
+          "model": "Qwen3-TTS-12Hz-1.7B-CustomVoice",
+          "bundle_sha256": "cbe72b0955b3fceef5c4e22fa3f8ad318cfd7a4b75d96156bc42c7cf2139d070",
+          "device": "cpu",
+          "precision": "float32"
+        },
+        "fallback": "forbid",
+        "reason": "",
+        "profile_id": "cpu-synthetic"
+      }
+    },
+    {
+      "id": "t49",
+      "block_id": "b49",
+      "text": "  Ligne 049 — café!\nExact text.  ",
+      "voice_version_id": "vv1",
+      "settings_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+      "asset_id": "impulse",
+      "identity": {
+        "requested": {
+          "engine": "qwen",
+          "model": "Qwen3-TTS-12Hz-1.7B-CustomVoice",
+          "bundle_sha256": "cbe72b0955b3fceef5c4e22fa3f8ad318cfd7a4b75d96156bc42c7cf2139d070",
+          "device": "cpu",
+          "precision": "float32"
+        },
+        "effective": {
+          "engine": "qwen",
+          "model": "Qwen3-TTS-12Hz-1.7B-CustomVoice",
+          "bundle_sha256": "cbe72b0955b3fceef5c4e22fa3f8ad318cfd7a4b75d96156bc42c7cf2139d070",
+          "device": "cpu",
+          "precision": "float32"
+        },
+        "fallback": "forbid",
+        "reason": "",
+        "profile_id": "cpu-synthetic"
+      }
+    },
+    {
+      "id": "t50",
+      "block_id": "b50",
+      "text": "  Ligne 050 — café!\nExact text.  ",
+      "voice_version_id": "vv2",
+      "settings_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+      "asset_id": "impulse",
+      "identity": {
+        "requested": {
+          "engine": "qwen",
+          "model": "Qwen3-TTS-12Hz-1.7B-CustomVoice",
+          "bundle_sha256": "cbe72b0955b3fceef5c4e22fa3f8ad318cfd7a4b75d96156bc42c7cf2139d070",
+          "device": "cpu",
+          "precision": "float32"
+        },
+        "effective": {
+          "engine": "qwen",
+          "model": "Qwen3-TTS-12Hz-1.7B-CustomVoice",
+          "bundle_sha256": "cbe72b0955b3fceef5c4e22fa3f8ad318cfd7a4b75d96156bc42c7cf2139d070",
+          "device": "cpu",
+          "precision": "float32"
+        },
+        "fallback": "forbid",
+        "reason": "",
+        "profile_id": "cpu-synthetic"
+      }
+    },
+    {
+      "id": "t51",
+      "block_id": "b51",
+      "text": "  Ligne 051 — café!\nExact text.  ",
+      "voice_version_id": "vv0",
+      "settings_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+      "asset_id": "impulse",
+      "identity": {
+        "requested": {
+          "engine": "qwen",
+          "model": "Qwen3-TTS-12Hz-1.7B-CustomVoice",
+          "bundle_sha256": "cbe72b0955b3fceef5c4e22fa3f8ad318cfd7a4b75d96156bc42c7cf2139d070",
+          "device": "cpu",
+          "precision": "float32"
+        },
+        "effective": {
+          "engine": "qwen",
+          "model": "Qwen3-TTS-12Hz-1.7B-CustomVoice",
+          "bundle_sha256": "cbe72b0955b3fceef5c4e22fa3f8ad318cfd7a4b75d96156bc42c7cf2139d070",
+          "device": "cpu",
+          "precision": "float32"
+        },
+        "fallback": "forbid",
+        "reason": "",
+        "profile_id": "cpu-synthetic"
+      }
+    },
+    {
+      "id": "t52",
+      "block_id": "b52",
+      "text": "  Ligne 052 — café!\nExact text.  ",
+      "voice_version_id": "vv1",
+      "settings_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+      "asset_id": "impulse",
+      "identity": {
+        "requested": {
+          "engine": "qwen",
+          "model": "Qwen3-TTS-12Hz-1.7B-CustomVoice",
+          "bundle_sha256": "cbe72b0955b3fceef5c4e22fa3f8ad318cfd7a4b75d96156bc42c7cf2139d070",
+          "device": "cpu",
+          "precision": "float32"
+        },
+        "effective": {
+          "engine": "qwen",
+          "model": "Qwen3-TTS-12Hz-1.7B-CustomVoice",
+          "bundle_sha256": "cbe72b0955b3fceef5c4e22fa3f8ad318cfd7a4b75d96156bc42c7cf2139d070",
+          "device": "cpu",
+          "precision": "float32"
+        },
+        "fallback": "forbid",
+        "reason": "",
+        "profile_id": "cpu-synthetic"
+      }
+    },
+    {
+      "id": "t53",
+      "block_id": "b53",
+      "text": "  Ligne 053 — café!\nExact text.  ",
+      "voice_version_id": "vv2",
+      "settings_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+      "asset_id": "impulse",
+      "identity": {
+        "requested": {
+          "engine": "qwen",
+          "model": "Qwen3-TTS-12Hz-1.7B-CustomVoice",
+          "bundle_sha256": "cbe72b0955b3fceef5c4e22fa3f8ad318cfd7a4b75d96156bc42c7cf2139d070",
+          "device": "cpu",
+          "precision": "float32"
+        },
+        "effective": {
+          "engine": "qwen",
+          "model": "Qwen3-TTS-12Hz-1.7B-CustomVoice",
+          "bundle_sha256": "cbe72b0955b3fceef5c4e22fa3f8ad318cfd7a4b75d96156bc42c7cf2139d070",
+          "device": "cpu",
+          "precision": "float32"
+        },
+        "fallback": "forbid",
+        "reason": "",
+        "profile_id": "cpu-synthetic"
+      }
+    },
+    {
+      "id": "t54",
+      "block_id": "b54",
+      "text": "  Ligne 054 — café!\nExact text.  ",
+      "voice_version_id": "vv0",
+      "settings_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+      "asset_id": "impulse",
+      "identity": {
+        "requested": {
+          "engine": "qwen",
+          "model": "Qwen3-TTS-12Hz-1.7B-CustomVoice",
+          "bundle_sha256": "cbe72b0955b3fceef5c4e22fa3f8ad318cfd7a4b75d96156bc42c7cf2139d070",
+          "device": "cpu",
+          "precision": "float32"
+        },
+        "effective": {
+          "engine": "qwen",
+          "model": "Qwen3-TTS-12Hz-1.7B-CustomVoice",
+          "bundle_sha256": "cbe72b0955b3fceef5c4e22fa3f8ad318cfd7a4b75d96156bc42c7cf2139d070",
+          "device": "cpu",
+          "precision": "float32"
+        },
+        "fallback": "forbid",
+        "reason": "",
+        "profile_id": "cpu-synthetic"
+      }
+    },
+    {
+      "id": "t55",
+      "block_id": "b55",
+      "text": "  Ligne 055 — café!\nExact text.  ",
+      "voice_version_id": "vv1",
+      "settings_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+      "asset_id": "impulse",
+      "identity": {
+        "requested": {
+          "engine": "qwen",
+          "model": "Qwen3-TTS-12Hz-1.7B-CustomVoice",
+          "bundle_sha256": "cbe72b0955b3fceef5c4e22fa3f8ad318cfd7a4b75d96156bc42c7cf2139d070",
+          "device": "cpu",
+          "precision": "float32"
+        },
+        "effective": {
+          "engine": "qwen",
+          "model": "Qwen3-TTS-12Hz-1.7B-CustomVoice",
+          "bundle_sha256": "cbe72b0955b3fceef5c4e22fa3f8ad318cfd7a4b75d96156bc42c7cf2139d070",
+          "device": "cpu",
+          "precision": "float32"
+        },
+        "fallback": "forbid",
+        "reason": "",
+        "profile_id": "cpu-synthetic"
+      }
+    },
+    {
+      "id": "t56",
+      "block_id": "b56",
+      "text": "  Ligne 056 — café!\nExact text.  ",
+      "voice_version_id": "vv2",
+      "settings_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+      "asset_id": "impulse",
+      "identity": {
+        "requested": {
+          "engine": "qwen",
+          "model": "Qwen3-TTS-12Hz-1.7B-CustomVoice",
+          "bundle_sha256": "cbe72b0955b3fceef5c4e22fa3f8ad318cfd7a4b75d96156bc42c7cf2139d070",
+          "device": "cpu",
+          "precision": "float32"
+        },
+        "effective": {
+          "engine": "qwen",
+          "model": "Qwen3-TTS-12Hz-1.7B-CustomVoice",
+          "bundle_sha256": "cbe72b0955b3fceef5c4e22fa3f8ad318cfd7a4b75d96156bc42c7cf2139d070",
+          "device": "cpu",
+          "precision": "float32"
+        },
+        "fallback": "forbid",
+        "reason": "",
+        "profile_id": "cpu-synthetic"
+      }
+    },
+    {
+      "id": "t57",
+      "block_id": "b57",
+      "text": "  Ligne 057 — café!\nExact text.  ",
+      "voice_version_id": "vv0",
+      "settings_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+      "asset_id": "impulse",
+      "identity": {
+        "requested": {
+          "engine": "qwen",
+          "model": "Qwen3-TTS-12Hz-1.7B-CustomVoice",
+          "bundle_sha256": "cbe72b0955b3fceef5c4e22fa3f8ad318cfd7a4b75d96156bc42c7cf2139d070",
+          "device": "cpu",
+          "precision": "float32"
+        },
+        "effective": {
+          "engine": "qwen",
+          "model": "Qwen3-TTS-12Hz-1.7B-CustomVoice",
+          "bundle_sha256": "cbe72b0955b3fceef5c4e22fa3f8ad318cfd7a4b75d96156bc42c7cf2139d070",
+          "device": "cpu",
+          "precision": "float32"
+        },
+        "fallback": "forbid",
+        "reason": "",
+        "profile_id": "cpu-synthetic"
+      }
+    },
+    {
+      "id": "t58",
+      "block_id": "b58",
+      "text": "  Ligne 058 — café!\nExact text.  ",
+      "voice_version_id": "vv1",
+      "settings_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+      "asset_id": "impulse",
+      "identity": {
+        "requested": {
+          "engine": "qwen",
+          "model": "Qwen3-TTS-12Hz-1.7B-CustomVoice",
+          "bundle_sha256": "cbe72b0955b3fceef5c4e22fa3f8ad318cfd7a4b75d96156bc42c7cf2139d070",
+          "device": "cpu",
+          "precision": "float32"
+        },
+        "effective": {
+          "engine": "qwen",
+          "model": "Qwen3-TTS-12Hz-1.7B-CustomVoice",
+          "bundle_sha256": "cbe72b0955b3fceef5c4e22fa3f8ad318cfd7a4b75d96156bc42c7cf2139d070",
+          "device": "cpu",
+          "precision": "float32"
+        },
+        "fallback": "forbid",
+        "reason": "",
+        "profile_id": "cpu-synthetic"
+      }
+    },
+    {
+      "id": "t59",
+      "block_id": "b59",
+      "text": "  Ligne 059 — café!\nExact text.  ",
+      "voice_version_id": "vv2",
+      "settings_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+      "asset_id": "impulse",
+      "identity": {
+        "requested": {
+          "engine": "qwen",
+          "model": "Qwen3-TTS-12Hz-1.7B-CustomVoice",
+          "bundle_sha256": "cbe72b0955b3fceef5c4e22fa3f8ad318cfd7a4b75d96156bc42c7cf2139d070",
+          "device": "cpu",
+          "precision": "float32"
+        },
+        "effective": {
+          "engine": "qwen",
+          "model": "Qwen3-TTS-12Hz-1.7B-CustomVoice",
+          "bundle_sha256": "cbe72b0955b3fceef5c4e22fa3f8ad318cfd7a4b75d96156bc42c7cf2139d070",
+          "device": "cpu",
+          "precision": "float32"
+        },
+        "fallback": "forbid",
+        "reason": "",
+        "profile_id": "cpu-synthetic"
+      }
+    },
+    {
+      "id": "t60",
+      "block_id": "b60",
+      "text": "  Ligne 060 — café!\nExact text.  ",
+      "voice_version_id": "vv0",
+      "settings_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+      "asset_id": "impulse",
+      "identity": {
+        "requested": {
+          "engine": "qwen",
+          "model": "Qwen3-TTS-12Hz-1.7B-CustomVoice",
+          "bundle_sha256": "cbe72b0955b3fceef5c4e22fa3f8ad318cfd7a4b75d96156bc42c7cf2139d070",
+          "device": "cpu",
+          "precision": "float32"
+        },
+        "effective": {
+          "engine": "qwen",
+          "model": "Qwen3-TTS-12Hz-1.7B-CustomVoice",
+          "bundle_sha256": "cbe72b0955b3fceef5c4e22fa3f8ad318cfd7a4b75d96156bc42c7cf2139d070",
+          "device": "cpu",
+          "precision": "float32"
+        },
+        "fallback": "forbid",
+        "reason": "",
+        "profile_id": "cpu-synthetic"
+      }
+    },
+    {
+      "id": "t61",
+      "block_id": "b61",
+      "text": "  Ligne 061 — café!\nExact text.  ",
+      "voice_version_id": "vv1",
+      "settings_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+      "asset_id": "impulse",
+      "identity": {
+        "requested": {
+          "engine": "qwen",
+          "model": "Qwen3-TTS-12Hz-1.7B-CustomVoice",
+          "bundle_sha256": "cbe72b0955b3fceef5c4e22fa3f8ad318cfd7a4b75d96156bc42c7cf2139d070",
+          "device": "cpu",
+          "precision": "float32"
+        },
+        "effective": {
+          "engine": "qwen",
+          "model": "Qwen3-TTS-12Hz-1.7B-CustomVoice",
+          "bundle_sha256": "cbe72b0955b3fceef5c4e22fa3f8ad318cfd7a4b75d96156bc42c7cf2139d070",
+          "device": "cpu",
+          "precision": "float32"
+        },
+        "fallback": "forbid",
+        "reason": "",
+        "profile_id": "cpu-synthetic"
+      }
+    },
+    {
+      "id": "t62",
+      "block_id": "b62",
+      "text": "  Ligne 062 — café!\nExact text.  ",
+      "voice_version_id": "vv2",
+      "settings_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+      "asset_id": "impulse",
+      "identity": {
+        "requested": {
+          "engine": "qwen",
+          "model": "Qwen3-TTS-12Hz-1.7B-CustomVoice",
+          "bundle_sha256": "cbe72b0955b3fceef5c4e22fa3f8ad318cfd7a4b75d96156bc42c7cf2139d070",
+          "device": "cpu",
+          "precision": "float32"
+        },
+        "effective": {
+          "engine": "qwen",
+          "model": "Qwen3-TTS-12Hz-1.7B-CustomVoice",
+          "bundle_sha256": "cbe72b0955b3fceef5c4e22fa3f8ad318cfd7a4b75d96156bc42c7cf2139d070",
+          "device": "cpu",
+          "precision": "float32"
+        },
+        "fallback": "forbid",
+        "reason": "",
+        "profile_id": "cpu-synthetic"
+      }
+    },
+    {
+      "id": "t63",
+      "block_id": "b63",
+      "text": "  Ligne 063 — café!\nExact text.  ",
+      "voice_version_id": "vv0",
+      "settings_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+      "asset_id": "impulse",
+      "identity": {
+        "requested": {
+          "engine": "qwen",
+          "model": "Qwen3-TTS-12Hz-1.7B-CustomVoice",
+          "bundle_sha256": "cbe72b0955b3fceef5c4e22fa3f8ad318cfd7a4b75d96156bc42c7cf2139d070",
+          "device": "cpu",
+          "precision": "float32"
+        },
+        "effective": {
+          "engine": "qwen",
+          "model": "Qwen3-TTS-12Hz-1.7B-CustomVoice",
+          "bundle_sha256": "cbe72b0955b3fceef5c4e22fa3f8ad318cfd7a4b75d96156bc42c7cf2139d070",
+          "device": "cpu",
+          "precision": "float32"
+        },
+        "fallback": "forbid",
+        "reason": "",
+        "profile_id": "cpu-synthetic"
+      }
+    },
+    {
+      "id": "t64",
+      "block_id": "b64",
+      "text": "  Ligne 064 — café!\nExact text.  ",
+      "voice_version_id": "vv1",
+      "settings_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+      "asset_id": "impulse",
+      "identity": {
+        "requested": {
+          "engine": "qwen",
+          "model": "Qwen3-TTS-12Hz-1.7B-CustomVoice",
+          "bundle_sha256": "cbe72b0955b3fceef5c4e22fa3f8ad318cfd7a4b75d96156bc42c7cf2139d070",
+          "device": "cpu",
+          "precision": "float32"
+        },
+        "effective": {
+          "engine": "qwen",
+          "model": "Qwen3-TTS-12Hz-1.7B-CustomVoice",
+          "bundle_sha256": "cbe72b0955b3fceef5c4e22fa3f8ad318cfd7a4b75d96156bc42c7cf2139d070",
+          "device": "cpu",
+          "precision": "float32"
+        },
+        "fallback": "forbid",
+        "reason": "",
+        "profile_id": "cpu-synthetic"
+      }
+    },
+    {
+      "id": "t65",
+      "block_id": "b65",
+      "text": "  Ligne 065 — café!\nExact text.  ",
+      "voice_version_id": "vv2",
+      "settings_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+      "asset_id": "impulse",
+      "identity": {
+        "requested": {
+          "engine": "qwen",
+          "model": "Qwen3-TTS-12Hz-1.7B-CustomVoice",
+          "bundle_sha256": "cbe72b0955b3fceef5c4e22fa3f8ad318cfd7a4b75d96156bc42c7cf2139d070",
+          "device": "cpu",
+          "precision": "float32"
+        },
+        "effective": {
+          "engine": "qwen",
+          "model": "Qwen3-TTS-12Hz-1.7B-CustomVoice",
+          "bundle_sha256": "cbe72b0955b3fceef5c4e22fa3f8ad318cfd7a4b75d96156bc42c7cf2139d070",
+          "device": "cpu",
+          "precision": "float32"
+        },
+        "fallback": "forbid",
+        "reason": "",
+        "profile_id": "cpu-synthetic"
+      }
+    },
+    {
+      "id": "t66",
+      "block_id": "b66",
+      "text": "  Ligne 066 — café!\nExact text.  ",
+      "voice_version_id": "vv0",
+      "settings_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+      "asset_id": "impulse",
+      "identity": {
+        "requested": {
+          "engine": "qwen",
+          "model": "Qwen3-TTS-12Hz-1.7B-CustomVoice",
+          "bundle_sha256": "cbe72b0955b3fceef5c4e22fa3f8ad318cfd7a4b75d96156bc42c7cf2139d070",
+          "device": "cpu",
+          "precision": "float32"
+        },
+        "effective": {
+          "engine": "qwen",
+          "model": "Qwen3-TTS-12Hz-1.7B-CustomVoice",
+          "bundle_sha256": "cbe72b0955b3fceef5c4e22fa3f8ad318cfd7a4b75d96156bc42c7cf2139d070",
+          "device": "cpu",
+          "precision": "float32"
+        },
+        "fallback": "forbid",
+        "reason": "",
+        "profile_id": "cpu-synthetic"
+      }
+    },
+    {
+      "id": "t67",
+      "block_id": "b67",
+      "text": "  Ligne 067 — café!\nExact text.  ",
+      "voice_version_id": "vv1",
+      "settings_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+      "asset_id": "impulse",
+      "identity": {
+        "requested": {
+          "engine": "qwen",
+          "model": "Qwen3-TTS-12Hz-1.7B-CustomVoice",
+          "bundle_sha256": "cbe72b0955b3fceef5c4e22fa3f8ad318cfd7a4b75d96156bc42c7cf2139d070",
+          "device": "cpu",
+          "precision": "float32"
+        },
+        "effective": {
+          "engine": "qwen",
+          "model": "Qwen3-TTS-12Hz-1.7B-CustomVoice",
+          "bundle_sha256": "cbe72b0955b3fceef5c4e22fa3f8ad318cfd7a4b75d96156bc42c7cf2139d070",
+          "device": "cpu",
+          "precision": "float32"
+        },
+        "fallback": "forbid",
+        "reason": "",
+        "profile_id": "cpu-synthetic"
+      }
+    },
+    {
+      "id": "t68",
+      "block_id": "b68",
+      "text": "  Ligne 068 — café!\nExact text.  ",
+      "voice_version_id": "vv2",
+      "settings_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+      "asset_id": "impulse",
+      "identity": {
+        "requested": {
+          "engine": "qwen",
+          "model": "Qwen3-TTS-12Hz-1.7B-CustomVoice",
+          "bundle_sha256": "cbe72b0955b3fceef5c4e22fa3f8ad318cfd7a4b75d96156bc42c7cf2139d070",
+          "device": "cpu",
+          "precision": "float32"
+        },
+        "effective": {
+          "engine": "qwen",
+          "model": "Qwen3-TTS-12Hz-1.7B-CustomVoice",
+          "bundle_sha256": "cbe72b0955b3fceef5c4e22fa3f8ad318cfd7a4b75d96156bc42c7cf2139d070",
+          "device": "cpu",
+          "precision": "float32"
+        },
+        "fallback": "forbid",
+        "reason": "",
+        "profile_id": "cpu-synthetic"
+      }
+    },
+    {
+      "id": "t69",
+      "block_id": "b69",
+      "text": "  Ligne 069 — café!\nExact text.  ",
+      "voice_version_id": "vv0",
+      "settings_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+      "asset_id": "impulse",
+      "identity": {
+        "requested": {
+          "engine": "qwen",
+          "model": "Qwen3-TTS-12Hz-1.7B-CustomVoice",
+          "bundle_sha256": "cbe72b0955b3fceef5c4e22fa3f8ad318cfd7a4b75d96156bc42c7cf2139d070",
+          "device": "cpu",
+          "precision": "float32"
+        },
+        "effective": {
+          "engine": "qwen",
+          "model": "Qwen3-TTS-12Hz-1.7B-CustomVoice",
+          "bundle_sha256": "cbe72b0955b3fceef5c4e22fa3f8ad318cfd7a4b75d96156bc42c7cf2139d070",
+          "device": "cpu",
+          "precision": "float32"
+        },
+        "fallback": "forbid",
+        "reason": "",
+        "profile_id": "cpu-synthetic"
+      }
+    },
+    {
+      "id": "t70",
+      "block_id": "b70",
+      "text": "  Ligne 070 — café!\nExact text.  ",
+      "voice_version_id": "vv1",
+      "settings_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+      "asset_id": "impulse",
+      "identity": {
+        "requested": {
+          "engine": "qwen",
+          "model": "Qwen3-TTS-12Hz-1.7B-CustomVoice",
+          "bundle_sha256": "cbe72b0955b3fceef5c4e22fa3f8ad318cfd7a4b75d96156bc42c7cf2139d070",
+          "device": "cpu",
+          "precision": "float32"
+        },
+        "effective": {
+          "engine": "qwen",
+          "model": "Qwen3-TTS-12Hz-1.7B-CustomVoice",
+          "bundle_sha256": "cbe72b0955b3fceef5c4e22fa3f8ad318cfd7a4b75d96156bc42c7cf2139d070",
+          "device": "cpu",
+          "precision": "float32"
+        },
+        "fallback": "forbid",
+        "reason": "",
+        "profile_id": "cpu-synthetic"
+      }
+    },
+    {
+      "id": "t71",
+      "block_id": "b71",
+      "text": "  Ligne 071 — café!\nExact text.  ",
+      "voice_version_id": "vv2",
+      "settings_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+      "asset_id": "impulse",
+      "identity": {
+        "requested": {
+          "engine": "qwen",
+          "model": "Qwen3-TTS-12Hz-1.7B-CustomVoice",
+          "bundle_sha256": "cbe72b0955b3fceef5c4e22fa3f8ad318cfd7a4b75d96156bc42c7cf2139d070",
+          "device": "cpu",
+          "precision": "float32"
+        },
+        "effective": {
+          "engine": "qwen",
+          "model": "Qwen3-TTS-12Hz-1.7B-CustomVoice",
+          "bundle_sha256": "cbe72b0955b3fceef5c4e22fa3f8ad318cfd7a4b75d96156bc42c7cf2139d070",
+          "device": "cpu",
+          "precision": "float32"
+        },
+        "fallback": "forbid",
+        "reason": "",
+        "profile_id": "cpu-synthetic"
+      }
+    },
+    {
+      "id": "t72",
+      "block_id": "b72",
+      "text": "  Ligne 072 — café!\nExact text.  ",
+      "voice_version_id": "vv0",
+      "settings_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+      "asset_id": "impulse",
+      "identity": {
+        "requested": {
+          "engine": "qwen",
+          "model": "Qwen3-TTS-12Hz-1.7B-CustomVoice",
+          "bundle_sha256": "cbe72b0955b3fceef5c4e22fa3f8ad318cfd7a4b75d96156bc42c7cf2139d070",
+          "device": "cpu",
+          "precision": "float32"
+        },
+        "effective": {
+          "engine": "qwen",
+          "model": "Qwen3-TTS-12Hz-1.7B-CustomVoice",
+          "bundle_sha256": "cbe72b0955b3fceef5c4e22fa3f8ad318cfd7a4b75d96156bc42c7cf2139d070",
+          "device": "cpu",
+          "precision": "float32"
+        },
+        "fallback": "forbid",
+        "reason": "",
+        "profile_id": "cpu-synthetic"
+      }
+    },
+    {
+      "id": "t73",
+      "block_id": "b73",
+      "text": "  Ligne 073 — café!\nExact text.  ",
+      "voice_version_id": "vv1",
+      "settings_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+      "asset_id": "impulse",
+      "identity": {
+        "requested": {
+          "engine": "qwen",
+          "model": "Qwen3-TTS-12Hz-1.7B-CustomVoice",
+          "bundle_sha256": "cbe72b0955b3fceef5c4e22fa3f8ad318cfd7a4b75d96156bc42c7cf2139d070",
+          "device": "cpu",
+          "precision": "float32"
+        },
+        "effective": {
+          "engine": "qwen",
+          "model": "Qwen3-TTS-12Hz-1.7B-CustomVoice",
+          "bundle_sha256": "cbe72b0955b3fceef5c4e22fa3f8ad318cfd7a4b75d96156bc42c7cf2139d070",
+          "device": "cpu",
+          "precision": "float32"
+        },
+        "fallback": "forbid",
+        "reason": "",
+        "profile_id": "cpu-synthetic"
+      }
+    },
+    {
+      "id": "t74",
+      "block_id": "b74",
+      "text": "  Ligne 074 — café!\nExact text.  ",
+      "voice_version_id": "vv2",
+      "settings_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+      "asset_id": "impulse",
+      "identity": {
+        "requested": {
+          "engine": "qwen",
+          "model": "Qwen3-TTS-12Hz-1.7B-CustomVoice",
+          "bundle_sha256": "cbe72b0955b3fceef5c4e22fa3f8ad318cfd7a4b75d96156bc42c7cf2139d070",
+          "device": "cpu",
+          "precision": "float32"
+        },
+        "effective": {
+          "engine": "qwen",
+          "model": "Qwen3-TTS-12Hz-1.7B-CustomVoice",
+          "bundle_sha256": "cbe72b0955b3fceef5c4e22fa3f8ad318cfd7a4b75d96156bc42c7cf2139d070",
+          "device": "cpu",
+          "precision": "float32"
+        },
+        "fallback": "forbid",
+        "reason": "",
+        "profile_id": "cpu-synthetic"
+      }
+    },
+    {
+      "id": "t75",
+      "block_id": "b75",
+      "text": "  Ligne 075 — café!\nExact text.  ",
+      "voice_version_id": "vv0",
+      "settings_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+      "asset_id": "impulse",
+      "identity": {
+        "requested": {
+          "engine": "qwen",
+          "model": "Qwen3-TTS-12Hz-1.7B-CustomVoice",
+          "bundle_sha256": "cbe72b0955b3fceef5c4e22fa3f8ad318cfd7a4b75d96156bc42c7cf2139d070",
+          "device": "cpu",
+          "precision": "float32"
+        },
+        "effective": {
+          "engine": "qwen",
+          "model": "Qwen3-TTS-12Hz-1.7B-CustomVoice",
+          "bundle_sha256": "cbe72b0955b3fceef5c4e22fa3f8ad318cfd7a4b75d96156bc42c7cf2139d070",
+          "device": "cpu",
+          "precision": "float32"
+        },
+        "fallback": "forbid",
+        "reason": "",
+        "profile_id": "cpu-synthetic"
+      }
+    },
+    {
+      "id": "t76",
+      "block_id": "b76",
+      "text": "  Ligne 076 — café!\nExact text.  ",
+      "voice_version_id": "vv1",
+      "settings_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+      "asset_id": "impulse",
+      "identity": {
+        "requested": {
+          "engine": "qwen",
+          "model": "Qwen3-TTS-12Hz-1.7B-CustomVoice",
+          "bundle_sha256": "cbe72b0955b3fceef5c4e22fa3f8ad318cfd7a4b75d96156bc42c7cf2139d070",
+          "device": "cpu",
+          "precision": "float32"
+        },
+        "effective": {
+          "engine": "qwen",
+          "model": "Qwen3-TTS-12Hz-1.7B-CustomVoice",
+          "bundle_sha256": "cbe72b0955b3fceef5c4e22fa3f8ad318cfd7a4b75d96156bc42c7cf2139d070",
+          "device": "cpu",
+          "precision": "float32"
+        },
+        "fallback": "forbid",
+        "reason": "",
+        "profile_id": "cpu-synthetic"
+      }
+    },
+    {
+      "id": "t77",
+      "block_id": "b77",
+      "text": "  Ligne 077 — café!\nExact text.  ",
+      "voice_version_id": "vv2",
+      "settings_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+      "asset_id": "impulse",
+      "identity": {
+        "requested": {
+          "engine": "qwen",
+          "model": "Qwen3-TTS-12Hz-1.7B-CustomVoice",
+          "bundle_sha256": "cbe72b0955b3fceef5c4e22fa3f8ad318cfd7a4b75d96156bc42c7cf2139d070",
+          "device": "cpu",
+          "precision": "float32"
+        },
+        "effective": {
+          "engine": "qwen",
+          "model": "Qwen3-TTS-12Hz-1.7B-CustomVoice",
+          "bundle_sha256": "cbe72b0955b3fceef5c4e22fa3f8ad318cfd7a4b75d96156bc42c7cf2139d070",
+          "device": "cpu",
+          "precision": "float32"
+        },
+        "fallback": "forbid",
+        "reason": "",
+        "profile_id": "cpu-synthetic"
+      }
+    },
+    {
+      "id": "t78",
+      "block_id": "b78",
+      "text": "  Ligne 078 — café!\nExact text.  ",
+      "voice_version_id": "vv0",
+      "settings_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+      "asset_id": "impulse",
+      "identity": {
+        "requested": {
+          "engine": "qwen",
+          "model": "Qwen3-TTS-12Hz-1.7B-CustomVoice",
+          "bundle_sha256": "cbe72b0955b3fceef5c4e22fa3f8ad318cfd7a4b75d96156bc42c7cf2139d070",
+          "device": "cpu",
+          "precision": "float32"
+        },
+        "effective": {
+          "engine": "qwen",
+          "model": "Qwen3-TTS-12Hz-1.7B-CustomVoice",
+          "bundle_sha256": "cbe72b0955b3fceef5c4e22fa3f8ad318cfd7a4b75d96156bc42c7cf2139d070",
+          "device": "cpu",
+          "precision": "float32"
+        },
+        "fallback": "forbid",
+        "reason": "",
+        "profile_id": "cpu-synthetic"
+      }
+    },
+    {
+      "id": "t79",
+      "block_id": "b79",
+      "text": "  Ligne 079 — café!\nExact text.  ",
+      "voice_version_id": "vv1",
+      "settings_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+      "asset_id": "impulse",
+      "identity": {
+        "requested": {
+          "engine": "qwen",
+          "model": "Qwen3-TTS-12Hz-1.7B-CustomVoice",
+          "bundle_sha256": "cbe72b0955b3fceef5c4e22fa3f8ad318cfd7a4b75d96156bc42c7cf2139d070",
+          "device": "cpu",
+          "precision": "float32"
+        },
+        "effective": {
+          "engine": "qwen",
+          "model": "Qwen3-TTS-12Hz-1.7B-CustomVoice",
+          "bundle_sha256": "cbe72b0955b3fceef5c4e22fa3f8ad318cfd7a4b75d96156bc42c7cf2139d070",
+          "device": "cpu",
+          "precision": "float32"
+        },
+        "fallback": "forbid",
+        "reason": "",
+        "profile_id": "cpu-synthetic"
+      }
+    },
+    {
+      "id": "t80",
+      "block_id": "b80",
+      "text": "  Ligne 080 — café!\nExact text.  ",
+      "voice_version_id": "vv2",
+      "settings_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+      "asset_id": "impulse",
+      "identity": {
+        "requested": {
+          "engine": "qwen",
+          "model": "Qwen3-TTS-12Hz-1.7B-CustomVoice",
+          "bundle_sha256": "cbe72b0955b3fceef5c4e22fa3f8ad318cfd7a4b75d96156bc42c7cf2139d070",
+          "device": "cpu",
+          "precision": "float32"
+        },
+        "effective": {
+          "engine": "qwen",
+          "model": "Qwen3-TTS-12Hz-1.7B-CustomVoice",
+          "bundle_sha256": "cbe72b0955b3fceef5c4e22fa3f8ad318cfd7a4b75d96156bc42c7cf2139d070",
+          "device": "cpu",
+          "precision": "float32"
+        },
+        "fallback": "forbid",
+        "reason": "",
+        "profile_id": "cpu-synthetic"
+      }
+    },
+    {
+      "id": "t81",
+      "block_id": "b81",
+      "text": "  Ligne 081 — café!\nExact text.  ",
+      "voice_version_id": "vv0",
+      "settings_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+      "asset_id": "impulse",
+      "identity": {
+        "requested": {
+          "engine": "qwen",
+          "model": "Qwen3-TTS-12Hz-1.7B-CustomVoice",
+          "bundle_sha256": "cbe72b0955b3fceef5c4e22fa3f8ad318cfd7a4b75d96156bc42c7cf2139d070",
+          "device": "cpu",
+          "precision": "float32"
+        },
+        "effective": {
+          "engine": "qwen",
+          "model": "Qwen3-TTS-12Hz-1.7B-CustomVoice",
+          "bundle_sha256": "cbe72b0955b3fceef5c4e22fa3f8ad318cfd7a4b75d96156bc42c7cf2139d070",
+          "device": "cpu",
+          "precision": "float32"
+        },
+        "fallback": "forbid",
+        "reason": "",
+        "profile_id": "cpu-synthetic"
+      }
+    },
+    {
+      "id": "t82",
+      "block_id": "b82",
+      "text": "  Ligne 082 — café!\nExact text.  ",
+      "voice_version_id": "vv1",
+      "settings_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+      "asset_id": "impulse",
+      "identity": {
+        "requested": {
+          "engine": "qwen",
+          "model": "Qwen3-TTS-12Hz-1.7B-CustomVoice",
+          "bundle_sha256": "cbe72b0955b3fceef5c4e22fa3f8ad318cfd7a4b75d96156bc42c7cf2139d070",
+          "device": "cpu",
+          "precision": "float32"
+        },
+        "effective": {
+          "engine": "qwen",
+          "model": "Qwen3-TTS-12Hz-1.7B-CustomVoice",
+          "bundle_sha256": "cbe72b0955b3fceef5c4e22fa3f8ad318cfd7a4b75d96156bc42c7cf2139d070",
+          "device": "cpu",
+          "precision": "float32"
+        },
+        "fallback": "forbid",
+        "reason": "",
+        "profile_id": "cpu-synthetic"
+      }
+    },
+    {
+      "id": "t83",
+      "block_id": "b83",
+      "text": "  Ligne 083 — café!\nExact text.  ",
+      "voice_version_id": "vv2",
+      "settings_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+      "asset_id": "impulse",
+      "identity": {
+        "requested": {
+          "engine": "qwen",
+          "model": "Qwen3-TTS-12Hz-1.7B-CustomVoice",
+          "bundle_sha256": "cbe72b0955b3fceef5c4e22fa3f8ad318cfd7a4b75d96156bc42c7cf2139d070",
+          "device": "cpu",
+          "precision": "float32"
+        },
+        "effective": {
+          "engine": "qwen",
+          "model": "Qwen3-TTS-12Hz-1.7B-CustomVoice",
+          "bundle_sha256": "cbe72b0955b3fceef5c4e22fa3f8ad318cfd7a4b75d96156bc42c7cf2139d070",
+          "device": "cpu",
+          "precision": "float32"
+        },
+        "fallback": "forbid",
+        "reason": "",
+        "profile_id": "cpu-synthetic"
+      }
+    },
+    {
+      "id": "t84",
+      "block_id": "b84",
+      "text": "  Ligne 084 — café!\nExact text.  ",
+      "voice_version_id": "vv0",
+      "settings_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+      "asset_id": "impulse",
+      "identity": {
+        "requested": {
+          "engine": "qwen",
+          "model": "Qwen3-TTS-12Hz-1.7B-CustomVoice",
+          "bundle_sha256": "cbe72b0955b3fceef5c4e22fa3f8ad318cfd7a4b75d96156bc42c7cf2139d070",
+          "device": "cpu",
+          "precision": "float32"
+        },
+        "effective": {
+          "engine": "qwen",
+          "model": "Qwen3-TTS-12Hz-1.7B-CustomVoice",
+          "bundle_sha256": "cbe72b0955b3fceef5c4e22fa3f8ad318cfd7a4b75d96156bc42c7cf2139d070",
+          "device": "cpu",
+          "precision": "float32"
+        },
+        "fallback": "forbid",
+        "reason": "",
+        "profile_id": "cpu-synthetic"
+      }
+    },
+    {
+      "id": "t85",
+      "block_id": "b85",
+      "text": "  Ligne 085 — café!\nExact text.  ",
+      "voice_version_id": "vv1",
+      "settings_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+      "asset_id": "impulse",
+      "identity": {
+        "requested": {
+          "engine": "qwen",
+          "model": "Qwen3-TTS-12Hz-1.7B-CustomVoice",
+          "bundle_sha256": "cbe72b0955b3fceef5c4e22fa3f8ad318cfd7a4b75d96156bc42c7cf2139d070",
+          "device": "cpu",
+          "precision": "float32"
+        },
+        "effective": {
+          "engine": "qwen",
+          "model": "Qwen3-TTS-12Hz-1.7B-CustomVoice",
+          "bundle_sha256": "cbe72b0955b3fceef5c4e22fa3f8ad318cfd7a4b75d96156bc42c7cf2139d070",
+          "device": "cpu",
+          "precision": "float32"
+        },
+        "fallback": "forbid",
+        "reason": "",
+        "profile_id": "cpu-synthetic"
+      }
+    },
+    {
+      "id": "t86",
+      "block_id": "b86",
+      "text": "  Ligne 086 — café!\nExact text.  ",
+      "voice_version_id": "vv2",
+      "settings_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+      "asset_id": "impulse",
+      "identity": {
+        "requested": {
+          "engine": "qwen",
+          "model": "Qwen3-TTS-12Hz-1.7B-CustomVoice",
+          "bundle_sha256": "cbe72b0955b3fceef5c4e22fa3f8ad318cfd7a4b75d96156bc42c7cf2139d070",
+          "device": "cpu",
+          "precision": "float32"
+        },
+        "effective": {
+          "engine": "qwen",
+          "model": "Qwen3-TTS-12Hz-1.7B-CustomVoice",
+          "bundle_sha256": "cbe72b0955b3fceef5c4e22fa3f8ad318cfd7a4b75d96156bc42c7cf2139d070",
+          "device": "cpu",
+          "precision": "float32"
+        },
+        "fallback": "forbid",
+        "reason": "",
+        "profile_id": "cpu-synthetic"
+      }
+    },
+    {
+      "id": "t87",
+      "block_id": "b87",
+      "text": "  Ligne 087 — café!\nExact text.  ",
+      "voice_version_id": "vv0",
+      "settings_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+      "asset_id": "impulse",
+      "identity": {
+        "requested": {
+          "engine": "qwen",
+          "model": "Qwen3-TTS-12Hz-1.7B-CustomVoice",
+          "bundle_sha256": "cbe72b0955b3fceef5c4e22fa3f8ad318cfd7a4b75d96156bc42c7cf2139d070",
+          "device": "cpu",
+          "precision": "float32"
+        },
+        "effective": {
+          "engine": "qwen",
+          "model": "Qwen3-TTS-12Hz-1.7B-CustomVoice",
+          "bundle_sha256": "cbe72b0955b3fceef5c4e22fa3f8ad318cfd7a4b75d96156bc42c7cf2139d070",
+          "device": "cpu",
+          "precision": "float32"
+        },
+        "fallback": "forbid",
+        "reason": "",
+        "profile_id": "cpu-synthetic"
+      }
+    },
+    {
+      "id": "t88",
+      "block_id": "b88",
+      "text": "  Ligne 088 — café!\nExact text.  ",
+      "voice_version_id": "vv1",
+      "settings_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+      "asset_id": "impulse",
+      "identity": {
+        "requested": {
+          "engine": "qwen",
+          "model": "Qwen3-TTS-12Hz-1.7B-CustomVoice",
+          "bundle_sha256": "cbe72b0955b3fceef5c4e22fa3f8ad318cfd7a4b75d96156bc42c7cf2139d070",
+          "device": "cpu",
+          "precision": "float32"
+        },
+        "effective": {
+          "engine": "qwen",
+          "model": "Qwen3-TTS-12Hz-1.7B-CustomVoice",
+          "bundle_sha256": "cbe72b0955b3fceef5c4e22fa3f8ad318cfd7a4b75d96156bc42c7cf2139d070",
+          "device": "cpu",
+          "precision": "float32"
+        },
+        "fallback": "forbid",
+        "reason": "",
+        "profile_id": "cpu-synthetic"
+      }
+    },
+    {
+      "id": "t89",
+      "block_id": "b89",
+      "text": "  Ligne 089 — café!\nExact text.  ",
+      "voice_version_id": "vv2",
+      "settings_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+      "asset_id": "impulse",
+      "identity": {
+        "requested": {
+          "engine": "qwen",
+          "model": "Qwen3-TTS-12Hz-1.7B-CustomVoice",
+          "bundle_sha256": "cbe72b0955b3fceef5c4e22fa3f8ad318cfd7a4b75d96156bc42c7cf2139d070",
+          "device": "cpu",
+          "precision": "float32"
+        },
+        "effective": {
+          "engine": "qwen",
+          "model": "Qwen3-TTS-12Hz-1.7B-CustomVoice",
+          "bundle_sha256": "cbe72b0955b3fceef5c4e22fa3f8ad318cfd7a4b75d96156bc42c7cf2139d070",
+          "device": "cpu",
+          "precision": "float32"
+        },
+        "fallback": "forbid",
+        "reason": "",
+        "profile_id": "cpu-synthetic"
+      }
+    },
+    {
+      "id": "t90",
+      "block_id": "b90",
+      "text": "  Ligne 090 — café!\nExact text.  ",
+      "voice_version_id": "vv0",
+      "settings_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+      "asset_id": "impulse",
+      "identity": {
+        "requested": {
+          "engine": "qwen",
+          "model": "Qwen3-TTS-12Hz-1.7B-CustomVoice",
+          "bundle_sha256": "cbe72b0955b3fceef5c4e22fa3f8ad318cfd7a4b75d96156bc42c7cf2139d070",
+          "device": "cpu",
+          "precision": "float32"
+        },
+        "effective": {
+          "engine": "qwen",
+          "model": "Qwen3-TTS-12Hz-1.7B-CustomVoice",
+          "bundle_sha256": "cbe72b0955b3fceef5c4e22fa3f8ad318cfd7a4b75d96156bc42c7cf2139d070",
+          "device": "cpu",
+          "precision": "float32"
+        },
+        "fallback": "forbid",
+        "reason": "",
+        "profile_id": "cpu-synthetic"
+      }
+    },
+    {
+      "id": "t91",
+      "block_id": "b91",
+      "text": "  Ligne 091 — café!\nExact text.  ",
+      "voice_version_id": "vv1",
+      "settings_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+      "asset_id": "impulse",
+      "identity": {
+        "requested": {
+          "engine": "qwen",
+          "model": "Qwen3-TTS-12Hz-1.7B-CustomVoice",
+          "bundle_sha256": "cbe72b0955b3fceef5c4e22fa3f8ad318cfd7a4b75d96156bc42c7cf2139d070",
+          "device": "cpu",
+          "precision": "float32"
+        },
+        "effective": {
+          "engine": "qwen",
+          "model": "Qwen3-TTS-12Hz-1.7B-CustomVoice",
+          "bundle_sha256": "cbe72b0955b3fceef5c4e22fa3f8ad318cfd7a4b75d96156bc42c7cf2139d070",
+          "device": "cpu",
+          "precision": "float32"
+        },
+        "fallback": "forbid",
+        "reason": "",
+        "profile_id": "cpu-synthetic"
+      }
+    },
+    {
+      "id": "t92",
+      "block_id": "b92",
+      "text": "  Ligne 092 — café!\nExact text.  ",
+      "voice_version_id": "vv2",
+      "settings_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+      "asset_id": "impulse",
+      "identity": {
+        "requested": {
+          "engine": "qwen",
+          "model": "Qwen3-TTS-12Hz-1.7B-CustomVoice",
+          "bundle_sha256": "cbe72b0955b3fceef5c4e22fa3f8ad318cfd7a4b75d96156bc42c7cf2139d070",
+          "device": "cpu",
+          "precision": "float32"
+        },
+        "effective": {
+          "engine": "qwen",
+          "model": "Qwen3-TTS-12Hz-1.7B-CustomVoice",
+          "bundle_sha256": "cbe72b0955b3fceef5c4e22fa3f8ad318cfd7a4b75d96156bc42c7cf2139d070",
+          "device": "cpu",
+          "precision": "float32"
+        },
+        "fallback": "forbid",
+        "reason": "",
+        "profile_id": "cpu-synthetic"
+      }
+    },
+    {
+      "id": "t93",
+      "block_id": "b93",
+      "text": "  Ligne 093 — café!\nExact text.  ",
+      "voice_version_id": "vv0",
+      "settings_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+      "asset_id": "impulse",
+      "identity": {
+        "requested": {
+          "engine": "qwen",
+          "model": "Qwen3-TTS-12Hz-1.7B-CustomVoice",
+          "bundle_sha256": "cbe72b0955b3fceef5c4e22fa3f8ad318cfd7a4b75d96156bc42c7cf2139d070",
+          "device": "cpu",
+          "precision": "float32"
+        },
+        "effective": {
+          "engine": "qwen",
+          "model": "Qwen3-TTS-12Hz-1.7B-CustomVoice",
+          "bundle_sha256": "cbe72b0955b3fceef5c4e22fa3f8ad318cfd7a4b75d96156bc42c7cf2139d070",
+          "device": "cpu",
+          "precision": "float32"
+        },
+        "fallback": "forbid",
+        "reason": "",
+        "profile_id": "cpu-synthetic"
+      }
+    },
+    {
+      "id": "t94",
+      "block_id": "b94",
+      "text": "  Ligne 094 — café!\nExact text.  ",
+      "voice_version_id": "vv1",
+      "settings_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+      "asset_id": "impulse",
+      "identity": {
+        "requested": {
+          "engine": "qwen",
+          "model": "Qwen3-TTS-12Hz-1.7B-CustomVoice",
+          "bundle_sha256": "cbe72b0955b3fceef5c4e22fa3f8ad318cfd7a4b75d96156bc42c7cf2139d070",
+          "device": "cpu",
+          "precision": "float32"
+        },
+        "effective": {
+          "engine": "qwen",
+          "model": "Qwen3-TTS-12Hz-1.7B-CustomVoice",
+          "bundle_sha256": "cbe72b0955b3fceef5c4e22fa3f8ad318cfd7a4b75d96156bc42c7cf2139d070",
+          "device": "cpu",
+          "precision": "float32"
+        },
+        "fallback": "forbid",
+        "reason": "",
+        "profile_id": "cpu-synthetic"
+      }
+    },
+    {
+      "id": "t95",
+      "block_id": "b95",
+      "text": "  Ligne 095 — café!\nExact text.  ",
+      "voice_version_id": "vv2",
+      "settings_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+      "asset_id": "impulse",
+      "identity": {
+        "requested": {
+          "engine": "qwen",
+          "model": "Qwen3-TTS-12Hz-1.7B-CustomVoice",
+          "bundle_sha256": "cbe72b0955b3fceef5c4e22fa3f8ad318cfd7a4b75d96156bc42c7cf2139d070",
+          "device": "cpu",
+          "precision": "float32"
+        },
+        "effective": {
+          "engine": "qwen",
+          "model": "Qwen3-TTS-12Hz-1.7B-CustomVoice",
+          "bundle_sha256": "cbe72b0955b3fceef5c4e22fa3f8ad318cfd7a4b75d96156bc42c7cf2139d070",
+          "device": "cpu",
+          "precision": "float32"
+        },
+        "fallback": "forbid",
+        "reason": "",
+        "profile_id": "cpu-synthetic"
+      }
+    },
+    {
+      "id": "t96",
+      "block_id": "b96",
+      "text": "  Ligne 096 — café!\nExact text.  ",
+      "voice_version_id": "vv0",
+      "settings_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+      "asset_id": "impulse",
+      "identity": {
+        "requested": {
+          "engine": "qwen",
+          "model": "Qwen3-TTS-12Hz-1.7B-CustomVoice",
+          "bundle_sha256": "cbe72b0955b3fceef5c4e22fa3f8ad318cfd7a4b75d96156bc42c7cf2139d070",
+          "device": "cpu",
+          "precision": "float32"
+        },
+        "effective": {
+          "engine": "qwen",
+          "model": "Qwen3-TTS-12Hz-1.7B-CustomVoice",
+          "bundle_sha256": "cbe72b0955b3fceef5c4e22fa3f8ad318cfd7a4b75d96156bc42c7cf2139d070",
+          "device": "cpu",
+          "precision": "float32"
+        },
+        "fallback": "forbid",
+        "reason": "",
+        "profile_id": "cpu-synthetic"
+      }
+    },
+    {
+      "id": "t97",
+      "block_id": "b97",
+      "text": "  Ligne 097 — café!\nExact text.  ",
+      "voice_version_id": "vv1",
+      "settings_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+      "asset_id": "impulse",
+      "identity": {
+        "requested": {
+          "engine": "qwen",
+          "model": "Qwen3-TTS-12Hz-1.7B-CustomVoice",
+          "bundle_sha256": "cbe72b0955b3fceef5c4e22fa3f8ad318cfd7a4b75d96156bc42c7cf2139d070",
+          "device": "cpu",
+          "precision": "float32"
+        },
+        "effective": {
+          "engine": "qwen",
+          "model": "Qwen3-TTS-12Hz-1.7B-CustomVoice",
+          "bundle_sha256": "cbe72b0955b3fceef5c4e22fa3f8ad318cfd7a4b75d96156bc42c7cf2139d070",
+          "device": "cpu",
+          "precision": "float32"
+        },
+        "fallback": "forbid",
+        "reason": "",
+        "profile_id": "cpu-synthetic"
+      }
+    },
+    {
+      "id": "t98",
+      "block_id": "b98",
+      "text": "  Ligne 098 — café!\nExact text.  ",
+      "voice_version_id": "vv2",
+      "settings_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+      "asset_id": "impulse",
+      "identity": {
+        "requested": {
+          "engine": "qwen",
+          "model": "Qwen3-TTS-12Hz-1.7B-CustomVoice",
+          "bundle_sha256": "cbe72b0955b3fceef5c4e22fa3f8ad318cfd7a4b75d96156bc42c7cf2139d070",
+          "device": "cpu",
+          "precision": "float32"
+        },
+        "effective": {
+          "engine": "qwen",
+          "model": "Qwen3-TTS-12Hz-1.7B-CustomVoice",
+          "bundle_sha256": "cbe72b0955b3fceef5c4e22fa3f8ad318cfd7a4b75d96156bc42c7cf2139d070",
+          "device": "cpu",
+          "precision": "float32"
+        },
+        "fallback": "forbid",
+        "reason": "",
+        "profile_id": "cpu-synthetic"
+      }
+    },
+    {
+      "id": "t99",
+      "block_id": "b99",
+      "text": "  Ligne 099 — café!\nExact text.  ",
+      "voice_version_id": "vv0",
+      "settings_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+      "asset_id": "impulse",
+      "identity": {
+        "requested": {
+          "engine": "qwen",
+          "model": "Qwen3-TTS-12Hz-1.7B-CustomVoice",
+          "bundle_sha256": "cbe72b0955b3fceef5c4e22fa3f8ad318cfd7a4b75d96156bc42c7cf2139d070",
+          "device": "cpu",
+          "precision": "float32"
+        },
+        "effective": {
+          "engine": "qwen",
+          "model": "Qwen3-TTS-12Hz-1.7B-CustomVoice",
+          "bundle_sha256": "cbe72b0955b3fceef5c4e22fa3f8ad318cfd7a4b75d96156bc42c7cf2139d070",
+          "device": "cpu",
+          "precision": "float32"
+        },
+        "fallback": "forbid",
+        "reason": "",
+        "profile_id": "cpu-synthetic"
+      }
+    },
+    {
+      "id": "candidate-long",
+      "block_id": "b0",
+      "text": "  Ligne 000 — café!\nExact text.  ",
+      "voice_version_id": "vv0",
+      "settings_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+      "asset_id": "long",
+      "identity": {
+        "requested": {
+          "engine": "qwen",
+          "model": "Qwen3-TTS-12Hz-1.7B-CustomVoice",
+          "bundle_sha256": "cbe72b0955b3fceef5c4e22fa3f8ad318cfd7a4b75d96156bc42c7cf2139d070",
+          "device": "cpu",
+          "precision": "float32"
+        },
+        "effective": {
+          "engine": "qwen",
+          "model": "Qwen3-TTS-12Hz-1.7B-CustomVoice",
+          "bundle_sha256": "cbe72b0955b3fceef5c4e22fa3f8ad318cfd7a4b75d96156bc42c7cf2139d070",
+          "device": "cpu",
+          "precision": "float32"
+        },
+        "fallback": "forbid",
+        "reason": "",
+        "profile_id": "cpu-synthetic"
+      }
+    },
+    {
+      "id": "candidate-short",
+      "block_id": "b0",
+      "text": "  Ligne 000 — café!\nExact text.  ",
+      "voice_version_id": "vv0",
+      "settings_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+      "asset_id": "short",
+      "identity": {
+        "requested": {
+          "engine": "qwen",
+          "model": "Qwen3-TTS-12Hz-1.7B-CustomVoice",
+          "bundle_sha256": "cbe72b0955b3fceef5c4e22fa3f8ad318cfd7a4b75d96156bc42c7cf2139d070",
+          "device": "cpu",
+          "precision": "float32"
+        },
+        "effective": {
+          "engine": "qwen",
+          "model": "Qwen3-TTS-12Hz-1.7B-CustomVoice",
+          "bundle_sha256": "cbe72b0955b3fceef5c4e22fa3f8ad318cfd7a4b75d96156bc42c7cf2139d070",
+          "device": "cpu",
+          "precision": "float32"
+        },
+        "fallback": "forbid",
+        "reason": "",
+        "profile_id": "cpu-synthetic"
+      }
+    }
+  ],
+  "tracks": [
+    {
+      "id": "speech",
+      "mute": false,
+      "solo": false
+    },
+    {
+      "id": "bed",
+      "mute": false,
+      "solo": false
+    }
+  ],
+  "clips": [
+    {
+      "id": "c0",
+      "track_id": "speech",
+      "asset_id": "impulse",
+      "take_id": "t0",
+      "start": 0,
+      "in_tick": 0,
+      "out_tick": 4800,
+      "gain": 1,
+      "fade_in": 0,
+      "fade_out": 0,
+      "mute": false
+    },
+    {
+      "id": "c1",
+      "track_id": "speech",
+      "asset_id": "impulse",
+      "take_id": "t1",
+      "start": 4800,
+      "in_tick": 0,
+      "out_tick": 4800,
+      "gain": 1,
+      "fade_in": 0,
+      "fade_out": 0,
+      "mute": false
+    },
+    {
+      "id": "c2",
+      "track_id": "speech",
+      "asset_id": "impulse",
+      "take_id": "t2",
+      "start": 9600,
+      "in_tick": 0,
+      "out_tick": 4800,
+      "gain": 1,
+      "fade_in": 0,
+      "fade_out": 0,
+      "mute": false
+    },
+    {
+      "id": "c3",
+      "track_id": "speech",
+      "asset_id": "impulse",
+      "take_id": "t3",
+      "start": 14400,
+      "in_tick": 0,
+      "out_tick": 4800,
+      "gain": 1,
+      "fade_in": 0,
+      "fade_out": 0,
+      "mute": false
+    },
+    {
+      "id": "c4",
+      "track_id": "speech",
+      "asset_id": "impulse",
+      "take_id": "t4",
+      "start": 19200,
+      "in_tick": 0,
+      "out_tick": 4800,
+      "gain": 1,
+      "fade_in": 0,
+      "fade_out": 0,
+      "mute": false
+    },
+    {
+      "id": "c5",
+      "track_id": "speech",
+      "asset_id": "impulse",
+      "take_id": "t5",
+      "start": 24000,
+      "in_tick": 0,
+      "out_tick": 4800,
+      "gain": 1,
+      "fade_in": 0,
+      "fade_out": 0,
+      "mute": false
+    },
+    {
+      "id": "c6",
+      "track_id": "speech",
+      "asset_id": "impulse",
+      "take_id": "t6",
+      "start": 28800,
+      "in_tick": 0,
+      "out_tick": 4800,
+      "gain": 1,
+      "fade_in": 0,
+      "fade_out": 0,
+      "mute": false
+    },
+    {
+      "id": "c7",
+      "track_id": "speech",
+      "asset_id": "impulse",
+      "take_id": "t7",
+      "start": 33600,
+      "in_tick": 0,
+      "out_tick": 4800,
+      "gain": 1,
+      "fade_in": 0,
+      "fade_out": 0,
+      "mute": false
+    },
+    {
+      "id": "c8",
+      "track_id": "speech",
+      "asset_id": "impulse",
+      "take_id": "t8",
+      "start": 38400,
+      "in_tick": 0,
+      "out_tick": 4800,
+      "gain": 1,
+      "fade_in": 0,
+      "fade_out": 0,
+      "mute": false
+    },
+    {
+      "id": "c9",
+      "track_id": "speech",
+      "asset_id": "impulse",
+      "take_id": "t9",
+      "start": 43200,
+      "in_tick": 0,
+      "out_tick": 4800,
+      "gain": 1,
+      "fade_in": 0,
+      "fade_out": 0,
+      "mute": false
+    },
+    {
+      "id": "c10",
+      "track_id": "speech",
+      "asset_id": "impulse",
+      "take_id": "t10",
+      "start": 48000,
+      "in_tick": 0,
+      "out_tick": 4800,
+      "gain": 1,
+      "fade_in": 0,
+      "fade_out": 0,
+      "mute": false
+    },
+    {
+      "id": "c11",
+      "track_id": "speech",
+      "asset_id": "impulse",
+      "take_id": "t11",
+      "start": 52800,
+      "in_tick": 0,
+      "out_tick": 4800,
+      "gain": 1,
+      "fade_in": 0,
+      "fade_out": 0,
+      "mute": false
+    },
+    {
+      "id": "c12",
+      "track_id": "speech",
+      "asset_id": "impulse",
+      "take_id": "t12",
+      "start": 57600,
+      "in_tick": 0,
+      "out_tick": 4800,
+      "gain": 1,
+      "fade_in": 0,
+      "fade_out": 0,
+      "mute": false
+    },
+    {
+      "id": "c13",
+      "track_id": "speech",
+      "asset_id": "impulse",
+      "take_id": "t13",
+      "start": 62400,
+      "in_tick": 0,
+      "out_tick": 4800,
+      "gain": 1,
+      "fade_in": 0,
+      "fade_out": 0,
+      "mute": false
+    },
+    {
+      "id": "c14",
+      "track_id": "speech",
+      "asset_id": "impulse",
+      "take_id": "t14",
+      "start": 67200,
+      "in_tick": 0,
+      "out_tick": 4800,
+      "gain": 1,
+      "fade_in": 0,
+      "fade_out": 0,
+      "mute": false
+    },
+    {
+      "id": "c15",
+      "track_id": "speech",
+      "asset_id": "impulse",
+      "take_id": "t15",
+      "start": 72000,
+      "in_tick": 0,
+      "out_tick": 4800,
+      "gain": 1,
+      "fade_in": 0,
+      "fade_out": 0,
+      "mute": false
+    },
+    {
+      "id": "c16",
+      "track_id": "speech",
+      "asset_id": "impulse",
+      "take_id": "t16",
+      "start": 76800,
+      "in_tick": 0,
+      "out_tick": 4800,
+      "gain": 1,
+      "fade_in": 0,
+      "fade_out": 0,
+      "mute": false
+    },
+    {
+      "id": "c17",
+      "track_id": "speech",
+      "asset_id": "impulse",
+      "take_id": "t17",
+      "start": 81600,
+      "in_tick": 0,
+      "out_tick": 4800,
+      "gain": 1,
+      "fade_in": 0,
+      "fade_out": 0,
+      "mute": false
+    },
+    {
+      "id": "c18",
+      "track_id": "speech",
+      "asset_id": "impulse",
+      "take_id": "t18",
+      "start": 86400,
+      "in_tick": 0,
+      "out_tick": 4800,
+      "gain": 1,
+      "fade_in": 0,
+      "fade_out": 0,
+      "mute": false
+    },
+    {
+      "id": "c19",
+      "track_id": "speech",
+      "asset_id": "impulse",
+      "take_id": "t19",
+      "start": 91200,
+      "in_tick": 0,
+      "out_tick": 4800,
+      "gain": 1,
+      "fade_in": 0,
+      "fade_out": 0,
+      "mute": false
+    },
+    {
+      "id": "c20",
+      "track_id": "speech",
+      "asset_id": "impulse",
+      "take_id": "t20",
+      "start": 96000,
+      "in_tick": 0,
+      "out_tick": 4800,
+      "gain": 1,
+      "fade_in": 0,
+      "fade_out": 0,
+      "mute": false
+    },
+    {
+      "id": "c21",
+      "track_id": "speech",
+      "asset_id": "impulse",
+      "take_id": "t21",
+      "start": 100800,
+      "in_tick": 0,
+      "out_tick": 4800,
+      "gain": 1,
+      "fade_in": 0,
+      "fade_out": 0,
+      "mute": false
+    },
+    {
+      "id": "c22",
+      "track_id": "speech",
+      "asset_id": "impulse",
+      "take_id": "t22",
+      "start": 105600,
+      "in_tick": 0,
+      "out_tick": 4800,
+      "gain": 1,
+      "fade_in": 0,
+      "fade_out": 0,
+      "mute": false
+    },
+    {
+      "id": "c23",
+      "track_id": "speech",
+      "asset_id": "impulse",
+      "take_id": "t23",
+      "start": 110400,
+      "in_tick": 0,
+      "out_tick": 4800,
+      "gain": 1,
+      "fade_in": 0,
+      "fade_out": 0,
+      "mute": false
+    },
+    {
+      "id": "c24",
+      "track_id": "speech",
+      "asset_id": "impulse",
+      "take_id": "t24",
+      "start": 115200,
+      "in_tick": 0,
+      "out_tick": 4800,
+      "gain": 1,
+      "fade_in": 0,
+      "fade_out": 0,
+      "mute": false
+    },
+    {
+      "id": "c25",
+      "track_id": "speech",
+      "asset_id": "impulse",
+      "take_id": "t25",
+      "start": 120000,
+      "in_tick": 0,
+      "out_tick": 4800,
+      "gain": 1,
+      "fade_in": 0,
+      "fade_out": 0,
+      "mute": false
+    },
+    {
+      "id": "c26",
+      "track_id": "speech",
+      "asset_id": "impulse",
+      "take_id": "t26",
+      "start": 124800,
+      "in_tick": 0,
+      "out_tick": 4800,
+      "gain": 1,
+      "fade_in": 0,
+      "fade_out": 0,
+      "mute": false
+    },
+    {
+      "id": "c27",
+      "track_id": "speech",
+      "asset_id": "impulse",
+      "take_id": "t27",
+      "start": 129600,
+      "in_tick": 0,
+      "out_tick": 4800,
+      "gain": 1,
+      "fade_in": 0,
+      "fade_out": 0,
+      "mute": false
+    },
+    {
+      "id": "c28",
+      "track_id": "speech",
+      "asset_id": "impulse",
+      "take_id": "t28",
+      "start": 134400,
+      "in_tick": 0,
+      "out_tick": 4800,
+      "gain": 1,
+      "fade_in": 0,
+      "fade_out": 0,
+      "mute": false
+    },
+    {
+      "id": "c29",
+      "track_id": "speech",
+      "asset_id": "impulse",
+      "take_id": "t29",
+      "start": 139200,
+      "in_tick": 0,
+      "out_tick": 4800,
+      "gain": 1,
+      "fade_in": 0,
+      "fade_out": 0,
+      "mute": false
+    },
+    {
+      "id": "c30",
+      "track_id": "speech",
+      "asset_id": "impulse",
+      "take_id": "t30",
+      "start": 144000,
+      "in_tick": 0,
+      "out_tick": 4800,
+      "gain": 1,
+      "fade_in": 0,
+      "fade_out": 0,
+      "mute": false
+    },
+    {
+      "id": "c31",
+      "track_id": "speech",
+      "asset_id": "impulse",
+      "take_id": "t31",
+      "start": 148800,
+      "in_tick": 0,
+      "out_tick": 4800,
+      "gain": 1,
+      "fade_in": 0,
+      "fade_out": 0,
+      "mute": false
+    },
+    {
+      "id": "c32",
+      "track_id": "speech",
+      "asset_id": "impulse",
+      "take_id": "t32",
+      "start": 153600,
+      "in_tick": 0,
+      "out_tick": 4800,
+      "gain": 1,
+      "fade_in": 0,
+      "fade_out": 0,
+      "mute": false
+    },
+    {
+      "id": "c33",
+      "track_id": "speech",
+      "asset_id": "impulse",
+      "take_id": "t33",
+      "start": 158400,
+      "in_tick": 0,
+      "out_tick": 4800,
+      "gain": 1,
+      "fade_in": 0,
+      "fade_out": 0,
+      "mute": false
+    },
+    {
+      "id": "c34",
+      "track_id": "speech",
+      "asset_id": "impulse",
+      "take_id": "t34",
+      "start": 163200,
+      "in_tick": 0,
+      "out_tick": 4800,
+      "gain": 1,
+      "fade_in": 0,
+      "fade_out": 0,
+      "mute": false
+    },
+    {
+      "id": "c35",
+      "track_id": "speech",
+      "asset_id": "impulse",
+      "take_id": "t35",
+      "start": 168000,
+      "in_tick": 0,
+      "out_tick": 4800,
+      "gain": 1,
+      "fade_in": 0,
+      "fade_out": 0,
+      "mute": false
+    },
+    {
+      "id": "c36",
+      "track_id": "speech",
+      "asset_id": "impulse",
+      "take_id": "t36",
+      "start": 172800,
+      "in_tick": 0,
+      "out_tick": 4800,
+      "gain": 1,
+      "fade_in": 0,
+      "fade_out": 0,
+      "mute": false
+    },
+    {
+      "id": "c37",
+      "track_id": "speech",
+      "asset_id": "impulse",
+      "take_id": "t37",
+      "start": 177600,
+      "in_tick": 0,
+      "out_tick": 4800,
+      "gain": 1,
+      "fade_in": 0,
+      "fade_out": 0,
+      "mute": false
+    },
+    {
+      "id": "c38",
+      "track_id": "speech",
+      "asset_id": "impulse",
+      "take_id": "t38",
+      "start": 182400,
+      "in_tick": 0,
+      "out_tick": 4800,
+      "gain": 1,
+      "fade_in": 0,
+      "fade_out": 0,
+      "mute": false
+    },
+    {
+      "id": "c39",
+      "track_id": "speech",
+      "asset_id": "impulse",
+      "take_id": "t39",
+      "start": 187200,
+      "in_tick": 0,
+      "out_tick": 4800,
+      "gain": 1,
+      "fade_in": 0,
+      "fade_out": 0,
+      "mute": false
+    },
+    {
+      "id": "c40",
+      "track_id": "speech",
+      "asset_id": "impulse",
+      "take_id": "t40",
+      "start": 192000,
+      "in_tick": 0,
+      "out_tick": 4800,
+      "gain": 1,
+      "fade_in": 0,
+      "fade_out": 0,
+      "mute": false
+    },
+    {
+      "id": "c41",
+      "track_id": "speech",
+      "asset_id": "impulse",
+      "take_id": "t41",
+      "start": 196800,
+      "in_tick": 0,
+      "out_tick": 4800,
+      "gain": 1,
+      "fade_in": 0,
+      "fade_out": 0,
+      "mute": false
+    },
+    {
+      "id": "c42",
+      "track_id": "speech",
+      "asset_id": "impulse",
+      "take_id": "t42",
+      "start": 201600,
+      "in_tick": 0,
+      "out_tick": 4800,
+      "gain": 1,
+      "fade_in": 0,
+      "fade_out": 0,
+      "mute": false
+    },
+    {
+      "id": "c43",
+      "track_id": "speech",
+      "asset_id": "impulse",
+      "take_id": "t43",
+      "start": 206400,
+      "in_tick": 0,
+      "out_tick": 4800,
+      "gain": 1,
+      "fade_in": 0,
+      "fade_out": 0,
+      "mute": false
+    },
+    {
+      "id": "c44",
+      "track_id": "speech",
+      "asset_id": "impulse",
+      "take_id": "t44",
+      "start": 211200,
+      "in_tick": 0,
+      "out_tick": 4800,
+      "gain": 1,
+      "fade_in": 0,
+      "fade_out": 0,
+      "mute": false
+    },
+    {
+      "id": "c45",
+      "track_id": "speech",
+      "asset_id": "impulse",
+      "take_id": "t45",
+      "start": 216000,
+      "in_tick": 0,
+      "out_tick": 4800,
+      "gain": 1,
+      "fade_in": 0,
+      "fade_out": 0,
+      "mute": false
+    },
+    {
+      "id": "c46",
+      "track_id": "speech",
+      "asset_id": "impulse",
+      "take_id": "t46",
+      "start": 220800,
+      "in_tick": 0,
+      "out_tick": 4800,
+      "gain": 1,
+      "fade_in": 0,
+      "fade_out": 0,
+      "mute": false
+    },
+    {
+      "id": "c47",
+      "track_id": "speech",
+      "asset_id": "impulse",
+      "take_id": "t47",
+      "start": 225600,
+      "in_tick": 0,
+      "out_tick": 4800,
+      "gain": 1,
+      "fade_in": 0,
+      "fade_out": 0,
+      "mute": false
+    },
+    {
+      "id": "c48",
+      "track_id": "speech",
+      "asset_id": "impulse",
+      "take_id": "t48",
+      "start": 230400,
+      "in_tick": 0,
+      "out_tick": 4800,
+      "gain": 1,
+      "fade_in": 0,
+      "fade_out": 0,
+      "mute": false
+    },
+    {
+      "id": "c49",
+      "track_id": "speech",
+      "asset_id": "impulse",
+      "take_id": "t49",
+      "start": 235200,
+      "in_tick": 0,
+      "out_tick": 4800,
+      "gain": 1,
+      "fade_in": 0,
+      "fade_out": 0,
+      "mute": false
+    },
+    {
+      "id": "c50",
+      "track_id": "speech",
+      "asset_id": "impulse",
+      "take_id": "t50",
+      "start": 240000,
+      "in_tick": 0,
+      "out_tick": 4800,
+      "gain": 1,
+      "fade_in": 0,
+      "fade_out": 0,
+      "mute": false
+    },
+    {
+      "id": "c51",
+      "track_id": "speech",
+      "asset_id": "impulse",
+      "take_id": "t51",
+      "start": 244800,
+      "in_tick": 0,
+      "out_tick": 4800,
+      "gain": 1,
+      "fade_in": 0,
+      "fade_out": 0,
+      "mute": false
+    },
+    {
+      "id": "c52",
+      "track_id": "speech",
+      "asset_id": "impulse",
+      "take_id": "t52",
+      "start": 249600,
+      "in_tick": 0,
+      "out_tick": 4800,
+      "gain": 1,
+      "fade_in": 0,
+      "fade_out": 0,
+      "mute": false
+    },
+    {
+      "id": "c53",
+      "track_id": "speech",
+      "asset_id": "impulse",
+      "take_id": "t53",
+      "start": 254400,
+      "in_tick": 0,
+      "out_tick": 4800,
+      "gain": 1,
+      "fade_in": 0,
+      "fade_out": 0,
+      "mute": false
+    },
+    {
+      "id": "c54",
+      "track_id": "speech",
+      "asset_id": "impulse",
+      "take_id": "t54",
+      "start": 259200,
+      "in_tick": 0,
+      "out_tick": 4800,
+      "gain": 1,
+      "fade_in": 0,
+      "fade_out": 0,
+      "mute": false
+    },
+    {
+      "id": "c55",
+      "track_id": "speech",
+      "asset_id": "impulse",
+      "take_id": "t55",
+      "start": 264000,
+      "in_tick": 0,
+      "out_tick": 4800,
+      "gain": 1,
+      "fade_in": 0,
+      "fade_out": 0,
+      "mute": false
+    },
+    {
+      "id": "c56",
+      "track_id": "speech",
+      "asset_id": "impulse",
+      "take_id": "t56",
+      "start": 268800,
+      "in_tick": 0,
+      "out_tick": 4800,
+      "gain": 1,
+      "fade_in": 0,
+      "fade_out": 0,
+      "mute": false
+    },
+    {
+      "id": "c57",
+      "track_id": "speech",
+      "asset_id": "impulse",
+      "take_id": "t57",
+      "start": 273600,
+      "in_tick": 0,
+      "out_tick": 4800,
+      "gain": 1,
+      "fade_in": 0,
+      "fade_out": 0,
+      "mute": false
+    },
+    {
+      "id": "c58",
+      "track_id": "speech",
+      "asset_id": "impulse",
+      "take_id": "t58",
+      "start": 278400,
+      "in_tick": 0,
+      "out_tick": 4800,
+      "gain": 1,
+      "fade_in": 0,
+      "fade_out": 0,
+      "mute": false
+    },
+    {
+      "id": "c59",
+      "track_id": "speech",
+      "asset_id": "impulse",
+      "take_id": "t59",
+      "start": 283200,
+      "in_tick": 0,
+      "out_tick": 4800,
+      "gain": 1,
+      "fade_in": 0,
+      "fade_out": 0,
+      "mute": false
+    },
+    {
+      "id": "c60",
+      "track_id": "speech",
+      "asset_id": "impulse",
+      "take_id": "t60",
+      "start": 288000,
+      "in_tick": 0,
+      "out_tick": 4800,
+      "gain": 1,
+      "fade_in": 0,
+      "fade_out": 0,
+      "mute": false
+    },
+    {
+      "id": "c61",
+      "track_id": "speech",
+      "asset_id": "impulse",
+      "take_id": "t61",
+      "start": 292800,
+      "in_tick": 0,
+      "out_tick": 4800,
+      "gain": 1,
+      "fade_in": 0,
+      "fade_out": 0,
+      "mute": false
+    },
+    {
+      "id": "c62",
+      "track_id": "speech",
+      "asset_id": "impulse",
+      "take_id": "t62",
+      "start": 297600,
+      "in_tick": 0,
+      "out_tick": 4800,
+      "gain": 1,
+      "fade_in": 0,
+      "fade_out": 0,
+      "mute": false
+    },
+    {
+      "id": "c63",
+      "track_id": "speech",
+      "asset_id": "impulse",
+      "take_id": "t63",
+      "start": 302400,
+      "in_tick": 0,
+      "out_tick": 4800,
+      "gain": 1,
+      "fade_in": 0,
+      "fade_out": 0,
+      "mute": false
+    },
+    {
+      "id": "c64",
+      "track_id": "speech",
+      "asset_id": "impulse",
+      "take_id": "t64",
+      "start": 307200,
+      "in_tick": 0,
+      "out_tick": 4800,
+      "gain": 1,
+      "fade_in": 0,
+      "fade_out": 0,
+      "mute": false
+    },
+    {
+      "id": "c65",
+      "track_id": "speech",
+      "asset_id": "impulse",
+      "take_id": "t65",
+      "start": 312000,
+      "in_tick": 0,
+      "out_tick": 4800,
+      "gain": 1,
+      "fade_in": 0,
+      "fade_out": 0,
+      "mute": false
+    },
+    {
+      "id": "c66",
+      "track_id": "speech",
+      "asset_id": "impulse",
+      "take_id": "t66",
+      "start": 316800,
+      "in_tick": 0,
+      "out_tick": 4800,
+      "gain": 1,
+      "fade_in": 0,
+      "fade_out": 0,
+      "mute": false
+    },
+    {
+      "id": "c67",
+      "track_id": "speech",
+      "asset_id": "impulse",
+      "take_id": "t67",
+      "start": 321600,
+      "in_tick": 0,
+      "out_tick": 4800,
+      "gain": 1,
+      "fade_in": 0,
+      "fade_out": 0,
+      "mute": false
+    },
+    {
+      "id": "c68",
+      "track_id": "speech",
+      "asset_id": "impulse",
+      "take_id": "t68",
+      "start": 326400,
+      "in_tick": 0,
+      "out_tick": 4800,
+      "gain": 1,
+      "fade_in": 0,
+      "fade_out": 0,
+      "mute": false
+    },
+    {
+      "id": "c69",
+      "track_id": "speech",
+      "asset_id": "impulse",
+      "take_id": "t69",
+      "start": 331200,
+      "in_tick": 0,
+      "out_tick": 4800,
+      "gain": 1,
+      "fade_in": 0,
+      "fade_out": 0,
+      "mute": false
+    },
+    {
+      "id": "c70",
+      "track_id": "speech",
+      "asset_id": "impulse",
+      "take_id": "t70",
+      "start": 336000,
+      "in_tick": 0,
+      "out_tick": 4800,
+      "gain": 1,
+      "fade_in": 0,
+      "fade_out": 0,
+      "mute": false
+    },
+    {
+      "id": "c71",
+      "track_id": "speech",
+      "asset_id": "impulse",
+      "take_id": "t71",
+      "start": 340800,
+      "in_tick": 0,
+      "out_tick": 4800,
+      "gain": 1,
+      "fade_in": 0,
+      "fade_out": 0,
+      "mute": false
+    },
+    {
+      "id": "c72",
+      "track_id": "speech",
+      "asset_id": "impulse",
+      "take_id": "t72",
+      "start": 345600,
+      "in_tick": 0,
+      "out_tick": 4800,
+      "gain": 1,
+      "fade_in": 0,
+      "fade_out": 0,
+      "mute": false
+    },
+    {
+      "id": "c73",
+      "track_id": "speech",
+      "asset_id": "impulse",
+      "take_id": "t73",
+      "start": 350400,
+      "in_tick": 0,
+      "out_tick": 4800,
+      "gain": 1,
+      "fade_in": 0,
+      "fade_out": 0,
+      "mute": false
+    },
+    {
+      "id": "c74",
+      "track_id": "speech",
+      "asset_id": "impulse",
+      "take_id": "t74",
+      "start": 355200,
+      "in_tick": 0,
+      "out_tick": 4800,
+      "gain": 1,
+      "fade_in": 0,
+      "fade_out": 0,
+      "mute": false
+    },
+    {
+      "id": "c75",
+      "track_id": "speech",
+      "asset_id": "impulse",
+      "take_id": "t75",
+      "start": 360000,
+      "in_tick": 0,
+      "out_tick": 4800,
+      "gain": 1,
+      "fade_in": 0,
+      "fade_out": 0,
+      "mute": false
+    },
+    {
+      "id": "c76",
+      "track_id": "speech",
+      "asset_id": "impulse",
+      "take_id": "t76",
+      "start": 364800,
+      "in_tick": 0,
+      "out_tick": 4800,
+      "gain": 1,
+      "fade_in": 0,
+      "fade_out": 0,
+      "mute": false
+    },
+    {
+      "id": "c77",
+      "track_id": "speech",
+      "asset_id": "impulse",
+      "take_id": "t77",
+      "start": 369600,
+      "in_tick": 0,
+      "out_tick": 4800,
+      "gain": 1,
+      "fade_in": 0,
+      "fade_out": 0,
+      "mute": false
+    },
+    {
+      "id": "c78",
+      "track_id": "speech",
+      "asset_id": "impulse",
+      "take_id": "t78",
+      "start": 374400,
+      "in_tick": 0,
+      "out_tick": 4800,
+      "gain": 1,
+      "fade_in": 0,
+      "fade_out": 0,
+      "mute": false
+    },
+    {
+      "id": "c79",
+      "track_id": "speech",
+      "asset_id": "impulse",
+      "take_id": "t79",
+      "start": 379200,
+      "in_tick": 0,
+      "out_tick": 4800,
+      "gain": 1,
+      "fade_in": 0,
+      "fade_out": 0,
+      "mute": false
+    },
+    {
+      "id": "c80",
+      "track_id": "speech",
+      "asset_id": "impulse",
+      "take_id": "t80",
+      "start": 384000,
+      "in_tick": 0,
+      "out_tick": 4800,
+      "gain": 1,
+      "fade_in": 0,
+      "fade_out": 0,
+      "mute": false
+    },
+    {
+      "id": "c81",
+      "track_id": "speech",
+      "asset_id": "impulse",
+      "take_id": "t81",
+      "start": 388800,
+      "in_tick": 0,
+      "out_tick": 4800,
+      "gain": 1,
+      "fade_in": 0,
+      "fade_out": 0,
+      "mute": false
+    },
+    {
+      "id": "c82",
+      "track_id": "speech",
+      "asset_id": "impulse",
+      "take_id": "t82",
+      "start": 393600,
+      "in_tick": 0,
+      "out_tick": 4800,
+      "gain": 1,
+      "fade_in": 0,
+      "fade_out": 0,
+      "mute": false
+    },
+    {
+      "id": "c83",
+      "track_id": "speech",
+      "asset_id": "impulse",
+      "take_id": "t83",
+      "start": 398400,
+      "in_tick": 0,
+      "out_tick": 4800,
+      "gain": 1,
+      "fade_in": 0,
+      "fade_out": 0,
+      "mute": false
+    },
+    {
+      "id": "c84",
+      "track_id": "speech",
+      "asset_id": "impulse",
+      "take_id": "t84",
+      "start": 403200,
+      "in_tick": 0,
+      "out_tick": 4800,
+      "gain": 1,
+      "fade_in": 0,
+      "fade_out": 0,
+      "mute": false
+    },
+    {
+      "id": "c85",
+      "track_id": "speech",
+      "asset_id": "impulse",
+      "take_id": "t85",
+      "start": 408000,
+      "in_tick": 0,
+      "out_tick": 4800,
+      "gain": 1,
+      "fade_in": 0,
+      "fade_out": 0,
+      "mute": false
+    },
+    {
+      "id": "c86",
+      "track_id": "speech",
+      "asset_id": "impulse",
+      "take_id": "t86",
+      "start": 412800,
+      "in_tick": 0,
+      "out_tick": 4800,
+      "gain": 1,
+      "fade_in": 0,
+      "fade_out": 0,
+      "mute": false
+    },
+    {
+      "id": "c87",
+      "track_id": "speech",
+      "asset_id": "impulse",
+      "take_id": "t87",
+      "start": 417600,
+      "in_tick": 0,
+      "out_tick": 4800,
+      "gain": 1,
+      "fade_in": 0,
+      "fade_out": 0,
+      "mute": false
+    },
+    {
+      "id": "c88",
+      "track_id": "speech",
+      "asset_id": "impulse",
+      "take_id": "t88",
+      "start": 422400,
+      "in_tick": 0,
+      "out_tick": 4800,
+      "gain": 1,
+      "fade_in": 0,
+      "fade_out": 0,
+      "mute": false
+    },
+    {
+      "id": "c89",
+      "track_id": "speech",
+      "asset_id": "impulse",
+      "take_id": "t89",
+      "start": 427200,
+      "in_tick": 0,
+      "out_tick": 4800,
+      "gain": 1,
+      "fade_in": 0,
+      "fade_out": 0,
+      "mute": false
+    },
+    {
+      "id": "c90",
+      "track_id": "speech",
+      "asset_id": "impulse",
+      "take_id": "t90",
+      "start": 432000,
+      "in_tick": 0,
+      "out_tick": 4800,
+      "gain": 1,
+      "fade_in": 0,
+      "fade_out": 0,
+      "mute": false
+    },
+    {
+      "id": "c91",
+      "track_id": "speech",
+      "asset_id": "impulse",
+      "take_id": "t91",
+      "start": 436800,
+      "in_tick": 0,
+      "out_tick": 4800,
+      "gain": 1,
+      "fade_in": 0,
+      "fade_out": 0,
+      "mute": false
+    },
+    {
+      "id": "c92",
+      "track_id": "speech",
+      "asset_id": "impulse",
+      "take_id": "t92",
+      "start": 441600,
+      "in_tick": 0,
+      "out_tick": 4800,
+      "gain": 1,
+      "fade_in": 0,
+      "fade_out": 0,
+      "mute": false
+    },
+    {
+      "id": "c93",
+      "track_id": "speech",
+      "asset_id": "impulse",
+      "take_id": "t93",
+      "start": 446400,
+      "in_tick": 0,
+      "out_tick": 4800,
+      "gain": 1,
+      "fade_in": 0,
+      "fade_out": 0,
+      "mute": false
+    },
+    {
+      "id": "c94",
+      "track_id": "speech",
+      "asset_id": "impulse",
+      "take_id": "t94",
+      "start": 451200,
+      "in_tick": 0,
+      "out_tick": 4800,
+      "gain": 1,
+      "fade_in": 0,
+      "fade_out": 0,
+      "mute": false
+    },
+    {
+      "id": "c95",
+      "track_id": "speech",
+      "asset_id": "impulse",
+      "take_id": "t95",
+      "start": 456000,
+      "in_tick": 0,
+      "out_tick": 4800,
+      "gain": 1,
+      "fade_in": 0,
+      "fade_out": 0,
+      "mute": false
+    },
+    {
+      "id": "c96",
+      "track_id": "speech",
+      "asset_id": "impulse",
+      "take_id": "t96",
+      "start": 460800,
+      "in_tick": 0,
+      "out_tick": 4800,
+      "gain": 1,
+      "fade_in": 0,
+      "fade_out": 0,
+      "mute": false
+    },
+    {
+      "id": "c97",
+      "track_id": "speech",
+      "asset_id": "impulse",
+      "take_id": "t97",
+      "start": 465600,
+      "in_tick": 0,
+      "out_tick": 4800,
+      "gain": 1,
+      "fade_in": 0,
+      "fade_out": 0,
+      "mute": false
+    },
+    {
+      "id": "c98",
+      "track_id": "speech",
+      "asset_id": "impulse",
+      "take_id": "t98",
+      "start": 470400,
+      "in_tick": 0,
+      "out_tick": 4800,
+      "gain": 1,
+      "fade_in": 0,
+      "fade_out": 0,
+      "mute": false
+    },
+    {
+      "id": "c99",
+      "track_id": "speech",
+      "asset_id": "impulse",
+      "take_id": "t99",
+      "start": 475200,
+      "in_tick": 0,
+      "out_tick": 4800,
+      "gain": 1,
+      "fade_in": 0,
+      "fade_out": 0,
+      "mute": false
+    },
+    {
+      "id": "bed0",
+      "track_id": "bed",
+      "asset_id": "sine",
+      "take_id": null,
+      "start": 2400,
+      "in_tick": 0,
+      "out_tick": 4800,
+      "gain": 0.25,
+      "fade_in": 480,
+      "fade_out": 480,
+      "mute": false
+    },
+    {
+      "id": "bed1",
+      "track_id": "bed",
+      "asset_id": "sine",
+      "take_id": null,
+      "start": 7200,
+      "in_tick": 0,
+      "out_tick": 4800,
+      "gain": 0.25,
+      "fade_in": 480,
+      "fade_out": 480,
+      "mute": false
+    },
+    {
+      "id": "bed2",
+      "track_id": "bed",
+      "asset_id": "sine",
+      "take_id": null,
+      "start": 12000,
+      "in_tick": 0,
+      "out_tick": 4800,
+      "gain": 0.25,
+      "fade_in": 480,
+      "fade_out": 480,
+      "mute": false
+    },
+    {
+      "id": "bed3",
+      "track_id": "bed",
+      "asset_id": "sine",
+      "take_id": null,
+      "start": 16800,
+      "in_tick": 0,
+      "out_tick": 4800,
+      "gain": 0.25,
+      "fade_in": 480,
+      "fade_out": 480,
+      "mute": false
+    },
+    {
+      "id": "bed4",
+      "track_id": "bed",
+      "asset_id": "sine",
+      "take_id": null,
+      "start": 21600,
+      "in_tick": 0,
+      "out_tick": 4800,
+      "gain": 0.25,
+      "fade_in": 480,
+      "fade_out": 480,
+      "mute": false
+    },
+    {
+      "id": "bed5",
+      "track_id": "bed",
+      "asset_id": "sine",
+      "take_id": null,
+      "start": 26400,
+      "in_tick": 0,
+      "out_tick": 4800,
+      "gain": 0.25,
+      "fade_in": 480,
+      "fade_out": 480,
+      "mute": false
+    },
+    {
+      "id": "bed6",
+      "track_id": "bed",
+      "asset_id": "sine",
+      "take_id": null,
+      "start": 31200,
+      "in_tick": 0,
+      "out_tick": 4800,
+      "gain": 0.25,
+      "fade_in": 480,
+      "fade_out": 480,
+      "mute": false
+    },
+    {
+      "id": "bed7",
+      "track_id": "bed",
+      "asset_id": "sine",
+      "take_id": null,
+      "start": 36000,
+      "in_tick": 0,
+      "out_tick": 4800,
+      "gain": 0.25,
+      "fade_in": 480,
+      "fade_out": 480,
+      "mute": false
+    },
+    {
+      "id": "bed8",
+      "track_id": "bed",
+      "asset_id": "sine",
+      "take_id": null,
+      "start": 40800,
+      "in_tick": 0,
+      "out_tick": 4800,
+      "gain": 0.25,
+      "fade_in": 480,
+      "fade_out": 480,
+      "mute": false
+    },
+    {
+      "id": "bed9",
+      "track_id": "bed",
+      "asset_id": "sine",
+      "take_id": null,
+      "start": 45600,
+      "in_tick": 0,
+      "out_tick": 4800,
+      "gain": 0.25,
+      "fade_in": 480,
+      "fade_out": 480,
+      "mute": false
+    },
+    {
+      "id": "bed10",
+      "track_id": "bed",
+      "asset_id": "sine",
+      "take_id": null,
+      "start": 50400,
+      "in_tick": 0,
+      "out_tick": 4800,
+      "gain": 0.25,
+      "fade_in": 480,
+      "fade_out": 480,
+      "mute": false
+    },
+    {
+      "id": "bed11",
+      "track_id": "bed",
+      "asset_id": "sine",
+      "take_id": null,
+      "start": 55200,
+      "in_tick": 0,
+      "out_tick": 4800,
+      "gain": 0.25,
+      "fade_in": 480,
+      "fade_out": 480,
+      "mute": false
+    },
+    {
+      "id": "bed12",
+      "track_id": "bed",
+      "asset_id": "sine",
+      "take_id": null,
+      "start": 60000,
+      "in_tick": 0,
+      "out_tick": 4800,
+      "gain": 0.25,
+      "fade_in": 480,
+      "fade_out": 480,
+      "mute": false
+    },
+    {
+      "id": "bed13",
+      "track_id": "bed",
+      "asset_id": "sine",
+      "take_id": null,
+      "start": 64800,
+      "in_tick": 0,
+      "out_tick": 4800,
+      "gain": 0.25,
+      "fade_in": 480,
+      "fade_out": 480,
+      "mute": false
+    },
+    {
+      "id": "bed14",
+      "track_id": "bed",
+      "asset_id": "sine",
+      "take_id": null,
+      "start": 69600,
+      "in_tick": 0,
+      "out_tick": 4800,
+      "gain": 0.25,
+      "fade_in": 480,
+      "fade_out": 480,
+      "mute": false
+    },
+    {
+      "id": "bed15",
+      "track_id": "bed",
+      "asset_id": "sine",
+      "take_id": null,
+      "start": 74400,
+      "in_tick": 0,
+      "out_tick": 4800,
+      "gain": 0.25,
+      "fade_in": 480,
+      "fade_out": 480,
+      "mute": false
+    },
+    {
+      "id": "bed16",
+      "track_id": "bed",
+      "asset_id": "sine",
+      "take_id": null,
+      "start": 79200,
+      "in_tick": 0,
+      "out_tick": 4800,
+      "gain": 0.25,
+      "fade_in": 480,
+      "fade_out": 480,
+      "mute": false
+    },
+    {
+      "id": "bed17",
+      "track_id": "bed",
+      "asset_id": "sine",
+      "take_id": null,
+      "start": 84000,
+      "in_tick": 0,
+      "out_tick": 4800,
+      "gain": 0.25,
+      "fade_in": 480,
+      "fade_out": 480,
+      "mute": false
+    },
+    {
+      "id": "bed18",
+      "track_id": "bed",
+      "asset_id": "sine",
+      "take_id": null,
+      "start": 88800,
+      "in_tick": 0,
+      "out_tick": 4800,
+      "gain": 0.25,
+      "fade_in": 480,
+      "fade_out": 480,
+      "mute": false
+    },
+    {
+      "id": "bed19",
+      "track_id": "bed",
+      "asset_id": "sine",
+      "take_id": null,
+      "start": 93600,
+      "in_tick": 0,
+      "out_tick": 4800,
+      "gain": 0.25,
+      "fade_in": 480,
+      "fade_out": 480,
+      "mute": false
+    },
+    {
+      "id": "bed20",
+      "track_id": "bed",
+      "asset_id": "sine",
+      "take_id": null,
+      "start": 98400,
+      "in_tick": 0,
+      "out_tick": 4800,
+      "gain": 0.25,
+      "fade_in": 480,
+      "fade_out": 480,
+      "mute": false
+    },
+    {
+      "id": "bed21",
+      "track_id": "bed",
+      "asset_id": "sine",
+      "take_id": null,
+      "start": 103200,
+      "in_tick": 0,
+      "out_tick": 4800,
+      "gain": 0.25,
+      "fade_in": 480,
+      "fade_out": 480,
+      "mute": false
+    },
+    {
+      "id": "bed22",
+      "track_id": "bed",
+      "asset_id": "sine",
+      "take_id": null,
+      "start": 108000,
+      "in_tick": 0,
+      "out_tick": 4800,
+      "gain": 0.25,
+      "fade_in": 480,
+      "fade_out": 480,
+      "mute": false
+    },
+    {
+      "id": "bed23",
+      "track_id": "bed",
+      "asset_id": "sine",
+      "take_id": null,
+      "start": 112800,
+      "in_tick": 0,
+      "out_tick": 4800,
+      "gain": 0.25,
+      "fade_in": 480,
+      "fade_out": 480,
+      "mute": false
+    },
+    {
+      "id": "bed24",
+      "track_id": "bed",
+      "asset_id": "sine",
+      "take_id": null,
+      "start": 117600,
+      "in_tick": 0,
+      "out_tick": 4800,
+      "gain": 0.25,
+      "fade_in": 480,
+      "fade_out": 480,
+      "mute": false
+    },
+    {
+      "id": "bed25",
+      "track_id": "bed",
+      "asset_id": "sine",
+      "take_id": null,
+      "start": 122400,
+      "in_tick": 0,
+      "out_tick": 4800,
+      "gain": 0.25,
+      "fade_in": 480,
+      "fade_out": 480,
+      "mute": false
+    },
+    {
+      "id": "bed26",
+      "track_id": "bed",
+      "asset_id": "sine",
+      "take_id": null,
+      "start": 127200,
+      "in_tick": 0,
+      "out_tick": 4800,
+      "gain": 0.25,
+      "fade_in": 480,
+      "fade_out": 480,
+      "mute": false
+    },
+    {
+      "id": "bed27",
+      "track_id": "bed",
+      "asset_id": "sine",
+      "take_id": null,
+      "start": 132000,
+      "in_tick": 0,
+      "out_tick": 4800,
+      "gain": 0.25,
+      "fade_in": 480,
+      "fade_out": 480,
+      "mute": false
+    },
+    {
+      "id": "bed28",
+      "track_id": "bed",
+      "asset_id": "sine",
+      "take_id": null,
+      "start": 136800,
+      "in_tick": 0,
+      "out_tick": 4800,
+      "gain": 0.25,
+      "fade_in": 480,
+      "fade_out": 480,
+      "mute": false
+    },
+    {
+      "id": "bed29",
+      "track_id": "bed",
+      "asset_id": "sine",
+      "take_id": null,
+      "start": 141600,
+      "in_tick": 0,
+      "out_tick": 4800,
+      "gain": 0.25,
+      "fade_in": 480,
+      "fade_out": 480,
+      "mute": false
+    },
+    {
+      "id": "bed30",
+      "track_id": "bed",
+      "asset_id": "sine",
+      "take_id": null,
+      "start": 146400,
+      "in_tick": 0,
+      "out_tick": 4800,
+      "gain": 0.25,
+      "fade_in": 480,
+      "fade_out": 480,
+      "mute": false
+    },
+    {
+      "id": "bed31",
+      "track_id": "bed",
+      "asset_id": "sine",
+      "take_id": null,
+      "start": 151200,
+      "in_tick": 0,
+      "out_tick": 4800,
+      "gain": 0.25,
+      "fade_in": 480,
+      "fade_out": 480,
+      "mute": false
+    },
+    {
+      "id": "bed32",
+      "track_id": "bed",
+      "asset_id": "sine",
+      "take_id": null,
+      "start": 156000,
+      "in_tick": 0,
+      "out_tick": 4800,
+      "gain": 0.25,
+      "fade_in": 480,
+      "fade_out": 480,
+      "mute": false
+    },
+    {
+      "id": "bed33",
+      "track_id": "bed",
+      "asset_id": "sine",
+      "take_id": null,
+      "start": 160800,
+      "in_tick": 0,
+      "out_tick": 4800,
+      "gain": 0.25,
+      "fade_in": 480,
+      "fade_out": 480,
+      "mute": false
+    },
+    {
+      "id": "bed34",
+      "track_id": "bed",
+      "asset_id": "sine",
+      "take_id": null,
+      "start": 165600,
+      "in_tick": 0,
+      "out_tick": 4800,
+      "gain": 0.25,
+      "fade_in": 480,
+      "fade_out": 480,
+      "mute": false
+    },
+    {
+      "id": "bed35",
+      "track_id": "bed",
+      "asset_id": "sine",
+      "take_id": null,
+      "start": 170400,
+      "in_tick": 0,
+      "out_tick": 4800,
+      "gain": 0.25,
+      "fade_in": 480,
+      "fade_out": 480,
+      "mute": false
+    },
+    {
+      "id": "bed36",
+      "track_id": "bed",
+      "asset_id": "sine",
+      "take_id": null,
+      "start": 175200,
+      "in_tick": 0,
+      "out_tick": 4800,
+      "gain": 0.25,
+      "fade_in": 480,
+      "fade_out": 480,
+      "mute": false
+    },
+    {
+      "id": "bed37",
+      "track_id": "bed",
+      "asset_id": "sine",
+      "take_id": null,
+      "start": 180000,
+      "in_tick": 0,
+      "out_tick": 4800,
+      "gain": 0.25,
+      "fade_in": 480,
+      "fade_out": 480,
+      "mute": false
+    },
+    {
+      "id": "bed38",
+      "track_id": "bed",
+      "asset_id": "sine",
+      "take_id": null,
+      "start": 184800,
+      "in_tick": 0,
+      "out_tick": 4800,
+      "gain": 0.25,
+      "fade_in": 480,
+      "fade_out": 480,
+      "mute": false
+    },
+    {
+      "id": "bed39",
+      "track_id": "bed",
+      "asset_id": "sine",
+      "take_id": null,
+      "start": 189600,
+      "in_tick": 0,
+      "out_tick": 4800,
+      "gain": 0.25,
+      "fade_in": 480,
+      "fade_out": 480,
+      "mute": false
+    },
+    {
+      "id": "bed40",
+      "track_id": "bed",
+      "asset_id": "sine",
+      "take_id": null,
+      "start": 194400,
+      "in_tick": 0,
+      "out_tick": 4800,
+      "gain": 0.25,
+      "fade_in": 480,
+      "fade_out": 480,
+      "mute": false
+    },
+    {
+      "id": "bed41",
+      "track_id": "bed",
+      "asset_id": "sine",
+      "take_id": null,
+      "start": 199200,
+      "in_tick": 0,
+      "out_tick": 4800,
+      "gain": 0.25,
+      "fade_in": 480,
+      "fade_out": 480,
+      "mute": false
+    },
+    {
+      "id": "bed42",
+      "track_id": "bed",
+      "asset_id": "sine",
+      "take_id": null,
+      "start": 204000,
+      "in_tick": 0,
+      "out_tick": 4800,
+      "gain": 0.25,
+      "fade_in": 480,
+      "fade_out": 480,
+      "mute": false
+    },
+    {
+      "id": "bed43",
+      "track_id": "bed",
+      "asset_id": "sine",
+      "take_id": null,
+      "start": 208800,
+      "in_tick": 0,
+      "out_tick": 4800,
+      "gain": 0.25,
+      "fade_in": 480,
+      "fade_out": 480,
+      "mute": false
+    },
+    {
+      "id": "bed44",
+      "track_id": "bed",
+      "asset_id": "sine",
+      "take_id": null,
+      "start": 213600,
+      "in_tick": 0,
+      "out_tick": 4800,
+      "gain": 0.25,
+      "fade_in": 480,
+      "fade_out": 480,
+      "mute": false
+    },
+    {
+      "id": "bed45",
+      "track_id": "bed",
+      "asset_id": "sine",
+      "take_id": null,
+      "start": 218400,
+      "in_tick": 0,
+      "out_tick": 4800,
+      "gain": 0.25,
+      "fade_in": 480,
+      "fade_out": 480,
+      "mute": false
+    },
+    {
+      "id": "bed46",
+      "track_id": "bed",
+      "asset_id": "sine",
+      "take_id": null,
+      "start": 223200,
+      "in_tick": 0,
+      "out_tick": 4800,
+      "gain": 0.25,
+      "fade_in": 480,
+      "fade_out": 480,
+      "mute": false
+    },
+    {
+      "id": "bed47",
+      "track_id": "bed",
+      "asset_id": "sine",
+      "take_id": null,
+      "start": 228000,
+      "in_tick": 0,
+      "out_tick": 4800,
+      "gain": 0.25,
+      "fade_in": 480,
+      "fade_out": 480,
+      "mute": false
+    },
+    {
+      "id": "bed48",
+      "track_id": "bed",
+      "asset_id": "sine",
+      "take_id": null,
+      "start": 232800,
+      "in_tick": 0,
+      "out_tick": 4800,
+      "gain": 0.25,
+      "fade_in": 480,
+      "fade_out": 480,
+      "mute": false
+    },
+    {
+      "id": "bed49",
+      "track_id": "bed",
+      "asset_id": "sine",
+      "take_id": null,
+      "start": 237600,
+      "in_tick": 0,
+      "out_tick": 4800,
+      "gain": 0.25,
+      "fade_in": 480,
+      "fade_out": 480,
+      "mute": false
+    },
+    {
+      "id": "bed50",
+      "track_id": "bed",
+      "asset_id": "sine",
+      "take_id": null,
+      "start": 242400,
+      "in_tick": 0,
+      "out_tick": 4800,
+      "gain": 0.25,
+      "fade_in": 480,
+      "fade_out": 480,
+      "mute": false
+    },
+    {
+      "id": "bed51",
+      "track_id": "bed",
+      "asset_id": "sine",
+      "take_id": null,
+      "start": 247200,
+      "in_tick": 0,
+      "out_tick": 4800,
+      "gain": 0.25,
+      "fade_in": 480,
+      "fade_out": 480,
+      "mute": false
+    },
+    {
+      "id": "bed52",
+      "track_id": "bed",
+      "asset_id": "sine",
+      "take_id": null,
+      "start": 252000,
+      "in_tick": 0,
+      "out_tick": 4800,
+      "gain": 0.25,
+      "fade_in": 480,
+      "fade_out": 480,
+      "mute": false
+    },
+    {
+      "id": "bed53",
+      "track_id": "bed",
+      "asset_id": "sine",
+      "take_id": null,
+      "start": 256800,
+      "in_tick": 0,
+      "out_tick": 4800,
+      "gain": 0.25,
+      "fade_in": 480,
+      "fade_out": 480,
+      "mute": false
+    },
+    {
+      "id": "bed54",
+      "track_id": "bed",
+      "asset_id": "sine",
+      "take_id": null,
+      "start": 261600,
+      "in_tick": 0,
+      "out_tick": 4800,
+      "gain": 0.25,
+      "fade_in": 480,
+      "fade_out": 480,
+      "mute": false
+    },
+    {
+      "id": "bed55",
+      "track_id": "bed",
+      "asset_id": "sine",
+      "take_id": null,
+      "start": 266400,
+      "in_tick": 0,
+      "out_tick": 4800,
+      "gain": 0.25,
+      "fade_in": 480,
+      "fade_out": 480,
+      "mute": false
+    },
+    {
+      "id": "bed56",
+      "track_id": "bed",
+      "asset_id": "sine",
+      "take_id": null,
+      "start": 271200,
+      "in_tick": 0,
+      "out_tick": 4800,
+      "gain": 0.25,
+      "fade_in": 480,
+      "fade_out": 480,
+      "mute": false
+    },
+    {
+      "id": "bed57",
+      "track_id": "bed",
+      "asset_id": "sine",
+      "take_id": null,
+      "start": 276000,
+      "in_tick": 0,
+      "out_tick": 4800,
+      "gain": 0.25,
+      "fade_in": 480,
+      "fade_out": 480,
+      "mute": false
+    },
+    {
+      "id": "bed58",
+      "track_id": "bed",
+      "asset_id": "sine",
+      "take_id": null,
+      "start": 280800,
+      "in_tick": 0,
+      "out_tick": 4800,
+      "gain": 0.25,
+      "fade_in": 480,
+      "fade_out": 480,
+      "mute": false
+    },
+    {
+      "id": "bed59",
+      "track_id": "bed",
+      "asset_id": "sine",
+      "take_id": null,
+      "start": 285600,
+      "in_tick": 0,
+      "out_tick": 4800,
+      "gain": 0.25,
+      "fade_in": 480,
+      "fade_out": 480,
+      "mute": false
+    },
+    {
+      "id": "bed60",
+      "track_id": "bed",
+      "asset_id": "sine",
+      "take_id": null,
+      "start": 290400,
+      "in_tick": 0,
+      "out_tick": 4800,
+      "gain": 0.25,
+      "fade_in": 480,
+      "fade_out": 480,
+      "mute": false
+    },
+    {
+      "id": "bed61",
+      "track_id": "bed",
+      "asset_id": "sine",
+      "take_id": null,
+      "start": 295200,
+      "in_tick": 0,
+      "out_tick": 4800,
+      "gain": 0.25,
+      "fade_in": 480,
+      "fade_out": 480,
+      "mute": false
+    },
+    {
+      "id": "bed62",
+      "track_id": "bed",
+      "asset_id": "sine",
+      "take_id": null,
+      "start": 300000,
+      "in_tick": 0,
+      "out_tick": 4800,
+      "gain": 0.25,
+      "fade_in": 480,
+      "fade_out": 480,
+      "mute": false
+    },
+    {
+      "id": "bed63",
+      "track_id": "bed",
+      "asset_id": "sine",
+      "take_id": null,
+      "start": 304800,
+      "in_tick": 0,
+      "out_tick": 4800,
+      "gain": 0.25,
+      "fade_in": 480,
+      "fade_out": 480,
+      "mute": false
+    },
+    {
+      "id": "bed64",
+      "track_id": "bed",
+      "asset_id": "sine",
+      "take_id": null,
+      "start": 309600,
+      "in_tick": 0,
+      "out_tick": 4800,
+      "gain": 0.25,
+      "fade_in": 480,
+      "fade_out": 480,
+      "mute": false
+    },
+    {
+      "id": "bed65",
+      "track_id": "bed",
+      "asset_id": "sine",
+      "take_id": null,
+      "start": 314400,
+      "in_tick": 0,
+      "out_tick": 4800,
+      "gain": 0.25,
+      "fade_in": 480,
+      "fade_out": 480,
+      "mute": false
+    },
+    {
+      "id": "bed66",
+      "track_id": "bed",
+      "asset_id": "sine",
+      "take_id": null,
+      "start": 319200,
+      "in_tick": 0,
+      "out_tick": 4800,
+      "gain": 0.25,
+      "fade_in": 480,
+      "fade_out": 480,
+      "mute": false
+    },
+    {
+      "id": "bed67",
+      "track_id": "bed",
+      "asset_id": "sine",
+      "take_id": null,
+      "start": 324000,
+      "in_tick": 0,
+      "out_tick": 4800,
+      "gain": 0.25,
+      "fade_in": 480,
+      "fade_out": 480,
+      "mute": false
+    },
+    {
+      "id": "bed68",
+      "track_id": "bed",
+      "asset_id": "sine",
+      "take_id": null,
+      "start": 328800,
+      "in_tick": 0,
+      "out_tick": 4800,
+      "gain": 0.25,
+      "fade_in": 480,
+      "fade_out": 480,
+      "mute": false
+    },
+    {
+      "id": "bed69",
+      "track_id": "bed",
+      "asset_id": "sine",
+      "take_id": null,
+      "start": 333600,
+      "in_tick": 0,
+      "out_tick": 4800,
+      "gain": 0.25,
+      "fade_in": 480,
+      "fade_out": 480,
+      "mute": false
+    },
+    {
+      "id": "bed70",
+      "track_id": "bed",
+      "asset_id": "sine",
+      "take_id": null,
+      "start": 338400,
+      "in_tick": 0,
+      "out_tick": 4800,
+      "gain": 0.25,
+      "fade_in": 480,
+      "fade_out": 480,
+      "mute": false
+    },
+    {
+      "id": "bed71",
+      "track_id": "bed",
+      "asset_id": "sine",
+      "take_id": null,
+      "start": 343200,
+      "in_tick": 0,
+      "out_tick": 4800,
+      "gain": 0.25,
+      "fade_in": 480,
+      "fade_out": 480,
+      "mute": false
+    },
+    {
+      "id": "bed72",
+      "track_id": "bed",
+      "asset_id": "sine",
+      "take_id": null,
+      "start": 348000,
+      "in_tick": 0,
+      "out_tick": 4800,
+      "gain": 0.25,
+      "fade_in": 480,
+      "fade_out": 480,
+      "mute": false
+    },
+    {
+      "id": "bed73",
+      "track_id": "bed",
+      "asset_id": "sine",
+      "take_id": null,
+      "start": 352800,
+      "in_tick": 0,
+      "out_tick": 4800,
+      "gain": 0.25,
+      "fade_in": 480,
+      "fade_out": 480,
+      "mute": false
+    },
+    {
+      "id": "bed74",
+      "track_id": "bed",
+      "asset_id": "sine",
+      "take_id": null,
+      "start": 357600,
+      "in_tick": 0,
+      "out_tick": 4800,
+      "gain": 0.25,
+      "fade_in": 480,
+      "fade_out": 480,
+      "mute": false
+    },
+    {
+      "id": "bed75",
+      "track_id": "bed",
+      "asset_id": "sine",
+      "take_id": null,
+      "start": 362400,
+      "in_tick": 0,
+      "out_tick": 4800,
+      "gain": 0.25,
+      "fade_in": 480,
+      "fade_out": 480,
+      "mute": false
+    },
+    {
+      "id": "bed76",
+      "track_id": "bed",
+      "asset_id": "sine",
+      "take_id": null,
+      "start": 367200,
+      "in_tick": 0,
+      "out_tick": 4800,
+      "gain": 0.25,
+      "fade_in": 480,
+      "fade_out": 480,
+      "mute": false
+    },
+    {
+      "id": "bed77",
+      "track_id": "bed",
+      "asset_id": "sine",
+      "take_id": null,
+      "start": 372000,
+      "in_tick": 0,
+      "out_tick": 4800,
+      "gain": 0.25,
+      "fade_in": 480,
+      "fade_out": 480,
+      "mute": false
+    },
+    {
+      "id": "bed78",
+      "track_id": "bed",
+      "asset_id": "sine",
+      "take_id": null,
+      "start": 376800,
+      "in_tick": 0,
+      "out_tick": 4800,
+      "gain": 0.25,
+      "fade_in": 480,
+      "fade_out": 480,
+      "mute": false
+    },
+    {
+      "id": "bed79",
+      "track_id": "bed",
+      "asset_id": "sine",
+      "take_id": null,
+      "start": 381600,
+      "in_tick": 0,
+      "out_tick": 4800,
+      "gain": 0.25,
+      "fade_in": 480,
+      "fade_out": 480,
+      "mute": false
+    },
+    {
+      "id": "bed80",
+      "track_id": "bed",
+      "asset_id": "sine",
+      "take_id": null,
+      "start": 386400,
+      "in_tick": 0,
+      "out_tick": 4800,
+      "gain": 0.25,
+      "fade_in": 480,
+      "fade_out": 480,
+      "mute": false
+    },
+    {
+      "id": "bed81",
+      "track_id": "bed",
+      "asset_id": "sine",
+      "take_id": null,
+      "start": 391200,
+      "in_tick": 0,
+      "out_tick": 4800,
+      "gain": 0.25,
+      "fade_in": 480,
+      "fade_out": 480,
+      "mute": false
+    },
+    {
+      "id": "bed82",
+      "track_id": "bed",
+      "asset_id": "sine",
+      "take_id": null,
+      "start": 396000,
+      "in_tick": 0,
+      "out_tick": 4800,
+      "gain": 0.25,
+      "fade_in": 480,
+      "fade_out": 480,
+      "mute": false
+    },
+    {
+      "id": "bed83",
+      "track_id": "bed",
+      "asset_id": "sine",
+      "take_id": null,
+      "start": 400800,
+      "in_tick": 0,
+      "out_tick": 4800,
+      "gain": 0.25,
+      "fade_in": 480,
+      "fade_out": 480,
+      "mute": false
+    },
+    {
+      "id": "bed84",
+      "track_id": "bed",
+      "asset_id": "sine",
+      "take_id": null,
+      "start": 405600,
+      "in_tick": 0,
+      "out_tick": 4800,
+      "gain": 0.25,
+      "fade_in": 480,
+      "fade_out": 480,
+      "mute": false
+    },
+    {
+      "id": "bed85",
+      "track_id": "bed",
+      "asset_id": "sine",
+      "take_id": null,
+      "start": 410400,
+      "in_tick": 0,
+      "out_tick": 4800,
+      "gain": 0.25,
+      "fade_in": 480,
+      "fade_out": 480,
+      "mute": false
+    },
+    {
+      "id": "bed86",
+      "track_id": "bed",
+      "asset_id": "sine",
+      "take_id": null,
+      "start": 415200,
+      "in_tick": 0,
+      "out_tick": 4800,
+      "gain": 0.25,
+      "fade_in": 480,
+      "fade_out": 480,
+      "mute": false
+    },
+    {
+      "id": "bed87",
+      "track_id": "bed",
+      "asset_id": "sine",
+      "take_id": null,
+      "start": 420000,
+      "in_tick": 0,
+      "out_tick": 4800,
+      "gain": 0.25,
+      "fade_in": 480,
+      "fade_out": 480,
+      "mute": false
+    },
+    {
+      "id": "bed88",
+      "track_id": "bed",
+      "asset_id": "sine",
+      "take_id": null,
+      "start": 424800,
+      "in_tick": 0,
+      "out_tick": 4800,
+      "gain": 0.25,
+      "fade_in": 480,
+      "fade_out": 480,
+      "mute": false
+    },
+    {
+      "id": "bed89",
+      "track_id": "bed",
+      "asset_id": "sine",
+      "take_id": null,
+      "start": 429600,
+      "in_tick": 0,
+      "out_tick": 4800,
+      "gain": 0.25,
+      "fade_in": 480,
+      "fade_out": 480,
+      "mute": false
+    },
+    {
+      "id": "bed90",
+      "track_id": "bed",
+      "asset_id": "sine",
+      "take_id": null,
+      "start": 434400,
+      "in_tick": 0,
+      "out_tick": 4800,
+      "gain": 0.25,
+      "fade_in": 480,
+      "fade_out": 480,
+      "mute": false
+    },
+    {
+      "id": "bed91",
+      "track_id": "bed",
+      "asset_id": "sine",
+      "take_id": null,
+      "start": 439200,
+      "in_tick": 0,
+      "out_tick": 4800,
+      "gain": 0.25,
+      "fade_in": 480,
+      "fade_out": 480,
+      "mute": false
+    },
+    {
+      "id": "bed92",
+      "track_id": "bed",
+      "asset_id": "sine",
+      "take_id": null,
+      "start": 444000,
+      "in_tick": 0,
+      "out_tick": 4800,
+      "gain": 0.25,
+      "fade_in": 480,
+      "fade_out": 480,
+      "mute": false
+    },
+    {
+      "id": "bed93",
+      "track_id": "bed",
+      "asset_id": "sine",
+      "take_id": null,
+      "start": 448800,
+      "in_tick": 0,
+      "out_tick": 4800,
+      "gain": 0.25,
+      "fade_in": 480,
+      "fade_out": 480,
+      "mute": false
+    },
+    {
+      "id": "bed94",
+      "track_id": "bed",
+      "asset_id": "sine",
+      "take_id": null,
+      "start": 453600,
+      "in_tick": 0,
+      "out_tick": 4800,
+      "gain": 0.25,
+      "fade_in": 480,
+      "fade_out": 480,
+      "mute": false
+    },
+    {
+      "id": "bed95",
+      "track_id": "bed",
+      "asset_id": "sine",
+      "take_id": null,
+      "start": 458400,
+      "in_tick": 0,
+      "out_tick": 4800,
+      "gain": 0.25,
+      "fade_in": 480,
+      "fade_out": 480,
+      "mute": false
+    },
+    {
+      "id": "bed96",
+      "track_id": "bed",
+      "asset_id": "sine",
+      "take_id": null,
+      "start": 463200,
+      "in_tick": 0,
+      "out_tick": 4800,
+      "gain": 0.25,
+      "fade_in": 480,
+      "fade_out": 480,
+      "mute": false
+    },
+    {
+      "id": "bed97",
+      "track_id": "bed",
+      "asset_id": "sine",
+      "take_id": null,
+      "start": 468000,
+      "in_tick": 0,
+      "out_tick": 4800,
+      "gain": 0.25,
+      "fade_in": 480,
+      "fade_out": 480,
+      "mute": false
+    },
+    {
+      "id": "bed98",
+      "track_id": "bed",
+      "asset_id": "sine",
+      "take_id": null,
+      "start": 472800,
+      "in_tick": 0,
+      "out_tick": 4800,
+      "gain": 0.25,
+      "fade_in": 480,
+      "fade_out": 480,
+      "mute": false
+    },
+    {
+      "id": "bed99",
+      "track_id": "bed",
+      "asset_id": "sine",
+      "take_id": null,
+      "start": 477600,
+      "in_tick": 0,
+      "out_tick": 4800,
+      "gain": 0.25,
+      "fade_in": 480,
+      "fade_out": 480,
+      "mute": false
+    }
+  ],
+  "assets": [
+    {
+      "media_subtype": "PCM_16",
+      "media_format": "wav",
+      "id": "impulse",
+      "sha256": "6de1d8cc4c678241ac609b81e8728a89850ce72a9cf736c4214a7ea9dc0943df",
+      "frames": 4800,
+      "sample_rate": 48000,
+      "channels": 1,
+      "provenance": {
+        "kind": "synthetic",
+        "source_sha256": "6de1d8cc4c678241ac609b81e8728a89850ce72a9cf736c4214a7ea9dc0943df",
+        "source_id": "impulse",
+        "missing_fields": []
+      }
+    },
+    {
+      "media_subtype": "PCM_16",
+      "media_format": "wav",
+      "id": "sine",
+      "sha256": "c020cc7bf173196fe590913ceca31fc59f4818536b39c50bc6ecc59aaea40593",
+      "frames": 4800,
+      "sample_rate": 48000,
+      "channels": 1,
+      "provenance": {
+        "kind": "synthetic",
+        "source_sha256": "c020cc7bf173196fe590913ceca31fc59f4818536b39c50bc6ecc59aaea40593",
+        "source_id": "sine",
+        "missing_fields": []
+      }
+    },
+    {
+      "media_subtype": "PCM_16",
+      "media_format": "wav",
+      "id": "long",
+      "sha256": "50723bc660718f92239c358c36818fa390a429bfc7bcf3fd4530b295532a1bb0",
+      "frames": 9600,
+      "sample_rate": 48000,
+      "channels": 1,
+      "provenance": {
+        "kind": "synthetic",
+        "source_sha256": "50723bc660718f92239c358c36818fa390a429bfc7bcf3fd4530b295532a1bb0",
+        "source_id": "long",
+        "missing_fields": []
+      }
+    },
+    {
+      "media_subtype": "PCM_16",
+      "media_format": "wav",
+      "id": "short",
+      "sha256": "4a00018adfff151e83d66254d04188e36076b9ea6d4159824937c895750fa399",
+      "frames": 2400,
+      "sample_rate": 48000,
+      "channels": 1,
+      "provenance": {
+        "kind": "synthetic",
+        "source_sha256": "4a00018adfff151e83d66254d04188e36076b9ea6d4159824937c895750fa399",
+        "source_id": "short",
+        "missing_fields": []
+      }
+    }
+  ],
+  "voices": [
+    {
+      "id": "voice.0",
+      "aliases": [
+        "legacy_0"
+      ],
+      "version_ids": [
+        "vv0"
+      ],
+      "archived": false,
+      "revision": 1
+    },
+    {
+      "id": "voice.1",
+      "aliases": [
+        "legacy_1"
+      ],
+      "version_ids": [
+        "vv1"
+      ],
+      "archived": false,
+      "revision": 1
+    },
+    {
+      "id": "voice.2",
+      "aliases": [
+        "legacy_2"
+      ],
+      "version_ids": [
+        "vv2"
+      ],
+      "archived": false,
+      "revision": 1
+    }
+  ],
+  "voice_versions": [
+    {
+      "id": "vv0",
+      "voice_id": "voice.0",
+      "origin": "preset",
+      "reference_asset_ids": [],
+      "reference_text": "",
+      "identity": {
+        "engine": "qwen",
+        "model": "Qwen3-TTS-12Hz-1.7B-CustomVoice",
+        "bundle_sha256": "cbe72b0955b3fceef5c4e22fa3f8ad318cfd7a4b75d96156bc42c7cf2139d070",
+        "device": "cpu",
+        "precision": "float32"
+      },
+      "settings": {
+        "kind": "qwen_preset",
+        "language": "French",
+        "seed": 1,
+        "temperature": 0.9,
+        "top_p": 1,
+        "top_k": 50,
+        "repetition_penalty": 1.05,
+        "max_new_tokens": 2048,
+        "instruction": null
+      },
+      "settings_sha256": "fc175f2a5312a4ced9c72e1a02bd4c725439f7d9e47fdd720c3954bd07271694",
+      "provenance": {
+        "kind": "synthetic",
+        "source_sha256": "6de1d8cc4c678241ac609b81e8728a89850ce72a9cf736c4214a7ea9dc0943df",
+        "source_id": "impulse",
+        "missing_fields": []
+      },
+      "configuration": {
+        "mode": "qwen_preset",
+        "speaker": "Vivian"
+      },
+      "design_lineage": null
+    },
+    {
+      "id": "vv1",
+      "voice_id": "voice.1",
+      "origin": "preset",
+      "reference_asset_ids": [],
+      "reference_text": "",
+      "identity": {
+        "engine": "qwen",
+        "model": "Qwen3-TTS-12Hz-1.7B-CustomVoice",
+        "bundle_sha256": "cbe72b0955b3fceef5c4e22fa3f8ad318cfd7a4b75d96156bc42c7cf2139d070",
+        "device": "cpu",
+        "precision": "float32"
+      },
+      "settings": {
+        "kind": "qwen_preset",
+        "language": "French",
+        "seed": 1,
+        "temperature": 0.9,
+        "top_p": 1,
+        "top_k": 50,
+        "repetition_penalty": 1.05,
+        "max_new_tokens": 2048,
+        "instruction": null
+      },
+      "settings_sha256": "fc175f2a5312a4ced9c72e1a02bd4c725439f7d9e47fdd720c3954bd07271694",
+      "provenance": {
+        "kind": "synthetic",
+        "source_sha256": "6de1d8cc4c678241ac609b81e8728a89850ce72a9cf736c4214a7ea9dc0943df",
+        "source_id": "impulse",
+        "missing_fields": []
+      },
+      "configuration": {
+        "mode": "qwen_preset",
+        "speaker": "Serena"
+      },
+      "design_lineage": null
+    },
+    {
+      "id": "vv2",
+      "voice_id": "voice.2",
+      "origin": "preset",
+      "reference_asset_ids": [],
+      "reference_text": "",
+      "identity": {
+        "engine": "qwen",
+        "model": "Qwen3-TTS-12Hz-1.7B-CustomVoice",
+        "bundle_sha256": "cbe72b0955b3fceef5c4e22fa3f8ad318cfd7a4b75d96156bc42c7cf2139d070",
+        "device": "cpu",
+        "precision": "float32"
+      },
+      "settings": {
+        "kind": "qwen_preset",
+        "language": "French",
+        "seed": 1,
+        "temperature": 0.9,
+        "top_p": 1,
+        "top_k": 50,
+        "repetition_penalty": 1.05,
+        "max_new_tokens": 2048,
+        "instruction": null
+      },
+      "settings_sha256": "fc175f2a5312a4ced9c72e1a02bd4c725439f7d9e47fdd720c3954bd07271694",
+      "provenance": {
+        "kind": "synthetic",
+        "source_sha256": "6de1d8cc4c678241ac609b81e8728a89850ce72a9cf736c4214a7ea9dc0943df",
+        "source_id": "impulse",
+        "missing_fields": []
+      },
+      "configuration": {
+        "mode": "qwen_preset",
+        "speaker": "Vivian"
+      },
+      "design_lineage": null
+    }
+  ],
+  "render": {
+    "sample_rate": 48000,
+    "format": "wav_pcm24",
+    "channels": 2,
+    "channel_mapping": "mono_duplicate_stereo_average",
+    "clipping": "fail",
+    "include_stale": false,
+    "length_ticks": 482400
+  }
+}

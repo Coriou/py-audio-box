@@ -1,0 +1,6 @@
+# Explicit opt-in for local browser evaluation. Control gets a standard Docker
+# bridge (including outbound connectivity). Fake-worker remains network_mode:none.
+# No ML/network-fetch code exists in this synthetic control.
+networks:
+  fixture:
+    internal: false

@@ -1,0 +1,7 @@
+# Native macOS arm64, CPython 3.11; PyPI (no Linux +cpu index).
+# Native-only minimal lazy-25Hz artifact; rebuild recipe/provenance in NATIVE-DEPENDENCY.md.
+./requirements/wheels/qwen_tts-0.1.1-1native12hz-py3-none-any.whl
+torch==2.10.0
+torchaudio==2.10.0
+transformers==4.57.3
+tokenizers==0.22.2

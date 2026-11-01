@@ -1,0 +1,11 @@
+#!/usr/bin/env python3
+"""Record explicit privilege selection and exec only the recording Docker stub."""
+import json
+import os
+from pathlib import Path
+import sys
+
+with open(os.environ["LAUNCH_COMMANDS"], "a") as stream:
+    stream.write(json.dumps(["sudo", *sys.argv[1:]]) + "\n")
+assert sys.argv[1:3] == ["--", "docker"]
+os.execv(str(Path(__file__).with_name("docker")), sys.argv[2:])

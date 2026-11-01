@@ -11,6 +11,8 @@ from dataclasses import dataclass
 import threading
 import time
 import signal
+import tempfile
+import shutil
 from .contract import BackendError, Capabilities, AudioResult
 
 
@@ -72,18 +74,73 @@ def _cpu_payload(value):
     return value
 
 
-def _worker(connection, settings):
+def _worker(connection, settings, runtime_dir):
     # Keep every upstream print away from the caller's structured stdout.
     with contextlib.redirect_stdout(sys.stderr):
-        _worker_impl(connection, settings)
+        _worker_impl(connection, settings, runtime_dir)
 
 
-def _worker_impl(connection, settings):
+def _worker_impl(connection, settings, runtime_dir=None):
+    # The parent owns private runtime state until the child has been reaped.
+    # Only trusted legacy callers opt into persistent HF model retrieval.
+    if runtime_dir is None:  # Inert direct seam callers also get private state.
+        with tempfile.TemporaryDirectory(prefix='qwen-child-', dir='/tmp') as root:
+            return _worker_impl(connection, settings, root)
+    root = Path(runtime_dir)
+    values = {name: str(root / leaf) for name, leaf in {
+        'HOME': 'home', 'XDG_CACHE_HOME': 'cache', 'TMPDIR': 'tmp',
+        'TMP': 'tmp', 'TEMP': 'tmp', 'TORCHINDUCTOR_CACHE_DIR': 'inductor',
+        'TRITON_CACHE_DIR': 'triton', 'HF_HOME': 'huggingface',
+        'HF_HUB_CACHE': 'huggingface/hub', 'HUGGINGFACE_HUB_CACHE': 'huggingface/hub',
+        'TRANSFORMERS_CACHE': 'huggingface/transformers', 'TORCH_HOME': 'torch',
+    }.items()}
+    # Eagerly create only private runtime paths. Persistent legacy cache
+    # directories belong to acquisition; an unused fallback may be unwritable.
+    for value in set(values.values()):
+        Path(value).mkdir(parents=True, exist_ok=True, mode=0o700)
+    values.update(USER='qwen-worker', LOGNAME='qwen-worker')
+    settings = dict(settings)
+    if settings.pop('legacy_hf_cache', False):
+        # Resolve before replacing HOME/XDG_CACHE_HOME. Do not inherit runtime,
+        # compiler or temp paths, and never enable this for managed backends.
+        hf_home = os.environ.get('HF_HOME') or str(Path(os.environ.get('XDG_CACHE_HOME') or Path.home() / '.cache') / 'huggingface')
+        hub = os.environ.get('HF_HUB_CACHE') or os.environ.get('HUGGINGFACE_HUB_CACHE') or str(Path(hf_home) / 'hub')
+        values.update({name: str(Path(value).expanduser().absolute()) for name, value in {
+            'HF_HOME': hf_home, 'HF_HUB_CACHE': hub,
+            'HUGGINGFACE_HUB_CACHE': hub,
+            'TRANSFORMERS_CACHE': os.environ.get('TRANSFORMERS_CACHE') or hub,
+        }.items()})
+    previous = {name: os.environ.get(name) for name in values}
+    previous_temp = tempfile.tempdir
     try:
+        os.environ.update(values)
+        tempfile.tempdir = values['TMPDIR']
+        return _run_worker(connection, settings)
+    finally:
+        tempfile.tempdir = previous_temp
+        for name, value in previous.items():
+            if value is None:
+                os.environ.pop(name, None)
+            else:
+                os.environ[name] = value
+
+
+def _run_worker(connection, settings):
+    try:
+        if settings.get('device') == 'cpu':
+            threads = settings.get('num_threads')
+            if type(threads) is not int or not 1 <= threads <= 64:
+                raise ValueError('bounded_cpu_threads_required')
+            # The speech tokenizer uses Rayon during model load. Torch's
+            # set_num_threads does not constrain that separate pool.
+            os.environ['RAYON_NUM_THREADS'] = str(threads)
         if settings.get("offline"):
             os.environ["HF_HUB_OFFLINE"] = "1"
             os.environ["TRANSFORMERS_OFFLINE"] = "1"
-        from tts import _load_tts_model_local
+        if __package__ == 'lib.tts_backends':
+            from ..tts import _load_tts_model_local
+        else:  # Legacy callers put lib itself on the import path.
+            from tts import _load_tts_model_local
         model = _load_tts_model_local(**settings)
         connection.send(('ready', {'revision': getattr(model, '_audio_box_revision', settings.get('revision'))}))
         while True:
@@ -94,7 +151,14 @@ def _worker_impl(connection, settings):
                 if seed is not None:
                     import torch
                     torch.manual_seed(seed)
-                value = getattr(model, method)(*args, **kwargs)
+                if method == '_service_clone':
+                    reference = kwargs.pop('ref_audio')
+                    ref_text = kwargs.pop('ref_text')
+                    x_vector_only = kwargs.pop('x_vector_only_mode')
+                    prompt = model.create_voice_clone_prompt(ref_audio=reference, ref_text=ref_text, x_vector_only_mode=x_vector_only)
+                    value = model.generate_voice_clone(**kwargs, voice_clone_prompt=prompt)
+                else:
+                    value = getattr(model, method)(*args, **kwargs)
                 if method == 'create_voice_clone_prompt':
                     # Attribute-compatible items preserve ref_text/ICL. Native
                     # Qwen dict prompts omit transcripts in qwen-tts 0.1.1.
@@ -162,6 +226,8 @@ class QwenBackend:
         self._process = self._connection = None
         self._lock = threading.Lock()
         self._failed_reap = False
+        self._started = False
+        self._runtime_directory = None
         owner_ref = weakref.ref(self)
         def on_exit():
             owner = owner_ref()
@@ -181,22 +247,41 @@ class QwenBackend:
         if callback is not None:
             atexit.unregister(callback)
         process, connection = self._process, self._connection
-        if process is not None and process.pid is not None:
-            if process.is_alive():
-                process.terminate()
-            process.join(2)
-            if process.is_alive():
-                process.kill()
-                process.join(2)
-            if process.is_alive():
+        # Process.close() validates that an unpublished/unstarted process has
+        # no live child. A rejected close must still take the reap path.
+        if (process is not None and not self._started and process.pid is None
+                and getattr(process, '_popen', None) is None):
+            try:
+                process.close()
+            except ValueError:
+                pass  # A partial start can own a child without a public PID.
+            except BaseException:
                 self._failed_reap = True
-                raise RuntimeError('Inference worker could not be reaped; backend is unavailable')
-            process.close()
-        elif process is not None:
+                raise
+            else:
+                process = None
+        if process is not None:
+            try:
+                if process.is_alive():
+                    process.terminate()
+                process.join(2)
+                if process.is_alive():
+                    process.kill()
+                    process.join(2)
+                if process.is_alive() or type(process.exitcode) is not int:
+                    raise RuntimeError('Inference worker could not be reaped; backend is unavailable')
+            except BaseException:
+                self._failed_reap = True
+                raise
             process.close()
         if connection is not None:
             connection.close()
         self._process = self._connection = None
+        self._started = False
+        directory = self.__dict__.get('_runtime_directory')
+        if directory is not None:
+            shutil.rmtree(directory)
+            self._runtime_directory = None
 
     def _worker_failure(self, method, stage, before):
         process = self._process
@@ -253,8 +338,11 @@ class QwenBackend:
                     parent, child = ctx.Pipe()
                     self._connection = parent
                     try:
-                        self._process = ctx.Process(target=_worker, args=(child, self.settings), daemon=True)
+                        # No automatic finalizer: unresolved children retain storage.
+                        self._runtime_directory = Path(tempfile.mkdtemp(prefix='qwen-child-', dir='/tmp'))
+                        self._process = ctx.Process(target=_worker, args=(child, self.settings, str(self._runtime_directory)), daemon=True)
                         self._process.start()
+                        self._started = True
                     except (OSError, EOFError) as exc:
                         raise self._worker_failure(method, 'spawn', before) from exc
                     finally:
@@ -275,7 +363,10 @@ class QwenBackend:
                 raise
 
     def create_voice_clone_prompt(self, *args, **kwargs):
-        from tts import bind_clone_prompt
+        if __package__ == 'lib.tts_backends':
+            from ..tts import bind_clone_prompt
+        else:
+            from tts import bind_clone_prompt
         prompt = self.invoke('create_voice_clone_prompt', args, kwargs)
         return bind_clone_prompt(prompt, model=self)
 
@@ -289,3 +380,32 @@ class QwenBackend:
         samples = wavs[0]
         channels = 1 if getattr(samples, 'ndim', 1) == 1 else samples.shape[1]
         return AudioResult(samples, sr, channels, {'backend': 'qwen', 'checkpoint': self.name_or_path, 'revision': self._audio_box_revision, 'offline': self.settings.get('offline', False)})
+
+    # Closed service methods. The legacy dynamic dispatcher remains private to
+    # legacy callers; no method name or arbitrary kwargs crosses this interface.
+    def synthesise_clone(self, params, reference, reference_text, x_vector_only, timeout_s):
+        entered = time.monotonic() if type(reference) is bytes else None
+        if type(reference) is bytes:
+            # The private service seam supplies validated canonical PCM16 bytes.
+            # qwen-tts accepts (waveform, rate); this survives spawn without paths.
+            import io, wave
+            import numpy as np
+            with wave.open(io.BytesIO(reference), 'rb') as source:
+                if source.getnchannels() != 1 or source.getsampwidth() != 2:
+                    raise ValueError('reference_format')
+                rate = source.getframerate()
+                pcm = source.readframes(source.getnframes())
+            reference = (np.frombuffer(pcm, dtype='<i2').astype('float32') / 32768., rate)
+        if entered is not None and timeout_s is not None and timeout_s > 0:
+            timeout_s -= time.monotonic() - entered
+            if timeout_s <= 0: raise TimeoutError('Qwen reference decoding exceeded original deadline')
+        return self.generate_audio('_service_clone', dict(params, ref_audio=reference,
+            ref_text=reference_text, x_vector_only_mode=x_vector_only), timeout_s)
+
+    def synthesise_preset(self, params, preset, instruct, timeout_s):
+        values = dict(params, speaker=preset)
+        if instruct is not None: values['instruct'] = instruct
+        return self.generate_audio('generate_custom_voice', values, timeout_s)
+
+    def synthesise_design(self, params, instruct, timeout_s):
+        return self.generate_audio('generate_voice_design', dict(params, instruct=instruct), timeout_s)

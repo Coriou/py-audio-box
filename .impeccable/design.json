@@ -1,0 +1,41 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-10-16T10:40:00Z",
+  "title": "Design System: Speech editor fixture",
+  "extensions": {
+    "breakpoints": [
+      { "name": "compact-desktop", "value": "1100px" },
+      { "name": "stacked", "value": "760px" }
+    ],
+    "shadows": [],
+    "motion": []
+  },
+  "components": [
+    {
+      "name": "Primary action",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "Explicit edit or synthetic preview",
+      "html": "<button class=\"primary\">Apply clip edit</button>",
+      "css": ".primary{font:550 14px -apple-system,BlinkMacSystemFont,Segoe UI,sans-serif;background:#145c57;color:white;border:1px solid #145c57;border-radius:5px;padding:6px 10px;min-height:34px}.primary:hover{background:#0e4844}.primary:focus-visible{outline:3px solid #19776f;outline-offset:3px}"
+    }
+  ],
+  "narrative": {
+    "northStar": "Editorial workbench",
+    "overview": "Source, placement and precise properties remain visible together in a restrained task interface.",
+    "keyCharacteristics": [
+      "Fixed placement",
+      "Explicit edits",
+      "Visible revision feedback"
+    ],
+    "rules": [
+      {
+        "name": "Task color",
+        "body": "Use teal for selection and primary actions.",
+        "section": "colors"
+      }
+    ],
+    "dos": ["Retain authored whitespace and tabular timing"],
+    "donts": ["Add decorative motion or implicit arrangement"]
+  }
+}

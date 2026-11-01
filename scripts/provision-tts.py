@@ -9,8 +9,10 @@ import sys
 import urllib.request
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'lib'))
-from tts_backends.assets import sha256
+from service.provisioning import provision as managed_provision, download
+from tts_backends.assets import sha256, verified_bundle
 
 
 def provision(backend, dest, language):
@@ -27,9 +29,7 @@ def provision(backend, dest, language):
         for remote, local in [('kokoro-v1.0.onnx', 'model.onnx'), ('voices-v1.0.bin', 'voices.bin')]:
             url = f'https://github.com/thewh1teagle/kokoro-onnx/releases/download/{release}/{remote}'
             path = dest / local
-            with urllib.request.urlopen(url, timeout=120) as source, path.open('wb') as target:
-                import shutil
-                shutil.copyfileobj(source, target)
+            download(url, path)
             pins = json.loads((Path(__file__).resolve().parents[1] / 'requirements' / 'tts-assets.json').read_text())
             if sha256(path) != pins['kokoro'][local]:
                 raise ValueError('Upstream Kokoro asset differs from the reviewed pin; do not promote this bundle')
@@ -72,17 +72,28 @@ def provision(backend, dest, language):
                 'versions': {p: importlib.metadata.version(p) for p in
                              (['kokoro-onnx', 'onnxruntime', 'espeakng-loader', 'phonemizer'] if backend == 'kokoro' else ['pocket-tts', 'torch', 'tokenizers'])}}
     (dest / 'manifest.json').write_text(json.dumps(manifest, indent=2) + '\n')
+    verified_bundle(dest, backend)
     return manifest
 
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--backend', choices=['kokoro', 'pocket-tts'], required=True)
-    parser.add_argument('--language', choices=['fr', 'en'], required=True)
+    parser.add_argument('--backend', choices=['kokoro', 'pocket-tts', 'qwen'], required=True)
+    parser.add_argument('--language', choices=['fr', 'en', 'French', 'English'], required=True)
     parser.add_argument('--dest', type=Path, required=True)
+    parser.add_argument('--expected-manifest', type=Path, help='Operator-reviewed Kokoro manifest, Pocket or Qwen descriptor; --dest becomes managed storage root')
     args = parser.parse_args()
     try:
-        print(json.dumps(provision(args.backend, args.dest, args.language)))
+        if args.expected_manifest:
+            expected = json.loads(args.expected_manifest.read_text())
+            if expected['backend'] != args.backend or expected['language'] != args.language:
+                raise ValueError('Expected manifest differs from CLI selection')
+            versions = {p: importlib.metadata.version(p) for p in expected['versions']}
+            print(json.dumps({'bundle': str(managed_provision(args.dest, expected, runtime_versions=versions))}))
+        else:
+            if args.backend == 'qwen' or args.language not in ('fr', 'en'):
+                raise ValueError('Qwen requires an explicit expected descriptor and English/French identity')
+            print(json.dumps(provision(args.backend, args.dest, args.language)))
     except Exception as exc:
         print(json.dumps({'status': 'error', 'error': type(exc).__name__, 'message': str(exc)}), file=sys.stderr)
         sys.exit(1)

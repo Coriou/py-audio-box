@@ -1,0 +1,33 @@
+{
+  "id": "artifact1",
+  "job_id": "job1",
+  "generation": 1,
+  "asset_ids": [
+    "impulse"
+  ],
+  "input_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+  "project_revision": 1,
+  "manifest_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+  "identity": {
+    "requested": {
+      "engine": "qwen",
+      "model": "Qwen3-TTS-12Hz-1.7B-CustomVoice",
+      "bundle_sha256": "cbe72b0955b3fceef5c4e22fa3f8ad318cfd7a4b75d96156bc42c7cf2139d070",
+      "device": "cpu",
+      "precision": "float32"
+    },
+    "effective": {
+      "engine": "qwen",
+      "model": "Qwen3-TTS-12Hz-1.7B-CustomVoice",
+      "bundle_sha256": "cbe72b0955b3fceef5c4e22fa3f8ad318cfd7a4b75d96156bc42c7cf2139d070",
+      "device": "cpu",
+      "precision": "float32"
+    },
+    "fallback": "forbid",
+    "reason": "",
+    "profile_id": "cpu-synthetic"
+  },
+  "attempt_id": "attempt1",
+  "owner_id": "worker1",
+  "staging_id": "staging1"
+}

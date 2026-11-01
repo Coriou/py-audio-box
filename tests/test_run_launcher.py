@@ -3,7 +3,6 @@ import json
 import os
 from pathlib import Path
 import subprocess
-import sys
 
 import pytest
 
@@ -13,22 +12,7 @@ ROOT = Path(__file__).resolve().parents[1]
 
 def launch(tmp_path, *, sudo=None, gpu=False, network=None, exitcode=0):
     commands = tmp_path / "commands.jsonl"
-    bin_dir = tmp_path / "bin"
-    bin_dir.mkdir()
-    stub = f'''#!{sys.executable}
-import json, os, pathlib, sys
-name = pathlib.Path(sys.argv[0]).name
-with open(os.environ["LAUNCH_COMMANDS"], "a") as stream:
-    stream.write(json.dumps([name, *sys.argv[1:]]) + "\\n")
-if name == "sudo":
-    assert sys.argv[1] == "--"
-    os.execvp(sys.argv[2], sys.argv[2:])
-sys.exit(int(os.environ["LAUNCH_EXITCODE"]))
-'''
-    for name in ("docker", "sudo"):
-        file = bin_dir / name
-        file.write_text(stub)
-        file.chmod(0o755)
+    bin_dir = ROOT / "tests/fixtures/ci/launcher-bin"
     env = dict(os.environ, PATH=str(bin_dir) + os.pathsep + os.environ["PATH"],
                LAUNCH_COMMANDS=str(commands), LAUNCH_EXITCODE=str(exitcode))
     env.pop("TOOLBOX_DOCKER_SUDO", None)
@@ -86,3 +70,10 @@ def test_invalid_network_option_launches_nothing(tmp_path, network):
     assert result.returncode == 2
     assert "TOOLBOX_NETWORK must be default or host" in result.stderr
     assert calls == []
+
+
+def test_failed_explicit_sudo_docker_is_never_retried(tmp_path):
+    result, calls = launch(tmp_path, sudo="1", exitcode=13)
+    assert result.returncode == 13
+    assert [call[0] for call in calls] == ["sudo", "docker"]
+    assert calls[0] == ["sudo", "--", *calls[1]]

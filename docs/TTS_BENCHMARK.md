@@ -88,3 +88,12 @@ state was uncontrolled. Scratch image digest was not supplied. This run did not
 verify network isolation, measure peak RAM, run ASR, or obtain human listening
 ratings. It does not qualify the full corpus, long-form narration or production.
 Local receipts and the blinded listening view are in `/tmp/pab-kokoro-pilot`.
+
+## Pocket / Kokoro pilot, 26 October 2026
+
+A new offline, same-script, cold-process pilot completed ten takes per engine on
+bounded Linux/amd64 CPU containers. Pocket was substantially slower and used more
+sampled process-group memory on that host; no human quality winner or replacement
+of Qwen follows. See [the scoped results and listening procedure](TTS_POCKET_CPU_PILOT.md).
+`benchmarks/tts/compare.py` can merge collected runs into a neutral listening kit
+and performance summary without loading a model.

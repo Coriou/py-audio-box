@@ -72,6 +72,7 @@ Import from an app::
 """
 
 import json
+import math
 import os
 import tempfile
 import threading
@@ -225,6 +226,10 @@ class VoiceRegistry:
             data["tones"] = {}
         data.setdefault("tones", {})
 
+        aliases = data.get("aliases", [])
+        if not isinstance(aliases, list) or any(not isinstance(a, str) for a in aliases):
+            raise ValueError("Voice aliases must be a list of strings")
+
         source = data.get("source")
         if source is None or not isinstance(source, dict):
             data["source"] = {}
@@ -252,9 +257,192 @@ class VoiceRegistry:
                 f"Voice '{slug}' not found in registry. "
                 f"Looked in: {vj}"
             )
-        with open(vj) as fh:
-            data = json.load(fh)
-        return self._normalise_record(data)
+        return self._read_record(vj)
+
+    def _read_record(self, path: Path) -> dict[str, Any]:
+        """Read registry identity; corruption must never masquerade as a name miss."""
+        try:
+            with open(path) as fh:
+                return self._validate_record(json.load(fh), path.parent.name)
+        except (OSError, ValueError, TypeError) as exc:
+            raise ValueError(f"Invalid voice registry metadata at {path}: {exc}") from exc
+
+    def _validate_record(self, data: dict[str, Any], slug: str) -> dict[str, Any]:
+        """Apply the same read contract to live records and repair candidates."""
+        data = self._normalise_record(data)
+        identity = data.get("slug")
+        if validate_slug(identity) != identity or identity != slug:
+            raise ValueError("Voice slug must match its directory exactly")
+        if not isinstance(data.get("created_at"), str):
+            raise ValueError("Voice created_at must be a string")
+        if "display_name" in data and not isinstance(data["display_name"], str):
+            raise ValueError("Voice display_name must be a string")
+        # The public inventory reads these fields after normalization. Keep
+        # optional legacy fields optional, but never publish values it cannot read.
+        ref = data.get("ref")
+        if ref is not None:
+            if not isinstance(ref, dict):
+                raise ValueError("Voice ref must be an object or null")
+            try:
+                duration = float(ref.get("duration_sec", 0.0))
+            except (TypeError, ValueError, OverflowError) as exc:
+                raise ValueError("Voice ref duration_sec must be numeric") from exc
+            if not math.isfinite(duration):
+                raise ValueError("Voice ref duration_sec must be finite")
+        if any(not isinstance(tone, str) for tone in data["tones"]):
+            raise ValueError("Voice tone names must be strings")
+        if any(not isinstance(tone, str) for tone in data["custom_voice"]["tones"]):
+            raise ValueError("Voice custom tone names must be strings")
+        return data
+
+    def resolve_name(self, name: str, *, prefix: bool = True) -> str:
+        """Resolve human names, explicit aliases and slug prefixes; refuse collisions.
+
+        Filesystem paths and low-level slug helpers deliberately do not use this API.
+        """
+        key = name.strip().casefold()
+        if not key or "/" in key or "\\" in key:
+            raise KeyError(f"Unknown voice {name!r}; use list-voices")
+        records = self.list_voices(strict=True)
+        exact = set()
+        for record in records:
+            slug = validate_slug(record["slug"])
+            labels = [slug, record.get("display_name", slug), *record.get("aliases", [])]
+            if any(isinstance(label, str) and label.strip().casefold() == key for label in labels):
+                exact.add(slug)
+        matches = exact or ({v["slug"] for v in records
+                            if v["slug"].casefold().startswith(key)} if prefix else set())
+        if len(matches) > 1:
+            raise ValueError(f"Ambiguous voice {name!r}: {', '.join(sorted(matches))}; use a unique slug or alias")
+        if not matches:
+            raise KeyError(f"Unknown voice {name!r}; use list-voices. If voice.json is missing, "
+                           "use voice-clone repair-registry with a trusted metadata backup.")
+        return matches.pop()
+
+    @_locked
+    def add_alias(self, name: str, alias: str) -> dict[str, Any]:
+        """Add an explicit slug-like alias without renaming any files."""
+        slug = self.resolve_name(name, prefix=False)
+        alias = validate_slug(alias)
+        # Include orphan directory names: an alias must not hide a repair target.
+        if alias != slug and (self.root / alias).exists():
+            raise ValueError(f"Alias {alias!r} conflicts with an existing voice directory")
+        try:
+            owner = self.resolve_name(alias, prefix=False)
+        except KeyError:
+            owner = None
+        if owner is not None and owner != slug:
+            raise ValueError(f"Alias {alias!r} already belongs to {owner!r}")
+        data = self.load(slug)
+        data["aliases"] = sorted(set(data.get("aliases", [])) | {alias})
+        self._save(slug, data)
+        return data
+
+    def repair_orphan(self, slug: str, metadata: Path, *, dry_run: bool = True) -> dict[str, Any]:
+        """Restore only missing voice.json from an explicitly trusted local backup.
+
+        Hash/identity checks detect mismatched bytes, not authenticity. The operator
+        must trust the backup and retained local pickle provenance. Never unpickle.
+        Incomplete old caches require rebuilding from a trusted WAV instead.
+        """
+        if not dry_run:
+            with self._lock():
+                return self._repair_orphan(slug, metadata, dry_run=False)
+        return self._repair_orphan(slug, metadata, dry_run=True)
+
+    def _repair_orphan(self, slug: str, metadata: Path, *, dry_run: bool) -> dict[str, Any]:
+        import hashlib
+        from tts_backends.qwen import validate_checkpoint_request
+        slug = validate_slug(slug)
+        vd = self.voice_dir(slug)
+        guidance = " Restore a trusted complete backup, or rebuild from a trusted WAV with voice-clone synth --ref-audio and a new --voice-name."
+        def regular(path):
+            if path.is_symlink() or not path.is_file():
+                raise ValueError(f"Missing or unsafe repair evidence: {path}." + guidance)
+        if self.root.is_symlink() or vd.is_symlink() or not vd.is_dir():
+            raise ValueError("Repair requires an existing non-symlink orphan voice directory." + guidance)
+        target = vd / "voice.json"
+        if target.exists() or target.is_symlink():
+            raise ValueError("voice.json already exists; repair never replaces registered voices")
+        metadata = Path(metadata)
+        regular(metadata)
+        raw = metadata.read_bytes()
+        if len(raw) > 1024 * 1024:
+            raise ValueError("Repair metadata exceeds 1 MiB")
+        data = json.loads(raw)
+        if (not isinstance(data, dict) or data.get("slug") != slug
+                or data.get("schema_version", 1) not in (1, 2)
+                or not isinstance(data.get("created_at"), str)
+                or not isinstance(data.get("source"), dict)
+                or infer_engine(data) not in ("clone_prompt", "designed_clone")):
+            raise ValueError("Backup does not identify this clone voice." + guidance)
+        self._validate_record(dict(data), slug)
+        for alias in data.get("aliases", []):
+            if validate_slug(alias) != alias:
+                raise ValueError("Backup voice alias must be a canonical slug.")
+        # A restored label must not take over an existing identity, including
+        # an orphan directory whose metadata may be repaired later.
+        labels = [slug, data.get("display_name", slug), *data.get("aliases", [])]
+        labels = {label.strip().casefold() for label in labels if label.strip()}
+        for record in self.list_voices(strict=True):
+            other = [record["slug"], record.get("display_name", record["slug"]),
+                     *record.get("aliases", [])]
+            if labels.intersection(label.strip().casefold() for label in other if label.strip()):
+                raise ValueError("Backup voice identity or alias conflicts with a registered voice.")
+        for directory in self.root.iterdir():
+            if directory.is_dir() and directory.name != slug and directory.name.casefold() in labels:
+                raise ValueError("Backup voice identity or alias conflicts with a voice directory.")
+        prompts = data.get("prompts")
+        tones = data.get("tones", {})
+        if not isinstance(prompts, dict) or not prompts or not isinstance(tones, dict):
+            raise ValueError("Backup requires explicit prompt and tone indexes." + guidance)
+        if any(not isinstance(stem, str) or stem not in prompts for stem in tones.values()):
+            raise ValueError("Backup tone index references an unknown prompt." + guidance)
+        pd = vd / "prompts"
+        if pd.is_symlink() or not pd.is_dir():
+            raise ValueError("Unsafe or missing prompts directory." + guidance)
+        for stem, relative in prompts.items():
+            if (not isinstance(stem, str) or not re.fullmatch(r"[A-Za-z0-9_.-]+", stem) or stem in (".", "..")
+                    or relative != f"prompts/{stem}.pkl"):
+                raise ValueError("Unsafe prompt index in backup")
+            path = pd / f"{stem}.pkl"
+            regular(path)
+            regular(path.with_suffix(".meta.json"))
+            meta = json.loads(path.with_suffix(".meta.json").read_text())
+            if (not isinstance(meta, dict) or not isinstance(meta.get("checkpoint"), str)
+                    or not meta["checkpoint"].strip() or not isinstance(meta.get("revision"), str)
+                    or not re.fullmatch(r"[0-9a-fA-F]{40}", meta["revision"])
+                    or type(meta.get("schema_version")) is not int or meta["schema_version"] != 1):
+                raise ValueError(f"Missing pinned model identity for {stem}." + guidance)
+            # Hashes bind retained bytes to the sidecar; capabilities independently
+            # establish that its checkpoint can produce clone prompts (no runtime).
+            validate_checkpoint_request(meta["checkpoint"], "clone")
+            reference = self.prompt_reference(path)
+            if reference is None or not self.compatible_prompt(path,
+                    checkpoint=meta["checkpoint"], revision=meta["revision"], schema_version=1,
+                    reference_hash=hashlib.sha256(reference.read_bytes()).hexdigest()):
+                raise ValueError(f"Unverified prompt/reference bytes for {stem}." + guidance)
+        # Never silently drop unindexed caches or invent their tone/model ownership.
+        if {p.stem for p in pd.glob("*.pkl")} != set(prompts):
+            raise ValueError("Orphan contains prompts absent from the backup index." + guidance)
+        for filename in ("source_clip.wav", "ref.wav"):
+            path = vd / filename
+            if path.exists() or path.is_symlink():
+                regular(path)
+        result = {"slug": slug, "dry_run": dry_run, "prompts": sorted(prompts),
+                  "metadata": str(metadata), "restored": not dry_run}
+        if not dry_run:
+            # Publish complete bytes atomically, refusing a concurrent registration.
+            fd, temporary = tempfile.mkstemp(prefix=".repair-", dir=vd)
+            try:
+                with os.fdopen(fd, "wb") as fh:
+                    fh.write(raw)
+                    fh.flush()
+                    os.fsync(fh.fileno())
+                os.link(temporary, target)
+            finally:
+                os.unlink(temporary)
+        return result
 
     def get_ref(self, slug: str) -> Path | None:
         """
@@ -350,21 +538,24 @@ class VoiceRegistry:
                 continue
         return None
 
-    def list_voices(self) -> list[dict[str, Any]]:
+    def list_voices(self, *, strict: bool = False) -> list[dict[str, Any]]:
         """
         Return all named voices, sorted by creation date (newest first).
         Each entry is the voice.json dict with two extra keys:
           ``_prompt_count``  — number of .pkl files in prompts/
           ``_ready``         — True if a prompt exists (can synthesise immediately)
+        With strict=True, invalid records raise rather than being omitted, so name
+        resolution cannot silently fall through to a different legacy voice.
         """
         if not self.root.exists():
             return []
         voices: list[dict[str, Any]] = []
         for vj in sorted(self.root.glob("*/voice.json")):
             try:
-                with open(vj) as fh:
-                    d = self._normalise_record(json.load(fh))
-            except Exception:
+                d = self._read_record(vj)
+            except ValueError:
+                if strict:
+                    raise
                 continue
             pd = vj.parent / "prompts"
             count = len(list(pd.glob("*.pkl"))) if pd.exists() else 0
@@ -748,9 +939,9 @@ class VoiceRegistry:
             raise ValueError(f"Voice '{new_slug}' already exists.")
         old_dir = self.voice_dir(old_slug)
         new_dir = self.voice_dir(new_slug)
+        data = self.load(old_slug)
         old_dir.rename(new_dir)
         # Update slug (and display_name when it mirrored the slug)
-        data = self.load(new_slug)
         data["slug"] = new_slug
         if data.get("display_name") == old_slug:
             data["display_name"] = new_slug

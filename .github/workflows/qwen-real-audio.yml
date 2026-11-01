@@ -1,0 +1,86 @@
+name: Qwen installed real audio (manual)
+on:
+  workflow_dispatch:
+    inputs:
+      reviewed_sha:
+        description: Exact 40-character commit SHA approved by the trusted owner for this one run
+        required: true
+        type: string
+      reference_wav:
+        description: Absolute path to authorized private mono PCM16 reference WAV on the dedicated runner
+        required: true
+        type: string
+      reference_text_file:
+        description: Absolute path to its exact UTF-8 transcript on the dedicated runner
+        required: true
+        type: string
+      reference_kind:
+        description: Provenance of the reference (this gate requires human-recorded)
+        required: true
+        type: choice
+        default: unknown
+        options: [unknown, human-recorded, synthetic]
+      reference_authorized:
+        description: I have authorization to use this reference for voice cloning
+        required: true
+        type: boolean
+        default: false
+      cache_root:
+        description: Absolute private pinned snapshot cache root on the dedicated runner
+        required: true
+        type: string
+      python_311:
+        description: Absolute path to Python 3.11 executable on the dedicated runner
+        required: true
+        type: string
+permissions:
+  contents: read
+concurrency:
+  group: qwen-real-audio-${{ inputs.reviewed_sha }}
+  cancel-in-progress: false
+jobs:
+  real-audio:
+    # This label is an explicit prerequisite. A queued job is no runtime proof.
+    runs-on: [self-hosted, Linux, X64, pab-qwen-docker27-cgroupfs-v2]
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          ref: ${{ inputs.reviewed_sha }}
+          persist-credentials: false
+      - name: Run one installed gate against the extracted archive
+        shell: bash
+        env:
+          REFERENCE_WAV: ${{ inputs.reference_wav }}
+          REFERENCE_TEXT_FILE: ${{ inputs.reference_text_file }}
+          REFERENCE_KIND: ${{ inputs.reference_kind }}
+          REFERENCE_AUTHORIZED: ${{ inputs.reference_authorized }}
+          CACHE_ROOT: ${{ inputs.cache_root }}
+          PYTHON_311: ${{ inputs.python_311 }}
+          REVIEWED_SHA: ${{ inputs.reviewed_sha }}
+        run: |
+          set -euo pipefail
+          [[ "$REVIEWED_SHA" =~ ^[0-9a-f]{40}$ ]]
+          test "$(git rev-parse HEAD)" = "$REVIEWED_SHA"
+          test -z "$(git status --porcelain=v1 --untracked-files=all)"
+          [[ "$PYTHON_311" = /* && -f "$PYTHON_311" && -x "$PYTHON_311" ]]
+          python_real="$("$PYTHON_311" -c 'import os, sys; assert sys.version_info[:2] == (3, 11); print(os.path.realpath(sys.executable))')"
+          test "$(sudo -n "$PYTHON_311" -c 'import os, sys; assert sys.version_info[:2] == (3, 11); print(os.path.realpath(sys.executable))')" = "$python_real"
+          work="$RUNNER_TEMP/pab-qwen-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          mkdir -m 700 "$work"
+          reference_args=(--reference-kind "$REFERENCE_KIND")
+          if [[ "$REFERENCE_AUTHORIZED" = true ]]; then
+            reference_args+=(--reference-authorized)
+          fi
+          sudo -n -E "$PYTHON_311" scripts/ci-qwen-real-audio.py \
+            --work "$work" --reference-wav "$REFERENCE_WAV" \
+            --reference-text-file "$REFERENCE_TEXT_FILE" "${reference_args[@]}" \
+            --cache-root "$CACHE_ROOT" --reviewed-sha "$REVIEWED_SHA" \
+            --report "$RUNNER_TEMP/qwen-real-audio-report.json"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        if: always()
+        with:
+          name: qwen-real-audio-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/qwen-real-audio-report.json
+          if-no-files-found: warn
+          retention-days: 7

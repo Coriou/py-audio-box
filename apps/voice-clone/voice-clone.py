@@ -173,9 +173,11 @@ def _resolve_ref_audio(args, cache: Path) -> Path:
     """
     if getattr(args, "voice", None):
         reg = VoiceRegistry(cache)
-        if not reg.exists(args.voice):
+        try:
+            args.voice = reg.resolve_name(args.voice)
+        except KeyError as exc:
             print(
-                f"ERROR: voice '{args.voice}' not found in registry.\n"
+                f"ERROR: {exc}\n"
                 f"  Run: ./run voice-synth list-voices",
                 file=sys.stderr,
             )
@@ -554,8 +556,36 @@ def prepare_ref(
 ) -> RefResult:
     """
     Run stages 1–3 of the pipeline (normalise → VAD trim → transcribe).
-    All outputs are cached under /cache/voice-clone/refs/<hash>/.
+    Normalization is shared by source hash. Selection and transcript artifacts
+    have a versioned preparation identity and selected-bounds directory; legacy
+    source-only artifacts are preserved but cannot establish selection identity.
     """
+
+    import hashlib
+
+    manual = ref_start is not None or ref_end is not None
+    if manual and (ref_start is None or ref_end is None
+                   or not math.isfinite(ref_start) or not math.isfinite(ref_end)
+                   or ref_start < 0 or ref_end <= ref_start):
+        raise ValueError("Reference bounds require finite 0 <= --ref-start < --ref-end")
+    provided_ref_text = ref_text.strip() if ref_text is not None else None
+    if provided_ref_text == "":
+        raise ValueError("--ref-text cannot be empty")
+    preparation = {
+        "schema_version": 1,
+        "selection": "manual" if manual else "automatic",
+        "ref_start": float(ref_start) if manual else None,
+        "ref_end": float(ref_end) if manual else None,
+        "whisper_model": whisper_model,
+        "ref_language": ref_language,
+        "x_vector_only": x_vector_only,
+        "ref_text": provided_ref_text,
+        "interactive": interactive,
+        "candidate_scoring_version": CANDIDATE_SCORING_VERSION,
+    }
+    preparation_id = hashlib.sha256(
+        json.dumps(preparation, sort_keys=True, allow_nan=False).encode()
+    ).hexdigest()
 
     # ── 1. Normalise ───────────────────────────────────────────────────────────
     print("\n==> [1/3] normalise reference audio")
@@ -571,6 +601,15 @@ def prepare_ref(
         with Timer("ffmpeg normalize"):
             normalize_audio(ref_audio, normalized)
 
+    duration = get_duration(normalized)
+    if not math.isfinite(duration) or duration <= 0:
+        raise ValueError("Normalized reference duration must be finite and positive")
+    if manual and ref_end > duration:
+        raise ValueError(f"--ref-end exceeds normalized reference duration ({duration:.3f}s)")
+
+    ref_dir = ref_dir / "preparations" / preparation_id
+    ref_dir.mkdir(parents=True, exist_ok=True)
+
     # ── 2. Select best segment ─────────────────────────────────────────────────
     print("\n==> [2/3] select reference segment")
 
@@ -582,7 +621,7 @@ def prepare_ref(
     segment_lang_prob    = 1.0
 
     if ref_start is not None and ref_end is not None:
-        seg_start, seg_end = ref_start, ref_end
+        seg_start, seg_end = float(ref_start), float(ref_end)
         print(f"  using manual bounds: {seg_start:.2f}s – {seg_end:.2f}s")
 
     else:
@@ -644,6 +683,14 @@ def prepare_ref(
                 f"({seg_end - seg_start:.1f}s)"
             )
 
+    if (not math.isfinite(seg_start) or not math.isfinite(seg_end)
+            or seg_start < 0 or seg_end <= seg_start or seg_end > duration):
+        raise ValueError("Selected reference bounds are invalid for normalized audio")
+    # Interactive selection may choose different bounds for the same options.
+    # Keep each selected clip/transcript together without replacing earlier picks.
+    bounds_id = hashlib.sha256(json.dumps([seg_start, seg_end]).encode()).hexdigest()
+    ref_dir = ref_dir / bounds_id
+    ref_dir.mkdir(parents=True, exist_ok=True)
     segment_wav = ref_dir / "ref_segment.wav"
     if segment_wav.exists() and not force and not interactive:
         print(f"  [cache hit] segment wav → {segment_wav}")
@@ -656,8 +703,6 @@ def prepare_ref(
     print("\n==> [3/3] transcribe reference segment")
 
     transcript_json = ref_dir / "ref_transcript.json"
-    provided_ref_text = ref_text.strip() if ref_text is not None else None
-
     cached_transcript = None
     if (not x_vector_only and provided_ref_text is None
             and transcript_json.exists() and not force and not interactive):
@@ -698,6 +743,9 @@ def prepare_ref(
     quality = reference_quality_report(transcript, conf, lang_prob,
                                        source=transcript_source, override=force_bad_ref)
     transcript_record = {
+        "preparation": preparation,
+        "seg_start": seg_start,
+        "seg_end": seg_end,
         "transcript": transcript,
         "avg_logprob": _finite_metric(conf),
         "whisper_model": (cached_transcript.get("whisper_model", whisper_model)
@@ -716,6 +764,7 @@ def prepare_ref(
     with open(state_path, "w") as fh:
         json.dump(
             {
+                "preparation":             preparation,
                 "ref_hash":                ref_hash,
                 "ref_audio":               str(ref_audio),
                 "seg_start":               seg_start,
@@ -1620,6 +1669,18 @@ def build_parser() -> argparse.ArgumentParser:
     )
     sub = ap.add_subparsers(dest="command", required=True)
 
+    repair = sub.add_parser("repair-registry", help="Preview restoring missing voice.json from a trusted backup; never unpickles")
+    repair.add_argument("--voice", required=True, metavar="SLUG")
+    repair.add_argument("--metadata", required=True, type=Path,
+                        help="Trusted original voice.json backup; hashes do not establish provenance")
+    repair.add_argument("--cache", default="/cache")
+    repair.add_argument("--apply", action="store_true", help="Restore validated metadata; default is read-only preview")
+
+    alias = sub.add_parser("add-alias", help="Add a case-insensitive voice alias without renaming files")
+    alias.add_argument("--voice", required=True)
+    alias.add_argument("--alias", required=True, help="Letters, digits and hyphens; stored lowercase")
+    alias.add_argument("--cache", default="/cache")
+
     migration = sub.add_parser("migrate-registry", help="Preview additive registry schema migration")
     migration.add_argument("--voice", required=True, metavar="SLUG")
     migration.add_argument("--cache", default="/cache")
@@ -1770,6 +1831,16 @@ from tts_backends.qwen import QwenWorkerError
 def main() -> None:
     ap   = build_parser()
     args = ap.parse_args()
+
+    if args.command in ("repair-registry", "add-alias"):
+        reg = VoiceRegistry(Path(args.cache))
+        try:
+            result = (reg.repair_orphan(args.voice, args.metadata, dry_run=not args.apply)
+                      if args.command == "repair-registry" else reg.add_alias(args.voice, args.alias))
+        except (ValueError, KeyError, OSError) as exc:
+            ap.error(str(exc))
+        print(json.dumps(result, indent=2))
+        return
 
     if args.command == "migrate-registry":
         print(json.dumps(VoiceRegistry(Path(args.cache)).migrate(args.voice, dry_run=not args.apply), indent=2))

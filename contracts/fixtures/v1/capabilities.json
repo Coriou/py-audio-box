@@ -1,0 +1,108 @@
+{
+  "schema_version": "1.3.0",
+  "profiles": [
+    {
+      "config_revision": "config-1",
+      "compatibility": [],
+      "id": "cpu-synthetic",
+      "device": "cpu",
+      "topology": "networkless_container",
+      "support": "unqualified",
+      "installation": "absent",
+      "configuration": "valid",
+      "readiness": "not_ready",
+      "verification": "synthetic",
+      "checked_at": "2026-10-16T00:00:00Z",
+      "qualification_receipt": "",
+      "limits": {
+        "expensive_slots": 1,
+        "resident_models": 1,
+        "threads": 2,
+        "queue": 32,
+        "upload_bytes": 16777216,
+        "decoded_ticks": 28800000,
+        "text_chars": 10000,
+        "variants": 4,
+        "disk_bytes": 1073741824,
+        "deadline_seconds": 600,
+        "ram_bytes": 4294967296,
+        "vram_bytes": 0
+      },
+      "next_action": "Inventory host and qualify exact backend/model/precision before advertising support."
+    },
+    {
+      "config_revision": "config-1",
+      "compatibility": [],
+      "id": "cuda-synthetic",
+      "device": "cuda",
+      "topology": "networkless_container",
+      "support": "unqualified",
+      "installation": "absent",
+      "configuration": "valid",
+      "readiness": "not_ready",
+      "verification": "synthetic",
+      "checked_at": "2026-10-16T00:00:00Z",
+      "qualification_receipt": "",
+      "limits": {
+        "expensive_slots": 2,
+        "resident_models": 1,
+        "threads": 2,
+        "queue": 32,
+        "upload_bytes": 16777216,
+        "decoded_ticks": 28800000,
+        "text_chars": 10000,
+        "variants": 4,
+        "disk_bytes": 1073741824,
+        "deadline_seconds": 600,
+        "ram_bytes": 4294967296,
+        "vram_bytes": 8589934592
+      },
+      "next_action": "Inventory host and qualify exact backend/model/precision before advertising support."
+    },
+    {
+      "config_revision": "config-1",
+      "compatibility": [],
+      "id": "metal-synthetic",
+      "device": "metal",
+      "topology": "packaged_native",
+      "support": "unqualified",
+      "installation": "absent",
+      "configuration": "valid",
+      "readiness": "not_ready",
+      "verification": "synthetic",
+      "checked_at": "2026-10-16T00:00:00Z",
+      "qualification_receipt": "",
+      "limits": {
+        "expensive_slots": 2,
+        "resident_models": 1,
+        "threads": 2,
+        "queue": 32,
+        "upload_bytes": 16777216,
+        "decoded_ticks": 28800000,
+        "text_chars": 10000,
+        "variants": 4,
+        "disk_bytes": 1073741824,
+        "deadline_seconds": 600,
+        "ram_bytes": 4294967296,
+        "vram_bytes": 8589934592
+      },
+      "next_action": "Inventory host and qualify exact backend/model/precision before advertising support."
+    }
+  ],
+  "operations": [
+    "discover",
+    "speech_generate"
+  ],
+  "engines": [
+    "qwen",
+    "kokoro",
+    "pocket-tts"
+  ],
+  "source_types": [
+    "upload",
+    "microphone",
+    "https",
+    "youtube"
+  ],
+  "checked_at": "2026-10-16T00:00:00Z"
+}
