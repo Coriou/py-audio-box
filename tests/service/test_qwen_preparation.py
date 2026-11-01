@@ -32,7 +32,7 @@ from worker.runtime_protocol import execution, generated_source
 
 class CPUPreparationFixture(unittest.TestCase):
     def setUp(self):
-        self.b=lifecycle_fixtures.QwenLifecycleTests();self.b.setUp();self.addCleanup(self.b.doCleanups)
+        self.b=lifecycle_fixtures.QwenLifecycleTests();self.b.publication_creation=getattr(self,'publication_creation',1);self.b.setUp();self.addCleanup(self.b.doCleanups)
         b=self.b
         self.template=copy.deepcopy(b.context)
         spec=replace(b.spec,x_vector_only=True,reference_text=None,timeout_s=1800)
@@ -168,6 +168,9 @@ class CPUPreparationTests(CPUPreparationFixture):
         row=self.b.core.db.execute('SELECT binding,destination,temporary,sha256,byte_length FROM publication_work WHERE job_id=?',(authority.job['id'],)).fetchone()
         artifact,entries=persistence.publication_intent(row,job=self.b.core.job(authority.job['id']),context=authority.context,publication_format=self.b.core.publication_format)
         self.assertEqual(entries[0]['byte_length'],len(extra))
+        for output in (reference,audition):
+            self.assertEqual(self.b.core.asset(output['id']),output)
+        self.assertEqual(self.b.core.artifact(artifact['id']),artifact)
         self.assertEqual((self.b.core.root/'assets'/reference['id']).read_bytes(),extra)
         with self.assertRaises(persistence.PublicationQuarantine):
             persistence.publication_intent(row)
@@ -191,6 +194,9 @@ class CPUPreparationTests(CPUPreparationFixture):
         root=self.b.core.root;self.b.core.close();self.b.core=Core(root)
         self.b.admission=Admission(self.b.core,self.b.stage);self.b.store=DispatchStore(self.b.core,self.b.admission)
         self.assertEqual(self.b.core.job(authority.job['id'])['state'],'succeeded')
+        for output in (reference,audition):
+            self.assertEqual(self.b.core.asset(output['id']),output)
+        self.assertEqual(self.b.core.artifact(artifact['id']),artifact)
         request=dict(self.b.context['plan']['request'],voice_version_id=saved['version']['id'],text='Saved voice replay.')
         context=self.contexts.resolve_owned(self.b.core,'alice','speech_generate',request)
         job=Production(self.b.core).generate('alice','chunk-reuse',context,_admission=self.b.admission,_profiles=self.profiles)
@@ -591,3 +597,7 @@ class CPUConditioningMonitorTests(CPUPreparationFixture):
             with patch('service.resource_store.os.open',side_effect=interleave):
                 with self.assertRaises((ValueError,OSError)):b.admission.check()
             self.assertEqual(b.admission.store.state(),'fault')
+
+
+class CPUPreparationV2ReaderTests(CPUPreparationTests):
+    publication_creation=2

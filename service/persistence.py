@@ -304,21 +304,27 @@ def check_operator_resolved(db,job_id):
 
 
 def publication_limit(publication_format, job=None, context=None):
-    """Storage capacity is never producer authority. Export needs a frozen execution."""
+    """Storage capacity is never producer authority; use the frozen execution."""
     from contracts import validate as oracle
-    from worker.audio_export import execution
     if type(publication_format) is not int or publication_format not in (1,2):
         raise PublicationQuarantine('unsupported_p1_format')
     if publication_format == 2 and job is not None and context is not None:
         plan = context['plan']
-        if plan['operation'] == 'audio_export':
+        if plan['operation'] in ('audio_export', 'speech_generate'):
             oracle.frozen_plan(plan,context['bundles'])
-            if job['operation'] != 'audio_export' or job['input_sha256'] != oracle.plan_hash(plan):
+            if job['operation'] != plan['operation'] or job['input_sha256'] != oracle.plan_hash(plan):
                 raise PublicationQuarantine('publication_producer_mismatch')
-            spec = execution(context)
-            from worker.transport import canonical
-            if canonical(context['execution']) != canonical(dict(converter=plan['resolved']['identity']['converter'])):
-                raise PublicationQuarantine('publication_execution_mismatch')
+            if plan['operation'] == 'audio_export':
+                from worker.audio_export import execution
+                spec = execution(context)
+                from worker.transport import canonical
+                if canonical(context['execution']) != canonical(dict(converter=plan['resolved']['identity']['converter'])):
+                    raise PublicationQuarantine('publication_execution_mismatch')
+            else:
+                from worker.runtime_protocol import execution
+                spec = execution(context)
+                if spec is None:
+                    return 1048576
             return min(37748736,spec.max_output_bytes)
     return 1048576
 

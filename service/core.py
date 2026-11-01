@@ -866,12 +866,15 @@ class Core:
         oracle.require(metadata['id']==asset_id and '/' not in asset_id and asset_id not in ('.','..'), 'foreign_media')
         from service.ingest import MAX_BYTES, open_directory, reference_budget
         budget = MAX_BYTES if reference_budget(metadata) else 1024*1024
-        if metadata['provenance']['kind']=='audio_export':
+        if metadata['provenance']['kind']=='audio_export' or (self.publication_format==2 and metadata['provenance']['kind']=='generated'):
             if not self.p1:
                 raise persistence.PublicationQuarantine('pre_p1_inspect_only')
             # Asset provenance alone is not authority to enlarge a read. Bind it
             # to the same retained producer used by the public artifact reader.
-            matches=list(self.db.execute('SELECT job_id FROM publication_work WHERE destination=? LIMIT 2',(asset_id,)))
+            matches=list(self.db.execute(
+                "SELECT job_id FROM publications WHERE EXISTS "
+                "(SELECT 1 FROM json_each(publications.artifact,'$.asset_ids') WHERE value=?) LIMIT 2",
+                (asset_id,)))
             oracle.require(len(matches)==1,'foreign_media')
             job_id=matches[0][0]
             retained=self.db.execute('SELECT artifact FROM publications WHERE job_id=?',(job_id,)).fetchone()
@@ -884,7 +887,8 @@ class Core:
                     ('jobs','id,job,context','id'),('publications','job_id,manifest,artifact','job_id'),
                     ('publication_work','job_id,binding,destination,temporary,sha256,byte_length','job_id')):
                 data[table]=[dict(zip(columns.split(','),r)) for r in self.db.execute('SELECT '+columns+' FROM '+table+' WHERE '+key+'=?',(job_id,))]
-            persistence.public_artifact(dict(id=aid,metadata=raw),data,publication_format=self.publication_format)
+            validated=persistence.public_artifact(dict(id=aid,metadata=raw),data,publication_format=self.publication_format)
+            oracle.require(asset_id in validated['asset_ids'],'foreign_media')
             job,context=self._load(job_id)
             budget=persistence.publication_limit(self.publication_format,job,context)
         directory = open_directory(self.root/'assets')

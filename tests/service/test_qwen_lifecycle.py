@@ -161,7 +161,7 @@ class QwenLifecycleTests(unittest.TestCase):
         self.tmp=tempfile.TemporaryDirectory();self.addCleanup(self.tmp.cleanup)
         self.root=Path(self.tmp.name).resolve()
         # This fixture exercises the retained installed Qwen v1 history family.
-        self.core=Core(self.root/'core',_publication_creation=1);self.addCleanup(lambda:self.core.close())
+        self.core=Core(self.root/'core',_publication_creation=getattr(self,'publication_creation',1));self.addCleanup(lambda:self.core.close())
         self.stage=self.root/'stage';self.stage.mkdir()
         self.admission=Admission(self.core,self.stage);self.store=DispatchStore(self.core,self.admission)
         out=io.BytesIO()
@@ -843,6 +843,63 @@ class QwenLifecycleTests(unittest.TestCase):
 
 
 from tests.worker import test_runtime_conditioning as conditioning_tests
+
+class QwenLargePublicationTests(unittest.TestCase):
+    def setUp(self):
+        self.fixture=QwenLifecycleTests()
+        self.fixture.task='custom_voice'
+        self.fixture.publication_creation=2
+        self.fixture.setUp()
+        self.addCleanup(self.fixture.doCleanups)
+
+    def test_frozen_speech_budget_publishes_and_reads_large_pcm(self):
+        t=self.fixture
+        t.spec=replace(t.spec,max_frames=700000,max_output_bytes=1400044)
+        t.context['execution']['descriptor']=t.spec.identity()
+        limits=t.profiles[0]['limits']
+        limits.update(upload_bytes=1400044,disk_bytes=4000000,decoded_ticks=1400000)
+        t.context['plan']['resolved']['profile']=oracle.profile_snapshot(t.profiles[0])
+        t.contexts=t.context_factory()
+        a,p,stage=t.proposal()
+        frames=600000
+        out=io.BytesIO()
+        with wave.open(out,'wb') as wav:
+            wav.setparams((1,2,24000,0,'NONE','none'))
+            wav.writeframes(b'\0\0'*frames)
+        raw=out.getvalue()
+        self.assertGreater(len(raw),1048576)
+        output=p['manifest']['outputs'][0]
+        over=io.BytesIO()
+        with wave.open(over,'wb') as wav:
+            wav.setparams((1,2,24000,0,'NONE','none'))
+            wav.writeframes(b'\0\0'*700001)
+        oversized=over.getvalue()
+        output.update(sha256=hashlib.sha256(oversized).hexdigest(),frames=700001)
+        output['provenance']['source_sha256']=output['sha256']
+        (stage/'output.wav').write_bytes(oversized)
+        with self.assertRaisesRegex(ValueError,'foreign_media'):
+            t.core._publish(a.job['id'],p,stage_root=t.stage,engine_uid=os.getuid())
+        self.assertEqual(t.core.db.execute('SELECT count(*) FROM publication_work').fetchone()[0],0)
+        (stage/'output.wav').write_bytes(raw)
+        output.update(sha256=hashlib.sha256(raw).hexdigest(),frames=frames)
+        output['provenance']['source_sha256']=output['sha256']
+        t.core._publish(a.job['id'],p,stage_root=t.stage,engine_uid=os.getuid())
+        asset_id=output['id']
+        self.assertEqual(t.core.asset(asset_id)['sha256'],output['sha256'])
+        root=t.core.root
+        t.core.close()
+        t.core=Core(root)
+        self.assertEqual(t.core.asset(asset_id)['sha256'],output['sha256'])
+        from service import persistence
+        job,context=t.core._load(a.job['id'])
+        self.assertEqual(persistence.publication_limit(2,job,context),1400044)
+        j=copy.deepcopy(job);j['input_sha256']='0'*64
+        with self.assertRaises(Exception):persistence.publication_limit(2,j,context)
+        c=copy.deepcopy(context);c['execution']['descriptor']['max_output_bytes']=1400043
+        self.assertEqual(persistence.publication_limit(2,job,c),1400043)
+        with self.assertRaisesRegex(ValueError,'publication_length_limit'):
+            persistence.verify_file(root/'assets'/asset_id,output['sha256'],1400045,
+                links=1,publication_format=2,job=job,context=context)
 
 class QwenDescendantGateTests(conditioning_tests.ConditioningSupervisorTests):
     def setUp(self):
