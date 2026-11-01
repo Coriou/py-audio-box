@@ -13,7 +13,7 @@ from unittest.mock import patch
 
 from contracts import validate as oracle
 from service import persistence as p
-from service.core import Core,encode,new_id
+from service.core import Core,encode,new_id,native_maintenance
 from service.publication_format import migrate,_validate,_model
 
 
@@ -62,6 +62,42 @@ class PublicationFormatTests(unittest.TestCase):
     def state(self):
         with closing(sqlite3.connect(self.root/'core.sqlite')) as db:
             return db.execute('PRAGMA user_version').fetchone(),list(db.execute('SELECT * FROM p1_format')),list(db.execute('SELECT type,name,tbl_name,sql FROM sqlite_master'))
+    def test_readonly_owner_validates_generated_publication_and_corrupt_format(self):
+        core=self.core();_,_,manifest=direct_history(core)
+        artifact_id=manifest['artifact_id']
+        asset_id=manifest['outputs'][0]['id']
+        expected=core.asset(asset_id)
+        core.close()
+        with closing(sqlite3.connect(self.root/'core.sqlite')) as db:
+            before=list(db.iterdump())
+        with native_maintenance(self.root) as owner:
+            self.assertEqual((owner.p1,owner.publication_format),(True,2))
+            self.assertEqual(owner.asset(asset_id),expected)
+            self.assertEqual(owner.artifact(artifact_id)['id'],artifact_id)
+            with self.assertRaises(sqlite3.OperationalError):
+                owner.db.execute('UPDATE p1_format SET revision=1')
+        with closing(sqlite3.connect(self.root/'core.sqlite')) as db:
+            self.assertEqual(list(db.iterdump()),before)
+            db.execute('UPDATE p1_format SET revision=99')
+            db.commit()
+            corrupt=list(db.iterdump())
+        with self.assertRaises((ValueError,p.PublicationQuarantine)):
+            with native_maintenance(self.root):pass
+        with closing(sqlite3.connect(self.root/'core.sqlite')) as db:
+            self.assertEqual(list(db.iterdump()),corrupt)
+    def test_readonly_owner_refuses_pre_p1_artifact_without_mutation(self):
+        core=self.core(version=1);_,_,manifest=direct_history(core)
+        core.db.execute('DROP TABLE publication_work')
+        core.db.execute('DROP TABLE p1_format')
+        core.close()
+        with closing(sqlite3.connect(self.root/'core.sqlite')) as db:
+            before=list(db.iterdump())
+        with native_maintenance(self.root) as owner:
+            self.assertEqual((owner.p1,owner.publication_format),(False,None))
+            with self.assertRaisesRegex(p.PublicationQuarantine,'pre_p1_inspect_only'):
+                owner.artifact(manifest['artifact_id'])
+        with closing(sqlite3.connect(self.root/'core.sqlite')) as db:
+            self.assertEqual(list(db.iterdump()),before)
     def test_fresh_default_and_explicit_v1_and_no_auto_upgrade(self):
         core=self.core();self.assertEqual(p.store_format(core.db),2);core.close()
         with self.assertRaisesRegex(ValueError,'v2_unsupported'):Core(self.root,_publication_creation=1)

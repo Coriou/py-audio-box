@@ -204,8 +204,13 @@ def native_maintenance(root):
         class ReadOnlyOwner:
             # Pure retained-media reader, no recovery/schema/owner constructor.
             asset = Core.asset
+            artifact = Core.artifact
+            _load = Core._load
+            historical_local = False
         owner = ReadOnlyOwner()
         owner.root, owner.db = root, record.db
+        owner.p1 = persistence.initialize(owner.db, fresh=False)
+        owner.publication_format = persistence.store_format(owner.db) if owner.p1 else None
         yield owner
     finally:
         record.close()
