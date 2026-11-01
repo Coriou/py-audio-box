@@ -133,7 +133,7 @@ class Reconciliation:
             self.reasons.add('unknown_reference_schema')
         try: self.publication_format = persistence.store_format(self.db)
         except (ValueError,sqlite3.Error): raise Incomplete('unknown_publication_format') from None
-        if self.publication_format==2 and policy is None and not tables & persistence.B1_COLUMNS.keys():
+        if self.publication_format==2:
             self.media_limit=160*1024**2
             self.separate_media=True
             self.scalar_limit=16*1024**2

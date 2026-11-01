@@ -105,7 +105,7 @@ class Dispatcher:
             core=self.core=Core(self.root, _native_activation=(self.installed_activation
                 if type(self.installed_activation) in (NativeActivation,NativeCPUActivation) else None),
                 _installed_family=installed_family,
-                _publication_creation=2 if installed_family is not None else 1 if self.installed_activation is not None or startup is not None else 2)
+                _publication_creation=1 if type(self.installed_activation) in (NativeActivation,NativeCPUActivation) else 2)
             if self.installed_activation is not None:
                 self.installed_activation.postcheck(self)
                 self.installed_checked = True

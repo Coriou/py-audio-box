@@ -234,7 +234,7 @@ def _split_core(public, control, staging, *, family=None):
     checked = ex.expectation(public, family) if family is ex.FAMILY else None
     # Creation is exclusive. Existing roots must be fully enrolled exact stores;
     # unsupported interruption inside Core construction remains quarantined.
-    core = Core(Path(control)/'core', _publication_creation=2 if checked else 1,
+    core = Core(Path(control)/'core', _publication_creation=2,
                 _installed_family=checked)
     try:
         Admission(core, Path(staging), public['configuration']['budget'])
@@ -532,13 +532,13 @@ def _validate_split_database(roots, public, policy, *, family=None):
         for table,columns in expected.items():
             if [r[1] for r in db.execute('PRAGMA table_info('+table+')')] != columns.split():
                 raise ValueError('partial_database_initialization_quarantine')
-        fixed = dict(p1_format=[(1,'synthetic-core')], voice_catalogue_format=[(1,)], resource_accounting=[(1,0)], resource_protocol=[(1,2)],
+        fixed = dict(p1_format=[(2,'synthetic-core')], voice_catalogue_format=[(1,)], resource_accounting=[(1,0)], resource_protocol=[(1,2)],
             resource_monitor=[(1,'healthy')], p1_integrity=[(1,1,'healthy',None)],
             p1_installation=[(public['deployment_id'],1,public['scope'],encode(public),digest(public))])
         for table in expected:
             rows=db.execute('SELECT * FROM '+table+' LIMIT 2').fetchall()
             if rows != fixed.get(table,[]): raise ValueError('nonfresh_split_database:'+table)
-        if db.execute('PRAGMA user_version').fetchone() != (1,): raise ValueError('unsupported_versions')
+        if persistence.store_format(db) != 2: raise ValueError('unsupported_versions')
         scan=Reconciliation.__new__(Reconciliation)
         scan.core=SimpleNamespace(root=roots['control']/'core'); scan.db=db; scan.staging=roots['staging']
         scan.entry_limit=2048; scan.byte_limit=16*1024**2; scan.seconds=1

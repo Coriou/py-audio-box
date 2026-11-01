@@ -160,8 +160,8 @@ def registration_writer(public, registration, prestate, control, lock_fd, *, fau
                     if name in before and before[name] != (info.st_dev,info.st_ino):
                         raise ValueError('installed_writer_database_changed')
                 ex.database(db, public)
-            elif persistence.store_format(db) != 1:
-                raise ValueError('installed_writer_v1_required')
+            elif persistence.store_format(db) not in (1,2):
+                raise ValueError('installed_writer_format_required')
         validate()
         db.execute('BEGIN IMMEDIATE')
         try:

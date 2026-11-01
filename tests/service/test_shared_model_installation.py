@@ -272,7 +272,7 @@ class SharedInstallationTests(unittest.TestCase):
         from service.admission import Admission
         from worker.runtime_protocol import execution,dispatch_mode
         with patch.multiple(os,getuid=lambda:10001,geteuid=lambda:10001,getgid=lambda:10001,getegid=lambda:10001,getgroups=lambda:[]):
-            core=Core(s.roots['control']/'core',_publication_creation=1)
+            core=Core(s.roots['control']/'core')
             try:
                 asset=ingest_local(core,principal,self.fixture.b.raw)
                 context=copy.deepcopy(s.config['contexts'][principal])

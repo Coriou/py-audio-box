@@ -886,7 +886,9 @@ def snapshot(roots, db, scope, *, policy=None, exclude_plan=None, exclude_abando
             count+=n; size+=b
             if count>MAX_ROWS or size>MAX_BYTES: raise ValueError('inspection_budget')
             data[table]=db.execute('SELECT * FROM '+table+' ORDER BY rowid').fetchall()
-        if data['p1_format'] != [(2 if export else 1,'synthetic-core')] or data['resource_protocol'] != [(1,2)] or db.execute('PRAGMA user_version').fetchone() != (2 if export else 1,):
+        from service.persistence import store_format
+        publication_format=store_format(db)
+        if (export and publication_format!=2) or data['p1_format'] != [(publication_format,'synthetic-core')] or data['resource_protocol'] != [(1,2)]:
             raise ValueError('unsupported_versions')
         if len(data['p1_installation'])!=1: raise ValueError('not_enrolled')
         identity,revision,kind,raw,h=data['p1_installation'][0]
@@ -3184,8 +3186,11 @@ def _installed_detached_source(state, journal, *, family=None):
     _validate_source(source,columns=columns)
     if export and type(journal['version']) is not int: raise ValueError('invalid_journal')
     data=source['data']
+    from service.persistence import detached_format
+    publication_format=detached_format(source['schema'],data['p1_format'])
     if (data['p1_recovery_plans'] or any(data.get(t) for t in B2_COLUMNS) or
-            data['p1_format']!=[[2 if export else 1,'synthetic-core']] or data['resource_protocol']!=[[1,2]]):
+            (export and publication_format!=2) or
+            data['p1_format']!=[[publication_format,'synthetic-core']] or data['resource_protocol']!=[[1,2]]):
         raise ValueError('installed_history_maintenance_or_version')
     _installed_detached_rows(source, columns)
     if export and not ex._clean_dispatches(data['dispatches']):
@@ -3216,10 +3221,10 @@ def _installed_detached_source(state, journal, *, family=None):
     from service.reconciliation import typed_references, DIAGNOSTICS
     typed={table:[dict(zip(columns[table].split(),r)) for r in rows]
            for table,rows in data.items() if table not in DIAGNOSTICS and table!='sqlite_sequence'}
-    _installed_detached_documents(typed, publication_format=2 if export else 1)
+    _installed_detached_documents(typed, publication_format=publication_format)
     scanner=Reconciliation.__new__(Reconciliation)
     scanner._export_family=family
-    scanner.publication_format=2 if export else 1
+    scanner.publication_format=publication_format
     scanner.entry_limit=MAX_ROWS;scanner.byte_limit=MAX_BYTES
     scanner.entries=scanner.bytes=0;scanner.end=time.monotonic()+1
     scanner.rows={};scanner.reasons=set()
@@ -3244,7 +3249,8 @@ def _installed_detached_source(state, journal, *, family=None):
         _,_,mode,uid,gid,links,size,_,_,hash_claim=identity_claim
         regular=stat.S_ISREG(mode)
         if regular: media_bytes += size
-        if export and media_bytes>ex.MEDIA_BYTES: raise ValueError('inspection_media_budget')
+        if media_bytes>(ex.MEDIA_BYTES if export else 160*1024**2 if publication_format==2 else MAX_BYTES):
+            raise ValueError('inspection_media_budget')
         if (sorted(row['references'])!=sorted(refs.get(row['name'],())) or
                 (not regular and not stat.S_ISDIR(mode)) or size<0):
             raise ValueError('installed_history_inventory_identity')
