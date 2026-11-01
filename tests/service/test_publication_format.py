@@ -68,6 +68,20 @@ class PublicationFormatTests(unittest.TestCase):
         other=Path(self.tmp.name)/'old'
         with closing(Core(other,_publication_creation=1)) as old:self.assertEqual(old.publication_format,1)
         with closing(Core(other)) as old:self.assertEqual(old.publication_format,1)
+    def test_native_retained_check_reads_existing_reference_before_initialization(self):
+        asset=fixture('voice_prepare-roles')['context']['plan']['assets'][0]
+        raw=Path('contracts/fixtures/v1/impulse.wav').read_bytes()
+        self.assertEqual(hashlib.sha256(raw).hexdigest(),asset['sha256'])
+        with closing(Core(self.root,_publication_creation=1)) as core:
+            (core.root/'assets'/asset['id']).write_bytes(raw)
+            with core.transaction():core.db.execute('INSERT INTO assets VALUES(?,?)',(asset['id'],encode(asset)))
+        observed=[]
+        class Retained:
+            def retained_check(self,core):
+                observed.append((core.p1,core.publication_format,core.asset(asset['id'])['id']))
+        with patch('service.native_activation.NativeActivation',Retained),closing(Core(self.root,_native_activation=Retained())):
+            pass
+        self.assertEqual(observed,[(True,1,asset['id'])])
     def test_mixed_versions_and_exact_ddl_refuse(self):
         for version in (1,2):
             for defect in ('marker','pragma','ddl','index','trigger','float-detached','bool-detached'):

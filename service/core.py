@@ -299,6 +299,11 @@ class Core:
                 if type(_native_activation) not in (NativeActivation,NativeCPUActivation):
                     raise ValueError('checked_native_activation_required')
                 _publication_creation=1
+                if not fresh:
+                    # Retained history reads assets before schema initialization.
+                    # Validate the existing format without writing before that gate.
+                    self.p1 = persistence.initialize(self.db, fresh=False)
+                    self.publication_format = persistence.store_format(self.db) if self.p1 else None
                 _native_activation.retained_check(self)
             if not fresh and _installed_family is not None:
                 _installed_family.check(self.db)
