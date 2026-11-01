@@ -14,7 +14,7 @@ class PocketDaemonTests(unittest.TestCase):
     def setUp(self):
         self.s = Session(self, family=pd.FAMILY)
 
-    def test_install_init_up_status_stop_and_same_id_restart_v1(self):
+    def test_install_init_up_status_stop_and_same_id_restart_publication_v2(self):
         s = self.s
         self.assertEqual(s.run('install'), dict(phase='imported'))
         s.run('init')
@@ -27,8 +27,8 @@ class PocketDaemonTests(unittest.TestCase):
         self.assertEqual(ip.expectation(ip.POCKET_SPLIT,'staging',directory=True), (0,10001,0o1753))
         path = s.roots['control']/'core/core.sqlite'
         with sqlite3.connect(path) as db:
-            self.assertEqual(db.execute('PRAGMA user_version').fetchone(), (1,))
-            self.assertEqual(db.execute('SELECT * FROM p1_format').fetchall(), [(1,'synthetic-core')])
+            self.assertEqual(db.execute('PRAGMA user_version').fetchone(), (2,))
+            self.assertEqual(db.execute('SELECT * FROM p1_format').fetchall(), [(2,'synthetic-core')])
         first = s.run('up')
         self.assertEqual(s.run('status'), first)
         self.assertEqual(s.gate['version'], 1)
